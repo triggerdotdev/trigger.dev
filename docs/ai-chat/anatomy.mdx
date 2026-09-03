@@ -18,7 +18,7 @@ Everything below maps onto one annotated agent:
 
 ```ts trigger/my-agent.ts
 import { chat } from "@trigger.dev/sdk/ai";
-import { streamText, stepCountIs } from "ai";
+import { stepCountIs } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 
 export const myAgent = chat.agent({
@@ -36,9 +36,9 @@ export const myAgent = chat.agent({
 
   // The turn loop. Messages arrive accumulated; you stream back.
   // Options, levels, and alternatives — see Backend.
-  run: async ({ messages, tools, signal }) =>
+  run: async ({ messages, tools, signal, streamText }) =>
     streamText({
-      ...chat.toStreamTextOptions({ tools }),
+      tools,
       model: anthropic("claude-sonnet-4-5"),
       messages,
       abortSignal: signal,

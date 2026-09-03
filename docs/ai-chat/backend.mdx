@@ -30,14 +30,13 @@ Return the `streamText` result from `run` and it's automatically piped to the fr
 
 ```ts
 import { chat } from "@trigger.dev/sdk/ai";
-import { streamText, stepCountIs } from "ai";
+import { stepCountIs } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 
 export const simpleChat = chat.agent({
   id: "simple-chat",
-  run: async ({ messages, signal }) => {
+  run: async ({ messages, signal, streamText }) => {
     return streamText({
-      ...chat.toStreamTextOptions(), // prepareStep, system, telemetry (see note below)
       model: anthropic("claude-sonnet-4-5"),
       system: "You are a helpful assistant.",
       messages,
@@ -48,9 +47,43 @@ export const simpleChat = chat.agent({
 });
 ```
 
-<Warning>
-  **Always spread `chat.toStreamTextOptions()` first** (as above) so your explicit overrides win. It wires up the `prepareStep` callback behind [compaction](/ai-chat/compaction), [steering](/ai-chat/pending-messages), and [background injection](/ai-chat/background-injection), all of which silently no-op without it, and injects the system prompt from `chat.prompt()`, the resolved model (when you pass a `registry`), and telemetry metadata. Examples below keep the spread implicit for brevity, so include it in real code.
-</Warning>
+<Note>
+  The `streamText` destructured from `run`'s argument is the SDK's, not the one
+  imported from `ai`. It carries the agent's managed options, so nothing has to be
+  spread in. [The managed streamText](#the-managed-streamtext) covers what those
+  options are and what happens when yours collide with them.
+</Note>
+
+### The managed streamText
+
+`run()` is handed a `streamText` that already carries everything the spread provides, so the managed state cannot be lost by leaving the spread out:
+
+```ts
+export const simpleChat = chat.agent({
+  id: "simple-chat",
+  run: async ({ messages, signal, streamText }) =>
+    streamText({
+      model: anthropic("claude-sonnet-4-5"),
+      messages,
+      abortSignal: signal,
+      stopWhen: stepCountIs(15),
+    }),
+});
+```
+
+Note the destructured `streamText`: it shadows the one imported from `ai` inside `run`, so the managed options apply without a spread. Spreading `chat.toStreamTextOptions()` into the imported `streamText` is still supported and equivalent.
+
+It differs from the spread in three ways, all of them about what happens when your options collide with the managed ones:
+
+| Option | Spread | Managed `streamText` |
+| --- | --- | --- |
+| `tools` | Passing `tools` after the spread replaces the skill tools | Merged, so skill tools survive |
+| `prepareStep` | Passing your own after the spread replaces the managed one, silently disabling steering, compaction and injection | Composed, yours runs after the managed one |
+| `system` | Yours replaces the managed prompt and any injected instructions | Throws |
+
+`system` throws rather than merging because there is no shape that combines two system values on every supported AI SDK version: v5 rejects an array of blocks, and a structured block carries the provider options that make [prompt caching](/ai-chat/prompt-caching) work, so concatenating discards the cache entry. Set a static prompt with [`chat.prompt.set()`](#using-prompts) and add per-turn context with [`chat.inject()`](/ai-chat/background-injection).
+
+If the managed prompt names a model, pass a registry on the agent so the runtime can resolve it: `chat.agent({ registry, run })`.
 
 ### Using chat.pipe() for complex flows
 
@@ -58,19 +91,20 @@ For complex agent flows where `streamText` is called deep inside your code, use 
 
 ```ts trigger/agent-chat.ts
 import { chat } from "@trigger.dev/sdk/ai";
-import { streamText } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import type { ModelMessage } from "ai";
 
 export const agentChat = chat.agent({
   id: "agent-chat",
-  run: async ({ messages }) => {
-    // Don't return anything — chat.pipe is called inside
-    await runAgentLoop(messages);
+  run: async ({ messages, streamText }) => {
+    // Don't return anything, chat.pipe is called inside
+    await runAgentLoop(messages, streamText);
   },
 });
 
-async function runAgentLoop(messages: ModelMessage[]) {
+// A loop factored out of `run` takes `streamText` as an argument so it keeps the
+// managed options. `ChatStreamText` types the parameter.
+async function runAgentLoop(messages: ModelMessage[], streamText: ChatStreamText) {
   // ... agent logic, tool calls, etc.
 
   const result = streamText({
@@ -102,7 +136,7 @@ export const myChat = chat.agent({
     // responseMessage.parts includes the data-metadata part
     await db.messages.save(responseMessage);
   },
-  run: async ({ messages, signal }) => {
+  run: async ({ messages, signal, streamText }) => {
     // Also works from run() via chat.response
     chat.response.write({
       type: "data-context",
@@ -177,9 +211,9 @@ const tools = { searchDocs };
 export const myChat = chat.agent({
   id: "my-chat",
   tools,
-  run: async ({ messages, tools, signal }) =>
+  run: async ({ messages, tools, signal, streamText }) =>
     streamText({
-      ...chat.toStreamTextOptions({ tools }),
+      tools,
       model: anthropic("claude-sonnet-4-5"),
       messages,
       abortSignal: signal,
@@ -200,12 +234,12 @@ See [Tools](/ai-chat/tools) for `toModelOutput` across turns, per-turn dynamic t
 
 ### Using prompts
 
-Use [AI Prompts](/ai/prompts) to manage your system prompt as versioned, overridable config. Store the resolved prompt in a lifecycle hook with `chat.prompt.set()`, then spread `chat.toStreamTextOptions()` into `streamText` — it includes the system prompt, model, config, and telemetry automatically.
+Use [AI Prompts](/ai/prompts) to manage your system prompt as versioned, overridable config. Store the resolved prompt in a lifecycle hook with `chat.prompt.set()`. The `streamText` from `run`'s argument picks it up: system prompt, model, config and telemetry.
 
 ```ts
 import { chat } from "@trigger.dev/sdk/ai";
 import { prompts } from "@trigger.dev/sdk";
-import { streamText, createProviderRegistry } from "ai";
+import { createProviderRegistry } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 
@@ -221,15 +255,15 @@ const systemPrompt = prompts.define({
 
 export const myChat = chat.agent({
   id: "my-chat",
+  registry,
   clientDataSchema: z.object({ userId: z.string() }),
   onChatStart: async ({ clientData }) => {
     const user = await db.user.findUnique({ where: { id: clientData.userId } });
     const resolved = await systemPrompt.resolve({ name: user.name });
     chat.prompt.set(resolved);
   },
-  run: async ({ messages, signal }) => {
+  run: async ({ messages, signal, streamText }) => {
     return streamText({
-      ...chat.toStreamTextOptions({ registry }), // system, model, config, telemetry
       messages,
       abortSignal: signal,
       stopWhen: stepCountIs(15),
@@ -238,16 +272,9 @@ export const myChat = chat.agent({
 });
 ```
 
-`chat.toStreamTextOptions()` returns an object with `system`, `model` (resolved via the registry), `temperature`, and `experimental_telemetry` — all from the stored prompt. Properties you set after the spread (like a client-selected model) take precedence.
+The managed `streamText` carries the stored prompt's `system`, `model` (resolved through the agent's `registry`), sampling config, and `experimental_telemetry`. Options you pass at the call site win, apart from `system`, which throws when the prompt already set one.
 
-**Which form to call:**
-
-| Form | Use when |
-|---|---|
-| `chat.toStreamTextOptions()` | Default. Wires up `prepareStep` (compaction, steering, background injection), the stored prompt's `system` / `model` / `config`, and telemetry metadata. |
-| `chat.toStreamTextOptions({ registry })` | You're using [Prompts](/ai/prompts) with a provider-prefixed model string (e.g. `"anthropic:claude-sonnet-4-5"`). The registry resolves the prefix to a real model instance via `createProviderRegistry({ anthropic, openai, ... })`. |
-| `chat.toStreamTextOptions({ tools })` | You want HITL tool approvals — pass the same `tools` object you give to `streamText`. The SDK then knows which tool calls need to pause on `needsApproval: true`. |
-| `chat.toStreamTextOptions({ registry, tools })` | Both of the above. |
+`chat.toStreamTextOptions()` remains available for the same job, and is the only option in a [custom agent](#custom-agents), which has no `run` argument to take a bound `streamText` from. A `chat.headStart` route does get one, and there it also owns `messages`, `stopWhen` and `abortSignal`, since the handover depends on them. Pass `{ registry }` when a prompt names a provider-prefixed model, and `{ tools }` when you want HITL tool approvals, so the SDK knows which calls pause on `needsApproval`.
 
 <Tip>
   See [Prompts](/ai/prompts) for the full guide — defining templates, variable schemas, dashboard
@@ -273,7 +300,7 @@ The `run` function receives three abort signals:
 ```ts
 export const myChat = chat.agent({
   id: "my-chat",
-  run: async ({ messages, signal, stopSignal, cancelSignal }) => {
+  run: async ({ messages, signal, stopSignal, cancelSignal, streamText }) => {
     return streamText({
       model: anthropic("claude-sonnet-4-5"),
       messages,
@@ -302,7 +329,7 @@ export const myChat = chat.agent({
       data: { messages: uiMessages, lastStoppedAt: stopped ? new Date() : undefined },
     });
   },
-  run: async ({ messages, signal }) => {
+  run: async ({ messages, signal, streamText }) => {
     return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
   },
 });
@@ -312,11 +339,10 @@ You can also check stop status from **anywhere** during a turn using `chat.isSto
 
 ```ts
 import { chat } from "@trigger.dev/sdk/ai";
-import { streamText } from "ai";
 
 export const myChat = chat.agent({
   id: "my-chat",
-  run: async ({ messages, signal }) => {
+  run: async ({ messages, signal, streamText }) => {
     return streamText({
       model: anthropic("claude-sonnet-4-5"),
       messages,
@@ -369,7 +395,7 @@ const sendEmail = tool({
 
 export const myChat = chat.agent({
   id: "my-chat",
-  run: async ({ messages, signal }) => {
+  run: async ({ messages, signal, streamText }) => {
     return streamText({
       model: anthropic("claude-sonnet-4-5"),
       messages,
@@ -405,12 +431,12 @@ Users can send messages while the agent is executing tool calls. With `pendingMe
 ```ts
 export const myChat = chat.agent({
   id: "my-chat",
+  registry,
   pendingMessages: {
     shouldInject: ({ steps }) => steps.length > 0,
   },
-  run: async ({ messages, signal }) => {
+  run: async ({ messages, signal, streamText }) => {
     return streamText({
-      ...chat.toStreamTextOptions({ registry }),
       messages,
       tools: {
         /* ... */
@@ -436,6 +462,7 @@ Inject context from background work into the conversation using `chat.inject()`.
 ```ts
 export const myChat = chat.agent({
   id: "my-chat",
+  registry,
   onTurnComplete: async ({ messages }) => {
     chat.defer(
       (async () => {
@@ -453,8 +480,8 @@ export const myChat = chat.agent({
       })()
     );
   },
-  run: async ({ messages, signal }) => {
-    return streamText({ ...chat.toStreamTextOptions({ registry }), messages, abortSignal: signal });
+  run: async ({ messages, signal, streamText }) => {
+    return streamText({ messages, abortSignal: signal });
   },
 });
 ```
@@ -565,7 +592,7 @@ export const myChat = chat.agent({
       },
     ];
   },
-  run: async ({ messages, signal }) => {
+  run: async ({ messages, signal, streamText }) => {
     return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
   },
 });
@@ -590,7 +617,7 @@ By default, a chat agent stays idle after each turn waiting for the next user me
 ```ts
 chat.agent({
   id: "one-shot",
-  run: async ({ messages, signal }) => {
+  run: async ({ messages, signal, streamText }) => {
     // Single-response agent — exit after this turn.
     chat.endRun();
     return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
@@ -613,7 +640,7 @@ Use this when the agent knows its work is done (budget exhausted, goal achieved,
 Override how long the run stays suspended waiting for the next message. Call from inside `run()`:
 
 ```ts
-run: async ({ messages, signal }) => {
+run: async ({ messages, signal, streamText }) => {
   chat.setTurnTimeout("2h"); // Wait longer for this conversation
   return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
 },
@@ -624,7 +651,7 @@ run: async ({ messages, signal }) => {
 Override how long the run stays idle (active, using compute) after each turn:
 
 ```ts
-run: async ({ messages, signal }) => {
+run: async ({ messages, signal, streamText }) => {
   chat.setIdleTimeoutInSeconds(60); // Stay idle for 1 minute
   return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
 },
@@ -659,7 +686,7 @@ export const myChat = chat.agent({
       return "Something went wrong. Please try again.";
     },
   },
-  run: async ({ messages, signal }) => {
+  run: async ({ messages, signal, streamText }) => {
     return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
   },
 });
@@ -690,7 +717,7 @@ export const myChat = chat.agent({
     sendReasoning: true, // Forward model reasoning (default: true)
     sendSources: true, // Forward source citations (default: false)
   },
-  run: async ({ messages, signal }) => {
+  run: async ({ messages, signal, streamText }) => {
     return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
   },
 });
@@ -708,7 +735,7 @@ export const myChat = chat.agent({
   uiMessageStreamOptions: {
     generateMessageId: () => uuidv7(),
   },
-  run: async ({ messages, signal }) => {
+  run: async ({ messages, signal, streamText }) => {
     return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
   },
 });
@@ -728,7 +755,7 @@ export const myChat = chat
   })
   .agent({
     id: "my-chat",
-    run: async ({ messages, signal }) => {
+    run: async ({ messages, signal, streamText }) => {
       return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
     },
   });
@@ -746,7 +773,7 @@ export const myChat = chat
 Override per-turn with `chat.setUIMessageStreamOptions()` — per-turn values merge with the static config (per-turn wins on conflicts). The override is cleared automatically after each turn.
 
 ```ts
-run: async ({ messages, clientData, signal }) => {
+run: async ({ messages, clientData, signal, streamText }) => {
   // Enable reasoning only for certain models
   if (clientData.model?.includes("claude")) {
     chat.setUIMessageStreamOptions({ sendReasoning: true });
@@ -772,7 +799,6 @@ If you need full control over task options, use the standard `task()` with `Chat
 ```ts
 import { task } from "@trigger.dev/sdk";
 import { chat, type ChatTaskPayload } from "@trigger.dev/sdk/ai";
-import { streamText } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 
 export const manualChat = task({

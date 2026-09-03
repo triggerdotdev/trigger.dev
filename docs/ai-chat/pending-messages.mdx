@@ -30,18 +30,18 @@ Add `pendingMessages` to your `chat.agent` configuration:
 
 ```ts
 import { chat } from "@trigger.dev/sdk/ai";
-import { streamText, stepCountIs } from "ai";
+import { stepCountIs } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 
 export const myChat = chat.agent({
   id: "my-chat",
+  registry,
   pendingMessages: {
     // Only inject when there are completed steps (tool calls happened)
     shouldInject: ({ steps }) => steps.length > 0,
   },
-  run: async ({ messages, signal }) => {
+  run: async ({ messages, signal, streamText }) => {
     return streamText({
-      ...chat.toStreamTextOptions({ registry }),
       messages,
       tools: { /* ... */ },
       abortSignal: signal,

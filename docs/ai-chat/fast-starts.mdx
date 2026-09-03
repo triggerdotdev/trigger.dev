@@ -239,11 +239,11 @@ This is an **import-chain** problem, not a runtime one. A "we'll strip the execu
 
     export const myChat = chat.agent({
       id: "my-chat",
-      run: async ({ messages, signal }) =>
+      run: async ({ messages, signal, streamText }) =>
         streamText({
-          ...chat.toStreamTextOptions({ tools: chatTools }),
           model: anthropic("claude-sonnet-4-6"),
           messages,
+          tools: chatTools,
           stopWhen: stepCountIs(10),
           abortSignal: signal,
         }),
@@ -251,7 +251,7 @@ This is an **import-chain** problem, not a runtime one. A "we'll strip the execu
     ```
   </Step>
   <Step title="Build the head-start handler">
-    Call `chat.headStart({ agentId, run })`. It returns a standard Web Fetch handler: `(req: Request) => Promise<Response>`. Inside the `run` callback you call `streamText` yourself and spread `chat.toStreamTextOptions({ tools })` to inherit the SDK-owned wiring (messages, schema-only tools, `stopWhen: stepCountIs(1)`, abort signal). Add your own `model` and `system` on top.
+    Call `chat.headStart({ agentId, run })`. It returns a standard Web Fetch handler: `(req: Request) => Promise<Response>`. The `run` callback receives a `streamText` that already carries the SDK-owned wiring: the converted messages, your schema-only tools, `stopWhen: stepCountIs(1)` and the abort signal. Add your own `model` and `system` on top.
 
     ```ts lib/chat-handler.ts
     import { chat } from "@trigger.dev/sdk/chat-server";
@@ -261,18 +261,23 @@ This is an **import-chain** problem, not a runtime one. A "we'll strip the execu
 
     export const chatHandler = chat.headStart({
       agentId: "my-chat",
-      run: async ({ chat: helper }) =>
+      run: async ({ streamText }) =>
         streamText({
-          ...helper.toStreamTextOptions({ tools: headStartTools }),
           model: anthropic("claude-sonnet-4-6"),
           system: "You are a helpful assistant.",
+          tools: headStartTools,
         }),
     });
     ```
 
-    <Warning>
-      Don't set `stopWhen` here. The spread pins it to `stepCountIs(1)`, and overriding it makes the handler run steps the agent is supposed to own — the handover then splices a stream that has already moved past step 1.
-    </Warning>
+    <Note>
+      That `streamText` is the SDK's, not the one from `ai`. It pins `messages`,
+      `stopWhen: stepCountIs(1)` and `abortSignal`, which the handover depends on:
+      running past step 1 would splice a stream the agent is supposed to own. Setting
+      any of the three at the call site is a type error, and a throw if you get past
+      the types, rather than breaking the handover quietly. `chat.toStreamTextOptions()` is still there if you want to build the
+      options yourself.
+    </Note>
 
     <Tip>
       Use the **same model** on both sides (route handler and `chat.agent`) to avoid a tone or style shift between step 1 and step 2+. Your LLM provider keys stay server-side in your warm process — Trigger.dev never holds them in this design.
@@ -625,27 +630,27 @@ chat.headStart<TTools>({
 export const chatHandler = chat.headStart({
   agentId: "my-chat",
   triggerConfig: { tags: ["org:acme"], queue: "chat", machine: "small-2x" },
-  run: async ({ chat: helper }) =>
-    streamText({ ...helper.toStreamTextOptions({ tools: headStartTools }), model, system }),
+  run: async ({ streamText }) => streamText({ model, system, tools: headStartTools }),
 });
 ```
 
 The `run` callback receives:
 
-- `messages: UIMessage[]` — user messages parsed from the request body.
-- `signal: AbortSignal` — fires when the request closes or the SDK times out the handover.
-- `chat: HeadStartChatHelper<TTools>` — exposes `chat.toStreamTextOptions({ tools })` and a `chat.session` escape hatch for power users.
+- `messages: UIMessage[]`: user messages parsed from the request body.
+- `signal: AbortSignal`: fires when the request closes or the SDK times out the handover.
+- `streamText`: the AI SDK's `streamText` with the keys below already applied. Prefer it.
+- `chat: HeadStartChatHelper<TTools>`: exposes `chat.toStreamTextOptions({ tools })` for building the options by hand, plus a `chat.session` escape hatch for power users.
 
-`chat.toStreamTextOptions({ tools })` returns options to spread into `streamText`. The SDK owns these keys — overriding them will break the protocol:
+The SDK owns these keys. Passing one to the callback's `streamText` is a type error, and a throw behind that; re-setting one after a `chat.toStreamTextOptions()` spread breaks the protocol with no error at all:
 
 | Key | What the SDK sets | Why |
 | --- | --- | --- |
 | `messages` | `convertToModelMessages(uiMessages)` | First-turn user history |
 | `tools` | What you pass | Schema-only tools for step 1 |
-| `stopWhen` | `stepCountIs(1)` | Step 1 only — agent picks up step 2+ |
+| `stopWhen` | `stepCountIs(1)` | Step 1 only, the agent picks up step 2 onward |
 | `abortSignal` | Combined request + idle timeout | Safe cleanup on disconnect |
 
-You bring `model`, `system`, `providerOptions`, `prepareStep`, anything else `streamText` accepts.
+You bring `model`, `system`, `providerOptions`, `prepareStep`, anything else `streamText` accepts. Note that `tools` is the one owned key you do pass, since the SDK cannot know your schema-only set.
 
 #### The transport option
 
@@ -684,11 +689,11 @@ export async function POST(req: Request) {
     agentId: "my-chat",
     chatId, // session externalId; reuse it on the destination page
     messages, // first-turn user history
-    run: async ({ chat: helper }) =>
+    run: async ({ streamText }) =>
       streamText({
-        ...helper.toStreamTextOptions({ tools: headStartTools }),
         model: anthropic("claude-sonnet-4-6"),
         system: "You are a helpful assistant.",
+        tools: headStartTools,
       }),
   });
 

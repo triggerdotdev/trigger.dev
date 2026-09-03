@@ -44,7 +44,7 @@ export const myChat = chat.agent({
     // returning void → side-effect-only, no model call
   },
 
-  run: async ({ messages, signal }) => {
+  run: async ({ messages, signal, streamText }) => {
     return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
   },
 });
@@ -56,13 +56,19 @@ export const myChat = chat.agent({
 
 `onAction` can return a `StreamTextResult`, `string`, or `UIMessage` to produce a response. All three are sent to the frontend and added to the conversation just like a normal turn's answer, but the rest of the turn machinery (`onTurnStart`, `onTurnComplete`, etc.) still does not fire. A returned `UIMessage` must have `role: "assistant"`; its text and `data-*` parts are delivered, and other part types are dropped.
 
+The `messages` argument is captured before `onAction` runs, so a handler that mutates `chat.history` and then passes `messages` straight through sends the model the state it just changed. Rebuild from `chat.history.all()` after the mutation.
+
+Build the response with the `streamText` from `onAction`'s own argument, the same one `run()` receives. It carries the agent's system prompt, skill tools, resolved model and telemetry, so a regenerated answer is produced under the same configuration as every other turn. The `streamText` imported from `ai` carries none of that, and the reply still looks fine, which is what makes the difference easy to miss.
+
 ```ts
-onAction: async ({ action, messages }) => {
+onAction: async ({ action, streamText }) => {
   if (action.type === "regenerate") {
     chat.history.slice(0, -1); // drop the last assistant
     return streamText({
       model: anthropic("claude-sonnet-4-5"),
-      messages,
+      // Rebuild from the mutated history. The `messages` argument was captured
+      // before the slice, so it still contains the answer being replaced.
+      messages: await convertToModelMessages(chat.history.all()),
       stopWhen: stepCountIs(15),
     });
   }
@@ -81,7 +87,7 @@ An action is not a turn, so `onTurnComplete` never fires, and that is where an a
 **Your own store** (`hydrateMessages` registered): the runtime deliberately does not write, because your store is the source of truth. A history mutation and a returned response both live only in the running worker until you persist them, and a continuation rehydrates from your store, not from what the worker had in memory. `chat.pipeAndCapture` hands you the same assistant message the runtime would have captured:
 
 ```ts
-onAction: async ({ action, messages }) => {
+onAction: async ({ action, messages, streamText }) => {
   if (action.type === "undo") {
     chat.history.slice(0, -2);
     await db.deleteLastExchange(chatId); // the rollback is yours to persist
@@ -91,7 +97,10 @@ onAction: async ({ action, messages }) => {
     chat.history.slice(0, -1);
     await db.deleteLastAssistant(chatId); // drop the answer being replaced
     const { message } = await chat.pipeAndCapture(
-      streamText({ model: anthropic("claude-sonnet-4-5"), messages })
+      streamText({
+        model: anthropic("claude-sonnet-4-5"),
+        messages: await convertToModelMessages(chat.history.all()),
+      })
     );
     if (message) await db.saveMessage(message); // then store the new one
   }
@@ -107,11 +116,15 @@ Returning the stream instead of piping it yourself still works and still reaches
 If you have a [human-in-the-loop](/ai-chat/patterns/human-in-the-loop) tool waiting on `addToolOutput`, you usually want to refuse competing actions like `regenerate` until the answer arrives. [`chat.history.getPendingToolCalls()`](/ai-chat/backend#chat-history) gives you exactly that signal:
 
 ```ts
-onAction: async ({ action, messages, signal }) => {
+onAction: async ({ action, signal, streamText }) => {
   if (action.type === "regenerate") {
     if (chat.history.getPendingToolCalls().length > 0) return; // gated
     chat.history.slice(0, -1);
-    return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
+    return streamText({
+      model: anthropic("claude-sonnet-4-5"),
+      messages: await convertToModelMessages(chat.history.all()),
+      abortSignal: signal,
+    });
   }
 },
 ```

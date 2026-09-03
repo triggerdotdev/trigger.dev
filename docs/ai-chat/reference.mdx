@@ -52,6 +52,10 @@ Options for `chat.agent()`.
 | `onTurnComplete`              | `(event: TurnCompleteEvent) => Promise<void> \| void`       | —                              | Fires after each turn completes (stream closed)                                                     |
 | `onCompacted`                 | `(event: CompactedEvent) => Promise<void> \| void`          | —                              | Fires when compaction occurs. Includes `writer`. See [Compaction](/ai-chat/compaction)              |
 | `compaction`                  | `ChatAgentCompactionOptions`                                | —                              | Automatic context compaction. See [Compaction](/ai-chat/compaction)                                 |
+| `registry`                    | `{ languageModel(id: string): unknown }`                    | —                              | A provider registry, so the managed `streamText` can resolve a model set through `chat.prompt.set()` |
+| `system`                      | `string \| SystemModelMessage`                              | —                              | The agent's system prompt. Injected instructions append to it. Set it here, at the `streamText` call site, or through `chat.prompt.set()`, but only in one of them |
+| `cacheControl`                | `SystemCacheControl`                                        | —                              | Mark the system prompt for provider-side caching. See [Prompt caching](/ai-chat/prompt-caching) |
+| `systemProviderOptions`       | `ProviderMetadata`                                          | —                              | Raw provider options for the system block. Takes precedence over `cacheControl` |
 | `pendingMessages`             | `PendingMessagesOptions`                                    | —                              | Mid-execution message injection. See [Pending Messages](/ai-chat/pending-messages)                  |
 | `prepareMessages`             | `(event: PrepareMessagesEvent) => ModelMessage[]`           | —                              | Transform model messages before use (cache breaks, context injection, etc.)                         |
 | `tools`                       | `ToolSet \| ((event: ResolveToolsEvent) => ToolSet \| Promise<ToolSet>)` | —                 | Tools for this agent. Threads each tool's `toModelOutput` through cross-turn history re-conversion, and hands the resolved set back on the run payload. Static set or per-turn function. See [Tools](/ai-chat/tools). |
@@ -98,6 +102,7 @@ The payload passed to the `run` function.
 | `ctx`          | `TaskRunContext`                           | Full task run context — same as `task` `run`’s `{ ctx }`             |
 | `messages`     | `ModelMessage[]`                           | Model-ready messages — pass directly to `streamText`                 |
 | `tools`        | `ToolSet`                                  | Resolved tools declared on the agent config (empty object when none). Pass straight to `streamText`. See [Tools](/ai-chat/tools). |
+| `streamText`   | `typeof streamText`                        | The AI SDK's `streamText` with this agent's managed options already applied: the prompt, skill tools, telemetry, and the `prepareStep` that delivers steering, compaction and injected context. Prefer it over importing `streamText` from `ai`. See [The managed streamText](/ai-chat/backend#the-managed-streamtext). |
 | `chatId`       | `string`                                   | Your conversation ID (the session's `externalId`)                    |
 | `sessionId`    | `string`                                   | Friendly ID of the backing Session (`session_*`). Use with `sessions.open()` for advanced cases. Always set — every chat.agent run is bound to a Session. |
 | `trigger`      | `"submit-message" \| "regenerate-message"` | What triggered the request                                           |
@@ -240,6 +245,7 @@ Passed to the `onAction` callback. See [Actions](/ai-chat/actions).
 | `clientData` | Typed by `clientDataSchema` | Custom data from the frontend                            |
 | `uiMessages` | `UIMessage[]`               | Accumulated UI messages (after hydration, if set)        |
 | `messages`   | `ModelMessage[]`            | Accumulated model messages (after hydration, if set)     |
+| `streamText` | `ChatStreamText`            | `streamText` with the agent's managed options applied, the same one `run()` receives. Use it for a response produced from an action so the answer carries the agent's own prompt and tools |
 
 ## TurnStartEvent
 
