@@ -47,6 +47,9 @@ vi.mock("~/services/personalAccessToken.server", () => ({
   assertSourcePatActive: async () => true,
   updateLastAccessedAtIfStale: vi.fn(),
   resolveAndRecheckUserActorClaims: vi.fn(),
+  // A real PAT authenticates a user but carries no actor claims, so it never reaches the locator.
+  isPersonalAccessToken: (token: string) => token.startsWith("tr_pat_"),
+  authenticateApiRequestWithPersonalAccessToken: async () => ({ userId: "user_with_a_pat" }),
 }));
 vi.mock("~/services/authTelemetry.server", () => ({
   authenticateBearerWithTelemetry: vi.fn(),
@@ -81,7 +84,11 @@ function suffix() {
   return Math.random().toString(36).slice(2, 10);
 }
 
-/** An org with two projects, each with prod plus a dev environment per member. */
+/**
+ * An org with two projects. Each carries the whole environment family the locator has to name:
+ * prod, staging, a dev root per member, a preview root, and branch children of both branchable
+ * types — plus one archived preview branch.
+ */
 async function seedOrg(prisma: PrismaClient) {
   const slug = `locate_${suffix()}`;
   const member = await prisma.user.create({
@@ -111,8 +118,13 @@ async function seedOrg(prisma: PrismaClient) {
 
     const environmentFor = (
       envSlug: string,
-      type: "PRODUCTION" | "DEVELOPMENT",
-      orgMemberId?: string
+      type: "PRODUCTION" | "STAGING" | "PREVIEW" | "DEVELOPMENT",
+      extra?: {
+        orgMemberId?: string;
+        parentEnvironmentId?: string;
+        branchName?: string;
+        archivedAt?: Date;
+      }
     ) =>
       prisma.runtimeEnvironment.create({
         data: {
@@ -123,16 +135,36 @@ async function seedOrg(prisma: PrismaClient) {
           apiKey: `tr_${envSlug}_${projectSlug}_${suffix()}`,
           pkApiKey: `pk_${envSlug}_${projectSlug}_${suffix()}`,
           shortcode: `${envSlug}${suffix()}`,
-          ...(orgMemberId ? { orgMemberId } : {}),
+          ...extra,
         },
         select: { id: true, slug: true },
       });
 
+    const ownDev = await environmentFor("dev", "DEVELOPMENT", { orgMemberId: memberOf.id });
+    const previewRoot = await environmentFor("preview", "PREVIEW");
+
     return {
       project,
       prod: await environmentFor("prod", "PRODUCTION"),
-      ownDev: await environmentFor("dev", "DEVELOPMENT", memberOf.id),
-      otherDev: await environmentFor("dev", "DEVELOPMENT", otherMemberOf.id),
+      // The dashboard slug for staging is "stg"; the API name is "staging".
+      staging: await environmentFor("stg", "STAGING"),
+      ownDev,
+      otherDev: await environmentFor("dev", "DEVELOPMENT", { orgMemberId: otherMemberOf.id }),
+      previewRoot,
+      previewBranch: await environmentFor("preview-feat-a", "PREVIEW", {
+        parentEnvironmentId: previewRoot.id,
+        branchName: "feat/a",
+      }),
+      archivedPreviewBranch: await environmentFor("preview-feat-old", "PREVIEW", {
+        parentEnvironmentId: previewRoot.id,
+        branchName: "feat/old",
+        archivedAt: new Date(),
+      }),
+      devBranch: await environmentFor("dev-feat-a", "DEVELOPMENT", {
+        orgMemberId: memberOf.id,
+        parentEnvironmentId: ownDev.id,
+        branchName: "feat/a",
+      }),
     };
   }
 
@@ -238,15 +270,18 @@ async function callLoader(opts: {
   id: string;
   userId?: string;
   organizationId?: string;
+  bearer?: string;
 }) {
-  const token = opts.userId
-    ? await signUserActorToken(SESSION_SECRET, {
-        userId: opts.userId,
-        client: "dashboard-agent",
-        cap: ["read:runs"],
-        ...(opts.organizationId ? { organizationId: opts.organizationId } : {}),
-      } as any)
-    : undefined;
+  const token = opts.bearer
+    ? opts.bearer
+    : opts.userId
+      ? await signUserActorToken(SESSION_SECRET, {
+          userId: opts.userId,
+          client: "dashboard-agent",
+          cap: ["read:runs"],
+          ...(opts.organizationId ? { organizationId: opts.organizationId } : {}),
+        } as any)
+      : undefined;
 
   const response = await loader({
     request: new Request(`https://api.trigger.dev/api/v1/locate/${opts.kind}/${opts.id}`, {
@@ -305,6 +340,68 @@ containerTest(
     const ownDev = await callLoader({ kind: "run", id: ownDevRun.friendlyId, ...caller });
     expect(ownDev.body.scopes[0].targetable).toBe(true);
 
+    // Staging's dashboard slug is "stg"; the address the agent has to use is "staging".
+    const stagingRun = await createRun(
+      prisma,
+      scopeOf(orgA, orgA.current),
+      orgA.current.staging.id
+    );
+    const staging = await callLoader({ kind: "run", id: stagingRun.friendlyId, ...caller });
+    expect(staging.body.scopes[0]).toMatchObject({
+      environmentName: "staging",
+      environmentType: "STAGING",
+      targetable: true,
+    });
+    expect(staging.body.scopes[0].branchName).toBeUndefined();
+
+    // A preview branch child: the name is the family, the branch is the rest of the address.
+    const previewBranchRun = await createRun(
+      prisma,
+      scopeOf(orgA, orgA.current),
+      orgA.current.previewBranch.id
+    );
+    const previewBranch = await callLoader({
+      kind: "run",
+      id: previewBranchRun.friendlyId,
+      ...caller,
+    });
+    expect(previewBranch.body.scopes[0]).toEqual({
+      projectRef: orgA.current.project.externalRef,
+      projectName: orgA.current.project.name,
+      environmentName: "preview",
+      environmentType: "PREVIEW",
+      branchName: "feat/a",
+      targetable: true,
+    });
+
+    // A dev branch child of the caller's own dev root.
+    const devBranchRun = await createRun(
+      prisma,
+      scopeOf(orgA, orgA.current),
+      orgA.current.devBranch.id
+    );
+    const devBranch = await callLoader({ kind: "run", id: devBranchRun.friendlyId, ...caller });
+    expect(devBranch.body.scopes[0]).toMatchObject({
+      environmentName: "dev",
+      environmentType: "DEVELOPMENT",
+      branchName: "feat/a",
+      targetable: true,
+    });
+
+    // An archived branch still exists, so the run is located, it just can't be acted in.
+    const archivedRun = await createRun(
+      prisma,
+      scopeOf(orgA, orgA.current),
+      orgA.current.archivedPreviewBranch.id
+    );
+    const archived = await callLoader({ kind: "run", id: archivedRun.friendlyId, ...caller });
+    expect(archived.body.found).toBe(true);
+    expect(archived.body.scopes[0]).toMatchObject({
+      environmentName: "preview",
+      branchName: "feat/old",
+      targetable: false,
+    });
+
     // A run in another organization must not even be confirmed to exist.
     const foreignRun = await createRun(prisma, scopeOf(orgB, orgB.current), orgB.current.prod.id);
     const foreign = await callLoader({ kind: "run", id: foreignRun.friendlyId, ...caller });
@@ -318,6 +415,12 @@ containerTest(
     expect((await callLoader({ kind: "run", id: siblingRun.friendlyId })).status).toBe(401);
     expect(
       (await callLoader({ kind: "run", id: siblingRun.friendlyId, userId: orgA.member.id })).status
+    ).toBe(401);
+
+    // A plain PAT authenticates a user but carries no actor claims, so it locates nothing.
+    expect(
+      (await callLoader({ kind: "run", id: siblingRun.friendlyId, bearer: "tr_pat_not_an_actor" }))
+        .status
     ).toBe(401);
 
     // A claim naming an organization the caller doesn't belong to.

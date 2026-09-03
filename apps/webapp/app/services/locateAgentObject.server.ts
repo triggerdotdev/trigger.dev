@@ -8,6 +8,7 @@
 import { boundedIn, type RuntimeEnvironmentType } from "@trigger.dev/database";
 import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
 import { $replica } from "~/db.server";
+import { dashboardAgentEnvironmentAddress } from "~/services/dashboardAgentEnvironmentAddress.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { runStore } from "~/v3/runStore.server";
 
@@ -99,13 +100,13 @@ async function scopesForEnvironments(
     where: {
       id: { in: boundedIn(environmentIds) },
       organizationId,
-      archivedAt: null,
       project: { deletedAt: null },
     },
     select: {
       slug: true,
       type: true,
       branchName: true,
+      archivedAt: true,
       orgMember: { select: { userId: true } },
       project: { select: { externalRef: true, name: true } },
     },
@@ -114,10 +115,14 @@ async function scopesForEnvironments(
   return environments.map((environment) => ({
     projectRef: environment.project.externalRef,
     projectName: environment.project.name,
-    environmentName: environment.slug,
+    // Name the API routes address, not the dashboard slug: a branch child's slug is compound.
+    environmentName:
+      dashboardAgentEnvironmentAddress(environment).environmentName ?? environment.slug,
     environmentType: environment.type,
     ...(environment.branchName ? { branchName: environment.branchName } : {}),
-    // dev is per-user: another member's dev environment exists but can't be acted in.
-    targetable: environment.type !== "DEVELOPMENT" || environment.orgMember?.userId === userId,
+    // dev is per-user and an archived env is frozen; both exist, so both are still reported.
+    targetable:
+      !environment.archivedAt &&
+      (environment.type !== "DEVELOPMENT" || environment.orgMember?.userId === userId),
   }));
 }
