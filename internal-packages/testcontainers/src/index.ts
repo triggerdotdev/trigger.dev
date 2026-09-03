@@ -541,6 +541,73 @@ export const heteroRunOpsPostgresTest = test.extend<HeteroRunOpsPostgresTestCont
   ...heteroRunOpsFixtures,
 });
 
+export type HeteroRunOpsBlipTestContext = {
+  postgresContainer14: StartedPostgreSqlContainer;
+  postgresContainer17: StartedPostgreSqlContainer;
+  uri14: string;
+  uri17: string;
+  prisma14: PrismaClient;
+  prisma17: RunOpsPrismaClient;
+  blip14: DbBlipController;
+  blip17: DbBlipController;
+};
+
+// heteroRunOpsPostgresTest but each client is adapter-backed (PrismaPg + pg.Pool) and paired with a
+// DbBlipController, so a routing (RunOpsStore) test can sever EITHER run-ops database mid-statement
+// and prove the cross-DB read/hydration retry recovers on the prod runtime.
+export const heteroRunOpsBlipTest = withWarmup(
+  test.extend<HeteroRunOpsBlipTestContext>({
+    postgresContainer14: heteroRunOpsFixtures.postgresContainer14,
+    postgresContainer17: heteroRunOpsFixtures.postgresContainer17,
+    uri14: heteroRunOpsFixtures.uri14,
+    uri17: heteroRunOpsFixtures.uri17,
+    prisma14: async ({ uri14 }: { uri14: string }, use: Use<PrismaClient>) => {
+      const pool = new Pool({ connectionString: uri14 });
+      pool.on("error", () => {});
+      pool.on("connect", (client) => client.on("error", () => {}));
+      const prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
+      try {
+        await use(prisma);
+      } finally {
+        await logCleanup("heteroBlipPrisma14", prisma.$disconnect());
+        await logCleanup("heteroBlipPool14", pool.end());
+      }
+    },
+    prisma17: async ({ uri17 }: { uri17: string }, use: Use<RunOpsPrismaClient>) => {
+      const pool = new Pool({ connectionString: uri17 });
+      pool.on("error", () => {});
+      pool.on("connect", (client) => client.on("error", () => {}));
+      const prisma = new RunOpsPrismaClient({ adapter: new PrismaPg(pool) });
+      try {
+        await use(prisma);
+      } finally {
+        await logCleanup("heteroBlipPrisma17", prisma.$disconnect());
+        await logCleanup("heteroBlipPool17", pool.end());
+      }
+    },
+    blip14: async ({ uri14 }: { uri14: string }, use: Use<DbBlipController>) => {
+      const handle = await createDbBlipController(uri14);
+      try {
+        await use(handle);
+      } finally {
+        await handle.close();
+      }
+    },
+    blip17: async ({ uri17 }: { uri17: string }, use: Use<DbBlipController>) => {
+      const handle = await createDbBlipController(uri17);
+      try {
+        await use(handle);
+      } finally {
+        await handle.close();
+      }
+    },
+  }),
+  async () => {
+    await getWorkerPostgresContainer();
+    await getRunOpsWorkerPostgresContainer17();
+  }
+);
+
 type ThreeDbRunOpsPostgresTestContext = {
   // Control-plane DB — full @trigger.dev/database schema.
   controlPlanePrisma: PrismaClient;
