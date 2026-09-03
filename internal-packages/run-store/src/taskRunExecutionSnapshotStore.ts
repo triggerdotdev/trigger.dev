@@ -1124,21 +1124,23 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
    * at `redis-only` throws while everyone else still falls back.
    */
   async #fallbackAllowed(runId?: string, environmentId?: string): Promise<boolean> {
-    // The global dial preserves today's behaviour exactly: at redis-only Postgres holds nothing.
-    if (this.mode === "redis-only") return false;
-
-    // The run's own org from the sync cache, checked BEFORE the census: a run whose org resolves to
-    // redis-only must throw even when anyOrgRedisOnly (a separate, independently-lagging source) has
-    // not yet caught the enable, or the writing-process window strands it. A concrete non-`redis-only`
-    // mode falls back normally, even when some OTHER org is `redis-only`.
+    // A RESOLVED per-run answer is authoritative and wins over the global dial. Postgres suppression
+    // is org-scoped, so an org resolved BELOW redis-only has its whole log in Postgres even when the
+    // GLOBAL dial has advanced to redis-only; refusing the fallback there would strand a run whose
+    // rows are sitting readable in Postgres. A run resolved TO redis-only still refuses (even when
+    // anyOrgRedisOnly has not caught the enable); a concrete non-`redis-only` mode falls back, even
+    // when a DIFFERENT org is `redis-only`. So this check precedes the global short-circuit below.
     if (runId !== undefined) {
       const resolved = this.modeResolver?.readModeFor?.(runId, environmentId);
       if (resolved === "redis-only") return false;
       if (resolved !== undefined) return true;
     }
 
-    // Org unresolved (cold run→org cache, or no runId). If no org is `redis-only`, this run cannot
-    // be either, so Postgres is a valid answer.
+    // Org unresolved (cold run→org cache, or no runId). At a global redis-only we cannot prove
+    // Postgres holds this run, so refuse rather than serve an empty history as though it were real.
+    if (this.mode === "redis-only") return false;
+
+    // If no org is `redis-only`, this run cannot be either, so Postgres is a valid answer.
     if (this.modeResolver?.anyOrgRedisOnly?.() !== true) return true;
 
     // Some org IS redis-only and the sync cache cannot tell if it is this one. Resolve the run's org

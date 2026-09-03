@@ -438,3 +438,33 @@ describe("redis-only fallback resolves a cold run→org cache authoritatively", 
     expect(h.delegateTouched).toContain("findLatestExecutionSnapshot");
   });
 });
+
+// An org held BELOW a global redis-only (dual-write / redis-read) keeps all its rows in Postgres,
+// because suppression is org-scoped. The read gate must serve those rows, not refuse them as though
+// the global dial spoke for this run. A resolved per-run answer wins over the global short-circuit.
+describe("a run held below a global redis-only reads from Postgres, never strands", () => {
+  it("resolves to dual-write while the global dial is redis-only, and falls back to Postgres", async () => {
+    const h = harness({
+      globalMode: "redis-only",
+      anyOrgRedisOnly: () => true,
+      readModeFor: (runId) => (runId === "run_held" ? "dual-write" : undefined),
+    });
+
+    const result = await h.decorated.findLatestExecutionSnapshot("run_held", undefined, "env_held");
+    expect(result).toEqual({ id: "pg_fallback" });
+    expect(h.delegateTouched).toContain("findLatestExecutionSnapshot");
+  });
+
+  it("still refuses Postgres for a run that itself resolves to redis-only under a redis-only dial", async () => {
+    const h = harness({
+      globalMode: "redis-only",
+      anyOrgRedisOnly: () => true,
+      readModeFor: (runId) => (runId === "run_ro" ? "redis-only" : undefined),
+    });
+
+    await expect(
+      h.decorated.findLatestExecutionSnapshot("run_ro", undefined, "env_ro")
+    ).rejects.toThrow("redis brownout");
+    expect(h.delegateTouched).not.toContain("findLatestExecutionSnapshot");
+  });
+});
