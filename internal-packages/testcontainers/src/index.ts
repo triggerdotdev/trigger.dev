@@ -986,6 +986,30 @@ export const containerTest = withWarmup(
   }
 );
 
+export type ContainerBlipTestContext = PostgresBlipTestContext & {
+  redisContainer: StartedRedisContainer;
+  resetRedis: void;
+  redisOptions: RedisOptions;
+};
+
+// postgresBlipTest (adapter-backed postgres + a DbBlipController) composed with a worker-scoped
+// Redis, so a blip test can drive a full RunEngine through its real surfaces (trigger, waitpoint
+// completion, continue) while severing the database connection mid-operation.
+export const containerBlipTest = withWarmup(
+  test.extend<ContainerBlipTestContext>({
+    postgresContainer: clonedPostgresContainer,
+    prisma: blipPrismaFromContainer,
+    blip: blipFromContainer,
+    redisContainer: [bootWorkerRedis, { scope: "worker" }],
+    resetRedis: [flushRedis, { auto: true }],
+    redisOptions,
+  }),
+  async ({ redisContainer }) => {
+    void redisContainer;
+    await getWorkerPostgresContainer();
+  }
+);
+
 type ContainerWithIsolatedRedisContext = {
   network: StartedNetwork;
   postgresContainer: StartedPostgreSqlContainer;
