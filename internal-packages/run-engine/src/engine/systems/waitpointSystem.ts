@@ -24,6 +24,19 @@ export type WaitpointSystemOptions = {
   resources: SystemResources;
   executionSnapshotSystem: ExecutionSnapshotSystem;
   enqueueSystem: EnqueueSystem;
+  /**
+   * Whether this run's snapshots can hold a completed-waitpoint record set. Must be O(1).
+   *
+   * Sits in FRONT of the id-format scan so a run that cannot hold records pays one predicate
+   * call, not one `parseWaitpointId` per blocking waitpoint. It has to be injected rather than
+   * derived here: the answer is per-organisation, since it follows the snapshot store's own
+   * rollout, and the store keeps that state private to itself.
+   *
+   * Defaults to never. A record set is only reachable through the snapshot store, so until the
+   * ticket that wires that store supplies this predicate there is no run for which one could
+   * exist, and no resume does any of this work.
+   */
+  completedWaitpointRecordsEnabled?: (runId: string) => boolean;
 };
 
 type WaitpointContinuationWaitpoint = Pick<Waitpoint, "id" | "type" | "completedAfter" | "status">;
@@ -47,11 +60,13 @@ export class WaitpointSystem {
   private readonly executionSnapshotSystem: ExecutionSnapshotSystem;
   private readonly enqueueSystem: EnqueueSystem;
   private readonly coordinator: WaitpointCoordinator;
+  private readonly recordsEnabled: (runId: string) => boolean;
 
   constructor(private readonly options: WaitpointSystemOptions) {
     this.$ = options.resources;
     this.executionSnapshotSystem = options.executionSnapshotSystem;
     this.enqueueSystem = options.enqueueSystem;
+    this.recordsEnabled = options.completedWaitpointRecordsEnabled ?? (() => false);
     this.coordinator = new LegacyPostgresWaitpointCoordinator({
       runStore: this.$.runStore,
       prisma: this.$.prisma,
@@ -759,7 +774,8 @@ export class WaitpointSystem {
    * The record set for one resume, or undefined when no blocking waitpoint carries a store-format
    * id.
    *
-   * Gated on id FORMAT, not residency. The two are not the same during a migration: a
+   * Gated on the record set being reachable at all, and only then on id FORMAT rather than
+   * residency. Format and residency are not the same during a migration: a
    * store-format id can still be served by the Postgres arm, exactly as run-ops ids were for
    * runs. Whichever arm owns it answers, so the gate only decides whether to ask at all.
    *
@@ -778,10 +794,18 @@ export class WaitpointSystem {
     runId: string,
     blockingWaitpoints: RunBlockEdge[]
   ): Promise<CompletedWaitpointRecord[] | undefined> {
-    // `.some` before the dedup, so the gate allocates nothing in the case that is universal
-    // today and stays common through a partial rollout: no blocking waitpoint is store-format.
-    // Building the mapped array, the filtered array and the Set first meant three allocations
-    // per resume -- for a 1000-wide batch fan-in too -- to discover there was nothing to ask for.
+    // O(1) first, and unconditionally first: a run whose snapshots cannot hold a record set has
+    // nothing to build, and deciding that by walking its blocking waitpoints made every resume
+    // for every organisation pay a scan proportional to its fan-in to reach the same answer.
+    // Defaults to never, so today this returns here for everyone.
+    if (!this.recordsEnabled(runId)) {
+      return undefined;
+    }
+
+    // Only then the id-format scan, which is what keeps a MIXED cycle working once records are
+    // enabled: an organisation mid-rollout holds waitpoints minted either side of the flip, and
+    // the format is the only thing that says which half each id belongs to. `.some` before the
+    // dedup so an enabled run holding no store-format id still allocates nothing.
     if (!blockingWaitpoints.some((b) => parseWaitpointId(b.waitpoint.id).format === "b32hexW")) {
       return undefined;
     }
