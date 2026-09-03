@@ -163,6 +163,12 @@ function parseJson<T>(raw: string | undefined): T | undefined {
   return raw ? (JSON.parse(raw) as T) : undefined;
 }
 
+/**
+ * How many envelope reads run concurrently. Matches the chunk the snapshot hydration uses for the
+ * same shape of read, so a large fan-in bounds Redis client pressure instead of bursting.
+ */
+const ENVELOPE_READ_CHUNK_SIZE = 100;
+
 export class WaitpointStoreCoordinator {
   private readonly redis: Redis;
   private readonly logger: Logger;
@@ -527,9 +533,18 @@ export class WaitpointStoreCoordinator {
       return [];
     }
 
-    const halves = await Promise.all(
-      waitpointIds.map((id) => this.redis.hmget(waitpointKeys(id).record, "r", "c"))
-    );
+    // Chunked, not one Promise.all over the whole set. A 1000-item batch fan-in would otherwise
+    // launch 1000 concurrent HMGETs at once, and the burst is the cost even though each command
+    // is small. The bound mirrors the snapshot hydration's own WAITPOINT_CHUNK_SIZE, and stays
+    // per-command so nothing can span two cluster slots.
+    const halves: (string | null)[][] = [];
+    for (let i = 0; i < waitpointIds.length; i += ENVELOPE_READ_CHUNK_SIZE) {
+      const chunk = waitpointIds.slice(i, i + ENVELOPE_READ_CHUNK_SIZE);
+      const settled = await Promise.all(
+        chunk.map((id) => this.redis.hmget(waitpointKeys(id).record, "r", "c"))
+      );
+      halves.push(...settled);
+    }
 
     const out: CompletionEnvelopeSource[] = [];
 
