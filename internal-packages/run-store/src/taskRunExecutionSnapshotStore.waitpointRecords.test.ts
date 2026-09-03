@@ -252,82 +252,96 @@ describe("the completed-waitpoint record set", () => {
   );
 });
 
-// The records read is gated on id shape, so a deployment holding no store-format waitpoint pays
-// no extra round trip on the resume path. These count the reads rather than infer them: the cost
-// is the whole point of the gate, and it is not visible in the resulting entry.
-describe("the records read is gated on waitpoint id shape", () => {
-  containerTest(
-    "a legacy-only carry-forward performs NO getCycleRecords read",
-    async ({ prisma, redisOptions }) => {
-      const { decorated, redis } = build(prisma as never, redisOptions as never);
-      const reads: number[] = [];
-      const original = redis.getCycleRecords.bind(redis);
-      redis.getCycleRecords = async (runId: string, cycleSeq: number) => {
-        reads.push(cycleSeq);
-        return original(runId, cycleSeq);
-      };
-
-      try {
-        const env = await seedSnapshotEnvironment(prisma);
-        const runId = await seedRun(decorated, redis, env);
-        const [wpA] = await seedSnapshotWaitpoints(prisma, env, 1);
-        const waitpoints = [{ id: wpA!, index: 0 }];
-
-        // Two appends with the same id set: the second carries the first's cycle forward.
-        await decorated.createExecutionSnapshot(resumeInput(runId, env, waitpoints));
-        await decorated.createExecutionSnapshot(resumeInput(runId, env, waitpoints));
-
-        // The fixture mints cuid waitpoints, so no id is store-format and no record can exist.
-        expect(wpA && parseWaitpointId(wpA).format).toBe("legacy");
-        expect(reads).toEqual([]);
-      } finally {
-        redis.getCycleRecords = original;
-        await redis.quit();
+// A copy-forward append reads NO cycle key, whatever the ids look like.
+//
+// The record set a refusal needs is sourced inside the append script now, so the decorator does
+// not pre-read it. That matters because copy-forward appends are the hot paths -- attempt start,
+// dequeue, checkpoint -- while the refusal they were preparing for needs eviction to reach. These
+// count the reads rather than infer them: the absence of the round trip is the whole point, and it
+// is not visible in the resulting entry.
+//
+// The store-format case is the one that used to pay: it performed the read on every copy-forward.
+describe("a copy-forward append reads no cycle key", () => {
+  function countCycleReads(redis: RedisSnapshotStore) {
+    const client = (redis as unknown as { redis: Record<string, (...a: never[]) => unknown> })
+      .redis;
+    const original = client.hget.bind(client);
+    const reads: string[] = [];
+    client.hget = (...args: never[]) => {
+      const key = args[0];
+      if (typeof key === "string" && key.includes(":wp:")) {
+        reads.push(key);
       }
+      return original(...args);
+    };
+    return { reads, restore: () => void (client.hget = original) };
+  }
+
+  containerTest("with a legacy-only id set", async ({ prisma, redisOptions }) => {
+    const { decorated, redis } = build(prisma as never, redisOptions as never);
+    const { reads, restore } = countCycleReads(redis);
+
+    try {
+      const env = await seedSnapshotEnvironment(prisma);
+      const runId = await seedRun(decorated, redis, env);
+      const [wpA] = await seedSnapshotWaitpoints(prisma, env, 1);
+      const waitpoints = [{ id: wpA!, index: 0 }];
+
+      // Two appends with the same id set: the second carries the first's cycle forward.
+      await decorated.createExecutionSnapshot(resumeInput(runId, env, waitpoints));
+      await decorated.createExecutionSnapshot(resumeInput(runId, env, waitpoints));
+
+      expect(wpA && parseWaitpointId(wpA).format).toBe("legacy");
+      expect(reads).toEqual([]);
+    } finally {
+      restore();
+      await redis.quit();
     }
-  );
+  });
 
-  containerTest(
-    "a store-format id in the cycle DOES perform the read",
-    async ({ prisma, redisOptions }) => {
-      const { decorated, redis } = build(prisma as never, redisOptions as never);
-      const reads: number[] = [];
-      const original = redis.getCycleRecords.bind(redis);
-      redis.getCycleRecords = async (runId: string, cycleSeq: number) => {
-        reads.push(cycleSeq);
-        return original(runId, cycleSeq);
-      };
+  containerTest("with a store-format id in the cycle", async ({ prisma, redisOptions }) => {
+    const { decorated, redis } = build(prisma as never, redisOptions as never);
+    const { reads, restore } = countCycleReads(redis);
 
+    try {
+      const env = await seedSnapshotEnvironment(prisma);
+      const runId = await seedRun(decorated, redis, env);
+      // A real row, but with a store-format id rather than the fixture's cuid. The delegate
+      // still writes the completed-waitpoint join, so the row has to exist.
+      const storeId = generateWaitpointId("MANUAL");
+      await prisma.waitpoint.create({
+        data: {
+          id: storeId,
+          friendlyId: `waitpoint_${storeId}`,
+          type: "MANUAL",
+          status: "COMPLETED",
+          completedAt: new Date(),
+          idempotencyKey: `idem_${storeId.slice(-12)}`,
+          userProvidedIdempotencyKey: false,
+          projectId: env.projectId,
+          environmentId: env.id,
+        },
+      });
+      const waitpoints = [{ id: storeId, index: 0 }];
+
+      await decorated.createExecutionSnapshot(
+        resumeInput(runId, env, waitpoints, [record(storeId)])
+      );
+      await decorated.createExecutionSnapshot(resumeInput(runId, env, waitpoints));
+
+      expect(parseWaitpointId(storeId).format).toBe("b32hexW");
+      expect(reads).toEqual([]);
+
+      // And the records the mint wrote are still there, untouched by the copy-forward.
+      const probe = createRedisClient(redisOptions, { onError: () => {} });
       try {
-        const env = await seedSnapshotEnvironment(prisma);
-        const runId = await seedRun(decorated, redis, env);
-        // A real row, but with a store-format id rather than the fixture's cuid. The delegate
-        // still writes the completed-waitpoint join, so the row has to exist.
-        const storeId = generateWaitpointId("MANUAL");
-        await prisma.waitpoint.create({
-          data: {
-            id: storeId,
-            friendlyId: `waitpoint_${storeId}`,
-            type: "MANUAL",
-            status: "COMPLETED",
-            completedAt: new Date(),
-            idempotencyKey: `idem_${storeId.slice(-12)}`,
-            userProvidedIdempotencyKey: false,
-            projectId: env.projectId,
-            environmentId: env.id,
-          },
-        });
-        const waitpoints = [{ id: storeId, index: 0 }];
-
-        await decorated.createExecutionSnapshot(resumeInput(runId, env, waitpoints));
-        await decorated.createExecutionSnapshot(resumeInput(runId, env, waitpoints));
-
-        expect(parseWaitpointId(storeId).format).toBe("b32hexW");
-        expect(reads.length).toBeGreaterThan(0);
+        expect(await readRecords(probe, runId)).toHaveLength(1);
       } finally {
-        redis.getCycleRecords = original;
-        await redis.quit();
+        await probe.quit().catch(() => {});
       }
+    } finally {
+      restore();
+      await redis.quit();
     }
-  );
+  });
 });

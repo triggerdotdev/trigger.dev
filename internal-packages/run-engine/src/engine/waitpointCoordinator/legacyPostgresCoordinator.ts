@@ -6,7 +6,7 @@ import type { PrismaClient, Waitpoint } from "@trigger.dev/database";
 import { boundedIn, Prisma } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
 import { UnclassifiableWaitpointId } from "../errors.js";
-import { fetchWaitpointsInChunks } from "../systems/executionSnapshotSystem.js";
+import { fetchWaitpointEnvelopeRowsInChunks } from "../systems/executionSnapshotSystem.js";
 import { envelopeSourceFromWaitpointRow } from "./completionEnvelopeSource.js";
 import type {
   AssociatedWaitpointData,
@@ -96,6 +96,10 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
    * Chunked for the same reason the snapshot hydration chunks: a waitpoint output can be
    * 100KB+, and a large fan-in read whole can exceed Node's string limits. `boundedIn` pads
    * for plan-cache stability, it does not bound the set.
+   *
+   * Projected to the columns the envelope is built from. This read lands on the writer, inside
+   * the run lock, and the hydration reads the same rows again afterwards for a store-format
+   * resume that Postgres still serves -- so it takes no more than it uses.
    */
   async readCompletionEnvelopes({
     runId,
@@ -105,7 +109,12 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
       return [];
     }
 
-    const rows = await fetchWaitpointsInChunks(this.prisma, waitpointIds, this.runStore, runId);
+    const rows = await fetchWaitpointEnvelopeRowsInChunks(
+      this.prisma,
+      waitpointIds,
+      this.runStore,
+      runId
+    );
 
     // COMPLETED only, so both arms honour one omission contract. The store arm cannot return a
     // pending waitpoint because a pending one has no completion to read; this arm reads rows by

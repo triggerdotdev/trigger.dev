@@ -21,7 +21,7 @@ import type {
   SnapshotEntryInput,
   SnapshotRead,
 } from "./redisSnapshotStore.js";
-import { deriveDistinctIds, deriveOrder, mayHoldRecords } from "./redisSnapshotStore.js";
+import { deriveDistinctIds, deriveOrder } from "./redisSnapshotStore.js";
 import {
   entryFromCompletion,
   entryFromCreateExecutionSnapshot,
@@ -579,14 +579,17 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
    * the pointer model exists to remove. So an unchanged id set carries the previous cycleSeq
    * forward and writes no key.
    *
-   * The extra read only happens for an append that actually carries waitpoints, which is the resume
-   * path rather than the hot path.
+   * Resolving a cycle adds no read of its own. The id-set comparison reuses the head this method
+   * already probes, and the refusal path's record set is sourced inside the append script, in the
+   * branch that uses it. An earlier revision pre-read that set here, which put one HGET and a
+   * parse of the whole blob on every copy-forward append -- attempt start, dequeue, checkpoint --
+   * to serve a branch that needs eviction to reach. Those are the hot paths; the resume path is
+   * the one that supplies `records` and never read at all.
    *
-   * `records` rides every arm that can mint. A carryForward normally writes no key, but the
-   * store may refuse the pointer and mint a replacement inside the same call, and that
-   * replacement needs the records or the resolver's coverage check rejects the cycle later.
-   * A legacy-only wait supplies none at all, which is what keeps a Postgres-resident resume
-   * byte-identical to before.
+   * `records` rides the mint arms only. A carryForward passes none: it points at a cycle already
+   * minted, and if the store refuses that pointer and mints a replacement inside the same call,
+   * the script reads the record set off the cycle it is replacing. A legacy-only wait supplies
+   * none anywhere, which is what keeps a Postgres-resident resume byte-identical to before.
    */
   async #resolveCycle(
     runId: string,
@@ -626,23 +629,16 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
         sameOrder(previousIds.order, order) &&
         sameSet(previousIds.distinctIds, distinct)
       ) {
-        // A copy-forward carries no records of its own, and does not need any: it points at a
-        // cycle already minted. But the script may refuse the pointer and mint a replacement
-        // from these refs, and a replacement minted with no records holds ids that nothing
-        // resolves. So carry the surviving cycle's records for that branch.
-        // Read only when a record could exist: see mayHoldRecords. A legacy-only cycle has none,
-        // so the read would return nothing and the round trip is pure cost.
-        const carried =
-          records ??
-          (mayHoldRecords(completedWaitpoints)
-            ? await this.#recordsForCycle(runId, head.cycle.cycleSeq)
-            : undefined);
-
+        // A copy-forward carries no records of its own, and needs none: it points at a cycle
+        // already minted. The script can still refuse that pointer and mint a replacement from
+        // these refs, and a replacement minted with no records holds ids nothing resolves -- so
+        // the script sources the record set from the cycle it replaces, atomically with the mint.
+        // Doing it there rather than here is what keeps every copy-forward append read-free.
         return {
           kind: "carryForward",
           cycleSeq: head.cycle.cycleSeq,
           completedWaitpoints,
-          ...(carried && { records: carried }),
+          ...(records && { records }),
         };
       }
     } catch (error) {
@@ -653,25 +649,6 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     }
 
     return { kind: "new", completedWaitpoints, ...(records && { records }) };
-  }
-
-  // Never fatal. Failing to read the records only loses the refusal branch's ability to mint a
-  // complete replacement, which is where it started; a throw here would fail an append that
-  // would otherwise have succeeded.
-  async #recordsForCycle(
-    runId: string,
-    cycleSeq: number
-  ): Promise<CompletedWaitpointRecord[] | undefined> {
-    try {
-      return await this.redis.getCycleRecords(runId, cycleSeq);
-    } catch (error) {
-      this.logger.warn("reading a cycle's records failed, carrying none", {
-        runId,
-        cycleSeq,
-        error,
-      });
-      return undefined;
-    }
   }
 
   /**

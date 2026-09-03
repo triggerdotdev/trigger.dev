@@ -4,9 +4,7 @@ import { expect, describe, vi } from "vitest";
 import { redisTest, slotOf } from "@internal/testcontainers";
 import { createRedisClient } from "@internal/redis";
 import { Logger } from "@trigger.dev/core/logger";
-import { generateWaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import {
-  mayHoldRecords,
   snapshotKeys,
   deriveOrder,
   isValidFor,
@@ -23,46 +21,6 @@ describe("snapshotKeys", () => {
     expect(k.idx).toBe("snap:{run_abc123}:idx");
     expect(k.cur).toBe("snap:{run_abc123}:cur");
     expect(k.seq).toBe("snap:{run_abc123}:seq");
-  });
-});
-
-describe("mayHoldRecords", () => {
-  it("is false for an empty set", () => {
-    expect(mayHoldRecords([])).toBe(false);
-  });
-
-  it("is false when every id is legacy", () => {
-    expect(mayHoldRecords([{ id: "w_cuid_a", index: 0 }, { id: "w_cuid_b" }])).toBe(false);
-  });
-
-  it("is true when one id is store-format", () => {
-    expect(mayHoldRecords([{ id: generateWaitpointId("MANUAL"), index: 0 }])).toBe(true);
-  });
-
-  // The mixed case is the one a per-organisation rollout produces: a run holding waitpoints
-  // minted either side of the flip. One store-format id is enough to require the read.
-  it("is true when a store-format id sits among legacy ones", () => {
-    expect(
-      mayHoldRecords([
-        { id: "w_cuid_a", index: 0 },
-        { id: generateWaitpointId("MANUAL"), index: 1 },
-        { id: "w_cuid_c" },
-      ])
-    ).toBe(true);
-  });
-
-  it("reads the id, not the index, so an index-less store id still counts", () => {
-    expect(mayHoldRecords([{ id: generateWaitpointId("DATETIME") }])).toBe(true);
-  });
-
-  it("counts every store waitpoint type", () => {
-    for (const t of ["RUN", "BATCH", "DATETIME", "MANUAL"] as const) {
-      expect(mayHoldRecords([{ id: generateWaitpointId(t) }])).toBe(true);
-    }
-  });
-
-  it("is false for a foreign prefix that is not a waitpoint id", () => {
-    expect(mayHoldRecords([{ id: "run_0123456789abcdefghijklm" }])).toBe(false);
   });
 });
 

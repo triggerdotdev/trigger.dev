@@ -6,7 +6,6 @@ import {
   type Result,
 } from "@internal/redis";
 import { Logger } from "@trigger.dev/core/logger";
-import { parseWaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import type { CompletedWaitpoint } from "@trigger.dev/core/v3/schemas";
 
 export type SnapshotKeys = { e: string; idx: string; cur: string; seq: string };
@@ -16,12 +15,6 @@ export type SnapshotKeys = { e: string; idx: string; cur: string; seq: string };
 export function snapshotKeys(runId: string): SnapshotKeys {
   const base = `snap:{${runId}}`;
   return { e: `${base}:e`, idx: `${base}:idx`, cur: `${base}:cur`, seq: `${base}:seq` };
-}
-
-// The per-cycle key. Shares the {runId} tag with the four core keys, and the append scripts
-// derive the same name in Lua from KEYS[1]; this is its only TypeScript-side spelling.
-export function cycleKey(runId: string, cycleSeq: number): string {
-  return `snap:{${runId}}:wp:${cycleSeq}`;
 }
 
 export type CompletedWaitpointRef = { id: string; index?: number };
@@ -47,22 +40,6 @@ export function deriveOrder(completedWaitpoints: CompletedWaitpointRef[]): strin
  */
 export function deriveDistinctIds(completedWaitpoints: CompletedWaitpointRef[]): string[] {
   return [...new Set(completedWaitpoints.map((w) => w.id))];
-}
-
-/**
- * Whether a cycle carrying these ids could hold a record set.
- *
- * A record set is written for store-format waitpoint ids and nothing else, so a cycle whose ids
- * are all legacy has none, and a read for one could only ever return nothing. Callers use this to
- * skip that read, which keeps a deployment holding no store-format waitpoint at zero extra round
- * trips on the resume path.
- *
- * This is the one place this module looks INSIDE a waitpoint id rather than treating the record
- * set as opaque. It is named and exported rather than inlined so the cost decision it drives is
- * testable on its own.
- */
-export function mayHoldRecords(completedWaitpoints: CompletedWaitpointRef[]): boolean {
-  return completedWaitpoints.some((w) => parseWaitpointId(w.id).format === "b32hexW");
 }
 
 // isValid is derived, never stored, so the entry JSON stays byte-identical to the caller's document.
@@ -463,6 +440,11 @@ export class RedisSnapshotStore {
     }
     if (orderJson !== "") {
       // The whole wp:<cycleSeq> key, not just its order field: records dominates it once populated.
+      //
+      // `records` is what the CALLER sent, so this under-reports one case: a refused carry-forward,
+      // where the script copies the record set from the cycle it replaces and the client never sees
+      // it. Sizing that exactly would cost the read this path exists to avoid, and the copied set
+      // was already measured when the cycle it came from was minted.
       const cycleBytes = Buffer.byteLength(orderJson, "utf8") + Buffer.byteLength(records, "utf8");
       this.metrics?.recordCycleKeyBytes(cycleBytes);
       if (this.highWater.cycleKeyBytes !== undefined && cycleBytes > this.highWater.cycleKeyBytes) {
@@ -522,25 +504,6 @@ export class RedisSnapshotStore {
         return { present: false, distinctIds: [], order: [] };
       }
       return decodeWaitpointIds(reply[0] === "1", reply[1] ?? "", reply[2] ?? "");
-    });
-  }
-
-  /**
-   * The record set a cycle already holds, if any.
-   *
-   * Read on one path only: a copy-forward append that carries no records of its own. A
-   * copy-forward legitimately has none, because it only points at a cycle that was already
-   * minted. But the append script can REFUSE an untrustworthy pointer and mint a replacement
-   * from the carried refs, and a replacement minted with no records holds ids that nothing can
-   * resolve. So the caller reads the surviving cycle's records and carries those.
-   */
-  async getCycleRecords(
-    runId: string,
-    cycleSeq: number
-  ): Promise<CompletedWaitpointRecord[] | undefined> {
-    return this.#timed("getCycleRecords", async () => {
-      const raw = await this.redis.hget(cycleKey(runId, cycleSeq), "records");
-      return raw ? (JSON.parse(raw) as CompletedWaitpointRecord[]) : undefined;
     });
   }
 
@@ -828,11 +791,14 @@ export class RedisSnapshotStore {
 
         -- The STORE mints cycleSeq, so the sequence is dense by construction and the terminal
         -- PEXPIRE loop from 1..c is correct.
-        local function mintCycle()
+        -- Takes the record set rather than closing over ARGV, because the two mint sites source it
+        -- differently: a 'new' cycle uses what the caller sent, and the refusal path below reads it
+        -- from the cycle it is replacing.
+        local function mintCycle(recordsJson)
           local minted = redis.call('HINCRBY', seqKey, 'c', 1)
           redis.call('HSET', wpKey(minted), 'order', orderJson, 'count', orderCount, 'distinct', distinctJson)
-          if records ~= '' then
-            redis.call('HSET', wpKey(minted), 'records', records)
+          if recordsJson ~= '' then
+            redis.call('HSET', wpKey(minted), 'records', recordsJson)
           else
             -- A new cycle owns the whole key: a lost seq counter can re-mint a cycleSeq whose key
             -- still holds another cycle's records, and order/count stay mutually consistent so the
@@ -843,7 +809,7 @@ export class RedisSnapshotStore {
         end
 
         if cycleMode == 'new' then
-          cycleSeq = mintCycle()
+          cycleSeq = mintCycle(records)
         elseif cycleMode == 'carry' then
           -- Attach the CARRIED pointer only if this incarnation actually minted that cycle. seq can
           -- be evicted while a wp:<n> key survives, so a bare key-exists check would adopt a dead
@@ -860,7 +826,22 @@ export class RedisSnapshotStore {
             -- Only possible when the caller carried the refs. With none there is nothing to mint
             -- from, and the entry is written with no pointer, which is the older behaviour.
             if distinctJson ~= '' then
-              cycleSeq = mintCycle()
+              -- Source the records HERE, not from the caller. A copy-forward append holds none of
+              -- its own, and having the caller pre-read them meant one HGET plus a parse on EVERY
+              -- copy-forward -- attempt start, dequeue, checkpoint -- to serve a branch that needs
+              -- eviction to reach. Reading in the branch that uses them costs nothing on the common
+              -- path, keeps the blob inside Redis, and is atomic with the mint, so no reader can
+              -- observe a replacement cycle whose ids have no records.
+              --
+              -- The surviving cycle key is the source. It is readable in exactly the case that
+              -- matters: 'minted < cycleSeqIn' means the seq counter was lost while wp:<n> lived.
+              -- When the cycle key itself is gone ('not c') the records are gone with it and there
+              -- is nothing to carry, which is what the caller's read also found.
+              local carried = records
+              if carried == '' then
+                carried = redis.call('HGET', wpKey(cycleSeqIn), 'records') or ''
+              end
+              cycleSeq = mintCycle(carried)
             end
           else
             cycleSeq = cycleSeqIn

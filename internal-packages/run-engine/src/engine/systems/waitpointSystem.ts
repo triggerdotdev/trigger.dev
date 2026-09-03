@@ -766,6 +766,13 @@ export class WaitpointSystem {
    * That gate is what keeps this inert. `parseWaitpointId` reports legacy for every id minted
    * today, so no live resume reads an envelope or writes a record until a waitpoint mints in
    * store format.
+   *
+   * ROLLOUT ORDER. Because the gate reads the id and not the organisation, the first store-format
+   * mint is what starts the cost, for every organisation that then holds one -- not the first
+   * snapshot-store flip. The arm that answers here is the Postgres one until a store arm is
+   * wired, so a mint enabled ahead of the store means a projected `Waitpoint` read on the
+   * WRITER, inside the run lock, once per resume. That is bounded and correct, but it is not
+   * free, so store-format minting should follow the snapshot store rather than lead it.
    */
   async #completedWaitpointRecordsFor(
     runId: string,
