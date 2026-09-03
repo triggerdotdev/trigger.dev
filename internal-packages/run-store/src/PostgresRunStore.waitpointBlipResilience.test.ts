@@ -1,7 +1,8 @@
-// Waitpoint-completion blip resilience: the read path that failed in production
-// (prisma.waitpoint.findFirst during a connection blip) must survive a brief
-// disconnect when the store is given an infra-retry config, and must still fail
-// fast without one.
+// Waitpoint-completion blip resilience for each refactored store site. Two distinct properties are
+// covered per site: (1) an idle-connection drop is absorbed transparently by the pg adapter pool
+// (severIdle), and (2) a connection severed MID-STATEMENT actually exercises the infra-retry — the
+// classifier recognises the adapter's connection-loss error and the reissued statement recovers
+// (severDuringNextStatement, looped until a blip is genuinely caught so the retry provably fires).
 
 import { postgresBlipTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
@@ -61,7 +62,7 @@ async function createPendingWaitpoint(
 }
 
 postgresBlipTest(
-  "findWaitpoint recovers from a connection blip when infra-retry is enabled",
+  "findWaitpoint survives an idle blip with infra-retry enabled (adapter absorbs it)",
   { timeout: 60_000 },
   async ({ prisma, blip }) => {
     const client = prisma as PrismaClient;
@@ -106,7 +107,7 @@ postgresBlipTest(
 );
 
 postgresBlipTest(
-  "deleteManyTaskRunWaitpoints recovers from a connection blip when infra-retry is enabled",
+  "deleteManyTaskRunWaitpoints survives an idle blip (adapter absorbs it)",
   { timeout: 60_000 },
   async ({ prisma, blip }) => {
     const client = prisma as PrismaClient;
@@ -130,6 +131,165 @@ postgresBlipTest(
       where: { taskRunId: run.id, id: { in: [edge.id] } },
     });
     expect(deleted.count).toBe(1);
+    expect(await client.taskRunWaitpoint.count({ where: { taskRunId: run.id } })).toBe(0);
+  }
+);
+
+postgresBlipTest(
+  "findWaitpoint recovers from a mid-statement blip (retry actually fires)",
+  { timeout: 120_000 },
+  async ({ prisma, blip }) => {
+    const client = prisma as PrismaClient;
+    const { project, environment } = await seedEnvironment(client, "wpmid");
+    await createPendingWaitpoint(client, "wp_mid", project.id, environment.id);
+
+    let retries = 0;
+    const store = new PostgresRunStore({
+      prisma: prisma as never,
+      readOnlyPrisma: prisma as never,
+      infraRetry: {
+        options: infraRetry.options,
+        onRetry: () => {
+          retries++;
+        },
+      },
+    });
+    await store.findWaitpoint({ where: { id: "wp_mid" } }); // warm
+
+    let caught = 0;
+    for (let i = 0; i < 40 && caught < 1; i++) {
+      const before = retries;
+      const p = store.findWaitpoint({ where: { id: "wp_mid" } });
+      await blip
+        .severDuringNextStatement({ queryContains: "Waitpoint", timeoutMs: 6000, pollMs: 1 })
+        .catch(() => {});
+      const found = await p;
+      expect(found?.id).toBe("wp_mid");
+      if (retries > before) caught++;
+    }
+    expect(caught).toBeGreaterThanOrEqual(1);
+  }
+);
+
+postgresBlipTest(
+  "findManyTaskRunWaitpoints recovers from a mid-statement blip (retry actually fires)",
+  { timeout: 120_000 },
+  async ({ prisma, blip }) => {
+    const client = prisma as PrismaClient;
+    const { run, env } = await setupSnapshotIdFixture(client);
+    const waitpointId = generateInternalId();
+    await createPendingWaitpoint(client, waitpointId, env.projectId, env.id);
+    await client.taskRunWaitpoint.create({
+      data: { taskRunId: run.id, waitpointId, projectId: env.projectId },
+    });
+
+    let retries = 0;
+    const store = new PostgresRunStore({
+      prisma: prisma as never,
+      readOnlyPrisma: prisma as never,
+      infraRetry: {
+        options: infraRetry.options,
+        onRetry: () => {
+          retries++;
+        },
+      },
+    });
+    await store.findManyTaskRunWaitpoints({ where: { taskRunId: run.id } }); // warm
+
+    let caught = 0;
+    for (let i = 0; i < 40 && caught < 1; i++) {
+      const before = retries;
+      const p = store.findManyTaskRunWaitpoints({ where: { taskRunId: run.id } });
+      await blip
+        .severDuringNextStatement({ queryContains: "TaskRunWaitpoint", timeoutMs: 6000, pollMs: 1 })
+        .catch(() => {});
+      const rows = await p;
+      expect(rows).toHaveLength(1);
+      if (retries > before) caught++;
+    }
+    expect(caught).toBeGreaterThanOrEqual(1);
+  }
+);
+
+postgresBlipTest(
+  "updateManyWaitpoints (completion write) recovers from a mid-statement blip (retry actually fires)",
+  { timeout: 120_000 },
+  async ({ prisma, blip }) => {
+    const client = prisma as PrismaClient;
+    const { project, environment } = await seedEnvironment(client, "wpupd");
+    await createPendingWaitpoint(client, "wp_upd", project.id, environment.id);
+
+    let retries = 0;
+    const store = new PostgresRunStore({
+      prisma: prisma as never,
+      readOnlyPrisma: prisma as never,
+      infraRetry: {
+        options: infraRetry.options,
+        onRetry: () => {
+          retries++;
+        },
+      },
+    });
+    await store.findWaitpoint({ where: { id: "wp_upd" } }); // warm
+
+    // Status-guarded and idempotent: the first update completes it, replays match 0 rows.
+    let caught = 0;
+    for (let i = 0; i < 40 && caught < 1; i++) {
+      const before = retries;
+      const p = store.updateManyWaitpoints({
+        where: { id: "wp_upd", status: "PENDING" },
+        data: { status: "COMPLETED", completedAt: new Date() },
+      });
+      await blip
+        .severDuringNextStatement({ queryContains: "Waitpoint", timeoutMs: 6000, pollMs: 1 })
+        .catch(() => {});
+      await p; // must not throw
+      if (retries > before) caught++;
+    }
+    expect(caught).toBeGreaterThanOrEqual(1);
+    const wp = await client.waitpoint.findFirst({ where: { id: "wp_upd" } });
+    expect(wp?.status).toBe("COMPLETED");
+  }
+);
+
+postgresBlipTest(
+  "deleteManyTaskRunWaitpoints recovers from a mid-statement blip (retry actually fires)",
+  { timeout: 120_000 },
+  async ({ prisma, blip }) => {
+    const client = prisma as PrismaClient;
+    const { run, env } = await setupSnapshotIdFixture(client);
+    const waitpointId = generateInternalId();
+    await createPendingWaitpoint(client, waitpointId, env.projectId, env.id);
+    await client.taskRunWaitpoint.create({
+      data: { taskRunId: run.id, waitpointId, projectId: env.projectId },
+    });
+
+    let retries = 0;
+    const store = new PostgresRunStore({
+      prisma: prisma as never,
+      readOnlyPrisma: prisma as never,
+      infraRetry: {
+        options: infraRetry.options,
+        onRetry: () => {
+          retries++;
+        },
+      },
+    });
+    await store.findManyTaskRunWaitpoints({ where: { taskRunId: run.id } }); // warm
+
+    // Idempotent: the first delete removes the edge, replays match 0 rows. Each iteration still runs
+    // a DELETE statement, so the blip has something to sever.
+    let caught = 0;
+    for (let i = 0; i < 40 && caught < 1; i++) {
+      const before = retries;
+      const p = store.deleteManyTaskRunWaitpoints({ where: { taskRunId: run.id } });
+      await blip
+        .severDuringNextStatement({ queryContains: "TaskRunWaitpoint", timeoutMs: 6000, pollMs: 1 })
+        .catch(() => {});
+      await p; // must not throw
+      if (retries > before) caught++;
+    }
+    expect(caught).toBeGreaterThanOrEqual(1);
     expect(await client.taskRunWaitpoint.count({ where: { taskRunId: run.id } })).toBe(0);
   }
 );
