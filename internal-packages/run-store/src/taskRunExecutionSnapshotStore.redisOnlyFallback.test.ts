@@ -18,10 +18,15 @@ function harness(opts: {
   anyOrgRedisOnly?: () => boolean;
   anyOrgReadEnabled?: () => boolean;
 }) {
-  // Every Redis call throws: this is the brownout the fallback gate exists for.
+  // Every Redis call throws: this is the brownout the fallback gate exists for. The sync regime
+  // lookups are cache reads, not network, so they answer without throwing (unknown regime here).
   const redis = new Proxy({} as RedisSnapshotStore, {
-    get: () => () => {
-      throw new Error("redis brownout");
+    get: (_t, prop) => {
+      if (prop === "regimeFor") return () => undefined;
+      if (prop === "recordRegime") return () => {};
+      return () => {
+        throw new Error("redis brownout");
+      };
     },
   });
 
@@ -145,6 +150,8 @@ function missHarness(opts: {
   // waitpoint set.
   const redis = new Proxy({} as RedisSnapshotStore, {
     get: (_t, prop) => {
+      if (prop === "regimeFor") return () => undefined;
+      if (prop === "recordRegime") return () => {};
       if (prop === "getSinceCreatedAt") return () => Promise.resolve({ kind: "miss" });
       if (prop === "getSnapshotWaitpointIds")
         return () => Promise.resolve({ present: false, distinctIds: [], order: [] });
@@ -251,17 +258,21 @@ describe("redis-only throws on a miss instead of serving empty Postgres", () => 
   });
 });
 
-// The unified decision: when the run→org cache is COLD (readModeFor undefined) and some org is
-// redis-only, the sync gate cannot tell whether THIS run is redis-only. It must resolve the run's
-// org authoritatively rather than either strand a redis-only run (empty Postgres) or over-throw a
-// pre-cutover run. This harness supplies that authoritative hook and a configurable Redis read.
+// The unified decision: when the run's regime is UNKNOWN to this process (readModeFor undefined too)
+// and some org is redis-only, the sync gates cannot tell whether THIS run is redis-only. It probes
+// the run's Redis keyspace ONCE for the residency stamped at its birth (no Postgres read) rather than
+// either strand a redis-only run (empty Postgres) or over-throw a pre-cutover run. This harness
+// supplies that probe result (`birthMode`) and a configurable Redis read.
 function authHarness(opts: {
   globalMode: SnapshotStoreMode;
   read: "miss" | "dangling" | "error";
   readModeFor?: (runId: string, environmentId?: string) => SnapshotStoreMode | undefined;
   anyOrgRedisOnly?: () => boolean;
   anyOrgReadEnabled?: () => boolean;
-  authoritative?: (runId: string) => Promise<SnapshotStoreMode | undefined>;
+  /** What the keyspace birth-mode probe returns; undefined models a legacy/absent keyspace. */
+  birthMode?: string;
+  /** Make the probe itself throw (a Redis brownout), to prove the gate fails closed. */
+  birthModeThrows?: boolean;
 }) {
   const danglingRead = {
     id: "snap_head",
@@ -275,8 +286,17 @@ function authHarness(opts: {
     if (opts.read === "error") throw new Error("redis brownout");
     return Promise.resolve(opts.read === "dangling" ? danglingRead : null);
   };
+  const probeCalls: string[] = [];
   const redis = new Proxy({} as RedisSnapshotStore, {
     get: (_t, prop) => {
+      if (prop === "regimeFor") return () => undefined;
+      if (prop === "recordRegime") return () => {};
+      if (prop === "readBirthMode")
+        return (runId: string) => {
+          probeCalls.push(runId);
+          if (opts.birthModeThrows) throw new Error("redis brownout");
+          return Promise.resolve(opts.birthMode);
+        };
       if (prop === "getSinceCreatedAt")
         return () => (opts.read === "error" ? redisRead() : Promise.resolve({ kind: "miss" }));
       if (prop === "getSnapshotWaitpointIds")
@@ -298,7 +318,6 @@ function authHarness(opts: {
     },
   }) as unknown as RunStore;
 
-  const authoritativeCalls: string[] = [];
   const modeResolver: SnapshotStoreModeResolver = {
     resolve: () => opts.globalMode,
     ...(opts.readModeFor && {
@@ -306,12 +325,6 @@ function authHarness(opts: {
     }),
     ...(opts.anyOrgRedisOnly && { anyOrgRedisOnly: opts.anyOrgRedisOnly }),
     ...(opts.anyOrgReadEnabled && { anyOrgReadEnabled: opts.anyOrgReadEnabled }),
-    ...(opts.authoritative && {
-      readModeForAuthoritative: (async (runId: string) => {
-        authoritativeCalls.push(runId);
-        return opts.authoritative!(runId);
-      }) as SnapshotStoreModeResolver["readModeForAuthoritative"],
-    }),
   };
 
   const decorated = new TaskRunExecutionSnapshotStore(delegate, {
@@ -320,33 +333,33 @@ function authHarness(opts: {
     modeResolver,
   });
 
-  return { decorated, delegateTouched, authoritativeCalls };
+  return { decorated, delegateTouched, probeCalls };
 }
 
-describe("redis-only fallback resolves a cold run→org cache authoritatively", () => {
-  it("routing branch: a cold-cache redis-only run at global dual-write THROWS, never empty PG", async () => {
+describe("redis-only fallback probes the keyspace when the run's regime is unknown", () => {
+  it("a cold-regime redis-only-born run at global dual-write THROWS, never empty PG", async () => {
     const h = authHarness({
       globalMode: "dual-write",
       read: "miss",
       readModeFor: () => undefined,
       anyOrgRedisOnly: () => true,
-      authoritative: async () => "redis-only",
+      birthMode: "redis-only",
     });
 
     await expect(
       h.decorated.findLatestExecutionSnapshot("run_cold", undefined, "env_a")
     ).rejects.toThrow(/redis-only/);
     expect(h.delegateTouched).not.toContain("findLatestExecutionSnapshot");
-    expect(h.authoritativeCalls).toContain("run_cold");
+    expect(h.probeCalls).toContain("run_cold");
   });
 
-  it("routing branch: a cold-cache dual-write run falls back (no over-throw)", async () => {
+  it("a cold-regime Postgres-backed run falls back (no over-throw)", async () => {
     const h = authHarness({
       globalMode: "dual-write",
       read: "miss",
       readModeFor: () => undefined,
       anyOrgRedisOnly: () => true,
-      authoritative: async () => "dual-write",
+      birthMode: "dual-write",
     });
 
     const result = await h.decorated.findLatestExecutionSnapshot("run_cold", undefined, "env_a");
@@ -354,28 +367,28 @@ describe("redis-only fallback resolves a cold run→org cache authoritatively", 
     expect(h.delegateTouched).toContain("findLatestExecutionSnapshot");
   });
 
-  it("off/dual-write with no org redis-only falls back WITHOUT an authoritative read", async () => {
+  it("off/dual-write with no org redis-only falls back WITHOUT a keyspace probe", async () => {
     const h = authHarness({
       globalMode: "dual-write",
       read: "miss",
       readModeFor: () => undefined,
       anyOrgRedisOnly: () => false,
-      authoritative: async () => "redis-only",
+      birthMode: "redis-only",
     });
 
     const result = await h.decorated.findLatestExecutionSnapshot("run_x", undefined, "env_a");
     expect(result).toEqual({ id: "pg_fallback" });
-    expect(h.authoritativeCalls).toEqual([]);
+    expect(h.probeCalls).toEqual([]);
   });
 
-  it("MISS at global redis-read with a cold-cache pre-cutover run FALLS BACK (coexistence)", async () => {
+  it("MISS at global redis-read with a cold-regime pre-cutover run FALLS BACK (coexistence)", async () => {
     const h = authHarness({
       globalMode: "redis-read",
       read: "miss",
       anyOrgReadEnabled: () => true,
       readModeFor: () => undefined,
       anyOrgRedisOnly: () => true,
-      authoritative: async () => "redis-read",
+      birthMode: "redis-read",
     });
 
     const result = await h.decorated.findLatestExecutionSnapshot("run_pre", undefined, "env_a");
@@ -383,14 +396,14 @@ describe("redis-only fallback resolves a cold run→org cache authoritatively", 
     expect(h.delegateTouched).toContain("findLatestExecutionSnapshot");
   });
 
-  it("MISS at global redis-read with a cold-cache redis-only run THROWS", async () => {
+  it("MISS at global redis-read with a cold-regime redis-only-born run THROWS", async () => {
     const h = authHarness({
       globalMode: "redis-read",
       read: "miss",
       anyOrgReadEnabled: () => true,
       readModeFor: () => undefined,
       anyOrgRedisOnly: () => true,
-      authoritative: async () => "redis-only",
+      birthMode: "redis-only",
     });
 
     await expect(
@@ -399,16 +412,14 @@ describe("redis-only fallback resolves a cold run→org cache authoritatively", 
     expect(h.delegateTouched).not.toContain("findLatestExecutionSnapshot");
   });
 
-  it("fails closed (THROWS) when the authoritative read itself fails and some org is redis-only", async () => {
+  it("fails closed (THROWS) when the keyspace probe itself fails and some org is redis-only", async () => {
     const h = authHarness({
       globalMode: "redis-read",
       read: "miss",
       anyOrgReadEnabled: () => true,
       readModeFor: () => undefined,
       anyOrgRedisOnly: () => true,
-      authoritative: async () => {
-        throw new Error("run→org read timed out");
-      },
+      birthModeThrows: true,
     });
 
     await expect(

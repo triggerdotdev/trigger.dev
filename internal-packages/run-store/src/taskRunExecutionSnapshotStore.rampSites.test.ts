@@ -5,6 +5,7 @@
 // behavioural suites for these sites run against a real Postgres and a real Redis.
 import { describe, expect, it } from "vitest";
 import type { RedisSnapshotStore, SnapshotEntryInput } from "./redisSnapshotStore.js";
+import type { RunRegime } from "./runRegimeCache.js";
 import { TaskRunExecutionSnapshotStore } from "./taskRunExecutionSnapshotStore.js";
 import type {
   SnapshotStoreMode,
@@ -25,10 +26,15 @@ const SCOPE = {
 function harness(global: SnapshotStoreMode, perOrg: SnapshotStoreMode) {
   const appends: { kind: string; entry: SnapshotEntryInput }[] = [];
 
+  const regime = new Map<string, RunRegime>();
   const redis = {
     append: async (args: { entry: SnapshotEntryInput; kind: string }) => {
       appends.push({ kind: args.kind, entry: args.entry });
       return { outcome: "written" as const, seq: appends.length };
+    },
+    regimeFor: (runId: string) => regime.get(runId),
+    recordRegime: (runId: string, r: RunRegime) => {
+      regime.set(runId, r);
     },
   } as unknown as RedisSnapshotStore;
 

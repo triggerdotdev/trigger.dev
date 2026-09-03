@@ -1,8 +1,8 @@
-// The read path must do NO run→org DB read during pure dual-write, and the mappings it needs must
-// arrive for free: the decorator primes the run→org cache on every mirrored write and every Redis
-// read hit. A counting fake stands in for the run→org source — `readModeFor` is a pure in-memory
-// lookup (the off-path populate is gone), and only `readModeForAuthoritative` would ever touch the
-// DB, so counting its calls counts run→org DB reads.
+// The read path must do NO extra resolution during pure dual-write, and the run→org mappings it needs
+// must arrive for free: the decorator primes the run→org cache on every mirrored write and every Redis
+// read hit. `readModeFor` is a pure in-memory lookup (the off-path populate is gone), and the only
+// residency work the read path can do — the keyspace birth-mode probe — runs solely when some org is
+// redis-only, so counting probe calls counts the read path's residency reads.
 import { describe, expect, it } from "vitest";
 import {
   TaskRunExecutionSnapshotStore,
@@ -10,6 +10,7 @@ import {
   type SnapshotStoreModeResolver,
 } from "./taskRunExecutionSnapshotStore.js";
 import type { RedisSnapshotStore, SnapshotRead } from "./redisSnapshotStore.js";
+import type { RunRegime } from "./runRegimeCache.js";
 import type { RunStore } from "./types.js";
 
 const SCOPE = {
@@ -26,14 +27,26 @@ function harness(opts: {
   /** What Redis returns from getLatest, when a read routes to it. */
   latest?: SnapshotRead | null;
 }) {
-  // The run→org cache the decorator primes into, plus a DB-read counter. `readModeFor` reads it in
-  // memory; only the authoritative leg counts as a DB read, and nothing here calls it unless asked.
+  // The run→org cache the decorator primes into, plus a probe counter. `readModeFor` reads the cache
+  // in memory; only the keyspace birth-mode probe touches Redis for residency, so counting it counts
+  // the read path's residency reads.
   const runOrg = new Map<string, string>();
-  let dbReads = 0;
+  const regime = new Map<string, RunRegime>();
+  let probes = 0;
 
   const redis = new Proxy({} as RedisSnapshotStore, {
     get: (_t, prop) => {
       if (prop === "getLatest") return () => Promise.resolve(opts.latest ?? null);
+      if (prop === "regimeFor") return (runId: string) => regime.get(runId);
+      if (prop === "recordRegime")
+        return (runId: string, r: RunRegime) => {
+          regime.set(runId, r);
+        };
+      if (prop === "readBirthMode")
+        return () => {
+          probes++;
+          return Promise.resolve(undefined);
+        };
       return () => Promise.resolve({ outcome: "written", seq: 1 });
     },
   });
@@ -57,11 +70,6 @@ function harness(opts: {
       const org = runOrg.get(runId);
       return org ? opts.globalMode : undefined;
     },
-    readModeForAuthoritative: async (runId: string) => {
-      dbReads++;
-      const org = runOrg.get(runId);
-      return org ? opts.globalMode : undefined;
-    },
     anyOrgReadEnabled: () => opts.anyOrgReadEnabled ?? false,
     anyOrgRedisOnly: () => opts.anyOrgRedisOnly ?? false,
   };
@@ -72,7 +80,7 @@ function harness(opts: {
     modeResolver,
   });
 
-  return { decorated, runOrg, delegateTouched, dbReads: () => dbReads };
+  return { decorated, runOrg, delegateTouched, probes: () => probes };
 }
 
 function completionForOrg(organizationId: string) {
@@ -118,10 +126,10 @@ describe("priming the run→org cache off the hot path", () => {
     });
 
     expect(h.runOrg.get("run_1")).toBe("org_a");
-    expect(h.dbReads()).toBe(0);
+    expect(h.probes()).toBe(0);
     // After the write, the run's mode resolves from the primed cache: a pure hit, still no DB read.
     expect(h.decorated.modeForTest("org_a")).toBe("dual-write");
-    expect(h.dbReads()).toBe(0);
+    expect(h.probes()).toBe(0);
   });
 
   it("a Redis read hit primes the run→org mapping", async () => {
@@ -149,6 +157,6 @@ describe("priming the run→org cache off the hot path", () => {
     // Fell back to Postgres, and the authoritative (DB) leg was never consulted.
     expect(latest).toEqual({ id: "pg_row" });
     expect(h.delegateTouched).toContain("findLatestExecutionSnapshot");
-    expect(h.dbReads()).toBe(0);
+    expect(h.probes()).toBe(0);
   });
 });

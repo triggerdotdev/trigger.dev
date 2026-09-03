@@ -20,6 +20,10 @@ function harness(opts: {
   const redisTouched: string[] = [];
   const redis = new Proxy({} as RedisSnapshotStore, {
     get: (_t, prop) => {
+      // The run-regime accessors are in-process cache reads, not Redis I/O, so they are not recorded
+      // as "touched" and answer synchronously here (unknown regime for every run).
+      if (prop === "regimeFor") return () => undefined;
+      if (prop === "recordRegime") return () => {};
       return (...__: unknown[]) => {
         redisTouched.push(String(prop));
         // findSnapshotCompletedWaitpointIds calls getSnapshotWaitpointIds and returns on present.
@@ -133,7 +137,10 @@ describe("resolver is transparent to routing when no per-org override applies", 
 
   function plain(mode: SnapshotStoreMode): CohortProbe {
     return new TaskRunExecutionSnapshotStore({} as unknown as RunStore, {
-      store: {} as never,
+      store: {
+        regimeFor: () => undefined,
+        recordRegime: () => {},
+      } as unknown as RedisSnapshotStore,
       mode,
     }) as unknown as CohortProbe;
   }

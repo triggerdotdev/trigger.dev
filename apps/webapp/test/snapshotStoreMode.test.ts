@@ -21,7 +21,6 @@ function build(opts: {
   globalMode?: SnapshotStoreMode;
   dials?: Dials;
   runToOrg?: Record<string, string>;
-  resolveAuthoritative?: (runId: string) => Promise<string>;
   envFloor?: SnapshotStoreMode;
 }) {
   const dials = opts.dials;
@@ -31,15 +30,12 @@ function build(opts: {
     orgMode: {
       get: (id) => dials?.[id] ?? NO_OVERRIDE,
       refresh: () => {},
-      warm: async () => {},
     },
-    runOrg:
-      opts.runToOrg || opts.resolveAuthoritative
-        ? {
-            resolve: (runId: string) => opts.runToOrg?.[runId],
-            ...(opts.resolveAuthoritative && { resolveAuthoritative: opts.resolveAuthoritative }),
-          }
-        : undefined,
+    runOrg: opts.runToOrg
+      ? {
+          resolve: (runId: string) => opts.runToOrg?.[runId],
+        }
+      : undefined,
     census: {
       anyOrgReadEnabled: () => snapshotStoreAnyOrgReadEnabled(dials),
       anyOrgRedisOnly: () => snapshotStoreAnyOrgRedisOnly(dials),
@@ -133,41 +129,6 @@ describe("the org-scoped read routing", () => {
     expect(r.readModeFor?.("run_1")).toBeUndefined();
     expect(r.anyOrgReadEnabled?.()).toBe(false);
     expect(r.anyOrgRedisOnly?.()).toBe(false);
-  });
-});
-
-describe("the authoritative read position (redis-only fallback gate)", () => {
-  it("resolves the run's org authoritatively and returns the org mode from the map", async () => {
-    const r = build({
-      globalMode: "redis-read",
-      dials: { org_ro: "redis-only" },
-      resolveAuthoritative: async () => "org_ro",
-    });
-    await expect(r.readModeForAuthoritative?.("run_1")).resolves.toBe("redis-only");
-  });
-
-  it("returns a non-redis-only mode for a pre-cutover run so the decorator falls back", async () => {
-    const r = build({
-      globalMode: "redis-read",
-      dials: {},
-      resolveAuthoritative: async () => "org_pre",
-    });
-    await expect(r.readModeForAuthoritative?.("run_1")).resolves.toBe("redis-read");
-  });
-
-  it("propagates a throw from the authoritative run→org read so the decorator fails closed", async () => {
-    const r = build({
-      globalMode: "redis-read",
-      resolveAuthoritative: async () => {
-        throw new Error("run→org read timed out");
-      },
-    });
-    await expect(r.readModeForAuthoritative?.("run_1")).rejects.toThrow(/timed out/);
-  });
-
-  it("returns undefined when no authoritative run→org source is wired", async () => {
-    const r = build({ globalMode: "redis-read" });
-    await expect(r.readModeForAuthoritative?.("run_1")).resolves.toBeUndefined();
   });
 });
 

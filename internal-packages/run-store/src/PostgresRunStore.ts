@@ -119,14 +119,6 @@ export type PostgresRunStoreOptions = {
   maxWait?: number;
   /** Env-driven P2028-at-acquisition retry config, threaded from the app boundary (IoC). */
   transactionStartRetry?: TransactionStartRetryConfig;
-  /**
-   * When false the store writes no execution-snapshot rows: every nested `executionSnapshots.create`
-   * is omitted and `createExecutionSnapshot` echoes its input instead of inserting. Only the
-   * redis-only dial position sets this, once the Redis store is the sole snapshot writer.
-   * A predicate form decides per run from its organisation id, so a per-org redis-only override
-   * suppresses only that org's snapshots. Defaults to true, so the store behaves exactly as it always has.
-   */
-  snapshotWrites?: boolean | ((organizationId?: string) => boolean);
 };
 
 // A caller sub-select for a relation: `{ select?, include? }` or `true` for a bare `key: true`.
@@ -647,7 +639,6 @@ export class PostgresRunStore implements RunStore {
   private readonly prisma: RunOpsCapableClient;
   private readonly readOnlyPrisma: RunOpsCapableClient;
   private readonly schemaVariant: RunStoreSchemaVariant;
-  private readonly snapshotWrites: boolean | ((organizationId?: string) => boolean);
   private readonly maxWait?: number;
   private readonly transactionStartRetry?: TransactionStartRetryConfig;
 
@@ -660,14 +651,14 @@ export class PostgresRunStore implements RunStore {
     this.schemaVariant = options.schemaVariant ?? "legacy";
     this.maxWait = options.maxWait;
     this.transactionStartRetry = options.transactionStartRetry;
-    this.snapshotWrites = options.snapshotWrites ?? true;
   }
 
-  // Resolves the write flag for one run, from its organisation id when the option is a predicate.
-  #writesSnapshot(organizationId?: string): boolean {
-    return typeof this.snapshotWrites === "function"
-      ? this.snapshotWrites(organizationId)
-      : this.snapshotWrites;
+  // The per-write Postgres snapshot-row decision, read straight off the snapshot input the decorator
+  // forwards. Absent means write (the safe default): an unwired store, or any caller that supplies no
+  // control, keeps the full Postgres log. Only an explicit `false` — set by the decorator for a
+  // redis-only-born run — suppresses the row.
+  #writesSnapshot(writeSnapshotRow?: boolean): boolean {
+    return writeSnapshotRow !== false;
   }
 
   /**
@@ -677,11 +668,10 @@ export class PostgresRunStore implements RunStore {
    */
   #nestedSnapshot(
     create: Prisma.TaskRunExecutionSnapshotUncheckedCreateWithoutRunInput,
-    // The write decision, resolved once by the caller when the same operation also writes join rows
-    // guarded on the same flag. The flag reads live external state, so re-resolving it here after an
-    // intervening await could disagree with the caller's later guard and split a snapshot from its
-    // links. Defaults to a fresh resolution for the single-write callers that have nothing to pair.
-    writes: boolean = this.#writesSnapshot(create.organizationId)
+    // The write decision, taken from the snapshot input's `writeSnapshotRow` by the caller. Threaded
+    // in (rather than re-derived here) so a method that also writes join rows guarded on the same
+    // decision resolves it ONCE and cannot split a snapshot from its links. Defaults to write.
+    writes: boolean = true
   ):
     | {
         executionSnapshots: {
@@ -779,13 +769,14 @@ export class PostgresRunStore implements RunStore {
       workerId: params.snapshot.workerId,
       runnerId: params.snapshot.runnerId,
     };
+    const writesSnapshot = this.#writesSnapshot(params.snapshot.writeSnapshotRow);
 
     if (this.schemaVariant === "dedicated") {
       if (!params.associatedWaitpoint) {
         const run = (await this.#writeClientWithoutTransaction(tx).taskRun.create({
           data: {
             ...params.data,
-            ...this.#nestedSnapshot(snapshotCreate),
+            ...this.#nestedSnapshot(snapshotCreate, writesSnapshot),
           },
         })) as TaskRun;
         return { ...run, associatedWaitpoint: null };
@@ -797,7 +788,7 @@ export class PostgresRunStore implements RunStore {
           const run = (await c.taskRun.create({
             data: {
               ...params.data,
-              ...this.#nestedSnapshot(snapshotCreate),
+              ...this.#nestedSnapshot(snapshotCreate, writesSnapshot),
             },
           })) as TaskRun;
 
@@ -814,7 +805,7 @@ export class PostgresRunStore implements RunStore {
       },
       data: {
         ...params.data,
-        ...this.#nestedSnapshot(snapshotCreate),
+        ...this.#nestedSnapshot(snapshotCreate, writesSnapshot),
         associatedWaitpoint: params.associatedWaitpoint
           ? {
               create: params.associatedWaitpoint,
@@ -872,7 +863,10 @@ export class PostgresRunStore implements RunStore {
     return client.taskRun.create({
       data: {
         ...params.data,
-        ...this.#nestedSnapshot(snapshotCreate),
+        ...this.#nestedSnapshot(
+          snapshotCreate,
+          this.#writesSnapshot(params.snapshot.writeSnapshotRow)
+        ),
       },
     });
   }
@@ -966,21 +960,24 @@ export class PostgresRunStore implements RunStore {
         outputType: data.outputType,
         usageDurationMs: data.usageDurationMs,
         costInCents: data.costInCents,
-        ...this.#nestedSnapshot({
-          id: data.snapshot.id,
-          createdAt: data.snapshot.createdAt,
-          updatedAt: data.snapshot.createdAt,
-          executionStatus: data.snapshot.executionStatus,
-          description: data.snapshot.description,
-          runStatus: data.snapshot.runStatus,
-          attemptNumber: data.snapshot.attemptNumber,
-          environmentId: data.snapshot.environmentId,
-          environmentType: data.snapshot.environmentType,
-          projectId: data.snapshot.projectId,
-          organizationId: data.snapshot.organizationId,
-          workerId: data.snapshot.workerId,
-          runnerId: data.snapshot.runnerId,
-        }),
+        ...this.#nestedSnapshot(
+          {
+            id: data.snapshot.id,
+            createdAt: data.snapshot.createdAt,
+            updatedAt: data.snapshot.createdAt,
+            executionStatus: data.snapshot.executionStatus,
+            description: data.snapshot.description,
+            runStatus: data.snapshot.runStatus,
+            attemptNumber: data.snapshot.attemptNumber,
+            environmentId: data.snapshot.environmentId,
+            environmentType: data.snapshot.environmentType,
+            projectId: data.snapshot.projectId,
+            organizationId: data.snapshot.organizationId,
+            workerId: data.snapshot.workerId,
+            runnerId: data.snapshot.runnerId,
+          },
+          this.#writesSnapshot(data.snapshot.writeSnapshotRow)
+        ),
       },
       { select: args.select }
     ) as Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
@@ -1173,19 +1170,22 @@ export class PostgresRunStore implements RunStore {
         completedAt: data.completedAt,
         expiredAt: data.expiredAt,
         error: data.error as Prisma.InputJsonValue,
-        ...this.#nestedSnapshot({
-          id: data.snapshot.id,
-          createdAt: data.snapshot.createdAt,
-          updatedAt: data.snapshot.createdAt,
-          engine: data.snapshot.engine,
-          executionStatus: data.snapshot.executionStatus,
-          description: data.snapshot.description,
-          runStatus: data.snapshot.runStatus,
-          environmentId: data.snapshot.environmentId,
-          environmentType: data.snapshot.environmentType,
-          projectId: data.snapshot.projectId,
-          organizationId: data.snapshot.organizationId,
-        }),
+        ...this.#nestedSnapshot(
+          {
+            id: data.snapshot.id,
+            createdAt: data.snapshot.createdAt,
+            updatedAt: data.snapshot.createdAt,
+            engine: data.snapshot.engine,
+            executionStatus: data.snapshot.executionStatus,
+            description: data.snapshot.description,
+            runStatus: data.snapshot.runStatus,
+            environmentId: data.snapshot.environmentId,
+            environmentType: data.snapshot.environmentType,
+            projectId: data.snapshot.projectId,
+            organizationId: data.snapshot.organizationId,
+          },
+          this.#writesSnapshot(data.snapshot.writeSnapshotRow)
+        ),
       },
       { select: args.select }
     ) as Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
@@ -1289,10 +1289,10 @@ export class PostgresRunStore implements RunStore {
     const dedicated = this.schemaVariant === "dedicated";
 
     // Resolve the snapshot-write decision ONCE for both the nested snapshot below and the join-row
-    // connect after the update. The flag reads live external state and the update awaits between the
-    // two, so re-resolving would let a dial flip commit the snapshot without its completed-waitpoint
-    // links (or the links without the snapshot), which is exactly the split this method must avoid.
-    const writesSnapshot = this.#writesSnapshot(data.snapshot.organizationId);
+    // connect after the update. The update awaits between the two, so reading `writeSnapshotRow`
+    // twice off the same input is harmless, but resolving once keeps the snapshot and its
+    // completed-waitpoint links from ever splitting.
+    const writesSnapshot = this.#writesSnapshot(data.snapshot.writeSnapshotRow);
 
     const result = await prisma.taskRun.update({
       where: { id: runId },
@@ -1421,19 +1421,22 @@ export class PostgresRunStore implements RunStore {
           completedAt: data.completedAt,
           expiredAt: data.expiredAt,
           error: data.error as Prisma.InputJsonValue,
-          ...this.#nestedSnapshot({
-            id: data.snapshot.id,
-            createdAt: data.snapshot.createdAt,
-            updatedAt: data.snapshot.createdAt,
-            engine: data.snapshot.engine,
-            executionStatus: data.snapshot.executionStatus,
-            description: data.snapshot.description,
-            runStatus: data.snapshot.runStatus,
-            environmentId: data.snapshot.environmentId,
-            environmentType: data.snapshot.environmentType,
-            projectId: data.snapshot.projectId,
-            organizationId: data.snapshot.organizationId,
-          }),
+          ...this.#nestedSnapshot(
+            {
+              id: data.snapshot.id,
+              createdAt: data.snapshot.createdAt,
+              updatedAt: data.snapshot.createdAt,
+              engine: data.snapshot.engine,
+              executionStatus: data.snapshot.executionStatus,
+              description: data.snapshot.description,
+              runStatus: data.snapshot.runStatus,
+              environmentId: data.snapshot.environmentId,
+              environmentType: data.snapshot.environmentType,
+              projectId: data.snapshot.projectId,
+              organizationId: data.snapshot.organizationId,
+            },
+            this.#writesSnapshot(data.snapshot.writeSnapshotRow)
+          ),
         },
       });
     } catch (error) {
@@ -1495,20 +1498,23 @@ export class PostgresRunStore implements RunStore {
         delayUntil: data.delayUntil,
         ...(data.queueTimestamp !== undefined && { queueTimestamp: data.queueTimestamp }),
         ...(data.snapshot &&
-          this.#nestedSnapshot({
-            id: data.snapshot.id,
-            createdAt: data.snapshot.createdAt,
-            updatedAt: data.snapshot.createdAt,
-            engine: "V2",
-            executionStatus: data.snapshot.executionStatus ?? "DELAYED",
-            description:
-              data.snapshot.description ?? "Delayed run was rescheduled to a future date",
-            runStatus: data.snapshot.runStatus ?? "DELAYED",
-            environmentId: data.snapshot.environmentId,
-            environmentType: data.snapshot.environmentType,
-            projectId: data.snapshot.projectId,
-            organizationId: data.snapshot.organizationId,
-          })),
+          this.#nestedSnapshot(
+            {
+              id: data.snapshot.id,
+              createdAt: data.snapshot.createdAt,
+              updatedAt: data.snapshot.createdAt,
+              engine: "V2",
+              executionStatus: data.snapshot.executionStatus ?? "DELAYED",
+              description:
+                data.snapshot.description ?? "Delayed run was rescheduled to a future date",
+              runStatus: data.snapshot.runStatus ?? "DELAYED",
+              environmentId: data.snapshot.environmentId,
+              environmentType: data.snapshot.environmentType,
+              projectId: data.snapshot.projectId,
+              organizationId: data.snapshot.organizationId,
+            },
+            this.#writesSnapshot(data.snapshot.writeSnapshotRow)
+          )),
       },
     });
   }
@@ -2060,10 +2066,10 @@ export class PostgresRunStore implements RunStore {
 
     // Redis-only: no row is written and the decorator owns the document. Echo the input in the shape
     // the caller expects, so every caller of this method keeps working while Postgres holds nothing.
-    if (!this.#writesSnapshot(input.organizationId)) {
+    if (!this.#writesSnapshot(input.writeSnapshotRow)) {
       if (!id) {
         throw new Error(
-          "PostgresRunStore.createExecutionSnapshot: snapshotWrites is off, so the caller must supply the snapshot id"
+          "PostgresRunStore.createExecutionSnapshot: snapshot row is suppressed, so the caller must supply the snapshot id"
         );
       }
 

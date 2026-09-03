@@ -1,9 +1,9 @@
 // `redis-only` is the terminal cutover, and it is the only dial position where Postgres stops being
 // authoritative: it cannot be rolled back by turning the dial down, because the snapshots written
-// while it was on exist nowhere else. It is also the only position that is a PAIR of settings, not
-// one — the decorator's mode AND `snapshotWrites: false` on the store underneath it — and the two
-// are set by different tickets. Every test here builds the pair, because testing the mode against a
-// store that still writes snapshots would exercise a configuration that never ships.
+// while it was on exist nowhere else. Suppression is now a per-run decision the decorator makes: a
+// run BORN while the decorator resolves `redis-only` has its Postgres snapshot rows suppressed for
+// life (the decorator threads `writeSnapshotRow: false` onto every write), so the store underneath
+// needs no separate `snapshotWrites` setting — the decorator alone drives the pair.
 import { describe, expect } from "vitest";
 import { containerTest } from "@internal/testcontainers";
 import { generateInternalId } from "@trigger.dev/core/v3/isomorphic";
@@ -29,7 +29,6 @@ function build(prisma: never, redisOptions: never) {
     new PostgresRunStore({
       prisma,
       readOnlyPrisma: prisma,
-      snapshotWrites: false,
     }) as unknown as RunStore,
     {
       store: redis,
@@ -288,7 +287,6 @@ describe("redis-only: every read is served from Redis", () => {
       new PostgresRunStore({
         prisma: prisma as never,
         readOnlyPrisma: prisma as never,
-        snapshotWrites: false,
       }) as unknown as RunStore,
       {
         store: redis,

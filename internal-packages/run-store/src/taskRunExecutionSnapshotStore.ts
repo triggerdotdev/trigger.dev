@@ -11,6 +11,18 @@
 //
 // Each order is chosen so the crash state is the harmless one. A lost cross-store write is never
 // recovered by a transaction or an outbox: recovery is always the existing stall-and-repair job.
+//
+// Residency is per-run and fixed at BIRTH, never re-derived from the live org dial (that is the bug
+// this file's residency model exists to remove: the dial governs births only). A redis-only-born run
+// has its whole snapshot log in Redis and NOTHING in Postgres — its Postgres rows are suppressed for
+// life; every other run keeps its full Postgres log for life. The birth residency is recorded both in
+// the in-process regime cache and, durably, on the Redis keyspace, so a process that did not witness
+// the birth learns it from an append reply or a one-off keyspace probe rather than a Postgres read.
+//
+// The one accepted crash gap: at redis-only, if the TaskRun row commits and the process dies before
+// the Redis transition append, the transition is lost — Postgres is suppressed, so there is no source
+// to repair from. A Redis→Postgres resync tool is buildable (a halt forces Postgres writes back on, so
+// the resync target exists), but the tool itself is out of scope here.
 import { Logger } from "@trigger.dev/core/logger";
 import { generateInternalId } from "@trigger.dev/core/v3/isomorphic";
 import { DelegatingRunStore } from "./delegatingRunStore.js";
@@ -21,6 +33,7 @@ import type {
   SnapshotRead,
 } from "./redisSnapshotStore.js";
 import { deriveDistinctIds, deriveOrder } from "./redisSnapshotStore.js";
+import type { RunRegime } from "./runRegimeCache.js";
 import {
   entryFromCompletion,
   entryFromCreateExecutionSnapshot,
@@ -95,27 +108,6 @@ export type SnapshotStoreMode = "off" | "dual-write" | "redis-read" | "redis-onl
 export type SnapshotStoreModeResolver = {
   resolve(organizationId?: string): SnapshotStoreMode;
   /**
-   * Optional, and awaited at BIRTH sites only. Resolves once the organisation's own dial value is
-   * known to `resolve`, or once the attempt has given up.
-   *
-   * Why a birth is different from every other call. The per-organisation dial is served from a
-   * short-lived cache, and on a miss the resolver answers with the deployment-wide position. For a
-   * read or a transition that is the right trade. For a birth it is not: residency is decided at
-   * birth and is permanent, so a run born during a cache miss is excluded from the mirror for its
-   * entire life and no later pass can adopt it.
-   *
-   * That was not theoretical. Three runs born back to back were all resident; after a 14 minute idle
-   * gap the next one was not, because the cache entry had expired. A miss is any gap longer than the
-   * cache lifetime, so on bursty traffic the first run of every burst was silently excluded, and a
-   * low-traffic canary organisation would have lost most of its runs.
-   *
-   * Implementations MUST bound this. A birth is on the trigger path and a caller may already hold an
-   * open transaction, so a slow flag read must give up and leave `resolve` answering as before
-   * rather than hold that transaction open. Failing is always allowed: the fallback is the previous
-   * behaviour, never an error.
-   */
-  warm?(organizationId: string): Promise<void>;
-  /**
    * Optional one-way global latch: has the deployment-wide dial EVER been non-off. False means the
    * global dial has never moved, so nothing was born resident by the global position; combined with a
    * definite per-org negative it is what lets a transition skip the keyspace probe. It is what makes
@@ -142,15 +134,6 @@ export type SnapshotStoreModeResolver = {
    * NOT query. Absent, or unresolved, falls back to the global mode, which is safe during soak.
    */
   readModeFor?(runId: string, environmentId?: string): SnapshotStoreMode | undefined;
-  /**
-   * Optional, ASYNC authoritative counterpart to `readModeFor`. Called only when `readModeFor` is
-   * unresolved AND some org is `redis-only`, to decide whether a Postgres fallback would strand the
-   * run. Bounded and MAY throw; the caller fails closed (no fallback) on a throw or when absent.
-   */
-  readModeForAuthoritative?(
-    runId: string,
-    environmentId?: string
-  ): Promise<SnapshotStoreMode | undefined>;
   /**
    * Optional, cheap. Is ANY organisation currently at `redis-read` or `redis-only`. When false and
    * the global dial is not itself at a read position, a read short-circuits to Postgres without
@@ -321,29 +304,43 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
    * Whether a BIRTH mirrors to Redis. This is the only decision the per-organisation override gets
    * to make, and it fixes the run's store for the rest of its life.
    */
-  /**
-   * Waits for the organisation's real dial value before a birth decides residency. Never throws:
-   * a flag read that fails or times out leaves `resolve` answering exactly as it did before, which
-   * is the behaviour this replaces.
-   */
-  async #warmOrgMode(organizationId?: string): Promise<void> {
-    if (!organizationId || !this.modeResolver?.warm) {
-      return;
-    }
-    try {
-      await this.modeResolver.warm(organizationId);
-    } catch (error) {
-      this.logger.warn("snapshot store could not warm the organisation dial before a birth", {
-        organizationId,
-        error,
-      });
-    }
-  }
-
   protected writesRedisForBirth(organizationId?: string): boolean {
     if (this.halted()) return false;
 
     return this.modeFor(organizationId) !== "off";
+  }
+
+  /**
+   * A run's fixed birth residency, as this process knows it. `redis-only` means Postgres holds none
+   * of its snapshots; `postgres` means Postgres holds its whole log; undefined means this process has
+   * not yet learned it, and every decision then defaults to the safe Postgres-backed behaviour.
+   *
+   * NEVER re-derived from the live org dial: the dial governs births, and a run's regime is set at
+   * birth and permanent. The cache is fed by births witnessed here, by append replies, and by a
+   * one-off keyspace probe on a Redis miss.
+   */
+  protected regimeFor(runId: string): RunRegime | undefined {
+    return this.redis.regimeFor(runId);
+  }
+
+  /** True iff this run is known to have been born `redis-only`. */
+  protected isRedisOnlyResident(runId: string): boolean {
+    return this.regimeFor(runId) === "redis-only";
+  }
+
+  /**
+   * Whether this write's Postgres snapshot row must be suppressed. Only a redis-only-born run
+   * suppresses, and only while NOT halted: a halt forces the row back on, so a resident run's
+   * transitions land in Postgres for the resync window rather than nowhere. Unknown regime never
+   * suppresses (writes Postgres) — a few redundant rows, never a loss.
+   */
+  protected suppressesPgRow(runId: string): boolean {
+    return this.isRedisOnlyResident(runId) && !this.halted();
+  }
+
+  /** The residency a birth at `mode` fixes: redis-only only when the dial itself is at redis-only. */
+  #birthRegime(mode: SnapshotStoreMode): RunRegime {
+    return mode === "redis-only" ? "redis-only" : "postgres";
   }
 
   /**
@@ -494,28 +491,29 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     params: CreateRunInput,
     tx?: PrismaClientOrTransaction
   ): Promise<TaskRunWithWaitpoint> {
-    // Before the decision, not after: residency is permanent, so this is the one call where the
-    // organisation's real value is worth waiting for.
-    await this.#warmOrgMode(params.snapshot?.organizationId);
-
     if (!this.writesRedisForBirth(params.snapshot?.organizationId)) {
-      // Deliberately records NOTHING about residency here, though it is tempting: this run is
-      // almost certainly non-resident, and seeding that would save its first transition a probe.
-      //
-      // It is not safe. A birth path can be re-entered (createCancelledRun has an explicit
-      // "row already exists" path), so a birth that DID mirror on its first attempt can reach here
-      // on a retry once the short-lived override cache has moved to off. Seeding a negative from a
-      // local decision would then suppress every later transition of a run that is resident,
-      // freezing its head while Postgres moved on: the exact failure the residency model exists to
-      // prevent. Only the append script's own reply is authoritative about a keyspace, so only that
-      // reply may create a negative.
+      // Deliberately records NOTHING about residency here. A birth path can be re-entered
+      // (createCancelledRun has an explicit "row already exists" path), so a birth that DID mirror on
+      // its first attempt can reach here on a retry once the dial has moved to off. The run's regime
+      // was already fixed on that first attempt; overwriting it from this weaker off decision could
+      // downgrade a redis-only run and un-suppress its Postgres rows. So the off path leaves the
+      // regime untouched — its snapshot writes default to Postgres, which is the safe direction.
       return this.delegate.createRun(params, tx);
     }
 
-    const ctx = this.#context(params.data.id, params.snapshot.id);
-    const snapshot = { ...params.snapshot, id: ctx.id, createdAt: ctx.createdAt };
+    const mode = this.modeFor(params.snapshot.organizationId);
+    const regime = this.#birthRegime(mode);
+    this.redis.recordRegime(params.data.id, regime);
 
-    await this.#appendBirth("createRun", entryFromCreateRun(ctx, snapshot));
+    const ctx = this.#context(params.data.id, params.snapshot.id);
+    const snapshot = {
+      ...params.snapshot,
+      id: ctx.id,
+      createdAt: ctx.createdAt,
+      writeSnapshotRow: !this.suppressesPgRow(params.data.id),
+    };
+
+    await this.#appendBirth("createRun", entryFromCreateRun(ctx, snapshot), mode);
 
     return this.delegate.createRun({ ...params, snapshot }, tx);
   }
@@ -524,16 +522,23 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     params: CreateCancelledRunInput,
     tx?: PrismaClientOrTransaction
   ): Promise<TaskRun> {
-    await this.#warmOrgMode(params.snapshot?.organizationId);
-
     if (!this.writesRedisForBirth(params.snapshot?.organizationId)) {
       return this.delegate.createCancelledRun(params, tx);
     }
 
-    const ctx = this.#context(params.data.id, params.snapshot.id);
-    const snapshot = { ...params.snapshot, id: ctx.id, createdAt: ctx.createdAt };
+    const mode = this.modeFor(params.snapshot.organizationId);
+    const regime = this.#birthRegime(mode);
+    this.redis.recordRegime(params.data.id, regime);
 
-    await this.#appendBirth("createCancelledRun", entryFromCreateRun(ctx, snapshot));
+    const ctx = this.#context(params.data.id, params.snapshot.id);
+    const snapshot = {
+      ...params.snapshot,
+      id: ctx.id,
+      createdAt: ctx.createdAt,
+      writeSnapshotRow: !this.suppressesPgRow(params.data.id),
+    };
+
+    await this.#appendBirth("createCancelledRun", entryFromCreateRun(ctx, snapshot), mode);
 
     return this.delegate.createCancelledRun({ ...params, snapshot }, tx);
   }
@@ -562,7 +567,12 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     const ctx = this.#context(runId, data.snapshot.id);
     const withId = {
       ...data,
-      snapshot: { ...data.snapshot, id: ctx.id, createdAt: ctx.createdAt },
+      snapshot: {
+        ...data.snapshot,
+        id: ctx.id,
+        createdAt: ctx.createdAt,
+        writeSnapshotRow: !this.suppressesPgRow(runId),
+      },
     };
 
     const result = await this.delegate.completeAttemptSuccess(runId, withId, args, tx);
@@ -587,7 +597,12 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     const ctx = this.#context(runId, data.snapshot.id);
     const withId = {
       ...data,
-      snapshot: { ...data.snapshot, id: ctx.id, createdAt: ctx.createdAt },
+      snapshot: {
+        ...data.snapshot,
+        id: ctx.id,
+        createdAt: ctx.createdAt,
+        writeSnapshotRow: !this.suppressesPgRow(runId),
+      },
     };
 
     const result = await this.delegate.expireRun(runId, withId as never, args, tx);
@@ -614,7 +629,12 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     const ctx = this.#context(runId, data.snapshot.id);
     const withId = {
       ...data,
-      snapshot: { ...data.snapshot, id: ctx.id, createdAt: ctx.createdAt },
+      snapshot: {
+        ...data.snapshot,
+        id: ctx.id,
+        createdAt: ctx.createdAt,
+        writeSnapshotRow: !this.suppressesPgRow(runId),
+      },
     };
 
     const result = await this.delegate.expireParkedRun(runId, withId as never, tx);
@@ -640,7 +660,12 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     const ctx = this.#context(runId, data.snapshot.id);
     const withId = {
       ...data,
-      snapshot: { ...data.snapshot, id: ctx.id, createdAt: ctx.createdAt },
+      snapshot: {
+        ...data.snapshot,
+        id: ctx.id,
+        createdAt: ctx.createdAt,
+        writeSnapshotRow: !this.suppressesPgRow(runId),
+      },
     };
 
     const result = await this.delegate.rescheduleRun(runId, withId, tx);
@@ -661,7 +686,14 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     // This is the one transition whose input already carries both an id and the previous snapshot
     // id, so it is also the one that can append under a compare-and-set on the current head.
     const ctx = { id: data.snapshot.id, runId, createdAt: new Date() };
-    const withStamp = { ...data, snapshot: { ...data.snapshot, createdAt: ctx.createdAt } };
+    const withStamp = {
+      ...data,
+      snapshot: {
+        ...data.snapshot,
+        createdAt: ctx.createdAt,
+        writeSnapshotRow: !this.suppressesPgRow(runId),
+      },
+    };
 
     const result = await this.delegate.lockRunToWorker(runId, withStamp, tx);
 
@@ -690,7 +722,12 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
 
     const ctx = this.#context(input.run.id, input.id);
     const created = await this.delegate.createExecutionSnapshot(
-      { ...input, id: ctx.id, createdAt: ctx.createdAt },
+      {
+        ...input,
+        id: ctx.id,
+        createdAt: ctx.createdAt,
+        writeSnapshotRow: !this.suppressesPgRow(input.run.id),
+      },
       tx
     );
 
@@ -725,7 +762,11 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
    * writes no snapshot, so a run created without its Redis birth would have no snapshot anywhere.
    * Throwing here happens before the run row exists, so the caller retries a clean creation.
    */
-  async #appendBirth(site: string, entry: SnapshotEntryInput): Promise<void> {
+  async #appendBirth(
+    site: string,
+    entry: SnapshotEntryInput,
+    birthMode: SnapshotStoreMode
+  ): Promise<void> {
     // A birth reaches here only when it mirrors, so its run is resident: learn the run→org mapping
     // now, off the write it was doing anyway, so the read path never has to query for it.
     this.#prime(entry.runId, entry.organizationId);
@@ -745,6 +786,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
           entry,
           kind: "birth",
           isTerminal: isTerminalEntry(entry),
+          birthMode,
         });
         await this.#recordOutcome(site, entry, result);
 
@@ -772,10 +814,10 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
             error,
           });
 
-          // The same organisation dial that decided to append decides whether a lost birth is
-          // fatal. Using the global position here would fail run creation for an organisation whose
-          // own position still has Postgres authoritative.
-          if (this.modeFor(entry.organizationId) === "redis-only") {
+          // Keyed on the RUN's fixed residency, not the live org dial: a redis-only-born run has no
+          // Postgres snapshot, so a lost birth append leaves it with a snapshot nowhere and run
+          // creation must fail loudly. Any other regime has Postgres holding the birth, so it returns.
+          if (this.isRedisOnlyResident(entry.runId)) {
             throw error;
           }
           return;
@@ -840,9 +882,10 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
         // An injected fault models a dead process, not a retryable append failure.
         if (isInjectedFault(error)) {
           this.metrics?.recordAppendFailed(site, entry.organizationId);
-          // At redis-only Postgres holds nothing, so a lost transition is unrecoverable and the
-          // repair cannot help: surface it instead, as the birth path does.
-          if (this.modeFor(entry.organizationId) === "redis-only") {
+          // Keyed on the run's fixed residency: a redis-only-born run's Postgres holds nothing, so a
+          // lost transition is unrecoverable and the repair cannot help — surface it. Any other regime
+          // has Postgres holding the head, so hand it to the repair.
+          if (this.isRedisOnlyResident(entry.runId)) {
             throw error;
           }
           await this.#enqueueRepair(entry);
@@ -857,7 +900,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
             site,
             error,
           });
-          if (this.modeFor(entry.organizationId) === "redis-only") {
+          if (this.isRedisOnlyResident(entry.runId)) {
             throw error;
           }
           await this.#enqueueRepair(entry);
@@ -1057,13 +1100,14 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
   ): Promise<void> {
     this.metrics?.recordWrite(site, result.outcome);
 
-    // At redis-only Postgres holds no snapshot for this run, so an outcome that did not persist the
-    // transition is unrecoverable: a fork cannot be repaired from an empty Postgres, and a
-    // skippedNoKeyspace has nowhere else to land. Surface a retryable failure rather than enqueue a
-    // doomed repair or silently drop it, matching the thrown-error fatality in the append loops.
+    // Keyed on the run's fixed residency, not the live org dial. A redis-only-born run's Postgres
+    // holds no snapshot, so an outcome that did not persist the transition is unrecoverable: a fork
+    // cannot be repaired from an empty Postgres, and a skippedNoKeyspace has nowhere else to land.
+    // Surface a retryable failure. A skippedNoKeyspace on any OTHER run has already taught the store
+    // that run is Postgres-backed (see RedisSnapshotStore), so it is not fatal and Postgres holds it.
     if (
       (result.outcome === "forked" || result.outcome === "skippedNoKeyspace") &&
-      this.modeFor(entry.organizationId) === "redis-only"
+      this.isRedisOnlyResident(entry.runId)
     ) {
       this.logger.error("snapshot append did not persist at redis-only", {
         runId: entry.runId,
@@ -1124,12 +1168,18 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
    * at `redis-only` throws while everyone else still falls back.
    */
   async #fallbackAllowed(runId?: string, environmentId?: string): Promise<boolean> {
-    // A RESOLVED per-run answer is authoritative and wins over the global dial. Postgres suppression
-    // is org-scoped, so an org resolved BELOW redis-only has its whole log in Postgres even when the
-    // GLOBAL dial has advanced to redis-only; refusing the fallback there would strand a run whose
-    // rows are sitting readable in Postgres. A run resolved TO redis-only still refuses (even when
-    // anyOrgRedisOnly has not caught the enable); a concrete non-`redis-only` mode falls back, even
-    // when a DIFFERENT org is `redis-only`. So this check precedes the global short-circuit below.
+    // The run's FIXED residency is authoritative and beats every reading of the live dial. A
+    // redis-only-born run has nothing in Postgres, so an empty Postgres must never be served for it;
+    // a Postgres-backed run has its whole log there, so a Redis miss always falls back.
+    if (runId !== undefined) {
+      const regime = this.regimeFor(runId);
+      if (regime === "redis-only") return false;
+      if (regime === "postgres") return true;
+    }
+
+    // Regime unknown. Keep the resolved-per-run precedence: a RESOLVED per-run dial wins over the
+    // global one, so an org resolved BELOW redis-only falls back even when the GLOBAL dial is at
+    // redis-only, and a run resolved TO redis-only refuses even when a DIFFERENT org is not.
     if (runId !== undefined) {
       const resolved = this.modeResolver?.readModeFor?.(runId, environmentId);
       if (resolved === "redis-only") return false;
@@ -1140,25 +1190,30 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     // Postgres holds this run, so refuse rather than serve an empty history as though it were real.
     if (this.mode === "redis-only") return false;
 
-    // If no org is `redis-only`, this run cannot be either, so Postgres is a valid answer.
+    // If no org is `redis-only`, this run cannot be either, so Postgres is a valid answer — and this
+    // is what keeps the dual-write soak at zero probe cost.
     if (this.modeResolver?.anyOrgRedisOnly?.() !== true) return true;
 
-    // Some org IS redis-only and the sync cache cannot tell if it is this one. Resolve the run's org
-    // authoritatively rather than strand a redis-only run or over-throw a pre-cutover one. An absent
-    // hook, an undefined answer, or a bounded read that fails all fail closed: a retryable throw beats
-    // serving an empty Postgres when some org genuinely has nowhere else.
-    //
     // A missing runId cannot be attributed to a redis-only org, and every engine read of a resident
     // run threads one; global redis-only is already handled above. So fall back rather than over-throw
     // the run-id-less fan-out that only exists below redis-only.
     if (runId === undefined) return true;
+
+    // Some org IS redis-only and this process has not learned this run's regime. Probe the keyspace
+    // ONCE — the run is at Redis on this path anyway — to read the residency stamped at its birth,
+    // with NO Postgres read. A redis-only stamp refuses (and is cached); any other stamp, an absent
+    // keyspace, or a legacy pre-marker keyspace is Postgres-backed and falls back. A probe that FAILS
+    // fails closed: a retryable throw beats serving an empty Postgres when the run might be redis-only.
     try {
-      const authoritative = await this.modeResolver?.readModeForAuthoritative?.(
-        runId,
-        environmentId
-      );
-      if (authoritative === undefined) return false;
-      return authoritative !== "redis-only";
+      const birthMode = await this.redis.readBirthMode(runId);
+      if (birthMode === "redis-only") {
+        this.redis.recordRegime(runId, "redis-only");
+        return false;
+      }
+      if (birthMode !== undefined) {
+        this.redis.recordRegime(runId, "postgres");
+      }
+      return true;
     } catch {
       return false;
     }
@@ -1181,6 +1236,12 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
   }
 
   protected readsFromRedis(runId: string, environmentId?: string): boolean {
+    // A redis-only-born run's whole log is in Redis and NOWHERE in Postgres, so it always reads from
+    // Redis, whatever the org dial now says — including after a downgrade OUT of redis-only, when the
+    // dial no longer points at a read position but Postgres still holds nothing for this run. This
+    // precedes the off/soak short-circuit, which would otherwise route it to an empty Postgres.
+    if (this.isRedisOnlyResident(runId)) return true;
+
     // Short-circuit before any org resolution: while no org is read-enabled and the global dial is
     // not itself at a read position, nothing reads from Redis, so skip resolving the run's org
     // entirely. This is what keeps the dual-write soak phase at zero new read cost.

@@ -1,11 +1,12 @@
-// A failed birth append is fatal on the ORGANISATION dial, not the global position. Before
-// redis-only Postgres is authoritative, so a lost birth is survivable and run creation proceeds;
-// at redis-only Postgres writes no snapshot, so a run born without its Redis snapshot would have
-// none anywhere and the append must throw before the run row exists so the caller retries clean.
+// A failed birth append is fatal by the run's FIXED birth residency, which a birth fixes from the
+// ORGANISATION dial (never the global position). Before redis-only Postgres is authoritative, so a
+// lost birth is survivable and run creation proceeds; a redis-only birth writes no Postgres snapshot,
+// so a run born without its Redis snapshot would have none anywhere and the append must throw before
+// the run row exists so the caller retries clean.
 //
 // The load-bearing case is the second test: the global dial is redis-only while THIS org is still
-// dual-write. A regression to the global position (`this.mode`) would throw here and wrongly fail
-// run creation for an org whose own position still has Postgres authoritative.
+// dual-write. The birth fixes the run's regime from the org's dial (dual-write => Postgres-backed),
+// so the fatality follows the run, and a global redis-only does not wrongly fail run creation.
 import { describe, expect, it } from "vitest";
 import {
   TaskRunExecutionSnapshotStore,
@@ -13,17 +14,25 @@ import {
   type SnapshotStoreModeResolver,
 } from "./taskRunExecutionSnapshotStore.js";
 import type { RedisSnapshotStore } from "./redisSnapshotStore.js";
+import type { RunRegime } from "./runRegimeCache.js";
 import type { RunStore } from "./types.js";
 
 const ORG = "org_a";
 
 function harness(opts: { global: SnapshotStoreMode; forOrg: SnapshotStoreMode }) {
   const delegateCalls: string[] = [];
+  const regime = new Map<string, RunRegime>();
 
   // Every append rejects with a NON-injected error, so the retry loop exhausts and hits the
-  // terminal branch. An injected fault would mean "the process died", which is a different path.
+  // terminal branch. An injected fault would mean "the process died", which is a different path. The
+  // regime map is real, so the birth's residency decision is what the fatality gate reads.
   const redis = new Proxy({} as RedisSnapshotStore, {
     get: (_t, prop) => {
+      if (prop === "regimeFor") return (runId: string) => regime.get(runId);
+      if (prop === "recordRegime")
+        return (runId: string, r: RunRegime) => {
+          regime.set(runId, r);
+        };
       if (prop === "append") {
         return () => Promise.reject(new Error("redis append boom"));
       }

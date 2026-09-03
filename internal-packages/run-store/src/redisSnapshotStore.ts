@@ -9,6 +9,7 @@ import { Logger } from "@trigger.dev/core/logger";
 import type { CompletedWaitpoint } from "@trigger.dev/core/v3/schemas";
 import { CircuitBreaker, type CircuitBreakerOptions } from "./circuitBreaker.js";
 import { ResidencyCache } from "./residencyCache.js";
+import { RunRegimeCache, type RunRegime } from "./runRegimeCache.js";
 
 export type SnapshotKeys = { e: string; idx: string; cur: string; seq: string };
 
@@ -243,6 +244,8 @@ export type RedisSnapshotStoreOptions = RedisSnapshotStoreConnection & {
   completedTtlMs: number;
   /** Entries in the per-process residency cache. See {@link ResidencyCache}. */
   residencyCacheMax?: number;
+  /** Entries in the per-process run-regime cache. See {@link RunRegimeCache}. */
+  regimeCacheMax?: number;
   /** Tuning for the per-process breaker. See {@link CircuitBreaker}. */
   breaker?: CircuitBreakerOptions;
   sinceLimit?: number;
@@ -283,6 +286,13 @@ export class RedisSnapshotStore {
    */
   readonly #residency: ResidencyCache;
   /**
+   * Each run's fixed birth residency (`redis-only` vs Postgres-backed), shared here for the same
+   * reason the residency cache is: it must outlive the per-transaction decorator that consults it.
+   * The decorator records a birth's regime; this store learns `postgres` for free whenever an append
+   * comes back `skippedNoKeyspace`, which proves the run is not resident.
+   */
+  readonly #regime: RunRegimeCache;
+  /**
    * Bounds what the residency cache cannot: the first probe for a run this process has not seen,
    * which under a brownout costs the whole retry budget. After a few connectivity failures the store
    * stops calling out at all, so a sick Redis removes itself from the run path with no operator.
@@ -298,6 +308,9 @@ export class RedisSnapshotStore {
     this.highWater = options.highWater ?? {};
     this.#residency = new ResidencyCache({
       ...(options.residencyCacheMax !== undefined && { max: options.residencyCacheMax }),
+    });
+    this.#regime = new RunRegimeCache({
+      ...(options.regimeCacheMax !== undefined && { max: options.regimeCacheMax }),
     });
     this.#breaker = new CircuitBreaker(options.breaker ?? {});
     this.ownsClient = options.client === undefined;
@@ -374,9 +387,32 @@ export class RedisSnapshotStore {
     return (await this.redis.hget(snapshotKeys(runId).seq, "g")) === "1";
   }
 
+  /**
+   * The run's birth residency, stamped on the keyspace at birth (see {@link append}). Returns the
+   * mode string, or `undefined` when the run is not resident or its keyspace predates the marker. A
+   * plain field read: it is the residency probe a process uses on a Redis miss to decide, WITHOUT a
+   * Postgres read, whether a `redis-only` run's read may fall back to Postgres (it may not).
+   */
+  async readBirthMode(runId: string): Promise<string | undefined> {
+    const mode = await this.#timed("readBirthMode", () =>
+      this.redis.hget(snapshotKeys(runId).seq, "m")
+    );
+    return mode ?? undefined;
+  }
+
   /** Test seam. */
   residencyFor(runId: string): "resident" | "non-resident" | undefined {
     return this.#residency.get(runId);
+  }
+
+  /** The run's fixed birth residency, or undefined when this process has not learned it yet. */
+  regimeFor(runId: string): RunRegime | undefined {
+    return this.#regime.get(runId);
+  }
+
+  /** Records a run's fixed birth residency. Monotonic toward `redis-only`; see {@link RunRegimeCache}. */
+  recordRegime(runId: string, regime: RunRegime): void {
+    this.#regime.record(runId, regime);
   }
 
   /**
@@ -395,6 +431,14 @@ export class RedisSnapshotStore {
     kind: "birth" | "transition";
     isTerminal: boolean;
     expectedCur?: string;
+    /**
+     * The run's residency, stamped into the keyspace on a BIRTH and never afterwards. It is the ONE
+     * durable record of whether a run was born `redis-only` (Postgres holds nothing) or Postgres-
+     * backed, so a process that did not witness the birth can learn the run's fixed residency from a
+     * cheap {@link readBirthMode} probe instead of the live org dial or a Postgres read. Ignored for a
+     * transition. Absent leaves it unstamped (a legacy pre-marker keyspace reads as unknown).
+     */
+    birthMode?: string;
     /**
      * Marks the keyspace as holed, so window reads refuse and fall back to Postgres. Set by the
      * repair, which only runs because an append was lost.
@@ -431,6 +475,8 @@ export class RedisSnapshotStore {
     // is refused without a round trip. A birth deliberately never takes this path: a birth is what
     // CREATES residency, so it must reach the script even when the run is currently unknown.
     if (args.kind === "transition" && this.#residency.get(args.entry.runId) === "non-resident") {
+      // Not resident means it never mirrored a birth, so Postgres holds its whole log: Postgres-backed.
+      this.#regime.recordPostgres(args.entry.runId);
       this.metrics?.recordSkippedNoKeyspace();
       this.metrics?.recordAppend("skippedNoKeyspace", "none", args.entry.organizationId);
       return { outcome: "skippedNoKeyspace" };
@@ -488,7 +534,8 @@ export class RedisSnapshotStore {
         args.expectedCur ?? "",
         args.expectedCur !== undefined ? "1" : "0",
         distinctJson,
-        args.markGaps ? "1" : "0"
+        args.markGaps ? "1" : "0",
+        args.kind === "birth" ? (args.birthMode ?? "") : ""
       )) as string[];
 
       return this.#interpretAppend(
@@ -512,8 +559,9 @@ export class RedisSnapshotStore {
   ): AppendResult {
     if (reply[0] === SKIPPED) {
       // Authoritative and final: the script looked and there is no keyspace. Only a birth could
-      // create one and this run's birth has already happened.
+      // create one and this run's birth has already happened. No keyspace means Postgres-backed.
       this.#residency.setNonResident(runId);
+      this.#regime.recordPostgres(runId);
       this.metrics?.recordSkippedNoKeyspace();
       this.metrics?.recordAppend("skippedNoKeyspace", "none", organizationId);
       return { outcome: "skippedNoKeyspace" };
@@ -900,7 +948,10 @@ export class RedisSnapshotStore {
         local distinctJson = ARGV[14]
         -- Set by the repair. A repair exists BECAUSE an append was lost, so whatever it manages to
         -- put back, the entries between are gone and the window is short.
-        local markGaps    = ARGV[15] == '1' 
+        local markGaps    = ARGV[15] == '1'
+        -- The run's residency, stamped on a BIRTH only. Empty for a transition and for a legacy
+        -- pre-marker birth. It is the durable record a foreign process reads to learn residency.
+        local birthMode   = ARGV[16] or ''
 
         -- Checking e alone would let a late transition recreate seq with no TTL and restart it at 1
         -- beside a surviving idx. A birth always creates both in this same script, so this never
@@ -953,6 +1004,12 @@ export class RedisSnapshotStore {
         end
 
         local seq = redis.call('HINCRBY', seqKey, 'e', 1)
+
+        -- Stamp the run's residency on its birth, once and never again. Guarded on kind so no
+        -- transition can ever rewrite it, keeping it a true record of what the run was BORN as.
+        if kind == 'birth' and birthMode ~= '' then
+          redis.call('HSET', seqKey, 'm', birthMode)
+        end
 
         local cycleSeq = 0
         local mismatch = 0
@@ -1302,6 +1359,7 @@ declare module "@internal/redis" {
       casEnabled: string,
       distinctJson: string,
       markGaps: string,
+      birthMode: string,
       callback?: Callback<string[]>
     ): Result<string[], Context>;
     readSnapshotById(

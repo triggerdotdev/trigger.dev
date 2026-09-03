@@ -90,14 +90,12 @@ export function isSnapshotStoreCohortMember(organizationId: string): boolean {
   return snapshotStoreIsCohortMember(loadedOrgDials(), organizationId);
 }
 
-/** What resolution needs from the org source. Read-only and synchronous; warm is a birth-only hook. */
+/** What resolution needs from the org source. Read-only and synchronous. */
 type ResolverOrgSource = {
   /** The org's dial, or NO_OVERRIDE when absent so `resolveMode` falls back to the global dial. */
   get(organizationId: string): CachedOrgMode | undefined;
-  /** No-op with the map source: the dial arrives via the poll, so there is nothing to warm off-path. */
+  /** No-op with the map source: the dial arrives via the poll, so there is nothing to refresh. */
   refresh(organizationId: string): void;
-  /** No-op with the map source: births read the map synchronously, so there is nothing to await. */
-  warm?(organizationId: string): Promise<void>;
 };
 
 /** Resolves a run to its organisation. Cache-only and synchronous, undefined on a miss. */
@@ -105,8 +103,6 @@ type ResolverRunOrgSource = {
   resolve(runId: string): string | undefined;
   /** Records an immutable run→org mapping learned off a mirrored write or a Redis read hit. */
   prime?(runId: string, organizationId: string): void;
-  /** Bounded authoritative read, throws on failure/timeout, for the redis-only fallback gate. */
-  resolveAuthoritative?(runId: string): Promise<string>;
 };
 
 /** The census read accessors the resolver delegates to. Both synchronous and no-query. */
@@ -169,11 +165,6 @@ export function buildSnapshotStoreModeResolver(deps: {
     // probing rather than suppressing a resident run.
     orgDefinitelyNeverEnabled: (organizationId: string): boolean =>
       deps.orgDefinitelyNeverEnabled?.(organizationId) ?? false,
-    // Awaited at birth sites only. With the map source this resolves immediately: the dial is read
-    // synchronously from the polled map, so there is no per-org read to await.
-    warm: async (organizationId: string): Promise<void> => {
-      await deps.orgMode.warm?.(organizationId);
-    },
     resolve: (organizationId?: string): DialMode => resolveMode(organizationId),
     // The org-scoped read position. Resolve run→org synchronously; on a miss return undefined so
     // the decorator falls back to the global mode, which is safe during soak.
@@ -182,16 +173,6 @@ export function buildSnapshotStoreModeResolver(deps: {
       if (!organizationId) {
         return undefined;
       }
-      return resolveMode(organizationId);
-    },
-    // Authoritative counterpart, used only when the sync read is unresolved and some org is
-    // redis-only. Resolves run→org from the primary (bounded, throws on failure), then answers with
-    // the org's mode straight from the map. A throw propagates so the decorator fails closed.
-    readModeForAuthoritative: async (runId: string): Promise<DialMode | undefined> => {
-      if (!deps.runOrg?.resolveAuthoritative) {
-        return undefined;
-      }
-      const organizationId = await deps.runOrg.resolveAuthoritative(runId);
       return resolveMode(organizationId);
     },
     anyOrgReadEnabled: (): boolean => deps.census?.anyOrgReadEnabled() ?? false,
@@ -240,12 +221,10 @@ export const snapshotStoreModeResolver: SnapshotStoreModeResolver = buildSnapsho
     // global dial. A cold registry yields an empty map, which reads as NO_OVERRIDE for every org.
     get: (organizationId) => orgDials()[organizationId] ?? NO_OVERRIDE,
     refresh: () => {},
-    warm: async () => {},
   },
   runOrg: {
     resolve: (runId) => snapshotRunOrgSource().resolve(runId),
     prime: (runId, organizationId) => snapshotRunOrgSource().prime(runId, organizationId),
-    resolveAuthoritative: (runId) => snapshotRunOrgSource().resolveAuthoritative(runId),
   },
   census: {
     anyOrgReadEnabled: () => snapshotStoreAnyOrgReadEnabled(loadedOrgDials()),

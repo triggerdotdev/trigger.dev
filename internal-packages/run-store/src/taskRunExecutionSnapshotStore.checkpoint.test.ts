@@ -106,17 +106,17 @@ describe("a checkpoint on a snapshot served from Redis", () => {
     }
   );
 
-  // The shipping redis-only PAIR: decorator at redis-only OVER a store with snapshotWrites:false, so
-  // the TaskRunExecutionSnapshot row is NOT written to Postgres. The checkpoint ROW still lives in
-  // Postgres (only snapshot rows are suppressed), and the Redis entry carries checkpointId. A resume
-  // MUST still re-attach the checkpoint row. If hydration reads it through the (suppressed) snapshot
-  // row, the resumed run gets a null checkpoint and restarts with no state to restore from.
+  // The shipping redis-only pair: a decorator at redis-only records the run's birth regime as
+  // redis-only and threads `writeSnapshotRow: false` onto every write, so the TaskRunExecutionSnapshot
+  // row is NOT written to Postgres. The checkpoint ROW still lives in Postgres (only snapshot rows are
+  // suppressed), and the Redis entry carries checkpointId. A resume MUST still re-attach the checkpoint
+  // row. If hydration reads it through the (suppressed) snapshot row, the resumed run gets a null
+  // checkpoint and restarts with no state to restore from.
   containerTest(
     "at redis-only, a suspended run's checkpoint still hydrates (snapshot row suppressed)",
     async ({ prisma, redisOptions }) => {
       const redis = new RedisSnapshotStore({ redisOptions, completedTtlMs: COMPLETED_TTL_MS });
-      // snapshotWrites:false is redis-only: run mutations land, snapshot rows do not.
-      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma, snapshotWrites: false });
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
       const decorated = new TaskRunExecutionSnapshotStore(store as unknown as RunStore, {
         store: redis,
         mode: "redis-only",

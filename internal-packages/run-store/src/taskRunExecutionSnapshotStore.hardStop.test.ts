@@ -8,9 +8,17 @@ import type {
   SnapshotStoreMode,
   SnapshotStoreModeResolver,
 } from "./taskRunExecutionSnapshotStore.js";
+import type { RedisSnapshotStore } from "./redisSnapshotStore.js";
 import type { RunStore } from "./types.js";
 
 type CohortProbe = { readsFromRedis(runId: string): boolean };
+
+// Only the in-process regime accessors the read/write predicates consult; no I/O members, because
+// these predicate tests never mirror or read through Redis.
+const regimeOnlyRedis = {
+  regimeFor: () => undefined,
+  recordRegime: () => {},
+} as unknown as RedisSnapshotStore;
 
 function storeWith(options: {
   mode: SnapshotStoreMode;
@@ -18,7 +26,7 @@ function storeWith(options: {
   halted?: boolean;
 }) {
   return new TaskRunExecutionSnapshotStore({} as unknown as RunStore, {
-    store: {} as never,
+    store: regimeOnlyRedis,
     mode: options.mode,
     ...(options.resolver && { modeResolver: options.resolver }),
     ...(options.halted !== undefined && { halted: () => options.halted === true }),

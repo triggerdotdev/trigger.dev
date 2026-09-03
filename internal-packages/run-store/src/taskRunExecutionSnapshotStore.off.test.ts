@@ -12,6 +12,10 @@ import type { RunStore } from "./types.js";
 function explodingRedisStore(): RedisSnapshotStore {
   return new Proxy({} as RedisSnapshotStore, {
     get(_target, prop) {
+      // The run-regime accessors are IN-PROCESS cache reads, not Redis I/O, so they are always free
+      // and answer here without a network call. Everything else is real I/O and must not be reached.
+      if (prop === "regimeFor") return () => undefined;
+      if (prop === "recordRegime") return () => {};
       return () => {
         throw new Error(`the Redis store must not be called at mode off, but ${String(prop)} was`);
       };
