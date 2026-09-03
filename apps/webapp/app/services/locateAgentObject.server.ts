@@ -11,7 +11,7 @@ import { $replica } from "~/db.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { runStore } from "~/v3/runStore.server";
 
-export type LocatedScope = {
+type LocatedScope = {
   projectRef: string;
   projectName: string;
   environmentName: string;
