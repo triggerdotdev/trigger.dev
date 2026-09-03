@@ -251,11 +251,13 @@ describe("dashboard agent `start` intent — client metadata", () => {
       projectId: "proj_real",
       environmentId: "env_real",
       environmentName: "dev",
+      // Server-owned but overwritten (not dropped) after the pick, so the client's value
+      // must not survive even though the field itself is present.
+      projectRef: "proj_ref_real",
+      apiOrigin: "https://api.trigger.dev",
+      userActorToken: "tr_uat_real",
     });
-    expect(clientData.projectRef).toBeUndefined();
     expect(clientData.environmentBranch).toBeUndefined();
-    expect(clientData.apiOrigin).toBeUndefined();
-    expect(clientData.userActorToken).toBeUndefined();
     expect(clientData.repoSnapshot).toBeUndefined();
     expect(clientData).not.toHaveProperty("somethingNew");
   });
