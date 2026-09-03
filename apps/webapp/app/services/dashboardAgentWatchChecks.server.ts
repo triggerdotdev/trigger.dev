@@ -110,7 +110,7 @@ export async function readWatchQueueDepth(
 
   const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
     environment.organizationId,
-    "query"
+    "queueMetrics"
   );
 
   const bucketMs = DEPTH_FALLBACK_BUCKET_SECONDS * 1000;

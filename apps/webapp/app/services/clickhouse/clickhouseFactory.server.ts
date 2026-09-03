@@ -489,6 +489,16 @@ export type ClientType =
   | "runsList"
   | "queueMetrics";
 
+/**
+ * Client types whose data is written to a single shared warehouse by an org-less writer, so their
+ * reads must always resolve to that same shared default client and must ignore any per-org
+ * ClickHouse datastore override (a dedicated CH holds the schema but no rows for these). Add a
+ * client type here to make it globally-routed. `queueMetrics` is written by the org-less ingestion
+ * consumer (`getQueueMetricsClickhouseClient`); the replication/engine writer types are NOT here
+ * because their consumers route writes per-org and so legitimately honor the override on both sides.
+ */
+const SHARED_WAREHOUSE_CLIENT_TYPES = new Set<ClientType>(["queueMetrics"]);
+
 function buildOrgClickhouseClient(url: string, clientType: ClientType): ClickHouse {
   const parsed = new URL(url);
   parsed.searchParams.delete("secure");
@@ -655,7 +665,9 @@ export class ClickhouseFactory {
   }
 
   getClickhouseForOrganizationSync(organizationId: string, clientType: ClientType): ClickHouse {
-    const dataStore = this._registry.get(organizationId, "CLICKHOUSE");
+    const dataStore = SHARED_WAREHOUSE_CLIENT_TYPES.has(clientType)
+      ? null
+      : this._registry.get(organizationId, "CLICKHOUSE");
 
     if (!dataStore) {
       switch (clientType) {
