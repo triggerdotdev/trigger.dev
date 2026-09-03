@@ -3,7 +3,7 @@ import { json } from "@remix-run/server-runtime";
 import type { Prisma } from "@trigger.dev/database";
 import { z } from "zod";
 import { env } from "~/env.server";
-import { prisma } from "~/db.server";
+import { $transaction, prisma } from "~/db.server";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
@@ -101,7 +101,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
     // Lock the org row for the whole read -> merge -> stamp -> write so a concurrent flag save
     // can't clobber the grace metadata (read-then-write race). PK lookup, one row, held to commit.
-    const updatedOrganization = await prisma.$transaction(async (tx) => {
+    const updatedOrganization = await $transaction(prisma, "adminOrgFlagsMergeSave", async (tx) => {
       const rows = await tx.$queryRaw<{ featureFlags: unknown }[]>`
         SELECT "featureFlags" FROM "Organization" WHERE "id" = ${organizationId} FOR UPDATE`;
 

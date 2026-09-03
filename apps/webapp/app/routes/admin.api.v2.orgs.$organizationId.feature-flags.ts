@@ -3,7 +3,7 @@ import { json } from "@remix-run/server-runtime";
 import { Prisma } from "@trigger.dev/database";
 import { z } from "zod";
 import { env } from "~/env.server";
-import { prisma } from "~/db.server";
+import { $transaction, prisma } from "~/db.server";
 import { requireUser } from "~/services/session.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
@@ -118,7 +118,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     // Clear all flags, but preserve the one-way per-org residency latch so an ever-enabled org can
     // never drop out of the census. Locked read-then-write so a concurrent enabling save (which also
     // takes FOR UPDATE) can't slip a latch in between the read and the wipe.
-    const updated = await prisma.$transaction(async (tx) => {
+    const updated = await $transaction(prisma, "adminOrgFlagsClear", async (tx) => {
       const rows = await tx.$queryRaw<{ featureFlags: unknown }[]>`
         SELECT "featureFlags" FROM "Organization" WHERE "id" = ${organizationId} FOR UPDATE`;
 
@@ -197,7 +197,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   // Lock the org row for the whole read -> stamp -> write so a concurrent flag save can't clobber
   // the grace metadata (read-then-write race). PK lookup, one row, held to commit.
-  const updated = await prisma.$transaction(async (tx) => {
+  const updated = await $transaction(prisma, "adminOrgFlagsSave", async (tx) => {
     const rows = await tx.$queryRaw<{ featureFlags: unknown }[]>`
       SELECT "featureFlags" FROM "Organization" WHERE "id" = ${organizationId} FOR UPDATE`;
 
