@@ -2,6 +2,7 @@
 // waitpoint completion even when the inline path dies after arming: its redelivery handler replays
 // the transition and the blocked-run fanout idempotently. These drive the real RunEngine + worker.
 import { containerTest } from "@internal/testcontainers";
+import { PostgresRunStore } from "@internal/run-store";
 import { trace } from "@internal/tracing";
 import type { PrismaClient } from "@trigger.dev/database";
 import { describe, expect } from "vitest";
@@ -9,9 +10,35 @@ import { setTimeout } from "node:timers/promises";
 import { RunEngine } from "../index.js";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "../tests/setup.js";
 
-function buildEngine(prisma: PrismaClient, redisOptions: any) {
+// A real store that injects a transient connectivity fault into the completion write, so the inline
+// path fails after the guard is armed and only the guard's replay delivers the completion. `super.*`
+// runs the genuine store — never a mock.
+class FaultCompletionStore extends PostgresRunStore {
+  public mode: "healthy" | "throwBeforeCommit" | "commitThenThrow" = "healthy";
+  public faultsRemaining = 0;
+
+  override async updateManyWaitpoints(
+    args: Parameters<PostgresRunStore["updateManyWaitpoints"]>[0],
+    tx?: any
+  ): ReturnType<PostgresRunStore["updateManyWaitpoints"]> {
+    if (this.faultsRemaining > 0 && this.mode !== "healthy") {
+      this.faultsRemaining--;
+      if (this.mode === "commitThenThrow") {
+        await super.updateManyWaitpoints(args, tx); // real commit, then the ack is "lost"
+      }
+      throw Object.assign(
+        new Error("Client has encountered a connection error and is not queryable"),
+        { name: "PrismaClientUnknownRequestError" }
+      );
+    }
+    return super.updateManyWaitpoints(args, tx);
+  }
+}
+
+function buildEngine(prisma: PrismaClient, redisOptions: any, store?: PostgresRunStore) {
   return new RunEngine({
     prisma,
+    ...(store ? { store } : {}),
     completionGuardDelayMs: 50,
     worker: { redis: redisOptions, workers: 1, tasksPerWorker: 10, pollIntervalMs: 100 },
     queue: { redis: redisOptions },
@@ -164,6 +191,71 @@ describe("waitpoint completion guard", () => {
         expect(wp?.status).toBe("COMPLETED");
         expect(wp?.output).toBe('{"n":1}'); // first writer wins
         expect(wp?.completedAt?.getTime()).toBe(completedAtBefore?.getTime());
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  // Fault 2: the completion update commits but its acknowledgement is lost after the guard is armed.
+  containerTest(
+    "commit-then-ack-lost: the guard resumes the run exactly once",
+    async ({ prisma, redisOptions }) => {
+      const store = new FaultCompletionStore({ prisma, readOnlyPrisma: prisma });
+      const engine = buildEngine(prisma, redisOptions, store);
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const run = await triggerExecutingRun(engine, prisma, env, "guard-ack", "run_ackl", "sga");
+        const waitpoint = await blockOnWaitpoint(engine, env, run.id);
+
+        store.mode = "commitThenThrow";
+        store.faultsRemaining = 1;
+
+        // Inline path arms the guard, commits, then throws (ack lost). The API swallows it.
+        await engine
+          .completeWaitpoint({
+            id: waitpoint.id,
+            output: { value: "{}", isError: false },
+            armGuard: true,
+          })
+          .catch(() => {});
+
+        // The guard fires and delivers the resume; the committed transition is not repeated.
+        expect(await waitForStatus(engine, run.id, "EXECUTING_WITH_WAITPOINTS")).toBe("EXECUTING");
+        const wp = await prisma.waitpoint.findFirst({ where: { id: waitpoint.id } });
+        expect(wp?.status).toBe("COMPLETED");
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  // Fault 1: the completion update never commits (throws before commit) after the guard is armed.
+  containerTest(
+    "armed-but-never-committed: the guard completes and resumes the run",
+    async ({ prisma, redisOptions }) => {
+      const store = new FaultCompletionStore({ prisma, readOnlyPrisma: prisma });
+      const engine = buildEngine(prisma, redisOptions, store);
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const run = await triggerExecutingRun(engine, prisma, env, "guard-nc", "run_ncmt", "sgn");
+        const waitpoint = await blockOnWaitpoint(engine, env, run.id);
+
+        store.mode = "throwBeforeCommit";
+        store.faultsRemaining = 1;
+
+        await engine
+          .completeWaitpoint({
+            id: waitpoint.id,
+            output: { value: "{}", isError: false },
+            armGuard: true,
+          })
+          .catch(() => {});
+
+        // Nothing committed inline; the guard's replay performs the transition + fanout.
+        expect(await waitForStatus(engine, run.id, "EXECUTING_WITH_WAITPOINTS")).toBe("EXECUTING");
+        const wp = await prisma.waitpoint.findFirst({ where: { id: waitpoint.id } });
+        expect(wp?.status).toBe("COMPLETED");
       } finally {
         await engine.quit();
       }
