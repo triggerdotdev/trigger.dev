@@ -1,7 +1,7 @@
 ---
 title: "Actions"
 sidebarTitle: "Actions"
-description: "Custom commands sent from the frontend that mutate chat state without consuming a turn — undo, rollback, edit, regenerate."
+description: "Custom commands sent from the frontend that mutate chat state without consuming a turn: undo, rollback, edit, regenerate."
 ---
 
 ## Overview
@@ -119,10 +119,10 @@ onAction: async ({ action, messages, signal }) => {
 ## Sending actions from the frontend
 
 ```ts
-// Browser — TriggerChatTransport
+// Browser: TriggerChatTransport
 const stream = await transport.sendAction(chatId, { type: "undo" });
 
-// Server — AgentChat
+// Server: AgentChat
 const stream = await agentChat.sendAction({ type: "rollback", targetMessageId: "msg-3" });
 ```
 
@@ -134,8 +134,8 @@ The action payload is validated against `actionSchema` on the backend; invalid a
 
 ## See also
 
-- [`chat.history`](/ai-chat/backend#chat-history) — the imperative API actions use to mutate state
-- [Sending actions from the frontend](/ai-chat/frontend#sending-actions) — `transport.sendAction` ergonomics
-- [`hydrateMessages`](/ai-chat/lifecycle-hooks#hydratemessages) — fires before `onAction` when set
-- [Branching conversations](/ai-chat/patterns/branching-conversations) — pairs action handlers with backend-controlled history
-- [Human-in-the-loop](/ai-chat/patterns/human-in-the-loop) — gating fresh actions while a tool is waiting
+- [`chat.history`](/ai-chat/backend#chat-history): the imperative API actions use to mutate state
+- [Sending actions from the frontend](/ai-chat/frontend#sending-actions): `transport.sendAction` ergonomics
+- [`hydrateMessages`](/ai-chat/lifecycle-hooks#hydratemessages): fires before `onAction` when set
+- [Branching conversations](/ai-chat/patterns/branching-conversations): pairs action handlers with backend-controlled history
+- [Human-in-the-loop](/ai-chat/patterns/human-in-the-loop): gating fresh actions while a tool is waiting
