@@ -1,14 +1,37 @@
 import { json } from "@remix-run/server-runtime";
 import type { GetProjectsResponseBody } from "@trigger.dev/core/v3";
+import { z } from "zod";
 import { prisma } from "~/db.server";
 import { createLoaderPATApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
-// Identity-only: lists projects across the caller's orgs, so no authorization gate.
+// Identity-only: lists projects across the caller's orgs, so no authorization gate. An
+// org-scoped user-actor token narrows that to its own organization, membership still required.
 export const loader = createLoaderPATApiRoute(
-  { identityOnly: true },
-  async ({ authentication }) => {
+  {
+    identityOnly: true,
+    searchParams: z.object({ organizationId: z.string().optional() }),
+  },
+  async ({ authentication, searchParams }) => {
+    const claimedOrganizationId = authentication.userActor?.organizationId;
+    const requestedOrganizationId = searchParams.organizationId;
+
+    if (
+      claimedOrganizationId &&
+      requestedOrganizationId &&
+      requestedOrganizationId !== claimedOrganizationId
+    ) {
+      return json(
+        {
+          error: "This token isn't scoped to that organization.",
+          code: "forbidden_environment",
+        },
+        { status: 403 }
+      );
+    }
+
     const projects = await prisma.project.findMany({
       where: {
+        ...(claimedOrganizationId ? { organizationId: claimedOrganizationId } : {}),
         organization: {
           deletedAt: null,
           members: {
