@@ -10,7 +10,7 @@ import { enhanceExecutionSnapshotWithWaitpoints } from "../systems/executionSnap
 import { buildCompletedWaitpointRecords } from "./completedWaitpointRecords.js";
 import {
   createCompletedWaitpointResolver,
-  createRunOutputReader,
+  createRunOutputsReader,
 } from "./completedWaitpointResolver.js";
 import { envelopeSourceFromWaitpointRow } from "./completionEnvelopeSource.js";
 import type { CompletionEnvelopeSource } from "./types.js";
@@ -89,7 +89,7 @@ async function bothPaths(
   const runStore = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
 
   const actual = await createCompletedWaitpointResolver({
-    readRunOutput: createRunOutputReader(runStore),
+    readRunOutputs: createRunOutputsReader(runStore),
   })({
     runId: RUN_ID,
     ...(batchId ? { batchId } : {}),

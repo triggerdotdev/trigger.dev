@@ -10,10 +10,10 @@ import type { PrismaClient } from "@trigger.dev/database";
 import { describe, expect } from "vitest";
 import {
   createCompletedWaitpointResolver,
-  createRunOutputReader,
+  createRunOutputsReader,
   UnresolvableWaitpointId,
 } from "./completedWaitpointResolver.js";
-import { seedChildRunWithOutput } from "./testFixtures/childRun.js";
+import { seedChildRunsWithOutputs, seedChildRunWithOutput } from "./testFixtures/childRun.js";
 
 function deriveRecord(completedByTaskRunId: string): CompletedWaitpointRecord {
   return {
@@ -30,7 +30,30 @@ function deriveRecord(completedByTaskRunId: string): CompletedWaitpointRecord {
 
 function resolverFor(prisma: PrismaClient) {
   const runStore = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
-  return createCompletedWaitpointResolver({ readRunOutput: createRunOutputReader(runStore) });
+  return createCompletedWaitpointResolver({ readRunOutputs: createRunOutputsReader(runStore) });
+}
+
+/**
+ * A resolver that records the id set of every batched read and DELEGATES to the real reader, so
+ * the Postgres read still happens.
+ *
+ * Wrapping the collaborator rather than replacing it is deliberate: the assertion is about how
+ * many reads occur and what they ask for, and neither is observable from the resolved output.
+ */
+function countingResolver(prisma: PrismaClient) {
+  const runStore = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+  const read = createRunOutputsReader(runStore);
+  const batches: string[][] = [];
+
+  return {
+    batches,
+    resolve: createCompletedWaitpointResolver({
+      readRunOutputs: async (ids) => {
+        batches.push(ids);
+        return read(ids);
+      },
+    }),
+  };
 }
 
 describe("the deriveFromRun branch", () => {
@@ -102,19 +125,9 @@ describe("the deriveFromRun branch", () => {
   // query per index.
   postgresTest("reads the run once for a record at several indexes", async ({ prisma }) => {
     const runId = await seedChildRunWithOutput(prisma, '{"value":42}');
-    const runStore = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
-    const reads: string[] = [];
-    const reader = createRunOutputReader(runStore);
+    const { resolve, batches } = countingResolver(prisma);
 
-    // Counts calls and DELEGATES to the real reader, so the Postgres read still happens. This
-    // wraps the collaborator rather than replacing it: the assertion is about how many reads
-    // occur, which is not observable from the resolved output alone.
-    const result = await createCompletedWaitpointResolver({
-      readRunOutput: async (id) => {
-        reads.push(id);
-        return reader(id);
-      },
-    })({
+    const result = await resolve({
       runId: "run_parent",
       pointer: { cycleSeq: 1, count: 2 },
       order: ["wp_run", "wp_run"],
@@ -123,7 +136,67 @@ describe("the deriveFromRun branch", () => {
     });
 
     expect(result).toHaveLength(2);
-    expect(reads).toEqual([runId]);
+    expect(batches).toEqual([[runId]]);
+  });
+
+  // The shape a batch fan-in produces. Every deferring record resolves in ONE read, not one
+  // read each: a per-record read put a serial round trip per child on the resume path, which is
+  // the cost the record set exists to remove.
+  postgresTest("reads every deferred run in one batch", async ({ prisma }) => {
+    const runIds = await seedChildRunsWithOutputs(
+      prisma,
+      Array.from({ length: 12 }, (_, i) => `{"value":${i}}`)
+    );
+    const { resolve, batches } = countingResolver(prisma);
+
+    const records = runIds.map((runId, i) => ({
+      ...deriveRecord(runId),
+      id: `wp_run_${i}`,
+      friendlyId: `waitpoint_wp_run_${i}`,
+    }));
+
+    const result = await resolve({
+      runId: "run_parent",
+      pointer: { cycleSeq: 1, count: records.length },
+      order: records.map((r) => r.id),
+      distinctIds: records.map((r) => r.id),
+      records,
+    });
+
+    expect(result).toHaveLength(12);
+    // One batch, holding every distinct run id.
+    expect(batches).toHaveLength(1);
+    expect(batches[0]?.slice().sort()).toEqual(runIds.slice().sort());
+    // And each output landed on its own waitpoint.
+    for (const [i, runId] of runIds.entries()) {
+      const entry = result.find((w) => w.id === `wp_run_${i}`);
+      expect(entry?.output).toBe(`{"value":${i}}`);
+      expect(runId).toBeTruthy();
+    }
+  });
+
+  // A cycle that defers nothing reads nothing, so an all-inline resume pays no Postgres round
+  // trip at all.
+  postgresTest("reads nothing when no record defers", async ({ prisma }) => {
+    const { resolve, batches } = countingResolver(prisma);
+
+    const result = await resolve({
+      runId: "run_parent",
+      pointer: { cycleSeq: 1, count: 0 },
+      order: [],
+      distinctIds: ["wp_inline"],
+      records: [
+        {
+          ...deriveRecord("run_unused"),
+          id: "wp_inline",
+          friendlyId: "waitpoint_wp_inline",
+          output: { inline: '{"ok":true}' },
+        },
+      ],
+    });
+
+    expect(result[0]?.output).toBe('{"ok":true}');
+    expect(batches).toEqual([]);
   });
 
   postgresTest("throws when a derive record arrives with no reader wired", async ({ prisma }) => {
