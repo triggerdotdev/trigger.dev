@@ -196,6 +196,18 @@ describe("computed run wait", () => {
   });
 });
 
+describe("run queue name", () => {
+  it("carries the run's actual queue name through curateRun", () => {
+    const run = curateRun({ id: "run_1", queue: "task/send-receipt" });
+    expect(run.queue).toBe("task/send-receipt");
+  });
+
+  it("carries the run's actual queue name through curateRuns", () => {
+    const runs = curateRuns({ data: [{ id: "run_1", queue: "my-custom-queue" }] });
+    expect(runs.runs[0]!.queue).toBe("my-custom-queue");
+  });
+});
+
 describe("curateTrace emits spanId", () => {
   it("carries each span's id, required to cite it as evidence", () => {
     const out = curateTrace({

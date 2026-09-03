@@ -39,6 +39,7 @@ const commonRunSelect = {
   createdAt: true,
   startedAt: true,
   queuedAt: true,
+  queue: true,
   updatedAt: true,
   completedAt: true,
   expiredAt: true,
@@ -567,6 +568,7 @@ async function createCommonRunStructure(
     createdAt: run.createdAt,
     startedAt: run.startedAt ?? undefined,
     queuedAt: run.queuedAt ?? undefined,
+    queue: run.queue,
     // Mirrors dashboardAgentWatchRunChecks.describeRunWait: a resumed/retried/paused run's
     // queuedAt is a leftover from an earlier enqueue, not this attempt's wait.
     queueWaitReliable: run.queuedAt !== null && !STALE_QUEUED_AT_STATUSES.has(run.status),
@@ -696,6 +698,7 @@ export function synthesiseFoundRunFromBuffer(buffered: SyntheticRun): FoundRun {
     startedAt: null,
     // Buffered runs live in Redis until the drainer replays them into Postgres — never queued there yet.
     queuedAt: null,
+    queue: buffered.queue ?? "",
     updatedAt: buffered.cancelledAt ?? buffered.createdAt,
     // PG-resident SYSTEM_FAILURE rows always have `completedAt` set by
     // the engine; the buffer-synth path must match so SDK consumers

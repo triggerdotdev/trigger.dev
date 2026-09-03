@@ -106,7 +106,7 @@ export const listRunsSchema = tool({
 });
 
 export const getRunSchema = tool({
-  description: `Get the status, timing, cost, and error details for a single run in the current environment, by its run id (run_...). The \`wait\` field is the already-computed queue wait (or, when unreliable, time since creation) — never recompute it from createdAt/startedAt. A 404 (in the error message) means this run isn't in this scope, never that it doesn't exist: call locate, then retry here with the scope it names.`,
+  description: `Get the status, timing, cost, and error details for a single run in the current environment, by its run id (run_...). The \`wait\` field is the already-computed queue wait (or, when unreliable, time since creation) — never recompute it from createdAt/startedAt. \`queue\` is the run's actual queue name — use it for schedule_watch or get_queue, never guess. A 404 (in the error message) means this run isn't in this scope, never that it doesn't exist: call locate, then retry here with the scope it names.`,
   inputSchema: z.object({
     runId: z.string().describe("The run id, e.g. run_abc123."),
     ...targetFields,

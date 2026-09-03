@@ -263,3 +263,17 @@ describe("repo-tools", () => {
     expect(res.files).toContain("src/trigger/order.ts");
   });
 });
+
+describe("repo tools: branch without environment", () => {
+  const CASES: Array<[string, any]> = [
+    ["get_repo_info", tools.get_repo_info],
+    ["list_files", tools.list_files],
+    ["read_file", tools.read_file],
+    ["search_code", tools.search_code],
+  ];
+
+  it.each(CASES)("%s is refused before any snapshot fetch", async (_name, tool) => {
+    const res: any = await call(tool, { path: "README.md", branch: "feat/x" });
+    expect(res.error).toBe("branch needs environment: preview or dev.");
+  });
+});

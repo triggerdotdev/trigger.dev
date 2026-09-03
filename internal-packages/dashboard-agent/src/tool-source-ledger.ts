@@ -1,5 +1,5 @@
 import type { ToolSet } from "ai";
-import { apiGet, crossProjectTarget, type ApiTarget } from "./tool-api-client";
+import { apiGet, crossProjectTarget, targetInputError, type ApiTarget } from "./tool-api-client";
 import type { RepoSnapshot } from "./repo-tools";
 
 /**
@@ -137,7 +137,7 @@ export function createSourceReadLedger(ctx: SourceLedgerContext): SourceReadLedg
         execute: async (input: any, options: any) => {
           const result = await execute(input, options);
           const path = (result as { path?: string } | undefined)?.path;
-          if (path && !(result as { error?: unknown }).error) {
+          if (path && !(result as { error?: unknown }).error && !targetInputError(input ?? {})) {
             const snap = input?.runId
               ? await resolveRunSnapshot(input.runId, crossProjectTarget(input))
               : ctx.repoSnapshot;

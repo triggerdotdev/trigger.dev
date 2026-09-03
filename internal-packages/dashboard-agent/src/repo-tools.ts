@@ -6,7 +6,12 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import { sliceWellFormed } from "@internal/dashboard-agent-contracts";
 import { tool, type ToolSet } from "ai";
-import { crossProjectTarget, type ApiTarget, type TargetInput } from "./tool-api-client";
+import {
+  crossProjectTarget,
+  targetInputError,
+  type ApiTarget,
+  type TargetInput,
+} from "./tool-api-client";
 import {
   getRepoInfoSchema,
   listFilesSchema,
@@ -225,6 +230,10 @@ export function buildRepoTools(
     runId?: string,
     target?: TargetInput
   ): Promise<RepoSnapshot | { error: string }> {
+    if (target) {
+      const targetError = targetInputError(target);
+      if (targetError) return { error: targetError };
+    }
     if (!runId) return defaultSnapshot;
     if (!resolveRunSnapshot)
       return { error: "Reading a specific run's source isn't available here." };
