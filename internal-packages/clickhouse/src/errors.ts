@@ -215,6 +215,44 @@ export function getErrorInstances(ch: ClickhouseReader, settings?: ClickHouseSet
 }
 
 // ---------------------------------------------------------------------------
+// Error scopes – every project/environment of an org where a fingerprint exists
+// ---------------------------------------------------------------------------
+
+export const ErrorGroupScopesQueryResult = z.object({
+  project_id: z.string(),
+  environment_id: z.string(),
+});
+
+export type ErrorGroupScopesQueryResult = z.infer<typeof ErrorGroupScopesQueryResult>;
+
+export const ErrorGroupScopesQueryParams = z.object({
+  organizationId: z.string(),
+  errorFingerprint: z.string(),
+});
+
+export type ErrorGroupScopesQueryParams = z.infer<typeof ErrorGroupScopesQueryParams>;
+
+/**
+ * Every project/environment of one organization where an error fingerprint has been seen.
+ * `organization_id` leads the ORDER BY key, so this stays a prefix scan.
+ */
+export function getErrorGroupScopes(ch: ClickhouseReader, settings?: ClickHouseSettings) {
+  return ch.query({
+    name: "getErrorGroupScopes",
+    query: `
+      SELECT DISTINCT project_id, environment_id
+      FROM trigger_dev.errors_v1
+      WHERE
+        organization_id = {organizationId: String}
+        AND error_fingerprint = {errorFingerprint: String}
+    `,
+    schema: ErrorGroupScopesQueryResult,
+    params: ErrorGroupScopesQueryParams,
+    settings,
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Affected versions – distinct task_version from error_occurrences_v1
 // ---------------------------------------------------------------------------
 

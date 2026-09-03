@@ -62,6 +62,7 @@ import {
 } from "./llmModelAggregates.js";
 import {
   getErrorGroups,
+  getErrorGroupScopes,
   getErrorInstances,
   getErrorGroupsListQueryBuilder,
   getErrorHourlyOccurrences,
@@ -354,6 +355,7 @@ export class ClickHouse {
   get errors() {
     return {
       getGroups: getErrorGroups(this.reader),
+      getScopes: getErrorGroupScopes(this.reader),
       getInstances: getErrorInstances(this.reader),
       getHourlyOccurrences: getErrorHourlyOccurrences(this.reader),
       affectedVersionsQueryBuilder: getErrorAffectedVersionsQueryBuilder(this.reader),
