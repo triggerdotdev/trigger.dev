@@ -2112,7 +2112,7 @@ export class RunEngine {
   async completeWaitpoint({
     id,
     output,
-    armGuard = false,
+    armGuard,
   }: {
     id: string;
     output?: {
@@ -2121,8 +2121,9 @@ export class RunEngine {
       isError: boolean;
     };
     /**
-     * Arm the durable write-ahead completion guard (the caller sets this from the
-     * runStoreInfraRetryEnabled flag). Off ⇒ no guard job, byte-identical to before.
+     * Force the durable write-ahead completion guard on/off. Left undefined, it defaults to the
+     * runStoreInfraRetryEnabled flag, so EVERY completion caller (not only the ones that opt in) is
+     * covered when the flag is on. Off ⇒ no guard job, byte-identical to before.
      */
     armGuard?: boolean;
   }): Promise<Waitpoint> {
@@ -2134,7 +2135,8 @@ export class RunEngine {
     if (guard) {
       await guard({ waitpointId: id, routeKind: "RESUME_TOKEN" });
     }
-    return this.waitpointSystem.completeWaitpoint({ id, output, armGuard });
+    const shouldArm = armGuard ?? (await (this.options.isBlipRetryEnabled?.() ?? false));
+    return this.waitpointSystem.completeWaitpoint({ id, output, armGuard: shouldArm });
   }
 
   /**
