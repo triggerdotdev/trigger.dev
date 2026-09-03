@@ -2,6 +2,8 @@ import { type ClickHouseClient, createClient } from "@clickhouse/client";
 import { type StartedPostgreSqlContainer, PostgreSqlContainer } from "@testcontainers/postgresql";
 import type { StartedRedisContainer } from "@testcontainers/redis";
 import { PrismaClient } from "@trigger.dev/database";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { Pool } from "pg";
 import { RunOpsPrismaClient } from "@internal/run-ops-database";
 import Redis, { type RedisOptions } from "ioredis";
 import path from "path";
@@ -357,6 +359,27 @@ export const postgresTest = withWarmup(
 
 export type PostgresBlipTestContext = PostgresTestContext & { blip: DbBlipController };
 
+// Blip tests run against the pg driver adapter (PrismaPg + pg.Pool), not the default Rust engine:
+// production uses the adapter, and only the adapter's pool reconnects transparently after a severed
+// connection, so a retried statement lands on a fresh connection. The Rust engine reuses the dead
+// one for a bare statement, which the adapter path never does.
+const blipPrismaFromContainer = async (
+  { postgresContainer }: { postgresContainer: StartedPostgreSqlContainer },
+  use: Use<PrismaClient>
+) => {
+  const pool = new Pool({ connectionString: postgresContainer.getConnectionUri() });
+  // A severed idle connection surfaces asynchronously as a pool 'error'; swallow it so the blip
+  // can't crash the test worker before the pool replaces the connection.
+  pool.on("error", () => {});
+  const prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
+  try {
+    await use(prisma);
+  } finally {
+    await logCleanup("blipPrisma", prisma.$disconnect());
+    await logCleanup("blipPool", pool.end());
+  }
+};
+
 const blipFromContainer = async (
   { postgresContainer }: { postgresContainer: StartedPostgreSqlContainer } & TestContext,
   use: Use<DbBlipController>
@@ -373,7 +396,7 @@ const blipFromContainer = async (
 export const postgresBlipTest = withWarmup(
   test.extend<PostgresBlipTestContext>({
     postgresContainer: clonedPostgresContainer,
-    prisma: prismaFromContainer,
+    prisma: blipPrismaFromContainer,
     blip: blipFromContainer,
   }),
   async () => {
