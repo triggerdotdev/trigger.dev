@@ -7,7 +7,7 @@ import { prisma } from "~/db.server";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { selectMintBaselineSource, stampMintKindFlip } from "~/v3/runOpsMigration/mintFlipGrace";
-import { validatePartialFeatureFlags } from "~/v3/featureFlags";
+import { ORG_LOCKED_FLAGS, validatePartialFeatureFlags } from "~/v3/featureFlags";
 import { flags as getGlobalFlags } from "~/v3/featureFlags.server";
 
 const ParamsSchema = z.object({
@@ -73,6 +73,11 @@ export async function action({ request, params }: ActionFunctionArgs) {
       runOpsMintKindFlippedAt: _ignoredFlippedAt,
       ...requestedFlags
     } = validationResult.data;
+
+    // Org-locked flags are global-only; a per-org value is ignored at runtime, so never persist one.
+    for (const key of ORG_LOCKED_FLAGS) {
+      delete (requestedFlags as Record<string, unknown>)[key];
+    }
 
     // Seed the flip baseline from the current GLOBAL mint flags so an org's FIRST per-org override
     // is graced from the currently-effective global kind, not the hardcoded default "cuid".

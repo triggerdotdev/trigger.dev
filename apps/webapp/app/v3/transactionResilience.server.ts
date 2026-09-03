@@ -59,12 +59,12 @@ export function resolveTransactionResilience(
       backoffMinMs: env.DATABASE_INFRA_RETRY_BACKOFF_MIN_MS,
       backoffMaxMs: env.DATABASE_INFRA_RETRY_BACKOFF_MAX_MS,
     },
-    // Resolved per call from the global feature flag (30s cache), so operators flip it at runtime.
-    // Lazy import: featureFlags.server -> db.server -> this module is a cycle.
+    // Synchronous, DB-free read of the global feature flag (a background poller holds it in memory),
+    // so the gate does no database work on the hot path and survives a blip. Operators flip it at
+    // runtime. Lazy import: featureFlags.server -> db.server -> this module is a cycle.
     isEnabled: async () => {
-      const { cachedFlag } = await import("./featureFlags.server");
-      const { FEATURE_FLAG } = await import("~/v3/featureFlags");
-      return cachedFlag({ key: FEATURE_FLAG.runStoreInfraRetryEnabled, defaultValue: false });
+      const { isRunStoreInfraRetryEnabled } = await import("./runStoreInfraRetryFlag.server");
+      return isRunStoreInfraRetryEnabled();
     },
     budget: new TokenBucketRetryBudget({
       ratePerSec: env.DATABASE_INFRA_RETRY_BUDGET_PER_SEC,

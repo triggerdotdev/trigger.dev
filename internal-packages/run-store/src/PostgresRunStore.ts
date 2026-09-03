@@ -2511,27 +2511,31 @@ export class PostgresRunStore implements RunStore {
   ): Promise<Prisma.WaitpointGetPayload<T>[]> {
     const prisma = client ?? this.readOnlyPrisma;
 
-    if (this.schemaVariant !== "dedicated") {
-      return prisma.waitpoint.findMany(args) as Promise<Prisma.WaitpointGetPayload<T>[]>;
-    }
+    // Wrapped like the other reads: the routing store's cross-DB edge hydration resolves the
+    // `waitpoint` relation through here, so a blip during hydration must retry too.
+    return this.#maybeInfraRetry(prisma, async () => {
+      if (this.schemaVariant !== "dedicated") {
+        return prisma.waitpoint.findMany(args) as Promise<Prisma.WaitpointGetPayload<T>[]>;
+      }
 
-    const { where, orderBy, take, skip, cursor, ...projection } = args as Record<string, any>;
-    const { stripped, requested } = stripDedicatedRelations(projection, WAITPOINT_DEDICATED);
-    const rows = (await (prisma as RunOpsCapableClient).waitpoint.findMany({
-      where,
-      orderBy,
-      take,
-      skip,
-      cursor,
-      ...stripped,
-    })) as Record<string, unknown>[];
-    await this.#hydrateDedicatedRelations(
-      prisma as RunOpsCapableClient,
-      rows,
-      requested,
-      WAITPOINT_DEDICATED
-    );
-    return rows as Prisma.WaitpointGetPayload<T>[];
+      const { where, orderBy, take, skip, cursor, ...projection } = args as Record<string, any>;
+      const { stripped, requested } = stripDedicatedRelations(projection, WAITPOINT_DEDICATED);
+      const rows = (await (prisma as RunOpsCapableClient).waitpoint.findMany({
+        where,
+        orderBy,
+        take,
+        skip,
+        cursor,
+        ...stripped,
+      })) as Record<string, unknown>[];
+      await this.#hydrateDedicatedRelations(
+        prisma as RunOpsCapableClient,
+        rows,
+        requested,
+        WAITPOINT_DEDICATED
+      );
+      return rows as Prisma.WaitpointGetPayload<T>[];
+    });
   }
 
   async updateWaitpoint<T extends Prisma.WaitpointUpdateArgs>(

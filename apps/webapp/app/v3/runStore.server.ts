@@ -75,7 +75,12 @@ export function buildRunStore(deps: BuildRunStoreDeps): RunStore {
       maxWait: deps.singleResilience?.maxWait,
       transactionStartRetry: deps.singleResilience?.startRetry,
       infraRetry: deps.singleResilience?.infraRetry,
-      readInfraRetry: deps.singleResilience?.readInfraRetry,
+      // Share one budget when the replica IS the writer (no distinct pool), so a single physical
+      // pool isn't given two token buckets; use the separate read budget only for a real replica.
+      readInfraRetry:
+        deps.singleReplica === deps.singleWriter
+          ? deps.singleResilience?.infraRetry
+          : deps.singleResilience?.readInfraRetry,
     });
   }
 
@@ -92,7 +97,10 @@ export function buildRunStore(deps: BuildRunStoreDeps): RunStore {
     maxWait: deps.newResilience?.maxWait,
     transactionStartRetry: deps.newResilience?.startRetry,
     infraRetry: deps.newResilience?.infraRetry,
-    readInfraRetry: deps.newResilience?.readInfraRetry,
+    readInfraRetry:
+      deps.newReplica === deps.newWriter
+        ? deps.newResilience?.infraRetry
+        : deps.newResilience?.readInfraRetry,
   });
   const legacyStore = new PostgresRunStore({
     prisma: deps.legacyWriter,
@@ -100,7 +108,10 @@ export function buildRunStore(deps: BuildRunStoreDeps): RunStore {
     maxWait: deps.legacyResilience?.maxWait,
     transactionStartRetry: deps.legacyResilience?.startRetry,
     infraRetry: deps.legacyResilience?.infraRetry,
-    readInfraRetry: deps.legacyResilience?.readInfraRetry,
+    readInfraRetry:
+      deps.legacyReplica === deps.legacyWriter
+        ? deps.legacyResilience?.infraRetry
+        : deps.legacyResilience?.readInfraRetry,
   });
 
   // Gen-2 shards: one dedicated store per descriptor, handed to the N-way router. An aliased shard
@@ -115,7 +126,10 @@ export function buildRunStore(deps: BuildRunStoreDeps): RunStore {
       maxWait: shard.resilience?.maxWait,
       transactionStartRetry: shard.resilience?.startRetry,
       infraRetry: shard.resilience?.infraRetry,
-      readInfraRetry: shard.resilience?.readInfraRetry,
+      readInfraRetry:
+        shard.replica === shard.writer
+          ? shard.resilience?.infraRetry
+          : shard.resilience?.readInfraRetry,
     }),
     aliasOf: shard.aliasOf,
   }));
