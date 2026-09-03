@@ -170,6 +170,14 @@ const EnvironmentSchema = z
     DATABASE_TRANSACTION_START_RETRY_BACKOFF_MAX_MS: IntEnvWithDefault(250),
     DATABASE_TRANSACTION_START_RETRY_BUDGET_PER_SEC: IntEnvWithDefault(50),
     DATABASE_TRANSACTION_START_RETRY_BUDGET_BURST: IntEnvWithDefault(100),
+    // Connection-blip retry for the run store (retries safe-to-replay operations on a transient
+    // connectivity error). OFF by default: enable per environment once validated.
+    DATABASE_INFRA_RETRY_ENABLED: BoolEnvWithDefault(false),
+    DATABASE_INFRA_RETRY_MAX_ATTEMPTS: IntEnvWithDefault(5),
+    DATABASE_INFRA_RETRY_BACKOFF_MIN_MS: IntEnvWithDefault(50),
+    DATABASE_INFRA_RETRY_BACKOFF_MAX_MS: IntEnvWithDefault(500),
+    DATABASE_INFRA_RETRY_BUDGET_PER_SEC: IntEnvWithDefault(50),
+    DATABASE_INFRA_RETRY_BUDGET_BURST: IntEnvWithDefault(100),
     RUN_OPS_DATABASE_TRANSACTION_MAX_WAIT_MS: OptionalIntEnv,
     RUN_OPS_DATABASE_TRANSACTION_START_RETRY_ENABLED: OptionalBoolEnv,
     RUN_OPS_DATABASE_TRANSACTION_START_RETRY_MAX_ATTEMPTS: OptionalIntEnv,

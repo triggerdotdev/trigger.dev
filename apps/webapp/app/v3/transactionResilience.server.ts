@@ -1,4 +1,8 @@
-import { TokenBucketRetryBudget, type TransactionStartRetryConfig } from "@trigger.dev/database";
+import {
+  TokenBucketRetryBudget,
+  type InfraRetryConfig,
+  type TransactionStartRetryConfig,
+} from "@trigger.dev/database";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 
@@ -15,6 +19,11 @@ import { logger } from "~/services/logger.server";
 export type TransactionResilienceConfig = {
   maxWait: number;
   startRetry: TransactionStartRetryConfig;
+  /**
+   * Connection-blip retry for the run store. Its own token bucket (so a storm on one pool cannot
+   * drain another's), driven by the shared DATABASE_INFRA_RETRY_* env and OFF by default.
+   */
+  infraRetry: InfraRetryConfig;
 };
 
 // Exported so the topology singleton can build a per-shard config (each call creates its OWN
@@ -47,6 +56,25 @@ export function resolveTransactionResilience(
       budget: new TokenBucketRetryBudget({ ratePerSec: budgetPerSec, burst: budgetBurst }),
       onRetry: ({ attempt, delayMs }) =>
         logger.warn("retrying transaction start after acquisition failure", {
+          pool,
+          attempt,
+          delayMs,
+        }),
+    },
+    // Own budget per pool, driven by the shared DATABASE_INFRA_RETRY_* env. OFF by default.
+    infraRetry: {
+      options: {
+        enabled: env.DATABASE_INFRA_RETRY_ENABLED,
+        maxAttempts: env.DATABASE_INFRA_RETRY_MAX_ATTEMPTS,
+        backoffMinMs: env.DATABASE_INFRA_RETRY_BACKOFF_MIN_MS,
+        backoffMaxMs: env.DATABASE_INFRA_RETRY_BACKOFF_MAX_MS,
+      },
+      budget: new TokenBucketRetryBudget({
+        ratePerSec: env.DATABASE_INFRA_RETRY_BUDGET_PER_SEC,
+        burst: env.DATABASE_INFRA_RETRY_BUDGET_BURST,
+      }),
+      onRetry: ({ attempt, delayMs }) =>
+        logger.warn("retrying run-store operation after a connection blip", {
           pool,
           attempt,
           delayMs,
