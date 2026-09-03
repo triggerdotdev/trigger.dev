@@ -778,6 +778,15 @@ export class WaitpointSystem {
     runId: string,
     blockingWaitpoints: RunBlockEdge[]
   ): Promise<CompletedWaitpointRecord[] | undefined> {
+    // `.some` before the dedup, so the gate allocates nothing in the case that is universal
+    // today and stays common through a partial rollout: no blocking waitpoint is store-format.
+    // Building the mapped array, the filtered array and the Set first meant three allocations
+    // per resume -- for a 1000-wide batch fan-in too -- to discover there was nothing to ask for.
+    if (!blockingWaitpoints.some((b) => parseWaitpointId(b.waitpoint.id).format === "b32hexW")) {
+      return undefined;
+    }
+
+    // Only a set that really holds one pays for the dedup.
     const storeFormatIds = [
       ...new Set(
         blockingWaitpoints
@@ -785,10 +794,6 @@ export class WaitpointSystem {
           .filter((id) => parseWaitpointId(id).format === "b32hexW")
       ),
     ];
-
-    if (storeFormatIds.length === 0) {
-      return undefined;
-    }
 
     const sources = await this.coordinator.readCompletionEnvelopes({
       runId,

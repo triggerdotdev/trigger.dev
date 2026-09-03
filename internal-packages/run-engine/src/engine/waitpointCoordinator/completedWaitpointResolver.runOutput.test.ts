@@ -175,6 +175,46 @@ describe("the deriveFromRun branch", () => {
     }
   });
 
+  // An empty string is a VALUE, not an absence. The reader's `row.output !== null` is what keeps
+  // it: narrowed to a truthy test it would report the run as output-less and throw
+  // lost-run-output on a run that completed perfectly well. Nothing else pins that, and
+  // `chooseOutput` already treats empty as a value on the write side.
+  postgresTest("keeps an empty-string output rather than refusing", async ({ prisma }) => {
+    const runId = await seedChildRunWithOutput(prisma, "");
+
+    const [entry] = await resolverFor(prisma)({
+      runId: "run_parent",
+      pointer: { cycleSeq: 1, count: 0 },
+      order: [],
+      distinctIds: ["wp_run"],
+      records: [deriveRecord(runId)],
+    });
+
+    expect(entry?.output).toBe("");
+  });
+
+  // Two waitpoints completed by the SAME run. One id in one batch, and both entries carry it:
+  // the dedup must not cost the second waitpoint its output.
+  postgresTest("reads a shared run once and hydrates both waitpoints", async ({ prisma }) => {
+    const runId = await seedChildRunWithOutput(prisma, '{"shared":true}');
+    const { resolve, batches } = countingResolver(prisma);
+
+    const result = await resolve({
+      runId: "run_parent",
+      pointer: { cycleSeq: 1, count: 2 },
+      order: ["wp_first", "wp_second"],
+      distinctIds: ["wp_first", "wp_second"],
+      records: [
+        { ...deriveRecord(runId), id: "wp_first", friendlyId: "waitpoint_wp_first" },
+        { ...deriveRecord(runId), id: "wp_second", friendlyId: "waitpoint_wp_second" },
+      ],
+    });
+
+    expect(batches).toEqual([[runId]]);
+    expect(result).toHaveLength(2);
+    expect(result.map((w) => w.output)).toEqual(['{"shared":true}', '{"shared":true}']);
+  });
+
   // A cycle that defers nothing reads nothing, so an all-inline resume pays no Postgres round
   // trip at all.
   postgresTest("reads nothing when no record defers", async ({ prisma }) => {

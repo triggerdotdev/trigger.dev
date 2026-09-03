@@ -1,6 +1,5 @@
 import type {
   CompletedWaitpointRecord,
-  ReadClient,
   ResolveCompletedWaitpointsArgs,
   RunStore,
 } from "@internal/run-store";
@@ -64,17 +63,23 @@ const RUN_OUTPUT_CHUNK_SIZE = 100;
  * `findRunsByIds` is the store's own grouped replacement for `Promise.all(ids.map(findRun))`,
  * and it forces `id` into the projection so the map keys correctly even though this select
  * names only `output`.
+ *
+ * Takes no read client on purpose. The router reads the owning store's REPLICA when no client is
+ * passed, and forces its PRIMARY for any client that is not replica-branded -- so accepting one
+ * would let a caller put a wide `TaskRun.output` read on the writer by reflex. This read does not
+ * need read-your-writes: the child run committed its output before it completed the waitpoint that
+ * unblocked this parent, so replica lag cannot hide it. That is the opposite of the envelope read
+ * in the legacy arm, which reads a waitpoint completed moments earlier and must use the writer.
  */
 export function createRunOutputsReader(
-  runStore: Pick<RunStore, "findRunsByIds">,
-  client?: ReadClient
+  runStore: Pick<RunStore, "findRunsByIds">
 ): (taskRunIds: string[]) => Promise<Map<string, string>> {
   return async (taskRunIds) => {
     const outputs = new Map<string, string>();
 
     for (let i = 0; i < taskRunIds.length; i += RUN_OUTPUT_CHUNK_SIZE) {
       const chunk = taskRunIds.slice(i, i + RUN_OUTPUT_CHUNK_SIZE);
-      const rows = await runStore.findRunsByIds(chunk, { select: { output: true } }, client);
+      const rows = await runStore.findRunsByIds(chunk, { select: { output: true } });
 
       for (const [id, row] of rows) {
         // A row present with a null output is the same absence as a missing row: either way the
@@ -218,27 +223,34 @@ async function readDeferredOutputs(
   deps: CompletedWaitpointResolverDeps
 ): Promise<Map<string, string>> {
   const runIds = new Set<string>();
-  let deferring: CompletedWaitpointRecord | undefined;
+  let read: NonNullable<CompletedWaitpointResolverDeps["readRunOutputs"]> | undefined;
 
   for (const record of records) {
     const runId = deferredRunIdOf(record);
-    if (runId !== undefined) {
-      runIds.add(runId);
-      deferring ??= record;
+    if (runId === undefined) {
+      continue;
     }
+
+    // Checked here rather than after the pass, so the message names a record that really does
+    // defer rather than whichever one happened to be first. A missing reader is a wiring fault,
+    // so every deferring record is equally implicated and the first is as informative as any.
+    if (!deps.readRunOutputs) {
+      throw new Error(
+        `Waitpoint ${record.id} defers its output to run ${runId}, but the resolver was built with no run-output reader.`
+      );
+    }
+
+    read = deps.readRunOutputs;
+    runIds.add(runId);
   }
 
-  if (runIds.size === 0) {
+  // Set exactly when a record deferred, so this is the same condition as an empty `runIds` --
+  // and unlike `runIds.size`, it carries the reader with it.
+  if (read === undefined) {
     return new Map();
   }
 
-  if (!deps.readRunOutputs) {
-    throw new Error(
-      `Waitpoint ${deferring?.id} defers its output to run ${deferring?.completedByTaskRunId}, but the resolver was built with no run-output reader.`
-    );
-  }
-
-  return deps.readRunOutputs([...runIds]);
+  return read([...runIds]);
 }
 
 // The run a record defers its output to, or undefined when it carries its own output or has

@@ -5,7 +5,7 @@ import { postgresTest } from "@internal/testcontainers";
 import { PostgresRunStore } from "@internal/run-store";
 import type { PrismaClient, Waitpoint } from "@trigger.dev/database";
 import { describe, expect } from "vitest";
-import { seedChildRunWithOutput } from "./testFixtures/childRun.js";
+import { seedChildRunsWithOutputs, seedChildRunWithOutput } from "./testFixtures/childRun.js";
 import { enhanceExecutionSnapshotWithWaitpoints } from "../systems/executionSnapshotSystem.js";
 import { buildCompletedWaitpointRecords } from "./completedWaitpointRecords.js";
 import {
@@ -190,6 +190,46 @@ describe("the resolver reproduces the existing hydration", () => {
     );
 
     expect(actual).toEqual(expected);
+  });
+
+  // Two deferring records in ONE cycle, which is the shape a batch fan-in produces and the one
+  // the batched read introduced. Every other case here defers at most once, so a mis-keyed map
+  // or a swapped output would compare equal against the oracle in all of them.
+  //
+  // The outputs differ deliberately, and one run sits at two interleaved positions, so a swap
+  // between the two runs and a lost second position both show up as a diff.
+  postgresTest("for two RUN waitpoints deferring to different runs", async ({ prisma }) => {
+    const [runA, runB] = await seedChildRunsWithOutputs(prisma, ['{"child":"a"}', '{"child":"b"}']);
+
+    const { expected, actual } = await bothPaths(
+      prisma,
+      [
+        pair({
+          id: "wp_run_a",
+          type: "RUN",
+          output: '{"child":"a"}',
+          completedByTaskRunId: runA,
+        }),
+        pair({
+          id: "wp_run_b",
+          type: "RUN",
+          output: '{"child":"b"}',
+          completedByTaskRunId: runB,
+        }),
+      ],
+      ["wp_run_a", "wp_run_b", "wp_run_a"],
+      BATCH_ID
+    );
+
+    expect(actual).toEqual(expected);
+    // Stated as well as compared: the oracle agreeing is the assertion, but a reader should not
+    // have to run it to see that three entries come back and each output landed on its own id.
+    expect(actual).toHaveLength(3);
+    expect(actual.filter((w) => w.id === "wp_run_a").map((w) => w.output)).toEqual([
+      '{"child":"a"}',
+      '{"child":"a"}',
+    ]);
+    expect(actual.find((w) => w.id === "wp_run_b")?.output).toBe('{"child":"b"}');
   });
 
   postgresTest("for a RUN waitpoint read under a batch", async ({ prisma }) => {
