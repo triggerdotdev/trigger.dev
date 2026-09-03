@@ -126,7 +126,7 @@ function harness(prisma: PrismaClient, redisOptions: never): Harness {
       logger: new Logger("roundtrip", "error"),
     }),
     resolve: createCompletedWaitpointResolver({
-      readRunOutputs: createRunOutputsReader(runStore),
+      readRunOutputs: createRunOutputsReader(runStore, prisma),
     }),
     runStore,
   };

@@ -107,6 +107,27 @@ describe("buildCompletedWaitpointRecords", () => {
       expect(record?.output).toEqual({ deriveFromRun: true });
     });
 
+    // A task that returns nothing completes its waitpoint with NO output, so there is nothing to
+    // derive. Marking it derivable made the resolver read a null TaskRun.output and refuse the
+    // resume as a lost output -- for every triggerAndWait on a void task. The hydration this
+    // replaces resumes cleanly with no output, so the record must carry none, not a marker.
+    it("does not defer a RUN whose output is absent", () => {
+      const [record] = buildCompletedWaitpointRecords([
+        source({ type: "RUN", completedByTaskRunId: "run_1", output: undefined }),
+      ]);
+
+      expect(record?.output).toBeNull();
+    });
+
+    // An empty string is a value, so it IS derivable: TaskRun.output holds it verbatim.
+    it("defers a RUN whose output is an empty string", () => {
+      const [record] = buildCompletedWaitpointRecords([
+        source({ type: "RUN", completedByTaskRunId: "run_1", output: "" }),
+      ]);
+
+      expect(record?.output).toEqual({ deriveFromRun: true });
+    });
+
     // TaskRun.error is jsonb and does not round-trip to the same string, so a RUN error can
     // never be re-read from the run row.
     it("keeps a RUN error inline", () => {

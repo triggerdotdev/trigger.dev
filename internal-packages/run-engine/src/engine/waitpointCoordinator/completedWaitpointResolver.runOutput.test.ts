@@ -30,7 +30,9 @@ function deriveRecord(completedByTaskRunId: string): CompletedWaitpointRecord {
 
 function resolverFor(prisma: PrismaClient) {
   const runStore = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
-  return createCompletedWaitpointResolver({ readRunOutputs: createRunOutputsReader(runStore) });
+  return createCompletedWaitpointResolver({
+    readRunOutputs: createRunOutputsReader(runStore, prisma),
+  });
 }
 
 /**
@@ -42,7 +44,7 @@ function resolverFor(prisma: PrismaClient) {
  */
 function countingResolver(prisma: PrismaClient) {
   const runStore = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
-  const read = createRunOutputsReader(runStore);
+  const read = createRunOutputsReader(runStore, prisma);
   const batches: string[][] = [];
 
   return {
@@ -106,7 +108,14 @@ describe("the deriveFromRun branch", () => {
     expect(failure.reason).toBe("lost-run-output");
   });
 
-  postgresTest("refuses when the run exists with no output", async ({ prisma }) => {
+  // A record that DEFERS to a run whose output is gone still refuses -- that is the case the
+  // refusal exists for, and the record only defers when the waitpoint carried an output.
+  //
+  // This is deliberately reached by hand-building a derive record for an output-less run, a shape
+  // chooseOutput no longer produces. An earlier revision produced it for every non-error RUN
+  // waitpoint, which refused the resume of any task that returns nothing; the test below pins
+  // that case, and this one keeps the refusal itself honest.
+  postgresTest("refuses when a derive record's run output is gone", async ({ prisma }) => {
     const runId = await seedChildRunWithOutput(prisma, null);
 
     const failure = await resolverFor(prisma)({

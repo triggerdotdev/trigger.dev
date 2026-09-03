@@ -89,7 +89,7 @@ async function bothPaths(
   const runStore = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
 
   const actual = await createCompletedWaitpointResolver({
-    readRunOutputs: createRunOutputsReader(runStore),
+    readRunOutputs: createRunOutputsReader(runStore, prisma),
   })({
     runId: RUN_ID,
     ...(batchId ? { batchId } : {}),
@@ -230,6 +230,29 @@ describe("the resolver reproduces the existing hydration", () => {
       '{"child":"a"}',
     ]);
     expect(actual.find((w) => w.id === "wp_run_b")?.output).toBe('{"child":"b"}');
+  });
+
+  // A child that returned nothing. The oracle emits `output: w.output ?? undefined`, i.e. resumes
+  // with no output; an earlier revision marked this derivable, read a null TaskRun.output and
+  // refused the resume outright. Comparing against the oracle is what makes that a failure rather
+  // than a design choice, so the case belongs here and not only in the unit suite.
+  postgresTest("for a RUN waitpoint whose child returned no output", async ({ prisma }) => {
+    const childRunId = await seedChildRunWithOutput(prisma, null);
+    const { expected, actual } = await bothPaths(
+      prisma,
+      [
+        pair({
+          id: "wp_run_void",
+          type: "RUN",
+          output: null,
+          completedByTaskRunId: childRunId,
+        }),
+      ],
+      ["wp_run_void"]
+    );
+
+    expect(actual).toEqual(expected);
+    expect(actual[0]?.output).toBeUndefined();
   });
 
   postgresTest("for a RUN waitpoint read under a batch", async ({ prisma }) => {
