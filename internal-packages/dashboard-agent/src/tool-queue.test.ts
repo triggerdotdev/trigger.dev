@@ -431,7 +431,7 @@ describe("get_queue carries slot-holder facts through, and omits them when absen
     expect(answer).not.toHaveProperty("envConcurrency");
   });
 
-  it("carries the concurrency override breakdown verbatim, so an override reads as temporary", async () => {
+  it("carries the concurrency override breakdown, so an override reads as temporary", async () => {
     const concurrency = {
       current: 5,
       base: 10,
@@ -441,7 +441,21 @@ describe("get_queue carries slot-holder facts through, and omits them when absen
     };
     stubFetch({ concurrency });
     const answer = await getQueue()({ queue: "email-sends", type: "custom" });
-    expect(answer).toMatchObject({ concurrency });
+    expect(answer).toMatchObject({
+      concurrency: {
+        base: 10,
+        override: 5,
+        overriddenBy: "Jane Doe",
+        overriddenAt: "2026-08-01T00:00:00.000Z",
+      },
+    });
+  });
+
+  it("renames the effective limit, so a limit of 1 can't read as one occupied slot", async () => {
+    stubFetch({ concurrency: { current: 1, base: null, override: null } });
+    const answer = await getQueue()({ queue: "uat-ck-queue", type: "custom" });
+    expect(answer).toMatchObject({ concurrency: { effectiveLimit: 1 } });
+    expect((answer as { concurrency: object }).concurrency).not.toHaveProperty("current");
   });
 
   it("omits concurrency rather than fabricating it when the API doesn't send it", async () => {

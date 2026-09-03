@@ -167,6 +167,16 @@ export function pickQueueLiveState(first: QueueLiveRead, second: QueueLiveRead):
 }
 
 /**
+ * The API's `concurrency.current` is the effective limit, not slots in use; under the
+ * name `current` a limit of 1 reads as one occupied slot, so it is renamed here.
+ */
+export function relabelConcurrency(concurrency: unknown) {
+  if (!concurrency || typeof concurrency !== "object") return concurrency;
+  const { current, ...rest } = concurrency as { current?: unknown };
+  return { effectiveLimit: current ?? null, ...rest };
+}
+
+/**
  * Metrics plus the queue's live row. `paused` is the part the model must lead with: a queue
  * someone stopped explains its own emptiness, and every metric below it is a consequence
  * rather than a finding. When the read failed, `exists` is `"unknown"` rather than `false`,
@@ -197,7 +207,7 @@ export function withLiveState(metrics: unknown, queueType: "task" | "custom", li
     ...(row.slotHolders !== undefined ? { slotHolders: row.slotHolders } : {}),
     ...(row.slotHolderFacts !== undefined ? { slotHolderFacts: row.slotHolderFacts } : {}),
     // Distinguishes a temporary override from configuration.
-    ...(row.concurrency !== undefined ? { concurrency: row.concurrency } : {}),
+    ...(row.concurrency !== undefined ? { concurrency: relabelConcurrency(row.concurrency) } : {}),
     // Env-scope facts: the binding constraint can be the environment, not this queue.
     ...(row.envConcurrency !== undefined ? { envConcurrency: row.envConcurrency } : {}),
   };
