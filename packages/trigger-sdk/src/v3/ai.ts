@@ -2712,10 +2712,18 @@ const chatBackgroundQueueKey = locals.create<ModelMessage[]>("chat.backgroundQue
 const chatInjectedInstructionsKey = locals.create<SystemModelMessage[]>(
   "chat.injectedInstructions"
 );
-/** The turn that consumed the instructions lane, so a second read in the same turn still sees it. */
-const chatInstructionsConsumedTurnKey = locals.create<number | undefined>(
-  "chat.injectedInstructionsConsumedTurn"
-);
+/**
+ * What a turn already consumed from the instructions lane, so a second
+ * `toStreamTextOptions()` call in the same turn sees the same blocks.
+ *
+ * Consumed blocks are moved here rather than left in the pending lane: leaving
+ * them there means an injection made during the consumed turn sits behind them,
+ * and clearing the lane on the next turn destroys both.
+ */
+const chatInstructionsConsumedKey = locals.create<{
+  turn: number;
+  blocks: SystemModelMessage[];
+}>("chat.injectedInstructionsConsumed");
 
 /**
  * Run-scoped pipe counter. Stored in locals so concurrent runs in the
@@ -4734,28 +4742,34 @@ function toStreamTextOptions(options?: ToStreamTextOptionsOptions): Record<strin
    * caching, and the addition reads as a later amendment. A changed prefix does
    * cost the first call its cache hit, on turns that actually injected.
    */
+  /**
+   * Consumed once per turn, not once per read, and moved out of the lane rather
+   * than marked read in place.
+   *
+   * Per turn, because a `run()` that builds options twice (a cheap classifier
+   * pass and then the answer) has to see the injection in both, and draining on
+   * read hands it to whichever call ran first. Moved out, because blocks left in
+   * the lane sit in front of anything injected during the same turn, and
+   * clearing the lane on the next turn then destroys both. Outside a turn there
+   * is no turn to scope the stash to, so the lane drains on read there.
+   */
   const injectedInstructions = locals.get(chatInjectedInstructionsKey);
-  if (injectedInstructions && injectedInstructions.length > 0) {
-    /**
-     * Consumed once per turn, not once per read. A `run()` that builds options
-     * twice, a cheap classifier pass and then the answer, has to see the
-     * injection in both: draining on read hands it to whichever call ran first
-     * and drops it from the rest without saying so. Outside a turn there is no
-     * turn to scope that to, so the lane drains on read there instead.
-     */
-    const currentTurn = locals.get(chatTurnContextKey)?.turn;
-    const consumedTurn = locals.get(chatInstructionsConsumedTurnKey);
+  const currentTurn = locals.get(chatTurnContextKey)?.turn;
+  const consumedThisTurn =
+    currentTurn === undefined ? undefined : locals.get(chatInstructionsConsumedKey);
 
-    let blocks: SystemModelMessage[];
-    if (currentTurn === undefined) {
-      blocks = injectedInstructions.splice(0);
-    } else if (consumedTurn !== undefined && consumedTurn !== currentTurn) {
-      injectedInstructions.length = 0;
-      blocks = [];
-    } else {
-      locals.set(chatInstructionsConsumedTurnKey, currentTurn);
-      blocks = injectedInstructions;
+  let injectedBlocks: SystemModelMessage[] = [];
+  if (consumedThisTurn && consumedThisTurn.turn === currentTurn) {
+    injectedBlocks = consumedThisTurn.blocks;
+  } else if (injectedInstructions && injectedInstructions.length > 0) {
+    injectedBlocks = injectedInstructions.splice(0);
+    if (currentTurn !== undefined) {
+      locals.set(chatInstructionsConsumedKey, { turn: currentTurn, blocks: injectedBlocks });
     }
+  }
+
+  if (injectedBlocks.length > 0) {
+    const blocks = injectedBlocks;
 
     const injectedText = blocks
       .map((block) => (typeof block.content === "string" ? block.content : ""))

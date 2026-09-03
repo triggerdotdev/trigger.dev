@@ -289,4 +289,58 @@ describe("chat.inject with a system role", () => {
       await harness.close();
     }
   });
+
+  it("gives each turn only its own injection, over consecutive turns", async () => {
+    /**
+     * Consuming the lane has to move the blocks out of it, not mark them read in
+     * place. Left in place, an injection made during the consumed turn queues
+     * behind them and the next turn's clear destroys both: turn 1 gets its
+     * instruction and every turn after it silently gets none.
+     */
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({ stream: textStream("ok") }),
+    });
+
+    let n = 0;
+
+    const agent = chat.agent({
+      id: "inject-system-consecutive",
+      onTurnComplete: async () => {
+        n++;
+        chat.inject([{ role: "system", content: `INJECT-${n}` }]);
+      },
+      run: async ({ messages, signal }) =>
+        streamText({
+          ...chat.toStreamTextOptions(),
+          model,
+          messages,
+          abortSignal: signal,
+        }),
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "inject-system-consecutive" });
+
+    try {
+      for (const id of ["u1", "u2", "u3", "u4"]) {
+        await harness.sendMessage({ id, role: "user", parts: [{ type: "text", text: id }] });
+        await new Promise((r) => setTimeout(r, 40));
+      }
+
+      const injectionsSeenOn = (turn: number) => {
+        const system = JSON.stringify(
+          model.doStreamCalls[turn]!.prompt.filter((m) => m.role === "system")
+        );
+        return ["INJECT-1", "INJECT-2", "INJECT-3"].filter((key) => system.includes(key));
+      };
+
+      // Turn 0 predates any injection; after that each turn carries exactly the
+      // one injected at the end of the turn before it.
+      expect(injectionsSeenOn(0)).toEqual([]);
+      expect(injectionsSeenOn(1)).toEqual(["INJECT-1"]);
+      expect(injectionsSeenOn(2)).toEqual(["INJECT-2"]);
+      expect(injectionsSeenOn(3)).toEqual(["INJECT-3"]);
+    } finally {
+      await harness.close();
+    }
+  });
 });
