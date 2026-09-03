@@ -2600,7 +2600,9 @@ export class PostgresRunStore implements RunStore {
   ): Promise<Prisma.BatchPayload> {
     const prisma = tx ?? this.prisma;
 
-    return prisma.taskRunWaitpoint.deleteMany(args);
+    // Safe to retry: deleting the same edges again on a blip replay matches 0 rows. #maybeInfraRetry
+    // skips the retry when `tx` is a caller transaction (a bounded unblock delete passes none).
+    return this.#maybeInfraRetry(prisma, () => prisma.taskRunWaitpoint.deleteMany(args));
   }
 
   // The dedicated subset schema lacks control-plane relations; a pass-through include/select of one

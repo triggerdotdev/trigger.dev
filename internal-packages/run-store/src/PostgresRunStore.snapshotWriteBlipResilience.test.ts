@@ -1,6 +1,8 @@
-// The snapshot write must survive a connection blip when infra-retry is on: a dropped pooled
-// connection makes the first attempt fail, the retry runs on a fresh connection, and the supplied
-// id keeps the replay a no-op so exactly one row lands. Without a retry config it fails fast.
+// The snapshot write must survive a connection blip on the pg driver adapter (the prod runtime):
+// the pool discards the dead connection and reissues on a fresh one. The supplied id keeps any
+// replay a no-op, so exactly one row lands. Idempotency under replay is proven directly in
+// PostgresRunStore.snapshotIdempotency.test.ts; the retry loop and classifier in the database
+// package's unit tests.
 import { postgresBlipTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
 import { generateInternalId } from "@trigger.dev/core/v3/isomorphic";
@@ -54,7 +56,7 @@ postgresBlipTest(
 );
 
 postgresBlipTest(
-  "createExecutionSnapshot without infra-retry surfaces the connection error (baseline)",
+  "createExecutionSnapshot survives an idle blip even without infra-retry (adapter pool reconnects)",
   { timeout: 60_000 },
   async ({ prisma, blip }) => {
     const client = prisma as PrismaClient;
@@ -69,6 +71,8 @@ postgresBlipTest(
     await store.findRun({ id: run.id }, prisma as never); // warm the pool
     await blip.severIdle();
 
-    await expect(store.createExecutionSnapshot(snapshotInput(run.id, env, id))).rejects.toThrow();
+    const created = await store.createExecutionSnapshot(snapshotInput(run.id, env, id));
+    expect(created.id).toBe(id);
+    expect(await client.taskRunExecutionSnapshot.count({ where: { id } })).toBe(1);
   }
 );

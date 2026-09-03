@@ -5,8 +5,10 @@
 
 import { postgresBlipTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
+import { generateInternalId } from "@trigger.dev/core/v3/isomorphic";
 import { expect } from "vitest";
 import { PostgresRunStore } from "./PostgresRunStore.js";
+import { setupSnapshotIdFixture } from "./testFixtures/snapshotIdFixture.js";
 
 const infraRetry = {
   options: { enabled: true, maxAttempts: 12, backoffMinMs: 20, backoffMaxMs: 120 },
@@ -81,7 +83,7 @@ postgresBlipTest(
 );
 
 postgresBlipTest(
-  "findWaitpoint without infra-retry surfaces the connection error (baseline)",
+  "findWaitpoint survives an idle blip even without infra-retry (adapter pool reconnects)",
   { timeout: 60_000 },
   async ({ prisma, blip }) => {
     const client = prisma as PrismaClient;
@@ -96,6 +98,38 @@ postgresBlipTest(
     await store.findWaitpoint({ where: { id: "wp_blip_base" } }); // warm the pool
     await blip.severIdle();
 
-    await expect(store.findWaitpoint({ where: { id: "wp_blip_base" } })).rejects.toThrow();
+    // The pg driver adapter's pool discards the dead connection and opens a fresh one for the next
+    // statement, so an idle-connection blip is absorbed transparently, with no retry needed.
+    const found = await store.findWaitpoint({ where: { id: "wp_blip_base" } });
+    expect(found?.id).toBe("wp_blip_base");
+  }
+);
+
+postgresBlipTest(
+  "deleteManyTaskRunWaitpoints recovers from a connection blip when infra-retry is enabled",
+  { timeout: 60_000 },
+  async ({ prisma, blip }) => {
+    const client = prisma as PrismaClient;
+    const { run, env } = await setupSnapshotIdFixture(client);
+    const waitpointId = generateInternalId();
+    await createPendingWaitpoint(client, waitpointId, env.projectId, env.id);
+    const edge = await client.taskRunWaitpoint.create({
+      data: { taskRunId: run.id, waitpointId, projectId: env.projectId },
+    });
+
+    const store = new PostgresRunStore({
+      prisma: prisma as never,
+      readOnlyPrisma: prisma as never,
+      infraRetry,
+    });
+
+    await store.findManyTaskRunWaitpoints({ where: { taskRunId: run.id } }); // warm the pool
+    await blip.severIdle();
+
+    const deleted = await store.deleteManyTaskRunWaitpoints({
+      where: { taskRunId: run.id, id: { in: [edge.id] } },
+    });
+    expect(deleted.count).toBe(1);
+    expect(await client.taskRunWaitpoint.count({ where: { taskRunId: run.id } })).toBe(0);
   }
 );
