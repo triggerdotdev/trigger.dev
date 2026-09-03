@@ -117,6 +117,75 @@ describe("schedule_watch project/environment override", () => {
   });
 });
 
+describe("schedule_watch branch override", () => {
+  // Parent and branch resolve to different env ids, so a dropped branch is caught by
+  // the id (not just by the header sent).
+  function stubBranchFetch() {
+    return vi.fn(async (input: any, init: any) => {
+      const url = typeof input === "string" ? input : input.url;
+      calls.push(url);
+      const branch = init?.headers?.["x-trigger-branch"];
+      const match = url.match(/\/api\/v1\/projects\/([^/]+)\/([^/]+)\/jwt$/);
+      if (match) {
+        const sub = branch
+          ? `env_${match[1]}_${match[2]}_${branch}`
+          : `env_${match[1]}_${match[2]}_parent`;
+        return Response.json({ token: fakeJwt(sub) });
+      }
+      return new Response("not found", { status: 404 });
+    });
+  }
+
+  it("resolves the branch child's environment id, not the preview parent's", async () => {
+    vi.stubGlobal("fetch", stubBranchFetch());
+    const t = tools();
+
+    const result = await (t.schedule_watch as any).execute(
+      { watch: WATCH, project: "proj_other", environment: "preview", branch: "feat/x" },
+      {} as any
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(calls).toEqual([`${ORIGIN}/api/v1/projects/proj_other/preview/jwt`]);
+    expect(result.intent).toEqual({
+      kind: "watch",
+      spec: WATCH,
+      target: { projectRef: "proj_other", environmentId: "env_proj_other_preview_feat/x" },
+    });
+  });
+
+  it("resolves the branch child's environment id for a dev branch", async () => {
+    vi.stubGlobal("fetch", stubBranchFetch());
+    const t = tools();
+
+    const result = await (t.schedule_watch as any).execute(
+      { watch: WATCH, project: "proj_other", environment: "dev", branch: "feat/x" },
+      {} as any
+    );
+
+    expect(result.intent.target).toEqual({
+      projectRef: "proj_other",
+      environmentId: "env_proj_other_dev_feat/x",
+    });
+  });
+
+  it("resolves the current project's branch child when only branch is given", async () => {
+    vi.stubGlobal("fetch", stubBranchFetch());
+    const t = tools();
+
+    const result = await (t.schedule_watch as any).execute(
+      { watch: WATCH, branch: "feat/x" },
+      {} as any
+    );
+
+    expect(calls).toEqual([`${ORIGIN}/api/v1/projects/proj_current/prod/jwt`]);
+    expect(result.intent.target).toEqual({
+      projectRef: "proj_current",
+      environmentId: "env_proj_current_prod_feat/x",
+    });
+  });
+});
+
 describe("scheduleWatchSchema round-trip", () => {
   it("accepts project/environment and stays valid without them", () => {
     const inputSchema = scheduleWatchSchema.inputSchema as ZodTypeAny;

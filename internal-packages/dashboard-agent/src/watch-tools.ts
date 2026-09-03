@@ -16,12 +16,12 @@ export function buildWatchTools(args: {
     // it, so the card owns consent, the cap and dedup.
     schedule_watch: tool({
       ...scheduleWatchSchema,
-      execute: async ({ watch, project, environment }) => {
+      execute: async ({ watch, project, environment, branch }) => {
         let target: { projectRef: string; environmentId: string } | undefined;
 
         // Only reached to spend a network call: the current-environment path (no
         // override) stays pure schema validation, unchanged from before.
-        if (project || environment) {
+        if (project || environment || branch) {
           if (!client.hasAuth) return NO_AUTH;
           const projectRef = project ?? ctx.projectRef;
           if (!projectRef) {
@@ -30,6 +30,7 @@ export function buildWatchTools(args: {
           const resolved = await client.resolveEnvironmentId({
             projectRef: project,
             environmentName: environment,
+            branch,
           });
           if (isEnvUnavailable(resolved)) {
             if (resolved.envUnavailable === "missing") {
