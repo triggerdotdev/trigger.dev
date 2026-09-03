@@ -62,7 +62,7 @@ describe("schema composition compatibility", () => {
     });
 
     const bundledModule = await import(
-      `data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString("base64")}`
+      `data:text/javascript;base64,${Buffer.from(result.outputFiles[0]!.text).toString("base64")}`
     );
 
     expect(bundledModule.parsed).toMatchObject({
