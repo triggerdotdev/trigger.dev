@@ -236,6 +236,29 @@ describe("the resolver reproduces the existing hydration", () => {
   // with no output; an earlier revision marked this derivable, read a null TaskRun.output and
   // refused the resume outright. Comparing against the oracle is what makes that a failure rather
   // than a design choice, so the case belongs here and not only in the unit suite.
+  // An orphan: the completing run is gone, so onDelete: SetNull cleared the back-reference while
+  // the waitpoint kept its output. The record must stay inline -- derivable would send the
+  // resolver to a run that no longer exists -- and the entry must omit completedByTaskRun, which
+  // only the oracle comparison pins.
+  postgresTest("for an orphaned RUN waitpoint that kept its output", async ({ prisma }) => {
+    const { expected, actual } = await bothPaths(
+      prisma,
+      [
+        pair({
+          id: "wp_run_orphan",
+          type: "RUN",
+          output: '{"orphan":true}',
+          completedByTaskRunId: null,
+        }),
+      ],
+      ["wp_run_orphan"]
+    );
+
+    expect(actual).toEqual(expected);
+    expect(actual[0]?.output).toBe('{"orphan":true}');
+    expect(actual[0]?.completedByTaskRun).toBeUndefined();
+  });
+
   postgresTest("for a RUN waitpoint whose child returned no output", async ({ prisma }) => {
     const childRunId = await seedChildRunWithOutput(prisma, null);
     const { expected, actual } = await bothPaths(

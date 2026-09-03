@@ -1,3 +1,4 @@
+import { isReadReplicaClient } from "@internal/run-store";
 import type {
   CompletedWaitpointRecord,
   ReadClient,
@@ -76,12 +77,29 @@ const RUN_OUTPUT_CHUNK_SIZE = 100;
  *
  * The router turns any client that is not replica-branded into the owning store's primary, and
  * turns NO client into its replica -- so an optional parameter would silently reintroduce the lag
- * window every time a caller omitted it. Hence required.
+ * window every time a caller omitted it. Hence required, and hence checked: `ReadClient` admits
+ * both a writer and a replica, and the two are structurally identical, separable only by the
+ * runtime brand. A caller passing `readOnlyPrisma` would type-check and quietly reinstate the
+ * window, so the constraint has to be asserted rather than documented. Constructed once at wiring
+ * time, so the assertion costs nothing per read.
+ *
+ * The premise this read rests on: `TaskRun.output` still holds what the waitpoint was completed
+ * with. `completeAttemptSuccess` writes the run's output and the waitpoint's completion from the
+ * same values, and nothing overwrites a completed run's output afterwards. If that ever stops
+ * being true, a deferred record resolves the NEWER value while the legacy path would emit the
+ * frozen one -- and unlike a lost output, that divergence is silent.
  */
 export function createRunOutputsReader(
   runStore: Pick<RunStore, "findRunsByIds">,
   client: ReadClient
 ): (taskRunIds: string[]) => Promise<Map<string, string>> {
+  if (isReadReplicaClient(client)) {
+    throw new Error(
+      "createRunOutputsReader needs a writer: a replica can trail the child's committed output " +
+        "and the resolver would refuse the resume as a lost output."
+    );
+  }
+
   return async (taskRunIds) => {
     const outputs = new Map<string, string>();
 
@@ -293,6 +311,17 @@ function hydrateOutput(
   // application/store output the same way it does for a Postgres-served snapshot.
   if ("ref" in record.output) {
     return record.output.ref;
+  }
+
+  // A record marked deriveFromRun with no run to derive from. Unreachable from today's
+  // chooseOutput, which requires the id before it marks anything derivable -- but this is the one
+  // spot where the design could fail OPEN rather than loud, resolving the waitpoint with no output
+  // at all, and a reordering of those conjuncts is all it would take. Treated as the build fault
+  // it would be, like a record arriving with no reader wired.
+  if (record.output !== null && "deriveFromRun" in record.output && !record.completedByTaskRunId) {
+    throw new Error(
+      `Waitpoint ${record.id} defers its output to its completing run, but carries no run id.`
+    );
   }
 
   const runId = deferredRunIdOf(record);

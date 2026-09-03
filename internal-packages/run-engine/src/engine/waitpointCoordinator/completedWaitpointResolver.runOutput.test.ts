@@ -4,7 +4,7 @@
 // by a pure test: the claim is that TaskRun.output holds the same string the waitpoint carried,
 // and only a real row can settle that. The pure suite covers everything that does not read.
 import { postgresTest } from "@internal/testcontainers";
-import { PostgresRunStore } from "@internal/run-store";
+import { markReadReplicaClient, PostgresRunStore } from "@internal/run-store";
 import type { CompletedWaitpointRecord } from "@internal/run-store";
 import type { PrismaClient } from "@trigger.dev/database";
 import { describe, expect } from "vitest";
@@ -246,6 +246,31 @@ describe("the deriveFromRun branch", () => {
 
     expect(result[0]?.output).toBe('{"ok":true}');
     expect(batches).toEqual([]);
+  });
+
+  // The required-writer rule is a runtime check because it cannot be a type one: ReadClient admits
+  // a writer and a replica, and they are structurally identical apart from the brand.
+  postgresTest("refuses to be built with a replica client", async ({ prisma }) => {
+    const runStore = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+    const replica = markReadReplicaClient({ ...prisma });
+
+    expect(() => createRunOutputsReader(runStore, replica as never)).toThrow(/needs a writer/);
+  });
+
+  // The one place the design could fail OPEN instead of loud: a derive marker with no run to
+  // derive from would otherwise resolve the waitpoint with no output and no error.
+  postgresTest("throws on a derive record carrying no run id", async ({ prisma }) => {
+    const { id: _drop, ...rest } = deriveRecord("run_unused");
+
+    await expect(
+      resolverFor(prisma)({
+        runId: "run_parent",
+        pointer: { cycleSeq: 1, count: 0 },
+        order: [],
+        distinctIds: ["wp_run"],
+        records: [{ ...rest, id: "wp_run", completedByTaskRunId: undefined }],
+      })
+    ).rejects.toThrow(/carries no run id/);
   });
 
   postgresTest("throws when a derive record arrives with no reader wired", async ({ prisma }) => {
