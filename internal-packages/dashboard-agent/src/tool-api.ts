@@ -170,7 +170,7 @@ export function pickQueueLiveState(first: QueueLiveRead, second: QueueLiveRead):
  * The API's `concurrency.current` is the effective limit, not slots in use; under the
  * name `current` a limit of 1 reads as one occupied slot, so it is renamed here.
  */
-export function relabelConcurrency(concurrency: unknown) {
+function relabelConcurrency(concurrency: unknown) {
   if (!concurrency || typeof concurrency !== "object") return concurrency;
   const { current, ...rest } = concurrency as { current?: unknown };
   return { effectiveLimit: current ?? null, ...rest };
