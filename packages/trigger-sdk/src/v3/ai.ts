@@ -2712,6 +2712,10 @@ const chatBackgroundQueueKey = locals.create<ModelMessage[]>("chat.backgroundQue
 const chatInjectedInstructionsKey = locals.create<SystemModelMessage[]>(
   "chat.injectedInstructions"
 );
+/** The turn that consumed the instructions lane, so a second read in the same turn still sees it. */
+const chatInstructionsConsumedTurnKey = locals.create<number | undefined>(
+  "chat.injectedInstructionsConsumedTurn"
+);
 
 /**
  * Run-scoped pipe counter. Stored in locals so concurrent runs in the
@@ -4732,8 +4736,28 @@ function toStreamTextOptions(options?: ToStreamTextOptionsOptions): Record<strin
    */
   const injectedInstructions = locals.get(chatInjectedInstructionsKey);
   if (injectedInstructions && injectedInstructions.length > 0) {
-    const injectedText = injectedInstructions
-      .splice(0)
+    /**
+     * Consumed once per turn, not once per read. A `run()` that builds options
+     * twice, a cheap classifier pass and then the answer, has to see the
+     * injection in both: draining on read hands it to whichever call ran first
+     * and drops it from the rest without saying so. Outside a turn there is no
+     * turn to scope that to, so the lane drains on read there instead.
+     */
+    const currentTurn = locals.get(chatTurnContextKey)?.turn;
+    const consumedTurn = locals.get(chatInstructionsConsumedTurnKey);
+
+    let blocks: SystemModelMessage[];
+    if (currentTurn === undefined) {
+      blocks = injectedInstructions.splice(0);
+    } else if (consumedTurn !== undefined && consumedTurn !== currentTurn) {
+      injectedInstructions.length = 0;
+      blocks = [];
+    } else {
+      locals.set(chatInstructionsConsumedTurnKey, currentTurn);
+      blocks = injectedInstructions;
+    }
+
+    const injectedText = blocks
       .map((block) => (typeof block.content === "string" ? block.content : ""))
       .filter(Boolean)
       .join("\n\n");

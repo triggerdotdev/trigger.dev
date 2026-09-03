@@ -216,9 +216,11 @@ rather than into the transcript.
   `messages` either way.
 </Warning>
 
-- An injection applies to the next inference call only. The lane is drained once
-  applied, so a block injected in `onTurnComplete` shapes the following turn and is
-  not repeated on every turn after it.
+- An injection applies to the next turn only. A block injected in `onTurnComplete`
+  shapes the following turn and is cleared after it, so it is not repeated on every
+  turn from then on. Within that turn it is consumed once rather than once per read,
+  so a `run()` that builds options more than once sees the same instructions in
+  every build.
 - The injected text is merged into a single instruction rather than added as a
   second block, because AI SDK 5 rejects an array of system blocks while accepting
   one structured block. Merging changes the cached prefix, so a cached system prompt

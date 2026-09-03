@@ -232,4 +232,61 @@ describe("chat.inject with a system role", () => {
       await harness.close();
     }
   });
+
+  it("carries the injection into every options build in the turn, not only the first", async () => {
+    /**
+     * A `run()` that builds options twice, a classifier pass and then the
+     * answer, has to see the injection in both. Consuming on read hands it to
+     * whichever call ran first and drops it from the rest, silently.
+     */
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({ stream: textStream("ok") }),
+    });
+
+    const seen: { first: boolean; second: boolean }[] = [];
+    let injectedOnce = false;
+
+    const agent = chat.agent({
+      id: "inject-system-two-builds",
+      onTurnComplete: async () => {
+        if (injectedOnce) return;
+        injectedOnce = true;
+        chat.inject([{ role: "system", content: "SENTINEL-BOTH-BUILDS" }]);
+      },
+      run: async ({ messages, signal }) => {
+        const first = chat.toStreamTextOptions();
+        const second = chat.toStreamTextOptions();
+        const has = (o: { system?: unknown }) =>
+          JSON.stringify(o.system ?? null).includes("SENTINEL-BOTH-BUILDS");
+        seen.push({ first: has(first), second: has(second) });
+        return streamText({ ...second, model, messages, abortSignal: signal });
+      },
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "inject-system-two-builds" });
+
+    try {
+      await harness.sendMessage({ id: "u1", role: "user", parts: [{ type: "text", text: "one" }] });
+      await new Promise((r) => setTimeout(r, 40));
+
+      await harness.sendMessage({ id: "u2", role: "user", parts: [{ type: "text", text: "two" }] });
+      await new Promise((r) => setTimeout(r, 40));
+
+      await harness.sendMessage({
+        id: "u3",
+        role: "user",
+        parts: [{ type: "text", text: "three" }],
+      });
+      await new Promise((r) => setTimeout(r, 40));
+
+      // Turn 1 predates the injection, turn 2 carries it in both builds, turn 3 is clear again.
+      expect(seen).toEqual([
+        { first: false, second: false },
+        { first: true, second: true },
+        { first: false, second: false },
+      ]);
+    } finally {
+      await harness.close();
+    }
+  });
 });
