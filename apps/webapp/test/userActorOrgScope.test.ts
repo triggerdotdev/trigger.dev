@@ -18,7 +18,13 @@ const ctx = vi.hoisted(() => ({ prisma: undefined as unknown as PrismaClient }))
 const mocks = vi.hoisted(() => {
   const assertSourcePatActive = vi.fn<(...args: any[]) => Promise<boolean>>();
   assertSourcePatActive.mockResolvedValue(true);
-  return { assertSourcePatActive };
+  const resolveDashboardAgentRepoSnapshot = vi.fn(async (projectId: string) => ({
+    owner: "acme",
+    repo: projectId,
+    sha: "a".repeat(40),
+    tarballUrl: `https://codeload.example/${projectId}`,
+  }));
+  return { assertSourcePatActive, resolveDashboardAgentRepoSnapshot };
 });
 
 vi.mock("~/db.server", () => {
@@ -65,12 +71,7 @@ vi.mock("~/services/dashboardAgent.server", async (importOriginal) => {
   const actual = await importOriginal<typeof import("~/services/dashboardAgent.server")>();
   return {
     ...actual,
-    resolveDashboardAgentRepoSnapshot: async (projectId: string) => ({
-      owner: "acme",
-      repo: projectId,
-      sha: "a".repeat(40),
-      tarballUrl: `https://codeload.example/${projectId}`,
-    }),
+    resolveDashboardAgentRepoSnapshot: mocks.resolveDashboardAgentRepoSnapshot,
   };
 });
 vi.mock("~/services/personalAccessToken.server", async (importOriginal) => {
@@ -85,13 +86,27 @@ vi.mock("~/services/personalAccessToken.server", async (importOriginal) => {
 });
 
 let patBearerUserId = "";
+// The OSS fallback's ability is otherwise purely cap-driven (UAT) or permissive (PAT) — there's
+// no real path to a role that fails a specific `can()` check. Set this to force one, for the one
+// case that needs it; `undefined` (the default) leaves the real ability untouched.
+let forcedAbilityCan: ((action: string, resource: unknown) => boolean) | undefined;
 
 // The real fallback's `authenticatePat` looks up a real PAT row by hash, which the synthetic
 // `tr_pat_e2e_token` bearer used below has none of. Only that lookup is stubbed; every UAT check
-// (`authenticateUserActor`) stays real.
+// (`authenticateUserActor`) stays real, aside from the opt-in ability override above.
 vi.mock("~/services/rbac.server", async (importOriginal) => {
   const actual = await importOriginal<typeof import("~/services/rbac.server")>();
   // Patched in place (not spread): the plugin's methods are bound to its own instance.
+  const realAuthenticateUserActor = actual.rbac.authenticateUserActor.bind(actual.rbac);
+  actual.rbac.authenticateUserActor = async (
+    ...args: Parameters<typeof realAuthenticateUserActor>
+  ) => {
+    const result = await realAuthenticateUserActor(...args);
+    if (result.ok && forcedAbilityCan) {
+      return { ...result, ability: { ...result.ability, can: forcedAbilityCan } };
+    }
+    return result;
+  };
   actual.rbac.authenticatePat = async () => ({
     ok: true as const,
     userId: patBearerUserId,
@@ -173,7 +188,7 @@ async function seedWorld(prisma: PrismaClient) {
     data: { organizationId: orgB.id, userId: crossMember.id, role: "ADMIN" },
   });
 
-  async function projectWithEnvironments(name: string, devOwnerMembershipId: string) {
+  async function projectWithEnvironments(name: string, extraDevOwnerMembershipId?: string) {
     const projectSlug = `${slug}_${name}`;
     const project = await prisma.project.create({
       data: {
@@ -196,19 +211,30 @@ async function seedWorld(prisma: PrismaClient) {
           ...data,
           projectId: project.id,
           organizationId: orgA.id,
-          apiKey: `tr_${data.slug}_${projectSlug}`,
-          pkApiKey: `pk_${data.slug}_${projectSlug}`,
+          // Two dev rows can share a slug (unique key is projectId+slug+orgMemberId), so the key
+          // needs its own uniqueness source too.
+          apiKey: `tr_${data.slug}_${projectSlug}_${suffix()}`,
+          pkApiKey: `pk_${data.slug}_${projectSlug}_${suffix()}`,
           shortcode: `${data.slug}${suffix()}`,
         },
       });
 
     const prod = await envFor({ slug: "prod", type: "PRODUCTION" });
     const staging = await envFor({ slug: "stg", type: "STAGING" });
-    const dev = await envFor({
-      slug: "dev",
+    // The caller's own dev, on every project — org membership never substitutes for it.
+    const dev = await envFor({ slug: "dev", type: "DEVELOPMENT", orgMemberId: memberOfA.id });
+    const devBranch = await envFor({
+      slug: `dev-feat-${name}`,
       type: "DEVELOPMENT",
-      orgMemberId: devOwnerMembershipId,
+      branchName: `feat/${name}`,
+      parentEnvironmentId: dev.id,
+      orgMemberId: memberOfA.id,
     });
+    // A second member's own dev, same slug — the unique key is (project, slug, orgMember), so
+    // both rows coexist. Org membership doesn't hand this one over to the caller.
+    const otherDev = extraDevOwnerMembershipId
+      ? await envFor({ slug: "dev", type: "DEVELOPMENT", orgMemberId: extraDevOwnerMembershipId })
+      : undefined;
     const previewParent = await envFor({ slug: "preview", type: "PREVIEW" });
     const previewBranch = await envFor({
       slug: `preview-feat-${name}`,
@@ -265,6 +291,7 @@ async function seedWorld(prisma: PrismaClient) {
     const prodPromotion = await promote(prod, `${name}-prod-task`);
     const stagingPromotion = await promote(staging, `${name}-staging-task`);
     await promote(previewBranch, `${name}-preview-task`);
+    await promote(devBranch, `${name}-dev-branch-task`);
 
     async function runOn(
       environment: { id: string },
@@ -298,10 +325,21 @@ async function seedWorld(prisma: PrismaClient) {
     const run = await runOn(prod, "PRODUCTION", prodPromotion);
     const stagingRun = await runOn(staging, "STAGING", stagingPromotion);
 
-    return { project, prod, staging, dev, previewParent, previewBranch, run, stagingRun };
+    return {
+      project,
+      prod,
+      staging,
+      dev,
+      devBranch,
+      otherDev,
+      previewParent,
+      previewBranch,
+      run,
+      stagingRun,
+    };
   }
 
-  const current = await projectWithEnvironments("current", memberOfA.id);
+  const current = await projectWithEnvironments("current");
   const sibling = await projectWithEnvironments("sibling", otherOfA.id);
 
   const bProject = await prisma.project.create({
@@ -451,6 +489,7 @@ const projects = (opts: { token: string; organizationId?: string }) =>
 beforeEach(() => {
   mocks.assertSourcePatActive.mockReset();
   mocks.assertSourcePatActive.mockResolvedValue(true);
+  forcedAbilityCan = undefined;
 });
 
 describe("an org-wide token reaches a sibling project across every UAT route", () => {
@@ -555,6 +594,18 @@ describe("an org-wide token reaches a sibling project across every UAT route", (
         });
         expect(scopedSibling.status).toBe(403);
         expect(scopedSibling.body.code).toBe("forbidden_environment");
+
+        // An org claim naming the right org still needs membership of it.
+        const outsiderToken = await mintUat({
+          userId: world.stranger.id,
+          organizationId: world.orgA.id,
+        });
+        const outsider = await route.callSibling({
+          token: outsiderToken,
+          projectRef: world.sibling.project.externalRef,
+          env: "prod",
+        });
+        expect(outsider.status).toBe(404);
       }
 
       // Route-specific extras: a preview branch of the sibling project, and another member's dev
@@ -584,15 +635,23 @@ describe("an org-wide token reaches a sibling project across every UAT route", (
       expect(branchSnapshot.status).toBe(200);
       expect(branchSnapshot.body.repo).toBe(world.sibling.project.id);
 
+      // Another member's dev env: org membership doesn't hand it over. `crossMember` has no dev
+      // row of their own on "sibling" — `member` now does, so this uses the one caller who can
+      // prove that without accidentally hitting their own row instead.
+      const noDevToken = await mintUat({
+        userId: world.crossMember.id,
+        organizationId: world.orgA.id,
+        environmentId: world.current.prod.id,
+      });
       const otherDevWorker = await worker({
-        token,
+        token: noDevToken,
         projectRef: world.sibling.project.externalRef,
         env: "dev",
       });
       expect(otherDevWorker.status).toBe(404);
 
       const otherDevSnapshot = await snapshot({
-        token,
+        token: noDevToken,
         projectRef: world.sibling.project.externalRef,
         env: "dev",
       });
@@ -629,22 +688,44 @@ postgresTest(
     };
     const token = await mintUat(minted);
 
-    // Every environment of a sibling project, dev included — none of them the token's own.
+    // Every environment of a sibling project, dev included — the caller's own dev row, not the
+    // second member's, and none of them the token's own environment.
     const sibling = await environments({ token, projectRef: world.sibling.project.externalRef });
     expect(sibling.status).toBe(200);
-    // The member's own dev env lives on "current", not "sibling" — dev is per-user.
-    expect(sibling.body.map((e: any) => e.slug).sort()).toEqual(["preview", "prod", "stg"]);
+    expect(sibling.body.map((e: any) => e.slug).sort()).toEqual(["dev", "preview", "prod", "stg"]);
 
     // Its own project answers the same way: with an org claim, the org is the boundary.
     const own = await environments({ token, projectRef: world.current.project.externalRef });
     expect(own.status).toBe(200);
     expect(own.body.map((e: any) => e.slug).sort()).toEqual(["dev", "preview", "prod", "stg"]);
 
-    // A project outside the claimed organization.
-    // The RBAC plugin's own membership floor turns this away before the route's org-scope
-    // check ever runs, so this proves the same boundary one layer earlier.
-    const foreign = await environments({ token, projectRef: world.bProject.externalRef });
+    // A project outside the claimed organization — routed through a member of both orgs so the
+    // RBAC plugin's own membership floor doesn't intercept first; this exercises the route's own
+    // org-scope check and its error shape.
+    const crossEnvToken = await mintUat({
+      userId: world.crossMember.id,
+      organizationId: world.orgA.id,
+    });
+    const foreign = await environments({
+      token: crossEnvToken,
+      projectRef: world.bProject.externalRef,
+    });
     expect(foreign.status).toBe(403);
+    expect(foreign.body.code).toBe("forbidden_environment");
+
+    // An org claim naming the right org still needs membership of it. This route resolves its
+    // org before authenticating (its `context` looks the project up directly), so the RBAC
+    // plugin's own membership floor turns a non-member away here — one layer earlier than the
+    // route's own `findProjectByRef` check would.
+    const outsiderToken = await mintUat({
+      userId: world.stranger.id,
+      organizationId: world.orgA.id,
+    });
+    const outsider = await environments({
+      token: outsiderToken,
+      projectRef: world.current.project.externalRef,
+    });
+    expect(outsider.status).toBe(403);
 
     // An environment claim with no org claim: that environment only, nothing in another project.
     const envOnlyToken = await mintUat({
@@ -745,6 +826,20 @@ postgresTest(
     const foreign = await jwt({ token, projectRef: world.bProject.externalRef, env: "prod" });
     expect(foreign.status).toBe(404);
 
+    // A member of both orgs still can't reach the other org's environment with an orgA claim —
+    // membership resolves the project, so this proves the claim's own org boundary.
+    const crossToken = await mintUat({
+      userId: world.crossMember.id,
+      organizationId: world.orgA.id,
+    });
+    const crossForeign = await jwt({
+      token: crossToken,
+      projectRef: world.bProject.externalRef,
+      env: "prod",
+    });
+    expect(crossForeign.status).toBe(403);
+    expect(crossForeign.body.code).toBe("forbidden_environment");
+
     // A non-member of the claimed org.
     const outsiderToken = await mintUat({
       userId: world.stranger.id,
@@ -815,7 +910,8 @@ postgresTest(
     await expect(
       assertUserActorEnvironmentAccess(undefined, world.current.prod)
     ).resolves.toBeUndefined();
-  }
+  },
+  60_000
 );
 
 describe("a user-actor token's environment scope, driven through every route", () => {
@@ -924,6 +1020,13 @@ describe("a user-actor token's environment scope, driven through every route", (
           branch: "feat/current",
           target: world.current.previewBranch,
           fallsBackTo: world.current.previewParent,
+        },
+        {
+          name: "a development branch",
+          env: "dev",
+          branch: "feat/current",
+          target: world.current.devBranch,
+          fallsBackTo: world.current.dev,
         },
       ];
 
@@ -1137,6 +1240,29 @@ postgresTest(
       env: "prod",
     });
     expect(snapshotServed.status).toBe(200);
+  },
+  60_000
+);
+
+postgresTest(
+  "repo-snapshot authorization denies a role the ability itself refuses",
+  async ({ prisma }) => {
+    ctx.prisma = prisma;
+    const world = await seedWorld(prisma);
+    // The OSS fallback's ability is otherwise cap-driven (UAT) or permissive (PAT), so a role
+    // that fails `can()` independent of cap is forced here rather than reachable for real.
+    forcedAbilityCan = () => false;
+    mocks.resolveDashboardAgentRepoSnapshot.mockClear();
+
+    const token = await mintUat({ userId: world.member.id, environmentId: world.current.prod.id });
+    const denied = await snapshot({
+      token,
+      projectRef: world.current.project.externalRef,
+      env: "prod",
+    });
+
+    expect(denied.status).toBe(403);
+    expect(mocks.resolveDashboardAgentRepoSnapshot).not.toHaveBeenCalled();
   },
   60_000
 );
