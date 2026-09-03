@@ -675,14 +675,21 @@ export class PostgresRunStore implements RunStore {
    * key and `undefined` alike, so spreading an empty object drops the nested write entirely rather
    * than sending an empty one.
    */
-  #nestedSnapshot(create: Prisma.TaskRunExecutionSnapshotUncheckedCreateWithoutRunInput):
+  #nestedSnapshot(
+    create: Prisma.TaskRunExecutionSnapshotUncheckedCreateWithoutRunInput,
+    // The write decision, resolved once by the caller when the same operation also writes join rows
+    // guarded on the same flag. The flag reads live external state, so re-resolving it here after an
+    // intervening await could disagree with the caller's later guard and split a snapshot from its
+    // links. Defaults to a fresh resolution for the single-write callers that have nothing to pair.
+    writes: boolean = this.#writesSnapshot(create.organizationId)
+  ):
     | {
         executionSnapshots: {
           create: Prisma.TaskRunExecutionSnapshotUncheckedCreateWithoutRunInput;
         };
       }
     | Record<string, never> {
-    return this.#writesSnapshot(create.organizationId) ? { executionSnapshots: { create } } : {};
+    return writes ? { executionSnapshots: { create } } : {};
   }
 
   // The writer handle in read-client form, so the routing layer can honor a caller-passed client
@@ -1281,6 +1288,12 @@ export class PostgresRunStore implements RunStore {
   ): Promise<Prisma.TaskRunGetPayload<{}>> {
     const dedicated = this.schemaVariant === "dedicated";
 
+    // Resolve the snapshot-write decision ONCE for both the nested snapshot below and the join-row
+    // connect after the update. The flag reads live external state and the update awaits between the
+    // two, so re-resolving would let a dial flip commit the snapshot without its completed-waitpoint
+    // links (or the links without the snapshot), which is exactly the split this method must avoid.
+    const writesSnapshot = this.#writesSnapshot(data.snapshot.organizationId);
+
     const result = await prisma.taskRun.update({
       where: { id: runId },
       data: {
@@ -1298,33 +1311,36 @@ export class PostgresRunStore implements RunStore {
         cliVersion: data.cliVersion ?? undefined,
         maxDurationInSeconds: data.maxDurationInSeconds ?? undefined,
         maxAttempts: data.maxAttempts ?? undefined,
-        ...this.#nestedSnapshot({
-          id: data.snapshot.id,
-          createdAt: data.snapshot.createdAt,
-          updatedAt: data.snapshot.createdAt,
-          engine: "V2",
-          executionStatus: "PENDING_EXECUTING",
-          description: "Run was dequeued for execution",
-          runStatus: "PENDING",
-          attemptNumber: data.snapshot.attemptNumber ?? undefined,
-          previousSnapshotId: data.snapshot.previousSnapshotId,
-          environmentId: data.snapshot.environmentId,
-          environmentType: data.snapshot.environmentType,
-          projectId: data.snapshot.projectId,
-          organizationId: data.snapshot.organizationId,
-          checkpointId: data.snapshot.checkpointId ?? undefined,
-          batchId: data.snapshot.batchId ?? undefined,
-          // Completed-waitpoint links are inserted FK-free after create (below) for BOTH schemas.
-          completedWaitpointOrder: data.snapshot.completedWaitpointOrder,
-          workerId: data.snapshot.workerId ?? undefined,
-          runnerId: data.snapshot.runnerId ?? undefined,
-        }),
+        ...this.#nestedSnapshot(
+          {
+            id: data.snapshot.id,
+            createdAt: data.snapshot.createdAt,
+            updatedAt: data.snapshot.createdAt,
+            engine: "V2",
+            executionStatus: "PENDING_EXECUTING",
+            description: "Run was dequeued for execution",
+            runStatus: "PENDING",
+            attemptNumber: data.snapshot.attemptNumber ?? undefined,
+            previousSnapshotId: data.snapshot.previousSnapshotId,
+            environmentId: data.snapshot.environmentId,
+            environmentType: data.snapshot.environmentType,
+            projectId: data.snapshot.projectId,
+            organizationId: data.snapshot.organizationId,
+            checkpointId: data.snapshot.checkpointId ?? undefined,
+            batchId: data.snapshot.batchId ?? undefined,
+            // Completed-waitpoint links are inserted FK-free after create (below) for BOTH schemas.
+            completedWaitpointOrder: data.snapshot.completedWaitpointOrder,
+            workerId: data.snapshot.workerId ?? undefined,
+            runnerId: data.snapshot.runnerId ?? undefined,
+          },
+          writesSnapshot
+        ),
       },
     });
 
     // The join rows link to the snapshot row above. With snapshot writes off there is no such row,
     // so inserting them would leave dangling links for a snapshot that only the Redis store holds.
-    if (this.#writesSnapshot(data.snapshot.organizationId)) {
+    if (writesSnapshot) {
       if (dedicated) {
         await this.#connectCompletedWaitpoints(
           prisma,

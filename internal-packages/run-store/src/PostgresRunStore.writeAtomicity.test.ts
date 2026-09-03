@@ -668,6 +668,128 @@ describe("createExecutionSnapshot / lockRunToWorker write the snapshot and its l
   );
 });
 
+// The snapshot-write flag reads LIVE external state (the per-org residency dial), so an org can flip
+// it between two evaluations of the same write. lockRunToWorker builds its nested snapshot under the
+// flag and, after the taskRun.update awaits, connects the completed-waitpoint join rows under the flag
+// AGAIN. If the two evaluations disagree, the snapshot commits without its links (or links without a
+// snapshot) - the exact waitpoint-less-snapshot split the atomic transaction exists to prevent. The
+// fix resolves the flag ONCE for the whole operation; these tests drive a flag that flips on its
+// second call and assert the snapshot row and its link rows always agree.
+function makeFlippingStore(prisma17: RunOpsPrismaClient, values: boolean[]) {
+  let call = 0;
+  return new PostgresRunStore({
+    prisma: prisma17 as never,
+    readOnlyPrisma: prisma17 as never,
+    schemaVariant: "dedicated",
+    // Returns values[0] on the first call, values[1] on the second, then sticks on the last value.
+    snapshotWrites: () => values[Math.min(call++, values.length - 1)],
+  });
+}
+
+async function lockRunWithWaitpoints(
+  store: RunStore,
+  runId: string,
+  priorSnapshotId: string,
+  env: { project: { id: string }; environment: { id: string } },
+  prisma17: RunOpsPrismaClient
+) {
+  const snapshotId = `snap_${NEW_ID_26}`;
+  await store.lockRunToWorker(
+    runId,
+    {
+      lockedAt: new Date(),
+      lockedById: `bwt_${NEW_ID_26}`,
+      lockedToVersionId: `bw_${NEW_ID_26}`,
+      lockedQueueId: `queue_${NEW_ID_26}`,
+      startedAt: new Date(),
+      baseCostInCents: 5,
+      machinePreset: "small-1x",
+      taskVersion: "20260601.1",
+      sdkVersion: "3.0.0",
+      cliVersion: "3.0.0",
+      maxDurationInSeconds: null,
+      snapshot: {
+        id: snapshotId,
+        previousSnapshotId: priorSnapshotId,
+        environmentId: env.environment.id,
+        environmentType: "DEVELOPMENT",
+        projectId: env.project.id,
+        organizationId: env.project.id,
+        completedWaitpointIds: [`wp_${NEW_ID_26}`],
+        completedWaitpointOrder: [`wp_${NEW_ID_26}`],
+      },
+    },
+    prisma17 as never
+  );
+  return snapshotId;
+}
+
+describe("lockRunToWorker resolves the snapshot-write flag once, so a mid-write dial flip can't split the snapshot from its links (dedicated)", () => {
+  heteroRunOpsPostgresTest(
+    "flag on-then-off across the write: the snapshot and its links commit together (never a link-less snapshot)",
+    async ({ prisma17 }) => {
+      const env = await seedEnvironment(prisma17, "dedicated", "flip_on_off");
+      const runId = `run_${NEW_ID_26}`;
+      // Seed with writes ON so the run and its RUN_CREATED snapshot exist to lock against.
+      await makeDedicatedStore(prisma17).createRun(
+        buildCreateRunInput({
+          runId,
+          friendlyId: "run_flip_on_off",
+          organizationId: env.organization.id,
+          projectId: env.project.id,
+          runtimeEnvironmentId: env.environment.id,
+        })
+      );
+      const prior = await prisma17.taskRunExecutionSnapshot.findFirstOrThrow({ where: { runId } });
+
+      // The flag reads true when the nested snapshot is built, then flips to false before the join-row
+      // guard. The old code skipped the links here, committing a snapshot with no completed waitpoints.
+      const store = makeFlippingStore(prisma17, [true, false]);
+      const snapshotId = await lockRunWithWaitpoints(store, runId, prior.id, env, prisma17);
+
+      const snap = await prisma17.taskRunExecutionSnapshot.findUnique({
+        where: { id: snapshotId },
+      });
+      const links = await prisma17.completedWaitpoint.count({ where: { snapshotId } });
+      // Resolved once: the snapshot was written, so its links MUST be written too. A link-less snapshot
+      // is read waitpoint-less from a lagging replica and the runner drops the resume.
+      expect(snap).not.toBeNull();
+      expect(links).toBe(1);
+    }
+  );
+
+  heteroRunOpsPostgresTest(
+    "flag off-then-on across the write: no snapshot and no dangling links",
+    async ({ prisma17 }) => {
+      const env = await seedEnvironment(prisma17, "dedicated", "flip_off_on");
+      const runId = `run_${NEW_ID_26}`;
+      await makeDedicatedStore(prisma17).createRun(
+        buildCreateRunInput({
+          runId,
+          friendlyId: "run_flip_off_on",
+          organizationId: env.organization.id,
+          projectId: env.project.id,
+          runtimeEnvironmentId: env.environment.id,
+        })
+      );
+      const prior = await prisma17.taskRunExecutionSnapshot.findFirstOrThrow({ where: { runId } });
+
+      // The flag reads false when the nested snapshot is built, then flips to true before the guard.
+      // The old code connected join rows to a snapshot id that was never written - dangling links.
+      const store = makeFlippingStore(prisma17, [false, true]);
+      const snapshotId = await lockRunWithWaitpoints(store, runId, prior.id, env, prisma17);
+
+      const snap = await prisma17.taskRunExecutionSnapshot.findUnique({
+        where: { id: snapshotId },
+      });
+      const links = await prisma17.completedWaitpoint.count({ where: { snapshotId } });
+      // Resolved once: no snapshot row, and therefore no link rows pointing at a phantom snapshot.
+      expect(snap).toBeNull();
+      expect(links).toBe(0);
+    }
+  );
+});
+
 // Direct (not behavioural) proof of the never-forward invariant: a recording proxy over each REAL
 // sub-store captures the arguments every routed call receives, so we can assert the SECOND (tx)
 // argument the router hands each sub-store is `undefined`. No mocks — the real PostgresRunStore does
