@@ -10,7 +10,7 @@
     "@internal/tracing": "workspace:*",
     "@internal/tsql": "workspace:*",
     "@trigger.dev/core": "workspace:*",
-    "zod": "4.4.3",
+    "zod": "4.5.4",
     "zod-error": "2.0.0"
   },
   "devDependencies": {
