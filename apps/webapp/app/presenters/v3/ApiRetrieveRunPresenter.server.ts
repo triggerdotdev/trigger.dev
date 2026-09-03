@@ -86,7 +86,10 @@ type CommonRelatedRunWithVersion = CommonRelatedRun & {
 // ReturnType<typeof findRun>) so findRun can return a synthesised buffered
 // run without the type becoming self-referential. Exported so the
 // buffer-synthesis helper below can match this shape under unit test.
-export type FoundRun = CommonRelatedRunWithVersion & {
+export type FoundRun = Omit<CommonRelatedRunWithVersion, "queue"> & {
+  // Optional here only because a buffered (mollified) run may not carry it yet;
+  // a Postgres-resident run always has one (see commonRunSelect).
+  queue?: string;
   traceId: string;
   payload: string;
   payloadType: string;
@@ -523,7 +526,7 @@ export class ApiRetrieveRunPresenter {
   }
 }
 
-async function resolveSchedule(run: CommonRelatedRun) {
+async function resolveSchedule(run: Pick<CommonRelatedRun, "scheduleId">) {
   if (!run.scheduleId) {
     return undefined;
   }
@@ -551,7 +554,9 @@ async function resolveSchedule(run: CommonRelatedRun) {
 }
 
 async function createCommonRunStructure(
-  run: CommonRelatedRunWithVersion,
+  // `queue` is widened to optional: a Postgres-resident run always has one, but a
+  // buffered (mollified) run synthesised into `FoundRun` may not yet.
+  run: Omit<CommonRelatedRunWithVersion, "queue"> & { queue?: string },
   apiVersion: API_VERSIONS
 ) {
   const metadata = await parsePacketAsJson({
@@ -591,7 +596,9 @@ async function createCommonRunStructure(
   };
 }
 
-function resolveTriggerFunction(run: CommonRelatedRun): TriggerFunction {
+function resolveTriggerFunction(
+  run: Pick<CommonRelatedRun, "batch" | "resumeParentOnCompletion">
+): TriggerFunction {
   if (run.batch) {
     return run.resumeParentOnCompletion ? "batchTriggerAndWait" : "batchTrigger";
   } else {
@@ -698,7 +705,7 @@ export function synthesiseFoundRunFromBuffer(buffered: SyntheticRun): FoundRun {
     startedAt: null,
     // Buffered runs live in Redis until the drainer replays them into Postgres — never queued there yet.
     queuedAt: null,
-    queue: buffered.queue ?? "",
+    queue: buffered.queue,
     updatedAt: buffered.cancelledAt ?? buffered.createdAt,
     // PG-resident SYSTEM_FAILURE rows always have `completedAt` set by
     // the engine; the buffer-synth path must match so SDK consumers

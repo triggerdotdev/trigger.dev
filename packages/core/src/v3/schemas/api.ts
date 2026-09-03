@@ -1359,6 +1359,7 @@ const CommonRunFields = {
   metadata: z.record(z.any()).optional(),
   taskKind: z.string().optional(),
   region: z.string().optional(),
+  queue: z.string().optional(),
 };
 
 const RetrieveRunCommandFields = {

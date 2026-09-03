@@ -5549,6 +5549,10 @@ components:
           type: string
           example: 20240523.1
           description: The version of the worker that executed the run
+        queue:
+          type: string
+          description: The name of the queue the run was placed in
+          example: task/my-task
         idempotencyKey:
           type: string
           description: The idempotency key used to prevent creating duplicate runs, if provided
