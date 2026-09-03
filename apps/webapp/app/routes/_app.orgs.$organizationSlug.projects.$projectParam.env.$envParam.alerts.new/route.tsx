@@ -277,7 +277,7 @@ export default function Page() {
     if (lastSubmission !== undefined) return;
 
     form.reset();
-  }, [navigation.state, lastSubmission]);
+  }, [navigation.state, lastSubmission, form]);
 
   return (
     <Dialog

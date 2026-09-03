@@ -1,6 +1,6 @@
 import { z as z3 } from "zod/v3";
 import { z } from "zod/v4";
-import { fromZodError, ValidationError } from "zod-validation-error/v4";
+import { fromZodError } from "zod-validation-error/v4";
 import type { RetryOptions } from "../schemas/index.js";
 import { calculateNextRetryDelay } from "../utils/retries.js";
 import { ApiConnectionError, ApiError, ApiSchemaValidationError } from "./errors.js";

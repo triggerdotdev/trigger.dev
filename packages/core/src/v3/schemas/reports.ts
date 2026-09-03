@@ -65,7 +65,7 @@ export const ReportMetricSchema = z.object({
   delta: ReportDeltaSchema.optional(),
   series: ReportMetricSeriesSchema.optional(),
   /** named sub-values for composite metrics (e.g. throughput { done, triggered }). */
-  breakdown: z.record(z.number()).optional(),
+  breakdown: z.record(z.string(), z.number()).optional(),
   /** shown on a cause line INSTEAD of "(normal ~x)", e.g. "pinned 40 of last 60 min". */
   annotation: z.object({ code: ReportReasonCodeSchema, value: z.number().optional() }).optional(),
   /** "unknown" means `value` is a placeholder a consumer must not read as real. Absent = measured. */
@@ -92,14 +92,14 @@ export type ReportFooterEntry = z.infer<typeof ReportFooterEntrySchema>;
 /** A ruled-out cause + its evidence, e.g. "not your code" (never emitted without evidence). */
 export const ReportExclusionSchema = z.object({
   code: ReportReasonCodeSchema,
-  evidence: z.record(z.number()).optional(),
+  evidence: z.record(z.string(), z.number()).optional(),
 });
 export type ReportExclusion = z.infer<typeof ReportExclusionSchema>;
 
 /** A measured fact backing the verdict. `ReportExclusion` states what the problem isn't. */
 export const ReportObservationSchema = z.object({
   code: ReportReasonCodeSchema,
-  evidence: z.record(z.number()).optional(),
+  evidence: z.record(z.string(), z.number()).optional(),
 });
 export type ReportObservation = z.infer<typeof ReportObservationSchema>;
 
@@ -166,7 +166,7 @@ export const ReportViewModelSchema = z.object({
   findings: z.array(ReportFindingSchema),
   metrics: z.array(ReportMetricSchema),
   /** dense structured payload for agents. */
-  facts: z.record(z.unknown()),
+  facts: z.record(z.string(), z.unknown()),
   links: z.array(ReportLinkSchema),
   /** dominant finding's action + optional "do nothing" option. Max two entries. */
   footer: z.array(ReportFooterEntrySchema),

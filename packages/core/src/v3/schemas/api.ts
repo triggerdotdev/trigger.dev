@@ -827,7 +827,7 @@ const InitializeDeploymentRequestBodyFull = InitializeDeploymentRequestBodyBase.
   // The artifact is a pre-built bundle; the build server only runs the container build
   fromBundle: z.boolean().optional(),
   // Build-time env var values for fromBundle deploys, stored encrypted on the deployment
-  buildEnvVars: z.record(z.string()).optional(),
+  buildEnvVars: z.record(z.string(), z.string()).optional(),
 }).superRefine((data, ctx) => {
   if (data.force && !data.externalId) {
     ctx.addIssue({
@@ -969,7 +969,7 @@ export type GetDeploymentResponseBody = z.infer<typeof GetDeploymentResponseBody
 
 // Secret material, deliberately kept off GetDeploymentResponseBody
 export const GetDeploymentBuildEnvVarsResponseBody = z.object({
-  variables: z.record(z.string()),
+  variables: z.record(z.string(), z.string()),
 });
 
 export type GetDeploymentBuildEnvVarsResponseBody = z.infer<
