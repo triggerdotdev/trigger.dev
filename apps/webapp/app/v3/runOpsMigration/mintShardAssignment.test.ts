@@ -314,6 +314,39 @@ describe("resolveMintShardWith — cache, read failure and fail-safe", () => {
     expect(["a", "b"]).toContain(await resolveMintShardWith({ id: "env_1" }, deps));
   });
 
+  it("reports an unparseable stored list while still degrading to gen-1", async () => {
+    // The observed failure: `runOpsMintShardSet` saved as "A,B" (uppercase) reverted the whole
+    // fleet to gen-1 minting with ZERO log lines, because the parse throw was swallowed and
+    // `onReadFailed` never fires for it — the read succeeded. The degrade is correct; silence is not.
+    const deps = wrapperDeps({ readFlags: async () => ({ runOpsMintShardSet: "A,B" }) });
+    const readFailures: unknown[] = [];
+    const parseFailures: Array<{ key: string; value: string }> = [];
+    deps.onReadFailed = (error) => readFailures.push(error);
+    deps.onSetParseFailed = ({ key, value }) => parseFailures.push({ key, value });
+
+    expect(await resolveMintShardWith({ id: "env_1" }, deps)).toBe("new");
+    expect(readFailures).toEqual([]);
+    expect(parseFailures).toEqual([{ key: "runOpsMintShardSet", value: "A,B" }]);
+  });
+
+  it("reports a reserved key in the stored list too", async () => {
+    const deps = wrapperDeps({ readFlags: async () => ({ runOpsMintShardSet: "a,legacy" }) });
+    const parseFailures: Array<{ key: string; value: string }> = [];
+    deps.onSetParseFailed = ({ key, value }) => parseFailures.push({ key, value });
+
+    expect(await resolveMintShardWith({ id: "env_1" }, deps)).toBe("new");
+    expect(parseFailures).toEqual([{ key: "runOpsMintShardSet", value: "a,legacy" }]);
+  });
+
+  it("stays silent for a stored list that parses", async () => {
+    const deps = wrapperDeps();
+    const parseFailures: unknown[] = [];
+    deps.onSetParseFailed = (failure) => parseFailures.push(failure);
+
+    expect(["a", "b"]).toContain(await resolveMintShardWith({ id: "env_1" }, deps));
+    expect(parseFailures).toEqual([]);
+  });
+
   it("returns gen-1 when the stored list is empty", async () => {
     const deps = wrapperDeps({ readFlags: async () => ({ runOpsMintShardSet: "" }) });
     expect(await resolveMintShardWith({ id: "env_1" }, deps)).toBe("new");

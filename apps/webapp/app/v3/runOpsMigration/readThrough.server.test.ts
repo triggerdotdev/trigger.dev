@@ -309,4 +309,70 @@ describe("readThroughRun (legacy replica + new DB)", () => {
       expect(throwingLegacy).not.toHaveBeenCalled();
     }
   );
+  // Which store served a read was a return value only — never emitted — so during a cohort ramp
+  // there was no way to see from outside the process where reads were landing.
+  heteroPostgresTest(
+    "emits the serving source for a gen-2 shard, the gen-1 new store and the legacy replica",
+    async ({ prisma14, prisma17 }) => {
+      const emitted: string[] = [];
+      const deps = {
+        splitEnabled: true,
+        newClient: prisma17 as unknown as PrismaReplicaClient,
+        legacyReplica: prisma14 as unknown as PrismaReplicaClient,
+        shardReplicas: new Map([["a", prisma17 as unknown as PrismaReplicaClient]]),
+        onSource: (source: string) => emitted.push(source),
+      };
+
+      await readThroughRun({
+        id: SHARD_A_RUN_ID,
+        idKind: "run",
+        environmentId: "env_1",
+        readNew: (c) => realRead(c, true),
+        readLegacy: (c) => realRead(c, false),
+        deps,
+      });
+      await readThroughRun({
+        id: NEW_RUN_ID,
+        idKind: "run",
+        environmentId: "env_1",
+        readNew: (c) => realRead(c, true),
+        readLegacy: (c) => realRead(c, false),
+        deps,
+      });
+      await readThroughRun({
+        id: LEGACY_RUN_ID,
+        idKind: "run",
+        environmentId: "env_1",
+        readNew: (c) => realRead(c, false),
+        readLegacy: (c) => realRead(c, true),
+        deps,
+      });
+
+      expect(emitted).toEqual(["shard:a", "new", "legacy-replica"]);
+    }
+  );
+
+  heteroPostgresTest(
+    "emits nothing for a miss, so a not-found cannot look like a hit",
+    async ({ prisma14, prisma17 }) => {
+      const emitted: string[] = [];
+
+      const result = await readThroughRun({
+        id: LEGACY_RUN_ID,
+        idKind: "run",
+        environmentId: "env_1",
+        readNew: (c) => realRead(c, false),
+        readLegacy: (c) => realRead(c, false),
+        deps: {
+          splitEnabled: true,
+          newClient: prisma17 as unknown as PrismaReplicaClient,
+          legacyReplica: prisma14 as unknown as PrismaReplicaClient,
+          onSource: (source: string) => emitted.push(source),
+        },
+      });
+
+      expect(result.found).toBe(false);
+      expect(emitted).toEqual([]);
+    }
+  );
 });

@@ -8,6 +8,7 @@ import {
   GEN_1_PIN_VALUE,
   isValidPinValue,
   readMintShardSetResolution,
+  type MintShardSetParseFailure,
   type MintShardSetResolution,
 } from "./mintShardGrace";
 
@@ -166,6 +167,9 @@ export type ResolveMintShardDeps = {
   onPinRejected?: (info: { environmentId: string; pin: string; activeSet: string[] }) => void;
   onOverrideRejected?: (info: { override: string; activeSet: string[] }) => void;
   onReadFailed?: (error: unknown) => void;
+  // A stored set that PARSED badly, which is not a read failure: onReadFailed never fires for it,
+  // yet the fleet reverts to gen-1 minting. Reported here so the operator sees the degrade.
+  onSetParseFailed?: (failure: MintShardSetParseFailure) => void;
 };
 
 // The live list is org-independent, so one process-wide entry serves every mint: one query per
@@ -180,7 +184,7 @@ async function refreshConfig(deps: ResolveMintShardDeps): Promise<GlobalShardCon
   try {
     const flags = await deps.readFlags();
     const config: GlobalShardConfig = {
-      resolution: readMintShardSetResolution(flags),
+      resolution: readMintShardSetResolution(flags, deps.onSetParseFailed),
       override: flags[FEATURE_FLAG.runOpsMintShardOverride],
     };
     deps.cache.current = { value: config, expiresAt: deps.nowMs + deps.ttlMs };

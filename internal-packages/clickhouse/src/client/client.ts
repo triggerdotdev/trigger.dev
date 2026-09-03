@@ -5,6 +5,7 @@ import {
   type ClickHouseSettings,
   createClient,
   type BaseQueryParams,
+  type InsertParams,
   type InsertResult,
 } from "@clickhouse/client";
 import type { Counter, Histogram, Meter, Span, Tracer, UpDownCounter } from "@internal/tracing";
@@ -1078,6 +1079,7 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
   public insertUnsafe<TRecord extends Record<string, any>>(req: {
     name: string;
     table: string;
+    columns?: InsertParams["columns"];
     settings?: ClickHouseSettings;
   }): ClickhouseInsertFunction<TRecord> {
     return async (events, options) => {
@@ -1109,6 +1111,7 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
         const [clickhouseError, result] = await tryCatch(
           this.client.insert({
             table: req.table,
+            columns: req.columns,
             format: "JSONEachRow",
             values: eventsArray,
             query_id: queryId,

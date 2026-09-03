@@ -26,8 +26,14 @@ export async function getMissingLlmModels(
     name: "missingLlmModels",
     table: "trigger_dev.task_events_v2",
     columns: [
-      { name: "model", expression: "attributes.gen_ai.response.model.:String" },
-      { name: "system", expression: "attributes.gen_ai.system.:String" },
+      {
+        name: "model",
+        expression: "JSONExtractString(attributes_text, 'gen_ai', 'response', 'model')",
+      },
+      {
+        name: "system",
+        expression: "JSONExtractString(attributes_text, 'gen_ai', 'system')",
+      },
       { name: "cnt", expression: "count()" },
     ],
   });
@@ -39,10 +45,15 @@ export async function getMissingLlmModels(
   });
 
   // Only spans that have a model set
-  qb.where("attributes.gen_ai.response.model.:String != {empty: String}", { empty: "" });
+  qb.where("JSONExtractString(attributes_text, 'gen_ai', 'response', 'model') != {empty: String}", {
+    empty: "",
+  });
 
   // Only spans that were NOT cost-enriched (trigger.llm.total_cost is NULL)
-  qb.where("attributes.trigger.llm.total_cost.:Float64 IS NULL", {});
+  qb.where(
+    "JSONExtract(attributes_text, 'trigger', 'llm', 'total_cost', 'Nullable(Float64)') IS NULL",
+    {}
+  );
 
   // Only completed spans
   qb.where("kind = {kind: String}", { kind: "SPAN" });
@@ -107,8 +118,13 @@ export async function getMissingModelSamples(opts: {
   const qb = createBuilder();
 
   qb.where("inserted_at >= {since: DateTime64(3)}", { since: formatDateTime(since) });
-  qb.where("attributes.gen_ai.response.model.:String = {model: String}", { model: opts.model });
-  qb.where("attributes.trigger.llm.total_cost.:Float64 IS NULL", {});
+  qb.where("JSONExtractString(attributes_text, 'gen_ai', 'response', 'model') = {model: String}", {
+    model: opts.model,
+  });
+  qb.where(
+    "JSONExtract(attributes_text, 'trigger', 'llm', 'total_cost', 'Nullable(Float64)') IS NULL",
+    {}
+  );
   qb.where("kind = {kind: String}", { kind: "SPAN" });
   qb.where("status = {status: String}", { status: "OK" });
   qb.orderBy("start_time DESC");

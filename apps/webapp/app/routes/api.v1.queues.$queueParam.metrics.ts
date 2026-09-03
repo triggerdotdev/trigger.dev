@@ -73,7 +73,7 @@ export const loader = createLoaderApiRoute(
     try {
       const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
         authentication.environment.organizationId,
-        "query"
+        "queueMetrics"
       );
 
       const ids = {

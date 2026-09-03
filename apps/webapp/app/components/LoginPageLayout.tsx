@@ -1,10 +1,4 @@
 import { useEffect, useState } from "react";
-import { AppsmithLogo } from "~/assets/logos/AppsmithLogo";
-import { CalComLogo } from "~/assets/logos/CalComLogo";
-import { LyftLogo } from "~/assets/logos/LyftLogo";
-import { MiddayLogo } from "~/assets/logos/MiddayLogo";
-import { TldrawLogo } from "~/assets/logos/TldrawLogo";
-import { UnkeyLogo } from "~/assets/logos/UnkeyLogo";
 import { LogoType } from "./LogoType";
 import { Header3 } from "./primitives/Headers";
 import { Paragraph } from "./primitives/Paragraph";
@@ -21,18 +15,37 @@ const quotes: QuoteType[] = [
     person: "Paul Copplestone, Supabase",
   },
   {
-    quote:
-      "Trigger.dev is a great way to automate email campaigns with Resend, and we've heard nothing but good things from our mutual customers.",
-    person: "Zeno Rocha, Resend",
-  },
-  {
     quote: "We love Trigger.dev and it’s had a big impact in dev iteration velocity already.",
     person: "André Neves, ZBD",
   },
   {
+    quote: "We run millions of workflows a month on Trigger.dev.",
+    person: "Morgan Vernay, Cal.com",
+  },
+  {
     quote:
-      "We’ve been looking for a product like Trigger.dev for a really long time - automation that's simple and developer-focused.",
-    person: "Han Wang, Mintlify",
+      "With Trigger.dev, we’ve summarized over a million student interactions in just a couple of weeks.",
+    person: "Ben Duggan, MagicSchool AI",
+  },
+  {
+    quote:
+      "Trigger.dev's TypeScript support, simplicity and visual feedback let us focus on making AI excellent at UI creation instead of managing infrastructure.",
+    person: "Junior Garcia, HeroUI",
+  },
+  {
+    quote:
+      "The default tracing and observability make viewing and debugging agentic sessions incredibly easy.",
+    person: "Graham Tremper, Arena",
+  },
+  {
+    quote:
+      "Trigger.dev lets us focus on AI logic, not infrastructure. We can now ship workflow orchestration the same way we ship backend features.",
+    person: "Karl Kaiser, Pallet",
+  },
+  {
+    quote:
+      "Teams routinely find 200% more opportunities and increase proposal output by 70% using GovSignals. We build on Trigger.dev to make that level of scale practical.",
+    person: "Conner Aldrich, GovSignals",
   },
 ];
 
@@ -69,27 +82,14 @@ export function LoginPageLayout({
           </Paragraph>
         </div>
       </div>
-      <div className="hidden grid-rows-[1fr_auto] pb-6 lg:grid">
+      <div className="hidden p-6 lg:grid">
         {rightContent ?? (
-          <>
-            <div className="flex h-full flex-col items-center justify-center px-16">
-              <Header3 className="relative text-center text-2xl font-normal leading-8 text-text-dimmed transition before:relative before:right-1 before:top-0 before:text-6xl before:text-grid-bright before:content-['❝'] dark:before:text-charcoal-750 lg-height:text-xl md-height:text-lg">
-                {randomQuote?.quote}
-              </Header3>
-              <Paragraph className="mt-4 text-text-dimmed/60">{randomQuote?.person}</Paragraph>
-            </div>
-            <div className="flex flex-col items-center gap-4 px-8">
-              <Paragraph>Trusted by developers at</Paragraph>
-              <div className="flex w-full flex-wrap items-center justify-center gap-x-6 gap-y-3 text-text-faint xl:justify-between xl:gap-0">
-                <LyftLogo className="w-11" />
-                <UnkeyLogo />
-                <MiddayLogo />
-                <AppsmithLogo />
-                <CalComLogo />
-                <TldrawLogo />
-              </div>
-            </div>
-          </>
+          <div className="flex h-full flex-col items-center justify-center px-16">
+            <Header3 className="relative text-center text-2xl font-normal leading-8 text-text-dimmed transition before:relative before:right-1 before:top-0 before:text-6xl before:text-grid-bright before:content-['❝'] dark:before:text-charcoal-750 lg-height:text-xl md-height:text-lg">
+              {randomQuote?.quote}
+            </Header3>
+            <Paragraph className="mt-4 text-text-dimmed/60">{randomQuote?.person}</Paragraph>
+          </div>
         )}
       </div>
     </main>

@@ -156,7 +156,8 @@ describe("generateContainerfile", () => {
 
       const user = runtime === "bun" ? "bun:bun" : "node:node";
 
-      expect(containerfile).toContain("FROM build AS code");
+      expect(containerfile).toContain("FROM scratch AS code");
+      expect(containerfile).toContain("COPY --from=build --exclude=node_modules /app /app");
       expect(containerfile).toContain(
         `COPY --from=build --chown=${user} /app/node_modules ./node_modules`
       );
@@ -180,15 +181,15 @@ describe("generateContainerfile", () => {
       const postInstall = containerfile.indexOf("RUN echo post-install");
       // guard after post-install so a command that prunes node_modules can't break the COPY
       const mkdirGuard = containerfile.indexOf("RUN mkdir -p node_modules");
-      const codeStage = containerfile.indexOf("FROM build AS code");
-      const rmNodeModules = containerfile.indexOf(
-        "RUN chmod -R u+rwX node_modules && rm -rf node_modules"
+      const codeStage = containerfile.indexOf("FROM scratch AS code");
+      const excludeCopy = containerfile.indexOf(
+        "COPY --from=build --exclude=node_modules /app /app"
       );
 
       expect(postInstall).toBeGreaterThan(-1);
       expect(mkdirGuard).toBeGreaterThan(postInstall);
       expect(codeStage).toBeGreaterThan(mkdirGuard);
-      expect(rmNodeModules).toBeGreaterThan(codeStage);
+      expect(excludeCopy).toBeGreaterThan(codeStage);
     }
   );
 });

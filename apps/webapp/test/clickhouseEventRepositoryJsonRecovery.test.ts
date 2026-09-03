@@ -89,7 +89,7 @@ describe("ClickhouseEventRepository JSON parse recovery", () => {
         const queryEvents = clickhouse.reader.query({
           name: "event-recovery-check",
           query:
-            "SELECT span_id, toJSONString(attributes) AS attributes_json FROM trigger_dev.task_events_v2 WHERE environment_id = {env_id:String}",
+            "SELECT span_id, attributes_text AS attributes_json FROM trigger_dev.task_events_v2 WHERE environment_id = {env_id:String}",
           schema: z.object({ span_id: z.string(), attributes_json: z.string() }),
           params: z.object({ env_id: z.string() }),
         });

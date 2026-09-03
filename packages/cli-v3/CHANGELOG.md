@@ -1,5 +1,16 @@
 # trigger.dev
 
+## 4.5.16
+
+### Patch Changes
+
+- Fixes an issue introduced in 4.5.11 that made deploy image builds of projects with large dependency trees noticeably slower. ([#4878](https://github.com/triggerdotdev/trigger.dev/pull/4878))
+- The `trigger.dev deploy` and `trigger.dev dev` commands now warn (with the suggested fix) when your code loads a package through `createRequire()` that won't be available in the deployed image. Previously it would fail at runtime in production to load the package. Deploys also now show bundler warnings for your code instead of discarding them. ([#4851](https://github.com/triggerdotdev/trigger.dev/pull/4851))
+- Updated dependencies:
+  - `@trigger.dev/build@4.5.16`
+  - `@trigger.dev/core@4.5.16`
+  - `@trigger.dev/schema-to-json@4.5.16`
+
 ## 4.5.15
 
 ### Patch Changes
