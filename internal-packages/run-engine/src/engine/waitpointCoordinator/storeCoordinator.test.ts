@@ -1973,3 +1973,53 @@ describe("readCompletionEnvelopes", () => {
     }
   });
 });
+
+// The read is chunked so a large fan-in cannot burst. This asserts correctness ACROSS the chunk
+// boundary, which is where an off-by-one in the slice would show: a count either side of 100.
+describe("readCompletionEnvelopes chunking", () => {
+  redisTest("returns every envelope across a chunk boundary", async ({ redisOptions }) => {
+    const store = coordinator(redisOptions);
+    try {
+      const ids = Array.from({ length: 250 }, (_, i) => `w_chunk_${i}`);
+      for (const id of ids) {
+        await store.createIfAbsent({ record: record(id), status: "PENDING" });
+        await store.complete({ waitpointId: id, completion: completion() });
+      }
+
+      const envelopes = await store.readCompletionEnvelopes({
+        runId: "run_chunked",
+        waitpointIds: ids,
+      });
+
+      expect(envelopes).toHaveLength(250);
+      expect(new Set(envelopes.map((e) => e.id)).size).toBe(250);
+    } finally {
+      await store.quit();
+    }
+  });
+
+  redisTest("omits only the incomplete ones in a mixed chunked read", async ({ redisOptions }) => {
+    const store = coordinator(redisOptions);
+    try {
+      const ids = Array.from({ length: 150 }, (_, i) => `w_mix_${i}`);
+      for (const [i, id] of ids.entries()) {
+        await store.createIfAbsent({ record: record(id), status: "PENDING" });
+        // Leave every third pending, including ids either side of the chunk boundary.
+        if (i % 3 !== 0) {
+          await store.complete({ waitpointId: id, completion: completion() });
+        }
+      }
+
+      const envelopes = await store.readCompletionEnvelopes({
+        runId: "run_chunked",
+        waitpointIds: ids,
+      });
+
+      const expected = ids.filter((_, i) => i % 3 !== 0).length;
+      expect(envelopes).toHaveLength(expected);
+      expect(envelopes.every((e) => e.id.startsWith("w_mix_"))).toBe(true);
+    } finally {
+      await store.quit();
+    }
+  });
+});

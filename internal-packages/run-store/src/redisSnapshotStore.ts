@@ -17,12 +17,6 @@ export function snapshotKeys(runId: string): SnapshotKeys {
   return { e: `${base}:e`, idx: `${base}:idx`, cur: `${base}:cur`, seq: `${base}:seq` };
 }
 
-// The per-cycle key. Shares the {runId} tag with the four core keys, and the append scripts
-// derive the same name in Lua from KEYS[1]; this is its only TypeScript-side spelling.
-export function cycleKey(runId: string, cycleSeq: number): string {
-  return `snap:{${runId}}:wp:${cycleSeq}`;
-}
-
 export type CompletedWaitpointRef = { id: string; index?: number };
 
 // Reproduces PostgresRunStore.#createExecutionSnapshot's completedWaitpointOrder derivation exactly:
@@ -316,6 +310,21 @@ export class RedisSnapshotStore {
           records?: CompletedWaitpointRecord[];
         }
       | {
+          /**
+           * Mint a cycle, and if the caller has no records, inherit the current cycle's when its
+           * id set is identical.
+           *
+           * For the one caller that cannot tell whether this id set continues the previous cycle:
+           * a head probe that FAILED. It must not carry a pointer it could not verify, and it
+           * cannot read the records it would need to mint a complete replacement. Minting without
+           * them would leave ids that resolve from nothing, so the comparison and the copy happen
+           * here, atomically, where the previous cycle can still be read.
+           */
+          kind: "newInherit";
+          completedWaitpoints: CompletedWaitpointRef[];
+          records?: CompletedWaitpointRecord[];
+        }
+      | {
           kind: "carryForward";
           cycleSeq: number;
           /**
@@ -347,9 +356,9 @@ export class RedisSnapshotStore {
       let distinctJson = "";
       let records = "";
       let orderCount = "0";
-      if (args.cycle?.kind === "new") {
+      if (args.cycle?.kind === "new" || args.cycle?.kind === "newInherit") {
         const order = deriveOrder(args.cycle.completedWaitpoints);
-        cycleMode = "new";
+        cycleMode = args.cycle.kind === "newInherit" ? "newInherit" : "new";
         orderJson = JSON.stringify(order);
         distinctJson = JSON.stringify(deriveDistinctIds(args.cycle.completedWaitpoints));
         records = args.cycle.records ? JSON.stringify(args.cycle.records) : "";
@@ -446,6 +455,11 @@ export class RedisSnapshotStore {
     }
     if (orderJson !== "") {
       // The whole wp:<cycleSeq> key, not just its order field: records dominates it once populated.
+      //
+      // `records` is what the CALLER sent, so this under-reports the two cases where the script
+      // sources the set itself and the client never sees it: a refused carry-forward, and a mint
+      // after a failed probe that inherits. Sizing either exactly would cost the read those paths
+      // exist to avoid, and the set was already measured when the cycle it came from was minted.
       const cycleBytes = Buffer.byteLength(orderJson, "utf8") + Buffer.byteLength(records, "utf8");
       this.metrics?.recordCycleKeyBytes(cycleBytes);
       if (this.highWater.cycleKeyBytes !== undefined && cycleBytes > this.highWater.cycleKeyBytes) {
@@ -505,25 +519,6 @@ export class RedisSnapshotStore {
         return { present: false, distinctIds: [], order: [] };
       }
       return decodeWaitpointIds(reply[0] === "1", reply[1] ?? "", reply[2] ?? "");
-    });
-  }
-
-  /**
-   * The record set a cycle already holds, if any.
-   *
-   * Read on one path only: a copy-forward append that carries no records of its own. A
-   * copy-forward legitimately has none, because it only points at a cycle that was already
-   * minted. But the append script can REFUSE an untrustworthy pointer and mint a replacement
-   * from the carried refs, and a replacement minted with no records holds ids that nothing can
-   * resolve. So the caller reads the surviving cycle's records and carries those.
-   */
-  async getCycleRecords(
-    runId: string,
-    cycleSeq: number
-  ): Promise<CompletedWaitpointRecord[] | undefined> {
-    return this.#timed("getCycleRecords", async () => {
-      const raw = await this.redis.hget(cycleKey(runId, cycleSeq), "records");
-      return raw ? (JSON.parse(raw) as CompletedWaitpointRecord[]) : undefined;
     });
   }
 
@@ -811,11 +806,40 @@ export class RedisSnapshotStore {
 
         -- The STORE mints cycleSeq, so the sequence is dense by construction and the terminal
         -- PEXPIRE loop from 1..c is correct.
-        local function mintCycle()
+        -- Set equality, NOT string equality.
+        --
+        -- Both sides come from deriveDistinctIds over a Postgres read with no ORDER BY -- the
+        -- resume reads the run's block edges, the copy-forward reads the snapshot's waitpoint
+        -- rows -- so the same set of ids arrives in an arbitrary order on each append. Comparing
+        -- the serialised arrays would therefore disagree for almost every wait holding two or
+        -- more waitpoints, which is the batch fan-in this inherit exists to protect.
+        --
+        -- Both arrays are already deduped by construction, so equal length plus membership one
+        -- way is set equality. This matches the decorator's own sameSet, which is deliberately
+        -- order-insensitive for the same reason.
+        local function sameDistinctSet(stored, incoming)
+          if not stored or stored == '' or incoming == '' then return false end
+          if stored == incoming then return true end
+          local ok, left = pcall(cjson.decode, stored)
+          if not ok or type(left) ~= 'table' then return false end
+          local right = cjson.decode(incoming)
+          if #left ~= #right then return false end
+          local seen = {}
+          for i = 1, #left do seen[left[i]] = true end
+          for i = 1, #right do
+            if not seen[right[i]] then return false end
+          end
+          return true
+        end
+
+        -- Takes the record set rather than closing over ARGV, because the two mint sites source it
+        -- differently: a 'new' cycle uses what the caller sent, and the refusal path below reads it
+        -- from the cycle it is replacing.
+        local function mintCycle(recordsJson)
           local minted = redis.call('HINCRBY', seqKey, 'c', 1)
           redis.call('HSET', wpKey(minted), 'order', orderJson, 'count', orderCount, 'distinct', distinctJson)
-          if records ~= '' then
-            redis.call('HSET', wpKey(minted), 'records', records)
+          if recordsJson ~= '' then
+            redis.call('HSET', wpKey(minted), 'records', recordsJson)
           else
             -- A new cycle owns the whole key: a lost seq counter can re-mint a cycleSeq whose key
             -- still holds another cycle's records, and order/count stay mutually consistent so the
@@ -826,7 +850,29 @@ export class RedisSnapshotStore {
         end
 
         if cycleMode == 'new' then
-          cycleSeq = mintCycle()
+          cycleSeq = mintCycle(records)
+        elseif cycleMode == 'newInherit' then
+          -- The caller's head probe failed, so it knows neither whether this id set continues the
+          -- previous cycle nor what records that cycle holds. Minting fresh is the safe direction,
+          -- but minting with NO records leaves ids that resolve from nothing, and the next resume
+          -- refuses the whole cycle rather than losing a result quietly. So inherit them here.
+          --
+          -- Guarded on the distinct SET matching, which is sufficient and is deliberately weaker
+          -- than the carry test the decorator applies on a successful probe. That test also
+          -- requires the order to match, because a pointer hands the reader the previous cycle's
+          -- order; this mints a fresh cycle from the caller's OWN order, so only the records have
+          -- to be right, and records are keyed by waitpoint id. A differing set is a genuinely new
+          -- wait and must start with the caller's own records, even when that is none.
+          --
+          -- Read before mintCycle, because mintCycle advances the counter this reads.
+          local inherited = records
+          if inherited == '' then
+            local prev = tonumber(redis.call('HGET', seqKey, 'c') or '0')
+            if prev > 0 and sameDistinctSet(redis.call('HGET', wpKey(prev), 'distinct'), distinctJson) then
+              inherited = redis.call('HGET', wpKey(prev), 'records') or ''
+            end
+          end
+          cycleSeq = mintCycle(inherited)
         elseif cycleMode == 'carry' then
           -- Attach the CARRIED pointer only if this incarnation actually minted that cycle. seq can
           -- be evicted while a wp:<n> key survives, so a bare key-exists check would adopt a dead
@@ -843,7 +889,22 @@ export class RedisSnapshotStore {
             -- Only possible when the caller carried the refs. With none there is nothing to mint
             -- from, and the entry is written with no pointer, which is the older behaviour.
             if distinctJson ~= '' then
-              cycleSeq = mintCycle()
+              -- Source the records HERE, not from the caller. A copy-forward append holds none of
+              -- its own, and having the caller pre-read them meant one HGET plus a parse on EVERY
+              -- copy-forward -- attempt start, dequeue, checkpoint -- to serve a branch that needs
+              -- eviction to reach. Reading in the branch that uses them costs nothing on the common
+              -- path, keeps the blob inside Redis, and is atomic with the mint, so no reader can
+              -- observe a replacement cycle whose ids have no records.
+              --
+              -- The surviving cycle key is the source. It is readable in exactly the case that
+              -- matters: 'minted < cycleSeqIn' means the seq counter was lost while wp:<n> lived.
+              -- When the cycle key itself is gone ('not c') the records are gone with it and there
+              -- is nothing to carry, which is what the caller's read also found.
+              local carried = records
+              if carried == '' then
+                carried = redis.call('HGET', wpKey(cycleSeqIn), 'records') or ''
+              end
+              cycleSeq = mintCycle(carried)
             end
           else
             cycleSeq = cycleSeqIn

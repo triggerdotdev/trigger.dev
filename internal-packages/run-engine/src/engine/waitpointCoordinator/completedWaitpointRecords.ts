@@ -49,11 +49,21 @@ function chooseOutput(source: CompletionEnvelopeSource): CompletedWaitpointRecor
     return { ref: source.outputRef };
   }
 
-  // A plain RUN output is re-readable from TaskRun.output verbatim. Two RUN cases are not,
-  // and both must stay inline: an ERROR, because TaskRun.error is jsonb and does not
-  // round-trip to the same string, and an ORPHAN, because the back-reference is
-  // onDelete: SetNull so the completing row may be gone.
-  if (source.type === "RUN" && !source.outputIsError && source.completedByTaskRunId) {
+  // A plain RUN output is re-readable from TaskRun.output verbatim. Three RUN cases are not.
+  // An ERROR, because TaskRun.error is jsonb and does not round-trip to the same string. An
+  // ORPHAN, because the back-reference is onDelete: SetNull so the completing row may be gone.
+  // And an ABSENT output, which is the case that has to be checked here rather than left to the
+  // read: a task that returns nothing completes its waitpoint with no output at all, and there
+  // is then nothing to derive. Marking it derivable makes the resolver read a null TaskRun.output
+  // and refuse the resume as a lost output, where the hydration this replaces resumes cleanly
+  // with no output (`output: w.output ?? undefined`). A waitpoint that DID carry an output whose
+  // run row has since gone still refuses, which is what the refusal is for.
+  if (
+    source.type === "RUN" &&
+    !source.outputIsError &&
+    source.output !== undefined &&
+    source.completedByTaskRunId
+  ) {
     return { deriveFromRun: true };
   }
 

@@ -30,6 +30,29 @@ export type WaitpointSystemOptions = {
   enqueueSystem: EnqueueSystem;
   /** Which coordinator owns waitpoint state. The engine supplies a router over both arms. */
   coordinator: WaitpointCoordinator;
+  /**
+   * Whether this run's snapshots can hold a completed-waitpoint record set. Must be O(1).
+   *
+   * Sits in FRONT of the id-format scan so a run that cannot hold records pays one predicate
+   * call, not one `parseWaitpointId` per blocking waitpoint. It has to be injected rather than
+   * derived here: the answer is per-organisation, since it follows the snapshot store's own
+   * rollout, and the store keeps that state private to itself.
+   *
+   * Takes the organisation id, not just the run id. The decision is organisation-scoped, and an
+   * opaque run id cannot answer it without a lookup -- which would put a read back on the path
+   * this gate exists to keep free. Both call sites already hold it on the snapshot they are
+   * transitioning from, so it costs nothing to pass. The run id rides along for logging and for
+   * any future per-run override.
+   *
+   * Positional rather than an options object, deliberately: an object literal here would be
+   * allocated on every resume, including the ones that exist only to be told no. Two arguments
+   * make the disabled path genuinely free rather than nearly free.
+   *
+   * Defaults to never. A record set is only reachable through the snapshot store, so until the
+   * ticket that wires that store supplies this predicate there is no run for which one could
+   * exist, and no resume does any of this work.
+   */
+  completedWaitpointRecordsEnabled?: (runId: string, organizationId: string) => boolean;
 };
 
 type WaitpointContinuationWaitpoint = Pick<Waitpoint, "id" | "type" | "completedAfter" | "status">;
@@ -53,11 +76,13 @@ export class WaitpointSystem {
   private readonly executionSnapshotSystem: ExecutionSnapshotSystem;
   private readonly enqueueSystem: EnqueueSystem;
   private readonly coordinator: WaitpointCoordinator;
+  private readonly recordsEnabled: (runId: string, organizationId: string) => boolean;
 
   constructor(private readonly options: WaitpointSystemOptions) {
     this.$ = options.resources;
     this.executionSnapshotSystem = options.executionSnapshotSystem;
     this.enqueueSystem = options.enqueueSystem;
+    this.recordsEnabled = options.completedWaitpointRecordsEnabled ?? (() => false);
     this.coordinator = options.coordinator;
   }
 
@@ -624,6 +649,7 @@ export class WaitpointSystem {
           // appending, and they must not pay an envelope read to do it.
           const completedWaitpointRecords = await this.#completedWaitpointRecordsFor(
             runId,
+            snapshot.organizationId,
             blockingWaitpoints
           );
 
@@ -697,6 +723,7 @@ export class WaitpointSystem {
 
           const completedWaitpointRecords = await this.#completedWaitpointRecordsFor(
             runId,
+            snapshot.organizationId,
             blockingWaitpoints
           );
 
@@ -810,18 +837,44 @@ export class WaitpointSystem {
    * The record set for one resume, or undefined when no blocking waitpoint carries a store-format
    * id.
    *
-   * Gated on id FORMAT, not residency. The two are not the same during a migration: a
+   * Gated on the record set being reachable at all, and only then on id FORMAT rather than
+   * residency. Format and residency are not the same during a migration: a
    * store-format id can still be served by the Postgres arm, exactly as run-ops ids were for
    * runs. Whichever arm owns it answers, so the gate only decides whether to ask at all.
    *
    * That gate is what keeps this inert. `parseWaitpointId` reports legacy for every id minted
    * today, so no live resume reads an envelope or writes a record until a waitpoint mints in
    * store format.
+   *
+   * ROLLOUT ORDER. Because the gate reads the id and not the organisation, the first store-format
+   * mint is what starts the cost, for every organisation that then holds one -- not the first
+   * snapshot-store flip. The arm that answers here is the Postgres one until a store arm is
+   * wired, so a mint enabled ahead of the store means a projected `Waitpoint` read on the
+   * WRITER, inside the run lock, once per resume. That is bounded and correct, but it is not
+   * free, so store-format minting should follow the snapshot store rather than lead it.
    */
   async #completedWaitpointRecordsFor(
     runId: string,
+    organizationId: string,
     blockingWaitpoints: RunBlockEdge[]
   ): Promise<CompletedWaitpointRecord[] | undefined> {
+    // O(1) first, and unconditionally first: a run whose snapshots cannot hold a record set has
+    // nothing to build, and deciding that by walking its blocking waitpoints made every resume
+    // for every organisation pay a scan proportional to its fan-in to reach the same answer.
+    // Defaults to never, so today this returns here for everyone.
+    if (!this.recordsEnabled(runId, organizationId)) {
+      return undefined;
+    }
+
+    // Only then the id-format scan, which is what keeps a MIXED cycle working once records are
+    // enabled: an organisation mid-rollout holds waitpoints minted either side of the flip, and
+    // the format is the only thing that says which half each id belongs to. `.some` before the
+    // dedup so an enabled run holding no store-format id still allocates nothing.
+    if (!blockingWaitpoints.some((b) => parseWaitpointId(b.waitpoint.id).format === "b32hexW")) {
+      return undefined;
+    }
+
+    // Only a set that really holds one pays for the dedup.
     const storeFormatIds = [
       ...new Set(
         blockingWaitpoints
@@ -829,10 +882,6 @@ export class WaitpointSystem {
           .filter((id) => parseWaitpointId(id).format === "b32hexW")
       ),
     ];
-
-    if (storeFormatIds.length === 0) {
-      return undefined;
-    }
 
     const sources = await this.coordinator.readCompletionEnvelopes({
       runId,

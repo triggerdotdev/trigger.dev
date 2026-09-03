@@ -579,14 +579,21 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
    * the pointer model exists to remove. So an unchanged id set carries the previous cycleSeq
    * forward and writes no key.
    *
-   * The extra read only happens for an append that actually carries waitpoints, which is the resume
-   * path rather than the hot path.
+   * Resolving a cycle adds no read of its own. The id-set comparison reuses the head this method
+   * already probes, and the refusal path's record set is sourced inside the append script, in the
+   * branch that uses it. An earlier revision pre-read that set here, which put one HGET and a
+   * parse of the whole blob on every copy-forward append -- attempt start, dequeue, checkpoint --
+   * to serve a branch that needs eviction to reach. Those are the hot paths; the resume path is
+   * the one that supplies `records` and never read at all.
    *
-   * `records` rides every arm that can mint. A carryForward normally writes no key, but the
-   * store may refuse the pointer and mint a replacement inside the same call, and that
-   * replacement needs the records or the resolver's coverage check rejects the cycle later.
-   * A legacy-only wait supplies none at all, which is what keeps a Postgres-resident resume
-   * byte-identical to before.
+   * Three arms: `new` mints from the caller's own records, `newInherit` mints after a probe that
+   * FAILED and lets the script inherit the previous cycle's records when the id set matches, and
+   * `carryForward` points at a cycle already minted.
+   *
+   * `records` rides the mint arms only. A carryForward passes none: it points at a cycle already
+   * minted, and if the store refuses that pointer and mints a replacement inside the same call,
+   * the script reads the record set off the cycle it is replacing. A legacy-only wait supplies
+   * none anywhere, which is what keeps a Postgres-resident resume byte-identical to before.
    */
   async #resolveCycle(
     runId: string,
@@ -594,7 +601,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     records?: CompletedWaitpointRecord[]
   ): Promise<
     | {
-        kind: "new";
+        kind: "new" | "newInherit";
         completedWaitpoints: CompletedWaitpointRef[];
         records?: CompletedWaitpointRecord[];
       }
@@ -626,46 +633,34 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
         sameOrder(previousIds.order, order) &&
         sameSet(previousIds.distinctIds, distinct)
       ) {
-        // A copy-forward carries no records of its own, and does not need any: it points at a
-        // cycle already minted. But the script may refuse the pointer and mint a replacement
-        // from these refs, and a replacement minted with no records holds ids that nothing
-        // resolves. So carry the surviving cycle's records for that branch.
-        const carried = records ?? (await this.#recordsForCycle(runId, head.cycle.cycleSeq));
-
+        // A copy-forward carries no records of its own, and needs none: it points at a cycle
+        // already minted. The script can still refuse that pointer and mint a replacement from
+        // these refs, and a replacement minted with no records holds ids nothing resolves -- so
+        // the script sources the record set from the cycle it replaces, atomically with the mint.
+        // Doing it there rather than here is what keeps every copy-forward append read-free.
         return {
           kind: "carryForward",
           cycleSeq: head.cycle.cycleSeq,
           completedWaitpoints,
-          ...(carried && { records: carried }),
+          ...(records && { records }),
         };
       }
     } catch (error) {
       // A failed probe must not lose the waitpoints. Minting a fresh cycle is the safe direction:
       // it costs one duplicated record set, where a wrong carryForward would point at another
       // cycle's ids.
+      //
+      // `newInherit` rather than `new`, because a copy-forward caller carries no records of its
+      // own: the probe is what would have found the previous cycle to read them from. Minting
+      // plain `new` here writes ids with no records, and the next resume then refuses the cycle
+      // outright -- a probe failure that recovers turns into a run that cannot resume. The script
+      // inherits them instead, and only when the id set is identical.
       this.logger.warn("snapshot cycle probe failed, minting a new cycle", { runId, error });
+
+      return { kind: "newInherit", completedWaitpoints, ...(records && { records }) };
     }
 
     return { kind: "new", completedWaitpoints, ...(records && { records }) };
-  }
-
-  // Never fatal. Failing to read the records only loses the refusal branch's ability to mint a
-  // complete replacement, which is where it started; a throw here would fail an append that
-  // would otherwise have succeeded.
-  async #recordsForCycle(
-    runId: string,
-    cycleSeq: number
-  ): Promise<CompletedWaitpointRecord[] | undefined> {
-    try {
-      return await this.redis.getCycleRecords(runId, cycleSeq);
-    } catch (error) {
-      this.logger.warn("reading a cycle's records failed, carrying none", {
-        runId,
-        cycleSeq,
-        error,
-      });
-      return undefined;
-    }
   }
 
   /**

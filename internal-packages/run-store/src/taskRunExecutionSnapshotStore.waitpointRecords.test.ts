@@ -6,7 +6,11 @@
 // a legacy-only wait carry none — which is what keeps a Postgres-resident resume unchanged.
 import { createRedisClient } from "@internal/redis";
 import { containerTest } from "@internal/testcontainers";
-import { generateInternalId } from "@trigger.dev/core/v3/isomorphic";
+import {
+  generateInternalId,
+  generateWaitpointId,
+  parseWaitpointId,
+} from "@trigger.dev/core/v3/isomorphic";
 import { describe, expect } from "vitest";
 import { PostgresRunStore } from "./PostgresRunStore.js";
 import { RedisSnapshotStore, type CompletedWaitpointRecord } from "./redisSnapshotStore.js";
@@ -246,4 +250,251 @@ describe("the completed-waitpoint record set", () => {
       }
     }
   );
+});
+
+// A cycle-probe failure must not mint an unresolvable cycle.
+//
+// The probe is how a copy-forward append discovers that its id set continues the previous cycle.
+// When it throws, the append still has to write, and minting fresh is the safe direction -- but a
+// copy-forward carries no records of its own, so a plain mint writes ids that resolve from
+// nothing. The next resume then refuses the whole cycle: one transient probe failure would leave
+// a run permanently unable to resume, with the join rows still sitting in Postgres.
+//
+// Reachable with Redis healthy: getLatest JSON-parses the entry payload, so one corrupt entry
+// does it.
+describe("a failed cycle probe", () => {
+  async function recordsAtHead(
+    redis: RedisSnapshotStore,
+    probe: ReturnType<typeof createRedisClient>,
+    runId: string
+  ): Promise<CompletedWaitpointRecord[] | undefined> {
+    const head = await redis.getLatest(runId);
+    const cycleSeq = head?.cycle?.cycleSeq;
+    if (cycleSeq === undefined) return undefined;
+    const raw = await probe.hget(`snap:{${runId}}:wp:${cycleSeq}`, "records");
+    return raw ? (JSON.parse(raw) as CompletedWaitpointRecord[]) : undefined;
+  }
+
+  // Fails the NEXT probe only, so the append that follows it still runs against a healthy store.
+  function breakNextProbe(redis: RedisSnapshotStore) {
+    const original = redis.getLatest.bind(redis);
+    let broken = true;
+    redis.getLatest = async (runId: string, opts?: { environmentId?: string }) => {
+      if (broken) {
+        broken = false;
+        throw new Error("probe failed");
+      }
+      return original(runId, opts);
+    };
+    return () => void (redis.getLatest = original);
+  }
+
+  async function seedStoreWaitpoint(
+    prisma: never,
+    env: SnapshotFixtureEnv,
+    id: string
+  ): Promise<void> {
+    await (
+      prisma as unknown as { waitpoint: { create: (a: unknown) => Promise<unknown> } }
+    ).waitpoint.create({
+      data: {
+        id,
+        friendlyId: `waitpoint_${id}`,
+        type: "MANUAL",
+        status: "COMPLETED",
+        completedAt: new Date(),
+        idempotencyKey: `idem_${id.slice(-12)}`,
+        userProvidedIdempotencyKey: false,
+        projectId: env.projectId,
+        environmentId: env.id,
+      },
+    });
+  }
+
+  // TWO waitpoints, and the copy-forward re-passes them in the OPPOSITE order.
+  //
+  // That is not a contrived permutation: both id lists are derived from Postgres reads with no
+  // ORDER BY -- the resume reads the run's block edges, the copy-forward reads the snapshot's
+  // waitpoint rows -- so an arbitrary order on each append is the normal case. A guard comparing
+  // the serialised id arrays would miss here and mint a record-less cycle, which is the very
+  // state this path exists to prevent, for every wait holding more than one waitpoint.
+  //
+  // A single-id version of this test passes whether the guard compares sets or strings, so it
+  // cannot hold the property on its own.
+  containerTest(
+    "inherits the records when the id set is unchanged but reordered",
+    async ({ prisma, redisOptions }) => {
+      const { decorated, redis } = build(prisma as never, redisOptions as never);
+      const probe = createRedisClient(redisOptions, { onError: () => {} });
+
+      try {
+        const env = await seedSnapshotEnvironment(prisma);
+        const runId = await seedRun(decorated, redis, env);
+        const first = generateWaitpointId("MANUAL");
+        const second = generateWaitpointId("MANUAL");
+        await seedStoreWaitpoint(prisma as never, env, first);
+        await seedStoreWaitpoint(prisma as never, env, second);
+
+        // The resume, which supplies the records and mints cycle 1.
+        await decorated.createExecutionSnapshot(
+          resumeInput(
+            runId,
+            env,
+            [
+              { id: first, index: 0 },
+              { id: second, index: 1 },
+            ],
+            [record(first), record(second)]
+          )
+        );
+
+        // The copy-forward: same ids, same indexes, arbitrary order, no records of its own.
+        const restore = breakNextProbe(redis);
+        try {
+          await decorated.createExecutionSnapshot(
+            resumeInput(runId, env, [
+              { id: second, index: 1 },
+              { id: first, index: 0 },
+            ])
+          );
+        } finally {
+          restore();
+        }
+
+        // A fresh cycle, because an unverified pointer must not be carried...
+        const cycleKeys = await probe.keys(`snap:{${runId}}:wp:*`);
+        expect(cycleKeys.length).toBe(2);
+
+        // ...holding BOTH records, so the cycle stays resolvable.
+        const records = await recordsAtHead(redis, probe, runId);
+        expect(records?.map((r) => r.id).sort()).toEqual([first, second].sort());
+      } finally {
+        await Promise.all([redis.quit(), probe.quit().catch(() => {})]);
+      }
+    }
+  );
+
+  // The other direction: a genuinely NEW wait must not inherit the previous cycle's records, or
+  // the resolver would hand the run a result belonging to a waitpoint it is not waiting on.
+  containerTest("inherits nothing when the id set differs", async ({ prisma, redisOptions }) => {
+    const { decorated, redis } = build(prisma as never, redisOptions as never);
+    const probe = createRedisClient(redisOptions, { onError: () => {} });
+
+    try {
+      const env = await seedSnapshotEnvironment(prisma);
+      const runId = await seedRun(decorated, redis, env);
+      const [first, second] = await seedSnapshotWaitpoints(prisma, env, 2);
+
+      await decorated.createExecutionSnapshot(
+        resumeInput(runId, env, [{ id: first!, index: 0 }], [record(first!)])
+      );
+
+      const restore = breakNextProbe(redis);
+      try {
+        await decorated.createExecutionSnapshot(
+          resumeInput(runId, env, [{ id: second!, index: 0 }])
+        );
+      } finally {
+        restore();
+      }
+
+      expect(await recordsAtHead(redis, probe, runId)).toBeUndefined();
+    } finally {
+      await Promise.all([redis.quit(), probe.quit().catch(() => {})]);
+    }
+  });
+});
+
+// A copy-forward append reads NO cycle key, whatever the ids look like.
+//
+// The record set a refusal needs is sourced inside the append script now, so the decorator does
+// not pre-read it. That matters because copy-forward appends are the hot paths -- attempt start,
+// dequeue, checkpoint -- while the refusal they were preparing for needs eviction to reach. These
+// count the reads rather than infer them: the absence of the round trip is the whole point, and it
+// is not visible in the resulting entry.
+//
+// The store-format case is the one that used to pay: it performed the read on every copy-forward.
+describe("a copy-forward append reads no cycle key", () => {
+  function countCycleReads(redis: RedisSnapshotStore) {
+    const client = (redis as unknown as { redis: Record<string, (...a: never[]) => unknown> })
+      .redis;
+    const original = client.hget.bind(client);
+    const reads: string[] = [];
+    client.hget = (...args: never[]) => {
+      const key = args[0];
+      if (typeof key === "string" && key.includes(":wp:")) {
+        reads.push(key);
+      }
+      return original(...args);
+    };
+    return { reads, restore: () => void (client.hget = original) };
+  }
+
+  containerTest("with a legacy-only id set", async ({ prisma, redisOptions }) => {
+    const { decorated, redis } = build(prisma as never, redisOptions as never);
+    const { reads, restore } = countCycleReads(redis);
+
+    try {
+      const env = await seedSnapshotEnvironment(prisma);
+      const runId = await seedRun(decorated, redis, env);
+      const [wpA] = await seedSnapshotWaitpoints(prisma, env, 1);
+      const waitpoints = [{ id: wpA!, index: 0 }];
+
+      // Two appends with the same id set: the second carries the first's cycle forward.
+      await decorated.createExecutionSnapshot(resumeInput(runId, env, waitpoints));
+      await decorated.createExecutionSnapshot(resumeInput(runId, env, waitpoints));
+
+      expect(wpA && parseWaitpointId(wpA).format).toBe("legacy");
+      expect(reads).toEqual([]);
+    } finally {
+      restore();
+      await redis.quit();
+    }
+  });
+
+  containerTest("with a store-format id in the cycle", async ({ prisma, redisOptions }) => {
+    const { decorated, redis } = build(prisma as never, redisOptions as never);
+    const { reads, restore } = countCycleReads(redis);
+
+    try {
+      const env = await seedSnapshotEnvironment(prisma);
+      const runId = await seedRun(decorated, redis, env);
+      // A real row, but with a store-format id rather than the fixture's cuid. The delegate
+      // still writes the completed-waitpoint join, so the row has to exist.
+      const storeId = generateWaitpointId("MANUAL");
+      await prisma.waitpoint.create({
+        data: {
+          id: storeId,
+          friendlyId: `waitpoint_${storeId}`,
+          type: "MANUAL",
+          status: "COMPLETED",
+          completedAt: new Date(),
+          idempotencyKey: `idem_${storeId.slice(-12)}`,
+          userProvidedIdempotencyKey: false,
+          projectId: env.projectId,
+          environmentId: env.id,
+        },
+      });
+      const waitpoints = [{ id: storeId, index: 0 }];
+
+      await decorated.createExecutionSnapshot(
+        resumeInput(runId, env, waitpoints, [record(storeId)])
+      );
+      await decorated.createExecutionSnapshot(resumeInput(runId, env, waitpoints));
+
+      expect(parseWaitpointId(storeId).format).toBe("b32hexW");
+      expect(reads).toEqual([]);
+
+      // And the records the mint wrote are still there, untouched by the copy-forward.
+      const probe = createRedisClient(redisOptions, { onError: () => {} });
+      try {
+        expect(await readRecords(probe, runId)).toHaveLength(1);
+      } finally {
+        await probe.quit().catch(() => {});
+      }
+    } finally {
+      restore();
+      await redis.quit();
+    }
+  });
 });

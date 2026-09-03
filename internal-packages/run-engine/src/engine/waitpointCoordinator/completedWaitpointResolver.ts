@@ -1,3 +1,4 @@
+import { isReadReplicaClient } from "@internal/run-store";
 import type {
   CompletedWaitpointRecord,
   ReadClient,
@@ -39,26 +40,84 @@ export class UnresolvableWaitpointId extends Error {
 
 export type CompletedWaitpointResolverDeps = {
   /**
-   * Reads TaskRun.output. Returns undefined when the row is gone.
+   * Reads TaskRun.output for a SET of completing runs, keyed by run id.
+   *
+   * Plural on purpose. A batch parent resumes on every child at once, so a per-id reader made
+   * the resolver do one round trip per child -- 500 of them, in series, for a 500-wide fan-in,
+   * where the path this replaces did one chunked read. An id absent from the returned map is an
+   * absent output, which the caller refuses rather than resolving empty.
    *
    * Optional, because most cycles carry no `deriveFromRun` record and therefore never need it.
    * A cycle that DOES carry one without a reader is a wiring error, not a data condition, so it
    * throws rather than resolving empty.
    */
-  readRunOutput?(taskRunId: string): Promise<string | undefined>;
+  readRunOutputs?(taskRunIds: string[]): Promise<Map<string, string>>;
 };
 
+// Bounds one read, for the reason the envelope and waitpoint reads share: a run output can be
+// 100KB+, so a wide fan-in read whole can exceed Node's string conversion limits.
+const RUN_OUTPUT_CHUNK_SIZE = 100;
+
 /**
- * The production reader: TaskRun.output for the completing run, through the store so the read
+ * The production reader: TaskRun.output for the completing runs, through the store so each read
  * routes to the run's owning database.
+ *
+ * `findRunsByIds` is the store's own grouped replacement for `Promise.all(ids.map(findRun))`,
+ * and it forces `id` into the projection so the map keys correctly even though this select
+ * names only `output`.
+ *
+ * The client is REQUIRED, and must be the writer, because this read needs read-your-writes.
+ *
+ * It is tempting to argue the replica is safe here: the child commits its output before it
+ * completes the waitpoint that unblocks this parent, so the write happens first. That ordering is
+ * real but it does not help, because the READER can observe the completion by another route --
+ * from Redis, or from the primary -- while the run-output replica still trails. The output then
+ * reads null and the resolver refuses the resume as a lost output. A hard refusal is a far worse
+ * outcome than a read on the writer, and this read is bounded and projected to one column.
+ *
+ * The router turns any client that is not replica-branded into the owning store's primary, and
+ * turns NO client into its replica -- so an optional parameter would silently reintroduce the lag
+ * window every time a caller omitted it. Hence required, and hence checked: `ReadClient` admits
+ * both a writer and a replica, and the two are structurally identical, separable only by the
+ * runtime brand. A caller passing `readOnlyPrisma` would type-check and quietly reinstate the
+ * window, so the constraint has to be asserted rather than documented. Constructed once at wiring
+ * time, so the assertion costs nothing per read.
+ *
+ * The premise this read rests on: `TaskRun.output` still holds what the waitpoint was completed
+ * with. `completeAttemptSuccess` writes the run's output and the waitpoint's completion from the
+ * same values, and nothing overwrites a completed run's output afterwards. If that ever stops
+ * being true, a deferred record resolves the NEWER value while the legacy path would emit the
+ * frozen one -- and unlike a lost output, that divergence is silent.
  */
-export function createRunOutputReader(
-  runStore: Pick<RunStore, "findRun">,
-  client?: ReadClient
-): (taskRunId: string) => Promise<string | undefined> {
-  return async (taskRunId) => {
-    const run = await runStore.findRun({ id: taskRunId }, { select: { output: true } }, client);
-    return run?.output ?? undefined;
+export function createRunOutputsReader(
+  runStore: Pick<RunStore, "findRunsByIds">,
+  client: ReadClient
+): (taskRunIds: string[]) => Promise<Map<string, string>> {
+  if (isReadReplicaClient(client)) {
+    throw new Error(
+      "createRunOutputsReader needs a writer: a replica can trail the child's committed output " +
+        "and the resolver would refuse the resume as a lost output."
+    );
+  }
+
+  return async (taskRunIds) => {
+    const outputs = new Map<string, string>();
+
+    for (let i = 0; i < taskRunIds.length; i += RUN_OUTPUT_CHUNK_SIZE) {
+      const chunk = taskRunIds.slice(i, i + RUN_OUTPUT_CHUNK_SIZE);
+      const rows = await runStore.findRunsByIds(chunk, { select: { output: true } }, client);
+
+      for (const [id, row] of rows) {
+        // A row present with a null output is the same absence as a missing row: either way the
+        // value the waitpoint deferred is gone. Omitting it here keeps one absence rule, so the
+        // caller's refusal covers both.
+        if (row.output !== null) {
+          outputs.set(id, row.output);
+        }
+      }
+    }
+
+    return outputs;
   };
 }
 
@@ -100,13 +159,23 @@ export function createCompletedWaitpointResolver(deps: CompletedWaitpointResolve
       }
     }
 
+    // Every deferred output in ONE read, before the emit loop. Reading inside the loop meant a
+    // round trip per record, in series, which is the shape a batch fan-in punishes hardest: the
+    // wide wait this feature exists to make cheap is exactly the wide wait that paid most.
+    const runOutputs = await readDeferredOutputs(args.records, deps);
+
+    // Positions once, not once per record. `positionsOf` scanned the whole order for every
+    // record, so the emit loop was O(records x order) -- a million comparisons for a 1000-wide
+    // wait, growing with the same input as above.
+    const positions = positionsById(args.order);
+
     const out: CompletedWaitpoint[] = [];
 
     for (const record of args.records) {
-      const indexes = positionsOf(record.id, args.order);
+      const indexes = positions.get(record.id) ?? [undefined];
       // Hydrated once per record, not once per position, so a run at several batch indexes
-      // costs one read rather than one per index.
-      const output = await hydrateOutput(record, deps);
+      // resolves from one map entry rather than one per index.
+      const output = hydrateOutput(record, runOutputs);
 
       for (const index of indexes) {
         out.push({
@@ -144,24 +213,92 @@ export function createCompletedWaitpointResolver(deps: CompletedWaitpointResolve
   };
 }
 
-// An id with no position yields one entry with an undefined index, matching what the
-// existing hydration does for a wait that carried no batch index.
-function positionsOf(waitpointId: string, order: string[]): (number | undefined)[] {
-  const indexes: (number | undefined)[] = [];
+// Every id's positions in the order, built in one pass.
+//
+// An id ABSENT from this map has no position, and the caller emits it once with an undefined
+// index -- matching what the existing hydration does for a wait that carried no batch index.
+// Absence is how that case is carried, so this never stores an [undefined] entry itself.
+function positionsById(order: string[]): Map<string, number[]> {
+  const positions = new Map<string, number[]>();
 
   for (let i = 0; i < order.length; i++) {
-    if (order[i] === waitpointId) {
-      indexes.push(i);
+    const id = order[i];
+    if (id === undefined) {
+      continue;
+    }
+
+    const existing = positions.get(id);
+    if (existing) {
+      existing.push(i);
+    } else {
+      positions.set(id, [i]);
     }
   }
 
-  return indexes.length === 0 ? [undefined] : indexes;
+  return positions;
 }
 
-async function hydrateOutput(
-  record: CompletedWaitpointRecord,
+/**
+ * The output of every run a record defers to, in one batched read.
+ *
+ * Returns an empty map when no record defers, which is the common case: a cycle carrying only
+ * inline values, refs and BATCH records reads nothing at all.
+ */
+async function readDeferredOutputs(
+  records: CompletedWaitpointRecord[],
   deps: CompletedWaitpointResolverDeps
-): Promise<string | undefined> {
+): Promise<Map<string, string>> {
+  const runIds = new Set<string>();
+  let read: NonNullable<CompletedWaitpointResolverDeps["readRunOutputs"]> | undefined;
+
+  for (const record of records) {
+    const runId = deferredRunIdOf(record);
+    if (runId === undefined) {
+      continue;
+    }
+
+    // Checked here rather than after the pass, so the message names a record that really does
+    // defer rather than whichever one happened to be first. A missing reader is a wiring fault,
+    // so every deferring record is equally implicated and the first is as informative as any.
+    if (!deps.readRunOutputs) {
+      throw new Error(
+        `Waitpoint ${record.id} defers its output to run ${runId}, but the resolver was built with no run-output reader.`
+      );
+    }
+
+    read = deps.readRunOutputs;
+    runIds.add(runId);
+  }
+
+  // Set exactly when a record deferred, so this is the same condition as an empty `runIds` --
+  // and unlike `runIds.size`, it carries the reader with it.
+  if (read === undefined) {
+    return new Map();
+  }
+
+  return read([...runIds]);
+}
+
+// The run a record defers its output to, or undefined when it carries its own output or has
+// nothing to defer to. This is the single definition of "needs a run read", so the pre-pass and
+// the hydration cannot disagree about which records those are.
+function deferredRunIdOf(record: CompletedWaitpointRecord): string | undefined {
+  if (record.output === null) {
+    return undefined;
+  }
+
+  if ("inline" in record.output || "ref" in record.output) {
+    return undefined;
+  }
+
+  return record.completedByTaskRunId ?? undefined;
+}
+
+// Synchronous: every read this needs already happened in readDeferredOutputs.
+function hydrateOutput(
+  record: CompletedWaitpointRecord,
+  runOutputs: Map<string, string>
+): string | undefined {
   if (record.output === null) {
     return undefined;
   }
@@ -176,20 +313,26 @@ async function hydrateOutput(
     return record.output.ref;
   }
 
-  if (!record.completedByTaskRunId) {
-    return undefined;
+  // A record marked deriveFromRun with no run to derive from. Unreachable from today's
+  // chooseOutput, which requires the id before it marks anything derivable -- but this is the one
+  // spot where the design could fail OPEN rather than loud, resolving the waitpoint with no output
+  // at all, and a reordering of those conjuncts is all it would take. Treated as the build fault
+  // it would be, like a record arriving with no reader wired.
+  if (record.output !== null && "deriveFromRun" in record.output && !record.completedByTaskRunId) {
+    throw new Error(
+      `Waitpoint ${record.id} defers its output to its completing run, but carries no run id.`
+    );
   }
 
-  if (!deps.readRunOutput) {
-    throw new Error(
-      `Waitpoint ${record.id} defers its output to run ${record.completedByTaskRunId}, but the resolver was built with no run-output reader.`
-    );
+  const runId = deferredRunIdOf(record);
+  if (runId === undefined) {
+    return undefined;
   }
 
   // Postgres does not lose this: the back-reference nulls on delete but Waitpoint.output stays,
   // so the legacy path still emits it. Returning undefined here instead would resolve the
   // parent's triggerAndWait successfully with no output, which is silent wrong data.
-  const output = await deps.readRunOutput(record.completedByTaskRunId);
+  const output = runOutputs.get(runId);
   if (output === undefined) {
     throw new UnresolvableWaitpointId(record.id, "lost-run-output");
   }

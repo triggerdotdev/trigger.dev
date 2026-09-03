@@ -97,9 +97,9 @@ describe("a refused carry-forward", () => {
   });
 
   // The reachable production shape. Every copy-forward append (dequeue, checkpoint, attempt)
-  // re-passes the same refs and carries no records of its own, so this is the case a refusal
-  // actually meets. Before the decorator read the surviving cycle's records, this minted a
-  // replacement holding ids with no records, permanently.
+  // re-passes the same refs and carries NO records of its own, and no longer pre-reads them: the
+  // append script sources the record set from the cycle it is replacing. So a refusal preserves
+  // the records without the caller having paid a read on every copy-forward that did not refuse.
   redisTest("keeps the records when the caller carried refs but none", async ({ redisOptions }) => {
     const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
     const raw = createRedisClient(redisOptions, { onError: () => {} });
@@ -115,34 +115,84 @@ describe("a refused carry-forward", () => {
         },
       });
 
-      // What the decorator now does for a records-less carry: read the surviving cycle's
-      // records and carry those into the refusal branch.
-      const carried = await store.getCycleRecords("run_1", 1);
-      expect(carried).toHaveLength(1);
-
+      // Lose the four core keys, keeping the cycle key. This is the shape that makes the store
+      // refuse the pointer: the seq counter is behind cycleSeqIn while wp:1 still lives.
       await raw.del("snap:{run_1}:e", "snap:{run_1}:idx", "snap:{run_1}:cur", "snap:{run_1}:seq");
 
-      await store.append({
+      const carried = await store.append({
         entry: entry({ id: "snap_2" }),
         kind: "birth",
         isTerminal: false,
+        // No `records`, exactly as a copy-forward append passes it.
         cycle: {
           kind: "carryForward",
           cycleSeq: 1,
           completedWaitpoints: [{ id: "w_a", index: 0 }],
-          records: carried,
         },
       });
 
+      expect(carried).toMatchObject({ outcome: "written", cycleMismatch: true });
+
+      // The replacement holds the records the refused cycle held, copied inside the script.
       const read = await store.getLatest("run_1");
       const records = await recordsAt(raw, read!.cycle!.cycleSeq);
 
       expect(records).toHaveLength(1);
       expect(records?.[0]?.id).toBe("w_a");
+      expect(records?.[0]?.output).toEqual({ inline: "first" });
     } finally {
       await Promise.all([store.quit(), raw.quit().catch(() => {})]);
     }
   });
+
+  // The other half of the refusal: the cycle key itself is gone, so there are no records anywhere
+  // and the replacement legitimately holds none. It must not inherit a stale set from a re-minted
+  // cycleSeq whose key survived.
+  redisTest(
+    "mints a records-less replacement when the cycle key is gone",
+    async ({ redisOptions }) => {
+      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+      const raw = createRedisClient(redisOptions, { onError: () => {} });
+      try {
+        await store.append({
+          entry: entry({ id: "snap_1" }),
+          kind: "birth",
+          isTerminal: false,
+          cycle: {
+            kind: "new",
+            completedWaitpoints: [{ id: "w_a", index: 0 }],
+            records: [record("w_a", "first")],
+          },
+        });
+
+        await raw.del(
+          "snap:{run_1}:e",
+          "snap:{run_1}:idx",
+          "snap:{run_1}:cur",
+          "snap:{run_1}:seq",
+          "snap:{run_1}:wp:1"
+        );
+
+        const carried = await store.append({
+          entry: entry({ id: "snap_2" }),
+          kind: "birth",
+          isTerminal: false,
+          cycle: {
+            kind: "carryForward",
+            cycleSeq: 1,
+            completedWaitpoints: [{ id: "w_b", index: 0 }],
+          },
+        });
+
+        expect(carried).toMatchObject({ outcome: "written", cycleMismatch: true });
+
+        const read = await store.getLatest("run_1");
+        expect(await recordsAt(raw, read!.cycle!.cycleSeq)).toBeUndefined();
+      } finally {
+        await Promise.all([store.quit(), raw.quit().catch(() => {})]);
+      }
+    }
+  );
 
   // Without refs there is nothing to mint from, so the entry is written with no pointer. That is
   // the older behaviour and it stays: no pointer is safe, a pointer with no records is not.

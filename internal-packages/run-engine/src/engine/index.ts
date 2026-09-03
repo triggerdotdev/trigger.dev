@@ -437,6 +437,9 @@ export class RunEngine {
       resources,
       executionSnapshotSystem: this.executionSnapshotSystem,
       enqueueSystem: this.enqueueSystem,
+      ...(options.completedWaitpointRecordsEnabled && {
+        completedWaitpointRecordsEnabled: options.completedWaitpointRecordsEnabled,
+      }),
       coordinator: new WaitpointRouterCoordinator({
         meter: this.meter,
         legacy: new LegacyPostgresWaitpointCoordinator({
