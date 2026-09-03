@@ -68,7 +68,7 @@ export const WebhookResource = z.object({
   routingTarget: WebhookRoutingTarget,
   secretProvisioning: WebhookSecretProvisioning.optional(),
   filter: z.string().optional(), // delivery filter DSL string; compiled to a FilterAst at deploy-sync
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 export type WebhookResource = z.infer<typeof WebhookResource>;
 
