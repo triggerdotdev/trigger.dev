@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v4";
 // Reuse the source-side enum (provider | integrator | either) rather than redefining it.
 import { WebhookSecretProvisioning } from "./webhookConfig.js";
 

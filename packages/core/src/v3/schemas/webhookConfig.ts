@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v4";
 
 // Ingress webhook verification config. Kept in a LEAF module (imports only `z`) so it
 // can be consumed by resources.ts / schemas.ts without dragging in the alert-webhook

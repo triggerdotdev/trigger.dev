@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v4";
 
 // Shared contract for `GET /api/v1/reports/:key`: the period grammar and the `format=json` body.
 // The view model is semantic, not a UI tree: reasons are codes the renderer resolves to prose.
