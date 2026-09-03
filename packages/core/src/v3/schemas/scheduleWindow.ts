@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v4";
 
 export const MAX_ABSOLUTE_SCHEDULE_WINDOW_SECONDS = 24 * 60 * 60;
 
