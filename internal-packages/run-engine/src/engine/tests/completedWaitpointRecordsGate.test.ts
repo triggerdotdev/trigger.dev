@@ -34,7 +34,7 @@ vi.setConfig({ testTimeout: 60_000 });
 function engineWith(
   prisma: never,
   redisOptions: never,
-  completedWaitpointRecordsEnabled?: (runId: string) => boolean
+  completedWaitpointRecordsEnabled?: (args: { runId: string; organizationId: string }) => boolean
 ) {
   return new RunEngine({
     prisma,
@@ -54,12 +54,19 @@ function engineWith(
 }
 
 describe("the completed-waitpoint records gate", () => {
+  // Asserts what is observable: that the predicate is consulted exactly once per resume, with
+  // the right organisation, and that a false answer leaves the resume itself untouched.
+  //
+  // It does NOT assert that the call happens BEFORE the id scan. That ordering is not observable
+  // from outside: `parseWaitpointId` is a pure function on ids the caller already holds, so a scan
+  // leaves no trace, and proving the negative would need it stubbed -- which this repo does not do.
+  // The ordering is held by the code instead: the predicate is the first statement in the method.
   containerTest(
-    "is consulted once per resume, and the resume is unaffected",
+    "is consulted exactly once per resume, with the run's organisation",
     async ({ prisma, redisOptions }) => {
-      const consulted: string[] = [];
-      const engine = engineWith(prisma as never, redisOptions as never, (runId) => {
-        consulted.push(runId);
+      const consulted: { runId: string; organizationId: string }[] = [];
+      const engine = engineWith(prisma as never, redisOptions as never, (args) => {
+        consulted.push(args);
         return false;
       });
 
@@ -98,27 +105,43 @@ describe("the completed-waitpoint records gate", () => {
           snapshotId: dequeued[0]!.snapshot.id,
         });
 
-        // Block on a manual waitpoint, then release it: the release is what resumes the run and
-        // reaches the gate.
-        const waitpoint = await engine.createManualWaitpoint({
-          environmentId: env.id,
-          projectId: env.projectId,
-        });
+        // THREE waitpoints, not one. With a single blocker a gate consulted once per waitpoint
+        // is indistinguishable from one consulted once per resume, so a one-waitpoint run cannot
+        // hold the "exactly once" property this test exists for.
+        const waitpoints = [];
+        for (let i = 0; i < 3; i++) {
+          const created = await engine.createManualWaitpoint({
+            environmentId: env.id,
+            projectId: env.projectId,
+          });
+          waitpoints.push(created.waitpoint.id);
+        }
+
         await engine.blockRunWithWaitpoint({
           runId: run.id,
-          waitpoints: [waitpoint.waitpoint.id],
+          waitpoints,
           projectId: env.project.id,
           organizationId: env.organization.id,
         });
 
-        await engine.completeWaitpoint({ id: waitpoint.waitpoint.id });
+        // The LAST completion is the one that unblocks the run and reaches the gate.
+        for (const id of waitpoints) {
+          await engine.completeWaitpoint({ id });
+        }
 
         const { completedWaitpointIds } = await waitForResume(engine, run.id);
 
-        // The run resumed, because a disabled gate only skips the record build...
-        expect(completedWaitpointIds).toContain(waitpoint.waitpoint.id);
-        // ...and the gate was consulted for it, which is what puts it in the resume path.
-        expect(consulted).toContain(run.id);
+        // The run resumed, because a disabled gate only skips the record build.
+        expect(completedWaitpointIds).toEqual(expect.arrayContaining(waitpoints));
+
+        // Exactly one consultation for this run, not merely at least one: a gate called per
+        // waitpoint, or twice per resume, would satisfy a containment check.
+        const forThisRun = consulted.filter((c) => c.runId === run.id);
+        expect(forThisRun).toHaveLength(1);
+
+        // And it carries the organisation the decision is keyed on, which is the whole reason the
+        // predicate takes more than a run id.
+        expect(forThisRun[0]?.organizationId).toBe(env.organization.id);
         expect(attempt.run.id).toBe(run.id);
       } finally {
         await engine.quit();

@@ -32,11 +32,17 @@ export type WaitpointSystemOptions = {
    * derived here: the answer is per-organisation, since it follows the snapshot store's own
    * rollout, and the store keeps that state private to itself.
    *
+   * Takes the organisation id, not just the run id. The decision is organisation-scoped, and an
+   * opaque run id cannot answer it without a lookup -- which would put a read back on the path
+   * this gate exists to keep free. Both call sites already hold it on the snapshot they are
+   * transitioning from, so it costs nothing to pass. The run id rides along for logging and for
+   * any future per-run override.
+   *
    * Defaults to never. A record set is only reachable through the snapshot store, so until the
    * ticket that wires that store supplies this predicate there is no run for which one could
    * exist, and no resume does any of this work.
    */
-  completedWaitpointRecordsEnabled?: (runId: string) => boolean;
+  completedWaitpointRecordsEnabled?: (args: { runId: string; organizationId: string }) => boolean;
 };
 
 type WaitpointContinuationWaitpoint = Pick<Waitpoint, "id" | "type" | "completedAfter" | "status">;
@@ -60,7 +66,7 @@ export class WaitpointSystem {
   private readonly executionSnapshotSystem: ExecutionSnapshotSystem;
   private readonly enqueueSystem: EnqueueSystem;
   private readonly coordinator: WaitpointCoordinator;
-  private readonly recordsEnabled: (runId: string) => boolean;
+  private readonly recordsEnabled: (args: { runId: string; organizationId: string }) => boolean;
 
   constructor(private readonly options: WaitpointSystemOptions) {
     this.$ = options.resources;
@@ -627,6 +633,7 @@ export class WaitpointSystem {
           // appending, and they must not pay an envelope read to do it.
           const completedWaitpointRecords = await this.#completedWaitpointRecordsFor(
             runId,
+            snapshot.organizationId,
             blockingWaitpoints
           );
 
@@ -700,6 +707,7 @@ export class WaitpointSystem {
 
           const completedWaitpointRecords = await this.#completedWaitpointRecordsFor(
             runId,
+            snapshot.organizationId,
             blockingWaitpoints
           );
 
@@ -792,13 +800,14 @@ export class WaitpointSystem {
    */
   async #completedWaitpointRecordsFor(
     runId: string,
+    organizationId: string,
     blockingWaitpoints: RunBlockEdge[]
   ): Promise<CompletedWaitpointRecord[] | undefined> {
     // O(1) first, and unconditionally first: a run whose snapshots cannot hold a record set has
     // nothing to build, and deciding that by walking its blocking waitpoints made every resume
     // for every organisation pay a scan proportional to its fan-in to reach the same answer.
     // Defaults to never, so today this returns here for everyone.
-    if (!this.recordsEnabled(runId)) {
+    if (!this.recordsEnabled({ runId, organizationId })) {
       return undefined;
     }
 
