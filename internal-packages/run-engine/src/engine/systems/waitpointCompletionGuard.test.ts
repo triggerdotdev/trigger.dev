@@ -3,11 +3,13 @@
 // the transition and the blocked-run fanout idempotently. These drive the real RunEngine + worker.
 import { containerTest } from "@internal/testcontainers";
 import { PostgresRunStore } from "@internal/run-store";
+import { SnapshotId } from "@trigger.dev/core/v3/isomorphic";
 import { trace } from "@internal/tracing";
 import type { PrismaClient } from "@trigger.dev/database";
 import { describe, expect } from "vitest";
 import { setTimeout } from "node:timers/promises";
 import { RunEngine } from "../index.js";
+import { getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "../tests/setup.js";
 
 // A real store that injects a transient connectivity fault into the completion write, so the inline
@@ -281,6 +283,116 @@ describe("waitpoint completion guard", () => {
         expect(await waitForStatus(engine, run.id, "EXECUTING_WITH_WAITPOINTS")).toBe("EXECUTING");
         const wp = await prisma.waitpoint.findFirst({ where: { id: waitpoint.id } });
         expect(wp?.status).toBe("COMPLETED");
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  // An interrupted resume can commit the run's advance past EXECUTING_WITH_WAITPOINTS but crash before
+  // deleting the blocking edge. A re-run of continueRunIfUnblocked (worker-job retry / guard replay)
+  // must idempotently finalize: clear the leaked edge instead of early-returning and stranding it.
+  // EXECUTING additionally re-notifies the worker (the notification is emitted just before the delete,
+  // so a leaked edge means it may have been lost too).
+  containerTest(
+    "continueRunIfUnblocked recovers a leaked edge after an interrupted EXECUTING resume",
+    async ({ prisma, redisOptions }) => {
+      const engine = buildEngine(prisma, redisOptions);
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const run = await triggerExecutingRun(engine, prisma, env, "guard-le", "run_leake", "sle");
+        const waitpoint = await blockOnWaitpoint(engine, env, run.id);
+
+        // The block installed a heartbeat pointing at the EXECUTING_WITH_WAITPOINTS snapshot.
+        const blockedSnapshot = await getLatestExecutionSnapshot(prisma, run.id, engine.runStore);
+        const hbBefore = await engine.worker.getJob(`heartbeatSnapshot.${run.id}`);
+        expect((hbBefore?.item as { snapshotId?: string })?.snapshotId).toBe(blockedSnapshot.id);
+
+        // Simulate the interrupted resume: waitpoint COMPLETED and the EXECUTING snapshot committed via
+        // the STORE (bypassing createExecutionSnapshot), so neither the blocking edge was deleted NOR
+        // the heartbeat was re-pointed at the new snapshot — exactly the committed-but-died-early state.
+        await prisma.waitpoint.update({
+          where: { id: waitpoint.id },
+          data: { status: "COMPLETED", completedAt: new Date(), output: "{}" },
+        });
+        const resumeSnapshotId = SnapshotId.generate().id;
+        await engine.runStore.createExecutionSnapshot(
+          {
+            id: resumeSnapshotId,
+            run: {
+              id: run.id,
+              status: blockedSnapshot.runStatus,
+              attemptNumber: blockedSnapshot.attemptNumber,
+            },
+            snapshot: {
+              executionStatus: "EXECUTING",
+              description: "resume committed, edge+heartbeat leak",
+            },
+            previousSnapshotId: blockedSnapshot.id,
+            environmentId: env.id,
+            environmentType: env.type,
+            projectId: env.project.id,
+            organizationId: env.organization.id,
+          },
+          prisma
+        );
+        expect(await prisma.taskRunWaitpoint.count({ where: { taskRunId: run.id } })).toBe(1);
+        // Precondition: the heartbeat is stale (still points at the pre-resume snapshot).
+        const hbStale = await engine.worker.getJob(`heartbeatSnapshot.${run.id}`);
+        expect((hbStale?.item as { snapshotId?: string })?.snapshotId).toBe(blockedSnapshot.id);
+
+        const notified: string[] = [];
+        engine.eventBus.on("workerNotification", (e) => notified.push(e.run.id));
+
+        const result = await engine.waitpointSystem.continueRunIfUnblocked({ runId: run.id });
+
+        expect(result.status).toBe("unblocked");
+        expect(await prisma.taskRunWaitpoint.count({ where: { taskRunId: run.id } })).toBe(0);
+        expect(notified).toContain(run.id);
+        expect(
+          (await engine.getRunExecutionData({ runId: run.id }))?.snapshot.executionStatus
+        ).toBe("EXECUTING");
+        // The stall watchdog was re-installed for the recovered snapshot.
+        const hbAfter = await engine.worker.getJob(`heartbeatSnapshot.${run.id}`);
+        expect((hbAfter?.item as { snapshotId?: string })?.snapshotId).toBe(resumeSnapshotId);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  // The queue-side variant of the same leak: the run advanced to QUEUED (a SUSPENDED->QUEUED resume)
+  // but the edge was never deleted. The re-run must clear it; the lost publish, if any, is recovered
+  // by the publish guard, not here.
+  containerTest(
+    "continueRunIfUnblocked recovers a leaked edge after an interrupted QUEUED resume",
+    async ({ prisma, redisOptions }) => {
+      const engine = buildEngine(prisma, redisOptions);
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const run = await triggerExecutingRun(engine, prisma, env, "guard-lq", "run_leakq", "slq");
+        const waitpoint = await blockOnWaitpoint(engine, env, run.id);
+
+        await prisma.waitpoint.update({
+          where: { id: waitpoint.id },
+          data: { status: "COMPLETED", completedAt: new Date(), output: "{}" },
+        });
+        const latest = await getLatestExecutionSnapshot(prisma, run.id, engine.runStore);
+        await engine.executionSnapshotSystem.createExecutionSnapshot(prisma, {
+          run: { id: run.id, status: latest.runStatus, attemptNumber: latest.attemptNumber },
+          snapshot: { executionStatus: "QUEUED", description: "resume committed, edge leak" },
+          previousSnapshotId: latest.id,
+          environmentId: env.id,
+          environmentType: env.type,
+          projectId: env.project.id,
+          organizationId: env.organization.id,
+        });
+        expect(await prisma.taskRunWaitpoint.count({ where: { taskRunId: run.id } })).toBe(1);
+
+        const result = await engine.waitpointSystem.continueRunIfUnblocked({ runId: run.id });
+
+        expect(result.status).toBe("unblocked");
+        expect(await prisma.taskRunWaitpoint.count({ where: { taskRunId: run.id } })).toBe(0);
       } finally {
         await engine.quit();
       }

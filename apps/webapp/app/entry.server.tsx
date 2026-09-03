@@ -12,6 +12,7 @@ import { initMollifierStaleSweepWorker } from "~/v3/mollifierStaleSweepWorker.se
 import { initBillingLimitWorker } from "~/v3/billingLimitWorker.server";
 import { initLogsSearchProjectorWorker } from "~/v3/logsSearchProjectorWorker.server";
 import { initQueueMetricsConsumer, initQueueMetricsEmitter } from "~/v3/queueMetrics.server";
+import { startRunStoreInfraRetryFlagPoller } from "~/v3/runStoreInfraRetryFlag.server";
 import { bootstrap } from "./bootstrap";
 import { LocaleContextProvider } from "./components/primitives/LocaleProvider";
 import type { OperatingSystemPlatform } from "./components/primitives/OperatingSystemProvider";
@@ -281,6 +282,9 @@ initBillingLimitWorker();
 initLogsSearchProjectorWorker();
 initQueueMetricsEmitter();
 initQueueMetricsConsumer();
+
+// Warm the blip-retry flag poller at startup so the operation-path getter stays purely synchronous.
+startRunStoreInfraRetryFlagPoller();
 
 bootstrap().catch((error) => {
   logError(error);

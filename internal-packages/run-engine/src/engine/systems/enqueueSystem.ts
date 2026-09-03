@@ -38,6 +38,7 @@ export class EnqueueSystem {
     workerId,
     runnerId,
     skipRunLock,
+    armPublishGuard = false,
     includeTtl = false,
     anchorEligibilityAtQueuePosition = false,
     enableFastPath = false,
@@ -61,6 +62,17 @@ export class EnqueueSystem {
     workerId?: string;
     runnerId?: string;
     skipRunLock?: boolean;
+    /**
+     * Arm the write-ahead publish guard before the snapshot write (see below). Only the waitpoint
+     * SUSPENDED->QUEUED resume sets this: it publishes with default options (so the guard's option-less
+     * replay is faithful) AND the run was SUSPENDED with its concurrency already released, which the
+     * guard's in-flight check relies on to tell a lost publish from a live run. The delayed and
+     * pending-version enqueues do NOT set it (they need `includeTtl`/`anchorEligibilityAtQueuePosition`
+     * the guard can't reconstruct); the checkpoint re-queue does NOT either (it releases concurrency
+     * after enqueue, so a lost publish there would leave a claim the in-flight check can't distinguish).
+     * Default false. Still gated by the runtime blip-retry flag.
+     */
+    armPublishGuard?: boolean;
     /**
      * When true, arm the run's TTL on the queued message. Set by every path that is the run's
      * first real entry into the queue: trigger, a delayed run coming due, and the pending-version
@@ -95,8 +107,10 @@ export class EnqueueSystem {
       // Write-ahead publish guard: the snapshot write (Postgres) and the queue publish (Redis) are
       // not atomic, so a lost publish would leave a QUEUED run absent from the queue. When enabled,
       // pre-mint the snapshot id, arm the guard keyed by it BEFORE the snapshot write, and ack it
-      // only after the publish succeeds; the guard replays the publish idempotently otherwise.
-      const armGuard = await this.$.isBlipRetryEnabled();
+      // only after the publish succeeds; the guard replays the publish idempotently otherwise. Scoped
+      // to the resume re-enqueues (armPublishGuard) so it never has to reconstruct publish options it
+      // wasn't given; the flag check is skipped entirely when not armed, so other paths do no extra work.
+      const armGuard = armPublishGuard ? await this.$.isBlipRetryEnabled() : false;
       const snapshotId = armGuard ? SnapshotId.generate().id : undefined;
       if (armGuard && snapshotId) {
         await this.#scheduleRunPublishedGuard(run.id, snapshotId);
@@ -134,35 +148,53 @@ export class EnqueueSystem {
         enableFastPath,
       });
 
-      if (armGuard) {
-        await this.#ackRunPublishedGuard(run.id);
+      if (armGuard && snapshotId) {
+        await this.#ackRunPublishedGuard(run.id, snapshotId);
       }
 
       return newSnapshot;
     });
   }
 
-  #runPublishedGuardId(runId: string): string {
-    return `ensureRunPublished:${runId}`;
+  // Keyed by BOTH run id and snapshot id: a run goes through many QUEUED transitions over its life,
+  // so a run-only key would let a stale guard from an earlier transition block enqueueOnce for the
+  // next one, leaving the newer transition unprotected.
+  #runPublishedGuardId(runId: string, snapshotId: string): string {
+    return `ensureRunPublished:${runId}:${snapshotId}`;
   }
 
   async #scheduleRunPublishedGuard(runId: string, snapshotId: string): Promise<void> {
     await this.$.worker.enqueueOnce({
-      id: this.#runPublishedGuardId(runId),
+      id: this.#runPublishedGuardId(runId, snapshotId),
       job: "ensureRunPublished",
       payload: { runId, snapshotId },
       availableAt: new Date(Date.now() + this.$.guardDelayMs),
     });
   }
 
-  async #ackRunPublishedGuard(runId: string): Promise<void> {
-    await this.$.worker.ack(this.#runPublishedGuardId(runId));
+  async #ackRunPublishedGuard(runId: string, snapshotId: string): Promise<void> {
+    await this.$.worker.ack(this.#runPublishedGuardId(runId, snapshotId));
   }
 
   /**
-   * Redelivery handler for the publish guard: re-publishes a run whose snapshot committed but whose
-   * queue publish was lost. Idempotent — publishRun/enqueueMessage dedupes on run id — and a no-op
-   * once the snapshot is superseded (already dequeued/executing) so it never re-queues a live run.
+   * Redelivery handler for the publish guard: re-publishes a resume-enqueued run whose snapshot
+   * committed but whose queue publish was lost. It re-publishes ONLY when the run is genuinely absent
+   * from the queue, which two checks establish together:
+   *   1. `snapshotId` is still the latest snapshot AND is QUEUED. Once a consumer dequeues the run the
+   *      snapshot moves off QUEUED, so a lost ack after a successful publish is a no-op here.
+   *   2. `messageInFlight` is false. While the snapshot still reads QUEUED the message may already be
+   *      live in the queue: either waiting in the sorted set, or dispatched to a worker queue (where it
+   *      holds a concurrency claim) but not yet consumed. Re-publishing in that window would BOTH add a
+   *      duplicate queue entry AND strip the live run's concurrency claim (the enqueue Lua SREMs it), so
+   *      we must skip. The guard is scoped to resume enqueues, and a suspend releases all concurrency,
+   *      so a genuinely-lost resume-publish holds no claim and correctly re-publishes.
+   * We deliberately do NOT gate on the message key existing: it is written at trigger and lives for the
+   * whole run lifecycle (deleted only on ack/TTL-expiry), so it is present for every resume.
+   *
+   * The whole decide-then-publish runs under the SAME run lock as `enqueueRun` (keyed by runId), so the
+   * original resume publisher and this guard cannot both observe "absent" and publish across a
+   * queue-dispatch transition: whichever runs second acquires the lock only after the first has finished
+   * publishing, sees the message in-flight, and skips.
    */
   public async ensureRunPublished({
     runId,
@@ -171,21 +203,33 @@ export class EnqueueSystem {
     runId: string;
     snapshotId: string;
   }): Promise<void> {
-    const run = await this.$.runStore.findRun({ id: runId }, this.$.prisma);
-    if (!run) {
-      return;
-    }
-    const latest = await getLatestExecutionSnapshot(this.$.prisma, runId, this.$.runStore);
-    if (latest.id !== snapshotId || latest.executionStatus !== "QUEUED") {
-      // Superseded (already dequeued/executing) or a different transition owns the run now.
-      return;
-    }
-    const env = await this.$.controlPlaneResolver.resolveEnv(run.runtimeEnvironmentId);
-    if (!env) {
-      this.$.logger.error("ensureRunPublished: environment not found", { runId });
-      return;
-    }
-    await this.publishRun({ run, env });
+    await this.$.runLock.lock("ensureRunPublished", [runId], async () => {
+      const run = await this.$.runStore.findRun({ id: runId }, this.$.prisma);
+      if (!run) {
+        return;
+      }
+      const latest = await getLatestExecutionSnapshot(this.$.prisma, runId, this.$.runStore);
+      if (latest.id !== snapshotId || latest.executionStatus !== "QUEUED") {
+        // Superseded (already dequeued/executing) or a different transition owns the run now.
+        return;
+      }
+      const env = await this.$.controlPlaneResolver.resolveEnv(run.runtimeEnvironmentId);
+      if (!env) {
+        this.$.logger.error("ensureRunPublished: environment not found", { runId });
+        return;
+      }
+      const inFlight = await this.$.runQueue.messageInFlight(
+        env,
+        run.queue,
+        run.id,
+        run.concurrencyKey ?? undefined
+      );
+      if (inFlight) {
+        // Already waiting or dispatched; re-publishing would duplicate it and strip its concurrency.
+        return;
+      }
+      await this.publishRun({ run, env });
+    });
   }
 
   /**

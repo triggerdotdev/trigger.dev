@@ -725,6 +725,28 @@ export class RunQueue {
     return this.redis.scard(this.keys.queueCurrentConcurrencyKey(env, queue, concurrencyKey));
   }
 
+  /**
+   * True when the run's message is still live in this queue: waiting in the sorted set, or already
+   * dispatched to a worker queue (where the dequeue Lua SADDs it onto currentConcurrency) but not yet
+   * consumed. The publish guard uses this to avoid re-publishing (which would duplicate the message and
+   * strip the live run's concurrency claim) a run whose DB snapshot still reads QUEUED.
+   */
+  public async messageInFlight(
+    env: MinimalAuthenticatedEnvironment,
+    queue: string,
+    messageId: string,
+    concurrencyKey?: string
+  ): Promise<boolean> {
+    const [queued, concurrent] = await Promise.all([
+      this.redis.zscore(this.keys.queueKey(env, queue, concurrencyKey), messageId),
+      this.redis.sismember(
+        this.keys.queueCurrentConcurrencyKey(env, queue, concurrencyKey),
+        messageId
+      ),
+    ]);
+    return queued !== null || concurrent === 1;
+  }
+
   public async currentDequeuedOfQueue(
     env: MinimalAuthenticatedEnvironment,
     queue: string,

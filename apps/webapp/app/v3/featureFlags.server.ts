@@ -65,20 +65,12 @@ export function makeFlag(_prisma: PrismaClientOrTransaction = prisma) {
 }
 
 const cachedFlagStore = new Map<string, { value: unknown; expiresAt: number }>();
-// In-flight refreshes, keyed like cachedFlagStore, so concurrent callers on a cold/expired entry
-// share ONE database read instead of stampeding it (every ttl window, or repeatedly while it fails).
-const cachedFlagInFlight = new Map<string, Promise<unknown>>();
 
 /**
  * flag() behind a short process-level TTL cache, for global flags read on hot
  * paths (e.g. the root loader) where a database round-trip per request is too
  * expensive. Flips propagate within ttlMs per process. Overrides are rejected
  * by the type: a scoped resolution must never be reused across scopes.
- *
- * Failure-safe: if the underlying read throws (e.g. the control-plane DB is
- * blipping), it never throws to the caller — it serves the last cached value if
- * there is one, otherwise `defaultValue`. A read on hot paths must not turn a DB
- * blip into a 5xx, and a caller that gates behavior on this must degrade safely.
  */
 export async function cachedFlag<T extends FeatureFlagKey>(
   opts: Omit<FlagsOptions<T>, "overrides"> & {
@@ -93,27 +85,9 @@ export async function cachedFlag<T extends FeatureFlagKey>(
     return hit.value as z.infer<(typeof FeatureFlagCatalog)[T]>;
   }
 
-  const existing = cachedFlagInFlight.get(cacheKey);
-  if (existing) {
-    return existing as Promise<z.infer<(typeof FeatureFlagCatalog)[T]>>;
-  }
-
-  const refresh = (async () => {
-    try {
-      const value = await flag(opts);
-      cachedFlagStore.set(cacheKey, { value, expiresAt: Date.now() + ttlMs });
-      return value;
-    } catch {
-      // Serve the stale value if we have one, otherwise the default. Do not cache the failure, so
-      // the next call retries the refresh (single-flighted).
-      return hit ? (hit.value as z.infer<(typeof FeatureFlagCatalog)[T]>) : opts.defaultValue;
-    } finally {
-      cachedFlagInFlight.delete(cacheKey);
-    }
-  })();
-
-  cachedFlagInFlight.set(cacheKey, refresh);
-  return refresh as Promise<z.infer<(typeof FeatureFlagCatalog)[T]>>;
+  const value = await flag(opts);
+  cachedFlagStore.set(cacheKey, { value, expiresAt: Date.now() + ttlMs });
+  return value;
 }
 
 export function makeSetFlag(_prisma: PrismaClientOrTransaction = prisma) {

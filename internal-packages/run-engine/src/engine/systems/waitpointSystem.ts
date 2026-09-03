@@ -608,53 +608,64 @@ export class WaitpointSystem {
             reason: "run is delayed",
           };
         }
-        case "QUEUED": {
-          this.$.logger.info(`continueRunIfUnblocked: run is queued, skipping`, {
-            runId,
-            snapshot,
-            executionStatus: snapshot.executionStatus,
-          });
-
-          return {
-            status: "skipped",
-            reason: "run is already queued",
-          };
-        }
-        case "PENDING_EXECUTING": {
-          this.$.logger.info(`continueRunIfUnblocked: run is pending executing, skipping`, {
-            runId,
-            snapshot,
-            executionStatus: snapshot.executionStatus,
-          });
-
-          return {
-            status: "skipped",
-            reason: "run is already pending executing",
-          };
-        }
+        case "QUEUED":
+        case "PENDING_EXECUTING":
         case "QUEUED_EXECUTING": {
-          this.$.logger.info(`continueRunIfUnblocked: run is already queued executing, skipping`, {
-            runId,
-            snapshot,
-            executionStatus: snapshot.executionStatus,
-          });
-
-          return {
-            status: "skipped",
-            reason: "run is already queued executing",
-          };
+          // The run already advanced onto the queue side. Normally that means an earlier unblock
+          // resumed it and cleared its edges, so there is nothing to do. But if that earlier unblock
+          // crashed after committing the transition and before clearing the blocking edges (e.g. a
+          // connection blip, then a guard redelivery), the edges are still present here. Falling
+          // through to the edge cleanup below removes them idempotently; the lost queue publish, if
+          // any, is recovered separately by the publish guard.
+          if (blockingWaitpoints.length === 0) {
+            this.$.logger.info(
+              `continueRunIfUnblocked: run is already on the queue side, skipping`,
+              {
+                runId,
+                snapshot,
+                executionStatus: snapshot.executionStatus,
+              }
+            );
+            return {
+              status: "skipped",
+              reason: "run is already queued",
+            };
+          }
+          this.$.logger.info(
+            `continueRunIfUnblocked: run already on the queue side with unresolved edges, clearing`,
+            { runId, snapshot, executionStatus: snapshot.executionStatus }
+          );
+          break;
         }
         case "EXECUTING": {
-          this.$.logger.info(`continueRunIfUnblocked: run is already executing, skipping`, {
+          // Same interrupted-resume recovery as the queue-side states, plus two side effects the
+          // original resume emits right before the edge cleanup, so leftover edges mean they may have
+          // been lost too: (1) re-notify the worker for the CURRENT snapshot (idempotent — the worker
+          // re-reads execution data — rather than minting a new snapshot it isn't running on), and
+          // (2) re-install the stall-watchdog heartbeat for the current snapshot (idempotent upsert;
+          // a committed-but-interrupted create may never have enqueued it, leaving no watchdog).
+          if (blockingWaitpoints.length === 0) {
+            this.$.logger.info(`continueRunIfUnblocked: run is already executing, skipping`, {
+              runId,
+              snapshot,
+              executionStatus: snapshot.executionStatus,
+            });
+            return {
+              status: "skipped",
+              reason: "run is already executing",
+            };
+          }
+          this.$.logger.info(
+            `continueRunIfUnblocked: run already executing with unresolved edges, re-notifying`,
+            { runId, snapshot, executionStatus: snapshot.executionStatus }
+          );
+          await sendNotificationToWorker({ runId, snapshot, eventBus: this.$.eventBus });
+          await this.executionSnapshotSystem.enqueueHeartbeatIfNeeded({
+            id: snapshot.id,
             runId,
-            snapshot,
             executionStatus: snapshot.executionStatus,
           });
-
-          return {
-            status: "skipped",
-            reason: "run is already executing",
-          };
+          break;
         }
         case "PENDING_CANCEL":
         case "FINISHED": {
@@ -751,6 +762,8 @@ export class WaitpointSystem {
               index: b.batchIndex ?? undefined,
             })),
             checkpointId: snapshot.checkpointId ?? undefined,
+            // Resume re-enqueue: guard the publish so a lost enqueue doesn't strand a QUEUED run.
+            armPublishGuard: true,
           });
 
           this.$.logger.debug(`continueRunIfUnblocked: run goes to QUEUED`, {

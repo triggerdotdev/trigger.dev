@@ -3,7 +3,7 @@ import { tryCatch } from "@trigger.dev/core/v3";
 import { mintWaitpointIdFor, mintWaitpointIdForShard } from "@trigger.dev/core/v3/isomorphic";
 import type { Logger } from "@trigger.dev/core/logger";
 import type { PrismaClient, Waitpoint } from "@trigger.dev/database";
-import { boundedIn, Prisma } from "@trigger.dev/database";
+import { boundedIn, isRetryableInfrastructureError, Prisma } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
 import { UnclassifiableWaitpointId } from "../errors.js";
 import type {
@@ -118,6 +118,13 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
     try {
       store = await this.runStore.forWaitpointCompletion(waitpointId, { routeKind: "MANUAL" });
     } catch (error) {
+      // forWaitpointCompletion probes the primary residency, so this can be a transient connectivity
+      // blip, NOT an unclassifiable id. Preserve that classification: wrapping it would hide it from
+      // the guarded API path, which relies on the connectivity signal to return 200 (the armed guard
+      // owns eventual completion) instead of a 500.
+      if (isRetryableInfrastructureError(error)) {
+        throw error;
+      }
       this.logger.error("completeWaitpoint: unclassifiable waitpointId", {
         waitpointId,
         error,

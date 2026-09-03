@@ -107,7 +107,7 @@ import pMap from "p-map";
 export class RunEngine {
   private runLockRedis: Redis;
   private runLock: RunLocker;
-  private worker: EngineWorker;
+  worker: EngineWorker;
   private ttlWorker: Worker<ReturnType<typeof createTtlWorkerCatalog>>;
   private logger: Logger;
   private tracer: Tracer;
