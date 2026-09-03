@@ -98,9 +98,9 @@ onAction: async ({ action, messages }) => {
 },
 ```
 
-Mirror each mutation in your store, not just the additions. A `chat.history` mutation is invisible to your database, so a regenerate is a delete *and* an insert — saving the new answer without removing the old one leaves both in the canonical transcript, and the next hydration returns the two of them. (An append-only or branching store is the exception: there you write a new version and resolve the head on read.)
+Mirror each mutation in your store, not only the additions. A `chat.history` mutation is invisible to your database, so a regenerate is a delete *and* an insert — saving the new answer without removing the old one leaves both in the canonical transcript, and the next hydration returns the two of them. (An append-only or branching store is the exception: there you write a new version and resolve the head on read.)
 
-Returning the stream instead of piping it yourself still works and still reaches the browser — you just have no message to store, so the next run will not know about it.
+Returning the stream instead of piping it yourself still works and still reaches the browser — but you have no message to store, so the next run does not know about it.
 
 ## Gating actions on HITL state
 

@@ -199,14 +199,13 @@ treats the content as trustworthy.
 
 **`role: "system"` goes to the instructions lane.** The block is appended to the
 system instructions for subsequent inference calls, so it carries the same standing
-as your system prompt. This is the lane for context the agent should simply believe:
+as your system prompt. This is the lane for context the agent should believe:
 entitlements, plan changes, operational notices.
 
 It has to work this way. On AI SDK 7 a system message inside `messages` is rejected
 for every provider — `standardizePrompt` throws before any provider is called, and
-its own advice is to use the instructions option. `Instructions` accepts
-`Array<SystemModelMessage>`, so the injected block is appended there rather than
-smuggled into the transcript.
+its own advice is to use the instructions option, so the injected block goes there
+rather than into the transcript.
 
 <Warning>
   The instructions lane is delivered by `chat.toStreamTextOptions()`, because that
@@ -217,20 +216,14 @@ smuggled into the transcript.
   `messages` either way.
 </Warning>
 
-Two things worth knowing:
-
 - An injection applies to the next inference call only. The lane is drained once
   applied, so a block injected in `onTurnComplete` shapes the following turn and is
   not repeated on every turn after it.
-- A new instruction block changes the cached prefix, so the first call carrying it
-  misses the prompt cache. Only the turns where something was actually injected pay
-  that.
 - The injected text is merged into a single instruction rather than added as a
   second block, because AI SDK 5 rejects an array of system blocks while accepting
-  one structured block. That means a cached system prompt loses its cache entry for
-  as long as an injection is live — the prefix changed, so there is nothing to hit.
-  If you rely on prompt caching, inject sparingly and prefer facts that go stale, so
-  the injection clears.
+  one structured block. Merging changes the cached prefix, so a cached system prompt
+  gets no cache hit for as long as an injection is live. If you rely on prompt
+  caching, inject sparingly and prefer facts that go stale, so the injection clears.
 
 **Any other role joins the conversation, and is untrusted by construction.** A
 message injected as `user` is indistinguishable from something the user typed, and a
