@@ -208,6 +208,22 @@ export const ORG_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.runStoreInfraRetryEnabled,
 ];
 
+// Flags the org feature-flag WRITE APIs must never persist as a per-org override, because the
+// runtime reads them from the global table and would ignore the override — persisting one only
+// creates a misleading operational state. Narrow on purpose: it removes ONLY these keys, so an
+// org's unrelated overrides are untouched by a save. (ORG_LOCKED_FLAGS is a broader UI concern:
+// which controls the dialog renders read-only.)
+export const ORG_FORBIDDEN_FLAGS: FeatureFlagKey[] = [FEATURE_FLAG.runStoreInfraRetryEnabled];
+
+/** Drop {@link ORG_FORBIDDEN_FLAGS} from a per-org flag write, leaving every other key intact. */
+export function stripOrgForbiddenFlags<T extends Record<string, unknown>>(flags: T): T {
+  const out = { ...flags };
+  for (const key of ORG_FORBIDDEN_FLAGS) {
+    delete out[key];
+  }
+  return out;
+}
+
 /**
  * Flag groups where the operator sets a `primary` and the server computes the rest. The topology
  * lives here, not in the server module, because the admin page needs it too: unsetting a primary

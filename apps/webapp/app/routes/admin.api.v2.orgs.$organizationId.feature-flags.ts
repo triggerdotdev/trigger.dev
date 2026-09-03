@@ -10,7 +10,7 @@ import { selectMintBaselineSource, stampMintKindFlip } from "~/v3/runOpsMigratio
 import { flags as getGlobalFlags } from "~/v3/featureFlags.server";
 import {
   FEATURE_FLAG,
-  ORG_LOCKED_FLAGS,
+  stripOrgForbiddenFlags,
   validatePartialFeatureFlags,
   getAllFlagControlTypes,
 } from "~/v3/featureFlags";
@@ -139,15 +139,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const {
     runOpsMintKindPrev: _ignoredPrev,
     runOpsMintKindFlippedAt: _ignoredFlippedAt,
-    ...requestedFlags
+    ...rawRequestedFlags
   } = validationResult.data;
 
-  // Org-locked flags are global-only: the runtime reads them from the global table and ignores any
-  // per-org value, so persisting one here would only create a misleading override. Drop them (the
-  // dialog shows them read-only and may echo them back).
-  for (const key of ORG_LOCKED_FLAGS) {
-    delete (requestedFlags as Record<string, unknown>)[key];
-  }
+  // Drop only the global-only forbidden flags (not the broad org-locked set), so every other org
+  // override in the body is persisted untouched.
+  const requestedFlags = stripOrgForbiddenFlags(rawRequestedFlags as Record<string, unknown>);
 
   // Seed the flip baseline from the current GLOBAL mint flags so an org's FIRST per-org override
   // is graced from the currently-effective global kind, not the hardcoded default "cuid".

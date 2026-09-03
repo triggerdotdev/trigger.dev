@@ -13,7 +13,7 @@ import { flag } from "./featureFlags.server";
 const REFRESH_INTERVAL_MS = 30_000;
 
 let current = false;
-let started = false;
+let initPromise: Promise<void> | null = null;
 
 async function refresh(): Promise<void> {
   try {
@@ -26,19 +26,25 @@ async function refresh(): Promise<void> {
   }
 }
 
-function ensureStarted(): void {
-  if (started) {
-    return;
+function ensureStarted(): Promise<void> {
+  if (initPromise) {
+    return initPromise;
   }
-  started = true;
-  void refresh();
+  // One initial read, shared by all early callers, so a globally-enabled flag is effective from the
+  // FIRST operation of a fresh process (not only after the first background tick). Later calls await
+  // this already-resolved promise and return the in-memory value with no further database work.
+  initPromise = refresh();
   const timer = setInterval(() => void refresh(), REFRESH_INTERVAL_MS);
-  // Don't keep the process alive for the poll timer.
-  timer.unref?.();
+  timer.unref?.(); // don't keep the process alive for the poll timer
+  return initPromise;
 }
 
-/** Synchronous, DB-free read of the run-store blip-retry gate. Safe to call on every operation. */
-export function isRunStoreInfraRetryEnabled(): boolean {
-  ensureStarted();
+/**
+ * The run-store blip-retry gate. The first call awaits a single initial read (so op #1 sees the real
+ * flag); every later call resolves from the in-memory value with no database work — so the gate does
+ * no per-op DB read, survives a blip (last value held), and never stampedes the control-plane pool.
+ */
+export async function isRunStoreInfraRetryEnabled(): Promise<boolean> {
+  await ensureStarted();
   return current;
 }
