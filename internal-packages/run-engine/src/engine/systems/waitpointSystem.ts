@@ -38,11 +38,15 @@ export type WaitpointSystemOptions = {
    * transitioning from, so it costs nothing to pass. The run id rides along for logging and for
    * any future per-run override.
    *
+   * Positional rather than an options object, deliberately: an object literal here would be
+   * allocated on every resume, including the ones that exist only to be told no. Two arguments
+   * make the disabled path genuinely free rather than nearly free.
+   *
    * Defaults to never. A record set is only reachable through the snapshot store, so until the
    * ticket that wires that store supplies this predicate there is no run for which one could
    * exist, and no resume does any of this work.
    */
-  completedWaitpointRecordsEnabled?: (args: { runId: string; organizationId: string }) => boolean;
+  completedWaitpointRecordsEnabled?: (runId: string, organizationId: string) => boolean;
 };
 
 type WaitpointContinuationWaitpoint = Pick<Waitpoint, "id" | "type" | "completedAfter" | "status">;
@@ -66,7 +70,7 @@ export class WaitpointSystem {
   private readonly executionSnapshotSystem: ExecutionSnapshotSystem;
   private readonly enqueueSystem: EnqueueSystem;
   private readonly coordinator: WaitpointCoordinator;
-  private readonly recordsEnabled: (args: { runId: string; organizationId: string }) => boolean;
+  private readonly recordsEnabled: (runId: string, organizationId: string) => boolean;
 
   constructor(private readonly options: WaitpointSystemOptions) {
     this.$ = options.resources;
@@ -807,7 +811,7 @@ export class WaitpointSystem {
     // nothing to build, and deciding that by walking its blocking waitpoints made every resume
     // for every organisation pay a scan proportional to its fan-in to reach the same answer.
     // Defaults to never, so today this returns here for everyone.
-    if (!this.recordsEnabled({ runId, organizationId })) {
+    if (!this.recordsEnabled(runId, organizationId)) {
       return undefined;
     }
 

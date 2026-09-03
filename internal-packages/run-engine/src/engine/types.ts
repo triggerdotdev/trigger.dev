@@ -85,9 +85,11 @@ export type RunEngineOptions = {
    * run id rides along for logging and for any future per-run override; resolving the
    * organisation from it would put a read back on the path this gate keeps free.
    *
+   * Positional arguments, so the disabled path allocates nothing at all.
+   *
    * Omitted means never, so no resume builds a record set.
    */
-  completedWaitpointRecordsEnabled?: (args: { runId: string; organizationId: string }) => boolean;
+  completedWaitpointRecordsEnabled?: (runId: string, organizationId: string) => boolean;
   queue: {
     redis: RedisOptions;
     shardCount?: number;

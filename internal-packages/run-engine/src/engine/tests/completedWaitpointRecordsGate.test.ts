@@ -34,7 +34,7 @@ vi.setConfig({ testTimeout: 60_000 });
 function engineWith(
   prisma: never,
   redisOptions: never,
-  completedWaitpointRecordsEnabled?: (args: { runId: string; organizationId: string }) => boolean
+  completedWaitpointRecordsEnabled?: (runId: string, organizationId: string) => boolean
 ) {
   return new RunEngine({
     prisma,
@@ -65,8 +65,8 @@ describe("the completed-waitpoint records gate", () => {
     "is consulted exactly once per resume, with the run's organisation",
     async ({ prisma, redisOptions }) => {
       const consulted: { runId: string; organizationId: string }[] = [];
-      const engine = engineWith(prisma as never, redisOptions as never, (args) => {
-        consulted.push(args);
+      const engine = engineWith(prisma as never, redisOptions as never, (runId, organizationId) => {
+        consulted.push({ runId, organizationId });
         return false;
       });
 
