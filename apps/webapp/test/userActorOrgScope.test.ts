@@ -11,6 +11,9 @@ import type { PrismaClient } from "@trigger.dev/database";
 import { buildJwtAbility, signUserActorToken, verifyUserActorToken } from "@trigger.dev/rbac";
 import { validateJWT } from "@trigger.dev/core/v3/jwt";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type * as DashboardAgentServer from "~/services/dashboardAgent.server";
+import type * as PersonalAccessTokenServer from "~/services/personalAccessToken.server";
+import type * as RbacServer from "~/services/rbac.server";
 
 const SESSION_SECRET = "test-session-secret-for-user-actor-org-scope";
 
@@ -68,14 +71,14 @@ vi.mock("~/v3/runStore.server", () => ({
 }));
 // The real resolver talks to the GitHub app. Echo back the project the route resolved instead.
 vi.mock("~/services/dashboardAgent.server", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/services/dashboardAgent.server")>();
+  const actual = await importOriginal<typeof DashboardAgentServer>();
   return {
     ...actual,
     resolveDashboardAgentRepoSnapshot: mocks.resolveDashboardAgentRepoSnapshot,
   };
 });
 vi.mock("~/services/personalAccessToken.server", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/services/personalAccessToken.server")>();
+  const actual = await importOriginal<typeof PersonalAccessTokenServer>();
   return {
     ...actual,
     assertSourcePatActive: mocks.assertSourcePatActive,
@@ -95,7 +98,7 @@ let forcedAbilityCan: ((action: string, resource: unknown) => boolean) | undefin
 // `tr_pat_e2e_token` bearer used below has none of. Only that lookup is stubbed; every UAT check
 // (`authenticateUserActor`) stays real, aside from the opt-in ability override above.
 vi.mock("~/services/rbac.server", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("~/services/rbac.server")>();
+  const actual = await importOriginal<typeof RbacServer>();
   // Patched in place (not spread): the plugin's methods are bound to its own instance.
   const realAuthenticateUserActor = actual.rbac.authenticateUserActor.bind(actual.rbac);
   actual.rbac.authenticateUserActor = async (
