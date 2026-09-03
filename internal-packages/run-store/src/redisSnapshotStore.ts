@@ -456,10 +456,10 @@ export class RedisSnapshotStore {
     if (orderJson !== "") {
       // The whole wp:<cycleSeq> key, not just its order field: records dominates it once populated.
       //
-      // `records` is what the CALLER sent, so this under-reports one case: a refused carry-forward,
-      // where the script copies the record set from the cycle it replaces and the client never sees
-      // it. Sizing that exactly would cost the read this path exists to avoid, and the copied set
-      // was already measured when the cycle it came from was minted.
+      // `records` is what the CALLER sent, so this under-reports the two cases where the script
+      // sources the set itself and the client never sees it: a refused carry-forward, and a mint
+      // after a failed probe that inherits. Sizing either exactly would cost the read those paths
+      // exist to avoid, and the set was already measured when the cycle it came from was minted.
       const cycleBytes = Buffer.byteLength(orderJson, "utf8") + Buffer.byteLength(records, "utf8");
       this.metrics?.recordCycleKeyBytes(cycleBytes);
       if (this.highWater.cycleKeyBytes !== undefined && cycleBytes > this.highWater.cycleKeyBytes) {
@@ -806,6 +806,32 @@ export class RedisSnapshotStore {
 
         -- The STORE mints cycleSeq, so the sequence is dense by construction and the terminal
         -- PEXPIRE loop from 1..c is correct.
+        -- Set equality, NOT string equality.
+        --
+        -- Both sides come from deriveDistinctIds over a Postgres read with no ORDER BY -- the
+        -- resume reads the run's block edges, the copy-forward reads the snapshot's waitpoint
+        -- rows -- so the same set of ids arrives in an arbitrary order on each append. Comparing
+        -- the serialised arrays would therefore disagree for almost every wait holding two or
+        -- more waitpoints, which is the batch fan-in this inherit exists to protect.
+        --
+        -- Both arrays are already deduped by construction, so equal length plus membership one
+        -- way is set equality. This matches the decorator's own sameSet, which is deliberately
+        -- order-insensitive for the same reason.
+        local function sameDistinctSet(stored, incoming)
+          if not stored or stored == '' or incoming == '' then return false end
+          if stored == incoming then return true end
+          local ok, left = pcall(cjson.decode, stored)
+          if not ok or type(left) ~= 'table' then return false end
+          local right = cjson.decode(incoming)
+          if #left ~= #right then return false end
+          local seen = {}
+          for i = 1, #left do seen[left[i]] = true end
+          for i = 1, #right do
+            if not seen[right[i]] then return false end
+          end
+          return true
+        end
+
         -- Takes the record set rather than closing over ARGV, because the two mint sites source it
         -- differently: a 'new' cycle uses what the caller sent, and the refusal path below reads it
         -- from the cycle it is replacing.
@@ -831,14 +857,18 @@ export class RedisSnapshotStore {
           -- but minting with NO records leaves ids that resolve from nothing, and the next resume
           -- refuses the whole cycle rather than losing a result quietly. So inherit them here.
           --
-          -- Guarded on the distinct set being IDENTICAL, which is the same test the caller would
-          -- have made had its probe succeeded. A differing set is a genuinely new wait and must
-          -- start with the caller's own records, even when that is none. Read before mintCycle,
-          -- because mintCycle advances the counter this reads.
+          -- Guarded on the distinct SET matching, which is sufficient and is deliberately weaker
+          -- than the carry test the decorator applies on a successful probe. That test also
+          -- requires the order to match, because a pointer hands the reader the previous cycle's
+          -- order; this mints a fresh cycle from the caller's OWN order, so only the records have
+          -- to be right, and records are keyed by waitpoint id. A differing set is a genuinely new
+          -- wait and must start with the caller's own records, even when that is none.
+          --
+          -- Read before mintCycle, because mintCycle advances the counter this reads.
           local inherited = records
           if inherited == '' then
             local prev = tonumber(redis.call('HGET', seqKey, 'c') or '0')
-            if prev > 0 and redis.call('HGET', wpKey(prev), 'distinct') == distinctJson then
+            if prev > 0 and sameDistinctSet(redis.call('HGET', wpKey(prev), 'distinct'), distinctJson) then
               inherited = redis.call('HGET', wpKey(prev), 'records') or ''
             end
           end

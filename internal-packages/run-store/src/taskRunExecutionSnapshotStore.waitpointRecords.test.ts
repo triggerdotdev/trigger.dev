@@ -289,8 +289,40 @@ describe("a failed cycle probe", () => {
     return () => void (redis.getLatest = original);
   }
 
+  async function seedStoreWaitpoint(
+    prisma: never,
+    env: SnapshotFixtureEnv,
+    id: string
+  ): Promise<void> {
+    await (
+      prisma as unknown as { waitpoint: { create: (a: unknown) => Promise<unknown> } }
+    ).waitpoint.create({
+      data: {
+        id,
+        friendlyId: `waitpoint_${id}`,
+        type: "MANUAL",
+        status: "COMPLETED",
+        completedAt: new Date(),
+        idempotencyKey: `idem_${id.slice(-12)}`,
+        userProvidedIdempotencyKey: false,
+        projectId: env.projectId,
+        environmentId: env.id,
+      },
+    });
+  }
+
+  // TWO waitpoints, and the copy-forward re-passes them in the OPPOSITE order.
+  //
+  // That is not a contrived permutation: both id lists are derived from Postgres reads with no
+  // ORDER BY -- the resume reads the run's block edges, the copy-forward reads the snapshot's
+  // waitpoint rows -- so an arbitrary order on each append is the normal case. A guard comparing
+  // the serialised id arrays would miss here and mint a record-less cycle, which is the very
+  // state this path exists to prevent, for every wait holding more than one waitpoint.
+  //
+  // A single-id version of this test passes whether the guard compares sets or strings, so it
+  // cannot hold the property on its own.
   containerTest(
-    "inherits the records when the id set is unchanged",
+    "inherits the records when the id set is unchanged but reordered",
     async ({ prisma, redisOptions }) => {
       const { decorated, redis } = build(prisma as never, redisOptions as never);
       const probe = createRedisClient(redisOptions, { onError: () => {} });
@@ -298,32 +330,33 @@ describe("a failed cycle probe", () => {
       try {
         const env = await seedSnapshotEnvironment(prisma);
         const runId = await seedRun(decorated, redis, env);
-        const storeId = generateWaitpointId("MANUAL");
-        await prisma.waitpoint.create({
-          data: {
-            id: storeId,
-            friendlyId: `waitpoint_${storeId}`,
-            type: "MANUAL",
-            status: "COMPLETED",
-            completedAt: new Date(),
-            idempotencyKey: `idem_${storeId.slice(-12)}`,
-            userProvidedIdempotencyKey: false,
-            projectId: env.projectId,
-            environmentId: env.id,
-          },
-        });
-        const waitpoints = [{ id: storeId, index: 0 }];
+        const first = generateWaitpointId("MANUAL");
+        const second = generateWaitpointId("MANUAL");
+        await seedStoreWaitpoint(prisma as never, env, first);
+        await seedStoreWaitpoint(prisma as never, env, second);
 
         // The resume, which supplies the records and mints cycle 1.
         await decorated.createExecutionSnapshot(
-          resumeInput(runId, env, waitpoints, [record(storeId)])
+          resumeInput(
+            runId,
+            env,
+            [
+              { id: first, index: 0 },
+              { id: second, index: 1 },
+            ],
+            [record(first), record(second)]
+          )
         );
 
-        // The copy-forward that follows it, with the probe broken. It carries the same refs and
-        // no records of its own, exactly as attempt-start and dequeue do.
+        // The copy-forward: same ids, same indexes, arbitrary order, no records of its own.
         const restore = breakNextProbe(redis);
         try {
-          await decorated.createExecutionSnapshot(resumeInput(runId, env, waitpoints));
+          await decorated.createExecutionSnapshot(
+            resumeInput(runId, env, [
+              { id: second, index: 1 },
+              { id: first, index: 0 },
+            ])
+          );
         } finally {
           restore();
         }
@@ -332,10 +365,9 @@ describe("a failed cycle probe", () => {
         const cycleKeys = await probe.keys(`snap:{${runId}}:wp:*`);
         expect(cycleKeys.length).toBe(2);
 
-        // ...but it still holds the records, so the cycle stays resolvable.
+        // ...holding BOTH records, so the cycle stays resolvable.
         const records = await recordsAtHead(redis, probe, runId);
-        expect(records).toHaveLength(1);
-        expect(records?.[0]?.id).toBe(storeId);
+        expect(records?.map((r) => r.id).sort()).toEqual([first, second].sort());
       } finally {
         await Promise.all([redis.quit(), probe.quit().catch(() => {})]);
       }

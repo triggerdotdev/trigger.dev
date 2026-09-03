@@ -586,6 +586,10 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
    * to serve a branch that needs eviction to reach. Those are the hot paths; the resume path is
    * the one that supplies `records` and never read at all.
    *
+   * Three arms: `new` mints from the caller's own records, `newInherit` mints after a probe that
+   * FAILED and lets the script inherit the previous cycle's records when the id set matches, and
+   * `carryForward` points at a cycle already minted.
+   *
    * `records` rides the mint arms only. A carryForward passes none: it points at a cycle already
    * minted, and if the store refuses that pointer and mints a replacement inside the same call,
    * the script reads the record set off the cycle it is replacing. A legacy-only wait supplies
