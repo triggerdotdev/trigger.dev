@@ -229,6 +229,11 @@ export type RunEngineOptions = {
    * completion whose inline side effects never acked it. Default: 30s.
    */
   completionGuardDelayMs?: number;
+  /**
+   * Whether the connection-blip write-ahead guards are armed. Wired to the runStoreInfraRetryEnabled
+   * feature flag at the app boundary. Defaults to off (no guards, byte-identical behavior).
+   */
+  isBlipRetryEnabled?: () => boolean | Promise<boolean>;
   heartbeatTimeoutsMs?: Partial<HeartbeatTimeouts>;
   repairSnapshotTimeoutMs?: number;
   treatProductionExecutionStallsAsOOM?: boolean;

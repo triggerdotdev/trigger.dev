@@ -24,4 +24,12 @@ export type SystemResources = {
   runQueue: RunQueue;
   raceSimulationSystem: RaceSimulationSystem;
   pendingVersionRunIdLookup: PendingVersionRunIdLookup;
+  /**
+   * Whether the connection-blip write-ahead guards are armed (wired to the runStoreInfraRetryEnabled
+   * flag at the app boundary). Engine-internal paths (e.g. the enqueue publish guard) consult it,
+   * since they have no per-request webapp entry point. Defaults to off.
+   */
+  isBlipRetryEnabled: () => boolean | Promise<boolean>;
+  /** Grace before an unacked write-ahead guard fires. Short in tests. */
+  guardDelayMs: number;
 };

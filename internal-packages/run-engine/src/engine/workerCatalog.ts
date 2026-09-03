@@ -125,6 +125,21 @@ export const workerCatalog = {
       maxTimeoutInMs: 300_000,
     },
   },
+  // Write-ahead guard for the snapshot -> queue-publish step: armed (keyed by the stable snapshot id)
+  // before the snapshot write and acked after the publish succeeds. Its replay re-publishes the run
+  // (idempotent on run id) only while that snapshot is still the latest and QUEUED.
+  ensureRunPublished: {
+    schema: z.object({
+      runId: z.string(),
+      snapshotId: z.string(),
+    }),
+    visibilityTimeoutMs: 30_000,
+    retry: {
+      maxAttempts: 10_000,
+      minTimeoutInMs: 1_000,
+      maxTimeoutInMs: 300_000,
+    },
+  },
   enqueueDelayedRun: {
     schema: z.object({
       runId: z.string(),

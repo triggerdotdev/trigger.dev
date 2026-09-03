@@ -321,6 +321,12 @@ export class RunEngine {
             output: payload.output,
           });
         },
+        ensureRunPublished: async ({ payload }) => {
+          await this.enqueueSystem.ensureRunPublished({
+            runId: payload.runId,
+            snapshotId: payload.snapshotId,
+          });
+        },
         enqueueDelayedRun: async ({ payload }) => {
           await this.delayedRunSystem.enqueueDelayedRun({ runId: payload.runId });
         },
@@ -381,6 +387,8 @@ export class RunEngine {
       raceSimulationSystem: this.raceSimulationSystem,
       pendingVersionRunIdLookup:
         options.pendingVersionRunIdLookup ?? new NoopPendingVersionRunIdLookup(),
+      isBlipRetryEnabled: options.isBlipRetryEnabled ?? (() => false),
+      guardDelayMs: options.completionGuardDelayMs ?? 30_000,
     };
 
     this.executionSnapshotSystem = new ExecutionSnapshotSystem({

@@ -5,10 +5,11 @@ import type {
   TaskRunExecutionStatus,
 } from "@trigger.dev/database";
 import type { RunStore } from "@internal/run-store";
-import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/isomorphic";
+import { parseNaturalLanguageDuration, SnapshotId } from "@trigger.dev/core/v3/isomorphic";
 import type { MinimalAuthenticatedEnvironment } from "../../shared/index.js";
 import { QUEUED_SNAPSHOT_DESCRIPTION, QUEUED_SNAPSHOT_STATUS } from "../consts.js";
 import type { ExecutionSnapshotSystem } from "./executionSnapshotSystem.js";
+import { getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
 import type { SystemResources } from "./systems.js";
 
 export type EnqueueSystemOptions = {
@@ -91,9 +92,20 @@ export class EnqueueSystem {
     const prisma = tx ?? this.$.prisma;
 
     return await this.$.runLock.lockIf(!skipRunLock, "enqueueRun", [run.id], async () => {
+      // Write-ahead publish guard: the snapshot write (Postgres) and the queue publish (Redis) are
+      // not atomic, so a lost publish would leave a QUEUED run absent from the queue. When enabled,
+      // pre-mint the snapshot id, arm the guard keyed by it BEFORE the snapshot write, and ack it
+      // only after the publish succeeds; the guard replays the publish idempotently otherwise.
+      const armGuard = await this.$.isBlipRetryEnabled();
+      const snapshotId = armGuard ? SnapshotId.generate().id : undefined;
+      if (armGuard && snapshotId) {
+        await this.#scheduleRunPublishedGuard(run.id, snapshotId);
+      }
+
       const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(
         prisma,
         {
+          snapshotId,
           run: run,
           snapshot: {
             executionStatus: snapshot?.status ?? QUEUED_SNAPSHOT_STATUS,
@@ -122,8 +134,58 @@ export class EnqueueSystem {
         enableFastPath,
       });
 
+      if (armGuard) {
+        await this.#ackRunPublishedGuard(run.id);
+      }
+
       return newSnapshot;
     });
+  }
+
+  #runPublishedGuardId(runId: string): string {
+    return `ensureRunPublished:${runId}`;
+  }
+
+  async #scheduleRunPublishedGuard(runId: string, snapshotId: string): Promise<void> {
+    await this.$.worker.enqueueOnce({
+      id: this.#runPublishedGuardId(runId),
+      job: "ensureRunPublished",
+      payload: { runId, snapshotId },
+      availableAt: new Date(Date.now() + this.$.guardDelayMs),
+    });
+  }
+
+  async #ackRunPublishedGuard(runId: string): Promise<void> {
+    await this.$.worker.ack(this.#runPublishedGuardId(runId));
+  }
+
+  /**
+   * Redelivery handler for the publish guard: re-publishes a run whose snapshot committed but whose
+   * queue publish was lost. Idempotent — publishRun/enqueueMessage dedupes on run id — and a no-op
+   * once the snapshot is superseded (already dequeued/executing) so it never re-queues a live run.
+   */
+  public async ensureRunPublished({
+    runId,
+    snapshotId,
+  }: {
+    runId: string;
+    snapshotId: string;
+  }): Promise<void> {
+    const run = await this.$.runStore.findRun({ id: runId }, this.$.prisma);
+    if (!run) {
+      return;
+    }
+    const latest = await getLatestExecutionSnapshot(this.$.prisma, runId, this.$.runStore);
+    if (latest.id !== snapshotId || latest.executionStatus !== "QUEUED") {
+      // Superseded (already dequeued/executing) or a different transition owns the run now.
+      return;
+    }
+    const env = await this.$.controlPlaneResolver.resolveEnv(run.runtimeEnvironmentId);
+    if (!env) {
+      this.$.logger.error("ensureRunPublished: environment not found", { runId });
+      return;
+    }
+    await this.publishRun({ run, env });
   }
 
   /**

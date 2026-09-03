@@ -437,6 +437,7 @@ export class ExecutionSnapshotSystem {
   public async createExecutionSnapshot(
     prisma: PrismaClientOrTransaction,
     {
+      snapshotId,
       run,
       snapshot,
       previousSnapshotId,
@@ -451,6 +452,8 @@ export class ExecutionSnapshotSystem {
       completedWaitpoints,
       error,
     }: {
+      /** Caller-supplied stable id (e.g. so a publish guard can arm keyed by it before the write). */
+      snapshotId?: string;
       run: { id: string; status: TaskRunStatus; attemptNumber?: number | null };
       snapshot: {
         executionStatus: TaskRunExecutionStatus;
@@ -478,10 +481,10 @@ export class ExecutionSnapshotSystem {
     // The heartbeat/eventBus side effects below are unchanged.
     store?: RunStore
   ) {
-    // Mint the snapshot id here, above the store, so a connection-blip retry inside the store
-    // replays the same transition idempotently (upsert on the id) instead of duplicating it. Same
-    // scheme the redis dual-write decorator uses, so both stores hold one id.
-    const id = SnapshotId.generate().id;
+    // Mint the snapshot id here (above the store) unless the caller supplied one, so a connection-blip
+    // retry inside the store replays the same transition idempotently (upsert on the id) instead of
+    // duplicating it. A caller supplies it to arm a publish guard keyed by the id before the write.
+    const id = snapshotId ?? SnapshotId.generate().id;
 
     const newSnapshot = await (store ?? this.$.runStore).createExecutionSnapshot(
       {

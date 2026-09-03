@@ -8,6 +8,7 @@ import { defaultMachine, getCurrentPlan } from "~/services/platform.v3.server";
 import { singleton } from "~/utils/singleton";
 import { allMachines } from "./machinePresets.server";
 import { getQueueMetricsEmitter } from "./queueMetrics.server";
+import { isRunStoreInfraRetryEnabled } from "./runStoreInfraRetryFlag.server";
 import { runEnginePendingVersionLookup } from "./runEnginePendingVersionLookup.server";
 import { pickRunOpsStoreForCompletion } from "./runOpsMigration/crossSeamGuard.server";
 import { runEngineControlPlaneResolver } from "./runOpsMigration/runEngineControlPlaneResolver.server";
@@ -28,6 +29,9 @@ function createRunEngine() {
     // PostgresRunStore the engine would have defaulted to, so behavior is unchanged.
     store: runStore,
     controlPlaneResolver: runEngineControlPlaneResolver,
+    // Gates the connection-blip write-ahead guards (publish guard, and the engine-side completion
+    // guard) on the same runtime flag as the run-store retry. Off ⇒ no guards armed.
+    isBlipRetryEnabled: () => isRunStoreInfraRetryEnabled(),
     logLevel: env.RUN_ENGINE_WORKER_LOG_LEVEL,
     treatProductionExecutionStallsAsOOM:
       env.RUN_ENGINE_TREAT_PRODUCTION_EXECUTION_STALLS_AS_OOM === "1",
