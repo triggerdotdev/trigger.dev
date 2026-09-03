@@ -2083,6 +2083,20 @@ export class RoutingRunStore implements RunStore {
     return store.createTaskRunCheckpoint(args, ownerRunId, undefined);
   }
 
+  async findTaskRunCheckpointById(
+    checkpointId: string,
+    ownerRunId: string,
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunCheckpointGetPayload<{}> | null> {
+    // Co-located with its owner run, so route by ownerRunId and read that store's own primary.
+    const store = this.#route(ownerRunId);
+    return store.findTaskRunCheckpointById(
+      checkpointId,
+      ownerRunId,
+      RoutingRunStore.#ownPrimary(store, client)
+    );
+  }
+
   // ---------------------------------------------------------------------------
   // BatchTaskRun (run-ops). Route by id-shape: run-ops id→NEW, cuid→LEGACY.
   // ---------------------------------------------------------------------------

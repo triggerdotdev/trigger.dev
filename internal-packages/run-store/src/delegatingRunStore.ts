@@ -623,6 +623,14 @@ export class DelegatingRunStore implements RunStore {
     return this.delegate.createTaskRunCheckpoint(args, ownerRunId, tx);
   }
 
+  findTaskRunCheckpointById(
+    checkpointId: string,
+    ownerRunId: string,
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunCheckpointGetPayload<{}> | null> {
+    return this.delegate.findTaskRunCheckpointById(checkpointId, ownerRunId, client);
+  }
+
   createBatchTaskRun(
     data: CreateBatchTaskRunData,
     tx?: PrismaClientOrTransaction

@@ -882,6 +882,15 @@ export interface RunStore {
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunCheckpointGetPayload<T>>;
 
+  // Residency-aware direct checkpoint read by id. A snapshot served from Redis carries only the
+  // checkpointId; the checkpoint hydrates by reading TaskRunCheckpoint directly, NOT via the snapshot
+  // row, which at redis-only is suppressed. `ownerRunId` routes to the run's co-located store.
+  findTaskRunCheckpointById(
+    checkpointId: string,
+    ownerRunId: string,
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunCheckpointGetPayload<{}> | null>;
+
   // --- BatchTaskRun (run-ops) ---
   // Batch row is born on the run-ops store at create. `findBatchTaskRunById`
   // reads the primary by default (worker reads the just-written row; replica lag).

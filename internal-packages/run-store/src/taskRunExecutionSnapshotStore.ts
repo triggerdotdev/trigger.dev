@@ -1463,7 +1463,7 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     const entry = read.entry as Record<string, unknown>;
 
     const checkpoint = entry.checkpointId
-      ? await this.#hydrateCheckpoint(runId, read.id, client)
+      ? await this.#hydrateCheckpoint(runId, entry.checkpointId as string, client)
       : null;
 
     // `completedWaitpointOrder` is a scalar column, NOT the join. The engine reads it off the head
@@ -1555,14 +1555,13 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
    */
   async #hydrateCheckpoint(
     runId: string,
-    snapshotId: string,
+    checkpointId: string,
     client?: ReadClient
   ): Promise<unknown> {
-    const row = await this.delegate.findExecutionSnapshot(
-      { where: { id: snapshotId, runId }, include: { checkpoint: true } },
-      client
-    );
-    return (row as { checkpoint?: unknown } | null)?.checkpoint ?? null;
+    // Read the checkpoint ROW directly by id, NOT via the snapshot row: at redis-only the snapshot
+    // row is suppressed, so hydrating through it returns null and a resumed run loses its checkpoint.
+    // The TaskRunCheckpoint row is never suppressed. runId routes to the run's co-located store.
+    return this.delegate.findTaskRunCheckpointById(checkpointId, runId, client);
   }
 
   async #enqueueRepair(entry: SnapshotEntryInput): Promise<void> {

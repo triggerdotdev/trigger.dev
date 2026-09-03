@@ -107,6 +107,76 @@ describe("a checkpoint on a snapshot served from Redis", () => {
     }
   );
 
+  // The shipping redis-only PAIR: decorator at redis-only OVER a store with snapshotWrites:false, so
+  // the TaskRunExecutionSnapshot row is NOT written to Postgres. The checkpoint ROW still lives in
+  // Postgres (only snapshot rows are suppressed), and the Redis entry carries checkpointId. A resume
+  // MUST still re-attach the checkpoint row. If hydration reads it through the (suppressed) snapshot
+  // row, the resumed run gets a null checkpoint and restarts with no state to restore from.
+  containerTest(
+    "at redis-only, a suspended run's checkpoint still hydrates (snapshot row suppressed)",
+    async ({ prisma, redisOptions }) => {
+      const redis = new RedisSnapshotStore({ redisOptions, completedTtlMs: COMPLETED_TTL_MS });
+      // snapshotWrites:false is redis-only: run mutations land, snapshot rows do not.
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma, snapshotWrites: false });
+      const decorated = new TaskRunExecutionSnapshotStore(store as unknown as RunStore, {
+        store: redis,
+        mode: "redis-only",
+        readPercent: 100,
+      });
+      try {
+        const env = await seedSnapshotEnvironment(prisma);
+        const runId = generateInternalId();
+
+        await decorated.createRun({
+          data: buildCreateRunData(runId, env),
+          snapshot: birthSnapshot(env),
+        });
+
+        const checkpoint = await prisma.taskRunCheckpoint.create({
+          data: {
+            friendlyId: `checkpoint_${generateInternalId()}`,
+            type: "DOCKER",
+            location: "s3://bucket/redis-only-checkpoint.tar",
+            imageRef: "registry/image@sha256:def",
+            reason: "suspend at redis-only",
+            projectId: env.projectId,
+            runtimeEnvironmentId: env.id,
+          },
+        });
+
+        // Suspend transition naming the checkpoint. At redis-only the snapshot row is suppressed in PG.
+        await decorated.createExecutionSnapshot({
+          run: { id: runId, status: "WAITING_TO_RESUME" },
+          snapshot: { executionStatus: "SUSPENDED", description: "Run was suspended" },
+          checkpointId: checkpoint.id,
+          environmentId: env.id,
+          environmentType: env.type,
+          projectId: env.projectId,
+          organizationId: env.organizationId,
+        } as never);
+
+        // Confirm the redis-only premise: NO snapshot row for this run exists in Postgres.
+        const pgSnapshotCount = await prisma.taskRunExecutionSnapshot.count({ where: { runId } });
+        expect(pgSnapshotCount).toBe(0);
+
+        // The resume read is served from Redis. It MUST still carry the checkpoint id AND the row.
+        const fromRedis = await decorated.findLatestExecutionSnapshot(runId);
+        expect(fromRedis).not.toBeNull();
+        expect(fromRedis!.executionStatus).toBe("SUSPENDED");
+        expect(fromRedis!.checkpointId).toBe(checkpoint.id);
+
+        // The load-bearing assertion: the checkpoint ROW is re-attached, hydrated directly from the
+        // TaskRunCheckpoint table (not via the suppressed snapshot row), so the run can restore.
+        expect(fromRedis!.checkpoint).not.toBeNull();
+        expect(fromRedis!.checkpoint!.id).toBe(checkpoint.id);
+        expect(fromRedis!.checkpoint!.location).toBe("s3://bucket/redis-only-checkpoint.tar");
+        expect(fromRedis!.checkpoint!.imageRef).toBe("registry/image@sha256:def");
+      } finally {
+        await redis.quit();
+      }
+    }
+  );
+
   containerTest(
     "costs no Postgres read when the snapshot has no checkpoint",
     async ({ prisma, redisOptions }) => {

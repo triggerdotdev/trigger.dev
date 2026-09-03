@@ -57,7 +57,7 @@ export interface RunOpsCapableClient {
   taskRunAttempt: RunOpsDelegate<"create" | "findFirst" | "findMany" | "update">;
   taskRunExecutionSnapshot: RunOpsDelegate<"create" | "findFirst" | "findMany">;
   taskRunWaitpoint: RunOpsDelegate<"deleteMany" | "findMany">;
-  taskRunCheckpoint: RunOpsDelegate<"create">;
+  taskRunCheckpoint: RunOpsDelegate<"create" | "findFirst">;
   checkpoint: RunOpsDelegate<"create" | "findFirst">;
   checkpointRestoreEvent: RunOpsDelegate<"create" | "findFirst">;
   taskRunDependency: RunOpsDelegate<"create" | "findFirst" | "findMany">;
@@ -2614,6 +2614,19 @@ export class PostgresRunStore implements RunStore {
     const prisma = tx ?? this.prisma;
 
     return prisma.taskRunCheckpoint.create(args) as Promise<Prisma.TaskRunCheckpointGetPayload<T>>;
+  }
+
+  async findTaskRunCheckpointById(
+    checkpointId: string,
+    // `ownerRunId` selects residency at the router; a single store has one client and ignores it.
+    _ownerRunId: string,
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunCheckpointGetPayload<{}> | null> {
+    const prisma = client ?? this.readOnlyPrisma;
+
+    return prisma.taskRunCheckpoint.findFirst({
+      where: { id: checkpointId },
+    }) as Promise<Prisma.TaskRunCheckpointGetPayload<{}> | null>;
   }
 
   // --- BatchTaskRun (run-ops) ---
