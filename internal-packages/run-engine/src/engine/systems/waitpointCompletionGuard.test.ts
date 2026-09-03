@@ -230,6 +230,31 @@ describe("waitpoint completion guard", () => {
     }
   );
 
+  // Fault 9: flag off (armGuard=false) — completion resumes normally and no guard is armed.
+  containerTest(
+    "flag off arms no guard and completion still resumes the run",
+    async ({ prisma, redisOptions }) => {
+      const engine = buildEngine(prisma, redisOptions); // isBlipRetryEnabled defaults off
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const run = await triggerExecutingRun(engine, prisma, env, "guard-off", "run_off1", "sgo");
+        const waitpoint = await blockOnWaitpoint(engine, env, run.id);
+
+        // armGuard omitted (false): the guard arm path is skipped entirely.
+        await engine.completeWaitpoint({
+          id: waitpoint.id,
+          output: { value: "{}", isError: false },
+        });
+
+        expect(await waitForStatus(engine, run.id, "EXECUTING_WITH_WAITPOINTS")).toBe("EXECUTING");
+        const wp = await prisma.waitpoint.findFirst({ where: { id: waitpoint.id } });
+        expect(wp?.status).toBe("COMPLETED");
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
   // Fault 1: the completion update never commits (throws before commit) after the guard is armed.
   containerTest(
     "armed-but-never-committed: the guard completes and resumes the run",
