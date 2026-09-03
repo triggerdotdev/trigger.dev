@@ -50,6 +50,9 @@ export const FEATURE_FLAG = {
   // System-wide kill switch for additional (scoped) environment API-key lookup.
   // Defaults off; enable during rollout once the new lookup path is trusted.
   additionalApiKeyLookupEnabled: "additionalApiKeyLookupEnabled",
+  // Runtime switch for the run-store connection-blip retry. Global; lives here rather than in the
+  // environment because a rolling deploy runs two env values at once for hours. Defaults off.
+  runStoreInfraRetryEnabled: "runStoreInfraRetryEnabled",
 } as const;
 
 export const FeatureFlagCatalog = {
@@ -163,6 +166,8 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.additionalApiKeysEnabled]: z.boolean(),
   [FEATURE_FLAG.additionalApiKeyIssuanceEnabled]: z.boolean(),
   [FEATURE_FLAG.additionalApiKeyLookupEnabled]: z.boolean(),
+  // Strict boolean: a stringified "false" must never enable the retry; absent resolves to false.
+  [FEATURE_FLAG.runStoreInfraRetryEnabled]: z.boolean(),
 };
 
 export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;

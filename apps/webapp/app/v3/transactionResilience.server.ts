@@ -61,13 +61,22 @@ export function resolveTransactionResilience(
           delayMs,
         }),
     },
-    // Own budget per pool, driven by the shared DATABASE_INFRA_RETRY_* env. OFF by default.
+    // Own budget per pool. Tuning comes from env; the on/off gate is the runtime
+    // `runStoreInfraRetryEnabled` feature flag (below), so it flips without a redeploy.
     infraRetry: {
       options: {
-        enabled: env.DATABASE_INFRA_RETRY_ENABLED,
+        // Ignored: `isEnabled` (the flag) is the gate. Kept true so the mechanism is available.
+        enabled: true,
         maxAttempts: env.DATABASE_INFRA_RETRY_MAX_ATTEMPTS,
         backoffMinMs: env.DATABASE_INFRA_RETRY_BACKOFF_MIN_MS,
         backoffMaxMs: env.DATABASE_INFRA_RETRY_BACKOFF_MAX_MS,
+      },
+      // Resolved per call from the global feature flag (30s cache), so operators can turn the retry
+      // on/off at runtime. Lazy import: featureFlags.server -> db.server -> this module is a cycle.
+      isEnabled: async () => {
+        const { cachedFlag } = await import("./featureFlags.server");
+        const { FEATURE_FLAG } = await import("~/v3/featureFlags");
+        return cachedFlag({ key: FEATURE_FLAG.runStoreInfraRetryEnabled, defaultValue: false });
       },
       budget: new TokenBucketRetryBudget({
         ratePerSec: env.DATABASE_INFRA_RETRY_BUDGET_PER_SEC,
