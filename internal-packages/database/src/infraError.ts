@@ -14,7 +14,7 @@ const CONNECTIVITY_ERRNO = new Set([
 ]);
 
 const CONNECTIVITY_MESSAGE =
-  /ECONNREFUSED|ENOTFOUND|ETIMEDOUT|ECONNRESET|EHOSTUNREACH|database not reachable|can't reach database|connection terminated|server has closed the connection|timed out fetching a new connection/i;
+  /ECONNREFUSED|ENOTFOUND|ETIMEDOUT|ECONNRESET|EHOSTUNREACH|database not reachable|can't reach database|connection terminated|terminating connection|server has closed the connection|client has encountered a connection error|timed out fetching a new connection/i;
 
 // Connection-pool exhaustion (P2024). Matched only to EXCLUDE it from retry:
 // retrying against an already-exhausted pool deepens the contention rather than

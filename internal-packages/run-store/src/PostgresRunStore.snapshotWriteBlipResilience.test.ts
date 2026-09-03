@@ -76,3 +76,53 @@ postgresBlipTest(
     expect(await client.taskRunExecutionSnapshot.count({ where: { id } })).toBe(1);
   }
 );
+
+postgresBlipTest(
+  "createExecutionSnapshot recovers from a mid-statement blip (retry + idempotency)",
+  { timeout: 120_000 },
+  async ({ prisma, blip }) => {
+    const client = prisma as PrismaClient;
+    const { run, env } = await setupSnapshotIdFixture(client);
+
+    let totalRetries = 0;
+    const store = new PostgresRunStore({
+      prisma: prisma as never,
+      readOnlyPrisma: prisma as never,
+      infraRetry: {
+        options: { enabled: true, maxAttempts: 15, backoffMinMs: 10, backoffMaxMs: 60 },
+        onRetry: () => {
+          totalRetries++;
+        },
+      },
+    });
+
+    await store.findRun({ id: run.id }, prisma as never); // warm the pool
+
+    // Kill the snapshot statement mid-flight (the adapter cannot absorb this transparently, unlike an
+    // idle drop), and loop until at least one iteration actually catches a blip. Every op must still
+    // succeed with exactly one row: the classifier recognises the adapter's connection-loss error, the
+    // retry reissues the transaction, and the stable id keeps a committed-but-lost attempt a no-op.
+    let caught = 0;
+    for (let i = 0; i < 12 && caught < 1; i++) {
+      const id = generateInternalId();
+      const before = totalRetries;
+
+      const opPromise = store.createExecutionSnapshot(snapshotInput(run.id, env, id));
+      await blip
+        .severDuringNextStatement({
+          queryContains: "TaskRunExecutionSnapshot",
+          timeoutMs: 8000,
+          pollMs: 2,
+        })
+        .catch(() => {}); // a missed catch (op finished first) is fine; the loop tries again
+
+      const created = await opPromise;
+      expect(created.id).toBe(id);
+      expect(await client.taskRunExecutionSnapshot.count({ where: { id } })).toBe(1);
+
+      if (totalRetries > before) caught++;
+    }
+
+    expect(caught).toBeGreaterThanOrEqual(1);
+  }
+);

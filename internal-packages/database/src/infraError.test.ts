@@ -94,6 +94,19 @@ describe("isRetryableInfrastructureError", () => {
     expect(isInfrastructureError(new Error(poolMsg))).toBe(true);
   });
 
+  it("retries the pg driver adapter's mid-statement connection-loss error", () => {
+    // The adapter surfaces a killed-mid-statement connection as this unknown-request error; without
+    // matching it, a blip during an in-flight statement is never retried.
+    expect(
+      isRetryableInfrastructureError(
+        new Prisma.PrismaClientUnknownRequestError(
+          "Client has encountered a connection error and is not queryable",
+          { clientVersion: "6.14.0" }
+        )
+      )
+    ).toBe(true);
+  });
+
   it("retries an unknown-request error only with a connectivity signal", () => {
     expect(
       isRetryableInfrastructureError(

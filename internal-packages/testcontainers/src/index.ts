@@ -368,9 +368,11 @@ const blipPrismaFromContainer = async (
   use: Use<PrismaClient>
 ) => {
   const pool = new Pool({ connectionString: postgresContainer.getConnectionUri() });
-  // A severed idle connection surfaces asynchronously as a pool 'error'; swallow it so the blip
-  // can't crash the test worker before the pool replaces the connection.
+  // A severed connection surfaces asynchronously as an 'error' on the pool and on the checked-out
+  // client; swallow both so a deliberately induced blip can't crash the test worker before the pool
+  // replaces the connection. The query itself still rejects, which is what the retry path observes.
   pool.on("error", () => {});
+  pool.on("connect", (client) => client.on("error", () => {}));
   const prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
   try {
     await use(prisma);
