@@ -12,9 +12,13 @@ import type {
 import { assertNever } from "assert-never";
 import { sendNotificationToWorker } from "../eventBus.js";
 import { isFinalRunStatus } from "../statuses.js";
-import { LegacyPostgresWaitpointCoordinator } from "../waitpointCoordinator/legacyPostgresCoordinator.js";
 import { buildCompletedWaitpointRecords } from "../waitpointCoordinator/completedWaitpointRecords.js";
-import type { RunBlockEdge, WaitpointCoordinator } from "../waitpointCoordinator/types.js";
+import type {
+  AssociatedWaitpointData,
+  RunBlockEdge,
+  WaitpointCoordinator,
+  WaitpointMintKind,
+} from "../waitpointCoordinator/types.js";
 import type { EnqueueSystem } from "./enqueueSystem.js";
 import type { ExecutionSnapshotSystem } from "./executionSnapshotSystem.js";
 import { getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
@@ -24,6 +28,8 @@ export type WaitpointSystemOptions = {
   resources: SystemResources;
   executionSnapshotSystem: ExecutionSnapshotSystem;
   enqueueSystem: EnqueueSystem;
+  /** Which coordinator owns waitpoint state. The engine supplies a router over both arms. */
+  coordinator: WaitpointCoordinator;
   /**
    * Whether this run's snapshots can hold a completed-waitpoint record set. Must be O(1).
    *
@@ -77,11 +83,7 @@ export class WaitpointSystem {
     this.executionSnapshotSystem = options.executionSnapshotSystem;
     this.enqueueSystem = options.enqueueSystem;
     this.recordsEnabled = options.completedWaitpointRecordsEnabled ?? (() => false);
-    this.coordinator = new LegacyPostgresWaitpointCoordinator({
-      runStore: this.$.runStore,
-      prisma: this.$.prisma,
-      logger: this.$.logger,
-    });
+    this.coordinator = options.coordinator;
   }
 
   public async clearBlockingWaitpoints({
@@ -170,6 +172,7 @@ export class WaitpointSystem {
     completedAfter,
     idempotencyKey,
     idempotencyKeyExpiresAt,
+    waitpointMintKind,
   }: {
     runId?: string;
     projectId: string;
@@ -177,8 +180,10 @@ export class WaitpointSystem {
     completedAfter: Date;
     idempotencyKey?: string;
     idempotencyKeyExpiresAt?: Date;
+    waitpointMintKind?: WaitpointMintKind;
   }) {
     const result = await this.coordinator.createDateTimeWaitpoint({
+      mintKind: waitpointMintKind ?? "legacy",
       runId,
       projectId,
       environmentId,
@@ -213,11 +218,13 @@ export class WaitpointSystem {
     timeout,
     tags,
     standaloneResidency,
+    waitpointMintKind,
     standaloneShardKey,
   }: {
     runId?: string;
     environmentId: string;
     projectId: string;
+    waitpointMintKind?: WaitpointMintKind;
     idempotencyKey?: string;
     idempotencyKeyExpiresAt?: Date;
     timeout?: Date;
@@ -229,6 +236,7 @@ export class WaitpointSystem {
     standaloneShardKey?: ShardKey;
   }): Promise<{ waitpoint: Waitpoint; isCached: boolean }> {
     const result = await this.coordinator.createManualWaitpoint({
+      mintKind: waitpointMintKind ?? "legacy",
       runId,
       environmentId,
       projectId,
@@ -414,6 +422,7 @@ export class WaitpointSystem {
     timeout,
     spanIdToComplete,
     batch,
+    batchWaitpointId,
   }: {
     runId: string;
     waitpoints: string | string[];
@@ -421,6 +430,8 @@ export class WaitpointSystem {
     timeout?: Date;
     spanIdToComplete?: string;
     batch: { id: string; index?: number };
+    /** The parent's BATCH waitpoint, so the store arm can assert it is still pending. */
+    batchWaitpointId?: string;
   }): Promise<void> {
     const $waitpoints = typeof waitpoints === "string" ? [waitpoints] : waitpoints;
 
@@ -434,6 +445,7 @@ export class WaitpointSystem {
       spanIdToComplete,
       batchId: batch.id,
       batchIndex: batch.index,
+      batchWaitpointId,
     });
 
     // Schedule timeout jobs if needed
@@ -766,20 +778,59 @@ export class WaitpointSystem {
     }); // end of runlock
   }
 
+  /** The BATCH waitpoint for a batch. Returns null when the batch already has one. */
+  public async createBatchWaitpoint(params: {
+    batchId: string;
+    environmentId: string;
+    projectId: string;
+    mintKind?: WaitpointMintKind;
+    tx?: PrismaClientOrTransaction;
+  }): Promise<Waitpoint | null> {
+    return this.coordinator.createBatchWaitpoint({
+      ...params,
+      mintKind: params.mintKind ?? "legacy",
+    });
+  }
+
+  /**
+   * Mint the RUN waitpoint's data for a run that a parent will block on.
+   *
+   * A store mint derives the id from the anchor run's own id body, so the id is a pure
+   * function of the run id and create-if-absent needs no lock. Derivation only works when
+   * the run itself carries a run-ops id, so a legacy-shaped run keeps a legacy waitpoint
+   * even in a flipped organization, which is the coexistence rule the id routing relies on.
+   */
   public buildRunAssociatedWaitpoint({
     projectId,
     environmentId,
     anchorRunId,
+    mintKind,
   }: {
     projectId: string;
     environmentId: string;
     anchorRunId: string;
+    mintKind?: WaitpointMintKind;
   }) {
     return this.coordinator.mintAssociatedWaitpointData({
       projectId,
       environmentId,
       anchorRunId,
+      mintKind,
     });
+  }
+
+  /**
+   * Create the RUN waitpoint that `buildRunAssociatedWaitpoint` minted.
+   *
+   * Only the store path calls this: the legacy path writes the row inside the run's own
+   * create. A crash between the run commit and this call leaves the waitpoint absent, and
+   * the parent's register step then fails loud rather than resuming without it.
+   */
+  public async createRunAssociatedWaitpoint(params: {
+    runId: string;
+    data: AssociatedWaitpointData;
+  }): Promise<Waitpoint> {
+    return this.coordinator.createAssociatedWaitpoint(params);
   }
 
   /**

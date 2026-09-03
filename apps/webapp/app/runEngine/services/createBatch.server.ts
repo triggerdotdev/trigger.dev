@@ -1,4 +1,5 @@
 import type { InitializeBatchOptions } from "@internal/run-engine";
+import { resolveWaitpointMintKind } from "~/v3/waitpointMigration/waitpointMintKind.server";
 import { type CreateBatchRequestBody, type CreateBatchResponse } from "@trigger.dev/core/v3";
 import { RunId } from "@trigger.dev/core/v3/isomorphic";
 import { type BatchTaskRun, Prisma } from "@trigger.dev/database";
@@ -137,6 +138,11 @@ export class CreateBatchService extends WithRunEngine {
               environmentId: environment.id,
               projectId: environment.projectId,
               organizationId: environment.organizationId,
+              waitpointMintKind: await resolveWaitpointMintKind({
+                organizationId: environment.organizationId,
+                id: environment.id,
+                orgFeatureFlags: environment.organization.featureFlags,
+              }),
             });
           }
 

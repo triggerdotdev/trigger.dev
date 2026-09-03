@@ -4,7 +4,13 @@ import {
 } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { expect, describe } from "vitest";
-import { RunEngine } from "../index.js";
+import {
+  createTestEngine,
+  freshRunFriendlyId,
+  readRunBlockEdgesForArm,
+  readWaitpointForArm,
+  type WaitpointArm,
+} from "./helpers/engineFactory.js";
 import { setTimeout } from "node:timers/promises";
 import { generateFriendlyId, BatchId } from "@trigger.dev/core/v3/isomorphic";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
@@ -12,12 +18,13 @@ import type { CompleteBatchResult, BatchItem } from "../../batch-queue/types.js"
 
 vi.setConfig({ testTimeout: 60_000 });
 
-describe("RunEngine batchTriggerAndWait", () => {
+describe.each<WaitpointArm>(["legacy", "store"])("RunEngine batchTriggerAndWait (%s)", (arm) => {
   containerTest("batchTriggerAndWait (no idempotency)", async ({ prisma, redisOptions }) => {
     //create environment
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-    const engine = new RunEngine({
+    const engine = createTestEngine({
+      waitpointArm: arm,
       prisma,
       worker: {
         redis: redisOptions,
@@ -67,7 +74,7 @@ describe("RunEngine batchTriggerAndWait", () => {
       const parentRun = await engine.trigger(
         {
           number: 1,
-          friendlyId: "run_p1234",
+          friendlyId: freshRunFriendlyId(arm),
           environment: authenticatedEnvironment,
           taskIdentifier: parentTask,
           payload: "{}",
@@ -115,7 +122,7 @@ describe("RunEngine batchTriggerAndWait", () => {
       const child1 = await engine.trigger(
         {
           number: 1,
-          friendlyId: "run_c1234",
+          friendlyId: freshRunFriendlyId(arm),
           environment: authenticatedEnvironment,
           taskIdentifier: childTask,
           payload: "{}",
@@ -142,7 +149,7 @@ describe("RunEngine batchTriggerAndWait", () => {
       const child2 = await engine.trigger(
         {
           number: 2,
-          friendlyId: "run_c12345",
+          friendlyId: freshRunFriendlyId(arm),
           environment: authenticatedEnvironment,
           taskIdentifier: childTask,
           payload: "{}",
@@ -167,16 +174,11 @@ describe("RunEngine batchTriggerAndWait", () => {
       expect(parentAfterChild2.snapshot.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
 
       //check the waitpoint blocking the parent run
-      const runWaitpoints = await prisma.taskRunWaitpoint.findMany({
-        where: {
-          taskRunId: parentRun.id,
-        },
-        include: {
-          waitpoint: true,
-        },
-        orderBy: {
-          createdAt: "asc",
-        },
+      const runWaitpoints = await readRunBlockEdgesForArm({
+        arm,
+        prisma,
+        redisOptions,
+        runId: parentRun.id,
       });
       expect(runWaitpoints.length).toBe(3);
       const child1Waitpoint = runWaitpoints.find(
@@ -230,10 +232,11 @@ describe("RunEngine batchTriggerAndWait", () => {
       assertNonNullable(childExecutionDataAfter);
       expect(childExecutionDataAfter.snapshot.executionStatus).toBe("FINISHED");
 
-      const child1WaitpointAfter = await prisma.waitpoint.findFirst({
-        where: {
-          id: child1Waitpoint?.waitpointId,
-        },
+      const child1WaitpointAfter = await readWaitpointForArm({
+        arm,
+        prisma,
+        redisOptions,
+        waitpointId: child1Waitpoint!.waitpointId,
       });
       expect(child1WaitpointAfter?.completedAt).not.toBeNull();
       expect(child1WaitpointAfter?.status).toBe("COMPLETED");
@@ -241,13 +244,11 @@ describe("RunEngine batchTriggerAndWait", () => {
 
       await setTimeout(500);
 
-      const runWaitpointsAfterFirstChild = await prisma.taskRunWaitpoint.findMany({
-        where: {
-          taskRunId: parentRun.id,
-        },
-        include: {
-          waitpoint: true,
-        },
+      const runWaitpointsAfterFirstChild = await readRunBlockEdgesForArm({
+        arm,
+        prisma,
+        redisOptions,
+        runId: parentRun.id,
       });
       expect(runWaitpointsAfterFirstChild.length).toBe(3);
 
@@ -291,10 +292,11 @@ describe("RunEngine batchTriggerAndWait", () => {
       assertNonNullable(child2ExecutionDataAfter);
       expect(child2ExecutionDataAfter.snapshot.executionStatus).toBe("FINISHED");
 
-      const child2WaitpointAfter = await prisma.waitpoint.findFirst({
-        where: {
-          id: child2Waitpoint?.waitpointId,
-        },
+      const child2WaitpointAfter = await readWaitpointForArm({
+        arm,
+        prisma,
+        redisOptions,
+        waitpointId: child2Waitpoint!.waitpointId,
       });
       expect(child2WaitpointAfter?.completedAt).not.toBeNull();
       expect(child2WaitpointAfter?.status).toBe("COMPLETED");
@@ -302,13 +304,11 @@ describe("RunEngine batchTriggerAndWait", () => {
 
       await setTimeout(1_000);
 
-      const runWaitpointsAfterSecondChild = await prisma.taskRunWaitpoint.findMany({
-        where: {
-          taskRunId: parentRun.id,
-        },
-        include: {
-          waitpoint: true,
-        },
+      const runWaitpointsAfterSecondChild = await readRunBlockEdgesForArm({
+        arm,
+        prisma,
+        redisOptions,
+        runId: parentRun.id,
       });
       expect(runWaitpointsAfterSecondChild.length).toBe(0);
 
@@ -366,7 +366,8 @@ describe("RunEngine batchTriggerAndWait", () => {
       //create environment
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-      const engine = new RunEngine({
+      const engine = createTestEngine({
+        waitpointArm: arm,
         prisma,
         worker: {
           redis: redisOptions,
@@ -421,7 +422,7 @@ describe("RunEngine batchTriggerAndWait", () => {
         const parentRun = await engine.trigger(
           {
             number: 1,
-            friendlyId: "run_p1234",
+            friendlyId: freshRunFriendlyId(arm),
             environment: authenticatedEnvironment,
             taskIdentifier: parentTask,
             payload: "{}",
@@ -471,7 +472,7 @@ describe("RunEngine batchTriggerAndWait", () => {
         const batchChild = await engine.trigger(
           {
             number: 1,
-            friendlyId: "run_c1234",
+            friendlyId: freshRunFriendlyId(arm),
             environment: authenticatedEnvironment,
             taskIdentifier: batchChildTask,
             payload: "{}",
@@ -524,13 +525,11 @@ describe("RunEngine batchTriggerAndWait", () => {
 
         await setTimeout(500);
 
-        const runWaitpointsAfterBatchChild = await prisma.taskRunWaitpoint.findMany({
-          where: {
-            taskRunId: parentRun.id,
-          },
-          include: {
-            waitpoint: true,
-          },
+        const runWaitpointsAfterBatchChild = await readRunBlockEdgesForArm({
+          arm,
+          prisma,
+          redisOptions,
+          runId: parentRun.id,
         });
         expect(runWaitpointsAfterBatchChild.length).toBe(0);
 
@@ -549,7 +548,7 @@ describe("RunEngine batchTriggerAndWait", () => {
         const _triggerAndWaitChildRun = await engine.trigger(
           {
             number: 1,
-            friendlyId: "run_c123456",
+            friendlyId: freshRunFriendlyId(arm),
             environment: authenticatedEnvironment,
             taskIdentifier: triggerAndWaitChildTask,
             payload: "{}",
@@ -587,7 +586,8 @@ describe("RunEngine batchTriggerAndWait", () => {
       // Create environment
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-      const engine = new RunEngine({
+      const engine = createTestEngine({
+        waitpointArm: arm,
         prisma,
         worker: {
           redis: redisOptions,
@@ -713,7 +713,7 @@ describe("RunEngine batchTriggerAndWait", () => {
         const parentRun = await engine.trigger(
           {
             number: 1,
-            friendlyId: "run_parent",
+            friendlyId: freshRunFriendlyId(arm),
             environment: authenticatedEnvironment,
             taskIdentifier: parentTask,
             payload: "{}",
@@ -847,8 +847,11 @@ describe("RunEngine batchTriggerAndWait", () => {
         // Wait for parent to be unblocked (use waitFor since tryCompleteBatch runs as background job)
         await vi.waitFor(
           async () => {
-            const waitpoints = await prisma.taskRunWaitpoint.findMany({
-              where: { taskRunId: parentRun.id },
+            const waitpoints = await readRunBlockEdgesForArm({
+              arm,
+              prisma,
+              redisOptions,
+              runId: parentRun.id,
             });
             expect(waitpoints.length).toBe(0);
           },
@@ -883,7 +886,8 @@ describe("RunEngine batchTriggerAndWait", () => {
       // Create environment
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-      const engine = new RunEngine({
+      const engine = createTestEngine({
+        waitpointArm: arm,
         prisma,
         worker: {
           redis: redisOptions,
@@ -1190,8 +1194,11 @@ describe("RunEngine batchTriggerAndWait", () => {
         // Wait for parent to be unblocked (use waitFor since tryCompleteBatch runs as background job)
         await vi.waitFor(
           async () => {
-            const waitpoints = await prisma.taskRunWaitpoint.findMany({
-              where: { taskRunId: parentRun.id },
+            const waitpoints = await readRunBlockEdgesForArm({
+              arm,
+              prisma,
+              redisOptions,
+              runId: parentRun.id,
             });
             expect(waitpoints.length).toBe(0);
           },

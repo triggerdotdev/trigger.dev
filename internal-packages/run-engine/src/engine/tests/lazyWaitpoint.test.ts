@@ -1,7 +1,7 @@
 import { containerTest, assertNonNullable } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { expect } from "vitest";
-import { RunEngine } from "../index.js";
+import { createTestEngine } from "./helpers/engineFactory.js";
 import { setTimeout } from "node:timers/promises";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 
@@ -13,7 +13,7 @@ describe("RunEngine lazy waitpoint creation", () => {
     async ({ prisma, redisOptions }) => {
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-      const engine = new RunEngine({
+      const engine = createTestEngine({
         prisma,
         worker: {
           redis: redisOptions,
@@ -90,7 +90,7 @@ describe("RunEngine lazy waitpoint creation", () => {
   containerTest("Waitpoint created for triggerAndWait", async ({ prisma, redisOptions }) => {
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-    const engine = new RunEngine({
+    const engine = createTestEngine({
       prisma,
       worker: {
         redis: redisOptions,
@@ -199,7 +199,7 @@ describe("RunEngine lazy waitpoint creation", () => {
   containerTest("Completion without waitpoint succeeds", async ({ prisma, redisOptions }) => {
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-    const engine = new RunEngine({
+    const engine = createTestEngine({
       prisma,
       worker: {
         redis: redisOptions,
@@ -301,7 +301,7 @@ describe("RunEngine lazy waitpoint creation", () => {
   containerTest("Cancellation without waitpoint succeeds", async ({ prisma, redisOptions }) => {
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-    const engine = new RunEngine({
+    const engine = createTestEngine({
       prisma,
       worker: {
         redis: redisOptions,
@@ -386,7 +386,7 @@ describe("RunEngine lazy waitpoint creation", () => {
   containerTest("TTL expiration without waitpoint succeeds", async ({ prisma, redisOptions }) => {
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-    const engine = new RunEngine({
+    const engine = createTestEngine({
       prisma,
       worker: {
         redis: redisOptions,
@@ -485,7 +485,7 @@ describe("RunEngine lazy waitpoint creation", () => {
     async ({ prisma, redisOptions }) => {
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-      const engine = new RunEngine({
+      const engine = createTestEngine({
         prisma,
         worker: {
           redis: redisOptions,
@@ -606,7 +606,7 @@ describe("RunEngine lazy waitpoint creation", () => {
     async ({ prisma, redisOptions }) => {
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-      const engine = new RunEngine({
+      const engine = createTestEngine({
         prisma,
         worker: {
           redis: redisOptions,
@@ -701,7 +701,7 @@ describe("RunEngine lazy waitpoint creation", () => {
     async ({ prisma, redisOptions }) => {
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-      const engine = new RunEngine({
+      const engine = createTestEngine({
         prisma,
         worker: {
           redis: redisOptions,
@@ -818,7 +818,7 @@ describe("RunEngine lazy waitpoint creation", () => {
     async ({ prisma, redisOptions }) => {
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-      const engine = new RunEngine({
+      const engine = createTestEngine({
         prisma,
         worker: {
           redis: redisOptions,
@@ -930,7 +930,7 @@ describe("RunEngine lazy waitpoint creation", () => {
     async ({ prisma, redisOptions }) => {
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-      const engine = new RunEngine({
+      const engine = createTestEngine({
         prisma,
         worker: {
           redis: redisOptions,
@@ -1029,7 +1029,7 @@ describe("RunEngine lazy waitpoint creation", () => {
     async ({ prisma, redisOptions }) => {
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-      const engine = new RunEngine({
+      const engine = createTestEngine({
         prisma,
         worker: {
           redis: redisOptions,
@@ -1190,7 +1190,7 @@ describe("RunEngine lazy waitpoint creation", () => {
     async ({ prisma, redisOptions }) => {
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-      const engine = new RunEngine({
+      const engine = createTestEngine({
         prisma,
         worker: {
           redis: redisOptions,

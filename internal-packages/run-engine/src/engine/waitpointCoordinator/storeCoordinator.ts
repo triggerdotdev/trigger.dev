@@ -513,6 +513,35 @@ export class WaitpointStoreCoordinator {
   }
 
   /**
+   * Read one waitpoint's three parts, or undefined when the store does not hold it.
+   *
+   * Single key, so no script and no #call guard: nothing here can span two slots. The
+   * seam needs this because its return types are the Postgres row shape, and only the
+   * immutable record carries the columns that shape requires.
+   */
+  async readWaitpoint(waitpointId: string): Promise<
+    | {
+        record: WaitpointRecordInput;
+        status: WaitpointStatus;
+        completion?: WaitpointCompletion;
+      }
+    | undefined
+  > {
+    const fields = await this.redis.hmget(waitpointKeys(waitpointId).record, "r", "status", "c");
+
+    const record = parseJson<WaitpointRecordInput>(fields[0] ?? undefined);
+    if (!record) {
+      return undefined;
+    }
+
+    return {
+      record,
+      status: fields[1] === "COMPLETED" ? "COMPLETED" : "PENDING",
+      completion: parseJson<WaitpointCompletion>(fields[2] ?? undefined),
+    };
+  }
+
+  /**
    * Source the envelope fields for a run's COMPLETED waitpoints.
    *
    * Reads `wp:{id}` and nothing else. Both halves live under that one key — `r` holds the

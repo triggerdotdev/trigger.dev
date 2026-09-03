@@ -28,6 +28,10 @@ import { parseDelay } from "~/utils/delays";
 import { removeNullBytesFromKey } from "~/utils/nullBytes";
 import { handleMetadataPacket } from "~/utils/packets";
 import { startSpan } from "~/v3/tracing.server";
+import {
+  resolveWaitpointMintKind,
+  type WaitpointMintKind,
+} from "~/v3/waitpointMigration/waitpointMintKind.server";
 import { mintFriendlyIdForKind } from "~/v3/runOpsMigration/mintAnchoredRunFriendlyId.server";
 import { resolveRunMintTarget } from "~/v3/runOpsMigration/resolveRunMintTarget.server";
 import type {
@@ -653,10 +657,16 @@ export class RunEngineTriggerTaskService {
                     event.setAttribute("taskRunId", runFriendlyId);
 
                     const payloadPacket = await this.payloadProcessor.process(triggerRequest);
+                    const waitpointMintKind = await resolveWaitpointMintKind({
+                      organizationId: environment.organizationId,
+                      id: environment.id,
+                      orgFeatureFlags: environment.organization.featureFlags,
+                    });
 
                     const engineTriggerInput = this.#buildEngineTriggerInput({
                       runFriendlyId,
                       environment,
+                      waitpointMintKind,
                       idempotencyKey,
                       idempotencyKeyExpiresAt,
                       body,
@@ -733,10 +743,16 @@ export class RunEngineTriggerTaskService {
                 }
 
                 const payloadPacket = await this.payloadProcessor.process(triggerRequest);
+                const waitpointMintKind = await resolveWaitpointMintKind({
+                  organizationId: environment.organizationId,
+                  id: environment.id,
+                  orgFeatureFlags: environment.organization.featureFlags,
+                });
 
                 const baseEngineInput = this.#buildEngineTriggerInput({
                   runFriendlyId,
                   environment,
+                  waitpointMintKind,
                   idempotencyKey,
                   idempotencyKeyExpiresAt,
                   body,
@@ -899,6 +915,7 @@ export class RunEngineTriggerTaskService {
   #buildEngineTriggerInput(args: {
     runFriendlyId: string;
     environment: AuthenticatedEnvironment;
+    waitpointMintKind: WaitpointMintKind;
     idempotencyKey?: string;
     idempotencyKeyExpiresAt?: Date;
     body: TriggerTaskRequest["body"];
@@ -988,6 +1005,7 @@ export class RunEngineTriggerTaskService {
         ? { id: args.options.batchId, index: args.options.batchIndex ?? 0 }
         : undefined,
       resumeParentOnCompletion: args.body.options?.resumeParentOnCompletion,
+      waitpointMintKind: args.waitpointMintKind,
       depth: args.depth,
       metadata: args.metadataPacket?.data,
       metadataType: args.metadataPacket?.dataType,

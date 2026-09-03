@@ -1,19 +1,26 @@
 import { assertNonNullable, containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { expect } from "vitest";
-import { RunEngine } from "../index.js";
+import {
+  createTestEngine,
+  freshRunFriendlyId,
+  readRunBlockEdgesForArm,
+  readWaitpointForArm,
+  type WaitpointArm,
+} from "./helpers/engineFactory.js";
 import { setTimeout } from "node:timers/promises";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 import { RunDuplicateIdempotencyKeyError } from "../errors.js";
 
 vi.setConfig({ testTimeout: 60_000 });
 
-describe("RunEngine triggerAndWait", () => {
+describe.each<WaitpointArm>(["legacy", "store"])("RunEngine triggerAndWait (%s)", (arm) => {
   containerTest("triggerAndWait", async ({ prisma, redisOptions }) => {
     //create environment
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-    const engine = new RunEngine({
+    const engine = createTestEngine({
+      waitpointArm: arm,
       prisma,
       worker: {
         redis: redisOptions,
@@ -55,7 +62,7 @@ describe("RunEngine triggerAndWait", () => {
       const parentRun = await engine.trigger(
         {
           number: 1,
-          friendlyId: "run_p1234",
+          friendlyId: freshRunFriendlyId(arm),
           environment: authenticatedEnvironment,
           taskIdentifier: parentTask,
           payload: "{}",
@@ -90,7 +97,7 @@ describe("RunEngine triggerAndWait", () => {
       const childRun = await engine.trigger(
         {
           number: 1,
-          friendlyId: "run_c1234",
+          friendlyId: freshRunFriendlyId(arm),
           environment: authenticatedEnvironment,
           taskIdentifier: childTask,
           payload: "{}",
@@ -118,14 +125,9 @@ describe("RunEngine triggerAndWait", () => {
       expect(parentExecutionData.snapshot.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
 
       //check the waitpoint blocking the parent run
-      const runWaitpoint = await prisma.taskRunWaitpoint.findFirst({
-        where: {
-          taskRunId: parentRun.id,
-        },
-        include: {
-          waitpoint: true,
-        },
-      });
+      const runWaitpoint =
+        (await readRunBlockEdgesForArm({ arm, prisma, redisOptions, runId: parentRun.id }))[0] ??
+        null;
       assertNonNullable(runWaitpoint);
       expect(runWaitpoint.waitpoint.type).toBe("RUN");
       expect(runWaitpoint.waitpoint.completedByTaskRunId).toBe(childRun.id);
@@ -160,10 +162,11 @@ describe("RunEngine triggerAndWait", () => {
       assertNonNullable(childExecutionDataAfter);
       expect(childExecutionDataAfter.snapshot.executionStatus).toBe("FINISHED");
 
-      const waitpointAfter = await prisma.waitpoint.findFirst({
-        where: {
-          id: runWaitpoint.waitpointId,
-        },
+      const waitpointAfter = await readWaitpointForArm({
+        arm,
+        prisma,
+        redisOptions,
+        waitpointId: runWaitpoint.waitpointId!,
       });
       expect(waitpointAfter?.completedAt).not.toBeNull();
       expect(waitpointAfter?.status).toBe("COMPLETED");
@@ -171,14 +174,9 @@ describe("RunEngine triggerAndWait", () => {
 
       await setTimeout(500);
 
-      const runWaitpointAfter = await prisma.taskRunWaitpoint.findFirst({
-        where: {
-          taskRunId: parentRun.id,
-        },
-        include: {
-          waitpoint: true,
-        },
-      });
+      const runWaitpointAfter =
+        (await readRunBlockEdgesForArm({ arm, prisma, redisOptions, runId: parentRun.id }))[0] ??
+        null;
       expect(runWaitpointAfter).toBeNull();
 
       //parent snapshot
@@ -203,7 +201,8 @@ describe("RunEngine triggerAndWait", () => {
       //create environment
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-      const engine = new RunEngine({
+      const engine = createTestEngine({
+        waitpointArm: arm,
         prisma,
         worker: {
           redis: redisOptions,
@@ -245,7 +244,7 @@ describe("RunEngine triggerAndWait", () => {
         const parentRun1 = await engine.trigger(
           {
             number: 1,
-            friendlyId: "run_p1234",
+            friendlyId: freshRunFriendlyId(arm),
             environment: authenticatedEnvironment,
             taskIdentifier: parentTask,
             payload: "{}",
@@ -277,7 +276,7 @@ describe("RunEngine triggerAndWait", () => {
         const childRun = await engine.trigger(
           {
             number: 1,
-            friendlyId: "run_c1234",
+            friendlyId: freshRunFriendlyId(arm),
             environment: authenticatedEnvironment,
             taskIdentifier: childTask,
             payload: "{}",
@@ -305,14 +304,9 @@ describe("RunEngine triggerAndWait", () => {
         expect(parentExecutionData.snapshot.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
 
         //check the waitpoint blocking the parent run
-        const runWaitpoint = await prisma.taskRunWaitpoint.findFirst({
-          where: {
-            taskRunId: parentRun1.id,
-          },
-          include: {
-            waitpoint: true,
-          },
-        });
+        const runWaitpoint =
+          (await readRunBlockEdgesForArm({ arm, prisma, redisOptions, runId: parentRun1.id }))[0] ??
+          null;
         assertNonNullable(runWaitpoint);
         expect(runWaitpoint.waitpoint.type).toBe("RUN");
         expect(runWaitpoint.waitpoint.completedByTaskRunId).toBe(childRun.id);
@@ -334,7 +328,7 @@ describe("RunEngine triggerAndWait", () => {
         const parentRun2 = await engine.trigger(
           {
             number: 2,
-            friendlyId: "run_p1235",
+            friendlyId: freshRunFriendlyId(arm),
             environment: authenticatedEnvironment,
             taskIdentifier: parentTask,
             payload: "{}",
@@ -399,10 +393,11 @@ describe("RunEngine triggerAndWait", () => {
         assertNonNullable(childExecutionDataAfter);
         expect(childExecutionDataAfter.snapshot.executionStatus).toBe("FINISHED");
 
-        const waitpointAfter = await prisma.waitpoint.findFirst({
-          where: {
-            id: runWaitpoint.waitpointId,
-          },
+        const waitpointAfter = await readWaitpointForArm({
+          arm,
+          prisma,
+          redisOptions,
+          waitpointId: runWaitpoint.waitpointId!,
         });
         expect(waitpointAfter?.completedAt).not.toBeNull();
         expect(waitpointAfter?.status).toBe("COMPLETED");
@@ -410,18 +405,14 @@ describe("RunEngine triggerAndWait", () => {
 
         await setTimeout(500);
 
-        const parent1RunWaitpointAfter = await prisma.taskRunWaitpoint.findFirst({
-          where: {
-            taskRunId: parentRun1.id,
-          },
-        });
+        const parent1RunWaitpointAfter =
+          (await readRunBlockEdgesForArm({ arm, prisma, redisOptions, runId: parentRun1.id }))[0] ??
+          null;
         expect(parent1RunWaitpointAfter).toBeNull();
 
-        const parent2RunWaitpointAfter = await prisma.taskRunWaitpoint.findFirst({
-          where: {
-            taskRunId: parentRun2.id,
-          },
-        });
+        const parent2RunWaitpointAfter =
+          (await readRunBlockEdgesForArm({ arm, prisma, redisOptions, runId: parentRun2.id }))[0] ??
+          null;
         expect(parent2RunWaitpointAfter).toBeNull();
 
         //parent snapshot
@@ -460,7 +451,8 @@ describe("RunEngine triggerAndWait", () => {
       //create environment
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-      const engine = new RunEngine({
+      const engine = createTestEngine({
+        waitpointArm: arm,
         prisma,
         worker: {
           redis: redisOptions,
@@ -503,7 +495,7 @@ describe("RunEngine triggerAndWait", () => {
         const parentRun1 = await engine.trigger(
           {
             number: 1,
-            friendlyId: "run_p1234",
+            friendlyId: freshRunFriendlyId(arm),
             environment: authenticatedEnvironment,
             taskIdentifier: parentTask,
             payload: "{}",
@@ -534,7 +526,7 @@ describe("RunEngine triggerAndWait", () => {
         const parentRun2 = await engine.trigger(
           {
             number: 2,
-            friendlyId: "run_p12345",
+            friendlyId: freshRunFriendlyId(arm),
             environment: authenticatedEnvironment,
             taskIdentifier: parentTask,
             payload: "{}",
@@ -564,7 +556,7 @@ describe("RunEngine triggerAndWait", () => {
         await engine.trigger(
           {
             number: 1,
-            friendlyId: "run_c1234",
+            friendlyId: freshRunFriendlyId(arm),
             environment: authenticatedEnvironment,
             taskIdentifier: childTask,
             payload: "{}",
@@ -589,7 +581,7 @@ describe("RunEngine triggerAndWait", () => {
           engine.trigger(
             {
               number: 2,
-              friendlyId: "run_c12345",
+              friendlyId: freshRunFriendlyId(arm),
               environment: authenticatedEnvironment,
               taskIdentifier: childTask,
               payload: "{}",

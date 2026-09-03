@@ -2,6 +2,7 @@ import { isWaitpointOutputTimeout, prettyPrintPacket } from "@trigger.dev/core/v
 import { type PrismaClientOrTransaction } from "~/db.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { generateHttpCallbackUrl } from "~/services/httpCallback.server";
+import { parseWaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import { logger } from "~/services/logger.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { runStore as defaultRunStore } from "~/v3/runStore.server";
@@ -117,7 +118,14 @@ export class WaitpointPresenter extends BasePresenter {
       }
     }
 
-    const connectedRunIds = await this.#connectedRunFriendlyIds(waitpoint.id);
+    // The connected-runs display is built from a Postgres table that only the Postgres
+    // block-edge write populates. A store-resident waitpoint keeps its edges elsewhere, so
+    // the query would answer an empty list, which reads as "nothing is blocked on this"
+    // rather than "this cannot be shown". Report the difference instead of guessing.
+    const connectedRunsAvailable = parseWaitpointId(waitpoint.id).format === "legacy";
+    const connectedRunIds = connectedRunsAvailable
+      ? await this.#connectedRunFriendlyIds(waitpoint.id)
+      : [];
     const connectedRuns: NextRunListItem[] = [];
 
     if (connectedRunIds.length > 0) {
@@ -164,6 +172,7 @@ export class WaitpointPresenter extends BasePresenter {
       createdAt: waitpoint.createdAt,
       tags: waitpoint.tags,
       connectedRuns,
+      connectedRunsAvailable,
     };
   }
 }

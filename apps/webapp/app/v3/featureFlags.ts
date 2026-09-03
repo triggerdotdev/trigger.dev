@@ -37,6 +37,9 @@ export const FEATURE_FLAG = {
   runOpsMintShardSetFlippedAt: "runOpsMintShardSetFlippedAt",
   // Fleet-wide pin for the complete cutover. Beats every per-org and per-env pin.
   runOpsMintShardOverride: "runOpsMintShardOverride",
+  // Per-organization waitpoint coordinator selection. Read ONLY at waitpoint mint time;
+  // every later operation on a waitpoint routes by its id shape, never by this flag.
+  waitpointSystem: "waitpointSystem",
   queueMetricsUiEnabled: "queueMetricsUiEnabled",
   // Build path for CLI deploys, resolved by DeploymentService.getDeploySettings.
   deployBuildPath: "deployBuildPath",
@@ -101,6 +104,7 @@ export const FeatureFlagCatalog = {
   // Per-org run-ops-id mint cutover. Defaults to "cuid"; only honored when
   // RUN_OPS_MINT_ENABLED is on AND isSplitEnabled() is true.
   [FEATURE_FLAG.runOpsMintKind]: z.enum(["cuid", "runOpsId"]),
+  [FEATURE_FLAG.waitpointSystem]: z.enum(["legacy", "redis"]),
   // Grace-linger stamp: the previously-effective kind and the flip timestamp, written
   // by stampMintKindFlip on a genuine flip. Display-only (see ORG_LOCKED_FLAGS).
   [FEATURE_FLAG.runOpsMintKindPrev]: z.enum(["cuid", "runOpsId"]),

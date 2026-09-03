@@ -2020,6 +2020,12 @@ const EnvironmentSchema = z
     // (stale or fresh) resolves to the same kind for the whole window. See mintFlipGrace.ts.
     RUN_OPS_MINT_FLIP_GRACE_MS: z.coerce.number().int().default(90_000),
 
+    // Per-organization waitpoint coordinator cutover. The org's waitpointSystem flag wins;
+    // this is the fallback when the org has no override. Read only at waitpoint mint time.
+    WAITPOINT_SYSTEM_DEFAULT: z.enum(["legacy", "redis"]).default("legacy"),
+    WAITPOINT_MINT_FLAG_CACHE_TTL_MS: z.coerce.number().int().default(30_000),
+    WAITPOINT_MINT_FLAG_CACHE_MAX_ENTRIES: z.coerce.number().int().default(10_000),
+
     // Session replication (Postgres → ClickHouse sessions_v1). Shares Redis
     // with the runs replicator for leader locking but has its own slot and
     // publication so the two consume independently.

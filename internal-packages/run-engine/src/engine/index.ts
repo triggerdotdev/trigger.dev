@@ -24,9 +24,10 @@ import {
 import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
 import {
   generateInternalId,
+  deriveWaitpointIdFromAnchor,
   parseNaturalLanguageDurationInMs,
+  parseWaitpointId,
   RunId,
-  mintWaitpointIdFor,
   type ShardKey,
 } from "@trigger.dev/core/v3/isomorphic";
 import {
@@ -93,6 +94,11 @@ import {
 } from "./controlPlaneResolver.js";
 import { TtlSystem } from "./systems/ttlSystem.js";
 import { WaitpointSystem } from "./systems/waitpointSystem.js";
+import { LegacyPostgresWaitpointCoordinator } from "./waitpointCoordinator/legacyPostgresCoordinator.js";
+import { WaitpointRouterCoordinator } from "./waitpointCoordinator/routerCoordinator.js";
+import { StoreWaitpointCoordinatorArm } from "./waitpointCoordinator/storeArm.js";
+import { WaitpointStoreCoordinator } from "./waitpointCoordinator/storeCoordinator.js";
+import type { WaitpointMintKind } from "./waitpointCoordinator/types.js";
 import type {
   EngineWorker,
   HeartbeatTimeouts,
@@ -131,6 +137,7 @@ export class RunEngine {
   runAttemptSystem: RunAttemptSystem;
   dequeueSystem: DequeueSystem;
   waitpointSystem: WaitpointSystem;
+  private waitpointStoreCoordinator?: WaitpointStoreCoordinator;
   batchSystem: BatchSystem;
   enqueueSystem: EnqueueSystem;
   checkpointSystem: CheckpointSystem;
@@ -419,12 +426,36 @@ export class RunEngine {
       externalDeploymentParkDeadlineMs: options.externalDeploymentParkDeadlineMs,
     });
 
+    this.waitpointStoreCoordinator = this.options.waitpointStore
+      ? new WaitpointStoreCoordinator({
+          redisOptions: this.options.waitpointStore.redis,
+          logger: this.logger,
+        })
+      : undefined;
+
     this.waitpointSystem = new WaitpointSystem({
       resources,
       executionSnapshotSystem: this.executionSnapshotSystem,
       enqueueSystem: this.enqueueSystem,
       ...(options.completedWaitpointRecordsEnabled && {
         completedWaitpointRecordsEnabled: options.completedWaitpointRecordsEnabled,
+      }),
+      coordinator: new WaitpointRouterCoordinator({
+        meter: this.meter,
+        legacy: new LegacyPostgresWaitpointCoordinator({
+          runStore: this.runStore,
+          prisma: this.prisma,
+          logger: this.logger,
+        }),
+        store: this.waitpointStoreCoordinator
+          ? new StoreWaitpointCoordinatorArm({
+              store: this.waitpointStoreCoordinator,
+              runStore: this.runStore,
+              logger: this.logger,
+              meter: this.meter,
+            })
+          : undefined,
+        logger: this.logger,
       }),
     });
 
@@ -861,6 +892,7 @@ export class RunEngine {
       replayedFromTaskRunFriendlyId,
       batch,
       resumeParentOnCompletion,
+      waitpointMintKind,
       depth,
       metadata,
       metadataType,
@@ -983,6 +1015,23 @@ export class RunEngine {
 
         let taskRun: TaskRun & { associatedWaitpoint: Waitpoint | null };
         const taskRunId = RunId.fromFriendlyId(friendlyId);
+
+        // Mint the RUN waitpoint's identity BEFORE the run is created, so the decision to
+        // block the parent never depends on a Postgres relation that the store path does
+        // not write. Keying the block step off the row instead would silently stop
+        // suspending parents the moment a waitpoint stopped living in Postgres.
+        const associatedWaitpointData =
+          resumeParentOnCompletion && parentTaskRunId
+            ? this.waitpointSystem.buildRunAssociatedWaitpoint({
+                projectId: environment.project.id,
+                environmentId: environment.id,
+                anchorRunId: taskRunId,
+                mintKind: waitpointMintKind,
+              })
+            : undefined;
+        const associatedWaitpointRidesTheCreate =
+          associatedWaitpointData !== undefined &&
+          parseWaitpointId(associatedWaitpointData.id).format === "legacy";
         const initialSnapshotId = generateInternalId();
 
         // App-level replacement for the dropped TaskRun env/project Cascade FKs.
@@ -1092,16 +1141,14 @@ export class RunEngine {
                 workerId,
                 runnerId,
               },
-              // Only create waitpoint if parent is waiting for this run to complete
-              // For standalone triggers (no waiting parent), waitpoint is created lazily if needed later
-              associatedWaitpoint:
-                resumeParentOnCompletion && parentTaskRunId
-                  ? this.waitpointSystem.buildRunAssociatedWaitpoint({
-                      projectId: environment.project.id,
-                      environmentId: environment.id,
-                      anchorRunId: taskRunId,
-                    })
-                  : undefined,
+              // Only create the waitpoint if a parent is waiting for this run. A standalone
+              // trigger gets one lazily later, if anything ever needs it.
+              //
+              // The store path deliberately passes nothing here: its waitpoint is created
+              // after the run commits, so the run's own insert carries no waitpoint row.
+              associatedWaitpoint: associatedWaitpointRidesTheCreate
+                ? associatedWaitpointData
+                : undefined,
             },
             tx
           );
@@ -1144,8 +1191,18 @@ export class RunEngine {
 
         span.setAttribute("runId", taskRun.id);
 
+        // The store path's waitpoint is created here, after the run commits. Create-if-absent
+        // on an id derived from the run means a retry recomputes the same id, so this is
+        // idempotent and needs no lock.
+        if (associatedWaitpointData && !associatedWaitpointRidesTheCreate) {
+          await this.waitpointSystem.createRunAssociatedWaitpoint({
+            runId: taskRun.id,
+            data: associatedWaitpointData,
+          });
+        }
+
         //triggerAndWait or batchTriggerAndWait
-        if (resumeParentOnCompletion && parentTaskRunId && taskRun.associatedWaitpoint) {
+        if (resumeParentOnCompletion && parentTaskRunId && associatedWaitpointData) {
           if (batch) {
             // Batch path: lockless insert. The parent is already EXECUTING_WITH_WAITPOINTS
             // from blockRunWithCreatedBatch, so we only need to insert the TaskRunWaitpoint
@@ -1153,17 +1210,21 @@ export class RunEngine {
             // processing large batches with high concurrency.
             await this.waitpointSystem.blockRunWithWaitpointLockless({
               runId: parentTaskRunId,
-              waitpoints: taskRun.associatedWaitpoint.id,
-              projectId: taskRun.associatedWaitpoint.projectId,
+              waitpoints: associatedWaitpointData.id,
+              projectId: associatedWaitpointData.projectId,
               batch,
+              // Derived, not looked up: the parent's BATCH waitpoint id is a pure function
+              // of the batch id, and the store arm needs it to assert the parent's pending
+              // set stays open for the whole absorb.
+              batchWaitpointId: deriveWaitpointIdFromAnchor(batch.id, "BATCH"),
             });
           } else {
             // Single triggerAndWait: acquire the parent run lock to safely transition
             // the snapshot and insert the waitpoint
             await this.waitpointSystem.blockRunWithWaitpoint({
               runId: parentTaskRunId,
-              waitpoints: taskRun.associatedWaitpoint.id,
-              projectId: taskRun.associatedWaitpoint.projectId,
+              waitpoints: associatedWaitpointData.id,
+              projectId: associatedWaitpointData.projectId,
               organizationId: environment.organization.id,
               batch,
               workerId,
@@ -1322,6 +1383,7 @@ export class RunEngine {
     rootTaskRunId,
     depth,
     resumeParentOnCompletion,
+    waitpointMintKind,
     batch,
     traceId,
     spanId,
@@ -1348,6 +1410,8 @@ export class RunEngine {
     /** Depth in the task tree (0 for root, parentDepth+1 for children). */
     depth?: number;
     resumeParentOnCompletion?: boolean;
+    /** Which coordinator mints the associated waitpoint. Absent means legacy. */
+    waitpointMintKind?: WaitpointMintKind;
     batch?: { id: string; index: number };
     traceId?: string;
     spanId?: string;
@@ -1380,15 +1444,19 @@ export class RunEngine {
         // App-level replacement for the dropped TaskRun env/project Cascade FKs.
         await this.controlPlaneResolver.assertEnvExists(environment.id);
 
-        // Build associated waitpoint data if parent is waiting for this run
+        // Minted before the create, for the same reason as the trigger path: the decision to
+        // block the parent must not depend on a row the store path never writes.
         const waitpointData =
           resumeParentOnCompletion && parentTaskRunId
             ? this.waitpointSystem.buildRunAssociatedWaitpoint({
                 projectId: environment.project.id,
                 environmentId: environment.id,
                 anchorRunId: taskRunId,
+                mintKind: waitpointMintKind,
               })
             : undefined;
+        const waitpointRidesTheCreate =
+          waitpointData !== undefined && parseWaitpointId(waitpointData.id).format === "legacy";
 
         // No execution snapshot is needed: this run never gets dequeued, executed,
         // or heartbeated, so nothing will call getLatestExecutionSnapshot on it.
@@ -1422,19 +1490,26 @@ export class RunEngine {
               resumeParentOnCompletion,
               taskEventStore,
             },
-            associatedWaitpoint: waitpointData,
+            associatedWaitpoint: waitpointRidesTheCreate ? waitpointData : undefined,
           },
           undefined
         );
 
         span.setAttribute("runId", taskRun.id);
 
+        if (waitpointData && !waitpointRidesTheCreate) {
+          await this.waitpointSystem.createRunAssociatedWaitpoint({
+            runId: taskRun.id,
+            data: waitpointData,
+          });
+        }
+
         // If parent is waiting, block it with the waitpoint then immediately
         // complete it with the error output so the parent can resume.
-        if (resumeParentOnCompletion && parentTaskRunId && taskRun.associatedWaitpoint) {
+        if (resumeParentOnCompletion && parentTaskRunId && waitpointData) {
           await this.waitpointSystem.blockRunAndCompleteWaitpoint({
             runId: parentTaskRunId,
-            waitpointId: taskRun.associatedWaitpoint.id,
+            waitpointId: waitpointData.id,
             output: { value: JSON.stringify(error), isError: true },
             projectId: environment.project.id,
             organizationId: environment.organization.id,
@@ -1790,6 +1865,7 @@ export class RunEngine {
     completedAfter,
     idempotencyKey,
     idempotencyKeyExpiresAt,
+    waitpointMintKind,
   }: {
     /** The run that will block on this waitpoint. Co-locates the waitpoint with the run's DB. */
     runId?: string;
@@ -1798,6 +1874,8 @@ export class RunEngine {
     completedAfter: Date;
     idempotencyKey?: string;
     idempotencyKeyExpiresAt?: Date;
+    /** Which coordinator mints this waitpoint. Resolved from the org flag by the caller. */
+    waitpointMintKind?: WaitpointMintKind;
   }) {
     return this.waitpointSystem.createDateTimeWaitpoint({
       runId,
@@ -1806,6 +1884,7 @@ export class RunEngine {
       completedAfter,
       idempotencyKey,
       idempotencyKeyExpiresAt,
+      waitpointMintKind,
     });
   }
 
@@ -1821,6 +1900,7 @@ export class RunEngine {
     timeout,
     tags,
     standaloneResidency,
+    waitpointMintKind,
     standaloneShardKey,
   }: {
     /** The run that will block on this waitpoint. Co-locates the waitpoint with the run's DB. */
@@ -1833,6 +1913,8 @@ export class RunEngine {
     tags?: string[];
     /** Standalone-token residency (no owning run) from the env mint kind; ignored when `runId` is set. */
     standaloneResidency?: "NEW" | "LEGACY";
+    /** Which coordinator mints this waitpoint. Resolved from the org flag by the caller. */
+    waitpointMintKind?: WaitpointMintKind;
     standaloneShardKey?: ShardKey;
   }): Promise<{ waitpoint: Waitpoint; isCached: boolean }> {
     return this.waitpointSystem.createManualWaitpoint({
@@ -1844,6 +1926,7 @@ export class RunEngine {
       timeout,
       tags,
       standaloneResidency,
+      waitpointMintKind,
       standaloneShardKey,
     });
   }
@@ -1857,6 +1940,7 @@ export class RunEngine {
     environmentId,
     projectId,
     organizationId,
+    waitpointMintKind,
     tx,
   }: {
     runId: string;
@@ -1864,26 +1948,23 @@ export class RunEngine {
     environmentId: string;
     projectId: string;
     organizationId: string;
+    waitpointMintKind?: WaitpointMintKind;
     tx?: PrismaClientOrTransaction;
   }): Promise<Waitpoint | null> {
-    try {
-      const waitpoint = await this.runStore.createWaitpoint(
-        {
-          data: {
-            // From the batch, not the blocked run: the create passes only completedByBatchId,
-            // which is the owner the router validates against.
-            ...mintWaitpointIdFor(batchId),
-            type: "BATCH",
-            idempotencyKey: batchId,
-            userProvidedIdempotencyKey: false,
-            completedByBatchId: batchId,
-            environmentId,
-            projectId,
-          },
-        },
-        tx
-      );
+    const waitpoint = await this.waitpointSystem.createBatchWaitpoint({
+      batchId,
+      environmentId,
+      projectId,
+      mintKind: waitpointMintKind,
+      tx,
+    });
 
+    // Duplicate batch: the coordinator already reported it.
+    if (!waitpoint) {
+      return null;
+    }
+
+    try {
       await this.blockRunWithWaitpoint({
         runId,
         waitpoints: waitpoint.id,
@@ -1892,19 +1973,17 @@ export class RunEngine {
         batch: { id: batchId },
         // No tx: the block edge routes to the run's owning DB, not the control-plane tx.
       });
-
-      return waitpoint;
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError) {
-        // duplicate idempotency key
-        if (error.code === "P2002") {
-          return null;
-        } else {
-          throw error;
-        }
+      // The previous shape wrapped the create AND the block in one catch, so a P2002 from
+      // the block step also returned null. Kept deliberately: narrowing it here would be a
+      // behaviour change smuggled into an extraction.
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        return null;
       }
       throw error;
     }
+
+    return waitpoint;
   }
 
   async tryCompleteBatch({ batchId }: { batchId: string }): Promise<void> {
@@ -2413,8 +2492,12 @@ export class RunEngine {
     const supportResults = await Promise.allSettled([
       this.runLock.quit(),
       this.debounceSystem.quit(),
+      this.waitpointStoreCoordinator?.quit(),
     ]);
-    this.#logShutdownFailures(["runLock.quit", "debounceSystem.quit"], supportResults);
+    this.#logShutdownFailures(
+      ["runLock.quit", "debounceSystem.quit", "waitpointStore.quit"],
+      supportResults
+    );
 
     // RunLocker/Redlock owns this client and normally closes it. Do not send a second QUIT,
     // but force-disconnect if Redlock failed to leave the connection in its terminal state.

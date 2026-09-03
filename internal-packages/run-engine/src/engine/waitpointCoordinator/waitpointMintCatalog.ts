@@ -13,8 +13,8 @@ export type WaitpointMintSite = {
 
 const COORDINATOR =
   "internal-packages/run-engine/src/engine/waitpointCoordinator/legacyPostgresCoordinator.ts";
-const ENGINE = "internal-packages/run-engine/src/engine/index.ts";
 const RUN_STORE = "internal-packages/run-store/src/PostgresRunStore.ts";
+const STORE_ARM = "internal-packages/run-engine/src/engine/waitpointCoordinator/storeArm.ts";
 
 export const WAITPOINT_MINT_SITES: readonly WaitpointMintSite[] = [
   {
@@ -46,11 +46,21 @@ export const WAITPOINT_MINT_SITES: readonly WaitpointMintSite[] = [
     symbol: "createAssociatedWaitpoint",
   },
   {
-    id: "engine.batch",
+    id: "coordinator.batch",
     mints: ["mintWaitpointIdFor(batchId)"],
     type: "BATCH",
-    site: ENGINE,
-    symbol: "blockRunWithCreatedBatch",
+    site: COORDINATOR,
+    symbol: "createBatchWaitpoint",
+  },
+  // The store arm's own ids are minted in the store's keyspace, not stamped for the router,
+  // so it declares no mint expression. The row it does write to Postgres is the MANUAL
+  // projection, which is display state and never read back for coordination.
+  {
+    id: "storeArm.manualProjection",
+    mints: [],
+    type: "MANUAL",
+    site: STORE_ARM,
+    symbol: "#writeManualProjection",
   },
   // These bypass the routing store's stamp check, so a new writer here must be seen.
   {

@@ -1,4 +1,5 @@
 import type { TypedResponse } from "@remix-run/server-runtime";
+import { resolveWaitpointMintKind } from "~/v3/waitpointMigration/waitpointMintKind.server";
 import { json } from "@remix-run/server-runtime";
 import type { WaitForDurationResponseBody } from "@trigger.dev/core/v3";
 import { WaitForDurationRequestBody } from "@trigger.dev/core/v3";
@@ -41,7 +42,14 @@ const { action } = createActionApiRoute(
         ? resolveIdempotencyKeyTTL(body.idempotencyKeyTTL)
         : undefined;
 
+      const waitpointMintKind = await resolveWaitpointMintKind({
+        organizationId: authentication.environment.organizationId,
+        id: authentication.environment.id,
+        orgFeatureFlags: authentication.environment.organization.featureFlags,
+      });
+
       const { waitpoint } = await engine.createDateTimeWaitpoint({
+        waitpointMintKind,
         // Co-locate the waitpoint with the run that blocks on it (run-ops split): a run-ops run lives
         // on the dedicated DB, but the minted waitpoint id is always a cuid, so without the run id
         // the waitpoint would route to the control-plane DB and the block edge would never resolve.

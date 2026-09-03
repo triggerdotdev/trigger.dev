@@ -25,16 +25,40 @@ export type WaitpointCoordinator = {
   complete(params: CompleteParams): Promise<CompleteResult>;
   createDateTimeWaitpoint(params: CreateDateTimeWaitpointParams): Promise<CreateWaitpointResult>;
   createManualWaitpoint(params: CreateManualWaitpointParams): Promise<CreateWaitpointResult>;
+  createBatchWaitpoint(params: CreateBatchWaitpointParams): Promise<Waitpoint | null>;
   mintAssociatedWaitpointData(params: {
     projectId: string;
     environmentId: string;
-    /** This write skips the router's stamp check. */
+    /**
+     * The run this waitpoint belongs to. This write skips the router's stamp check. A store
+     * arm also derives the waitpoint id from the run's own id body, so the derivation is a
+     * pure function of the anchor and needs no lock.
+     */
     anchorRunId: string;
+    /** Which arm mints it. Absent means legacy, which is what every existing caller wants. */
+    mintKind?: WaitpointMintKind;
   }): AssociatedWaitpointData;
   createAssociatedWaitpoint(params: {
     runId: string;
     data: AssociatedWaitpointData;
   }): Promise<Waitpoint>;
+};
+
+/**
+ * Which coordinator mints a NEW waitpoint. Structurally identical to the webapp's own
+ * WaitpointMintKind; re-declared because the engine never imports from the webapp.
+ *
+ * Read at the mint and never again: every later operation routes by the minted id's shape.
+ */
+export type WaitpointMintKind = "legacy" | "store";
+
+export type CreateBatchWaitpointParams = {
+  batchId: string;
+  environmentId: string;
+  projectId: string;
+  mintKind: WaitpointMintKind;
+  /** Legacy arm only: the create may join a caller transaction. A store arm ignores it. */
+  tx?: PrismaClientOrTransaction;
 };
 
 export type ReadCompletionEnvelopesParams = {
@@ -113,7 +137,15 @@ export type RegisterBlocksParams = {
  * The lockless variant writes the edge and does not count. Two methods rather than
  * one method with a flag, so "the batch path issues no extra query" is structural.
  */
-export type RegisterBlocksLocklessParams = Omit<RegisterBlocksParams, "client">;
+export type RegisterBlocksLocklessParams = Omit<RegisterBlocksParams, "client"> & {
+  /**
+   * The parent's BATCH waitpoint id. A store arm asserts it is present and PENDING on the
+   * run's shard before writing any item edge, so the run's pending set can never be
+   * momentarily empty mid-absorb. Neither TLA+ campaign models this, so the assertion is
+   * the only protection. A legacy arm ignores it.
+   */
+  batchWaitpointId?: string;
+};
 
 export type CompleteParams = {
   waitpointId: string;
@@ -146,6 +178,7 @@ export type CreateWaitpointResult =
   | { kind: "created"; waitpoint: Waitpoint };
 
 export type CreateDateTimeWaitpointParams = {
+  mintKind: WaitpointMintKind;
   /**
    * Co-locates the waitpoint with this run's DB. There is deliberately no standalone arm: omitting
    * it on a gen-2 environment lands the row on a gen-1 store, silently. A standalone caller needs
@@ -160,6 +193,7 @@ export type CreateDateTimeWaitpointParams = {
 };
 
 export type CreateManualWaitpointParams = {
+  mintKind: WaitpointMintKind;
   runId?: string;
   environmentId: string;
   projectId: string;

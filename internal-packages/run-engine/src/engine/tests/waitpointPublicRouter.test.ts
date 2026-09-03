@@ -4,7 +4,8 @@ import { PostgresRunStore } from "@internal/run-store";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import { expect } from "vitest";
 import { setTimeout } from "node:timers/promises";
-import { RunEngine } from "../index.js";
+import type { RunEngine } from "../index.js";
+import { createTestEngine } from "./helpers/engineFactory.js";
 import type { CrossSeamGuardHook } from "../types.js";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 
@@ -130,7 +131,7 @@ describe("RunEngine public waitpoint router", () => {
       prisma,
       readOnlyPrisma: prisma,
     });
-    const engine = new RunEngine(engineOptions(redisOptions, prisma, { store }));
+    const engine = createTestEngine(engineOptions(redisOptions, prisma, { store }));
 
     try {
       const { waitpoint } = await engine.createManualWaitpoint({
@@ -189,7 +190,7 @@ describe("RunEngine public waitpoint router", () => {
         prisma,
         readOnlyPrisma: prisma,
       });
-      const engine = new RunEngine(engineOptions(redisOptions, prisma, { store }));
+      const engine = createTestEngine(engineOptions(redisOptions, prisma, { store }));
 
       try {
         await setupBackgroundWorker(engine, environment, "test-task");
@@ -247,7 +248,7 @@ describe("RunEngine public waitpoint router", () => {
         prisma,
         readOnlyPrisma: prisma,
       });
-      const engine = new RunEngine(engineOptions(redisOptions, prisma, { store }));
+      const engine = createTestEngine(engineOptions(redisOptions, prisma, { store }));
 
       try {
         await setupBackgroundWorker(engine, environment, "test-task");
@@ -281,7 +282,7 @@ describe("RunEngine public waitpoint router", () => {
     "delegators (create/block/getOrCreate) work through the public API",
     async ({ prisma, redisOptions }) => {
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
-      const engine = new RunEngine(engineOptions(redisOptions, prisma));
+      const engine = createTestEngine(engineOptions(redisOptions, prisma));
 
       try {
         await setupBackgroundWorker(engine, environment, "test-task");
@@ -338,7 +339,7 @@ describe("RunEngine public waitpoint router", () => {
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
       const seen: Array<{ waitpointId: string; routeKind: string }> = [];
-      const engine = new RunEngine(
+      const engine = createTestEngine(
         engineOptions(redisOptions, prisma, {
           crossSeamGuard: async ({ waitpointId, routeKind }) => {
             seen.push({ waitpointId, routeKind });
@@ -375,7 +376,7 @@ describe("RunEngine public waitpoint router", () => {
     "completeWaitpoint with a throwing guard does not apply (loud, no silent local apply)",
     async ({ prisma, redisOptions }) => {
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
-      const engine = new RunEngine(
+      const engine = createTestEngine(
         engineOptions(redisOptions, prisma, {
           crossSeamGuard: async () => {
             throw new Error("UnclassifiableRunId");
@@ -407,7 +408,7 @@ describe("RunEngine public waitpoint router", () => {
     async ({ prisma, redisOptions }) => {
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
       // default single PostgresRunStore (no injected store), no crossSeamGuard
-      const engine = new RunEngine(engineOptions(redisOptions, prisma));
+      const engine = createTestEngine(engineOptions(redisOptions, prisma));
 
       try {
         await setupBackgroundWorker(engine, environment, "test-task");
@@ -463,7 +464,7 @@ describe("RunEngine public waitpoint router", () => {
     "FK-drop app-integrity: routed waitpoint round-trip is well-formed and FK-independent",
     async ({ prisma, redisOptions }) => {
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
-      const engine = new RunEngine(engineOptions(redisOptions, prisma));
+      const engine = createTestEngine(engineOptions(redisOptions, prisma));
 
       try {
         await setupBackgroundWorker(engine, environment, "test-task");

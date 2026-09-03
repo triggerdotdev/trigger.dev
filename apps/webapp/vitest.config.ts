@@ -12,6 +12,7 @@ export default defineConfig({
     include: [
       "test/**/*.test.ts",
       "app/v3/runOpsMigration/**/*.test.ts",
+      "app/v3/waitpointMigration/**/*.test.ts",
       "app/v3/runStore.server.test.ts",
       "app/v3/utils/**/*.test.ts",
       "app/v3/services/bulk/**/*.test.ts",
