@@ -132,7 +132,11 @@ export type DashboardAgentApiClient = {
   hasAuth: boolean;
   /** A GET as the environment JWT, or why no environment JWT could be made. */
   envApiGet(path: string, target?: ApiTarget): Promise<EnvFetchResult>;
-  postQuery(query: string, period: string | undefined): Promise<QueryPostResult | EnvUnavailable>;
+  postQuery(
+    query: string,
+    period: string | undefined,
+    target?: ApiTarget
+  ): Promise<QueryPostResult | EnvUnavailable>;
   validateChartQuery(query: string, period: string | undefined): Promise<string | null>;
   /**
    * The canonical RuntimeEnvironment id for a target, proven by the same JWT exchange
@@ -153,8 +157,26 @@ export type ApiClientContext = {
 
 // A per-call override of which project/environment a data lookup targets, for reads
 // that cross into another project of the same organization. Omitted fields fall back
-// to the context's own project/environment.
-export type ApiTarget = { projectRef?: string; environmentName?: string };
+// to the context's own project/environment. `branch` picks a preview/dev branch out of
+// the family its name addresses; without it the name resolves to the parent.
+export type ApiTarget = { projectRef?: string; environmentName?: string; branch?: string };
+
+/** A tool call's explicit target: the project, environment and branch it names. */
+export type TargetInput = { project?: string; environment?: string; branch?: string };
+
+/**
+ * A tool call's optional target as an `ApiTarget`. `undefined` when nothing was given, so
+ * the default (ctx-scoped, branch-aware) path is unchanged rather than re-derived from ctx
+ * through an override.
+ */
+export function crossProjectTarget(input: TargetInput): ApiTarget | undefined {
+  if (!input.project && !input.environment && !input.branch) return undefined;
+  return {
+    projectRef: input.project,
+    environmentName: input.environment,
+    branch: input.branch,
+  };
+}
 
 export function createApiClient(ctx: ApiClientContext): DashboardAgentApiClient {
   const { userActorToken, apiOrigin, projectRef, environmentName, environmentBranch } = ctx;
@@ -166,12 +188,12 @@ export function createApiClient(ctx: ApiClientContext): DashboardAgentApiClient 
   type EnvJwt = { ok: true; token: string } | EnvUnavailable;
   const envJwts = new Map<string, Promise<EnvJwt>>();
   function getEnvJwt(refresh = false, target?: ApiTarget): Promise<EnvJwt> {
-    // An override drops the branch: it names another project/environment, which the
-    // current branch can't be assumed to apply to. A field left off the override still
-    // falls back to ctx's own value.
+    // An override carries its own branch or none: it names another project/environment,
+    // which the current branch can't be assumed to apply to. A field left off the override
+    // still falls back to ctx's own value.
     const ref = target?.projectRef ?? projectRef;
     const env = target?.environmentName ?? environmentName;
-    const branch = target ? undefined : environmentBranch;
+    const branch = target ? target.branch : environmentBranch;
     if (!hasAuth || !ref || !env) return Promise.resolve(MISSING_ENV);
     const key = `${ref}/${env}/${branch ?? ""}`;
     if (refresh) envJwts.delete(key);
@@ -216,7 +238,8 @@ export function createApiClient(ctx: ApiClientContext): DashboardAgentApiClient 
   // re-exchange on a 401. Shared by run_query and chart-block validation.
   async function postQuery(
     query: string,
-    period: string | undefined
+    period: string | undefined,
+    target?: ApiTarget
   ): Promise<QueryPostResult | EnvUnavailable> {
     const attempt = await withEnvJwt<{ res: Response } | { error: string }>(
       async (jwt) => {
@@ -237,7 +260,8 @@ export function createApiClient(ctx: ApiClientContext): DashboardAgentApiClient 
           return { error: `Query request failed: ${(error as Error).message}` };
         }
       },
-      (result) => "res" in result && result.res.status === 401
+      (result) => "res" in result && result.res.status === 401,
+      target
     );
     if (isEnvUnavailable(attempt)) return attempt;
     if ("error" in attempt) return { ok: false, kind: "transport", error: attempt.error };

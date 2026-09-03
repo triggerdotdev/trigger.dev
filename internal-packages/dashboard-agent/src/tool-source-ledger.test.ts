@@ -26,6 +26,75 @@ function fakeRepoTools(path: string): ToolSet {
   } as unknown as ToolSet;
 }
 
+/**
+ * The source tools reach a run's commit through this fetch, so a run located in another
+ * project/environment is only readable if the target travels with the run id.
+ */
+describe("the run-snapshot fetch", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("addresses the target project, environment and branch", async () => {
+    const urls: string[] = [];
+    const branches: Array<string | null> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: any, init: any = {}) => {
+        urls.push(typeof input === "string" ? input : input.url);
+        branches.push(new Headers(init.headers ?? {}).get("x-trigger-branch"));
+        return Response.json(cleanSnapshot);
+      })
+    );
+    const ledger = createSourceReadLedger({
+      origin: "https://api.example.com",
+      hasAuth: true,
+      userActorToken: "uat",
+      projectRef: "proj_current",
+      environmentName: "prod",
+      environmentBranch: "chat-branch",
+    });
+
+    const snap = await ledger.resolveRunSnapshot("run_1", {
+      projectRef: "proj_other",
+      environmentName: "preview",
+      branch: "feat/checkout",
+    });
+
+    expect(snap?.sha).toBe(cleanSnapshot.sha);
+    expect(urls[0]).toBe(
+      "https://api.example.com/api/v1/projects/proj_other/preview/repo/snapshot?runId=run_1"
+    );
+    expect(branches[0]).toBe("feat/checkout");
+  });
+
+  it("keeps the chat scope, branch included, when no target is given", async () => {
+    const urls: string[] = [];
+    const branches: Array<string | null> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: any, init: any = {}) => {
+        urls.push(typeof input === "string" ? input : input.url);
+        branches.push(new Headers(init.headers ?? {}).get("x-trigger-branch"));
+        return Response.json(cleanSnapshot);
+      })
+    );
+    const ledger = createSourceReadLedger({
+      origin: "https://api.example.com",
+      hasAuth: true,
+      userActorToken: "uat",
+      projectRef: "proj_current",
+      environmentName: "preview",
+      environmentBranch: "chat-branch",
+    });
+
+    await ledger.resolveRunSnapshot("run_1");
+
+    expect(urls[0]).toBe(
+      "https://api.example.com/api/v1/projects/proj_current/preview/repo/snapshot?runId=run_1"
+    );
+    expect(branches[0]).toBe("chat-branch");
+  });
+});
+
 describe("tool-source-ledger dirty propagation", () => {
   it("stamps a read at a dirty default snapshot as dirty", async () => {
     const ledger = createSourceReadLedger({

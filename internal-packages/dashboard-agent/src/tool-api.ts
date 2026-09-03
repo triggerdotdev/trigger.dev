@@ -22,6 +22,7 @@ import {
 } from "./tool-schemas";
 import {
   apiGet,
+  crossProjectTarget,
   fetchReason,
   isEnvUnavailable,
   NO_AUTH,
@@ -29,6 +30,7 @@ import {
   type DashboardAgentApiClient,
   type EnvFetchResult,
   type EnvUnavailable,
+  type TargetInput,
 } from "./tool-api-client";
 import type { DashboardAgentToolContext } from "./tool-context";
 import {
@@ -216,19 +218,6 @@ export function withLiveState(metrics: unknown, queueType: "task" | "custom", li
 /** Failed `run_query` calls in a row before the tool tells the model to stop and answer. */
 export const MAX_CONSECUTIVE_QUERY_FAILURES = 3;
 
-/**
- * A data lookup's optional `project`/`environment` input as an `envApiGet` target.
- * `undefined` when neither was given, so the default (ctx-scoped, branch-aware) path
- * is unchanged rather than re-derived from ctx through an override.
- */
-function crossProjectTarget(input: {
-  project?: string;
-  environment?: string;
-}): ApiTarget | undefined {
-  if (!input.project && !input.environment) return undefined;
-  return { projectRef: input.project, environmentName: input.environment };
-}
-
 export function buildApiTools(args: {
   ctx: DashboardAgentToolContext;
   client: DashboardAgentApiClient;
@@ -237,7 +226,26 @@ export function buildApiTools(args: {
 }): ToolSet {
   const { ctx, client, renderInvestigations, spanLedger } = args;
   const { userActorToken, organizationId, projectRef, environmentName, environmentBranch } = ctx;
-  const { origin, hasAuth, envApiGet, postQuery, validateChartQuery } = client;
+  const { origin, hasAuth, envApiGet, postQuery, validateChartQuery, resolveEnvironmentId } =
+    client;
+
+  // Which project refs this org has, as list_projects last reported them. Populated only
+  // by that call, so a target is checked against it without any extra request; unset
+  // means unknown and nothing is rejected.
+  let knownProjectRefs: Set<string> | undefined;
+
+  function resolveTarget(input: TargetInput): { target?: ApiTarget; error?: string } {
+    if (
+      input.project &&
+      input.project !== projectRef &&
+      knownProjectRefs?.has(input.project) === false
+    ) {
+      return {
+        error: `No project ${input.project} in this organization. Call list_projects to see what exists.`,
+      };
+    }
+    return { target: crossProjectTarget(input) };
+  }
 
   // A failed query hands the model the database error to fix, and it usually does. When it
   // doesn't, the only other limit is the turn's 10 steps, so one broken query can eat the
@@ -261,7 +269,9 @@ export function buildApiTools(args: {
         }
         const result = await apiGet(origin, "/api/v1/projects", userActorToken!);
         if (!result.ok) return { error: `Couldn't list projects${fetchReason(result)}.` };
-        return curateProjects(result.data, organizationId);
+        const curated = curateProjects(result.data, organizationId);
+        knownProjectRefs = new Set(curated.projects.map((project) => project.ref));
+        return curated;
       },
     }),
 
@@ -291,17 +301,21 @@ export function buildApiTools(args: {
 
     list_tasks: tool({
       ...listTasksSchema,
-      execute: async () => {
+      execute: async ({ project, environment, branch }) => {
         if (!hasAuth) return NO_AUTH;
-        if (!projectRef || !environmentName) {
+        const { target, error: targetError } = resolveTarget({ project, environment, branch });
+        if (targetError) return { error: targetError };
+        const effectiveProjectRef = project ?? projectRef;
+        const effectiveEnvironmentName = environment ?? environmentName;
+        if (!effectiveProjectRef || !effectiveEnvironmentName) {
           return { error: "No current environment is available to read tasks from." };
         }
         // A user-level route, so it uses the delegated token with no env-JWT exchange.
         const result = await apiGet(
           origin,
-          `/api/v1/projects/${projectRef}/${environmentName}/workers/current`,
+          `/api/v1/projects/${effectiveProjectRef}/${effectiveEnvironmentName}/workers/current`,
           userActorToken!,
-          environmentBranch
+          target ? branch : environmentBranch
         );
         if (!result.ok) return { error: `Couldn't list tasks${fetchReason(result)}.` };
         return curateTasks(result.data);
@@ -310,7 +324,16 @@ export function buildApiTools(args: {
 
     list_runs: tool({
       ...listRunsSchema,
-      execute: async ({ status, taskIdentifier, errorId, period, limit, project, environment }) => {
+      execute: async ({
+        status,
+        taskIdentifier,
+        errorId,
+        period,
+        limit,
+        project,
+        environment,
+        branch,
+      }) => {
         const effectivePeriod = period ? clampPeriod(period) : undefined;
         const sp = new URLSearchParams();
         if (status) sp.append("filter[status]", status);
@@ -318,7 +341,8 @@ export function buildApiTools(args: {
         if (errorId) sp.append("filter[error]", errorId);
         if (effectivePeriod) sp.append("filter[createdAt][period]", effectivePeriod);
         sp.append("page[size]", String(Math.min(limit ?? 10, 50)));
-        const target = crossProjectTarget({ project, environment });
+        const { target, error: targetError } = resolveTarget({ project, environment, branch });
+        if (targetError) return { error: targetError };
         const result = await envApiGet(`/api/v1/runs?${sp.toString()}`, target);
         if (isEnvUnavailable(result)) return envUnavailableError(result, "read runs from", target);
         if (!result.ok) return { error: `Couldn't list runs${fetchReason(result)}.` };
@@ -331,8 +355,9 @@ export function buildApiTools(args: {
     // different cached prefix.
     get_run: tool({
       ...getRunSchema,
-      execute: async ({ runId, project, environment }) => {
-        const target = crossProjectTarget({ project, environment });
+      execute: async ({ runId, project, environment, branch }) => {
+        const { target, error: targetError } = resolveTarget({ project, environment, branch });
+        if (targetError) return { error: targetError };
         const result = await envApiGet(`/api/v3/runs/${encodeURIComponent(runId)}`, target);
         if (isEnvUnavailable(result)) return envUnavailableError(result, "read runs from", target);
         if (!result.ok) return { error: `Couldn't get run ${runId}${fetchReason(result)}.` };
@@ -342,8 +367,9 @@ export function buildApiTools(args: {
 
     get_run_trace: tool({
       ...getRunTraceSchema,
-      execute: async ({ runId, project, environment }) => {
-        const target = crossProjectTarget({ project, environment });
+      execute: async ({ runId, project, environment, branch }) => {
+        const { target, error: targetError } = resolveTarget({ project, environment, branch });
+        if (targetError) return { error: targetError };
         const result = await envApiGet(`/api/v1/runs/${encodeURIComponent(runId)}/trace`, target);
         if (isEnvUnavailable(result)) return envUnavailableError(result, "read runs from", target);
         if (!result.ok)
@@ -359,15 +385,27 @@ export function buildApiTools(args: {
 
     list_errors: tool({
       ...listErrorsSchema,
-      execute: async ({ status, taskIdentifier, search, period, limit }) => {
+      execute: async ({
+        status,
+        taskIdentifier,
+        search,
+        period,
+        limit,
+        project,
+        environment,
+        branch,
+      }) => {
         const sp = new URLSearchParams();
         if (status) sp.append("filter[status]", status);
         if (taskIdentifier) sp.append("filter[taskIdentifier]", taskIdentifier);
         if (search) sp.append("filter[search]", search);
         if (period) sp.append("filter[period]", period);
         sp.append("page[size]", String(Math.min(limit ?? 20, 100)));
-        const result = await envApiGet(`/api/v1/errors?${sp.toString()}`);
-        if (isEnvUnavailable(result)) return envUnavailableError(result, "read errors from");
+        const { target, error: targetError } = resolveTarget({ project, environment, branch });
+        if (targetError) return { error: targetError };
+        const result = await envApiGet(`/api/v1/errors?${sp.toString()}`, target);
+        if (isEnvUnavailable(result))
+          return envUnavailableError(result, "read errors from", target);
         if (!result.ok) return { error: `Couldn't list errors${fetchReason(result)}.` };
         return curateErrors(result.data);
       },
@@ -375,8 +413,9 @@ export function buildApiTools(args: {
 
     get_error: tool({
       ...getErrorSchema,
-      execute: async ({ errorId, project, environment }) => {
-        const target = crossProjectTarget({ project, environment });
+      execute: async ({ errorId, project, environment, branch }) => {
+        const { target, error: targetError } = resolveTarget({ project, environment, branch });
+        if (targetError) return { error: targetError };
         const result = await envApiGet(`/api/v1/errors/${encodeURIComponent(errorId)}`, target);
         if (isEnvUnavailable(result))
           return envUnavailableError(result, "read errors from", target);
@@ -387,9 +426,11 @@ export function buildApiTools(args: {
 
     get_query_schema: tool({
       ...getQuerySchemaSchema,
-      execute: async ({ table }) => {
-        const result = await envApiGet("/api/v1/query/schema");
-        if (isEnvUnavailable(result)) return envUnavailableError(result, "query");
+      execute: async ({ table, project, environment, branch }) => {
+        const { target, error: targetError } = resolveTarget({ project, environment, branch });
+        if (targetError) return { error: targetError };
+        const result = await envApiGet("/api/v1/query/schema", target);
+        if (isEnvUnavailable(result)) return envUnavailableError(result, "query", target);
         if (!result.ok) return { error: `Couldn't load the query schema${fetchReason(result)}.` };
         const tables = ((result.data as { tables?: any[] })?.tables ?? []) as any[];
         if (!table) {
@@ -424,9 +465,11 @@ export function buildApiTools(args: {
 
     run_query: tool({
       ...runQuerySchema,
-      execute: async ({ query, period }) => {
-        const result = await postQuery(query, period);
-        if (isEnvUnavailable(result)) return envUnavailableError(result, "query");
+      execute: async ({ query, period, project, environment, branch }) => {
+        const { target, error: targetError } = resolveTarget({ project, environment, branch });
+        if (targetError) return { error: targetError };
+        const result = await postQuery(query, period, target);
+        if (isEnvUnavailable(result)) return envUnavailableError(result, "query", target);
         if (!result.ok) {
           // Only SQL errors count toward the cap; transport and busy errors are transient,
           // and the same query may work on a retry.
@@ -518,24 +561,35 @@ export function buildApiTools(args: {
 
     get_report: tool({
       ...getReportSchema,
-      execute: async ({ key, period }) => {
+      execute: async ({ key, period, project, environment, branch }) => {
+        const { target, error: targetError } = resolveTarget({ project, environment, branch });
+        if (targetError) return { error: targetError };
         const reportKey = key ?? "health";
         const sp = new URLSearchParams({ format: "json" });
         if (period) sp.append("period", period);
         const result = await envApiGet(
-          `/api/v1/reports/${encodeURIComponent(reportKey)}?${sp.toString()}`
+          `/api/v1/reports/${encodeURIComponent(reportKey)}?${sp.toString()}`,
+          target
         );
-        if (isEnvUnavailable(result)) return envUnavailableError(result, "report on");
+        if (isEnvUnavailable(result)) return envUnavailableError(result, "report on", target);
         if (!result.ok) {
           return { error: `Couldn't get the ${reportKey} report${fetchReason(result)}.` };
         }
-        // Built from the RuntimeEnvironment id the proxy injects, never the env name.
+        // Built from the RuntimeEnvironment id the proxy injects, never the env name — and
+        // for a targeted read, from the id that target's own exchange proves.
+        const uriProjectRef = project ?? projectRef;
+        const resolved = target ? await resolveEnvironmentId(target) : undefined;
+        const environmentId = target
+          ? resolved?.ok
+            ? resolved.environmentId
+            : undefined
+          : ctx.environmentId;
         const uri =
-          projectRef && ctx.environmentId
+          uriProjectRef && environmentId
             ? formatTriggerUri({
                 kind: "report",
-                projectRef,
-                environmentId: ctx.environmentId,
+                projectRef: uriProjectRef,
+                environmentId,
                 key: reportKey,
               })
             : undefined;
@@ -548,8 +602,13 @@ export function buildApiTools(args: {
 
     get_queue: tool({
       ...getQueueSchema,
-      execute: async ({ queue, type, period, project, environment }) => {
-        const crossTarget = crossProjectTarget({ project, environment });
+      execute: async ({ queue, type, period, project, environment, branch }) => {
+        const { target: crossTarget, error: targetError } = resolveTarget({
+          project,
+          environment,
+          branch,
+        });
+        if (targetError) return { error: targetError };
         const effectiveProjectRef = project ?? projectRef;
         const effectiveEnvironmentName = environment ?? environmentName;
 
@@ -594,7 +653,8 @@ export function buildApiTools(args: {
           const workers = await apiGet(
             origin,
             `/api/v1/projects/${effectiveProjectRef}/${effectiveEnvironmentName}/workers/current`,
-            userActorToken!
+            userActorToken!,
+            crossTarget ? branch : environmentBranch
           );
           if (!workers.ok) return base;
           return {
@@ -632,14 +692,17 @@ export function buildApiTools(args: {
 
     list_deploys: tool({
       ...listDeploysSchema,
-      execute: async ({ status, period, limit }) => {
+      execute: async ({ status, period, limit, project, environment, branch }) => {
         const effectivePeriod = period ? clampPeriod(period) : undefined;
         const sp = new URLSearchParams();
         if (status) sp.append("status", status);
         if (effectivePeriod) sp.append("period", effectivePeriod);
         sp.append("page[size]", String(Math.min(limit ?? 10, 50)));
-        const result = await envApiGet(`/api/v1/deployments?${sp.toString()}`);
-        if (isEnvUnavailable(result)) return envUnavailableError(result, "read deployments from");
+        const { target, error: targetError } = resolveTarget({ project, environment, branch });
+        if (targetError) return { error: targetError };
+        const result = await envApiGet(`/api/v1/deployments?${sp.toString()}`, target);
+        if (isEnvUnavailable(result))
+          return envUnavailableError(result, "read deployments from", target);
         if (!result.ok) return { error: `Couldn't list deployments${fetchReason(result)}.` };
         const rows = ((result.data as any)?.data ?? []) as any[];
         return {
@@ -652,11 +715,14 @@ export function buildApiTools(args: {
 
     get_deploy: tool({
       ...getDeploySchema,
-      execute: async ({ version }) => {
-        const noEnv = (r: EnvUnavailable) => envUnavailableError(r, "read deployments from");
+      execute: async ({ version, project, environment, branch }) => {
+        const { target, error: targetError } = resolveTarget({ project, environment, branch });
+        if (targetError) return { error: targetError };
+        const noEnv = (r: EnvUnavailable) =>
+          envUnavailableError(r, "read deployments from", target);
         // No version: the promoted deployment, which is what new runs use.
         if (!version) {
-          const result = await envApiGet("/api/v1/deployments/current");
+          const result = await envApiGet("/api/v1/deployments/current", target);
           if (isEnvUnavailable(result)) return noEnv(result);
           if (!result.ok) {
             return { error: `Couldn't get the current deployment${fetchReason(result)}.` };
@@ -665,7 +731,7 @@ export function buildApiTools(args: {
         }
         // The public retrieve route is API-key-only, so find the version in the
         // JWT-reachable list instead.
-        const result = await envApiGet("/api/v1/deployments?page[size]=100");
+        const result = await envApiGet("/api/v1/deployments?page[size]=100", target);
         if (isEnvUnavailable(result)) return noEnv(result);
         if (!result.ok) return { error: `Couldn't look up deployments${fetchReason(result)}.` };
         const rows = ((result.data as any)?.data ?? []) as any[];
@@ -683,22 +749,23 @@ export function buildApiTools(args: {
 
     correlate_version: tool({
       ...correlateVersionSchema,
-      execute: async ({ runId, project, environment }) => {
+      execute: async ({ runId, project, environment, branch }) => {
         if (!hasAuth) return NO_AUTH;
         const effectiveProjectRef = project ?? projectRef;
         const effectiveEnvironmentName = environment ?? environmentName;
         if (!effectiveProjectRef || !effectiveEnvironmentName) {
           return { error: "No current environment is available to resolve the run's version." };
         }
-        const target = crossProjectTarget({ project, environment });
+        const { target, error: targetError } = resolveTarget({ project, environment, branch });
+        if (targetError) return { error: targetError };
         // A user-level route, so this uses the delegated token rather than the env JWT.
-        // An override drops the branch: it names another project/environment, which
-        // the current branch can't be assumed to apply to.
+        // An override carries its own branch or none: it names another project/environment,
+        // which the current branch can't be assumed to apply to.
         const result = await apiGet(
           origin,
           `/api/v1/projects/${effectiveProjectRef}/${effectiveEnvironmentName}/runs/${encodeURIComponent(runId)}/commit`,
           userActorToken!,
-          target ? undefined : environmentBranch
+          target ? branch : environmentBranch
         );
         if (!result.ok) {
           // Only a real 404 says "no commit here"; a transport failure says nothing, and a

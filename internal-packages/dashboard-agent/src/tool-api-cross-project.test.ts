@@ -3,11 +3,19 @@ import type { ZodTypeAny } from "zod";
 import { buildApiTools } from "./tool-api";
 import { createApiClient } from "./tool-api-client";
 import {
+  correlateVersionSchema,
+  getDeploySchema,
   getErrorSchema,
+  getQuerySchemaSchema,
   getQueueSchema,
+  getReportSchema,
   getRunSchema,
   getRunTraceSchema,
+  listDeploysSchema,
+  listErrorsSchema,
   listRunsSchema,
+  listTasksSchema,
+  runQuerySchema,
 } from "./tool-schemas";
 
 /**
@@ -221,23 +229,144 @@ describe("the sweep survives a sibling whose environments list is inaccessible",
   });
 });
 
-describe("project/environment schema round-trip", () => {
-  it.each([
+/**
+ * Every environment-bound read, not just the ones that got the override first: a target
+ * that isn't threaded reads the chat's own scope and answers about the wrong data. The
+ * assertion is on the wire — each project-addressed request the tool made (the JWT
+ * exchange, or a delegated-token route) has to name the target, never ctx.
+ */
+const ENVIRONMENT_BOUND_READS: Array<[string, { inputSchema: unknown }, Record<string, unknown>]> =
+  [
+    ["list_tasks", listTasksSchema, {}],
     ["list_runs", listRunsSchema, {}],
     ["get_run", getRunSchema, { runId: "run_1" }],
     ["get_run_trace", getRunTraceSchema, { runId: "run_1" }],
+    ["list_errors", listErrorsSchema, {}],
     ["get_error", getErrorSchema, { errorId: "error_1" }],
+    ["get_query_schema", getQuerySchemaSchema, {}],
+    ["run_query", runQuerySchema, { query: "select 1" }],
+    ["get_report", getReportSchema, {}],
     ["get_queue", getQueueSchema, { queue: "my-queue" }],
-  ])("%s accepts project/environment and stays valid without them", (_name, schema, base) => {
-    const inputSchema = schema.inputSchema as ZodTypeAny;
-    const withOverride = inputSchema.safeParse({
-      ...base,
-      project: "proj_other",
-      environment: "staging",
-    });
-    expect(withOverride.success).toBe(true);
+    ["list_deploys", listDeploysSchema, {}],
+    ["get_deploy", getDeploySchema, {}],
+    ["correlate_version", correlateVersionSchema, { runId: "run_1" }],
+  ];
 
-    const withoutOverride = inputSchema.safeParse(base);
-    expect(withoutOverride.success).toBe(true);
+/** The (project, environment) each project-addressed request named. */
+const addressed = () =>
+  calls
+    .map((call) => call.url.match(/\/api\/v1\/projects\/([^/]+)\/([^/?]+)/))
+    .filter((match): match is RegExpMatchArray => match !== null)
+    .map((match) => `${match[1]}/${match[2]}`);
+
+describe("every environment-bound read honours the target", () => {
+  it.each(ENVIRONMENT_BOUND_READS)(
+    "%s reads the named project/environment",
+    async (name, _schema, base) => {
+      const t = tools();
+
+      const result = await (t[name] as any).execute(
+        { ...base, project: "proj_other", environment: "staging" },
+        {} as any
+      );
+
+      expect(result.error).toBeUndefined();
+      expect(addressed().length).toBeGreaterThan(0);
+      expect([...new Set(addressed())]).toEqual(["proj_other/staging"]);
+    }
+  );
+
+  it.each(ENVIRONMENT_BOUND_READS)("%s carries the named branch", async (name, _schema, base) => {
+    const t = tools();
+
+    await (t[name] as any).execute(
+      { ...base, project: "proj_other", environment: "preview", branch: "feat/checkout" },
+      {} as any
+    );
+
+    const named = calls.filter((call) => call.url.includes("/api/v1/projects/"));
+    expect(named.length).toBeGreaterThan(0);
+    expect(named.every((call) => call.branch === "feat/checkout")).toBe(true);
+  });
+
+  it.each(ENVIRONMENT_BOUND_READS)(
+    "%s accepts the target fields and stays valid without them",
+    (_name, schema, base) => {
+      const inputSchema = schema.inputSchema as ZodTypeAny;
+
+      expect(
+        inputSchema.safeParse({
+          ...base,
+          project: "proj_other",
+          environment: "preview",
+          branch: "feat/checkout",
+        }).success
+      ).toBe(true);
+      expect(inputSchema.safeParse(base).success).toBe(true);
+    }
+  );
+});
+
+describe("run_query's POST", () => {
+  it("goes out on the target's JWT, not the chat environment's", async () => {
+    const t = tools();
+
+    await (t.run_query as any).execute(
+      { query: "select 1", project: "proj_other", environment: "staging" },
+      {} as any
+    );
+
+    expect(jwtCalls()[0].url).toBe(`${ORIGIN}/api/v1/projects/proj_other/staging/jwt`);
+    const query = calls.find((call) => call.url.endsWith("/api/v1/query"));
+    expect(query).toBeDefined();
+    expect(query!.body).toMatchObject({ query: "select 1", scope: "environment" });
+  });
+
+  it("still uses the chat environment's JWT with no target", async () => {
+    const t = tools();
+
+    await (t.run_query as any).execute({ query: "select 1" }, {} as any);
+
+    expect(jwtCalls()[0].url).toBe(`${ORIGIN}/api/v1/projects/proj_current/prod/jwt`);
+  });
+});
+
+describe("a project the org doesn't have", () => {
+  // Client hygiene only, on what list_projects already reported this turn: the answer
+  // to a foreign target is a plain tool error rather than a pointless exchange.
+  function stubOrgFetch() {
+    return vi.fn(async (input: any) => {
+      const url = typeof input === "string" ? input : input.url;
+      calls.push({ url, branch: null });
+      if (url.endsWith("/api/v1/projects")) {
+        return Response.json([
+          { externalRef: "proj_current", name: "current", organization: { id: "org_this" } },
+          { externalRef: "proj_other", name: "other", organization: { id: "org_this" } },
+        ]);
+      }
+      if (url.endsWith("/jwt")) return Response.json({ token: "jwt" });
+      return Response.json({ data: [] });
+    });
+  }
+
+  it("is refused without an exchange once list_projects has run", async () => {
+    vi.stubGlobal("fetch", stubOrgFetch());
+    const t = tools({ organizationId: "org_this" });
+    await (t.list_projects as any).execute({}, {} as any);
+
+    const result = await (t.list_runs as any).execute({ project: "proj_nope" }, {} as any);
+
+    expect(result.error).toBe(
+      "No project proj_nope in this organization. Call list_projects to see what exists."
+    );
+    expect(jwtCalls()).toHaveLength(0);
+  });
+
+  it("is attempted anyway when nothing is known about the org's projects", async () => {
+    const t = tools();
+
+    await (t.list_runs as any).execute({ project: "proj_nope" }, {} as any);
+
+    expect(jwtCalls()[0].url).toBe(`${ORIGIN}/api/v1/projects/proj_nope/prod/jwt`);
   });
 });

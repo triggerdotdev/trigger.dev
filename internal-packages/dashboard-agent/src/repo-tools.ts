@@ -6,6 +6,7 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import { sliceWellFormed } from "@internal/dashboard-agent-contracts";
 import { tool, type ToolSet } from "ai";
+import { crossProjectTarget, type ApiTarget, type TargetInput } from "./tool-api-client";
 import {
   getRepoInfoSchema,
   listFilesSchema,
@@ -209,7 +210,10 @@ export async function disposeRepoWorkspaces(): Promise<void> {
 }
 
 /** Resolve a run-pinned snapshot for a runId, or null. See the webapp's repo/snapshot route. */
-export type RunSnapshotResolver = (runId: string) => Promise<RepoSnapshot | null>;
+export type RunSnapshotResolver = (
+  runId: string,
+  target?: ApiTarget
+) => Promise<RepoSnapshot | null>;
 
 export function buildRepoTools(
   defaultSnapshot: RepoSnapshot,
@@ -217,11 +221,14 @@ export function buildRepoTools(
 ): ToolSet {
   // Pick the snapshot for a call: a runId pins to that run's deployed commit
   // (resolved server-side), otherwise the default tracked-branch snapshot.
-  async function snapshotFor(runId?: string): Promise<RepoSnapshot | { error: string }> {
+  async function snapshotFor(
+    runId?: string,
+    target?: TargetInput
+  ): Promise<RepoSnapshot | { error: string }> {
     if (!runId) return defaultSnapshot;
     if (!resolveRunSnapshot)
       return { error: "Reading a specific run's source isn't available here." };
-    const snap = await resolveRunSnapshot(runId);
+    const snap = await resolveRunSnapshot(runId, target && crossProjectTarget(target));
     return (
       snap ?? {
         error: `Couldn't resolve the source for ${runId} (it may be a dev run, or the project has no connected repo).`,
@@ -232,9 +239,10 @@ export function buildRepoTools(
   // snapshotFor + ensureWorkspace, returning the workdir (plus the snapshot's dirty
   // stamp, for tools that surface it) or an error result.
   async function loadWorkdir(
-    runId?: string
+    runId?: string,
+    target?: TargetInput
   ): Promise<{ workdir: string; dirty: boolean } | { error: string }> {
-    const snap = await snapshotFor(runId);
+    const snap = await snapshotFor(runId, target);
     if ("error" in snap) return snap;
     try {
       // Canonicalize the root so the per-tool realpath checks below compare
@@ -251,8 +259,8 @@ export function buildRepoTools(
   return {
     get_repo_info: tool({
       ...getRepoInfoSchema,
-      execute: async ({ runId }) => {
-        const snap = await snapshotFor(runId);
+      execute: async ({ runId, project, environment, branch }) => {
+        const snap = await snapshotFor(runId, { project, environment, branch });
         if ("error" in snap) return snap;
         return {
           owner: snap.owner,
@@ -266,8 +274,8 @@ export function buildRepoTools(
 
     list_files: tool({
       ...listFilesSchema,
-      execute: async ({ glob, path, runId }) => {
-        const loaded = await loadWorkdir(runId);
+      execute: async ({ glob, path, runId, project, environment, branch }) => {
+        const loaded = await loadWorkdir(runId, { project, environment, branch });
         if ("error" in loaded) return loaded;
         const { workdir } = loaded;
         const args = ["--files"];
@@ -300,8 +308,8 @@ export function buildRepoTools(
 
     read_file: tool({
       ...readFileSchema,
-      execute: async ({ path, startLine, endLine, runId }) => {
-        const loaded = await loadWorkdir(runId);
+      execute: async ({ path, startLine, endLine, runId, project, environment, branch }) => {
+        const loaded = await loadWorkdir(runId, { project, environment, branch });
         if ("error" in loaded) return loaded;
         const { workdir, dirty } = loaded;
         const target = safeResolve(workdir, path);
@@ -350,8 +358,8 @@ export function buildRepoTools(
 
     search_code: tool({
       ...searchCodeSchema,
-      execute: async ({ query, glob, maxResults, runId }) => {
-        const loaded = await loadWorkdir(runId);
+      execute: async ({ query, glob, maxResults, runId, project, environment, branch }) => {
+        const loaded = await loadWorkdir(runId, { project, environment, branch });
         if ("error" in loaded) return loaded;
         const { workdir } = loaded;
         const cap = Math.min(maxResults ?? 40, MAX_MATCHES);

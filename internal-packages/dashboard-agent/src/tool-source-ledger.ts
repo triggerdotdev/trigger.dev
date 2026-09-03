@@ -1,5 +1,5 @@
 import type { ToolSet } from "ai";
-import { apiGet } from "./tool-api-client";
+import { apiGet, crossProjectTarget, type ApiTarget } from "./tool-api-client";
 import type { RepoSnapshot } from "./repo-tools";
 
 /**
@@ -19,7 +19,7 @@ export type SourceReadLookup = {
 };
 
 export type SourceReadLedger = SourceReadLookup & {
-  resolveRunSnapshot(runId: string): Promise<RepoSnapshot | null>;
+  resolveRunSnapshot(runId: string, target?: ApiTarget): Promise<RepoSnapshot | null>;
   /** Records a successful read against its commit, keeping repo-tools unaware of it. */
   withReadTracking(repoTools: ToolSet): ToolSet;
   /** Records the span ids a trace read for `runId` returned this turn. */
@@ -40,13 +40,18 @@ export function createSourceReadLedger(ctx: SourceLedgerContext): SourceReadLedg
   const { origin, hasAuth, userActorToken, projectRef, environmentName, environmentBranch } = ctx;
 
   // Null means the file tools fall back to the default tracked-branch snapshot.
-  const fetchRunSnapshot = async (runId: string): Promise<RepoSnapshot | null> => {
-    if (!hasAuth || !projectRef || !environmentName) return null;
+  const fetchRunSnapshot = async (
+    runId: string,
+    target?: ApiTarget
+  ): Promise<RepoSnapshot | null> => {
+    const ref = target?.projectRef ?? projectRef;
+    const env = target?.environmentName ?? environmentName;
+    if (!hasAuth || !ref || !env) return null;
     const result = await apiGet(
       origin,
-      `/api/v1/projects/${projectRef}/${environmentName}/repo/snapshot?runId=${encodeURIComponent(runId)}`,
+      `/api/v1/projects/${ref}/${env}/repo/snapshot?runId=${encodeURIComponent(runId)}`,
       userActorToken!,
-      environmentBranch
+      target ? target.branch : environmentBranch
     );
     if (!result.ok) return null;
     const d = result.data as Partial<RepoSnapshot> | undefined;
@@ -63,11 +68,12 @@ export function createSourceReadLedger(ctx: SourceLedgerContext): SourceReadLedg
 
   // Memoized per turn so the file tools and the read tracker below agree on the commit.
   const runSnapshots = new Map<string, Promise<RepoSnapshot | null>>();
-  const resolveRunSnapshot = (runId: string): Promise<RepoSnapshot | null> => {
-    let pending = runSnapshots.get(runId);
+  const resolveRunSnapshot = (runId: string, target?: ApiTarget): Promise<RepoSnapshot | null> => {
+    const key = `${runId}@${target?.projectRef ?? ""}/${target?.environmentName ?? ""}/${target?.branch ?? ""}`;
+    let pending = runSnapshots.get(key);
     if (!pending) {
-      pending = fetchRunSnapshot(runId);
-      runSnapshots.set(runId, pending);
+      pending = fetchRunSnapshot(runId, target);
+      runSnapshots.set(key, pending);
     }
     return pending;
   };
@@ -132,7 +138,9 @@ export function createSourceReadLedger(ctx: SourceLedgerContext): SourceReadLedg
           const result = await execute(input, options);
           const path = (result as { path?: string } | undefined)?.path;
           if (path && !(result as { error?: unknown }).error) {
-            const snap = input?.runId ? await resolveRunSnapshot(input.runId) : ctx.repoSnapshot;
+            const snap = input?.runId
+              ? await resolveRunSnapshot(input.runId, crossProjectTarget(input))
+              : ctx.repoSnapshot;
             if (snap?.sha) recordFileRead(path, snap.sha, snap.dirty ?? false);
           }
           return result;
