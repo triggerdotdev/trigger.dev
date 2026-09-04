@@ -522,6 +522,8 @@ export class DeploymentService extends BaseService {
       return errAsync({ type: "s2_is_disabled" as const });
     }
     const basinName = env.S2_DEPLOYMENT_LOGS_BASIN_NAME;
+    const tokenValidityMs = env.S2_DEPLOYMENT_LOGS_TOKEN_VALIDITY_MS;
+    const cacheTtlSeconds = Math.floor(env.S2_DEPLOYMENT_LOGS_TOKEN_CACHE_TTL_MS / 1000);
     const redisKey = `${S2_TOKEN_KEY_PREFIX}${project.externalRef}`;
 
     const getTokenFromCache = () =>
@@ -539,7 +541,7 @@ export class DeploymentService extends BaseService {
       fromPromise(
         s2.accessTokens.issue({
           id: `${project.externalRef}-${new Date().getTime()}`,
-          expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1 hour
+          expiresAt: new Date(Date.now() + tokenValidityMs),
           scope: {
             ops: ["read"],
             basins: {
@@ -557,17 +559,10 @@ export class DeploymentService extends BaseService {
       ).map(({ accessToken }) => accessToken);
 
     const cacheToken = (token: string) =>
-      fromPromise(
-        s2TokenRedis.setex(
-          redisKey,
-          59 * 60, // slightly shorter than the token validity period
-          token
-        ),
-        (error) => ({
-          type: "other" as const,
-          cause: error,
-        })
-      );
+      fromPromise(s2TokenRedis.setex(redisKey, cacheTtlSeconds, token), (error) => ({
+        type: "other" as const,
+        cause: error,
+      }));
 
     return getTokenFromCache().orElse(() =>
       issueS2Token().andThen((token) =>

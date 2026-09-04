@@ -295,7 +295,7 @@ export class DeploymentPresenter {
 
     const { accessToken } = await s2.accessTokens.issue({
       id: `${projectRef}-${new Date().getTime()}`,
-      expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1 hour
+      expiresAt: new Date(Date.now() + env.S2_DEPLOYMENT_LOGS_TOKEN_VALIDITY_MS),
       scope: {
         ops: ["read"],
         basins: {
@@ -309,7 +309,7 @@ export class DeploymentPresenter {
 
     await s2TokenRedis.setex(
       redisKey,
-      59 * 60, // slightly shorter than the token validity period
+      Math.floor(env.S2_DEPLOYMENT_LOGS_TOKEN_CACHE_TTL_MS / 1000),
       accessToken
     );
 

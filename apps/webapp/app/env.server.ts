@@ -73,17 +73,37 @@ const S2EnvSchema = z.preprocess(
     }
     return obj;
   },
-  z.discriminatedUnion("S2_ENABLED", [
-    z.object({
-      S2_ENABLED: z.literal("1"),
-      S2_ACCESS_TOKEN: z.string(),
-      S2_DEPLOYMENT_LOGS_BASIN_NAME: z.string(),
-      S2_DEPLOYMENT_STREAMS_LOCAL: z.string().default("0"),
-    }),
-    z.object({
-      S2_ENABLED: z.literal("0"),
-    }),
-  ])
+  z
+    .discriminatedUnion("S2_ENABLED", [
+      z.object({
+        S2_ENABLED: z.literal("1"),
+        S2_ACCESS_TOKEN: z.string(),
+        S2_DEPLOYMENT_LOGS_BASIN_NAME: z.string(),
+        S2_DEPLOYMENT_STREAMS_LOCAL: z.string().default("0"),
+        S2_DEPLOYMENT_LOGS_TOKEN_VALIDITY_MS: z.coerce
+          .number()
+          .int()
+          .min(60 * 1000)
+          .default(60 * 60 * 1000),
+        S2_DEPLOYMENT_LOGS_TOKEN_CACHE_TTL_MS: z.coerce
+          .number()
+          .int()
+          .min(1000)
+          .default(30 * 60 * 1000),
+      }),
+      z.object({
+        S2_ENABLED: z.literal("0"),
+      }),
+    ])
+    .refine(
+      (val) =>
+        val.S2_ENABLED !== "1" ||
+        val.S2_DEPLOYMENT_LOGS_TOKEN_CACHE_TTL_MS * 2 <= val.S2_DEPLOYMENT_LOGS_TOKEN_VALIDITY_MS,
+      {
+        path: ["S2_DEPLOYMENT_LOGS_TOKEN_CACHE_TTL_MS"],
+        message: "must be at most half of S2_DEPLOYMENT_LOGS_TOKEN_VALIDITY_MS",
+      }
+    )
 );
 
 // Previously published secret values must never be accepted, including when
