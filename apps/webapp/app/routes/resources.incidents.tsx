@@ -120,8 +120,8 @@ export function IncidentStatusPanel({
         >
           <SimpleTooltip
             button={
-              <PopoverTrigger className="flex h-8! w-full items-center justify-center rounded border border-yellow-500/30 bg-yellow-500/15 transition-colors hover:border-yellow-500/50 hover:bg-yellow-500/25">
-                <ExclamationTriangleIcon className="size-5 text-yellow-400" />
+              <PopoverTrigger className="flex h-8! w-full items-center justify-center rounded border border-warning/30 bg-warning/10 transition-colors hover:border-warning/50 hover:bg-warning/20">
+                <ExclamationTriangleIcon className="size-5 text-warning" />
               </PopoverTrigger>
             }
             content="Active incident"
@@ -141,14 +141,14 @@ export function IncidentStatusPanel({
 
 function IncidentPanelContent({ message }: { message: string }) {
   return (
-    <div className="flex flex-col gap-2 rounded border border-yellow-500/30 bg-yellow-500/10 p-2 pt-1.5">
-      <div className="flex items-center gap-1 border-b border-yellow-500/30 pb-1">
-        <ExclamationTriangleIcon className="size-4 text-yellow-400" />
-        <Paragraph variant="small/bright" className="text-yellow-300">
+    <div className="flex flex-col gap-2 rounded border border-warning/30 bg-warning/10 p-2 pt-1.5">
+      <div className="flex items-center gap-1 border-b border-warning/20 pb-1">
+        <ExclamationTriangleIcon className="size-4 text-warning" />
+        <Paragraph variant="small/bright" className="text-callout-warning-text">
           Active incident
         </Paragraph>
       </div>
-      <Paragraph variant="extra-small/bright" className="text-yellow-300">
+      <Paragraph variant="extra-small/bright" className="text-callout-warning-text">
         {message}
       </Paragraph>
       <LinkButton
@@ -156,9 +156,9 @@ function IncidentPanelContent({ message }: { message: string }) {
         to="https://status.trigger.dev"
         target="_blank"
         fullWidth
-        className="border-yellow-500/30 bg-yellow-500/15 hover:border-yellow-500/50! hover:bg-yellow-500/25!"
+        className="border-warning/30 bg-warning/10 hover:border-warning/50! hover:bg-warning/20!"
       >
-        <span className="text-yellow-300">View status page</span>
+        <span className="text-callout-warning-text">View status page</span>
       </LinkButton>
     </div>
   );
