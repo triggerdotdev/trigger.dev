@@ -11,6 +11,16 @@ Controlling concurrency is useful when you have a task that can't be run concurr
 
 It's important to note that only actively executing runs count towards concurrency limits. Runs that are delayed or waiting in a queue do not consume concurrency slots until they begin execution.
 
+## Use cases
+
+- **Limit how many runs of a task execute at once**: [Setting task concurrency](#setting-task-concurrency)
+- **Share one limit across several tasks**: [Sharing concurrency between tasks](#sharing-concurrency-between-tasks)
+- **Give each tenant its own separate concurrency**: [Concurrency keys and per-tenant queuing](#concurrency-keys-and-per-tenant-queuing)
+- **Per-tenant limits with a ceiling on the whole queue**: [Combined concurrency across keys](#combined-concurrency-across-keys)
+- **Cap a tenant across every task they run**: [A per-tenant cap across multiple tasks](#a-per-tenant-cap-across-multiple-tasks)
+- **Cap a shared resource, like an external API, across tasks and tenants**: [A global cap for a shared resource](#a-global-cap-for-a-shared-resource)
+- **Funnel every run into one shared pool**: [One shared pool ignoring keys](#one-shared-pool-ignoring-keys)
+
 ## Default concurrency
 
 By default, all tasks have an unbounded concurrency limit, limited only by the overall concurrency limits of your environment.
@@ -155,6 +165,117 @@ export async function POST(request: Request) {
     return Response.json(handle);
   }
 }
+```
+
+## Combined concurrency across keys
+
+`concurrencyKey` gives every key value its own copy of the queue, each with the queue's full `concurrencyLimit`. That means the queue's total concurrency grows with the number of active keys: ten active users on a queue with `concurrencyLimit: 5` can run 50 at once.
+
+To bound the whole queue, set `combinedConcurrencyLimit`. Each key still gets at most `concurrencyLimit`, and the queue as a whole never exceeds the combined limit across all keys:
+
+```ts /trigger/per-user.ts
+export const perUserQueue = queue({
+  name: "per-user-queue",
+  //each user runs at most 1 at a time...
+  concurrencyLimit: 1,
+  //...and at most 10 total runs across all users
+  combinedConcurrencyLimit: 10,
+});
+```
+
+The combined limit only applies to runs triggered with a `concurrencyKey`; runs without a key are governed by `concurrencyLimit` alone. On the Queues page in the dashboard, a queue with a combined limit shows it in brackets next to the per-key limit, e.g. `1 (10)`.
+
+<Warning>
+  On a queue used with `concurrencyKey`, every limit applies per key value except
+  `combinedConcurrencyLimit`, which is the only cap that spans the whole queue.
+</Warning>
+
+## Using multiple queues at once
+
+Sometimes one limit isn't enough. A run always waits in one queue, its **home queue**, but it can also hold a concurrency slot in up to two more queues, called **gates**. A run starts only when its home queue and every gate all have capacity, occupies a slot in each while it executes, and releases them together when it finishes or suspends.
+
+Pass an array as `queue`: the first entry is the home queue, the rest name gates. The same array form works when you trigger, replacing the task's gates for that run:
+
+```ts
+await processWebhook.trigger(payload, {
+  queue: ["webhooks", "tenant"],
+  concurrencyKey: tenantId,
+});
+```
+
+### A per-tenant cap across multiple tasks
+
+A gate without a `concurrencyKey` uses the run's own key. Declare a shared queue and gate every relevant task on it, and each tenant gets one cap spanning all of those tasks:
+
+```ts /trigger/webhooks.ts
+//each tenant runs at most 10 at once across every task that gates on this queue
+export const tenantQueue = queue({ name: "tenant", concurrencyLimit: 10 });
+
+export const processWebhook = task({
+  id: "process-webhook",
+  queue: [{ name: "webhooks", concurrencyLimit: 2 }, "tenant"],
+  run: async (payload) => {
+    //...
+  },
+});
+```
+
+```ts app/api/webhook/route.ts
+//the run waits in "webhooks" and also counts towards this tenant's cap
+await processWebhook.trigger(payload, { concurrencyKey: tenantId });
+```
+
+Because the trigger passes a `concurrencyKey`, the home queue splits per key as usual: `concurrencyLimit: 2` caps each tenant's webhook runs, not the task overall.
+
+### A global cap for a shared resource
+
+To cap something global, like total traffic to an external API, across many tasks and all tenants: declare a queue with only a `combinedConcurrencyLimit` and gate on it. Tenant keys still split the gate into per-key pools, but with no per-key limit the combined cap is the only constraint:
+
+```ts /trigger/sync.ts
+//at most 10 concurrent provider calls across every task and every tenant
+export const providerApiQueue = queue({
+  name: "provider-api",
+  combinedConcurrencyLimit: 10,
+});
+
+export const syncToProvider = task({
+  id: "sync-to-provider",
+  queue: [{ name: "sync-home", concurrencyLimit: 20 }, "provider-api"],
+  run: async (payload) => {
+    //...
+  },
+});
+```
+
+```ts app/api/sync/route.ts
+//the combined cap only counts keyed runs, so every trigger passes a key
+await syncToProvider.trigger(payload, { concurrencyKey: tenantId });
+```
+
+<Warning>
+  This pattern requires every trigger to pass a `concurrencyKey`. A run triggered without one
+  bypasses the combined limit entirely. If some runs have no natural key, use the pinned-key
+  pool below instead.
+</Warning>
+
+### One shared pool ignoring keys
+
+Give a gate a literal `concurrencyKey` to pin every run into a single first-come-first-served pool, regardless of each run's own key:
+
+```ts /trigger/print.ts
+export const printerQueue = queue({ name: "printer", concurrencyLimit: 1 });
+
+export const printLabel = task({
+  id: "print-label",
+  queue: [
+    { name: "print-home", concurrencyLimit: 5 },
+    //every run shares the single "printer" slot no matter its own key
+    { name: "printer", concurrencyKey: "shared" },
+  ],
+  run: async (payload) => {
+    //...
+  },
+});
 ```
 
 ## Concurrency and subtasks
@@ -356,3 +477,19 @@ await queues.resetConcurrencyLimit("queue_1234");
 // Or using type and name
 await queues.resetConcurrencyLimit({ type: "task", name: "my-task-id" });
 ```
+
+### Overriding the combined concurrency limit
+
+Queues with a `combinedConcurrencyLimit` can have that cap overridden and reset in the same way:
+
+```ts
+import { queues } from "@trigger.dev/sdk";
+
+// Allow up to 100 runs across all concurrency keys
+await queues.overrideCombinedConcurrencyLimit("queue_1234", 100);
+
+// Revert to the combinedConcurrencyLimit declared in your code
+await queues.resetCombinedConcurrencyLimit("queue_1234");
+```
+
+Overrides survive deploys: redeploying your code keeps an active override until you reset it.
