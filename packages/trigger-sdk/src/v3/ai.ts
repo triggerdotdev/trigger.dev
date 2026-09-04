@@ -6707,11 +6707,23 @@ function chatAgent<
        * on both the success and the error path, before the response or the
        * partial joins the lane, so the order stays steer-then-answer.
        */
-      const reconcilePendingSteer = () => {
+      const reconcilePendingSteer = (options?: {
+        /** This turn's model delta, as `onTurnComplete.newMessages` reports it. */
+        turnNew?: ModelMessage[];
+        /**
+         * UI message ids already in the lane because a `chat.history` edit
+         * rebuilt it from the UI lane this turn. Their model form is not
+         * appended again, or later turns would get the steer twice.
+         */
+        alreadyInLane?: Set<string>;
+      }) => {
         const pending = locals.get(chatPendingSteerKey);
         if (!pending || pending.length === 0) return;
         locals.set(chatPendingSteerKey, []);
-        for (const entry of pending) accumulatedMessages.push(...entry.model);
+        for (const entry of pending) {
+          if (!options?.alreadyInLane?.has(entry.ui.id)) accumulatedMessages.push(...entry.model);
+          options?.turnNew?.push(...entry.model);
+        }
       };
 
       // Accumulated UI messages for persistence. Mirrors the model accumulator
@@ -8555,11 +8567,13 @@ function chatAgent<
                   // during this turn. The updated messages become the new base, and the
                   // response gets appended on top.
                   const runOverride = locals.get(chatOverrideMessagesKey);
+                  let rebuiltFromUiIds: Set<string> | undefined;
                   if (runOverride) {
                     locals.set(chatOverrideMessagesKey, undefined);
                     accumulatedUIMessages = [...runOverride] as TUIMessage[];
                     accumulatedMessages = await toModelMessages(runOverride);
                     locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+                    rebuiltFromUiIds = new Set(runOverride.map((m) => m.id));
                   }
 
                   // Check if compaction set a model-only override (preserves UI messages).
@@ -8602,7 +8616,10 @@ function chatAgent<
                   // before the response is appended so the order stays
                   // steer-then-answer. Outside the `capturedResponseMessage`
                   // branches below, so a turn that captured no response is covered.
-                  reconcilePendingSteer();
+                  reconcilePendingSteer({
+                    turnNew: turnNewModelMessages,
+                    alreadyInLane: rebuiltFromUiIds,
+                  });
 
                   // Append the assistant's response (partial or complete) to the accumulator.
                   // The onFinish callback fires even on abort/stop, so partial responses

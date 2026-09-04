@@ -9,9 +9,12 @@ import { z } from "zod";
 import { chat } from "../src/v3/ai.js";
 
 /**
- * `pendingMessages.prepare` decides how a steer is presented to the model.
- * The steered turn gets that form. Later turns have to get the same form,
- * or the model's memory of the instruction differs from what it acted on.
+ * A `chat.history` edit after a steer has been drained.
+ *
+ * The edit is applied by rebuilding the model lane from the UI lane, and the
+ * UI lane already holds the steer, so the rebuilt lane has it. Appending the
+ * recorded model form on top of that sends it twice from the next turn on. A
+ * steer-presence check passes either way; the count is what discriminates.
  */
 
 const USAGE = {
@@ -60,14 +63,14 @@ async function sendAndLand(
   void harness.sendMessage(userMessage(text, id));
   await waitFor(() => (seqs.lastSeqNum(chatId, "in") ?? -1) > before, `append ${id}`);
 }
+const countOf = (hay: string, needle: string) => hay.split(needle).length - 1;
 
-describe("a steer transformed by pendingMessages.prepare", () => {
-  it("reaches later turns in the transformed form", { timeout: 30_000 }, async () => {
-    const chatId = "steer-prepare-transform";
+describe("a history edit after a steer was drained", () => {
+  it("sends the steer to later turns exactly once", { timeout: 30_000 }, async () => {
+    const chatId = "steer-history-edit-once";
     const toolGate = deferred();
     let toolEntered = false;
     const prompts: string[] = [];
-    const newModelDeltas: string[] = [];
 
     const gateTool = tool({
       description: "blocks until the test opens it",
@@ -95,19 +98,14 @@ describe("a steer transformed by pendingMessages.prepare", () => {
     });
 
     const agent = chat.agent({
-      id: "steer-prepare-transform",
+      id: "steer-history-edit-once",
       pendingMessages: {
         shouldInject: () => true,
-        // Present the steer to the model as an operator note, not a user turn.
-        prepare: async ({ messages }) => [
-          {
-            role: "system",
-            content: `[OPERATOR-NOTE] ${messages.map((m) => (m.parts as { text?: string }[]).map((p) => p.text ?? "").join("")).join(" ")}`,
-          },
-        ],
-      },
-      onTurnComplete: async ({ newMessages }) => {
-        newModelDeltas.push(JSON.stringify(newMessages));
+        // An identity rewrite is enough: any chat.history write sets the
+        // override that is applied by rebuilding from the UI lane.
+        onInjected: () => {
+          chat.history.set(chat.history.all());
+        },
       },
       run: async ({ messages, signal }) =>
         streamText({
@@ -127,23 +125,14 @@ describe("a steer transformed by pendingMessages.prepare", () => {
       await sendAndLand(harness, chatId, "steer-me", "u-2");
       toolGate.resolve();
       await first;
-      await waitFor(() => prompts.length >= 2, "turn 1 second step");
-
-      // The steered turn saw the transformed form.
-      expect(prompts[1]!).toContain("[OPERATOR-NOTE] steer-me");
+      await waitFor(() => prompts.length >= 2, "turn 1 done");
       const promptsAfterTurn1 = prompts.length;
 
       await harness.sendMessage(userMessage("m3", "u-3"));
       await waitFor(() => prompts.length > promptsAfterTurn1, "turn 2 prompt built");
 
-      // And so does the next one. Reconverting the UI message gives the raw
-      // user turn instead, so the model remembers a different instruction
-      // from the one it acted on.
-      expect(prompts[promptsAfterTurn1]!).toContain("[OPERATOR-NOTE] steer-me");
-
-      // The per-turn model delta the hook reports carries it in the same form,
-      // or append-only persistence from `newMessages` loses the model's view.
-      expect(newModelDeltas[0]!).toContain("[OPERATOR-NOTE] steer-me");
+      const turn2 = prompts[promptsAfterTurn1]!;
+      expect(countOf(turn2, '"steer-me"')).toBe(1);
     } finally {
       toolGate.resolve();
       await harness.close();
