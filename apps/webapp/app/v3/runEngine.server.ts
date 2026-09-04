@@ -62,6 +62,7 @@ function createRunEngine() {
     queue: {
       defaultEnvConcurrency: env.DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT,
       defaultEnvConcurrencyBurstFactor: env.DEFAULT_ENV_EXECUTION_CONCURRENCY_BURST_FACTOR,
+      totalConcurrencyEnabled: env.RUN_ENGINE_TOTAL_CONCURRENCY_LIMITS_ENABLED === "1",
       logLevel: env.RUN_ENGINE_RUN_QUEUE_LOG_LEVEL,
       redis: {
         keyPrefix: "engine:",

@@ -1974,6 +1974,9 @@ model TaskQueue {
   /// percentage (the source of truth). The absolute concurrencyLimit is materialized from it.
   /// Decimal(5,2) allows fractional percentages like 12.50% (0.01–100.00).
   concurrencyLimitOverridePercent Decimal?  @db.Decimal(5, 2)
+  /// Caps total concurrent runs across ALL concurrencyKey values of this queue
+  /// (concurrencyLimit applies per key value). Null = no total cap.
+  totalConcurrencyLimit           Int?
   rateLimit                       Json?
 
   paused Boolean @default(false)

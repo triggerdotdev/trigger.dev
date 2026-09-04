@@ -91,6 +91,8 @@ export type RunEngineOptions = {
     defaultEnvConcurrency?: number;
     defaultEnvConcurrencyBurstFactor?: number;
     logLevel?: LogLevel;
+    /** Enforce per-queue total concurrency limits across concurrency-key variants. See RunQueueOptions.totalConcurrencyEnabled. */
+    totalConcurrencyEnabled?: boolean;
     /** Optional queue-metrics emitter; enables gauge + counter emission from the RunQueue. */
     queueMetrics?: RunQueueMetricsEmitter;
     queueSelectionStrategyOptions?: Pick<

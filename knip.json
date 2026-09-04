@@ -27,6 +27,9 @@
       ],
       "ignoreDependencies": ["@sentry/cli", "assert", "util"]
     },
+    "internal-packages/run-engine": {
+      "ignore": ["src/run-queue/index.ts"]
+    },
     "internal-packages/dashboard-agent": {
       "entry": ["trigger.config.ts", "src/investigation-sweep.ts", "src/maintenance.ts"],
       "ignoreBinaries": ["rg"]
