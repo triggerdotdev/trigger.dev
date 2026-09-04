@@ -982,6 +982,42 @@ describe("TriggerChatTransport", () => {
       expect(actionBody.payload.action).toEqual({ type: "undo" });
     });
 
+    it("sends a useChat request carrying body.action as an action", async () => {
+      // `useChatActions` and `regenerate({ body })` reach the transport through
+      // `sendMessages`; the action has to go out as an action, not a message,
+      // and the response comes back on the request useChat made.
+      let actionBody: any;
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (isSessionStreamAppendUrl(urlStr)) {
+          actionBody = JSON.parse(init!.body as string);
+          return defaultAppendResponse();
+        }
+        if (isSessionOutSubscribeUrl(urlStr)) return defaultSseResponse();
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        sessions: { "chat-act-body": { publicAccessToken: "p" } },
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-act-body",
+        messageId: undefined,
+        messages: [{ id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] }],
+        abortSignal: undefined,
+        body: { action: { type: "regenerate" } },
+      });
+      await drainChunks(stream);
+
+      expect(actionBody.payload.trigger).toBe("action");
+      expect(actionBody.payload.action).toEqual({ type: "regenerate" });
+      expect(actionBody.payload.message).toBeUndefined();
+    });
+
     it("marks the session streaming and notifies before subscribing", async () => {
       global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
         const urlStr = typeof url === "string" ? url : url.toString();

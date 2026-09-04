@@ -471,3 +471,46 @@ export function usePendingMessages<TUIMessage extends UIMessage = UIMessage>(
     getInjectedMessages,
   };
 }
+
+/**
+ * Send actions through `useChat`, so an action that returns `chat.turn()` on
+ * the server renders like any turn.
+ *
+ * `transport.sendAction` returns the response as a stream that `useChat` never
+ * reads. This hook sends the action as a `useChat` request instead (the
+ * transport recognises `body.action` and sends it as an action), so `useChat`
+ * owns the response: it streams into the message list, `status` and `error`
+ * behave as for a message, and `stop` works. An action that returns nothing on
+ * the server completes with no message added.
+ *
+ * History changes the action makes on the server (an undo removing messages,
+ * for example) are not mirrored automatically; apply those with `setMessages`
+ * optimistically, as before.
+ *
+ * @example
+ * ```tsx
+ * const transport = useTriggerChatTransport({ task: "my-chat", accessToken });
+ * const { messages, sendMessage, setMessages } = useChat({ id: chatId, transport });
+ * const { sendAction } = useChatActions({ sendMessage });
+ *
+ * <button onClick={() => sendAction({ type: "regenerate" })}>Regenerate</button>
+ * ```
+ */
+export function useChatActions(options: {
+  /** `useChat`'s `sendMessage`. */
+  sendMessage: (
+    message: undefined,
+    options?: { body?: object; headers?: Record<string, string> | Headers }
+  ) => Promise<void> | void;
+}): {
+  /** Send an action; resolves when `useChat` has finished the request. */
+  sendAction: (action: unknown) => Promise<void>;
+} {
+  const { sendMessage } = options;
+  const sendMessageRef = useRef(sendMessage);
+  sendMessageRef.current = sendMessage;
+  const sendAction = useCallback(async (action: unknown) => {
+    await sendMessageRef.current(undefined, { body: { action } });
+  }, []);
+  return { sendAction };
+}
