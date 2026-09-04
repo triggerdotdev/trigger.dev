@@ -257,7 +257,7 @@
           },
           {
             "group": "Observability",
-            "pages": ["observability/query", "observability/dashboards"]
+            "pages": ["observability/query", "observability/dashboards", "reports"]
           },
           {
             "group": "Using the Dashboard",
