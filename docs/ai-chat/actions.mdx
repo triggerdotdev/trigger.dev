@@ -54,7 +54,7 @@ export const myChat = chat.agent({
 
 ## Returning a model response from an action
 
-`onAction` can return a `StreamTextResult`, `string`, or `UIMessage` to produce a response. The returned stream is auto-piped to the frontend just like a normal turn, but the rest of the turn machinery (`onTurnStart`, `onTurnComplete`, etc.) still does not fire.
+`onAction` can return a `StreamTextResult`, `string`, or `UIMessage` to produce a response. All three are sent to the frontend and added to the conversation just like a normal turn's answer, but the rest of the turn machinery (`onTurnStart`, `onTurnComplete`, etc.) still does not fire. A returned `UIMessage` must have `role: "assistant"`; its text and `data-*` parts are delivered, and other part types are dropped.
 
 ```ts
 onAction: async ({ action, messages }) => {

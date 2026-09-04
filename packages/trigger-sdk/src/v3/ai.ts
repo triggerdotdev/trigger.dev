@@ -5003,6 +5003,94 @@ type UIMessageStreamable = {
   toUIMessageStream: (...args: any[]) => AsyncIterable<unknown> | ReadableStream<unknown>;
 };
 
+/**
+ * A plain `onAction` reply (`string` or assistant `UIMessage`) as a stream, so
+ * it takes the same path as a `StreamTextResult`: piped to the browser,
+ * captured, committed to the conversation, snapshotted. Text and `data-*`
+ * parts are emitted; anything else in a supplied message is dropped, since a
+ * tool part with no execution behind it cannot be replayed as chunks.
+ */
+function plainReplyAsStream(value: unknown): UIMessageStreamable | undefined {
+  let message: UIMessage | undefined;
+  if (typeof value === "string") {
+    message = {
+      id: generateMessageId(),
+      role: "assistant",
+      parts: [{ type: "text", text: value }],
+    } as UIMessage;
+  } else if (
+    typeof value === "object" &&
+    value !== null &&
+    (value as UIMessage).role === "assistant" &&
+    Array.isArray((value as UIMessage).parts)
+  ) {
+    const m = value as UIMessage;
+    message = { ...m, id: m.id || generateMessageId() };
+  }
+  if (!message) return undefined;
+
+  const chunks: Record<string, unknown>[] = [{ type: "start", messageId: message.id }];
+  let n = 0;
+  for (const part of message.parts as {
+    type: string;
+    text?: string;
+    data?: unknown;
+    id?: string;
+  }[]) {
+    if (part.type === "text") {
+      const id = `t${n++}`;
+      chunks.push(
+        { type: "text-start", id },
+        { type: "text-delta", id, delta: part.text ?? "" },
+        { type: "text-end", id }
+      );
+    } else if (part.type.startsWith("data-")) {
+      chunks.push({ type: part.type, id: part.id, data: part.data });
+    }
+  }
+  chunks.push({ type: "finish" });
+
+  return {
+    toUIMessageStream: () =>
+      new ReadableStream({
+        start(controller) {
+          for (const c of chunks) controller.enqueue(c);
+          controller.close();
+        },
+      }),
+  } as unknown as UIMessageStreamable;
+}
+
+/**
+ * Replace, in a model lane, the run of messages one UI message contributed.
+ *
+ * Used when a UI message is replaced in place (a tool-approval continuation
+ * merging onto the trailing assistant, a captured response reusing an existing
+ * id, a partial replacing an existing message). Reconverting the whole lane
+ * from the UI lane would also replace a compaction summary with the full
+ * transcript and drop the model forms `pendingMessages.prepare` produced.
+ *
+ * The replaced message is the trailing one, so its run is the lane's tail,
+ * before any steer forms appended after it this turn (`tailAfter`). If the
+ * tail does not match the old message's conversion, nothing is changed and
+ * `false` is returned so the caller can fall back to a full reconversion.
+ */
+async function replaceModelRun(
+  lane: ModelMessage[],
+  oldUi: UIMessage,
+  newUi: UIMessage,
+  tailAfter: number
+): Promise<boolean> {
+  const oldRun = await toModelMessages([stripProviderMetadata(oldUi)]);
+  const newRun = await toModelMessages([stripProviderMetadata(newUi)]);
+  const end = lane.length - tailAfter;
+  const start = end - oldRun.length;
+  if (start < 0 || end > lane.length) return false;
+  if (JSON.stringify(lane.slice(start, end)) !== JSON.stringify(oldRun)) return false;
+  lane.splice(start, oldRun.length, ...newRun);
+  return true;
+}
+
 function isUIMessageStreamable(value: unknown): value is UIMessageStreamable {
   return (
     typeof value === "object" &&
@@ -8060,6 +8148,7 @@ function chatAgent<
                       // where AI SDK regenerates the id (TRI-9137) still
                       // applies via `rewriteIncomingIdViaToolCallMap`.
                       let replaced = false;
+                      const replacedPairs: { previous: TUIMessage; merged: TUIMessage }[] = [];
                       for (const raw of cleanedUIMessages) {
                         let incoming = raw;
                         let idx = accumulatedUIMessages.findIndex((m) => m.id === incoming.id);
@@ -8071,10 +8160,12 @@ function chatAgent<
                           }
                         }
                         if (idx !== -1) {
+                          const previous = accumulatedUIMessages[idx]!;
                           accumulatedUIMessages[idx] = mergeIncomingIntoHydrated(
-                            accumulatedUIMessages[idx]!,
+                            previous,
                             incoming
                           ) as TUIMessage;
+                          replacedPairs.push({ previous, merged: accumulatedUIMessages[idx]! });
                           replaced = true;
                         } else {
                           accumulatedUIMessages.push(incoming as TUIMessage);
@@ -8083,9 +8174,19 @@ function chatAgent<
                         recordToolCallIdsFromMessage(incoming);
                       }
                       if (replaced) {
-                        // Replacement changes structure — reconvert all model
-                        // messages instead of appending.
-                        accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+                        let inPlace = true;
+                        for (const { previous, merged } of replacedPairs) {
+                          if (!(await replaceModelRun(accumulatedMessages, previous, merged, 0))) {
+                            inPlace = false;
+                            break;
+                          }
+                        }
+                        if (!inPlace) {
+                          logger.warn(
+                            "chat.agent: replaced message not found at the model lane tail; reconverting the lane"
+                          );
+                          accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+                        }
                       } else {
                         const incomingModelMessages = await toModelMessages(cleanedUIMessages);
                         accumulatedMessages.push(...incomingModelMessages);
@@ -8145,6 +8246,9 @@ function chatAgent<
                 if (isAction) {
                   msgSub?.off();
 
+                  // A documented plain reply takes the streamed reply's path.
+                  actionStreamResult = plainReplyAsStream(actionStreamResult) ?? actionStreamResult;
+
                   if (
                     (locals.get(chatPipeCountKey) ?? 0) === 0 &&
                     isUIMessageStreamable(actionStreamResult)
@@ -8186,10 +8290,17 @@ function chatAgent<
                           : -1;
                         if (existingIdx !== -1) {
                           accumulatedUIMessages[existingIdx] = actionResponse as TUIMessage;
+                          // Replacing an existing message has no in-place model
+                          // form to swap, so this path still reconverts.
+                          accumulatedMessages = await toModelMessages(accumulatedUIMessages);
                         } else {
                           accumulatedUIMessages.push(actionResponse as TUIMessage);
+                          // Appended, not reconverted: a reconversion from the UI
+                          // lane would undo a model-only compaction summary.
+                          accumulatedMessages.push(
+                            ...(await toModelMessages([stripProviderMetadata(actionResponse)]))
+                          );
                         }
-                        accumulatedMessages = await toModelMessages(accumulatedUIMessages);
                         locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                         actionChangedHistory = true;
                       }
@@ -8625,7 +8736,9 @@ function chatAgent<
                   // before the response is appended so the order stays
                   // steer-then-answer. Outside the `capturedResponseMessage`
                   // branches below, so a turn that captured no response is covered.
-                  reconcilePendingSteer({ turnNew: turnNewModelMessages });
+                  const steerTailThisTurn = reconcilePendingSteer({
+                    turnNew: turnNewModelMessages,
+                  }).reduce((n, e) => n + e.model.length, 0);
 
                   // Append the assistant's response (partial or complete) to the accumulator.
                   // The onFinish callback fires even on abort/stop, so partial responses
@@ -8664,6 +8777,8 @@ function chatAgent<
                     const existingIdx = capturedResponseMessage.id
                       ? accumulatedUIMessages.findIndex((m) => m.id === capturedResponseMessage!.id)
                       : -1;
+                    const previousAtIdx =
+                      existingIdx !== -1 ? accumulatedUIMessages[existingIdx] : undefined;
                     if (existingIdx !== -1) {
                       accumulatedUIMessages[existingIdx] = capturedResponseMessage;
                     } else {
@@ -8682,8 +8797,20 @@ function chatAgent<
                         stripProviderMetadata(capturedResponseMessage),
                       ]);
                       if (existingIdx !== -1) {
-                        // Reconvert all model messages since we replaced rather than appended
-                        accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+                        const ok =
+                          previousAtIdx !== undefined &&
+                          (await replaceModelRun(
+                            accumulatedMessages,
+                            previousAtIdx,
+                            capturedResponseMessage,
+                            steerTailThisTurn
+                          ));
+                        if (!ok) {
+                          logger.warn(
+                            "chat.agent: replaced response not found at the model lane tail; reconverting the lane"
+                          );
+                          accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+                        }
                       } else {
                         accumulatedMessages.push(...responseModelMessages);
                       }
@@ -9319,7 +9446,18 @@ function chatAgent<
                       ...(await toModelMessages(appended.map((m) => stripProviderMetadata(m))))
                     );
                   } else {
-                    accumulatedMessages = await toModelMessages(erroredUIMessagesWithPartial);
+                    const ok = await replaceModelRun(
+                      accumulatedMessages,
+                      erroredUIMessages[partialIdx]!,
+                      partialResponse!,
+                      reconciledSteer.reduce((n, e) => n + e.model.length, 0)
+                    );
+                    if (!ok) {
+                      logger.warn(
+                        "chat.agent: replaced partial not found at the model lane tail; reconverting the lane"
+                      );
+                      accumulatedMessages = await toModelMessages(erroredUIMessagesWithPartial);
+                    }
                   }
                   accumulatedUIMessages = erroredUIMessagesWithPartial;
                   locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
@@ -10725,12 +10863,14 @@ class ChatMessageAccumulator {
     // a duplicate, mirroring the chat.agent accumulator.
     const existingIdx = this.uiMessages.findIndex((m) => m.id === response.id);
     if (existingIdx !== -1) {
+      const previous = this.uiMessages[existingIdx]!;
       this.uiMessages[existingIdx] = response;
       try {
-        // Reconvert all model messages since we replaced rather than appended.
-        this.modelMessages = await toModelMessages(
-          this.uiMessages.map((m) => stripProviderMetadata(m))
-        );
+        if (!(await replaceModelRun(this.modelMessages, previous, response, 0))) {
+          this.modelMessages = await toModelMessages(
+            this.uiMessages.map((m) => stripProviderMetadata(m))
+          );
+        }
       } catch {
         // Conversion failed — leave the existing model messages in place
       }
