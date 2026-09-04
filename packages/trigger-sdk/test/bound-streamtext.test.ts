@@ -5,7 +5,7 @@ import { mockChatAgent } from "../src/v3/test/index.js";
 import { describe, expect, it } from "vitest";
 import { chat, __buildManagedStreamTextOptionsForTests as buildManaged } from "../src/v3/ai.js";
 import { chat as chatServer } from "../src/v3/chat-server.js";
-import { convertToModelMessages, simulateReadableStream, stepCountIs, tool } from "ai";
+import { simulateReadableStream, stepCountIs, tool } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { z } from "zod";
@@ -441,83 +441,23 @@ describe("what the types reject", () => {
   });
 });
 
-describe("the streamText handed to onAction", () => {
-  it("carries the agent's system prompt into a regenerated answer", async () => {
+describe("a turn started from an action", () => {
+  it("answers with the agent's configuration, like any turn", async () => {
     /**
-     * A regenerate is the agent answering again, so it has to answer with the
-     * agent's own instructions. Built with the `streamText` imported from `ai`
-     * it answers with none, and nothing reports that: the reply looks fine and
-     * is simply produced by a differently-configured model than every other
-     * turn.
+     * A regenerate is the agent answering again. As a turn on the edited
+     * history it answers with the agent's own instructions and tools, because
+     * the same run() runs; nothing is reconstructed in the handler.
      */
-    const turnModel = new MockLanguageModelV3({
-      doStream: async () => ({ stream: textStream("first answer") }),
-    });
-    const actionModel = new MockLanguageModelV3({
-      doStream: async () => ({ stream: textStream("regenerated answer") }),
-    });
-
-    const agent = chat.agent({
-      id: "bound-streamtext-onaction",
-      system: "AGENT-SYSTEM-FOR-ACTIONS",
-      actionSchema: z.discriminatedUnion("type", [z.object({ type: z.literal("regenerate") })]),
-      onAction: async ({ action, streamText }) => {
-        if (action.type !== "regenerate") return;
-        chat.history.slice(0, -1);
-        return streamText({
-          model: actionModel,
-          messages: await convertToModelMessages(chat.history.all()),
-        });
+    const prompts: string[] = [];
+    const toolNames: string[][] = [];
+    let calls = 0;
+    const model = new MockLanguageModelV3({
+      doStream: async ({ prompt, tools }) => {
+        prompts.push(JSON.stringify(prompt));
+        toolNames.push((tools ?? []).map((t) => t.name));
+        return { stream: textStream(calls++ === 0 ? "first answer" : "regenerated answer") };
       },
-      run: async ({ messages, signal, streamText }) =>
-        streamText({ model: turnModel, messages, abortSignal: signal }),
     });
-
-    const harness = mockChatAgent(agent, { chatId: "bound-streamtext-onaction" });
-
-    try {
-      await harness.sendMessage({ id: "u1", role: "user", parts: [{ type: "text", text: "ask" }] });
-      await new Promise((r) => setTimeout(r, 40));
-
-      // The turn carries it, which is the baseline.
-      expect(JSON.stringify(turnModel.doStreamCalls.at(-1)!.prompt)).toContain(
-        "AGENT-SYSTEM-FOR-ACTIONS"
-      );
-
-      await harness.sendAction({ type: "regenerate" });
-      await new Promise((r) => setTimeout(r, 60));
-
-      // And so does the action's own stream.
-      expect(actionModel.doStreamCalls).toHaveLength(1);
-      const actionPrompt = JSON.stringify(actionModel.doStreamCalls[0]!.prompt);
-      expect(actionPrompt).toContain("AGENT-SYSTEM-FOR-ACTIONS");
-
-      /**
-       * And the answer being replaced is gone. `onAction`'s `messages` argument
-       * is captured before the handler runs, so passing it through after a
-       * `chat.history` mutation regenerates against the state just removed. The
-       * documented pattern rebuilds from `chat.history.all()`.
-       */
-      expect(actionPrompt).not.toContain("first answer");
-    } finally {
-      await harness.close();
-    }
-  });
-
-  it("carries the agent's tools into a regenerated answer", async () => {
-    /**
-     * A regenerate that can call nothing is not the same agent answering
-     * again. `onAction` has no `tools` in scope the way `run()` does, so
-     * omitting `tools` has to fall back to the agent's set rather than to
-     * none.
-     */
-    const turnModel = new MockLanguageModelV3({
-      doStream: async () => ({ stream: textStream("first answer") }),
-    });
-    const actionModel = new MockLanguageModelV3({
-      doStream: async () => ({ stream: textStream("regenerated answer") }),
-    });
-
     const agentOnlyTool = tool({
       description: "declared only on chat.agent({ tools })",
       inputSchema: z.object({ a: z.string() }),
@@ -525,33 +465,33 @@ describe("the streamText handed to onAction", () => {
     });
 
     const agent = chat.agent({
-      id: "bound-streamtext-onaction-tools",
+      id: "bound-streamtext-action-turn",
+      system: "AGENT-SYSTEM-FOR-ACTIONS",
       tools: { agentOnlyTool },
       actionSchema: z.discriminatedUnion("type", [z.object({ type: z.literal("regenerate") })]),
-      onAction: async ({ action, streamText }) => {
+      onAction: async ({ action }) => {
         if (action.type !== "regenerate") return;
         chat.history.slice(0, -1);
-        return streamText({
-          model: actionModel,
-          messages: await convertToModelMessages(chat.history.all()),
-        });
+        return chat.turn();
       },
       run: async ({ messages, tools, signal, streamText }) =>
-        streamText({ model: turnModel, messages, tools, abortSignal: signal }),
+        streamText({ model, messages, tools, abortSignal: signal }),
     });
 
-    const harness = mockChatAgent(agent, { chatId: "bound-streamtext-onaction-tools" });
+    const harness = mockChatAgent(agent, { chatId: "bound-streamtext-action-turn" });
 
     try {
       await harness.sendMessage({ id: "u1", role: "user", parts: [{ type: "text", text: "ask" }] });
       await new Promise((r) => setTimeout(r, 40));
-
       await harness.sendAction({ type: "regenerate" });
-      await new Promise((r) => setTimeout(r, 60));
+      await new Promise((r) => setTimeout(r, 80));
 
-      expect(actionModel.doStreamCalls).toHaveLength(1);
-      const names = (actionModel.doStreamCalls[0]!.tools ?? []).map((t) => t.name);
-      expect(names).toEqual(["agentOnlyTool"]);
+      expect(prompts).toHaveLength(2);
+      const regen = prompts[1]!;
+      expect(regen).toContain("AGENT-SYSTEM-FOR-ACTIONS");
+      expect(toolNames[1]).toEqual(["agentOnlyTool"]);
+      // The answer being replaced is gone from what the model sees.
+      expect(regen).not.toContain("first answer");
     } finally {
       await harness.close();
     }

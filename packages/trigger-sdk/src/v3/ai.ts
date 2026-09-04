@@ -5714,19 +5714,6 @@ export type ActionEvent<
   uiMessages: TUIM[];
   /** The accumulated model messages (after hydration, if set). */
   messages: ModelMessage[];
-  /** The agent's resolved tools, the same set `run()` receives. */
-  tools: ToolSet;
-  /**
-   * `streamText` with the agent's managed options already applied, the same one
-   * `run()` receives: the prompt from `chat.prompt.set()` or
-   * `chat.agent({ system })`, the skill tools, the registry-resolved model and
-   * telemetry.
-   *
-   * Use it for a response produced from an action. A regenerate built with the
-   * `streamText` imported from `ai` answers without the agent's own system
-   * prompt, which is a behaviour difference nobody expects from a regenerate.
-   */
-  streamText: ChatStreamText;
 };
 
 /**
@@ -8188,13 +8175,6 @@ function chatAgent<
                           clientData,
                           uiMessages: accumulatedUIMessages,
                           messages: accumulatedMessages,
-                          tools: locals.get(chatResolvedToolsKey) ?? {},
-                          streamText: createBoundStreamText(
-                            promptRegistry,
-                            agentSystem,
-                            agentCacheControl,
-                            agentSystemProviderOptions
-                          ),
                         });
                       },
                       {
