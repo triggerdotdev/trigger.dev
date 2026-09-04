@@ -355,18 +355,14 @@ describe("chat.agent injection claims only its own batch", () => {
 /**
  * Whether an injected message survives into the next turn's model context.
  *
- * Recorded here because the deployed QA lane finds the two surfaces disagree:
- * a `chat.createSession()` recap in the same run recalls a mid-turn steer,
- * while the managed `chat.agent` loop denies it. That difference is
- * pre-existing and is the surface-specific half of the accumulator gap.
- *
- * `it.fails` because the managed path does not carry it: turn 2's prompt comes
- * back as the original and the following message only, with the injected one
- * absent. Held here so the day that changes is noticed, and so the gap has a
- * repro that does not need a deployed environment.
+ * The UI accumulator and the model accumulator are maintained separately, and
+ * a drained message used to reach only the first: the browser, the snapshot
+ * and `chat.history.*` all showed it while every later turn of the run
+ * answered without it. The model lane is now rebuilt from the UI lane at the
+ * end of a turn that drained, and this is the repro for it.
  */
 describe("chat.agent injected message in the next turn's context", () => {
-  it.fails(
+  it(
     "carries an injected message into the following turn's prompt",
     { timeout: 30_000 },
     async () => {

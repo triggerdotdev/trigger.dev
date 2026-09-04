@@ -3561,6 +3561,19 @@ const chatSteeringQueueKey = locals.create<SteeringQueueEntry[]>("chat.steeringQ
  * `onTurnComplete` never learns it existed.
  */
 const chatTurnNewUIMessagesKey = locals.create<UIMessage[]>("chat.turnNewUIMessages");
+
+/**
+ * Set when a steering drain appended to the UI accumulator, so the model
+ * accumulator gets rebuilt from it at the end of the turn.
+ *
+ * The two accumulators are maintained separately, and the model one is
+ * normally advanced by appending each turn's delta. A drained message is
+ * appended to the UI one but reaches the model only through the `prepareStep`
+ * return value, which is per-step: without a rebuild the model lane never
+ * learns the message exists and every later turn of the run answers without
+ * it, while the browser, the snapshot and `chat.history.*` all still show it.
+ */
+const chatModelLaneStaleKey = locals.create<boolean>("chat.modelLaneStale");
 /** @internal — IDs of messages that were successfully injected via prepareStep */
 const chatInjectedMessageIdsKey = locals.create<Set<string>>("chat.injectedMessageIds");
 /** @internal — non-transient data parts queued via chat.response or writer.write() for accumulation into the response message */
@@ -4285,6 +4298,9 @@ async function drainSteeringQueue(
         if (turnNew && !turnNew.some((existing) => existing.id === m.id)) {
           turnNew.push(m);
         }
+      }
+      if (claimedUIMessages.length > 0) {
+        locals.set(chatModelLaneStaleKey, true);
       }
 
       // Write injection confirmation chunk to the stream so the frontend
@@ -8598,6 +8614,23 @@ function chatAgent<
                     responseCommitted = true;
                     capturedPartialResponse = capturedResponseMessage;
                     turnBufferedChunks.length = 0;
+                  }
+
+                  // Bring the model accumulator back in line with the UI one
+                  // after a steering drain. Placed after response accumulation
+                  // and before compaction reads `accumulatedMessages`, and
+                  // outside the `capturedResponseMessage` branches so a turn
+                  // that captured no response is covered too.
+                  if (locals.get(chatModelLaneStaleKey)) {
+                    locals.set(chatModelLaneStaleKey, false);
+                    try {
+                      accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+                    } catch (error) {
+                      logger.warn(
+                        "chat.agent: toModelMessages failed rebuilding after an injection; the injected message will be missing from the next turn",
+                        { error: error instanceof Error ? error.message : String(error) }
+                      );
+                    }
                   }
 
                   if (runSignal.aborted) return "exit";
