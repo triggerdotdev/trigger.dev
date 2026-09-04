@@ -8203,7 +8203,19 @@ function chatAgent<
                       ) {
                         return "exit";
                       }
-                      throw error;
+                      // Reported here rather than rethrown: the shared catch
+                      // below is the turn-error path, and it would fire
+                      // onTurnComplete, keep the turn number and consume the
+                      // one-shot instruction lane, none of which an action does.
+                      try {
+                        await withChatWriter(async (writer) => {
+                          const errorText =
+                            error instanceof Error ? error.message : "An unexpected error occurred";
+                          writer.write({ type: "error", errorText } as any);
+                        });
+                      } catch {
+                        // best effort
+                      }
                     }
                   }
 
