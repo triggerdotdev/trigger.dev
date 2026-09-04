@@ -2340,9 +2340,13 @@ async function followBuildServerDeployment({
 
     logger.debug("Build log stream failed", { error: streamError });
 
-    log.error(`Lost connection to the build log stream: ${streamError.message}`);
+    const reason = (streamError instanceof Error ? streamError.message : String(streamError))
+      .replace(/\s+/g, " ")
+      .slice(0, 200);
+
+    log.error(`Build log stream failed: ${reason}`);
     log.info(
-      "This is not a deployment failure, the build server is still working on it. Check the dashboard for the final status."
+      "The deployment itself is unaffected and continues on the build server. Check the dashboard for the final status."
     );
 
     if (!isLinksSupported) {
