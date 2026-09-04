@@ -3,7 +3,12 @@ import { errAsync, fromPromise, okAsync } from "neverthrow";
 import type { PrismaClientOrTransaction } from "~/db.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { removeQueueConcurrencyLimits, updateQueueConcurrencyLimits } from "../runQueue.server";
+import {
+  removeQueueConcurrencyLimits,
+  removeQueueTotalConcurrencyLimits,
+  updateQueueConcurrencyLimits,
+  updateQueueTotalConcurrencyLimits,
+} from "../runQueue.server";
 import { engine } from "../runEngine.server";
 
 export type ConcurrencySystemOptions = {
@@ -75,6 +80,32 @@ export class ConcurrencySystem {
         return findQueueFromInput(this.db, environment, queue)
           .andThen((queue) => resetQueueConcurrencyLimit(this.db, queue))
           .andThen((queue) => syncQueueConcurrencyToEngine(environment, queue))
+          .andThen((queue) => getQueueStats(environment, queue));
+      },
+      overrideTotalConcurrencyLimit: (
+        environment: AuthenticatedEnvironment,
+        queue: QueueInput,
+        totalConcurrencyLimit: number,
+        overriddenBy?: User
+      ) => {
+        return findQueueFromInput(this.db, environment, queue)
+          .andThen((queue) =>
+            overrideQueueTotalConcurrencyLimit(
+              this.db,
+              environment,
+              queue,
+              totalConcurrencyLimit,
+              overriddenBy
+            )
+          )
+          .andThen((queue) => syncQueueTotalConcurrencyToEngine(environment, queue))
+          .andThen((queue) => getQueueStats(environment, queue));
+      },
+      resetTotalConcurrencyLimit: (environment: AuthenticatedEnvironment, queue: QueueInput) => {
+        return findQueueFromInput(this.db, environment, queue)
+          .andThen((queue) => syncQueueTotalConcurrencyResetToEngine(environment, queue))
+          .andThen((queue) => resetQueueTotalConcurrencyLimit(this.db, queue))
+          .andThen((queue) => syncQueueTotalConcurrencyToEngine(environment, queue))
           .andThen((queue) => getQueueStats(environment, queue));
       },
       /**
@@ -314,6 +345,125 @@ function syncQueueConcurrencyToEngine(environment: AuthenticatedEnvironment, que
       cause: error,
     })).andThen(() => okAsync(queue));
   }
+}
+
+function overrideQueueTotalConcurrencyLimit(
+  db: PrismaClientOrTransaction,
+  environment: AuthenticatedEnvironment,
+  queue: TaskQueue,
+  totalConcurrencyLimit: number,
+  overriddenBy?: User
+) {
+  const maximum = environment.maximumConcurrencyLimit;
+
+  if (!Number.isFinite(totalConcurrencyLimit) || totalConcurrencyLimit < 0) {
+    return errAsync({
+      type: "invalid_override" as const,
+      message: "Combined concurrency limit must be a non-negative number",
+    });
+  }
+
+  if (totalConcurrencyLimit > maximum) {
+    return errAsync({
+      type: "concurrency_limit_exceeds_maximum" as const,
+      message: `Combined concurrency limit (${totalConcurrencyLimit}) cannot exceed the environment limit (${maximum})`,
+    });
+  }
+
+  const totalConcurrencyLimitBase = queue.totalConcurrencyLimitOverriddenAt
+    ? queue.totalConcurrencyLimitBase
+    : queue.totalConcurrencyLimit;
+
+  return fromPromise(
+    db.taskQueue.update({
+      where: { id: queue.id },
+      data: {
+        totalConcurrencyLimit,
+        totalConcurrencyLimitBase: totalConcurrencyLimitBase ?? null,
+        totalConcurrencyLimitOverriddenAt: new Date(),
+        totalConcurrencyLimitOverriddenBy: overriddenBy?.id ?? null,
+      },
+    }),
+    (error) => ({
+      type: "queue_update_failed" as const,
+      cause: error,
+    })
+  );
+}
+
+/**
+ * Enforce first, then persist: syncs the engine to the declared base BEFORE clearing
+ * the override marker, so an engine failure leaves the marker set and a retry
+ * converges instead of being rejected while the overridden limit stays enforced.
+ */
+function syncQueueTotalConcurrencyResetToEngine(
+  environment: AuthenticatedEnvironment,
+  queue: TaskQueue
+) {
+  if (queue.totalConcurrencyLimitOverriddenAt === null) {
+    return errAsync({ type: "queue_not_overridden" as const });
+  }
+
+  if (typeof queue.totalConcurrencyLimitBase === "number") {
+    return fromPromise(
+      updateQueueTotalConcurrencyLimits(environment, queue.name, queue.totalConcurrencyLimitBase),
+      (error) => ({
+        type: "sync_queue_concurrency_to_engine_failed" as const,
+        cause: error,
+      })
+    ).andThen(() => okAsync(queue));
+  }
+
+  return fromPromise(removeQueueTotalConcurrencyLimits(environment, queue.name), (error) => ({
+    type: "sync_queue_concurrency_to_engine_failed" as const,
+    cause: error,
+  })).andThen(() => okAsync(queue));
+}
+
+function resetQueueTotalConcurrencyLimit(db: PrismaClientOrTransaction, queue: TaskQueue) {
+  if (queue.totalConcurrencyLimitOverriddenAt === null) {
+    return errAsync({ type: "queue_not_overridden" as const });
+  }
+
+  return fromPromise(
+    db.taskQueue.update({
+      where: { id: queue.id },
+      data: {
+        totalConcurrencyLimit: queue.totalConcurrencyLimitBase,
+        totalConcurrencyLimitBase: null,
+        totalConcurrencyLimitOverriddenAt: null,
+        totalConcurrencyLimitOverriddenBy: null,
+      },
+    }),
+    (error) => ({
+      type: "queue_update_failed" as const,
+      cause: error,
+    })
+  );
+}
+
+/**
+ * The total limit key is separate from the per-queue limit key that pause zeroes,
+ * so it syncs regardless of the paused state.
+ */
+function syncQueueTotalConcurrencyToEngine(
+  environment: AuthenticatedEnvironment,
+  queue: TaskQueue
+) {
+  if (typeof queue.totalConcurrencyLimit === "number") {
+    return fromPromise(
+      updateQueueTotalConcurrencyLimits(environment, queue.name, queue.totalConcurrencyLimit),
+      (error) => ({
+        type: "sync_queue_concurrency_to_engine_failed" as const,
+        cause: error,
+      })
+    ).andThen(() => okAsync(queue));
+  }
+
+  return fromPromise(removeQueueTotalConcurrencyLimits(environment, queue.name), (error) => ({
+    type: "sync_queue_concurrency_to_engine_failed" as const,
+    cause: error,
+  })).andThen(() => okAsync(queue));
 }
 
 function getQueueStats(environment: AuthenticatedEnvironment, queue: TaskQueue) {

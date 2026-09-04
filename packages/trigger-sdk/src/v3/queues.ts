@@ -173,6 +173,81 @@ export function overrideConcurrencyLimit(
 }
 
 /**
+ * Overrides the combined concurrency limit of a queue: the cap on concurrent runs across
+ * all of its `concurrencyKey` values.
+ *
+ * @param queue - The ID of the queue, or the type and name
+ * @param concurrencyLimit - The combined concurrency limit to apply
+ * @returns The updated queue state
+ */
+export function overrideCombinedConcurrencyLimit(
+  queue: RetrieveQueueParam,
+  concurrencyLimit: number,
+  requestOptions?: ApiRequestOptions
+): ApiPromise<QueueItem> {
+  const apiClient = apiClientManager.clientOrThrow();
+
+  const $requestOptions = mergeRequestOptions(
+    {
+      tracer,
+      name: "queues.overrideCombinedConcurrencyLimit()",
+      icon: "queue",
+      attributes: {
+        ...flattenAttributes({ queue }),
+        ...accessoryAttributes({
+          items: [
+            {
+              text: typeof queue === "string" ? queue : queue.name,
+              variant: "normal",
+            },
+          ],
+          style: "codepath",
+        }),
+      },
+    },
+    requestOptions
+  );
+
+  return apiClient.overrideQueueCombinedConcurrencyLimit(queue, concurrencyLimit, $requestOptions);
+}
+
+/**
+ * Resets the combined concurrency limit of a queue back to its declared value.
+ *
+ * @param queue - The ID of the queue, or the type and name
+ * @returns The updated queue state
+ */
+export function resetCombinedConcurrencyLimit(
+  queue: RetrieveQueueParam,
+  requestOptions?: ApiRequestOptions
+): ApiPromise<QueueItem> {
+  const apiClient = apiClientManager.clientOrThrow();
+
+  const $requestOptions = mergeRequestOptions(
+    {
+      tracer,
+      name: "queues.resetCombinedConcurrencyLimit()",
+      icon: "queue",
+      attributes: {
+        ...flattenAttributes({ queue }),
+        ...accessoryAttributes({
+          items: [
+            {
+              text: typeof queue === "string" ? queue : queue.name,
+              variant: "normal",
+            },
+          ],
+          style: "codepath",
+        }),
+      },
+    },
+    requestOptions
+  );
+
+  return apiClient.resetQueueCombinedConcurrencyLimit(queue, $requestOptions);
+}
+
+/**
  * Resets the concurrency limit of a queue to the base value.
  *
  * @param queue - The ID of the queue to reset the concurrency limit, or the type and name

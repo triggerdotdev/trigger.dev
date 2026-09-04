@@ -1983,7 +1983,13 @@ model TaskQueue {
   concurrencyLimitOverridePercent Decimal?  @db.Decimal(5, 2)
   /// Caps total concurrent runs across ALL concurrencyKey values of this queue
   /// (concurrencyLimit applies per key value). Null = no total cap.
-  totalConcurrencyLimit           Int?
+  totalConcurrencyLimit             Int?
+  /// When the total concurrency limit was overridden
+  totalConcurrencyLimitOverriddenAt DateTime?
+  /// Who overrode the total concurrency limit (null when overridden via the API)
+  totalConcurrencyLimitOverriddenBy String?
+  /// If totalConcurrencyLimit is overridden, the declared value it reverts to on reset
+  totalConcurrencyLimitBase         Int?
   rateLimit                       Json?
 
   paused Boolean @default(false)
@@ -1995,8 +2001,10 @@ model TaskQueue {
   tasks    BackgroundWorkerTask[]
   workers  BackgroundWorker[]
 
+
   @@unique([runtimeEnvironmentId, name])
 }
+
 
 enum TaskQueueType {
   VIRTUAL

@@ -1704,6 +1704,51 @@ export class ApiClient {
     );
   }
 
+  overrideQueueCombinedConcurrencyLimit(
+    queue: RetrieveQueueParam,
+    concurrencyLimit: number,
+    requestOptions?: ZodFetchOptions
+  ) {
+    const type = typeof queue === "string" ? "id" : queue.type;
+    const value = typeof queue === "string" ? queue : queue.name;
+
+    const encodedValue = encodeURIComponent(value.replace(/\//g, "%2F"));
+
+    return zodfetch(
+      QueueItem,
+      `${this.baseUrl}/api/v1/queues/${encodedValue}/concurrency/combined/override`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify({
+          type,
+          concurrencyLimit,
+        }),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  resetQueueCombinedConcurrencyLimit(queue: RetrieveQueueParam, requestOptions?: ZodFetchOptions) {
+    const type = typeof queue === "string" ? "id" : queue.type;
+    const value = typeof queue === "string" ? queue : queue.name;
+
+    const encodedValue = encodeURIComponent(value.replace(/\//g, "%2F"));
+
+    return zodfetch(
+      QueueItem,
+      `${this.baseUrl}/api/v1/queues/${encodedValue}/concurrency/combined/reset`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify({
+          type,
+        }),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
   subscribeToRun<TRunTypes extends AnyRunTypes>(
     runId: string,
     options?: {
