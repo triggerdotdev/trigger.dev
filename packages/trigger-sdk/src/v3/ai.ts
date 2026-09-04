@@ -6710,20 +6710,15 @@ function chatAgent<
       const reconcilePendingSteer = (options?: {
         /** This turn's model delta, as `onTurnComplete.newMessages` reports it. */
         turnNew?: ModelMessage[];
-        /**
-         * UI message ids already in the lane because a `chat.history` edit
-         * rebuilt it from the UI lane this turn. Their model form is not
-         * appended again, or later turns would get the steer twice.
-         */
-        alreadyInLane?: Set<string>;
-      }) => {
+      }): PendingSteer[] => {
         const pending = locals.get(chatPendingSteerKey);
-        if (!pending || pending.length === 0) return;
+        if (!pending || pending.length === 0) return [];
         locals.set(chatPendingSteerKey, []);
         for (const entry of pending) {
-          if (!options?.alreadyInLane?.has(entry.ui.id)) accumulatedMessages.push(...entry.model);
+          accumulatedMessages.push(...entry.model);
           options?.turnNew?.push(...entry.model);
         }
+        return pending;
       };
 
       // Accumulated UI messages for persistence. Mirrors the model accumulator
@@ -8567,13 +8562,27 @@ function chatAgent<
                   // during this turn. The updated messages become the new base, and the
                   // response gets appended on top.
                   const runOverride = locals.get(chatOverrideMessagesKey);
-                  let rebuiltFromUiIds: Set<string> | undefined;
                   if (runOverride) {
                     locals.set(chatOverrideMessagesKey, undefined);
                     accumulatedUIMessages = [...runOverride] as TUIMessage[];
-                    accumulatedMessages = await toModelMessages(runOverride);
+                    /**
+                     * Steers the drain consumed are left out of the rebuild and
+                     * appended by the reconciliation below instead, so the lane
+                     * gets the form the model actually received rather than a
+                     * reconversion of the UI message, and gets it once. A steer
+                     * the edit removed is dropped from the pending list too, so
+                     * the edit is honoured.
+                     */
+                    const overrideIds = new Set(runOverride.map((m) => m.id));
+                    const pending = (locals.get(chatPendingSteerKey) ?? []).filter((e) =>
+                      overrideIds.has(e.ui.id)
+                    );
+                    locals.set(chatPendingSteerKey, pending);
+                    const pendingIds = new Set(pending.map((e) => e.ui.id));
+                    accumulatedMessages = await toModelMessages(
+                      runOverride.filter((m) => !pendingIds.has(m.id))
+                    );
                     locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
-                    rebuiltFromUiIds = new Set(runOverride.map((m) => m.id));
                   }
 
                   // Check if compaction set a model-only override (preserves UI messages).
@@ -8616,10 +8625,7 @@ function chatAgent<
                   // before the response is appended so the order stays
                   // steer-then-answer. Outside the `capturedResponseMessage`
                   // branches below, so a turn that captured no response is covered.
-                  reconcilePendingSteer({
-                    turnNew: turnNewModelMessages,
-                    alreadyInLane: rebuiltFromUiIds,
-                  });
+                  reconcilePendingSteer({ turnNew: turnNewModelMessages });
 
                   // Append the assistant's response (partial or complete) to the accumulator.
                   // The onFinish callback fires even on abort/stop, so partial responses
@@ -9281,14 +9287,28 @@ function chatAgent<
 
             let erroredNewModelMessages: ModelMessage[] = [];
 
-            reconcilePendingSteer();
+            const reconciledSteer = reconcilePendingSteer();
 
             if (!responseCommitted) {
               try {
                 if (erroredNewUIMessages.length > 0) {
-                  erroredNewModelMessages = await toModelMessages(
-                    erroredNewUIMessages.map((m) => stripProviderMetadata(m))
+                  /**
+                   * Built in order from the recorded forms rather than by
+                   * converting the UI list, so a steer appears in the delta as
+                   * the model received it (what `prepare` produced), matching the
+                   * lane. The wire message and partial are converted as before.
+                   */
+                  const steerModelById = new Map(
+                    reconciledSteer.map((e) => [e.ui.id, e.model] as const)
                   );
+                  for (const m of erroredNewUIMessages) {
+                    const recorded = steerModelById.get(m.id);
+                    if (recorded) erroredNewModelMessages.push(...recorded);
+                    else
+                      erroredNewModelMessages.push(
+                        ...(await toModelMessages([stripProviderMetadata(m)]))
+                      );
+                  }
                 }
                 if (erroredUIMessagesWithPartial !== accumulatedUIMessages) {
                   if (partialIdx === -1) {

@@ -92,7 +92,12 @@ describe("chat.agent steering on a turn that fails", () => {
     const chatId = "steer-error-path";
     const toolGate = deferred();
     let toolEntered = false;
-    const events: { newUIMessages: UIMessage[]; messages: unknown[]; finishReason?: string }[] = [];
+    const events: {
+      newUIMessages: UIMessage[];
+      messages: unknown[];
+      newMessages: unknown[];
+      finishReason?: string;
+    }[] = [];
     const promptsSawSteer: boolean[] = [];
 
     const gateTool = tool({
@@ -132,11 +137,22 @@ describe("chat.agent steering on a turn that fails", () => {
 
     const agent = chat.agent({
       id: "steer-error-path",
-      pendingMessages: { shouldInject: () => true },
-      onTurnComplete: async ({ newUIMessages, messages, finishReason }) => {
+      pendingMessages: {
+        shouldInject: () => true,
+        prepare: async ({ messages }) => [
+          {
+            role: "system",
+            content: `[OPERATOR-NOTE] ${messages
+              .map((m) => (m.parts as { text?: string }[]).map((p) => p.text ?? "").join(""))
+              .join(" ")}`,
+          },
+        ],
+      },
+      onTurnComplete: async ({ newUIMessages, messages, newMessages, finishReason }) => {
         events.push({
           newUIMessages: [...(newUIMessages ?? [])],
           messages: [...messages],
+          newMessages: [...(newMessages ?? [])],
           finishReason,
         });
       },
@@ -176,7 +192,11 @@ describe("chat.agent steering on a turn that fails", () => {
       // does the prompt the next turn actually sends. Reconciling only on the
       // success path leaves it pending, so the next turn misses it and it
       // lands a slot late at the end of that turn.
-      expect(JSON.stringify(events[0]!.messages)).toContain("steer-me");
+      expect(JSON.stringify(events[0]!.messages)).toContain("[OPERATOR-NOTE] steer-me");
+      // The per-turn delta carries the same form, not a reconversion of the UI
+      // message: append-only model persistence from `newMessages` would
+      // otherwise store a different instruction from the one the model acted on.
+      expect(JSON.stringify(events[0]!.newMessages)).toContain("[OPERATOR-NOTE] steer-me");
       const promptsBefore = promptsSawSteer.length;
       await harness.sendMessage(userMessage("m3", "u-3"));
       await waitFor(() => promptsSawSteer.length > promptsBefore, "turn 2 prompt built");

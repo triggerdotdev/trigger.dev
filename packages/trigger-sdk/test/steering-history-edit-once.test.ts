@@ -65,77 +65,136 @@ async function sendAndLand(
 }
 const countOf = (hay: string, needle: string) => hay.split(needle).length - 1;
 
+type Variant = { prepare?: boolean; compact?: boolean; deleteSteer?: boolean };
+
+/** One steered turn with a history edit from onInjected, then a follow-up turn. Returns turn 2's prompt. */
+async function runVariant(chatId: string, v: Variant): Promise<string> {
+  const toolGate = deferred();
+  let toolEntered = false;
+  const prompts: string[] = [];
+  let compacted = 0;
+
+  const gateTool = tool({
+    description: "blocks until the test opens it",
+    inputSchema: z.object({ q: z.string() }),
+    execute: async () => {
+      toolEntered = true;
+      await toolGate.promise;
+      return "ok";
+    },
+  });
+
+  let step = 0;
+  const model = new MockLanguageModelV3({
+    doStream: async ({ prompt }) => {
+      prompts.push(JSON.stringify(prompt));
+      const isToolStep = step++ % 2 === 0;
+      return {
+        stream: simulateReadableStream({
+          chunks: isToolStep ? toolCallChunks(`tc-${step}`) : textChunks("done"),
+          initialDelayInMs: 10,
+          chunkDelayInMs: 2,
+        }),
+      };
+    },
+  });
+
+  const agent = chat.agent({
+    id: chatId,
+    pendingMessages: {
+      shouldInject: () => true,
+      ...(v.prepare
+        ? {
+            prepare: async ({ messages }) => [
+              {
+                role: "system" as const,
+                content: `[OPERATOR-NOTE] ${messages.map((m) => (m.parts as { text?: string }[]).map((p) => p.text ?? "").join("")).join(" ")}`,
+              },
+            ],
+          }
+        : {}),
+      onInjected: () => {
+        chat.history.set(chat.history.all().filter((m) => !(v.deleteSteer && m.id === "u-2")));
+      },
+    },
+    ...(v.compact
+      ? {
+          compaction: {
+            shouldCompact: () => compacted === 0,
+            summarize: async () => {
+              compacted++;
+              return "SUMMARY-OF-EVERYTHING";
+            },
+          },
+        }
+      : {}),
+    run: async ({ messages, signal }) =>
+      streamText({
+        model,
+        messages,
+        abortSignal: signal,
+        ...chat.toStreamTextOptions(),
+        tools: { gate: gateTool },
+        stopWhen: stepCountIs(5),
+      }),
+  });
+
+  const harness = mockChatAgent(agent, { chatId });
+  try {
+    const first = harness.sendMessage(userMessage("m1", "u-1"));
+    await waitFor(() => toolEntered, "tool entered");
+    await sendAndLand(harness, chatId, "steer-me", "u-2");
+    toolGate.resolve();
+    await first;
+    await waitFor(() => prompts.length >= 2, "turn 1 done");
+    if (v.compact) await waitFor(() => compacted > 0, "compaction ran");
+    const promptsAfterTurn1 = prompts.length;
+    await harness.sendMessage(userMessage("m3", "u-3"));
+    await waitFor(() => prompts.length > promptsAfterTurn1, "turn 2 prompt built");
+    return prompts[promptsAfterTurn1]!;
+  } finally {
+    toolGate.resolve();
+    await harness.close();
+  }
+}
+
 describe("a history edit after a steer was drained", () => {
   it("sends the steer to later turns exactly once", { timeout: 30_000 }, async () => {
-    const chatId = "steer-history-edit-once";
-    const toolGate = deferred();
-    let toolEntered = false;
-    const prompts: string[] = [];
+    const turn2 = await runVariant("steer-history-edit-once", {});
+    expect(countOf(turn2, '"steer-me"')).toBe(1);
+  });
 
-    const gateTool = tool({
-      description: "blocks until the test opens it",
-      inputSchema: z.object({ q: z.string() }),
-      execute: async () => {
-        toolEntered = true;
-        await toolGate.promise;
-        return "ok";
-      },
+  it("keeps the prepared form, once", { timeout: 30_000 }, async () => {
+    /**
+     * The rebuild converts the UI message, which is the raw form. If the raw
+     * form is what stays, the model's memory of the instruction differs from
+     * the one it acted on. If both stay, it is there twice.
+     */
+    const turn2 = await runVariant("steer-history-edit-prepared", { prepare: true });
+    expect(countOf(turn2, "[OPERATOR-NOTE] steer-me")).toBe(1);
+    expect(countOf(turn2, '"steer-me"')).toBe(0);
+  });
+
+  it("keeps the steer when compaction also replaces the lane", { timeout: 30_000 }, async () => {
+    /**
+     * A model-only compaction replaces the rebuilt lane, raw steer included.
+     * If reconciliation then withholds the prepared form because the rebuild
+     * "already had it", the steer is gone from the model lane altogether.
+     */
+    const turn2 = await runVariant("steer-history-edit-compacted", {
+      prepare: true,
+      compact: true,
     });
+    expect(turn2).toContain("SUMMARY-OF-EVERYTHING");
+    expect(countOf(turn2, "[OPERATOR-NOTE] steer-me")).toBe(1);
+  });
 
-    let step = 0;
-    const model = new MockLanguageModelV3({
-      doStream: async ({ prompt }) => {
-        prompts.push(JSON.stringify(prompt));
-        const isToolStep = step++ % 2 === 0;
-        return {
-          stream: simulateReadableStream({
-            chunks: isToolStep ? toolCallChunks(`tc-${step}`) : textChunks("done"),
-            initialDelayInMs: 10,
-            chunkDelayInMs: 2,
-          }),
-        };
-      },
+  it("does not bring back a steer the edit removed", { timeout: 30_000 }, async () => {
+    /** The edit is the app's decision. Reconciliation must not undo it. */
+    const turn2 = await runVariant("steer-history-edit-deleted", {
+      prepare: true,
+      deleteSteer: true,
     });
-
-    const agent = chat.agent({
-      id: "steer-history-edit-once",
-      pendingMessages: {
-        shouldInject: () => true,
-        // An identity rewrite is enough: any chat.history write sets the
-        // override that is applied by rebuilding from the UI lane.
-        onInjected: () => {
-          chat.history.set(chat.history.all());
-        },
-      },
-      run: async ({ messages, signal }) =>
-        streamText({
-          model,
-          messages,
-          abortSignal: signal,
-          ...chat.toStreamTextOptions(),
-          tools: { gate: gateTool },
-          stopWhen: stepCountIs(5),
-        }),
-    });
-
-    const harness = mockChatAgent(agent, { chatId });
-    try {
-      const first = harness.sendMessage(userMessage("m1", "u-1"));
-      await waitFor(() => toolEntered, "tool entered");
-      await sendAndLand(harness, chatId, "steer-me", "u-2");
-      toolGate.resolve();
-      await first;
-      await waitFor(() => prompts.length >= 2, "turn 1 done");
-      const promptsAfterTurn1 = prompts.length;
-
-      await harness.sendMessage(userMessage("m3", "u-3"));
-      await waitFor(() => prompts.length > promptsAfterTurn1, "turn 2 prompt built");
-
-      const turn2 = prompts[promptsAfterTurn1]!;
-      expect(countOf(turn2, '"steer-me"')).toBe(1);
-    } finally {
-      toolGate.resolve();
-      await harness.close();
-    }
+    expect(turn2).not.toContain("steer-me");
   });
 });
