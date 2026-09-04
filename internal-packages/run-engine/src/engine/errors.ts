@@ -105,6 +105,36 @@ export class RunOneTimeUseTokenError extends Error {
   }
 }
 
+/**
+ * Wraps an error thrown by `completeWaitpoint` AFTER the write-ahead completion guard was successfully
+ * armed. Its presence is proof the guard is durably persisted and now owns eventual completion, so the
+ * API boundary may return success for a RETRYABLE cause. A failure BEFORE the guard is armed (including
+ * the arm's own enqueue failing) is NOT wrapped, so it propagates and the caller does not report
+ * success. Detect with {@link isWaitpointCompletionGuardArmedError} (a branded property check, robust
+ * across module boundaries) rather than the requested `armGuard` boolean.
+ */
+export class WaitpointCompletionGuardArmedError extends Error {
+  readonly isWaitpointCompletionGuardArmed = true as const;
+  readonly waitpointId: string;
+  readonly cause?: unknown;
+  constructor(waitpointId: string, options?: { cause?: unknown }) {
+    super(`Waitpoint ${waitpointId} completion failed after its durable guard was armed`);
+    this.name = "WaitpointCompletionGuardArmedError";
+    this.waitpointId = waitpointId;
+    this.cause = options?.cause;
+  }
+}
+
+export function isWaitpointCompletionGuardArmedError(
+  error: unknown
+): error is WaitpointCompletionGuardArmedError {
+  return (
+    error instanceof Error &&
+    (error as { isWaitpointCompletionGuardArmed?: unknown }).isWaitpointCompletionGuardArmed ===
+      true
+  );
+}
+
 export class ExecutionSnapshotNotFoundError extends Error {
   constructor(public readonly snapshotId: string) {
     super(`No execution snapshot found for id ${snapshotId}`);

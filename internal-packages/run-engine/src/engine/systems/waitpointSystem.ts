@@ -8,6 +8,7 @@ import type {
   Waitpoint,
 } from "@trigger.dev/database";
 import { assertNever } from "assert-never";
+import { WaitpointCompletionGuardArmedError } from "../errors.js";
 import { sendNotificationToWorker } from "../eventBus.js";
 import { isFinalRunStatus } from "../statuses.js";
 import { LegacyPostgresWaitpointCoordinator } from "../waitpointCoordinator/legacyPostgresCoordinator.js";
@@ -95,65 +96,76 @@ export class WaitpointSystem {
     armGuard?: boolean;
   }): Promise<Waitpoint> {
     // Armed BEFORE the first mutation, so a committed completion can never exist without a durable
-    // watcher. Acked only after the transition AND every fanout enqueue below succeed.
+    // watcher. If this arm itself fails (e.g. the guard's Redis enqueue), the error propagates raw and
+    // is NOT wrapped below, so the caller never mistakes an un-armed failure for a durable one.
     if (armGuard) {
       await this.#scheduleCompletionGuard(id, output);
     }
 
-    const { waitpoint, blockedRuns } = await this.coordinator.complete({
-      waitpointId: id,
-      output,
-    });
-
-    if (blockedRuns.length === 0) {
-      this.$.logger.debug(`completeWaitpoint: no TaskRunWaitpoints found for waitpoint`, {
+    // Past this point the guard is persisted and owns eventual completion, so a later failure is
+    // wrapped as WaitpointCompletionGuardArmedError: the API boundary may then return success for a
+    // retryable cause, knowing the guard will replay it.
+    try {
+      const { waitpoint, blockedRuns } = await this.coordinator.complete({
         waitpointId: id,
-      });
-    }
-
-    // 3. Schedule trying to continue the runs
-    for (const run of blockedRuns) {
-      const jobId = `continueRunIfUnblocked:${run.taskRunId}`;
-      //50ms in the future
-      const availableAt = new Date(Date.now() + 50);
-
-      this.$.logger.debug(`completeWaitpoint: enqueueing continueRunIfUnblocked`, {
-        waitpointId: id,
-        runId: run.taskRunId,
-        jobId,
-        availableAt,
+        output,
       });
 
-      await this.$.worker.enqueue({
-        //this will debounce the call
-        id: jobId,
-        job: "continueRunIfUnblocked",
-        payload: { runId: run.taskRunId },
-        availableAt,
-      });
-
-      // emit an event to complete associated cached runs
-      if (run.spanIdToComplete) {
-        this.$.eventBus.emit("cachedRunCompleted", {
-          time: new Date(),
-          span: {
-            id: run.spanIdToComplete,
-            createdAt: run.createdAt,
-          },
-          blockedRunId: run.taskRunId,
-          hasError: output?.isError ?? false,
-          cachedRunId: waitpoint.completedByTaskRunId ?? undefined,
+      if (blockedRuns.length === 0) {
+        this.$.logger.debug(`completeWaitpoint: no TaskRunWaitpoints found for waitpoint`, {
+          waitpointId: id,
         });
       }
-    }
 
-    // Ack only now: the transition committed and every blocked-run fanout was enqueued, so the guard
-    // has nothing left to re-deliver. If we died before here, the unacked guard fires and replays.
-    if (armGuard) {
-      await this.#ackCompletionGuard(id);
-    }
+      // 3. Schedule trying to continue the runs
+      for (const run of blockedRuns) {
+        const jobId = `continueRunIfUnblocked:${run.taskRunId}`;
+        //50ms in the future
+        const availableAt = new Date(Date.now() + 50);
 
-    return waitpoint;
+        this.$.logger.debug(`completeWaitpoint: enqueueing continueRunIfUnblocked`, {
+          waitpointId: id,
+          runId: run.taskRunId,
+          jobId,
+          availableAt,
+        });
+
+        await this.$.worker.enqueue({
+          //this will debounce the call
+          id: jobId,
+          job: "continueRunIfUnblocked",
+          payload: { runId: run.taskRunId },
+          availableAt,
+        });
+
+        // emit an event to complete associated cached runs
+        if (run.spanIdToComplete) {
+          this.$.eventBus.emit("cachedRunCompleted", {
+            time: new Date(),
+            span: {
+              id: run.spanIdToComplete,
+              createdAt: run.createdAt,
+            },
+            blockedRunId: run.taskRunId,
+            hasError: output?.isError ?? false,
+            cachedRunId: waitpoint.completedByTaskRunId ?? undefined,
+          });
+        }
+      }
+
+      // Ack only now: the transition committed and every blocked-run fanout was enqueued, so the guard
+      // has nothing left to re-deliver. If we died before here, the unacked guard fires and replays.
+      if (armGuard) {
+        await this.#ackCompletionGuard(id);
+      }
+
+      return waitpoint;
+    } catch (error) {
+      if (armGuard) {
+        throw new WaitpointCompletionGuardArmedError(id, { cause: error });
+      }
+      throw error;
+    }
   }
 
   #completionGuardId(waitpointId: string): string {

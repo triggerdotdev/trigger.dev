@@ -1,3 +1,4 @@
+import { isWaitpointCompletionGuardArmedError } from "@internal/run-engine";
 import { isRetryableInfrastructureError } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
 import { engine } from "./runEngine.server";
@@ -8,11 +9,13 @@ type WaitpointCompletionOutput = { value: string; type?: string; isError: boolea
 /**
  * Complete a waitpoint from a manual/API request with the durable write-ahead guard.
  *
- * When the flag is on, the guard is armed before the mutation and owns eventual completion. So if the
- * inline path fails after arming with a retryable/commit-unknown connectivity error (e.g. the shared
- * retry budget was drained by a fleet-wide blip), we swallow it and let the caller return its normal
- * 200: the guard replays the completion + fanout. Validation, authorization, and any other error
- * still propagate. With the flag off, no guard is armed and every error propagates as before.
+ * We return the caller's normal 200 for a retryable connectivity failure ONLY when the engine confirms
+ * the guard was durably armed before the failure (a WaitpointCompletionGuardArmedError): the guard then
+ * replays the completion + fanout. A failure BEFORE the guard is persisted — including the guard's own
+ * enqueue failing — is not that branded error, so it propagates and the caller does NOT report success
+ * (there is no durable owner yet). We deliberately do not infer arming from the requested flag.
+ * Validation, authorization, and any non-retryable error still propagate. Flag off: no guard is armed,
+ * nothing is branded, every error propagates as before.
  */
 export async function completeWaitpointWithGuard(
   args: {
@@ -34,16 +37,21 @@ export async function completeWaitpointWithGuard(
   try {
     await complete({ id: args.id, output: args.output, armGuard });
   } catch (error) {
-    if (armGuard && isRetryableInfrastructureError(error)) {
+    if (!isWaitpointCompletionGuardArmedError(error)) {
+      // Not proven armed (includes every pre-arm failure): propagate, never report success.
+      throw error;
+    }
+    if (isRetryableInfrastructureError(error.cause)) {
       logger.warn(
-        "completeWaitpoint: inline path failed after arming the guard; the guard will deliver the completion",
+        "completeWaitpoint: inline path failed after the guard was armed; the guard will deliver the completion",
         {
           waitpointId: args.id,
-          error: error instanceof Error ? error.message : String(error),
+          error: error.cause instanceof Error ? error.cause.message : String(error.cause),
         }
       );
       return;
     }
-    throw error;
+    // Armed, but the failure is not retryable (e.g. validation): surface the original cause.
+    throw error.cause;
   }
 }

@@ -4,11 +4,13 @@
 import { containerTest } from "@internal/testcontainers";
 import { PostgresRunStore } from "@internal/run-store";
 import { SnapshotId } from "@trigger.dev/core/v3/isomorphic";
+import { isRetryableInfrastructureError } from "@trigger.dev/database";
 import { trace } from "@internal/tracing";
 import type { PrismaClient } from "@trigger.dev/database";
 import { describe, expect } from "vitest";
 import { setTimeout } from "node:timers/promises";
 import { RunEngine } from "../index.js";
+import { isWaitpointCompletionGuardArmedError } from "../errors.js";
 import { getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "../tests/setup.js";
 
@@ -283,6 +285,50 @@ describe("waitpoint completion guard", () => {
         expect(await waitForStatus(engine, run.id, "EXECUTING_WITH_WAITPOINTS")).toBe("EXECUTING");
         const wp = await prisma.waitpoint.findFirst({ where: { id: waitpoint.id } });
         expect(wp?.status).toBe("COMPLETED");
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  // A failure AFTER the guard is armed is branded WaitpointCompletionGuardArmedError with the retryable
+  // cause, so the API boundary can distinguish it from a pre-arm failure and return success.
+  containerTest(
+    "completeWaitpoint brands a post-arm failure as guard-armed with the retryable cause",
+    async ({ prisma, redisOptions }) => {
+      const store = new FaultCompletionStore({ prisma, readOnlyPrisma: prisma });
+      const engine = buildEngine(prisma, redisOptions, store);
+      try {
+        const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const run = await triggerExecutingRun(
+          engine,
+          prisma,
+          env,
+          "guard-brand",
+          "run_brnd",
+          "sgb"
+        );
+        const waitpoint = await blockOnWaitpoint(engine, env, run.id);
+
+        store.mode = "throwBeforeCommit";
+        store.faultsRemaining = 1;
+
+        let caught: unknown;
+        await engine
+          .completeWaitpoint({
+            id: waitpoint.id,
+            output: { value: "{}", isError: false },
+            armGuard: true,
+          })
+          .catch((error) => {
+            caught = error;
+          });
+
+        expect(isWaitpointCompletionGuardArmedError(caught)).toBe(true);
+        expect(isRetryableInfrastructureError((caught as { cause?: unknown }).cause)).toBe(true);
+
+        // And the guard still delivers the completion.
+        expect(await waitForStatus(engine, run.id, "EXECUTING_WITH_WAITPOINTS")).toBe("EXECUTING");
       } finally {
         await engine.quit();
       }
