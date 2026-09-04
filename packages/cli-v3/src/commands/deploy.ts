@@ -2331,9 +2331,32 @@ async function followBuildServerDeployment({
     return process.exit(0);
   }
 
-  const finalDeploymentEvent = await streamDeploymentEvents(readSession, renderer, () =>
-    abortController.abort()
+  const [streamError, finalDeploymentEvent] = await tryCatch(
+    streamDeploymentEvents(readSession, renderer, () => abortController.abort()).finally(() =>
+      abortController.abort()
+    )
   );
+
+  if (streamError) {
+    renderer.finish("Log stream stopped", "failure");
+
+    logger.debug("Build log stream failed", { error: streamError });
+
+    log.error(`Lost connection to the build log stream: ${streamError.message}`);
+    log.info(
+      "This is not a deployment failure, the build server is still working on it. Check the dashboard for the final status."
+    );
+
+    if (!isLinksSupported) {
+      log.info(`View deployment: ${rawDeploymentLink}`);
+    }
+
+    throw new OutroCommandError(
+      `Version ${deployment.version} ${
+        isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
+      }`
+    );
+  }
 
   if (!renderer.started && !finalDeploymentEvent) {
     // unlikely that it happens in practice, only in rare corner cases
