@@ -697,8 +697,10 @@ function LeaveRemoveButton({
 // UI-affordance layer only.
 //
 // Two different sets narrow the list, and they must stay separate:
-//   offerableRoleIds — roles the viewer's own role lets them assign.
-//                      Anything else is left out of the list entirely.
+//   offerableRoleIds — the catalogue minus the roles that sit above the
+//                      viewer on the system-role ladder. Those are left out
+//                      of the list entirely; custom roles, which aren't on
+//                      the ladder, are always in it.
 //   assignableRoleIds — roles the org's plan allows. A role that is
 //                      offerable but not plan-assignable still shows,
 //                      as "Name (upgrade)" linking to billing.
@@ -721,13 +723,12 @@ function RolePicker({
   const fetcher = useFetcher<{ ok: boolean; error?: string } | { ok: true }>();
   const assignable = new Set(assignableRoleIds);
   const offerable = new Set(offerableRoleIds);
-  // The member's current role stays in the list even when the viewer could
-  // not assign it, so the controlled `value` below still resolves to a row
-  // and the dropdown shows the role the member actually holds.
+  // The member's current role stays in the list even when it sits above the
+  // viewer, so the controlled `value` below still resolves to a row and the
+  // dropdown shows the role the member actually holds.
   const visibleRoles = roles.filter((r) => offerable.has(r.id) || r.id === currentRoleId);
-  // With no RBAC plugin installed the loader returns no roles, and a viewer
-  // with nothing to offer would get an empty dropdown — render nothing
-  // rather than a dead control.
+  // With no RBAC plugin installed the loader returns no roles at all —
+  // render nothing rather than an empty dropdown.
   if (visibleRoles.length === 0) return null;
 
   const isSubmitting = fetcher.state === "submitting";
@@ -748,8 +749,8 @@ function RolePicker({
       text={(v) => visibleRoles.find((r) => r.id === v)?.name ?? "No role"}
       setValue={(next) => {
         if (typeof next !== "string" || next === (currentRoleId ?? "")) return;
-        // The member's current role is listed even when it isn't offerable,
-        // so re-check before submitting.
+        // The member's current role is listed even when it sits above the
+        // viewer, so re-check before submitting.
         if (!offerable.has(next)) return;
         // Upgrade-link rows have a value too (Ariakit needs one to
         // make the row interactive — without it the Link inside

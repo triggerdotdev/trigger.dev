@@ -42,23 +42,25 @@ export class TeamPresenter extends BasePresenter {
         organizationId
       ),
       // The viewer's own role, plus the system-role ladder it sits on —
-      // together these say how high this viewer is allowed to assign.
+      // together these say which roles sit above this viewer.
       rbac.getUserRole({ userId, organizationId }),
       rbac.systemRoles(organizationId),
     ]);
 
-    // Roles this viewer is allowed to hand out: at or below their own level
-    // on the system-role ladder. Deliberately NOT intersected with
-    // `assignableRoleIds` — the two answer different questions and the Team
-    // page renders them differently. A role above the viewer's level is left
-    // out of the picker altogether, while a role that is merely plan-locked
-    // still needs to appear with an upgrade link. Merging them would offer a
-    // viewer "Owner (upgrade)", inviting them to pay for something their own
-    // role still would not let them assign.
+    // Roles to offer this viewer in the picker: the catalogue minus whatever
+    // the system-role ladder puts strictly above their own role, which is the
+    // only part picking would always be rejected for. Roles the ladder can't
+    // place — org-defined custom roles, and every role when the viewer's own
+    // role is itself custom or missing — stay in, so custom roles keep
+    // behaving as they always have rather than vanishing from the picker.
     //
-    // Off-ladder roles (custom org roles, and any role held by a viewer who
-    // is themselves on a custom role) are refused, the same way the invite
-    // flow refuses them.
+    // Deliberately NOT intersected with `assignableRoleIds` — the two answer
+    // different questions and the Team page renders them differently. A role
+    // above the viewer's level is left out of the picker altogether, while a
+    // role that is merely plan-locked still needs to appear with an upgrade
+    // link. Merging them would offer a viewer "Owner (upgrade)", inviting
+    // them to pay for something their own role still would not let them
+    // assign.
     const offerableRoleIds = computeOfferableRoleIds(roles, systemRoles, viewerRole?.id ?? null);
 
     const memberRoles = result.members.map((m) => ({

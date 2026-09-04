@@ -77,18 +77,28 @@ export const loader = dashboardLoader(
       throw new Response("Not Found", { status: 404 });
     }
 
+    // Inviter's own role drives the "below their level" filter on the
+    // dropdown. Plus assignable role IDs already encode the org's plan
+    // tier — the intersection is what we offer.
+    const [inviterRole, assignableRoleIds, systemRoles] = await Promise.all([
+      rbac.getUserRole({ userId, organizationId }),
+      rbac.getAssignableRoleIds(organizationId),
+      rbac.systemRoles(organizationId),
+    ]);
+
     // Build the dropdown's offerable set server-side: roles that are
-    // (a) at or below the inviter's own level AND (b) assignable on the
-    // current plan. The client just renders these — it doesn't need to know
-    // about the system-role catalogue or the ladder.
-    //
-    // The presenter already applies the ladder; intersecting with the plan is
-    // right here, because the invite dropdown has no upgrade affordance and a
-    // plan-locked role is simply not offered. The Team page keeps the two
-    // sets apart instead, since it still shows plan-locked roles as an
-    // upgrade link — so it uses the presenter's `offerableRoleIds` unmerged.
-    const assignableSet = new Set(result.assignableRoleIds);
-    const offerableRoleIds = result.offerableRoleIds.filter((id) => assignableSet.has(id));
+    // (a) assignable on the current plan AND (b) at or below the
+    // inviter's own level. The client just renders these — it doesn't
+    // need to know about the system-role catalogue or the ladder.
+    const assignableSet = new Set(assignableRoleIds);
+    const offerableRoleIds = systemRoles
+      ? result.roles
+          .filter(
+            (r) =>
+              assignableSet.has(r.id) && isAtOrBelow(systemRoles, inviterRole?.id ?? null, r.id)
+          )
+          .map((r) => r.id)
+      : [];
 
     // Buying seats is a billing operation: surface whether this user can, so
     // the purchase modal disables its trigger (the team action enforces it).
