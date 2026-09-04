@@ -26,7 +26,7 @@ import { resolveAlwaysExternal } from "../build/externals.js";
 import { createContextArchive, getArchiveSize } from "../deploy/archiveContext.js";
 import { createBundleArchive } from "../deploy/bundleArchive.js";
 import {
-  BuildLogRenderer,
+  type BuildLogRenderer,
   BuildLogsMode,
   createBuildLogRenderer,
   resolveBuildLogsMode,
