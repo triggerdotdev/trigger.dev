@@ -1,7 +1,19 @@
 ---
-"@trigger.dev/sdk": patch
+"@trigger.dev/sdk": minor
 ---
 
-A response returned from `onAction` is now part of the conversation, whether it is a `StreamTextResult`, a `string`, or an assistant `UIMessage`. A `string` or `UIMessage` return was documented but did nothing: it reached neither the browser nor the conversation. Returning a `StreamTextResult` from an action sent it to the browser and nowhere else, so a regenerate showed the user a new answer that the model had no memory of, and the next turn carried on from the answer it had replaced.
+Actions can now become turns. `onAction` edits history with `chat.history`; to answer after the edit, return `chat.turn()` and a turn runs on the edited history with everything a turn has: the agent's system prompt and tools, steering, compaction, injected instructions, `onTurnStart` and `onTurnComplete`, and persistence. A regenerate is `chat.history.slice(0, -1); return chat.turn();`.
 
-A stream that fails part-way through is also no longer committed as though it finished. Whatever streamed is still kept, but the failure is reported instead of the truncated text being stored, and built on, as a complete answer. An action that used to end quietly on a mid-stream failure now surfaces an error to the frontend. It is still an action, not a turn: `onTurnComplete` does not fire for it, the turn count is unchanged, and an instruction injected for the next turn still reaches that turn.
+```ts
+onAction: async ({ action }) => {
+  if (action.type === "regenerate") {
+    chat.history.slice(0, -1);
+    return chat.turn();
+  }
+  if (action.type === "undo") chat.history.slice(0, -2); // edit only
+},
+```
+
+Returning a `StreamTextResult`, `string` or `UIMessage` from `onAction` is no longer supported and now fails with an error pointing to `chat.turn()`. A response produced that way skipped every turn guarantee, and its delivery to the browser was unreliable: the frontend never read the stream `transport.sendAction` returned, so a regenerate that appeared to work on the server did not render. The `onAction` event no longer carries `streamText` or `tools`, since the handler no longer calls the model.
+
+History edits made by an action are still persisted as before: platform-managed snapshots are written after the edit, and apps with their own store mirror the edit themselves.

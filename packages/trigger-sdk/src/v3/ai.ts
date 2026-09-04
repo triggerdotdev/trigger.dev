@@ -5009,62 +5009,42 @@ type UIMessageStreamable = {
   toUIMessageStream: (...args: any[]) => AsyncIterable<unknown> | ReadableStream<unknown>;
 };
 
+const actionTurnBrand = Symbol.for("trigger.dev/chat/actionTurn");
+
 /**
- * A plain `onAction` reply (`string` or assistant `UIMessage`) as a stream, so
- * it takes the same path as a `StreamTextResult`: piped to the browser,
- * captured, committed to the conversation, snapshotted. Text and `data-*`
- * parts are emitted; anything else in a supplied message is dropped, since a
- * tool part with no execution behind it cannot be replayed as chunks.
+ * The marker `onAction` returns to have a turn run on the history it just
+ * edited. Produce it with {@link chat.turn}.
  */
-function plainReplyAsStream(value: unknown): UIMessageStreamable | undefined {
-  let message: UIMessage | undefined;
-  if (typeof value === "string") {
-    message = {
-      id: generateMessageId(),
-      role: "assistant",
-      parts: [{ type: "text", text: value }],
-    } as UIMessage;
-  } else if (
-    typeof value === "object" &&
-    value !== null &&
-    (value as UIMessage).role === "assistant" &&
-    Array.isArray((value as UIMessage).parts)
-  ) {
-    const m = value as UIMessage;
-    message = { ...m, id: m.id || generateMessageId() };
-  }
-  if (!message) return undefined;
+export type ActionTurn = { readonly [actionTurnBrand]: true };
 
-  const chunks: Record<string, unknown>[] = [{ type: "start", messageId: message.id }];
-  let n = 0;
-  for (const part of message.parts as {
-    type: string;
-    text?: string;
-    data?: unknown;
-    id?: string;
-  }[]) {
-    if (part.type === "text") {
-      const id = `t${n++}`;
-      chunks.push(
-        { type: "text-start", id },
-        { type: "text-delta", id, delta: part.text ?? "" },
-        { type: "text-end", id }
-      );
-    } else if (part.type.startsWith("data-")) {
-      chunks.push({ type: part.type, id: part.id, data: part.data });
-    }
-  }
-  chunks.push({ type: "finish" });
+/**
+ * Turn the current action into a turn.
+ *
+ * Return it from `onAction` after editing history. The action's own work is
+ * finished first (the edit is applied and snapshotted), then a turn runs on the
+ * result exactly as a message turn does: `onTurnStart`, `run()` with the edited
+ * history, `onBeforeTurnComplete`, `onTurnComplete`, and the turn counter
+ * advances. That gives the answer everything a turn has, the system prompt,
+ * tools, steering, compaction, injected instructions and persistence, with no
+ * action-specific handling.
+ *
+ * @example
+ * ```ts
+ * onAction: async ({ action }) => {
+ *   if (action.type === "regenerate") {
+ *     chat.history.slice(0, -1);
+ *     return chat.turn();
+ *   }
+ *   if (action.type === "undo") chat.history.slice(0, -2); // no turn
+ * },
+ * ```
+ */
+function chatTurn(): ActionTurn {
+  return { [actionTurnBrand]: true } as ActionTurn;
+}
 
-  return {
-    toUIMessageStream: () =>
-      new ReadableStream({
-        start(controller) {
-          for (const c of chunks) controller.enqueue(c);
-          controller.close();
-        },
-      }),
-  } as unknown as UIMessageStreamable;
+function isActionTurn(value: unknown): value is ActionTurn {
+  return typeof value === "object" && value !== null && (value as any)[actionTurnBrand] === true;
 }
 
 /**
@@ -5858,9 +5838,10 @@ export type ChatAgentOptions<
    * `onBeforeTurnComplete` / `onTurnComplete`, no `run()`. Use
    * `chat.history.*` inside `onAction` to mutate state.
    *
-   * To produce a model response from an action, return a
-   * `StreamTextResult` (auto-piped), `string`, or `UIMessage`. Returning
-   * `void` or nothing is the side-effect-only default.
+   * To answer after the edit, return `chat.turn()`: the edit is applied and
+   * snapshotted, then a turn runs on the result with every turn guarantee. An
+   * action that returns nothing is a state edit only. Returning anything else
+   * is an error; a response can no longer be returned directly.
    */
   onAction?: (
     event: ActionEvent<
@@ -5868,7 +5849,7 @@ export type ChatAgentOptions<
       inferSchemaOut<TClientDataSchema>,
       TUIMessage
     >
-  ) => Promise<unknown> | unknown;
+  ) => Promise<void | ActionTurn> | void | ActionTurn;
 
   /**
    * The tools available to this agent.
@@ -7880,7 +7861,9 @@ function chatAgent<
                 // an action, return a `StreamTextResult` (auto-piped),
                 // string, or UIMessage from `onAction`. Turn counter
                 // does not advance.
-                let actionStreamResult: unknown = undefined;
+                let actionResult: unknown = undefined;
+                /** Set when `onAction` returned `chat.turn()`: the turn block below runs. */
+                let actionTurn = false;
                 /**
                  * Whether this action changed the conversation, by rolling history
                  * back or by streaming a response. Drives the single snapshot write
@@ -7927,7 +7910,7 @@ function chatAgent<
                   // Fire onAction — handler may mutate state via
                   // `chat.history.*` and / or return a model response.
                   if (onAction) {
-                    actionStreamResult = await tracer.startActiveSpan(
+                    actionResult = await tracer.startActiveSpan(
                       "onAction()",
                       async () => {
                         return await onAction({
@@ -8250,110 +8233,29 @@ function chatAgent<
                 // The turn counter is decremented so the next iteration
                 // sees the same `turn` value — actions don't count.
                 if (isAction) {
-                  msgSub?.off();
-
-                  // A documented plain reply takes the streamed reply's path.
-                  actionStreamResult = plainReplyAsStream(actionStreamResult) ?? actionStreamResult;
-
-                  if (
-                    (locals.get(chatPipeCountKey) ?? 0) === 0 &&
-                    isUIMessageStreamable(actionStreamResult)
-                  ) {
-                    try {
-                      /**
-                       * Captured, not just piped. The stream reaching the browser was
-                       * never the problem — the problem was that it stopped there, so
-                       * the user read an answer the accumulator had no record of and
-                       * the next turn contradicted the screen. Worst on regenerate,
-                       * which removes the old answer and used to leave nothing in its
-                       * place.
-                       *
-                       * Persistence beyond the snapshot is still the app's job: an
-                       * action fires no `onTurnComplete`, so an app owning its own
-                       * store has to write the row itself — `chat.pipeAndCapture`
-                       * hands back the same message for that.
-                       */
-                      const captured = await pipeChatAndCapture(
-                        actionStreamResult as UIMessageStreamable,
-                        { signal: combinedSignal, spanName: "stream response" }
-                      );
-
-                      if (runSignal.aborted) return "exit";
-
-                      /**
-                       * A stopped action still commits what streamed, cleaned:
-                       * incomplete tool and text parts left mid-flight are what
-                       * strand the UI on a spinner forever once persisted.
-                       */
-                      const actionResponse =
-                        captured.status === "complete" || !captured.message
-                          ? captured.message
-                          : cleanupAbortedParts(captured.message);
-
-                      if (actionResponse) {
-                        const existingIdx = actionResponse.id
-                          ? accumulatedUIMessages.findIndex((m) => m.id === actionResponse.id)
-                          : -1;
-                        if (existingIdx !== -1) {
-                          accumulatedUIMessages[existingIdx] = actionResponse as TUIMessage;
-                          // Replacing an existing message has no in-place model
-                          // form to swap, so this path still reconverts.
-                          accumulatedMessages = await toModelMessages(accumulatedUIMessages);
-                        } else {
-                          accumulatedUIMessages.push(actionResponse as TUIMessage);
-                          // Appended, not reconverted: a reconversion from the UI
-                          // lane would undo a model-only compaction summary.
-                          accumulatedMessages.push(
-                            ...(await toModelMessages([stripProviderMetadata(actionResponse)]))
-                          );
-                        }
-                        locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
-                        actionChangedHistory = true;
-                      }
-
-                      /**
-                       * Reported after the partial is committed, not instead of it.
-                       * `pipeChatAndCapture` returns a stream failure rather than
-                       * throwing, so without this a mid-stream failure writes a
-                       * normal turn-complete and the truncated answer is persisted
-                       * as if it were finished — the next turn then builds on it.
-                       */
-                      if (captured.status === "error") throw captured.error;
-                    } catch (error) {
-                      if (
-                        error instanceof Error &&
-                        error.name === "AbortError" &&
-                        runSignal.aborted
-                      ) {
-                        return "exit";
-                      }
-                      // Reported here rather than rethrown: the shared catch
-                      // below is the turn-error path, and it would fire
-                      // onTurnComplete, keep the turn number and consume the
-                      // one-shot instruction lane, none of which an action does.
-                      try {
-                        await withChatWriter(async (writer) => {
-                          const errorText =
-                            error instanceof Error ? error.message : "An unexpected error occurred";
-                          writer.write({ type: "error", errorText } as any);
-                        });
-                      } catch {
-                        // best effort
-                      }
+                  if (isActionTurn(actionResult)) {
+                    // The edit is in the accumulators; the turn block below
+                    // runs on it and does its own persistence, hooks and
+                    // completion, so nothing more happens here.
+                    actionTurn = true;
+                  } else if (actionResult !== undefined) {
+                    throw new Error(
+                      "chat.agent: onAction returned a value. An action is a state edit; to answer " +
+                        "after the edit, return chat.turn() and a turn runs on the edited history. " +
+                        "Returning a StreamTextResult, string or UIMessage is no longer supported."
+                    );
+                  } else {
+                    msgSub?.off();
+                    if (actionChangedHistory) {
+                      await writeSnapshotOutsideTurn("action");
                     }
+                    await writeTurnCompleteChunk(currentWirePayload.chatId);
+                    // Don't consume a turn iteration — actions aren't turns.
+                    turn--;
                   }
-
-                  if (actionChangedHistory) {
-                    await writeSnapshotOutsideTurn("action");
-                  }
-
-                  await writeTurnCompleteChunk(currentWirePayload.chatId);
-
-                  // Don't consume a turn iteration — actions aren't turns.
-                  turn--;
                 }
 
-                if (!isAction) {
+                if (!isAction || actionTurn) {
                   // Mint a scoped public access token once per turn, reused for
                   // onChatStart, onTurnStart, onTurnComplete, and the turn-complete chunk.
                   const currentRunId = ctx.run.id;
@@ -12420,6 +12322,8 @@ export const chat = {
   createStartSessionAction: createChatStartSessionAction,
   /** Pipe a stream to the chat transport. See {@link pipeChat}. */
   pipe: pipeChat,
+  /** Return from `onAction` to run a turn on the edited history. See {@link chatTurn}. */
+  turn: chatTurn,
   /** Create a per-run typed local. See {@link chatLocal}. */
   local: chatLocal,
   /** Create a public access token for a chat task. See {@link createChatAccessToken}. */
