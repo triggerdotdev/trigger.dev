@@ -93,6 +93,8 @@ export type RunEngineOptions = {
     logLevel?: LogLevel;
     /** Enforce per-queue total concurrency limits across concurrency-key variants. See RunQueueOptions.totalConcurrencyEnabled. */
     totalConcurrencyEnabled?: boolean;
+    /** Enforce the gates carried in message payloads. See RunQueueOptions.gatesEnabled. */
+    gatesEnabled?: boolean;
     /** Optional queue-metrics emitter; enables gauge + counter emission from the RunQueue. */
     queueMetrics?: RunQueueMetricsEmitter;
     queueSelectionStrategyOptions?: Pick<
