@@ -1107,18 +1107,12 @@ function QueueStats({
   timeRange: TimeRangeParams;
   queueName: string;
 }) {
-  // Live "now" is empty for a queue that just drained, so add the window peak/worst as a dimmed
-  // caption (styled like "bursts up to 50" on the Queues list) — a quiet queue still shows how
-  // backed up it got recently. "worst_wait" is the window's worst head-of-line wait (max of the
-  // oldest still-waiting run's age), the same metric as the live "Oldest wait" headline — not the
-  // scheduling-delay percentiles of runs that already started. Only concurrency-keyed queues record
-  // this (max_ck_wait_ms), so it's 0/absent for non-keyed queues.
-  const { rows } = useQueueMetric(
-    `SELECT max(max_queued) AS peak_queued,\n  max(max_ck_wait_ms) AS worst_wait\nFROM queue_metrics`,
-    { ids, timeRange, queueName }
-  );
+  const { rows } = useQueueMetric(`SELECT max(max_queued) AS peak_queued\nFROM queue_metrics`, {
+    ids,
+    timeRange,
+    queueName,
+  });
   const peakQueued = rows[0] ? toNumber(rows[0].peak_queued) : 0;
-  const worstWaitMs = rows[0] ? toNumber(rows[0].worst_wait) : 0;
 
   // Latest gauges from ClickHouse, polled every 15s so the live blocks keep ticking after first
   // paint. Read the newest bucket (largest t); until the first poll lands liveRows is empty and the
@@ -1184,7 +1178,15 @@ function QueueStats({
         }
       />
       <BigNumber
-        title="Oldest wait"
+        title={
+          <span className="flex items-center gap-1">
+            Oldest wait
+            <InfoIconTooltip
+              content="How long the oldest run currently waiting in this queue has been waiting to start."
+              contentClassName="max-w-xs"
+            />
+          </span>
+        }
         formattedValue={
           oldestWaitDisplayMs !== null && oldestWaitDisplayMs > 0
             ? formatWaitMs(oldestWaitDisplayMs)
@@ -1196,8 +1198,6 @@ function QueueStats({
             oldestWaitDisplayMs >= OLDEST_WAIT_WARNING_MS &&
             "text-warning"
         )}
-        suffix={worstWaitMs > 0 ? `worst ${formatWaitMs(worstWaitMs)}` : undefined}
-        suffixClassName="text-text-dimmed"
       />
     </MetricsLayout.Grid>
   );

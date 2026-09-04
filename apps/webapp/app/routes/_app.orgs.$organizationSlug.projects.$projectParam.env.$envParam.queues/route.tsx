@@ -462,7 +462,6 @@ function QueuesWithMetricsView() {
   const burstLimit = Math.round(envLimit * environment.burstFactor);
   const allocated = allocation?.allocated ?? 0;
   const allocationPct = envLimit > 0 ? Math.round((allocated / envLimit) * 100) : 0;
-  const overAllocated = allocated > envLimit;
 
   // Running-block tinting (burst/limit) tracks the live running value, not the loader snapshot.
   const { limitStatus, limitClassName } = getEnvConcurrencyLimitStatus({
@@ -583,17 +582,16 @@ function QueuesWithMetricsView() {
             title={
               <span className="flex items-center gap-1">
                 Allocated
-                {allocation && overAllocated ? (
+                {allocation ? (
                   <InfoIconTooltip
-                    content="The queue limits add up to more than the environment limit, so queues will compete for concurrency when the environment saturates."
-                    buttonClassName="text-warning"
+                    content="The sum of every queue's concurrency limit. It can go over 100% of the environment limit, which is normal: it lets one queue burst while others are quiet. The environment limit still caps total running work, so queues share it when the environment is busy."
+                    contentClassName="max-w-xs"
                   />
                 ) : null}
               </span>
             }
             value={allocation ? allocated : undefined}
             formattedValue={allocation ? undefined : "–"}
-            valueClassName={cn(allocation && overAllocated && "text-warning")}
             suffix={allocation ? `${allocationPct}% of the environment limit` : undefined}
             suffixClassName="text-text-dimmed"
           />
