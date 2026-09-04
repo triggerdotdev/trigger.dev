@@ -3563,17 +3563,22 @@ const chatSteeringQueueKey = locals.create<SteeringQueueEntry[]>("chat.steeringQ
 const chatTurnNewUIMessagesKey = locals.create<UIMessage[]>("chat.turnNewUIMessages");
 
 /**
- * Set when a steering drain appended to the UI accumulator, so the model
- * accumulator gets rebuilt from it at the end of the turn.
+ * Steering messages a drain consumed that the model accumulator has not been
+ * given yet.
  *
  * The two accumulators are maintained separately, and the model one is
  * normally advanced by appending each turn's delta. A drained message is
  * appended to the UI one but reaches the model only through the `prepareStep`
- * return value, which is per-step: without a rebuild the model lane never
- * learns the message exists and every later turn of the run answers without
- * it, while the browser, the snapshot and `chat.history.*` all still show it.
+ * return value, which is per-step: without this the model lane never learns
+ * the message exists and every later turn of the run answers without it,
+ * while the browser, the snapshot and `chat.history.*` all still show it.
+ *
+ * Held as the messages rather than a "rebuild me" flag because the model lane
+ * can only be appended to, never reconstructed. Compaction replaces it with a
+ * summary and deliberately leaves the UI lane whole, so reconverting the UI
+ * lane restores every message the summary replaced.
  */
-const chatModelLaneStaleKey = locals.create<boolean>("chat.modelLaneStale");
+const chatPendingSteerKey = locals.create<UIMessage[]>("chat.pendingSteer");
 /** @internal — IDs of messages that were successfully injected via prepareStep */
 const chatInjectedMessageIdsKey = locals.create<Set<string>>("chat.injectedMessageIds");
 /** @internal — non-transient data parts queued via chat.response or writer.write() for accumulation into the response message */
@@ -4315,7 +4320,11 @@ async function drainSteeringQueue(
         }
       }
       if (claimedUIMessages.length > 0 && currentUIMessages) {
-        locals.set(chatModelLaneStaleKey, true);
+        const pendingSteer = locals.get(chatPendingSteerKey) ?? [];
+        for (const m of claimedUIMessages) {
+          if (!pendingSteer.some((existing) => existing.id === m.id)) pendingSteer.push(m);
+        }
+        locals.set(chatPendingSteerKey, pendingSteer);
       }
 
       // Write injection confirmation chunk to the stream so the frontend
@@ -8543,6 +8552,27 @@ function chatAgent<
                   // Determine if the user stopped generation this turn (not a full run cancel).
                   const wasStopped = stopController.signal.aborted && !runSignal.aborted;
 
+                  // Give the model accumulator the steering messages the drain
+                  // consumed. Appended, never reconverted from the UI lane, so a
+                  // model-only compaction summary set just above survives; and done
+                  // before the response is appended so the order stays
+                  // steer-then-answer. Outside the `capturedResponseMessage`
+                  // branches below, so a turn that captured no response is covered.
+                  const pendingSteer = locals.get(chatPendingSteerKey);
+                  if (pendingSteer && pendingSteer.length > 0) {
+                    locals.set(chatPendingSteerKey, []);
+                    try {
+                      accumulatedMessages.push(
+                        ...(await toModelMessages(pendingSteer.map(stripProviderMetadata)))
+                      );
+                    } catch (error) {
+                      logger.warn(
+                        "chat.agent: toModelMessages failed for an injected message; it will be missing from the next turn",
+                        { error: error instanceof Error ? error.message : String(error) }
+                      );
+                    }
+                  }
+
                   // Append the assistant's response (partial or complete) to the accumulator.
                   // The onFinish callback fires even on abort/stop, so partial responses
                   // from stopped generation are captured correctly.
@@ -8629,23 +8659,6 @@ function chatAgent<
                     responseCommitted = true;
                     capturedPartialResponse = capturedResponseMessage;
                     turnBufferedChunks.length = 0;
-                  }
-
-                  // Bring the model accumulator back in line with the UI one
-                  // after a steering drain. Placed after response accumulation
-                  // and before compaction reads `accumulatedMessages`, and
-                  // outside the `capturedResponseMessage` branches so a turn
-                  // that captured no response is covered too.
-                  if (locals.get(chatModelLaneStaleKey)) {
-                    locals.set(chatModelLaneStaleKey, false);
-                    try {
-                      accumulatedMessages = await toModelMessages(accumulatedUIMessages);
-                    } catch (error) {
-                      logger.warn(
-                        "chat.agent: toModelMessages failed rebuilding after an injection; the injected message will be missing from the next turn",
-                        { error: error instanceof Error ? error.message : String(error) }
-                      );
-                    }
                   }
 
                   if (runSignal.aborted) return "exit";
@@ -10669,20 +10682,18 @@ class ChatMessageAccumulator {
    * The drain only puts them in this step's prompt, so without this they
    * shape one answer and then exist in neither lane: not in `uiMessages`,
    * which is what an app persists from, and not in `modelMessages`, which is
-   * what every later turn sends. The UI lane is authoritative and the model
-   * lane is its conversion, matching how `chat.agent` reconciles the two.
+   * what every later turn sends.
+   *
+   * Both lanes are appended to. The model lane is never reconverted from the
+   * UI lane, because `compactIfNeeded` replaces it with a summary and leaves
+   * the UI lane whole: a reconversion would restore everything the summary
+   * replaced.
    */
   async absorbSteering(claimed: UIMessage[]): Promise<void> {
-    if (claimed.length === 0) return;
-    let added = false;
-    for (const m of claimed) {
-      if (!this.uiMessages.some((existing) => existing.id === m.id)) {
-        this.uiMessages.push(m);
-        added = true;
-      }
-    }
-    if (!added) return;
-    this.modelMessages = await toModelMessages(this.uiMessages);
+    const fresh = claimed.filter((m) => !this.uiMessages.some((e) => e.id === m.id));
+    if (fresh.length === 0) return;
+    this.uiMessages.push(...fresh);
+    this.modelMessages.push(...(await toModelMessages(fresh)));
   }
 
   /**
