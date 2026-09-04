@@ -4811,6 +4811,15 @@ export type ChatStreamText = AiStreamTextFn;
  * version, and dropping one silently is the failure this seam exists to
  * prevent. Injected instructions append to whichever one is in play.
  */
+/**
+ * The agent-level managed options (`registry`, `system`, `cacheControl`,
+ * `systemProviderOptions`), published for the run so that
+ * `chat.toStreamTextOptions()` applies them too. Without this only the bound
+ * `streamText` saw them, and the documented spread form silently ran without
+ * the agent's system prompt or model.
+ */
+const chatAgentManagedConfigKey = locals.create<ManagedStreamTextConfig>("chat.agentManagedConfig");
+
 type ManagedStreamTextConfig = {
   registry?: ToStreamTextOptionsOptions["registry"];
   system?: ToStreamTextOptionsOptions["system"];
@@ -4928,6 +4937,16 @@ function createBoundStreamText(
 }
 
 function toStreamTextOptions(options?: ToStreamTextOptionsOptions): Record<string, unknown> {
+  const agentDefaults = locals.get(chatAgentManagedConfigKey);
+  if (agentDefaults) {
+    options = {
+      registry: agentDefaults.registry,
+      system: agentDefaults.system,
+      cacheControl: agentDefaults.cacheControl,
+      systemProviderOptions: agentDefaults.systemProviderOptions,
+      ...options,
+    };
+  }
   const prompt = locals.get(chatPromptKey);
   const skills = locals.get(chatSkillsKey);
   const result: Record<string, unknown> = {};
@@ -7492,6 +7511,13 @@ function chatAgent<
             accumulatedMessages = [];
           }
         }
+
+        locals.set(chatAgentManagedConfigKey, {
+          registry: promptRegistry,
+          system: agentSystem,
+          cacheControl: agentCacheControl,
+          systemProviderOptions: agentSystemProviderOptions,
+        });
 
         // Make the seeded UI accumulator visible to `chat.history.*`
         // before any hook (`onChatStart`, `onTurnStart`, etc.) fires.
