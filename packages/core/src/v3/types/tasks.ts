@@ -222,11 +222,11 @@ type CommonTaskOptions<
     });
    * ```
    */
-  queue?: {
-    name?: string;
-    concurrencyLimit?: number;
-    totalConcurrencyLimit?: number;
-  };
+  queue?:
+    | TaskQueueIn
+    | [TaskQueueIn | string]
+    | [TaskQueueIn | string, QueueGateRef]
+    | [TaskQueueIn | string, QueueGateRef, QueueGateRef];
   /** Configure the spec of the [machine](https://trigger.dev/docs/machines) you want your task to run on.
    *
    * @example
@@ -394,6 +394,19 @@ type CommonTaskOptions<
 
   /** @internal Agent configuration, only set when `triggerSource` is `"agent"`. */
   agentConfig?: { type: string };
+};
+
+/**
+ * A reference to a gate: another queue a run must also hold a concurrency slot in while
+ * it executes. A plain string names the gate queue; the object form pins the gate to a
+ * literal `concurrencyKey` instead of inheriting the run's own key.
+ */
+export type QueueGateRef = string | { name: string; concurrencyKey?: string };
+
+type TaskQueueIn = {
+  name?: string;
+  concurrencyLimit?: number;
+  combinedConcurrencyLimit?: number;
 };
 
 export type TaskOptions<
@@ -809,8 +822,12 @@ export type TriggerOptions = {
 
   /**
    * You can override the queue for the task. If a queue doesn't exist for the given name, the run will be in the PENDING_VERSION state until the queue is created..
+   *
+   * An array names the queue to wait in first, then up to two gates: other queues this
+   * run must also hold a concurrency slot in while it executes. A gate without a
+   * `concurrencyKey` uses the run's own `concurrencyKey`.
    */
-  queue?: string;
+  queue?: string | [string] | [string, QueueGateRef] | [string, QueueGateRef, QueueGateRef];
 
   /**
    * The `concurrencyKey` creates a copy of the queue for every unique value of the key.

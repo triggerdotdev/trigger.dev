@@ -6,6 +6,7 @@ import { logger } from "~/services/logger.server";
 import { syncTaskIdentifiers } from "~/services/taskIdentifierRegistry.server";
 import {
   type TaskMetadataCache,
+  parseTaskGates,
   type TaskMetadataEntry,
 } from "~/services/taskMetadataCache.server";
 import { taskMetadataCacheInstance } from "~/services/taskMetadataCacheInstance.server";
@@ -119,6 +120,7 @@ export class ChangeCurrentDeploymentService extends BaseService {
           slug: true,
           triggerSource: true,
           ttl: true,
+          gates: true,
           queue: { select: { id: true, name: true } },
         },
       })
@@ -157,6 +159,7 @@ export class ChangeCurrentDeploymentService extends BaseService {
         triggerSource: t.triggerSource,
         queueId: t.queue?.id ?? null,
         queueName: t.queue?.name ?? "",
+        gates: parseTaskGates(t.gates),
       }));
 
       // Cache calls log+swallow internally.

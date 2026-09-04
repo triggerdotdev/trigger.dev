@@ -445,7 +445,7 @@ export class RunEngineTriggerTaskService {
           const parkedOnExternalDeploymentId =
             externalDeploymentResolution?.outcome === "park" ? externalDeploymentId : undefined;
 
-          const { queueName, lockedQueueId, taskTtl, taskKind } =
+          const { queueName, lockedQueueId, taskTtl, taskKind, gates } =
             await this.queueConcern.resolveQueueProperties(
               triggerRequest,
               lockedToBackgroundWorker ?? undefined
@@ -663,6 +663,7 @@ export class RunEngineTriggerTaskService {
                       options,
                       queueName,
                       lockedQueueId,
+                      gates,
                       workerQueue,
                       region: migrated.region,
                       enableFastPath: migrated.enableFastPath,
@@ -743,6 +744,7 @@ export class RunEngineTriggerTaskService {
                   options,
                   queueName,
                   lockedQueueId,
+                  gates,
                   workerQueue,
                   region: migrated.region,
                   enableFastPath: migrated.enableFastPath,
@@ -905,6 +907,7 @@ export class RunEngineTriggerTaskService {
     options: TriggerTaskServiceOptions;
     queueName: string;
     lockedQueueId?: string;
+    gates?: Array<{ queue: string; concurrencyKey?: string }>;
     workerQueue?: string;
     region?: string;
     enableFastPath: boolean;
@@ -971,6 +974,7 @@ export class RunEngineTriggerTaskService {
           : args.body.options?.concurrencyKey,
       queue: args.queueName,
       lockedQueueId: args.lockedQueueId,
+      gates: args.gates,
       workerQueue: args.workerQueue,
       region: args.region,
       enableFastPath: args.enableFastPath,
