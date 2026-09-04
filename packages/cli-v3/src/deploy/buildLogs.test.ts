@@ -277,12 +277,16 @@ describe("streamDeploymentEvents", () => {
         released = true;
       }
     }
+    let finalizedCalls = 0;
     const final = await streamDeploymentEvents(
       recordsThenThrow(),
-      { started: false, log: vi.fn(), finish: vi.fn() },
-      vi.fn()
+      { started: false, log: () => {}, finish: () => {} },
+      () => {
+        finalizedCalls++;
+      }
     );
     expect(final).toEqual({ result: "succeeded" });
+    expect(finalizedCalls).toBe(1);
     expect(released).toBe(true);
   });
 
