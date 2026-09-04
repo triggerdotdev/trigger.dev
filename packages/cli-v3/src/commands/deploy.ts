@@ -26,6 +26,7 @@ import { resolveAlwaysExternal } from "../build/externals.js";
 import { createContextArchive, getArchiveSize } from "../deploy/archiveContext.js";
 import { createBundleArchive } from "../deploy/bundleArchive.js";
 import {
+  BuildLogRenderer,
   BuildLogsMode,
   createBuildLogRenderer,
   resolveBuildLogsMode,
@@ -2284,6 +2285,36 @@ function showFullBuildLogs(options: DeployCommandOptions) {
   return resolveBuildLogsMode(options.buildLogs, buildLogsEnv(options)) === "full";
 }
 
+function buildLogStreamError(
+  error: unknown,
+  renderer: BuildLogRenderer,
+  deployment: Pick<InitializeDeploymentResponseBody, "version">,
+  rawDeploymentLink: string
+): OutroCommandError {
+  renderer.finish("Log stream stopped", "failure");
+
+  logger.debug("Build log stream failed", { error });
+
+  const reason = (error instanceof Error ? error.message : String(error))
+    .replace(/\s+/g, " ")
+    .slice(0, 200);
+
+  log.error(`Build log stream failed: ${reason}`);
+  log.info(
+    "The deployment itself is unaffected and continues on the build server. Check the dashboard for the final status."
+  );
+
+  if (!isLinksSupported) {
+    log.info(`View deployment: ${rawDeploymentLink}`);
+  }
+
+  return new OutroCommandError(
+    `Version ${deployment.version} ${
+      isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
+    }`
+  );
+}
+
 async function followBuildServerDeployment({
   deployment,
   eventStream,
@@ -2319,16 +2350,7 @@ async function followBuildServerDeployment({
   );
 
   if (readSessionError) {
-    renderer.finish("Failed to query build progress", "abandoned");
-    log.warn(`Failed streaming build logs, open the deployment in the dashboard to view the logs`);
-
-    outro(
-      `Version ${deployment.version} is being deployed ${
-        isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
-      }`
-    );
-
-    return process.exit(0);
+    throw buildLogStreamError(readSessionError, renderer, deployment, rawDeploymentLink);
   }
 
   const [streamError, finalDeploymentEvent] = await tryCatch(
@@ -2336,28 +2358,7 @@ async function followBuildServerDeployment({
   );
 
   if (streamError) {
-    renderer.finish("Log stream stopped", "failure");
-
-    logger.debug("Build log stream failed", { error: streamError });
-
-    const reason = (streamError instanceof Error ? streamError.message : String(streamError))
-      .replace(/\s+/g, " ")
-      .slice(0, 200);
-
-    log.error(`Build log stream failed: ${reason}`);
-    log.info(
-      "The deployment itself is unaffected and continues on the build server. Check the dashboard for the final status."
-    );
-
-    if (!isLinksSupported) {
-      log.info(`View deployment: ${rawDeploymentLink}`);
-    }
-
-    throw new OutroCommandError(
-      `Version ${deployment.version} ${
-        isLinksSupported ? `| ${cliLink("View deployment", rawDeploymentLink)}` : ""
-      }`
-    );
+    throw buildLogStreamError(streamError, renderer, deployment, rawDeploymentLink);
   }
 
   if (!renderer.started && !finalDeploymentEvent) {
