@@ -92,7 +92,7 @@ describe("chat.agent steering on a turn that fails", () => {
     const chatId = "steer-error-path";
     const toolGate = deferred();
     let toolEntered = false;
-    const events: { newUIMessages: UIMessage[]; finishReason?: string }[] = [];
+    const events: { newUIMessages: UIMessage[]; messages: unknown[]; finishReason?: string }[] = [];
     const promptsSawSteer: boolean[] = [];
 
     const gateTool = tool({
@@ -109,25 +109,36 @@ describe("chat.agent steering on a turn that fails", () => {
     const model = new MockLanguageModelV3({
       doStream: async ({ prompt }) => {
         promptsSawSteer.push(JSON.stringify(prompt).includes("steer-me"));
-        // Step 1 calls the tool, step 2 fails mid-stream.
-        return step++ === 0
-          ? {
-              stream: new ReadableStream({
-                start(c) {
-                  for (const ch of toolCallChunks("tc-1")) c.enqueue(ch);
-                  c.close();
-                },
-              }),
-            }
-          : { stream: erroringStream() };
+        // Step 1 calls the tool, step 2 fails mid-stream, the next turn answers.
+        const n = step++;
+        const fromChunks = (chunks: LanguageModelV3StreamPart[]) => ({
+          stream: new ReadableStream<LanguageModelV3StreamPart>({
+            start(c) {
+              for (const ch of chunks) c.enqueue(ch);
+              c.close();
+            },
+          }),
+        });
+        if (n === 0) return fromChunks(toolCallChunks("tc-1"));
+        if (n === 1) return { stream: erroringStream() };
+        return fromChunks([
+          { type: "text-start", id: "t1" },
+          { type: "text-delta", id: "t1", delta: "ok" },
+          { type: "text-end", id: "t1" },
+          { type: "finish", finishReason: { unified: "stop", raw: "stop" }, usage: USAGE },
+        ]);
       },
     });
 
     const agent = chat.agent({
       id: "steer-error-path",
       pendingMessages: { shouldInject: () => true },
-      onTurnComplete: async ({ newUIMessages, finishReason }) => {
-        events.push({ newUIMessages: [...(newUIMessages ?? [])], finishReason });
+      onTurnComplete: async ({ newUIMessages, messages, finishReason }) => {
+        events.push({
+          newUIMessages: [...(newUIMessages ?? [])],
+          messages: [...messages],
+          finishReason,
+        });
       },
       run: async ({ messages, signal }) =>
         streamText({
@@ -160,6 +171,16 @@ describe("chat.agent steering on a turn that fails", () => {
           .map((p) => p.text ?? "")
       );
       expect(texts).toContain("steer-me");
+
+      // The model lane the failed turn reports has to carry it too, and so
+      // does the prompt the next turn actually sends. Reconciling only on the
+      // success path leaves it pending, so the next turn misses it and it
+      // lands a slot late at the end of that turn.
+      expect(JSON.stringify(events[0]!.messages)).toContain("steer-me");
+      const promptsBefore = promptsSawSteer.length;
+      await harness.sendMessage(userMessage("m3", "u-3"));
+      await waitFor(() => promptsSawSteer.length > promptsBefore, "turn 2 prompt built");
+      expect(promptsSawSteer[promptsBefore]).toBe(true);
     } finally {
       toolGate.resolve();
       await harness.close();

@@ -9248,6 +9248,8 @@ function chatAgent<
 
             let erroredNewModelMessages: ModelMessage[] = [];
 
+            reconcilePendingSteer();
+
             if (!responseCommitted) {
               try {
                 if (erroredNewUIMessages.length > 0) {
