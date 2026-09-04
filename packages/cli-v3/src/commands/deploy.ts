@@ -2332,9 +2332,7 @@ async function followBuildServerDeployment({
   }
 
   const [streamError, finalDeploymentEvent] = await tryCatch(
-    streamDeploymentEvents(readSession, renderer, () => abortController.abort()).finally(() =>
-      abortController.abort()
-    )
+    streamDeploymentEvents(readSession, renderer, () => abortController.abort())
   );
 
   if (streamError) {

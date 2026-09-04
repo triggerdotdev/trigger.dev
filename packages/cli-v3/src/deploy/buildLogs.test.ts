@@ -258,6 +258,34 @@ describe("streamDeploymentEvents", () => {
     expect(onFinalized).toHaveBeenCalledTimes(1);
   });
 
+  it("stops consuming the stream once the finalized event arrives", async () => {
+    let released = false;
+    async function* recordsThenThrow() {
+      try {
+        yield {
+          seqNum: 0,
+          timestamp: 1_700_000_000_000,
+          body: JSON.stringify({ type: "log", data: { message: "a" } }),
+        };
+        yield {
+          seqNum: 1,
+          timestamp: 1_700_000_000_000,
+          body: JSON.stringify({ type: "finalized", data: { result: "succeeded" } }),
+        };
+        throw new Error("stream closed with unparsed data remaining");
+      } finally {
+        released = true;
+      }
+    }
+    const final = await streamDeploymentEvents(
+      recordsThenThrow(),
+      { started: false, log: vi.fn(), finish: vi.fn() },
+      vi.fn()
+    );
+    expect(final).toEqual({ result: "succeeded" });
+    expect(released).toBe(true);
+  });
+
   it("returns undefined when the stream ends without a finalized event", async () => {
     const final = await streamDeploymentEvents(
       records([JSON.stringify({ type: "log", data: { message: "a" } })]),
