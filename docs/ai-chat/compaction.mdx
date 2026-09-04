@@ -61,6 +61,10 @@ After each turn completes:
 
 On the next turn, the LLM receives the compact summary instead of the full history — dramatically reducing token usage while preserving context.
 
+<Note>
+  This is Trigger.dev's provider-agnostic compaction. To persist a **provider's own** compaction across turns instead (Anthropic context editing or OpenAI stored responses), and to fall back between providers without re-sending history, see [Native compaction & provider fallback](/ai-chat/patterns/native-compaction).
+</Note>
+
 ## Customizing what gets persisted
 
 By default, compaction only affects model messages — UI messages stay intact so users see the full conversation after a page refresh. You can customize this with `compactUIMessages`:
