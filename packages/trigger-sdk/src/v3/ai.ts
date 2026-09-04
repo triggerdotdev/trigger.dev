@@ -9206,10 +9206,26 @@ function chatAgent<
                     i === partialIdx ? partialResponse! : m
                   ) as TUIMessage[]);
 
-            let erroredNewUIMessages: TUIMessage[] = erroredWireMessage ? [erroredWireMessage] : [];
-            if (includePartial) {
-              erroredNewUIMessages.push(partialResponse!);
-            }
+            /**
+             * Seeded from the per-turn list, not just the wire message and the
+             * partial, so a steering message the drain consumed is reported too.
+             * An app persisting from `newUIMessages` would otherwise lose the
+             * instruction whenever the turn it steered went on to fail.
+             */
+            const buildErroredNew = (): TUIMessage[] => {
+              const out: TUIMessage[] = [];
+              const addUnique = (m?: TUIMessage) => {
+                if (m && !out.some((existing) => existing.id === m.id)) out.push(m);
+              };
+              addUnique(erroredWireMessage);
+              for (const m of (locals.get(chatTurnNewUIMessagesKey) ?? []) as TUIMessage[]) {
+                addUnique(m);
+              }
+              if (includePartial) addUnique(partialResponse!);
+              return out;
+            };
+
+            let erroredNewUIMessages: TUIMessage[] = buildErroredNew();
 
             let erroredNewModelMessages: ModelMessage[] = [];
 
@@ -9237,7 +9253,7 @@ function chatAgent<
               } catch {
                 erroredNewModelMessages = [];
                 erroredUIMessagesWithPartial = erroredUIMessages;
-                erroredNewUIMessages = erroredWireMessage ? [erroredWireMessage] : [];
+                erroredNewUIMessages = buildErroredNew().filter((m) => m !== partialResponse);
               }
             }
 
