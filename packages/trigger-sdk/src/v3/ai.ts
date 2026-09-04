@@ -9186,6 +9186,10 @@ function chatAgent<
               });
               // Signal turn complete so the client knows this turn is done
               errorTurnCompleteResult = await writeTurnCompleteChunk(currentWirePayload.chatId);
+              // A later action's snapshot reuses this cursor, so it has to move
+              // here too or that snapshot resumes from before the failed turn.
+              lastSnapshotOutEventId =
+                errorTurnCompleteResult?.lastEventId ?? lastSnapshotOutEventId;
             } catch {
               // Best-effort — if stream write fails, let the run continue anyway
             }
