@@ -770,6 +770,22 @@ const queueMetricsSchema: TableSchema = {
         fillMode: "carry",
       }),
     },
+    max_combined_running: {
+      name: "max_combined_running",
+      ...column("UInt32", {
+        description:
+          "Peak in-flight runs across ALL concurrency keys of the queue in the bucket (only emitted for keyed queues). Aggregate with max().",
+        fillMode: "carry",
+      }),
+    },
+    max_combined_limit: {
+      name: "max_combined_limit",
+      ...column("UInt32", {
+        description:
+          "The queue's combined concurrency limit across all keys, as stored (0 = no cap; clamp against max_env_limit). Aggregate with max().",
+        fillMode: "carry",
+      }),
+    },
     max_ck_backlogged: {
       name: "max_ck_backlogged",
       ...column("UInt32", {
@@ -1403,6 +1419,14 @@ const queueMetricsByKeySchema: TableSchema = {
       name: "max_running",
       ...column("UInt32", {
         description: "Peak running for this key in the bucket. Aggregate with max().",
+        fillMode: "carry",
+      }),
+    },
+    max_limit: {
+      name: "max_limit",
+      ...column("UInt32", {
+        description:
+          "The queue concurrency limit that applied to this key in the bucket (1000000 = no explicit limit). Aggregate with max().",
         fillMode: "carry",
       }),
     },

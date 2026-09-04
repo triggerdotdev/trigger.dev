@@ -24,6 +24,21 @@ const authenticatedEnvDev = {
   organization: { id: "o1234" },
 };
 
+// A dead Redis leaves waitUntilReady() pending forever (the client retries
+// indefinitely), which would burn the whole test timeout with no diagnostic.
+// The abort releases the losing timer promptly so it cannot hold an event
+// loop open for the remaining 15s after a fast ready.
+async function emitterReady(emitter: MetricsStreamEmitter) {
+  const abort = new AbortController();
+  const timedOut = setTimeout(15_000, "timeout", { signal: abort.signal }).catch(() => "aborted");
+  const winner = await Promise.race([emitter.waitUntilReady().then(() => "ready"), timedOut]);
+  abort.abort();
+  if (winner === "timeout") {
+    void emitter.close().catch(() => {});
+    throw new Error("metrics emitter Redis connection never became ready");
+  }
+}
+
 async function readAllEntries(
   redisOptions: {
     host: string;
@@ -81,6 +96,7 @@ describe("RunQueue queue-metrics emission", () => {
       definition,
       flag: { enabled: () => true },
     });
+    await emitterReady(emitter);
 
     const queue = new RunQueue({
       name: "rq",
@@ -123,7 +139,10 @@ describe("RunQueue queue-metrics emission", () => {
 
       const entries = await waitForEntries(redis, definition, (es) => {
         const seen = es.map((e) => e.fields.op);
-        return ["enqueue", "gauge", "started", "ack"].every((o) => seen.includes(o));
+        if (!["enqueue", "gauge", "started", "ack"].every((o) => seen.includes(o))) return false;
+        return es.some(
+          (e) => e.fields.op === "gauge" && e.fields.cc === "1" && e.fields.ql === "0"
+        );
       });
       const ops = entries.map((e) => e.fields.op);
       expect(ops).toContain("enqueue");
@@ -140,6 +159,14 @@ describe("RunQueue queue-metrics emission", () => {
       // Non-CK scripts keep the 7-field gauge (no CK-health tail).
       expect(gauge!.fields.ckq).toBeUndefined();
       expect(gauge!.fields.ckw).toBeUndefined();
+
+      // Pins the dequeue script's sample-at-return wrapper: only the dequeue emits the
+      // post-admission reading (running 1, queued 0); the enqueue gauge sees the inverse.
+      const dequeueGauge = entries.find(
+        (e) => e.fields.op === "gauge" && e.fields.cc === "1" && e.fields.ql === "0"
+      );
+      assertGauge(dequeueGauge);
+      expect(dequeueGauge!.fields.q).toContain("task/my-task");
 
       // The first counter emission also seeds a cum=0 baseline (no wait); the real reading
       // carries wait. Pick the reading (cum > 0).
@@ -172,6 +199,7 @@ describe("RunQueue queue-metrics emission", () => {
         definition,
         flag: { enabled: () => true },
       });
+      await emitterReady(emitter);
       const queue = new RunQueue({
         name: "rq",
         tracer: trace.getTracer("rq"),
@@ -244,6 +272,7 @@ describe("RunQueue queue-metrics emission", () => {
       maxLen: 1000,
     };
     const emitter = new MetricsStreamEmitter({ redis, definition, flag: { enabled: () => true } });
+    await emitterReady(emitter);
     const queue = new RunQueue({
       name: "rq",
       tracer: trace.getTracer("rq"),
@@ -283,14 +312,13 @@ describe("RunQueue queue-metrics emission", () => {
       expect(dequeued?.messageId).toBe(message.runId);
 
       const entries = await waitForEntries(redis, definition, (es) =>
-        es.some(
-          (e) => e.fields.op === "gauge" && e.fields.q.includes(":ck:") && e.fields.thr === "0"
-        )
+        es.some((e) => e.fields.op === "gauge" && e.fields.q.includes(":ck:*"))
       );
       const gauges = entries.filter((e) => e.fields.op === "gauge");
       expect(gauges.length).toBeGreaterThan(0);
-      // The aggregate CK dequeue gauge targets the CK wildcard and never sets thr.
-      const aggregate = gauges.find((e) => e.fields.q.includes(":ck:") && e.fields.thr === "0");
+      // The aggregate gauge targets the CK wildcard and only the CK dequeue script emits
+      // it, so this pins that script's sample-at-return wrapper.
+      const aggregate = gauges.find((e) => e.fields.q.includes(":ck:*"));
       assertGauge(aggregate);
       expect(Number(aggregate!.fields.ql)).toBeGreaterThanOrEqual(0);
       expect(Number(aggregate!.fields.cc)).toBeGreaterThanOrEqual(0);
@@ -344,6 +372,7 @@ describe("RunQueue queue-metrics emission", () => {
       flag: { enabled: () => true },
       gaugeSampleRate: 0,
     });
+    await emitterReady(emitter);
     const queue = new RunQueue({
       name: "rq",
       tracer: trace.getTracer("rq"),

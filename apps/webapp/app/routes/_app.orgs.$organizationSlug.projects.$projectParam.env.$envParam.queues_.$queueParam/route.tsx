@@ -392,7 +392,12 @@ export default function Page() {
               <ConcurrencyKeysBlankState />
             )
           ) : (
-            <OverviewCharts ids={ids} timeRange={timeRange} queueName={fullName} />
+            <OverviewCharts
+              ids={ids}
+              timeRange={timeRange}
+              queueName={fullName}
+              hasTotalLimit={queue.concurrency?.combined?.current != null}
+            />
           )}
         </MetricsLayout.Content>
 
@@ -436,10 +441,12 @@ function OverviewCharts({
   ids,
   timeRange,
   queueName,
+  hasTotalLimit,
 }: {
   ids: Ids;
   timeRange: TimeRangeParams;
   queueName: string;
+  hasTotalLimit: boolean;
 }) {
   const zoomToTimeFilter = useZoomToTimeFilter();
   return (
@@ -479,6 +486,37 @@ function OverviewCharts({
           // leading zeros so the reference line doesn't start with a false 0→limit step.
           carryBackfill={["limit"]}
         />
+        {hasTotalLimit ? (
+          <QueueDetailChartCard
+            title="Combined concurrency"
+            info={
+              <>
+                Runs in flight across ALL concurrency keys (
+                <ColorSwatch color={COLORS.running} />) versus the queue's combined limit (
+                <ColorSwatch color={COLORS.limit} />
+                ).
+              </>
+            }
+            showLegend
+            className="aspect-[2/1]"
+            query={`SELECT timeBucket() AS t, max(max_combined_running) AS running, least(max(max_combined_limit), max(max_env_limit)) AS cap\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
+            fillGaps
+            minBucketSeconds={SYNCED_CHART_MIN_BUCKET_SECONDS}
+            ids={ids}
+            timeRange={timeRange}
+            queueName={queueName}
+            series={[
+              { key: "cap", label: "Combined limit", color: COLORS.limit },
+              { key: "running", label: "Running", color: COLORS.running },
+            ]}
+            thresholdStroke={{
+              series: "running",
+              valueFromSeries: "cap",
+              aboveColor: "var(--color-warning)",
+            }}
+            carryBackfill={["cap"]}
+          />
+        ) : null}
         <QueueDetailChartCard
           title="Queue depth"
           info="How many runs are waiting in this queue over time."

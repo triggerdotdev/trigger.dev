@@ -45,6 +45,21 @@ export const QueueItem = z.object({
       overriddenAt: z.coerce.date().nullable(),
       /** Who overrode the concurrency limit (will be null if overridden via the API) */
       overriddenBy: z.string().nullable(),
+      /** The combined concurrency cap across all concurrencyKey values of the queue */
+      combined: z
+        .object({
+          /** The current combined concurrency limit as declared or overridden (null = no cap). Enforcement clamps it to the environment concurrency limit at admit time. */
+          current: z.number().nullable(),
+          /** The declared combined limit an override reverts to on reset */
+          base: z.number().nullable(),
+          /** The overridden combined limit, when an override is active */
+          override: z.number().nullable(),
+          /** When the combined override was applied */
+          overriddenAt: z.coerce.date().nullable(),
+          /** Runs currently in flight across all concurrencyKey values */
+          running: z.number().nullable(),
+        })
+        .optional(),
     })
     .optional(),
 });

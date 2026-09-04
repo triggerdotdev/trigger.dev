@@ -115,6 +115,7 @@ import {
 import { queueMetricsMaxPeriodDays } from "~/components/queues/queueMetricsPeriod.server";
 import { isQueueAtCapacity } from "~/components/queues/queue-thresholds";
 import { pageMeta } from "~/utils/pageTitle";
+import { InlineCode } from "~/components/code/InlineCode";
 
 const SearchParamsSchema = z.object({
   query: z.string().optional(),
@@ -218,8 +219,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
         const timeRange = clipQueueMetricsWindow(
           timeFilterFromTo({
             period:
-              resolveQueueMetricsPeriod({ period, from, to, defaultPeriod, maxPeriodDays }) ??
-              undefined,
+              resolveQueueMetricsPeriod({
+                period,
+                from,
+                to,
+                defaultPeriod,
+                maxPeriodDays,
+              }) ?? undefined,
             from: parseFiniteInt(from),
             to: parseFiniteInt(to),
             defaultPeriod,
@@ -243,7 +249,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
           };
         }
       } catch (error) {
-        logger.warn("Queue list metrics unavailable, rendering without them", { error });
+        logger.warn("Queue list metrics unavailable, rendering without them", {
+          error,
+        });
       }
     }
 
@@ -704,7 +712,14 @@ function QueuesWithMetricsView() {
                 <TableHeaderCell>Name</TableHeaderCell>
                 <TableHeaderCell alignment="right">Queued</TableHeaderCell>
                 <TableHeaderCell alignment="right">Running</TableHeaderCell>
-                <TableHeaderCell alignment="right">Limit</TableHeaderCell>
+                <TableHeaderCell
+                  alignment="right"
+                  disableTooltipHoverableContent
+                  tooltip={limitTooltip}
+                  tooltipContentClassName="max-w-xs"
+                >
+                  Limit
+                </TableHeaderCell>
                 <TableHeaderCell
                   alignment="right"
                   tooltipContentClassName="max-w-max"
@@ -847,7 +862,14 @@ function QueuesWithMetricsView() {
                         className={cn(
                           "w-[1%]",
                           queue.paused ? "opacity-50" : undefined,
-                          queue.running > 0 && "text-text-bright"
+                          queue.concurrency?.combined?.current != null &&
+                            (queue.concurrency.combined.running ?? 0) >=
+                              Math.min(
+                                queue.concurrency.combined.current,
+                                environment.concurrencyLimit
+                              )
+                            ? "text-warning"
+                            : queue.running > 0 && "text-text-bright"
                         )}
                       >
                         {queue.running}
@@ -861,12 +883,46 @@ function QueuesWithMetricsView() {
                           queue.paused ? "opacity-50" : undefined,
                           queue.concurrency?.overriddenAt && "font-medium text-text-bright"
                         )}
+                        // The combined-limit hint is a tooltip button, so it renders beside the
+                        // link (trailing) rather than nested inside the <a>; the number stays the
+                        // link.
+                        trailingContent={
+                          queue.concurrency?.combined?.current != null ? (
+                            <SimpleTooltip
+                              disableHoverableContent
+                              buttonClassName="-ml-1 cursor-default"
+                              button={
+                                <span className="text-text-dimmed bg-repeat-x pb-[3px] [background-image:linear-gradient(to_right,currentColor_2px,transparent_2px)] [background-position:bottom] [background-size:4px_1px] group-hover/table-row:text-text-bright">
+                                  (
+                                  {Math.min(
+                                    queue.concurrency.combined.current,
+                                    environment.concurrencyLimit
+                                  )}
+                                  )
+                                </span>
+                              }
+                              content={
+                                <>
+                                  Combined limit: at most{" "}
+                                  {Math.min(
+                                    queue.concurrency.combined.current,
+                                    environment.concurrencyLimit
+                                  )}{" "}
+                                  runs across all concurrency keys of this queue. The main limit
+                                  applies to each key separately.
+                                </>
+                              }
+                              className="max-w-[260px]"
+                            />
+                          ) : undefined
+                        }
                       >
                         {queue.concurrencyLimitOverridePercent !== null ? (
                           <>
                             {limit}
                             <span className="ml-1 text-text-dimmed group-hover/table-row:text-text-bright">
-                              ({formatOverridePercent(queue.concurrencyLimitOverridePercent)}%)
+                              ({formatOverridePercent(queue.concurrencyLimitOverridePercent)}
+                              %)
                             </span>
                           </>
                         ) : (
@@ -1263,7 +1319,11 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
           value: limit > 0 ? Math.round((tileNumber(r.running) / limit) * 100) : 0,
         };
       });
-      return { points, total: peakOf(points), formatTotal: (v) => `${v}% peak` };
+      return {
+        points,
+        total: peakOf(points),
+        formatTotal: (v) => `${v}% peak`,
+      };
     },
   },
   {
@@ -1277,7 +1337,11 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
         bucket: tileTimeToMs(r.t),
         value: tileNumber(r.queued),
       }));
-      return { points, total: peakOf(points), formatTotal: (v) => `${v.toLocaleString()} peak` };
+      return {
+        points,
+        total: peakOf(points),
+        formatTotal: (v) => `${v.toLocaleString()} peak`,
+      };
     },
   },
   {
@@ -1782,7 +1846,13 @@ function ClassicQueuesView() {
                   <TableHeaderCell>Name</TableHeaderCell>
                   <TableHeaderCell alignment="right">Queued</TableHeaderCell>
                   <TableHeaderCell alignment="right">Running</TableHeaderCell>
-                  <TableHeaderCell alignment="right">Limit</TableHeaderCell>
+                  <TableHeaderCell
+                    alignment="right"
+                    tooltip={limitTooltip}
+                    tooltipContentClassName="max-w-xs"
+                  >
+                    Limit
+                  </TableHeaderCell>
                   <TableHeaderCell
                     alignment="right"
                     tooltip={
@@ -1889,7 +1959,14 @@ function ClassicQueuesView() {
                           className={cn(
                             "w-[1%] pl-16 tabular-nums",
                             queue.paused ? "opacity-50" : undefined,
-                            queue.running > 0 && "text-text-bright",
+                            queue.concurrency?.combined?.current != null &&
+                              (queue.concurrency.combined.running ?? 0) >=
+                                Math.min(
+                                  queue.concurrency.combined.current,
+                                  environment.concurrencyLimit
+                                )
+                              ? "text-warning"
+                              : queue.running > 0 && "text-text-bright",
                             isAtConcurrencyLimit && "text-warning"
                           )}
                         >
@@ -1904,6 +1981,34 @@ function ClassicQueuesView() {
                           )}
                         >
                           {limit}
+                          {queue.concurrency?.combined?.current != null ? (
+                            <SimpleTooltip
+                              disableHoverableContent
+                              buttonClassName="ml-1 cursor-default"
+                              button={
+                                <span className="text-text-dimmed bg-repeat-x pb-[3px] [background-image:linear-gradient(to_right,currentColor_2px,transparent_2px)] [background-position:bottom] [background-size:4px_1px]">
+                                  (
+                                  {Math.min(
+                                    queue.concurrency.combined.current,
+                                    environment.concurrencyLimit
+                                  )}
+                                  )
+                                </span>
+                              }
+                              content={
+                                <>
+                                  Combined limit: at most{" "}
+                                  {Math.min(
+                                    queue.concurrency.combined.current,
+                                    environment.concurrencyLimit
+                                  )}{" "}
+                                  runs across all concurrency keys of this queue. The main limit
+                                  applies to each key separately.
+                                </>
+                              }
+                              className="max-w-[260px]"
+                            />
+                          ) : null}
                         </TableCell>
                         <TableCell
                           alignment="right"
@@ -2022,3 +2127,16 @@ function BurstFactorTooltip({
     />
   );
 }
+
+const limitTooltip = (
+  <>
+    <Paragraph variant="extra-small" spacing>
+      How many runs can execute at once.{" "}
+    </Paragraph>
+    <Paragraph variant="extra-small" spacing>
+      <InlineCode variant="extra-extra-small">1 (20)</InlineCode> means 1 run per concurrency key,
+      but at most 20 runs across all keys. Set using{" "}
+      <InlineCode variant="extra-extra-small">combinedConcurrencyLimit</InlineCode> in your code.
+    </Paragraph>
+  </>
+);
