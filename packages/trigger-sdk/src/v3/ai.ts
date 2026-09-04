@@ -3578,7 +3578,14 @@ const chatTurnNewUIMessagesKey = locals.create<UIMessage[]>("chat.turnNewUIMessa
  * summary and deliberately leaves the UI lane whole, so reconverting the UI
  * lane restores every message the summary replaced.
  */
-const chatPendingSteerKey = locals.create<UIMessage[]>("chat.pendingSteer");
+const chatPendingSteerKey = locals.create<PendingSteer[]>("chat.pendingSteer");
+
+/**
+ * A consumed steering message in both forms: the UI message for display and
+ * persistence, and the model messages `pendingMessages.prepare` produced for
+ * it, which is what the model actually saw and what later turns must see too.
+ */
+type PendingSteer = { ui: UIMessage; model: ModelMessage[] };
 /** @internal — IDs of messages that were successfully injected via prepareStep */
 const chatInjectedMessageIdsKey = locals.create<Set<string>>("chat.injectedMessageIds");
 /** @internal — non-transient data parts queued via chat.response or writer.write() for accumulation into the response message */
@@ -4174,6 +4181,16 @@ type DrainedSteering = {
 const EMPTY_DRAIN: DrainedSteering = { injected: [], claimed: [] };
 
 /**
+ * The model messages to record for one claimed message. Without `prepare`
+ * each entry's own conversion is used. With it, `prepare` returned one list
+ * for the whole batch, so the first claimed message carries all of it and the
+ * rest carry none, which keeps the total exactly what the model received.
+ */
+function modelFormOf(m: UIMessage, batch: UIMessage[], injected: ModelMessage[]): ModelMessage[] {
+  return batch[0] === m ? injected : [];
+}
+
+/**
  * Drain the steering queue as a batch. Calls `shouldInject` once with all
  * pending messages. If it returns true, calls `prepareMessages` once to
  * transform the batch, then clears the queue.
@@ -4322,7 +4339,9 @@ async function drainSteeringQueue(
       if (claimedUIMessages.length > 0 && currentUIMessages) {
         const pendingSteer = locals.get(chatPendingSteerKey) ?? [];
         for (const m of claimedUIMessages) {
-          if (!pendingSteer.some((existing) => existing.id === m.id)) pendingSteer.push(m);
+          if (!pendingSteer.some((existing) => existing.ui.id === m.id)) {
+            pendingSteer.push({ ui: m, model: modelFormOf(m, claimedUIMessages, injected) });
+          }
         }
         locals.set(chatPendingSteerKey, pendingSteer);
       }
@@ -6681,6 +6700,19 @@ function chatAgent<
       // durable snapshot + `session.out` replay (or `hydrateMessages` if
       // registered) — the wire is delta-only now, no longer a seed.
       let accumulatedMessages: ModelMessage[] = [];
+      /**
+       * Give the model accumulator the steering messages a drain consumed,
+       * in the form the model actually received. Appended, never reconverted
+       * from the UI lane, so a model-only compaction summary survives. Called
+       * on both the success and the error path, before the response or the
+       * partial joins the lane, so the order stays steer-then-answer.
+       */
+      const reconcilePendingSteer = () => {
+        const pending = locals.get(chatPendingSteerKey);
+        if (!pending || pending.length === 0) return;
+        locals.set(chatPendingSteerKey, []);
+        for (const entry of pending) accumulatedMessages.push(...entry.model);
+      };
 
       // Accumulated UI messages for persistence. Mirrors the model accumulator
       // but in frontend-friendly UIMessage format (with parts, id, etc.).
@@ -8558,20 +8590,7 @@ function chatAgent<
                   // before the response is appended so the order stays
                   // steer-then-answer. Outside the `capturedResponseMessage`
                   // branches below, so a turn that captured no response is covered.
-                  const pendingSteer = locals.get(chatPendingSteerKey);
-                  if (pendingSteer && pendingSteer.length > 0) {
-                    locals.set(chatPendingSteerKey, []);
-                    try {
-                      accumulatedMessages.push(
-                        ...(await toModelMessages(pendingSteer.map(stripProviderMetadata)))
-                      );
-                    } catch (error) {
-                      logger.warn(
-                        "chat.agent: toModelMessages failed for an injected message; it will be missing from the next turn",
-                        { error: error instanceof Error ? error.message : String(error) }
-                      );
-                    }
-                  }
+                  reconcilePendingSteer();
 
                   // Append the assistant's response (partial or complete) to the accumulator.
                   // The onFinish callback fires even on abort/stop, so partial responses
@@ -10705,11 +10724,15 @@ class ChatMessageAccumulator {
    * the UI lane whole: a reconversion would restore everything the summary
    * replaced.
    */
-  async absorbSteering(claimed: UIMessage[]): Promise<void> {
+  async absorbSteering(claimed: UIMessage[], injected?: ModelMessage[]): Promise<void> {
     const fresh = claimed.filter((m) => !this.uiMessages.some((e) => e.id === m.id));
     if (fresh.length === 0) return;
     this.uiMessages.push(...fresh);
-    this.modelMessages.push(...(await toModelMessages(fresh)));
+    // Record what the model received. Only when the whole batch is new is
+    // `injected` known to describe exactly these messages.
+    this.modelMessages.push(
+      ...(injected && fresh.length === claimed.length ? injected : await toModelMessages(fresh))
+    );
   }
 
   /**
@@ -10758,7 +10781,7 @@ class ChatMessageAccumulator {
           steps,
           queue
         );
-        await this.absorbSteering(claimed);
+        await this.absorbSteering(claimed, injected);
         if (injected.length > 0) {
           resultMessages = [...(resultMessages ?? messages), ...injected];
         }
@@ -11534,7 +11557,7 @@ function createChatSession<TClientData = unknown>(
                     steps,
                     turnSteeringQueue
                   );
-                  await accumulator.absorbSteering(claimed);
+                  await accumulator.absorbSteering(claimed, injected);
                   if (injected.length > 0) {
                     resultMessages = [...(resultMessages ?? stepMsgs), ...injected];
                   }
