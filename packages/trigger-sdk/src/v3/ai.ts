@@ -4158,11 +4158,26 @@ function chatCompactionStep(
 // Steering queue drain — shared by toStreamTextOptions, session, accumulator
 // ---------------------------------------------------------------------------
 
+/** What a steering drain produced: what to send now, and what it consumed. */
+type DrainedSteering = {
+  /** Model messages to add to this step's prompt. */
+  injected: ModelMessage[];
+  /** The UI messages the drain consumed, for the caller to record. */
+  claimed: UIMessage[];
+};
+
+const EMPTY_DRAIN: DrainedSteering = { injected: [], claimed: [] };
+
 /**
  * Drain the steering queue as a batch. Calls `shouldInject` once with all
  * pending messages. If it returns true, calls `prepareMessages` once to
  * transform the batch, then clears the queue.
- * Returns the model messages to inject (empty if none).
+ * Returns the model messages to inject and the UI messages actually claimed.
+ *
+ * `claimed` is returned rather than only published to locals because each
+ * surface files it somewhere different: `chat.agent` has an accumulator in
+ * locals, while `chat.createSession` keeps its own. Publishing to locals alone
+ * is silently a no-op for any surface that never set the key.
  * @internal
  */
 async function drainSteeringQueue(
@@ -4170,9 +4185,9 @@ async function drainSteeringQueue(
   messages: ModelMessage[],
   steps: CompactionStep[],
   queueOverride?: SteeringQueueEntry[]
-): Promise<ModelMessage[]> {
+): Promise<DrainedSteering> {
   const queue = queueOverride ?? locals.get(chatSteeringQueueKey);
-  if (!queue || queue.length === 0) return [];
+  if (!queue || queue.length === 0) return EMPTY_DRAIN;
 
   const ctx = locals.get(chatTurnContextKey);
   const stepNumber = steps.length - 1;
@@ -4198,7 +4213,7 @@ async function drainSteeringQueue(
   // Call shouldInject once for the whole batch
   const shouldInject = config.shouldInject ? await config.shouldInject(batchEvent) : false;
 
-  if (!shouldInject) return [];
+  if (!shouldInject) return EMPTY_DRAIN;
 
   const textOfUIMessage = (m: UIMessage) =>
     (m.parts ?? [])
@@ -4248,7 +4263,7 @@ async function drainSteeringQueue(
         if (at !== -1) queue.splice(at, 1);
       }
 
-      if (claimed.length === 0) return [];
+      if (claimed.length === 0) return EMPTY_DRAIN;
 
       /**
        * Give the claim back if the transform fails. `prepare` is caller code and
@@ -4299,7 +4314,7 @@ async function drainSteeringQueue(
           turnNew.push(m);
         }
       }
-      if (claimedUIMessages.length > 0) {
+      if (claimedUIMessages.length > 0 && currentUIMessages) {
         locals.set(chatModelLaneStaleKey, true);
       }
 
@@ -4344,7 +4359,7 @@ async function drainSteeringQueue(
         }
       }
 
-      return injected;
+      return { injected, claimed: claimedUIMessages };
     },
     {
       attributes: {
@@ -4883,7 +4898,7 @@ function toStreamTextOptions(options?: ToStreamTextOptionsOptions): Record<strin
 
       // 2. Pending message injection (steering)
       if (taskPendingMessages) {
-        const injected = await drainSteeringQueue(
+        const { injected } = await drainSteeringQueue(
           taskPendingMessages,
           resultMessages ?? messages,
           steps
@@ -10649,6 +10664,28 @@ class ChatMessageAccumulator {
   }
 
   /**
+   * Record the messages a steering drain consumed.
+   *
+   * The drain only puts them in this step's prompt, so without this they
+   * shape one answer and then exist in neither lane: not in `uiMessages`,
+   * which is what an app persists from, and not in `modelMessages`, which is
+   * what every later turn sends. The UI lane is authoritative and the model
+   * lane is its conversion, matching how `chat.agent` reconciles the two.
+   */
+  async absorbSteering(claimed: UIMessage[]): Promise<void> {
+    if (claimed.length === 0) return;
+    let added = false;
+    for (const m of claimed) {
+      if (!this.uiMessages.some((existing) => existing.id === m.id)) {
+        this.uiMessages.push(m);
+        added = true;
+      }
+    }
+    if (!added) return;
+    this.modelMessages = await toModelMessages(this.uiMessages);
+  }
+
+  /**
    * Get and clear unconsumed steering messages.
    */
   drainSteering(): UIMessage[] {
@@ -10688,7 +10725,13 @@ class ChatMessageAccumulator {
 
       // 2. Pending message injection
       if (pm && queue.length > 0) {
-        const injected = await drainSteeringQueue(pm, resultMessages ?? messages, steps, queue);
+        const { injected, claimed } = await drainSteeringQueue(
+          pm,
+          resultMessages ?? messages,
+          steps,
+          queue
+        );
+        await this.absorbSteering(claimed);
         if (injected.length > 0) {
           resultMessages = [...(resultMessages ?? messages), ...injected];
         }
@@ -11458,12 +11501,13 @@ function createChatSession<TClientData = unknown>(
                 }
 
                 if (sessionPendingMessages) {
-                  const injected = await drainSteeringQueue(
+                  const { injected, claimed } = await drainSteeringQueue(
                     sessionPendingMessages,
                     resultMessages ?? stepMsgs,
                     steps,
                     turnSteeringQueue
                   );
+                  await accumulator.absorbSteering(claimed);
                   if (injected.length > 0) {
                     resultMessages = [...(resultMessages ?? stepMsgs), ...injected];
                   }
