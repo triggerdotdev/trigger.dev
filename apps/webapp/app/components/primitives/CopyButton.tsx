@@ -1,7 +1,9 @@
+import { CheckIcon } from "@heroicons/react/20/solid";
 import { ClipboardCheckIcon, ClipboardIcon } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { useCopy } from "~/hooks/useCopy";
 import { cn } from "~/utils/cn";
-import { Button } from "./Buttons";
+import { Button, type ButtonVariant } from "./Buttons";
 import { SimpleTooltip } from "./Tooltip";
 
 const sizes = {
@@ -115,5 +117,77 @@ export function CopyButton({
         disableHoverableContent
       />
     </span>
+  );
+}
+
+/**
+ * Copies a ready-to-paste AI agent prompt, briefly swapping its label to confirm.
+ *
+ * The prompt is built by the caller — it is long, page-specific text, not a value
+ * a user would ever want echoed in a tooltip, so this stays a plain button rather
+ * than reusing the `CopyButton` clipboard treatment above.
+ */
+export function CopyAgentPromptButton({
+  prompt,
+  label,
+  tooltip,
+  variant = "primary/medium",
+}: {
+  prompt: string;
+  /** Idle label. Keep it at least as long as "Copied prompt" — its width is reserved for it. */
+  label: string;
+  tooltip: string;
+  variant?: ButtonVariant;
+}) {
+  const [copied, setCopied] = useState(false);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const unmountedRef = useRef(false);
+
+  useEffect(
+    () => () => {
+      unmountedRef.current = true;
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    },
+    []
+  );
+
+  const onCopy = async () => {
+    try {
+      // Throws when the clipboard API is unavailable (e.g. an insecure context) and
+      // rejects when the write is denied. Either way the prompt was not copied, so
+      // fall through without confirming it.
+      await navigator.clipboard.writeText(prompt);
+    } catch {
+      return;
+    }
+
+    if (unmountedRef.current) return;
+
+    setCopied(true);
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <SimpleTooltip
+      asChild
+      tabbable
+      button={
+        <Button type="button" variant={variant} onClick={() => void onCopy()}>
+          <span className="grid justify-items-center">
+            <span className="col-start-1 row-start-1 flex items-center gap-x-1.5">
+              {copied && <CheckIcon className="size-4 shrink-0 text-text-bright" />}
+              <span>{copied ? "Copied prompt" : label}</span>
+            </span>
+            {/* The idle label is the longest, so reserve its width to stop the button from
+                resizing when it briefly swaps to the shorter "Copied prompt". */}
+            <span aria-hidden className="invisible col-start-1 row-start-1">
+              {label}
+            </span>
+          </span>
+        </Button>
+      }
+      content={tooltip}
+    />
   );
 }

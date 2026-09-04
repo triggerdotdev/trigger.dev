@@ -5,6 +5,7 @@ import { InlineCode } from "~/components/code/InlineCode";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
+import { CopyAgentPromptButton } from "~/components/primitives/CopyButton";
 import { DateTime } from "~/components/primitives/DateTime";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -28,6 +29,29 @@ const CONFIG_SNIPPET = `export default defineConfig({
 });`;
 
 const CLI_COMMAND = "npx trigger.dev@latest projects list --needs-update";
+
+function buildRuntimeUpdatePrompt({
+  projects,
+  targetMajor,
+}: {
+  projects: ProjectRuntimeRow[];
+  targetMajor: number;
+}) {
+  const projectList = projects.map((project) => `- ${project.name} (${project.ref})`).join("\n");
+
+  return `Update these Trigger.dev projects to Node.js ${targetMajor}.
+
+They still deploy on Node.js ${NODE_RUNTIME_UPDATE_MAJOR} in production. Moving to Node.js ${targetMajor} is a one-field change in each project's trigger.config.ts.
+
+Projects to update:
+${projectList}
+
+How to do it:
+1. Find the trigger.config.ts for each project above — the reference in parentheses is its "project" field.
+2. In defineConfig, set runtime: "node-${targetMajor}", adding the field if it isn't there. Reference: https://trigger.dev/docs/config/config-file#runtime
+3. Deploy each project so the new runtime takes effect.
+4. Check that nothing is left by running: ${CLI_COMMAND}`;
+}
 
 /** A project and its current Production deployment, or `null` when it has never been deployed. */
 export type ProjectRuntimeRow = {
@@ -113,6 +137,22 @@ export function ProjectsPage({
                       variant="secondary/small"
                       iconButton
                       className="w-64"
+                    />
+                  }
+                />
+
+                <SettingsRow
+                  title="Or let your AI agent do it"
+                  description="Copy a ready-to-paste prompt for Claude Code, Cursor, or any coding agent. It includes every project that needs updating."
+                  action={
+                    <CopyAgentPromptButton
+                      prompt={buildRuntimeUpdatePrompt({
+                        projects: needsUpdate,
+                        targetMajor: NODE_RUNTIME_TARGET_MAJOR,
+                      })}
+                      label="Copy AI agent prompt"
+                      tooltip="Copies an update prompt to paste into Claude Code, Cursor, or any coding agent"
+                      variant="primary/small"
                     />
                   }
                 />

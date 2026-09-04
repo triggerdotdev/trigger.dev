@@ -1,9 +1,7 @@
-import { CheckIcon } from "@heroicons/react/20/solid";
-import { createContext, useContext, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useMemo, useState } from "react";
 import { useAppOrigin } from "~/hooks/useAppOrigin";
 import { useProject } from "~/hooks/useProject";
 import { useTriggerCliTag } from "~/hooks/useTriggerCliTag";
-import { Button } from "./primitives/Buttons";
 import {
   ClientTabs,
   ClientTabsContent,
@@ -11,8 +9,8 @@ import {
   ClientTabsTrigger,
 } from "./primitives/ClientTabs";
 import { ClipboardField } from "./primitives/ClipboardField";
+import { CopyAgentPromptButton } from "./primitives/CopyButton";
 import { Header3 } from "./primitives/Headers";
-import { SimpleTooltip } from "./primitives/Tooltip";
 
 type PackageManagerContextType = {
   activePackageManager: string;
@@ -165,43 +163,12 @@ export function InitAgentPromptV3() {
   const project = useProject();
   const apiUrl = useApiUrl();
   const cliTag = useTriggerCliTag();
-  const [copied, setCopied] = useState(false);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const onCopy = () => {
-    const prompt = buildAgentSetupPrompt({
-      projectRef: project.externalRef,
-      apiUrl,
-      cliTag,
-    });
-    setCopied(true);
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    timeoutRef.current = setTimeout(() => setCopied(false), 2000);
-    void navigator.clipboard.writeText(prompt).catch(() => {});
-  };
-
-  // The idle label is the longest, so reserve its width to stop the button from
-  // resizing when it briefly swaps to the shorter "Copied prompt".
-  const idleLabel = "Copy AI agent prompt";
 
   return (
-    <SimpleTooltip
-      asChild
-      tabbable
-      button={
-        <Button type="button" variant="primary/medium" onClick={onCopy}>
-          <span className="grid justify-items-center">
-            <span className="col-start-1 row-start-1 flex items-center gap-x-1.5">
-              {copied && <CheckIcon className="size-4 shrink-0 text-text-bright" />}
-              <span>{copied ? "Copied prompt" : idleLabel}</span>
-            </span>
-            <span aria-hidden className="invisible col-start-1 row-start-1">
-              {idleLabel}
-            </span>
-          </span>
-        </Button>
-      }
-      content="Copies a setup prompt to paste into Claude Code, Cursor, or any coding agent"
+    <CopyAgentPromptButton
+      prompt={buildAgentSetupPrompt({ projectRef: project.externalRef, apiUrl, cliTag })}
+      label="Copy AI agent prompt"
+      tooltip="Copies a setup prompt to paste into Claude Code, Cursor, or any coding agent"
     />
   );
 }
