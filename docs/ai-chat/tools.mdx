@@ -46,7 +46,7 @@ There are three places a tool set shows up. Declare once, reuse:
 | Surface | What it's for |
 | --- | --- |
 | `chat.agent({ tools })` | Re-applies `toModelOutput` on prior-turn history; hands the set back typed on the `run()` payload. |
-| `streamText({ tools })` on the `run` argument's `streamText` | What the model actually calls. Detects which calls need [HITL approval](/ai-chat/patterns/human-in-the-loop) (`needsApproval`) and merges the auto-injected [skill](/ai-chat/patterns/skills) tools on top. |
+| `streamText({ tools })` on the `run` argument's `streamText` | What the model actually calls. Detects which calls need [HITL approval](/ai-chat/patterns/human-in-the-loop) (`needsApproval`) and merges the auto-injected [skill](/ai-chat/patterns/skills) tools on top. Naming `tools` replaces the config set for that call, so you can narrow it; omitting `tools` falls back to the config set. |
 | `chat.toStreamTextOptions({ tools })` | The same job by hand, for a [custom agent](#manual-turn-loops-chatcustomagent), which has no `run` argument. |
 
 The canonical pattern: declare `tools` on the config, read them back from the `run()` payload, and pass that set to the `streamText` the payload also carries.

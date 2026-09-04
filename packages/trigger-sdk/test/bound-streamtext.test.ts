@@ -503,6 +503,59 @@ describe("the streamText handed to onAction", () => {
       await harness.close();
     }
   });
+
+  it("carries the agent's tools into a regenerated answer", async () => {
+    /**
+     * A regenerate that can call nothing is not the same agent answering
+     * again. `onAction` has no `tools` in scope the way `run()` does, so
+     * omitting `tools` has to fall back to the agent's set rather than to
+     * none.
+     */
+    const turnModel = new MockLanguageModelV3({
+      doStream: async () => ({ stream: textStream("first answer") }),
+    });
+    const actionModel = new MockLanguageModelV3({
+      doStream: async () => ({ stream: textStream("regenerated answer") }),
+    });
+
+    const agentOnlyTool = tool({
+      description: "declared only on chat.agent({ tools })",
+      inputSchema: z.object({ a: z.string() }),
+      execute: async () => "a",
+    });
+
+    const agent = chat.agent({
+      id: "bound-streamtext-onaction-tools",
+      tools: { agentOnlyTool },
+      actionSchema: z.discriminatedUnion("type", [z.object({ type: z.literal("regenerate") })]),
+      onAction: async ({ action, streamText }) => {
+        if (action.type !== "regenerate") return;
+        chat.history.slice(0, -1);
+        return streamText({
+          model: actionModel,
+          messages: await convertToModelMessages(chat.history.all()),
+        });
+      },
+      run: async ({ messages, tools, signal, streamText }) =>
+        streamText({ model: turnModel, messages, tools, abortSignal: signal }),
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "bound-streamtext-onaction-tools" });
+
+    try {
+      await harness.sendMessage({ id: "u1", role: "user", parts: [{ type: "text", text: "ask" }] });
+      await new Promise((r) => setTimeout(r, 40));
+
+      await harness.sendAction({ type: "regenerate" });
+      await new Promise((r) => setTimeout(r, 60));
+
+      expect(actionModel.doStreamCalls).toHaveLength(1);
+      const names = (actionModel.doStreamCalls[0]!.tools ?? []).map((t) => t.name);
+      expect(names).toEqual(["agentOnlyTool"]);
+    } finally {
+      await harness.close();
+    }
+  });
 });
 
 describe("a structured system message", () => {

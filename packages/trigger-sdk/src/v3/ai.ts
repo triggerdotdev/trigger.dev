@@ -4816,6 +4816,8 @@ type ManagedStreamTextConfig = {
   system?: ToStreamTextOptionsOptions["system"];
   cacheControl?: ToStreamTextOptionsOptions["cacheControl"];
   systemProviderOptions?: ToStreamTextOptionsOptions["systemProviderOptions"];
+  /** The agent's resolved tools, used when the call site names no `tools` of its own. */
+  tools?: ToolSet;
 };
 
 /**
@@ -4829,7 +4831,13 @@ function buildManagedStreamTextOptions(
   options: Record<string, unknown>,
   config: ManagedStreamTextConfig
 ): Record<string, unknown> {
-  const { registry, system: agentSystem, cacheControl, systemProviderOptions } = config;
+  const {
+    registry,
+    system: agentSystem,
+    cacheControl,
+    systemProviderOptions,
+    tools: agentTools,
+  } = config;
 
   /**
    * Only the three keys that collide are intercepted. Everything else, telemetry
@@ -4849,7 +4857,13 @@ function buildManagedStreamTextOptions(
     system: (callerSystem as ToStreamTextOptionsOptions["system"]) ?? agentSystem,
     cacheControl,
     systemProviderOptions,
-    tools: tools as Record<string, Tool> | undefined,
+    /**
+     * A call site that names `tools` replaces the agent's set rather than
+     * adding to it, so narrowing the tools for one call still works. Omitting
+     * `tools` falls back to the agent's, which is what an `onAction`
+     * regenerate needs: without it a regenerated answer can call nothing.
+     */
+    tools: (tools ?? agentTools) as Record<string, Tool> | undefined,
   });
 
   const promptSystem = locals.get(chatPromptKey)?.text;
@@ -4905,6 +4919,8 @@ function createBoundStreamText(
         system: agentSystem,
         cacheControl: agentCacheControl,
         systemProviderOptions: agentSystemProviderOptions,
+        /** Read per call, so per-turn tools resolved after binding are included. */
+        tools: locals.get(chatResolvedToolsKey),
       }) as any
     );
 
@@ -5679,6 +5695,8 @@ export type ActionEvent<
   uiMessages: TUIM[];
   /** The accumulated model messages (after hydration, if set). */
   messages: ModelMessage[];
+  /** The agent's resolved tools, the same set `run()` receives. */
+  tools: ToolSet;
   /**
    * `streamText` with the agent's managed options already applied, the same one
    * `run()` receives: the prompt from `chat.prompt.set()` or
@@ -8144,6 +8162,7 @@ function chatAgent<
                           clientData,
                           uiMessages: accumulatedUIMessages,
                           messages: accumulatedMessages,
+                          tools: locals.get(chatResolvedToolsKey) ?? {},
                           streamText: createBoundStreamText(
                             promptRegistry,
                             agentSystem,

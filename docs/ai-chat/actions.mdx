@@ -58,7 +58,7 @@ export const myChat = chat.agent({
 
 The `messages` argument is captured before `onAction` runs, so a handler that mutates `chat.history` and then passes `messages` straight through sends the model the state it just changed. Rebuild from `chat.history.all()` after the mutation.
 
-Build the response with the `streamText` from `onAction`'s own argument, the same one `run()` receives. It carries the agent's system prompt, skill tools, resolved model and telemetry, so a regenerated answer is produced under the same configuration as every other turn. The `streamText` imported from `ai` carries none of that, and the reply still looks fine, which is what makes the difference easy to miss.
+Build the response with the `streamText` from `onAction`'s own argument, the same one `run()` receives. It carries the agent's system prompt, config tools, skill tools, resolved model and telemetry, so a regenerated answer is produced under the same configuration as every other turn. The `streamText` imported from `ai` carries none of that, and the reply still looks fine, which is what makes the difference easy to miss.
 
 ```ts
 onAction: async ({ action, streamText }) => {
