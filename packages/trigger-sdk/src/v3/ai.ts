@@ -4820,6 +4820,12 @@ function toStreamTextOptions(options?: ToStreamTextOptionsOptions): Record<strin
   let injectedBlocks: SystemModelMessage[] = [];
   if (consumedThisTurn && consumedThisTurn.turn === currentTurn) {
     injectedBlocks = consumedThisTurn.blocks;
+    // Anything injected since the stash was taken joins it, so an instruction
+    // added after an action read the lane still reaches the real turn that
+    // shares the action's turn number, rather than the one after.
+    if (injectedInstructions && injectedInstructions.length > 0) {
+      injectedBlocks.push(...injectedInstructions.splice(0));
+    }
   } else if (injectedInstructions && injectedInstructions.length > 0) {
     injectedBlocks = injectedInstructions.splice(0);
     if (currentTurn !== undefined) {
