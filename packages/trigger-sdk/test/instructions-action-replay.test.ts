@@ -1,7 +1,7 @@
 import { mockChatAgent } from "../src/v3/test/index.js";
 
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
-import { simulateReadableStream } from "ai";
+import { simulateReadableStream, streamText } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -75,15 +75,21 @@ describe("a one-shot instruction across an action", () => {
           if (turn === 0)
             chat.inject([{ role: "system", content: "INSTRUCTION-ONE-SHOT" }] as never);
         },
-        onAction: async ({ action, streamText: bound }) => {
+        onAction: async ({ action }) => {
           if (action.type !== "ping") return;
-          return bound({
+          return streamText({
             model: actionModel,
             messages: [{ role: "user", content: "regenerate" }],
+            ...chat.toStreamTextOptions(),
           });
         },
-        run: async ({ messages, signal, streamText: bound }) =>
-          bound({ model: turnModel, messages, abortSignal: signal }),
+        run: async ({ messages, signal }) =>
+          streamText({
+            model: turnModel,
+            messages,
+            abortSignal: signal,
+            ...chat.toStreamTextOptions(),
+          }),
       });
 
       const harness = mockChatAgent(agent, { chatId: "instructions-action-replay" });
