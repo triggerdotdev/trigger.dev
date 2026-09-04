@@ -328,6 +328,7 @@ export default function Page() {
     planSeatLimit,
     roles,
     assignableRoleIds,
+    offerableRoleIds,
     memberRoles,
     canManageMembers,
     canManageBilling,
@@ -499,6 +500,7 @@ export default function Page() {
                       currentRoleId={memberRoleByUserId.get(member.user.id) ?? null}
                       roles={roles}
                       assignableRoleIds={assignableRoleIds}
+                      offerableRoleIds={offerableRoleIds}
                       canManageMembers={canManageMembers}
                     />
                     <div className="justify-self-end">
@@ -688,29 +690,45 @@ function LeaveRemoveButton({
 }
 
 // Inline role picker — submits a `_formType=set-role` form via fetcher
-// so the change persists without a full page reload. Disabled options
-// (and the picker itself) reflect plan gating + manage:members; the
-// server's setUserRole enforces both checks again as the source of
-// truth, so this is a UI-affordance layer only.
+// so the change persists without a full page reload. The picker itself,
+// the roles it lists and which of those are selectable all reflect
+// manage:members, the viewer's own role and plan gating; the server
+// validates the submitted role independently, so this is a
+// UI-affordance layer only.
+//
+// Two different sets narrow the list, and they must stay separate:
+//   offerableRoleIds — roles the viewer's own role lets them assign.
+//                      Anything else is left out of the list entirely.
+//   assignableRoleIds — roles the org's plan allows. A role that is
+//                      offerable but not plan-assignable still shows,
+//                      as "Name (upgrade)" linking to billing.
 function RolePicker({
   memberUserId,
   currentRoleId,
   roles,
   assignableRoleIds,
+  offerableRoleIds,
   canManageMembers,
 }: {
   memberUserId: string;
   currentRoleId: string | null;
   roles: Role[];
   assignableRoleIds: string[];
+  offerableRoleIds: string[];
   canManageMembers: boolean;
 }) {
   const organization = useOrganization();
   const fetcher = useFetcher<{ ok: boolean; error?: string } | { ok: true }>();
   const assignable = new Set(assignableRoleIds);
-  // With no RBAC plugin installed, the loader returns no roles —
-  // render nothing rather than an empty dropdown.
-  if (roles.length === 0) return null;
+  const offerable = new Set(offerableRoleIds);
+  // The member's current role stays in the list even when the viewer could
+  // not assign it, so the controlled `value` below still resolves to a row
+  // and the dropdown shows the role the member actually holds.
+  const visibleRoles = roles.filter((r) => offerable.has(r.id) || r.id === currentRoleId);
+  // With no RBAC plugin installed the loader returns no roles, and a viewer
+  // with nothing to offer would get an empty dropdown — render nothing
+  // rather than a dead control.
+  if (visibleRoles.length === 0) return null;
 
   const isSubmitting = fetcher.state === "submitting";
   const error =
@@ -723,13 +741,16 @@ function RolePicker({
       // kept the old role; without `value` the UI would show the
       // attempted change).
       value={currentRoleId ?? ""}
-      items={roles}
+      items={visibleRoles}
       variant="tertiary/small"
       disabled={!canManageMembers || isSubmitting}
       dropdownIcon
-      text={(v) => roles.find((r) => r.id === v)?.name ?? "No role"}
+      text={(v) => visibleRoles.find((r) => r.id === v)?.name ?? "No role"}
       setValue={(next) => {
         if (typeof next !== "string" || next === (currentRoleId ?? "")) return;
+        // The member's current role is listed even when it isn't offerable,
+        // so re-check before submitting.
+        if (!offerable.has(next)) return;
         // Upgrade-link rows have a value too (Ariakit needs one to
         // make the row interactive — without it the Link inside
         // doesn't even register the click), but they shouldn't
