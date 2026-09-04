@@ -38,7 +38,7 @@ Build [AI agents](https://trigger.dev/product/ai-agents) using all the framework
 
 - **Observability & monitoring**: Each run has full tracing and logs. Configure error alerts to catch bugs fast.
 
-## Key features:
+## Key features
 
 - **[JavaScript and TypeScript SDK](https://trigger.dev/docs/tasks/overview)** - Build background tasks using familiar programming models
 - **[Long-running tasks](https://trigger.dev/docs/runs/max-duration)** - Handle resource-heavy tasks without timeouts
