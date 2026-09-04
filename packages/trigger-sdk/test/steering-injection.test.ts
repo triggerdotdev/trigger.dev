@@ -444,4 +444,97 @@ describe("chat.agent injected message in the next turn's context", () => {
       }
     }
   );
+
+  /**
+   * The same thing for a turn that captures no assistant response.
+   *
+   * `run()` piping the stream itself skips the auto-pipe, so no `onFinish` is
+   * attached and nothing is captured. The rebuild sits outside both
+   * `capturedResponseMessage` branches for that reason: moving it inside
+   * either one leaves this turn's model lane without the steer while the
+   * captured case looks fine.
+   */
+  it(
+    "carries it into the following turn when the turn captures no response",
+    { timeout: 30_000 },
+    async () => {
+      const chatId = "inject-next-turn-manual-pipe";
+      const toolGate = makeGate();
+      let toolEntered = false;
+      const prompts: string[][] = [];
+
+      const gateTool = tool({
+        description: "blocks until the test opens it",
+        inputSchema: z.object({ q: z.string() }),
+        execute: async () => {
+          toolEntered = true;
+          await toolGate.promise;
+          return "ok";
+        },
+      });
+
+      let step = 0;
+      const recordingModel = new MockLanguageModelV3({
+        doStream: async ({ prompt }) => {
+          prompts.push(
+            prompt
+              .filter((m) => m.role === "user")
+              .flatMap((m) =>
+                Array.isArray(m.content)
+                  ? (m.content as { type: string; text?: string }[])
+                      .filter((c) => c.type === "text")
+                      .map((c) => c.text ?? "")
+                  : []
+              )
+          );
+          const isToolStep = step++ % 2 === 0;
+          return {
+            stream: simulateReadableStream({
+              chunks: isToolStep ? toolCallChunks(`tc-${step}`) : textChunks("done"),
+              initialDelayInMs: 10,
+              chunkDelayInMs: 2,
+            }),
+          };
+        },
+      });
+
+      const agent = chat.agent({
+        id: "steering-injection.next-turn-manual-pipe",
+        pendingMessages: { shouldInject: () => true },
+        run: async ({ messages, signal }) => {
+          const result = streamText({
+            model: recordingModel,
+            messages,
+            abortSignal: signal,
+            ...chat.toStreamTextOptions(),
+            tools: { gate: gateTool },
+            stopWhen: stepCountIs(5),
+          });
+          // Piping here rather than returning the result is what leaves the
+          // turn with no captured response.
+          await chat.pipe(result.toUIMessageStream(), { signal });
+        },
+      });
+
+      const harness = mockChatAgent(agent, { chatId });
+      try {
+        const first = harness.sendMessage(userMessage("m1", "u-1"));
+        await waitFor(() => toolEntered, "tool entered");
+        await sendAndLand(harness, chatId, "steer-me", "u-2");
+        toolGate.open();
+        await first;
+
+        await waitFor(() => turnCompleteCount(harness) >= 1, "turn 1 complete");
+        const promptsAfterTurn1 = prompts.length;
+
+        await harness.sendMessage(userMessage("m3", "u-3"));
+        await waitFor(() => prompts.length > promptsAfterTurn1, "turn 2 prompt built");
+
+        expect(prompts[promptsAfterTurn1]!).toContain("steer-me");
+      } finally {
+        toolGate.open();
+        await harness.close();
+      }
+    }
+  );
 });
