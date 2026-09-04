@@ -46,7 +46,7 @@ Options for `chat.agent()`.
 | `onValidateMessages`          | `(event: ValidateMessagesEvent) => UIMessage[] \| Promise<UIMessage[]>` | —                | Validate/transform UIMessages before model conversion. See [onValidateMessages](/ai-chat/lifecycle-hooks#onvalidatemessages) |
 | `hydrateMessages`             | `(event: HydrateMessagesEvent) => UIMessage[] \| Promise<UIMessage[]>` | —                 | Load message history from backend, replacing the linear accumulator. See [hydrateMessages](/ai-chat/lifecycle-hooks#hydratemessages) |
 | `actionSchema`                | `TaskSchema`                                                | —                              | Schema for validating custom actions sent via `transport.sendAction()`. See [Actions](/ai-chat/actions) |
-| `onAction`                    | `(event: ActionEvent) => Promise<unknown> \| unknown`       | —                              | Handle custom actions. Actions are not turns — only `hydrateMessages` + `onAction` fire. Return a `StreamTextResult` (or `string` / `UIMessage`) for a model response; return `void` for side-effect-only. See [Actions](/ai-chat/actions) |
+| `onAction`                    | `(event: ActionEvent) => Promise<void \| ActionTurn> \| void \| ActionTurn` | —                              | Handle custom actions. Actions are state edits: only `hydrateMessages` + `onAction` fire. Return `chat.turn()` to run a turn on the edited history, or nothing for an edit only. See [Actions](/ai-chat/actions) |
 | `onTurnStart`                 | `(event: TurnStartEvent) => Promise<void> \| void`          | —                              | Fires every turn before `run()`                                                                     |
 | `onBeforeTurnComplete`        | `(event: BeforeTurnCompleteEvent) => Promise<void> \| void` | —                              | Fires after response but before stream closes. Includes `writer`.                                   |
 | `onTurnComplete`              | `(event: TurnCompleteEvent) => Promise<void> \| void`       | —                              | Fires after each turn completes (stream closed)                                                     |
@@ -245,7 +245,6 @@ Passed to the `onAction` callback. See [Actions](/ai-chat/actions).
 | `clientData` | Typed by `clientDataSchema` | Custom data from the frontend                            |
 | `uiMessages` | `UIMessage[]`               | Accumulated UI messages (after hydration, if set)        |
 | `messages`   | `ModelMessage[]`            | Accumulated model messages (after hydration, if set)     |
-| `streamText` | `ChatStreamText`            | `streamText` with the agent's managed options applied, the same one `run()` receives. Use it for a response produced from an action so the answer carries the agent's own prompt and tools |
 
 ## TurnStartEvent
 
@@ -800,7 +799,7 @@ See [Stop generation](/ai-chat/frontend#stop-generation) for full details.
 
 ### transport.sendAction()
 
-Send a custom action to the agent. Actions wake the agent from suspension and fire `onAction`. They are not turns — `run()` and turn lifecycle hooks do not fire. If `onAction` returns a `StreamTextResult`, the response is auto-piped to the frontend.
+Send a custom action to the agent, outside `useChat`. Actions wake the agent from suspension and fire `onAction`. An action that returns `chat.turn()` is followed by a turn; its answer arrives on the returned stream, which the caller must read. From a `useChat` app, send actions as requests instead (`sendMessage(undefined, { body: { action } })` or the `useChatActions` hook) so `useChat` renders the answer.
 
 ```ts
 transport.sendAction(chatId: string, action: unknown): Promise<ReadableStream<UIMessageChunk>>
