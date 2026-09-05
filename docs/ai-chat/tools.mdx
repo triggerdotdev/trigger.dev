@@ -8,7 +8,7 @@ description: "Declare tools on chat.agent so toModelOutput survives across turns
 
 ```ts
 import { chat } from "@trigger.dev/sdk/ai";
-import { streamText, stepCountIs, tool } from "ai";
+import { stepCountIs, tool } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 
@@ -23,9 +23,9 @@ const tools = {
 export const myChat = chat.agent({
   id: "my-chat",
   tools, // ← declare here
-  run: async ({ messages, tools, signal }) =>
+  run: async ({ messages, tools, signal, streamText }) =>
     streamText({
-      ...chat.toStreamTextOptions({ tools }), // ← the same set, handed back on the payload
+      tools,
       model: anthropic("claude-sonnet-4-5"),
       messages,
       abortSignal: signal,
@@ -46,10 +46,15 @@ There are three places a tool set shows up. Declare once, reuse:
 | Surface | What it's for |
 | --- | --- |
 | `chat.agent({ tools })` | Re-applies `toModelOutput` on prior-turn history; hands the set back typed on the `run()` payload. |
-| `chat.toStreamTextOptions({ tools })` | Detects which tool calls need [HITL approval](/ai-chat/patterns/human-in-the-loop) (`needsApproval`) and merges any auto-injected [skill](/ai-chat/patterns/skills) tools. |
-| `streamText({ tools })` | What the model actually calls. `chat.toStreamTextOptions({ tools })` already sets this, so spread it instead of passing `tools` twice. |
+| `streamText({ tools })` on the `run` argument's `streamText` | What the model actually calls. Detects which calls need [HITL approval](/ai-chat/patterns/human-in-the-loop) (`needsApproval`) and merges the auto-injected [skill](/ai-chat/patterns/skills) tools on top. Naming `tools` replaces the config set for that call, so you can narrow it; omitting `tools` falls back to the config set. |
+| `chat.toStreamTextOptions({ tools })` | The same job by hand, for a [custom agent](#manual-turn-loops-chatcustomagent), which has no `run` argument. |
 
-The canonical pattern: declare `tools` on the config, read them back from the `run()` payload, and pass that to `chat.toStreamTextOptions({ tools })`. One declaration flows everywhere.
+The canonical pattern: declare `tools` on the config, read them back from the `run()` payload, and pass that set to the `streamText` the payload also carries.
+
+```ts
+run: async ({ messages, tools, signal, streamText }) =>
+  streamText({ model, messages, tools, abortSignal: signal }),
+```
 
 <Tip>
   Conversion only reads each tool's `inputSchema` and `toModelOutput`, never `execute`. If you keep heavy `execute` dependencies out of a module (for bundle reasons), you can declare a lightweight schema-only tool map on the config and add the executes where you call `streamText`.
@@ -80,9 +85,9 @@ const tools = {
 export const chartChat = chat.agent({
   id: "chart-chat",
   tools, // ← without this, the image is "remembered" on turn 1 and gone from turn 2
-  run: async ({ messages, tools, signal }) =>
+  run: async ({ messages, tools, signal, streamText }) =>
     streamText({
-      ...chat.toStreamTextOptions({ tools }),
+      tools,
       model: anthropic("claude-sonnet-4-5"),
       messages,
       abortSignal: signal,
@@ -104,9 +109,9 @@ export const myChat = chat
       searchDocs,
       ...(clientData?.plan === "pro" ? { deepResearch } : {}),
     }),
-    run: async ({ messages, tools, signal }) =>
+    run: async ({ messages, tools, signal, streamText }) =>
       streamText({
-        ...chat.toStreamTextOptions({ tools }),
+        tools,
         model: anthropic("claude-sonnet-4-5"),
         messages,
         abortSignal: signal,
@@ -131,10 +136,10 @@ The resolved set is what lands on the `run()` payload's `tools`.
 The `run()` payload's `tools` is typed to whatever you declared, so you can pass it straight through without re-importing the map:
 
 ```ts
-run: async ({ messages, tools, signal }) => {
+run: async ({ messages, tools, signal, streamText }) => {
   // `tools` is typed as your tool set, not a broad `ToolSet`
   return streamText({
-    ...chat.toStreamTextOptions({ tools }),
+    tools,
     model: anthropic("claude-sonnet-4-5"),
     messages,
     abortSignal: signal,
@@ -160,7 +165,7 @@ This is shorthand for `UIMessage<unknown, UIDataTypes, InferUITools<typeof tools
 
 ## Skills
 
-[Agent skills](/ai-chat/patterns/skills) are auto-injected as tools (`loadSkill`, `readFile`, `bash`) by `chat.toStreamTextOptions()`. They're separate from your config `tools`: declare your own tools on the config (so their `toModelOutput` survives across turns), and let `toStreamTextOptions` merge the skill tools on top at call time. Skill tools don't define `toModelOutput`, so they don't need to be on the config.
+[Agent skills](/ai-chat/patterns/skills) are auto-injected as tools (`loadSkill`, `readFile`, `bash`) by the managed `streamText`, or by `chat.toStreamTextOptions()` if you build the options yourself. They're separate from your config `tools`: declare your own tools on the config (so their `toModelOutput` survives across turns), and the merge happens at call time. Skill tools don't define `toModelOutput`, so they don't need to be on the config.
 
 ## Manual turn loops (`chat.customAgent`)
 

@@ -45,6 +45,7 @@ import {
   type SessionChannelName,
 } from "@trigger.dev/core/v3";
 import type {
+  streamText as aiStreamTextSignature,
   FinishReason,
   LanguageModelUsage,
   ModelMessage,
@@ -70,6 +71,7 @@ import {
   isToolUIPart,
   jsonSchema,
   readUIMessageStream,
+  streamText as aiStreamText,
   zodSchema,
 } from "../imports/ai-runtime.js";
 import {
@@ -1656,6 +1658,16 @@ export type ChatTaskRunPayload<
      * Use for tags, metadata, parent run links, or any API that needs the full run record.
      */
     ctx: TaskRunContext;
+    /**
+     * `streamText` with this agent's managed options already applied: the
+     * prompt from `chat.prompt.set()`, the skill tools, telemetry, and the
+     * `prepareStep` that delivers steering, compaction and injected context.
+     *
+     * Prefer it over importing `streamText` from `ai`. The imported one takes
+     * none of that unless you spread `chat.toStreamTextOptions()` yourself, and
+     * forgetting the spread fails silently.
+     */
+    streamText: AiStreamTextFn;
     /** Token usage from the previous turn. Undefined on turn 0. */
     previousTurnUsage?: LanguageModelUsage;
     /** Cumulative token usage across all completed turns so far. */
@@ -4688,6 +4700,12 @@ export function buildSkillTools(skills: ResolvedSkill[]): Record<string, Tool> {
  * Options for {@link toStreamTextOptions}.
  */
 export type ToStreamTextOptionsOptions = {
+  /**
+   * A base system prompt, used when `chat.prompt.set()` has not supplied one.
+   * `chat.agent({ system })` and a `system` passed to the managed `streamText`
+   * both arrive here.
+   */
+  system?: string | SystemModelMessage;
   /** Additional telemetry metadata merged into `experimental_telemetry.metadata`. */
   telemetry?: Record<string, string>;
   /**
@@ -4755,25 +4773,222 @@ export type SystemCacheControl = { type: "ephemeral"; ttl?: "5m" | "1h" };
  *
  * If no prompt has been set, returns `{}` (no-op spread).
  */
+/**
+ * The AI SDK's own `streamText` signature, borrowed rather than restated.
+ *
+ * The peer range spans `ai` v5, v6 and v7, whose `streamText` options differ.
+ * Describing the shape here would drift against all three; `typeof` resolves to
+ * whichever version the user installed, so generics, overloads and tool
+ * inference are exactly theirs.
+ */
+type AiStreamTextFn = typeof aiStreamTextSignature;
+
+/**
+ * The `streamText` handed to a `chat.agent` `run()`, carrying the agent's
+ * managed options.
+ *
+ * Exported so a loop factored out of `run` can take it as a parameter and keep
+ * them: `function loop(messages: ModelMessage[], streamText: ChatStreamText)`.
+ */
+export type ChatStreamText = AiStreamTextFn;
+
+/**
+ * A `streamText` with the agent's managed options already applied.
+ *
+ * Handed to `run()` so the managed state cannot be missed by omission. Spreading
+ * `chat.toStreamTextOptions()` is still supported and equivalent; this exists
+ * because forgetting the spread silently drops the managed prompt, the skill
+ * tools, telemetry, and the `prepareStep` that delivers steering, compaction and
+ * conversational injection.
+ *
+ * Caller options win for everything the caller owns (model, messages, signal,
+ * stopWhen). The three that would otherwise clobber managed behaviour are
+ * merged instead of replaced:
+ *
+ * - `tools` are passed into the helper, so skill tools survive.
+ * - `prepareStep` is composed after the managed one, so a caller's per-step
+ *   overrides apply on top of steering and compaction instead of disabling them.
+ *
+ * `system` may be set at the call site, on `chat.agent({ system })`, or
+ * through `chat.prompt.set()`, but only in one of them. Setting it in two
+ * places throws: no shape merges two system values on every supported
+ * version, and dropping one silently is the failure this seam exists to
+ * prevent. Injected instructions append to whichever one is in play.
+ */
+/**
+ * The agent-level managed options (`registry`, `system`, `cacheControl`,
+ * `systemProviderOptions`), published for the run so that
+ * `chat.toStreamTextOptions()` applies them too. Without this only the bound
+ * `streamText` saw them, and the documented spread form silently ran without
+ * the agent's system prompt or model.
+ */
+const chatAgentManagedConfigKey = locals.create<ManagedStreamTextConfig>("chat.agentManagedConfig");
+
+type ManagedStreamTextConfig = {
+  registry?: ToStreamTextOptionsOptions["registry"];
+  system?: ToStreamTextOptionsOptions["system"];
+  cacheControl?: ToStreamTextOptionsOptions["cacheControl"];
+  systemProviderOptions?: ToStreamTextOptionsOptions["systemProviderOptions"];
+  /** The agent's resolved tools, used when the call site names no `tools` of its own. */
+  tools?: ToolSet;
+};
+
+/**
+ * The caller's `streamText` options merged with the agent's managed ones.
+ *
+ * Pure, and separate from the call so it can be asserted directly: everything
+ * the caller did not name has to survive the merge, and the way to be sure of
+ * that is to look at the merged object rather than at what the model received.
+ */
+function buildManagedStreamTextOptions(
+  options: Record<string, unknown>,
+  config: ManagedStreamTextConfig
+): Record<string, unknown> {
+  const {
+    registry,
+    system: agentSystem,
+    cacheControl,
+    systemProviderOptions,
+    tools: agentTools,
+  } = config;
+
+  /**
+   * Only the three keys that collide are intercepted. Everything else, telemetry
+   * included, stays in `rest` and reaches `streamText` untouched, with the
+   * caller's value winning because `rest` is spread after `managed`. Pulling a
+   * key out to "handle" it is how a caller's option gets silently dropped.
+   */
+  const {
+    tools,
+    system: callerSystem,
+    prepareStep: callerPrepareStep,
+    ...rest
+  } = options as Record<string, any>;
+
+  const managed = toStreamTextOptions({
+    registry,
+    system: (callerSystem as ToStreamTextOptionsOptions["system"]) ?? agentSystem,
+    cacheControl,
+    systemProviderOptions,
+    /**
+     * A call site that names `tools` replaces the agent's set rather than
+     * adding to it, so narrowing the tools for one call still works. Omitting
+     * `tools` falls back to the agent's, which is what an `onAction`
+     * regenerate needs: without it a regenerated answer can call nothing.
+     */
+    tools: (tools ?? agentTools) as Record<string, Tool> | undefined,
+  });
+
+  const promptSystem = locals.get(chatPromptKey)?.text;
+
+  /**
+   * Two managed sources conflict too, not only a caller against a managed one.
+   * `toStreamTextOptions` resolves `prompt?.text || agentSystem`, so the prompt
+   * would win and `chat.agent({ system })` would go nowhere.
+   */
+  if (promptSystem && agentSystem) {
+    throw new Error(
+      "chat.agent: `system` is set both on chat.agent({ system }) and by chat.prompt.set(), and only one " +
+        "of them can apply. The prompt would win and the agent's `system` would go nowhere. Keep it in one " +
+        "place, and add per-turn context with chat.inject({ role: 'system' })."
+    );
+  }
+
+  const managedSystem = promptSystem || agentSystem;
+  if (callerSystem !== undefined && managedSystem) {
+    throw new Error(
+      "chat.agent: `system` is already set " +
+        (promptSystem ? "by chat.prompt.set()" : "on chat.agent({ system })") +
+        ", so it cannot also be passed to the `streamText` given to run(). Set it in one place, and add " +
+        "per-turn context with chat.inject({ role: 'system' }) rather than a second system value."
+    );
+  }
+
+  const managedPrepareStep = managed.prepareStep as ((arg: any) => Promise<any> | any) | undefined;
+  if (typeof callerPrepareStep === "function") {
+    managed.prepareStep = async (arg: any) => {
+      const first = managedPrepareStep ? await managedPrepareStep(arg) : undefined;
+      const second = await callerPrepareStep({ ...arg, ...(first ?? {}) });
+      return { ...(first ?? {}), ...(second ?? {}) };
+    };
+  }
+
+  return { ...managed, ...rest };
+}
+
+/** @internal Test hook for {@link buildManagedStreamTextOptions}. */
+export const __buildManagedStreamTextOptionsForTests = buildManagedStreamTextOptions;
+
+function createBoundStreamText(
+  registry: ToStreamTextOptionsOptions["registry"] | undefined,
+  agentSystem: ToStreamTextOptionsOptions["system"] | undefined,
+  agentCacheControl: ToStreamTextOptionsOptions["cacheControl"] | undefined,
+  agentSystemProviderOptions: ToStreamTextOptionsOptions["systemProviderOptions"] | undefined
+): AiStreamTextFn {
+  const bound = (options: Record<string, unknown> = {}) =>
+    aiStreamText(
+      buildManagedStreamTextOptions(options, {
+        registry,
+        system: agentSystem,
+        cacheControl: agentCacheControl,
+        systemProviderOptions: agentSystemProviderOptions,
+        /** Read per call, so per-turn tools resolved after binding are included. */
+        tools: locals.get(chatResolvedToolsKey),
+      }) as any
+    );
+
+  return bound as unknown as AiStreamTextFn;
+}
+
 function toStreamTextOptions(options?: ToStreamTextOptionsOptions): Record<string, unknown> {
+  const agentDefaults = locals.get(chatAgentManagedConfigKey);
+  if (agentDefaults) {
+    options = {
+      registry: agentDefaults.registry,
+      system: agentDefaults.system,
+      cacheControl: agentDefaults.cacheControl,
+      systemProviderOptions: agentDefaults.systemProviderOptions,
+      ...options,
+    };
+  }
   const prompt = locals.get(chatPromptKey);
   const skills = locals.get(chatSkillsKey);
   const result: Record<string, unknown> = {};
 
   // Build the combined system prompt: stored prompt + skills preamble.
-  const promptText = prompt?.text ?? "";
+  const baseSystem = options?.system;
+  const baseSystemText =
+    typeof baseSystem === "string"
+      ? baseSystem
+      : typeof baseSystem?.content === "string"
+        ? baseSystem.content
+        : "";
+  const promptText = prompt?.text || baseSystemText;
   const skillsText = skills && skills.length > 0 ? buildSkillsSystemPrompt(skills) : "";
   if (promptText || skillsText) {
     const systemText = [promptText, skillsText].filter(Boolean).join("\n\n");
 
-    // Resolve system-prompt provider options for caching. Precedence (most
-    // specific wins, no deep merge): explicit `systemProviderOptions` →
-    // `cacheControl` sugar → `providerOptions` stored on `chat.prompt.set()`.
+    /**
+     * Resolve system-prompt provider options for caching. Precedence, most
+     * specific first and no deep merge: explicit `systemProviderOptions`, the
+     * `cacheControl` sugar, the ones carried on a structured `system` message,
+     * then whatever `chat.prompt.set()` stored.
+     *
+     * A structured `system` counts only when its own text is the one being
+     * sent. When `chat.prompt.set()` supplied the text, its provider options
+     * are the ones that describe it.
+     */
+    const baseSystemProviderOptions: ProviderMetadata | undefined =
+      !prompt?.text && baseSystem && typeof baseSystem !== "string"
+        ? (baseSystem.providerOptions as ProviderMetadata | undefined)
+        : undefined;
+
     const systemProviderOptions: ProviderMetadata | undefined =
       options?.systemProviderOptions ??
       (options?.cacheControl
         ? ({ anthropic: { cacheControl: options.cacheControl } } as ProviderMetadata)
         : undefined) ??
+      baseSystemProviderOptions ??
       locals.get(chatPromptProviderOptionsKey);
 
     // A bare string stays a bare string (the unchanged default). With provider
@@ -6169,6 +6384,35 @@ export type ChatAgentOptions<
    * });
    * ```
    */
+  /**
+   * A provider registry, so the runtime can resolve the managed prompt's model
+   * for the `streamText` it hands to `run()`. Only needed when you set a model
+   * through `chat.prompt.set()` and want the bound `streamText` to honour it.
+   */
+  registry?: ToStreamTextOptionsOptions["registry"];
+
+  /**
+   * The agent's system prompt. Injected instructions append to it, and the
+   * `streamText` handed to `run()` carries it without a spread.
+   *
+   * Set it here, at the call site, or through `chat.prompt.set()` for versioned
+   * config, but only in one of them.
+   */
+  system?: ToStreamTextOptionsOptions["system"];
+
+  /**
+   * Mark the system prompt for provider-side caching, the same sugar
+   * `chat.toStreamTextOptions({ cacheControl })` takes. See
+   * [prompt caching](/ai-chat/prompt-caching).
+   */
+  cacheControl?: ToStreamTextOptionsOptions["cacheControl"];
+
+  /**
+   * Provider options for the system block, when `cacheControl` is not enough.
+   * Takes precedence over `cacheControl`.
+   */
+  systemProviderOptions?: ToStreamTextOptionsOptions["systemProviderOptions"];
+
   compaction?: ChatAgentCompactionOptions<TUIMessage>;
 
   /**
@@ -6666,6 +6910,10 @@ function chatAgent<
     onChatResume,
     exitAfterPreloadIdle = false,
     oomMachine,
+    registry: promptRegistry,
+    system: agentSystem,
+    cacheControl: agentCacheControl,
+    systemProviderOptions: agentSystemProviderOptions,
     ...restOptions
   } = options;
 
@@ -7259,6 +7507,13 @@ function chatAgent<
         // before any hook (`onChatStart`, `onTurnStart`, etc.) fires.
         locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
       }
+
+      locals.set(chatAgentManagedConfigKey, {
+        registry: promptRegistry,
+        system: agentSystem,
+        cacheControl: agentCacheControl,
+        systemProviderOptions: agentSystemProviderOptions,
+      });
 
       // Token usage tracking across turns
       let previousTurnUsage: LanguageModelUsage | undefined;
@@ -8462,6 +8717,12 @@ function chatAgent<
                         signal: combinedSignal,
                         cancelSignal,
                         stopSignal,
+                        streamText: createBoundStreamText(
+                          promptRegistry,
+                          agentSystem,
+                          agentCacheControl,
+                          agentSystemProviderOptions
+                        ),
                       } as any);
                     }
 

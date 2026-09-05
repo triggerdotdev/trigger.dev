@@ -68,8 +68,16 @@ import {
   convertToModelMessages,
   generateId as generateAssistantMessageId,
   stepCountIs,
+  streamText as aiStreamText,
 } from "../imports/ai-runtime.js";
-import type { FinishReason, ModelMessage, Tool, UIMessage, UIMessageChunk } from "ai";
+import type {
+  streamText as aiStreamTextSignature,
+  FinishReason,
+  ModelMessage,
+  Tool,
+  UIMessage,
+  UIMessageChunk,
+} from "ai";
 import type { ChatInputChunk, ChatTaskWirePayload } from "./ai-shared.js";
 import { chatRunTags } from "./ai-shared.js";
 
@@ -104,6 +112,59 @@ export type HeadStartStreamTextOptions = {
   abortSignal: AbortSignal;
 };
 
+/**
+ * The AI SDK's own `streamText` signature, borrowed rather than restated, so it
+ * resolves to whichever of `ai` v5/v6/v7 the caller installed.
+ */
+type AiStreamTextFn = typeof aiStreamTextSignature;
+
+/**
+ * The same signature minus the options the handover owns.
+ *
+ * Borrowed and narrowed rather than restated: `Omit` removes exactly the four
+ * keys `buildStreamTextOptions` supplies, so passing one is a compile error
+ * before it is a runtime throw. Taking `typeof streamText` unchanged would be
+ * worse than useless here, since it *requires* `messages` — the one key the
+ * caller must not set.
+ */
+type HeadStartStreamTextFn = (
+  options: Omit<Parameters<AiStreamTextFn>[0], "messages" | "prompt" | "stopWhen" | "abortSignal">
+) => ReturnType<AiStreamTextFn>;
+
+/**
+ * The keys `buildStreamTextOptions` owns. Overriding any breaks the handover.
+ *
+ * Kept in step with the `Omit` in `HeadStartStreamTextFn`: a key the type
+ * rejects but this list misses reaches `streamText` anyway, and the caller gets
+ * the AI SDK's own error instead of one that says what to do.
+ */
+const HEAD_START_OWNED_OPTIONS = ["messages", "prompt", "stopWhen", "abortSignal"] as const;
+
+function createBoundHeadStartStreamText(
+  build: (opts?: { tools?: Record<string, Tool> }) => Record<string, unknown>
+): HeadStartStreamTextFn {
+  const bound = (options: Record<string, unknown> = {}) => {
+    const { tools, ...rest } = options as Record<string, any>;
+
+    const owned = HEAD_START_OWNED_OPTIONS.filter((key) => key in rest);
+    if (owned.length > 0) {
+      throw new Error(
+        `chat.headStart: the \`streamText\` passed to run() owns ${owned
+          .map((key) => `\`${key}\``)
+          .join(", ")}, so it cannot be set at the call site. The handover protocol depends on ` +
+          "them: `messages` is the converted wire payload, `stopWhen: stepCountIs(1)` stops after " +
+          "step 1 so the agent run picks up tool execution, and `abortSignal` combines the request " +
+          "lifecycle with the idle timeout. Pass `model`, `system`, `providerOptions` and your own " +
+          "keys instead."
+      );
+    }
+
+    return aiStreamText({ ...build({ tools }), ...rest } as any);
+  };
+
+  return bound as unknown as HeadStartStreamTextFn;
+}
+
 export type HeadStartRunArgs<TTools extends Record<string, Tool>> = {
   /** User messages parsed from the incoming request. */
   messages: UIMessage[];
@@ -111,6 +172,19 @@ export type HeadStartRunArgs<TTools extends Record<string, Tool>> = {
   signal: AbortSignal;
   /** Helper exposing `toStreamTextOptions(...)` and a session escape hatch. */
   chat: HeadStartChatHelper<TTools>;
+  /**
+   * `streamText` with the options the handover protocol depends on already
+   * applied: the converted `messages`, `stopWhen: stepCountIs(1)` and the
+   * combined `abortSignal`, plus the `tools` you pass to it.
+   *
+   * Prefer it over importing `streamText` from `ai`. Spreading
+   * `chat.toStreamTextOptions()` into the imported one is equivalent, but
+   * setting `messages`, `prompt`, `stopWhen` or `abortSignal` after the spread
+   * breaks the handover, and nothing catches that. Passing any of those four
+   * here is a type error, and a throw if you get past the types. `tools` is
+   * yours to supply.
+   */
+  streamText: HeadStartStreamTextFn;
 };
 
 export type HeadStartChatHelper<TTools extends Record<string, Tool>> = {
@@ -130,7 +204,7 @@ export type HeadStartChatHelper<TTools extends Record<string, Tool>> = {
    * this helper just hands back the options the SDK needs to own.
    *
    * The customer COULD override any of these by re-setting them after
-   * the spread, but doing so for `stopWhen` / `messages` /
+   * the spread, but doing so for `stopWhen` / `messages` / `prompt` /
    * `abortSignal` will break the handover protocol. The intent is
    * that customers spread first, then add only their own keys.
    */
@@ -281,6 +355,7 @@ export const chat = {
         messages: session.uiMessages,
         signal: session.combinedSignal,
         chat: helper,
+        streamText: createBoundHeadStartStreamText(session.buildStreamTextOptions),
       });
 
       return session.handle.handoverResponse(result);
@@ -367,6 +442,7 @@ export const chat = {
           messages: session.uiMessages,
           signal: session.combinedSignal,
           chat: helper,
+          streamText: createBoundHeadStartStreamText(session.buildStreamTextOptions),
         });
       } catch (err) {
         // The warm step never produced a result — tell the agent run to exit

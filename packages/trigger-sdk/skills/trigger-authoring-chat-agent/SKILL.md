@@ -2,8 +2,8 @@
 name: trigger-authoring-chat-agent
 description: >
   Author and run a durable AI chat agent with chat.agent from @trigger.dev/sdk/ai: the per-turn
-  run loop, why you MUST spread ...chat.toStreamTextOptions() first, returning a StreamTextResult
-  vs calling chat.pipe(), the two server actions (chat.createStartSessionAction +
+  run loop, why you MUST take streamText from the run argument rather than importing it from ai,
+  returning a StreamTextResult vs calling chat.pipe(), the two server actions (chat.createStartSessionAction +
   auth.createPublicToken), and wiring useChat to useTriggerChatTransport. Load this when building,
   modifying, or debugging a chat backend (the agent task or its lifecycle hooks) or its React
   transport, when declaring typed tools or custom data parts, or when migrating a plain AI SDK
@@ -47,10 +47,9 @@ import { anthropic } from "@ai-sdk/anthropic";
 
 export const myChat = chat.agent({
   id: "my-chat",
-  run: async ({ messages, signal }) =>
+  // `streamText` below is the SDK's, from the run argument. See "Common mistakes".
+  run: async ({ messages, signal, streamText }) =>
     streamText({
-      // Spread this FIRST. See "Common mistakes".
-      ...chat.toStreamTextOptions(),
       model: anthropic("claude-sonnet-4-5"),
       messages,
       abortSignal: signal,
@@ -121,16 +120,22 @@ inside nested helpers, call `await chat.pipe(result)` from anywhere in the task 
 `run` resolve `void`.
 
 ```ts
+import { chat, type ChatStreamText } from "@trigger.dev/sdk/ai";
+import { anthropic } from "@ai-sdk/anthropic";
+import type { ModelMessage } from "ai";
+
 export const agentChat = chat.agent({
   id: "agent-chat",
-  run: async ({ messages }) => {
-    await runAgentLoop(messages); // don't return; pipe inside
+  run: async ({ messages, streamText }) => {
+    await runAgentLoop(messages, streamText); // don't return; pipe inside
   },
 });
 
-async function runAgentLoop(messages: ModelMessage[]) {
+// A loop factored out of `run` takes `streamText` as an argument, so it keeps the
+// managed options. `ChatStreamText` (from `@trigger.dev/sdk/ai`) types the parameter.
+// `chat.toStreamTextOptions()` is the alternative when threading it down is impractical.
+async function runAgentLoop(messages: ModelMessage[], streamText: ChatStreamText) {
   const result = streamText({
-    ...chat.toStreamTextOptions(),
     model: anthropic("claude-sonnet-4-5"),
     messages,
   });
@@ -138,10 +143,10 @@ async function runAgentLoop(messages: ModelMessage[]) {
 }
 ```
 
-### 2. Typed tools (declare on config AND spread back)
+### 2. Typed tools (declare on config AND pass back)
 
 Declare tools on `chat.agent({ tools })`, read them back typed from the `run()` payload, and pass
-that set to `chat.toStreamTextOptions({ tools })`. One declaration flows everywhere.
+that set as `tools`. One declaration flows everywhere.
 
 ```ts
 import { tool, stepCountIs } from "ai";
@@ -158,11 +163,11 @@ const tools = {
 export const myChat = chat.agent({
   id: "my-chat",
   tools, // so toModelOutput survives across turns
-  run: async ({ messages, tools, signal }) =>
+  run: async ({ messages, tools, signal, streamText }) =>
     streamText({
-      ...chat.toStreamTextOptions({ tools }), // same set, handed back typed
       model: anthropic("claude-sonnet-4-5"),
       messages,
+      tools, // same set, handed back typed
       abortSignal: signal,
       stopWhen: stepCountIs(15),
     }),
@@ -203,8 +208,8 @@ export const myChat = chat
     onTurnStart: async ({ uiMessages, writer }) => {
       writer.write({ type: "data-turn-status", data: { status: "preparing" } });
     },
-    run: async ({ messages, tools, signal }) =>
-      streamText({ ...chat.toStreamTextOptions({ tools }), model, messages, abortSignal: signal }),
+    run: async ({ messages, tools, signal, streamText }) =>
+      streamText({ model, messages, tools, abortSignal: signal }),
   });
 ```
 
@@ -228,13 +233,13 @@ first message. Suspend/resume use `onChatSuspend` / `onChatResume`. Config optio
 `uiMessageStreamOptions`, and `exitAfterPreloadIdle`. There is no generic `retry`; `chat.agent`
 runs with `maxAttempts: 1` internally.
 
-Stop is load-bearing: the `signal` passed to `run` aborts on stop or cancel. Forward it as
+Stop depends on it: the `signal` passed to `run` aborts on stop or cancel. Forward it as
 `abortSignal` to `streamText`, or the Stop button updates the UI while the model keeps generating
 server-side.
 
 ```ts
-run: async ({ messages, signal }) =>
-  streamText({ ...chat.toStreamTextOptions(), model, messages, abortSignal: signal, stopWhen: stepCountIs(15) });
+run: async ({ messages, signal, streamText }) =>
+  streamText({ model, messages, abortSignal: signal, stopWhen: stepCountIs(15) });
 ```
 
 ### 6. Migrating from a plain AI SDK `streamText` route
@@ -243,24 +248,30 @@ There is no API route in this model. The transport replaces the route round-trip
 
 - Delete the route handler. Move per-request auth into the two server actions from Setup step 2.
 - Move the `streamText` call into `run`. It already receives pre-converted `ModelMessage[]`.
-- Return the `StreamTextResult` (it auto-pipes) and add `...chat.toStreamTextOptions()` first.
+- Return the `StreamTextResult` (it auto-pipes) and take `streamText` from `run`'s argument, not from `ai`.
 - On the client, swap the `api` URL for `useTriggerChatTransport`; `useChat` stays the same shape.
 
 ## Common mistakes
 
-- **CRITICAL: forgetting `...chat.toStreamTextOptions()`.**
+- **CRITICAL: calling the `streamText` imported from `ai`.**
   ```ts
   // Wrong - compaction / steering / background injection silently no-op
-  return streamText({ model, messages, abortSignal: signal });
-  // Correct - spread FIRST so explicit overrides win
-  return streamText({ ...chat.toStreamTextOptions(), model, messages, abortSignal: signal });
+  import { streamText } from "ai";
+  run: async ({ messages, signal }) => streamText({ model, messages, abortSignal: signal });
+  // Correct - the run argument's streamText carries the managed options
+  run: async ({ messages, signal, streamText }) => streamText({ model, messages, abortSignal: signal });
   ```
-  It wires the `prepareStep` callback behind compaction, mid-turn steering, and background
-  injection, injects the system prompt from `chat.prompt()`, resolves the registry model, and adds
-  telemetry. Omitting it makes all of those silently no-op with no error.
+  The SDK's one carries the `prepareStep` behind compaction, mid-turn steering and background
+  injection, the system prompt from `chat.prompt()` or `chat.agent({ system })`, the registry-resolved
+  model, and telemetry. The imported one carries none of it, with no error.
+  `...chat.toStreamTextOptions()` does the same job by hand, and is what a custom agent has to use,
+  since it has no `run` argument. A `chat.headStart` route gets a bound `streamText` too, and there it
+  also owns `messages`, `prompt`, `stopWhen` and `abortSignal`. Spreading it and then re-setting
+  `tools` or `prepareStep` replaces the managed ones; the run argument's `streamText` merges `tools`
+  and composes `prepareStep` instead.
 
 - **Declaring tools only on `streamText`.** Also declare them on `chat.agent({ tools })`, read them
-  back from `run`, and pass `chat.toStreamTextOptions({ tools })`. Otherwise each tool's
+  back from `run`, and pass that set as `tools`. Otherwise each tool's
   `toModelOutput` runs on turn 1 but is dropped when history is re-converted on later turns.
 
 - **Not forwarding `signal` for stop.** Without `abortSignal: signal`, Stop updates the UI but the

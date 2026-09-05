@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { simulateReadableStream, streamText } from "ai";
+import { simulateReadableStream, stepCountIs, streamText } from "ai";
 import type { UIMessageChunk } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
@@ -158,6 +158,105 @@ describe("chat.headStart (route handler)", () => {
   afterEach(() => {
     global.fetch = originalFetch;
     vi.restoreAllMocks();
+  });
+
+  it("hands run() a streamText that carries the handover options without a spread", async () => {
+    global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+      const urlStr = typeof url === "string" ? url : url.toString();
+      if (urlStr.endsWith("/api/v1/sessions") || urlStr.endsWith("/api/v1/sessions/")) {
+        return createSessionResponse("chat-bound");
+      }
+      if (urlStr.includes("/realtime/v1/sessions/") && urlStr.endsWith("/in/append")) {
+        return appendOkResponse();
+      }
+      throw new Error(`Unexpected URL: ${urlStr}`);
+    });
+
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({ stream: textStream("hi back") }),
+    });
+
+    /** No `...chatHelper.toStreamTextOptions()` anywhere. */
+    const handler = chat.headStart({
+      agentId: "test-agent",
+      run: async ({ streamText: managedStreamText }) => managedStreamText({ model }),
+    });
+
+    const res = await withApiContext(() =>
+      handler(
+        makeRequest({
+          chatId: "chat-bound",
+          trigger: "submit-message",
+          headStartMessages: [{ id: "m1", role: "user", parts: [{ type: "text", text: "hi" }] }],
+        })
+      )
+    );
+
+    expect(res.status).toBe(200);
+
+    /**
+     * The handler returns before stream consumption and `handoverWhenDone`
+     * finish, so poll rather than sleeping: a fixed delay passes locally and
+     * fails on a loaded runner, which is the worst kind of test.
+     */
+    const deadline = Date.now() + 10_000;
+    while (model.doStreamCalls.length === 0 && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    expect(model.doStreamCalls.length).toBeGreaterThan(0);
+
+    /**
+     * The caller passed only `model`, so `messages` reaching the provider is
+     * proof the managed options were applied: without them the prompt would be
+     * empty and `streamText` would have had nothing to send.
+     */
+    const call = model.doStreamCalls.at(-1)!;
+    expect(JSON.stringify(call.prompt)).toContain("hi");
+  });
+
+  it("refuses the handover options at the call site", async () => {
+    global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+      const urlStr = typeof url === "string" ? url : url.toString();
+      if (urlStr.endsWith("/api/v1/sessions") || urlStr.endsWith("/api/v1/sessions/")) {
+        return createSessionResponse("chat-owned");
+      }
+      if (urlStr.includes("/realtime/v1/sessions/") && urlStr.endsWith("/in/append")) {
+        return appendOkResponse();
+      }
+      throw new Error(`Unexpected URL: ${urlStr}`);
+    });
+
+    let thrown: unknown;
+
+    const handler = chat.headStart({
+      agentId: "test-agent",
+      run: async ({ streamText: managedStreamText }) => {
+        const model = new MockLanguageModelV3({
+          doStream: async () => ({ stream: textStream("hi") }),
+        });
+        try {
+          // `stopWhen` is what stops step 1 and hands over. Overriding it after a
+          // spread breaks the protocol silently; here it throws.
+          return managedStreamText({ model, stopWhen: stepCountIs(20) } as never);
+        } catch (error) {
+          thrown = error;
+          return managedStreamText({ model });
+        }
+      },
+    });
+
+    await withApiContext(() =>
+      handler(
+        makeRequest({
+          chatId: "chat-owned",
+          trigger: "submit-message",
+          headStartMessages: [{ id: "m1", role: "user", parts: [{ type: "text", text: "hi" }] }],
+        })
+      )
+    );
+
+    expect((thrown as Error)?.message).toContain("owns `stopWhen`");
+    expect((thrown as Error)?.message).toContain("step 1");
   });
 
   it("creates the session with handover-prepare in basePayload and returns the session PAT in headers", async () => {
