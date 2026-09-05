@@ -356,7 +356,8 @@ export async function executeQuery<TOut extends z.ZodSchema>(
     });
 
     const environments = await prisma.runtimeEnvironment.findMany({
-      where: { project: { organizationId } },
+      // Same set as filtering through `project`, but hits the indexed column without the join.
+      where: { organizationId },
       select: { id: true, slug: true },
     });
 
