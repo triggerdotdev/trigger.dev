@@ -423,6 +423,9 @@ export class RunEngine {
       resources,
       executionSnapshotSystem: this.executionSnapshotSystem,
       enqueueSystem: this.enqueueSystem,
+      ...(options.completedWaitpointRecordsEnabled && {
+        completedWaitpointRecordsEnabled: options.completedWaitpointRecordsEnabled,
+      }),
     });
 
     this.ttlSystem = new TtlSystem({

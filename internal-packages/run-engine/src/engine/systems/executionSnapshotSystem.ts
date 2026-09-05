@@ -10,7 +10,7 @@ import type {
   TaskRunStatus,
   Waitpoint,
 } from "@trigger.dev/database";
-import type { RunStore } from "@internal/run-store";
+import type { CompletedWaitpointRecord, RunStore } from "@internal/run-store";
 import { ExecutionSnapshotNotFoundError, ServiceValidationError } from "../errors.js";
 import type { HeartbeatTimeouts } from "../types.js";
 import type { SystemResources } from "./systems.js";
@@ -198,6 +198,67 @@ async function fetchWaitpointsInChunks(
     allWaitpoints.push(...waitpoints);
   }
   return allWaitpoints;
+}
+
+/**
+ * The columns the completion envelope is built from, and only those.
+ *
+ * `fetchWaitpointsInChunks` reads whole rows because the snapshot hydration builds a full
+ * executor waitpoint from them. The envelope needs fewer, so projecting drops `tags`,
+ * `projectId`, `environmentId`, `createdAt`, `updatedAt` and `idempotencyKeyExpiresAt` from a
+ * read that happens on the writer inside the run lock. It cannot drop `output`, which is the
+ * 100KB+ column and also the payload the envelope exists to carry.
+ *
+ * `status` is here for the arm's COMPLETED filter, not for the mapper.
+ */
+const WAITPOINT_ENVELOPE_SELECT = {
+  id: true,
+  friendlyId: true,
+  type: true,
+  status: true,
+  completedAt: true,
+  output: true,
+  outputType: true,
+  outputIsError: true,
+  completedByTaskRunId: true,
+  completedByBatchId: true,
+  completedAfter: true,
+  idempotencyKey: true,
+  userProvidedIdempotencyKey: true,
+  inactiveIdempotencyKey: true,
+} satisfies Prisma.WaitpointSelect;
+
+export type WaitpointEnvelopeRow = Pick<Waitpoint, keyof typeof WAITPOINT_ENVELOPE_SELECT>;
+
+/**
+ * The projected sibling of `fetchWaitpointsInChunks`, for the envelope read.
+ *
+ * Chunked identically, and for the same reason: a waitpoint output can be 100KB+, so a large
+ * fan-in read whole can exceed Node's string limits. `boundedIn` pads for plan-cache stability,
+ * it does not bound the set. `runId` is the routing hint the router needs to read the run's own
+ * store instead of fanning every chunk across both run-ops databases.
+ */
+export async function fetchWaitpointEnvelopeRowsInChunks(
+  prisma: PrismaClientOrTransaction,
+  waitpointIds: string[],
+  runStore?: RunStore,
+  runId?: string
+): Promise<WaitpointEnvelopeRow[]> {
+  if (waitpointIds.length === 0) return [];
+
+  const rows: WaitpointEnvelopeRow[] = [];
+  for (let i = 0; i < waitpointIds.length; i += WAITPOINT_CHUNK_SIZE) {
+    const chunk = waitpointIds.slice(i, i + WAITPOINT_CHUNK_SIZE);
+    const args = {
+      where: { id: { in: boundedIn(chunk) } },
+      select: WAITPOINT_ENVELOPE_SELECT,
+    };
+    const found = runStore
+      ? await runStore.findManyWaitpoints(args, prisma, runId)
+      : await prisma.waitpoint.findMany(args);
+    rows.push(...found);
+  }
+  return rows;
 }
 
 /**
@@ -449,6 +510,7 @@ export class ExecutionSnapshotSystem {
       workerId,
       runnerId,
       completedWaitpoints,
+      completedWaitpointRecords,
       error,
     }: {
       run: { id: string; status: TaskRunStatus; attemptNumber?: number | null };
@@ -470,6 +532,7 @@ export class ExecutionSnapshotSystem {
         id: string;
         index?: number;
       }[];
+      completedWaitpointRecords?: CompletedWaitpointRecord[];
       error?: string;
     },
     // When set (inside runStore.runInTransaction), the snapshot write goes through the owning store
@@ -492,6 +555,7 @@ export class ExecutionSnapshotSystem {
         workerId,
         runnerId,
         completedWaitpoints,
+        completedWaitpointRecords,
         error,
       },
       prisma

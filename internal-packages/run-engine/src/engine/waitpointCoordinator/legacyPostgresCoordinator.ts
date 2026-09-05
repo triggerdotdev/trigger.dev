@@ -10,6 +10,8 @@ import type { PrismaClient, Waitpoint } from "@trigger.dev/database";
 import { boundedIn, Prisma } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
 import { UnclassifiableWaitpointId } from "../errors.js";
+import { fetchWaitpointEnvelopeRowsInChunks } from "../systems/executionSnapshotSystem.js";
+import { envelopeSourceFromWaitpointRow } from "./completionEnvelopeSource.js";
 import type {
   AssociatedWaitpointData,
   ClearRunBlockStateParams,
@@ -20,6 +22,8 @@ import type {
   CreateWaitpointResult,
   RegisterBlocksLocklessParams,
   RegisterBlocksParams,
+  CompletionEnvelopeSource,
+  ReadCompletionEnvelopesParams,
   RunBlockEdge,
   WaitpointCoordinator,
 } from "./types.js";
@@ -84,6 +88,44 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
       },
       this.prisma
     );
+  }
+
+  /**
+   * Source the envelope fields from the waitpoint rows.
+   *
+   * `runId` is the routing hint, not decoration: the routing store takes it as the third
+   * argument and reads the run's own store, falling back only for the rare cross-tree token.
+   * Omitting it fans every read out across every run-ops database, once per resume.
+   *
+   * Chunked for the same reason the snapshot hydration chunks: a waitpoint output can be
+   * 100KB+, and a large fan-in read whole can exceed Node's string limits. `boundedIn` pads
+   * for plan-cache stability, it does not bound the set.
+   *
+   * Projected to the columns the envelope is built from. This read lands on the writer, inside
+   * the run lock, and the hydration reads the same rows again afterwards for a store-format
+   * resume that Postgres still serves -- so it takes no more than it uses.
+   */
+  async readCompletionEnvelopes({
+    runId,
+    waitpointIds,
+  }: ReadCompletionEnvelopesParams): Promise<CompletionEnvelopeSource[]> {
+    if (waitpointIds.length === 0) {
+      return [];
+    }
+
+    const rows = await fetchWaitpointEnvelopeRowsInChunks(
+      this.prisma,
+      waitpointIds,
+      this.runStore,
+      runId
+    );
+
+    // COMPLETED only, so both arms honour one omission contract. The store arm cannot return a
+    // pending waitpoint because a pending one has no completion to read; this arm reads rows by
+    // id and would otherwise hand back an envelope with completedAt defaulted to now. The
+    // resolver's coverage check reads an omission as "fail loud", so the two arms disagreeing
+    // here would turn a pending waitpoint into a resumable one.
+    return rows.filter((row) => row.status === "COMPLETED").map(envelopeSourceFromWaitpointRow);
   }
 
   async registerBlocks({

@@ -77,6 +77,19 @@ export type RunEngineOptions = {
   billing?: {
     getCurrentPlan: (orgId: string) => Promise<BillingPlan>;
   };
+  /**
+   * Whether a run's snapshots can hold a completed-waitpoint record set. Must be O(1): it is
+   * consulted on every resume, ahead of any work proportional to the run's fan-in.
+   *
+   * Organisation-scoped, because that is what the snapshot store's own rollout is keyed on. The
+   * run id rides along for logging and for any future per-run override; resolving the
+   * organisation from it would put a read back on the path this gate keeps free.
+   *
+   * Positional arguments, so the disabled path allocates nothing at all.
+   *
+   * Omitted means never, so no resume builds a record set.
+   */
+  completedWaitpointRecordsEnabled?: (runId: string, organizationId: string) => boolean;
   queue: {
     redis: RedisOptions;
     shardCount?: number;

@@ -10,6 +10,7 @@ import {
   watcherField,
 } from "./keys.js";
 import { registerWaitpointCommands } from "./scripts.js";
+import type { CompletionEnvelopeSource, ReadCompletionEnvelopesParams } from "./types.js";
 
 /** The values written into a record's `status` field. Uppercase, and never a token. */
 export type WaitpointStatus = "PENDING" | "COMPLETED";
@@ -161,6 +162,12 @@ export type WaitpointStoreCoordinatorOptions = {
 function parseJson<T>(raw: string | undefined): T | undefined {
   return raw ? (JSON.parse(raw) as T) : undefined;
 }
+
+/**
+ * How many envelope reads run concurrently. Matches the chunk the snapshot hydration uses for the
+ * same shape of read, so a large fan-in bounds Redis client pressure instead of bursting.
+ */
+const ENVELOPE_READ_CHUNK_SIZE = 100;
 
 export class WaitpointStoreCoordinator {
   private readonly redis: Redis;
@@ -506,6 +513,58 @@ export class WaitpointStoreCoordinator {
   }
 
   /**
+   * Source the envelope fields for a run's COMPLETED waitpoints.
+   *
+   * Reads `wp:{id}` and nothing else. Both halves live under that one key — `r` holds the
+   * immutable record, `c` holds the completion — so this needs no run-scoped key.
+   *
+   * One command per id, issued concurrently rather than as a pipeline. Each id is its own hash
+   * tag, so N ids are N cluster slots: a pipeline spanning them is rejected outright under
+   * cluster mode, and a single-node test server would never surface that.
+   *
+   * An id with no record, or a record with no completion, is OMITTED rather than defaulted.
+   * The omission is the contract: the caller's coverage check turns a gap into a loud failure,
+   * which a defaulted envelope would hide.
+   */
+  async readCompletionEnvelopes({
+    waitpointIds,
+  }: ReadCompletionEnvelopesParams): Promise<CompletionEnvelopeSource[]> {
+    if (waitpointIds.length === 0) {
+      return [];
+    }
+
+    // Chunked, not one Promise.all over the whole set. A 1000-item batch fan-in would otherwise
+    // launch 1000 concurrent HMGETs at once, and the burst is the cost even though each command
+    // is small. The bound mirrors the snapshot hydration's own WAITPOINT_CHUNK_SIZE, and stays
+    // per-command so nothing can span two cluster slots.
+    const halves: (string | null)[][] = [];
+    for (let i = 0; i < waitpointIds.length; i += ENVELOPE_READ_CHUNK_SIZE) {
+      const chunk = waitpointIds.slice(i, i + ENVELOPE_READ_CHUNK_SIZE);
+      const settled = await Promise.all(
+        chunk.map((id) => this.redis.hmget(waitpointKeys(id).record, "r", "c"))
+      );
+      halves.push(...settled);
+    }
+
+    const out: CompletionEnvelopeSource[] = [];
+
+    for (let i = 0; i < waitpointIds.length; i++) {
+      const id = waitpointIds[i]!;
+      const fields = halves[i];
+      const record = parseJson<WaitpointRecordInput>(fields?.[0] ?? undefined);
+      const completion = parseJson<WaitpointCompletion>(fields?.[1] ?? undefined);
+
+      if (!record || !completion) {
+        continue;
+      }
+
+      out.push(toEnvelopeSource(id, record, completion));
+    }
+
+    return out;
+  }
+
+  /**
    * Drain one cycle's edges, or clear the run entirely when no edge ids are given.
    *
    * The selective form RECONCILES: any pending or delivered entry that no surviving edge
@@ -535,4 +594,38 @@ export class WaitpointStoreCoordinator {
 
     return { outcome: reply[0] as "cleared" | "drained" };
   }
+}
+
+/**
+ * Map the store's two halves onto the arm-independent source shape.
+ *
+ * The idempotency key is suppressed unless the user provided it, matching the rule the
+ * snapshot hydration applies today. The store never sets an inactive flag, so
+ * `userProvidedIdempotencyKey` alone decides it here.
+ */
+function toEnvelopeSource(
+  id: string,
+  record: WaitpointRecordInput,
+  completion: WaitpointCompletion
+): CompletionEnvelopeSource {
+  const output = completion.output;
+  const inline = output && "inline" in output ? output.inline : undefined;
+  const ref = output && "ref" in output ? output.ref : undefined;
+
+  return {
+    id,
+    friendlyId: record.friendlyId,
+    type: record.type,
+    completedAt: new Date(completion.completedAt),
+    outputType: completion.outputType,
+    outputIsError: completion.outputIsError,
+    ...(inline !== undefined && { output: inline }),
+    ...(ref !== undefined && { outputRef: ref }),
+    ...(record.completedByTaskRunId && { completedByTaskRunId: record.completedByTaskRunId }),
+    ...(record.completedByBatchId && { completedByBatchId: record.completedByBatchId }),
+    ...(record.completedAfter && { completedAfter: new Date(record.completedAfter) }),
+    ...(record.userProvidedIdempotencyKey && record.idempotencyKey
+      ? { idempotencyKey: record.idempotencyKey }
+      : {}),
+  };
 }
