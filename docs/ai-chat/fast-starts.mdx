@@ -251,7 +251,7 @@ This is an **import-chain** problem, not a runtime one. A "we'll strip the execu
     ```
   </Step>
   <Step title="Build the head-start handler">
-    Call `chat.headStart({ agentId, run })`. It returns a standard Web Fetch handler: `(req: Request) => Promise<Response>`. The `run` callback receives a `streamText` that already carries the SDK-owned wiring: the converted messages, your schema-only tools, `stopWhen: stepCountIs(1)` and the abort signal. Add your own `model` and `system` on top.
+    Call `chat.headStart({ agentId, run })`. It returns a standard Web Fetch handler: `(req: Request) => Promise<Response>`. The `run` callback receives a `streamText` that already carries the SDK-owned wiring: the converted messages, `stopWhen: stepCountIs(1)` and the abort signal. Pass your schema-only tools to it explicitly, and add your own `model` and `system` on top.
 
     ```ts lib/chat-handler.ts
     import { chat } from "@trigger.dev/sdk/chat-server";

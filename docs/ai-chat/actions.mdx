@@ -52,6 +52,8 @@ export const myChat = chat.agent({
 
 **Lifecycle flow:** Wake → parse action against `actionSchema` → `hydrateMessages` (if set) → **`onAction`** → apply `chat.history` mutations → emit `trigger:turn-complete` → wait for next message.
 
+When `onAction` returns `chat.turn()`, the flow continues instead of emitting `trigger:turn-complete`: the edit is snapshotted, then a turn runs on the edited history with `trigger: "action-turn"`, so `onTurnStart`, `run()`, `onBeforeTurnComplete` and `onTurnComplete` all fire and the answer is persisted like any turn's. See [Answering after an action](#answering-after-an-action).
+
 ## Answering after an action
 
 An action is a state edit. To answer after the edit, return `chat.turn()`: the edit is applied and snapshotted, then a turn runs on the edited history exactly as a message turn does. `onTurnStart`, `run()`, `onBeforeTurnComplete` and `onTurnComplete` fire, the turn counter advances, and the answer gets everything a turn has: the agent's system prompt and tools, steering, compaction, injected instructions and persistence.

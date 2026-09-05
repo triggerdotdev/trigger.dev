@@ -147,7 +147,6 @@ export const myChat = chat.agent({
   tools,
   run: async ({ messages, tools, signal, streamText }) =>
     streamText({
-      // Spread first, so every option below still wins.
       tools,
       model: anthropic("claude-sonnet-4-5"),
       system: "You are a helpful assistant.",
