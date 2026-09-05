@@ -1,9 +1,10 @@
 import type { UIMessage } from "@ai-sdk/react";
-import { ChatSnapshotV1Schema, SSEStreamSubscription } from "@trigger.dev/core/v3";
+import { SSEStreamSubscription } from "@trigger.dev/core/v3";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Spinner } from "~/components/primitives/Spinner";
 import { AgentMessageView } from "~/components/runs/v3/agent/AgentMessageView";
+import { seedFromTranscriptSnapshot } from "~/components/runs/v3/agent/transcriptSnapshotSeed";
 import { useAutoScrollToBottom } from "~/hooks/useAutoScrollToBottom";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -392,30 +393,19 @@ function useAgentSessionMessages({
         const resp = await fetch(url, { signal: abort.signal });
         if (!resp.ok) return undefined;
         const json = (await resp.json()) as unknown;
-        const parsed = ChatSnapshotV1Schema.safeParse(json);
-        if (!parsed.success) return undefined;
-        const snapshot = parsed.data;
-        // Preserve the snapshot's array order in the final render by
-        // giving each message a unique, monotonically increasing
-        // timestamp from `(savedAt - count + index)`. Real chunk
-        // timestamps from the SSE path use S2 arrival ms (positive
-        // numbers in the present), so anything below `savedAt` sorts
-        // before live chunks while preserving snapshot order among
-        // themselves.
-        const count = snapshot.messages.length;
-        snapshot.messages.forEach((raw, i) => {
-          const message = raw as UIMessage;
-          if (!message?.id) return;
+        const seed = seedFromTranscriptSnapshot(json);
+        if (!seed) return undefined;
+        for (const { id, message, timestamp } of seed.messages) {
           // The snapshot's seed wins over the task-payload seed for any
           // overlapping ids (the snapshot represents the agent's
           // canonical accumulator, post-turn).
-          pendingRef.current.set(message.id, message);
-          if (!timestampsRef.current.has(message.id)) {
-            timestampsRef.current.set(message.id, snapshot.savedAt - count + i);
+          pendingRef.current.set(id, message);
+          if (!timestampsRef.current.has(id)) {
+            timestampsRef.current.set(id, timestamp);
           }
-        });
+        }
         scheduleFlush.current();
-        return snapshot.lastOutEventId;
+        return seed.lastOutEventId;
       } catch {
         // 404 / network / parse / abort — fall back to seq=0 SSE
         return undefined;
