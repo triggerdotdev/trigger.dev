@@ -80,11 +80,12 @@ function agentWith(onAction: (action: { type: string }) => unknown) {
     onAction: async ({ action }) => onAction(action) as never,
     run: async ({ messages, signal, trigger }) => {
       triggers.push(trigger);
-      snapshotsAtRun.push((snapshotReader?.()?.messages ?? []).map(textOf));
+      snapshotsAtRun.push((snapshotReader?.()?.messages ?? []).map((e) => textOf(e.message)));
       return streamText({ model, messages, abortSignal: signal, ...chat.toStreamTextOptions() });
     },
   });
-  let snapshotReader: (() => { messages: { parts?: unknown[] }[] } | undefined) | undefined;
+  type SnapshotLike = { messages: { message: { parts?: unknown[] } }[] };
+  let snapshotReader: (() => SnapshotLike | undefined) | undefined;
   return {
     agent,
     prompts,
@@ -92,7 +93,7 @@ function agentWith(onAction: (action: { type: string }) => unknown) {
     snapshotsAtRun,
     starts,
     completes,
-    attach: (h: { getSnapshot: () => { messages: { parts?: unknown[] }[] } | undefined }) => {
+    attach: (h: { getSnapshot: () => SnapshotLike | undefined }) => {
       snapshotReader = () => h.getSnapshot();
     },
   };
@@ -126,7 +127,10 @@ describe("an action that returns chat.turn()", () => {
       expect(p).toContain("AGENT-SYSTEM");
       expect(p).not.toContain("answer-0");
       // Its answer replaced the old one in the conversation.
-      expect(harness.getSnapshot()?.messages.map(textOf)).toEqual(["ask", "answer-1"]);
+      expect(harness.getSnapshot()?.messages.map((e) => textOf(e.message))).toEqual([
+        "ask",
+        "answer-1",
+      ]);
       // run() saw it as a turn requested by an action, not as the action, so a
       // handler that returns early on "action" still answers.
       expect(triggers[1]).toBe("action-turn");

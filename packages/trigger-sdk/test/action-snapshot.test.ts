@@ -63,7 +63,10 @@ describe("snapshot durability of history mutated by an action", () => {
       await new Promise((r) => setTimeout(r, 30));
 
       // After a turn the snapshot holds the exchange.
-      expect(harness.getSnapshot()?.messages.map((m) => m.role)).toEqual(["user", "assistant"]);
+      expect(harness.getSnapshot()?.messages.map((e) => e.message.role)).toEqual([
+        "user",
+        "assistant",
+      ]);
 
       await harness.sendAction({ type: "undo" });
       await new Promise((r) => setTimeout(r, 30));

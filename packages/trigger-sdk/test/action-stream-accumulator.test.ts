@@ -64,7 +64,10 @@ describe("a regenerate action that returns chat.turn()", () => {
         .map((c) => c.delta ?? "")
         .join("");
       expect(streamed).toBe("regenerated answer");
-      expect(harness.getSnapshot()?.messages.map(textOf)).toEqual(["ask", "regenerated answer"]);
+      expect(harness.getSnapshot()?.messages.map((e) => textOf(e.message))).toEqual([
+        "ask",
+        "regenerated answer",
+      ]);
     } finally {
       await harness.close();
     }
@@ -123,7 +126,11 @@ describe("a regenerate action that returns chat.turn()", () => {
       expect(errors.length).toBeGreaterThan(0);
       // A turn failure: the hook saw it, and the partial is kept, not discarded.
       expect(completes.at(-1)?.finishReason).toBe("error");
-      expect(harness.getSnapshot()?.messages.map(textOf).at(-1)).toContain("half an answer");
+      const lastText = harness
+        .getSnapshot()
+        ?.messages.map((e) => textOf(e.message))
+        .at(-1);
+      expect(lastText).toContain("half an answer");
     } finally {
       await harness.close();
     }
