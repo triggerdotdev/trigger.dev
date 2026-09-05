@@ -73,11 +73,31 @@ type TranscriptLoadResult<TUIMessage extends UIMessage = UIMessage> = {
   nextCursor?: string;
 };
 
+/** What `loadContext` receives on every turn and action. */
+type LoadContextEvent<TClientData = unknown, TUIMessage extends UIMessage = UIMessage> = {
+  chatId: string;
+  /** The turn number (0-indexed). */
+  turn: number;
+  trigger: "submit-message" | "regenerate-message" | "action";
+  /** The messages the frontend sent for this turn. Empty for actions. */
+  incomingMessages: TUIMessage[];
+  /** The runtime's transcript before this turn, including any tail it recovered. */
+  previousMessages: TUIMessage[];
+  clientData?: TClientData;
+  continuation: boolean;
+  previousRunId?: string;
+};
+
 /**
  * A persistence adapter for a `chat.agent` transcript. The runtime calls
  * `load` once at a continuation boot and `save` after every change to the
  * conversation. Both are best-effort from the runtime's point of view: an
  * error is logged and the turn continues.
+ *
+ * `loadContext` is optional. Its presence declares that the application
+ * owns the model's context: the runtime calls it on every turn and action
+ * and uses what it returns as the conversation, instead of the transcript
+ * it accumulated. Tail recovery still runs and `save` is still called.
  */
 export type TranscriptStorage<TClientData = unknown> = {
   load<TUIMessage extends UIMessage = UIMessage>(
@@ -85,6 +105,10 @@ export type TranscriptStorage<TClientData = unknown> = {
     opts?: TranscriptLoadOptions
   ): Promise<TranscriptLoadResult<TUIMessage>>;
   save(ctx: TranscriptStorageContext<TClientData>, changeset: TranscriptChangeset): Promise<void>;
+  loadContext?<TUIMessage extends UIMessage = UIMessage>(
+    scope: TranscriptScope<TClientData>,
+    event: LoadContextEvent<TClientData, TUIMessage>
+  ): Promise<TUIMessage[]> | TUIMessage[];
 };
 
 /** An in-memory transcript: ordered entries plus the opaque state record. */
