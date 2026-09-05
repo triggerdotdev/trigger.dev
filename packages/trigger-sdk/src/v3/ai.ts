@@ -80,10 +80,29 @@ import {
   createTranscriptShadow,
   defaultStorage,
   diffTranscript,
+  parseTranscriptRuntimeState,
+  prefixFingerprint,
+  restoreModelLane,
+  type TranscriptChange,
   type TranscriptChangeReason,
+  type TranscriptRuntimeState,
   type TranscriptShadow,
+  type TranscriptStorage,
   type TranscriptStorageContext,
 } from "./transcriptStorage.js";
+
+let transcriptStorageOverride: TranscriptStorage<unknown> | undefined;
+
+/**
+ * Test-only override for the storage `chat.agent` persists through, so a
+ * test can capture the exact changesets the runtime produces.
+ * @internal
+ */
+export function __setTranscriptStorageForTests(
+  storage: TranscriptStorage<unknown> | undefined
+): void {
+  transcriptStorageOverride = storage;
+}
 import {
   type ChatInputChunk,
   type ChatTaskWirePayload,
@@ -2539,6 +2558,13 @@ function spliceHandoverPartial(
  * @internal
  */
 const chatBackgroundQueueKey = locals.create<ModelMessage[]>("chat.backgroundQueue");
+/**
+ * Background injections a step-boundary drain handed to the model this turn,
+ * with the transcript message they followed. Reconciled into the model lane
+ * and the persisted injections once the turn's response is in.
+ */
+const chatPendingBackgroundKey =
+  locals.create<{ afterId: string; messages: ModelMessage[] }[]>("chat.pendingBackground");
 
 /**
  * System-role context injected mid-conversation, held for the instructions lane.
@@ -5019,6 +5045,13 @@ function toStreamTextOptions(options?: ToStreamTextOptionsOptions): Record<strin
       if (bgQueue && bgQueue.length > 0) {
         const injected = bgQueue.splice(0); // drain
         resultMessages = [...(resultMessages ?? messages), ...injected];
+        const pendingBackground = locals.get(chatPendingBackgroundKey) ?? [];
+        pendingBackground.push({
+          afterId:
+            (locals.get(chatCurrentUIMessagesKey) as UIMessage[] | undefined)?.at(-1)?.id ?? "",
+          messages: injected,
+        });
+        locals.set(chatPendingBackgroundKey, pendingBackground);
       }
 
       return resultMessages ? { messages: resultMessages } : undefined;
@@ -6910,6 +6943,23 @@ function chatAgent<
       // registered) — the wire is delta-only now, no longer a seed.
       let accumulatedMessages: ModelMessage[] = [];
       /**
+       * Give the model accumulator the background injections a step-boundary
+       * drain handed to the model this turn, and record them for persistence.
+       * Returns how many model messages were appended.
+       */
+      const reconcilePendingBackground = (): number => {
+        const pending = locals.get(chatPendingBackgroundKey);
+        if (!pending || pending.length === 0) return 0;
+        locals.set(chatPendingBackgroundKey, []);
+        let appended = 0;
+        for (const entry of pending) {
+          accumulatedMessages.push(...entry.messages);
+          laneInjections.push(entry);
+          appended += entry.messages.length;
+        }
+        return appended;
+      };
+      /**
        * Give the model accumulator the steering messages a drain consumed,
        * in the form the model actually received. Appended, never reconverted
        * from the UI lane, so a model-only compaction summary survives. Called
@@ -6948,8 +6998,18 @@ function chatAgent<
       // collectively cost ~600ms on every first-message TTFC. Both reads
       // swallow errors internally; the agent stays available either way.
       const sessionIdForSnapshot = payload.sessionId ?? payload.chatId;
-      const transcriptStorage = defaultStorage;
+      const transcriptStorage = transcriptStorageOverride ?? defaultStorage;
       let transcriptShadow: TranscriptShadow = createTranscriptShadow([]);
+      let bootTranscriptState: unknown = null;
+      /**
+       * True while the model lane holds a compaction summary, so it cannot be
+       * rebuilt from the transcript and has to be persisted as state. Reset
+       * wherever the lane is reconverted from the UI lane.
+       */
+      let laneCompacted = false;
+      /** Conversational `chat.inject` messages in the lane, anchored to the transcript. */
+      let laneInjections: NonNullable<TranscriptRuntimeState["injections"]> = [];
+      let persistedStateSet = false;
       let bootSnapshot:
         | { messages: TUIMessage[]; lastOutEventId?: string; lastInEventId?: string }
         | undefined;
@@ -6999,6 +7059,30 @@ function chatAgent<
         const { changes, shadow } = diffTranscript(transcriptShadow, opts.messages, {
           nonFinalIds: opts.nonFinalIds,
         });
+        const throughId = opts.messages.at(-1)?.id ?? "";
+        const queued = locals.get(chatBackgroundQueueKey) ?? [];
+        const runtimeState: TranscriptRuntimeState | null =
+          laneCompacted || laneInjections.length > 0 || queued.length > 0
+            ? {
+                v: 1,
+                ...(laneCompacted
+                  ? {
+                      compaction: {
+                        modelMessages: accumulatedMessages,
+                        throughId,
+                        fingerprint: prefixFingerprint(shadow, throughId),
+                      },
+                    }
+                  : laneInjections.length > 0
+                    ? { injections: laneInjections }
+                    : {}),
+                ...(queued.length > 0 ? { queued: [...queued] } : {}),
+              }
+            : null;
+        if (runtimeState !== null || persistedStateSet) {
+          changes.push({ op: "state", value: runtimeState } satisfies TranscriptChange);
+        }
+        transcriptState = runtimeState;
         const inCursor = chatInputRouter().resumeFloor();
         await transcriptStorage.save(
           {
@@ -7027,6 +7111,7 @@ function chatAgent<
           }
         );
         transcriptShadow = shadow;
+        persistedStateSet = runtimeState !== null;
       };
 
       /**
@@ -7111,6 +7196,8 @@ function chatAgent<
                 clientData: bootClientData,
               });
               transcriptShadow = createTranscriptShadow(loaded.messages);
+              bootTranscriptState = loaded.state;
+              persistedStateSet = loaded.state !== null && loaded.state !== undefined;
               bootSnapshot = {
                 messages: loaded.messages,
                 lastOutEventId: loaded.cursors?.lastOutEventId,
@@ -7450,7 +7537,21 @@ function chatAgent<
             }
           }
           try {
-            accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+            const bootRuntimeState = parseTranscriptRuntimeState(bootTranscriptState);
+            const restored = await restoreModelLane(
+              accumulatedUIMessages,
+              bootRuntimeState,
+              (messages) => toModelMessages(messages)
+            );
+            accumulatedMessages = restored.messages;
+            laneCompacted = restored.compacted;
+            laneInjections = restored.injections;
+            if (bootRuntimeState?.queued && bootRuntimeState.queued.length > 0) {
+              locals.set(chatBackgroundQueueKey, [
+                ...(locals.get(chatBackgroundQueueKey) ?? []),
+                ...bootRuntimeState.queued,
+              ]);
+            }
           } catch (error) {
             logger.warn("chat.agent: toModelMessages failed at boot; starting empty", {
               error: error instanceof Error ? error.message : String(error),
@@ -7979,6 +8080,7 @@ function chatAgent<
                 locals.set(chatDeferKey, new Set());
                 locals.set(chatCompactionStateKey, undefined);
                 locals.set(chatSteeringQueueKey, []);
+                locals.set(chatPendingBackgroundKey, []);
                 locals.set(chatResponsePartsKey, []);
                 // NOTE: chatBackgroundQueueKey is NOT reset here — messages injected
                 // by deferred work from the previous turn's onTurnComplete need to
@@ -8125,6 +8227,8 @@ function chatAgent<
                     );
                     accumulatedUIMessages = [...hydrated] as TUIMessage[];
                     accumulatedMessages = await toModelMessages(hydrated);
+                    laneCompacted = false;
+                    laneInjections = [];
                     locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                   }
 
@@ -8162,6 +8266,8 @@ function chatAgent<
                       locals.set(chatOverrideMessagesKey, undefined);
                       accumulatedUIMessages = [...actionOverride] as TUIMessage[];
                       accumulatedMessages = await toModelMessages(actionOverride);
+                      laneCompacted = false;
+                      laneInjections = [];
                       locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
 
                       actionChangedHistory = true;
@@ -8294,6 +8400,8 @@ function chatAgent<
 
                     accumulatedUIMessages = merged;
                     accumulatedMessages = await toModelMessages(merged);
+                    laneCompacted = false;
+                    laneInjections = [];
                     locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
 
                     // Track new messages for onTurnComplete.newUIMessages.
@@ -8343,6 +8451,8 @@ function chatAgent<
                         accumulatedUIMessages.pop();
                       }
                       accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+                      laneCompacted = false;
+                      laneInjections = [];
                     } else if (cleanedUIMessages.length > 0) {
                       // Submit-message (and the special-cased
                       // handover-prepare → submit-message rewrite earlier in
@@ -8396,6 +8506,8 @@ function chatAgent<
                             "chat.agent: replaced message not found at the model lane tail; reconverting the lane"
                           );
                           accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+                          laneCompacted = false;
+                          laneInjections = [];
                         }
                       } else {
                         const incomingModelMessages = await toModelMessages(cleanedUIMessages);
@@ -8605,6 +8717,8 @@ function chatAgent<
                           locals.set(chatOverrideMessagesKey, undefined);
                           accumulatedUIMessages = [...turnStartOverride] as TUIMessage[];
                           accumulatedMessages = await toModelMessages(turnStartOverride);
+                          laneCompacted = false;
+                          laneInjections = [];
                           locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                         }
                       },
@@ -8673,7 +8787,12 @@ function chatAgent<
                     const lastAccumulated = accumulatedMessages[accumulatedMessages.length - 1];
                     const bgQueue = locals.get(chatBackgroundQueueKey);
                     if (bgQueue && bgQueue.length > 0 && lastAccumulated?.role !== "tool") {
-                      accumulatedMessages.push(...bgQueue.splice(0));
+                      const injected = bgQueue.splice(0);
+                      accumulatedMessages.push(...injected);
+                      laneInjections.push({
+                        afterId: accumulatedUIMessages.at(-1)?.id ?? "",
+                        messages: injected,
+                      });
                     }
 
                     if (isHeadStartFinalTurn) {
@@ -8866,6 +8985,8 @@ function chatAgent<
                     accumulatedMessages = await toModelMessages(
                       runOverride.filter((m) => !pendingIds.has(m.id))
                     );
+                    laneCompacted = false;
+                    laneInjections = [];
                     locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                   }
 
@@ -8891,6 +9012,8 @@ function chatAgent<
                     accumulatedMessages = taskCompactionConfig?.compactModelMessages
                       ? await taskCompactionConfig.compactModelMessages(compactEvent)
                       : modelOnlyOverride;
+                    laneCompacted = true;
+                    laneInjections = [];
 
                     // Apply UI messages: callback or default (preserve all)
                     if (taskCompactionConfig?.compactUIMessages) {
@@ -8909,9 +9032,10 @@ function chatAgent<
                   // before the response is appended so the order stays
                   // steer-then-answer. Outside the `capturedResponseMessage`
                   // branches below, so a turn that captured no response is covered.
-                  const steerTailThisTurn = reconcilePendingSteer({
-                    turnNew: turnNewModelMessages,
-                  }).reduce((n, e) => n + e.model.length, 0);
+                  const steerTailThisTurn =
+                    reconcilePendingSteer({
+                      turnNew: turnNewModelMessages,
+                    }).reduce((n, e) => n + e.model.length, 0) + reconcilePendingBackground();
 
                   // Append the assistant's response (partial or complete) to the accumulator.
                   // The onFinish callback fires even on abort/stop, so partial responses
@@ -8983,6 +9107,8 @@ function chatAgent<
                             "chat.agent: replaced response not found at the model lane tail; reconverting the lane"
                           );
                           accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+                          laneCompacted = false;
+                          laneInjections = [];
                         }
                       } else {
                         accumulatedMessages.push(...responseModelMessages);
@@ -9102,6 +9228,9 @@ function chatAgent<
                                     },
                                   ];
 
+                              laneCompacted = true;
+                              laneInjections = [];
+
                               // UI messages: callback or default (preserve all)
                               if (outerCompaction.compactUIMessages) {
                                 accumulatedUIMessages = (await outerCompaction.compactUIMessages(
@@ -9206,6 +9335,8 @@ function chatAgent<
                           locals.set(chatOverrideMessagesKey, undefined);
                           accumulatedUIMessages = [...override] as TUIMessage[];
                           accumulatedMessages = await toModelMessages(override);
+                          laneCompacted = false;
+                          laneInjections = [];
                           locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                           // Update event so onTurnComplete sees compacted messages
                           turnCompleteEvent.messages = accumulatedMessages;
@@ -9265,6 +9396,8 @@ function chatAgent<
                           locals.set(chatOverrideMessagesKey, undefined);
                           accumulatedUIMessages = [...turnCompleteOverride] as TUIMessage[];
                           accumulatedMessages = await toModelMessages(turnCompleteOverride);
+                          laneCompacted = false;
+                          laneInjections = [];
                           locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                         }
                       },
@@ -9599,6 +9732,7 @@ function chatAgent<
             let erroredNewModelMessages: ModelMessage[] = [];
 
             const reconciledSteer = reconcilePendingSteer();
+            const backgroundTailThisTurn = reconcilePendingBackground();
 
             if (!responseCommitted) {
               try {
@@ -9634,13 +9768,16 @@ function chatAgent<
                       accumulatedMessages,
                       erroredUIMessages[partialIdx]!,
                       partialResponse!,
-                      reconciledSteer.reduce((n, e) => n + e.model.length, 0)
+                      reconciledSteer.reduce((n, e) => n + e.model.length, 0) +
+                        backgroundTailThisTurn
                     );
                     if (!ok) {
                       logger.warn(
                         "chat.agent: replaced partial not found at the model lane tail; reconverting the lane"
                       );
                       accumulatedMessages = await toModelMessages(erroredUIMessagesWithPartial);
+                      laneCompacted = false;
+                      laneInjections = [];
                     }
                   }
                   accumulatedUIMessages = erroredUIMessagesWithPartial;
