@@ -1,5 +1,5 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { EnvelopeIcon, LockClosedIcon } from "@heroicons/react/20/solid";
 import type { LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
 import { Form, useNavigation } from "@remix-run/react";
@@ -38,9 +38,7 @@ import { cn } from "~/utils/cn";
 // format validation in the browser and renders the styled inline error.
 // Server-side errors still surface via the session-backed authError below.
 const emailSchema = z.object({
-  email: z
-    .string({ required_error: "Enter your email address" })
-    .email("Enter a valid email address"),
+  email: z.string({ error: "Enter your email address" }).email("Enter a valid email address"),
 });
 
 function LastUsedBadge({ className }: { className?: string }) {

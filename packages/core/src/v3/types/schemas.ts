@@ -1,14 +1,34 @@
 type SchemaZodEsque<TInput, TParsedInput> = {
   _input: TInput;
   _output: TParsedInput;
+  parse: (input: unknown) => TParsedInput;
+  parseAsync: (input: unknown) => Promise<TParsedInput>;
+  safeParse: (
+    input: unknown
+  ) => { success: true; data: TParsedInput } | { success: false; error: any };
+};
+
+export type AnyZodSchema = SchemaZodEsque<any, any>;
+export type inferZodSchemaInput<TSchema extends AnyZodSchema> = TSchema["_input"];
+export type inferZodSchemaOutput<TSchema extends AnyZodSchema> = TSchema["_output"];
+
+export type ZodIssueLike = {
+  message: string;
+  path: ReadonlyArray<PropertyKey>;
+};
+
+export type ZodErrorLike = {
+  message: string;
+  issues: ReadonlyArray<ZodIssueLike>;
 };
 
 export function isSchemaZodEsque<TInput, TParsedInput>(
-  schema: Schema
+  schema: unknown
 ): schema is SchemaZodEsque<TInput, TParsedInput> {
   return (
     typeof schema === "object" &&
-    "_def" in schema &&
+    schema !== null &&
+    ("_zod" in schema || "_def" in schema) &&
     "parse" in schema &&
     "parseAsync" in schema &&
     "safeParse" in schema

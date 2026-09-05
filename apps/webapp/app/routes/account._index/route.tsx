@@ -178,7 +178,7 @@ const MAX_NAME_LENGTH = 50;
 
 const NameSchema = z.object({
   name: z
-    .string({ required_error: "You must enter a name" })
+    .string({ error: "You must enter a name" })
     .trim()
     .min(2, "Your name must be at least 2 characters long")
     .max(MAX_NAME_LENGTH, `Your name must be ${MAX_NAME_LENGTH} characters or fewer`),
@@ -186,7 +186,7 @@ const NameSchema = z.object({
 
 const EmailSchema = z.object({
   // Trim first: a trailing space fails as "invalid email".
-  email: z.string({ required_error: "You must enter an email address" }).trim().pipe(emailSchema),
+  email: z.string({ error: "You must enter an email address" }).trim().pipe(emailSchema),
 });
 
 const MarketingEmailsSchema = z.object({

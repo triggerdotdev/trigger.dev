@@ -1,5 +1,5 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
-import { conformZodMessage, parseWithZod } from "@conform-to/zod";
+import { conformZodMessage, parseWithZod } from "@conform-to/zod/v4";
 import { ArrowRightIcon, EnvelopeIcon, UserIcon } from "@heroicons/react/20/solid";
 import { HandRaisedIcon } from "@heroicons/react/24/solid";
 import { RadioGroup } from "@radix-ui/react-radio-group";
@@ -323,7 +323,10 @@ export default function Page() {
                   <FormError id={confirmEmail.errorId}>{confirmEmail.errors}</FormError>
                 </InputGroup>
               ) : (
-                <input {...getInputProps(confirmEmail, { type: "hidden" })} value={user.email} />
+                <input
+                  {...getInputProps(confirmEmail, { type: "hidden", value: false })}
+                  value={user.email}
+                />
               )}
 
               {isManagedCloud && (

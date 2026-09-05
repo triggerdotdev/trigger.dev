@@ -1,7 +1,8 @@
 import type { ManagerOptions, Socket, SocketOptions } from "socket.io-client";
 import { io } from "socket.io-client";
-import { z } from "zod";
-import { fromZodError } from "zod-validation-error";
+import { z } from "zod/v4";
+import { fromZodError } from "zod-validation-error/v4";
+import type { inferZodSchemaInput, inferZodSchemaOutput } from "./types/schemas.js";
 import type { StructuredLogger } from "./utils/structuredLogger.js";
 import { LogLevel, SimpleStructuredLogger } from "./utils/structuredLogger.js";
 import type { EventEmitterLike, ZodMessageValueSchema } from "./zodMessageHandler.js";
@@ -20,10 +21,10 @@ export interface ZodSocketMessageCatalogSchema {
 export type ZodMessageCatalogToSocketIoEvents<TCatalog extends ZodSocketMessageCatalogSchema> = {
   [K in keyof TCatalog]: SocketMessageHasCallback<TCatalog, K> extends true
     ? (
-        message: z.infer<GetSocketMessageSchema<TCatalog, K>>,
-        callback: (ack: z.infer<GetSocketCallbackSchema<TCatalog, K>>) => void
+        message: inferZodSchemaOutput<GetSocketMessageSchema<TCatalog, K>>,
+        callback: (ack: inferZodSchemaOutput<GetSocketCallbackSchema<TCatalog, K>>) => void
       ) => void
-    : (message: z.infer<GetSocketMessageSchema<TCatalog, K>>) => void;
+    : (message: inferZodSchemaOutput<GetSocketMessageSchema<TCatalog, K>>) => void;
 };
 
 export type GetSocketMessageSchema<
@@ -34,7 +35,7 @@ export type GetSocketMessageSchema<
 export type InferSocketMessageSchema<
   TRPCCatalog extends ZodSocketMessageCatalogSchema,
   TMessageType extends keyof TRPCCatalog,
-> = z.infer<GetSocketMessageSchema<TRPCCatalog, TMessageType>>;
+> = inferZodSchemaOutput<GetSocketMessageSchema<TRPCCatalog, TMessageType>>;
 
 export type GetSocketCallbackSchema<
   TRPCCatalog extends ZodSocketMessageCatalogSchema,
@@ -46,7 +47,7 @@ export type GetSocketCallbackSchema<
 export type InferSocketCallbackSchema<
   TRPCCatalog extends ZodSocketMessageCatalogSchema,
   TMessageType extends keyof TRPCCatalog,
-> = z.infer<GetSocketCallbackSchema<TRPCCatalog, TMessageType>>;
+> = inferZodSchemaOutput<GetSocketCallbackSchema<TRPCCatalog, TMessageType>>;
 
 export type SocketMessageHasCallback<
   TRPCCatalog extends ZodSocketMessageCatalogSchema,
@@ -56,10 +57,10 @@ export type SocketMessageHasCallback<
 export type ZodSocketMessageHandlers<TCatalogSchema extends ZodSocketMessageCatalogSchema> =
   Partial<{
     [K in keyof TCatalogSchema]: (
-      payload: z.infer<GetSocketMessageSchema<TCatalogSchema, K>>
+      payload: inferZodSchemaOutput<GetSocketMessageSchema<TCatalogSchema, K>>
     ) => Promise<
       SocketMessageHasCallback<TCatalogSchema, K> extends true
-        ? z.input<GetSocketCallbackSchema<TCatalogSchema, K>>
+        ? inferZodSchemaInput<GetSocketCallbackSchema<TCatalogSchema, K>>
         : void
     >;
   }>;
@@ -77,7 +78,7 @@ type MessageFromSocketSchema<
   TMessageCatalog extends ZodSocketMessageCatalogSchema,
 > = {
   type: K;
-  payload: z.input<GetSocketMessageSchema<TMessageCatalog, K>>;
+  payload: inferZodSchemaInput<GetSocketMessageSchema<TMessageCatalog, K>>;
 };
 
 export type MessagesFromSocketCatalog<TMessageCatalog extends ZodSocketMessageCatalogSchema> = {
@@ -128,7 +129,8 @@ export class ZodSocketMessageHandler<TRPCCatalog extends ZodSocketMessageCatalog
       return;
     }
 
-    const ack = await handler(payload);
+    // payload is the parsed output at runtime; zod v4 distinguishes input/output so cast to the handler's expected arg
+    const ack = await handler(payload as Parameters<typeof handler>[0]);
 
     return ack;
   }
@@ -269,7 +271,7 @@ export class ZodSocketMessageSender<TMessageCatalog extends ZodSocketMessageCata
 
   public send<K extends GetSocketMessagesWithoutCallback<TMessageCatalog>>(
     type: K,
-    payload: z.input<GetSocketMessageSchema<TMessageCatalog, K>>
+    payload: inferZodSchemaInput<GetSocketMessageSchema<TMessageCatalog, K>>
   ): void {
     const schema = this.#schema[type]?.["message"];
 
@@ -294,9 +296,9 @@ export class ZodSocketMessageSender<TMessageCatalog extends ZodSocketMessageCata
 
   public async sendWithAck<K extends GetSocketMessagesWithCallback<TMessageCatalog>>(
     type: K,
-    payload: z.input<GetSocketMessageSchema<TMessageCatalog, K>>,
+    payload: inferZodSchemaInput<GetSocketMessageSchema<TMessageCatalog, K>>,
     timeout?: number
-  ): Promise<z.infer<GetSocketCallbackSchema<TMessageCatalog, K>>> {
+  ): Promise<inferZodSchemaOutput<GetSocketCallbackSchema<TMessageCatalog, K>>> {
     const schema = this.#schema[type]?.["message"];
 
     if (!schema) {
@@ -314,7 +316,7 @@ export class ZodSocketMessageSender<TMessageCatalog extends ZodSocketMessageCata
     // @ts-expect-error
     const callbackResult = await socket.emitWithAck(type, { payload, version: "v1" });
 
-    return callbackResult;
+    return callbackResult as inferZodSchemaOutput<GetSocketCallbackSchema<TMessageCatalog, K>>;
   }
 }
 

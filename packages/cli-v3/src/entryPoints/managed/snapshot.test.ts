@@ -368,7 +368,6 @@ describe("SnapshotManager", () => {
     const executionOrder: string[] = [];
     const executionTimes: { start: number; end: number; type: string }[] = [];
     let currentlyExecuting = false;
-    let _handlerExecutionCount = 0;
 
     const manager = new SnapshotManager({
       runnerId: "test-runner-1",
@@ -381,7 +380,6 @@ describe("SnapshotManager", () => {
           throw new Error("Handler executed while another handler was running");
         }
         currentlyExecuting = true;
-        handlerExecutionCount++;
 
         const start = Date.now();
         executionOrder.push(`snapshot:${data.snapshot.friendlyId}`);
@@ -396,7 +394,6 @@ describe("SnapshotManager", () => {
           throw new Error("Handler executed while another handler was running");
         }
         currentlyExecuting = true;
-        handlerExecutionCount++;
 
         const start = Date.now();
         executionOrder.push(`suspendable:${state.id}`);

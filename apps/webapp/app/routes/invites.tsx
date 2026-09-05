@@ -1,5 +1,5 @@
 import { getFormProps, useForm } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { EnvelopeIcon } from "@heroicons/react/20/solid";
 import { type ActionFunction, type LoaderFunctionArgs, json, redirect } from "@remix-run/node";
 import { Form, useActionData } from "@remix-run/react";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseWithZod } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { billingAlertsSchema } from "~/components/billing/BillingAlertsSection";
 import {
   billingLimitFormSchema,

@@ -1,5 +1,5 @@
 import { nanoid } from "nanoid";
-import { z } from "zod";
+import { z } from "zod/v4";
 import { VERSION } from "../../version.js";
 import { isAdditionalApiKey } from "../apiKeys.js";
 import type { ApiClientConfiguration } from "../apiClientManager-api.js";
@@ -1977,7 +1977,7 @@ export class ApiClient {
 
   async generateJWTClaims(requestOptions?: ZodFetchOptions): Promise<Record<string, any>> {
     return zodfetch(
-      z.record(z.any()),
+      z.record(z.string(), z.any()),
       `${this.baseUrl}/api/v1/auth/jwt/claims`,
       {
         method: "POST",

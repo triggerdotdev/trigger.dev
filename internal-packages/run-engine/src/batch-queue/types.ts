@@ -37,7 +37,7 @@ export const BatchItem = z.object({
    */
   payloadType: z.string().optional(),
   /** Options for this specific item - stored as JSON */
-  options: z.record(z.unknown()).optional(),
+  options: z.record(z.string(), z.unknown()).optional(),
 });
 export type BatchItem = z.infer<typeof BatchItem>;
 
@@ -68,7 +68,7 @@ export const BatchMeta = z.object({
   /** Trigger version */
   triggerVersion: z.string().optional(),
   /** Trace context */
-  traceContext: z.record(z.unknown()).optional(),
+  traceContext: z.record(z.string(), z.unknown()).optional(),
   /** Whether span parent should be a link */
   spanParentAsLink: z.boolean().optional(),
   /** Realtime streams version */
@@ -103,7 +103,7 @@ export const BatchItemFailure = z.object({
    */
   payload: z.string().optional(),
   /** The options that were used */
-  options: z.record(z.unknown()).optional(),
+  options: z.record(z.string(), z.unknown()).optional(),
   /** Error message */
   error: z.string(),
   /** Error code if available */

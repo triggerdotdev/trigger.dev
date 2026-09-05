@@ -1,9 +1,10 @@
 import { createRedisClient, type Redis } from "@internal/redis";
 import { SpanKind, type Span } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
+import type { AnyZodSchema, inferZodSchemaOutput } from "@trigger.dev/core/v3";
 import { nanoid } from "nanoid";
 import { setInterval, setTimeout as delay } from "node:timers/promises";
-import { type z } from "zod";
+import { type z } from "zod/v4";
 import { isAbortError } from "../utils.js";
 import { ConcurrencyManager } from "./concurrency.js";
 import { MasterQueue } from "./masterQueue.js";
@@ -64,7 +65,7 @@ export * from "./workerQueue.js";
  *
  * @typeParam TPayloadSchema - Zod schema for message payload validation
  */
-export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
+export class FairQueue<TPayloadSchema extends AnyZodSchema = z.ZodUnknown> {
   private redis: Redis;
   private keys: FairQueueKeyProducer;
   private scheduler: FairScheduler;
@@ -87,7 +88,9 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   private heartbeatIntervalMs: number;
   private reclaimIntervalMs: number;
   private reconcileIntervalMs: number;
-  private workerQueueResolver: (message: StoredMessage<z.infer<TPayloadSchema>>) => string;
+  private workerQueueResolver: (
+    message: StoredMessage<inferZodSchemaOutput<TPayloadSchema>>
+  ) => string;
   private batchClaimSize: number;
 
   // Cooloff state
@@ -272,7 +275,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   /**
    * Enqueue a single message to a queue.
    */
-  async enqueue(options: EnqueueOptions<z.infer<TPayloadSchema>>): Promise<string> {
+  async enqueue(options: EnqueueOptions<inferZodSchemaOutput<TPayloadSchema>>): Promise<string> {
     return this.telemetry.trace(
       "enqueue",
       async (span) => {
@@ -301,7 +304,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
         this.queueDescriptorCache.set(options.queueId, descriptor);
 
         // Build stored message
-        const storedMessage: StoredMessage<z.infer<TPayloadSchema>> = {
+        const storedMessage: StoredMessage<inferZodSchemaOutput<TPayloadSchema>> = {
           id: messageId,
           queueId: options.queueId,
           tenantId: options.tenantId,
@@ -364,7 +367,9 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   /**
    * Enqueue multiple messages to a queue.
    */
-  async enqueueBatch(options: EnqueueBatchOptions<z.infer<TPayloadSchema>>): Promise<string[]> {
+  async enqueueBatch(
+    options: EnqueueBatchOptions<inferZodSchemaOutput<TPayloadSchema>>
+  ): Promise<string[]> {
     return this.telemetry.trace(
       "enqueueBatch",
       async (span) => {
@@ -400,7 +405,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
             }
           }
 
-          const storedMessage: StoredMessage<z.infer<TPayloadSchema>> = {
+          const storedMessage: StoredMessage<inferZodSchemaOutput<TPayloadSchema>> = {
             id: messageId,
             queueId: options.queueId,
             tenantId: options.tenantId,
@@ -471,7 +476,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   async getDeadLetterMessages(
     tenantId: string,
     limit: number = 100
-  ): Promise<DeadLetterMessage<z.infer<TPayloadSchema>>[]> {
+  ): Promise<DeadLetterMessage<inferZodSchemaOutput<TPayloadSchema>>[]> {
     if (!this.deadLetterQueueEnabled) {
       return [];
     }
@@ -482,7 +487,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     // Get message IDs with scores (deadLetteredAt timestamps)
     const results = await this.redis.zrange(dlqKey, 0, limit - 1, "WITHSCORES");
 
-    const messages: DeadLetterMessage<z.infer<TPayloadSchema>>[] = [];
+    const messages: DeadLetterMessage<inferZodSchemaOutput<TPayloadSchema>>[] = [];
 
     for (let i = 0; i < results.length; i += 2) {
       const messageId = results[i];
@@ -493,7 +498,9 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       if (!dataJson) continue;
 
       try {
-        const data = JSON.parse(dataJson) as DeadLetterMessage<z.infer<TPayloadSchema>>;
+        const data = JSON.parse(dataJson) as DeadLetterMessage<
+          inferZodSchemaOutput<TPayloadSchema>
+        >;
         data.deadLetteredAt = parseFloat(deadLetteredAtStr);
         messages.push(data);
       } catch {
@@ -524,7 +531,9 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           return false;
         }
 
-        const dlqMessage = JSON.parse(dataJson) as DeadLetterMessage<z.infer<TPayloadSchema>>;
+        const dlqMessage = JSON.parse(dataJson) as DeadLetterMessage<
+          inferZodSchemaOutput<TPayloadSchema>
+        >;
 
         // Re-enqueue with reset attempt count
         await this.enqueue({
@@ -1141,7 +1150,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
 
     // Claim batch of messages with visibility timeout
     const claimedMessages = await this.visibilityManager.claimBatch<
-      StoredMessage<z.infer<TPayloadSchema>>
+      StoredMessage<inferZodSchemaOutput<TPayloadSchema>>
     >(queueId, queueKey, queueItemsKey, loopId, maxClaimCount, this.visibilityTimeoutMs);
 
     if (claimedMessages.length === 0) {
@@ -1211,7 +1220,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   async getMessageData(
     messageId: string,
     queueId: string
-  ): Promise<StoredMessage<z.infer<TPayloadSchema>> | null> {
+  ): Promise<StoredMessage<inferZodSchemaOutput<TPayloadSchema>> | null> {
     const shardId = this.masterQueue.getShardForQueue(queueId);
     const inflightDataKey = this.keys.inflightDataKey(shardId);
     const dataJson = await this.redis.hget(inflightDataKey, messageId);
@@ -1221,7 +1230,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     }
 
     try {
-      return JSON.parse(dataJson) as StoredMessage<z.infer<TPayloadSchema>>;
+      return JSON.parse(dataJson) as StoredMessage<inferZodSchemaOutput<TPayloadSchema>>;
     } catch {
       this.logger.error("Failed to parse message data", { messageId, queueId });
       return null;
@@ -1253,7 +1262,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
 
     // Get stored message for concurrency release
     const dataJson = await this.redis.hget(inflightDataKey, messageId);
-    let storedMessage: StoredMessage<z.infer<TPayloadSchema>> | null = null;
+    let storedMessage: StoredMessage<inferZodSchemaOutput<TPayloadSchema>> | null = null;
     if (dataJson) {
       try {
         storedMessage = JSON.parse(dataJson);
@@ -1303,7 +1312,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
 
     // Get stored message for concurrency release
     const dataJson = await this.redis.hget(inflightDataKey, messageId);
-    let storedMessage: StoredMessage<z.infer<TPayloadSchema>> | null = null;
+    let storedMessage: StoredMessage<inferZodSchemaOutput<TPayloadSchema>> | null = null;
     if (dataJson) {
       try {
         storedMessage = JSON.parse(dataJson);
@@ -1415,7 +1424,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       return;
     }
 
-    let storedMessage: StoredMessage<z.infer<TPayloadSchema>>;
+    let storedMessage: StoredMessage<inferZodSchemaOutput<TPayloadSchema>>;
     try {
       storedMessage = JSON.parse(dataJson);
     } catch {
@@ -1450,7 +1459,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   // ============================================================================
 
   async #handleMessageFailure(
-    storedMessage: StoredMessage<z.infer<TPayloadSchema>>,
+    storedMessage: StoredMessage<inferZodSchemaOutput<TPayloadSchema>>,
     queueId: string,
     queueKey: string,
     queueItemsKey: string,
@@ -1510,7 +1519,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   }
 
   async #moveToDeadLetterQueue(
-    storedMessage: StoredMessage<z.infer<TPayloadSchema>>,
+    storedMessage: StoredMessage<inferZodSchemaOutput<TPayloadSchema>>,
     errorMessage?: string
   ): Promise<void> {
     if (!this.deadLetterQueueEnabled) {
@@ -1523,7 +1532,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     const dlqDataKey = this.keys.deadLetterQueueDataKey(storedMessage.tenantId);
     const _shardId = this.masterQueue.getShardForQueue(storedMessage.queueId);
 
-    const dlqMessage: DeadLetterMessage<z.infer<TPayloadSchema>> = {
+    const dlqMessage: DeadLetterMessage<inferZodSchemaOutput<TPayloadSchema>> = {
       id: storedMessage.id,
       queueId: storedMessage.queueId,
       tenantId: storedMessage.tenantId,

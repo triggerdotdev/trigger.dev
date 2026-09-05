@@ -1,4 +1,5 @@
-import { z } from "zod";
+import { z } from "zod/v4";
+import { discriminatedUnion } from "../utils/zod.js";
 import { DeserializedJsonSchema } from "../../schemas/json.js";
 import { EXTERNAL_DEPLOYMENT_ID_MAX_LENGTH } from "../externalDeploymentId.js";
 import {
@@ -282,8 +283,8 @@ const ExternalDeploymentId = z.preprocess((value) => {
 
 export const TriggerTaskRequestBody = z
   .object({
-    payload: z.any(),
-    context: z.any(),
+    payload: z.any().optional(),
+    context: z.any().optional(),
     options: z
       .object({
         /** @deprecated engine v1 only */
@@ -342,7 +343,7 @@ export const TriggerTaskRequestBody = z
         machine: MachinePresetName.optional(),
         maxAttempts: z.number().int().optional(),
         maxDuration: z.number().optional(),
-        metadata: z.any(),
+        metadata: z.any().optional(),
         metadataType: z.string().optional(),
         payloadType: z.string().optional(),
         /**
@@ -400,8 +401,8 @@ export type BatchTriggerTaskRequestBody = z.infer<typeof BatchTriggerTaskRequest
 
 export const BatchTriggerTaskItem = z.object({
   task: z.string(),
-  payload: z.any(),
-  context: z.any(),
+  payload: z.any().optional(),
+  context: z.any().optional(),
   options: z
     .object({
       concurrencyKey: ConcurrencyKeySchema.optional(),
@@ -422,7 +423,7 @@ export const BatchTriggerTaskItem = z.object({
       machine: MachinePresetName.optional(),
       maxAttempts: z.number().int().optional(),
       maxDuration: z.number().optional(),
-      metadata: z.any(),
+      metadata: z.any().optional(),
       metadataType: z.string().optional(),
       parentAttempt: z.string().optional(),
       payloadType: z.string().optional(),
@@ -562,7 +563,7 @@ export type CreateBatchResponse = z.infer<typeof CreateBatchResponse>;
  *
  * `options` reuses the strict shape from BatchTriggerTaskItem so that the
  * Phase-2 streaming path validates option fields identically to the V2/V3
- * batch trigger endpoints — historically this used z.record(z.unknown()) and
+ * batch trigger endpoints — historically this used z.record(z.string(), z.unknown()) and
  * let invalid values (e.g. numeric concurrencyKey) reach Prisma.
  */
 export const BatchItemNDJSON = z.object({
@@ -634,7 +635,7 @@ export const RescheduleRunRequestBody = z.object({
 export type RescheduleRunRequestBody = z.infer<typeof RescheduleRunRequestBody>;
 
 export const GetEnvironmentVariablesResponseBody = z.object({
-  variables: z.record(z.string()),
+  variables: z.record(z.string(), z.string()),
 });
 
 export type GetEnvironmentVariablesResponseBody = z.infer<
@@ -749,7 +750,7 @@ export type CreateArtifactRequestBody = z.infer<typeof CreateArtifactRequestBody
 export const CreateArtifactResponseBody = z.object({
   artifactKey: z.string(),
   uploadUrl: z.string(),
-  uploadFields: z.record(z.string()),
+  uploadFields: z.record(z.string(), z.string()),
   expiresAt: z.string().datetime(),
 });
 
@@ -826,7 +827,7 @@ const InitializeDeploymentRequestBodyFull = InitializeDeploymentRequestBodyBase.
   // The artifact is a pre-built bundle; the build server only runs the container build
   fromBundle: z.boolean().optional(),
   // Build-time env var values for fromBundle deploys, stored encrypted on the deployment
-  buildEnvVars: z.record(z.string()).optional(),
+  buildEnvVars: z.record(z.string(), z.string()).optional(),
 }).superRefine((data, ctx) => {
   if (data.force && !data.externalId) {
     ctx.addIssue({
@@ -968,7 +969,7 @@ export type GetDeploymentResponseBody = z.infer<typeof GetDeploymentResponseBody
 
 // Secret material, deliberately kept off GetDeploymentResponseBody
 export const GetDeploymentBuildEnvVarsResponseBody = z.object({
-  variables: z.record(z.string()),
+  variables: z.record(z.string(), z.string()),
 });
 
 export type GetDeploymentBuildEnvVarsResponseBody = z.infer<
@@ -996,7 +997,7 @@ export const DeploymentFinalizedEvent = z.object({
   }),
 });
 
-export const DeploymentEvent = z.discriminatedUnion("type", [
+export const DeploymentEvent = discriminatedUnion("type", [
   DeploymentLogEvent,
   DeploymentFinalizedEvent,
 ]);
@@ -1356,7 +1357,7 @@ const CommonRunFields = {
   costInCents: z.number(),
   baseCostInCents: z.number(),
   durationMs: z.number(),
-  metadata: z.record(z.any()).optional(),
+  metadata: z.record(z.string(), z.any()).optional(),
   taskKind: z.string().optional(),
   region: z.string().optional(),
 };
@@ -1454,22 +1455,20 @@ const BulkActionSelectionRequestBody = {
   name: z.string().max(255, "Name must be less than 255 characters").optional(),
 };
 
-export const CreateBulkActionRequestBody = z
-  .discriminatedUnion("action", [
-    z.object({
-      action: z.literal("cancel"),
-      targetRegion: z.never().optional(),
-      ...BulkActionSelectionRequestBody,
-    }),
-    z.object({
-      action: z.literal("replay"),
-      targetRegion: z.string().optional(),
-      ...BulkActionSelectionRequestBody,
-    }),
-  ])
-  .refine((body) => (body.filter ? 1 : 0) + (body.runIds ? 1 : 0) === 1, {
-    message: "Exactly one of filter or runIds must be provided",
-  });
+export const CreateBulkActionRequestBody = discriminatedUnion("action", [
+  z.object({
+    action: z.literal("cancel"),
+    targetRegion: z.never().optional(),
+    ...BulkActionSelectionRequestBody,
+  }),
+  z.object({
+    action: z.literal("replay"),
+    targetRegion: z.string().optional(),
+    ...BulkActionSelectionRequestBody,
+  }),
+]).refine((body) => (body.filter ? 1 : 0) + (body.runIds ? 1 : 0) === 1, {
+  message: "Exactly one of filter or runIds must be provided",
+});
 
 export type CreateBulkActionRequestBody = z.infer<typeof CreateBulkActionRequestBody>;
 
@@ -1537,17 +1536,15 @@ export type UpdateEnvironmentVariableRequestBody = z.infer<
 >;
 
 export const ImportEnvironmentVariablesRequestBody = z.object({
-  variables: z.record(z.string()),
-  parentVariables: z.record(z.string()).optional(),
+  variables: z.record(z.string(), z.string()),
+  parentVariables: z.record(z.string(), z.string()).optional(),
   override: z.boolean().optional(),
   // When omitted, variables default to non-secret (the DB default is false).
   isSecret: z.boolean().optional(),
-  source: z
-    .discriminatedUnion("type", [
-      z.object({ type: z.literal("user"), userId: z.string() }),
-      z.object({ type: z.literal("integration"), integration: z.string() }),
-    ])
-    .optional(),
+  source: discriminatedUnion("type", [
+    z.object({ type: z.literal("user"), userId: z.string() }),
+    z.object({ type: z.literal("integration"), integration: z.string() }),
+  ]).optional(),
 });
 
 export type ImportEnvironmentVariablesRequestBody = z.infer<
@@ -1595,7 +1592,7 @@ export const UpdateMetadataRequestBody = FlushedRunMetadata;
 export type UpdateMetadataRequestBody = z.infer<typeof UpdateMetadataRequestBody>;
 
 export const UpdateMetadataResponseBody = z.object({
-  metadata: z.record(DeserializedJsonSchema),
+  metadata: z.record(z.string(), DeserializedJsonSchema),
 });
 
 export type UpdateMetadataResponseBody = z.infer<typeof UpdateMetadataResponseBody>;
@@ -1867,7 +1864,7 @@ export type CompleteWaitpointTokenRequestBody = z.infer<typeof CompleteWaitpoint
  * server's trigger machinery.
  */
 export const SessionTriggerConfig = z.object({
-  basePayload: z.record(z.unknown()),
+  basePayload: z.record(z.string(), z.unknown()),
   machine: MachinePresetName.optional(),
   queue: z.string().max(128).optional(),
   tags: z.array(z.string().max(128)).max(10).optional(),
@@ -1910,7 +1907,7 @@ export const CreateSessionRequestBody = z.object({
   /** Up to 10 tags for dashboard filtering. */
   tags: z.array(z.string().max(128)).max(10).optional(),
   /** Arbitrary JSON metadata. */
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
   /** Absolute expiry timestamp for retention. */
   expiresAt: z.coerce.date().optional(),
 });
@@ -1935,7 +1932,7 @@ export const SessionItem = z.object({
    */
   currentRunId: z.string().nullable().optional(),
   tags: z.array(z.string()),
-  metadata: z.record(z.unknown()).nullable(),
+  metadata: z.record(z.string(), z.unknown()).nullable(),
   closedAt: z.coerce.date().nullable(),
   closedReason: z.string().nullable(),
   expiresAt: z.coerce.date().nullable(),
@@ -1987,7 +1984,7 @@ export type EndAndContinueSessionResponseBody = z.infer<typeof EndAndContinueSes
 
 export const UpdateSessionRequestBody = z.object({
   tags: z.array(z.string().max(128)).max(10).optional(),
-  metadata: z.record(z.unknown()).nullable().optional(),
+  metadata: z.record(z.string(), z.unknown()).nullable().optional(),
   // Null explicitly clears the externalId; non-null values must be non-empty.
   externalId: z
     .union([
@@ -2197,7 +2194,7 @@ export const ApiDeploymentListResponseItem = z.object({
     "TIMED_OUT",
   ]),
   deployedAt: z.coerce.date().optional(),
-  git: z.record(z.any()).optional(),
+  git: z.record(z.string(), z.any()).optional(),
   error: DeploymentErrorData.optional(),
 });
 
@@ -2213,7 +2210,7 @@ export const ApiBranchListResponseBody = z.object({
       name: z.string(),
       createdAt: z.coerce.date(),
       updatedAt: z.coerce.date(),
-      git: z.record(z.any()).optional(),
+      git: z.record(z.string(), z.any()).optional(),
       isPaused: z.boolean(),
     })
   ),
@@ -2239,7 +2236,7 @@ export const RetrieveRunTraceSpanSchema = z.object({
     workerVersion: z.string().optional(),
     queueName: z.string().optional(),
     machinePreset: z.string().optional(),
-    properties: z.record(z.any()).optional(),
+    properties: z.record(z.string(), z.any()).optional(),
     output: z.unknown().optional(),
   }),
 });
@@ -2273,7 +2270,7 @@ export const RetrieveSpanDetailResponseBody = z.object({
   level: z.string(),
   startTime: z.coerce.date(),
   durationMs: z.number(),
-  properties: z.record(z.any()).optional(),
+  properties: z.record(z.string(), z.any()).optional(),
   events: z.array(z.any()).optional(),
   entityType: z.string().optional(),
   ai: z
@@ -2362,7 +2359,7 @@ export type ReadSessionStreamRecordsResponseBody = z.infer<
 >;
 
 export const ResolvePromptRequestBody = z.object({
-  variables: z.record(z.unknown()).default({}),
+  variables: z.record(z.string(), z.unknown()).default({}),
   label: z.string().optional(),
   version: z.number().optional(),
 });
@@ -2377,7 +2374,7 @@ export const ResolvePromptResponseBody = z.object({
     template: z.string().optional(),
     text: z.string().optional(),
     model: z.string().optional().nullable(),
-    config: z.record(z.unknown()).optional().nullable(),
+    config: z.record(z.string(), z.unknown()).optional().nullable(),
   }),
 });
 export type ResolvePromptResponseBody = z.infer<typeof ResolvePromptResponseBody>;

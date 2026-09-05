@@ -23,7 +23,7 @@ const SigningSecretSchema = z.object({ secret: z.string() });
 
 const SendSchema = z.object({
   body: z.string(),
-  headers: z.record(z.string()).optional(),
+  headers: z.record(z.string(), z.string()).optional(),
   signatureMode: z.enum(["signed", "unsigned", "tampered", "simulate"]).default("signed"),
   redirect: z.boolean().default(true),
 });

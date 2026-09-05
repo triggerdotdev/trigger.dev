@@ -1,4 +1,4 @@
-import type { z } from "zod";
+import type { AnyZodSchema, inferZodSchemaOutput } from "../types/schemas.js";
 import {
   type Offset,
   FetchError,
@@ -22,12 +22,12 @@ export type ZodShapeStreamOptions = {
   onError?: (e: Error) => void;
 };
 
-export type ZodShapeStreamInstance<TShapeSchema extends z.ZodTypeAny> = {
-  stream: AsyncIterableStream<z.output<TShapeSchema>>;
+export type ZodShapeStreamInstance<TShapeSchema extends AnyZodSchema> = {
+  stream: AsyncIterableStream<inferZodSchemaOutput<TShapeSchema>>;
   stop: (delay?: number) => void;
 };
 
-export function zodShapeStream<TShapeSchema extends z.ZodTypeAny>(
+export function zodShapeStream<TShapeSchema extends AnyZodSchema>(
   schema: TShapeSchema,
   url: string,
   options?: ZodShapeStreamOptions
@@ -59,7 +59,7 @@ export function zodShapeStream<TShapeSchema extends z.ZodTypeAny>(
   const readableShape = new ReadableShapeStream(shapeStream);
 
   const stream = readableShape.stream.pipeThrough(
-    new TransformStream<unknown, z.output<TShapeSchema>>({
+    new TransformStream<unknown, inferZodSchemaOutput<TShapeSchema>>({
       async transform(chunk, controller) {
         const result = schema.safeParse(chunk);
 
@@ -73,7 +73,7 @@ export function zodShapeStream<TShapeSchema extends z.ZodTypeAny>(
   );
 
   return {
-    stream: stream as AsyncIterableStream<z.output<TShapeSchema>>,
+    stream: stream as AsyncIterableStream<inferZodSchemaOutput<TShapeSchema>>,
     stop: (delay?: number) => {
       if (delay) {
         setTimeout(() => {

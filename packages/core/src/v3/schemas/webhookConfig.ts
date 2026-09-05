@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v4";
 
 // Ingress webhook verification config. Kept in a LEAF module (imports only `z`) so it
 // can be consumed by resources.ts / schemas.ts without dragging in the alert-webhook
@@ -68,7 +68,7 @@ export const WebhookSigningString = z.union([
   z.literal("raw"),
   z.object({
     template: z.string(),
-    vars: z.record(WebhookValueSource).optional(),
+    vars: z.record(z.string(), WebhookValueSource).optional(),
   }),
 ]);
 export type WebhookSigningString = z.infer<typeof WebhookSigningString>;
@@ -182,7 +182,7 @@ export const WebhookRoutingTarget = z.discriminatedUnion("type", [
     deliverAs: z.enum(["action", "message"]),
     actionType: z.string().optional(),
     connectorId: z.string().optional(),
-    triggerConfigTemplate: z.record(z.unknown()).optional(),
+    triggerConfigTemplate: z.record(z.string(), z.unknown()).optional(),
     // Gate session CREATION: an event that already resolves to an existing session always resumes it,
     // but a key with no session is only started when the event matches this filter. Absent => always start.
     startOn: z.string().optional(),

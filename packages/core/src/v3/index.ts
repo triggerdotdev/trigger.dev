@@ -85,8 +85,13 @@ export * from "./config.js";
 export {
   getSchemaParseFn,
   type AnySchemaParseFn,
+  type AnyZodSchema,
   type SchemaParseFn,
+  type ZodErrorLike,
+  type ZodIssueLike,
   type inferSchemaOut,
+  type inferZodSchemaInput,
+  type inferZodSchemaOutput,
   isSchemaZodEsque,
   isSchemaValibotEsque,
   isSchemaArkTypeEsque,

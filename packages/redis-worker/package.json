@@ -27,7 +27,7 @@
     "nanoid": "^5.1.16",
     "p-limit": "^6.2.0",
     "seedrandom": "^3.0.5",
-    "zod": "3.25.76",
+    "zod": "^3.25.76 || ^4.0.0",
     "cron-parser": "^4.9.0"
   },
   "devDependencies": {
@@ -52,5 +52,8 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     }
+  },
+  "peerDependencies": {
+    "zod": "^3.25.76 || ^4.0.0"
   }
 }

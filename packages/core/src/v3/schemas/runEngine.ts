@@ -1,4 +1,5 @@
-import { z } from "zod";
+import { z } from "zod/v4";
+import { discriminatedUnion } from "../utils/zod.js";
 import type { Enum, RuntimeEnvironmentType } from "./common.js";
 import { MachinePreset, TaskRunExecution } from "./common.js";
 import { EnvironmentType } from "./schemas.js";
@@ -224,7 +225,7 @@ export const RunExecutionData = z.object({
 });
 export type RunExecutionData = z.infer<typeof RunExecutionData>;
 
-export const CreateCheckpointResult = z.discriminatedUnion("ok", [
+export const CreateCheckpointResult = discriminatedUnion("ok", [
   z
     .object({
       ok: z.literal(true),
@@ -289,7 +290,7 @@ export const DequeuedMessage = z.object({
     machine: MachinePreset,
     attemptNumber: z.number(),
     masterQueue: z.string(),
-    traceContext: z.record(z.unknown()),
+    traceContext: z.record(z.string(), z.unknown()),
     annotations: RunAnnotations.optional(),
   }),
   environment: z.object({

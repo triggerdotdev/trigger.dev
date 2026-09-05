@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v4";
 import type {
   WorkerApiConnectRequestBody,
   WorkerApiDequeueRequestBody,
@@ -27,6 +27,7 @@ import { wrapZodFetch, type ApiResult, type ZodFetchOptions } from "../../zodfet
 import { createHeaders } from "../util.js";
 import { WORKER_HEADERS } from "../consts.js";
 import { SimpleStructuredLogger } from "../../utils/structuredLogger.js";
+import type { AnyZodSchema, inferZodSchemaOutput } from "../../types/schemas.js";
 
 type SupervisorHttpClientOptions = SupervisorClientCommonOptions;
 
@@ -61,13 +62,13 @@ export class SupervisorHttpClient {
     }
   }
 
-  private async request<T extends z.ZodTypeAny>(
+  private async request<T extends AnyZodSchema>(
     name: string,
     schema: T,
     url: string,
     requestInit?: RequestInit,
-    options?: ZodFetchOptions<z.output<T>>
-  ): Promise<ApiResult<z.infer<T>>> {
+    options?: ZodFetchOptions<inferZodSchemaOutput<T>>
+  ): Promise<ApiResult<inferZodSchemaOutput<T>>> {
     const start = performance.now();
     const result = await wrapZodFetch(schema, url, requestInit, options);
 

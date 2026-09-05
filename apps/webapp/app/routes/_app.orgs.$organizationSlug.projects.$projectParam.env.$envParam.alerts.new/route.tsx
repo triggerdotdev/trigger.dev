@@ -1,5 +1,5 @@
 import { getFormProps, getInputProps, getSelectProps, useForm } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { HashtagIcon, LockClosedIcon } from "@heroicons/react/20/solid";
 import { Form, useActionData, useNavigate, useNavigation } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/router";

@@ -1,5 +1,5 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { CommandLineIcon, FolderIcon } from "@heroicons/react/20/solid";
 import {
   json,
@@ -404,12 +404,12 @@ export default function Page() {
                 </InputGroup>
                 {canCreateV3Projects ? (
                   <input
-                    {...getInputProps(projectVersion, { type: "hidden" })}
+                    {...getInputProps(projectVersion, { type: "hidden", value: false })}
                     defaultValue={"v3"}
                   />
                 ) : (
                   <input
-                    {...getInputProps(projectVersion, { type: "hidden" })}
+                    {...getInputProps(projectVersion, { type: "hidden", value: false })}
                     defaultValue={"v2"}
                   />
                 )}

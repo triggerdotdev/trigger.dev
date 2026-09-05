@@ -1,7 +1,7 @@
 import { redisTest } from "@internal/testcontainers";
 import { describe } from "node:test";
 import { expect } from "vitest";
-import { z } from "zod";
+import { z } from "zod/v4";
 import { SimpleQueue } from "./queue.js";
 import { Logger } from "@trigger.dev/core/logger";
 import { createRedisClient } from "@internal/redis";

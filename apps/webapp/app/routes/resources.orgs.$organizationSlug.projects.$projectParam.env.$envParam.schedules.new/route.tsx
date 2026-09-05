@@ -1,5 +1,5 @@
 import { getFormProps, getInputProps, getSelectProps, useForm } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { ScheduleWindow } from "@trigger.dev/core/v3";
 import { CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import {
@@ -228,7 +228,7 @@ export function UpsertScheduleForm({
     const result = ScheduleWindow.safeParse(scheduleWindowValue);
     scheduleWindowResult = result.success
       ? { isValid: true }
-      : { isValid: false, error: result.error.errors[0].message };
+      : { isValid: false, error: result.error.issues[0].message };
   }
 
   if (cronPattern !== "") {
@@ -237,7 +237,7 @@ export function UpsertScheduleForm({
     if (!result.success) {
       cronPatternResult = {
         isValid: false,
-        error: result.error.errors[0].message,
+        error: result.error.issues[0].message,
       };
     } else {
       try {

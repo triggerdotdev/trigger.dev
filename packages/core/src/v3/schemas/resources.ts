@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v4";
 import { QueueManifest, RetryOptions, ScheduleMetadata } from "./schemas.js";
 import { MachineConfig } from "./common.js";
 import {
@@ -51,7 +51,7 @@ export const PromptResource = z.object({
   /** Default model identifier */
   model: z.string().optional(),
   /** Default model config (temperature, maxTokens, etc.) */
-  config: z.record(z.unknown()).optional(),
+  config: z.record(z.string(), z.unknown()).optional(),
   /** JSONSchema7 for template variables */
   variableSchema: z.unknown().optional(),
 });
@@ -68,7 +68,7 @@ export const WebhookResource = z.object({
   routingTarget: WebhookRoutingTarget,
   secretProvisioning: WebhookSecretProvisioning.optional(),
   filter: z.string().optional(), // delivery filter DSL string; compiled to a FilterAst at deploy-sync
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 export type WebhookResource = z.infer<typeof WebhookResource>;
 
