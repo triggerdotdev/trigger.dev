@@ -381,6 +381,7 @@ const EnvironmentSchema = z
     APP_ENV: z.string().default(process.env.NODE_ENV),
     SERVICE_NAME: z.string().default("trigger.dev webapp"),
     SENTRY_DSN: z.string().optional(),
+    SENTRY_ENVIRONMENT: z.string().optional(),
     POSTHOG_PROJECT_KEY: z.string().default("phc_LFH7kJiGhdIlnO22hTAKgHpaKhpM8gkzWAFvHmf5vfS"),
     // Upstream hosts the /ph reverse proxy forwards to (defaults: PostHog Cloud
     // EU). The client points api_host at the same-origin /ph path; the proxy
