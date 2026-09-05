@@ -2,6 +2,7 @@ import { useFetcher } from "@remix-run/react";
 import { useEffect, useState } from "react";
 import stableStringify from "json-stable-stringify";
 import { json } from "@remix-run/server-runtime";
+import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { LockClosedIcon } from "@heroicons/react/20/solid";
@@ -17,6 +18,10 @@ import {
   lockedFlagsInPayload,
   validatePartialFeatureFlags,
 } from "~/v3/featureFlags";
+import {
+  globalOnlySnapshotStoreFlagError,
+  snapshotStoreFlagSaveError,
+} from "~/v3/snapshotStoreFlagGuard.server";
 import { flags as getGlobalFlags, replaceGlobalFeatureFlags } from "~/v3/featureFlags.server";
 import { featuresForRequest } from "~/features.server";
 import { Button } from "~/components/primitives/Buttons";
@@ -127,6 +132,22 @@ export const action = dashboardAction(
         { error: "Invalid feature flags", details: validationResult.error.issues },
         { status: 400 }
       );
+    }
+
+    const globalOnlyError = globalOnlySnapshotStoreFlagError(parsed.data.flags);
+    if (globalOnlyError) {
+      return json({ error: globalOnlyError }, { status: 400 });
+    }
+
+    const snapshotStoreError = snapshotStoreFlagSaveError(parsed.data.flags, {
+      redisHostConfigured: !!env.RUN_ENGINE_SNAPSHOT_STORE_REDIS_HOST,
+      // Read from the live registry, not from the payload: the latch must ALREADY be true before
+      // anything can be enabled, or a run born in the gap would be resident with its transitions
+      // skipped.
+      everEnabled: globalFlagsRegistry.current()?.[FEATURE_FLAG.snapshotStoreEverEnabled] === true,
+    });
+    if (snapshotStoreError) {
+      return json({ error: snapshotStoreError }, { status: 400 });
     }
 
     await replaceGlobalFeatureFlags(prisma, {

@@ -216,7 +216,7 @@ describe("the staging facade", () => {
   );
 
   containerTest(
-    "hands the transaction callback the plain delegate at mode off",
+    "stages nothing and touches no Redis inside a transaction at mode off",
     async ({ prisma, redisOptions }) => {
       const { decorated, redis } = build(prisma as never, redisOptions as never, "off");
       try {
@@ -242,7 +242,10 @@ describe("the staging facade", () => {
           seen = store;
         });
 
-        expect(seen).not.toBeInstanceOf(TaskRunExecutionSnapshotStore);
+        // The callback now always receives the staging facade: this method holds only a runId, and
+        // a per-organisation dial lives in that organisation's blob, so it cannot know whether any
+        // write inside will reach Redis. What must hold at `off` is that nothing is appended.
+        expect(seen).toBeInstanceOf(TaskRunExecutionSnapshotStore);
         expect(await redis.getLatest(runId)).toBeNull();
       } finally {
         await redis.quit();
@@ -269,7 +272,7 @@ describe("the staging facade", () => {
   );
 
   containerTest(
-    "returns the plain handle from forWaitpointCompletion at mode off",
+    "wraps the forWaitpointCompletion handle at mode off too",
     async ({ prisma, redisOptions }) => {
       const { decorated, redis } = build(prisma as never, redisOptions as never, "off");
       try {
@@ -277,7 +280,9 @@ describe("the staging facade", () => {
           routeKind: "MANUAL",
         } as never);
 
-        expect(handle).not.toBeInstanceOf(TaskRunExecutionSnapshotStore);
+        // Leaving it unwrapped was the one hole a future snapshot write could slip through with no
+        // signal, and the dial can now move at runtime, so the handle is wrapped at every position.
+        expect(handle).toBeInstanceOf(TaskRunExecutionSnapshotStore);
       } finally {
         await redis.quit();
       }

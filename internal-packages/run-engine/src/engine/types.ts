@@ -50,6 +50,31 @@ export type CrossSeamGuardHook = (input: {
   routeKind: "MANUAL" | "DATETIME" | "RESUME_TOKEN" | "IDEMPOTENCY_REUSE" | "RUN";
 }) => Promise<CrossSeamGuardDecision>;
 
+export type SnapshotSweepOutcome =
+  | "completed"
+  | "partial"
+  | "skipped_locked"
+  | "failed"
+  | "unbound"
+  | "aborted";
+
+export const SNAPSHOT_SWEEP_COUNT_FIELDS = [
+  "scanned",
+  "expired",
+  "deleted",
+  "skipped",
+  "pendingDeletion",
+  // Keyspaces the pass could not read. Reported because containment without a number is
+  // indistinguishable from nothing going wrong: a run that fails every pass leaks forever and the
+  // only other evidence is one log line per pass.
+  "failed",
+  "nodes",
+  "partial",
+] as const;
+
+/** Derived from the list above, so the runtime filter and the type cannot drift apart. */
+type SnapshotSweepCountField = (typeof SNAPSHOT_SWEEP_COUNT_FIELDS)[number];
+
 export type RunEngineOptions = {
   prisma: PrismaClient;
   readOnlyPrisma?: PrismaReplicaClient;
@@ -165,6 +190,22 @@ export type RunEngineOptions = {
       /** Whether to add jitter to retry delays. Default: true */
       randomize?: boolean;
     };
+  };
+  /**
+   * The execution-snapshot orphan sweep. The engine owns scheduling only: the webapp owns what
+   * runs, because a pass needs a run store and its own Redis client and the engine opens neither.
+   */
+  snapshotStore?: {
+    /** Bounded on purpose: both fields become metric attributes, so each value is a time series. */
+    runSweep?: (opts: { deadline: number; signal: AbortSignal }) => Promise<{
+      outcome: SnapshotSweepOutcome;
+      counts?: Partial<Record<SnapshotSweepCountField, number | boolean>>;
+    }>;
+    /** Cron. Absent or empty falls back to the catalog default. */
+    sweepSchedule?: string;
+    sweepJitterInMs?: number;
+    /** Ceiling on one pass. Must stay below the job's visibility timeout. */
+    sweepBudgetMs?: number;
   };
   debounce?: {
     redis?: RedisOptions;

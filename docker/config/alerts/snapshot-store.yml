@@ -1,0 +1,68 @@
+# Alerting rules for the execution-snapshot store.
+#
+# These are paging rules, not dashboard panels. A sustained append failure burns an attempt number
+# on every state transition, so runs exhaust their retry budget from an infrastructure fault rather
+# than from anything the task did. That is silent to the customer until their run fails for good.
+# The exported names carry a deployment-dependent prefix (locally `triggerdotdev_`) that is added
+# somewhere in the OpenTelemetry pipeline, not by the instrument names in the code. Matching on the
+# suffix keeps these rules correct wherever that prefix differs, and an alert that silently matches
+# nothing is worse than no alert.
+groups:
+  - name: snapshot-store
+    interval: 30s
+    rules:
+      - alert: SnapshotStoreAppendFailing
+        # Any sustained failure at all, not a rate threshold: one failed append per minute still
+        # burns one attempt per minute on the runs it touches.
+        expr: sum(rate({__name__=~".*run_engine_snapshot_store_append_failed(_total)?"}[5m])) > 0
+        for: 10m
+        labels:
+          severity: page
+        annotations:
+          summary: "Execution-snapshot appends to Redis are failing"
+          description: >-
+            Appends have failed continuously for 10 minutes. Each failure burns an attempt number on
+            the run it touches, so runs will exhaust their retry budget from infrastructure rather
+            than task failure. Turning the snapshotStoreMode flag down to off stops new runs
+            entering Redis but leaves resident runs mirroring, so the failures continue until they
+            finish; the snapshotStoreHalt flag stops every append at once, at the cost of freezing
+            resident heads and requiring a resync. Both take effect without a deploy. Then
+            investigate the Redis endpoint.
+
+      - alert: SnapshotStoreAppendForked
+        # A fork is a divergence that has already happened: the head moved under an append that was
+        # refused, so Redis and Postgres now disagree about that run's latest snapshot. With a run's
+        # store fixed at birth the writer set per run is stable, so this is a lost append or a
+        # genuine concurrent writer, not steady-state noise.
+        #
+        # A fork now enqueues a repair automatically, and the repair re-derives the head from
+        # Postgres. So this alert means "divergence happened", not "divergence persists": it should
+        # clear on its own. It pages because a fork that does NOT clear is a stuck repair, and
+        # because the entries lost with the append are not recovered even when the head is.
+        expr: sum(rate({__name__=~".*run_engine_snapshot_store_write_total(_total)?",outcome="forked"}[5m])) > 0
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "Execution-snapshot appends are being refused as forked"
+          description: >-
+            One or more runs had a Redis head that disagreed with Postgres. A repair was enqueued
+            automatically for each, so first check whether the rate is falling: a fork that clears
+            itself needs no action. If it is not falling, the repair is not running, and that is the
+            thing to investigate. Below redis-only Postgres is authoritative, so turning the
+            snapshotStoreMode flag down to off stops new runs entering Redis while you look. Do NOT
+            halt: that disables the repair and freezes every resident run's head instead of just the
+            forked ones. Note that a repaired run has a correct head but is missing the entries lost
+            with the append, so its keyspace is marked and window reads fall back to Postgres.
+
+      - alert: SnapshotStoreSweepNotCompleting
+        # The sweep is the only reaper for orphaned keyspaces. Its absence is silent by nature.
+        expr: sum(increase({__name__=~".*run_engine_snapshot_store_sweep_pass_total(_total)?",outcome="completed"}[24h])) == 0
+        for: 1h
+        labels:
+          severity: ticket
+        annotations:
+          summary: "No execution-snapshot sweep pass completed in 24 hours"
+          description: >-
+            The sweep runs every 6 hours by default, so 24 hours with no completed pass means the
+            job is not running, is failing, or is losing its lock every pass.

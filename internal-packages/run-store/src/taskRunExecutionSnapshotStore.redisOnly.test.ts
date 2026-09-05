@@ -1,9 +1,9 @@
 // `redis-only` is the terminal cutover, and it is the only dial position where Postgres stops being
 // authoritative: it cannot be rolled back by turning the dial down, because the snapshots written
-// while it was on exist nowhere else. It is also the only position that is a PAIR of settings, not
-// one — the decorator's mode AND `snapshotWrites: false` on the store underneath it — and the two
-// are set by different tickets. Every test here builds the pair, because testing the mode against a
-// store that still writes snapshots would exercise a configuration that never ships.
+// while it was on exist nowhere else. Suppression is now a per-run decision the decorator makes: a
+// run BORN while the decorator resolves `redis-only` has its Postgres snapshot rows suppressed for
+// life (the decorator threads `writeSnapshotRow: false` onto every write), so the store underneath
+// needs no separate `snapshotWrites` setting — the decorator alone drives the pair.
 import { describe, expect } from "vitest";
 import { containerTest } from "@internal/testcontainers";
 import { generateInternalId } from "@trigger.dev/core/v3/isomorphic";
@@ -29,7 +29,6 @@ function build(prisma: never, redisOptions: never) {
     new PostgresRunStore({
       prisma,
       readOnlyPrisma: prisma,
-      snapshotWrites: false,
     }) as unknown as RunStore,
     {
       store: redis,
@@ -279,43 +278,37 @@ describe("redis-only: every read is served from Redis", () => {
     }
   );
 
-  containerTest(
-    "the read cohort dial cannot route a run away from Redis",
-    async ({ prisma, redisOptions }) => {
-      // readPercent is a ramp control for `redis-read`. At `redis-only` a run routed to Postgres
-      // would read a database that holds no snapshots at all, so the dial must be ignored here
-      // whatever it is set to.
-      const redis = new RedisSnapshotStore({ redisOptions, completedTtlMs: COMPLETED_TTL_MS });
-      const reads: string[] = [];
-      const decorated = new TaskRunExecutionSnapshotStore(
-        new PostgresRunStore({
-          prisma: prisma as never,
-          readOnlyPrisma: prisma as never,
-          snapshotWrites: false,
-        }) as unknown as RunStore,
-        {
-          store: redis,
-          mode: "redis-only",
-          readPercent: 0,
-          metrics: {
-            recordWrite: () => {},
-            recordAppendFailed: () => {},
-            recordRead: (_m, source) => reads.push(source),
-          },
-        }
-      );
-
-      try {
-        const env = await seedSnapshotEnvironment(prisma);
-        const { runId, snapshotId } = await seedRun(decorated, env);
-
-        const latest = await decorated.findLatestExecutionSnapshot(runId);
-
-        expect(latest!.id).toBe(snapshotId);
-        expect(reads).not.toContain("postgres");
-      } finally {
-        await redis.quit();
+  containerTest("a redis-only run always reads from Redis", async ({ prisma, redisOptions }) => {
+    // At `redis-only` a run routed to Postgres would read a database that holds no snapshots at
+    // all, so every run reads from Redis here.
+    const redis = new RedisSnapshotStore({ redisOptions, completedTtlMs: COMPLETED_TTL_MS });
+    const reads: string[] = [];
+    const decorated = new TaskRunExecutionSnapshotStore(
+      new PostgresRunStore({
+        prisma: prisma as never,
+        readOnlyPrisma: prisma as never,
+      }) as unknown as RunStore,
+      {
+        store: redis,
+        mode: "redis-only",
+        metrics: {
+          recordWrite: () => {},
+          recordAppendFailed: () => {},
+          recordRead: (_m, source) => reads.push(source),
+        },
       }
+    );
+
+    try {
+      const env = await seedSnapshotEnvironment(prisma);
+      const { runId, snapshotId } = await seedRun(decorated, env);
+
+      const latest = await decorated.findLatestExecutionSnapshot(runId);
+
+      expect(latest!.id).toBe(snapshotId);
+      expect(reads).not.toContain("postgres");
+    } finally {
+      await redis.quit();
     }
-  );
+  });
 });

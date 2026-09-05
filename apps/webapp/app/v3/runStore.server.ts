@@ -20,6 +20,7 @@ import {
 } from "~/db.server";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
+import { decorateWithSnapshotStore } from "./snapshotStoreInstance.server";
 import {
   resilienceForClient,
   type TransactionResilienceConfig,
@@ -60,12 +61,18 @@ type BuildRunStoreDeps = {
  *
  * Split OFF (default / self-host): returns the exact passthrough PostgresRunStore we
  * have always returned, built from the single control-plane handles. No second store
- * is constructed and no marker predicate is consulted, so behavior is byte-identical
- * to single-DB today.
+ * is constructed, and the redis-only marker predicate is consulted only when the caller
+ * wired one (i.e. the snapshot store is configured); with it unset behavior is
+ * byte-identical to single-DB today.
  *
  * Split ON: returns a RoutingRunStore that selects between a NEW store (where new runs
  * are born) and a LEGACY store (draining) by run-id residency (id shape). There is no cuid
  * migration, so a LEGACY-classified id is always LEGACY-resident.
+ *
+ * Postgres snapshot-row suppression is NOT wired here. It is a per-run decision the snapshot
+ * decorator threads onto each snapshot input (`writeSnapshotRow`), fixed at the run's birth, so the
+ * store never re-derives residency from the live org dial. An unwired/unconfigured deploy leaves the
+ * field unset and every snapshot row is written, byte-identical to before.
  */
 export function buildRunStore(deps: BuildRunStoreDeps): RunStore {
   if (!deps.splitEnabled) {
@@ -192,7 +199,12 @@ function tryResolveRunOpsHandles() {
   }
 }
 
-export const runStore: RunStore = singleton("RunStore", () => {
+/**
+ * The router with no snapshot decorator. One intended consumer: the orphan sweeper's rule-2
+ * lookup, which must ask Postgres whether a run row exists and must never be able to ask Redis
+ * whether Redis is an orphan. Every other caller wants `runStore`.
+ */
+export const runStoreWithoutSnapshotDecorator: RunStore = singleton("RunStore.undecorated", () => {
   const handles = ROUTING_ENABLED ? tryResolveRunOpsHandles() : null;
   // Single-store passthrough: self-host (one DB), or a context without run-ops handles.
   if (!handles) {
@@ -221,3 +233,7 @@ export const runStore: RunStore = singleton("RunStore", () => {
     legacyResilience: resilienceForClient(handles.legacyWriter),
   });
 });
+
+export const runStore: RunStore = singleton("RunStore", () =>
+  decorateWithSnapshotStore(runStoreWithoutSnapshotDecorator)
+);

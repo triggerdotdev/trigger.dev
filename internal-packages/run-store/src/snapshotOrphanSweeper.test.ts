@@ -466,4 +466,55 @@ describe("SnapshotOrphanSweeper", () => {
       await Promise.all([store.quit(), sweeper.quit(), probe.quit().catch(() => {})]);
     }
   });
+  containerTest(
+    "one wrong-typed keyspace costs that run its pass, not every run's",
+    async ({ prisma, redisOptions }) => {
+      // A single malformed keyspace used to abort the WHOLE pass: the Redis commands in the two
+      // rule bodies were uncaught, so a WRONGTYPE propagated out of sweep() and every later pass
+      // hit the same key. Collection stopped for every run until a human deleted it.
+      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: COMPLETED_TTL_MS });
+      const runStore = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const sweeper = new SnapshotOrphanSweeper({
+        redisOptions,
+        runStore: runStore as unknown as RunStore,
+        completedTtlMs: COMPLETED_TTL_MS,
+        orphanAgeMs: ORPHAN_AGE_MS,
+        confirmOrphanAfterMs: 0,
+      });
+      const probe = createRedisClient(redisOptions, { onError: () => {} });
+      try {
+        const env = await seedSnapshotEnvironment(prisma);
+
+        // A healthy terminal run that rule 1 must still expire.
+        const healthyId = generateInternalId();
+        await store.append({
+          entry: birthEntry(healthyId, env, new Date()),
+          kind: "birth",
+          isTerminal: false,
+        });
+        await prisma.taskRun.create({
+          data: { ...buildCreateRunData(healthyId, env), status: "COMPLETED_SUCCESSFULLY" },
+        });
+
+        // A keyspace whose `seq` is a string where the code expects a hash. Discovered by the scan
+        // (it matches on `:e`), then every command against `seq` raises WRONGTYPE.
+        const brokenId = generateInternalId();
+        const brokenKeys = snapshotKeys(brokenId);
+        await probe.hset(brokenKeys.e, "s_x", JSON.stringify({ id: "s_x", runId: brokenId }));
+        await probe.set(brokenKeys.seq, "not-a-hash");
+
+        const result = await sweeper.sweep();
+
+        // The pass completes and reports the failure rather than throwing it.
+        expect(result.failed).toBe(1);
+        expect(result.partial).toBe(false);
+
+        // And the healthy run was still collected, which is the whole point.
+        expect(result.expired).toBe(1);
+        expect(await probe.pttl(snapshotKeys(healthyId).e)).toBeGreaterThan(0);
+      } finally {
+        await Promise.all([store.quit(), sweeper.quit(), probe.quit().catch(() => {})]);
+      }
+    }
+  );
 });

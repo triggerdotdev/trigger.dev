@@ -3,6 +3,7 @@ import {
   type Meter,
   type Tracer,
   type Counter,
+  type Histogram,
   getMeter,
   startSpan,
   trace,
@@ -86,21 +87,29 @@ import { RaceSimulationSystem } from "./systems/raceSimulationSystem.js";
 import { RunAttemptSystem } from "./systems/runAttemptSystem.js";
 import { NoopPendingVersionRunIdLookup } from "./services/pendingVersionLookup.js";
 import type { SystemResources } from "./systems/systems.js";
-import { type RunStore, PostgresRunStore } from "@internal/run-store";
+import { type RunStore, asSnapshotMirrorRepair, PostgresRunStore } from "@internal/run-store";
 import {
   type ControlPlaneResolver,
   PassthroughControlPlaneResolver,
 } from "./controlPlaneResolver.js";
 import { TtlSystem } from "./systems/ttlSystem.js";
 import { WaitpointSystem } from "./systems/waitpointSystem.js";
+import { SNAPSHOT_SWEEP_COUNT_FIELDS } from "./types.js";
 import type {
   EngineWorker,
   HeartbeatTimeouts,
   ReportableQueue,
   RunEngineOptions,
+  SnapshotSweepOutcome,
   TriggerParams,
 } from "./types.js";
 import { createTtlWorkerCatalog } from "./ttlWorkerCatalog.js";
+import {
+  DEFAULT_SNAPSHOT_SWEEP_BUDGET_MS,
+  resolveSnapshotSweepCron,
+  seedSnapshotSweepOutcomes,
+  snapshotSweepVisibilityTimeoutMs,
+} from "./snapshotSweepSchedule.js";
 import { workerCatalog } from "./workerCatalog.js";
 import pMap from "p-map";
 
@@ -112,6 +121,8 @@ export class RunEngine {
   private logger: Logger;
   private tracer: Tracer;
   private meter: Meter;
+  private snapshotSweepPassCounter?: Counter;
+  private snapshotSweepCountsHistogram?: Histogram;
   private snapshotsSinceReplicaMissCounter: Counter;
   private snapshotsSinceReplicaRetryDelay: { minMs: number; maxMs: number };
   private heartbeatTimeouts: HeartbeatTimeouts;
@@ -252,7 +263,25 @@ export class RunEngine {
         ...options.worker.redis,
         keyPrefix: `${options.worker.redis.keyPrefix}worker:`,
       },
-      catalog: workerCatalog,
+      catalog: {
+        ...workerCatalog,
+        sweepSnapshotOrphans: {
+          ...workerCatalog.sweepSnapshotOrphans,
+          // Derived, not fixed. The runner's lock TTL is the budget plus an hour, so a hardcoded
+          // timeout would sit below the lock once the budget is raised, inverting the ordering the
+          // fence depends on.
+          visibilityTimeoutMs: snapshotSweepVisibilityTimeoutMs(
+            options.snapshotStore?.sweepBudgetMs
+          ),
+          cron: resolveSnapshotSweepCron({
+            hasRunner: !!options.snapshotStore?.runSweep,
+            schedule: options.snapshotStore?.sweepSchedule,
+            fallback: workerCatalog.sweepSnapshotOrphans.cron,
+          }),
+          jitterInMs:
+            options.snapshotStore?.sweepJitterInMs ?? workerCatalog.sweepSnapshotOrphans.jitterInMs,
+        },
+      },
       concurrency: options.worker,
       pollIntervalMs: options.worker.pollIntervalMs,
       immediatePollIntervalMs: options.worker.immediatePollIntervalMs,
@@ -275,6 +304,9 @@ export class RunEngine {
         },
         repairSnapshot: async ({ payload }) => {
           await this.#handleRepairSnapshot(payload);
+        },
+        sweepSnapshotOrphans: async () => {
+          await this.#handleSweepSnapshotOrphans();
         },
         expireRun: async ({ payload }) => {
           await this.ttlSystem.expireRun({ runId: payload.runId });
@@ -329,6 +361,27 @@ export class RunEngine {
 
     this.tracer = options.tracer;
     this.meter = options.meter ?? getMeter("run-engine");
+
+    // Only when the sweep is actually wired: a deployment that does not use the snapshot store
+    // should register no series for it at all.
+    if (options.snapshotStore?.runSweep) {
+      this.snapshotSweepPassCounter = this.meter.createCounter(
+        "run_engine.snapshot_store.sweep_pass_total",
+        {
+          description:
+            "Orphan-sweep passes by outcome. A pass that throws emits outcome=failed, so silence is distinguishable from success",
+        }
+      );
+
+      // Seeded at zero so the series EXISTS from boot. Inside this block on purpose: a deployment
+      // that does not wire the sweep registers no series and cannot alert.
+      seedSnapshotSweepOutcomes(this.snapshotSweepPassCounter);
+
+      this.snapshotSweepCountsHistogram = this.meter.createHistogram(
+        "run_engine.snapshot_store.sweep_counts",
+        { description: "Per-field counts from one orphan-sweep pass" }
+      );
+    }
 
     this.snapshotsSinceReplicaMissCounter = this.meter.createCounter(
       "run_engine.snapshots_since.replica_miss",
@@ -2481,6 +2534,23 @@ export class RunEngine {
     };
   }
 
+  /**
+   * The append-failure compensator. Shares the stall watchdog's job id AND its availableAt, so the
+   * two cannot enqueue two repairs for one run and neither can win a race that changes the delay.
+   */
+  async enqueueSnapshotRepair(payload: {
+    runId: string;
+    snapshotId: string;
+    executionStatus: string;
+  }): Promise<boolean> {
+    return this.worker.enqueueOnce({
+      id: `repair-in-progress-run:${payload.runId}`,
+      job: "repairSnapshot",
+      payload,
+      availableAt: new Date(Date.now() + this.repairSnapshotTimeoutMs),
+    });
+  }
+
   async #repairRun(runId: string, dryRun: boolean) {
     const snapshot = await getLatestExecutionSnapshot(this.prisma, runId, this.runStore);
 
@@ -2907,6 +2977,53 @@ export class RunEngine {
     });
   }
 
+  /**
+   * One emitter per pass, in a finally, so a throw is reported rather than silent. The deploy step
+   * gates dual-write on an observed pass, so an absent metric would read as a clean sweep.
+   */
+  async #handleSweepSnapshotOrphans() {
+    const runSweep = this.options.snapshotStore?.runSweep;
+
+    if (!runSweep) {
+      // The cron entry is registered when the engine is constructed, which happens before the
+      // webapp sets the binding, so an occurrence already queued at boot can arrive unbound.
+      this.snapshotSweepPassCounter?.add(1, { outcome: "unbound" });
+      this.logger.error("sweepSnapshotOrphans ran with no sweep runner bound");
+      return;
+    }
+
+    const budgetMs = this.options.snapshotStore?.sweepBudgetMs ?? DEFAULT_SNAPSHOT_SWEEP_BUDGET_MS;
+    const controller = new AbortController();
+    // The deadline is the sweep's own stopping rule; this is the backstop for a pass that has
+    // stopped reaching a batch boundary, so the signal is not merely decorative.
+    const abortAt = globalThis.setTimeout(() => controller.abort(), budgetMs + 60_000);
+    let outcome: SnapshotSweepOutcome = "failed";
+    let counts: Partial<Record<string, number | boolean>> | undefined;
+
+    try {
+      const result = await runSweep({
+        deadline: Date.now() + budgetMs,
+        signal: controller.signal,
+      });
+      outcome = result.outcome;
+      counts = result.counts;
+    } catch (error) {
+      // Deliberately not rethrown. Both the acknowledge path and the dead-letter path reschedule a
+      // cron job, so returning here continues the chain; throwing would only add a dead-letter
+      // entry for every transient blip. The outcome metric is the signal.
+      this.logger.error("sweepSnapshotOrphans threw", { error });
+    } finally {
+      globalThis.clearTimeout(abortAt);
+      this.snapshotSweepPassCounter?.add(1, { outcome });
+      for (const [field, value] of Object.entries(counts ?? {})) {
+        // Each field is a metric attribute, so an unrecognised key would mint a time series.
+        if (typeof value === "number" && SNAPSHOT_SWEEP_COUNT_FIELDS.includes(field as never)) {
+          this.snapshotSweepCountsHistogram?.record(value, { field });
+        }
+      }
+    }
+  }
+
   async #handleRepairSnapshot({
     runId,
     snapshotId,
@@ -2917,7 +3034,26 @@ export class RunEngine {
     executionStatus: string;
   }) {
     return await this.runLock.lock("handleRepairSnapshot", [runId], async () => {
-      const latestSnapshot = await getLatestExecutionSnapshot(this.prisma, runId, this.runStore);
+      const mirror = asSnapshotMirrorRepair(this.runStore);
+
+      // Ahead of the staleness guard below, and for every status, because the two things a repair
+      // can heal are independent. The queue recovery only applies while this snapshot is still the
+      // latest, but a mirror missing an entry stays wrong however far the run has moved on, and the
+      // queue recovery cannot put that entry back. Idempotent, so a snapshot that did land is a
+      // no-op.
+      if (mirror) {
+        const outcome = await mirror.repairRedisHead(runId, snapshotId);
+        this.logger.log("RunEngine.handleRepairSnapshot mirror", { runId, snapshotId, outcome });
+      }
+
+      // Through the mirror's UNDECORATED store: once reads are served from Redis, reading through
+      // `this.runStore` hands this the same stale head the repair was enqueued to replace, so it
+      // would decide the snapshot is no longer current and stop.
+      const latestSnapshot = await getLatestExecutionSnapshot(
+        this.prisma,
+        runId,
+        mirror?.authoritativeStore() ?? this.runStore
+      );
 
       if (latestSnapshot.id !== snapshotId) {
         this.logger.log(
@@ -2933,7 +3069,6 @@ export class RunEngine {
         return;
       }
 
-      // Okay, so this means we haven't transitioned to a new status yes, so we need to do something
       switch (latestSnapshot.executionStatus) {
         case "EXECUTING":
         case "EXECUTING_WITH_WAITPOINTS":
@@ -2942,7 +3077,8 @@ export class RunEngine {
         case "QUEUED_EXECUTING":
         case "RUN_CREATED":
         case "DELAYED": {
-          // Do nothing;
+          // The mirror repair above is the whole repair for these: the run is live and the queue
+          // needs no correction.
           return;
         }
         case "QUEUED": {

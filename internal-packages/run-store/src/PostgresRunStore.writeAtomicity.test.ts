@@ -668,6 +668,109 @@ describe("createExecutionSnapshot / lockRunToWorker write the snapshot and its l
   );
 });
 
+// lockRunToWorker builds its nested snapshot under the write decision and, after the taskRun.update
+// awaits, connects the completed-waitpoint join rows under the decision AGAIN. It resolves the input's
+// `writeSnapshotRow` ONCE for the whole operation, so the snapshot row and its link rows always agree:
+// both written, or neither - never a snapshot without its links, nor links pointing at a phantom
+// snapshot. These tests drive both settings and assert the two halves land together.
+async function lockRunWithWaitpoints(
+  store: RunStore,
+  runId: string,
+  priorSnapshotId: string,
+  env: { project: { id: string }; environment: { id: string } },
+  prisma17: RunOpsPrismaClient,
+  writeSnapshotRow: boolean
+) {
+  const snapshotId = `snap_${NEW_ID_26}`;
+  await store.lockRunToWorker(
+    runId,
+    {
+      lockedAt: new Date(),
+      lockedById: `bwt_${NEW_ID_26}`,
+      lockedToVersionId: `bw_${NEW_ID_26}`,
+      lockedQueueId: `queue_${NEW_ID_26}`,
+      startedAt: new Date(),
+      baseCostInCents: 5,
+      machinePreset: "small-1x",
+      taskVersion: "20260601.1",
+      sdkVersion: "3.0.0",
+      cliVersion: "3.0.0",
+      maxDurationInSeconds: null,
+      snapshot: {
+        id: snapshotId,
+        previousSnapshotId: priorSnapshotId,
+        environmentId: env.environment.id,
+        environmentType: "DEVELOPMENT",
+        projectId: env.project.id,
+        organizationId: env.project.id,
+        completedWaitpointIds: [`wp_${NEW_ID_26}`],
+        completedWaitpointOrder: [`wp_${NEW_ID_26}`],
+        writeSnapshotRow,
+      },
+    },
+    prisma17 as never
+  );
+  return snapshotId;
+}
+
+describe("lockRunToWorker resolves the snapshot-write decision once, so the snapshot and its links never split (dedicated)", () => {
+  heteroRunOpsPostgresTest(
+    "written: the snapshot and its links commit together (never a link-less snapshot)",
+    async ({ prisma17 }) => {
+      const env = await seedEnvironment(prisma17, "dedicated", "write_on");
+      const runId = `run_${NEW_ID_26}`;
+      await makeDedicatedStore(prisma17).createRun(
+        buildCreateRunInput({
+          runId,
+          friendlyId: "run_write_on",
+          organizationId: env.organization.id,
+          projectId: env.project.id,
+          runtimeEnvironmentId: env.environment.id,
+        })
+      );
+      const prior = await prisma17.taskRunExecutionSnapshot.findFirstOrThrow({ where: { runId } });
+
+      const store = makeDedicatedStore(prisma17);
+      const snapshotId = await lockRunWithWaitpoints(store, runId, prior.id, env, prisma17, true);
+
+      const snap = await prisma17.taskRunExecutionSnapshot.findUnique({
+        where: { id: snapshotId },
+      });
+      const links = await prisma17.completedWaitpoint.count({ where: { snapshotId } });
+      expect(snap).not.toBeNull();
+      expect(links).toBe(1);
+    }
+  );
+
+  heteroRunOpsPostgresTest(
+    "suppressed: no snapshot and no dangling links",
+    async ({ prisma17 }) => {
+      const env = await seedEnvironment(prisma17, "dedicated", "write_off");
+      const runId = `run_${NEW_ID_26}`;
+      await makeDedicatedStore(prisma17).createRun(
+        buildCreateRunInput({
+          runId,
+          friendlyId: "run_write_off",
+          organizationId: env.organization.id,
+          projectId: env.project.id,
+          runtimeEnvironmentId: env.environment.id,
+        })
+      );
+      const prior = await prisma17.taskRunExecutionSnapshot.findFirstOrThrow({ where: { runId } });
+
+      const store = makeDedicatedStore(prisma17);
+      const snapshotId = await lockRunWithWaitpoints(store, runId, prior.id, env, prisma17, false);
+
+      const snap = await prisma17.taskRunExecutionSnapshot.findUnique({
+        where: { id: snapshotId },
+      });
+      const links = await prisma17.completedWaitpoint.count({ where: { snapshotId } });
+      expect(snap).toBeNull();
+      expect(links).toBe(0);
+    }
+  );
+});
+
 // Direct (not behavioural) proof of the never-forward invariant: a recording proxy over each REAL
 // sub-store captures the arguments every routed call receives, so we can assert the SECOND (tx)
 // argument the router hands each sub-store is `undefined`. No mocks — the real PostgresRunStore does

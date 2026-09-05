@@ -32,7 +32,6 @@ export function buildDecoratedStore(opts: {
   prisma: PrismaClient;
   redisOptions: RedisOptions;
   mode: SnapshotStoreMode;
-  readPercent?: number;
   faults?: SnapshotFaultInjector;
   onAppendFailure?: SnapshotRepairEnqueuer;
 }): DecoratedStoreHarness {
@@ -50,7 +49,6 @@ export function buildDecoratedStore(opts: {
     {
       store: redis,
       mode: opts.mode,
-      readPercent: opts.readPercent ?? 100,
       ...(opts.faults && { faults: opts.faults }),
       onAppendFailure: async (args) => {
         repairs.push(args);

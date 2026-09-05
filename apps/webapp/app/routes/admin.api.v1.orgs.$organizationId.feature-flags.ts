@@ -3,11 +3,19 @@ import { json } from "@remix-run/server-runtime";
 import type { Prisma } from "@trigger.dev/database";
 import { z } from "zod";
 import { env } from "~/env.server";
-import { prisma } from "~/db.server";
+import { $transaction, prisma } from "~/db.server";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
+import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
+import { snapshotStoreFlagSaveError } from "~/v3/snapshotStoreFlagGuard.server";
 import { selectMintBaselineSource, stampMintKindFlip } from "~/v3/runOpsMigration/mintFlipGrace";
-import { validatePartialFeatureFlags } from "~/v3/featureFlags";
+import {
+  FEATURE_FLAG,
+  FeatureFlagCatalog,
+  stampSnapshotStoreOrgEverEnabled,
+  validatePartialFeatureFlags,
+  withoutOrgForbiddenSnapshotKeys,
+} from "~/v3/featureFlags";
 import { flags as getGlobalFlags } from "~/v3/featureFlags.server";
 
 const ParamsSchema = z.object({
@@ -71,8 +79,21 @@ export async function action({ request, params }: ActionFunctionArgs) {
     const {
       runOpsMintKindPrev: _ignoredPrev,
       runOpsMintKindFlippedAt: _ignoredFlippedAt,
-      ...requestedFlags
+      ...rawRequestedFlags
     } = validationResult.data;
+
+    const requestedFlags = withoutOrgForbiddenSnapshotKeys(rawRequestedFlags);
+
+    const snapshotStoreError = snapshotStoreFlagSaveError(requestedFlags, {
+      redisHostConfigured: !!env.RUN_ENGINE_SNAPSHOT_STORE_REDIS_HOST,
+      // Read from the live registry, not from the payload: the latch must ALREADY be true before
+      // anything can be enabled, or a run born in the gap would be resident with its transitions
+      // skipped.
+      everEnabled: globalFlagsRegistry.current()?.[FEATURE_FLAG.snapshotStoreEverEnabled] === true,
+    });
+    if (snapshotStoreError) {
+      return json({ error: snapshotStoreError }, { status: 400 });
+    }
 
     // Seed the flip baseline from the current GLOBAL mint flags so an org's FIRST per-org override
     // is graced from the currently-effective global kind, not the hardcoded default "cuid".
@@ -80,7 +101,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
     // Lock the org row for the whole read -> merge -> stamp -> write so a concurrent flag save
     // can't clobber the grace metadata (read-then-write race). PK lookup, one row, held to commit.
-    const updatedOrganization = await prisma.$transaction(async (tx) => {
+    const updatedOrganization = await $transaction(prisma, "adminOrgFlagsMergeSave", async (tx) => {
       const rows = await tx.$queryRaw<{ featureFlags: unknown }[]>`
         SELECT "featureFlags" FROM "Organization" WHERE "id" = ${organizationId} FOR UPDATE`;
 
@@ -108,7 +129,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
         env.RUN_OPS_MINT_FLIP_GRACE_MS
       );
 
-      return tx.organization.update({
+      // One-way per-org residency latch, exactly as the v2 route does. Without it a run born after
+      // this enable is resident but the census keeps classifying the org definitely-never-enabled, so
+      // its transitions are skipped and its Redis head freezes. ORed against the locked existing value
+      // so a save back to off never clears it.
+      stampSnapshotStoreOrgEverEnabled(existingRaw, mergedFlags);
+
+      const updated = await tx.organization.update({
         where: {
           id: organizationId,
         },
@@ -121,6 +148,28 @@ export async function action({ request, params }: ActionFunctionArgs) {
           featureFlags: true,
         },
       });
+
+      // Maintain the cohort map ONLY for an enrolled org (latch set in the stamped blob). Writing a
+      // never-enrolled org as "off" would auto-enroll it: the resolver reads a present "off" as an
+      // opt-out that beats the global dial, silently pinning the org off the fleet rollout. Single
+      // atomic jsonb_set; "off" is a stored value for a genuinely-enrolled org, never a deletion.
+      const enrolled = mergedFlags[FEATURE_FLAG.snapshotStoreOrgEverEnabled] === true;
+      if (enrolled) {
+        const orgDialParsed = FeatureFlagCatalog[FEATURE_FLAG.snapshotStoreOrgMode].safeParse(
+          mergedFlags[FEATURE_FLAG.snapshotStoreOrgMode]
+        );
+        const orgDial = orgDialParsed.success ? orgDialParsed.data : "off";
+        const affected = await tx.$executeRaw`
+          UPDATE "FeatureFlag"
+          SET "value" = jsonb_set(COALESCE("value", '{}'::jsonb), ARRAY[${organizationId}], to_jsonb(${orgDial}::text)),
+              "updatedAt" = now()
+          WHERE "key" = ${FEATURE_FLAG.snapshotStoreOrgDials}`;
+        if (affected === 0) {
+          throw new Error("snapshotStoreOrgDials flag row missing; run the backfill migration");
+        }
+      }
+
+      return updated;
     });
 
     if (!updatedOrganization) {
@@ -129,6 +178,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
     // Org feature flags are embedded in every env of the org; drop all its cached env rows.
     controlPlaneResolver.invalidateOrganization(organizationId);
+    // Reload the global registry in THIS process at once so the writing pod converges on the new
+    // cohort dial immediately. Other pods lag at most the reload interval.
+    void globalFlagsRegistry.reload();
 
     const updatedFlagsResult = updatedOrganization.featureFlags
       ? validatePartialFeatureFlags(updatedOrganization.featureFlags as Record<string, unknown>)

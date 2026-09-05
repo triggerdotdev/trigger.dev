@@ -1327,6 +1327,72 @@ const EnvironmentSchema = z
       .string()
       .default(process.env.REDIS_TLS_DISABLED ?? "false"),
 
+    // Execution-snapshot store. MODE here is only the FLOOR: the operational dial is the
+    // snapshotStoreMode feature flag, so it can move without a deploy.
+    RUN_ENGINE_SNAPSHOT_STORE_MODE: z
+      .enum(["off", "dual-write", "redis-read", "redis-only"])
+      .default("off"),
+    RUN_ENGINE_SNAPSHOT_STORE_COMPLETED_TTL_MS: z.coerce
+      .number()
+      .int()
+      .default(72 * 60 * 60 * 1000),
+    RUN_ENGINE_SNAPSHOT_STORE_ORPHAN_AGE_MS: z.coerce
+      .number()
+      .int()
+      .default(24 * 60 * 60 * 1000),
+    RUN_ENGINE_SNAPSHOT_STORE_CONFIRM_ORPHAN_AFTER_MS: z.coerce
+      .number()
+      .int()
+      .default(2 * 60 * 60 * 1000),
+    RUN_ENGINE_SNAPSHOT_STORE_GC_SWEEP_SCHEDULE: z.string().default("0 */6 * * *"),
+    RUN_ENGINE_SNAPSHOT_STORE_GC_SWEEP_JITTER_IN_MS: z.coerce.number().int().min(0).default(60_000),
+    // An existing run costs ~4 serial round trips and the orphan-marker clear cannot be batched
+    // (cross-slot pipelines are rejected), so a full pass is hours, not minutes. A budget that
+    // truncates every pass stops rule 2 converging, because it needs consecutive sightings.
+    RUN_ENGINE_SNAPSHOT_STORE_GC_SWEEP_BUDGET_MS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(10_800_000),
+    /**
+     * RETIRED. The hard stop is the snapshotStoreHalt feature flag and nothing else: an environment
+     * variable converged over a rolling deploy rather than a flag interval, and during that window a
+     * stopped process skips a transition while a running one asserts a head that was never written.
+     *
+     * Kept in the schema for one purpose only, so boot can REFUSE to start when it is still set to
+     * "1". A variable that no longer stops anything leaves an operator believing the mirror is
+     * stopped while it runs. Nothing else reads it, and a value of "0" carries no intent so it is
+     * ignored.
+     */
+    RUN_ENGINE_SNAPSHOT_STORE_HALT: z.string().optional(),
+    RUN_ENGINE_SNAPSHOT_STORE_ORG_MODE_CACHE_TTL_MS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(30_000),
+    RUN_ENGINE_SNAPSHOT_STORE_ORG_MODE_CACHE_MAX: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(10_000),
+    RUN_ENGINE_SNAPSHOT_STORE_RUN_ORG_CACHE_MAX: z.coerce.number().int().positive().default(50_000),
+    // No fallback to REDIS_*: this is a distinct durable endpoint and must be set explicitly, or
+    // execution state silently lands on the general-purpose cache.
+    RUN_ENGINE_SNAPSHOT_STORE_REDIS_HOST: z.string().optional(),
+    RUN_ENGINE_SNAPSHOT_STORE_REDIS_PORT: z.coerce.number().optional(),
+    RUN_ENGINE_SNAPSHOT_STORE_REDIS_USERNAME: z.string().optional(),
+    RUN_ENGINE_SNAPSHOT_STORE_REDIS_PASSWORD: z.string().optional(),
+    RUN_ENGINE_SNAPSHOT_STORE_REDIS_TLS_DISABLED: z.string().default("false"),
+    RUN_ENGINE_SNAPSHOT_STORE_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
+    // Fails an append fast rather than letting it wait on an unreachable endpoint. Postgres is
+    // authoritative below the final dial position, so a refused append costs a mirrored write; a
+    // blocked one costs the request.
+    RUN_ENGINE_SNAPSHOT_STORE_REDIS_COMMAND_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(500),
+
     RUN_ENGINE_DEV_PRESENCE_REDIS_HOST: z
       .string()
       .optional()

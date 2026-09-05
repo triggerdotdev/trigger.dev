@@ -30,6 +30,14 @@ export type IdempotencyKeyRunMatch = {
   idempotencyKeyExpiresAt: Date | null;
 };
 
+/**
+ * Per-write Postgres snapshot-row control, set by the snapshot decorator from the run's fixed
+ * residency. `false` suppresses the Postgres snapshot row (a redis-only-born run whose only home is
+ * Redis); absent or `true` writes it (every Postgres-backed run, and the default when no decorator
+ * is wired). The store reads THIS, never the org dial, so residency is a per-run decision.
+ */
+export type SnapshotWriteControl = { writeSnapshotRow?: boolean };
+
 export type CreateRunSnapshotInput = {
   /** Caller-minted creation instant. Absent, Postgres applies its own default. The decorator sets
    *  it so a snapshot carries the SAME instant in Postgres and in the Redis store: the field is
@@ -47,7 +55,7 @@ export type CreateRunSnapshotInput = {
   organizationId: string;
   workerId?: string;
   runnerId?: string;
-};
+} & SnapshotWriteControl;
 
 export type CompletionSnapshotInput = {
   /** Caller-minted creation instant. Absent, Postgres applies its own default. The decorator sets
@@ -68,7 +76,7 @@ export type CompletionSnapshotInput = {
   organizationId: string;
   workerId?: string;
   runnerId?: string;
-};
+} & SnapshotWriteControl;
 
 export type PromotePendingVersionArgs = {
   status?: Extract<TaskRunStatus, "PENDING" | "DELAYED">;
@@ -95,7 +103,7 @@ export type ExpireSnapshotInput = {
   environmentType: RuntimeEnvironmentType;
   projectId: string;
   organizationId: string;
-};
+} & SnapshotWriteControl;
 
 export type RescheduleSnapshotInput = {
   /** Caller-minted creation instant. Absent, Postgres applies its own default. The decorator sets
@@ -113,7 +121,7 @@ export type RescheduleSnapshotInput = {
   executionStatus?: TaskRunExecutionStatus;
   runStatus?: TaskRunStatus;
   description?: string;
-};
+} & SnapshotWriteControl;
 
 export type LockSnapshotInput = {
   /** Caller-minted creation instant. Absent, Postgres applies its own default. The decorator sets
@@ -134,7 +142,7 @@ export type LockSnapshotInput = {
   completedWaitpointOrder: string[];
   workerId?: string;
   runnerId?: string;
-};
+} & SnapshotWriteControl;
 
 export type RunAssociatedWaitpointInput = {
   id: string;
@@ -353,7 +361,7 @@ export type CreateExecutionSnapshotInput = {
   runnerId?: string;
   completedWaitpoints?: { id: string; index?: number }[];
   error?: string;
-};
+} & SnapshotWriteControl;
 
 // Create payload for `createBatchTaskRun`: scalar `runtimeEnvironmentId` (the FK is
 // dropped for cross-DB residency; env existence is validated app-side at create).
@@ -881,6 +889,15 @@ export interface RunStore {
     ownerRunId?: string,
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunCheckpointGetPayload<T>>;
+
+  // Residency-aware direct checkpoint read by id. A snapshot served from Redis carries only the
+  // checkpointId; the checkpoint hydrates by reading TaskRunCheckpoint directly, NOT via the snapshot
+  // row, which at redis-only is suppressed. `ownerRunId` routes to the run's co-located store.
+  findTaskRunCheckpointById(
+    checkpointId: string,
+    ownerRunId: string,
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunCheckpointGetPayload<{}> | null>;
 
   // --- BatchTaskRun (run-ops) ---
   // Batch row is born on the run-ops store at create. `findBatchTaskRunById`

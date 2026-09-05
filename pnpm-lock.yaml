@@ -1299,6 +1299,9 @@ importers:
       '@trigger.dev/database':
         specifier: workspace:*
         version: link:../database
+      lru-cache:
+        specifier: ^11.2.4
+        version: 11.2.4
     devDependencies:
       '@internal/run-ops-database':
         specifier: workspace:*

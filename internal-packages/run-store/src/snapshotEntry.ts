@@ -166,3 +166,54 @@ export function entryFromCreateExecutionSnapshot(
 export function isTerminalEntry(entry: SnapshotEntryInput): boolean {
   return entry.executionStatus === "FINISHED";
 }
+
+/**
+ * Builds an entry from a snapshot ROW rather than a write site's input, which only the repair path
+ * needs: it re-appends a snapshot Postgres already holds, so every derived value is read back rather
+ * than reproduced. A null column is omitted, not carried as null, so the document matches what the
+ * lost append would have written.
+ */
+export function entryFromSnapshotRow(row: SnapshotRowForEntry): SnapshotEntryInput {
+  return {
+    id: row.id,
+    runId: row.runId,
+    createdAt: row.createdAt.toISOString(),
+    engine: "V2",
+    executionStatus: row.executionStatus,
+    description: row.description,
+    runStatus: snapshotRunStatus(row.runStatus),
+    ...(row.attemptNumber !== null && { attemptNumber: row.attemptNumber }),
+    ...(row.previousSnapshotId !== null && { previousSnapshotId: row.previousSnapshotId }),
+    ...(row.batchId !== null && { batchId: row.batchId }),
+    environmentId: row.environmentId,
+    environmentType: row.environmentType,
+    projectId: row.projectId,
+    organizationId: row.organizationId,
+    ...(row.checkpointId !== null && { checkpointId: row.checkpointId }),
+    ...(row.workerId !== null && { workerId: row.workerId }),
+    ...(row.runnerId !== null && { runnerId: row.runnerId }),
+    ...(row.metadata !== null && { metadata: row.metadata }),
+    ...(row.error !== null && { error: row.error }),
+  };
+}
+
+export type SnapshotRowForEntry = {
+  id: string;
+  runId: string;
+  createdAt: Date;
+  executionStatus: string;
+  description: string;
+  runStatus: TaskRunStatus;
+  attemptNumber: number | null;
+  previousSnapshotId: string | null;
+  batchId: string | null;
+  environmentId: string;
+  environmentType: string;
+  projectId: string;
+  organizationId: string;
+  checkpointId: string | null;
+  workerId: string | null;
+  runnerId: string | null;
+  metadata: unknown;
+  error: string | null;
+};

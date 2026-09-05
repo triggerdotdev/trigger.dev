@@ -7,6 +7,9 @@ import {
 } from "@internal/redis";
 import { Logger } from "@trigger.dev/core/logger";
 import type { CompletedWaitpoint } from "@trigger.dev/core/v3/schemas";
+import { CircuitBreaker, type CircuitBreakerOptions } from "./circuitBreaker.js";
+import { ResidencyCache } from "./residencyCache.js";
+import { RunRegimeCache, type RunRegime } from "./runRegimeCache.js";
 
 export type SnapshotKeys = { e: string; idx: string; cur: string; seq: string };
 
@@ -195,8 +198,27 @@ export type AppendResult =
   | { outcome: "forked"; actualCur: string }
   | { outcome: "duplicate"; seq: number };
 
+/** The single source of truth for the outcome vocabulary the metrics layer bounds against. */
+export const APPEND_RESULT_OUTCOMES = [
+  "written",
+  "skippedNoKeyspace",
+  "forked",
+  "duplicate",
+] as const satisfies readonly AppendResult["outcome"][];
+
+/**
+ * `satisfies` alone only proves each listed literal is a valid outcome. This proves the reverse too,
+ * so a new member on AppendResult fails the build here rather than becoming "other" on a dashboard.
+ */
+type AssertSameOutcomes<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
+const _outcomesExhaustive: AssertSameOutcomes<
+  (typeof APPEND_RESULT_OUTCOMES)[number],
+  AppendResult["outcome"]
+> = true;
+void _outcomesExhaustive;
+
 export type SnapshotStoreMetrics = {
-  recordAppend(outcome: string, ttl: string): void;
+  recordAppend(outcome: string, ttl: string, organizationId?: string): void;
   recordEntryBytes(bytes: number): void;
   recordCycleKeyBytes(bytes: number): void;
   recordCycleCount(count: number): void;
@@ -220,6 +242,12 @@ export type RedisSnapshotStoreConnection =
 
 export type RedisSnapshotStoreOptions = RedisSnapshotStoreConnection & {
   completedTtlMs: number;
+  /** Entries in the per-process residency cache. See {@link ResidencyCache}. */
+  residencyCacheMax?: number;
+  /** Entries in the per-process run-regime cache. See {@link RunRegimeCache}. */
+  regimeCacheMax?: number;
+  /** Tuning for the per-process breaker. See {@link CircuitBreaker}. */
+  breaker?: CircuitBreakerOptions;
   sinceLimit?: number;
   highWater?: { entryBytes?: number; cycleKeyBytes?: number; cycleCount?: number };
   metrics?: SnapshotStoreMetrics;
@@ -250,6 +278,26 @@ export class RedisSnapshotStore {
   private readonly sinceLimit: number;
   private readonly metrics?: SnapshotStoreMetrics;
   private readonly highWater: NonNullable<RedisSnapshotStoreOptions["highWater"]>;
+  /**
+   * Which runs this process knows the mirror does not own, so a transition for one of them never
+   * reaches the network. Lives here rather than on the decorator because the decorator is re-minted
+   * per transaction while this store instance is shared, and because this class owns the append
+   * replies that are the cache's only ground truth.
+   */
+  readonly #residency: ResidencyCache;
+  /**
+   * Each run's fixed birth residency (`redis-only` vs Postgres-backed), shared here for the same
+   * reason the residency cache is: it must outlive the per-transaction decorator that consults it.
+   * The decorator records a birth's regime; this store learns `postgres` for free whenever an append
+   * comes back `skippedNoKeyspace`, which proves the run is not resident.
+   */
+  readonly #regime: RunRegimeCache;
+  /**
+   * Bounds what the residency cache cannot: the first probe for a run this process has not seen,
+   * which under a brownout costs the whole retry budget. After a few connectivity failures the store
+   * stops calling out at all, so a sick Redis removes itself from the run path with no operator.
+   */
+  readonly #breaker: CircuitBreaker;
   #quit?: Promise<void>;
 
   constructor(options: RedisSnapshotStoreOptions) {
@@ -258,6 +306,13 @@ export class RedisSnapshotStore {
     this.sinceLimit = options.sinceLimit ?? 50;
     this.metrics = options.metrics;
     this.highWater = options.highWater ?? {};
+    this.#residency = new ResidencyCache({
+      ...(options.residencyCacheMax !== undefined && { max: options.residencyCacheMax }),
+    });
+    this.#regime = new RunRegimeCache({
+      ...(options.regimeCacheMax !== undefined && { max: options.regimeCacheMax }),
+    });
+    this.#breaker = new CircuitBreaker(options.breaker ?? {});
     this.ownsClient = options.client === undefined;
     this.redis =
       options.client ??
@@ -283,13 +338,92 @@ export class RedisSnapshotStore {
     await this.#quit;
   }
 
+  /**
+   * Every command goes through here, so the breaker sits on the one seam rather than on each method.
+   * Latency is still recorded for a refused call: a call that cost nothing because the circuit was
+   * open is exactly the thing an operator wants to see in the latency series.
+   */
   async #timed<T>(op: string, fn: () => Promise<T>): Promise<T> {
     const started = Date.now();
     try {
-      return await fn();
+      return await this.#breaker.run(fn);
     } finally {
       this.metrics?.recordLatency(op, Date.now() - started);
     }
+  }
+
+  /** Test seam. */
+  get breakerState(): "closed" | "open" | "half-open" {
+    return this.#breaker.state;
+  }
+
+  /**
+   * Records that this run's Redis history has a hole, so window reads must not serve it. Separate
+   * from the append path because a repair can conclude the head is already current and still know
+   * that entries were lost.
+   */
+  async markGaps(runId: string): Promise<void> {
+    await this.redis.hset(snapshotKeys(runId).seq, "g", "1");
+  }
+
+  /**
+   * Marks only a keyspace that exists, and reports whether it did.
+   *
+   * The unconditional form must not be used on a run whose residency is unknown: HSET creates the
+   * hash, so a non-resident run would be left holding a lone `seq` key with nothing but the marker.
+   * `keyspaceAlive` would stay false so no read would be affected, but the sweeper discovers
+   * keyspaces by scanning for the ENTRY hash, so it would never find that key either. An unbounded
+   * leak with no reader is the one outcome worse than the hole this marker exists to report.
+   */
+  async markGapsIfResident(runId: string): Promise<boolean> {
+    const k = snapshotKeys(runId);
+    return this.#timed("markGapsIfResident", async () => {
+      const marked = await this.redis.markSnapshotGaps(k.e, k.seq);
+      return marked === 1;
+    });
+  }
+
+  async hasGaps(runId: string): Promise<boolean> {
+    return (await this.redis.hget(snapshotKeys(runId).seq, "g")) === "1";
+  }
+
+  /**
+   * The run's birth residency, stamped on the keyspace at birth (see {@link append}). Returns the
+   * mode string, or `undefined` when the run is not resident or its keyspace predates the marker. A
+   * plain field read: it is the residency probe a process uses on a Redis miss to decide, WITHOUT a
+   * Postgres read, whether a `redis-only` run's read may fall back to Postgres (it may not).
+   */
+  async readBirthMode(runId: string): Promise<string | undefined> {
+    const mode = await this.#timed("readBirthMode", () =>
+      this.redis.hget(snapshotKeys(runId).seq, "m")
+    );
+    return mode ?? undefined;
+  }
+
+  /** Test seam. */
+  residencyFor(runId: string): "resident" | "non-resident" | undefined {
+    return this.#residency.get(runId);
+  }
+
+  /** The run's fixed birth residency, or undefined when this process has not learned it yet. */
+  regimeFor(runId: string): RunRegime | undefined {
+    return this.#regime.get(runId);
+  }
+
+  /** Records a run's fixed birth residency. Monotonic toward `redis-only`; see {@link RunRegimeCache}. */
+  recordRegime(runId: string, regime: RunRegime): void {
+    this.#regime.record(runId, regime);
+  }
+
+  /**
+   * Removes a run's whole keyspace, wait-cycle keys included. The caller must have established that
+   * the head cannot be trusted and that Postgres still holds the run's rows.
+   */
+  async dropRun(runId: string): Promise<void> {
+    const keys = snapshotKeys(runId);
+    await this.redis.dropSnapshotRun(keys.e, keys.idx, keys.cur, keys.seq);
+    // This process, at least, stops asking. Other processes learn it from their next append.
+    this.#residency.setNonResident(runId);
   }
 
   async append(args: {
@@ -297,6 +431,19 @@ export class RedisSnapshotStore {
     kind: "birth" | "transition";
     isTerminal: boolean;
     expectedCur?: string;
+    /**
+     * The run's residency, stamped into the keyspace on a BIRTH and never afterwards. It is the ONE
+     * durable record of whether a run was born `redis-only` (Postgres holds nothing) or Postgres-
+     * backed, so a process that did not witness the birth can learn the run's fixed residency from a
+     * cheap {@link readBirthMode} probe instead of the live org dial or a Postgres read. Ignored for a
+     * transition. Absent leaves it unstamped (a legacy pre-marker keyspace reads as unknown).
+     */
+    birthMode?: string;
+    /**
+     * Marks the keyspace as holed, so window reads refuse and fall back to Postgres. Set by the
+     * repair, which only runs because an append was lost.
+     */
+    markGaps?: boolean;
     cycle?:
       | {
           kind: "new";
@@ -324,6 +471,17 @@ export class RedisSnapshotStore {
           "Writing it into the entry JSON breaks byte-comparability with the Postgres row."
       );
     }
+    // The whole point of the cache. A transition into a keyspace this process already knows is gone
+    // is refused without a round trip. A birth deliberately never takes this path: a birth is what
+    // CREATES residency, so it must reach the script even when the run is currently unknown.
+    if (args.kind === "transition" && this.#residency.get(args.entry.runId) === "non-resident") {
+      // Not resident means it never mirrored a birth, so Postgres holds its whole log: Postgres-backed.
+      this.#regime.recordPostgres(args.entry.runId);
+      this.metrics?.recordSkippedNoKeyspace();
+      this.metrics?.recordAppend("skippedNoKeyspace", "none", args.entry.organizationId);
+      return { outcome: "skippedNoKeyspace" };
+    }
+
     return this.#timed("append", async () => {
       const k = snapshotKeys(args.entry.runId);
       const raw = JSON.stringify(args.entry);
@@ -375,10 +533,19 @@ export class RedisSnapshotStore {
         orderCount,
         args.expectedCur ?? "",
         args.expectedCur !== undefined ? "1" : "0",
-        distinctJson
+        distinctJson,
+        args.markGaps ? "1" : "0",
+        args.kind === "birth" ? (args.birthMode ?? "") : ""
       )) as string[];
 
-      return this.#interpretAppend(reply, raw, orderJson, records, args.entry.runId);
+      return this.#interpretAppend(
+        reply,
+        raw,
+        orderJson,
+        records,
+        args.entry.runId,
+        args.entry.organizationId
+      );
     });
   }
 
@@ -387,19 +554,28 @@ export class RedisSnapshotStore {
     raw: string,
     orderJson: string,
     records: string,
-    runId: string
+    runId: string,
+    organizationId: string
   ): AppendResult {
     if (reply[0] === SKIPPED) {
+      // Authoritative and final: the script looked and there is no keyspace. Only a birth could
+      // create one and this run's birth has already happened. No keyspace means Postgres-backed.
+      this.#residency.setNonResident(runId);
+      this.#regime.recordPostgres(runId);
       this.metrics?.recordSkippedNoKeyspace();
-      this.metrics?.recordAppend("skippedNoKeyspace", "none");
+      this.metrics?.recordAppend("skippedNoKeyspace", "none", organizationId);
       return { outcome: "skippedNoKeyspace" };
     }
     if (reply[0] === FORKED) {
-      this.metrics?.recordAppend("forked", "none");
+      // A fork means the script found a keyspace and disagreed about its head, so the run IS
+      // resident.
+      this.#residency.setResident(runId);
+      this.metrics?.recordAppend("forked", "none", organizationId);
       return { outcome: "forked", actualCur: reply[1] ?? "" };
     }
     if (reply[0] === DUPLICATE) {
-      this.metrics?.recordAppend("duplicate", "none");
+      this.#residency.setResident(runId);
+      this.metrics?.recordAppend("duplicate", "none", organizationId);
       return { outcome: "duplicate", seq: Number(reply[1]) };
     }
     const seq = Number(reply[1]);
@@ -409,8 +585,10 @@ export class RedisSnapshotStore {
     if (cycleMismatch) {
       this.metrics?.recordCycleMismatch();
     }
+    // A written entry proves the keyspace exists. For a birth this is what makes the run resident.
+    this.#residency.setResident(runId);
     this.#observeSizes(raw, orderJson, records, cycleSeq, runId);
-    this.metrics?.recordAppend("written", ttl);
+    this.metrics?.recordAppend("written", ttl, organizationId);
     return {
       outcome: "written",
       seq,
@@ -701,6 +879,12 @@ export class RedisSnapshotStore {
       local eKey, idxKey, curKey, seqKey = KEYS[1], KEYS[2], KEYS[3], KEYS[4]
       local base = string.sub(eKey, 1, #eKey - 2)
       local function wpKey(n) return base .. ':wp:' .. n end
+      -- The ONE liveness test, shared by the write guard and every read. Two anchors, because keys
+      -- expire independently and eviction takes whole keys: seq can be gone while e and cur
+      -- survive, and a read answering from cur there serves a frozen head no write can advance.
+      local function keyspaceAlive()
+        return redis.call('EXISTS', eKey) == 1 and redis.call('EXISTS', seqKey) == 1
+      end
       local function orderFor(pointer)
         if not pointer then return '' end
         local cs = string.match(pointer, '^(%d+):')
@@ -727,6 +911,21 @@ export class RedisSnapshotStore {
       end
     `;
 
+    this.redis.defineCommand("markSnapshotGaps", {
+      numberOfKeys: 2,
+      lua: `
+        local eKey = KEYS[1]
+        local seqKey = KEYS[2]
+        -- Both anchors, the same pair keyspaceAlive uses. Marking on the strength of one of them
+        -- would create the other.
+        if redis.call('EXISTS', eKey) == 0 or redis.call('EXISTS', seqKey) == 0 then
+          return 0
+        end
+        redis.call('HSET', seqKey, 'g', '1')
+        return 1
+      `,
+    });
+
     this.redis.defineCommand("appendSnapshotEntry", {
       numberOfKeys: 4,
       lua: `
@@ -747,12 +946,17 @@ export class RedisSnapshotStore {
         -- The COMPLETE distinct id set. Not the order deduped: order omits every id with no batch
         -- index, and those ids still have to come back on a read.
         local distinctJson = ARGV[14]
+        -- Set by the repair. A repair exists BECAUSE an append was lost, so whatever it manages to
+        -- put back, the entries between are gone and the window is short.
+        local markGaps    = ARGV[15] == '1'
+        -- The run's residency, stamped on a BIRTH only. Empty for a transition and for a legacy
+        -- pre-marker birth. It is the durable record a foreign process reads to learn residency.
+        local birthMode   = ARGV[16] or ''
 
-        -- Liveness is TWO anchors: e and seq. All keys get the same PEXPIRE but expire independently
-        -- (or seq can vanish under maxmemory eviction while e survives), so checking e alone lets a
-        -- late transition recreate seq with no TTL and restart it at 1 beside a surviving idx. A
-        -- birth always creates both in this same script, so this never rejects a live keyspace.
-        if kind == 'transition' and (redis.call('EXISTS', eKey) == 0 or redis.call('EXISTS', seqKey) == 0) then
+        -- Checking e alone would let a late transition recreate seq with no TTL and restart it at 1
+        -- beside a surviving idx. A birth always creates both in this same script, so this never
+        -- rejects a live keyspace.
+        if kind == 'transition' and not keyspaceAlive() then
           return { '${SKIPPED}' }
         end
 
@@ -760,6 +964,13 @@ export class RedisSnapshotStore {
         -- CAS below -- a present id can only be this same retry, never a competitor's write.
         local prior = redis.call('HGET', eKey, id .. '#s')
         if prior then
+          -- Marked before returning. The caller that asks for a mark is the repair, and a repair
+          -- runs BECAUSE an append was lost, so the entries either side are gone whether or not
+          -- this particular id had already landed. Returning early without marking left the
+          -- keyspace serving short windows as though they were whole.
+          if markGaps then
+            redis.call('HSET', seqKey, 'g', '1')
+          end
           return { '${DUPLICATE}', prior }
         end
 
@@ -769,11 +980,36 @@ export class RedisSnapshotStore {
         if casEnabled then
           local actual = redis.call('GET', curKey)
           if (actual or '') ~= expectedCur then
+            -- The one mutation a refused append makes, and it is not part of the append. A fork means
+            -- this keyspace and Postgres already disagree about the head, so its history cannot be
+            -- served as a window until something re-establishes that it can. The entry itself is
+            -- still not written.
+            redis.call('HSET', seqKey, 'g', '1')
             return { '${FORKED}', actual or '' }
           end
         end
 
+
+
+        -- The index can go while the entry hash and seq survive, and keyspaceAlive does not test it.
+        -- This append is about to recreate it holding only the new entry, and a window read would
+        -- then see a live index, report a HIT, and return that one entry as though it were the whole
+        -- range. Same silent short history as a lost append, so it is recorded the same way: the head
+        -- keeps moving and window reads fall back to Postgres, which still holds the log.
+        --
+        -- Refusing the transition instead would freeze the head, which is the outcome this whole area
+        -- exists to avoid.
+        if kind == 'transition' and redis.call('EXISTS', idxKey) == 0 then
+          redis.call('HSET', seqKey, 'g', '1')
+        end
+
         local seq = redis.call('HINCRBY', seqKey, 'e', 1)
+
+        -- Stamp the run's residency on its birth, once and never again. Guarded on kind so no
+        -- transition can ever rewrite it, keeping it a true record of what the run was BORN as.
+        if kind == 'birth' and birthMode ~= '' then
+          redis.call('HSET', seqKey, 'm', birthMode)
+        end
 
         local cycleSeq = 0
         local mismatch = 0
@@ -859,10 +1095,38 @@ export class RedisSnapshotStore {
       `,
     });
 
+    this.redis.defineCommand("dropSnapshotRun", {
+      numberOfKeys: 4,
+      lua: `
+        ${PRELUDE}
+        -- The high-water mark, when seq still has it. It is the fast path and the common one.
+        local cycles = tonumber(redis.call('HGET', seqKey, 'c') or '0')
+        for i = 1, cycles do
+          redis.call('DEL', wpKey(i))
+        end
+
+        -- seq holds the count, so seq being gone used to mean the count read as 0 and every wait
+        -- cycle key was left behind, while this command claimed to remove the whole keyspace. An
+        -- orphan the sweep cannot see either, because it discovers keyspaces by the entry hash.
+        --
+        -- So sweep a bounded range unconditionally. A miss-streak early exit was wrong: cycle keys
+        -- can be SPARSE, so with seq gone and only wp:10 alive, stopping after a run of absent keys
+        -- leaves it behind, and the entry hash is deleted below so the sweep can never find it
+        -- either. Every key here shares the {runId} tag, so this stays inside one slot, and the
+        -- bound keeps a pathological run from turning a drop into a long script.
+        for probe = cycles + 1, cycles + 512 do
+          redis.call('DEL', wpKey(probe))
+        end
+
+        return redis.call('DEL', eKey, idxKey, curKey, seqKey)
+      `,
+    });
+
     this.redis.defineCommand("readSnapshotById", {
       numberOfKeys: 4,
       lua: `
         ${PRELUDE}
+        if not keyspaceAlive() then return nil end
         local id = ARGV[1]
         local vals = redis.call('HMGET', eKey, id, id .. '#s', id .. '#c')
         if not vals[1] then return nil end
@@ -875,6 +1139,7 @@ export class RedisSnapshotStore {
       numberOfKeys: 4,
       lua: `
         ${PRELUDE}
+        if not keyspaceAlive() then return nil end
         local cur = redis.call('GET', curKey)
         if not cur then return nil end
         local vals = redis.call('HMGET', eKey, cur, cur .. '#s', cur .. '#c')
@@ -888,6 +1153,9 @@ export class RedisSnapshotStore {
       lua: `
         ${PRELUDE}
         local id = ARGV[1]
+        -- Not present, which is what sends the caller to Postgres. An empty id set from an
+        -- incomplete keyspace would read as authoritative.
+        if not keyspaceAlive() then return { '0', '' } end
         if redis.call('HEXISTS', eKey, id) == 0 then
           return { '0', '' }
         end
@@ -909,7 +1177,12 @@ export class RedisSnapshotStore {
         -- Both anchors, for the reason the append script gives: keys expire independently, and an
         -- index lost to eviction while the entry hash survives would otherwise report an empty HIT
         -- on every poll for the rest of the run's life, with Postgres holding the transitions.
-        if redis.call('EXISTS', eKey) == 0 or redis.call('EXISTS', idxKey) == 0 then return nil end
+        if not keyspaceAlive() or redis.call('EXISTS', idxKey) == 0 then return nil end
+
+        -- A keyspace that lost an append has a hole, and no guard downstream can see one: a window
+        -- that should hold eight entries would return four and look complete. Refuse, and the
+        -- caller's existing miss path asks Postgres, which still holds the whole log.
+        if redis.call('HGET', seqKey, 'g') == '1' then return nil end
 
         -- STRICTLY greater than the cursor, and same-millisecond entries are dropped. Postgres
         -- serves this window with createdAt > cursor and drops them too; a Redis read that is more
@@ -973,6 +1246,14 @@ export class RedisSnapshotStore {
         ${PRELUDE}
         local sinceId = ARGV[1]
         local limit = tonumber(ARGV[2])
+
+        -- Same gate as the sibling window command: without it a lost index reports an empty HIT,
+        -- so the caller stops asking Postgres for a window Postgres alone still holds.
+        if not keyspaceAlive() or redis.call('EXISTS', idxKey) == 0 then return nil end
+
+        -- And the same hole gate, for the same reason. A caller that fell back on one window command
+        -- and not the other would still serve a short history through the second.
+        if redis.call('HGET', seqKey, 'g') == '1' then return nil end
 
         -- The index holds valid entries only, so an invalid since id misses ZSCORE. Its seq is still
         -- on its own '#s' field, which keeps the id resolvable without indexing invalid rows.
@@ -1046,6 +1327,18 @@ export function decodeWaitpointIds(
 
 declare module "@internal/redis" {
   interface RedisCommander<Context> {
+    dropSnapshotRun(
+      eKey: string,
+      idxKey: string,
+      curKey: string,
+      seqKey: string,
+      callback?: Callback<number>
+    ): Result<number, Context>;
+    markSnapshotGaps(
+      eKey: string,
+      seqKey: string,
+      callback?: Callback<number>
+    ): Result<number, Context>;
     appendSnapshotEntry(
       eKey: string,
       idxKey: string,
@@ -1065,6 +1358,8 @@ declare module "@internal/redis" {
       expectedCur: string,
       casEnabled: string,
       distinctJson: string,
+      markGaps: string,
+      birthMode: string,
       callback?: Callback<string[]>
     ): Result<string[], Context>;
     readSnapshotById(

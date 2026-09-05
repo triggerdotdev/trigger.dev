@@ -109,4 +109,19 @@ export const workerCatalog = {
     }),
     visibilityTimeoutMs: 30_000,
   },
+  sweepSnapshotOrphans: {
+    schema: z.object({
+      timestamp: z.number(),
+      lastTimestamp: z.number().optional(),
+      cron: z.string(),
+    }),
+    // The default budget plus two hours, so it stays strictly above the runner's lock TTL
+    // (budget plus one hour). Ordered that way, a lock outlives the delivery it belongs to.
+    visibilityTimeoutMs: 18_000_000,
+    cron: "0 */6 * * *",
+    jitterInMs: 60_000,
+    // Load-bearing. A throw takes the dead-letter path, which also reschedules, so the cron chain
+    // survives a failed pass. With retries it would not behave that way.
+    retry: { maxAttempts: 1 },
+  },
 };

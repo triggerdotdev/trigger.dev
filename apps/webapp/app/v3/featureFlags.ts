@@ -50,6 +50,28 @@ export const FEATURE_FLAG = {
   // System-wide kill switch for additional (scoped) environment API-key lookup.
   // Defaults off; enable during rollout once the new lookup path is trusted.
   additionalApiKeyLookupEnabled: "additionalApiKeyLookupEnabled",
+  // The execution-snapshot store rollout dial. A flag rather than an environment variable because
+  // a sustained append failure burns a task attempt per transition, so dial-down is a correctness
+  // control and cannot wait for a deploy.
+  snapshotStoreMode: "snapshotStoreMode",
+  // The hard stop for the execution-snapshot store, deployment-wide. Separate from the dial because
+  // the dial governs births only: turning it down cannot stop a resident run from mirroring, and
+  // must not, or every resident head freezes while Postgres advances.
+  snapshotStoreHalt: "snapshotStoreHalt",
+  // Per-org override, read from the org blob only. Deliberately narrower than the global key:
+  // snapshot reads are global, so an org at a read position would read state its own writes never
+  // created. Stripped from org payloads by withoutOrgForbiddenSnapshotKeys.
+  snapshotStoreOrgMode: "snapshotStoreOrgMode",
+  // One-way residency latch. See the catalog entry below.
+  snapshotStoreEverEnabled: "snapshotStoreEverEnabled",
+  // Per-org one-way residency latch, the per-org sibling of snapshotStoreEverEnabled. System-set on
+  // the org save path when the org dial first moves past `off`, never cleared. See the catalog entry.
+  snapshotStoreOrgEverEnabled: "snapshotStoreOrgEverEnabled",
+  // Global one-way latch: true once the global dial has been non-off at least once. System-set on
+  // the global save paths, never cleared. See the catalog entry below.
+  snapshotStoreGlobalModeEverEnabled: "snapshotStoreGlobalModeEverEnabled",
+  // The enrolled-cohort dial map, global and system-maintained. See the catalog entry below.
+  snapshotStoreOrgDials: "snapshotStoreOrgDials",
 } as const;
 
 export const FeatureFlagCatalog = {
@@ -163,6 +185,40 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.additionalApiKeysEnabled]: z.boolean(),
   [FEATURE_FLAG.additionalApiKeyIssuanceEnabled]: z.boolean(),
   [FEATURE_FLAG.additionalApiKeyLookupEnabled]: z.boolean(),
+  [FEATURE_FLAG.snapshotStoreMode]: z.enum(["off", "dual-write", "redis-read", "redis-only"]),
+  [FEATURE_FLAG.snapshotStoreOrgMode]: z.enum(["off", "dual-write", "redis-read", "redis-only"]),
+  /**
+   * Whether this deployment has EVER had the store enabled. One way: set when the first dial or
+   * per-organisation override moves past `off`, and never cleared automatically.
+   *
+   * It exists so that `off` means genuinely inert before a ramp. A transition has to ask whether its
+   * run is resident, and the keyspace is the only record of that, so at `off` after a ramp every
+   * transition must still ask or a resident run's head freezes. Before any ramp nothing CAN be
+   * resident, so the question has one possible answer and asking it is pure cost: measured at 2 per
+   * cent with a healthy endpoint and four times the run duration with a slow one.
+   *
+   * Strict boolean, like the other kill switches: a stringified "false" read as true would put the
+   * whole fleet back on the run path.
+   */
+  [FEATURE_FLAG.snapshotStoreEverEnabled]: z.boolean(),
+  // Per-org sibling of snapshotStoreEverEnabled. One way: set when the org dial first moves past
+  // `off`, never cleared, so an org toggled dual-write -> off keeps probing its resident runs.
+  // System-set, so stripped from org payloads by withoutOrgForbiddenSnapshotKeys. Strict boolean.
+  [FEATURE_FLAG.snapshotStoreOrgEverEnabled]: z.boolean(),
+  // Global one-way "mode ever non-off" latch. Set true the first time the global dial is saved past
+  // `off`, never cleared. Distinct from snapshotStoreEverEnabled, the manual arming latch: this one
+  // means the dial WAS non-off. System-set, so stripped from org payloads. Strict boolean.
+  [FEATURE_FLAG.snapshotStoreGlobalModeEverEnabled]: z.boolean(),
+  // The whole enrolled-cohort map: orgId -> current dial. Presence is a one-way enrollment latch;
+  // the value is the org's current dial. Ramp-to-off stores "off", entries are NEVER deleted.
+  // Global and system-maintained (stripped from org payloads by withoutOrgForbiddenSnapshotKeys).
+  [FEATURE_FLAG.snapshotStoreOrgDials]: z.record(
+    z.string(),
+    z.enum(["off", "dual-write", "redis-read", "redis-only"])
+  ),
+  // Strict, like the other kill switches: a stringified "false" read as true would freeze every
+  // resident run's Redis head.
+  [FEATURE_FLAG.snapshotStoreHalt]: z.boolean(),
 };
 
 export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;
@@ -181,6 +237,14 @@ export const GLOBAL_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.runOpsMintKindFlippedAt,
   FEATURE_FLAG.runOpsMintShardSetPrev,
   FEATURE_FLAG.runOpsMintShardSetFlippedAt,
+  // Read from the org blob only, and refused outright on a global save, so an editable control here
+  // would offer a setting whose only outcome is a 400.
+  FEATURE_FLAG.snapshotStoreOrgMode,
+  FEATURE_FLAG.snapshotStoreOrgEverEnabled,
+  // System-set global latch: read-only on the page, and the save path is its only writer.
+  FEATURE_FLAG.snapshotStoreGlobalModeEverEnabled,
+  // System-maintained cohort dial map: read-only on the page, the save path is its only writer.
+  FEATURE_FLAG.snapshotStoreOrgDials,
 ];
 
 // Flags that are read-only on the org-level dialog.
@@ -198,7 +262,102 @@ export const ORG_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.runOpsMintShardSetPrev,
   FEATURE_FLAG.runOpsMintShardSetFlippedAt,
   FEATURE_FLAG.runOpsMintShardOverride,
+  // The dial and the hard stop are deployment-wide; only snapshotStoreOrgMode is per-org.
+  FEATURE_FLAG.snapshotStoreMode,
+  FEATURE_FLAG.snapshotStoreHalt,
+  FEATURE_FLAG.snapshotStoreEverEnabled,
+  // System-set latches: shown on the org dialog, but the operator never edits them.
+  FEATURE_FLAG.snapshotStoreOrgEverEnabled,
+  FEATURE_FLAG.snapshotStoreGlobalModeEverEnabled,
+  // System-maintained cohort dial map, deployment-wide; the save path is its only writer.
+  FEATURE_FLAG.snapshotStoreOrgDials,
 ];
+
+/**
+ * Drops keys an organisation must never supply. ORG_LOCKED_FLAGS is a UI predicate and no save path
+ * consults it, so the line is held here — the same way the mint grace stamps are stripped.
+ */
+export function withoutOrgForbiddenSnapshotKeys<T extends Record<string, unknown>>(values: T): T {
+  const forbidden = [
+    FEATURE_FLAG.snapshotStoreMode,
+    FEATURE_FLAG.snapshotStoreHalt,
+    // Deployment-wide, like the other two. Nothing reads it from an organisation row, so accepting
+    // it on an organisation save reports success for a setting that does nothing.
+    FEATURE_FLAG.snapshotStoreEverEnabled,
+    // System-set one-way latch. The save path is its only writer, so an operator-supplied value
+    // (a `false` above all) must never reach the stored blob.
+    FEATURE_FLAG.snapshotStoreOrgEverEnabled,
+    // Global system-set latch. Deployment-wide and written only by the global save path.
+    FEATURE_FLAG.snapshotStoreGlobalModeEverEnabled,
+    // System-maintained cohort dial map. Global-only; an org save must never set it.
+    FEATURE_FLAG.snapshotStoreOrgDials,
+  ] as const;
+  if (!forbidden.some((key) => key in values)) return values;
+
+  const rest = { ...values };
+  for (const key of forbidden) {
+    delete rest[key];
+  }
+  return rest;
+}
+
+/**
+ * One-way per-org residency latch. Sets snapshotStoreOrgEverEnabled true when the resulting org dial
+ * is past `off`, and carries an already-set latch forward so a save back to `off` never clears it.
+ * Mutates and returns the stamped blob, which is written with replace semantics, so the carry-forward
+ * is what keeps the latch alive. Never writes `false`: an absent latch must stay distinguishable from
+ * an explicit one so the resolver keeps probing a resident org rather than skipping it.
+ */
+export function stampSnapshotStoreOrgEverEnabled(
+  existingFlags: Record<string, unknown> | null | undefined,
+  stamped: Record<string, unknown>
+): Record<string, unknown> {
+  const alreadyLatched = (existingFlags ?? {})[FEATURE_FLAG.snapshotStoreOrgEverEnabled] === true;
+  const mode = FeatureFlagCatalog[FEATURE_FLAG.snapshotStoreOrgMode].safeParse(
+    stamped[FEATURE_FLAG.snapshotStoreOrgMode]
+  );
+  const enablingNow = mode.success && mode.data !== "off";
+
+  if (alreadyLatched || enablingNow) {
+    stamped[FEATURE_FLAG.snapshotStoreOrgEverEnabled] = true;
+  }
+  return stamped;
+}
+
+/**
+ * The clear-all counterpart to the one-way per-org latch. Returns the blob to write when wiping an
+ * org's flags: `{ snapshotStoreOrgEverEnabled: true }` if the org was ever enabled (so it stays in
+ * the census), else null to wipe everything. Never resurrects a false or absent latch.
+ */
+export function clearedOrgFlagsPreservingLatch(
+  existingFlags: Record<string, unknown> | null | undefined
+): Record<string, unknown> | null {
+  const latched = (existingFlags ?? {})[FEATURE_FLAG.snapshotStoreOrgEverEnabled] === true;
+  return latched ? { [FEATURE_FLAG.snapshotStoreOrgEverEnabled]: true } : null;
+}
+
+/**
+ * One-way global latch. Sets snapshotStoreGlobalModeEverEnabled true when the resulting global dial
+ * is past `off`, and carries an already-set latch forward so a save back to `off` never clears it.
+ * The global sibling of stampSnapshotStoreOrgEverEnabled: same never-writes-false, carry-forward
+ * shape. Mutates and returns the stamped blob.
+ */
+export function stampSnapshotStoreGlobalModeEverEnabled(
+  existingFlags: Record<string, unknown> | null | undefined,
+  stamped: Record<string, unknown>
+): Record<string, unknown> {
+  const alreadyLatched =
+    (existingFlags ?? {})[FEATURE_FLAG.snapshotStoreGlobalModeEverEnabled] === true;
+  const mode = FeatureFlagCatalog[FEATURE_FLAG.snapshotStoreMode].safeParse(
+    stamped[FEATURE_FLAG.snapshotStoreMode]
+  );
+  const enablingNow = mode.success && mode.data !== "off";
+
+  if (alreadyLatched || enablingNow) {
+    stamped[FEATURE_FLAG.snapshotStoreGlobalModeEverEnabled] = true;
+  }
+  return stamped;
+}
 
 /**
  * Flag groups where the operator sets a `primary` and the server computes the rest. The topology

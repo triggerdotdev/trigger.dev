@@ -17,6 +17,8 @@ import { LocaleContextProvider } from "./components/primitives/LocaleProvider";
 import type { OperatingSystemPlatform } from "./components/primitives/OperatingSystemProvider";
 import { OperatingSystemContextProvider } from "./components/primitives/OperatingSystemProvider";
 import { assertRunOpsSplitSentinel, Prisma } from "./db.server";
+import { assertSnapshotStoreBootFromEnv } from "./v3/snapshotStoreBoot.server";
+import { registerSnapshotStoreWiring } from "./v3/snapshotStoreWiring.server";
 import { env } from "./env.server";
 import { eventLoopMonitor, eventLoopUtilizationMonitor } from "./eventLoopMonitor.server";
 import { logger } from "./services/logger.server";
@@ -320,6 +322,18 @@ process.on("uncaughtException", (error, origin) => {
 singleton("AssertRunOpsSplitSentinel", () => {
   assertRunOpsSplitSentinel().catch((error) => {
     logger.error("Run-ops split sentinel assertion failed; refusing to start", { error });
+    process.exit(1);
+  });
+  return true;
+});
+
+singleton("SnapshotStoreWiring", registerSnapshotStoreWiring);
+
+// Ordered after the wiring above: the boot check asserts the repair binding is set, and the
+// binding is what the wiring installs.
+singleton("AssertSnapshotStoreBoot", () => {
+  assertSnapshotStoreBootFromEnv().catch((error) => {
+    logger.error("Snapshot store boot check failed; refusing to start", { error });
     process.exit(1);
   });
   return true;

@@ -6,7 +6,11 @@ import type { PrismaClient } from "@trigger.dev/database";
 import { postgresTest } from "@internal/testcontainers";
 import { describe, expect, it, vi } from "vitest";
 import type { PrismaClientOrTransaction } from "~/db.server";
-import { FEATURE_FLAG, hasUnreadableTurnEvalsOverride } from "~/v3/featureFlags";
+import {
+  FEATURE_FLAG,
+  hasUnreadableTurnEvalsOverride,
+  validatePartialFeatureFlags,
+} from "~/v3/featureFlags";
 import { makeFlag, makeSetFlag } from "~/v3/featureFlags.server";
 
 vi.setConfig({ testTimeout: 60_000 });
@@ -91,6 +95,41 @@ describe("flag() override resolution", () => {
 
     expect(result).toBe(true);
     expect(calls.findFirst).toBe(1);
+  });
+});
+
+// The per-org snapshot dial ladders through the same positions as the global dial, so an org
+// can be soaked at redis-read and redis-only, not just off and dual-write.
+describe("snapshotStoreOrgMode ladder on the org save path", () => {
+  const ORG_KEY = FEATURE_FLAG.snapshotStoreOrgMode;
+
+  it("accepts every ladder position an org may be soaked at", () => {
+    for (const value of ["off", "dual-write", "redis-read", "redis-only"]) {
+      const parsed = validatePartialFeatureFlags({ [ORG_KEY]: value });
+      expect(parsed.success, value).toBe(true);
+    }
+  });
+
+  it("still rejects a bogus position", () => {
+    expect(validatePartialFeatureFlags({ [ORG_KEY]: "redis-write" }).success).toBe(false);
+  });
+});
+
+// The cohort dial map is a single global flag: orgId -> dial. The catalog must accept a well-formed
+// map and reject one carrying a value outside the dial ladder.
+describe("snapshotStoreOrgDials catalog", () => {
+  const DIALS_KEY = FEATURE_FLAG.snapshotStoreOrgDials;
+
+  it("parses a valid dial map", () => {
+    const parsed = validatePartialFeatureFlags({
+      [DIALS_KEY]: { org_a: "redis-only", org_b: "off" },
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("rejects a map with a bad dial value", () => {
+    const parsed = validatePartialFeatureFlags({ [DIALS_KEY]: { org_a: "nope" } });
+    expect(parsed.success).toBe(false);
   });
 });
 

@@ -68,6 +68,7 @@ export const RUN_STORE_METHOD_NAMES = [
   "deleteManyTaskRunWaitpoints",
   "findTaskRunAttempt",
   "createTaskRunCheckpoint",
+  "findTaskRunCheckpointById",
   "createBatchTaskRun",
   "updateBatchTaskRun",
   "findBatchTaskRunById",
