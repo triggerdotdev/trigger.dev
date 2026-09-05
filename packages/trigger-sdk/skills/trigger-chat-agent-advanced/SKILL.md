@@ -231,8 +231,8 @@ import { headStartTools } from "@/lib/chat-tools/schemas";
 
 export const chatHandler = chat.headStart({
   agentId: "my-chat",
-  // `streamText` from the run argument owns `messages`, `stopWhen` and
-  // `abortSignal`: the handover needs `stopWhen: stepCountIs(1)` so the agent,
+  // `streamText` from the run argument owns `messages`, `prompt`, `stopWhen`
+  // and `abortSignal`: the handover needs `stopWhen: stepCountIs(1)` so the agent,
   // not this handler, runs step 2 onward. Passing any of them is a type error.
   run: async ({ streamText }) =>
     streamText({

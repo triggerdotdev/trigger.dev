@@ -272,9 +272,9 @@ This is an **import-chain** problem, not a runtime one. A "we'll strip the execu
 
     <Note>
       That `streamText` is the SDK's, not the one from `ai`. It pins `messages`,
-      `stopWhen: stepCountIs(1)` and `abortSignal`, which the handover depends on:
+      `prompt`, `stopWhen: stepCountIs(1)` and `abortSignal`, which the handover depends on:
       running past step 1 would splice a stream the agent is supposed to own. Setting
-      any of the three at the call site is a type error, and a throw if you get past
+      any of the four at the call site is a type error, and a throw if you get past
       the types, rather than breaking the handover quietly. `chat.toStreamTextOptions()` is still there if you want to build the
       options yourself.
     </Note>
@@ -646,11 +646,11 @@ The SDK owns these keys. Passing one to the callback's `streamText` is a type er
 | Key | What the SDK sets | Why |
 | --- | --- | --- |
 | `messages` | `convertToModelMessages(uiMessages)` | First-turn user history |
-| `tools` | What you pass | Schema-only tools for step 1 |
+| `prompt` | Nothing, and rejects yours | `messages` already carries the history |
 | `stopWhen` | `stepCountIs(1)` | Step 1 only, the agent picks up step 2 onward |
 | `abortSignal` | Combined request + idle timeout | Safe cleanup on disconnect |
 
-You bring `model`, `system`, `providerOptions`, `prepareStep`, anything else `streamText` accepts. Note that `tools` is the one owned key you do pass, since the SDK cannot know your schema-only set.
+You bring `model`, `system`, `providerOptions`, `prepareStep`, anything else `streamText` accepts. `tools` is yours too: pass your schema-only set to the callback's `streamText` (or to `chat.toStreamTextOptions({ tools })`), since the SDK cannot know it.
 
 #### The transport option
 

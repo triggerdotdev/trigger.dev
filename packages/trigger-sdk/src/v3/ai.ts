@@ -7499,17 +7499,17 @@ function chatAgent<
           }
         }
 
-        locals.set(chatAgentManagedConfigKey, {
-          registry: promptRegistry,
-          system: agentSystem,
-          cacheControl: agentCacheControl,
-          systemProviderOptions: agentSystemProviderOptions,
-        });
-
         // Make the seeded UI accumulator visible to `chat.history.*`
         // before any hook (`onChatStart`, `onTurnStart`, etc.) fires.
         locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
       }
+
+      locals.set(chatAgentManagedConfigKey, {
+        registry: promptRegistry,
+        system: agentSystem,
+        cacheControl: agentCacheControl,
+        systemProviderOptions: agentSystemProviderOptions,
+      });
 
       // Token usage tracking across turns
       let previousTurnUsage: LanguageModelUsage | undefined;

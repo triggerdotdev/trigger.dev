@@ -172,16 +172,16 @@ export type HeadStartRunArgs<TTools extends Record<string, Tool>> = {
   /** Helper exposing `toStreamTextOptions(...)` and a session escape hatch. */
   chat: HeadStartChatHelper<TTools>;
   /**
-   * `streamText` with the four options the handover protocol depends on already
-   * applied: the converted `messages`, your `tools`, `stopWhen: stepCountIs(1)`
-   * and the combined `abortSignal`.
+   * `streamText` with the options the handover protocol depends on already
+   * applied: the converted `messages`, `stopWhen: stepCountIs(1)` and the
+   * combined `abortSignal`, plus the `tools` you pass to it.
    *
    * Prefer it over importing `streamText` from `ai`. Spreading
    * `chat.toStreamTextOptions()` into the imported one is equivalent, but
-   * setting `messages`, `stopWhen` or `abortSignal` after the spread breaks the
-   * handover, and nothing catches that. Passing any of them here throws
-   * instead, and note that the four it owns are a type error, not just a
-   * runtime one.
+   * setting `messages`, `prompt`, `stopWhen` or `abortSignal` after the spread
+   * breaks the handover, and nothing catches that. Passing any of those four
+   * here is a type error, and a throw if you get past the types. `tools` is
+   * yours to supply.
    */
   streamText: HeadStartStreamTextFn;
 };
@@ -203,7 +203,7 @@ export type HeadStartChatHelper<TTools extends Record<string, Tool>> = {
    * this helper just hands back the options the SDK needs to own.
    *
    * The customer COULD override any of these by re-setting them after
-   * the spread, but doing so for `stopWhen` / `messages` /
+   * the spread, but doing so for `stopWhen` / `messages` / `prompt` /
    * `abortSignal` will break the handover protocol. The intent is
    * that customers spread first, then add only their own keys.
    */

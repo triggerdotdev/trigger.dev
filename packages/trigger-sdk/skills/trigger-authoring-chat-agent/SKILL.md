@@ -120,6 +120,10 @@ inside nested helpers, call `await chat.pipe(result)` from anywhere in the task 
 `run` resolve `void`.
 
 ```ts
+import { chat, type ChatStreamText } from "@trigger.dev/sdk/ai";
+import { anthropic } from "@ai-sdk/anthropic";
+import type { ModelMessage } from "ai";
+
 export const agentChat = chat.agent({
   id: "agent-chat",
   run: async ({ messages, streamText }) => {
@@ -262,7 +266,7 @@ There is no API route in this model. The transport replaces the route round-trip
   model, and telemetry. The imported one carries none of it, with no error.
   `...chat.toStreamTextOptions()` does the same job by hand, and is what a custom agent has to use,
   since it has no `run` argument. A `chat.headStart` route gets a bound `streamText` too, and there it
-  also owns `messages`, `stopWhen` and `abortSignal`. Spreading it and then re-setting
+  also owns `messages`, `prompt`, `stopWhen` and `abortSignal`. Spreading it and then re-setting
   `tools` or `prepareStep` replaces the managed ones; the run argument's `streamText` merges `tools`
   and composes `prepareStep` instead.
 

@@ -107,15 +107,11 @@ onTurnComplete: async ({ chatId, newUIMessages }) => {
 If you have a [human-in-the-loop](/ai-chat/patterns/human-in-the-loop) tool waiting on `addToolOutput`, you usually want to refuse competing actions like `regenerate` until the answer arrives. [`chat.history.getPendingToolCalls()`](/ai-chat/backend#chat-history) gives you exactly that signal:
 
 ```ts
-onAction: async ({ action, signal, streamText }) => {
+onAction: async ({ action }) => {
   if (action.type === "regenerate") {
     if (chat.history.getPendingToolCalls().length > 0) return; // gated
     chat.history.slice(0, -1);
-    return streamText({
-      model: anthropic("claude-sonnet-4-5"),
-      messages: await convertToModelMessages(chat.history.all()),
-      abortSignal: signal,
-    });
+    return chat.turn();
   }
 },
 ```

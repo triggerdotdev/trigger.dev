@@ -47,4 +47,30 @@ describe("chat.toStreamTextOptions with agent-level options", () => {
       await harness.close();
     }
   });
+
+  it("carries chat.agent({ system }) in the spread form for a hydrateMessages agent", async () => {
+    const prompts: string[] = [];
+    const model = new MockLanguageModelV3({
+      doStream: async ({ prompt }) => {
+        prompts.push(JSON.stringify(prompt));
+        return {
+          stream: simulateReadableStream({ chunks: textChunks("ok"), initialDelayInMs: 5 }),
+        };
+      },
+    });
+    const agent = chat.agent({
+      id: "spread-form-agent-system-hydrate",
+      system: "AGENT-SYSTEM-VIA-SPREAD-HYDRATE",
+      hydrateMessages: async ({ incomingMessages }) => incomingMessages,
+      run: async ({ messages, signal }) =>
+        streamText({ model, messages, abortSignal: signal, ...chat.toStreamTextOptions() }),
+    });
+    const harness = mockChatAgent(agent, { chatId: "spread-form-agent-system-hydrate" });
+    try {
+      await harness.sendMessage({ id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] });
+      expect(prompts.at(-1)!).toContain("AGENT-SYSTEM-VIA-SPREAD-HYDRATE");
+    } finally {
+      await harness.close();
+    }
+  });
 });

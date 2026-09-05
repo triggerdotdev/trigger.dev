@@ -478,7 +478,7 @@ Head Start brings the route handler back for exactly that first turn. It runs st
     ```
 
     <Note>
-      That `streamText` owns `messages`, `abortSignal` and `stopWhen`. Passing one is
+      That `streamText` owns `messages`, `prompt`, `abortSignal` and `stopWhen`. Passing one is
       a type error, and a runtime throw if you get past the types. Unlike the agent side, re-setting one breaks the
       handover rather than degrading it: `stopWhen` is pinned to `stepCountIs(1)`
       because the agent, not the handler, runs step 2 onward.

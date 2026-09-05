@@ -90,9 +90,9 @@ If the managed prompt names a model, pass a registry on the agent so the runtime
 For complex agent flows where `streamText` is called deep inside your code, use `chat.pipe()`. It works from **anywhere inside a task** — even nested function calls.
 
 ```ts trigger/agent-chat.ts
-import { chat } from "@trigger.dev/sdk/ai";
+import { chat, type ChatStreamText } from "@trigger.dev/sdk/ai";
 import { anthropic } from "@ai-sdk/anthropic";
-import type { ModelMessage } from "ai";
+import { stepCountIs, type ModelMessage } from "ai";
 
 export const agentChat = chat.agent({
   id: "agent-chat",
