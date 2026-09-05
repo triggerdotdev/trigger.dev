@@ -36,6 +36,7 @@ export const RUN_STORE_METHOD_NAMES = [
   "updateMetadata",
   "clearIdempotencyKey",
   "pushTags",
+  "removeTags",
   "pushRealtimeStream",
   "findRun",
   "findRunOrThrow",

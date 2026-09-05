@@ -606,6 +606,16 @@ export interface RunStore {
     where: { runtimeEnvironmentId: string },
     tx?: PrismaClientOrTransaction
   ): Promise<{ updatedAt: Date }>;
+  /**
+   * Removes `tags` from a run's `runTags`. Resolves to `null` when no run matched the
+   * id + environment, so a caller can 404 rather than report a phantom success.
+   */
+  removeTags(
+    runId: string,
+    tags: string[],
+    where: { runtimeEnvironmentId: string },
+    tx?: PrismaClientOrTransaction
+  ): Promise<{ updatedAt: Date } | null>;
   pushRealtimeStream(
     runId: string,
     streamId: string,

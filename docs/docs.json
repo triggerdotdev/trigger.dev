@@ -349,6 +349,7 @@
               "management/runs/reschedule",
               "management/runs/update-metadata",
               "management/runs/add-tags",
+              "management/runs/remove-tags",
               "management/runs/retrieve-events",
               "management/runs/retrieve-trace",
               "management/runs/retrieve-result"
