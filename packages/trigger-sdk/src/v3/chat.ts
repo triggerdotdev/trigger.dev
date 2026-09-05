@@ -1260,11 +1260,11 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
   /**
    * Send a custom action chunk (for `chat.agent`'s `actionSchema` /
-   * `onAction` hook). Actions are not turns — only `hydrateMessages`
-   * and `onAction` fire on the agent side. The returned stream
-   * carries any model response `onAction` produced (when it returns a
-   * `StreamTextResult`); for `void`-returning side-effect-only actions
-   * the stream completes immediately with `trigger:turn-complete`.
+   * `onAction` hook). An action is an edit: only `hydrateMessages` and
+   * `onAction` fire on the agent side, and the returned stream completes
+   * with `trigger:turn-complete` once the edit is persisted. When `onAction`
+   * returns `chat.turn()` the turn's response follows on the same stream.
+   * Per-action `metadata` is merged over the transport's `clientData`.
    */
   sendAction = async (
     chatId: string,
@@ -1284,7 +1284,10 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       chatId,
       trigger: "action" as const,
       action,
-      metadata: options?.metadata ?? this.defaultMetadata ?? undefined,
+      metadata:
+        this.defaultMetadata || options?.metadata
+          ? { ...(this.defaultMetadata ?? {}), ...(options?.metadata ?? {}) }
+          : undefined,
     };
 
     const body = this.serializeInputChunk({ kind: "message", payload: wirePayload });

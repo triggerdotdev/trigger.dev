@@ -1021,6 +1021,35 @@ describe("TriggerChatTransport", () => {
       expect(actionBody.payload.metadata).toEqual({ tenant: "t-1" });
     });
 
+    it("merges per-action metadata over the transport's clientData", async () => {
+      let actionBody: any;
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (isSessionStreamAppendUrl(urlStr)) {
+          actionBody = JSON.parse(init!.body as string);
+          return defaultAppendResponse();
+        }
+        if (isSessionOutSubscribeUrl(urlStr)) return defaultSseResponse();
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        sessions: { "chat-act-meta": { publicAccessToken: "p" } },
+        clientData: { userId: "u1", scope: "default" } as Record<string, unknown>,
+      });
+
+      const stream = await transport.sendAction(
+        "chat-act-meta",
+        { type: "undo" },
+        { metadata: { scope: "action" } }
+      );
+      await drainChunks(stream);
+
+      expect(actionBody.payload.metadata).toEqual({ userId: "u1", scope: "action" });
+    });
+
     it("marks the session streaming and notifies before subscribing", async () => {
       global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
         const urlStr = typeof url === "string" ? url : url.toString();
