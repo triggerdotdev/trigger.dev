@@ -1,5 +1,13 @@
 # @trigger.dev/build
 
+## 4.6.0
+
+### Patch Changes
+
+- The `playwright` build extension now works with Playwright 1.58 and later. 1.58 changed the `playwright install --dry-run` output, which made deploy image builds fail while downloading the browsers. ([#4881](https://github.com/triggerdotdev/trigger.dev/pull/4881))
+- Updated dependencies:
+  - `@trigger.dev/core@4.6.0`
+
 ## 4.5.16
 
 ### Patch Changes
