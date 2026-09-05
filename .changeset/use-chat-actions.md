@@ -10,4 +10,4 @@ const { sendAction } = useChatActions({ sendMessage });
 sendAction({ type: "regenerate" });
 ```
 
-Previously the frontend docs said `useChat` consumed the stream `transport.sendAction` returns; it never did, so an action's answer was never rendered by an app following them. `transport.sendAction` is unchanged for callers outside `useChat` and still returns a stream the caller must read.
+Previously the frontend docs said `useChat` consumed the stream `transport.sendAction` returns; it never did, so an action's answer was never rendered by an app following them. `transport.sendAction` still returns a stream that callers outside `useChat` must read, and now accepts `{ abortSignal, metadata }`, with per-action metadata merged over the transport's `clientData`.

@@ -14,6 +14,6 @@ onAction: async ({ action }) => {
 },
 ```
 
-Returning a `StreamTextResult`, `string` or `UIMessage` from `onAction` is no longer supported and now fails with an error pointing to `chat.turn()`. A response produced that way skipped every turn guarantee, and its delivery to the browser was unreliable: the frontend never read the stream `transport.sendAction` returned, so a regenerate that appeared to work on the server did not render. The `onAction` event no longer carries `streamText` or `tools`, since the handler no longer calls the model.
+Returning a `StreamTextResult`, `string` or `UIMessage` from `onAction` is no longer supported and now fails with an error pointing to `chat.turn()`. A response produced that way skipped every turn guarantee, and its delivery to the browser was unreliable: the frontend never read the stream `transport.sendAction` returned, so a regenerate that appeared to work on the server did not render.
 
 History edits made by an action are still persisted as before: platform-managed snapshots are written after the edit, and apps with their own store mirror the edit themselves.
