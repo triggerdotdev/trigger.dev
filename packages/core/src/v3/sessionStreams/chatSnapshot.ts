@@ -51,6 +51,98 @@ export const ChatSnapshotV1Schema = z.object({
 });
 
 /**
+ * One transcript entry in a version 2 snapshot. `id` duplicates
+ * `message.id` so a reader can address entries without inspecting the
+ * message body; `final` is false for a partial assistant message captured
+ * by an errored or stopped turn.
+ */
+export type TranscriptSnapshotEntry<TUIMessage extends UIMessage = UIMessage> = {
+  id: string;
+  final: boolean;
+  message: TUIMessage;
+};
+
+/**
+ * Version 2 of the persisted transcript blob. Entries are ordered by array
+ * position. `state` is an opaque record the runtime uses for compaction and
+ * other cross-run bookkeeping; `null` when nothing has been recorded.
+ *
+ * Readers must accept version 1 as well; writers only emit version 2. Use
+ * {@link parseTranscriptSnapshot} to read either.
+ */
+export type TranscriptSnapshotV2<TUIMessage extends UIMessage = UIMessage> = {
+  version: 2;
+  savedAt: number;
+  messages: TranscriptSnapshotEntry<TUIMessage>[];
+  state: unknown | null;
+  lastOutEventId?: string;
+  lastInEventId?: string;
+};
+
+export const TranscriptSnapshotV2Schema = z.object({
+  version: z.literal(2),
+  savedAt: z.number(),
+  messages: z.array(
+    z.object({
+      id: z.string(),
+      final: z.boolean(),
+      message: z.unknown(),
+    })
+  ),
+  state: z.unknown().nullable(),
+  lastOutEventId: z.string().optional(),
+  lastInEventId: z.string().optional(),
+});
+
+/**
+ * Parse a fetched snapshot blob of any known version into the version 2
+ * shape. A version 1 blob is upgraded in memory: every message becomes a
+ * `final: true` entry keyed by its `id` (entries without a string `id` are
+ * dropped) and `state` is `null`. Returns `undefined` for an unknown
+ * version or a body that is not a snapshot; callers treat that as
+ * "no snapshot".
+ */
+export function parseTranscriptSnapshot<TUIMessage extends UIMessage = UIMessage>(
+  input: unknown
+): TranscriptSnapshotV2<TUIMessage> | undefined {
+  const v2 = TranscriptSnapshotV2Schema.safeParse(input);
+  if (v2.success) {
+    return {
+      version: 2,
+      savedAt: v2.data.savedAt,
+      messages: v2.data.messages.map((entry) => ({
+        id: entry.id,
+        final: entry.final,
+        message: entry.message as TUIMessage,
+      })),
+      state: v2.data.state ?? null,
+      lastOutEventId: v2.data.lastOutEventId,
+      lastInEventId: v2.data.lastInEventId,
+    };
+  }
+
+  const v1 = ChatSnapshotV1Schema.safeParse(input);
+  if (v1.success) {
+    const messages: TranscriptSnapshotEntry<TUIMessage>[] = [];
+    for (const raw of v1.data.messages) {
+      const id = (raw as { id?: unknown } | null)?.id;
+      if (typeof id !== "string" || id.length === 0) continue;
+      messages.push({ id, final: true, message: raw as TUIMessage });
+    }
+    return {
+      version: 2,
+      savedAt: v1.data.savedAt,
+      messages,
+      state: null,
+      lastOutEventId: v1.data.lastOutEventId,
+      lastInEventId: v1.data.lastInEventId,
+    };
+  }
+
+  return undefined;
+}
+
+/**
  * S3 key suffix for a session's snapshot blob. The webapp's presigned
  * URL routes prefix this with `packets/{projectRef}/{envSlug}/`.
  */
