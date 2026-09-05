@@ -1,4 +1,9 @@
-import type { TaskRunContext, TranscriptSnapshotEntry } from "@trigger.dev/core/v3";
+import {
+  apiClientManager,
+  pageTranscriptEntries,
+  type TaskRunContext,
+  type TranscriptSnapshotEntry,
+} from "@trigger.dev/core/v3";
 import type { ModelMessage, UIMessage } from "ai";
 import { readChatSnapshot, writeChatSnapshot } from "./chatSnapshotIo.js";
 
@@ -27,7 +32,7 @@ export type TranscriptChangeReason =
   | "compaction"
   | "recovery";
 
-type TranscriptCursors = {
+export type TranscriptCursors = {
   lastOutEventId?: string;
   lastInEventId?: string;
 };
@@ -38,14 +43,14 @@ type TranscriptCursors = {
  * cursors the next boot should resume from. Cursors are runtime-computed
  * and persisted opaquely; a storage never interprets them.
  */
-type TranscriptChangeset = {
+export type TranscriptChangeset = {
   reason: TranscriptChangeReason;
   changes: TranscriptChange[];
   cursors?: TranscriptCursors;
 };
 
 /** The tenant scope of a read. A render read has no run, so this is all `load` gets. */
-type TranscriptScope<TClientData = unknown> = {
+export type TranscriptScope<TClientData = unknown> = {
   chatId: string;
   clientData: TClientData;
 };
@@ -58,14 +63,14 @@ export type TranscriptStorageContext<TClientData = unknown> = TranscriptScope<TC
   ctx: TaskRunContext;
 };
 
-type TranscriptLoadOptions = {
+export type TranscriptLoadOptions = {
   /** Return at most this many messages, the most recent ones. */
   limit?: number;
   /** Return messages ordered before this message id (a `nextCursor` from a previous page). */
   before?: string;
 };
 
-type TranscriptLoadResult<TUIMessage extends UIMessage = UIMessage> = {
+export type TranscriptLoadResult<TUIMessage extends UIMessage = UIMessage> = {
   messages: TUIMessage[];
   state: unknown | null;
   cursors?: TranscriptCursors;
@@ -74,7 +79,7 @@ type TranscriptLoadResult<TUIMessage extends UIMessage = UIMessage> = {
 };
 
 /** What `loadContext` receives on every turn and action. */
-type LoadContextEvent<TClientData = unknown, TUIMessage extends UIMessage = UIMessage> = {
+export type LoadContextEvent<TClientData = unknown, TUIMessage extends UIMessage = UIMessage> = {
   chatId: string;
   /** The turn number (0-indexed). */
   turn: number;
@@ -251,6 +256,10 @@ export function snapshotTranscriptStorage(): TranscriptStorage<unknown> {
       scope: TranscriptScope<unknown>,
       opts?: TranscriptLoadOptions
     ): Promise<TranscriptLoadResult<TUIMessage>> {
+      if (opts?.limit !== undefined || opts?.before !== undefined) {
+        const page = await readTranscriptPage<TUIMessage>(scope.chatId, opts);
+        if (page) return page;
+      }
       const snapshot = await readChatSnapshot<TUIMessage>(scope.chatId);
       const full: TranscriptState<TUIMessage> = snapshot
         ? { entries: snapshot.messages, state: snapshot.state }
@@ -282,6 +291,29 @@ export function snapshotTranscriptStorage(): TranscriptStorage<unknown> {
   };
 }
 
+/**
+ * A page of the platform transcript read server-side, for a render read with
+ * `limit`/`before` from an app server holding a secret key. `undefined` when
+ * the call is not possible from here (a run's public token cannot use the
+ * endpoint), so the caller falls back to reading the whole blob.
+ */
+async function readTranscriptPage<TUIMessage extends UIMessage>(
+  chatId: string,
+  opts: TranscriptLoadOptions
+): Promise<TranscriptLoadResult<TUIMessage> | undefined> {
+  try {
+    const page = await apiClientManager.clientOrThrow().getSessionTranscript(chatId, opts);
+    return {
+      messages: page.messages as TUIMessage[],
+      state: page.state ?? null,
+      cursors: page.cursors,
+      nextCursor: page.nextCursor,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 /** The storage `chat.agent` uses when none is configured: {@link snapshotTranscriptStorage}. */
 export const defaultStorage: TranscriptStorage<unknown> = snapshotTranscriptStorage();
 
@@ -289,17 +321,8 @@ function pageEntries<TUIMessage extends UIMessage>(
   all: TranscriptSnapshotEntry<TUIMessage>[],
   opts: TranscriptLoadOptions | undefined
 ): { messages: TUIMessage[]; nextCursor: string | undefined } {
-  let entries = all;
-  if (opts?.before !== undefined) {
-    const idx = entries.findIndex((e) => e.id === opts.before);
-    if (idx !== -1) entries = entries.slice(0, idx);
-  }
-  let nextCursor: string | undefined;
-  if (opts?.limit !== undefined && entries.length > opts.limit) {
-    entries = entries.slice(entries.length - opts.limit);
-    nextCursor = entries[0]?.id;
-  }
-  return { messages: entries.map((e) => e.message), nextCursor };
+  const page = pageTranscriptEntries(all, opts);
+  return { messages: page.entries.map((e) => e.message), nextCursor: page.nextCursor };
 }
 
 export type MemoryTranscriptStorage = TranscriptStorage<unknown> & {

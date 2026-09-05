@@ -1,9 +1,42 @@
 import { describe, expect, it } from "vitest";
 import {
+  pageTranscriptEntries,
   parseTranscriptSnapshot,
   type ChatSnapshotV1,
+  type TranscriptSnapshotEntry,
   type TranscriptSnapshotV2,
 } from "../src/v3/sessionStreams/chatSnapshot.js";
+
+describe("pageTranscriptEntries", () => {
+  const entries: TranscriptSnapshotEntry[] = ["a", "b", "c", "d", "e"].map((id) => ({
+    id,
+    final: true,
+    message: { id, role: "user", parts: [] },
+  }));
+
+  it("returns everything with no options and no cursor", () => {
+    expect(pageTranscriptEntries(entries, undefined)).toEqual({ entries, nextCursor: undefined });
+  });
+
+  it("returns the newest `limit` entries with the cursor for the page before", () => {
+    const page = pageTranscriptEntries(entries, { limit: 2 });
+    expect(page.entries.map((e) => e.id)).toEqual(["d", "e"]);
+    expect(page.nextCursor).toBe("d");
+  });
+
+  it("pages backwards with `before` until the cursor runs out", () => {
+    const page = pageTranscriptEntries(entries, { limit: 2, before: "d" });
+    expect(page.entries.map((e) => e.id)).toEqual(["b", "c"]);
+    expect(page.nextCursor).toBe("b");
+    const last = pageTranscriptEntries(entries, { limit: 2, before: "b" });
+    expect(last.entries.map((e) => e.id)).toEqual(["a"]);
+    expect(last.nextCursor).toBeUndefined();
+  });
+
+  it("ignores an unknown `before` id", () => {
+    expect(pageTranscriptEntries(entries, { before: "zz" }).entries).toHaveLength(5);
+  });
+});
 
 const user = { id: "u-1", role: "user" as const, parts: [{ type: "text" as const, text: "hi" }] };
 const assistant = {

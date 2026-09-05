@@ -81,6 +81,7 @@ import {
   restoreModelLane,
   type TranscriptChange,
   type TranscriptChangeReason,
+  type TranscriptLoadResult,
   type TranscriptRuntimeState,
   type TranscriptShadow,
   type TranscriptStorage,
@@ -276,6 +277,25 @@ export {
   __setWriteChatSnapshotImplForTests,
   __writeChatSnapshotProductionPathForTests,
 } from "./chatSnapshotIo.js";
+
+export {
+  defaultStorage,
+  memoryTranscriptStorage,
+  reduceTranscriptChanges,
+  snapshotTranscriptStorage,
+  type LoadContextEvent,
+  type MemoryTranscriptStorage,
+  type TranscriptChange,
+  type TranscriptChangeReason,
+  type TranscriptChangeset,
+  type TranscriptCursors,
+  type TranscriptLoadOptions,
+  type TranscriptLoadResult,
+  type TranscriptScope,
+  type TranscriptState,
+  type TranscriptStorage,
+  type TranscriptStorageContext,
+} from "./transcriptStorage.js";
 
 /**
  * Merge two `UIMessage[]` lists by `id`, with the second list winning on
@@ -6141,6 +6161,33 @@ export type ChatAgentOptions<
   ) => TUIMessage[] | Promise<TUIMessage[]>;
 
   /**
+   * Where the conversation is persisted. The runtime calls `save` after
+   * every turn, failed turn and history-changing action with the changes
+   * since the last save, and `load` once when a new run boots to continue
+   * the conversation.
+   *
+   * Defaults to `defaultStorage`, the platform's snapshot in object storage
+   * that the Sessions dashboard renders. Bring your own to write each change
+   * to your database; `memoryTranscriptStorage()` is the reference
+   * implementation and `runTranscriptStorageTests` from
+   * `@trigger.dev/sdk/ai/test` checks yours against the contract.
+   *
+   * A storage with `loadContext` also owns the model's context on every
+   * turn, which is what `hydrateMessages` did. The two cannot be combined.
+   *
+   * @example
+   * ```ts
+   * chat.agent({
+   *   id: "my-chat",
+   *   storage: myPostgresTranscriptStorage,
+   *   run: async ({ messages, signal, streamText }) =>
+   *     streamText({ model, messages, abortSignal: signal }),
+   * });
+   * ```
+   */
+  storage?: TranscriptStorage<inferSchemaOut<TClientDataSchema>>;
+
+  /**
    * Called at the start of every turn, after message accumulation and `onChatStart` (turn 0),
    * but before the `run` function executes.
    *
@@ -6726,6 +6773,7 @@ function chatAgent<
     onChatStart,
     onValidateMessages,
     hydrateMessages,
+    storage,
     actionSchema,
     onAction,
     onTurnStart,
@@ -6755,12 +6803,17 @@ function chatAgent<
   } = options;
 
   if (hydrateMessages) {
-    const storageAtDefinition = transcriptStorageOverride ?? defaultStorage;
-    if (typeof storageAtDefinition.loadContext === "function") {
+    if (storage) {
+      throw new Error(
+        `chat.agent: "${options.id}" sets both \`hydrateMessages\` and \`storage\`. ` +
+          "`hydrateMessages` is deprecated and replaced by the storage: `save` receives every " +
+          "change and `loadContext` on the storage owns the model's context. Remove `hydrateMessages`."
+      );
+    }
+    if (typeof (transcriptStorageOverride ?? defaultStorage).loadContext === "function") {
       throw new Error(
         `chat.agent: "${options.id}" sets \`hydrateMessages\` and uses a transcript storage with ` +
-          "`loadContext`. Both would own the model's context; keep one. `hydrateMessages` is " +
-          "deprecated, so prefer `loadContext` on the storage."
+          "`loadContext`. Both would own the model's context; keep one."
       );
     }
     warnHydrateMessagesDeprecatedOnce(options.id);
@@ -6915,7 +6968,10 @@ function chatAgent<
       // collectively cost ~600ms on every first-message TTFC. Both reads
       // swallow errors internally; the agent stays available either way.
       const sessionIdForSnapshot = payload.sessionId ?? payload.chatId;
-      const transcriptStorage = transcriptStorageOverride ?? defaultStorage;
+      const transcriptStorage: TranscriptStorage<unknown> =
+        (storage as TranscriptStorage<unknown> | undefined) ??
+        transcriptStorageOverride ??
+        defaultStorage;
       const storageLoadContext = transcriptStorage.loadContext?.bind(transcriptStorage);
       /**
        * Who supplies the model's context each turn: the deprecated
@@ -12592,6 +12648,68 @@ async function mintPublicTokenWithOverride(args: {
   });
 }
 
+export type CreateChatLoadTranscriptActionOptions = {
+  /**
+   * Scope the action to a specific API client configuration (secret key,
+   * base URL) instead of the process-wide one. The default storage reads
+   * through this client.
+   */
+  apiClient?: ApiClientConfiguration;
+  /** Page size when the caller passes none. */
+  limit?: number;
+};
+
+export type ChatLoadTranscriptParams<TClientData = unknown> = {
+  chatId: string;
+  clientData?: TClientData;
+  limit?: number;
+  before?: string;
+};
+
+/**
+ * Creates a server-side helper that reads a conversation from a transcript
+ * storage, for rendering history before the chat connects. Works the same
+ * for every storage, the platform default included, so the browser never
+ * reads a store directly and the secret key stays on the server.
+ *
+ * Wrap it in a Next.js server action (or any server-side handler), scope it
+ * to the authenticated user through `clientData`, and pass the result to
+ * `useLoadTranscript` in the browser.
+ *
+ * @example
+ * ```ts
+ * // actions.ts
+ * "use server";
+ * import { chat, defaultStorage } from "@trigger.dev/sdk/ai";
+ *
+ * export const loadTranscript = chat.createLoadTranscriptAction(defaultStorage, { limit: 50 });
+ * ```
+ */
+function createChatLoadTranscriptAction<TClientData = unknown>(
+  storage: TranscriptStorage<TClientData>,
+  options?: CreateChatLoadTranscriptActionOptions
+): (params: ChatLoadTranscriptParams<TClientData>) => Promise<TranscriptLoadResult> {
+  return async (params) => {
+    if (!params.chatId) {
+      throw new Error("chat.createLoadTranscriptAction: params.chatId is required.");
+    }
+    if (options?.apiClient) {
+      const { apiClient, ...rest } = options;
+      return apiClientManager.runWithConfig(apiClient, () =>
+        createChatLoadTranscriptAction(storage, rest)(params)
+      );
+    }
+    const limit = params.limit ?? options?.limit;
+    return storage.load(
+      { chatId: params.chatId, clientData: params.clientData as TClientData },
+      {
+        ...(limit !== undefined ? { limit } : {}),
+        ...(params.before !== undefined ? { before: params.before } : {}),
+      }
+    );
+  };
+}
+
 export const chat = {
   /** Create a chat agent. See {@link chatAgent}. */
   agent: chatAgent,
@@ -12603,6 +12721,8 @@ export const chat = {
   withClientData,
   /** Create a server-side helper for starting (or resuming) a Session for a chatId. See {@link createChatStartSessionAction}. */
   createStartSessionAction: createChatStartSessionAction,
+  /** Returns a server-side helper that reads a conversation from a transcript storage. */
+  createLoadTranscriptAction: createChatLoadTranscriptAction,
   /** Pipe a stream to the chat transport. See {@link pipeChat}. */
   pipe: pipeChat,
   /** Return from `onAction` to run a turn on the edited history. See {@link chatTurn}. */
