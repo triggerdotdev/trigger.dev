@@ -15,4 +15,4 @@ Spreading `chat.toStreamTextOptions()` still works and is equivalent. The differ
 
 `chat.agent()` also takes `registry`, `cacheControl` and `systemProviderOptions` now, so a managed prompt's model and its cache breakpoint no longer have to be passed at the call site. `chat.toStreamTextOptions()` applies them as well, so spreading it into the `streamText` imported from `ai` stays equivalent to the one `run()` receives.
 
-`chat.headStart` and `chat.startHeadStart` hand their `run` the same thing, carrying the four options the handover protocol depends on. There it matters more: re-setting `messages`, `stopWhen` or `abortSignal` after a spread breaks the handover rather than degrading a feature, and nothing caught it. On the managed one those keys are a type error.
+`chat.headStart` and `chat.startHeadStart` hand their `run` the same thing, carrying the options the handover protocol depends on. There it matters more: re-setting `messages`, `prompt`, `stopWhen` or `abortSignal` after a spread breaks the handover rather than degrading a feature, and nothing caught it. On the managed one those four keys are a type error; `tools` is yours to pass.
