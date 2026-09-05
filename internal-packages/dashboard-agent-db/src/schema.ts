@@ -47,6 +47,13 @@ export const chats = dashboardAgentSchema.table(
     // The position allocator for `chat_messages`. Bumped by the same single statement
     // that reads it, so concurrent writers get disjoint contiguous ranges.
     nextMessagePosition: integer("next_message_position").notNull().default(1),
+    /** The chat.agent runtime's opaque transcript state, written through the TranscriptStorage adapter. */
+    transcriptState: jsonb("transcript_state").$type<unknown>(),
+    /** The stream resume cursors the TranscriptStorage adapter was last handed. */
+    transcriptCursors: jsonb("transcript_cursors").$type<{
+      lastOutEventId?: string;
+      lastInEventId?: string;
+    }>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

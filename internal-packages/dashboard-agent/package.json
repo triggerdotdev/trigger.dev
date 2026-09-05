@@ -19,6 +19,7 @@
     "@internal/dashboard-agent-db": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
     "ai": "^6.0.116",
+    "drizzle-orm": "^0.45.0",
     "zod": "3.25.76"
   },
   "devDependencies": {
