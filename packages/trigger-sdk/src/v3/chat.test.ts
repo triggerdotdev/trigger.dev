@@ -1010,12 +1010,15 @@ describe("TriggerChatTransport", () => {
         messages: [{ id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] }],
         abortSignal: undefined,
         body: { action: { type: "regenerate" } },
+        metadata: { tenant: "t-1" },
       });
       await drainChunks(stream);
 
       expect(actionBody.payload.trigger).toBe("action");
       expect(actionBody.payload.action).toEqual({ type: "regenerate" });
       expect(actionBody.payload.message).toBeUndefined();
+      // The request's own metadata rides along, not only the transport defaults.
+      expect(actionBody.payload.metadata).toEqual({ tenant: "t-1" });
     });
 
     it("marks the session streaming and notifies before subscribing", async () => {

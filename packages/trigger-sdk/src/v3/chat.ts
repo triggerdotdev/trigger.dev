@@ -808,7 +808,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     // action that becomes a turn renders the way a message turn does.
     const actionInBody = (body as { action?: unknown } | undefined)?.action;
     if (actionInBody !== undefined) {
-      return this.sendAction(chatId, actionInBody, { abortSignal });
+      return this.sendAction(chatId, actionInBody, { abortSignal, metadata: mergedMetadata });
     }
 
     // First-turn handover routing — when `headStart` is set AND no
@@ -1269,7 +1269,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   sendAction = async (
     chatId: string,
     action: unknown,
-    options?: { abortSignal?: AbortSignal }
+    options?: { abortSignal?: AbortSignal; metadata?: Record<string, unknown> }
   ): Promise<ReadableStream<UIMessageChunk>> => {
     if (this.coordinator) {
       if (this.coordinator.isReadOnly(chatId)) {
@@ -1284,7 +1284,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       chatId,
       trigger: "action" as const,
       action,
-      metadata: this.defaultMetadata ?? undefined,
+      metadata: options?.metadata ?? this.defaultMetadata ?? undefined,
     };
 
     const body = this.serializeInputChunk({ kind: "message", payload: wirePayload });

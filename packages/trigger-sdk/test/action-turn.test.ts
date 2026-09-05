@@ -1,7 +1,7 @@
 import { mockChatAgent } from "../src/v3/test/index.js";
 
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
-import { simulateReadableStream } from "ai";
+import { simulateReadableStream, streamText } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -44,6 +44,9 @@ async function waitFor(check: () => boolean, label = "condition", timeoutMs = 8_
 
 function agentWith(onAction: (action: { type: string }) => unknown) {
   const prompts: string[] = [];
+  const triggers: string[] = [];
+  /** The snapshot as it stood when each run() began. */
+  const snapshotsAtRun: string[][] = [];
   const starts: number[] = [];
   const completes: { turn: number; finishReason?: string }[] = [];
   let answers = 0;
@@ -60,7 +63,9 @@ function agentWith(onAction: (action: { type: string }) => unknown) {
   });
   const agent = chat.agent({
     id: "action-turn",
-    system: "AGENT-SYSTEM",
+    onChatStart: async () => {
+      chat.prompt.set("AGENT-SYSTEM");
+    },
     actionSchema: z.discriminatedUnion("type", [
       z.object({ type: z.literal("regenerate") }),
       z.object({ type: z.literal("undo") }),
@@ -73,22 +78,39 @@ function agentWith(onAction: (action: { type: string }) => unknown) {
       completes.push({ turn, finishReason });
     },
     onAction: async ({ action }) => onAction(action) as never,
-    run: async ({ messages, signal, streamText: bound }) =>
-      bound({ model, messages, abortSignal: signal }),
+    run: async ({ messages, signal, trigger }) => {
+      triggers.push(trigger);
+      snapshotsAtRun.push((snapshotReader?.()?.messages ?? []).map(textOf));
+      return streamText({ model, messages, abortSignal: signal, ...chat.toStreamTextOptions() });
+    },
   });
-  return { agent, prompts, starts, completes };
+  let snapshotReader: (() => { messages: { parts?: unknown[] }[] } | undefined) | undefined;
+  return {
+    agent,
+    prompts,
+    triggers,
+    snapshotsAtRun,
+    starts,
+    completes,
+    attach: (h: { getSnapshot: () => { messages: { parts?: unknown[] }[] } | undefined }) => {
+      snapshotReader = () => h.getSnapshot();
+    },
+  };
 }
 
 describe("an action that returns chat.turn()", () => {
   it("runs a turn on the edited history, with the turn's own machinery", async () => {
-    const { agent, prompts, starts, completes } = agentWith((action) => {
-      if (action.type === "regenerate") {
-        chat.history.slice(0, -1);
-        return chat.turn();
+    const { agent, prompts, triggers, snapshotsAtRun, starts, completes, attach } = agentWith(
+      (action) => {
+        if (action.type === "regenerate") {
+          chat.history.slice(0, -1);
+          return chat.turn();
+        }
+        return undefined;
       }
-      return undefined;
-    });
+    );
     const harness = mockChatAgent(agent, { chatId: "action-turn-regenerate" });
+    attach(harness);
     try {
       await harness.sendMessage(userMessage("ask", "u-1"));
       await waitFor(() => completes.length >= 1, "turn 0");
@@ -105,6 +127,12 @@ describe("an action that returns chat.turn()", () => {
       expect(p).not.toContain("answer-0");
       // Its answer replaced the old one in the conversation.
       expect(harness.getSnapshot()?.messages.map(textOf)).toEqual(["ask", "answer-1"]);
+      // run() saw it as a turn requested by an action, not as the action, so a
+      // handler that returns early on "action" still answers.
+      expect(triggers[1]).toBe("action-turn");
+      // And the edit was persisted before the turn began: a turn cut short
+      // continues from the edited history, not from the snapshot it replaced.
+      expect(snapshotsAtRun[1]).toEqual(["ask"]);
 
       // And the turn after it is numbered on from there.
       await harness.sendMessage(userMessage("more", "u-2"));

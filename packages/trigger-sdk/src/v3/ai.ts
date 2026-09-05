@@ -1602,7 +1602,7 @@ export type ChatTaskPayload<TClientData = unknown> = {
    *   to short-circuit the LLM call when an action doesn't need a response.
    * - `"close"`: The chat session is being closed (internal; `run()` is not called).
    */
-  trigger: "submit-message" | "regenerate-message" | "preload" | "action" | "close";
+  trigger: "submit-message" | "regenerate-message" | "preload" | "action" | "action-turn" | "close";
 
   /** The ID of the message to regenerate (only for `"regenerate-message"`) */
   messageId?: string;
@@ -8234,9 +8234,13 @@ function chatAgent<
                 // sees the same `turn` value — actions don't count.
                 if (isAction) {
                   if (isActionTurn(actionResult)) {
-                    // The edit is in the accumulators; the turn block below
-                    // runs on it and does its own persistence, hooks and
-                    // completion, so nothing more happens here.
+                    // Persist the edit before the turn starts, so a turn that is
+                    // cancelled or runs out of memory continues from the edited
+                    // history rather than from the snapshot the edit replaced.
+                    // The turn then does its own hooks, completion and snapshot.
+                    if (actionChangedHistory) {
+                      await writeSnapshotOutsideTurn("action");
+                    }
                     actionTurn = true;
                   } else if (actionResult !== undefined) {
                     throw new Error(
@@ -8439,6 +8443,9 @@ function chatAgent<
                       );
                       runResult = await userRun({
                         ...restWire,
+                        // A turn requested by chat.turn() is not the action itself:
+                        // a run() that short-circuits on "action" must still answer.
+                        ...(actionTurn ? { trigger: "action-turn" as const } : {}),
                         messages: preparedMessages,
                         clientData,
                         continuation,
