@@ -1,0 +1,50 @@
+name: 📣 Dispatch PR events
+
+# Notifies downstream consumers (via repository_dispatch) when pull requests
+# change state, so they can react to PR lifecycle events without polling.
+# Mirrors the main-image dispatch in publish.yml: target repo defaults to the
+# canonical value and can be overridden by a repository variable.
+
+on:
+  pull_request:
+    types: [opened, reopened, closed, ready_for_review, converted_to_draft, edited]
+  push:
+    branches: [main]
+
+jobs:
+  dispatch:
+    name: Send repository_dispatch
+    runs-on: ubuntu-latest
+    permissions: {}
+    # Same-repo events only: fork PRs have no secrets, and title-only edits are
+    # the only `edited` payloads downstream cares about.
+    if: >-
+      github.repository == (vars.PR_EVENTS_DISPATCH_REPO || 'triggerdotdev/trigger.dev') &&
+      (github.event_name == 'push' ||
+        (github.event.pull_request.head.repo.full_name == github.repository &&
+          (github.event.action != 'edited' || github.event.changes.title)))
+    steps:
+      - name: Build dispatch payload
+        id: payload
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          ACTION: ${{ github.event.action }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # jq --arg JSON-escapes every value so nothing can inject into the payload.
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            payload=$(jq -nc --arg c "$COMMIT" '{action: "push", commit: $c}')
+          else
+            payload=$(jq -nc --arg a "$ACTION" --arg n "$PR_NUMBER" '{action: $a, number: ($n | tonumber)}')
+          fi
+          echo "client_payload=$payload" >> "$GITHUB_OUTPUT"
+
+      - name: Send repository_dispatch
+        uses: peter-evans/repository-dispatch@28959ce8df70de7be546dd1250a005dd32156697 # v4.0.1
+        with:
+          token: ${{ secrets.CROSS_REPO_PAT }}
+          repository: ${{ vars.PR_EVENTS_DISPATCH_TARGET || 'triggerdotdev/cloud' }}
+          event-type: oss-pr-event
+          client-payload: ${{ steps.payload.outputs.client_payload }}
