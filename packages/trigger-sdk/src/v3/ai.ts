@@ -73,6 +73,14 @@ import {
   zodSchema,
 } from "../imports/ai-runtime.js";
 import {
+  createTranscriptShadow,
+  defaultStorage,
+  diffTranscript,
+  type TranscriptChangeReason,
+  type TranscriptShadow,
+  type TranscriptStorageContext,
+} from "./transcriptStorage.js";
+import {
   type ChatInputChunk,
   type ChatTaskWirePayload,
   type InferChatClientData,
@@ -231,224 +239,24 @@ async function findLatestSessionInCursor(chatId: string): Promise<number | undef
 }
 
 /**
- * Versioned blob written to S3 after every turn completes (when no
- * `hydrateMessages` hook is registered). Read at run boot to seed the
- * accumulator with prior conversation state, replacing the old wire-borne
- * full-history seed.
+ * Versioned blob written to the object store after every turn completes
+ * (when no `hydrateMessages` hook is registered). Read at run boot to seed
+ * the accumulator with prior conversation state.
  *
- * The shape is shared with the Sessions dashboard (which reads the same
- * blob to render the full conversation transcript) via
- * `@trigger.dev/core/v3`. Customer code shouldn't reach in here — the
- * SDK transports surface the messages through the standard `messages`
- * accumulator.
+ * The shape is shared with the Sessions dashboard via `@trigger.dev/core/v3`.
+ * Customer code shouldn't reach in here; the SDK transports surface the
+ * messages through the standard `messages` accumulator.
  *
  * @internal
  */
 export type { ChatSnapshotV1, ChatInputChunk, ChatTaskWirePayload };
 
-/**
- * Test-only override hook — `mockChatAgent` installs a fake to return
- * synthetic snapshots without hitting S3. Mirrors the `__set*ImplForTests`
- * pattern in `sessions.ts`. Not part of the public API.
- * @internal
- */
-type ReadChatSnapshotImpl = <TUIMessage extends UIMessage>(
-  sessionId: string
-) => Promise<ChatSnapshotV1<TUIMessage> | undefined> | ChatSnapshotV1<TUIMessage> | undefined;
-let readChatSnapshotImpl: ReadChatSnapshotImpl | undefined;
-
-export function __setReadChatSnapshotImplForTests(impl: ReadChatSnapshotImpl | undefined): void {
-  readChatSnapshotImpl = impl;
-}
-
-/**
- * Test-only override hook — see `__setReadChatSnapshotImplForTests`. The
- * mock harness records writes for assertion via this setter. Not public.
- * @internal
- */
-type WriteChatSnapshotImpl = <TUIMessage extends UIMessage>(
-  sessionId: string,
-  snapshot: ChatSnapshotV1<TUIMessage>
-) => Promise<void> | void;
-let writeChatSnapshotImpl: WriteChatSnapshotImpl | undefined;
-
-export function __setWriteChatSnapshotImplForTests(impl: WriteChatSnapshotImpl | undefined): void {
-  writeChatSnapshotImpl = impl;
-}
-
-/**
- * Read the persisted snapshot for a session. Returns `undefined` on:
- *   - missing object (404 from the presigned GET — fresh session, never
- *     persisted)
- *   - presign failure (network/auth issue)
- *   - malformed JSON
- *   - version mismatch (forward-compat — older runtimes ignore newer blobs)
- *
- * Always swallows errors via `logger.warn`. The agent boot loop must stay
- * available even if S3 hiccups; the worst case is replaying more of
- * `session.out` than strictly necessary.
- * @internal
- */
-async function readChatSnapshot<TUIMessage extends UIMessage>(
-  sessionId: string
-): Promise<ChatSnapshotV1<TUIMessage> | undefined> {
-  if (readChatSnapshotImpl) {
-    return (await readChatSnapshotImpl<TUIMessage>(sessionId)) ?? undefined;
-  }
-  const apiClient = apiClientManager.clientOrThrow();
-  let presignedUrl: string;
-  try {
-    const resp = await apiClient.getChatSnapshotUrl(sessionId);
-    presignedUrl = resp.presignedUrl;
-  } catch (error) {
-    logger.warn("chat.agent: snapshot presign (read) failed; continuing without snapshot", {
-      error: error instanceof Error ? error.message : String(error),
-      sessionId,
-    });
-    return undefined;
-  }
-  let response: Response;
-  try {
-    response = await fetch(presignedUrl, { method: "GET" });
-  } catch (error) {
-    logger.warn("chat.agent: snapshot fetch failed; continuing without snapshot", {
-      error: error instanceof Error ? error.message : String(error),
-      sessionId,
-    });
-    return undefined;
-  }
-  if (response.status === 404) {
-    // First-ever boot for this session — no snapshot yet. Caller falls
-    // through to replay-only.
-    return undefined;
-  }
-  if (!response.ok) {
-    logger.warn("chat.agent: snapshot fetch returned non-OK; continuing without snapshot", {
-      status: response.status,
-      sessionId,
-    });
-    return undefined;
-  }
-  let parsed: unknown;
-  try {
-    parsed = await response.json();
-  } catch (error) {
-    logger.warn("chat.agent: snapshot JSON parse failed; continuing without snapshot", {
-      error: error instanceof Error ? error.message : String(error),
-      sessionId,
-    });
-    return undefined;
-  }
-  if (!parsed || typeof parsed !== "object") return undefined;
-  const candidate = parsed as Partial<ChatSnapshotV1<TUIMessage>>;
-  if (candidate.version !== 1 || !Array.isArray(candidate.messages)) {
-    logger.warn("chat.agent: snapshot version/shape mismatch; ignoring", {
-      version: candidate.version,
-      sessionId,
-    });
-    return undefined;
-  }
-  return candidate as ChatSnapshotV1<TUIMessage>;
-}
-
-/**
- * Persist the snapshot for a session. Awaited by callers immediately after
- * `onTurnComplete` — the agent may suspend right after this point, and
- * fire-and-forget promises don't reliably complete on suspend.
- *
- * Errors are swallowed via `logger.warn`. A failed write means the next
- * boot replays slightly more of `session.out` (back to the previous
- * snapshot's cursor) instead of failing — the conversation stays
- * coherent, only the boot path does marginally more work.
- * @internal
- */
-async function writeChatSnapshot<TUIMessage extends UIMessage>(
-  sessionId: string,
-  snapshot: ChatSnapshotV1<TUIMessage>
-): Promise<void> {
-  if (writeChatSnapshotImpl) {
-    await writeChatSnapshotImpl<TUIMessage>(sessionId, snapshot);
-    return;
-  }
-  const apiClient = apiClientManager.clientOrThrow();
-  let presignedUrl: string;
-  try {
-    const resp = await apiClient.createChatSnapshotUploadUrl(sessionId);
-    presignedUrl = resp.presignedUrl;
-  } catch (error) {
-    logger.warn("chat.agent: snapshot presign (write) failed; next run will replay further", {
-      error: error instanceof Error ? error.message : String(error),
-      sessionId,
-    });
-    return;
-  }
-  let response: Response;
-  try {
-    response = await fetch(presignedUrl, {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(snapshot),
-    });
-  } catch (error) {
-    logger.warn("chat.agent: snapshot upload failed; next run will replay further", {
-      error: error instanceof Error ? error.message : String(error),
-      sessionId,
-    });
-    return;
-  }
-  if (!response.ok) {
-    logger.warn("chat.agent: snapshot upload returned non-OK; next run will replay further", {
-      status: response.status,
-      sessionId,
-    });
-  }
-}
-
-/**
- * Test-only entry point that bypasses `__setReadChatSnapshotImplForTests`
- * and reaches the real `apiClient.getPayloadUrl` + `fetch` + JSON-parse path.
- * Used by `chat-snapshot.test.ts` to verify 404 / 500 / malformed JSON /
- * version-mismatch / network-error behavior end-to-end. Tests mock global
- * `fetch` and the api-client config; this wrapper lets them drive the
- * production code without the override hook short-circuiting.
- *
- * Not part of the public API. The `__` prefix and `ForTests` suffix mirror
- * the override-hook setters above.
- * @internal
- */
-export async function __readChatSnapshotProductionPathForTests<TUIMessage extends UIMessage>(
-  sessionId: string
-): Promise<ChatSnapshotV1<TUIMessage> | undefined> {
-  const saved = readChatSnapshotImpl;
-  readChatSnapshotImpl = undefined;
-  try {
-    return await readChatSnapshot<TUIMessage>(sessionId);
-  } finally {
-    readChatSnapshotImpl = saved;
-  }
-}
-
-/**
- * Test-only entry point that bypasses `__setWriteChatSnapshotImplForTests`
- * and reaches the real `apiClient.createUploadPayloadUrl` + `fetch` PUT
- * path. Pairs with `__readChatSnapshotProductionPathForTests` — see that
- * function's note for the rationale.
- *
- * Not part of the public API.
- * @internal
- */
-export async function __writeChatSnapshotProductionPathForTests<TUIMessage extends UIMessage>(
-  sessionId: string,
-  snapshot: ChatSnapshotV1<TUIMessage>
-): Promise<void> {
-  const saved = writeChatSnapshotImpl;
-  writeChatSnapshotImpl = undefined;
-  try {
-    await writeChatSnapshot<TUIMessage>(sessionId, snapshot);
-  } finally {
-    writeChatSnapshotImpl = saved;
-  }
-}
+export {
+  __readChatSnapshotProductionPathForTests,
+  __setReadChatSnapshotImplForTests,
+  __setWriteChatSnapshotImplForTests,
+  __writeChatSnapshotProductionPathForTests,
+} from "./chatSnapshotIo.js";
 
 /**
  * Merge two `UIMessage[]` lists by `id`, with the second list winning on
@@ -7062,7 +6870,19 @@ function chatAgent<
       // collectively cost ~600ms on every first-message TTFC. Both reads
       // swallow errors internally; the agent stays available either way.
       const sessionIdForSnapshot = payload.sessionId ?? payload.chatId;
-      let bootSnapshot: ChatSnapshotV1<TUIMessage> | undefined;
+      const transcriptStorage = defaultStorage;
+      let transcriptShadow: TranscriptShadow = createTranscriptShadow([]);
+      let bootSnapshot:
+        | { messages: TUIMessage[]; lastOutEventId?: string; lastInEventId?: string }
+        | undefined;
+      let bootClientData: unknown = payload.metadata;
+      if (parseClientData) {
+        try {
+          bootClientData = await parseClientData(payload.metadata);
+        } catch {
+          bootClientData = payload.metadata;
+        }
+      }
 
       /**
        * The `lastOutEventId` the most recent snapshot carried.
@@ -7074,33 +6894,80 @@ function chatAgent<
        */
       let lastSnapshotOutEventId: string | undefined;
 
+      const storageTrigger = (trigger: string): TranscriptStorageContext["trigger"] =>
+        trigger === "regenerate-message"
+          ? "regenerate-message"
+          : trigger === "action" || trigger === "action-turn"
+            ? "action"
+            : "submit-message";
+
+      /**
+       * Hand the runtime's view of the transcript to the storage as a
+       * changeset: the diff against what was last saved, plus the cursors the
+       * next boot resumes from. The shadow only advances when the save
+       * succeeds, so a failed save is folded into the next changeset.
+       */
+      const saveTranscript = async (opts: {
+        reason: TranscriptChangeReason;
+        messages: TUIMessage[];
+        turn: number;
+        trigger: TranscriptStorageContext["trigger"];
+        clientData: unknown;
+        lastOutEventId: string | undefined;
+        nonFinalIds?: ReadonlySet<string>;
+      }) => {
+        const { changes, shadow } = diffTranscript(transcriptShadow, opts.messages, {
+          nonFinalIds: opts.nonFinalIds,
+        });
+        const inCursor = chatInputRouter().resumeFloor();
+        await transcriptStorage.save(
+          {
+            chatId: payload.chatId,
+            clientData: opts.clientData,
+            turn: opts.turn,
+            trigger: opts.trigger,
+            runId: ctx.run.id,
+            ctx,
+          },
+          {
+            reason: opts.reason,
+            changes,
+            cursors: {
+              lastOutEventId: opts.lastOutEventId,
+              lastInEventId: inCursor !== undefined ? String(inCursor) : undefined,
+            },
+          }
+        );
+        transcriptShadow = shadow;
+      };
+
       /**
        * Persist the accumulator outside a turn.
        *
        * An action is not a turn, so it never reaches the turn-complete path where
-       * the snapshot is normally written — but it can change the conversation in
-       * two ways: a `chat.history` mutation, and a response streamed back from
-       * `onAction`. Both have to survive, and one write at the end of the action
-       * covers both rather than writing twice for a regenerate that does both.
+       * the transcript is normally saved, but a `chat.history` mutation changes
+       * the conversation and has to survive the run ending.
        *
        * Cursor-neutral: an action has no turn cursor of its own, and writing
        * `undefined` would drop the resume point the last turn established and make
        * the next boot replay from further back.
        */
-      const writeSnapshotOutsideTurn = async (reason: string) => {
+      const writeSnapshotOutsideTurn = async (
+        reason: string,
+        turnContext: { turn: number; clientData: unknown }
+      ) => {
         if (hydrateMessages) return;
         try {
           await tracer.startActiveSpan(
             "snapshot.write",
             async () => {
-              const snapshotInCursor = chatInputRouter().resumeFloor();
-              await writeChatSnapshot<TUIMessage>(sessionIdForSnapshot, {
-                version: 1,
-                savedAt: Date.now(),
+              await saveTranscript({
+                reason: "action",
                 messages: accumulatedUIMessages,
+                turn: turnContext.turn,
+                trigger: "action",
+                clientData: turnContext.clientData,
                 lastOutEventId: lastSnapshotOutEventId,
-                lastInEventId:
-                  snapshotInCursor !== undefined ? String(snapshotInCursor) : undefined,
               });
             },
             {
@@ -7151,17 +7018,28 @@ function chatAgent<
             // snapshot read
             const snapStart = Date.now();
             try {
-              bootSnapshot = await readChatSnapshot<TUIMessage>(sessionIdForSnapshot);
+              const loaded = await transcriptStorage.load<TUIMessage>({
+                chatId: payload.chatId,
+                clientData: bootClientData,
+              });
+              transcriptShadow = createTranscriptShadow(loaded.messages);
+              bootSnapshot = {
+                messages: loaded.messages,
+                lastOutEventId: loaded.cursors?.lastOutEventId,
+                lastInEventId: loaded.cursors?.lastInEventId,
+              };
             } catch (error) {
-              // `readChatSnapshot` already swallows + warns internally; this catch
-              // is just belt-and-suspenders against tracer/span errors.
-              logger.warn("chat.agent: snapshot read failed; continuing without snapshot", {
+              logger.warn("chat.agent: transcript load failed; continuing from the stream tail", {
                 error: error instanceof Error ? error.message : String(error),
                 sessionId: sessionIdForSnapshot,
               });
             }
             bootSpan.setAttribute("chat.boot.snapshot.durationMs", Date.now() - snapStart);
-            bootSpan.setAttribute("chat.boot.snapshot.present", !!bootSnapshot);
+            bootSpan.setAttribute(
+              "chat.boot.snapshot.present",
+              bootSnapshot !== undefined &&
+                (bootSnapshot.messages.length > 0 || bootSnapshot.lastOutEventId !== undefined)
+            );
             bootSpan.setAttribute(
               "chat.boot.snapshot.messageCount",
               bootSnapshot?.messages?.length ?? 0
@@ -7938,6 +7816,7 @@ function chatAgent<
         }
 
         for (let turn = 0; turn < maxTurns; turn++) {
+          let turnClientData: unknown = payload.metadata;
           // Declared here so the finally can detach it — a handler leaked past
           // its turn duplicates every mid-stream message into the shared buffer.
           let turnMsgSub: { off: () => void } | undefined;
@@ -7968,6 +7847,7 @@ function chatAgent<
             const clientData = (
               parseClientData ? await parseClientData(wireMetadata) : wireMetadata
             ) as inferSchemaOut<TClientDataSchema>;
+            turnClientData = clientData;
             const lastUserMessage = extractLastUserMessageText(cleanedIncomingMessages);
 
             // Actions are not turns. They use a different span name
@@ -8494,7 +8374,7 @@ function chatAgent<
                     // history rather than from the snapshot the edit replaced.
                     // The turn then does its own hooks, completion and snapshot.
                     if (actionChangedHistory) {
-                      await writeSnapshotOutsideTurn("action");
+                      await writeSnapshotOutsideTurn("action", { turn, clientData });
                     }
                     actionTurn = true;
                   } else if (actionResult !== undefined) {
@@ -8506,7 +8386,7 @@ function chatAgent<
                   } else {
                     msgSub?.off();
                     if (actionChangedHistory) {
-                      await writeSnapshotOutsideTurn("action");
+                      await writeSnapshotOutsideTurn("action", { turn, clientData });
                     }
                     await writeTurnCompleteChunk(currentWirePayload.chatId);
                     // Don't consume a turn iteration — actions aren't turns.
@@ -9326,16 +9206,15 @@ function chatAgent<
                       await tracer.startActiveSpan(
                         "snapshot.write",
                         async () => {
-                          const snapshotInCursor = chatInputRouter().resumeFloor();
                           lastSnapshotOutEventId =
                             turnCompleteResult?.lastEventId ?? lastSnapshotOutEventId;
-                          await writeChatSnapshot<TUIMessage>(sessionIdForSnapshot, {
-                            version: 1,
-                            savedAt: Date.now(),
+                          await saveTranscript({
+                            reason: "turn-complete",
                             messages: accumulatedUIMessages,
+                            turn,
+                            trigger: storageTrigger(currentWirePayload.trigger),
+                            clientData,
                             lastOutEventId: lastSnapshotOutEventId,
-                            lastInEventId:
-                              snapshotInCursor !== undefined ? String(snapshotInCursor) : undefined,
                           });
                         },
                         {
@@ -9700,14 +9579,15 @@ function chatAgent<
             // neither the snapshot nor the replayable `.in` tail.
             if (!hydrateMessages) {
               try {
-                const errorSnapshotInCursor = chatInputRouter().resumeFloor();
-                await writeChatSnapshot<TUIMessage>(sessionIdForSnapshot, {
-                  version: 1,
-                  savedAt: Date.now(),
+                await saveTranscript({
+                  reason: "turn-error",
                   messages: erroredUIMessagesWithPartial,
-                  lastOutEventId: errorTurnCompleteResult?.lastEventId,
-                  lastInEventId:
-                    errorSnapshotInCursor !== undefined ? String(errorSnapshotInCursor) : undefined,
+                  turn,
+                  trigger: storageTrigger(currentWirePayload.trigger),
+                  clientData: turnClientData,
+                  lastOutEventId: lastSnapshotOutEventId,
+                  nonFinalIds:
+                    includePartial && partialResponse ? new Set([partialResponse.id]) : undefined,
                 });
               } catch (error) {
                 logger.warn("chat.agent: error-path snapshot write failed", {

@@ -24,11 +24,10 @@
 // through it), even though the replay path itself doesn't read from S3.
 
 import { postgresAndMinioTest } from "@internal/testcontainers";
-import { apiClientManager } from "@trigger.dev/core/v3";
+import { apiClientManager, type TranscriptSnapshotV2 } from "@trigger.dev/core/v3";
 import {
   __readChatSnapshotProductionPathForTests as readChatSnapshot,
   __replaySessionOutTailProductionPathForTests as replaySessionOutTail,
-  type ChatSnapshotV1,
 } from "@trigger.dev/sdk/ai";
 import type { UIMessageChunk } from "ai";
 import { afterEach, describe, expect, vi } from "vitest";
@@ -265,13 +264,26 @@ describe("replay after crash (MinIO + SDK helpers)", () => {
 
       // Pre-write a snapshot to MinIO via real apiClient stub.
       const sessionId = "sess_merge_round_trip";
-      const snapshot: ChatSnapshotV1 = {
-        version: 1,
+      const snapshot: TranscriptSnapshotV2 = {
+        version: 2,
         savedAt: 1_700_000_000_000,
         messages: [
-          { id: "u-1", role: "user", parts: [{ type: "text", text: "hi" }] },
-          { id: "a-1", role: "assistant", parts: [{ type: "text", text: "stale-assistant" }] },
+          {
+            id: "u-1",
+            final: true,
+            message: { id: "u-1", role: "user", parts: [{ type: "text", text: "hi" }] },
+          },
+          {
+            id: "a-1",
+            final: true,
+            message: {
+              id: "a-1",
+              role: "assistant",
+              parts: [{ type: "text", text: "stale-assistant" }],
+            },
+          },
         ],
+        state: null,
         lastOutEventId: "evt-prev",
       };
 

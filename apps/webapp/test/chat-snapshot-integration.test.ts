@@ -1,27 +1,8 @@
-// Plan F.3: integration test that round-trips a `ChatSnapshotV1` blob
-// through the SDK's snapshot helpers + a real MinIO backing store. Mirrors
-// the testcontainer pattern from `objectStore.test.ts`.
-//
-// What this verifies end-to-end:
-//   - SDK's `writeChatSnapshot` calls `apiClient.createUploadPayloadUrl`
-//     to mint a presigned PUT, then PUTs JSON to it.
-//   - SDK's `readChatSnapshot` calls `apiClient.getPayloadUrl` to mint a
-//     presigned GET, then fetches and parses.
-//   - The webapp's `generatePresignedUrl` produces URLs MinIO accepts.
-//   - The blob round-trips with `version: 1` shape preserved.
-//   - 404 (no snapshot for a fresh session) returns `undefined`, not an
-//     error.
-//
-// This is the integration safety net behind the unit tests in
-// `packages/trigger-sdk/test/chat-snapshot.test.ts` — those tests mock
-// `fetch`; this one drives a real S3-compatible backend.
-
 import { postgresAndMinioTest } from "@internal/testcontainers";
-import { apiClientManager } from "@trigger.dev/core/v3";
+import { apiClientManager, type TranscriptSnapshotV2 } from "@trigger.dev/core/v3";
 import {
   __readChatSnapshotProductionPathForTests as readChatSnapshot,
   __writeChatSnapshotProductionPathForTests as writeChatSnapshot,
-  type ChatSnapshotV1,
 } from "@trigger.dev/sdk/ai";
 import type { UIMessage } from "ai";
 import { afterEach, describe, expect, vi } from "vitest";
@@ -35,22 +16,24 @@ vi.setConfig({ testTimeout: 60_000 });
 
 function makeSnapshot(
   opts: { messages?: UIMessage[]; lastOutEventId?: string } = {}
-): ChatSnapshotV1 {
+): TranscriptSnapshotV2 {
+  const messages = opts.messages ?? [
+    {
+      id: "u-1",
+      role: "user",
+      parts: [{ type: "text", text: "hello" }],
+    },
+    {
+      id: "a-1",
+      role: "assistant",
+      parts: [{ type: "text", text: "world" }],
+    },
+  ];
   return {
-    version: 1,
+    version: 2,
     savedAt: 1_700_000_000_000,
-    messages: opts.messages ?? [
-      {
-        id: "u-1",
-        role: "user",
-        parts: [{ type: "text", text: "hello" }],
-      },
-      {
-        id: "a-1",
-        role: "assistant",
-        parts: [{ type: "text", text: "world" }],
-      },
-    ],
+    messages: messages.map((message) => ({ id: message.id, final: true, message })),
+    state: null,
     lastOutEventId: opts.lastOutEventId ?? "evt-42",
   };
 }

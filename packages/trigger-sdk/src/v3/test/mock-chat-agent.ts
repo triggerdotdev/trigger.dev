@@ -1,6 +1,6 @@
 import type { UIMessage, UIMessageChunk } from "ai";
 import { resourceCatalog, sessionStreams } from "@trigger.dev/core/v3";
-import type { LocalsKey } from "@trigger.dev/core/v3";
+import type { LocalsKey, TranscriptSnapshotV2 } from "@trigger.dev/core/v3";
 import { runInMockTaskContext, type MockTaskContextOptions } from "@trigger.dev/core/v3/test";
 import { __setSessionOpenImplForTests, __setSessionStartImplForTests } from "../sessions.js";
 import {
@@ -97,7 +97,7 @@ export type MockChatAgentOptions = {
    *
    * See plan section B.3 for the boot orchestration spec.
    */
-  snapshot?: ChatSnapshotV1;
+  snapshot?: ChatSnapshotV1 | TranscriptSnapshotV2;
   /**
    * Set `payload.continuation = true` on the initial wire payload. Used
    * to simulate a continuation-run boot (a new run picking up after a
@@ -233,7 +233,7 @@ export type MockChatAgentHarness = {
    * Effective on the next run boot only. Calling mid-turn is a no-op
    * because the snapshot read happens once at run boot.
    */
-  seedSnapshot(snapshot: ChatSnapshotV1 | undefined): void;
+  seedSnapshot(snapshot: ChatSnapshotV1 | TranscriptSnapshotV2 | undefined): void;
 
   /**
    * Pre-seed `session.out` chunks for the next boot's replay. The runtime's
@@ -272,7 +272,7 @@ export type MockChatAgentHarness = {
    * has been written yet. Updated each time `writeChatSnapshot` is
    * invoked from the run loop's snapshot-write site (plan section B.6).
    */
-  getSnapshot(): ChatSnapshotV1 | undefined;
+  getSnapshot(): TranscriptSnapshotV2 | undefined;
 
   /**
    * Close the chat session cleanly. Sends `trigger: "close"` and awaits the
@@ -396,20 +396,18 @@ export function mockChatAgent(
   // `lastWrittenSnapshot` for harness consumers to assert via
   // `getSnapshot()`. Installed below alongside the session overrides;
   // cleared on close in the same finally block.
-  let seededSnapshot: ChatSnapshotV1 | undefined = options.snapshot;
-  let lastWrittenSnapshot: ChatSnapshotV1 | undefined;
+  let seededSnapshot: ChatSnapshotV1 | TranscriptSnapshotV2 | undefined = options.snapshot;
+  let lastWrittenSnapshot: TranscriptSnapshotV2 | undefined;
   let seededReplayChunks: UIMessageChunk[] = [];
   let seededReplayPartial: UIMessage | undefined;
   let seededSessionInMessages: UIMessage[] = [];
 
   __resetChatInputRouterForTests();
 
-  __setReadChatSnapshotImplForTests(<T extends UIMessage>(_id: string) => {
-    return seededSnapshot as ChatSnapshotV1<T> | undefined;
-  });
+  __setReadChatSnapshotImplForTests(() => seededSnapshot);
   __setWriteChatSnapshotImplForTests(
-    <T extends UIMessage>(_id: string, snapshot: ChatSnapshotV1<T>) => {
-      lastWrittenSnapshot = snapshot as ChatSnapshotV1;
+    <T extends UIMessage>(_id: string, snapshot: TranscriptSnapshotV2<T>) => {
+      lastWrittenSnapshot = snapshot as TranscriptSnapshotV2;
     }
   );
 
