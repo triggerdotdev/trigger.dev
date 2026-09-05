@@ -5191,6 +5191,18 @@ function isUIMessageStreamable(value: unknown): value is UIMessageStreamable {
   );
 }
 
+const warnedHydrateMessagesDeprecated = new Set<string>();
+function warnHydrateMessagesDeprecatedOnce(agentId: string) {
+  if (warnedHydrateMessagesDeprecated.has(agentId)) return;
+  warnedHydrateMessagesDeprecated.add(agentId);
+  console.warn(
+    `[chat.agent] \`hydrateMessages\` on "${agentId}" is deprecated. Give the agent a transcript ` +
+      "storage instead: `save` receives every change to the conversation and `loadContext` " +
+      "lets the application own the model's context, with crash recovery and durable " +
+      "compaction that `hydrateMessages` never had."
+  );
+}
+
 let warnedMissingOnAction = false;
 function warnMissingOnActionOnce() {
   if (warnedMissingOnAction) return;
@@ -5401,8 +5413,9 @@ export type RecoveryPendingToolCall = {
  * `chat.endRun()` with no buffered user messages, fresh chat, OOM retry
  * after a successful turn-complete with no in-flight tail).
  *
- * Does NOT fire when `hydrateMessages` is registered (the customer owns
- * persistence; recovery decisions live in their own DB query).
+ * Fires regardless of who owns the model's context. With `hydrateMessages`
+ * or a storage `loadContext`, the recovered tail reaches that hook in
+ * `previousMessages` on the next turn.
  */
 export type RecoveryBootEvent<TUIM extends UIMessage = UIMessage> = {
   /** Task run context — same as `task({ run })` second-argument `ctx`. */
@@ -5472,8 +5485,9 @@ export type RecoveryBootResult<TUIM extends UIMessage = UIMessage> = {
    * context, mutate its tool parts to inject synthesized results,
    * collapse history, etc.
    *
-   * Ignored when `hydrateMessages` is registered (the hydrate hook
-   * runs per-turn and overwrites the chain).
+   * With `hydrateMessages` or a storage `loadContext`, this chain is what
+   * the hook receives as `previousMessages` on the next turn; the hook's
+   * return value is the chain the model sees.
    */
   chain?: TUIM[];
   /**
@@ -6058,9 +6072,9 @@ export type ChatAgentOptions<
    * continuation after `chat.endRun()` with no buffered user, a fresh
    * chat, or an OOM retry on top of a complete snapshot.
    *
-   * Does NOT fire when `hydrateMessages` is registered — that hook owns
-   * the per-turn chain and overlapping recovery decisions belong in the
-   * customer's DB.
+   * Fires regardless of who owns the model's context; a `hydrateMessages`
+   * hook or a storage `loadContext` receives the recovered tail in
+   * `previousMessages` on the next turn.
    *
    * Defaults (returned when the hook is omitted or returns no field):
    *   - With two or more in-flight users, the partial and the user it
@@ -6832,6 +6846,18 @@ function chatAgent<
     ...restOptions
   } = options;
 
+  if (hydrateMessages) {
+    const storageAtDefinition = transcriptStorageOverride ?? defaultStorage;
+    if (typeof storageAtDefinition.loadContext === "function") {
+      throw new Error(
+        `chat.agent: "${options.id}" sets \`hydrateMessages\` and uses a transcript storage with ` +
+          "`loadContext`. Both would own the model's context; keep one. `hydrateMessages` is " +
+          "deprecated, so prefer `loadContext` on the storage."
+      );
+    }
+    warnHydrateMessagesDeprecatedOnce(options.id);
+  }
+
   const parseClientData = clientDataSchema ? getSchemaParseFn(clientDataSchema) : undefined;
   const parseAction = actionSchema ? getSchemaParseFn(actionSchema) : undefined;
 
@@ -6999,6 +7025,22 @@ function chatAgent<
       // swallow errors internally; the agent stays available either way.
       const sessionIdForSnapshot = payload.sessionId ?? payload.chatId;
       const transcriptStorage = transcriptStorageOverride ?? defaultStorage;
+      const storageLoadContext = transcriptStorage.loadContext?.bind(transcriptStorage);
+      /**
+       * Who supplies the model's context each turn: the deprecated
+       * `hydrateMessages` hook, the storage's `loadContext`, or (undefined)
+       * the runtime's own transcript.
+       */
+      const loadContextHook = hydrateMessages
+        ? (event: HydrateMessagesEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>) =>
+            hydrateMessages(event)
+        : storageLoadContext
+          ? (event: HydrateMessagesEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>) =>
+              storageLoadContext<TUIMessage>(
+                { chatId: event.chatId, clientData: event.clientData },
+                event
+              )
+          : undefined;
       let transcriptShadow: TranscriptShadow = createTranscriptShadow([]);
       let bootTranscriptState: unknown = null;
       /**
@@ -7181,7 +7223,7 @@ function chatAgent<
       let bootInCursor: number | undefined;
       let bootInCursorResolved = false;
 
-      if (!hydrateMessages && couldHavePriorState) {
+      if (couldHavePriorState) {
         // Single parent span for the whole boot read phase — snapshot
         // read, session.out replay, session.in replay. Per-phase timing
         // + result counts are attributes on the span.
@@ -7191,18 +7233,26 @@ function chatAgent<
             // snapshot read
             const snapStart = Date.now();
             try {
-              const loaded = await transcriptStorage.load<TUIMessage>({
-                chatId: payload.chatId,
-                clientData: bootClientData,
-              });
-              transcriptShadow = createTranscriptShadow(loaded.messages);
-              bootTranscriptState = loaded.state;
-              persistedStateSet = loaded.state !== null && loaded.state !== undefined;
-              bootSnapshot = {
-                messages: loaded.messages,
-                lastOutEventId: loaded.cursors?.lastOutEventId,
-                lastInEventId: loaded.cursors?.lastInEventId,
-              };
+              const loaded = hydrateMessages
+                ? undefined
+                : await transcriptStorage.load<TUIMessage>({
+                    chatId: payload.chatId,
+                    clientData: bootClientData,
+                  });
+              if (loaded) {
+                transcriptShadow = createTranscriptShadow(
+                  loaded.messages,
+                  new Set(loaded.nonFinalIds ?? [])
+                );
+                bootTranscriptState = loaded.state;
+                transcriptState = loaded.state ?? null;
+                persistedStateSet = loaded.state !== null && loaded.state !== undefined;
+                bootSnapshot = {
+                  messages: loaded.messages,
+                  lastOutEventId: loaded.cursors?.lastOutEventId,
+                  lastInEventId: loaded.cursors?.lastInEventId,
+                };
+              }
             } catch (error) {
               logger.warn("chat.agent: transcript load failed; continuing from the stream tail", {
                 error: error instanceof Error ? error.message : String(error),
@@ -7346,7 +7396,7 @@ function chatAgent<
       });
 
       // ── Recovery boot + chain reconstruction ────────────────────────
-      if (!hydrateMessages) {
+      {
         const settledMessages = mergeByIdReplaceWins<TUIMessage>(
           (bootSnapshot?.messages as TUIMessage[]) ?? [],
           replayedSettled
@@ -7504,6 +7554,7 @@ function chatAgent<
         // and it's safe because the route handler isn't subject to the
         // `/in/append` 512 KiB cap.
         if (
+          !loadContextHook &&
           accumulatedUIMessages.length === 0 &&
           payload.trigger === "handover-prepare" &&
           Array.isArray(payload.headStartMessages) &&
@@ -8201,11 +8252,11 @@ function chatAgent<
                     : currentWirePayload.action;
 
                   // Hydrate messages from backend if configured
-                  if (hydrateMessages) {
+                  if (loadContextHook) {
                     const hydrated = await tracer.startActiveSpan(
                       "hydrateMessages()",
                       async () => {
-                        return hydrateMessages({
+                        return loadContextHook({
                           chatId: currentWirePayload.chatId,
                           turn,
                           trigger: "action",
@@ -8293,7 +8344,7 @@ function chatAgent<
                   // incoming messages instead (gated on the pending handover).
                   if (
                     turn === 0 &&
-                    hydrateMessages &&
+                    loadContextHook &&
                     cleanedUIMessages.length === 0 &&
                     (locals.get(chatHandoverPartialKey)?.length ?? 0) > 0 &&
                     Array.isArray(payload.headStartMessages) &&
@@ -8330,7 +8381,7 @@ function chatAgent<
                     )) as TUIMessage[];
                   }
 
-                  if (hydrateMessages) {
+                  if (loadContextHook) {
                     // Snapshot the ids the accumulator knew BEFORE this
                     // turn ran — used below to decide whether an
                     // incoming wire message is genuinely new or just a
@@ -8353,7 +8404,7 @@ function chatAgent<
                     const hydrated = await tracer.startActiveSpan(
                       "hydrateMessages()",
                       async () => {
-                        return hydrateMessages({
+                        return loadContextHook({
                           chatId: currentWirePayload.chatId,
                           turn,
                           trigger: currentWirePayload.trigger as
