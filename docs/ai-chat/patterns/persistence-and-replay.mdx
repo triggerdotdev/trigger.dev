@@ -1,12 +1,12 @@
 ---
 title: "Persistence and replay"
 sidebarTitle: "Persistence and replay"
-description: "How chat.agent rebuilds conversation history at run boot — durable JSON snapshot in object storage plus session.out replay, with a hydrateMessages short-circuit for backend-owned history."
+description: "How chat.agent rebuilds conversation history at run boot — the transcript storage's persisted conversation plus session.out replay, and what changes when your app owns the model's context."
 ---
 
 `chat.agent` runs are processes — they boot, stream a turn, and either suspend (waiting for the next message) or exit. When the next message arrives at a session whose previous run already exited, a **fresh** run boots with no in-memory state. Something has to rebuild the conversation history before that turn can produce a coherent response.
 
-This page walks through the **snapshot + replay** model the runtime uses by default, and the [`hydrateMessages`](/ai-chat/lifecycle-hooks#hydratemessages) short-circuit that turns the whole thing off when the customer owns history.
+This page walks through the **storage + replay** model. The persisted conversation comes from the agent's [transcript storage](/ai-chat/transcript-storage); the default storage is the snapshot in object storage described below, and a storage you bring is read the same way. Replay of the session streams covers what happened after the last save, and it runs for every agent, including one that owns the model's context.
 
 ## Why a snapshot at all
 
@@ -52,15 +52,21 @@ The accumulator starts empty. The wire delivers `u1`. After the model finishes, 
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "savedAt": 1715180400000,
-  "messages": [u1, a1],
+  "messages": [
+    { "id": "u1", "final": true, "message": u1 },
+    { "id": "a1", "final": true, "message": a1 }
+  ],
+  "state": null,
   "lastOutEventId": "42",
-  "lastOutTimestamp": 1715180399000
+  "lastInEventId": "7"
 }
 ```
 
-The key is `packets/{projectRef}/{envSlug}/sessions/{sessionId}/snapshot.json` — overwritten every turn, never appended. The write is **awaited**, not fire-and-forget — if the run idle-suspends immediately after, in-flight promises don't reliably complete and the snapshot would be lost.
+`state` holds what the runtime cannot rebuild from the messages, such as a [compaction](/ai-chat/compaction) summary; `final` is false for a partial answer captured from a failed turn. Snapshots written by older SDK versions have `version: 1` and are read as if every message were final with no state.
+
+The key is `packets/{projectRef}/{envSlug}/sessions/{sessionId}/snapshot.json` — overwritten every turn, never appended. With your own storage, the equivalent is whatever `save` writes: the runtime hands it the two new messages as `put` changes and the same cursors, and a row-per-message store writes two rows instead of the whole conversation. The write is **awaited**, not fire-and-forget — if the run idle-suspends immediately after, in-flight promises don't reliably complete and the snapshot would be lost.
 
 ### Run 2 — boot
 
@@ -116,15 +122,19 @@ When a snapshot exists, the OOM-retry path reads `lastOutTimestamp` directly ins
 
 If no snapshot exists (first turn, or `hydrateMessages` registered), the path falls back to the scan.
 
-## Action turns — no snapshot write
+## Action turns
 
-[Action turns](/ai-chat/actions) (`trigger: "action"`) don't fire `onTurnComplete` — they fire `onAction` only. The snapshot write site is gated on `onTurnComplete`, so action turns don't snapshot.
+[Actions](/ai-chat/actions) (`trigger: "action"`) don't fire `onTurnComplete` — they fire `onAction` only. An action that changed the conversation is saved on its own, with `reason: "action"` and the same resume cursors as the last turn, so an undo survives the run ending. See [Actions and persistence](/ai-chat/actions#actions-and-persistence).
 
-If `onAction` mutates `chat.history.*` and then the run crashes before the next regular turn, the mutation is lost. The user re-fires the action. This matches `chat.history` semantics in general — mutations are persisted at turn boundaries, not action boundaries.
+## When your app owns the model's context
 
-## The `hydrateMessages` short-circuit
+A storage with [`loadContext`](/ai-chat/transcript-storage#owning-the-models-context), or the deprecated [`hydrateMessages`](/ai-chat/lifecycle-hooks#hydratemessages) hook, decides what the model sees on every turn instead of the runtime's accumulated transcript. That changes the boot sequence in one place: with `hydrateMessages` the storage read is skipped, because the hook is the source of truth. Everything else still runs. The `session.out` and `session.in` tails are replayed, a partial answer and unacknowledged messages are recovered, and `onRecoveryBoot` fires. The hook then receives the recovered tail in `previousMessages`, so an unfinished answer is not lost to a crash the way it used to be.
 
-When the customer registers a [`hydrateMessages`](/ai-chat/lifecycle-hooks#hydratemessages) hook, the runtime trusts the hook to be the source of truth for history. Snapshot read and replay are **skipped entirely** at boot. The hook fires per turn, returns the canonical chain from the customer's database, and the accumulator is set to whatever the hook returned.
+With `loadContext` on a storage, the storage is still read and written: `load` restores the cursors and the runtime's `state` (a compaction summary survives), `save` still receives every change, and only the model's context comes from `loadContext`.
+
+### The `hydrateMessages` hook
+
+When the customer registers a [`hydrateMessages`](/ai-chat/lifecycle-hooks#hydratemessages) hook, the runtime trusts the hook to be the source of truth for history. The snapshot is neither read nor written. The hook fires per turn, returns the canonical chain from the customer's database, and the accumulator is set to whatever the hook returned.
 
 ```ts
 import { chat, upsertIncomingMessage } from "@trigger.dev/sdk/ai";
@@ -160,24 +170,24 @@ export const myChat = chat.agent({
 
 What you gain:
 
-- **Zero object-store traffic per turn.** No snapshot read, no snapshot write, no replay subscription. `OBJECT_STORE_*` env vars don't have to be set.
+- **Zero object-store traffic per turn.** No snapshot read, no snapshot write. `OBJECT_STORE_*` env vars don't have to be set.
 - **Branching, undo, edit, abuse prevention** — patterns that need a backend-side single source of truth work naturally because the customer mediates every read.
 
 What you give up:
 
-- **You own persistence end-to-end.** A bug in `hydrateMessages` that returns the wrong chain corrupts the conversation visible to the model.
-- **OOM-retry needs a `session.out` scan again** because there's no snapshot to short-circuit it. (Same as the pre-snapshot baseline — not a regression, just a missed optimization.)
+- **You own persistence end-to-end.** A bug in `hydrateMessages` that returns the wrong chain corrupts the conversation visible to the model, and a compaction summary has nowhere durable to live.
+- **OOM-retry needs a `session.out` scan again** because there's no snapshot to short-circuit it.
 
-The runtime's snapshot+replay is the safer default. `hydrateMessages` is the right choice when you already have authoritative storage for messages and want one consistent persistence path.
+A [transcript storage](/ai-chat/transcript-storage) with `loadContext` gives you the same ownership of the model's context while the runtime keeps writing every change and its own state to your store. It is the recommended path; `hydrateMessages` is deprecated.
 
-## When neither is configured
+## When no storage is configured
 
-If `hydrateMessages` is not registered **and** no object store is configured, conversations don't survive run boundaries. A continuation boots empty. The runtime logs a warning at agent registration time so you see this at deploy time, not at user-traffic time.
+If no object store is configured and the agent has no `storage` of its own, conversations don't survive run boundaries. A continuation boots empty. The runtime logs a warning at agent registration time so you see this at deploy time, not at user-traffic time.
 
 For local development this is sometimes fine — you're not testing continuations. For production it isn't. Configure one of:
 
 - **Object store** (`OBJECT_STORE_*` env vars on your webapp) — easiest, default behavior.
-- **`hydrateMessages` + your own database** — stronger control, suits multi-tenant apps with audit needs.
+- **A transcript storage over your own database** — stronger control, suits multi-tenant apps with audit needs.
 
 ## Snapshot key & lifecycle
 
@@ -201,7 +211,8 @@ For local development against `pnpm run docker`, the bundled MinIO container is 
 ## See also
 
 - [Client Protocol](/ai-chat/client-protocol#how-history-is-rebuilt) — the wire-level view of the same model
-- [`hydrateMessages`](/ai-chat/lifecycle-hooks#hydratemessages) — the short-circuit hook
+- [Transcript storage](/ai-chat/transcript-storage) — the adapter the runtime persists through, and how to bring your own
+- [`hydrateMessages`](/ai-chat/lifecycle-hooks#hydratemessages) — the deprecated context hook
 - [OOM resilience](/ai-chat/patterns/oom-resilience) — how `session.in` cutoffs interact with snapshots
 - [Database persistence](/ai-chat/patterns/database-persistence) — the canonical persistence pattern using `onTurnComplete`
 - [v4.5 upgrade guide](/ai-chat/upgrade-guide#v45-wire-format-change) — when this model landed and what changed

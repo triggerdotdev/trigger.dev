@@ -193,11 +193,11 @@ compaction: {
 to also emit a model response, built with the `streamText` from `onAction`'s own argument so it
 carries the agent's prompt and tools like any other turn.
 
-Persistence splits by model. Without `hydrateMessages` the runtime snapshots the conversation after
-an action that changed it, so a rollback or a returned response survives the run ending. With
-`hydrateMessages` your store is the source of truth and the runtime does not write, so mirror every
-mutation yourself: a regenerate is a delete and an insert, and `chat.pipeAndCapture` hands back the
-same assistant message the runtime would have captured.
+Persistence goes through the agent's transcript storage (`storage` on `chat.agent`; the platform
+snapshot by default). After an action that changed the conversation the runtime hands the storage a
+changeset: an undo is one `truncateAfter`, a regenerate is a `truncateAfter` plus the new answer's
+`put`. With the deprecated `hydrateMessages` your store is the source of truth and the runtime does
+not write, so mirror every mutation yourself: a regenerate is a delete and an insert.
 
 ```ts
 export const myChat = chat.agent({

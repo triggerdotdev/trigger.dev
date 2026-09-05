@@ -1,0 +1,177 @@
+---
+title: "Transcript storage"
+sidebarTitle: "Transcript storage"
+description: "Where a chat.agent conversation is persisted: the platform default, reading it back, and bringing your own database through the TranscriptStorage adapter."
+---
+
+## Overview
+
+Every `chat.agent` conversation is persisted through a `TranscriptStorage`: an adapter with two methods the runtime calls at the right moments. `save` receives the changes after every turn, every failed turn and every history-changing action. `load` returns the conversation when a new run boots to continue it, and when your app renders history.
+
+The default is the platform's snapshot in object storage, the same blob the Sessions view in the dashboard renders. You do not have to configure anything to get durable conversations. Bring your own storage when you want the conversation in your own database, one row per message:
+
+```ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { myTranscriptStorage } from "./transcript-storage";
+
+export const myChat = chat.agent({
+  id: "my-chat",
+  storage: myTranscriptStorage,
+  run: async ({ messages, signal, streamText }) =>
+    streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal }),
+});
+```
+
+The runtime drives the storage. You never decide when to write, what a regenerate means for your rows, or how a crash mid-answer is recovered. Those decisions are the same for every backend, so they live in the runtime.
+
+## The interface
+
+```ts
+type TranscriptStorage<TClientData = unknown> = {
+  load(
+    scope: { chatId: string; clientData: TClientData },
+    opts?: { limit?: number; before?: string }
+  ): Promise<{
+    messages: UIMessage[];
+    state: unknown | null;
+    cursors?: { lastOutEventId?: string; lastInEventId?: string };
+    nextCursor?: string;
+  }>;
+
+  save(
+    ctx: {
+      chatId: string;
+      clientData: TClientData;
+      turn: number;
+      trigger: "submit-message" | "regenerate-message" | "action";
+      runId: string;
+      ctx: TaskRunContext;
+    },
+    changeset: {
+      reason: "turn-complete" | "turn-error" | "action" | "compaction" | "recovery";
+      changes: TranscriptChange[];
+      cursors?: { lastOutEventId?: string; lastInEventId?: string };
+    }
+  ): Promise<void>;
+
+  loadContext?(
+    scope: { chatId: string; clientData: TClientData },
+    event: LoadContextEvent
+  ): Promise<UIMessage[]>;
+};
+
+type TranscriptChange =
+  | { op: "put"; message: UIMessage; final?: boolean }
+  | { op: "remove"; id: string }
+  | { op: "truncateAfter"; afterId: string }
+  | { op: "state"; value: unknown | null };
+```
+
+All the types are exported from `@trigger.dev/sdk/ai`.
+
+## What the runtime saves
+
+A changeset is an ordered list of changes that belong together. Apply it as one transaction where your backend supports one.
+
+| Change | Meaning |
+| --- | --- |
+| `put` | Upsert by `message.id`. An unknown id appends at the end; a known id is replaced in place. `final` is `false` for a partial answer captured from a turn that failed or was stopped, and `true` otherwise. |
+| `remove` | Delete by id. A no-op for an unknown id. |
+| `truncateAfter` | Drop every message ordered after `afterId`. This is what an undo or a regenerate becomes. A no-op for an unknown id. |
+| `state` | Replace the runtime's opaque record; `null` clears it. Store it as-is and return it from `load`. |
+
+A normal turn is two `put`s: the user's message and the assistant's answer. A steering message the user sent mid-turn is a `put` in the same changeset. An undo through `chat.history.slice(0, -2)` is one `truncateAfter`. A regenerate is a `truncateAfter` and a `put`. A tool approval that updates the assistant message in place is one `put` for that id. Messages are addressed by id only; how you order rows is your concern.
+
+`cursors` are the stream positions the next run resumes from. Persist them opaquely and return them from `load`. A storage never interprets them.
+
+`state` is where the runtime keeps what it cannot rebuild from the transcript: a [compaction](/ai-chat/compaction) summary and the [context injected](/ai-chat/background-injection) with `chat.inject`. Because it lives in the storage, a compaction survives a continuation run for every backend, and a rollback that invalidates it clears it in the same changeset as the `truncateAfter`.
+
+Saves happen after the turn's answer has reached the browser, so they never delay the response. The runtime awaits each `save` before it suspends. A `save` that throws is logged and the turn continues; the changes are folded into the next changeset, and every change is idempotent, so a retried changeset converges. A `load` that throws boots the run from the durable stream's recent tail.
+
+## Reading the transcript
+
+`load` is the one read for every backend, including the default. Call it on your server, scoped to the authenticated user through `clientData`, and pass the result to the browser:
+
+```ts app/actions.ts
+"use server";
+import { chat, defaultStorage } from "@trigger.dev/sdk/ai";
+
+export const loadTranscript = chat.createLoadTranscriptAction(defaultStorage, { limit: 50 });
+```
+
+```tsx app/chat/[chatId]/ChatPage.tsx
+"use client";
+import { useLoadTranscript, useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
+import { loadTranscript } from "@/app/actions";
+
+export function ChatPage({ chatId }: { chatId: string }) {
+  const transport = useTriggerChatTransport({ task: "my-chat", accessToken, startSession });
+  const { messages, isLoading, nextCursor } = useLoadTranscript(chatId, loadTranscript, {
+    transport,
+  });
+  if (isLoading) return <Spinner />;
+  return <ChatView chatId={chatId} initialMessages={messages} transport={transport} />;
+}
+```
+
+`limit` returns the most recent messages and a `nextCursor`; pass it as `before` for the page before that one. With the default storage, a paged read is served by the platform, so a long conversation is not downloaded in full to render its last fifty messages. When `transport` is passed and the transport already knows the session, the hook seeds its resume cursor from the transcript so the live subscription opens just past the persisted history.
+
+Swap `defaultStorage` for your own storage and nothing else changes.
+
+## Owning the model's context
+
+By default the model's context each turn is the transcript the runtime accumulated. A storage that declares `loadContext` owns that instead: the runtime calls it on every turn and action, with the messages the frontend sent and the transcript the runtime had, and uses what it returns as the conversation. Use it for branching conversations, trust boundaries where the browser's history is not to be believed, or any case where your database decides what the model sees.
+
+```ts
+const storage: TranscriptStorage<{ userId: string }> = {
+  load: (scope, opts) => rows.load(scope, opts),
+  save: (ctx, changeset) => rows.save(ctx, changeset),
+  loadContext: async ({ chatId, clientData }, { incomingMessages }) => {
+    const branch = await rows.activeBranch(chatId, clientData.userId);
+    return [...branch, ...incomingMessages];
+  },
+};
+```
+
+`save` keeps receiving every change, and crash recovery keeps running. This replaces the deprecated [`hydrateMessages`](/ai-chat/lifecycle-hooks#hydratemessages) hook, which cannot be combined with `storage`.
+
+## Writing your own storage
+
+The contract is small and the conformance suite checks it. Point the suite at a factory for your storage and run it under vitest or jest:
+
+```ts transcript-storage.test.ts
+import { runTranscriptStorageTests } from "@trigger.dev/sdk/ai/test";
+import { postgresTranscriptStorage } from "./transcript-storage";
+
+runTranscriptStorageTests(() => postgresTranscriptStorage(process.env.TEST_DATABASE_URL!));
+```
+
+The suite covers appends and in-place replacement, idempotent `remove` and `truncateAfter`, `state` round-trips, cursors, replaying the same changeset twice, paging, and chat isolation. `memoryTranscriptStorage()` is the reference implementation, useful in your own tests to see exactly what the runtime hands a storage.
+
+A few things to get right:
+
+- `put` for a known id replaces the message in place; position and ordering do not change.
+- `truncateAfter` and `remove` are idempotent. Applying a changeset twice must give the same result as applying it once.
+- `load` without options returns the whole conversation in order. With `limit`, return the most recent messages and a `nextCursor` (the id of the oldest returned message) when earlier messages exist.
+- Scope every read and write by `clientData`. It is how the runtime hands you the tenant.
+
+## What it is and isn't
+
+- Crash recovery of a half-written answer is runtime-owned in every configuration. It comes from the durable session stream, which no application database can reconstruct. A storage holds settled turns; the runtime overlays the recovered tail and hands it to `save` like any other change.
+- Bringing your own database does not remove platform custody. Session streams still hold message content for their retention window.
+- The default storage rewrites the whole conversation each turn. A row-per-message storage writes only what changed. That is the reason to plug in your own.
+
+## Migrating from hydrateMessages
+
+`hydrateMessages` keeps working with a one-time deprecation warning. It now regains crash recovery, which it never had, but the runtime still does not write to your store for it. To move:
+
+1. Implement `TranscriptStorage` over your existing tables. Your `hydrateMessages` body becomes `loadContext`; the writes you did in hooks become `save`.
+2. Set `storage` on the agent and remove `hydrateMessages`. Setting both is an error.
+3. Run `runTranscriptStorageTests` against your implementation.
+
+## See also
+
+- [Persistence and replay](/ai-chat/patterns/persistence-and-replay): how the runtime rebuilds a conversation when a new run boots
+- [Database persistence](/ai-chat/patterns/database-persistence): the hook-based pattern and how it relates
+- [Actions](/ai-chat/actions#actions-and-persistence): what an undo or regenerate becomes in the changeset
+- [Compaction](/ai-chat/compaction): the summary that now lives in `state`
