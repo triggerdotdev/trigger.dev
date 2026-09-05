@@ -1,5 +1,5 @@
 import type { TaskRunContext, TranscriptSnapshotEntry } from "@trigger.dev/core/v3";
-import type { UIMessage } from "ai";
+import type { ModelMessage, UIMessage } from "ai";
 import { readChatSnapshot, writeChatSnapshot } from "./chatSnapshotIo.js";
 
 /**
@@ -233,23 +233,12 @@ export function snapshotTranscriptStorage(): TranscriptStorage<unknown> {
         : emptyTranscriptState<TUIMessage>();
       transcripts.set(scope.chatId, full as TranscriptState);
 
-      let entries = full.entries;
-      if (opts?.before !== undefined) {
-        const idx = entries.findIndex((e) => e.id === opts.before);
-        if (idx !== -1) entries = entries.slice(0, idx);
-      }
-      let nextCursor: string | undefined;
-      if (opts?.limit !== undefined && entries.length > opts.limit) {
-        entries = entries.slice(entries.length - opts.limit);
-        nextCursor = entries[0]?.id;
-      }
       return {
-        messages: entries.map((e) => e.message),
+        ...pageEntries(full.entries, opts),
         state: full.state,
         cursors: snapshot
           ? { lastOutEventId: snapshot.lastOutEventId, lastInEventId: snapshot.lastInEventId }
           : undefined,
-        nextCursor,
       };
     },
 
@@ -271,3 +260,188 @@ export function snapshotTranscriptStorage(): TranscriptStorage<unknown> {
 
 /** The storage `chat.agent` uses when none is configured: {@link snapshotTranscriptStorage}. */
 export const defaultStorage: TranscriptStorage<unknown> = snapshotTranscriptStorage();
+
+function pageEntries<TUIMessage extends UIMessage>(
+  all: TranscriptSnapshotEntry<TUIMessage>[],
+  opts: TranscriptLoadOptions | undefined
+): { messages: TUIMessage[]; nextCursor: string | undefined } {
+  let entries = all;
+  if (opts?.before !== undefined) {
+    const idx = entries.findIndex((e) => e.id === opts.before);
+    if (idx !== -1) entries = entries.slice(0, idx);
+  }
+  let nextCursor: string | undefined;
+  if (opts?.limit !== undefined && entries.length > opts.limit) {
+    entries = entries.slice(entries.length - opts.limit);
+    nextCursor = entries[0]?.id;
+  }
+  return { messages: entries.map((e) => e.message), nextCursor };
+}
+
+export type MemoryTranscriptStorage = TranscriptStorage<unknown> & {
+  /** The stored transcript for a chat, or `undefined` when nothing has been saved. */
+  transcript(chatId: string): (TranscriptState & { cursors?: TranscriptCursors }) | undefined;
+  /** Every changeset `save` received, in order. */
+  readonly changesets: Array<{
+    ctx: TranscriptStorageContext<unknown>;
+    changeset: TranscriptChangeset;
+  }>;
+};
+
+/**
+ * A storage that keeps every transcript in process memory. The reference
+ * implementation for the conformance tests, and a way to inspect exactly
+ * what the runtime hands a storage.
+ */
+export function memoryTranscriptStorage(): MemoryTranscriptStorage {
+  const transcripts = new Map<string, TranscriptState & { cursors?: TranscriptCursors }>();
+  const changesets: MemoryTranscriptStorage["changesets"] = [];
+
+  return {
+    changesets,
+    transcript(chatId) {
+      return transcripts.get(chatId);
+    },
+    async load<TUIMessage extends UIMessage = UIMessage>(
+      scope: TranscriptScope<unknown>,
+      opts?: TranscriptLoadOptions
+    ): Promise<TranscriptLoadResult<TUIMessage>> {
+      const stored = transcripts.get(scope.chatId);
+      if (!stored) return { messages: [], state: null, cursors: undefined, nextCursor: undefined };
+      return {
+        ...pageEntries(stored.entries as TranscriptSnapshotEntry<TUIMessage>[], opts),
+        state: stored.state,
+        cursors: stored.cursors,
+      };
+    },
+    async save(ctx, changeset) {
+      changesets.push({ ctx, changeset });
+      const prev = transcripts.get(ctx.chatId);
+      const next = reduceTranscriptChanges(prev ?? emptyTranscriptState(), changeset.changes);
+      transcripts.set(ctx.chatId, { ...next, cursors: changeset.cursors ?? prev?.cursors });
+    },
+  };
+}
+
+type ModelLaneInjection = { afterId: string; messages: ModelMessage[] };
+
+/**
+ * What the runtime keeps in the storage's `state` slot: the parts of the
+ * model's context that cannot be rebuilt from the transcript. Opaque to a
+ * storage; only the runtime reads it.
+ *
+ * `compaction` is the whole model lane after a compaction, valid for the
+ * transcript prefix ending at `throughId` whose fingerprint matches, so a
+ * rollback or edit of that prefix makes it unusable and the next save
+ * clears it. `injections` are conversational messages `chat.inject` added,
+ * anchored after the transcript message they followed.
+ */
+export type TranscriptRuntimeState = {
+  v: 1;
+  compaction?: { modelMessages: ModelMessage[]; throughId: string; fingerprint: string };
+  injections?: ModelLaneInjection[];
+};
+
+export function parseTranscriptRuntimeState(value: unknown): TranscriptRuntimeState | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  if (record.v !== 1) return undefined;
+  const out: TranscriptRuntimeState = { v: 1 };
+  const compaction = record.compaction as Record<string, unknown> | undefined;
+  if (
+    compaction &&
+    typeof compaction === "object" &&
+    Array.isArray(compaction.modelMessages) &&
+    typeof compaction.throughId === "string" &&
+    typeof compaction.fingerprint === "string"
+  ) {
+    out.compaction = {
+      modelMessages: compaction.modelMessages as ModelMessage[],
+      throughId: compaction.throughId,
+      fingerprint: compaction.fingerprint,
+    };
+  }
+  if (Array.isArray(record.injections)) {
+    out.injections = (record.injections as unknown[]).flatMap((entry) => {
+      const inj = entry as Record<string, unknown> | null;
+      return inj && typeof inj.afterId === "string" && Array.isArray(inj.messages)
+        ? [{ afterId: inj.afterId, messages: inj.messages as ModelMessage[] }]
+        : [];
+    });
+  }
+  return out;
+}
+
+/**
+ * A 32-bit FNV-1a hash over the fingerprints of the messages up to and
+ * including `throughId`, in order. Cheap enough to compute on every save
+ * because the per-message fingerprints already exist in the shadow.
+ */
+export function prefixFingerprint(shadow: TranscriptShadow, throughId: string): string {
+  let hash = 0x811c9dc5;
+  const mix = (s: string) => {
+    for (let i = 0; i < s.length; i++) {
+      hash ^= s.charCodeAt(i);
+      hash = Math.imul(hash, 0x01000193) >>> 0;
+    }
+  };
+  for (const id of shadow.ids) {
+    mix(id);
+    mix(" ");
+    mix(shadow.fingerprints.get(id) ?? "");
+    mix("");
+    if (id === throughId) return hash.toString(16).padStart(8, "0");
+  }
+  return "";
+}
+
+/**
+ * Rebuild the model lane for a transcript at boot. Uses the persisted
+ * compacted lane when the transcript prefix it covers is unchanged, then
+ * converts the rest of the transcript, re-inserting persisted injections
+ * after the messages they followed.
+ */
+export async function restoreModelLane<TUIMessage extends UIMessage>(
+  messages: TUIMessage[],
+  state: TranscriptRuntimeState | undefined,
+  convert: (messages: TUIMessage[]) => Promise<ModelMessage[]>
+): Promise<{ messages: ModelMessage[]; compacted: boolean; injections: ModelLaneInjection[] }> {
+  const lane: ModelMessage[] = [];
+  let start = 0;
+  let compacted = false;
+
+  if (state?.compaction) {
+    const idx = messages.findIndex((m) => m.id === state.compaction!.throughId);
+    if (
+      idx !== -1 &&
+      prefixFingerprint(createTranscriptShadow(messages), state.compaction.throughId) ===
+        state.compaction.fingerprint
+    ) {
+      lane.push(...state.compaction.modelMessages);
+      start = idx + 1;
+      compacted = true;
+    }
+  }
+
+  const anchored = (state?.injections ?? [])
+    .map((inj) => ({
+      inj,
+      idx: inj.afterId === "" ? -1 : messages.findIndex((m) => m.id === inj.afterId),
+    }))
+    .filter(({ inj, idx }) => (inj.afterId === "" ? start === 0 : idx >= start))
+    .sort((a, b) => a.idx - b.idx);
+
+  let cursor = start;
+  for (const { inj, idx } of anchored) {
+    if (idx + 1 > cursor) {
+      lane.push(...(await convert(messages.slice(cursor, idx + 1))));
+      cursor = idx + 1;
+    }
+    lane.push(...inj.messages);
+  }
+  if (cursor < messages.length) {
+    lane.push(...(await convert(messages.slice(cursor))));
+  }
+
+  return { messages: lane, compacted, injections: anchored.map(({ inj }) => inj) };
+}
