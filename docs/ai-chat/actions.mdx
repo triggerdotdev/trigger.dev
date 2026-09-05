@@ -83,9 +83,9 @@ onAction: async ({ action }) => {
 
 An action that returns nothing does not fire `onTurnComplete`, and that is where an app that owns its own transcript normally writes. What that means depends on which persistence model you use.
 
-**Platform-managed** (no `hydrateMessages`): nothing to do. After an action that changed the conversation, the runtime writes the snapshot, so the edit survives the run ending. An action that returns `chat.turn()` is followed by a turn, which persists its answer the way every turn does.
+**Transcript storage** (the default, or your own `storage`): nothing to do. After an action that changed the conversation, the runtime hands the storage a changeset with `reason: "action"`. An undo is one `truncateAfter`; a regenerate is a `truncateAfter` followed by the new answer's `put` when the turn completes; an edit is a `put` for the edited id. The changeset carries the same resume cursors as the last turn. See [Transcript storage](/ai-chat/transcript-storage#what-the-runtime-saves). An action that returns `chat.turn()` is followed by a turn, which persists its answer the way every turn does.
 
-**Your own store** (`hydrateMessages` registered): the runtime deliberately does not write, because your store is the source of truth. A history edit lives only in the running worker until you persist it, and a continuation rehydrates from your store, not from what the worker had in memory. Mirror each edit in your store, not only additions: a regenerate is a delete *and* an insert. The answer that follows `chat.turn()` reaches your store through `onTurnComplete`, like any turn's answer.
+**Your own store through the deprecated `hydrateMessages`**: the runtime deliberately does not write, because your store is the source of truth. A history edit lives only in the running worker until you persist it, and a continuation rehydrates from your store, not from what the worker had in memory. Mirror each edit in your store, not only additions: a regenerate is a delete *and* an insert. The answer that follows `chat.turn()` reaches your store through `onTurnComplete`, like any turn's answer.
 
 ```ts
 onAction: async ({ action, chatId }) => {

@@ -250,6 +250,8 @@ chat.inject(messages: ModelMessage[]): void
 
 Queue model messages for injection at the next opportunity. Messages persist across the idle wait between turns, and are not reset when a new turn starts.
 
+Lifetime: a conversational message (`role: "user"` or `"assistant"`) becomes part of the model's context from the next turn onward, for the rest of the conversation. It is written to the [transcript storage](/ai-chat/transcript-storage)'s `state`, anchored to the message it followed, so it survives a continuation run and comes back in the same place. It does not appear in the UI transcript. A history edit that rebuilds the context drops it. A `role: "system"` message is appended to the instructions for the next turn only and is consumed once. Injecting the same notice every turn adds a copy every turn; dedupe on your side.
+
 **Parameters:**
 
 | Parameter | Type | Description |

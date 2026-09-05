@@ -51,6 +51,7 @@ import {
   CreateSessionStreamWaitpointResponseBody,
   CreateStreamResponseBody,
   CreateUploadPayloadUrlResponseBody,
+  SessionTranscriptResponseBody,
   CreateWaitpointTokenResponseBody,
   CreatedSessionResponseBody,
   DeletedScheduleObject,
@@ -701,6 +702,30 @@ export class ApiClient {
     return zodfetch(
       CreateUploadPayloadUrlResponseBody,
       `${this.baseUrl}/api/v1/sessions/${encodeURIComponent(sessionId)}/snapshot-url`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  /**
+   * One page of a `chat.agent` session's persisted transcript, most recent
+   * messages first when `limit` is set. Secret key only.
+   */
+  getSessionTranscript(
+    sessionId: string,
+    options?: { limit?: number; before?: string },
+    requestOptions?: ZodFetchOptions
+  ) {
+    const query = new URLSearchParams();
+    if (options?.limit !== undefined) query.set("limit", String(options.limit));
+    if (options?.before !== undefined) query.set("before", options.before);
+    const suffix = query.size > 0 ? `?${query.toString()}` : "";
+    return zodfetch(
+      SessionTranscriptResponseBody,
+      `${this.baseUrl}/api/v1/sessions/${encodeURIComponent(sessionId)}/transcript${suffix}`,
       {
         method: "GET",
         headers: this.#getHeaders(false),

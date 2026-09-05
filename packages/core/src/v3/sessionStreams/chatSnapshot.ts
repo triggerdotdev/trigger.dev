@@ -143,6 +143,29 @@ export function parseTranscriptSnapshot<TUIMessage extends UIMessage = UIMessage
 }
 
 /**
+ * Select one page of transcript entries, newest last. `before` keeps only the
+ * entries ordered before that id; `limit` keeps the last that many. The
+ * returned `nextCursor` is the id to pass as `before` for the previous page,
+ * absent when there is no earlier page.
+ */
+export function pageTranscriptEntries<TUIMessage extends UIMessage = UIMessage>(
+  all: TranscriptSnapshotEntry<TUIMessage>[],
+  opts: { limit?: number; before?: string } | undefined
+): { entries: TranscriptSnapshotEntry<TUIMessage>[]; nextCursor: string | undefined } {
+  let entries = all;
+  if (opts?.before !== undefined) {
+    const idx = entries.findIndex((e) => e.id === opts.before);
+    if (idx !== -1) entries = entries.slice(0, idx);
+  }
+  let nextCursor: string | undefined;
+  if (opts?.limit !== undefined && opts.limit >= 0 && entries.length > opts.limit) {
+    entries = entries.slice(entries.length - opts.limit);
+    nextCursor = entries[0]?.id;
+  }
+  return { entries, nextCursor };
+}
+
+/**
  * S3 key suffix for a session's snapshot blob. The webapp's presigned
  * URL routes prefix this with `packets/{projectRef}/{envSlug}/`.
  */

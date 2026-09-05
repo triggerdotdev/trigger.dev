@@ -9,6 +9,10 @@ Durable chat runs can span **hours** and **many turns**. You usually want:
 1. **Conversation state** — full **`UIMessage[]`** (or equivalent) keyed by **`chatId`**, so reloads and history views work.
 2. **Live session state** — a **scoped access token** for the session and optionally **`lastEventId`** for stream resume.
 
+<Note>
+  The conversation state has a first-class home: a [transcript storage](/ai-chat/transcript-storage) on the agent. Give `chat.agent` a `storage` that writes to your database and the runtime hands it every change (a new message, an undo, a regenerate, a compaction) as it happens, with the resume cursors, and reads it back when a run continues. Your own database is then the transcript, with no hook mapping to maintain. The hook mapping below still works, and it remains the way to persist the live session state (the access token) and anything the transcript does not cover.
+</Note>
+
 This page describes a **hook mapping** that works with any database. Adapt table and column names to your stack.
 
 ## Conceptual data model
@@ -167,9 +171,9 @@ chat.agent({
 });
 ```
 
-## Alternative: `hydrateMessages`
+## Alternative: `hydrateMessages` (deprecated)
 
-For apps that need the backend to be the single source of truth for message history — abuse prevention, branching conversations, or rollback support — use [`hydrateMessages`](/ai-chat/lifecycle-hooks#hydratemessages) instead of relying on the frontend's accumulated state.
+For apps that need the backend to be the single source of truth for message history — abuse prevention, branching conversations, or rollback support — the recommended path is a [transcript storage](/ai-chat/transcript-storage#owning-the-models-context) with `loadContext`. The deprecated [`hydrateMessages`](/ai-chat/lifecycle-hooks#hydratemessages) hook does the same job without the runtime writing to your store.
 
 With hydration, the hook loads messages from your database on every turn. The frontend's messages are ignored (except for the new user message, which arrives in `incomingMessages`):
 

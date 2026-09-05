@@ -260,6 +260,10 @@ export const myChat = chat.agent({
 
 ## hydrateMessages
 
+<Warning>
+  `hydrateMessages` is deprecated. Give the agent a [transcript storage](/ai-chat/transcript-storage) instead: `save` receives every change to the conversation, and `loadContext` on the storage does what this hook did, with crash recovery and durable compaction that this hook never had. Existing agents keep working with a one-time warning. Setting `hydrateMessages` together with `storage` is an error.
+</Warning>
+
 Load the full message history from your backend on every turn, replacing the built-in linear accumulator. When set, the hook's return value becomes the accumulated state; the normal accumulation logic (append for submit, replace for regenerate) is skipped entirely.
 
 Use this when the backend should be the source of truth for message history: abuse prevention, branching conversations (DAGs), or rollback/undo support.
@@ -315,7 +319,7 @@ After the hook returns, the runtime overlays the wire's tool-state advances (`ou
 </Note>
 
 <Tip>
-  Registering `hydrateMessages` short-circuits the runtime's [snapshot + replay](/ai-chat/patterns/persistence-and-replay) reconstruction at run boot — your hook is the single source of truth for history, so the runtime skips reading or writing the snapshot entirely. No object storage traffic, no replay cost. The trade-off is that you own persistence end-to-end.
+  Registering `hydrateMessages` turns off the runtime's transcript reads and writes: your hook is the source of truth for history, and the runtime does not read or write its [snapshot](/ai-chat/patterns/persistence-and-replay). Crash recovery still runs. When a new run boots, the dead run's unfinished answer and unacknowledged messages are replayed from the session streams, `onRecoveryBoot` fires, and the hook receives the recovered tail in `previousMessages`. Persisting that tail is yours to do; a [transcript storage](/ai-chat/transcript-storage) does it for you.
 </Tip>
 
 <Note>

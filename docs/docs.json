@@ -114,6 +114,7 @@
                   "ai-chat/pending-messages",
                   "ai-chat/background-injection",
                   "ai-chat/actions",
+                  "ai-chat/transcript-storage",
                   "ai-chat/error-handling"
                 ]
               },

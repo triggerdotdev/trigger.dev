@@ -44,7 +44,8 @@ Options for `chat.agent()`.
 | `onPreload`                   | `(event: PreloadEvent) => Promise<void> \| void`            | —                              | Fires on preloaded runs before the first message                                                    |
 | `onChatStart`                 | `(event: ChatStartEvent) => Promise<void> \| void`          | —                              | Fires once per chat, on the very first user message. Does NOT fire on continuation runs or OOM-retries — see [onChatStart](/ai-chat/lifecycle-hooks#onchatstart). |
 | `onValidateMessages`          | `(event: ValidateMessagesEvent) => UIMessage[] \| Promise<UIMessage[]>` | —                | Validate/transform UIMessages before model conversion. See [onValidateMessages](/ai-chat/lifecycle-hooks#onvalidatemessages) |
-| `hydrateMessages`             | `(event: HydrateMessagesEvent) => UIMessage[] \| Promise<UIMessage[]>` | —                 | Load message history from backend, replacing the linear accumulator. See [hydrateMessages](/ai-chat/lifecycle-hooks#hydratemessages) |
+| `storage`                     | `TranscriptStorage`                                         | `defaultStorage`               | Where the conversation is persisted and read back. The platform snapshot by default; bring your own to write each change to your database. See [Transcript storage](/ai-chat/transcript-storage) |
+| `hydrateMessages`             | `(event: HydrateMessagesEvent) => UIMessage[] \| Promise<UIMessage[]>` | —                 | **Deprecated.** Load message history from backend, replacing the linear accumulator. Use `loadContext` on a `storage` instead; cannot be combined with `storage`. See [hydrateMessages](/ai-chat/lifecycle-hooks#hydratemessages) |
 | `actionSchema`                | `TaskSchema`                                                | —                              | Schema for validating custom actions sent via `transport.sendAction()`. See [Actions](/ai-chat/actions) |
 | `onAction`                    | `(event: ActionEvent) => Promise<void \| ActionTurn> \| void \| ActionTurn` | —                              | Handle custom actions. Actions are state edits: only `hydrateMessages` + `onAction` fire. Return `chat.turn()` to run a turn on the edited history, or nothing for an edit only. See [Actions](/ai-chat/actions) |
 | `onTurnStart`                 | `(event: TurnStartEvent) => Promise<void> \| void`          | —                              | Fires every turn before `run()`                                                                     |
@@ -218,9 +219,37 @@ Passed to the `tools` function form on `chat.agent`, once per turn, to resolve t
 | `continuation` | `boolean`                   | Whether this run is continuing an existing chat   |
 | `clientData`   | Typed by `clientDataSchema` | Custom data from the frontend                     |
 
+## TranscriptStorage
+
+The persistence adapter set through `chat.agent({ storage })`. See [Transcript storage](/ai-chat/transcript-storage). All types below are exported from `@trigger.dev/sdk/ai`.
+
+| Member | Signature | Description |
+| --- | --- | --- |
+| `load` | `(scope: TranscriptScope, opts?: TranscriptLoadOptions) => Promise<TranscriptLoadResult>` | The conversation, in order. Called once at a continuation boot and by `chat.createLoadTranscriptAction` for rendering. |
+| `save` | `(ctx: TranscriptStorageContext, changeset: TranscriptChangeset) => Promise<void>` | Apply the changes since the last save. Called after every turn, failed turn and history-changing action. |
+| `loadContext?` | `(scope: TranscriptScope, event: LoadContextEvent) => Promise<UIMessage[]>` | Optional. When present, the storage owns the model's context: called on every turn and action in place of the runtime's transcript. Same event shape as `HydrateMessagesEvent`. |
+
+| Type | Shape |
+| --- | --- |
+| `TranscriptScope<TClientData>` | `{ chatId: string; clientData: TClientData }` |
+| `TranscriptStorageContext<TClientData>` | `TranscriptScope` plus `{ turn: number; trigger: "submit-message" \| "regenerate-message" \| "action"; runId: string; ctx: TaskRunContext }` |
+| `TranscriptChange` | `{ op: "put"; message: UIMessage; final?: boolean }` \| `{ op: "remove"; id: string }` \| `{ op: "truncateAfter"; afterId: string }` \| `{ op: "state"; value: unknown \| null }` |
+| `TranscriptChangeset` | `{ reason: "turn-complete" \| "turn-error" \| "action" \| "compaction" \| "recovery"; changes: TranscriptChange[]; cursors?: TranscriptCursors }` |
+| `TranscriptCursors` | `{ lastOutEventId?: string; lastInEventId?: string }` |
+| `TranscriptLoadOptions` | `{ limit?: number; before?: string }` |
+| `TranscriptLoadResult` | `{ messages: UIMessage[]; state: unknown \| null; cursors?: TranscriptCursors; nextCursor?: string }` |
+
+| Export | Description |
+| --- | --- |
+| `defaultStorage` | The platform snapshot storage the agent uses when `storage` is not set. Equal to `snapshotTranscriptStorage()`. |
+| `snapshotTranscriptStorage()` | Factory for the platform snapshot storage. |
+| `memoryTranscriptStorage()` | An in-process storage that also records every changeset it receives. The reference implementation. |
+| `reduceTranscriptChanges(state, changes)` | Pure reducer that applies changes to `{ entries, state }`. Useful for building a storage over a document store. |
+| `runTranscriptStorageTests(makeStorage, options?)` | From `@trigger.dev/sdk/ai/test`. The conformance suite for a storage implementation. Pass `{ api: { describe, it, expect } }` when test globals are off, and `clientData` when your storage scopes by it. |
+
 ## HydrateMessagesEvent
 
-Passed to the `hydrateMessages` callback. See [hydrateMessages](/ai-chat/lifecycle-hooks#hydratemessages).
+Passed to the `hydrateMessages` callback. See [hydrateMessages](/ai-chat/lifecycle-hooks#hydratemessages). `hydrateMessages` is deprecated; `LoadContextEvent`, passed to a storage's `loadContext`, has the same shape.
 
 | Field              | Type                                                  | Description                                               |
 | ------------------ | ----------------------------------------------------- | --------------------------------------------------------- |
@@ -369,8 +398,8 @@ Passed to `compactUIMessages` and `compactModelMessages` callbacks.
 | Field           | Type                 | Description                                          |
 | --------------- | -------------------- | ---------------------------------------------------- |
 | `summary`       | `string`             | The generated summary text                           |
-| `uiMessages`    | `UIMessage[]`        | Current UI messages (full conversation)              |
-| `modelMessages` | `ModelMessage[]`     | Current model messages (full conversation)           |
+| `uiMessages`    | `UIMessage[]`        | Current UI messages (the transcript)                 |
+| `modelMessages` | `ModelMessage[]`     | Current model messages (the lane the model is sent; after a compaction this is the summary plus what followed it, not the whole transcript) |
 | `chatId`        | `string`             | Chat session ID                                      |
 | `turn`          | `number`             | Current turn (0-indexed)                             |
 | `clientData`    | `unknown`            | Custom data from the frontend                        |
@@ -514,6 +543,7 @@ All methods available on the `chat` object from `@trigger.dev/sdk/ai`.
 | `chat.messages`                             | Incoming message mailbox; supports non-consuming `.peek()` / `.hasPending()`, single-record `.next()`, `.on()`, and suspend-aware `.waitWithIdleTimeout()` |
 | `chat.local<T>({ id })`                     | Create a per-run typed local (see [`chat.local`](/ai-chat/chat-local))                             |
 | `chat.createStartSessionAction(taskId, options?)` | Returns a server action that creates a chat Session + triggers the first run + returns a session-scoped PAT. Idempotent on `(env, externalId)`.   |
+| `chat.createLoadTranscriptAction(storage, options?)` | Returns a server action that reads a conversation from a transcript storage (`{ chatId, clientData?, limit?, before? }` → `TranscriptLoadResult`). Pair with `useLoadTranscript`. See [Transcript storage](/ai-chat/transcript-storage#reading-the-transcript) |
 | `chat.waitForHandover(options)`             | Wait for a [`chat.headStart`](/ai-chat/fast-starts#handover-with-custom-agents) handover signal in a custom loop. Returns the signal or `null`. `chat.MessageAccumulator` wraps this as `consumeHandover()` / `applyHandover()` |
 | `chat.requestUpgrade()`                     | End the current run after this turn so the next message starts on the latest agent version. Server-orchestrated handoff.    |
 | `chat.endAndContinue()`                     | In a hand-rolled custom agent, hand off the Session to a fresh continuation run. Call between turns after detaching input listeners, then return immediately. The promise rejects if the handoff fails. |
@@ -873,6 +903,26 @@ Second argument to `chat.createStartSessionAction(taskId, options?)`. Controls h
 | `triggerConfig`  | `Partial<SessionTriggerConfig>`                                                      | —                             | Default trigger config (machine, tags, queue, etc.). Per-call config shallow-merges on top. |
 | `baseURL`        | `string \| (ctx: { endpoint: "sessions" \| "auth"; chatId: string }) => string`      | `apiClientManager.baseURL`    | API base URL. `endpoint` is `"sessions"` for `POST /api/v1/sessions` or `"auth"` for `POST /api/v1/auth/jwt/claims` (only fires when `tokenTTL` is set). |
 | `fetch`          | `(url: string, init: RequestInit, ctx: { endpoint: "sessions" \| "auth"; chatId: string }) => Promise<Response>` | —                             | Per-request fetch override. Use to route session-create through a trusted edge proxy so `basePayload.metadata` is rewritten before reaching `api.trigger.dev`. |
+
+## createLoadTranscriptAction options
+
+Second argument to `chat.createLoadTranscriptAction(storage, options?)`.
+
+| Option      | Type                     | Default                    | Description                                                                 |
+| ----------- | ------------------------ | -------------------------- | --------------------------------------------------------------------------- |
+| `limit`     | `number`                 | —                          | Page size when the caller passes none. Returns the most recent messages and a `nextCursor`. |
+| `apiClient` | `ApiClientConfiguration` | `apiClientManager` config  | Scope the read to a specific API client (secret key, base URL). The default storage reads through it. |
+
+## useLoadTranscript
+
+`useLoadTranscript(chatId, load, options?)` from `@trigger.dev/sdk/chat/react`. Loads a conversation through a `chat.createLoadTranscriptAction` action, for rendering before the chat connects. Re-runs when `chatId` changes.
+
+| Option      | Type                   | Description                                                                                  |
+| ----------- | ---------------------- | -------------------------------------------------------------------------------------------- |
+| `transport` | `TriggerChatTransport` | Seed the transport's resume cursor for this chat from the transcript, once it knows the session. |
+| `limit`     | `number`               | Page size passed to the action.                                                              |
+
+Returns `{ messages, isLoading, error, nextCursor }`. `nextCursor` is the id to pass as `before` to the action for the page before this one.
 
 ## useMultiTabChat
 

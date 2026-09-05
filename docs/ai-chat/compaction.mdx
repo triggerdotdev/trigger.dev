@@ -61,6 +61,8 @@ After each turn completes:
 
 On the next turn, the LLM receives the compact summary instead of the full history — dramatically reducing token usage while preserving context.
 
+The compacted context is durable. The runtime writes it to the [transcript storage](/ai-chat/transcript-storage)'s `state` alongside the messages, so a new run that boots to continue the conversation starts from the summary rather than re-reading the whole transcript and summarising it again. An undo or edit that reaches into the summarised part of the conversation clears the stored summary, and compaction runs again from the edited history when the threshold is next crossed.
+
 ## Customizing what gets persisted
 
 By default, compaction only affects model messages — UI messages stay intact so users see the full conversation after a page refresh. You can customize this with `compactUIMessages`:

@@ -52,6 +52,129 @@ export type UseTriggerChatTransportOptions<TTask extends AnyTask = AnyTask> = Om
 export type { InferChatUIMessage };
 export type { ChatTransportEvent, ChatTransportSendSource } from "./chat.js";
 
+/** What a `chat.createLoadTranscriptAction` action returns, as `useLoadTranscript` reads it. */
+export type LoadTranscriptResult<TUIMessage extends UIMessage = UIMessage> = {
+  messages: TUIMessage[];
+  cursors?: { lastOutEventId?: string; lastInEventId?: string };
+  nextCursor?: string;
+};
+
+export type UseLoadTranscriptOptions = {
+  /**
+   * When given, the transport's resume cursor for this chat is seeded from
+   * the loaded transcript, so the live subscription opens just past the
+   * persisted history instead of replaying it. Only applies once the
+   * transport knows the session (from `sessions` or after `start`).
+   */
+  transport?: TriggerChatTransport;
+  /** Page size passed to the action. */
+  limit?: number;
+};
+
+/**
+ * Move the transport's resume cursor for `chatId` to the transcript's
+ * `lastOutEventId`, so the live subscription opens just past the persisted
+ * history. A no-op when the transcript carries no cursor or the transport
+ * does not know the session yet (the cursor cannot be stored without the
+ * session's access token). Returns whether the cursor was seeded.
+ */
+export function seedTranscriptCursor(
+  transport: Pick<TriggerChatTransport, "getSession" | "setSession">,
+  chatId: string,
+  cursors: { lastOutEventId?: string } | undefined
+): boolean {
+  const lastEventId = cursors?.lastOutEventId;
+  if (!lastEventId) return false;
+  const session = transport.getSession(chatId);
+  if (!session) return false;
+  transport.setSession(chatId, { ...session, lastEventId });
+  return true;
+}
+
+/**
+ * Load a conversation's history through a server action created with
+ * `chat.createLoadTranscriptAction`, for rendering before the chat connects.
+ *
+ * Re-runs when `chatId` changes. Pass `undefined` to load nothing.
+ *
+ * @example
+ * ```tsx
+ * const { messages, isLoading } = useLoadTranscript(chatId, loadTranscript, { transport });
+ * if (isLoading) return <Spinner />;
+ * return <ChatView chatId={chatId} initialMessages={messages} transport={transport} />;
+ * ```
+ */
+export function useLoadTranscript<TUIMessage extends UIMessage = UIMessage>(
+  chatId: string | undefined,
+  load: (params: { chatId: string; limit?: number }) => Promise<LoadTranscriptResult<TUIMessage>>,
+  options?: UseLoadTranscriptOptions
+): {
+  messages: TUIMessage[];
+  isLoading: boolean;
+  error: Error | undefined;
+  /** The id to pass as `before` to the action for the page before this one. */
+  nextCursor: string | undefined;
+} {
+  const [state, setState] = useState<{
+    chatId: string | undefined;
+    messages: TUIMessage[];
+    isLoading: boolean;
+    error: Error | undefined;
+    nextCursor: string | undefined;
+  }>({
+    chatId,
+    messages: [],
+    isLoading: chatId !== undefined,
+    error: undefined,
+    nextCursor: undefined,
+  });
+
+  const loadRef = useRef(load);
+  loadRef.current = load;
+  const transportRef = useRef(options?.transport);
+  transportRef.current = options?.transport;
+  const limit = options?.limit;
+
+  useEffect(() => {
+    if (chatId === undefined) {
+      setState({ chatId, messages: [], isLoading: false, error: undefined, nextCursor: undefined });
+      return;
+    }
+    let cancelled = false;
+    setState({ chatId, messages: [], isLoading: true, error: undefined, nextCursor: undefined });
+    loadRef
+      .current({ chatId, ...(limit !== undefined ? { limit } : {}) })
+      .then((result) => {
+        if (cancelled) return;
+        if (transportRef.current) {
+          seedTranscriptCursor(transportRef.current, chatId, result.cursors);
+        }
+        setState({
+          chatId,
+          messages: result.messages,
+          isLoading: false,
+          error: undefined,
+          nextCursor: result.nextCursor,
+        });
+      })
+      .catch((cause: unknown) => {
+        if (cancelled) return;
+        const error = cause instanceof Error ? cause : new Error(String(cause));
+        setState({ chatId, messages: [], isLoading: false, error, nextCursor: undefined });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [chatId, limit]);
+
+  return {
+    messages: state.chatId === chatId ? state.messages : [],
+    isLoading: state.chatId === chatId ? state.isLoading : chatId !== undefined,
+    error: state.chatId === chatId ? state.error : undefined,
+    nextCursor: state.chatId === chatId ? state.nextCursor : undefined,
+  };
+}
+
 /**
  * React hook that creates and memoizes a `TriggerChatTransport` instance.
  *

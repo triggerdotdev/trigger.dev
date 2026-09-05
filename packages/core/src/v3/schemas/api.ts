@@ -1005,6 +1005,21 @@ export const CreateUploadPayloadUrlResponseBody = z.object({
   storagePath: z.string().optional(),
 });
 
+/** One page of a `chat.agent` session transcript, from `GET /api/v1/sessions/{id}/transcript`. */
+export const SessionTranscriptResponseBody = z.object({
+  messages: z.array(z.unknown()),
+  state: z.unknown().nullable(),
+  cursors: z
+    .object({
+      lastOutEventId: z.string().optional(),
+      lastInEventId: z.string().optional(),
+    })
+    .optional(),
+  nextCursor: z.string().optional(),
+});
+
+export type SessionTranscriptResponseBody = z.infer<typeof SessionTranscriptResponseBody>;
+
 export const WorkersListResponseBody = z
   .object({
     type: z.string(),

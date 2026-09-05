@@ -974,6 +974,9 @@ importers:
       ai:
         specifier: 6.0.116
         version: 6.0.116(zod@3.25.76)
+      drizzle-orm:
+        specifier: ^0.45.0
+        version: 0.45.2(@opentelemetry/api@1.9.1)(@prisma/client@6.14.0(prisma@6.14.0(magicast@0.3.5)(typescript@7.0.2))(typescript@7.0.2))(@types/pg@8.11.14)(better-sqlite3@11.10.0)(pg@8.15.6)(postgres@3.4.9)(prisma@6.14.0(magicast@0.3.5)(typescript@7.0.2))
       zod:
         specifier: 3.25.76
         version: 3.25.76
