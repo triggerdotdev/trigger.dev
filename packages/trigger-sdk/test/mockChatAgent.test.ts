@@ -953,30 +953,31 @@ describe("mockChatAgent", () => {
     }
   });
 
-  it("actions returning a stream pipe the response without firing turn hooks", async () => {
+  it("actions returning chat.turn() run a turn on the edited history", async () => {
     const onTurnStart = vi.fn();
     const onTurnComplete = vi.fn();
-    const actionModel = new MockLanguageModelV3({
-      doStream: async () => ({ stream: textStream("regenerated") }),
-    });
-    const turnModel = new MockLanguageModelV3({
-      doStream: async () => ({ stream: textStream("normal-response") }),
+    let calls = 0;
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({
+        stream: textStream(calls++ === 0 ? "normal-response" : "regenerated"),
+      }),
     });
 
     const agent = chat.agent({
-      id: "mockChatAgent.actions.stream",
+      id: "mockChatAgent.actions.turn",
       actionSchema: z.object({ type: z.literal("regenerate") }),
       onTurnStart,
       onTurnComplete,
-      onAction: async ({ messages }) => {
-        return streamText({ model: actionModel, messages });
+      onAction: async () => {
+        chat.history.slice(0, -1);
+        return chat.turn();
       },
       run: async ({ messages, signal }) => {
-        return streamText({ model: turnModel, messages, abortSignal: signal });
+        return streamText({ model, messages, abortSignal: signal });
       },
     });
 
-    const harness = mockChatAgent(agent, { chatId: "test-stream-action" });
+    const harness = mockChatAgent(agent, { chatId: "test-turn-action" });
     try {
       await harness.sendMessage(userMessage("hi"));
       await new Promise((r) => setTimeout(r, 50));
@@ -986,11 +987,11 @@ describe("mockChatAgent", () => {
       const actionTurn = await harness.sendAction({ type: "regenerate" });
       await new Promise((r) => setTimeout(r, 50));
 
-      // No turn hooks fired during the action.
-      expect(onTurnStart.mock.calls.length).toBe(baselineTurnStart);
-      expect(onTurnComplete.mock.calls.length).toBe(baselineTurnComplete);
+      // It is a turn: each hook fired once more.
+      expect(onTurnStart.mock.calls.length).toBe(baselineTurnStart + 1);
+      expect(onTurnComplete.mock.calls.length).toBe(baselineTurnComplete + 1);
 
-      // Action's streamText output landed on the response.
+      // And the turn's answer is what streamed back for the action.
       const text = actionTurn.chunks
         .filter((c) => c.type === "text-delta")
         .map((c) => (c as { delta: string }).delta)

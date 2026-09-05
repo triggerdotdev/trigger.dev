@@ -1,14 +1,14 @@
 ---
 title: "Background injection"
 sidebarTitle: "Background injection"
-description: "Inject context from background work into the agent's conversation — self-review, RAG augmentation, or any async analysis."
+description: "Inject context from background work into the agent's conversation: self-review, RAG augmentation, or any async analysis."
 ---
 
 ## Overview
 
 `chat.inject()` queues model messages for injection into the conversation. Messages are picked up at the start of the next turn or at the next `prepareStep` boundary (between tool-call steps).
 
-This is the backend counterpart to [pending messages](/ai-chat/pending-messages) — pending messages come from the user via the frontend, while `chat.inject()` comes from your task code.
+This is the backend counterpart to [pending messages](/ai-chat/pending-messages). Pending messages come from the user via the frontend, while `chat.inject()` comes from your task code.
 
 ## Basic usage
 
@@ -34,7 +34,7 @@ The most powerful pattern combines `chat.defer()` (background work) with `chat.i
 export const myChat = chat.agent({
   id: "my-chat",
   onTurnComplete: async ({ messages }) => {
-    // Kick off background analysis — doesn't block the turn
+    // Kick off background analysis, doesn't block the turn
     chat.defer(
       (async () => {
         const analysis = await analyzeConversation(messages);
@@ -150,7 +150,7 @@ export const myChat = chat.agent({
 });
 ```
 
-The self-review runs on `claude-haiku-4-5` (fast, cheap) in the background. If the user sends another message before it completes, the coaching is still injected — `chat.inject()` persists across the idle wait.
+The self-review runs on `claude-haiku-4-5` (fast, cheap) in the background. If the user sends another message before it completes, the coaching is still injected, because `chat.inject()` persists across the idle wait.
 
 ## Other use cases
 
@@ -161,13 +161,13 @@ The self-review runs on `claude-haiku-4-5` (fast, cheap) in the background. If t
 
 ## `chat.defer` standalone
 
-`chat.defer()` is also useful on its own, without `chat.inject()`. Any work whose timing has no resume implication — analytics, audit logs, search-index writes, cache warming — can run in parallel with streaming instead of in the critical path. All deferred promises are awaited (with a 5s timeout) before `onTurnComplete` fires.
+`chat.defer()` is also useful on its own, without `chat.inject()`. Any work whose timing has no resume implication (analytics, audit logs, search-index writes, cache warming) can run in parallel with streaming instead of in the critical path. All deferred promises are awaited (with a 5s timeout) before `onTurnComplete` fires.
 
 ```ts
 export const myChat = chat.agent({
   id: "my-chat",
   onTurnStart: async ({ chatId, runId }) => {
-    // Analytics — fire-and-forget, irrelevant to resume.
+    // Analytics: fire-and-forget, irrelevant to resume.
     chat.defer(analytics.track("turn_started", { chatId, runId }));
   },
   run: async ({ messages, signal }) => {
@@ -176,10 +176,10 @@ export const myChat = chat.agent({
 });
 ```
 
-`chat.defer()` can be called from anywhere during a turn — hooks, `run()`, or nested helpers. All deferred promises are collected and awaited together before `onTurnComplete`.
+`chat.defer()` can be called from anywhere during a turn: hooks, `run()`, or nested helpers. All deferred promises are collected and awaited together before `onTurnComplete`.
 
 <Warning>
-**Don't use `chat.defer()` for the message-history write in `onTurnStart`.** That write must land *before* the model starts streaming, otherwise a mid-stream page refresh will read `[]` from your DB and lose the user's message from the rendered conversation. See [Database persistence — `onTurnStart`](/ai-chat/patterns/database-persistence#onturnstart). Reserve `chat.defer` for writes whose timing has no resume implication.
+**Don't use `chat.defer()` for the message-history write in `onTurnStart`.** That write must land *before* the model starts streaming, otherwise a mid-stream page refresh will read `[]` from your DB and lose the user's message from the rendered conversation. See [Database persistence: `onTurnStart`](/ai-chat/patterns/database-persistence#onturnstart). Reserve `chat.defer` for writes whose timing has no resume implication.
 </Warning>
 
 ## How it differs from pending messages
@@ -189,8 +189,56 @@ export const myChat = chat.agent({
 | **Source** | Backend task code | Frontend user input |
 | **Triggered by** | Your code (e.g. `onTurnComplete` + `chat.defer()`) | User sending a message during streaming |
 | **Injection point** | Start of next turn, or next `prepareStep` boundary | Next `prepareStep` boundary only |
-| **Message role** | Any (`system`, `user`, `assistant`) | Typically `user` |
+| **Message role** | Any. `system` becomes an instruction, others join the conversation (see below) | Typically `user` |
 | **Frontend visibility** | Not visible unless you write custom `data-*` chunks | Visible via `usePendingMessages` hook |
+
+## Two lanes: trusted and untrusted
+
+The role you inject with decides more than position. It decides whether the model
+treats the content as trustworthy.
+
+**`role: "system"` goes to the instructions lane.** The block is appended to the
+system instructions for subsequent inference calls, so it carries the same standing
+as your system prompt. This is the lane for context the agent should believe:
+entitlements, plan changes, operational notices.
+
+It has to work this way. On AI SDK 7 a system message inside `messages` is rejected
+for every provider. `standardizePrompt` throws before any provider is called, and
+its own advice is to use the instructions option, so the injected block goes there
+rather than into the transcript.
+
+<Warning>
+  The instructions lane is delivered by `chat.toStreamTextOptions()`, because that
+  is the only place the SDK can set `streamText`'s instructions for you. If your
+  `run()` calls `streamText({ model, messages, abortSignal })` without spreading
+  `chat.toStreamTextOptions()`, a `role: "system"` injection never reaches the
+  model. The conversational lane has no such requirement: it arrives through
+  `messages` either way.
+</Warning>
+
+- An injection applies to the next turn only. A block injected in `onTurnComplete`
+  shapes the following turn and is cleared after it, so it is not repeated on every
+  turn from then on. Within that turn it is consumed once rather than once per read,
+  so a `run()` that builds options more than once sees the same instructions in
+  every build.
+- The injected text is merged into a single instruction rather than added as a
+  second block, because AI SDK 5 rejects an array of system blocks while accepting
+  one structured block. Merging changes the cached prefix, so a cached system prompt
+  gets no cache hit for as long as an injection is live. If you rely on prompt
+  caching, inject sparingly and prefer facts that go stale, so the injection clears.
+
+**Any other role joins the conversation, and is untrusted by construction.** A
+message injected as `user` is indistinguishable from something the user typed, and a
+well-aligned model treats it accordingly, and may say so and re-derive the answer
+from tools instead of taking it at face value:
+
+> "that text arrived embedded in your message, not from a tool I called, so I
+> verified it myself rather than trusting it"
+
+That is correct behaviour, not a bug. So inject **checkable facts** in the
+conversational lane and put **directives** in the instructions lane. A conclusion
+injected as a user message is the worst of both: the model neither trusts it nor
+ignores it, and may contradict it in front of the user.
 
 ## API reference
 
@@ -200,7 +248,7 @@ export const myChat = chat.agent({
 chat.inject(messages: ModelMessage[]): void
 ```
 
-Queue model messages for injection at the next opportunity. Messages persist across the idle wait between turns — they are not reset when a new turn starts.
+Queue model messages for injection at the next opportunity. Messages persist across the idle wait between turns, and are not reset when a new turn starts.
 
 **Parameters:**
 
@@ -209,9 +257,9 @@ Queue model messages for injection at the next opportunity. Messages persist acr
 | `messages` | `ModelMessage[]` | Model messages to inject (from the `ai` package) |
 
 Messages are drained (consumed) when:
-1. A new turn starts — before `run()` executes
-2. A `prepareStep` boundary is reached — between tool-call steps during streaming
+1. A new turn starts, before `run()` executes
+2. A `prepareStep` boundary is reached, between tool-call steps during streaming
 
 <Note>
-  `chat.inject()` writes to an in-memory queue in the current process. It works from any code running in the same task — lifecycle hooks, deferred work, tool execute functions, etc. It does not work from subtasks or other runs.
+  `chat.inject()` writes to an in-memory queue in the current process. It works from any code running in the same task: lifecycle hooks, deferred work, tool execute functions, etc. It does not work from subtasks or other runs.
 </Note>

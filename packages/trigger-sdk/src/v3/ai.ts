@@ -48,6 +48,7 @@ import type {
   FinishReason,
   LanguageModelUsage,
   ModelMessage,
+  SystemModelMessage,
   ProviderMetadata,
   Tool,
   ToolSet,
@@ -1605,7 +1606,7 @@ export type ChatTaskPayload<TClientData = unknown> = {
    *   to short-circuit the LLM call when an action doesn't need a response.
    * - `"close"`: The chat session is being closed (internal; `run()` is not called).
    */
-  trigger: "submit-message" | "regenerate-message" | "preload" | "action" | "close";
+  trigger: "submit-message" | "regenerate-message" | "preload" | "action" | "action-turn" | "close";
 
   /** The ID of the message to regenerate (only for `"regenerate-message"`) */
   messageId?: string;
@@ -2700,6 +2701,35 @@ function spliceHandoverPartial(
 const chatBackgroundQueueKey = locals.create<ModelMessage[]>("chat.backgroundQueue");
 
 /**
+ * System-role context injected mid-conversation, held for the instructions lane.
+ *
+ * Kept apart from the message queue because ai@7 rejects a system message inside
+ * `messages` for every provider — `standardizePrompt` throws upstream of any
+ * provider call, and its own advice is to use the instructions option. Instructions
+ * accept `Array<SystemModelMessage>`, so a system-role injection has a correct
+ * home: appended as another system block rather than smuggled into the transcript.
+ *
+ * This is also the only way to inject *trusted* context. A message injected as
+ * `user` is untrusted by construction, and a well-aligned model treats it that
+ * way — it will say so, and re-derive the answer from tools instead.
+ */
+const chatInjectedInstructionsKey = locals.create<SystemModelMessage[]>(
+  "chat.injectedInstructions"
+);
+/**
+ * What a turn already consumed from the instructions lane, so a second
+ * `toStreamTextOptions()` call in the same turn sees the same blocks.
+ *
+ * Consumed blocks are moved here rather than left in the pending lane: leaving
+ * them there means an injection made during the consumed turn sits behind them,
+ * and clearing the lane on the next turn destroys both.
+ */
+const chatInstructionsConsumedKey = locals.create<{
+  turn: number;
+  blocks: SystemModelMessage[];
+}>("chat.injectedInstructionsConsumed");
+
+/**
  * Run-scoped pipe counter. Stored in locals so concurrent runs in the
  * same worker don't share state.
  * @internal
@@ -3525,6 +3555,41 @@ type SteeringQueueEntry = {
 const chatPendingMessagesKey = locals.create<PendingMessagesOptions>("chat.pendingMessages");
 /** @internal */
 const chatSteeringQueueKey = locals.create<SteeringQueueEntry[]>("chat.steeringQueue");
+
+/**
+ * This turn's new messages, as `onTurnComplete.newUIMessages` will see them.
+ *
+ * Held in locals because `drainSteeringQueue` runs outside the turn closure and
+ * has to append the messages it injects. Without that, an injected message
+ * reaches the model and the browser but no hook, so an app persisting from
+ * `onTurnComplete` never learns it existed.
+ */
+const chatTurnNewUIMessagesKey = locals.create<UIMessage[]>("chat.turnNewUIMessages");
+
+/**
+ * Steering messages a drain consumed that the model accumulator has not been
+ * given yet.
+ *
+ * The two accumulators are maintained separately, and the model one is
+ * normally advanced by appending each turn's delta. A drained message is
+ * appended to the UI one but reaches the model only through the `prepareStep`
+ * return value, which is per-step: without this the model lane never learns
+ * the message exists and every later turn of the run answers without it,
+ * while the browser, the snapshot and `chat.history.*` all still show it.
+ *
+ * Held as the messages rather than a "rebuild me" flag because the model lane
+ * can only be appended to, never reconstructed. Compaction replaces it with a
+ * summary and deliberately leaves the UI lane whole, so reconverting the UI
+ * lane restores every message the summary replaced.
+ */
+const chatPendingSteerKey = locals.create<PendingSteer[]>("chat.pendingSteer");
+
+/**
+ * A consumed steering message in both forms: the UI message for display and
+ * persistence, and the model messages `pendingMessages.prepare` produced for
+ * it, which is what the model actually saw and what later turns must see too.
+ */
+type PendingSteer = { ui: UIMessage; model: ModelMessage[] };
 /** @internal — IDs of messages that were successfully injected via prepareStep */
 const chatInjectedMessageIdsKey = locals.create<Set<string>>("chat.injectedMessageIds");
 /** @internal — non-transient data parts queued via chat.response or writer.write() for accumulation into the response message */
@@ -4109,11 +4174,36 @@ function chatCompactionStep(
 // Steering queue drain — shared by toStreamTextOptions, session, accumulator
 // ---------------------------------------------------------------------------
 
+/** What a steering drain produced: what to send now, and what it consumed. */
+type DrainedSteering = {
+  /** Model messages to add to this step's prompt. */
+  injected: ModelMessage[];
+  /** The UI messages the drain consumed, for the caller to record. */
+  claimed: UIMessage[];
+};
+
+const EMPTY_DRAIN: DrainedSteering = { injected: [], claimed: [] };
+
+/**
+ * The model messages to record for one claimed message. Without `prepare`
+ * each entry's own conversion is used. With it, `prepare` returned one list
+ * for the whole batch, so the first claimed message carries all of it and the
+ * rest carry none, which keeps the total exactly what the model received.
+ */
+function modelFormOf(m: UIMessage, batch: UIMessage[], injected: ModelMessage[]): ModelMessage[] {
+  return batch[0] === m ? injected : [];
+}
+
 /**
  * Drain the steering queue as a batch. Calls `shouldInject` once with all
  * pending messages. If it returns true, calls `prepareMessages` once to
  * transform the batch, then clears the queue.
- * Returns the model messages to inject (empty if none).
+ * Returns the model messages to inject and the UI messages actually claimed.
+ *
+ * `claimed` is returned rather than only published to locals because each
+ * surface files it somewhere different: `chat.agent` has an accumulator in
+ * locals, while `chat.createSession` keeps its own. Publishing to locals alone
+ * is silently a no-op for any surface that never set the key.
  * @internal
  */
 async function drainSteeringQueue(
@@ -4121,9 +4211,9 @@ async function drainSteeringQueue(
   messages: ModelMessage[],
   steps: CompactionStep[],
   queueOverride?: SteeringQueueEntry[]
-): Promise<ModelMessage[]> {
+): Promise<DrainedSteering> {
   const queue = queueOverride ?? locals.get(chatSteeringQueueKey);
-  if (!queue || queue.length === 0) return [];
+  if (!queue || queue.length === 0) return EMPTY_DRAIN;
 
   const ctx = locals.get(chatTurnContextKey);
   const stepNumber = steps.length - 1;
@@ -4149,7 +4239,7 @@ async function drainSteeringQueue(
   // Call shouldInject once for the whole batch
   const shouldInject = config.shouldInject ? await config.shouldInject(batchEvent) : false;
 
-  if (!shouldInject) return [];
+  if (!shouldInject) return EMPTY_DRAIN;
 
   const textOfUIMessage = (m: UIMessage) =>
     (m.parts ?? [])
@@ -4199,7 +4289,7 @@ async function drainSteeringQueue(
         if (at !== -1) queue.splice(at, 1);
       }
 
-      if (claimed.length === 0) return [];
+      if (claimed.length === 0) return EMPTY_DRAIN;
 
       /**
        * Give the claim back if the transform fails. `prepare` is caller code and
@@ -4226,6 +4316,38 @@ async function drainSteeringQueue(
       const injectedIds = locals.get(chatInjectedMessageIdsKey);
       if (injectedIds) {
         for (const m of claimedUIMessages) injectedIds.add(m.id);
+      }
+
+      // Record them as part of the conversation.
+      //
+      // The model has them and the browser has them; without this the
+      // accumulator does not, so they reach neither `uiMessages` nor
+      // `newUIMessages` on `onTurnComplete` and an app that persists from there
+      // silently loses the instruction the answer was shaped by. Appending here
+      // rather than at turn end keeps them in the order they happened: after the
+      // message that started the turn, before the response that answers it.
+      //
+      // De-duplicated by id because a step boundary can drain more than once per
+      // turn, and because a message that failed to inject falls back to becoming
+      // its own turn, where it is accumulated the normal way.
+      const currentUIMessages = locals.get(chatCurrentUIMessagesKey);
+      const turnNew = locals.get(chatTurnNewUIMessagesKey);
+      for (const m of claimedUIMessages) {
+        if (currentUIMessages && !currentUIMessages.some((existing) => existing.id === m.id)) {
+          currentUIMessages.push(m);
+        }
+        if (turnNew && !turnNew.some((existing) => existing.id === m.id)) {
+          turnNew.push(m);
+        }
+      }
+      if (claimedUIMessages.length > 0 && currentUIMessages) {
+        const pendingSteer = locals.get(chatPendingSteerKey) ?? [];
+        for (const m of claimedUIMessages) {
+          if (!pendingSteer.some((existing) => existing.ui.id === m.id)) {
+            pendingSteer.push({ ui: m, model: modelFormOf(m, claimedUIMessages, injected) });
+          }
+        }
+        locals.set(chatPendingSteerKey, pendingSteer);
       }
 
       // Write injection confirmation chunk to the stream so the frontend
@@ -4269,7 +4391,7 @@ async function drainSteeringQueue(
         }
       }
 
-      return injected;
+      return { injected, claimed: claimedUIMessages };
     },
     {
       attributes: {
@@ -4662,6 +4784,92 @@ function toStreamTextOptions(options?: ToStreamTextOptionsOptions): Record<strin
       : systemText;
   }
 
+  /**
+   * Append anything injected as system context, in whichever shape the installed
+   * AI SDK accepts.
+   *
+   * `system` widened over time: on ai@5 it is `string` only, and from ai@6 it is
+   * `string | SystemModelMessage | Array<SystemModelMessage>`. This package's peer
+   * range still spans all three, so emitting an array unconditionally would break
+   * v5 consumers — for whom a system-role injection used to work, since v5 accepted
+   * a system message inside `messages` that v7 rejects.
+   *
+   * So: concatenate into one string when the base is a plain string, which every
+   * version accepts and which loses nothing (separate blocks only matter for
+   * per-block `providerOptions`). Use the array form only when the base is already
+   * a structured message — that path requires v6+ regardless, because it is how
+   * prompt caching marks the system block, and flattening it would silently throw
+   * the cache away.
+   *
+   * Either way the injected text goes last: the base prompt keeps its position for
+   * caching, and the addition reads as a later amendment. A changed prefix does
+   * cost the first call its cache hit, on turns that actually injected.
+   */
+  /**
+   * Consumed once per turn, not once per read, and moved out of the lane rather
+   * than marked read in place.
+   *
+   * Per turn, because a `run()` that builds options twice (a cheap classifier
+   * pass and then the answer) has to see the injection in both, and draining on
+   * read hands it to whichever call ran first. Moved out, because blocks left in
+   * the lane sit in front of anything injected during the same turn, and
+   * clearing the lane on the next turn then destroys both. Outside a turn there
+   * is no turn to scope the stash to, so the lane drains on read there.
+   */
+  const injectedInstructions = locals.get(chatInjectedInstructionsKey);
+  const currentTurn = locals.get(chatTurnContextKey)?.turn;
+  const consumedThisTurn =
+    currentTurn === undefined ? undefined : locals.get(chatInstructionsConsumedKey);
+
+  let injectedBlocks: SystemModelMessage[] = [];
+  if (consumedThisTurn && consumedThisTurn.turn === currentTurn) {
+    injectedBlocks = consumedThisTurn.blocks;
+    // Anything injected since the stash was taken joins it, so an instruction
+    // added after an action read the lane still reaches the real turn that
+    // shares the action's turn number, rather than the one after.
+    if (injectedInstructions && injectedInstructions.length > 0) {
+      injectedBlocks.push(...injectedInstructions.splice(0));
+    }
+  } else if (injectedInstructions && injectedInstructions.length > 0) {
+    injectedBlocks = injectedInstructions.splice(0);
+    if (currentTurn !== undefined) {
+      locals.set(chatInstructionsConsumedKey, { turn: currentTurn, blocks: injectedBlocks });
+    }
+  }
+
+  if (injectedBlocks.length > 0) {
+    const blocks = injectedBlocks;
+
+    const injectedText = blocks
+      .map((block) => (typeof block.content === "string" ? block.content : ""))
+      .filter(Boolean)
+      .join("\n\n");
+
+    const base = result.system;
+
+    if (base === undefined) {
+      result.system = injectedText;
+    } else if (typeof base === "string") {
+      result.system = [base, injectedText].filter(Boolean).join("\n\n");
+    } else {
+      // Merged into the existing block rather than added as a second one. An array
+      // of system blocks would keep the base block's cache entry, but ai@5 rejects
+      // it outright ("Invalid prompt: system must be a string") while accepting a
+      // single structured block, and this package's peer range still spans v5.
+      // Choosing per version would mean resolving the installed version at runtime,
+      // which is not something to build on: `import.meta.url` is illegal in this
+      // package's CommonJS output, and a bundled task may have no resolvable `ai`
+      // to read. One shape that works everywhere beats a cache hit.
+      const baseBlock = base as SystemModelMessage;
+      result.system = {
+        ...baseBlock,
+        content: [typeof baseBlock.content === "string" ? baseBlock.content : "", injectedText]
+          .filter(Boolean)
+          .join("\n\n"),
+      };
+    }
+  }
+
   // Prompt-related options (only if chat.prompt.set() was called)
   if (prompt) {
     // Resolve model via registry if both are present
@@ -4728,7 +4936,7 @@ function toStreamTextOptions(options?: ToStreamTextOptionsOptions): Record<strin
 
       // 2. Pending message injection (steering)
       if (taskPendingMessages) {
-        const injected = await drainSteeringQueue(
+        const { injected } = await drainSteeringQueue(
           taskPendingMessages,
           resultMessages ?? messages,
           steps
@@ -4804,6 +5012,74 @@ export type ChatUIMessageStreamOptions<TUIM extends UIMessage = UIMessage> = Omi
 type UIMessageStreamable = {
   toUIMessageStream: (...args: any[]) => AsyncIterable<unknown> | ReadableStream<unknown>;
 };
+
+const actionTurnBrand = Symbol.for("trigger.dev/chat/actionTurn");
+
+/**
+ * The marker `onAction` returns to have a turn run on the history it just
+ * edited. Produce it with {@link chat.turn}.
+ */
+export type ActionTurn = { readonly [actionTurnBrand]: true };
+
+/**
+ * Turn the current action into a turn.
+ *
+ * Return it from `onAction` after editing history. The action's own work is
+ * finished first (the edit is applied and snapshotted), then a turn runs on the
+ * result exactly as a message turn does: `onTurnStart`, `run()` with the edited
+ * history, `onBeforeTurnComplete`, `onTurnComplete`, and the turn counter
+ * advances. That gives the answer everything a turn has, the system prompt,
+ * tools, steering, compaction, injected instructions and persistence, with no
+ * action-specific handling.
+ *
+ * @example
+ * ```ts
+ * onAction: async ({ action }) => {
+ *   if (action.type === "regenerate") {
+ *     chat.history.slice(0, -1);
+ *     return chat.turn();
+ *   }
+ *   if (action.type === "undo") chat.history.slice(0, -2); // no turn
+ * },
+ * ```
+ */
+function chatTurn(): ActionTurn {
+  return { [actionTurnBrand]: true } as ActionTurn;
+}
+
+function isActionTurn(value: unknown): value is ActionTurn {
+  return typeof value === "object" && value !== null && (value as any)[actionTurnBrand] === true;
+}
+
+/**
+ * Replace, in a model lane, the run of messages one UI message contributed.
+ *
+ * Used when a UI message is replaced in place (a tool-approval continuation
+ * merging onto the trailing assistant, a captured response reusing an existing
+ * id, a partial replacing an existing message). Reconverting the whole lane
+ * from the UI lane would also replace a compaction summary with the full
+ * transcript and drop the model forms `pendingMessages.prepare` produced.
+ *
+ * The replaced message is the trailing one, so its run is the lane's tail,
+ * before any steer forms appended after it this turn (`tailAfter`). If the
+ * tail does not match the old message's conversion, nothing is changed and
+ * `false` is returned so the caller can fall back to a full reconversion.
+ */
+async function replaceModelRun(
+  lane: ModelMessage[],
+  oldUi: UIMessage,
+  newUi: UIMessage,
+  tailAfter: number
+): Promise<boolean> {
+  const oldRun = await toModelMessages([stripProviderMetadata(oldUi)]);
+  const newRun = await toModelMessages([stripProviderMetadata(newUi)]);
+  const end = lane.length - tailAfter;
+  const start = end - oldRun.length;
+  if (start < 0 || end > lane.length) return false;
+  if (JSON.stringify(lane.slice(start, end)) !== JSON.stringify(oldRun)) return false;
+  lane.splice(start, oldRun.length, ...newRun);
+  return true;
+}
 
 function isUIMessageStreamable(value: unknown): value is UIMessageStreamable {
   return (
@@ -5566,9 +5842,10 @@ export type ChatAgentOptions<
    * `onBeforeTurnComplete` / `onTurnComplete`, no `run()`. Use
    * `chat.history.*` inside `onAction` to mutate state.
    *
-   * To produce a model response from an action, return a
-   * `StreamTextResult` (auto-piped), `string`, or `UIMessage`. Returning
-   * `void` or nothing is the side-effect-only default.
+   * To answer after the edit, return `chat.turn()`: the edit is applied and
+   * snapshotted, then a turn runs on the result with every turn guarantee. An
+   * action that returns nothing is a state edit only. Returning anything else
+   * is an error; a response can no longer be returned directly.
    */
   onAction?: (
     event: ActionEvent<
@@ -5576,7 +5853,7 @@ export type ChatAgentOptions<
       inferSchemaOut<TClientDataSchema>,
       TUIMessage
     >
-  ) => Promise<unknown> | unknown;
+  ) => Promise<void | ActionTurn> | void | ActionTurn;
 
   /**
    * The tools available to this agent.
@@ -6502,6 +6779,26 @@ function chatAgent<
       // durable snapshot + `session.out` replay (or `hydrateMessages` if
       // registered) — the wire is delta-only now, no longer a seed.
       let accumulatedMessages: ModelMessage[] = [];
+      /**
+       * Give the model accumulator the steering messages a drain consumed,
+       * in the form the model actually received. Appended, never reconverted
+       * from the UI lane, so a model-only compaction summary survives. Called
+       * on both the success and the error path, before the response or the
+       * partial joins the lane, so the order stays steer-then-answer.
+       */
+      const reconcilePendingSteer = (options?: {
+        /** This turn's model delta, as `onTurnComplete.newMessages` reports it. */
+        turnNew?: ModelMessage[];
+      }): PendingSteer[] => {
+        const pending = locals.get(chatPendingSteerKey);
+        if (!pending || pending.length === 0) return [];
+        locals.set(chatPendingSteerKey, []);
+        for (const entry of pending) {
+          accumulatedMessages.push(...entry.model);
+          options?.turnNew?.push(...entry.model);
+        }
+        return pending;
+      };
 
       // Accumulated UI messages for persistence. Mirrors the model accumulator
       // but in frontend-friendly UIMessage format (with parts, id, etc.).
@@ -6522,6 +6819,66 @@ function chatAgent<
       // swallow errors internally; the agent stays available either way.
       const sessionIdForSnapshot = payload.sessionId ?? payload.chatId;
       let bootSnapshot: ChatSnapshotV1<TUIMessage> | undefined;
+
+      /**
+       * The `lastOutEventId` the most recent snapshot carried.
+       *
+       * A snapshot written outside a turn — after an action mutates history — has
+       * no turn cursor of its own, and writing `undefined` there would drop the
+       * resume point and make the next boot replay from further back. Retaining it
+       * keeps an action's write cursor-neutral.
+       */
+      let lastSnapshotOutEventId: string | undefined;
+
+      /**
+       * Persist the accumulator outside a turn.
+       *
+       * An action is not a turn, so it never reaches the turn-complete path where
+       * the snapshot is normally written — but it can change the conversation in
+       * two ways: a `chat.history` mutation, and a response streamed back from
+       * `onAction`. Both have to survive, and one write at the end of the action
+       * covers both rather than writing twice for a regenerate that does both.
+       *
+       * Cursor-neutral: an action has no turn cursor of its own, and writing
+       * `undefined` would drop the resume point the last turn established and make
+       * the next boot replay from further back.
+       */
+      const writeSnapshotOutsideTurn = async (reason: string) => {
+        if (hydrateMessages) return;
+        try {
+          await tracer.startActiveSpan(
+            "snapshot.write",
+            async () => {
+              const snapshotInCursor = chatInputRouter().resumeFloor();
+              await writeChatSnapshot<TUIMessage>(sessionIdForSnapshot, {
+                version: 1,
+                savedAt: Date.now(),
+                messages: accumulatedUIMessages,
+                lastOutEventId: lastSnapshotOutEventId,
+                lastInEventId:
+                  snapshotInCursor !== undefined ? String(snapshotInCursor) : undefined,
+              });
+            },
+            {
+              attributes: {
+                [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                [SemanticInternalAttributes.COLLAPSED]: true,
+                "chat.snapshot.reason": reason,
+                "chat.messages.count": accumulatedUIMessages.length,
+              },
+            }
+          );
+        } catch (error) {
+          logger.warn(
+            "chat.agent: snapshot write outside a turn failed; the change may not survive a continuation",
+            {
+              error: error instanceof Error ? error.message : String(error),
+              sessionId: sessionIdForSnapshot,
+              reason,
+            }
+          );
+        }
+      };
       let replayedSettled: TUIMessage[] = [];
       let replayedPartial: TUIMessage | undefined;
       let replayedPartialRaw: TUIMessage | undefined;
@@ -6572,6 +6929,8 @@ function chatAgent<
             // Without seeding, the new worker would emit no trim on its first
             // turn (chain self-bootstraps from turn 2), so this is purely an
             // optimization to keep continuation runs bounded from the first turn.
+            lastSnapshotOutEventId = bootSnapshot?.lastOutEventId;
+
             if (bootSnapshot?.lastOutEventId !== undefined) {
               const seeded = Number.parseInt(bootSnapshot.lastOutEventId, 10);
               if (Number.isFinite(seeded)) {
@@ -7494,6 +7853,7 @@ function chatAgent<
                 // Track new messages for this turn (user input + assistant response).
                 const turnNewModelMessages: ModelMessage[] = [];
                 const turnNewUIMessages: TUIMessage[] = [];
+                locals.set(chatTurnNewUIMessagesKey, turnNewUIMessages);
 
                 // ── Action handling ──────────────────────────────────────
                 // Actions arrive on the same input stream but with
@@ -7505,7 +7865,16 @@ function chatAgent<
                 // an action, return a `StreamTextResult` (auto-piped),
                 // string, or UIMessage from `onAction`. Turn counter
                 // does not advance.
-                let actionStreamResult: unknown = undefined;
+                let actionResult: unknown = undefined;
+                /** Set when `onAction` returned `chat.turn()`: the turn block below runs. */
+                let actionTurn = false;
+                /**
+                 * Whether this action changed the conversation, by rolling history
+                 * back or by streaming a response. Drives the single snapshot write
+                 * at the end — an action never reaches the turn-complete path that
+                 * normally does it.
+                 */
+                let actionChangedHistory = false;
                 if (isAction) {
                   // Parse and validate the action payload
                   const parsedAction = parseAction
@@ -7545,7 +7914,7 @@ function chatAgent<
                   // Fire onAction — handler may mutate state via
                   // `chat.history.*` and / or return a model response.
                   if (onAction) {
-                    actionStreamResult = await tracer.startActiveSpan(
+                    actionResult = await tracer.startActiveSpan(
                       "onAction()",
                       async () => {
                         return await onAction({
@@ -7577,6 +7946,8 @@ function chatAgent<
                       accumulatedUIMessages = [...actionOverride] as TUIMessage[];
                       accumulatedMessages = await toModelMessages(actionOverride);
                       locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+
+                      actionChangedHistory = true;
                     }
                   } else {
                     warnMissingOnActionOnce();
@@ -7770,6 +8141,7 @@ function chatAgent<
                       // where AI SDK regenerates the id (TRI-9137) still
                       // applies via `rewriteIncomingIdViaToolCallMap`.
                       let replaced = false;
+                      const replacedPairs: { previous: TUIMessage; merged: TUIMessage }[] = [];
                       for (const raw of cleanedUIMessages) {
                         let incoming = raw;
                         let idx = accumulatedUIMessages.findIndex((m) => m.id === incoming.id);
@@ -7781,10 +8153,12 @@ function chatAgent<
                           }
                         }
                         if (idx !== -1) {
+                          const previous = accumulatedUIMessages[idx]!;
                           accumulatedUIMessages[idx] = mergeIncomingIntoHydrated(
-                            accumulatedUIMessages[idx]!,
+                            previous,
                             incoming
                           ) as TUIMessage;
+                          replacedPairs.push({ previous, merged: accumulatedUIMessages[idx]! });
                           replaced = true;
                         } else {
                           accumulatedUIMessages.push(incoming as TUIMessage);
@@ -7793,9 +8167,19 @@ function chatAgent<
                         recordToolCallIdsFromMessage(incoming);
                       }
                       if (replaced) {
-                        // Replacement changes structure — reconvert all model
-                        // messages instead of appending.
-                        accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+                        let inPlace = true;
+                        for (const { previous, merged } of replacedPairs) {
+                          if (!(await replaceModelRun(accumulatedMessages, previous, merged, 0))) {
+                            inPlace = false;
+                            break;
+                          }
+                        }
+                        if (!inPlace) {
+                          logger.warn(
+                            "chat.agent: replaced message not found at the model lane tail; reconverting the lane"
+                          );
+                          accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+                        }
                       } else {
                         const incomingModelMessages = await toModelMessages(cleanedUIMessages);
                         accumulatedMessages.push(...incomingModelMessages);
@@ -7853,43 +8237,33 @@ function chatAgent<
                 // The turn counter is decremented so the next iteration
                 // sees the same `turn` value — actions don't count.
                 if (isAction) {
-                  msgSub?.off();
-
-                  if (
-                    (locals.get(chatPipeCountKey) ?? 0) === 0 &&
-                    isUIMessageStreamable(actionStreamResult)
-                  ) {
-                    try {
-                      const resolvedOptions = resolveUIMessageStreamOptions();
-                      const uiStream = (
-                        actionStreamResult as UIMessageStreamable
-                      ).toUIMessageStream({
-                        ...resolvedOptions,
-                        generateMessageId: resolvedOptions.generateMessageId ?? generateMessageId,
-                      });
-                      await pipeChat(uiStream, {
-                        signal: combinedSignal,
-                        spanName: "stream response",
-                      });
-                    } catch (error) {
-                      if (
-                        error instanceof Error &&
-                        error.name === "AbortError" &&
-                        runSignal.aborted
-                      ) {
-                        return "exit";
-                      }
-                      throw error;
+                  if (isActionTurn(actionResult)) {
+                    // Persist the edit before the turn starts, so a turn that is
+                    // cancelled or runs out of memory continues from the edited
+                    // history rather than from the snapshot the edit replaced.
+                    // The turn then does its own hooks, completion and snapshot.
+                    if (actionChangedHistory) {
+                      await writeSnapshotOutsideTurn("action");
                     }
+                    actionTurn = true;
+                  } else if (actionResult !== undefined) {
+                    throw new Error(
+                      "chat.agent: onAction returned a value. An action is a state edit; to answer " +
+                        "after the edit, return chat.turn() and a turn runs on the edited history. " +
+                        "Returning a StreamTextResult, string or UIMessage is no longer supported."
+                    );
+                  } else {
+                    msgSub?.off();
+                    if (actionChangedHistory) {
+                      await writeSnapshotOutsideTurn("action");
+                    }
+                    await writeTurnCompleteChunk(currentWirePayload.chatId);
+                    // Don't consume a turn iteration — actions aren't turns.
+                    turn--;
                   }
-
-                  await writeTurnCompleteChunk(currentWirePayload.chatId);
-
-                  // Don't consume a turn iteration — actions aren't turns.
-                  turn--;
                 }
 
-                if (!isAction) {
+                if (!isAction || actionTurn) {
                   // Mint a scoped public access token once per turn, reused for
                   // onChatStart, onTurnStart, onTurnComplete, and the turn-complete chunk.
                   const currentRunId = ctx.run.id;
@@ -8073,6 +8447,9 @@ function chatAgent<
                       );
                       runResult = await userRun({
                         ...restWire,
+                        // A turn requested by chat.turn() is not the action itself:
+                        // a run() that short-circuits on "action" must still answer.
+                        ...(actionTurn ? { trigger: "action-turn" as const } : {}),
                         messages: preparedMessages,
                         clientData,
                         continuation,
@@ -8218,7 +8595,23 @@ function chatAgent<
                   if (runOverride) {
                     locals.set(chatOverrideMessagesKey, undefined);
                     accumulatedUIMessages = [...runOverride] as TUIMessage[];
-                    accumulatedMessages = await toModelMessages(runOverride);
+                    /**
+                     * Steers the drain consumed are left out of the rebuild and
+                     * appended by the reconciliation below instead, so the lane
+                     * gets the form the model actually received rather than a
+                     * reconversion of the UI message, and gets it once. A steer
+                     * the edit removed is dropped from the pending list too, so
+                     * the edit is honoured.
+                     */
+                    const overrideIds = new Set(runOverride.map((m) => m.id));
+                    const pending = (locals.get(chatPendingSteerKey) ?? []).filter((e) =>
+                      overrideIds.has(e.ui.id)
+                    );
+                    locals.set(chatPendingSteerKey, pending);
+                    const pendingIds = new Set(pending.map((e) => e.ui.id));
+                    accumulatedMessages = await toModelMessages(
+                      runOverride.filter((m) => !pendingIds.has(m.id))
+                    );
                     locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                   }
 
@@ -8255,6 +8648,16 @@ function chatAgent<
 
                   // Determine if the user stopped generation this turn (not a full run cancel).
                   const wasStopped = stopController.signal.aborted && !runSignal.aborted;
+
+                  // Give the model accumulator the steering messages the drain
+                  // consumed. Appended, never reconverted from the UI lane, so a
+                  // model-only compaction summary set just above survives; and done
+                  // before the response is appended so the order stays
+                  // steer-then-answer. Outside the `capturedResponseMessage`
+                  // branches below, so a turn that captured no response is covered.
+                  const steerTailThisTurn = reconcilePendingSteer({
+                    turnNew: turnNewModelMessages,
+                  }).reduce((n, e) => n + e.model.length, 0);
 
                   // Append the assistant's response (partial or complete) to the accumulator.
                   // The onFinish callback fires even on abort/stop, so partial responses
@@ -8293,6 +8696,8 @@ function chatAgent<
                     const existingIdx = capturedResponseMessage.id
                       ? accumulatedUIMessages.findIndex((m) => m.id === capturedResponseMessage!.id)
                       : -1;
+                    const previousAtIdx =
+                      existingIdx !== -1 ? accumulatedUIMessages[existingIdx] : undefined;
                     if (existingIdx !== -1) {
                       accumulatedUIMessages[existingIdx] = capturedResponseMessage;
                     } else {
@@ -8311,8 +8716,20 @@ function chatAgent<
                         stripProviderMetadata(capturedResponseMessage),
                       ]);
                       if (existingIdx !== -1) {
-                        // Reconvert all model messages since we replaced rather than appended
-                        accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+                        const ok =
+                          previousAtIdx !== undefined &&
+                          (await replaceModelRun(
+                            accumulatedMessages,
+                            previousAtIdx,
+                            capturedResponseMessage,
+                            steerTailThisTurn
+                          ));
+                        if (!ok) {
+                          logger.warn(
+                            "chat.agent: replaced response not found at the model lane tail; reconverting the lane"
+                          );
+                          accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+                        }
                       } else {
                         accumulatedMessages.push(...responseModelMessages);
                       }
@@ -8653,11 +9070,13 @@ function chatAgent<
                         "snapshot.write",
                         async () => {
                           const snapshotInCursor = chatInputRouter().resumeFloor();
+                          lastSnapshotOutEventId =
+                            turnCompleteResult?.lastEventId ?? lastSnapshotOutEventId;
                           await writeChatSnapshot<TUIMessage>(sessionIdForSnapshot, {
                             version: 1,
                             savedAt: Date.now(),
                             messages: accumulatedUIMessages,
-                            lastOutEventId: turnCompleteResult?.lastEventId,
+                            lastOutEventId: lastSnapshotOutEventId,
                             lastInEventId:
                               snapshotInCursor !== undefined ? String(snapshotInCursor) : undefined,
                           });
@@ -8836,6 +9255,10 @@ function chatAgent<
               });
               // Signal turn complete so the client knows this turn is done
               errorTurnCompleteResult = await writeTurnCompleteChunk(currentWirePayload.chatId);
+              // A later action's snapshot reuses this cursor, so it has to move
+              // here too or that snapshot resumes from before the failed turn.
+              lastSnapshotOutEventId =
+                errorTurnCompleteResult?.lastEventId ?? lastSnapshotOutEventId;
             } catch {
               // Best-effort — if stream write fails, let the run continue anyway
             }
@@ -8887,19 +9310,51 @@ function chatAgent<
                     i === partialIdx ? partialResponse! : m
                   ) as TUIMessage[]);
 
-            let erroredNewUIMessages: TUIMessage[] = erroredWireMessage ? [erroredWireMessage] : [];
-            if (includePartial) {
-              erroredNewUIMessages.push(partialResponse!);
-            }
+            /**
+             * Seeded from the per-turn list, not just the wire message and the
+             * partial, so a steering message the drain consumed is reported too.
+             * An app persisting from `newUIMessages` would otherwise lose the
+             * instruction whenever the turn it steered went on to fail.
+             */
+            const buildErroredNew = (): TUIMessage[] => {
+              const out: TUIMessage[] = [];
+              const addUnique = (m?: TUIMessage) => {
+                if (m && !out.some((existing) => existing.id === m.id)) out.push(m);
+              };
+              addUnique(erroredWireMessage);
+              for (const m of (locals.get(chatTurnNewUIMessagesKey) ?? []) as TUIMessage[]) {
+                addUnique(m);
+              }
+              if (includePartial) addUnique(partialResponse!);
+              return out;
+            };
+
+            let erroredNewUIMessages: TUIMessage[] = buildErroredNew();
 
             let erroredNewModelMessages: ModelMessage[] = [];
+
+            const reconciledSteer = reconcilePendingSteer();
 
             if (!responseCommitted) {
               try {
                 if (erroredNewUIMessages.length > 0) {
-                  erroredNewModelMessages = await toModelMessages(
-                    erroredNewUIMessages.map((m) => stripProviderMetadata(m))
+                  /**
+                   * Built in order from the recorded forms rather than by
+                   * converting the UI list, so a steer appears in the delta as
+                   * the model received it (what `prepare` produced), matching the
+                   * lane. The wire message and partial are converted as before.
+                   */
+                  const steerModelById = new Map(
+                    reconciledSteer.map((e) => [e.ui.id, e.model] as const)
                   );
+                  for (const m of erroredNewUIMessages) {
+                    const recorded = steerModelById.get(m.id);
+                    if (recorded) erroredNewModelMessages.push(...recorded);
+                    else
+                      erroredNewModelMessages.push(
+                        ...(await toModelMessages([stripProviderMetadata(m)]))
+                      );
+                  }
                 }
                 if (erroredUIMessagesWithPartial !== accumulatedUIMessages) {
                   if (partialIdx === -1) {
@@ -8910,7 +9365,18 @@ function chatAgent<
                       ...(await toModelMessages(appended.map((m) => stripProviderMetadata(m))))
                     );
                   } else {
-                    accumulatedMessages = await toModelMessages(erroredUIMessagesWithPartial);
+                    const ok = await replaceModelRun(
+                      accumulatedMessages,
+                      erroredUIMessages[partialIdx]!,
+                      partialResponse!,
+                      reconciledSteer.reduce((n, e) => n + e.model.length, 0)
+                    );
+                    if (!ok) {
+                      logger.warn(
+                        "chat.agent: replaced partial not found at the model lane tail; reconverting the lane"
+                      );
+                      accumulatedMessages = await toModelMessages(erroredUIMessagesWithPartial);
+                    }
                   }
                   accumulatedUIMessages = erroredUIMessagesWithPartial;
                   locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
@@ -8918,7 +9384,7 @@ function chatAgent<
               } catch {
                 erroredNewModelMessages = [];
                 erroredUIMessagesWithPartial = erroredUIMessages;
-                erroredNewUIMessages = erroredWireMessage ? [erroredWireMessage] : [];
+                erroredNewUIMessages = buildErroredNew().filter((m) => m !== partialResponse);
               }
             }
 
@@ -9817,9 +10283,22 @@ function chatDefer(promiseOrFn: Promise<unknown> | (() => Promise<unknown>)): vo
  * ```
  */
 function injectBackgroundContext(messages: ModelMessage[]): void {
-  const queue = locals.get(chatBackgroundQueueKey) ?? [];
-  queue.push(...messages);
-  locals.set(chatBackgroundQueueKey, queue);
+  const systemBlocks = messages.filter(
+    (message): message is SystemModelMessage => message.role === "system"
+  );
+  const conversational = messages.filter((message) => message.role !== "system");
+
+  if (systemBlocks.length > 0) {
+    const instructions = locals.get(chatInjectedInstructionsKey) ?? [];
+    instructions.push(...systemBlocks);
+    locals.set(chatInjectedInstructionsKey, instructions);
+  }
+
+  if (conversational.length > 0) {
+    const queue = locals.get(chatBackgroundQueueKey) ?? [];
+    queue.push(...conversational);
+    locals.set(chatBackgroundQueueKey, queue);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -10303,12 +10782,14 @@ class ChatMessageAccumulator {
     // a duplicate, mirroring the chat.agent accumulator.
     const existingIdx = this.uiMessages.findIndex((m) => m.id === response.id);
     if (existingIdx !== -1) {
+      const previous = this.uiMessages[existingIdx]!;
       this.uiMessages[existingIdx] = response;
       try {
-        // Reconvert all model messages since we replaced rather than appended.
-        this.modelMessages = await toModelMessages(
-          this.uiMessages.map((m) => stripProviderMetadata(m))
-        );
+        if (!(await replaceModelRun(this.modelMessages, previous, response, 0))) {
+          this.modelMessages = await toModelMessages(
+            this.uiMessages.map((m) => stripProviderMetadata(m))
+          );
+        }
       } catch {
         // Conversion failed — leave the existing model messages in place
       }
@@ -10342,6 +10823,30 @@ class ChatMessageAccumulator {
   async steerAsync(message: UIMessage): Promise<void> {
     const modelMsgs = await toModelMessages([message]);
     this._steeringQueue.push({ uiMessage: message, modelMessages: modelMsgs });
+  }
+
+  /**
+   * Record the messages a steering drain consumed.
+   *
+   * The drain only puts them in this step's prompt, so without this they
+   * shape one answer and then exist in neither lane: not in `uiMessages`,
+   * which is what an app persists from, and not in `modelMessages`, which is
+   * what every later turn sends.
+   *
+   * Both lanes are appended to. The model lane is never reconverted from the
+   * UI lane, because `compactIfNeeded` replaces it with a summary and leaves
+   * the UI lane whole: a reconversion would restore everything the summary
+   * replaced.
+   */
+  async absorbSteering(claimed: UIMessage[], injected?: ModelMessage[]): Promise<void> {
+    const fresh = claimed.filter((m) => !this.uiMessages.some((e) => e.id === m.id));
+    if (fresh.length === 0) return;
+    this.uiMessages.push(...fresh);
+    // Record what the model received. Only when the whole batch is new is
+    // `injected` known to describe exactly these messages.
+    this.modelMessages.push(
+      ...(injected && fresh.length === claimed.length ? injected : await toModelMessages(fresh))
+    );
   }
 
   /**
@@ -10384,7 +10889,13 @@ class ChatMessageAccumulator {
 
       // 2. Pending message injection
       if (pm && queue.length > 0) {
-        const injected = await drainSteeringQueue(pm, resultMessages ?? messages, steps, queue);
+        const { injected, claimed } = await drainSteeringQueue(
+          pm,
+          resultMessages ?? messages,
+          steps,
+          queue
+        );
+        await this.absorbSteering(claimed, injected);
         if (injected.length > 0) {
           resultMessages = [...(resultMessages ?? messages), ...injected];
         }
@@ -11154,12 +11665,13 @@ function createChatSession<TClientData = unknown>(
                 }
 
                 if (sessionPendingMessages) {
-                  const injected = await drainSteeringQueue(
+                  const { injected, claimed } = await drainSteeringQueue(
                     sessionPendingMessages,
                     resultMessages ?? stepMsgs,
                     steps,
                     turnSteeringQueue
                   );
+                  await accumulator.absorbSteering(claimed, injected);
                   if (injected.length > 0) {
                     resultMessages = [...(resultMessages ?? stepMsgs), ...injected];
                   }
@@ -11823,6 +12335,8 @@ export const chat = {
   createStartSessionAction: createChatStartSessionAction,
   /** Pipe a stream to the chat transport. See {@link pipeChat}. */
   pipe: pipeChat,
+  /** Return from `onAction` to run a turn on the edited history. See {@link chatTurn}. */
+  turn: chatTurn,
   /** Create a per-run typed local. See {@link chatLocal}. */
   local: chatLocal,
   /** Create a public access token for a chat task. See {@link createChatAccessToken}. */

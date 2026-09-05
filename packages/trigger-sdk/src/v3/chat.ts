@@ -802,6 +802,15 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
         ? { ...(this.defaultMetadata ?? {}), ...((metadata as Record<string, unknown>) ?? {}) }
         : undefined;
 
+    // An action sent through `useChat`. `useChatActions` (or any caller) puts
+    // it in `body.action`; sending it here rather than through
+    // `transport.sendAction` means `useChat` owns the response stream, so an
+    // action that becomes a turn renders the way a message turn does.
+    const actionInBody = (body as { action?: unknown } | undefined)?.action;
+    if (actionInBody !== undefined) {
+      return this.sendAction(chatId, actionInBody, { abortSignal, metadata: mergedMetadata });
+    }
+
     // First-turn handover routing — when `headStart` is set AND no
     // session state exists yet for this chatId, POST the wire payload
     // to the customer's `chat.handover` route handler. The handler
@@ -1251,13 +1260,17 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
   /**
    * Send a custom action chunk (for `chat.agent`'s `actionSchema` /
-   * `onAction` hook). Actions are not turns — only `hydrateMessages`
-   * and `onAction` fire on the agent side. The returned stream
-   * carries any model response `onAction` produced (when it returns a
-   * `StreamTextResult`); for `void`-returning side-effect-only actions
-   * the stream completes immediately with `trigger:turn-complete`.
+   * `onAction` hook). An action is an edit: only `hydrateMessages` and
+   * `onAction` fire on the agent side, and the returned stream completes
+   * with `trigger:turn-complete` once the edit is persisted. When `onAction`
+   * returns `chat.turn()` the turn's response follows on the same stream.
+   * Per-action `metadata` is merged over the transport's `clientData`.
    */
-  sendAction = async (chatId: string, action: unknown): Promise<ReadableStream<UIMessageChunk>> => {
+  sendAction = async (
+    chatId: string,
+    action: unknown,
+    options?: { abortSignal?: AbortSignal; metadata?: Record<string, unknown> }
+  ): Promise<ReadableStream<UIMessageChunk>> => {
     if (this.coordinator) {
       if (this.coordinator.isReadOnly(chatId)) {
         throw new Error("This chat is active in another tab");
@@ -1271,7 +1284,10 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       chatId,
       trigger: "action" as const,
       action,
-      metadata: this.defaultMetadata ?? undefined,
+      metadata:
+        this.defaultMetadata || options?.metadata
+          ? { ...(this.defaultMetadata ?? {}), ...(options?.metadata ?? {}) }
+          : undefined,
     };
 
     const body = this.serializeInputChunk({ kind: "message", payload: wirePayload });
@@ -1306,7 +1322,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     this.notifySessionChange(chatId, state);
 
     // Owning action: aborting this send stops the turn the user drives.
-    return this.subscribeToSessionStream(state, undefined, chatId, {
+    return this.subscribeToSessionStream(state, options?.abortSignal, chatId, {
       sinceInSeq: inSeq,
       sendStopOnAbort: true,
     });
