@@ -263,6 +263,10 @@ class TestSessionOutputChannel extends SessionOutputChannel {
           synthetic.sessionInEventId = value;
         } else if (name === "session-in-consumed-id") {
           synthetic.sessionInConsumedId = value;
+        } else if (name === "session-closed") {
+          synthetic.sessionClosed = value === "true";
+        } else if (name === "session-closed-reason") {
+          synthetic.reason = value;
         }
       }
     }

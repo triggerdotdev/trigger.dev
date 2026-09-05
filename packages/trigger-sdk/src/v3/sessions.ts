@@ -90,6 +90,19 @@ export function __setSessionStartImplForTests(impl: SessionStartImpl | undefined
   sessionStartImpl = impl;
 }
 
+// Test hook for `sessions.close()`. `chat.close()` calls it from inside a
+// run, so unit tests need a seam that records the call instead of reaching
+// the control plane.
+type SessionCloseImpl = (
+  sessionIdOrExternalId: string,
+  body?: CloseSessionRequestBody
+) => Promise<RetrieveSessionResponseBody> | RetrieveSessionResponseBody;
+let sessionCloseImpl: SessionCloseImpl | undefined;
+
+export function __setSessionCloseImplForTests(impl: SessionCloseImpl | undefined): void {
+  sessionCloseImpl = impl;
+}
+
 /**
  * Start a {@link Session} — a stateful execution of an agent, with
  * two-way streaming and durable compute, that can span multiple runs.
@@ -180,6 +193,12 @@ function closeSession(
   body?: CloseSessionRequestBody,
   requestOptions?: ApiRequestOptions
 ): ApiPromise<RetrieveSessionResponseBody> {
+  if (sessionCloseImpl) {
+    return Promise.resolve(
+      sessionCloseImpl(sessionIdOrExternalId, body)
+    ) as ApiPromise<RetrieveSessionResponseBody>;
+  }
+
   const apiClient = apiClientManager.clientOrThrow();
 
   const $requestOptions = mergeRequestOptions(

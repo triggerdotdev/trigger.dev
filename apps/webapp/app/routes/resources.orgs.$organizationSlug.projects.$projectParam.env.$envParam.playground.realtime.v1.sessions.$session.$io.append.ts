@@ -62,7 +62,15 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
 
   if (session.closedAt) {
-    return json({ ok: false, error: "Cannot append to a closed session" }, { status: 400 });
+    return json(
+      {
+        ok: false,
+        error: "Cannot append to a closed session",
+        code: "session_closed",
+        closedReason: session.closedReason,
+      },
+      { status: 409 }
+    );
   }
 
   if (session.expiresAt && session.expiresAt.getTime() < Date.now()) {

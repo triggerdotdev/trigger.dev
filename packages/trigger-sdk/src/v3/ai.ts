@@ -37,6 +37,8 @@ import {
   type TaskSchema,
   type TaskWithSchema,
   TRIGGER_CONTROL_SUBTYPE,
+  SESSION_CLOSED_HEADER,
+  SESSION_CLOSED_REASON_HEADER,
   type StreamWriteResult,
   type RouterCheckpoint,
   type SessionRouteTable,
@@ -3313,6 +3315,27 @@ const chatUpgradeRequestedKey = locals.create<boolean>("chat.upgradeRequested");
 const chatEndRunRequestedKey = locals.create<boolean>("chat.endRunRequested");
 
 /**
+ * @internal Set by `chat.close()`. Holds the close request (and its reason)
+ * for the rest of the run: the loop writes the terminal `session-closed`
+ * record, closes the session row, and exits at the same post-turn /
+ * pre-wait sites as `chatEndRunRequestedKey`.
+ */
+const chatCloseRequestedKey = locals.create<{ reason?: string }>("chat.closeRequested");
+
+/** @internal Matches the server's `CloseSessionRequestBody.reason` cap. */
+const CHAT_CLOSE_REASON_MAX_LENGTH = 256;
+
+/** @internal Set once the session row is closed, so the close happens once. */
+const chatClosePerformedKey = locals.create<boolean>("chat.closePerformed");
+
+/**
+ * @internal Set once the terminal `.out` record is written. Tracked apart from
+ * {@link chatClosePerformedKey} so a retried close does not emit a second
+ * client-visible event.
+ */
+const chatCloseRecordWrittenKey = locals.create<boolean>("chat.closeRecordWritten");
+
+/**
  * Event passed to `summarize` callbacks.
  */
 export type SummarizeEvent = {
@@ -6267,10 +6290,22 @@ function chatCustomAgent<
         resuming: Boolean(payload.continuation),
       });
 
+      // A custom agent's loop is the customer's, so there is no exit site the
+      // SDK controls. Perform a requested close when `run()` returns, whatever
+      // shape the loop had. Idempotent, so the createSession iterator having
+      // already closed on its own exit costs nothing.
+      const withClose = async <T>(result: Promise<T> | T): Promise<T> => {
+        try {
+          return await result;
+        } finally {
+          await performChatClose();
+        }
+      };
+
       // Keep the schema-free path identical to the original custom-agent
       // wrapper, including when userRun starts executing.
       if (!parseClientData) {
-        return userRun(payload, runOptions);
+        return withClose(userRun(payload, runOptions));
       }
 
       const isHandoverBoot = payload.trigger === "handover-prepare";
@@ -6288,9 +6323,11 @@ function chatCustomAgent<
         writeErrorToStream: !isMessagelessBoot && !isHandoverBoot,
       });
       if (validated.ok) {
-        return userRun(
-          validated.payload as ChatTaskWirePayload<TUIMessage, inferSchemaOut<TClientDataSchema>>,
-          runOptions
+        return withClose(
+          userRun(
+            validated.payload as ChatTaskWirePayload<TUIMessage, inferSchemaOut<TClientDataSchema>>,
+            runOptions
+          )
         );
       }
 
@@ -6332,9 +6369,11 @@ function chatCustomAgent<
         idleTimeoutInSeconds: next.output.idleTimeoutInSeconds ?? payload.idleTimeoutInSeconds,
       };
 
-      return userRun(
-        recoveredPayload as ChatTaskWirePayload<TUIMessage, inferSchemaOut<TClientDataSchema>>,
-        runOptions
+      return withClose(
+        userRun(
+          recoveredPayload as ChatTaskWirePayload<TUIMessage, inferSchemaOut<TClientDataSchema>>,
+          runOptions
+        )
       );
     },
   });
@@ -8702,6 +8741,11 @@ function chatAgent<
                 // chat.requestUpgrade() was called — exit the loop so the
                 // transport triggers a new run on the latest version.
                 // chat.endRun() — same exit, no upgrade semantics.
+                if (locals.get(chatCloseRequestedKey)) {
+                  await performChatClose();
+                  return "exit";
+                }
+
                 if (locals.get(chatUpgradeRequestedKey) || locals.get(chatEndRunRequestedKey)) {
                   return "exit";
                 }
@@ -8994,6 +9038,11 @@ function chatAgent<
               }
             }
 
+            if (locals.get(chatCloseRequestedKey)) {
+              await performChatClose();
+              return;
+            }
+
             // chat.requestUpgrade() / chat.endRun() — exit after error turn too
             if (locals.get(chatUpgradeRequestedKey) || locals.get(chatEndRunRequestedKey)) {
               return;
@@ -9028,12 +9077,24 @@ function chatAgent<
               TUIMessage,
               inferSchemaIn<TClientDataSchema>
             >;
+
+            // Same close check the success path makes. Without it a close
+            // record that lands after a failed turn is consumed as if it were
+            // a turn payload, and the loop runs on against a closed session.
+            if (currentWirePayload.trigger === "close") {
+              return;
+            }
             // Continue to next iteration of the for loop
           } finally {
             turnMsgSub?.off();
           }
         }
       } finally {
+        // Safety net for a close requested on a path that exits without
+        // reaching one of the loop's close checks (a turn timeout, an OOM
+        // re-throw). `performChatClose` is idempotent, so the ordinary path
+        // having already run it costs nothing here.
+        await performChatClose();
         // `stopSub` is registered post-preload so the close-during-preload
         // early-return path may exit before it ever attached. Guard the
         // cleanup so a missing subscription doesn't throw.
@@ -9751,6 +9812,133 @@ async function performEndAndContinue(): Promise<void> {
  */
 function endRun(): void {
   locals.set(chatEndRunRequestedKey, true);
+}
+
+/**
+ * End the whole conversation, permanently. The session row is closed, further
+ * appends are refused, and the run exits without scheduling a continuation.
+ *
+ * This is the session-level stop. {@link endRun} ends the current run and lets
+ * the next message start a fresh one; `chat.close()` ends the session itself,
+ * so there is no next message. Use it for a budget cap, a completed goal,
+ * abuse detection, or a user signing out.
+ *
+ * In a `chat.agent`, call it from `run()`, `prepareStep`, or
+ * `onBeforeTurnComplete`. Called mid-step, it aborts the in-flight
+ * `streamText` the same way the stop signal does, so the partial response is
+ * still captured and streamed. The turn then completes normally, a terminal
+ * `session-closed` record carrying `reason` is written to the response stream,
+ * and the loop exits.
+ *
+ * Prefer `onBeforeTurnComplete` over `onTurnComplete`. It carries the same
+ * fields but still runs while the stream is open, so the closed state rides
+ * out on the turn's final record. `onTurnComplete` runs after that record, so
+ * a close decided there does not reach a reader that has already finished the
+ * turn, and the user only finds out when their next message is refused.
+ *
+ * In a `chat.customAgent`, call it anywhere in your own loop. The close is
+ * performed when `run()` returns, so it lands whether you break out of a
+ * `chat.createSession` loop, return early, or hand-roll the loop entirely.
+ *
+ * Closing is one-way: a closed session cannot be reopened. Its transcript
+ * stays readable.
+ *
+ * @example
+ * ```ts
+ * chat.agent({
+ *   id: "budgeted-agent",
+ *   onBeforeTurnComplete: async ({ usage }) => {
+ *     if (await overBudget(usage)) {
+ *       chat.close({ reason: "Monthly budget reached" });
+ *     }
+ *   },
+ * });
+ * ```
+ */
+function close(options?: { reason?: string }): void {
+  if (!locals.get(chatExternalIdKey)) {
+    throw new Error(
+      "chat.close() can only be called from inside a chat.agent() or chat.customAgent() run"
+    );
+  }
+
+  // Bound the reason once, here. It goes out on S2 record headers as well as
+  // the close API, and an oversized value would fail the turn-complete write
+  // that carries the turn boundary, costing the client far more than the
+  // reason text.
+  // Trailing high surrogate: the cut landed between the two halves of an
+  // astral character, and encoding the orphan to UTF-8 for a record header
+  // yields a replacement character. Drop it rather than ship mojibake.
+  const reason = options?.reason
+    ?.slice(0, CHAT_CLOSE_REASON_MAX_LENGTH)
+    .replace(/[\uD800-\uDBFF]$/, "");
+  locals.set(chatCloseRequestedKey, reason ? { reason } : {});
+
+  // Mid-step call: unblock the in-flight streamText exactly like the stop
+  // signal, so the turn can reach its turn boundary instead of running the
+  // model out to completion after the decision to close has been made.
+  locals.get(chatStopControllerKey)?.abort(reason ?? "closed");
+}
+
+/**
+ * @internal Terminal close sequence, run once at whichever exit site observes
+ * the close request. Writes the standalone `session-closed` record, then closes
+ * the session row.
+ *
+ * The record lands after the turn's `turn-complete`, so a client reading that
+ * turn's stream has already terminated on it and will not see this one. It is
+ * there for a reconnect and for replay. What a live client reads is the
+ * `session-closed` header stamped onto `turn-complete` itself by
+ * `writeTurnCompleteChunk`, which fires whenever the close was decided before
+ * the turn ended. A close decided from `onTurnComplete` is past that point, so
+ * the client learns from the 409 on its next send.
+ */
+async function performChatClose(): Promise<void> {
+  const request = locals.get(chatCloseRequestedKey);
+  if (!request || locals.get(chatClosePerformedKey)) return;
+
+  const reason = request.reason;
+
+  // Two flags, not one. The record is a client-visible event and must not be
+  // written twice, but the row close is the part that actually ends the
+  // conversation: flagging it as done before it succeeds would let a transient
+  // failure leave the session open with no later call willing to retry.
+  if (!locals.get(chatCloseRecordWrittenKey)) {
+    locals.set(chatCloseRecordWrittenKey, true);
+    try {
+      const session = getChatSession();
+      await session.out.writeControl(
+        TRIGGER_CONTROL_SUBTYPE.SESSION_CLOSED,
+        reason ? [[SESSION_CLOSED_REASON_HEADER, reason]] : undefined
+      );
+    } catch (error) {
+      logger.warn("chat.close: failed to write the session-closed record", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  const chatId = locals.get(chatExternalIdKey);
+  if (!chatId) return;
+
+  try {
+    await sessions.close(chatId, {
+      ...(reason ? { reason } : {}),
+      ...(locals.get(chatAgentRunContextKey)?.run.id
+        ? { callingRunId: locals.get(chatAgentRunContextKey)!.run.id }
+        : {}),
+    });
+    locals.set(chatClosePerformedKey, true);
+  } catch (error) {
+    // Deliberately NOT flagged as performed: the close API is idempotent, so a
+    // later exit site on this run gets to retry it. Losing every retry to a
+    // transient failure would leave the row open and the conversation alive.
+    // Non-fatal either way — the run still exits.
+    logger.error("chat.close: failed to close the session", {
+      chatId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -10794,6 +10982,12 @@ function createChatSession<TClientData = unknown>(
            * without suspending.
            */
           if (turn > 0) {
+            if (locals.get(chatCloseRequestedKey)) {
+              await performChatClose();
+              stop.cleanup();
+              return { done: true, value: undefined };
+            }
+
             // chat.requestUpgrade() / chat.endRun() — exit before waiting
             if (locals.get(chatUpgradeRequestedKey) || locals.get(chatEndRunRequestedKey)) {
               stop.cleanup();
@@ -11176,6 +11370,11 @@ function createChatSession<TClientData = unknown>(
         async return() {
           activeMsgSub?.off();
           activeMsgSub = undefined;
+          // Reached when the consumer leaves the `for await` early (`break`,
+          // `return`, a throw). A `chat.close()` from the loop body would
+          // otherwise be dropped: the exit that performs it lives in `next()`,
+          // and `next()` is never called again.
+          await performChatClose();
           // `stop` only exists once next() has booted the iterator.
           stop?.cleanup();
           return { done: true, value: undefined };
@@ -11843,6 +12042,8 @@ export const chat = {
   endAndContinue,
   /** Exit the run after the current turn completes, without any upgrade signal. See {@link endRun}. */
   endRun,
+  /** End the conversation permanently: close the session and exit the run. See {@link close}. */
+  close,
   /** Clean up aborted parts from a UIMessage. See {@link cleanupAbortedParts}. */
   cleanupAbortedParts,
   /** Register background work that runs in parallel with streaming. See {@link chatDefer}. */
@@ -11997,6 +12198,16 @@ async function writeTurnCompleteChunk(
   const consumedCursor = routerCheckpoint.appliedThrough;
   if (consumedCursor !== undefined) {
     extraHeaders.push([SESSION_IN_CONSUMED_ID_HEADER, String(consumedCursor)]);
+  }
+  // A close decided before this turn ended rides out on turn-complete. Readers
+  // terminate their stream on turn-complete, so a standalone record written
+  // after it only reaches a reconnect — this header is what a live client sees.
+  const pendingClose = locals.get(chatCloseRequestedKey);
+  if (pendingClose) {
+    extraHeaders.push([SESSION_CLOSED_HEADER, "true"]);
+    if (pendingClose.reason) {
+      extraHeaders.push([SESSION_CLOSED_REASON_HEADER, pendingClose.reason]);
+    }
   }
   const result = await session.out.writeControl(
     TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE,

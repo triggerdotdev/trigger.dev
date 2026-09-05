@@ -2,7 +2,11 @@ import type { UIMessage, UIMessageChunk } from "ai";
 import { resourceCatalog } from "@trigger.dev/core/v3";
 import type { LocalsKey } from "@trigger.dev/core/v3";
 import { runInMockTaskContext, type MockTaskContextOptions } from "@trigger.dev/core/v3/test";
-import { __setSessionOpenImplForTests, __setSessionStartImplForTests } from "../sessions.js";
+import {
+  __setSessionCloseImplForTests,
+  __setSessionOpenImplForTests,
+  __setSessionStartImplForTests,
+} from "../sessions.js";
 import {
   __resetChatInputRouterForTests,
   __setReadChatSnapshotImplForTests,
@@ -257,6 +261,29 @@ export type MockChatAgentHarness = {
   seedSessionInTail(messages: UIMessage[]): void;
 
   /**
+   * Append a `trigger: "close"` record to `session.in` — what the server does
+   * when a session is closed from outside (dashboard, `sessions.close()`, MCP).
+   * Resolves once the run has exited, so a test can assert the agent left its
+   * loop instead of waiting out the idle timeout.
+   */
+  sendClose(): Promise<void>;
+
+  /** Wait for the agent's run to exit (bounded, so a stuck loop fails the test). */
+  waitForExit(timeoutMs?: number): Promise<void>;
+
+  /**
+   * Every `sessions.close()` the agent made during this run, in order. A
+   * `chat.close()` produces exactly one entry.
+   */
+  getCloseCalls(): Array<{ sessionId: string; reason?: string }>;
+
+  /**
+   * Make the next `count` `sessions.close()` calls throw, to exercise the
+   * retry path. The calls are still recorded by {@link getCloseCalls}.
+   */
+  failNextCloseCalls(count: number): void;
+
+  /**
    * The most recently written snapshot, or `undefined` if no snapshot
    * has been written yet. Updated each time `writeChatSnapshot` is
    * invoked from the run loop's snapshot-write site (plan section B.6).
@@ -390,6 +417,8 @@ export function mockChatAgent(
   let seededReplayChunks: UIMessageChunk[] = [];
   let seededReplayPartial: UIMessage | undefined;
   let seededSessionInMessages: UIMessage[] = [];
+  const closeCalls: Array<{ sessionId: string; reason?: string }> = [];
+  let failCloseCalls = 0;
 
   __resetChatInputRouterForTests();
 
@@ -446,6 +475,25 @@ export function mockChatAgent(
   __setSessionOpenImplForTests((id) =>
     createTestSessionHandle(id, sessionOutState, () => runSignal?.signal)
   );
+
+  // Record `sessions.close()` calls instead of reaching the control plane, so
+  // a test can assert the agent actually closed the row (and with what reason).
+  __setSessionCloseImplForTests((sessionIdOrExternalId, body) => {
+    closeCalls.push({
+      sessionId: sessionIdOrExternalId,
+      ...(body?.reason ? { reason: body.reason } : {}),
+    });
+    if (failCloseCalls > 0) {
+      failCloseCalls--;
+      throw new Error("mockChatAgent: sessions.close() failure injected by the test");
+    }
+    return {
+      id: sessionIdOrExternalId,
+      externalId: sessionIdOrExternalId,
+      closedAt: new Date().toISOString(),
+      closedReason: body?.reason ?? null,
+    } as never;
+  });
 
   // Install the session start override so any test path that invokes
   // `sessions.start()` (typically through a server action shim like
@@ -563,6 +611,7 @@ export function mockChatAgent(
       // Always clear the test overrides, even if the task threw.
       __setSessionOpenImplForTests(undefined);
       __setSessionStartImplForTests(undefined);
+      __setSessionCloseImplForTests(undefined);
       __setReadChatSnapshotImplForTests(undefined);
       __setWriteChatSnapshotImplForTests(undefined);
       __setReplaySessionOutTailImplForTests(undefined);
@@ -648,6 +697,41 @@ export function mockChatAgent(
         taskFinished.catch(() => {}),
         new Promise<void>((resolve) => setTimeout(resolve, 1000)),
       ]);
+    },
+
+    async sendClose() {
+      await harnessReady;
+      await sendSessionInput(sessionId, {
+        kind: "message",
+        payload: {
+          chatId,
+          trigger: "close",
+        },
+      });
+      await harness.waitForExit();
+    },
+
+    async waitForExit(timeoutMs = 2000) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timedOut = new Promise<"timeout">((resolve) => {
+        timer = setTimeout(() => resolve("timeout"), timeoutMs);
+      });
+      try {
+        const result = await Promise.race([taskFinished.catch(() => "done" as const), timedOut]);
+        if (result === "timeout") {
+          throw new Error(`mockChatAgent: run did not exit within ${timeoutMs}ms`);
+        }
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+    },
+
+    getCloseCalls() {
+      return [...closeCalls];
+    },
+
+    failNextCloseCalls(count) {
+      failCloseCalls = count;
     },
 
     seedSnapshot(snapshot) {

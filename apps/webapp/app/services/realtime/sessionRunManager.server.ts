@@ -187,6 +187,11 @@ export async function ensureRunForSession(
     where: {
       id: session.id,
       currentRunVersion: session.currentRunVersion,
+      // Closedness is decided on the writer, not on the replica the caller
+      // resolved from. An append that raced a close reads a stale open row and
+      // gets this far; without this the closed conversation would get a brand
+      // new run.
+      closedAt: null,
     },
     data: {
       currentRunId: triggered.id,
@@ -235,6 +240,7 @@ export async function ensureRunForSession(
       triggerConfig: true,
       currentRunId: true,
       currentRunVersion: true,
+      closedAt: true,
     },
   });
 
@@ -242,6 +248,13 @@ export async function ensureRunForSession(
     // Session vanished mid-flight. Surface as an error — caller decides
     // whether to 404 or retry.
     throw new SessionRunManagerError(`Session ${session.id} not found after lost claim race`);
+  }
+
+  if (fresh.closedAt) {
+    // The claim lost to a close, not to another writer. Recursing would
+    // trigger and cancel a run per attempt and then throw; there is nothing to
+    // ensure for a conversation that is over.
+    throw new SessionRunManagerError(`Session ${session.id} is closed`);
   }
 
   if (fresh.currentRunId) {
@@ -426,6 +439,10 @@ export async function swapSessionRun(params: SwapSessionRunParams): Promise<Swap
       id: session.id,
       currentRunId: callingRunId,
       currentRunVersion: session.currentRunVersion,
+      // Same writer-side guard as the ensure path: a close can commit between
+      // the route's replica read and this update, and a handoff must not start
+      // a continuation on a conversation that is over.
+      closedAt: null,
     },
     data: {
       currentRunId: triggered.id,
@@ -466,8 +483,15 @@ export async function swapSessionRun(params: SwapSessionRunParams): Promise<Swap
   // over.
   const fresh = await prisma.session.findFirst({
     where: { id: session.id },
-    select: { currentRunId: true },
+    select: { currentRunId: true, closedAt: true },
   });
+
+  if (fresh?.closedAt) {
+    // The claim lost to a close, not to another swap. The run triggered above
+    // is already being cancelled; reporting a winner here would tell the caller
+    // a closed session has a live run.
+    throw new SessionRunManagerError(`Session ${session.id} is closed`);
+  }
 
   // Mirror `ensureRunForSession`'s "session vanished" branch: if we
   // can't find the row (or it has no current run) on the writer right

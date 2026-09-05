@@ -146,6 +146,11 @@ Mark a Session as closed. Terminal and idempotent. The optional `reason` is stor
 await sessions.close(chatId, { reason: "user signed out" });
 ```
 
+Closing tells a live run too: the close lands on the session's input channel, so an idle or suspended agent exits its loop on the next wake rather than waiting out its idle timeout. After it lands, appends to `.in` are refused with HTTP 409 and `code: "session_closed"`.
+
+To close from inside the agent instead, call [`chat.close()`](/ai-chat/backend#ending-the-conversation). It writes a terminal record to the response stream so the browser learns the reason, then closes the row.
+
+
 ### `sessions.list(options?, requestOptions?)`
 
 Cursor-paginated list of Sessions in the current environment. Returns a `CursorPagePromise` you can iterate with `for await`.

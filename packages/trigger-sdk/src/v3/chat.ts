@@ -33,6 +33,8 @@ import type {
 import {
   controlSubtype,
   headerValue,
+  SESSION_CLOSED_HEADER,
+  SESSION_CLOSED_REASON_HEADER,
   PUBLIC_ACCESS_TOKEN_HEADER,
   SESSION_IN_EVENT_ID_HEADER,
   SSEStreamSubscription,
@@ -264,6 +266,15 @@ export type ChatTransportEvent =
     }
   | { type: "stream-error"; chatId: string; timestamp: number; error: Error; status?: number }
   | {
+      type: "session-closed";
+      chatId: string;
+      timestamp: number;
+      /** The reason supplied to `chat.close()` / `sessions.close()`, if any. */
+      reason?: string;
+      /** How the transport learned: the terminal record, or a refused send. */
+      source: "stream" | "append";
+    }
+  | {
       type: "first-chunk";
       chatId: string;
       timestamp: number;
@@ -293,6 +304,34 @@ function isAuthError(error: unknown): boolean {
   if (error === null || typeof error !== "object") return false;
   const e = error as { name?: string; status?: number };
   return e.name === "TriggerApiError" && (e.status === 401 || e.status === 403);
+}
+
+/**
+ * Detect the closed-session refusal from `.in/append`: HTTP 409 with the
+ * stable `session_closed` code. Terminal — never retried.
+ */
+function isSessionClosedError(error: unknown): boolean {
+  if (error === null || typeof error !== "object") return false;
+  const e = error as { name?: string; status?: number; code?: string };
+  return e.name === "TriggerApiError" && e.status === 409 && e.code === "session_closed";
+}
+
+function sessionClosedReasonOf(error: unknown): string | undefined {
+  if (error === null || typeof error !== "object") return undefined;
+  const reason = (error as { closedReason?: unknown }).closedReason;
+  return typeof reason === "string" ? reason : undefined;
+}
+
+/** The local form of the refusal, for sends the transport rejects itself. */
+function sessionClosedError(chatId: string, reason?: string): Error {
+  const err = new Error(
+    reason ? `Chat session ${chatId} is closed: ${reason}` : `Chat session ${chatId} is closed`
+  ) as Error & { name: string; status: number; code: string; closedReason?: string };
+  err.name = "TriggerApiError";
+  err.status = 409;
+  err.code = "session_closed";
+  if (reason) err.closedReason = reason;
+  return err;
 }
 
 /**
@@ -433,6 +472,10 @@ export type ChatSessionPersistedState = {
   /** The `.in` append sequence of the last send this client owned; reused as `sinceInSeq` on reconnect. */
   activeInputSeq?: number;
   isStreaming?: boolean;
+  /** Set once the session is closed. Persisted so a reload doesn't retry a dead session. */
+  closed?: boolean;
+  /** The reason the session was closed, when one was given. */
+  closedReason?: string;
 };
 
 /**
@@ -642,6 +685,10 @@ type ChatSessionState = {
   skipToTurnComplete?: boolean;
   /** Whether the agent is currently streaming a response. Set on first chunk, cleared on turn-complete. */
   isStreaming?: boolean;
+  /** Set once the session is closed. Terminal — sends and reconnects stop. */
+  closed?: boolean;
+  /** The reason the session was closed, when one was given. */
+  closedReason?: string;
 };
 
 /**
@@ -727,6 +774,8 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
           lastEventId: session.lastEventId,
           activeInputSeq: session.activeInputSeq,
           isStreaming: session.isStreaming,
+          closed: session.closed,
+          closedReason: session.closedReason,
         });
       }
     }
@@ -789,6 +838,11 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     } & ChatRequestOptions
   ): Promise<ReadableStream<UIMessageChunk>> => {
     const { trigger, chatId, messageId, messages, abortSignal, body, metadata } = options;
+
+    const closedState = this.sessions.get(chatId);
+    if (closedState?.closed) {
+      throw sessionClosedError(chatId, closedState.closedReason);
+    }
 
     if (this.coordinator) {
       if (this.coordinator.isReadOnly(chatId)) {
@@ -1174,6 +1228,8 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   ): Promise<ReadableStream<UIMessageChunk> | null> => {
     const state = this.sessions.get(options.chatId);
     if (!state) return null;
+    // A closed session has no further turns to resume.
+    if (state.closed) return null;
 
     // Watch is a standing subscription: a settled session is exactly the
     // state it waits in, so a completed last turn must not block the resume.
@@ -1463,7 +1519,50 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     lastEventId: state.lastEventId,
     activeInputSeq: state.activeInputSeq,
     isStreaming: state.isStreaming,
+    closed: state.closed,
+    closedReason: state.closedReason,
   });
+
+  /**
+   * Flip a session to closed and tell listeners once. Terminal: sends and
+   * reconnects stop from here on, and there is no reopening.
+   */
+  private markSessionClosed(
+    chatId: string,
+    state: ChatSessionState,
+    reason: string | undefined,
+    source: "stream" | "append"
+  ): void {
+    if (state.closed) return;
+
+    state.closed = true;
+    if (reason) state.closedReason = reason;
+    state.isStreaming = false;
+    state.activeInputSeq = undefined;
+
+    this.emitEvent({
+      type: "session-closed",
+      chatId,
+      timestamp: Date.now(),
+      ...(reason ? { reason } : {}),
+      source,
+    });
+    this.notifySessionChange(chatId, state);
+    this.coordinator?.release(chatId);
+  }
+
+  /**
+   * Whether the conversation has been closed — by the agent via
+   * `chat.close()`, or from outside via `sessions.close()`. Closed is
+   * one-way: the transport refuses further sends and reconnects, and the
+   * transcript stays readable.
+   */
+  sessionStatus = (chatId: string): "open" | "closed" =>
+    this.sessions.get(chatId)?.closed ? "closed" : "open";
+
+  /** The reason the session was closed, when one was given. */
+  sessionClosedReason = (chatId: string): string | undefined =>
+    this.sessions.get(chatId)?.closedReason;
 
   private notifySessionChange(chatId: string, session: ChatSessionState | null): void {
     if (!this._onSessionChange) return;
@@ -1567,9 +1666,19 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       const err = new Error(`appendToSessionStream failed: ${response.status} ${text}`) as Error & {
         name: string;
         status: number;
+        code?: string;
+        closedReason?: string;
       };
       err.name = "TriggerApiError";
       err.status = response.status;
+      let parsed: { code?: unknown; closedReason?: unknown } | undefined;
+      try {
+        parsed = JSON.parse(text) as { code?: unknown; closedReason?: unknown };
+      } catch {
+        parsed = undefined;
+      }
+      if (typeof parsed?.code === "string") err.code = parsed.code;
+      if (typeof parsed?.closedReason === "string") err.closedReason = parsed.closedReason;
       throw err;
     }
     // The appended record's `.in` seq, for correlating the response stream to
@@ -1583,15 +1692,37 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     state: ChatSessionState,
     op: (token: string) => Promise<T>
   ): Promise<T> {
+    if (state.closed) {
+      throw sessionClosedError(chatId, state.closedReason);
+    }
+
+    // Every attempt goes through here, so a closed-session refusal is terminal
+    // on whichever one hits it. Reaching a 409 from a later attempt and not
+    // marking it would leave local status open on a conversation the server
+    // has already ended.
+    const attempt = async (token: string): Promise<T> => {
+      try {
+        return await op(token);
+      } catch (err) {
+        if (isSessionClosedError(err)) {
+          // Terminal. Retrying, refreshing the PAT, or recreating the session
+          // would all be wrong: the conversation is over.
+          this.markSessionClosed(chatId, state, sessionClosedReasonOf(err), "append");
+        }
+        throw err;
+      }
+    };
+
     // 1) Try with the current PAT.
     try {
-      return await op(state.publicAccessToken);
+      return await attempt(state.publicAccessToken);
     } catch (err) {
+      if (isSessionClosedError(err)) throw err;
       if (isSessionNotFoundError(err)) {
         // The cached PAT authenticated but the session doesn't exist here —
         // recreate it and retry.
         await this.recreateSession(chatId, state);
-        return await op(state.publicAccessToken);
+        return await attempt(state.publicAccessToken);
       }
       if (!isAuthError(err)) throw err;
     }
@@ -1602,7 +1733,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     state.publicAccessToken = fresh;
     this.notifySessionChange(chatId, state);
     try {
-      return await op(fresh);
+      return await attempt(fresh);
     } catch (err) {
       if (!isSessionNotFoundError(err)) throw err;
     }
@@ -1611,7 +1742,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     //    state is stale (created in a different environment, or before the
     //    sessions upgrade). Recreate the session and retry once.
     await this.recreateSession(chatId, state);
-    return await op(state.publicAccessToken);
+    return await attempt(state.publicAccessToken);
   }
 
   /**
@@ -2002,6 +2133,22 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               continue;
             }
 
+            if (controlValue === TRIGGER_CONTROL_SUBTYPE.SESSION_CLOSED) {
+              this.markSessionClosed(
+                chatId,
+                state,
+                headerValue(value.headers, SESSION_CLOSED_REASON_HEADER),
+                "stream"
+              );
+              internalAbort.abort();
+              try {
+                controller.close();
+              } catch {
+                /* already closed */
+              }
+              return;
+            }
+
             if (controlValue === TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) {
               // Skip a turn-complete from an earlier turn (committed `.in` cursor
               // below this send's seq), e.g. an undo action that raced this send.
@@ -2012,6 +2159,17 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
                   continue;
                 }
               }
+              // A close decided during this turn rides out on turn-complete —
+              // the last record a reader sees before it ends the stream.
+              if (headerValue(value.headers, SESSION_CLOSED_HEADER) === "true") {
+                this.markSessionClosed(
+                  chatId,
+                  state,
+                  headerValue(value.headers, SESSION_CLOSED_REASON_HEADER),
+                  "stream"
+                );
+              }
+
               const refreshedToken =
                 headerValue(value.headers, PUBLIC_ACCESS_TOKEN_HEADER) ??
                 legacyChunk?.publicAccessToken;

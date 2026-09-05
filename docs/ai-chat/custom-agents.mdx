@@ -290,6 +290,29 @@ Read `turn.stopped` to tell a user stop from a full run cancel:
 
 A hand-rolled loop wires this itself with `chat.createStopSignal()` and `chat.cleanupAbortedParts()`. Two things `createSession` handles for you are easy to get wrong there — see the [hand-rolled loop checklist](#hand-rolled-loop-checklist).
 
+### Ending the conversation
+
+`chat.close({ reason })` works in a custom agent exactly as it does in [`chat.agent`](/ai-chat/backend#ending-the-conversation): the session row is closed, further sends are refused with HTTP 409, and no continuation run is scheduled. Call it from anywhere in your loop.
+
+```ts trigger/my-chat.ts
+for await (const turn of session) {
+  const result = streamText({ model, messages: turn.messages, abortSignal: turn.signal });
+
+  // Close BEFORE turn.complete(): that call writes the turn boundary the
+  // browser stops reading at, and it carries the closed state out with it.
+  if (await overBudget(turn.chatId)) {
+    chat.close({ reason: "Monthly budget reached" });
+  }
+
+  await turn.complete(result);
+  if (turn.stopped) break;
+}
+```
+
+The close is performed when your `run()` returns, so it lands whether you `break` out of the loop, return early, or keep iterating. A hand-rolled loop with no iterator at all works the same way, as long as you call `chat.close()` before the `chat.writeTurnComplete()` that ends the turn.
+
+Only `chat.agent` and `chat.customAgent` bind the run to its Session, so `chat.close()` throws in a plain `task()`.
+
 ## Hand-rolled loop with primitives
 
 For full control, skip `createSession` and compose the primitives directly:

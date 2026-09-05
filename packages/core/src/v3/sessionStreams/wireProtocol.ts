@@ -52,9 +52,25 @@ export const SESSION_IN_EVENT_ID_HEADER = "session-in-event-id" as const;
  */
 export const SESSION_IN_CONSUMED_ID_HEADER = "session-in-consumed-id" as const;
 
+/**
+ * Header marking a session as closed. Carried by the `session-closed` control
+ * record, and also stamped on a `turn-complete` record when the close was
+ * decided before that turn ended — readers terminate their stream on
+ * turn-complete, so that is the last moment a live client can be told.
+ */
+export const SESSION_CLOSED_HEADER = "session-closed" as const;
+
+/**
+ * Header on `session-closed` records carrying the reason the session was
+ * closed, as supplied to `chat.close({ reason })` / `sessions.close()`.
+ * Omitted when no reason was given.
+ */
+export const SESSION_CLOSED_REASON_HEADER = "session-closed-reason" as const;
+
 export const TRIGGER_CONTROL_SUBTYPE = {
   TURN_COMPLETE: "turn-complete",
   UPGRADE_REQUIRED: "upgrade-required",
+  SESSION_CLOSED: "session-closed",
 } as const;
 
 export type TriggerControlSubtype =

@@ -266,7 +266,7 @@ x-trigger-jwt-claims: {"sub":"...","scopes":["read:runs:run_abc123","write:input
 Re-calling `POST /api/v1/sessions` with the same `(taskIdentifier, externalId)` pair is **idempotent for the lifetime of the session**:
 
 - If the session is still alive: returns the existing row with `isCached: true`, `runId` unchanged, and a **fresh** 60-minute `publicAccessToken`. No duplicate run is triggered. (Idle/exited runs are different — see [Continuations](#continuations).)
-- If the session has been closed (`POST /api/v1/sessions/{id}/close`): returns **HTTP 409**. Closed is one-way; reuse a different `externalId` to start a new conversation.
+- If the session has been closed (`POST /api/v1/sessions/{id}/close`, or `chat.close()` from inside the agent): returns **HTTP 409**. Closed is one-way; reuse a different `externalId` to start a new conversation.
 - Any tags / metadata / expiresAt / triggerConfig fields you send on the cached path are written through to the row, so you can update e.g. `triggerConfig.basePayload.metadata` mid-conversation. The new fields apply to **future** runs (continuations); the currently-live run keeps its original config.
 
 <Warning>
@@ -693,7 +693,7 @@ The body is a JSON-serialized [`ChatInputChunk`](#chatinputchunk), a tagged unio
 | --- | --- |
 | `401` | Missing or invalid `Authorization` header. |
 | `403` | Token doesn't carry `write:sessions:{externalId}`. |
-| `409` | The session is closed — `{ "ok": false, "error": "Cannot append to a closed session" }`. |
+| `409` | The session is closed: `{ "ok": false, "error": "Cannot append to a closed session", "code": "session_closed", "closedReason": "<reason or null>" }`. Key on `code`, not the message. Terminal: do not retry, and stop reconnecting to `.out`. |
 | `413` | Body exceeds 1 MiB **or** the wrapped record would exceed S2's ~1 MiB per-record metered ceiling. A normal `kind: "message"` payload is a few KB; if you hit this you're shipping more than one message per record or pushing a single tool output that's itself oversized. Carries CORS headers so browser fetches can read the status. |
 | `500` | Transient backend failure on the durable stream. Safe to retry — appends are idempotent on `(externalId, X-Part-Id)` if you set the optional `X-Part-Id` request header (the built-in clients set it from a UUID). |
 

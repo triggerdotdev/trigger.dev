@@ -606,6 +606,57 @@ Use this when the agent knows its work is done (budget exhausted, goal achieved,
   If you persist `lastEventId` to your own storage for cross-page-load resume, **don't clear it on `chat.endRun()`**. The cursor is sessionId-keyed and stays valid across Run boundaries — clearing it forces the next `sendMessages` to subscribe from `seq_num=0`, where it may hit the prior turn's stale `turn-complete` record and close the stream empty before the new Run's chunks arrive.
 </Warning>
 
+### Ending the conversation
+
+`chat.close()` ends the whole conversation. The session row is marked closed, further appends are refused with HTTP 409, and no continuation run is scheduled. Call it from `run()`, `prepareStep`, or `onBeforeTurnComplete`.
+
+```ts
+chat.agent({
+  id: "budgeted-agent",
+  run: async ({ messages, signal }) =>
+    streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal }),
+  // onBeforeTurnComplete carries the same fields as onTurnComplete, including
+  // `usage`, and still runs while the response stream is open.
+  onBeforeTurnComplete: async ({ chatId }) => {
+    if (await overBudget(chatId)) {
+      chat.close({ reason: "Monthly budget reached" });
+    }
+  },
+});
+```
+
+The current turn finishes and streams through normally. Called mid-step, `chat.close()` aborts the in-flight `streamText` the same way the stop signal does, so the partial response is still captured and delivered. The transport then flips to a closed state, carrying `reason` so you can render why the conversation ended.
+
+<Warning>
+  **Decide before the turn ends, not in `onTurnComplete`.** The closed state reaches the browser on the turn's final `turn-complete` record. `onTurnComplete` runs after that record is written and after the response stream has closed, so a close decided there does not reach a reader that is already done with the turn: the user sees a normal answer and learns the conversation ended only when their next message is refused. Use `onBeforeTurnComplete` for the same information one step earlier, and the user sees the closed state as soon as the answer finishes.
+</Warning>
+
+Closing is one-way. A closed session cannot be reopened, and its transcript stays readable. Start a new conversation under a different `chatId` to continue.
+
+On the client, read the closed state off the transport:
+
+```tsx app/components/Chat.tsx
+if (transport.sessionStatus(chatId) === "closed") {
+  return <p>This conversation has ended: {transport.sessionClosedReason(chatId)}</p>;
+}
+```
+
+### Three levels of stopping
+
+`chat.agent` stops at three levels, each with a different "what happens next".
+
+| Level | Primitive | What stops | What happens next |
+| --- | --- | --- | --- |
+| Turn | `stopWhen`, or the [stop signal](/ai-chat/backend#stop-generation) aborting `signal` | The current `streamText` | The turn completes, the agent idles for the next message |
+| Run | `chat.endRun()` | The current worker | The next message on the same `chatId` starts a fresh continuation run |
+| Session | `chat.close()` | The conversation, permanently | Nothing. Appends are refused with 409 and no run is triggered |
+
+Reach for the narrowest level that does the job: a turn budget is a `stopWhen`, a finished one-shot answer is `chat.endRun()`, and an exhausted account or a signed-out user is `chat.close()`.
+
+`chat.close()` is available to [custom agents](/ai-chat/custom-agents#ending-the-conversation) too, where the close is performed when your `run()` returns.
+
+A session can also be closed from outside the run: `sessions.close(chatId)` from your backend, or the Close action in the dashboard. A live run is told either way: the close lands on the session's input channel, so an idle or suspended agent leaves its loop on the next wake instead of waiting out its idle timeout.
+
 ### Runtime configuration
 
 #### chat.setTurnTimeout()

@@ -2008,6 +2008,13 @@ export type UpdateSessionRequestBody = z.infer<typeof UpdateSessionRequestBody>;
 
 export const CloseSessionRequestBody = z.object({
   reason: z.string().max(256).optional(),
+  /**
+   * The friendlyId of the run requesting the close, when the close comes
+   * from inside the session's own run (`chat.close()`). That run is already
+   * exiting, so the server skips appending the wake-up close record to `.in`
+   * for it. Omitted for an external close (dashboard, `sessions.close()`, MCP).
+   */
+  callingRunId: z.string().optional(),
 });
 export type CloseSessionRequestBody = z.infer<typeof CloseSessionRequestBody>;
 
