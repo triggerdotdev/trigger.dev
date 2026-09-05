@@ -105,7 +105,7 @@ The payload passed to the `run` function.
 | `streamText`   | `typeof streamText`                        | The AI SDK's `streamText` with this agent's managed options already applied: the prompt, skill tools, telemetry, and the `prepareStep` that delivers steering, compaction and injected context. Prefer it over importing `streamText` from `ai`. See [The managed streamText](/ai-chat/backend#the-managed-streamtext). |
 | `chatId`       | `string`                                   | Your conversation ID (the session's `externalId`)                    |
 | `sessionId`    | `string`                                   | Friendly ID of the backing Session (`session_*`). Use with `sessions.open()` for advanced cases. Always set — every chat.agent run is bound to a Session. |
-| `trigger`      | `"submit-message" \| "regenerate-message"` | What triggered the request                                           |
+| `trigger`      | `"submit-message" \| "regenerate-message" \| "action-turn"` | What triggered the request; `"action-turn"` is a turn requested by `chat.turn()` |
 | `messageId`    | `string \| undefined`                      | Message ID (for regenerate)                                          |
 | `clientData`   | Typed by `clientDataSchema`                | Custom data from the frontend (typed when schema is provided)        |
 | `continuation` | `boolean`                                  | Whether this run is continuing an existing chat (previous run ended) |

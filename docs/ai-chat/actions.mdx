@@ -75,7 +75,7 @@ onAction: async ({ action }) => {
 }
 ```
 
-`run()` receives the edited history with no incoming user message, the same shape as a `regenerate-message` turn, and its `trigger` is `"action"`. Returning anything other than `chat.turn()` or nothing is an error; a response can no longer be returned from `onAction` directly.
+`run()` receives the edited history with no incoming user message, the same shape as a `regenerate-message` turn, and its `trigger` is `"action-turn"`, so a `run()` that returns early on `"action"` (the pre-May behaviour, when actions invoked `run()` directly) still answers. Returning anything other than `chat.turn()` or nothing is an error; a response can no longer be returned from `onAction` directly.
 
 ### Actions and persistence
 
