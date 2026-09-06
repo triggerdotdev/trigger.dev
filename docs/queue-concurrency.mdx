@@ -199,6 +199,8 @@ Sometimes one limit isn't enough. A run always waits in one queue, its **home qu
 Pass an array as `queue`: the first entry is the home queue, the rest name gates. The same array form works when you trigger, replacing the task's gates for that run:
 
 ```ts
+import { processWebhook } from "~/trigger/webhooks";
+
 await processWebhook.trigger(payload, {
   queue: ["webhooks", "tenant"],
   concurrencyKey: tenantId,
