@@ -65,7 +65,7 @@ import { textLinkClassName } from "~/components/primitives/TextLink";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { formatCurrency, formatNumber } from "~/utils/numberFormatter";
-import { concurrencyPath, EnvironmentParamSchema, v3BillingPath } from "~/utils/pathBuilder";
+import { concurrencyLimitsPath, EnvironmentParamSchema, v3BillingPath } from "~/utils/pathBuilder";
 import { AllocateConcurrencyService } from "~/v3/services/allocateConcurrency.server";
 import { SetConcurrencyAddOnService } from "~/v3/services/setConcurrencyAddOn.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
@@ -145,7 +145,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
-  const redirectPath = concurrencyPath(
+  const redirectPath = concurrencyLimitsPath(
     { slug: organizationSlug },
     { slug: projectParam },
     { slug: envParam }
@@ -257,7 +257,7 @@ export default function Page() {
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title="Concurrency" />
+        <PageTitle title="Concurrency limits" />
         <PageAccessories>
           <AdminDebugTooltip>
             <Property.Table>

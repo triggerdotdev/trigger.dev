@@ -23,7 +23,7 @@ import {
   type OrgForPath,
   type ProjectForPath,
   branchesPath,
-  concurrencyPath,
+  concurrencyLimitsPath,
   limitsPath,
   queryPath,
   regionsPath,
@@ -269,10 +269,10 @@ export function buildSideMenuSections({
         ? [
             {
               id: "concurrency",
-              name: "Concurrency",
+              name: "Concurrency limits",
               icon: ConcurrencyIcon,
               activeIconColor: "text-text-bright",
-              to: concurrencyPath(organization, project, environment),
+              to: concurrencyLimitsPath(organization, project, environment),
               dataAction: "concurrency",
             } satisfies SideMenuItemConfig,
           ]
