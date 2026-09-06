@@ -903,7 +903,7 @@ function QueuesWithMetricsView() {
                               }
                               content={
                                 <>
-                                  Combined limit: at most{" "}
+                                  Total limit: at most{" "}
                                   {Math.min(
                                     queue.concurrency.combined.current,
                                     environment.concurrencyLimit
@@ -1997,7 +1997,7 @@ function ClassicQueuesView() {
                               }
                               content={
                                 <>
-                                  Combined limit: at most{" "}
+                                  Total limit: at most{" "}
                                   {Math.min(
                                     queue.concurrency.combined.current,
                                     environment.concurrencyLimit
