@@ -170,6 +170,7 @@ export function QueueMetricChart({
         };
         const hasSamples = sampleCountColumn ? toNumber(r[sampleCountColumn]) > 0 : true;
         for (const s of series) point[s.key] = hasSamples ? toNumber(r[s.key]) : null;
+        if (carryBackfillGuard) point[carryBackfillGuard] = toNumber(r[carryBackfillGuard]);
         return point;
       })
       .filter((p) => Number.isFinite(p.bucket));
