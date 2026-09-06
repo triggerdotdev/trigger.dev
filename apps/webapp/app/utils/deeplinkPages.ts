@@ -14,7 +14,7 @@ export const ENV_PAGE_TARGETS: ReadonlyMap<string, DeeplinkTarget> = new Map([
   ["batches", page("batches")],
   ["branches", page("branches")],
   ["bulk-actions", page("bulk-actions")],
-  ["concurrency", page("concurrency")],
+  ["concurrency-limits", page("concurrency-limits")],
   ["dashboards", page("dashboards")],
   ["deployments", page("deployments")],
   ["dev-branches", page("dev-branches")],

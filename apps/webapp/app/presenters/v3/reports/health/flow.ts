@@ -116,7 +116,7 @@ export function interpretFlow(metrics: Metric[], input: HealthInput): Finding {
       exclusions: [],
       observations:
         finishedPerMin > 0 ? [{ code: "not_workers_platform", evidence: { finishedPerMin } }] : [],
-      recommendation: { code: "raise_env_limit", link: "concurrency" },
+      recommendation: { code: "raise_env_limit", link: "concurrency-limits" },
       usesAttribution: true,
     };
   } else if (ev.throttledShare >= t.throttledShare && !pinned) {
