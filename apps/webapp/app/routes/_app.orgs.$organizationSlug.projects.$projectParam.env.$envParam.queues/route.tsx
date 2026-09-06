@@ -83,7 +83,7 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { ENVIRONMENT_PAUSE_SOURCE_BILLING_LIMIT } from "~/utils/environmentPauseSource";
 import {
-  concurrencyPath,
+  concurrencyLimitsPath,
   docsPath,
   EnvironmentParamSchema,
   v3BillingPath,
@@ -612,7 +612,7 @@ function QueuesWithMetricsView() {
               plan ? (
                 plan?.v3Subscription?.plan?.limits.concurrentRuns.canExceed ? (
                   <LinkButton
-                    to={concurrencyPath(organization, project, env)}
+                    to={concurrencyLimitsPath(organization, project, env)}
                     variant="secondary/small"
                     LeadingIcon={ConcurrencyIcon}
                     leadingIconClassName="text-amber-500"
@@ -1808,7 +1808,7 @@ function ClassicQueuesView() {
                 plan ? (
                   plan?.v3Subscription?.plan?.limits.concurrentRuns.canExceed ? (
                     <LinkButton
-                      to={concurrencyPath(organization, project, env)}
+                      to={concurrencyLimitsPath(organization, project, env)}
                       variant="tertiary/small"
                       LeadingIcon={ConcurrencyIcon}
                       leadingIconClassName="text-amber-500"

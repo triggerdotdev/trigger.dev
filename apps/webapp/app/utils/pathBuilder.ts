@@ -806,12 +806,12 @@ export function branchesDevPath(
   return `${v3EnvironmentPath(organization, project, environment)}/dev-branches`;
 }
 
-export function concurrencyPath(
+export function concurrencyLimitsPath(
   organization: OrgForPath,
   project: ProjectForPath,
   environment: EnvironmentForPath
 ) {
-  return `${v3EnvironmentPath(organization, project, environment)}/concurrency`;
+  return `${v3EnvironmentPath(organization, project, environment)}/concurrency-limits`;
 }
 
 export function limitsPath(
