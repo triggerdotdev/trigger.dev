@@ -109,7 +109,7 @@ ALTER TABLE trigger_dev.queue_metrics_5m_v1 DROP COLUMN IF EXISTS max_total_runn
 ALTER TABLE trigger_dev.queue_metrics_v1 DROP COLUMN IF EXISTS max_total_running, DROP COLUMN IF EXISTS max_total_limit;
 ALTER TABLE trigger_dev.queue_metrics_raw_v1 DROP COLUMN IF EXISTS total_running, DROP COLUMN IF EXISTS total_limit;
 
--- Recreate the pre-042 materialized views (the definitions from 036) so ingestion keeps
+-- Recreate the pre-044 materialized views (the definitions from 036) so ingestion keeps
 -- feeding every aggregate table after a rollback.
 CREATE MATERIALIZED VIEW IF NOT EXISTS trigger_dev.queue_metrics_mv_v1
 TO trigger_dev.queue_metrics_v1 AS

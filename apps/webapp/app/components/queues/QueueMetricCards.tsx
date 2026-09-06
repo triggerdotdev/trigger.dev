@@ -102,6 +102,12 @@ type QueueMetricChartProps = {
    * are config values that existed all along, so carry the first value backward instead.
    */
   carryBackfill?: string[];
+  /**
+   * Column that marks a bucket as genuinely sampled. When set, carryBackfill only
+   * overwrites buckets where this column is absent or zero, so history from before
+   * a config value existed keeps its truthful gap instead of inheriting the value.
+   */
+  carryBackfillGuard?: string;
   /** Show the series legend below the chart (use for multi-series charts). */
   showLegend?: boolean;
   /**
@@ -141,6 +147,7 @@ export function QueueMetricChart({
   defaultPeriod,
   warningOverlay,
   carryBackfill,
+  carryBackfillGuard,
   thresholdStroke,
   onHasDataChange,
   minBucketSeconds,
@@ -174,12 +181,15 @@ export function QueueMetricChart({
         const first = points.findIndex((p) => toNumber(p[key]) > 0);
         if (first > 0) {
           const value = points[first]![key]!;
-          for (let i = 0; i < first; i++) points[i]![key] = value;
+          for (let i = 0; i < first; i++) {
+            if (carryBackfillGuard && toNumber(points[i]![carryBackfillGuard]) > 0) continue;
+            points[i]![key] = value;
+          }
         }
       }
     }
     return points;
-  }, [rows, series, carryBackfill, sampleCountColumn]);
+  }, [rows, series, carryBackfill, carryBackfillGuard, sampleCountColumn]);
 
   const chartConfig = useMemo(() => {
     const cfg: ChartConfig = {};
