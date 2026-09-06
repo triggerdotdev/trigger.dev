@@ -144,7 +144,7 @@ export class ReplayTaskRunService extends BaseService {
               overrideOptions.concurrencyKey ?? existingTaskRun.concurrencyKey ?? undefined,
             gates: Array.isArray(existingTaskRun.gates)
               ? (existingTaskRun.gates as Array<{ queue: string; concurrencyKey?: string }>)
-              : undefined,
+              : [],
             maxAttempts: overrideOptions.maxAttempts,
             maxDuration: overrideOptions.maxDurationSeconds,
             machine:
