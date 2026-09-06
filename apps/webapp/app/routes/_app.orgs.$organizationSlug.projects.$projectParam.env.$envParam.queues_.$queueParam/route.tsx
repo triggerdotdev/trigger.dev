@@ -266,7 +266,7 @@ export default function Page() {
   // The Concurrency keys tab exists only for queues with key activity: live keys in the
   // ckIndex, or nonzero CK history in the selected range (one cached scalar query decides).
   const { rows: gateRows, showLoading: gateLoading } = useQueueMetric(
-    `SELECT max(max_ck_backlogged) AS peak_keys, max(max_ck_wait_ms) AS peak_wait\nFROM queue_metrics`,
+    `SELECT max(max_ck_backlogged) AS peak_keys, max(max_ck_wait_ms) AS peak_wait\nFROM concurrency_metrics`,
     { ids, timeRange, queueName: fullName }
   );
   const gateRow = gateRows[0];
@@ -463,7 +463,7 @@ function OverviewCharts({
           }
           showLegend
           className="aspect-[2/1]"
-          query={`SELECT timeBucket() AS t, max(max_running) AS running, max(max_limit) AS limit\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
+          query={`SELECT timeBucket() AS t, max(max_running) AS running, max(max_limit) AS limit\nFROM concurrency_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
           minBucketSeconds={SYNCED_CHART_MIN_BUCKET_SECONDS}
           ids={ids}
@@ -499,7 +499,7 @@ function OverviewCharts({
             }
             showLegend
             className="aspect-[2/1]"
-            query={`SELECT timeBucket() AS t, max(max_combined_running) AS running, least(max(max_combined_limit), max(max_env_limit)) AS cap\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
+            query={`SELECT timeBucket() AS t, max(max_total_running) AS running, least(max(max_total_limit), max(max_env_limit)) AS cap\nFROM concurrency_metrics\nGROUP BY t\nORDER BY t`}
             fillGaps
             minBucketSeconds={SYNCED_CHART_MIN_BUCKET_SECONDS}
             ids={ids}
@@ -521,7 +521,7 @@ function OverviewCharts({
           title="Queue depth"
           info="How many runs are waiting in this queue over time."
           className="aspect-[2/1]"
-          query={`SELECT timeBucket() AS t, max(max_queued) AS queued\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
+          query={`SELECT timeBucket() AS t, max(max_queued) AS queued\nFROM concurrency_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
           minBucketSeconds={SYNCED_CHART_MIN_BUCKET_SECONDS}
           ids={ids}
@@ -541,7 +541,7 @@ function OverviewCharts({
           showLegend
           extraLegend={[{ color: "var(--color-warning)", label: "Falling behind" }]}
           className="aspect-[2/1]"
-          query={`SELECT timeBucket() AS t,\n  deltaSumTimestampMerge(enqueue_delta) AS enqueued,\n  deltaSumTimestampMerge(started_delta) AS started\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
+          query={`SELECT timeBucket() AS t,\n  deltaSumTimestampMerge(enqueue_delta) AS enqueued,\n  deltaSumTimestampMerge(started_delta) AS started\nFROM concurrency_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
           minBucketSeconds={SYNCED_CHART_MIN_BUCKET_SECONDS}
           ids={ids}
@@ -560,7 +560,7 @@ function OverviewCharts({
           info="How long runs wait before they start."
           showLegend
           className="aspect-[2/1]"
-          query={`SELECT timeBucket() AS t,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[1]) AS p50,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS p95,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[4]) AS p99,\n  sum(wait_ms_count) AS samples\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
+          query={`SELECT timeBucket() AS t,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[1]) AS p50,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS p95,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[4]) AS p99,\n  sum(wait_ms_count) AS samples\nFROM concurrency_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
           minBucketSeconds={SYNCED_CHART_MIN_BUCKET_SECONDS}
           sampleCountColumn="samples"
@@ -583,7 +583,7 @@ function OverviewCharts({
             </>
           }
           className="aspect-[2/1] sm:col-span-2 sm:aspect-[4/1]"
-          query={`SELECT timeBucket() AS t, sum(throttled_count) AS throttled\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
+          query={`SELECT timeBucket() AS t, sum(throttled_count) AS throttled\nFROM concurrency_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
           minBucketSeconds={SYNCED_CHART_MIN_BUCKET_SECONDS}
           ids={ids}
@@ -698,7 +698,7 @@ function ConcurrencyKeyCharts({
           title="Keys with backlog"
           info="Keys with runs waiting at once."
           className="aspect-[2/1]"
-          query={`SELECT timeBucket() AS t, max(max_ck_backlogged) AS keys\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
+          query={`SELECT timeBucket() AS t, max(max_ck_backlogged) AS keys\nFROM concurrency_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
           ids={ids}
           timeRange={timeRange}
@@ -720,7 +720,7 @@ function ConcurrencyKeyCharts({
             ) : null
           }
           className="aspect-[2/1]"
-          query={`SELECT timeBucket() AS t, max(max_ck_wait_ms) AS wait\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
+          query={`SELECT timeBucket() AS t, max(max_ck_wait_ms) AS wait\nFROM concurrency_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
           ids={ids}
           timeRange={timeRange}
@@ -782,7 +782,7 @@ type GroupedKeyChartProps = {
 // search can match keys outside the top 8; then filter by the search and keep the top 8 of those.
 function GroupedKeyChartCard(props: GroupedKeyChartProps) {
   const { rows, showLoading, failed } = useQueueMetric(
-    `SELECT concurrency_key, ${props.rankExpr} AS peak\nFROM queue_metrics_by_key\nGROUP BY concurrency_key\nORDER BY peak DESC\nLIMIT 50`,
+    `SELECT concurrency_key, ${props.rankExpr} AS peak\nFROM concurrency_metrics_by_key\nGROUP BY concurrency_key\nORDER BY peak DESC\nLIMIT 50`,
     { ids: props.ids, timeRange: props.timeRange, queueName: props.queueName }
   );
   const keyFilter = props.keyFilter;
@@ -810,7 +810,7 @@ function GroupedKeySeries({
 }: GroupedKeyChartProps & { keys: string[] }) {
   const inList = keys.map((k) => `'${trqlString(k)}'`).join(", ");
   const { rows, showLoading, failed } = useQueueMetric(
-    `SELECT timeBucket() AS t, concurrency_key, ${seriesExpr} AS v\nFROM queue_metrics_by_key\nWHERE concurrency_key IN (${inList})\nGROUP BY t, concurrency_key\nORDER BY t`,
+    `SELECT timeBucket() AS t, concurrency_key, ${seriesExpr} AS v\nFROM concurrency_metrics_by_key\nWHERE concurrency_key IN (${inList})\nGROUP BY t, concurrency_key\nORDER BY t`,
     { ids, timeRange, queueName, fillGaps }
   );
 
@@ -1074,7 +1074,7 @@ function KeyDrilldown({
             </>
           }
           className="aspect-[2/1]"
-          query={`SELECT timeBucket() AS t, max(max_queued) AS queued, max(max_running) AS running\nFROM queue_metrics_by_key\nWHERE ${pin}\nGROUP BY t\nORDER BY t`}
+          query={`SELECT timeBucket() AS t, max(max_queued) AS queued, max(max_running) AS running\nFROM concurrency_metrics_by_key\nWHERE ${pin}\nGROUP BY t\nORDER BY t`}
           fillGaps
           minBucketSeconds={SYNCED_CHART_MIN_BUCKET_SECONDS}
           ids={ids}
@@ -1089,7 +1089,7 @@ function KeyDrilldown({
         <QueueDetailChartCard
           title={`Key ${keyName}: throughput`}
           className="aspect-[2/1]"
-          query={`SELECT timeBucket() AS t, deltaSumTimestampMerge(started_delta) AS started\nFROM queue_metrics_by_key\nWHERE ${pin}\nGROUP BY t\nORDER BY t`}
+          query={`SELECT timeBucket() AS t, deltaSumTimestampMerge(started_delta) AS started\nFROM concurrency_metrics_by_key\nWHERE ${pin}\nGROUP BY t\nORDER BY t`}
           fillGaps
           minBucketSeconds={SYNCED_CHART_MIN_BUCKET_SECONDS}
           ids={ids}
@@ -1100,7 +1100,7 @@ function KeyDrilldown({
         <QueueDetailChartCard
           title={`Key ${keyName}: mean scheduling delay`}
           className="aspect-[2/1]"
-          query={`SELECT timeBucket() AS t, if(sum(wait_ms_count) > 0, round(sum(wait_ms_sum) / sum(wait_ms_count)), 0) AS wait, sum(wait_ms_count) AS samples\nFROM queue_metrics_by_key\nWHERE ${pin}\nGROUP BY t\nORDER BY t`}
+          query={`SELECT timeBucket() AS t, if(sum(wait_ms_count) > 0, round(sum(wait_ms_sum) / sum(wait_ms_count)), 0) AS wait, sum(wait_ms_count) AS samples\nFROM concurrency_metrics_by_key\nWHERE ${pin}\nGROUP BY t\nORDER BY t`}
           fillGaps
           minBucketSeconds={SYNCED_CHART_MIN_BUCKET_SECONDS}
           sampleCountColumn="samples"
@@ -1145,18 +1145,21 @@ function QueueStats({
   timeRange: TimeRangeParams;
   queueName: string;
 }) {
-  const { rows } = useQueueMetric(`SELECT max(max_queued) AS peak_queued\nFROM queue_metrics`, {
-    ids,
-    timeRange,
-    queueName,
-  });
+  const { rows } = useQueueMetric(
+    `SELECT max(max_queued) AS peak_queued\nFROM concurrency_metrics`,
+    {
+      ids,
+      timeRange,
+      queueName,
+    }
+  );
   const peakQueued = rows[0] ? toNumber(rows[0].peak_queued) : 0;
 
   // Latest gauges from ClickHouse, polled every 15s so the live blocks keep ticking after first
   // paint. Read the newest bucket (largest t); until the first poll lands liveRows is empty and the
   // *Live values stay null, so the blocks show the loader values instead of flashing 0.
   const { rows: liveRows, responseReceivedAt } = useQueueMetric(
-    `SELECT timeBucket() AS t, max(max_running) AS running, max(max_queued) AS queued, max(max_limit) AS q_limit, max(max_ck_wait_ms) AS ck_wait FROM queue_metrics GROUP BY t ORDER BY t`,
+    `SELECT timeBucket() AS t, max(max_running) AS running, max(max_queued) AS queued, max(max_limit) AS q_limit, max(max_ck_wait_ms) AS ck_wait FROM concurrency_metrics GROUP BY t ORDER BY t`,
     {
       ids,
       timeRange: { period: "15m", from: null, to: null },

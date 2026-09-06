@@ -51,7 +51,7 @@ function makeDeps(opts: {
     if (query.includes("dlq_total")) return wrap(opts.queueTotals);
     if (isEnv && query.includes("timeBucket")) return wrap(opts.envSeries);
     if (isEnv) return wrap(opts.envScalar ?? [{}]);
-    if (query.includes("FROM queue_metrics")) return wrap(opts.worst);
+    if (query.includes("FROM concurrency_metrics")) return wrap(opts.worst);
     if (query.includes("task_identifier")) return wrap([]);
     if (query.includes("FROM runs") && query.includes("timeBucket")) return wrap(opts.runsSeries);
     return wrap(opts.runs);
@@ -76,7 +76,7 @@ const RUNS_SCALAR: Rows = [
 ];
 
 describe("loadHealthInput — orchestration (query seam)", () => {
-  it("measured path: queue_metrics source, real pending, parsed dlq, window from timeRange", async () => {
+  it("measured path: concurrency_metrics source, real pending, parsed dlq, window from timeRange", async () => {
     const input = await loadHealthInput(
       fakeEnv,
       "1h",
