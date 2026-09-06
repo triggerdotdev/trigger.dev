@@ -334,7 +334,7 @@ export const TriggerTaskRequestBody = z
               concurrencyKey: z.string().min(1).max(128).optional(),
             })
           )
-          .max(2)
+          .max(3)
           .optional(),
         concurrency: z.string().min(1).max(128).array().max(2).optional(),
         concurrencyKey: ConcurrencyKeySchema.optional(),
@@ -450,7 +450,7 @@ export const BatchTriggerTaskItem = z.object({
             concurrencyKey: z.string().min(1).max(128).optional(),
           })
         )
-        .max(2)
+        .max(3)
         .optional(),
       concurrency: z.string().min(1).max(128).array().max(2).optional(),
       tags: RunTags.optional(),

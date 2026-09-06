@@ -200,10 +200,12 @@ export const QueueGateManifest = z.object({
 export type QueueGateManifest = z.infer<typeof QueueGateManifest>;
 
 /** One limit shape everywhere a limit appears: perKey caps each concurrencyKey pool
- * (runs without a key share one pool); total caps across everything, keys or not. */
+ * (runs without a key share one pool); total caps across everything, keys or not.
+ * Limits start at 1 — "block everything" is a pause or an override, not a declared
+ * limit — so a stored zero always means "no limit" in metrics and engine keys. */
 export const ConcurrencyShapeManifest = z.object({
-  perKey: z.number().int().min(0).max(100000).optional(),
-  total: z.number().int().min(0).max(100000).optional(),
+  perKey: z.number().int().min(1).max(100000).optional(),
+  total: z.number().int().min(1).max(100000).optional(),
 });
 
 export type ConcurrencyShapeManifest = z.infer<typeof ConcurrencyShapeManifest>;
