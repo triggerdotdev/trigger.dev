@@ -222,7 +222,10 @@ function triggerConcurrencyBody(concurrency: string | string[] | undefined): {
     return {};
   }
   const limits = Array.isArray(concurrency) ? concurrency : [concurrency];
-  return { concurrency: limits.slice(0, 2) };
+  if (limits.length > 2) {
+    throw new Error("The concurrency option accepts at most two named limits.");
+  }
+  return { concurrency: limits };
 }
 
 export function queue(options: QueueOptions): Queue {
