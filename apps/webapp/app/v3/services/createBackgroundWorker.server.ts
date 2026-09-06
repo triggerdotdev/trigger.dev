@@ -16,7 +16,13 @@ import {
   stringifyDuration,
 } from "@trigger.dev/core/v3/isomorphic";
 import { randomBytes } from "node:crypto";
-import type { BackgroundWorker, TaskQueue, TaskQueueType } from "@trigger.dev/database";
+import type {
+  BackgroundWorker,
+  TaskQueue,
+  TaskQueueConcurrencyVersion,
+  TaskQueueRole,
+  TaskQueueType,
+} from "@trigger.dev/database";
 import cronstrue from "cronstrue";
 import type { PrismaClientOrTransaction, WebhookDatabase } from "~/db.server";
 import { $transaction, Prisma, boundedIn, webhookPrisma } from "~/db.server";
@@ -337,6 +343,7 @@ export async function createWorkerResources(
 
   // Create the queues
   const queues = await createWorkerQueues(metadata, worker, environment, prisma);
+  await createWorkerConcurrencyLimits(metadata, worker, environment, prisma);
 
   // Create the tasks
   const taskEntries = await createWorkerTasks(
@@ -391,10 +398,55 @@ async function createWorkerTask(
 ): Promise<TaskMetadataEntry | null> {
   // Hoisted so the P2002 catch branch can return the same entry shape.
   let queue: TaskQueue | undefined;
+  let compiledGates: Array<{ queue: string; concurrencyKey?: string }> = [];
   let resolvedTriggerSource: "SCHEDULED" | "AGENT" | "WEBHOOK" | "STANDARD" | undefined;
   let resolvedTtl: string | null | undefined;
 
   try {
+    const concurrency = task.concurrency;
+
+    if (concurrency && typeof task.queue?.concurrencyLimit === "number") {
+      throw new ServiceValidationError(
+        `Task "${task.id}" declares both a queue concurrencyLimit and the concurrency option; use concurrency.`
+      );
+    }
+
+    compiledGates = (concurrency?.limits ?? []).map((name) => ({
+      queue: concurrencyLimitQueueName(name),
+    }));
+
+    let queueConcurrencyLimit = task.queue?.concurrencyLimit;
+    let queueTotalConcurrencyLimit = task.queue?.combinedConcurrencyLimit;
+
+    if (concurrency?.inline) {
+      if (!task.queue?.name) {
+        queueConcurrencyLimit = concurrency.inline.perKey ?? concurrency.inline.total;
+        queueTotalConcurrencyLimit = concurrency.inline.total;
+      } else {
+        if (compiledGates.length > 1) {
+          throw new ServiceValidationError(
+            `Task "${task.id}": an inline limit on a shared queue uses a gate slot, so at most one named limit can be combined with it.`
+          );
+        }
+        const anonymousName = `task/${task.id}`;
+        await createWorkerQueue(
+          {
+            name: concurrencyLimitQueueName(anonymousName),
+            concurrencyLimit: concurrency.inline.perKey ?? concurrency.inline.total ?? null,
+            combinedConcurrencyLimit: concurrency.inline.total ?? null,
+          },
+          anonymousName,
+          "NAMED",
+          worker,
+          environment,
+          prisma,
+          "LIMIT",
+          "V2"
+        );
+        compiledGates = [{ queue: concurrencyLimitQueueName(anonymousName) }, ...compiledGates];
+      }
+    }
+
     queue = queues.find((queue) => queue.name === task.queue?.name);
 
     if (!queue) {
@@ -402,14 +454,16 @@ async function createWorkerTask(
       queue = await createWorkerQueue(
         {
           name: task.queue?.name ?? `task/${task.id}`,
-          concurrencyLimit: task.queue?.concurrencyLimit,
-          combinedConcurrencyLimit: task.queue?.combinedConcurrencyLimit,
+          concurrencyLimit: queueConcurrencyLimit,
+          combinedConcurrencyLimit: queueTotalConcurrencyLimit,
         },
         task.queue?.name ?? task.id,
         task.queue?.name ? "NAMED" : "VIRTUAL",
         worker,
         environment,
-        prisma
+        prisma,
+        "QUEUE",
+        concurrency ? "V2" : "V1"
       );
     }
 
@@ -437,7 +491,7 @@ async function createWorkerTask(
         exportName: task.exportName,
         retryConfig: task.retry,
         queueConfig: task.queue,
-        gates: task.gates,
+        gates: compiledGates.length > 0 ? compiledGates : task.gates,
         machineConfig: task.machine,
         triggerSource: resolvedTriggerSource,
         config: task.agentConfig ? (task.agentConfig as any) : undefined,
@@ -455,7 +509,7 @@ async function createWorkerTask(
       triggerSource: resolvedTriggerSource,
       queueId: queue.id,
       queueName: queue.name,
-      gates: task.gates ?? null,
+      gates: compiledGates.length > 0 ? compiledGates : (task.gates ?? null),
     };
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
@@ -479,7 +533,7 @@ async function createWorkerTask(
             triggerSource: resolvedTriggerSource,
             queueId: queue.id,
             queueName: queue.name,
-            gates: task.gates ?? null,
+            gates: compiledGates.length > 0 ? compiledGates : (task.gates ?? null),
           };
         }
       } else {
@@ -540,13 +594,63 @@ async function createWorkerQueues(
   return allQueues;
 }
 
+/** Queue rows that back named concurrency limits live under this reserved prefix so
+ * they can never collide with a user's queue names. */
+export const CONCURRENCY_LIMIT_QUEUE_PREFIX = "limit/";
+
+export function concurrencyLimitQueueName(limitName: string): string {
+  return `${CONCURRENCY_LIMIT_QUEUE_PREFIX}${sanitizeQueueName(limitName)}`;
+}
+
+/**
+ * Materializes the worker's declared named concurrency limits (plus any names tasks
+ * reference without declaring, created uncapped) as LIMIT-role TaskQueue rows. A
+ * total-only limit stores the total as its per-key limit too, so it truly caps
+ * keyless runs as well as the keyed group.
+ */
+async function createWorkerConcurrencyLimits(
+  metadata: BackgroundWorkerMetadata,
+  worker: BackgroundWorker,
+  environment: AuthenticatedEnvironment,
+  prisma: PrismaClientOrTransaction
+) {
+  const declared = new Map((metadata.concurrencyLimits ?? []).map((l) => [l.name, l]));
+
+  for (const task of metadata.tasks) {
+    for (const name of task.concurrency?.limits ?? []) {
+      if (!declared.has(name)) {
+        declared.set(name, { name });
+      }
+    }
+  }
+
+  for (const limit of declared.values()) {
+    await createWorkerQueue(
+      {
+        name: concurrencyLimitQueueName(limit.name),
+        concurrencyLimit: limit.perKey ?? limit.total ?? null,
+        combinedConcurrencyLimit: limit.total ?? null,
+      },
+      limit.name,
+      "NAMED",
+      worker,
+      environment,
+      prisma,
+      "LIMIT",
+      "V2"
+    );
+  }
+}
+
 async function createWorkerQueue(
   queue: QueueManifest,
   orderableName: string,
   queueType: TaskQueueType,
   worker: BackgroundWorker,
   environment: AuthenticatedEnvironment,
-  prisma: PrismaClientOrTransaction
+  prisma: PrismaClientOrTransaction,
+  role: TaskQueueRole = "QUEUE",
+  concurrencyVersion: TaskQueueConcurrencyVersion = "V1"
 ) {
   let queueName = sanitizeQueueName(queue.name);
 
@@ -562,7 +666,10 @@ async function createWorkerQueue(
     orderableName,
     queueType,
     worker,
-    prisma
+    prisma,
+    0,
+    role,
+    concurrencyVersion
   );
 
   const newConcurrencyLimit = taskQueue.concurrencyLimit;
@@ -625,7 +732,9 @@ async function upsertWorkerQueueRecord(
   queueType: TaskQueueType,
   worker: BackgroundWorker,
   prisma: PrismaClientOrTransaction,
-  attempt: number = 0
+  attempt: number = 0,
+  role: TaskQueueRole = "QUEUE",
+  concurrencyVersion: TaskQueueConcurrencyVersion = "V1"
 ): Promise<TaskQueue> {
   if (attempt > 3) {
     throw new Error("Failed to insert queue record");
@@ -644,6 +753,8 @@ async function upsertWorkerQueueRecord(
         data: {
           friendlyId: generateFriendlyId("queue"),
           version: "V2",
+          role,
+          concurrencyVersion,
           name: queueName,
           orderableName,
           concurrencyLimit,
@@ -669,6 +780,7 @@ async function upsertWorkerQueueRecord(
         data: {
           workers: { connect: { id: worker.id } },
           version: "V2",
+          concurrencyVersion,
           orderableName,
           // If overridden, keep current limit and update base; otherwise update limit normally
           concurrencyLimit: hasOverride ? undefined : concurrencyLimit,
@@ -691,7 +803,9 @@ async function upsertWorkerQueueRecord(
         queueType,
         worker,
         prisma,
-        attempt + 1
+        attempt + 1,
+        role,
+        concurrencyVersion
       );
     }
     throw error;

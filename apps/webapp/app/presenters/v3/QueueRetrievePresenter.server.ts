@@ -31,6 +31,7 @@ export async function getQueue(
         where: {
           friendlyId: queue,
           runtimeEnvironmentId: environment.id,
+          role: "QUEUE",
         },
       })
     );
@@ -44,6 +45,7 @@ export async function getQueue(
       where: {
         name: queueName,
         runtimeEnvironmentId: environment.id,
+        role: "QUEUE",
       },
     })
   );

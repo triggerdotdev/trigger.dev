@@ -220,7 +220,15 @@ export class DefaultQueueManager implements QueueManager {
       queueName = sanitizedQueueName;
     }
 
-    const requestedGates = request.body.options?.gates ?? taskGates ?? undefined;
+    const triggerLimits = request.body.options?.concurrency;
+    const concurrencyGates = triggerLimits?.map(
+      (name): { queue: string; concurrencyKey?: string } => ({
+        queue: `limit/${sanitizeQueueName(name)}`,
+      })
+    );
+
+    const requestedGates =
+      concurrencyGates ?? request.body.options?.gates ?? taskGates ?? undefined;
     const gates = requestedGates
       ?.flatMap((gate) => {
         const sanitized = sanitizeQueueName(gate.queue);
