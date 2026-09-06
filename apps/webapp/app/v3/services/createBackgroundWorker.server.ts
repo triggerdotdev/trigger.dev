@@ -628,6 +628,10 @@ export function validateWorkerConcurrencyDeclarations(metadata: BackgroundWorker
       assertNotReservedQueueName(task.queue.name, `Task "${task.id}"`);
     }
 
+    for (const gate of task.gates ?? []) {
+      assertNotReservedQueueName(gate.queue, `Task "${task.id}" gate "${gate.queue}"`);
+    }
+
     const concurrency = task.concurrency;
     if (!concurrency) {
       continue;
@@ -803,13 +807,20 @@ async function createWorkerQueue(
         await removeQueueConcurrencyLimits(environment, row.name);
       }
     } else {
-      logger.debug("createWorkerQueue: queue is paused, not updating concurrency limit", {
+      /**
+       * A paused queue's engine limit is 0 (what pause wrote). Re-asserting it here
+       * heals the race where a pause lands between this deploy's row read and its
+       * engine sync, which would otherwise overwrite the 0 with the declared limit
+       * and leave a queue the dashboard shows as paused still dequeuing.
+       */
+      logger.debug("createWorkerQueue: queue is paused, re-asserting the paused limit", {
         workerId: worker.id,
         taskQueue: row,
         orgId: environment.organizationId,
         projectId: environment.projectId,
         environmentId: environment.id,
       });
+      await updateQueueConcurrencyLimits(environment, row.name, 0);
     }
   };
 
@@ -827,6 +838,7 @@ async function createWorkerQueue(
   let syncedMarkers = {
     concurrency: taskQueue.concurrencyLimitOverriddenAt?.getTime(),
     total: taskQueue.totalConcurrencyLimitOverriddenAt?.getTime(),
+    paused: taskQueue.paused,
   };
 
   for (let i = 0; i < 3; i++) {
@@ -845,7 +857,8 @@ async function createWorkerQueue(
     if (
       !freshQueue ||
       (freshQueue.concurrencyLimitOverriddenAt?.getTime() === syncedMarkers.concurrency &&
-        freshQueue.totalConcurrencyLimitOverriddenAt?.getTime() === syncedMarkers.total)
+        freshQueue.totalConcurrencyLimitOverriddenAt?.getTime() === syncedMarkers.total &&
+        freshQueue.paused === syncedMarkers.paused)
     ) {
       break;
     }
@@ -854,6 +867,7 @@ async function createWorkerQueue(
     syncedMarkers = {
       concurrency: freshQueue.concurrencyLimitOverriddenAt?.getTime(),
       total: freshQueue.totalConcurrencyLimitOverriddenAt?.getTime(),
+      paused: freshQueue.paused,
     };
   }
 

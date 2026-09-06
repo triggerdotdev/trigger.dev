@@ -274,9 +274,15 @@ export class DefaultQueueManager implements QueueManager {
       return [{ queue: sanitized, concurrencyKey: gate.concurrencyKey }];
     });
 
-    if (gates && gates.length > 3) {
+    /**
+     * Unreachable through the public schemas (three requested gates plus one inline
+     * gate is the ceiling), kept as a backstop so an overflowing set can never be
+     * silently truncated downstream. Replays of three-gate runs against a task that
+     * later gained an inline limit resolve to four and stay valid.
+     */
+    if (gates && gates.length > 4) {
       throw new ServiceValidationError(
-        `A run can hold at most three gates (the task's inline limit plus two named limits); this request resolves to ${gates.length}.`
+        `A run can hold at most four gates; this request resolves to ${gates.length}.`
       );
     }
 
