@@ -1,4 +1,3 @@
-import type { TaskConcurrency } from "./queues.js";
 import type { SerializableJson } from "../../schemas/json.js";
 import type { TriggerApiRequestOptions } from "../apiClient/index.js";
 import type {
@@ -27,7 +26,7 @@ import type {
   TaskRunContext,
 } from "../schemas/index.js";
 import type { IdempotencyKey } from "./idempotencyKeys.js";
-import type { QueueOptions } from "./queues.js";
+import type { QueueOptions, TaskConcurrency } from "./queues.js";
 import type { AnySchemaParseFn, inferSchemaIn, inferSchemaOut, Schema } from "./schemas.js";
 import type { inferToolParameters, ToolTaskParameters } from "./tools.js";
 import type { Prettify } from "./utils.js";

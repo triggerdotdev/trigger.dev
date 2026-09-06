@@ -73,27 +73,19 @@ export function useTaskTrigger<TTask extends AnyTask>(
 
     const payloadPacket = await stringifyIO(payload);
 
-    /**
-     * The queue option is a name or a [name, ...gates] tuple; the request body carries
-     * the home queue and the gate list separately.
-     */
-    const queueOption = options?.queue;
-    const queueName = typeof queueOption === "string" ? queueOption : queueOption?.[0];
-    const gates = Array.isArray(queueOption)
-      ? queueOption
-          .slice(1)
-          .map((gate) =>
-            typeof gate === "string"
-              ? { queue: gate }
-              : { queue: gate.name, concurrencyKey: gate.concurrencyKey }
-          )
+    const queueName = options?.queue;
+    const concurrency = options?.concurrency
+      ? (Array.isArray(options.concurrency) ? options.concurrency : [options.concurrency]).slice(
+          0,
+          2
+        )
       : undefined;
 
     const handle = await apiClient.triggerTask(id, {
       payload: payloadPacket.data,
       options: {
         queue: queueName ? { name: queueName } : undefined,
-        gates,
+        concurrency,
         concurrencyKey: options?.concurrencyKey,
         payloadType: payloadPacket.dataType,
         idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),

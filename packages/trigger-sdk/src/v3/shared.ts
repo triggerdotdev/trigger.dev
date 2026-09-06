@@ -90,9 +90,9 @@ import {
   type TriggerAndWaitOptions,
   type TriggerApiRequestOptions,
   type TriggerOptions,
-  TaskConcurrency,
-  ConcurrencyLimitOptions,
-  ConcurrencyLimit,
+  type TaskConcurrency,
+  type ConcurrencyLimitOptions,
+  type ConcurrencyLimit,
 } from "@trigger.dev/core/v3";
 import { tracer } from "./tracer.js";
 
