@@ -2,18 +2,20 @@ import { describe, expect, it } from "vitest";
 import { parseGates } from "./gateParsing.js";
 
 describe("parseGates", () => {
-  it("keeps well-shaped gates and caps at three", () => {
+  it("keeps well-shaped gates and caps at four", () => {
     expect(
       parseGates([
         { queue: "a" },
         { queue: "b", concurrencyKey: "shared" },
         { queue: "c" },
         { queue: "d" },
+        { queue: "e" },
       ])
     ).toEqual([
       { queue: "a", concurrencyKey: undefined },
       { queue: "b", concurrencyKey: "shared" },
       { queue: "c", concurrencyKey: undefined },
+      { queue: "d", concurrencyKey: undefined },
     ]);
   });
 

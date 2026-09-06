@@ -4,8 +4,8 @@
  * value can never fail a trigger or an enqueue. A gate needs a queue name within
  * the manifest bounds (1-128 chars); a literal concurrency key must fit the same
  * bounds, and an empty-string key means "omitted" so the gate inherits the run's
- * key. At most three gates apply: a task's anonymous inline-limit gate plus two
- * named limits.
+ * key. At most four gates apply: three requested gates plus the task's anonymous
+ * inline-limit gate.
  */
 export type ParsedGate = { queue: string; concurrencyKey?: string };
 
@@ -30,5 +30,5 @@ export function parseGates(gates: unknown): ParsedGate[] {
     return [{ queue, concurrencyKey }];
   });
 
-  return parsed.slice(0, 3);
+  return parsed.slice(0, 4);
 }

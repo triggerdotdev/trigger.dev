@@ -332,7 +332,8 @@ export type TriggerParams = {
   sdkVersion?: string;
   cliVersion?: string;
   concurrencyKey?: string;
-  /** Other queues this run must also hold a concurrency slot in while executing. At most two. */
+  /** Other queues this run must also hold a concurrency slot in while executing. At
+   * most four: three requested gates plus the task's anonymous inline-limit gate. */
   gates?: QueueGate[];
   workerQueue?: string;
   region?: string;

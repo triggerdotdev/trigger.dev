@@ -142,9 +142,15 @@ export class ReplayTaskRunService extends BaseService {
               : undefined,
             concurrencyKey:
               overrideOptions.concurrencyKey ?? existingTaskRun.concurrencyKey ?? undefined,
+            /**
+             * A run that held gates replays with those same gates. A run with none
+             * stored passes undefined (never a fabricated empty array, which reads
+             * as "clear the named limits") so the replay honors whatever limits the
+             * task declares now, like it honors the current queue and retry config.
+             */
             gates: Array.isArray(existingTaskRun.gates)
               ? (existingTaskRun.gates as Array<{ queue: string; concurrencyKey?: string }>)
-              : [],
+              : undefined,
             maxAttempts: overrideOptions.maxAttempts,
             maxDuration: overrideOptions.maxDurationSeconds,
             machine:
