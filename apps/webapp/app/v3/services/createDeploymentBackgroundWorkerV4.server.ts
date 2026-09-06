@@ -15,6 +15,7 @@ import {
   createWorkerResources,
   syncDeclarativeSchedules,
   syncDeclarativeWebhooks,
+  validateWorkerConcurrencyDeclarations,
 } from "./createBackgroundWorker.server";
 import { findOrCreateBackgroundWorker } from "./createDeploymentBackgroundWorkerV4/findOrCreateBackgroundWorker.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
@@ -65,6 +66,23 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
           projectId: environment.projectId,
         });
         return;
+      }
+
+      /**
+       * Reject invalid concurrency declarations before any worker rows exist. Queue
+       * rows and their engine limit keys are per-environment, so a mid-creation
+       * failure would leave the running version's limits already mutated.
+       */
+      try {
+        validateWorkerConcurrencyDeclarations(body.metadata);
+      } catch (concurrencyError) {
+        if (concurrencyError instanceof ServiceValidationError) {
+          logger.warn("Invalid worker concurrency declarations", {
+            error: concurrencyError.message,
+          });
+          await this.#failBackgroundWorkerDeployment(deployment, concurrencyError, environment);
+        }
+        throw concurrencyError;
       }
 
       // Handle multi-platform builds

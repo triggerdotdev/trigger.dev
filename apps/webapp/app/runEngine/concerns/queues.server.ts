@@ -248,12 +248,31 @@ export class DefaultQueueManager implements QueueManager {
         ]
       : undefined;
 
+    /**
+     * The raw gates option replaces stored gates the same way concurrency does, so
+     * it also carries the inline gate over; a replay resending the stored gates
+     * collapses back to the original set through the dedupe below.
+     */
+    const rawGates = request.body.options?.gates;
     const requestedGates =
-      concurrencyGates ?? request.body.options?.gates ?? taskGates ?? undefined;
+      concurrencyGates ??
+      (rawGates ? [...inlineTaskGates, ...rawGates] : undefined) ??
+      taskGates ??
+      undefined;
+
+    const seenGates = new Set<string>();
     const gates = requestedGates
       ?.flatMap((gate) => {
         const sanitized = sanitizeQueueName(gate.queue);
-        return sanitized ? [{ queue: sanitized, concurrencyKey: gate.concurrencyKey }] : [];
+        if (!sanitized) {
+          return [];
+        }
+        const dedupeKey = `${sanitized} ${gate.concurrencyKey ?? ""}`;
+        if (seenGates.has(dedupeKey)) {
+          return [];
+        }
+        seenGates.add(dedupeKey);
+        return [{ queue: sanitized, concurrencyKey: gate.concurrencyKey }];
       })
       .slice(0, 3);
 

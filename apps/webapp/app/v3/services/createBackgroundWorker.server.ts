@@ -614,7 +614,7 @@ async function createWorkerQueues(
  * Rejects invalid concurrency declarations before any worker rows are written, so a
  * failed deploy leaves nothing behind for a same-content retry to return.
  */
-function validateWorkerConcurrencyDeclarations(metadata: BackgroundWorkerMetadata): void {
+export function validateWorkerConcurrencyDeclarations(metadata: BackgroundWorkerMetadata): void {
   for (const queue of metadata.queues ?? []) {
     assertNotReservedQueueName(queue.name, `Queue "${queue.name}"`);
   }
