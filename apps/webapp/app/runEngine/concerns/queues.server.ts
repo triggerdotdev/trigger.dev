@@ -221,11 +221,32 @@ export class DefaultQueueManager implements QueueManager {
     }
 
     const triggerLimits = request.body.options?.concurrency;
-    const concurrencyGates = triggerLimits?.map(
-      (name): { queue: string; concurrencyKey?: string } => ({
-        queue: `limit/${sanitizeQueueName(name)}`,
-      })
+
+    for (const name of triggerLimits ?? []) {
+      if (!/^[a-zA-Z0-9_-]{1,122}$/.test(name)) {
+        throw new ServiceValidationError(
+          `Invalid concurrency limit name "${name}": names are 1-122 characters using only letters, numbers, underscores and hyphens.`
+        );
+      }
+    }
+
+    /**
+     * Trigger-time names replace the task's declared NAMED limits only. The task's
+     * inline limit rides in its stored gates as an anonymous "limit/task/" gate and
+     * always applies, so it is carried over into the replacement (an empty array
+     * clears the named limits but keeps the inline one).
+     */
+    const inlineTaskGates = (taskGates ?? []).filter((gate) =>
+      gate.queue.startsWith("limit/task/")
     );
+    const concurrencyGates = triggerLimits
+      ? [
+          ...inlineTaskGates,
+          ...triggerLimits.map((name): { queue: string; concurrencyKey?: string } => ({
+            queue: `limit/${name}`,
+          })),
+        ]
+      : undefined;
 
     const requestedGates =
       concurrencyGates ?? request.body.options?.gates ?? taskGates ?? undefined;
@@ -234,7 +255,7 @@ export class DefaultQueueManager implements QueueManager {
         const sanitized = sanitizeQueueName(gate.queue);
         return sanitized ? [{ queue: sanitized, concurrencyKey: gate.concurrencyKey }] : [];
       })
-      .slice(0, 2);
+      .slice(0, 3);
 
     return {
       queueName,
