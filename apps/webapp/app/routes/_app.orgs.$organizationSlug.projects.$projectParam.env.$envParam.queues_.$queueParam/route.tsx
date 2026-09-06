@@ -488,7 +488,7 @@ function OverviewCharts({
         />
         {hasTotalLimit ? (
           <QueueDetailChartCard
-            title="Combined concurrency"
+            title="Total concurrency"
             info={
               <>
                 Runs in flight across ALL concurrency keys (
@@ -506,7 +506,7 @@ function OverviewCharts({
             timeRange={timeRange}
             queueName={queueName}
             series={[
-              { key: "cap", label: "Combined limit", color: COLORS.limit },
+              { key: "cap", label: "Total limit", color: COLORS.limit },
               { key: "running", label: "Running", color: COLORS.running },
             ]}
             thresholdStroke={{
