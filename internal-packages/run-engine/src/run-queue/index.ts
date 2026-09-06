@@ -67,8 +67,10 @@ const SemanticAttributes = {
  * __gatesHaveCapacity / __gatesAcquire run on admit paths behind the gatesEnabled
  * flag. __gatesRelease runs on every release path UNCONDITIONALLY and is payload-
  * driven (a cheap substring probe before decoding), so slots acquired while the flag
- * was on always drain, and gateless messages pay near zero. __gateReconcile is the
- * same bounded self-heal as the total-cap gate. Group and gate sets are strict
+ * was on always drain, and gateless messages pay near zero. Every holder joins the
+ * gate's groupConcurrency set — keyed or keyless — so a totalConcurrency limit caps
+ * across everything, matching the SDK's documented "total" semantics. __gateReconcile
+ * is the same bounded self-heal as the total-cap gate. Group and gate sets are strict
  * mirrors of the member's home-queue currentConcurrency set (admits populate both
  * in one script), so a member whose message key is gone, or who is absent from its
  * home currentConcurrency set, holds no legitimate slot and is pruned. The home-set
@@ -124,15 +126,13 @@ local function __gatesHaveCapacity(gatesKeyPrefix, msg, messageId, envLimit, msg
       __gateReconcile(variant .. ':currentConcurrency', msgKeyPrefix, gatesKeyPrefix)
       return false
     end
-    if gateKey and gateKey ~= '' then
-      local rawTotal = redis.call('GET', base .. ':totalConcurrency')
-      if rawTotal then
-        local totalLimit = math.min(tonumber(rawTotal), envLimit)
-        local groupKey = base .. ':groupConcurrency'
-        if tonumber(redis.call('SCARD', groupKey) or '0') >= totalLimit and redis.call('SISMEMBER', groupKey, messageId) == 0 then
-          __gateReconcile(groupKey, msgKeyPrefix, gatesKeyPrefix)
-          return false
-        end
+    local rawTotal = redis.call('GET', base .. ':totalConcurrency')
+    if rawTotal then
+      local totalLimit = math.min(tonumber(rawTotal), envLimit)
+      local groupKey = base .. ':groupConcurrency'
+      if tonumber(redis.call('SCARD', groupKey) or '0') >= totalLimit and redis.call('SISMEMBER', groupKey, messageId) == 0 then
+        __gateReconcile(groupKey, msgKeyPrefix, gatesKeyPrefix)
+        return false
       end
     end
   end
@@ -142,11 +142,9 @@ end
 local function __gatesAcquire(gatesKeyPrefix, msg, messageId)
   if not msg.gates then return end
   for _, gate in ipairs(msg.gates) do
-    local base, variant, gateKey = __gateKeys(gatesKeyPrefix, msg, gate)
+    local base, variant = __gateKeys(gatesKeyPrefix, msg, gate)
     redis.call('SADD', variant .. ':currentConcurrency', messageId)
-    if gateKey and gateKey ~= '' then
-      redis.call('SADD', base .. ':groupConcurrency', messageId)
-    end
+    redis.call('SADD', base .. ':groupConcurrency', messageId)
   end
 end
 
@@ -156,9 +154,9 @@ local function __gatesRelease(gatesKeyPrefix, rawPayload, messageId)
   local ok, msg = pcall(cjson.decode, rawPayload)
   if not ok or type(msg) ~= 'table' or not msg.gates then return end
   for _, gate in ipairs(msg.gates) do
-    local base, variant, gateKey = __gateKeys(gatesKeyPrefix, msg, gate)
+    local base, variant = __gateKeys(gatesKeyPrefix, msg, gate)
     local removed = redis.call('SREM', variant .. ':currentConcurrency', messageId)
-    if removed == 1 and gateKey and gateKey ~= '' then
+    if removed == 1 then
       redis.call('SREM', base .. ':groupConcurrency', messageId)
     end
   end

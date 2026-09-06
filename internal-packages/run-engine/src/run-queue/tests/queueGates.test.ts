@@ -180,6 +180,57 @@ describe("RunQueue gates", () => {
     }
   );
 
+  redisTest(
+    "a gate's total limit caps keyed and keyless holders together",
+    async ({ redisContainer }) => {
+      const queue = createQueue(redisContainer, true);
+      try {
+        await queue.updateQueueConcurrencyLimits(authenticatedEnvDev, "task/my-task", 5);
+        await queue.updateQueueTotalConcurrencyLimits(authenticatedEnvDev, "db-limit", 1);
+
+        const now = Date.now();
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: makeMessage({
+            runId: "r0",
+            timestamp: now - 1000,
+            gates: [{ queue: "db-limit" }],
+          }),
+          workerQueue: "main",
+        });
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: makeMessage({
+            runId: "r1",
+            timestamp: now - 999,
+            gates: [{ queue: "db-limit", concurrencyKey: "acme" }],
+          }),
+          workerQueue: "main",
+        });
+
+        const oneAdmitted = await waitFor(
+          async () => (await queue.totalConcurrencyOfQueue(authenticatedEnvDev, "db-limit")) === 1
+        );
+        expect(oneAdmitted).toBe(true);
+
+        /** The keyed run must stay queued: the keyless holder occupies the total pool. */
+        await setTimeout(2000);
+        expect(await queue.totalConcurrencyOfQueue(authenticatedEnvDev, "db-limit")).toBe(1);
+        expect(await queue.lengthOfQueue(authenticatedEnvDev, "task/my-task")).toBe(1);
+
+        expect(await popWorkerQueue(queue, "r0")).toBe(true);
+        await queue.acknowledgeMessage(authenticatedEnvDev.organization.id, "r0");
+
+        /** Acking the keyless holder frees the total pool; the keyed run is admitted. */
+        const r1Admitted = await waitFor(() => popWorkerQueue(queue, "r1"));
+        expect(r1Admitted).toBe(true);
+        expect(await queue.totalConcurrencyOfQueue(authenticatedEnvDev, "db-limit")).toBe(1);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
   redisTest("ignores gates and holds no gate slots when disabled", async ({ redisContainer }) => {
     const queue = createQueue(redisContainer, false);
     try {
