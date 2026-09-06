@@ -405,6 +405,10 @@ async function createWorkerTask(
   try {
     const concurrency = task.concurrency;
 
+    if (task.queue?.name) {
+      assertNotReservedQueueName(task.queue.name, `Task "${task.id}"`);
+    }
+
     if (concurrency && typeof task.queue?.concurrencyLimit === "number") {
       throw new ServiceValidationError(
         `Task "${task.id}" declares both a queue concurrencyLimit and the concurrency option; use concurrency.`
@@ -512,6 +516,9 @@ async function createWorkerTask(
       gates: compiledGates.length > 0 ? compiledGates : (task.gates ?? null),
     };
   } catch (error) {
+    if (error instanceof ServiceValidationError) {
+      throw error;
+    }
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       // The error code for unique constraint violation in Prisma is P2002
       if (error.code === "P2002") {
@@ -585,6 +592,7 @@ async function createWorkerQueues(
     const chunk = metadata.queues.slice(i, i + CHUNK_SIZE);
     const queueChunk = await Promise.all(
       chunk.map(async (queue) => {
+        assertNotReservedQueueName(queue.name, `Queue "${queue.name}"`);
         return createWorkerQueue(queue, queue.name, "NAMED", worker, environment, prisma);
       })
     );
@@ -599,7 +607,23 @@ async function createWorkerQueues(
 export const CONCURRENCY_LIMIT_QUEUE_PREFIX = "limit/";
 
 export function concurrencyLimitQueueName(limitName: string): string {
-  return `${CONCURRENCY_LIMIT_QUEUE_PREFIX}${sanitizeQueueName(limitName)}`;
+  const sanitized = sanitizeQueueName(limitName);
+  const name = `${CONCURRENCY_LIMIT_QUEUE_PREFIX}${sanitized}`;
+  if (sanitized.length === 0 || name.length > 128) {
+    throw new ServiceValidationError(
+      `Concurrency limit name "${limitName}" must sanitize to between 1 and ${128 - CONCURRENCY_LIMIT_QUEUE_PREFIX.length} characters.`
+    );
+  }
+  return name;
+}
+
+/** User queue names may not claim the reserved limit/ namespace. */
+function assertNotReservedQueueName(name: string, context: string): void {
+  if (sanitizeQueueName(name).startsWith(CONCURRENCY_LIMIT_QUEUE_PREFIX)) {
+    throw new ServiceValidationError(
+      `${context}: queue names starting with "${CONCURRENCY_LIMIT_QUEUE_PREFIX}" are reserved for concurrency limits.`
+    );
+  }
 }
 
 /**
