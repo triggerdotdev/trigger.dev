@@ -75,7 +75,6 @@ import {
   type SchemaParseFn,
   type Task,
   type TaskIdentifier,
-  type QueueGateRef,
   type TaskOptions,
   type TaskOptionsWithSchema,
   type TaskOutput,
@@ -91,6 +90,9 @@ import {
   type TriggerAndWaitOptions,
   type TriggerApiRequestOptions,
   type TriggerOptions,
+  TaskConcurrency,
+  ConcurrencyLimitOptions,
+  ConcurrencyLimit,
 } from "@trigger.dev/core/v3";
 import { tracer } from "./tracer.js";
 
@@ -136,86 +138,91 @@ function resolveTriggerExternalDeploymentId(explicit?: string): string | undefin
 }
 
 type NormalizedTaskQueue = {
-  queue?: { name?: string; concurrencyLimit?: number; combinedConcurrencyLimit?: number };
-  gates?: Array<{ queue: string; concurrencyKey?: string }>;
+  queue?: { name?: string; concurrencyLimit?: number };
 };
 
-/**
- * A task's `queue` option accepts a single queue or an array of `[queue, ...gates]`.
- * Normalizes both forms into the queue the run waits in plus the gate list that is
- * registered on the task and carried on every trigger.
- */
+/** A task's `queue` is a queue object or a string reference to a queue defined elsewhere. */
 function normalizeTaskQueue(queue: TaskOptions<string>["queue"]): NormalizedTaskQueue {
   if (!queue) {
     return {};
   }
 
-  if (!Array.isArray(queue)) {
-    return { queue };
-  }
-
-  const [home, ...gates] = queue;
-
-  return {
-    queue: typeof home === "string" ? { name: home } : home,
-    gates: gates.map((gate) =>
-      typeof gate === "string"
-        ? { queue: gate }
-        : { queue: gate.name, concurrencyKey: gate.concurrencyKey }
-    ),
-  };
+  return { queue: typeof queue === "string" ? { name: queue } : queue };
 }
 
-type NormalizedTriggerQueue = {
-  queueName?: string;
-  gates?: Array<{ queue: string; concurrencyKey?: string }>;
+type NormalizedTaskConcurrency = {
+  inline?: { perKey?: number; total?: number };
+  limits?: string[];
 };
 
 /**
- * Trigger options accept `queue` as a name or as `[name, ...gates]`; an array's gates
- * replace any task-level gates for that run.
+ * Validates and normalizes the task `concurrency` option into its manifest shape:
+ * at most one inline limit (caps this task) plus up to two named limits (shared).
  */
-function normalizeTriggerQueue(
-  queue: string | [string, ...QueueGateRef[]] | undefined
-): NormalizedTriggerQueue {
-  if (!queue) {
-    return {};
+function normalizeTaskConcurrency(
+  taskId: string,
+  concurrency: TaskConcurrency | undefined
+): NormalizedTaskConcurrency | undefined {
+  if (!concurrency) {
+    return undefined;
   }
 
-  if (typeof queue === "string") {
-    return { queueName: queue };
+  const items = Array.isArray(concurrency) ? concurrency : [concurrency];
+  const inline: Array<{ perKey?: number; total?: number }> = [];
+  const limits: string[] = [];
+
+  for (const item of items) {
+    if (typeof item === "string") {
+      limits.push(item);
+    } else if (
+      item &&
+      typeof item === "object" &&
+      "name" in item &&
+      typeof item.name === "string"
+    ) {
+      limits.push(item.name);
+    } else if (item && typeof item === "object") {
+      inline.push({ perKey: item.perKey, total: item.total });
+    }
   }
 
-  const [home, ...gates] = queue;
+  if (inline.length > 1) {
+    throw new Error(
+      `Task "${taskId}": concurrency accepts at most one inline limit. Give shared limits a name with concurrencyLimit().`
+    );
+  }
+
+  if (limits.length > 2) {
+    throw new Error(`Task "${taskId}": concurrency accepts at most two named limits.`);
+  }
 
   return {
-    queueName: home,
-    gates: gates.map((gate) =>
-      typeof gate === "string"
-        ? { queue: gate }
-        : { queue: gate.name, concurrencyKey: gate.concurrencyKey }
-    ),
+    inline: inline[0],
+    limits: limits.length > 0 ? limits : undefined,
   };
 }
 
-/**
- * Builds the queue and gates fields of a trigger request body from the `queue`
- * option, normalizing once per call site.
- */
+/** Builds the queue field of a trigger request body. */
 function triggerQueueBody(
-  queue: Parameters<typeof normalizeTriggerQueue>[0],
+  queue: string | undefined,
   fallbackQueueName?: string
-): {
-  queue?: { name: string };
-  gates?: Array<{ queue: string; concurrencyKey?: string }>;
-} {
-  const normalized = normalizeTriggerQueue(queue);
-  const name = normalized.queueName ?? fallbackQueueName;
+): { queue?: { name: string } } {
+  const name = queue ?? fallbackQueueName;
+  return { queue: name ? { name } : undefined };
+}
 
-  return {
-    queue: name ? { name } : undefined,
-    gates: normalized.gates,
-  };
+/**
+ * Trigger-time named limits: strings only, like `queue`. They replace the task's
+ * declared named limits for this run; the server resolves names to the run's gates.
+ */
+function triggerConcurrencyBody(concurrency: string | string[] | undefined): {
+  concurrency?: string[];
+} {
+  if (!concurrency) {
+    return {};
+  }
+  const limits = Array.isArray(concurrency) ? concurrency : [concurrency];
+  return { concurrency: limits.slice(0, 2) };
 }
 
 export function queue(options: QueueOptions): Queue {
@@ -223,6 +230,31 @@ export function queue(options: QueueOptions): Queue {
 
   // @ts-expect-error
   options[Symbol.for("trigger.dev/queue")] = true;
+
+  return options;
+}
+
+/**
+ * Declares a named, shareable concurrency limit. Tasks hold it via their `concurrency`
+ * option; every task holding the same limit draws from the same pools.
+ *
+ * @example
+ *
+ * ```ts
+ * export const openaiLimit = concurrencyLimit({ name: "openai", total: 25 });
+ *
+ * export const generateSummary = task({
+ *   id: "generate-summary",
+ *   concurrency: [{ total: 5 }, openaiLimit],
+ *   run: async (payload) => {},
+ * });
+ * ```
+ */
+export function concurrencyLimit(options: ConcurrencyLimitOptions): ConcurrencyLimit {
+  resourceCatalog.registerConcurrencyLimitMetadata(options);
+
+  // @ts-expect-error
+  options[Symbol.for("trigger.dev/concurrencyLimit")] = true;
 
   return options;
 }
@@ -345,7 +377,7 @@ export function createTask<
     id: params.id,
     description: params.description,
     queue: normalizedQueue.queue,
-    gates: normalizedQueue.gates,
+    concurrency: normalizeTaskConcurrency(params.id, params.concurrency),
     retry: params.retry ? { ...defaultRetryOptions, ...params.retry } : undefined,
     machine: typeof params.machine === "string" ? { preset: params.machine } : params.machine,
     triggerSource: params.triggerSource,
@@ -365,15 +397,12 @@ export function createTask<
    * queue defined elsewhere; registering it would create an empty definition that
    * can shadow the real one depending on module evaluation order.
    */
-  const homeIsReference = Array.isArray(params.queue)
-    ? typeof params.queue[0] === "string"
-    : typeof params.queue === "string";
+  const homeIsReference = typeof params.queue === "string";
 
   if (queue && typeof queue.name === "string" && !homeIsReference) {
     resourceCatalog.registerQueueMetadata({
       name: queue.name,
       concurrencyLimit: queue.concurrencyLimit,
-      combinedConcurrencyLimit: queue.combinedConcurrencyLimit,
     });
   }
 
@@ -512,7 +541,7 @@ export function createSchemaTask<
     id: params.id,
     description: params.description,
     queue: normalizedQueue.queue,
-    gates: normalizedQueue.gates,
+    concurrency: normalizeTaskConcurrency(params.id, params.concurrency),
     retry: params.retry ? { ...defaultRetryOptions, ...params.retry } : undefined,
     machine: typeof params.machine === "string" ? { preset: params.machine } : params.machine,
     triggerSource: params.triggerSource,
@@ -533,15 +562,12 @@ export function createSchemaTask<
    * queue defined elsewhere; registering it would create an empty definition that
    * can shadow the real one depending on module evaluation order.
    */
-  const homeIsReference = Array.isArray(params.queue)
-    ? typeof params.queue[0] === "string"
-    : typeof params.queue === "string";
+  const homeIsReference = typeof params.queue === "string";
 
   if (queue && typeof queue.name === "string" && !homeIsReference) {
     resourceCatalog.registerQueueMetadata({
       name: queue.name,
       concurrencyLimit: queue.concurrencyLimit,
-      combinedConcurrencyLimit: queue.combinedConcurrencyLimit,
     });
   }
 
@@ -840,6 +866,8 @@ export async function batchTriggerById<TTask extends AnyTask>(
           payload: payloadPacket.data,
           options: {
             ...triggerQueueBody(item.options?.queue),
+            ...triggerConcurrencyBody(item.options?.concurrency),
+            ...triggerConcurrencyBody(item.options?.concurrency),
             concurrencyKey: item.options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,
@@ -1100,6 +1128,8 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
           options: {
             lockToVersion: taskContext.worker?.version,
             ...triggerQueueBody(item.options?.queue),
+            ...triggerConcurrencyBody(item.options?.concurrency),
+            ...triggerConcurrencyBody(item.options?.concurrency),
             concurrencyKey: item.options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,
@@ -1365,6 +1395,8 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
           payload: payloadPacket.data,
           options: {
             ...triggerQueueBody(item.options?.queue),
+            ...triggerConcurrencyBody(item.options?.concurrency),
+            ...triggerConcurrencyBody(item.options?.concurrency),
             concurrencyKey: item.options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,
@@ -1630,6 +1662,8 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
           options: {
             lockToVersion: taskContext.worker?.version,
             ...triggerQueueBody(item.options?.queue),
+            ...triggerConcurrencyBody(item.options?.concurrency),
+            ...triggerConcurrencyBody(item.options?.concurrency),
             concurrencyKey: item.options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,
@@ -2116,6 +2150,7 @@ async function* transformBatchItemsStream<TTask extends AnyTask>(
       payload: payloadPacket.data,
       options: {
         ...triggerQueueBody(item.options?.queue),
+        ...triggerConcurrencyBody(item.options?.concurrency),
         concurrencyKey: item.options?.concurrencyKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
@@ -2172,6 +2207,7 @@ async function* transformBatchItemsStreamForWait<TTask extends AnyTask>(
       options: {
         lockToVersion: taskContext.worker?.version,
         ...triggerQueueBody(item.options?.queue),
+        ...triggerConcurrencyBody(item.options?.concurrency),
         concurrencyKey: item.options?.concurrencyKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
@@ -2222,6 +2258,7 @@ async function* transformBatchByTaskItemsStream<TTasks extends readonly AnyTask[
       payload: payloadPacket.data,
       options: {
         ...triggerQueueBody(item.options?.queue),
+        ...triggerConcurrencyBody(item.options?.concurrency),
         concurrencyKey: item.options?.concurrencyKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
@@ -2277,6 +2314,7 @@ async function* transformBatchByTaskItemsStreamForWait<TTasks extends readonly A
       options: {
         lockToVersion: taskContext.worker?.version,
         ...triggerQueueBody(item.options?.queue),
+        ...triggerConcurrencyBody(item.options?.concurrency),
         concurrencyKey: item.options?.concurrencyKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,

@@ -31,32 +31,50 @@ export type QueueOptions = {
    * ```
    */
   name: string;
-  /** An optional property that specifies the maximum number of concurrent run executions.
-   *
-   * If this property is omitted, the task can potentially use up the full concurrency of an environment */
-  concurrencyLimit?: number;
-  /** An optional property that caps the total number of concurrent run executions across ALL
-   * `concurrencyKey` values of this queue.
-   *
-   * On a queue used with a `concurrencyKey`, `concurrencyLimit` applies to each key value
-   * independently — ten active keys with `concurrencyLimit: 5` can run 50 at once. Setting
-   * `combinedConcurrencyLimit: 20` bounds the whole queue to 20 while each key still gets at
-   * most `concurrencyLimit`.
-   *
-   * @example
-   *
-   * ```ts
-   * const perUserQueue = queue({
-      name: "per-user-queue",
-      concurrencyLimit: 1,
-      combinedConcurrencyLimit: 10,
-    });
-   * ```
-   *
-   * Only enforced for runs triggered with a `concurrencyKey`, and requires server-side support.
-   *
-   * Omit for no total cap. Like `concurrencyLimit`, a value of `0` holds every keyed run in
-   * the queue rather than removing the cap.
+  /**
+   * @deprecated Use `concurrency` on the task instead. `concurrencyLimit: 10` applies per
+   * `concurrencyKey` when runs pass one, and to the whole queue when they don't. The task's
+   * `concurrency` option says which you mean: `{ total: 10 }` caps the task outright;
+   * `{ perKey: 10 }` caps each key. Existing queues keep working unchanged.
    */
-  combinedConcurrencyLimit?: number;
+  concurrencyLimit?: number;
 };
+
+/**
+ * One limit shape everywhere a limit appears. `perKey` caps each `concurrencyKey` pool
+ * (runs without a key share one pool); `total` caps across everything, keys or not.
+ * Either alone or both together.
+ */
+export type ConcurrencyShape = {
+  perKey?: number;
+  total?: number;
+};
+
+/** Options for `concurrencyLimit()`: a named, shareable concurrency limit.
+ *
+ * @example
+ *
+ * ```ts
+ * export const openaiLimit = concurrencyLimit({ name: "openai", total: 25 });
+ *
+ * export const generateSummary = task({
+ *   id: "generate-summary",
+ *   concurrency: [{ total: 5 }, openaiLimit],
+ *   run: async (payload) => {},
+ * });
+ * ```
+ */
+export type ConcurrencyLimitOptions = { name: string } & ConcurrencyShape;
+
+export type ConcurrencyLimit = ConcurrencyLimitOptions;
+
+/**
+ * A task's concurrency: one limit or an array of limits. An inline shape caps this task;
+ * a named limit (a `concurrencyLimit()` instance or its name) is shared across every task
+ * holding it. At most one inline limit plus up to two named limits.
+ */
+export type TaskConcurrency =
+  | ConcurrencyShape
+  | ConcurrencyLimit
+  | string
+  | Array<ConcurrencyShape | ConcurrencyLimit | string>;

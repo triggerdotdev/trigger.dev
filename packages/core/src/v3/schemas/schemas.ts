@@ -199,6 +199,31 @@ export const QueueGateManifest = z.object({
 
 export type QueueGateManifest = z.infer<typeof QueueGateManifest>;
 
+/** One limit shape everywhere a limit appears: perKey caps each concurrencyKey pool
+ * (runs without a key share one pool); total caps across everything, keys or not. */
+export const ConcurrencyShapeManifest = z.object({
+  perKey: z.number().int().min(0).max(100000).optional(),
+  total: z.number().int().min(0).max(100000).optional(),
+});
+
+export type ConcurrencyShapeManifest = z.infer<typeof ConcurrencyShapeManifest>;
+
+/** A named, shareable concurrency limit declared with concurrencyLimit(). */
+export const ConcurrencyLimitManifest = ConcurrencyShapeManifest.extend({
+  name: z.string().min(1).max(128),
+});
+
+export type ConcurrencyLimitManifest = z.infer<typeof ConcurrencyLimitManifest>;
+
+/** A task's concurrency declaration: an optional inline limit scoped to the task,
+ * plus up to two named limits the task's runs also hold while executing. */
+export const TaskConcurrencyManifest = z.object({
+  inline: ConcurrencyShapeManifest.optional(),
+  limits: z.string().min(1).max(128).array().max(2).optional(),
+});
+
+export type TaskConcurrencyManifest = z.infer<typeof TaskConcurrencyManifest>;
+
 export const ScheduleMetadata = z.object({
   cron: z.string(),
   timezone: z.string(),
@@ -215,6 +240,7 @@ const taskMetadata = {
   description: z.string().optional(),
   queue: QueueManifest.extend({ name: z.string().optional() }).optional(),
   gates: QueueGateManifest.array().max(2).optional(),
+  concurrency: TaskConcurrencyManifest.optional(),
   retry: RetryOptions.optional(),
   machine: MachineConfig.optional(),
   triggerSource: z.string().optional(),

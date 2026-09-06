@@ -10,6 +10,7 @@ import type {
   WebhookMetadata,
   WorkerManifest,
   QueueManifest,
+  ConcurrencyLimitManifest,
 } from "../schemas/index.js";
 import type {
   PromptMetadataWithFunctions,
@@ -41,6 +42,7 @@ export class StandardResourceCatalog implements ResourceCatalog {
   private _promptSchemas: Map<string, TaskSchema> = new Map();
   private _currentFileContext?: Omit<TaskFileMetadata, "exportName">;
   private _queueMetadata: Map<string, QueueManifest> = new Map();
+  private _concurrencyLimitMetadata: Map<string, ConcurrencyLimitManifest> = new Map();
   private _skillMetadata: Map<string, SkillMetadata> = new Map();
   private _skillFileMetadata: Map<string, TaskFileMetadata> = new Map();
   private _webhookMetadata: Map<string, WebhookMetadata> = new Map();
@@ -97,6 +99,25 @@ export class StandardResourceCatalog implements ResourceCatalog {
     }
 
     this._queueMetadata.set(queue.name, queue);
+  }
+
+  registerConcurrencyLimitMetadata(limit: ConcurrencyLimitManifest): void {
+    const existing = this._concurrencyLimitMetadata.get(limit.name);
+
+    //if it exists already with different settings, log a warning and keep the first definition
+    if (existing) {
+      if (existing.perKey !== limit.perKey || existing.total !== limit.total) {
+        console.warn(
+          `Concurrency limit "${limit.name}" is defined twice, with different settings.` +
+            `\n        - perKey: ${existing.perKey} vs ${limit.perKey}` +
+            `\n        - total: ${existing.total} vs ${limit.total}` +
+            `\n       Keeping the first definition.`
+        );
+        return;
+      }
+    }
+
+    this._concurrencyLimitMetadata.set(limit.name, limit);
   }
 
   registerWorkerManifest(workerManifest: WorkerManifest): void {
@@ -220,6 +241,10 @@ export class StandardResourceCatalog implements ResourceCatalog {
 
   listQueueManifests(): Array<QueueManifest> {
     return Array.from(this._queueMetadata.values());
+  }
+
+  listConcurrencyLimitManifests(): Array<ConcurrencyLimitManifest> {
+    return Array.from(this._concurrencyLimitMetadata.values());
   }
 
   getTaskManifest(id: string): TaskManifest | undefined {

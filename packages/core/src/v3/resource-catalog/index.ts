@@ -9,6 +9,7 @@ import type {
   WebhookManifest,
   WebhookMetadata,
   WorkerManifest,
+  ConcurrencyLimitManifest,
 } from "../schemas/index.js";
 import type {
   PromptMetadataWithFunctions,
@@ -92,6 +93,14 @@ export class ResourceCatalogAPI {
 
   public listQueueManifests(): Array<QueueManifest> {
     return this.#getCatalog().listQueueManifests();
+  }
+
+  public registerConcurrencyLimitMetadata(limit: ConcurrencyLimitManifest): void {
+    this.#getCatalog().registerConcurrencyLimitMetadata(limit);
+  }
+
+  public listConcurrencyLimitManifests(): Array<ConcurrencyLimitManifest> {
+    return this.#getCatalog().listConcurrencyLimitManifests();
   }
 
   public registerPromptMetadata(prompt: PromptMetadataWithFunctions): void {

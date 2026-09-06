@@ -336,6 +336,7 @@ export const TriggerTaskRequestBody = z
           )
           .max(2)
           .optional(),
+        concurrency: z.string().min(1).max(128).array().max(2).optional(),
         concurrencyKey: ConcurrencyKeySchema.optional(),
         delay: z.string().or(z.coerce.date()).optional(),
         idempotencyKey: z
@@ -451,6 +452,7 @@ export const BatchTriggerTaskItem = z.object({
         )
         .max(2)
         .optional(),
+      concurrency: z.string().min(1).max(128).array().max(2).optional(),
       tags: RunTags.optional(),
       test: z.boolean().optional(),
       ttl: z.string().or(z.number().nonnegative().int()).optional(),
