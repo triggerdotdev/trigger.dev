@@ -69,13 +69,16 @@ export function parseTaskGates(gates: unknown): TaskMetadataGate[] | null {
     if (!gate || typeof gate !== "object" || typeof (gate as any).queue !== "string") {
       return [];
     }
-    const concurrencyKey = (gate as any).concurrencyKey;
-    return [
-      {
-        queue: (gate as any).queue,
-        concurrencyKey: typeof concurrencyKey === "string" ? concurrencyKey : undefined,
-      },
-    ];
+    const queue = (gate as any).queue;
+    if (queue.length === 0 || queue.length > 128) {
+      return [];
+    }
+    const rawKey = (gate as any).concurrencyKey;
+    if (typeof rawKey === "string" && rawKey.length > 128) {
+      return [];
+    }
+    const concurrencyKey = typeof rawKey === "string" && rawKey.length > 0 ? rawKey : undefined;
+    return [{ queue, concurrencyKey }];
   });
 
   return parsed.length > 0 ? parsed.slice(0, 2) : null;
