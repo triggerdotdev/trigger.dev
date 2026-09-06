@@ -818,30 +818,43 @@ async function createWorkerQueue(
   /**
    * The optimistic markers only guard the Postgres write; an override or reset can
    * still land between that write and the engine sync above, which would leave the
-   * engine holding this deploy's stale values. Re-read the markers and re-sync once
-   * from the fresh row when they moved: every actor writes Postgres before its own
-   * engine sync, so whoever syncs last is syncing the freshest row.
+   * engine holding this deploy's stale values. Re-read the markers and re-sync from
+   * the fresh row until they stop moving (bounded): every actor writes Postgres
+   * before its own engine sync, so re-syncing whatever is freshest converges. A
+   * marker moving after the final read is healed by that actor's own engine sync
+   * or the next deploy.
    */
-  const freshQueue = await prisma.taskQueue.findFirst({
-    where: { id: taskQueue.id },
-    select: {
-      name: true,
-      paused: true,
-      concurrencyLimit: true,
-      totalConcurrencyLimit: true,
-      concurrencyLimitOverriddenAt: true,
-      totalConcurrencyLimitOverriddenAt: true,
-    },
-  });
+  let syncedMarkers = {
+    concurrency: taskQueue.concurrencyLimitOverriddenAt?.getTime(),
+    total: taskQueue.totalConcurrencyLimitOverriddenAt?.getTime(),
+  };
 
-  if (
-    freshQueue &&
-    (freshQueue.concurrencyLimitOverriddenAt?.getTime() !==
-      taskQueue.concurrencyLimitOverriddenAt?.getTime() ||
-      freshQueue.totalConcurrencyLimitOverriddenAt?.getTime() !==
-        taskQueue.totalConcurrencyLimitOverriddenAt?.getTime())
-  ) {
+  for (let i = 0; i < 3; i++) {
+    const freshQueue = await prisma.taskQueue.findFirst({
+      where: { id: taskQueue.id },
+      select: {
+        name: true,
+        paused: true,
+        concurrencyLimit: true,
+        totalConcurrencyLimit: true,
+        concurrencyLimitOverriddenAt: true,
+        totalConcurrencyLimitOverriddenAt: true,
+      },
+    });
+
+    if (
+      !freshQueue ||
+      (freshQueue.concurrencyLimitOverriddenAt?.getTime() === syncedMarkers.concurrency &&
+        freshQueue.totalConcurrencyLimitOverriddenAt?.getTime() === syncedMarkers.total)
+    ) {
+      break;
+    }
+
     await syncQueueLimitsToEngine(freshQueue);
+    syncedMarkers = {
+      concurrency: freshQueue.concurrencyLimitOverriddenAt?.getTime(),
+      total: freshQueue.totalConcurrencyLimitOverriddenAt?.getTime(),
+    };
   }
 
   return taskQueue;
