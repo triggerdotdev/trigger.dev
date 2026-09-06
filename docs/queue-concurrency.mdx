@@ -171,7 +171,7 @@ export async function POST(request: Request) {
 
 `concurrencyKey` gives every key value its own copy of the queue, each with the queue's full `concurrencyLimit`. That means the queue's total concurrency grows with the number of active keys: ten active users on a queue with `concurrencyLimit: 5` can run 50 at once.
 
-To bound the whole queue, set `combinedConcurrencyLimit`. Each key still gets at most `concurrencyLimit`, and the queue as a whole never exceeds the combined limit across all keys:
+To bound keyed runs as a group, set `combinedConcurrencyLimit`. Each key still gets at most `concurrencyLimit`, and keyed runs as a whole never exceed the combined limit; runs triggered without a key sit outside it:
 
 ```ts /trigger/per-user.ts
 import { queue } from "@trigger.dev/sdk";
