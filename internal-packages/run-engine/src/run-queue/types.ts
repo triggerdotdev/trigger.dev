@@ -33,7 +33,7 @@ export const InputPayload = z.object({
   /** TTL expiration timestamp (unix ms). If set, run will be expired when this time is reached. */
   ttlExpiresAt: z.number().optional(),
   /** Additional queues this run must also hold a slot in while executing. At most two. */
-  gates: QueueGate.array().max(2).optional(),
+  gates: QueueGate.array().max(3).optional(),
 });
 export type InputPayload = z.infer<typeof InputPayload>;
 
