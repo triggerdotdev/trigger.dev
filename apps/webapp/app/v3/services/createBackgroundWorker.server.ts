@@ -97,6 +97,8 @@ export class CreateBackgroundWorkerService extends BaseService {
         },
       });
 
+      validateWorkerConcurrencyDeclarations(body.metadata);
+
       const latestBackgroundWorker = project.backgroundWorkers[0];
 
       if (latestBackgroundWorker?.contentHash === body.metadata.contentHash) {
@@ -600,6 +602,50 @@ async function createWorkerQueues(
   }
 
   return allQueues;
+}
+
+/**
+ * Rejects invalid concurrency declarations before any worker rows are written, so a
+ * failed deploy leaves nothing behind for a same-content retry to return.
+ */
+function validateWorkerConcurrencyDeclarations(metadata: BackgroundWorkerMetadata): void {
+  for (const queue of metadata.queues ?? []) {
+    assertNotReservedQueueName(queue.name, `Queue "${queue.name}"`);
+  }
+
+  for (const limit of metadata.concurrencyLimits ?? []) {
+    concurrencyLimitQueueName(limit.name);
+  }
+
+  for (const task of metadata.tasks) {
+    if (task.queue?.name) {
+      assertNotReservedQueueName(task.queue.name, `Task "${task.id}"`);
+    }
+
+    const concurrency = task.concurrency;
+    if (!concurrency) {
+      continue;
+    }
+
+    if (typeof task.queue?.concurrencyLimit === "number") {
+      throw new ServiceValidationError(
+        `Task "${task.id}" declares both a queue concurrencyLimit and the concurrency option; use concurrency.`
+      );
+    }
+
+    for (const name of concurrency.limits ?? []) {
+      concurrencyLimitQueueName(name);
+    }
+
+    if (concurrency.inline && task.queue?.name) {
+      concurrencyLimitQueueName(`task/${task.id}`);
+      if ((concurrency.limits ?? []).length > 1) {
+        throw new ServiceValidationError(
+          `Task "${task.id}": an inline limit on a shared queue uses a gate slot, so at most one named limit can be combined with it.`
+        );
+      }
+    }
+  }
 }
 
 /** Queue rows that back named concurrency limits live under this reserved prefix so
