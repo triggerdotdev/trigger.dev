@@ -469,7 +469,13 @@ async function createWorkerTask(
         environment,
         prisma,
         "QUEUE",
-        concurrency ? "V2" : "V1"
+        /**
+         * V2 marks rows whose limit fields hold the new perKey/total vocabulary. That
+         * only happens when an inline limit compiles into the task's own default queue;
+         * a shared queue keeps V1 regardless of task concurrency (which lives in gates
+         * and LIMIT rows), matching rows materialized from queue() declarations.
+         */
+        concurrency?.inline && !task.queue?.name ? "V2" : "V1"
       );
     }
 
@@ -866,9 +872,17 @@ async function upsertWorkerQueueRecord(
       const hasOverride = taskQueue.concurrencyLimitOverriddenAt !== null;
       const hasTotalOverride = taskQueue.totalConcurrencyLimitOverriddenAt !== null;
 
+      /**
+       * The override markers in the where clause make this an optimistic-concurrency
+       * update: a concurrent override/reset between the read above and this write
+       * changes a marker, the update misses (P2025) and the catch below retries with
+       * a fresh read, so a deploy can never clobber an operator's override.
+       */
       taskQueue = await prisma.taskQueue.update({
         where: {
           id: taskQueue.id,
+          concurrencyLimitOverriddenAt: taskQueue.concurrencyLimitOverriddenAt,
+          totalConcurrencyLimitOverriddenAt: taskQueue.totalConcurrencyLimitOverriddenAt,
         },
         data: {
           workers: { connect: { id: worker.id } },
@@ -886,8 +900,14 @@ async function upsertWorkerQueueRecord(
 
     return taskQueue;
   } catch (error) {
-    // If the queue already exists, let's try again
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+    /**
+     * P2002: the queue was created concurrently. P2025: an override/reset moved a
+     * marker under the optimistic update. Both re-read and retry.
+     */
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      (error.code === "P2002" || error.code === "P2025")
+    ) {
       return await upsertWorkerQueueRecord(
         queueName,
         concurrencyLimit,
