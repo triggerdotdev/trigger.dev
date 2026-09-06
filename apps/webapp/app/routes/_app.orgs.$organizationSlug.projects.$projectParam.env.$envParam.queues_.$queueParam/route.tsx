@@ -499,7 +499,7 @@ function OverviewCharts({
             }
             showLegend
             className="aspect-[2/1]"
-            query={`SELECT timeBucket() AS t, max(max_total_running) AS running, least(nullIf(max(max_total_limit), 0), max(max_env_limit)) AS cap\nFROM concurrency_metrics\nGROUP BY t\nORDER BY t`}
+            query={`SELECT timeBucket() AS t, max(max_total_running) AS running, least(nullIf(max(max_total_limit), 0), max(max_env_limit)) AS cap, max(max_env_limit) AS sampled\nFROM concurrency_metrics\nGROUP BY t\nORDER BY t`}
             fillGaps
             minBucketSeconds={SYNCED_CHART_MIN_BUCKET_SECONDS}
             ids={ids}
@@ -515,6 +515,7 @@ function OverviewCharts({
               aboveColor: "var(--color-warning)",
             }}
             carryBackfill={["cap"]}
+            carryBackfillGuard="sampled"
           />
         ) : null}
         <QueueDetailChartCard
