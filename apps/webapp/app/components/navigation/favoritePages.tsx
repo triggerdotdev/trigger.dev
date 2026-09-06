@@ -234,7 +234,7 @@ const ENV_PAGE_META: Record<string, PageMeta> = {
   "bulk-actions": { icon: "bulk-actions", name: "Bulk actions", singular: "Bulk action" },
   apikeys: { icon: "apikeys", name: "API keys" },
   alerts: { icon: "alerts", name: "Alerts", singular: "Alert" },
-  concurrency: { icon: "concurrency", name: "Concurrency" },
+  "concurrency-limits": { icon: "concurrency", name: "Concurrency limits" },
   limits: { icon: "limits", name: "Limits" },
   schedules: { icon: "schedules", name: "Schedules", singular: "Schedule" },
   test: { icon: "test", name: "Test", singular: "Test" },
