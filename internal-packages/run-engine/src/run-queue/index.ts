@@ -316,10 +316,6 @@ export type RunQueueOptions = {
    * that dead-lettered or suspended through a mirror-less path. Enabling only after
    * every instance runs this build avoids the noise but is no longer load-bearing
    * for correctness.
-   *
-   * Per-concurrency-key limit overrides are part of the same concurrency-limits
-   * feature and are deliberately enforced behind this flag too: writes are always
-   * accepted and durable, and enforcement of both arrives together.
    */
   totalConcurrencyEnabled?: boolean;
   /**
