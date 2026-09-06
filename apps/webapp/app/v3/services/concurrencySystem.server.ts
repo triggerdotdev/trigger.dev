@@ -190,6 +190,7 @@ function findQueueByFriendlyId(
       where: {
         runtimeEnvironmentId: environment.id,
         friendlyId,
+        role: "QUEUE",
       },
     }),
     (error) => ({
@@ -214,6 +215,7 @@ function findQueueByName(
       where: {
         runtimeEnvironmentId: environment.id,
         name: queue,
+        role: "QUEUE",
       },
     }),
     (error) => ({
