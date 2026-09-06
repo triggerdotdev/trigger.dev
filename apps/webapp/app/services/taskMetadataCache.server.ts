@@ -1,4 +1,5 @@
 import type { Redis, Result, Callback } from "ioredis";
+import { parseGates } from "@internal/run-engine";
 import type { TaskTriggerSource } from "@trigger.dev/database";
 import { logger } from "./logger.server";
 
@@ -61,27 +62,8 @@ export type RedisTaskMetadataCacheOptions = {
  * entries so a malformed value can never fail a trigger.
  */
 export function parseTaskGates(gates: unknown): TaskMetadataGate[] | null {
-  if (!Array.isArray(gates) || gates.length === 0) {
-    return null;
-  }
-
-  const parsed = gates.flatMap((gate) => {
-    if (!gate || typeof gate !== "object" || typeof (gate as any).queue !== "string") {
-      return [];
-    }
-    const queue = (gate as any).queue;
-    if (queue.length === 0 || queue.length > 128) {
-      return [];
-    }
-    const rawKey = (gate as any).concurrencyKey;
-    if (typeof rawKey === "string" && rawKey.length > 128) {
-      return [];
-    }
-    const concurrencyKey = typeof rawKey === "string" && rawKey.length > 0 ? rawKey : undefined;
-    return [{ queue, concurrencyKey }];
-  });
-
-  return parsed.length > 0 ? parsed.slice(0, 2) : null;
+  const parsed = parseGates(gates);
+  return parsed.length > 0 ? parsed : null;
 }
 
 type EncodedEntry = {

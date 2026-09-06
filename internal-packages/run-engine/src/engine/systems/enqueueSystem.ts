@@ -8,6 +8,7 @@ import type { RunStore } from "@internal/run-store";
 import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/isomorphic";
 import type { MinimalAuthenticatedEnvironment } from "../../shared/index.js";
 import { QUEUED_SNAPSHOT_DESCRIPTION, QUEUED_SNAPSHOT_STATUS } from "../consts.js";
+import { parseGates } from "../gateParsing.js";
 import type { ExecutionSnapshotSystem } from "./executionSnapshotSystem.js";
 import type { SystemResources } from "./systems.js";
 
@@ -16,34 +17,11 @@ export type EnqueueSystemOptions = {
   executionSnapshotSystem: ExecutionSnapshotSystem;
 };
 
-/**
- * TaskRun.gates is an untyped Json column; admit correctness only needs well-shaped
- * entries, so anything malformed is dropped rather than failing the enqueue.
- */
 function parseRunGates(
   gates: unknown
 ): Array<{ queue: string; concurrencyKey?: string }> | undefined {
-  if (!Array.isArray(gates) || gates.length === 0) {
-    return undefined;
-  }
-
-  const parsed = gates.flatMap((gate) => {
-    if (!gate || typeof gate !== "object" || typeof (gate as any).queue !== "string") {
-      return [];
-    }
-    const queue = (gate as any).queue;
-    if (queue.length === 0 || queue.length > 128) {
-      return [];
-    }
-    const rawKey = (gate as any).concurrencyKey;
-    if (typeof rawKey === "string" && rawKey.length > 128) {
-      return [];
-    }
-    const concurrencyKey = typeof rawKey === "string" && rawKey.length > 0 ? rawKey : undefined;
-    return [{ queue, concurrencyKey }];
-  });
-
-  return parsed.length > 0 ? parsed.slice(0, 2) : undefined;
+  const parsed = parseGates(gates);
+  return parsed.length > 0 ? parsed : undefined;
 }
 
 export class EnqueueSystem {
