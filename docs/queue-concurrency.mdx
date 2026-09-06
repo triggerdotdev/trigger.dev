@@ -174,6 +174,8 @@ export async function POST(request: Request) {
 To bound the whole queue, set `combinedConcurrencyLimit`. Each key still gets at most `concurrencyLimit`, and the queue as a whole never exceeds the combined limit across all keys:
 
 ```ts /trigger/per-user.ts
+import { queue } from "@trigger.dev/sdk";
+
 export const perUserQueue = queue({
   name: "per-user-queue",
   //each user runs at most 1 at a time...
@@ -208,6 +210,8 @@ await processWebhook.trigger(payload, {
 A gate without a `concurrencyKey` uses the run's own key. Declare a shared queue and gate every relevant task on it, and each tenant gets one cap spanning all of those tasks:
 
 ```ts /trigger/webhooks.ts
+import { queue, task } from "@trigger.dev/sdk";
+
 //each tenant runs at most 10 at once across every task that gates on this queue
 export const tenantQueue = queue({ name: "tenant", concurrencyLimit: 10 });
 
@@ -232,6 +236,8 @@ Because the trigger passes a `concurrencyKey`, the home queue splits per key as 
 To cap something global, like total traffic to an external API, across many tasks and all tenants: declare a queue with only a `combinedConcurrencyLimit` and gate on it. Tenant keys still split the gate into per-key pools, but with no per-key limit the combined cap is the only constraint:
 
 ```ts /trigger/sync.ts
+import { queue, task } from "@trigger.dev/sdk";
+
 //at most 10 concurrent provider calls across every task and every tenant
 export const providerApiQueue = queue({
   name: "provider-api",
@@ -263,6 +269,8 @@ await syncToProvider.trigger(payload, { concurrencyKey: tenantId });
 Give a gate a literal `concurrencyKey` to pin every run into a single first-come-first-served pool, regardless of each run's own key:
 
 ```ts /trigger/print.ts
+import { queue, task } from "@trigger.dev/sdk";
+
 export const printerQueue = queue({ name: "printer", concurrencyLimit: 1 });
 
 export const printLabel = task({
