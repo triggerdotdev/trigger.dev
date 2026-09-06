@@ -258,6 +258,12 @@ export function queue(options: QueueOptions): Queue {
  * ```
  */
 export function concurrencyLimit(options: ConcurrencyLimitOptions): ConcurrencyLimit {
+  if (options.name.length === 0 || options.name.length > 122 || options.name.includes("/")) {
+    throw new Error(
+      `Concurrency limit "${options.name}": names are 1-122 characters and may not contain "/".`
+    );
+  }
+
   resourceCatalog.registerConcurrencyLimitMetadata(options);
 
   // @ts-expect-error
