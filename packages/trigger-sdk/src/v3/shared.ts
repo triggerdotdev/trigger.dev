@@ -230,6 +230,9 @@ function triggerConcurrencyBody(concurrency: string | string[] | undefined): {
   if (limits.some((name) => typeof name !== "string" || name.length === 0)) {
     throw new Error("The concurrency option takes limit names: non-empty strings.");
   }
+  for (const name of limits) {
+    validateConcurrencyLimitName(name);
+  }
   return { concurrency: limits };
 }
 
@@ -259,9 +262,9 @@ export function queue(options: QueueOptions): Queue {
  * ```
  */
 function validateConcurrencyLimitName(name: string): void {
-  if (name.length === 0 || name.length > 122 || name.includes("/")) {
+  if (!/^[a-zA-Z0-9_-]{1,122}$/.test(name)) {
     throw new Error(
-      `Concurrency limit "${name}": names are 1-122 characters and may not contain "/".`
+      `Concurrency limit "${name}": names are 1-122 characters using only letters, numbers, underscores and hyphens.`
     );
   }
 }
