@@ -180,6 +180,7 @@ function normalizeTaskConcurrency(
       "name" in item &&
       typeof item.name === "string"
     ) {
+      validateConcurrencyLimitName(item.name);
       resourceCatalog.registerConcurrencyLimitMetadata(item);
       limits.push(item.name);
     } else if (item && typeof item === "object") {
@@ -257,12 +258,16 @@ export function queue(options: QueueOptions): Queue {
  * });
  * ```
  */
-export function concurrencyLimit(options: ConcurrencyLimitOptions): ConcurrencyLimit {
-  if (options.name.length === 0 || options.name.length > 122 || options.name.includes("/")) {
+function validateConcurrencyLimitName(name: string): void {
+  if (name.length === 0 || name.length > 122 || name.includes("/")) {
     throw new Error(
-      `Concurrency limit "${options.name}": names are 1-122 characters and may not contain "/".`
+      `Concurrency limit "${name}": names are 1-122 characters and may not contain "/".`
     );
   }
+}
+
+export function concurrencyLimit(options: ConcurrencyLimitOptions): ConcurrencyLimit {
+  validateConcurrencyLimitName(options.name);
 
   resourceCatalog.registerConcurrencyLimitMetadata(options);
 
