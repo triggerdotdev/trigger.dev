@@ -128,7 +128,7 @@ const SearchParamsSchema = z.object({
 
 // The live "Queued" / "Running" header blocks poll ClickHouse on a short cadence so they stay
 // current after first paint. They read the env-wide gauges from env_metrics (the env-level rollup
-// of queue_metrics, cheapest for a dimension-free query), always over a fixed 15m window regardless
+// of concurrency_metrics, cheapest for a dimension-free query), always over a fixed 15m window regardless
 // of the chart/table period, and are NOT scoped to the visible queue set (the blocks are env-wide).
 const QUEUE_LIVE_BLOCKS_PERIOD = "15m";
 const QUEUE_LIVE_BLOCKS_QUERY =
@@ -1670,7 +1670,7 @@ function QueueHealthBadge(health: QueueHealth) {
   );
 }
 
-// The `queue_metrics`-prefixed key a queue is stored under (task queues are prefixed `task/`).
+// The metrics-row key a queue is stored under (task queues are prefixed `task/`).
 function queueMetricsKey(queue: { type: string; name: string }): string {
   return `${queue.type === "task" ? "task/" : ""}${queue.name}`;
 }

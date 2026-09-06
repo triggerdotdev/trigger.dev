@@ -212,7 +212,7 @@ function queueWorstQuery(): string {
   return `SELECT
   queue AS name,
   argMax(max_queued, bucket_start) AS latest_queued
-FROM queue_metrics
+FROM concurrency_metrics
 GROUP BY queue
 ORDER BY latest_queued DESC
 LIMIT 20`;
@@ -228,7 +228,7 @@ FROM (
   SELECT
     deltaSumTimestampMerge(dlq_delta) AS dlq,
     argMax(max_queued, bucket_start) AS latest_queued
-  FROM queue_metrics
+  FROM concurrency_metrics
   GROUP BY queue
 )`;
 }

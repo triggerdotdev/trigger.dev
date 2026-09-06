@@ -527,7 +527,7 @@ function TaskActivityCard({
     >
       {view === "queue" ? (
         <QueueMetricChart
-          query={`SELECT timeBucket() AS t, max(max_queued) AS queued\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
+          query={`SELECT timeBucket() AS t, max(max_queued) AS queued\nFROM concurrency_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
           ids={ids}
           timeRange={timeRange}

@@ -610,12 +610,12 @@ const metricsSchema: TableSchema = {
 };
 
 /**
- * Schema definition for the queue_metrics table (trigger_dev.queue_metrics_v1).
+ * Schema definition for the concurrency_metrics table (trigger_dev.queue_metrics_v1).
  * Pre-aggregated into 10-second buckets. Counter columns re-aggregate with sum(),
  * gauges with max(), and wait_quantiles with quantilesMerge() — never FINAL.
  */
 const queueMetricsSchema: TableSchema = {
-  name: "queue_metrics",
+  name: "concurrency_metrics",
   clickhouseName: "trigger_dev.queue_metrics_v1",
   description: "Per-queue depth, concurrency, throttling, and scheduling-delay metrics",
   timeConstraint: "bucket_start",
@@ -770,16 +770,16 @@ const queueMetricsSchema: TableSchema = {
         fillMode: "carry",
       }),
     },
-    max_combined_running: {
-      name: "max_combined_running",
+    max_total_running: {
+      name: "max_total_running",
       ...column("UInt32", {
         description:
           "Peak in-flight runs across ALL concurrency keys of the queue in the bucket (only emitted for keyed queues). Aggregate with max().",
         fillMode: "carry",
       }),
     },
-    max_combined_limit: {
-      name: "max_combined_limit",
+    max_total_limit: {
+      name: "max_total_limit",
       ...column("UInt32", {
         description:
           "The queue's combined concurrency limit across all keys, as stored (0 = no cap; clamp against max_env_limit). Aggregate with max().",
@@ -844,7 +844,7 @@ const queueMetricsSchema: TableSchema = {
 
 /**
  * Schema definition for the env_metrics table (trigger_dev.env_metrics_v1).
- * Environment-level rollup of queue_metrics with the queue dimension dropped, so
+ * Environment-level rollup of concurrency_metrics with the queue dimension dropped, so
  * header tiles and saturation charts cost the same regardless of how many queues
  * the environment has. Keeps the full 10-second granularity: row count is
  * queue-independent, so even 30-day ranges stay small.
@@ -1320,7 +1320,7 @@ const llmModelsSchema: TableSchema = {
  * only when that key had events, so key cardinality cannot inflate the table.
  */
 const queueMetricsByKeySchema: TableSchema = {
-  name: "queue_metrics_by_key",
+  name: "concurrency_metrics_by_key",
   clickhouseName: "trigger_dev.queue_metrics_ck_v1",
   description: "Per-concurrency-key queue metrics: backlog, throughput, and wait by key",
   hidden: true,
