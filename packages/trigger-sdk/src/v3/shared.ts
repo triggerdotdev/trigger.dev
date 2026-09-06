@@ -180,6 +180,7 @@ function normalizeTaskConcurrency(
       "name" in item &&
       typeof item.name === "string"
     ) {
+      resourceCatalog.registerConcurrencyLimitMetadata(item);
       limits.push(item.name);
     } else if (item && typeof item === "object") {
       inline.push({ perKey: item.perKey, total: item.total });
@@ -224,6 +225,9 @@ function triggerConcurrencyBody(concurrency: string | string[] | undefined): {
   const limits = Array.isArray(concurrency) ? concurrency : [concurrency];
   if (limits.length > 2) {
     throw new Error("The concurrency option accepts at most two named limits.");
+  }
+  if (limits.some((name) => typeof name !== "string" || name.length === 0)) {
+    throw new Error("The concurrency option takes limit names: non-empty strings.");
   }
   return { concurrency: limits };
 }
@@ -870,7 +874,6 @@ export async function batchTriggerById<TTask extends AnyTask>(
           options: {
             ...triggerQueueBody(item.options?.queue),
             ...triggerConcurrencyBody(item.options?.concurrency),
-            ...triggerConcurrencyBody(item.options?.concurrency),
             concurrencyKey: item.options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,
@@ -1131,7 +1134,6 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
           options: {
             lockToVersion: taskContext.worker?.version,
             ...triggerQueueBody(item.options?.queue),
-            ...triggerConcurrencyBody(item.options?.concurrency),
             ...triggerConcurrencyBody(item.options?.concurrency),
             concurrencyKey: item.options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
@@ -1399,7 +1401,6 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
           options: {
             ...triggerQueueBody(item.options?.queue),
             ...triggerConcurrencyBody(item.options?.concurrency),
-            ...triggerConcurrencyBody(item.options?.concurrency),
             concurrencyKey: item.options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,
@@ -1665,7 +1666,6 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
           options: {
             lockToVersion: taskContext.worker?.version,
             ...triggerQueueBody(item.options?.queue),
-            ...triggerConcurrencyBody(item.options?.concurrency),
             ...triggerConcurrencyBody(item.options?.concurrency),
             concurrencyKey: item.options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
@@ -2366,6 +2366,7 @@ async function* transformSingleTaskBatchItemsStream<TPayload>(
       payload: payloadPacket.data,
       options: {
         ...triggerQueueBody(item.options?.queue, queue),
+        ...triggerConcurrencyBody(item.options?.concurrency),
         concurrencyKey: item.options?.concurrencyKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
@@ -2426,6 +2427,7 @@ async function* transformSingleTaskBatchItemsStreamForWait<TPayload>(
       options: {
         lockToVersion: taskContext.worker?.version,
         ...triggerQueueBody(item.options?.queue, queue),
+        ...triggerConcurrencyBody(item.options?.concurrency),
         concurrencyKey: item.options?.concurrencyKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
@@ -2476,6 +2478,7 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
       payload: triggerPayloadPacket.data,
       options: {
         ...triggerQueueBody(options?.queue),
+        ...triggerConcurrencyBody(options?.concurrency),
         concurrencyKey: options?.concurrencyKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: triggerPayloadPacket.dataType,
@@ -2561,6 +2564,7 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
           payload: payloadPacket.data,
           options: {
             ...triggerQueueBody(item.options?.queue, queue),
+            ...triggerConcurrencyBody(item.options?.concurrency),
             concurrencyKey: item.options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,
@@ -2741,6 +2745,7 @@ async function triggerAndWait_internal<TIdentifier extends string, TPayload, TOu
           options: {
             lockToVersion: taskContext.worker?.version, // Lock to current version because we're waiting for it to finish
             ...triggerQueueBody(options?.queue),
+            ...triggerConcurrencyBody(options?.concurrency),
             concurrencyKey: options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: triggerPayloadPacket.dataType,
@@ -2831,6 +2836,7 @@ async function triggerAndSubscribe_internal<TIdentifier extends string, TPayload
           options: {
             lockToVersion: taskContext.worker?.version,
             ...triggerQueueBody(options?.queue),
+            ...triggerConcurrencyBody(options?.concurrency),
             concurrencyKey: options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: triggerPayloadPacket.dataType,
@@ -2993,6 +2999,7 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
           options: {
             lockToVersion: taskContext.worker?.version,
             ...triggerQueueBody(item.options?.queue, queue),
+            ...triggerConcurrencyBody(item.options?.concurrency),
             concurrencyKey: item.options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,
