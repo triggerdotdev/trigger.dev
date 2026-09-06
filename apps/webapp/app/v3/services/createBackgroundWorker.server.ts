@@ -604,9 +604,9 @@ async function createWorkerQueues(
 
 /** Queue rows that back named concurrency limits live under this reserved prefix so
  * they can never collide with a user's queue names. */
-export const CONCURRENCY_LIMIT_QUEUE_PREFIX = "limit/";
+const CONCURRENCY_LIMIT_QUEUE_PREFIX = "limit/";
 
-export function concurrencyLimitQueueName(limitName: string): string {
+function concurrencyLimitQueueName(limitName: string): string {
   const sanitized = sanitizeQueueName(limitName);
   const name = `${CONCURRENCY_LIMIT_QUEUE_PREFIX}${sanitized}`;
   if (sanitized.length === 0 || name.length > 128) {
