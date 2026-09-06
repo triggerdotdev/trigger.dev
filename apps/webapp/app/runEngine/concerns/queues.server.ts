@@ -261,20 +261,24 @@ export class DefaultQueueManager implements QueueManager {
       undefined;
 
     const seenGates = new Set<string>();
-    const gates = requestedGates
-      ?.flatMap((gate) => {
-        const sanitized = sanitizeQueueName(gate.queue);
-        if (!sanitized) {
-          return [];
-        }
-        const dedupeKey = `${sanitized} ${gate.concurrencyKey ?? ""}`;
-        if (seenGates.has(dedupeKey)) {
-          return [];
-        }
-        seenGates.add(dedupeKey);
-        return [{ queue: sanitized, concurrencyKey: gate.concurrencyKey }];
-      })
-      .slice(0, 3);
+    const gates = requestedGates?.flatMap((gate) => {
+      const sanitized = sanitizeQueueName(gate.queue);
+      if (!sanitized) {
+        return [];
+      }
+      const dedupeKey = `${sanitized} ${gate.concurrencyKey ?? ""}`;
+      if (seenGates.has(dedupeKey)) {
+        return [];
+      }
+      seenGates.add(dedupeKey);
+      return [{ queue: sanitized, concurrencyKey: gate.concurrencyKey }];
+    });
+
+    if (gates && gates.length > 3) {
+      throw new ServiceValidationError(
+        `A run can hold at most three gates (the task's inline limit plus two named limits); this request resolves to ${gates.length}.`
+      );
+    }
 
     return {
       queueName,
