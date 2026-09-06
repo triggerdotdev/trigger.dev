@@ -434,14 +434,14 @@ async function createWorkerTask(
             `Task "${task.id}": an inline limit on a shared queue uses a gate slot, so at most one named limit can be combined with it.`
           );
         }
-        const anonymousName = `task/${task.id}`;
+        const anonymousQueueName = anonymousConcurrencyLimitQueueName(task.id);
         await createWorkerQueue(
           {
-            name: concurrencyLimitQueueName(anonymousName),
+            name: anonymousQueueName,
             concurrencyLimit: concurrency.inline.perKey ?? concurrency.inline.total ?? null,
             combinedConcurrencyLimit: concurrency.inline.total ?? null,
           },
-          anonymousName,
+          `task/${task.id}`,
           "NAMED",
           worker,
           environment,
@@ -449,7 +449,7 @@ async function createWorkerTask(
           "LIMIT",
           "V2"
         );
-        compiledGates = [{ queue: concurrencyLimitQueueName(anonymousName) }, ...compiledGates];
+        compiledGates = [{ queue: anonymousQueueName }, ...compiledGates];
       }
     }
 
@@ -614,7 +614,7 @@ function validateWorkerConcurrencyDeclarations(metadata: BackgroundWorkerMetadat
   }
 
   for (const limit of metadata.concurrencyLimits ?? []) {
-    concurrencyLimitQueueName(limit.name);
+    assertValidConcurrencyLimitName(limit.name);
   }
 
   for (const task of metadata.tasks) {
@@ -634,11 +634,10 @@ function validateWorkerConcurrencyDeclarations(metadata: BackgroundWorkerMetadat
     }
 
     for (const name of concurrency.limits ?? []) {
-      concurrencyLimitQueueName(name);
+      assertValidConcurrencyLimitName(name);
     }
 
     if (concurrency.inline && task.queue?.name) {
-      concurrencyLimitQueueName(`task/${task.id}`);
       if ((concurrency.limits ?? []).length > 1) {
         throw new ServiceValidationError(
           `Task "${task.id}": an inline limit on a shared queue uses a gate slot, so at most one named limit can be combined with it.`
@@ -652,15 +651,39 @@ function validateWorkerConcurrencyDeclarations(metadata: BackgroundWorkerMetadat
  * they can never collide with a user's queue names. */
 const CONCURRENCY_LIMIT_QUEUE_PREFIX = "limit/";
 
-function concurrencyLimitQueueName(limitName: string): string {
-  const sanitized = sanitizeQueueName(limitName);
-  const name = `${CONCURRENCY_LIMIT_QUEUE_PREFIX}${sanitized}`;
-  if (sanitized.length === 0 || name.length > 128) {
+const CONCURRENCY_LIMIT_NAME_MAX_LENGTH = 128 - CONCURRENCY_LIMIT_QUEUE_PREFIX.length;
+
+/**
+ * Named limits require a strict charset so distinct declared names can never merge
+ * onto one row after queue-name sanitization (which strips disallowed characters).
+ */
+function assertValidConcurrencyLimitName(name: string): void {
+  if (!new RegExp(`^[a-zA-Z0-9_-]{1,${CONCURRENCY_LIMIT_NAME_MAX_LENGTH}}$`).test(name)) {
     throw new ServiceValidationError(
-      `Concurrency limit name "${limitName}" must sanitize to between 1 and ${128 - CONCURRENCY_LIMIT_QUEUE_PREFIX.length} characters.`
+      `Concurrency limit name "${name}" must be 1-${CONCURRENCY_LIMIT_NAME_MAX_LENGTH} characters using only letters, numbers, underscores and hyphens.`
     );
   }
-  return name;
+}
+
+function concurrencyLimitQueueName(limitName: string): string {
+  assertValidConcurrencyLimitName(limitName);
+  return `${CONCURRENCY_LIMIT_QUEUE_PREFIX}${limitName}`;
+}
+
+/**
+ * Row name for a task's anonymous inline limit. Task ids are not charset-restricted,
+ * so when sanitization would be lossy (or the name would overflow the 128-char queue
+ * name limit) a hash of the raw id keeps distinct task ids on distinct rows.
+ */
+function anonymousConcurrencyLimitQueueName(taskId: string): string {
+  const sanitized = sanitizeQueueName(taskId);
+  const name = `${CONCURRENCY_LIMIT_QUEUE_PREFIX}task/${sanitized}`;
+  if (sanitized === taskId && name.length <= 128) {
+    return name;
+  }
+  const hash = createHash("sha256").update(taskId).digest("hex").slice(0, 8);
+  const budget = 128 - `${CONCURRENCY_LIMIT_QUEUE_PREFIX}task/`.length - hash.length - 1;
+  return `${CONCURRENCY_LIMIT_QUEUE_PREFIX}task/${sanitized.slice(0, budget)}-${hash}`;
 }
 
 /** User queue names may not claim the reserved limit/ namespace. */
@@ -675,8 +698,8 @@ function assertNotReservedQueueName(name: string, context: string): void {
 /**
  * Materializes the worker's declared named concurrency limits (plus any names tasks
  * reference without declaring, created uncapped) as LIMIT-role TaskQueue rows. A
- * total-only limit stores the total as its per-key limit too, so it truly caps
- * keyless runs as well as the keyed group.
+ * total-only limit stores the total as its per-key limit too, so no single key (or
+ * the keyless pool) can exceed it even before the group check applies.
  */
 async function createWorkerConcurrencyLimits(
   metadata: BackgroundWorkerMetadata,
