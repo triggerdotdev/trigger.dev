@@ -34,7 +34,7 @@ const VIA_ENV_JWT: Read[] = [
   {
     tool: "get_queue (metrics)",
     path: "/api/v1/queues/:name/metrics",
-    resource: { type: "query", id: "queue_metrics" },
+    resource: { type: "query", id: "concurrency_metrics" },
   },
   { tool: "get_queue (live row)", path: "/api/v1/queues/:name", resource: { type: "queues" } },
   {

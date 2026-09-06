@@ -105,7 +105,7 @@ describe("api.v1.reports.$key — authorization", () => {
     expect(requiredResources("health")).toEqual([
       { type: "query", id: "runs" },
       { type: "query", id: "env_metrics" },
-      { type: "query", id: "queue_metrics" },
+      { type: "query", id: "concurrency_metrics" },
     ]);
   });
 
@@ -118,7 +118,7 @@ describe("api.v1.reports.$key — authorization", () => {
 
 describe("reportQueryTables — scope derivation from the registry", () => {
   const registry: Record<string, { tables: readonly ReportQueryTable[] }> = {
-    health: { tables: ["runs", "env_metrics", "queue_metrics"] },
+    health: { tables: ["runs", "env_metrics", "concurrency_metrics"] },
     narrow: { tables: ["runs"] },
   };
 
@@ -127,7 +127,11 @@ describe("reportQueryTables — scope derivation from the registry", () => {
   });
 
   it("still gives the wider report all of its tables", () => {
-    expect(reportQueryTables("health", registry)).toEqual(["runs", "env_metrics", "queue_metrics"]);
+    expect(reportQueryTables("health", registry)).toEqual([
+      "runs",
+      "env_metrics",
+      "concurrency_metrics",
+    ]);
   });
 
   it("returns no tables for an unknown key", () => {
