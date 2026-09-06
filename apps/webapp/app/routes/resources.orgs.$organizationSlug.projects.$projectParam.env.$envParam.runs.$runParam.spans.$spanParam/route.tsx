@@ -1342,7 +1342,7 @@ function WaitingInQueueBlock({
     responseReceivedAt,
     lastSuccessfulResponseAt,
   } = useQueueMetric(
-    `SELECT timeBucket() AS t, max(max_running) AS running, max(max_queued) AS queued, max(max_limit) AS q_limit\nFROM queue_metrics\nGROUP BY t\nORDER BY t`,
+    `SELECT timeBucket() AS t, max(max_running) AS running, max(max_queued) AS queued, max(max_limit) AS q_limit\nFROM concurrency_metrics\nGROUP BY t\nORDER BY t`,
     {
       ids: waiting.ids,
       timeRange: { period: "15m", from: null, to: null },
@@ -1441,7 +1441,7 @@ function WaitingInQueueBlock({
         </div>
         <div className="h-40">
           <QueueMetricChart
-            query={`SELECT timeBucket() AS t,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[1]) AS p50,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS p95\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
+            query={`SELECT timeBucket() AS t,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[1]) AS p50,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS p95\nFROM concurrency_metrics\nGROUP BY t\nORDER BY t`}
             series={[
               { key: "p50", label: "p50", color: QUEUE_METRIC_COLORS.p50 },
               { key: "p95", label: "p95", color: QUEUE_METRIC_COLORS.p95 },

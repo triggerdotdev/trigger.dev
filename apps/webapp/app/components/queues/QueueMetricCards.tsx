@@ -340,7 +340,7 @@ export function QueueSidebarStats({
   };
 
   const { rows, showLoading } = useQueueMetric(
-    `SELECT max(max_queued) AS peak_queued,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS worst_p95\nFROM queue_metrics`,
+    `SELECT max(max_queued) AS peak_queued,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS worst_p95\nFROM concurrency_metrics`,
     { ids, timeRange, queueName, defaultPeriod }
   );
   const row = rows[0];
