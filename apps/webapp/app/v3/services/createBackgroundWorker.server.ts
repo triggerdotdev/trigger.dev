@@ -771,53 +771,77 @@ async function createWorkerQueue(
     concurrencyVersion
   );
 
-  const newConcurrencyLimit = taskQueue.concurrencyLimit;
+  const syncQueueLimitsToEngine = async (row: {
+    name: string;
+    paused: boolean;
+    concurrencyLimit: number | null;
+    totalConcurrencyLimit: number | null;
+  }) => {
+    /**
+     * The total limit key is separate from the per-queue limit key that pause zeroes,
+     * so it is safe to sync it regardless of the paused state. The engine clamps it
+     * to the environment limit at read time, so the raw declared value is stored.
+     */
+    if (typeof row.totalConcurrencyLimit === "number") {
+      await updateQueueTotalConcurrencyLimits(environment, row.name, row.totalConcurrencyLimit);
+    } else {
+      await removeQueueTotalConcurrencyLimits(environment, row.name);
+    }
+
+    if (!row.paused) {
+      logger.debug("createWorkerQueue: syncing concurrency limit", {
+        workerId: worker.id,
+        taskQueue: row,
+        orgId: environment.organizationId,
+        projectId: environment.projectId,
+        environmentId: environment.id,
+        concurrencyLimit: row.concurrencyLimit,
+      });
+      if (typeof row.concurrencyLimit === "number") {
+        await updateQueueConcurrencyLimits(environment, row.name, row.concurrencyLimit);
+      } else {
+        await removeQueueConcurrencyLimits(environment, row.name);
+      }
+    } else {
+      logger.debug("createWorkerQueue: queue is paused, not updating concurrency limit", {
+        workerId: worker.id,
+        taskQueue: row,
+        orgId: environment.organizationId,
+        projectId: environment.projectId,
+        environmentId: environment.id,
+      });
+    }
+  };
+
+  await syncQueueLimitsToEngine(taskQueue);
 
   /**
-   * The total limit key is separate from the per-queue limit key that pause zeroes,
-   * so it is safe to sync it regardless of the paused state. The engine clamps it
-   * to the environment limit at read time, so the raw declared value is stored.
+   * The optimistic markers only guard the Postgres write; an override or reset can
+   * still land between that write and the engine sync above, which would leave the
+   * engine holding this deploy's stale values. Re-read the markers and re-sync once
+   * from the fresh row when they moved: every actor writes Postgres before its own
+   * engine sync, so whoever syncs last is syncing the freshest row.
    */
-  if (typeof taskQueue.totalConcurrencyLimit === "number") {
-    await updateQueueTotalConcurrencyLimits(
-      environment,
-      taskQueue.name,
-      taskQueue.totalConcurrencyLimit
-    );
-  } else {
-    await removeQueueTotalConcurrencyLimits(environment, taskQueue.name);
-  }
+  const freshQueue = await prisma.taskQueue.findFirst({
+    where: { id: taskQueue.id },
+    select: {
+      name: true,
+      paused: true,
+      concurrencyLimit: true,
+      totalConcurrencyLimit: true,
+      concurrencyLimitOverriddenAt: true,
+      totalConcurrencyLimitOverriddenAt: true,
+    },
+  });
 
-  if (!taskQueue.paused) {
-    if (typeof newConcurrencyLimit === "number") {
-      logger.debug("createWorkerQueue: updating concurrency limit", {
-        workerId: worker.id,
-        taskQueue,
-        orgId: environment.organizationId,
-        projectId: environment.projectId,
-        environmentId: environment.id,
-        concurrencyLimit: newConcurrencyLimit,
-      });
-      await updateQueueConcurrencyLimits(environment, taskQueue.name, newConcurrencyLimit);
-    } else {
-      logger.debug("createWorkerQueue: removing concurrency limit", {
-        workerId: worker.id,
-        taskQueue,
-        orgId: environment.organizationId,
-        projectId: environment.projectId,
-        environmentId: environment.id,
-        concurrencyLimit: newConcurrencyLimit,
-      });
-      await removeQueueConcurrencyLimits(environment, taskQueue.name);
-    }
-  } else {
-    logger.debug("createWorkerQueue: queue is paused, not updating concurrency limit", {
-      workerId: worker.id,
-      taskQueue,
-      orgId: environment.organizationId,
-      projectId: environment.projectId,
-      environmentId: environment.id,
-    });
+  if (
+    freshQueue &&
+    (freshQueue.concurrencyLimitOverriddenAt?.getTime() !==
+      taskQueue.concurrencyLimitOverriddenAt?.getTime() ||
+      freshQueue.totalConcurrencyLimitOverriddenAt?.getTime() !==
+        taskQueue.totalConcurrencyLimitOverriddenAt?.getTime())
+  ) {
+    await syncQueueLimitsToEngine(freshQueue);
   }
 
   return taskQueue;
