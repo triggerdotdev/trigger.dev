@@ -92,3 +92,54 @@ export type QueueTypeName = z.infer<typeof QueueTypeName>;
 export const RetrieveQueueParam = z.union([z.string(), QueueTypeName]);
 
 export type RetrieveQueueParam = z.infer<typeof RetrieveQueueParam>;
+
+/** One bound of a concurrency limit: the enforced value, the declared base, and
+ * any active override. `current` is what the engine enforces right now. */
+export const ConcurrencyLimitBound = z.object({
+  current: z.number().nullable(),
+  base: z.number().nullable(),
+  override: z.number().nullable(),
+  overriddenAt: z.coerce.date().nullable(),
+});
+
+export type ConcurrencyLimitBound = z.infer<typeof ConcurrencyLimitBound>;
+
+export const ConcurrencyLimitItem = z.object({
+  /** The limit's id, starting with `climit_`. */
+  id: z.string(),
+  /** The limit's name, as declared with `concurrencyLimit()` (anonymous inline
+   * limits use the derived name `task/<taskId>`). */
+  name: z.string(),
+  /** Caps each concurrencyKey pool; runs without a key share one pool. */
+  perKey: ConcurrencyLimitBound,
+  /** Caps every run holding this limit, keys or not. */
+  total: ConcurrencyLimitBound,
+  /** Runs executing that hold this limit. */
+  running: z.number(),
+  /** Runs that are queued and must clear this limit to execute. */
+  queued: z.number(),
+});
+
+export type ConcurrencyLimitItem = z.infer<typeof ConcurrencyLimitItem>;
+
+export const ListConcurrencyLimitOptions = z.object({
+  page: z.number().optional(),
+  perPage: z.number().optional(),
+});
+
+export type ListConcurrencyLimitOptions = z.infer<typeof ListConcurrencyLimitOptions>;
+
+/** Changes only the given bounds. Zero blocks every run holding the limit, which
+ * is how a limit is paused; `reset` restores the declared values. */
+export const OverrideConcurrencyLimitRequestBody = z
+  .object({
+    perKey: z.number().int().min(0).max(100000).optional(),
+    total: z.number().int().min(0).max(100000).optional(),
+  })
+  .refine((body) => body.perKey !== undefined || body.total !== undefined, {
+    message: "Provide at least one of `perKey` or `total`",
+  });
+
+export type OverrideConcurrencyLimitRequestBody = z.infer<
+  typeof OverrideConcurrencyLimitRequestBody
+>;
