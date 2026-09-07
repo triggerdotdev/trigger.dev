@@ -781,6 +781,8 @@ function QueuesWithMetricsView() {
                   const queueDetailPath = v3QueuePath(organization, project, env, {
                     friendlyId: queue.id,
                   });
+                  const isLimit = queue.kind === "limit";
+                  const displayName = isLimit ? queue.name.replace(/^limit\//, "") : queue.name;
                   return (
                     <TableRow key={queue.name}>
                       <TableCell
@@ -793,7 +795,14 @@ function QueuesWithMetricsView() {
                         leadingContent={
                           <SimpleTooltip
                             button={
-                              queue.type === "task" ? (
+                              isLimit ? (
+                                <ConcurrencyIcon
+                                  className={cn(
+                                    "size-[1.125rem] text-amber-500",
+                                    queue.paused && "opacity-50"
+                                  )}
+                                />
+                              ) : queue.type === "task" ? (
                                 <TasksIcon
                                   className={cn(
                                     "size-[1.125rem] text-blue-500",
@@ -810,9 +819,16 @@ function QueuesWithMetricsView() {
                               )
                             }
                             content={
-                              queue.type === "task"
-                                ? `This queue was automatically created from your "${queue.name}" task`
-                                : "This is a custom queue you added in your code."
+                              isLimit
+                                ? displayName.startsWith("task/")
+                                  ? `This is the inline concurrency limit of your "${displayName.replace(
+                                      /^task\//,
+                                      ""
+                                    )}" task`
+                                  : "This is a named concurrency limit declared in your code."
+                                : queue.type === "task"
+                                  ? `This queue was automatically created from your "${queue.name}" task`
+                                  : "This is a custom queue you added in your code."
                             }
                           />
                         }
@@ -829,8 +845,9 @@ function QueuesWithMetricsView() {
                       >
                         <span className="flex items-center gap-2">
                           <span className={queue.paused ? "opacity-50" : undefined}>
-                            {queue.name}
+                            {displayName}
                           </span>
+                          {isLimit ? <Badge variant="extra-small">Limit</Badge> : null}
                           {queue.paused ? (
                             <Badge variant="extra-small" className="text-warning">
                               Paused
@@ -887,7 +904,8 @@ function QueuesWithMetricsView() {
                         // link (trailing) rather than nested inside the <a>; the number stays the
                         // link.
                         trailingContent={
-                          queue.concurrency?.combined?.current != null ? (
+                          queue.concurrency?.combined?.current != null &&
+                          !(queue.concurrencyVersion === "V2" && queue.concurrencyLimit == null) ? (
                             <SimpleTooltip
                               disableHoverableContent
                               buttonClassName="-ml-1 cursor-default"
@@ -917,7 +935,26 @@ function QueuesWithMetricsView() {
                           ) : undefined
                         }
                       >
-                        {queue.concurrencyLimitOverridePercent !== null ? (
+                        {queue.concurrencyVersion === "V2" &&
+                        queue.concurrencyLimit == null &&
+                        queue.concurrency?.combined?.current != null ? (
+                          <>
+                            {Math.min(
+                              queue.concurrency.combined.current,
+                              environment.concurrencyLimit
+                            )}
+                            <span className="ml-1 text-text-dimmed group-hover/table-row:text-text-bright">
+                              total
+                            </span>
+                          </>
+                        ) : queue.concurrencyVersion === "V2" && queue.concurrencyLimit != null ? (
+                          <>
+                            {limit}
+                            <span className="ml-1 text-text-dimmed group-hover/table-row:text-text-bright">
+                              per key
+                            </span>
+                          </>
+                        ) : queue.concurrencyLimitOverridePercent !== null ? (
                           <>
                             {limit}
                             <span className="ml-1 text-text-dimmed group-hover/table-row:text-text-bright">
@@ -1009,67 +1046,73 @@ function QueuesWithMetricsView() {
                           }
                         />
                       </TableCell>
-                      <TableCellMenu
-                        isSticky
-                        visibleButtons={queue.paused && <QueuePauseResumeButton queue={queue} />}
-                        hiddenButtons={!queue.paused && <QueuePauseResumeButton queue={queue} />}
-                        popoverContent={
-                          <>
-                            {queue.paused ? (
-                              <QueuePauseResumeButton
-                                queue={queue}
-                                variant="minimal/small"
-                                fullWidth
-                                showTooltip={false}
-                              />
-                            ) : (
-                              <QueuePauseResumeButton
-                                queue={queue}
-                                variant="minimal/small"
-                                fullWidth
-                                showTooltip={false}
-                              />
-                            )}
+                      {isLimit ? (
+                        <TableCell isSticky alignment="right">
+                          {""}
+                        </TableCell>
+                      ) : (
+                        <TableCellMenu
+                          isSticky
+                          visibleButtons={queue.paused && <QueuePauseResumeButton queue={queue} />}
+                          hiddenButtons={!queue.paused && <QueuePauseResumeButton queue={queue} />}
+                          popoverContent={
+                            <>
+                              {queue.paused ? (
+                                <QueuePauseResumeButton
+                                  queue={queue}
+                                  variant="minimal/small"
+                                  fullWidth
+                                  showTooltip={false}
+                                />
+                              ) : (
+                                <QueuePauseResumeButton
+                                  queue={queue}
+                                  variant="minimal/small"
+                                  fullWidth
+                                  showTooltip={false}
+                                />
+                              )}
 
-                            <PopoverMenuItem
-                              icon={RunsIcon}
-                              leadingIconClassName="text-runs size-[1.125rem]"
-                              title="View all runs"
-                              to={v3RunsPath(organization, project, env, {
-                                queues: [queueFilterableName],
-                                period: "30d",
-                                rootOnly: false,
-                              })}
-                            />
-                            <PopoverMenuItem
-                              icon={QueuesIcon}
-                              leadingIconClassName="text-queues size-[1.125rem]"
-                              title="View queued runs"
-                              to={v3RunsPath(organization, project, env, {
-                                queues: [queueFilterableName],
-                                statuses: ["PENDING"],
-                                period: "30d",
-                                rootOnly: false,
-                              })}
-                            />
-                            <PopoverMenuItem
-                              icon={Spinner}
-                              leadingIconClassName="text-queues animate-none"
-                              title="View in-progress runs"
-                              to={v3RunsPath(organization, project, env, {
-                                queues: [queueFilterableName],
-                                statuses: ["DEQUEUED", "EXECUTING"],
-                                period: "30d",
-                                rootOnly: false,
-                              })}
-                            />
-                            <QueueOverrideConcurrencyButton
-                              queue={queue}
-                              environmentConcurrencyLimit={environment.concurrencyLimit}
-                            />
-                          </>
-                        }
-                      />
+                              <PopoverMenuItem
+                                icon={RunsIcon}
+                                leadingIconClassName="text-runs size-[1.125rem]"
+                                title="View all runs"
+                                to={v3RunsPath(organization, project, env, {
+                                  queues: [queueFilterableName],
+                                  period: "30d",
+                                  rootOnly: false,
+                                })}
+                              />
+                              <PopoverMenuItem
+                                icon={QueuesIcon}
+                                leadingIconClassName="text-queues size-[1.125rem]"
+                                title="View queued runs"
+                                to={v3RunsPath(organization, project, env, {
+                                  queues: [queueFilterableName],
+                                  statuses: ["PENDING"],
+                                  period: "30d",
+                                  rootOnly: false,
+                                })}
+                              />
+                              <PopoverMenuItem
+                                icon={Spinner}
+                                leadingIconClassName="text-queues animate-none"
+                                title="View in-progress runs"
+                                to={v3RunsPath(organization, project, env, {
+                                  queues: [queueFilterableName],
+                                  statuses: ["DEQUEUED", "EXECUTING"],
+                                  period: "30d",
+                                  rootOnly: false,
+                                })}
+                              />
+                              <QueueOverrideConcurrencyButton
+                                queue={queue}
+                                environmentConcurrencyLimit={environment.concurrencyLimit}
+                              />
+                            </>
+                          }
+                        />
+                      )}
                     </TableRow>
                   );
                 })
@@ -1907,6 +1950,7 @@ function ClassicQueuesView() {
                     const isAtQueueLimit =
                       environment.queueSizeLimit !== null &&
                       queue.queued >= environment.queueSizeLimit;
+                    const isLimit = queue.kind === "limit";
                     const queueFilterableName = `${queue.type === "task" ? "task/" : ""}${
                       queue.name
                     }`;
@@ -1915,6 +1959,7 @@ function ClassicQueuesView() {
                         <TableCell>
                           <span className="flex items-center gap-2">
                             <QueueName {...queue} />
+                            {isLimit ? <Badge variant="extra-small">Limit</Badge> : null}
                             {queue.concurrency?.overriddenAt ? (
                               <SimpleTooltip
                                 button={
@@ -1980,8 +2025,27 @@ function ClassicQueuesView() {
                             queue.concurrency?.overriddenAt && "font-medium text-text-bright"
                           )}
                         >
-                          {limit}
-                          {queue.concurrency?.combined?.current != null ? (
+                          {queue.concurrencyVersion === "V2" &&
+                          queue.concurrencyLimit == null &&
+                          queue.concurrency?.combined?.current != null ? (
+                            <>
+                              {Math.min(
+                                queue.concurrency.combined.current,
+                                environment.concurrencyLimit
+                              )}
+                              <span className="ml-1 text-text-dimmed">total</span>
+                            </>
+                          ) : queue.concurrencyVersion === "V2" &&
+                            queue.concurrencyLimit != null ? (
+                            <>
+                              {limit}
+                              <span className="ml-1 text-text-dimmed">per key</span>
+                            </>
+                          ) : (
+                            limit
+                          )}
+                          {queue.concurrency?.combined?.current != null &&
+                          !(queue.concurrencyVersion === "V2" && queue.concurrencyLimit == null) ? (
                             <SimpleTooltip
                               disableHoverableContent
                               buttonClassName="ml-1 cursor-default"
@@ -2027,67 +2091,77 @@ function ClassicQueuesView() {
                             "Environment"
                           )}
                         </TableCell>
-                        <TableCellMenu
-                          isSticky
-                          visibleButtons={queue.paused && <QueuePauseResumeButton queue={queue} />}
-                          hiddenButtons={!queue.paused && <QueuePauseResumeButton queue={queue} />}
-                          popoverContent={
-                            <>
-                              {queue.paused ? (
-                                <QueuePauseResumeButton
-                                  queue={queue}
-                                  variant="minimal/small"
-                                  fullWidth
-                                  showTooltip={false}
-                                />
-                              ) : (
-                                <QueuePauseResumeButton
-                                  queue={queue}
-                                  variant="minimal/small"
-                                  fullWidth
-                                  showTooltip={false}
-                                />
-                              )}
+                        {isLimit ? (
+                          <TableCell isSticky alignment="right">
+                            {""}
+                          </TableCell>
+                        ) : (
+                          <TableCellMenu
+                            isSticky
+                            visibleButtons={
+                              queue.paused && <QueuePauseResumeButton queue={queue} />
+                            }
+                            hiddenButtons={
+                              !queue.paused && <QueuePauseResumeButton queue={queue} />
+                            }
+                            popoverContent={
+                              <>
+                                {queue.paused ? (
+                                  <QueuePauseResumeButton
+                                    queue={queue}
+                                    variant="minimal/small"
+                                    fullWidth
+                                    showTooltip={false}
+                                  />
+                                ) : (
+                                  <QueuePauseResumeButton
+                                    queue={queue}
+                                    variant="minimal/small"
+                                    fullWidth
+                                    showTooltip={false}
+                                  />
+                                )}
 
-                              <PopoverMenuItem
-                                icon={RunsIcon}
-                                leadingIconClassName="text-runs"
-                                title="View all runs"
-                                to={v3RunsPath(organization, project, env, {
-                                  queues: [queueFilterableName],
-                                  period: "30d",
-                                  rootOnly: false,
-                                })}
-                              />
-                              <PopoverMenuItem
-                                icon={RectangleStackIcon}
-                                leadingIconClassName="text-queues"
-                                title="View queued runs"
-                                to={v3RunsPath(organization, project, env, {
-                                  queues: [queueFilterableName],
-                                  statuses: ["PENDING"],
-                                  period: "30d",
-                                  rootOnly: false,
-                                })}
-                              />
-                              <PopoverMenuItem
-                                icon={Spinner}
-                                leadingIconClassName="text-queues animate-none"
-                                title="View running runs"
-                                to={v3RunsPath(organization, project, env, {
-                                  queues: [queueFilterableName],
-                                  statuses: ["DEQUEUED", "EXECUTING"],
-                                  period: "30d",
-                                  rootOnly: false,
-                                })}
-                              />
-                              <QueueOverrideConcurrencyButton
-                                queue={queue}
-                                environmentConcurrencyLimit={environment.concurrencyLimit}
-                              />
-                            </>
-                          }
-                        />
+                                <PopoverMenuItem
+                                  icon={RunsIcon}
+                                  leadingIconClassName="text-runs"
+                                  title="View all runs"
+                                  to={v3RunsPath(organization, project, env, {
+                                    queues: [queueFilterableName],
+                                    period: "30d",
+                                    rootOnly: false,
+                                  })}
+                                />
+                                <PopoverMenuItem
+                                  icon={RectangleStackIcon}
+                                  leadingIconClassName="text-queues"
+                                  title="View queued runs"
+                                  to={v3RunsPath(organization, project, env, {
+                                    queues: [queueFilterableName],
+                                    statuses: ["PENDING"],
+                                    period: "30d",
+                                    rootOnly: false,
+                                  })}
+                                />
+                                <PopoverMenuItem
+                                  icon={Spinner}
+                                  leadingIconClassName="text-queues animate-none"
+                                  title="View running runs"
+                                  to={v3RunsPath(organization, project, env, {
+                                    queues: [queueFilterableName],
+                                    statuses: ["DEQUEUED", "EXECUTING"],
+                                    period: "30d",
+                                    rootOnly: false,
+                                  })}
+                                />
+                                <QueueOverrideConcurrencyButton
+                                  queue={queue}
+                                  environmentConcurrencyLimit={environment.concurrencyLimit}
+                                />
+                              </>
+                            }
+                          />
+                        )}
                       </TableRow>
                     );
                   })

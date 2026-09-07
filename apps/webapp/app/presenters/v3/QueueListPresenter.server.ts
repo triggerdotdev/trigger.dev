@@ -11,7 +11,10 @@ import { toQueueItem } from "./QueueRetrievePresenter.server";
 
 type QueueListEngine = Pick<
   RunEngine,
-  "lengthOfQueues" | "currentConcurrencyOfQueues" | "totalConcurrencyOfQueues"
+  | "lengthOfQueues"
+  | "currentConcurrencyOfQueues"
+  | "totalConcurrencyOfQueues"
+  | "gateQueuedCountOfQueues"
 >;
 
 export const QUEUE_LIST_DEFAULT_ITEMS_PER_PAGE = 25;
@@ -42,6 +45,8 @@ const queueListSelect = {
   totalConcurrencyLimitOverriddenAt: true,
   type: true,
   paused: true,
+  role: true,
+  concurrencyVersion: true,
 } satisfies Prisma.TaskQueueSelect;
 
 type QueueListRow = Prisma.TaskQueueGetPayload<{ select: typeof queueListSelect }>;
@@ -50,6 +55,10 @@ type QueueListRow = Prisma.TaskQueueGetPayload<{ select: typeof queueListSelect 
 // schema (that's a public contract), so we surface it as an extra field on the list item.
 type QueueListItem = ReturnType<typeof toQueueItem> & {
   concurrencyLimitOverridePercent: number | null;
+  /** "queue" rows wait and order runs; "limit" rows are named concurrency limits. */
+  kind: "queue" | "limit";
+  /** V2 rows hold the new perKey/total vocabulary in their limit columns. */
+  concurrencyVersion: "V1" | "V2";
 };
 
 type QueueListPagination =
@@ -76,7 +85,9 @@ function buildQueueListWhere(
 
   return {
     runtimeEnvironmentId: environmentId,
-    role: "QUEUE" as const,
+    /** The type filter names queue shapes, so applying it scopes the list to queue rows;
+     * without it the list interleaves named limits alongside queues. */
+    role: type ? ("QUEUE" as const) : { in: ["QUEUE" as const, "LIMIT" as const] },
     version: "V2",
     name: trimmedQuery
       ? {
@@ -345,25 +356,44 @@ export class QueueListPresenter extends BasePresenter {
       totalConcurrencyLimitOverriddenAt: Date | null;
       type: TaskQueueType;
       paused: boolean;
+      role: "QUEUE" | "LIMIT";
+      concurrencyVersion: "V1" | "V2";
     }[]
   ): Promise<QueueListItem[]> {
-    const queuesWithTotalCap = queues.filter((q) => q.totalConcurrencyLimit !== null);
-    const [queuedByQueue, runningByQueue, totalRunningByQueue] = await Promise.all([
-      this.engineClient.lengthOfQueues(
-        environment,
-        queues.map((q) => q.name)
-      ),
-      this.engineClient.currentConcurrencyOfQueues(
-        environment,
-        queues.map((q) => q.name)
-      ),
-      queuesWithTotalCap.length > 0
-        ? this.engineClient.totalConcurrencyOfQueues(
-            environment,
-            queuesWithTotalCap.map((q) => q.name)
-          )
-        : Promise.resolve({} as Record<string, number>),
-    ]);
+    const queueRows = queues.filter((q) => q.role === "QUEUE");
+    const limitRows = queues.filter((q) => q.role === "LIMIT");
+    /**
+     * Queue rows read their zset length and home concurrency; limit rows read the
+     * group set (every holder, keyed or keyless) as running and the per-gate queued
+     * counter as queued. The group read also serves queue rows with a total cap.
+     */
+    const rowsWithGroupRead = [
+      ...queueRows.filter((q) => q.totalConcurrencyLimit !== null),
+      ...limitRows,
+    ];
+    const [queuedByQueue, runningByQueue, totalRunningByQueue, gateQueuedByQueue] =
+      await Promise.all([
+        this.engineClient.lengthOfQueues(
+          environment,
+          queueRows.map((q) => q.name)
+        ),
+        this.engineClient.currentConcurrencyOfQueues(
+          environment,
+          queueRows.map((q) => q.name)
+        ),
+        rowsWithGroupRead.length > 0
+          ? this.engineClient.totalConcurrencyOfQueues(
+              environment,
+              rowsWithGroupRead.map((q) => q.name)
+            )
+          : Promise.resolve({} as Record<string, number>),
+        limitRows.length > 0
+          ? this.engineClient.gateQueuedCountOfQueues(
+              environment,
+              limitRows.map((q) => q.name)
+            )
+          : Promise.resolve({} as Record<string, number>),
+      ]);
 
     // Manually "join" the overridden users because there is no way to implement the relationship
     // in prisma without adding a foreign key constraint
@@ -381,8 +411,14 @@ export class QueueListPresenter extends BasePresenter {
         friendlyId: queue.friendlyId,
         name: queue.name,
         type: queue.type,
-        running: runningByQueue[queue.name] ?? 0,
-        queued: queuedByQueue[queue.name] ?? 0,
+        running:
+          queue.role === "LIMIT"
+            ? (totalRunningByQueue[queue.name] ?? 0)
+            : (runningByQueue[queue.name] ?? 0),
+        queued:
+          queue.role === "LIMIT"
+            ? (gateQueuedByQueue[queue.name] ?? 0)
+            : (queuedByQueue[queue.name] ?? 0),
         concurrencyLimit: queue.concurrencyLimit ?? null,
         concurrencyLimitBase: queue.concurrencyLimitBase ?? null,
         concurrencyLimitOverriddenAt: queue.concurrencyLimitOverriddenAt ?? null,
@@ -401,6 +437,8 @@ export class QueueListPresenter extends BasePresenter {
         queue.concurrencyLimitOverridePercent !== null
           ? Number(queue.concurrencyLimitOverridePercent)
           : null,
+      kind: queue.role === "LIMIT" ? ("limit" as const) : ("queue" as const),
+      concurrencyVersion: queue.concurrencyVersion,
     }));
   }
 }
