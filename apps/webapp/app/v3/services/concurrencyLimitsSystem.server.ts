@@ -114,6 +114,12 @@ export class ConcurrencyLimitsSystem {
               message: `\`${field}\` must be an integer between 0 and 100000`,
             });
           }
+          if (value > environment.maximumConcurrencyLimit) {
+            return errAsync({
+              type: "invalid_override" as const,
+              message: `\`${field}\` (${value}) cannot exceed the environment limit (${environment.maximumConcurrencyLimit})`,
+            });
+          }
         }
 
         return findLimitByName(this.db, environment, name)
@@ -129,7 +135,13 @@ export class ConcurrencyLimitsSystem {
       reset: (environment: AuthenticatedEnvironment, name: string) => {
         return findLimitByName(this.db, environment, name)
           .andThen((row) => syncResetToEngine(environment, row))
-          .andThen((row) => resetLimitOverrides(this.db, row))
+          .andThen((row) =>
+            resetLimitOverrides(this.db, row).orElse((error) =>
+              compensateEngineFromFreshRow(this.db, environment, row.id).andThen(() =>
+                errAsync(error)
+              )
+            )
+          )
           .andThen((row) =>
             fromPromise(toLimitItems(environment, [row]), (error) => ({
               type: "other" as const,
@@ -303,9 +315,10 @@ function resetLimitOverrides(db: PrismaClientOrTransaction, row: TaskQueue) {
 }
 
 /**
- * Optimistic update: the where clause carries the override markers as read, so a
- * concurrent override or reset makes this update miss (P2025) and the caller gets
- * a conflict instead of silently clobbering the newer state.
+ * Optimistic update: the where clause carries the row's updatedAt as read, so ANY
+ * concurrent write — another override or reset, or a deploy refreshing the declared
+ * values — makes this update miss (P2025) and the caller gets a conflict instead of
+ * persisting values computed from a stale row.
  */
 function guardedLimitUpdate(
   db: PrismaClientOrTransaction,
@@ -316,8 +329,7 @@ function guardedLimitUpdate(
     db.taskQueue.update({
       where: {
         id: row.id,
-        concurrencyLimitOverriddenAt: row.concurrencyLimitOverriddenAt,
-        totalConcurrencyLimitOverriddenAt: row.totalConcurrencyLimitOverriddenAt,
+        updatedAt: row.updatedAt,
       },
       data,
     }),
@@ -328,6 +340,24 @@ function guardedLimitUpdate(
       return { type: "limit_update_failed" as const, cause: error };
     }
   );
+}
+
+/**
+ * A reset's engine write precedes its guarded persist (enforce-first, so an engine
+ * failure retries cleanly), which leaves the engine reverted when the persist
+ * conflicts or fails. This re-syncs the engine from a fresh read of the row so a
+ * concurrent actor's state (or the still-standing override) is enforced again;
+ * the original error still reaches the caller.
+ */
+function compensateEngineFromFreshRow(
+  db: PrismaClientOrTransaction,
+  environment: AuthenticatedEnvironment,
+  rowId: string
+) {
+  return fromPromise(db.taskQueue.findFirst({ where: { id: rowId } }), (error) => ({
+    type: "other" as const,
+    cause: error,
+  })).andThen((fresh) => (fresh ? syncLimitToEngine(environment, fresh) : okAsync(null)));
 }
 
 /**
