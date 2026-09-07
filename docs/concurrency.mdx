@@ -1,11 +1,11 @@
 ---
-title: "Concurrency & Queues"
-description: "Configure what you want to happen when there is more than one run at a time."
+title: "Concurrency"
+description: "Limit how many runs execute at once: per task, per tenant, or shared across tasks."
 ---
 
-When you trigger a task, it isn't executed immediately. Instead, the task [run](/runs) is placed into a queue for execution.
+When you trigger a task, the [run](/runs) waits in a [queue](/queues) and runs start in trigger order as capacity allows. Concurrency is what decides how much capacity there is.
 
-By default, each task gets its own queue and the concurrency is only limited by your environment concurrency limit. If you need more control (for example, to limit concurrency or share limits across multiple tasks), you can set a concurrency limit on the task, or declare a named limit and share it, as described below.
+By default, concurrency is only limited by your environment concurrency limit. If you need more control (for example, to limit concurrency or share limits across multiple tasks), you can set a concurrency limit on the task, or declare a named limit and share it, as described below.
 
 Controlling concurrency is useful when you have a task that can't be run concurrently, or when you want to limit the number of runs to avoid overloading a resource.
 
@@ -125,52 +125,6 @@ export const summarizeThread = task({
   underscores and hyphens.
 </Note>
 
-## Setting the queue when you trigger a run
-
-When you trigger a task you can override its queue by name. This is really useful if you sometimes have high priority runs:
-
-```ts /trigger/override-queue.ts
-import { queue, task } from "@trigger.dev/sdk";
-
-const paidQueue = queue({
-  name: "paid-users",
-  concurrencyLimit: 10,
-});
-
-export const generatePullRequest = task({
-  id: "generate-pull-request",
-  // normally this task is limited to 1 run at a time
-  concurrency: { total: 1 },
-  run: async (payload) => {
-    //todo generate a PR using OpenAI
-  },
-});
-```
-
-Triggering from your backend and overriding the queue:
-
-```ts app/api/push/route.ts
-import { generatePullRequest } from "~/trigger/override-queue";
-
-export async function POST(request: Request) {
-  const data = await request.json();
-
-  if (data.branch === "main") {
-    //trigger the task, with the paid users queue
-    const handle = await generatePullRequest.trigger(data, {
-      // Set the paid users queue
-      queue: "paid-users",
-    });
-
-    return Response.json(handle);
-  } else {
-    //triggered with the default queue
-    const handle = await generatePullRequest.trigger(data);
-    return Response.json(handle);
-  }
-}
-```
-
 ## Setting limits when you trigger a run
 
 The trigger-time `concurrency` option takes limit names and replaces the task's declared **named** limits for that run. The task's inline limit always applies:
@@ -190,13 +144,13 @@ If you're building an application where you want to run tasks for your users, yo
 
 You can do this by passing a `concurrencyKey` when you trigger. Each unique key value gets its own pool under every `perKey` bound the run holds:
 
-```ts app/api/pr/route.ts
-import { generatePullRequest } from "~/trigger/override-queue";
+```ts app/api/report/route.ts
+import { generateReport } from "~/trigger/per-user";
 
 export async function POST(request: Request) {
   const data = await request.json();
 
-  const handle = await generatePullRequest.trigger(data, {
+  const handle = await generateReport.trigger(data, {
     // every user gets their own concurrency pool
     concurrencyKey: data.userId,
   });
@@ -411,134 +365,6 @@ await concurrencyLimits.override("openai", { total: 0 });
 
 // Back to the values declared in your code
 await concurrencyLimits.reset("openai");
-```
-
-Overrides survive deploys: redeploying your code keeps an active override until you reset it.
-
-## Managing queues with the SDK
-
-The SDK provides a `queues` namespace that allows you to manage queues programmatically. You can list, retrieve, pause, resume, and modify concurrency limits for queues.
-
-<Note>
-  Import from `@trigger.dev/sdk`:
-  ```ts
-  import { queues } from "@trigger.dev/sdk";
-  ```
-</Note>
-
-### Listing queues
-
-You can list all queues in your environment with pagination support:
-
-```ts
-import { queues } from "@trigger.dev/sdk";
-
-// List all queues (returns paginated results)
-const allQueues = await queues.list();
-
-// With pagination options
-const pagedQueues = await queues.list({
-  page: 1,
-  perPage: 20,
-});
-```
-
-### Retrieving a queue
-
-You can retrieve a specific queue by its ID, or by its type and name:
-
-```ts
-import { queues } from "@trigger.dev/sdk";
-
-// Using queue ID (starts with "queue_")
-const queueById = await queues.retrieve("queue_1234");
-
-// Using type and name for a task's default queue
-const taskQueue = await queues.retrieve({
-  type: "task",
-  name: "my-task-id",
-});
-
-// Using type and name for a custom queue
-const customQueue = await queues.retrieve({
-  type: "custom",
-  name: "my-custom-queue",
-});
-```
-
-The queue object contains useful information about the queue state:
-
-```ts
-{
-  id: "queue_1234",       // Queue ID
-  name: "my-task-id",     // Queue name
-  type: "task",           // "task" or "custom"
-  running: 5,             // Currently executing runs
-  queued: 10,             // Runs waiting to execute
-  paused: false,          // Whether the queue is paused
-  concurrencyLimit: 10,   // Current concurrency limit
-  concurrency: {
-    current: 10,          // Effective limit
-    base: 10,             // Default limit from code
-    override: null,       // Override value (if set)
-    overriddenAt: null,   // When override was applied
-    overriddenBy: null,   // Who applied the override
-  }
-}
-```
-
-### Pausing and resuming queues
-
-You can pause a queue to prevent new runs from starting. Runs that are currently executing will continue to completion.
-
-```ts
-import { queues } from "@trigger.dev/sdk";
-
-// Pause a queue using its ID
-await queues.pause("queue_1234");
-
-// Or using type and name
-await queues.pause({ type: "task", name: "my-task-id" });
-await queues.pause({ type: "custom", name: "my-custom-queue" });
-```
-
-To resume a paused queue and allow new runs to start:
-
-```ts
-import { queues } from "@trigger.dev/sdk";
-
-// Resume a queue using its ID
-await queues.resume("queue_1234");
-
-// Or using type and name
-await queues.resume({ type: "task", name: "my-task-id" });
-await queues.resume({ type: "custom", name: "my-custom-queue" });
-```
-
-### Overriding concurrency limits
-
-You can temporarily override a queue's concurrency limit. This is useful for scaling up or down based on demand:
-
-```ts
-import { queues } from "@trigger.dev/sdk";
-
-// Set concurrency limit to 5
-await queues.overrideConcurrencyLimit("queue_1234", 5);
-
-// Or using type and name
-await queues.overrideConcurrencyLimit({ type: "task", name: "my-task-id" }, 20);
-```
-
-To reset the concurrency limit back to the base value defined in your code:
-
-```ts
-import { queues } from "@trigger.dev/sdk";
-
-// Reset concurrency limit to the base value
-await queues.resetConcurrencyLimit("queue_1234");
-
-// Or using type and name
-await queues.resetConcurrencyLimit({ type: "task", name: "my-task-id" });
 ```
 
 Overrides survive deploys: redeploying your code keeps an active override until you reset it.

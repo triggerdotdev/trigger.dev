@@ -65,7 +65,8 @@
                 "group": "Wait",
                 "pages": ["wait", "wait-for", "wait-until", "wait-for-token"]
               },
-              "queue-concurrency",
+              "queues",
+              "concurrency",
               "versioning",
               "machines",
               "idempotency",
@@ -738,6 +739,11 @@
     ]
   },
   "redirects": [
+    {
+      "source": "/queue-concurrency",
+      "destination": "/concurrency",
+      "permanent": true
+    },
     {
       "source": "/config/extensions",
       "destination": "/config/extensions/overview",
