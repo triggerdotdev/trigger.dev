@@ -3112,8 +3112,9 @@ export class RunQueue {
     const messageKey = this.keys.messageKey(orgId, messageId);
     /**
      * Callers pass the bare TaskRun queue name plus its concurrencyKey; the run's
-     * slots live on the ck variant, and the tracked clear additionally mirrors the
-     * group set and counters that only keyed queues maintain.
+     * slots live on the ck variant. Both variants mirror the per-base-queue group
+     * set (keyed and keyless admits populate it); the tracked clear additionally
+     * maintains the counters that only keyed queues keep.
      */
     const fullQueue = concurrencyKey ? this.keys.queueKey(env, queue, concurrencyKey) : queue;
     const queueCurrentConcurrencyKey = this.keys.queueCurrentConcurrencyKey(
@@ -3159,6 +3160,7 @@ export class RunQueue {
       queueCurrentDequeuedKey,
       envCurrentDequeuedKey,
       messageKey,
+      this.keys.queueGroupConcurrencyKeyFromQueue(fullQueue),
       messageId,
       this.options.redis.keyPrefix ?? ""
     );
@@ -6238,7 +6240,7 @@ return results
     });
 
     this.redis.defineCommand("clearMessageFromConcurrencySets", {
-      numberOfKeys: 5,
+      numberOfKeys: 6,
       lua: `
 -- Keys:
 local queueCurrentConcurrencyKey = KEYS[1]
@@ -6246,14 +6248,19 @@ local envCurrentConcurrencyKey = KEYS[2]
 local queueCurrentDequeuedKey = KEYS[3]
 local envCurrentDequeuedKey = KEYS[4]
 local messageKey = KEYS[5]
+local groupConcurrencyKey = KEYS[6]
 
 -- Args:
 local messageId = ARGV[1]
 local keyPrefix = ARGV[2]
 ${QUEUE_GATES_LUA_HELPERS}
 
--- Update the concurrency keys
-redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+-- Update the concurrency keys. The groupConcurrency SREM mirrors the base SREM
+-- unconditionally (no flag check) so a disabled flag still drains the group set.
+local removedFromCurrentConcurrency = redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+if removedFromCurrentConcurrency == 1 then
+  redis.call('SREM', groupConcurrencyKey, messageId)
+end
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
 redis.call('SREM', queueCurrentDequeuedKey, messageId)
 redis.call('SREM', envCurrentDequeuedKey, messageId)
@@ -6473,6 +6480,7 @@ declare module "@internal/redis" {
       queueCurrentDequeuedKey: string,
       envCurrentDequeuedKey: string,
       messageKey: string,
+      groupConcurrencyKey: string,
       // args
       messageId: string,
       keyPrefix: string,
