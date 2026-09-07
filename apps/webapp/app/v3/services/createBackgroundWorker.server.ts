@@ -420,33 +420,39 @@ async function retireStaleAnonymousConcurrencyLimitRows(
       name: { in: boundedIn(candidateNames) },
       OR: [{ concurrencyLimit: { not: null } }, { totalConcurrencyLimit: { not: null } }],
     },
-    select: { id: true, name: true },
+    select: { id: true, name: true, updatedAt: true },
   });
   if (staleRows.length === 0) {
     return;
   }
 
-  await prisma.taskQueue.updateMany({
-    where: { id: { in: boundedIn(staleRows.map((row) => row.id)) } },
-    data: {
-      concurrencyLimit: null,
-      concurrencyLimitBase: null,
-      concurrencyLimitOverriddenAt: null,
-      concurrencyLimitOverriddenBy: null,
-      concurrencyLimitOverridePercent: null,
-      totalConcurrencyLimit: null,
-      totalConcurrencyLimitBase: null,
-      totalConcurrencyLimitOverriddenAt: null,
-      totalConcurrencyLimitOverriddenBy: null,
-    },
-  });
-
-  await Promise.allSettled(
-    staleRows.flatMap((row) => [
-      removeQueueConcurrencyLimits(environment, row.name),
-      removeQueueTotalConcurrencyLimits(environment, row.name),
-    ])
-  );
+  /** Each null is guarded on the row's read updatedAt, so a concurrent writer
+   * (an operator override, or another deploy re-creating the limit) wins and
+   * that row is left alone — its own engine sync governs. Engine keys are only
+   * removed for rows this deploy actually retired; a racing limits-surface sync
+   * converges via its freshness re-check against the nulled row. */
+  for (const row of staleRows) {
+    const retired = await prisma.taskQueue.updateMany({
+      where: { id: row.id, updatedAt: row.updatedAt },
+      data: {
+        concurrencyLimit: null,
+        concurrencyLimitBase: null,
+        concurrencyLimitOverriddenAt: null,
+        concurrencyLimitOverriddenBy: null,
+        concurrencyLimitOverridePercent: null,
+        totalConcurrencyLimit: null,
+        totalConcurrencyLimitBase: null,
+        totalConcurrencyLimitOverriddenAt: null,
+        totalConcurrencyLimitOverriddenBy: null,
+      },
+    });
+    if (retired.count > 0) {
+      await Promise.allSettled([
+        removeQueueConcurrencyLimits(environment, row.name),
+        removeQueueTotalConcurrencyLimits(environment, row.name),
+      ]);
+    }
+  }
 }
 
 async function createWorkerTask(
