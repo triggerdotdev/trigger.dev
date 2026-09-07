@@ -398,9 +398,12 @@ type SyncedLimitValues = { perKey: number | null; total: number | null };
  * Postgres before its own engine sync, so re-syncing whatever is freshest
  * converges. The fixpoint compares the values the engine enforces rather than
  * updatedAt, because Prisma's @updatedAt has millisecond precision and two writes
- * in the same millisecond are indistinguishable by timestamp; identical values
- * mean identical engine state, so skipping those is always safe. Callers use it
- * two ways: after a failure (a reset's enforce-first engine write preceding a
+ * in the same millisecond are indistinguishable by timestamp. Matching values
+ * only prove this actor once synced them, not that the engine still holds them
+ * (another actor may have diverged it and written the same values back), but
+ * skipping is still sound: an actor whose sync diverged the engine had its own
+ * compensation fail too, so its caller received the error and retries. Callers
+ * use it two ways: after a failure (a reset's enforce-first engine write preceding a
  * persist that then conflicts, or an override's sync failing after its persist),
  * where the original error still reaches the caller; and after a successful sync
  * with `alreadySynced` set to the values just synced, where an unchanged row
