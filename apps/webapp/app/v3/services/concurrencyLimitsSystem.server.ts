@@ -126,6 +126,7 @@ export class ConcurrencyLimitsSystem {
                   alreadySynced: {
                     perKey: row.concurrencyLimit,
                     total: row.totalConcurrencyLimit,
+                    paused: row.paused,
                   },
                 })
                   .orElse(() => okAsync(undefined))
@@ -192,14 +193,17 @@ function concurrencyLimitNameFromRow(row: Pick<TaskQueue, "name">): string {
  * match: their limit is queue surface, managed through the queues API.
  */
 function limitRowsWhere(environment: AuthenticatedEnvironment) {
+  const hasBounds = {
+    OR: [{ concurrencyLimit: { not: null } }, { totalConcurrencyLimit: { not: null } }],
+  };
   return {
     runtimeEnvironmentId: environment.id,
     OR: [
-      { role: "LIMIT" as const },
+      { role: "LIMIT" as const, ...hasBounds },
       {
         role: "QUEUE" as const,
         concurrencyVersion: "V2" as const,
-        OR: [{ concurrencyLimit: { not: null } }, { totalConcurrencyLimit: { not: null } }],
+        ...hasBounds,
       },
     ],
   };
@@ -220,6 +224,7 @@ function findLimitByName(
         runtimeEnvironmentId: environment.id,
         name: `${LIMIT_QUEUE_PREFIX}${name}`,
         role: "LIMIT",
+        OR: [{ concurrencyLimit: { not: null } }, { totalConcurrencyLimit: { not: null } }],
       },
     }),
     (error) => ({ type: "other" as const, cause: error })
@@ -237,7 +242,6 @@ function findLimitByName(
           name,
           role: "QUEUE",
           concurrencyVersion: "V2",
-          OR: [{ concurrencyLimit: { not: null } }, { totalConcurrencyLimit: { not: null } }],
         },
       }),
       (error) => ({ type: "other" as const, cause: error })
@@ -322,6 +326,7 @@ function applyLimitOverride(
       : (row.concurrencyLimit ?? null);
     data.concurrencyLimitOverriddenAt = now;
     data.concurrencyLimitOverriddenBy = overriddenBy?.id ?? null;
+    data.concurrencyLimitOverridePercent = null;
   }
 
   if (override.total !== undefined) {
@@ -341,6 +346,27 @@ function applyLimitOverride(
  * override markers clear, so an engine failure leaves the markers set and a retry
  * converges instead of being rejected while the overridden limit stays enforced.
  */
+/**
+ * A paused row's pause IS the engine per-key value 0 (the DB concurrencyLimit
+ * column keeps the configured value), so every per-key engine write from this
+ * surface must preserve it — otherwise an override or reset that only touched
+ * `total` would silently resume a queue every other surface still reports as
+ * paused. Named LIMIT rows are never paused (pausing a limit is an override to
+ * `{ total: 0 }`), so they always take the target branch.
+ */
+function perKeyEngineWrite(
+  environment: AuthenticatedEnvironment,
+  row: Pick<TaskQueue, "name" | "paused">,
+  target: number | null | undefined
+) {
+  if (row.paused) {
+    return updateQueueConcurrencyLimits(environment, row.name, 0);
+  }
+  return typeof target === "number"
+    ? updateQueueConcurrencyLimits(environment, row.name, target)
+    : removeQueueConcurrencyLimits(environment, row.name);
+}
+
 function syncResetToEngine(
   environment: AuthenticatedEnvironment,
   row: TaskQueue
@@ -359,10 +385,7 @@ function syncResetToEngine(
     ? row.totalConcurrencyLimitBase
     : row.totalConcurrencyLimit;
 
-  const perKeySync =
-    typeof perKeyTarget === "number"
-      ? updateQueueConcurrencyLimits(environment, row.name, perKeyTarget)
-      : removeQueueConcurrencyLimits(environment, row.name);
+  const perKeySync = perKeyEngineWrite(environment, row, perKeyTarget);
 
   const totalSync =
     typeof totalTarget === "number"
@@ -383,6 +406,7 @@ function resetLimitOverrides(db: PrismaClientOrTransaction, row: TaskQueue) {
     data.concurrencyLimitBase = null;
     data.concurrencyLimitOverriddenAt = null;
     data.concurrencyLimitOverriddenBy = null;
+    data.concurrencyLimitOverridePercent = null;
   }
 
   if (row.totalConcurrencyLimitOverriddenAt !== null) {
@@ -440,7 +464,7 @@ function guardedLimitUpdate(
   );
 }
 
-type SyncedLimitValues = { perKey: number | null; total: number | null };
+type SyncedLimitValues = { perKey: number | null; total: number | null; paused: boolean };
 
 /**
  * Re-syncs the engine from fresh reads of the row until the enforced values stop
@@ -475,14 +499,13 @@ function compensateEngineFromFreshRow(
           !fresh ||
           (lastSynced !== null &&
             fresh.concurrencyLimit === lastSynced.perKey &&
-            fresh.totalConcurrencyLimit === lastSynced.total)
+            fresh.totalConcurrencyLimit === lastSynced.total &&
+            fresh.paused === lastSynced.paused)
         ) {
           return;
         }
         await settleBothEngineWrites(
-          typeof fresh.concurrencyLimit === "number"
-            ? updateQueueConcurrencyLimits(environment, fresh.name, fresh.concurrencyLimit)
-            : removeQueueConcurrencyLimits(environment, fresh.name),
+          perKeyEngineWrite(environment, fresh, fresh.concurrencyLimit),
           typeof fresh.totalConcurrencyLimit === "number"
             ? updateQueueTotalConcurrencyLimits(
                 environment,
@@ -491,7 +514,11 @@ function compensateEngineFromFreshRow(
               )
             : removeQueueTotalConcurrencyLimits(environment, fresh.name)
         );
-        lastSynced = { perKey: fresh.concurrencyLimit, total: fresh.totalConcurrencyLimit };
+        lastSynced = {
+          perKey: fresh.concurrencyLimit,
+          total: fresh.totalConcurrencyLimit,
+          paused: fresh.paused,
+        };
       }
     })(),
     (error) => ({ type: "other" as const, cause: error })
@@ -504,10 +531,7 @@ function compensateEngineFromFreshRow(
  * both keys sync unconditionally, unlike queue rows.
  */
 function syncLimitToEngine(environment: AuthenticatedEnvironment, row: TaskQueue) {
-  const perKeySync =
-    typeof row.concurrencyLimit === "number"
-      ? updateQueueConcurrencyLimits(environment, row.name, row.concurrencyLimit)
-      : removeQueueConcurrencyLimits(environment, row.name);
+  const perKeySync = perKeyEngineWrite(environment, row, row.concurrencyLimit);
 
   const totalSync =
     typeof row.totalConcurrencyLimit === "number"
