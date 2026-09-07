@@ -68,7 +68,7 @@ Set the pool small. A task usually runs its queries in sequence, so one connecti
 | Drizzle (node-postgres) | 10 (the underlying `pg` pool) |
 | [MongoDB driver](https://www.mongodb.com/docs/drivers/node/current/connect/connection-options/connection-pools/) | 100 (`maxPoolSize`) |
 
-Keep `concurrent runs × pool size` under your provider's connection limit, and cap how many runs execute at once with [concurrency limits](/queue-concurrency) so runs queue instead of overrunning the database. Direct connection limits for common Postgres providers:
+Keep `concurrent runs × pool size` under your provider's connection limit, and cap how many runs execute at once with [concurrency limits](/concurrency) so runs queue instead of overrunning the database. Direct connection limits for common Postgres providers:
 
 | Provider | Direct connection limit |
 | --- | --- |
@@ -197,7 +197,7 @@ export const myChat = chat.agent({
 
 ## Troubleshooting
 
-`too many connections` or connection refused: `concurrent runs × pool size` is over your provider's limit. Lower the pool size, cap [concurrency](/queue-concurrency), or connect through a pooler.
+`too many connections` or connection refused: `concurrent runs × pool size` is over your provider's limit. Lower the pool size, cap [concurrency](/concurrency), or connect through a pooler.
 
 The worker crashes right after resuming from a wait: an idle connection that closed during the suspend emitted an unhandled `error` event. Attach `pool.on("error", ...)` on a `pg` pool (node-postgres or Drizzle); Prisma and the MongoDB driver handle this internally.
 
@@ -208,6 +208,6 @@ When a task waits, the runtime can [checkpoint](/how-it-works#the-checkpoint-res
 ## See also
 
 - [Wait](/wait) for the primitives that trigger a checkpoint.
-- [Concurrency and queues](/queue-concurrency) to cap how many runs execute at once.
+- [Concurrency](/concurrency) to cap how many runs execute at once.
 - [Lifecycle functions](/tasks/overview#onwait-and-onresume-functions) for global `tasks.onWait` and `tasks.onResume`.
 - [Chat agent lifecycle hooks](/ai-chat/lifecycle-hooks) for `onChatSuspend` and `onChatResume`.
