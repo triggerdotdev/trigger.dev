@@ -271,6 +271,20 @@ export type IdempotencyKeyOptionsSchema = z.infer<typeof IdempotencyKeyOptionsSc
 // with PrismaClientValidationError. Accept the intent and stringify here.
 const ConcurrencyKeySchema = z.union([z.string(), z.number()]).transform((value) => String(value));
 
+/**
+ * Trigger-time named concurrency limits. The charset rule matches what the queue
+ * concern enforces, so a bad name is a uniform up-front 400 on every path instead
+ * of a late validation error after the request (or earlier batch items) succeeded.
+ */
+const TriggerConcurrencyLimitsSchema = z
+  .string()
+  .regex(/^[a-zA-Z0-9_-]{1,122}$/, {
+    message:
+      "Concurrency limit names are 1-122 characters using only letters, numbers, underscores and hyphens",
+  })
+  .array()
+  .max(2);
+
 const ExternalDeploymentId = z.preprocess((value) => {
   if (typeof value !== "string") {
     return value;
@@ -336,7 +350,7 @@ export const TriggerTaskRequestBody = z
           )
           .max(3)
           .optional(),
-        concurrency: z.string().min(1).max(128).array().max(2).optional(),
+        concurrency: TriggerConcurrencyLimitsSchema.optional(),
         concurrencyKey: ConcurrencyKeySchema.optional(),
         delay: z.string().or(z.coerce.date()).optional(),
         idempotencyKey: z
@@ -452,7 +466,7 @@ export const BatchTriggerTaskItem = z.object({
         )
         .max(3)
         .optional(),
-      concurrency: z.string().min(1).max(128).array().max(2).optional(),
+      concurrency: TriggerConcurrencyLimitsSchema.optional(),
       tags: RunTags.optional(),
       test: z.boolean().optional(),
       ttl: z.string().or(z.number().nonnegative().int()).optional(),
@@ -1893,15 +1907,7 @@ export const SessionTriggerConfig = z.object({
   /** Named concurrency limits every run holds, replacing the task's declared named limits.
    * The charset rule is enforced here so a bad name is rejected before the session row
    * persists, instead of surfacing from the trigger after the session already exists. */
-  concurrency: z
-    .string()
-    .regex(/^[a-zA-Z0-9_-]{1,122}$/, {
-      message:
-        "Concurrency limit names are 1-122 characters using only letters, numbers, underscores and hyphens",
-    })
-    .array()
-    .max(2)
-    .optional(),
+  concurrency: TriggerConcurrencyLimitsSchema.optional(),
   /** Scopes every run to its own pool under each `perKey` bound it holds. Never defaulted — a session without one shares the keyless pool. */
   concurrencyKey: ConcurrencyKeySchema.optional(),
   tags: z.array(z.string().max(128)).max(10).optional(),
