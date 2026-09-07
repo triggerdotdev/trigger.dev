@@ -3220,6 +3220,8 @@ paths:
           application/json:
             schema:
               type: object
+              minProperties: 1
+              description: At least one of `perKey` or `total` must be provided.
               properties:
                 perKey:
                   type: integer
@@ -4454,6 +4456,13 @@ components:
           description: An optional property that specifies the maximum number of concurrent run executions. If this property is omitted, the task can potentially use up the full concurrency of an environment.
     ConcurrencyLimitObject:
       type: object
+      required:
+        - id
+        - name
+        - perKey
+        - total
+        - running
+        - queued
       properties:
         id:
           type: string
