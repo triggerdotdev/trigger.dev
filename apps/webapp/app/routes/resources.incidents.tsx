@@ -10,6 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { useFeatures } from "~/hooks/useFeatures";
 import { BetterStackClient, type AggregateState } from "~/services/betterstack/betterstack.server";
+import { useInterval } from "~/hooks/useInterval";
 
 // Prevent Remix from revalidating this route when other fetchers submit
 export const shouldRevalidate: ShouldRevalidateFunction = () => false;
@@ -56,18 +57,16 @@ export function useIncidentStatus() {
     }
   }, [isManagedCloud, load, state]);
 
-  useEffect(() => {
-    if (!isManagedCloud) return;
-
-    // Poll every 60 seconds
-    const interval = setInterval(() => {
+  useInterval({
+    interval: POLL_INTERVAL_MS,
+    onLoad: false,
+    disabled: !isManagedCloud,
+    callback: () => {
       if (stateRef.current === "idle") {
         load("/resources/incidents");
       }
-    }, POLL_INTERVAL_MS);
-
-    return () => clearInterval(interval);
-  }, [isManagedCloud, load, stateRef]);
+    },
+  });
 
   return {
     status: fetcher.data?.status ?? "operational",

@@ -909,7 +909,6 @@ function useConcurrencyKeys(opts: {
     interval: 30_000,
     onLoad: false,
     onFocus: true,
-    pauseWhenHidden: true,
     callback: load,
   });
 

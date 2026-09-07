@@ -6,6 +6,7 @@ import { useLatest } from "react-use";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { getRecentChangelogs, verifyOrgMembership } from "~/services/platformNotifications.server";
+import { useInterval } from "~/hooks/useInterval";
 
 export const shouldRevalidate: ShouldRevalidateFunction = () => false;
 
@@ -59,15 +60,15 @@ export function useRecentChangelogs(organizationId?: string, projectId?: string)
     }
   }, [load, state, url]);
 
-  useEffect(() => {
-    const interval = setInterval(() => {
+  useInterval({
+    interval: POLL_INTERVAL_MS,
+    onLoad: false,
+    callback: () => {
       if (stateRef.current === "idle") {
         load(url);
       }
-    }, POLL_INTERVAL_MS);
-
-    return () => clearInterval(interval);
-  }, [load, stateRef, url]);
+    },
+  });
 
   return {
     changelogs: fetcher.data?.changelogs ?? [],

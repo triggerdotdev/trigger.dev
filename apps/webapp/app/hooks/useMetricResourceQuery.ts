@@ -223,7 +223,6 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
     interval: refreshIntervalMs,
     onLoad: false,
     onFocus: true,
-    pauseWhenHidden: true,
     callback: load,
   });
 

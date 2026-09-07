@@ -20,6 +20,7 @@ export default defineConfig({
       "app/services/realtime/**/*.test.ts",
       "app/services/clickhouse/**/*.test.ts",
       "app/utils/**/*.test.ts",
+      "app/hooks/**/*.test.ts",
       "app/components/code/**/*.test.ts",
       "app/components/runs/**/*.test.ts",
       "app/components/dashboard-agent/**/*.test.ts",
