@@ -1,6 +1,6 @@
 import type { TaskQueue, User } from "@trigger.dev/database";
 import { errAsync, fromPromise, okAsync } from "neverthrow";
-import type { PrismaClientOrTransaction } from "~/db.server";
+import { Prisma, type PrismaClientOrTransaction } from "~/db.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import {
   removeQueueConcurrencyLimits,
@@ -128,8 +128,8 @@ export class ConcurrencyLimitsSystem {
       },
       reset: (environment: AuthenticatedEnvironment, name: string) => {
         return findLimitByName(this.db, environment, name)
+          .andThen((row) => syncResetToEngine(environment, row))
           .andThen((row) => resetLimitOverrides(this.db, row))
-          .andThen((row) => syncLimitToEngine(environment, row))
           .andThen((row) =>
             fromPromise(toLimitItems(environment, [row]), (error) => ({
               type: "other" as const,
@@ -246,17 +246,43 @@ function applyLimitOverride(
     data.totalConcurrencyLimitOverriddenBy = overriddenBy?.id ?? null;
   }
 
-  return fromPromise(db.taskQueue.update({ where: { id: row.id }, data }), (error) => ({
-    type: "limit_update_failed" as const,
-    cause: error,
-  }));
+  return guardedLimitUpdate(db, row, data);
 }
 
-function resetLimitOverrides(db: PrismaClientOrTransaction, row: TaskQueue) {
+/**
+ * Enforce first, then persist: the engine syncs to the declared base BEFORE the
+ * override markers clear, so an engine failure leaves the markers set and a retry
+ * converges instead of being rejected while the overridden limit stays enforced.
+ */
+function syncResetToEngine(environment: AuthenticatedEnvironment, row: TaskQueue) {
   if (row.concurrencyLimitOverriddenAt === null && row.totalConcurrencyLimitOverriddenAt === null) {
     return errAsync({ type: "limit_not_overridden" as const });
   }
 
+  const perKeyTarget = row.concurrencyLimitOverriddenAt
+    ? row.concurrencyLimitBase
+    : row.concurrencyLimit;
+  const totalTarget = row.totalConcurrencyLimitOverriddenAt
+    ? row.totalConcurrencyLimitBase
+    : row.totalConcurrencyLimit;
+
+  const perKeySync =
+    typeof perKeyTarget === "number"
+      ? updateQueueConcurrencyLimits(environment, row.name, perKeyTarget)
+      : removeQueueConcurrencyLimits(environment, row.name);
+
+  const totalSync =
+    typeof totalTarget === "number"
+      ? updateQueueTotalConcurrencyLimits(environment, row.name, totalTarget)
+      : removeQueueTotalConcurrencyLimits(environment, row.name);
+
+  return fromPromise(Promise.all([perKeySync, totalSync]), (error) => ({
+    type: "sync_limit_to_engine_failed" as const,
+    cause: error,
+  })).map(() => row);
+}
+
+function resetLimitOverrides(db: PrismaClientOrTransaction, row: TaskQueue) {
   const data: Record<string, unknown> = {};
 
   if (row.concurrencyLimitOverriddenAt !== null) {
@@ -273,10 +299,35 @@ function resetLimitOverrides(db: PrismaClientOrTransaction, row: TaskQueue) {
     data.totalConcurrencyLimitOverriddenBy = null;
   }
 
-  return fromPromise(db.taskQueue.update({ where: { id: row.id }, data }), (error) => ({
-    type: "limit_update_failed" as const,
-    cause: error,
-  }));
+  return guardedLimitUpdate(db, row, data);
+}
+
+/**
+ * Optimistic update: the where clause carries the override markers as read, so a
+ * concurrent override or reset makes this update miss (P2025) and the caller gets
+ * a conflict instead of silently clobbering the newer state.
+ */
+function guardedLimitUpdate(
+  db: PrismaClientOrTransaction,
+  row: TaskQueue,
+  data: Record<string, unknown>
+) {
+  return fromPromise(
+    db.taskQueue.update({
+      where: {
+        id: row.id,
+        concurrencyLimitOverriddenAt: row.concurrencyLimitOverriddenAt,
+        totalConcurrencyLimitOverriddenAt: row.totalConcurrencyLimitOverriddenAt,
+      },
+      data,
+    }),
+    (error) => {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+        return { type: "conflict" as const };
+      }
+      return { type: "limit_update_failed" as const, cause: error };
+    }
+  );
 }
 
 /**

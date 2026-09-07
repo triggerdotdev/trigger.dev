@@ -166,10 +166,11 @@ end
 -- Callers gate the delta on the actual queue-zset transition (ZADD added == 1 /
 -- ZREM removed == 1) so re-enqueues and already-removed members never double count;
 -- gates sharing a base (duplicate entries, key variants) count once per run. The
--- 24h absolute TTL (set at creation, never extended) re-anchors drift from paths
--- without the delta (rolling deploys, stale-entry cleanup): the counter resets,
--- floored decrements absorb the pre-reset backlog as it drains, and counts converge
--- to exact for every run enqueued after the reset. Payload-driven and
+-- 24h TTL refreshes on every delta, so an ACTIVE gate's count never resets while
+-- drift from delta-less paths (a mixed-version rollout, a stale-entry cleanup)
+-- clears once the gate has been quiet for a day. The residual gap is a gate idle
+-- for 24h with runs still queued (e.g. paused with no new enqueues): its counter
+-- expires and under-counts until the backlog fully drains. Payload-driven and
 -- flag-independent, like release, so counts stay exact across flag flips.
 local function __gateQueuedDelta(gatesKeyPrefix, msg, delta)
   if type(msg) ~= 'table' or not msg.gates then return end
@@ -180,12 +181,11 @@ local function __gateQueuedDelta(gatesKeyPrefix, msg, delta)
       seenBases[base] = true
       local counterKey = base .. ':gateQueuedCounter'
       if delta > 0 then
-        if redis.call('EXISTS', counterKey) == 0 then
-          redis.call('SET', counterKey, '0', 'EX', '86400')
-        end
         redis.call('INCRBY', counterKey, delta)
+        redis.call('EXPIRE', counterKey, '86400')
       elseif tonumber(redis.call('GET', counterKey) or '0') > 0 then
         redis.call('DECRBY', counterKey, -delta)
+        redis.call('EXPIRE', counterKey, '86400')
       end
     end
   end
@@ -347,7 +347,9 @@ export type RunQueueOptions = {
   /**
    * When true, queues maintain a per-base-queue groupConcurrency SET (total in-flight
    * across all key variants AND keyless runs) and enforce the queue's total concurrency
-   * limit at admit time. Default false: admit paths are byte-identical to before, and
+   * limit at admit time. V2 concurrency semantics (a limit's `total` bound, including
+   * total-only declarations) are enforced solely through this flag: with it off, a
+   * total-only limit caps nothing. Default false: admit paths are byte-identical to before, and
    * only the release-side SREM mirror runs (a no-op on an absent set), so the flag can
    * be flipped on a fleet that has fully rolled onto this build without draining queues.
    *
