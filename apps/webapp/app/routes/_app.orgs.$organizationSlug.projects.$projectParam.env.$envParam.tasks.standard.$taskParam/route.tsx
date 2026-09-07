@@ -63,8 +63,8 @@ import { requireUser } from "~/services/session.server";
 import {
   EnvironmentParamSchema,
   v3EnvironmentPath,
-  v3QueuePath,
-  v3QueuesPath,
+  concurrencyQueuePath,
+  concurrencyPath,
   v3TestTaskPath,
 } from "~/utils/pathBuilder";
 import { parseFiniteInt } from "~/utils/searchParams";
@@ -198,9 +198,9 @@ export default function Page() {
   const testPath = v3TestTaskPath(organization, project, environment, {
     taskIdentifier: task.slug,
   });
-  const queuesPath = v3QueuesPath(organization, project, environment);
+  const queuesPath = concurrencyPath(organization, project, environment);
   const queuePath = task.queue
-    ? v3QueuePath(organization, project, environment, { friendlyId: task.queue.friendlyId })
+    ? concurrencyQueuePath(organization, project, environment, { friendlyId: task.queue.friendlyId })
     : undefined;
 
   const { value } = useSearchParams();
