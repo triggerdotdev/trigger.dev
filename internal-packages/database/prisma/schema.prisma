@@ -1963,6 +1963,13 @@ model TaskQueue {
   version       TaskQueueVersion @default(V1)
   orderableName String?
 
+  /// How the queue's concurrency was declared: V1 = legacy concurrencyLimit semantics
+  /// (per key when keyed, whole queue otherwise), V2 = the explicit perKey/total shape.
+  concurrencyVersion TaskQueueConcurrencyVersion @default(V1)
+  /// QUEUE rows are real queues; LIMIT rows back named concurrency limits and are
+  /// excluded from every queue-facing surface.
+  role               TaskQueueRole               @default(QUEUE)
+
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String
 
@@ -1983,7 +1990,13 @@ model TaskQueue {
   concurrencyLimitOverridePercent Decimal?  @db.Decimal(5, 2)
   /// Caps total concurrent runs across ALL concurrencyKey values of this queue
   /// (concurrencyLimit applies per key value). Null = no total cap.
-  totalConcurrencyLimit           Int?
+  totalConcurrencyLimit             Int?
+  /// When the total concurrency limit was overridden
+  totalConcurrencyLimitOverriddenAt DateTime?
+  /// Who overrode the total concurrency limit (null when overridden via the API)
+  totalConcurrencyLimitOverriddenBy String?
+  /// If totalConcurrencyLimit is overridden, the declared value it reverts to on reset
+  totalConcurrencyLimitBase         Int?
   rateLimit                       Json?
 
   paused Boolean @default(false)
@@ -1995,8 +2008,10 @@ model TaskQueue {
   tasks    BackgroundWorkerTask[]
   workers  BackgroundWorker[]
 
+
   @@unique([runtimeEnvironmentId, name])
 }
+
 
 enum TaskQueueType {
   VIRTUAL
@@ -2006,6 +2021,16 @@ enum TaskQueueType {
 enum TaskQueueVersion {
   V1
   V2
+}
+
+enum TaskQueueConcurrencyVersion {
+  V1
+  V2
+}
+
+enum TaskQueueRole {
+  QUEUE
+  LIMIT
 }
 
 model BatchTaskRun {

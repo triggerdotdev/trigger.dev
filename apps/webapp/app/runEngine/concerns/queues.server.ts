@@ -220,13 +220,71 @@ export class DefaultQueueManager implements QueueManager {
       queueName = sanitizedQueueName;
     }
 
-    const requestedGates = request.body.options?.gates ?? taskGates ?? undefined;
-    const gates = requestedGates
-      ?.flatMap((gate) => {
-        const sanitized = sanitizeQueueName(gate.queue);
-        return sanitized ? [{ queue: sanitized, concurrencyKey: gate.concurrencyKey }] : [];
-      })
-      .slice(0, 2);
+    const triggerLimits = request.body.options?.concurrency;
+
+    for (const name of triggerLimits ?? []) {
+      if (!/^[a-zA-Z0-9_-]{1,122}$/.test(name)) {
+        throw new ServiceValidationError(
+          `Invalid concurrency limit name "${name}": names are 1-122 characters using only letters, numbers, underscores and hyphens.`
+        );
+      }
+    }
+
+    /**
+     * Trigger-time names replace the task's declared NAMED limits only. The task's
+     * inline limit rides in its stored gates as an anonymous "limit/task/" gate and
+     * always applies, so it is carried over into the replacement (an empty array
+     * clears the named limits but keeps the inline one).
+     */
+    const inlineTaskGates = (taskGates ?? []).filter((gate) =>
+      gate.queue.startsWith("limit/task/")
+    );
+    const concurrencyGates = triggerLimits
+      ? [
+          ...inlineTaskGates,
+          ...triggerLimits.map((name): { queue: string; concurrencyKey?: string } => ({
+            queue: `limit/${name}`,
+          })),
+        ]
+      : undefined;
+
+    /**
+     * The raw gates option replaces stored gates the same way concurrency does, so
+     * it also carries the inline gate over; a replay resending the stored gates
+     * collapses back to the original set through the dedupe below.
+     */
+    const rawGates = request.body.options?.gates;
+    const requestedGates =
+      concurrencyGates ??
+      (rawGates ? [...inlineTaskGates, ...rawGates] : undefined) ??
+      taskGates ??
+      undefined;
+
+    const seenGates = new Set<string>();
+    const gates = requestedGates?.flatMap((gate) => {
+      const sanitized = sanitizeQueueName(gate.queue);
+      if (!sanitized) {
+        return [];
+      }
+      const dedupeKey = `${sanitized} ${gate.concurrencyKey ?? ""}`;
+      if (seenGates.has(dedupeKey)) {
+        return [];
+      }
+      seenGates.add(dedupeKey);
+      return [{ queue: sanitized, concurrencyKey: gate.concurrencyKey }];
+    });
+
+    /**
+     * Unreachable through the public schemas (three requested gates plus one inline
+     * gate is the ceiling), kept as a backstop so an overflowing set can never be
+     * silently truncated downstream. Replays of three-gate runs against a task that
+     * later gained an inline limit resolve to four and stay valid.
+     */
+    if (gates && gates.length > 4) {
+      throw new ServiceValidationError(
+        `A run can hold at most four gates; this request resolves to ${gates.length}.`
+      );
+    }
 
     return {
       queueName,

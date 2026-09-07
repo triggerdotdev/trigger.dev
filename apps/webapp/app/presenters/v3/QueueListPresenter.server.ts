@@ -70,6 +70,7 @@ function buildQueueListWhere(
 
   return {
     runtimeEnvironmentId: environmentId,
+    role: "QUEUE" as const,
     version: "V2",
     name: trimmedQuery
       ? {

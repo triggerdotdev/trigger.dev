@@ -16,7 +16,13 @@ import {
   stringifyDuration,
 } from "@trigger.dev/core/v3/isomorphic";
 import { randomBytes } from "node:crypto";
-import type { BackgroundWorker, TaskQueue, TaskQueueType } from "@trigger.dev/database";
+import type {
+  BackgroundWorker,
+  TaskQueue,
+  TaskQueueConcurrencyVersion,
+  TaskQueueRole,
+  TaskQueueType,
+} from "@trigger.dev/database";
 import cronstrue from "cronstrue";
 import type { PrismaClientOrTransaction, WebhookDatabase } from "~/db.server";
 import { $transaction, Prisma, boundedIn, webhookPrisma } from "~/db.server";
@@ -90,6 +96,8 @@ export class CreateBackgroundWorkerService extends BaseService {
           },
         },
       });
+
+      validateWorkerConcurrencyDeclarations(body.metadata);
 
       const latestBackgroundWorker = project.backgroundWorkers[0];
 
@@ -337,6 +345,7 @@ export async function createWorkerResources(
 
   // Create the queues
   const queues = await createWorkerQueues(metadata, worker, environment, prisma);
+  await createWorkerConcurrencyLimits(metadata, worker, environment, prisma);
 
   // Create the tasks
   const taskEntries = await createWorkerTasks(
@@ -391,10 +400,59 @@ async function createWorkerTask(
 ): Promise<TaskMetadataEntry | null> {
   // Hoisted so the P2002 catch branch can return the same entry shape.
   let queue: TaskQueue | undefined;
+  let compiledGates: Array<{ queue: string; concurrencyKey?: string }> = [];
   let resolvedTriggerSource: "SCHEDULED" | "AGENT" | "WEBHOOK" | "STANDARD" | undefined;
   let resolvedTtl: string | null | undefined;
 
   try {
+    const concurrency = task.concurrency;
+
+    if (task.queue?.name) {
+      assertNotReservedQueueName(task.queue.name, `Task "${task.id}"`);
+    }
+
+    if (concurrency && typeof task.queue?.concurrencyLimit === "number") {
+      throw new ServiceValidationError(
+        `Task "${task.id}" declares both a queue concurrencyLimit and the concurrency option; use concurrency.`
+      );
+    }
+
+    compiledGates = (concurrency?.limits ?? []).map((name) => ({
+      queue: concurrencyLimitQueueName(name),
+    }));
+
+    let queueConcurrencyLimit = task.queue?.concurrencyLimit;
+    let queueTotalConcurrencyLimit = task.queue?.combinedConcurrencyLimit;
+
+    if (concurrency?.inline) {
+      if (!task.queue?.name) {
+        queueConcurrencyLimit = concurrency.inline.perKey ?? concurrency.inline.total;
+        queueTotalConcurrencyLimit = concurrency.inline.total;
+      } else {
+        if (compiledGates.length > 1) {
+          throw new ServiceValidationError(
+            `Task "${task.id}": an inline limit on a shared queue uses a gate slot, so at most one named limit can be combined with it.`
+          );
+        }
+        const anonymousQueueName = anonymousConcurrencyLimitQueueName(task.id);
+        await createWorkerQueue(
+          {
+            name: anonymousQueueName,
+            concurrencyLimit: concurrency.inline.perKey ?? concurrency.inline.total ?? null,
+            combinedConcurrencyLimit: concurrency.inline.total ?? null,
+          },
+          `task/${task.id}`,
+          "NAMED",
+          worker,
+          environment,
+          prisma,
+          "LIMIT",
+          "V2"
+        );
+        compiledGates = [{ queue: anonymousQueueName }, ...compiledGates];
+      }
+    }
+
     queue = queues.find((queue) => queue.name === task.queue?.name);
 
     if (!queue) {
@@ -402,14 +460,22 @@ async function createWorkerTask(
       queue = await createWorkerQueue(
         {
           name: task.queue?.name ?? `task/${task.id}`,
-          concurrencyLimit: task.queue?.concurrencyLimit,
-          combinedConcurrencyLimit: task.queue?.combinedConcurrencyLimit,
+          concurrencyLimit: queueConcurrencyLimit,
+          combinedConcurrencyLimit: queueTotalConcurrencyLimit,
         },
         task.queue?.name ?? task.id,
         task.queue?.name ? "NAMED" : "VIRTUAL",
         worker,
         environment,
-        prisma
+        prisma,
+        "QUEUE",
+        /**
+         * V2 marks rows whose limit fields hold the new perKey/total vocabulary. That
+         * only happens when an inline limit compiles into the task's own default queue;
+         * a shared queue keeps V1 regardless of task concurrency (which lives in gates
+         * and LIMIT rows), matching rows materialized from queue() declarations.
+         */
+        concurrency?.inline && !task.queue?.name ? "V2" : "V1"
       );
     }
 
@@ -437,7 +503,7 @@ async function createWorkerTask(
         exportName: task.exportName,
         retryConfig: task.retry,
         queueConfig: task.queue,
-        gates: task.gates,
+        gates: compiledGates.length > 0 ? compiledGates : task.gates,
         machineConfig: task.machine,
         triggerSource: resolvedTriggerSource,
         config: task.agentConfig ? (task.agentConfig as any) : undefined,
@@ -455,9 +521,12 @@ async function createWorkerTask(
       triggerSource: resolvedTriggerSource,
       queueId: queue.id,
       queueName: queue.name,
-      gates: task.gates ?? null,
+      gates: compiledGates.length > 0 ? compiledGates : (task.gates ?? null),
     };
   } catch (error) {
+    if (error instanceof ServiceValidationError) {
+      throw error;
+    }
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       // The error code for unique constraint violation in Prisma is P2002
       if (error.code === "P2002") {
@@ -479,7 +548,7 @@ async function createWorkerTask(
             triggerSource: resolvedTriggerSource,
             queueId: queue.id,
             queueName: queue.name,
-            gates: task.gates ?? null,
+            gates: compiledGates.length > 0 ? compiledGates : (task.gates ?? null),
           };
         }
       } else {
@@ -531,6 +600,7 @@ async function createWorkerQueues(
     const chunk = metadata.queues.slice(i, i + CHUNK_SIZE);
     const queueChunk = await Promise.all(
       chunk.map(async (queue) => {
+        assertNotReservedQueueName(queue.name, `Queue "${queue.name}"`);
         return createWorkerQueue(queue, queue.name, "NAMED", worker, environment, prisma);
       })
     );
@@ -540,13 +610,150 @@ async function createWorkerQueues(
   return allQueues;
 }
 
+/**
+ * Rejects invalid concurrency declarations before any worker rows are written, so a
+ * failed deploy leaves nothing behind for a same-content retry to return.
+ */
+export function validateWorkerConcurrencyDeclarations(metadata: BackgroundWorkerMetadata): void {
+  for (const queue of metadata.queues ?? []) {
+    assertNotReservedQueueName(queue.name, `Queue "${queue.name}"`);
+  }
+
+  for (const limit of metadata.concurrencyLimits ?? []) {
+    assertValidConcurrencyLimitName(limit.name);
+  }
+
+  for (const task of metadata.tasks) {
+    if (task.queue?.name) {
+      assertNotReservedQueueName(task.queue.name, `Task "${task.id}"`);
+    }
+
+    for (const gate of task.gates ?? []) {
+      assertNotReservedQueueName(gate.queue, `Task "${task.id}" gate "${gate.queue}"`);
+    }
+
+    const concurrency = task.concurrency;
+    if (!concurrency) {
+      continue;
+    }
+
+    if (typeof task.queue?.concurrencyLimit === "number") {
+      throw new ServiceValidationError(
+        `Task "${task.id}" declares both a queue concurrencyLimit and the concurrency option; use concurrency.`
+      );
+    }
+
+    for (const name of concurrency.limits ?? []) {
+      assertValidConcurrencyLimitName(name);
+    }
+
+    if (concurrency.inline && task.queue?.name) {
+      if ((concurrency.limits ?? []).length > 1) {
+        throw new ServiceValidationError(
+          `Task "${task.id}": an inline limit on a shared queue uses a gate slot, so at most one named limit can be combined with it.`
+        );
+      }
+    }
+  }
+}
+
+/** Queue rows that back named concurrency limits live under this reserved prefix so
+ * they can never collide with a user's queue names. */
+const CONCURRENCY_LIMIT_QUEUE_PREFIX = "limit/";
+
+const CONCURRENCY_LIMIT_NAME_MAX_LENGTH = 128 - CONCURRENCY_LIMIT_QUEUE_PREFIX.length;
+
+/**
+ * Named limits require a strict charset so distinct declared names can never merge
+ * onto one row after queue-name sanitization (which strips disallowed characters).
+ */
+function assertValidConcurrencyLimitName(name: string): void {
+  if (!new RegExp(`^[a-zA-Z0-9_-]{1,${CONCURRENCY_LIMIT_NAME_MAX_LENGTH}}$`).test(name)) {
+    throw new ServiceValidationError(
+      `Concurrency limit name "${name}" must be 1-${CONCURRENCY_LIMIT_NAME_MAX_LENGTH} characters using only letters, numbers, underscores and hyphens.`
+    );
+  }
+}
+
+function concurrencyLimitQueueName(limitName: string): string {
+  assertValidConcurrencyLimitName(limitName);
+  return `${CONCURRENCY_LIMIT_QUEUE_PREFIX}${limitName}`;
+}
+
+/**
+ * Row name for a task's anonymous inline limit. Task ids are not charset-restricted,
+ * so when sanitization would be lossy (or the name would overflow the 128-char queue
+ * name limit) a hash of the raw id keeps distinct task ids on distinct rows.
+ */
+function anonymousConcurrencyLimitQueueName(taskId: string): string {
+  const sanitized = sanitizeQueueName(taskId);
+  const name = `${CONCURRENCY_LIMIT_QUEUE_PREFIX}task/${sanitized}`;
+  if (sanitized === taskId && name.length <= 128) {
+    return name;
+  }
+  const hash = createHash("sha256").update(taskId).digest("hex").slice(0, 8);
+  const budget = 128 - `${CONCURRENCY_LIMIT_QUEUE_PREFIX}task/`.length - hash.length - 1;
+  return `${CONCURRENCY_LIMIT_QUEUE_PREFIX}task/${sanitized.slice(0, budget)}-${hash}`;
+}
+
+/** User queue names may not claim the reserved limit/ namespace. */
+function assertNotReservedQueueName(name: string, context: string): void {
+  if (sanitizeQueueName(name).startsWith(CONCURRENCY_LIMIT_QUEUE_PREFIX)) {
+    throw new ServiceValidationError(
+      `${context}: queue names starting with "${CONCURRENCY_LIMIT_QUEUE_PREFIX}" are reserved for concurrency limits.`
+    );
+  }
+}
+
+/**
+ * Materializes the worker's declared named concurrency limits (plus any names tasks
+ * reference without declaring, created uncapped) as LIMIT-role TaskQueue rows. A
+ * total-only limit stores the total as its per-key limit too, so no single key (or
+ * the keyless pool) can exceed it even before the group check applies.
+ */
+async function createWorkerConcurrencyLimits(
+  metadata: BackgroundWorkerMetadata,
+  worker: BackgroundWorker,
+  environment: AuthenticatedEnvironment,
+  prisma: PrismaClientOrTransaction
+) {
+  const declared = new Map((metadata.concurrencyLimits ?? []).map((l) => [l.name, l]));
+
+  for (const task of metadata.tasks) {
+    for (const name of task.concurrency?.limits ?? []) {
+      if (!declared.has(name)) {
+        declared.set(name, { name });
+      }
+    }
+  }
+
+  for (const limit of declared.values()) {
+    await createWorkerQueue(
+      {
+        name: concurrencyLimitQueueName(limit.name),
+        concurrencyLimit: limit.perKey ?? limit.total ?? null,
+        combinedConcurrencyLimit: limit.total ?? null,
+      },
+      limit.name,
+      "NAMED",
+      worker,
+      environment,
+      prisma,
+      "LIMIT",
+      "V2"
+    );
+  }
+}
+
 async function createWorkerQueue(
   queue: QueueManifest,
   orderableName: string,
   queueType: TaskQueueType,
   worker: BackgroundWorker,
   environment: AuthenticatedEnvironment,
-  prisma: PrismaClientOrTransaction
+  prisma: PrismaClientOrTransaction,
+  role: TaskQueueRole = "QUEUE",
+  concurrencyVersion: TaskQueueConcurrencyVersion = "V1"
 ) {
   let queueName = sanitizeQueueName(queue.name);
 
@@ -562,56 +769,106 @@ async function createWorkerQueue(
     orderableName,
     queueType,
     worker,
-    prisma
+    prisma,
+    0,
+    role,
+    concurrencyVersion
   );
 
-  const newConcurrencyLimit = taskQueue.concurrencyLimit;
+  const syncQueueLimitsToEngine = async (row: {
+    name: string;
+    paused: boolean;
+    concurrencyLimit: number | null;
+    totalConcurrencyLimit: number | null;
+  }) => {
+    /**
+     * The total limit key is separate from the per-queue limit key that pause zeroes,
+     * so it is safe to sync it regardless of the paused state. The engine clamps it
+     * to the environment limit at read time, so the raw declared value is stored.
+     */
+    if (typeof row.totalConcurrencyLimit === "number") {
+      await updateQueueTotalConcurrencyLimits(environment, row.name, row.totalConcurrencyLimit);
+    } else {
+      await removeQueueTotalConcurrencyLimits(environment, row.name);
+    }
+
+    if (!row.paused) {
+      logger.debug("createWorkerQueue: syncing concurrency limit", {
+        workerId: worker.id,
+        taskQueue: row,
+        orgId: environment.organizationId,
+        projectId: environment.projectId,
+        environmentId: environment.id,
+        concurrencyLimit: row.concurrencyLimit,
+      });
+      if (typeof row.concurrencyLimit === "number") {
+        await updateQueueConcurrencyLimits(environment, row.name, row.concurrencyLimit);
+      } else {
+        await removeQueueConcurrencyLimits(environment, row.name);
+      }
+    } else {
+      /**
+       * A paused queue's engine limit is 0 (what pause wrote). Re-asserting it here
+       * heals the race where a pause lands between this deploy's row read and its
+       * engine sync, which would otherwise overwrite the 0 with the declared limit
+       * and leave a queue the dashboard shows as paused still dequeuing.
+       */
+      logger.debug("createWorkerQueue: queue is paused, re-asserting the paused limit", {
+        workerId: worker.id,
+        taskQueue: row,
+        orgId: environment.organizationId,
+        projectId: environment.projectId,
+        environmentId: environment.id,
+      });
+      await updateQueueConcurrencyLimits(environment, row.name, 0);
+    }
+  };
+
+  await syncQueueLimitsToEngine(taskQueue);
 
   /**
-   * The total limit key is separate from the per-queue limit key that pause zeroes,
-   * so it is safe to sync it regardless of the paused state. The engine clamps it
-   * to the environment limit at read time, so the raw declared value is stored.
+   * The optimistic markers only guard the Postgres write; an override or reset can
+   * still land between that write and the engine sync above, which would leave the
+   * engine holding this deploy's stale values. Re-read the markers and re-sync from
+   * the fresh row until they stop moving (bounded): every actor writes Postgres
+   * before its own engine sync, so re-syncing whatever is freshest converges. A
+   * marker moving after the final read is healed by that actor's own engine sync
+   * or the next deploy.
    */
-  if (typeof taskQueue.totalConcurrencyLimit === "number") {
-    await updateQueueTotalConcurrencyLimits(
-      environment,
-      taskQueue.name,
-      taskQueue.totalConcurrencyLimit
-    );
-  } else {
-    await removeQueueTotalConcurrencyLimits(environment, taskQueue.name);
-  }
+  let syncedMarkers = {
+    concurrency: taskQueue.concurrencyLimitOverriddenAt?.getTime(),
+    total: taskQueue.totalConcurrencyLimitOverriddenAt?.getTime(),
+    paused: taskQueue.paused,
+  };
 
-  if (!taskQueue.paused) {
-    if (typeof newConcurrencyLimit === "number") {
-      logger.debug("createWorkerQueue: updating concurrency limit", {
-        workerId: worker.id,
-        taskQueue,
-        orgId: environment.organizationId,
-        projectId: environment.projectId,
-        environmentId: environment.id,
-        concurrencyLimit: newConcurrencyLimit,
-      });
-      await updateQueueConcurrencyLimits(environment, taskQueue.name, newConcurrencyLimit);
-    } else {
-      logger.debug("createWorkerQueue: removing concurrency limit", {
-        workerId: worker.id,
-        taskQueue,
-        orgId: environment.organizationId,
-        projectId: environment.projectId,
-        environmentId: environment.id,
-        concurrencyLimit: newConcurrencyLimit,
-      });
-      await removeQueueConcurrencyLimits(environment, taskQueue.name);
-    }
-  } else {
-    logger.debug("createWorkerQueue: queue is paused, not updating concurrency limit", {
-      workerId: worker.id,
-      taskQueue,
-      orgId: environment.organizationId,
-      projectId: environment.projectId,
-      environmentId: environment.id,
+  for (let i = 0; i < 3; i++) {
+    const freshQueue = await prisma.taskQueue.findFirst({
+      where: { id: taskQueue.id },
+      select: {
+        name: true,
+        paused: true,
+        concurrencyLimit: true,
+        totalConcurrencyLimit: true,
+        concurrencyLimitOverriddenAt: true,
+        totalConcurrencyLimitOverriddenAt: true,
+      },
     });
+
+    if (
+      !freshQueue ||
+      (freshQueue.concurrencyLimitOverriddenAt?.getTime() === syncedMarkers.concurrency &&
+        freshQueue.totalConcurrencyLimitOverriddenAt?.getTime() === syncedMarkers.total &&
+        freshQueue.paused === syncedMarkers.paused)
+    ) {
+      break;
+    }
+
+    await syncQueueLimitsToEngine(freshQueue);
+    syncedMarkers = {
+      concurrency: freshQueue.concurrencyLimitOverriddenAt?.getTime(),
+      total: freshQueue.totalConcurrencyLimitOverriddenAt?.getTime(),
+      paused: freshQueue.paused,
+    };
   }
 
   return taskQueue;
@@ -625,7 +882,9 @@ async function upsertWorkerQueueRecord(
   queueType: TaskQueueType,
   worker: BackgroundWorker,
   prisma: PrismaClientOrTransaction,
-  attempt: number = 0
+  attempt: number = 0,
+  role: TaskQueueRole = "QUEUE",
+  concurrencyVersion: TaskQueueConcurrencyVersion = "V1"
 ): Promise<TaskQueue> {
   if (attempt > 3) {
     throw new Error("Failed to insert queue record");
@@ -644,6 +903,8 @@ async function upsertWorkerQueueRecord(
         data: {
           friendlyId: generateFriendlyId("queue"),
           version: "V2",
+          role,
+          concurrencyVersion,
           name: queueName,
           orderableName,
           concurrencyLimit,
@@ -660,27 +921,44 @@ async function upsertWorkerQueueRecord(
       });
     } else {
       const hasOverride = taskQueue.concurrencyLimitOverriddenAt !== null;
+      const hasTotalOverride = taskQueue.totalConcurrencyLimitOverriddenAt !== null;
 
+      /**
+       * The override markers in the where clause make this an optimistic-concurrency
+       * update: a concurrent override/reset between the read above and this write
+       * changes a marker, the update misses (P2025) and the catch below retries with
+       * a fresh read, so a deploy can never clobber an operator's override.
+       */
       taskQueue = await prisma.taskQueue.update({
         where: {
           id: taskQueue.id,
+          concurrencyLimitOverriddenAt: taskQueue.concurrencyLimitOverriddenAt,
+          totalConcurrencyLimitOverriddenAt: taskQueue.totalConcurrencyLimitOverriddenAt,
         },
         data: {
           workers: { connect: { id: worker.id } },
           version: "V2",
+          concurrencyVersion,
           orderableName,
           // If overridden, keep current limit and update base; otherwise update limit normally
           concurrencyLimit: hasOverride ? undefined : concurrencyLimit,
           concurrencyLimitBase: hasOverride ? concurrencyLimit : undefined,
-          totalConcurrencyLimit,
+          totalConcurrencyLimit: hasTotalOverride ? undefined : totalConcurrencyLimit,
+          totalConcurrencyLimitBase: hasTotalOverride ? totalConcurrencyLimit : undefined,
         },
       });
     }
 
     return taskQueue;
   } catch (error) {
-    // If the queue already exists, let's try again
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+    /**
+     * P2002: the queue was created concurrently. P2025: an override/reset moved a
+     * marker under the optimistic update. Both re-read and retry.
+     */
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      (error.code === "P2002" || error.code === "P2025")
+    ) {
       return await upsertWorkerQueueRecord(
         queueName,
         concurrencyLimit,
@@ -689,7 +967,9 @@ async function upsertWorkerQueueRecord(
         queueType,
         worker,
         prisma,
-        attempt + 1
+        attempt + 1,
+        role,
+        concurrencyVersion
       );
     }
     throw error;
