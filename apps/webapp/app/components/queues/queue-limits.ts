@@ -4,7 +4,7 @@
  * but the dashboard shows configured limits for every row, so presenters attach
  * this alongside the public fields.
  */
-export type QueueLimitBound = {
+type QueueLimitBound = {
   /** The enforced value right now (declared, or the override when one is active) */
   current: number | null;
   /** The declared value an override reverts to */
@@ -16,7 +16,7 @@ export type QueueLimitBound = {
   overriddenBy: string | null;
 };
 
-export type QueueTotalBound = {
+type QueueTotalBound = {
   current: number;
   base: number | null;
   override: number | null;
