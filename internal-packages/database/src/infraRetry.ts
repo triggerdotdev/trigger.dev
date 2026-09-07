@@ -15,6 +15,11 @@ export type InfraRetryOptions = {
 
 export type InfraRetryConfig = {
   options: InfraRetryOptions;
+  /**
+   * Runtime gate resolved per call (e.g. a cached feature flag), overriding `options.enabled` when
+   * present. Lets the app flip retry on/off without a redeploy. Absent → `options.enabled` decides.
+   */
+  isEnabled?: () => boolean | Promise<boolean>;
   /** Shared budget; defaults to {@link UNLIMITED_RETRY_BUDGET}. */
   budget?: RetryBudget;
   /** Predicate for a retryable error; defaults to {@link isRetryableInfrastructureError}. */
@@ -41,7 +46,25 @@ export async function withInfraRetry<R>(
   run: () => Promise<R>,
   config?: InfraRetryConfig
 ): Promise<R> {
-  if (!config || !config.options.enabled) {
+  if (!config) {
+    return run();
+  }
+
+  // A runtime gate (feature flag) wins over the static option when present. It must NEVER break the
+  // protected operation: if resolving it throws (e.g. the flag store is itself blipping), treat it
+  // as disabled and run once — exactly as if retry were off. Otherwise the very blip we guard
+  // against could turn into a 5xx from the gate lookup.
+  let enabled: boolean;
+  if (config.isEnabled) {
+    try {
+      enabled = await config.isEnabled();
+    } catch {
+      enabled = false;
+    }
+  } else {
+    enabled = config.options.enabled;
+  }
+  if (!enabled) {
     return run();
   }
 
