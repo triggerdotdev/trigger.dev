@@ -345,19 +345,41 @@ function guardedLimitUpdate(
 /**
  * A reset's engine write precedes its guarded persist (enforce-first, so an engine
  * failure retries cleanly), which leaves the engine reverted when the persist
- * conflicts or fails. This re-syncs the engine from a fresh read of the row so a
- * concurrent actor's state (or the still-standing override) is enforced again;
- * the original error still reaches the caller.
+ * conflicts or fails. This re-syncs the engine from fresh reads of the row until
+ * updatedAt stops moving (bounded), the same convergence the deploy sync uses:
+ * every actor writes Postgres before its own engine sync, so re-syncing whatever
+ * is freshest converges. The original error still reaches the caller.
  */
 function compensateEngineFromFreshRow(
   db: PrismaClientOrTransaction,
   environment: AuthenticatedEnvironment,
   rowId: string
 ) {
-  return fromPromise(db.taskQueue.findFirst({ where: { id: rowId } }), (error) => ({
-    type: "other" as const,
-    cause: error,
-  })).andThen((fresh) => (fresh ? syncLimitToEngine(environment, fresh) : okAsync(null)));
+  return fromPromise(
+    (async () => {
+      let lastSyncedAt: number | null = null;
+      for (let i = 0; i < 3; i++) {
+        const fresh = await db.taskQueue.findFirst({ where: { id: rowId } });
+        if (!fresh || fresh.updatedAt.getTime() === lastSyncedAt) {
+          return;
+        }
+        await Promise.all([
+          typeof fresh.concurrencyLimit === "number"
+            ? updateQueueConcurrencyLimits(environment, fresh.name, fresh.concurrencyLimit)
+            : removeQueueConcurrencyLimits(environment, fresh.name),
+          typeof fresh.totalConcurrencyLimit === "number"
+            ? updateQueueTotalConcurrencyLimits(
+                environment,
+                fresh.name,
+                fresh.totalConcurrencyLimit
+              )
+            : removeQueueTotalConcurrencyLimits(environment, fresh.name),
+        ]);
+        lastSyncedAt = fresh.updatedAt.getTime();
+      }
+    })(),
+    (error) => ({ type: "other" as const, cause: error })
+  );
 }
 
 /**
