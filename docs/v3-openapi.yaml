@@ -3048,135 +3048,6 @@ paths:
               20
             );
 
-  "/api/v1/queues/{queueParam}/concurrency/combined/override":
-    post:
-      operationId: override_queue_combined_concurrency_v1
-      summary: Override combined concurrency limit
-      description: |
-        Override the combined concurrency limit of a queue: the cap on concurrent runs across
-        all of the queue's `concurrencyKey` values. Useful for temporarily scaling a whole
-        keyed queue up or down without changing each key's own limit.
-      parameters:
-        - in: path
-          name: queueParam
-          required: true
-          schema:
-            type: string
-          description: The queue ID (e.g., `queue_1234`), or the name of the queue when using the `type` body parameter.
-          example: queue_1234
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: ["concurrencyLimit"]
-              properties:
-                type:
-                  type: string
-                  enum: [id, task, custom]
-                  default: id
-                  description: |
-                    How to interpret the `queueParam` path parameter:
-                    - `id`: Treat as a queue ID (default)
-                    - `task`: Treat as a task ID to get the task's default queue
-                    - `custom`: Treat as a custom queue name
-                concurrencyLimit:
-                  type: integer
-                  minimum: 0
-                  maximum: 100000
-                  description: |
-                    The new combined concurrency limit to set for the queue. It may not exceed
-                    your environment's maximum concurrency limit: a higher value is rejected
-                    with a 400, not capped to the maximum.
-      responses:
-        "200":
-          description: Combined concurrency limit overridden successfully
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/QueueObject"
-        "400":
-          description: |
-            Invalid request parameters, or the requested combined concurrency limit exceeds
-            the environment's maximum concurrency limit.
-        "401":
-          description: Unauthorized request
-        "404":
-          description: Queue not found
-      tags:
-        - queues
-      security:
-        - secretKey: []
-      x-codeSamples:
-        - lang: typescript
-          source: |-
-            import { queues } from "@trigger.dev/sdk";
-
-            // Allow up to 100 runs across all concurrency keys
-            await queues.overrideCombinedConcurrencyLimit("queue_1234", 100);
-
-            // Using type and name
-            await queues.overrideCombinedConcurrencyLimit(
-              { type: "custom", name: "per-user-queue" },
-              100
-            );
-
-  "/api/v1/queues/{queueParam}/concurrency/combined/reset":
-    post:
-      operationId: reset_queue_combined_concurrency_v1
-      summary: Reset combined concurrency limit
-      description: Reset the combined concurrency limit of a queue back to the `combinedConcurrencyLimit` declared in your code.
-      parameters:
-        - in: path
-          name: queueParam
-          required: true
-          schema:
-            type: string
-          description: The queue ID (e.g., `queue_1234`), or the name of the queue when using the `type` body parameter.
-          example: queue_1234
-      requestBody:
-        required: true
-        description: At least an empty JSON object `{}` must be sent; a zero-length body is rejected with a 400.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                type:
-                  type: string
-                  enum: [id, task, custom]
-                  default: id
-                  description: |
-                    How to interpret the `queueParam` path parameter:
-                    - `id`: Treat as a queue ID (default)
-                    - `task`: Treat as a task ID to get the task's default queue
-                    - `custom`: Treat as a custom queue name
-      responses:
-        "200":
-          description: Combined concurrency limit reset successfully
-          content:
-            application/json:
-              schema:
-                "$ref": "#/components/schemas/QueueObject"
-        "400":
-          description: The queue's combined concurrency limit is not overridden, or invalid request parameters
-        "401":
-          description: Unauthorized request
-        "404":
-          description: Queue not found
-      tags:
-        - queues
-      security:
-        - secretKey: []
-      x-codeSamples:
-        - lang: typescript
-          source: |-
-            import { queues } from "@trigger.dev/sdk";
-
-            // Revert to the combinedConcurrencyLimit declared in code
-            await queues.resetCombinedConcurrencyLimit("queue_1234");
-
   "/api/v1/queues/{queueParam}/concurrency/reset":
     post:
       operationId: reset_queue_concurrency_v1
@@ -3237,6 +3108,197 @@ paths:
               type: "task",
               name: "my-task-id",
             });
+
+  "/api/v1/concurrency-limits":
+    get:
+      operationId: list_concurrency_limits_v1
+      summary: List concurrency limits
+      description: |
+        List the environment's named concurrency limits (anonymous inline limits appear
+        under their derived `task/<task-id>` names), with each limit's bounds and its
+        live running and queued counts.
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+        - name: perPage
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 25
+            maximum: 100
+      responses:
+        "200":
+          description: Concurrency limits retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      "$ref": "#/components/schemas/ConcurrencyLimitObject"
+                  pagination:
+                    type: object
+                    properties:
+                      currentPage:
+                        type: integer
+                      totalPages:
+                        type: integer
+                      count:
+                        type: integer
+        "401":
+          description: Unauthorized request
+      tags:
+        - concurrency-limits
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { concurrencyLimits } from "@trigger.dev/sdk";
+
+            const limits = await concurrencyLimits.list({ page: 1, perPage: 20 });
+
+  "/api/v1/concurrency-limits/{name}":
+    get:
+      operationId: retrieve_concurrency_limit_v1
+      summary: Retrieve concurrency limit
+      description: Retrieve a concurrency limit by name, with its bounds and live running and queued counts.
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The limit's name, as declared with `concurrencyLimit()`
+      responses:
+        "200":
+          description: Concurrency limit retrieved successfully
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ConcurrencyLimitObject"
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Concurrency limit not found
+      tags:
+        - concurrency-limits
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { concurrencyLimits } from "@trigger.dev/sdk";
+
+            const limit = await concurrencyLimits.retrieve("openai");
+
+  "/api/v1/concurrency-limits/{name}/override":
+    post:
+      operationId: override_concurrency_limit_v1
+      summary: Override concurrency limit
+      description: |
+        Override a concurrency limit's bounds. Only the given fields change; the declared
+        values are kept and restored by reset. Overriding `total` to `0` blocks every run
+        holding the limit, which is how a limit is paused.
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The limit's name
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                perKey:
+                  type: integer
+                  minimum: 0
+                  maximum: 100000
+                  description: Caps each concurrencyKey pool; runs without a key share one pool. May not exceed the environment concurrency limit.
+                total:
+                  type: integer
+                  minimum: 0
+                  maximum: 100000
+                  description: Caps every run holding this limit, keys or not. May not exceed the environment concurrency limit.
+      responses:
+        "200":
+          description: Concurrency limit overridden successfully
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ConcurrencyLimitObject"
+        "400":
+          description: Invalid request parameters, or a bound exceeds the environment concurrency limit
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Concurrency limit not found
+        "409":
+          description: The limit changed concurrently; retry the request
+      tags:
+        - concurrency-limits
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { concurrencyLimits } from "@trigger.dev/sdk";
+
+            // Raise the shared cap
+            await concurrencyLimits.override("openai", { total: 50 });
+
+            // Pause the limit
+            await concurrencyLimits.override("openai", { total: 0 });
+
+  "/api/v1/concurrency-limits/{name}/reset":
+    post:
+      operationId: reset_concurrency_limit_v1
+      summary: Reset concurrency limit
+      description: Reset a concurrency limit back to the values declared in your code, clearing any override.
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The limit's name
+      responses:
+        "200":
+          description: Concurrency limit reset successfully
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ConcurrencyLimitObject"
+        "400":
+          description: The limit has no override to reset
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Concurrency limit not found
+        "409":
+          description: The limit changed concurrently; retry the request
+      tags:
+        - concurrency-limits
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { concurrencyLimits } from "@trigger.dev/sdk";
+
+            await concurrencyLimits.reset("openai");
+
 
   "/api/v1/waitpoints/tokens":
     post:
@@ -4390,6 +4452,75 @@ components:
           minimum: 0
           maximum: 1000
           description: An optional property that specifies the maximum number of concurrent run executions. If this property is omitted, the task can potentially use up the full concurrency of an environment.
+    ConcurrencyLimitObject:
+      type: object
+      properties:
+        id:
+          type: string
+          description: The limit's id, starting with `climit_`
+          example: "climit_abcdef123456"
+        name:
+          type: string
+          description: The limit's name, as declared with `concurrencyLimit()`
+          example: "openai"
+        perKey:
+          type: object
+          description: Caps each concurrencyKey pool; runs without a key share one pool
+          properties:
+            current:
+              type: integer
+              nullable: true
+              description: Enforced right now (null = no per-key bound). Enforcement clamps it to the environment concurrency limit at admit time.
+              example: null
+            base:
+              type: integer
+              nullable: true
+              description: The declared value an override reverts to on reset
+              example: null
+            override:
+              type: integer
+              nullable: true
+              description: The overridden value, when an override is active
+              example: null
+            overriddenAt:
+              type: string
+              format: date-time
+              nullable: true
+              description: When the override was applied
+              example: null
+        total:
+          type: object
+          description: Caps every run holding this limit, keys or not
+          properties:
+            current:
+              type: integer
+              nullable: true
+              description: Enforced right now (null = no total bound). Enforcement clamps it to the environment concurrency limit at admit time.
+              example: 25
+            base:
+              type: integer
+              nullable: true
+              description: The declared value an override reverts to on reset
+              example: 25
+            override:
+              type: integer
+              nullable: true
+              description: The overridden value, when an override is active
+              example: null
+            overriddenAt:
+              type: string
+              format: date-time
+              nullable: true
+              description: When the override was applied
+              example: null
+        running:
+          type: integer
+          description: Runs executing that hold this limit
+          example: 14
+        queued:
+          type: integer
+          description: Runs that are queued and must clear this limit to execute
+          example: 100
     QueueObject:
       type: object
       required: ["id", "name", "type", "running", "queued", "paused"]
@@ -4452,39 +4583,6 @@ components:
               nullable: true
               description: When the concurrency limit was overridden
               example: null
-            combined:
-              type: object
-              description: |
-                The combined concurrency cap across all `concurrencyKey` values of the queue.
-                Servers on this version always emit it, with `current` null when the queue
-                has no combined limit; older servers may omit the field entirely, so check
-                `combined?.current != null` rather than relying on its presence.
-              properties:
-                current:
-                  type: integer
-                  nullable: true
-                  description: The current combined concurrency limit as declared or overridden (null = no cap). Enforcement clamps it to the environment concurrency limit at admit time.
-                  example: 10
-                base:
-                  type: integer
-                  nullable: true
-                  description: The declared combined limit an override reverts to on reset
-                  example: 10
-                override:
-                  type: integer
-                  nullable: true
-                  description: The overridden combined limit, when an override is active
-                  example: null
-                overriddenAt:
-                  type: string
-                  format: date-time
-                  nullable: true
-                  description: When the combined override was applied
-                running:
-                  type: integer
-                  nullable: true
-                  description: Runs currently in flight across all concurrencyKey values
-                  example: 4
             overriddenBy:
               type: string
               nullable: true

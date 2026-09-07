@@ -5,7 +5,7 @@ description: "Configure what you want to happen when there is more than one run 
 
 When you trigger a task, it isn't executed immediately. Instead, the task [run](/runs) is placed into a queue for execution.
 
-By default, each task gets its own queue and the concurrency is only limited by your environment concurrency limit. If you need more control (for example, to limit concurrency or share limits across multiple tasks), you can define a custom queue as described later.
+By default, each task gets its own queue and the concurrency is only limited by your environment concurrency limit. If you need more control (for example, to limit concurrency or share limits across multiple tasks), you can set a concurrency limit on the task, or declare a named limit and share it, as described below.
 
 Controlling concurrency is useful when you have a task that can't be run concurrently, or when you want to limit the number of runs to avoid overloading a resource.
 
@@ -14,12 +14,12 @@ It's important to note that only actively executing runs count towards concurren
 ## Use cases
 
 - **Limit how many runs of a task execute at once**: [Setting task concurrency](#setting-task-concurrency)
-- **Share one limit across several tasks**: [Sharing concurrency between tasks](#sharing-concurrency-between-tasks)
-- **Give each tenant its own separate concurrency**: [Concurrency keys and per-tenant queuing](#concurrency-keys-and-per-tenant-queuing)
-- **Per-tenant limits with a ceiling on the whole queue**: [Combined concurrency across keys](#combined-concurrency-across-keys)
+- **Share one limit across several tasks**: [Sharing a limit between tasks](#sharing-a-limit-between-tasks)
+- **Give each tenant its own separate concurrency**: [Concurrency keys and per-tenant limits](#concurrency-keys-and-per-tenant-limits)
+- **Per-tenant limits with a ceiling on the total**: [Per-key and total limits together](#per-key-and-total-limits-together)
 - **Cap a tenant across every task they run**: [A per-tenant cap across multiple tasks](#a-per-tenant-cap-across-multiple-tasks)
 - **Cap a shared resource, like an external API, across tasks and tenants**: [A global cap for a shared resource](#a-global-cap-for-a-shared-resource)
-- **Funnel every run into one shared pool**: [One shared pool ignoring keys](#one-shared-pool-ignoring-keys)
+- **Switch a run's limits when you trigger it**: [Setting limits when you trigger a run](#setting-limits-when-you-trigger-a-run)
 
 ## Default concurrency
 
@@ -27,23 +27,23 @@ By default, all tasks have an unbounded concurrency limit, limited only by the o
 
 <Note>
   Your environment has a base concurrency limit and a burstable limit (default burst factor of 2.0x
-  the base limit). Individual queues are limited by the base concurrency limit, not the burstable
-  limit. For example, if your base limit is 10, your environment can burst up to 20 concurrent runs,
-  but any single queue can have at most 10 concurrent runs. If you're a paying customer you can
-  request higher burst limits by [contacting us](https://www.trigger.dev/contact).
+  the base limit). Individual tasks and limits are capped by the base concurrency limit, not the
+  burstable limit. For example, if your base limit is 10, your environment can burst up to 20
+  concurrent runs, but any single limit can allow at most 10 concurrent runs. If you're a paying
+  customer you can request higher burst limits by [contacting us](https://www.trigger.dev/contact).
 </Note>
 
 ## Setting task concurrency
 
-You can set the concurrency limit for a task by setting the `concurrencyLimit` property on the task's queue. This limits the number of runs that can be executing at any one time:
+Set the `concurrency` option on a task to limit how many of its runs execute at once. `{ total: n }` caps the task outright:
 
 ```ts /trigger/one-at-a-time.ts
+import { task } from "@trigger.dev/sdk";
+
 // This task will only run one at a time
 export const oneAtATime = task({
   id: "one-at-a-time",
-  queue: {
-    concurrencyLimit: 1,
-  },
+  concurrency: { total: 1 },
   run: async (payload) => {
     //...
   },
@@ -52,42 +52,85 @@ export const oneAtATime = task({
 
 This is useful if you need to control access to a shared resource, like a database or an API that has rate limits.
 
-## Sharing concurrency between tasks
+There are two ways to bound a task, and you can combine them:
 
-As well as putting queue settings directly on a task, you can define a queue and reuse it across multiple tasks. This allows you to share the same concurrency limit:
+- `total` caps every run of the task together, whether or not runs use a `concurrencyKey`.
+- `perKey` caps each `concurrencyKey` pool separately; runs triggered without a key share one pool.
 
-```ts /trigger/queue.ts
-export const myQueue = queue({
-  name: "my-queue",
-  concurrencyLimit: 1,
+```ts /trigger/per-user.ts
+import { task } from "@trigger.dev/sdk";
+
+export const generateReport = task({
+  id: "generate-report",
+  // each user runs at most 1 at a time, and at most 10 run in total
+  concurrency: { perKey: 1, total: 10 },
+  run: async (payload) => {
+    //...
+  },
 });
+```
 
-export const task1 = task({
-  id: "task-1",
-  queue: myQueue,
-  run: async (payload: { message: string }) => {
+<Note>
+  The `queue: {"{ concurrencyLimit: n }"}` option keeps working but is deprecated in favor of
+  `concurrency`. Its single number means "per key when runs pass a `concurrencyKey`, whole queue
+  when they don't" — the `concurrency` shape says which you mean explicitly.
+</Note>
+
+## Sharing a limit between tasks
+
+Declare a named limit with `concurrencyLimit()` and put it in each task's `concurrency`. Every task holding the limit draws from the same pools:
+
+```ts /trigger/limits.ts
+import { concurrencyLimit, task } from "@trigger.dev/sdk";
+
+// at most 25 concurrent runs across every task that holds this limit
+export const openaiLimit = concurrencyLimit({ name: "openai", total: 25 });
+
+export const generateSummary = task({
+  id: "generate-summary",
+  concurrency: openaiLimit,
+  run: async (payload) => {
     // ...
   },
 });
 
-export const task2 = task({
-  id: "task-2",
-  queue: myQueue,
-  run: async (payload: { message: string }) => {
+export const generateTitle = task({
+  id: "generate-title",
+  concurrency: openaiLimit,
+  run: async (payload) => {
     // ...
   },
 });
 ```
 
-In this example, `task1` and `task2` share the same queue, so only one of them can run at a time.
+A task's `concurrency` takes a single item or an array: at most one inline shape (which caps that task alone) plus up to two named limits. A run starts only when every limit it holds has capacity, and it occupies a slot in each while it executes:
+
+```ts /trigger/summarize.ts
+import { concurrencyLimit, task } from "@trigger.dev/sdk";
+
+export const openaiLimit = concurrencyLimit({ name: "openai", total: 25 });
+
+export const summarizeThread = task({
+  id: "summarize-thread",
+  // this task runs at most 5 at once, and also counts towards the shared openai limit
+  concurrency: [{ total: 5 }, openaiLimit],
+  run: async (payload) => {
+    // ...
+  },
+});
+```
+
+<Note>
+  Limit names are 1-122 characters using only letters, numbers, underscores and hyphens.
+</Note>
 
 ## Setting the queue when you trigger a run
 
-When you trigger a task you can override the default queue. This is really useful if you sometimes have high priority runs.
+When you trigger a task you can override its queue by name. This is really useful if you sometimes have high priority runs:
 
-The task and queue definition:
+```ts /trigger/override-queue.ts
+import { queue, task } from "@trigger.dev/sdk";
 
-```ts /trigger/override-concurrency.ts
 const paidQueue = queue({
   name: "paid-users",
   concurrencyLimit: 10,
@@ -95,10 +138,8 @@ const paidQueue = queue({
 
 export const generatePullRequest = task({
   id: "generate-pull-request",
-  queue: {
-    //normally when triggering this task it will be limited to 1 run at a time
-    concurrencyLimit: 1,
-  },
+  // normally this task is limited to 1 run at a time
+  concurrency: { total: 1 },
   run: async (payload) => {
     //todo generate a PR using OpenAI
   },
@@ -108,7 +149,7 @@ export const generatePullRequest = task({
 Triggering from your backend and overriding the queue:
 
 ```ts app/api/push/route.ts
-import { generatePullRequest } from "~/trigger/override-concurrency";
+import { generatePullRequest } from "~/trigger/override-queue";
 
 export async function POST(request: Request) {
   const data = await request.json();
@@ -122,104 +163,78 @@ export async function POST(request: Request) {
 
     return Response.json(handle);
   } else {
-    //triggered with the default queue (concurrency of 1)
+    //triggered with the default queue
     const handle = await generatePullRequest.trigger(data);
     return Response.json(handle);
   }
 }
 ```
 
-## Concurrency keys and per-tenant queuing
+## Setting limits when you trigger a run
 
-If you're building an application where you want to run tasks for your users, you might want a separate queue for each of your users (or orgs, projects, etc.).
+The trigger-time `concurrency` option takes limit names and replaces the task's declared **named** limits for that run. The task's inline limit always applies:
 
-You can do this by using `concurrencyKey`. It creates a copy of the queue for each unique value of the key.
+```ts app/api/report/route.ts
+import { generateReport } from "~/trigger/reports";
 
-Your backend code:
+// this run counts towards "priority" instead of the task's declared named limits
+await generateReport.trigger(data, { concurrency: ["priority"] });
+```
+
+Pass an empty array to run with only the task's inline limit.
+
+## Concurrency keys and per-tenant limits
+
+If you're building an application where you want to run tasks for your users, you might want a separate limit for each of your users (or orgs, projects, etc.).
+
+You can do this by passing a `concurrencyKey` when you trigger. Each unique key value gets its own pool under every `perKey` bound the run holds:
 
 ```ts app/api/pr/route.ts
-import { generatePullRequest } from "~/trigger/override-concurrency";
+import { generatePullRequest } from "~/trigger/override-queue";
 
 export async function POST(request: Request) {
   const data = await request.json();
 
-  if (data.isFreeUser) {
-    //the "free-users" queue has a concurrency limit of 1
-    const handle = await generatePullRequest.trigger(data, {
-      queue: "free-users",
-      //this creates a free-users queue for each user
-      concurrencyKey: data.userId,
-    });
+  const handle = await generatePullRequest.trigger(data, {
+    // every user gets their own concurrency pool
+    concurrencyKey: data.userId,
+  });
 
-    //return a success response with the handle
-    return Response.json(handle);
-  } else {
-    //the "paid-users" queue has a concurrency limit of 10
-    const handle = await generatePullRequest.trigger(data, {
-      queue: "paid-users",
-      //this creates a paid-users queue for each user
-      concurrencyKey: data.userId,
-    });
-
-    //return a success response with the handle
-    return Response.json(handle);
-  }
+  return Response.json(handle);
 }
 ```
 
-## Combined concurrency across keys
+## Per-key and total limits together
 
-`concurrencyKey` gives every key value its own copy of the queue, each with the queue's full `concurrencyLimit`. That means the queue's total concurrency grows with the number of active keys: ten active users on a queue with `concurrencyLimit: 5` can run 50 at once.
+`perKey` on its own lets total concurrency grow with the number of active keys: ten active users under `perKey: 5` can run 50 at once. Add `total` to bound everything as a group. Each key still gets at most `perKey`, and all runs together — keyed or not — never exceed `total`:
 
-To bound keyed runs as a group, set `combinedConcurrencyLimit`. Each key still gets at most `concurrencyLimit`, and keyed runs as a whole never exceed the combined limit; runs triggered without a key sit outside it:
+```ts /trigger/per-user-capped.ts
+import { task } from "@trigger.dev/sdk";
 
-```ts /trigger/per-user.ts
-import { queue } from "@trigger.dev/sdk";
-
-export const perUserQueue = queue({
-  name: "per-user-queue",
-  //each user runs at most 1 at a time...
-  concurrencyLimit: 1,
-  //...and at most 10 total runs across all users
-  combinedConcurrencyLimit: 10,
+export const processUpload = task({
+  id: "process-upload",
+  // each user runs at most 1 at a time, and at most 10 run in total
+  concurrency: { perKey: 1, total: 10 },
+  run: async (payload) => {
+    //...
+  },
 });
 ```
 
-The combined limit only applies to runs triggered with a `concurrencyKey`; runs without a key are governed by `concurrencyLimit` alone. On the Queues page in the dashboard, a queue with a combined limit shows it in brackets next to the per-key limit, e.g. `1 (10)`.
+## A per-tenant cap across multiple tasks
 
-<Warning>
-  On a queue used with `concurrencyKey`, every limit applies per key value except
-  `combinedConcurrencyLimit`, which is the only cap that spans the whole queue.
-</Warning>
-
-## Using multiple queues at once
-
-Sometimes one limit isn't enough. A run always waits in one queue, its **home queue**, but it can also hold a concurrency slot in up to two more queues, called **gates**. A run starts only when its home queue and every gate all have capacity, occupies a slot in each while it executes, and releases them together when it finishes or suspends.
-
-Pass an array as `queue`: the first entry is the home queue, the rest name gates. The same array form works when you trigger, replacing the task's gates for that run:
-
-```ts
-import { processWebhook } from "~/trigger/webhooks";
-
-await processWebhook.trigger(payload, {
-  queue: ["webhooks", "tenant"],
-  concurrencyKey: tenantId,
-});
-```
-
-### A per-tenant cap across multiple tasks
-
-A gate without a `concurrencyKey` uses the run's own key. Declare a shared queue and gate every relevant task on it, and each tenant gets one cap spanning all of those tasks:
+A named limit's `perKey` bound follows each run's own `concurrencyKey`, so one declaration caps each tenant across every task holding the limit:
 
 ```ts /trigger/webhooks.ts
-import { queue, task } from "@trigger.dev/sdk";
+import { concurrencyLimit, task } from "@trigger.dev/sdk";
 
-//each tenant runs at most 10 at once across every task that gates on this queue
-export const tenantQueue = queue({ name: "tenant", concurrencyLimit: 10 });
+// each tenant runs at most 10 at once across every task that holds this limit
+export const tenantLimit = concurrencyLimit({ name: "tenant", perKey: 10 });
 
 export const processWebhook = task({
   id: "process-webhook",
-  queue: [{ name: "webhooks", concurrencyLimit: 2 }, "tenant"],
+  // webhooks themselves are capped at 2 per tenant, within the tenant's overall 10
+  concurrency: [{ perKey: 2 }, tenantLimit],
   run: async (payload) => {
     //...
   },
@@ -227,70 +242,34 @@ export const processWebhook = task({
 ```
 
 ```ts app/api/webhook/route.ts
-//the run waits in "webhooks" and also counts towards this tenant's cap
+// the run counts towards this tenant's pool in both limits
 await processWebhook.trigger(payload, { concurrencyKey: tenantId });
 ```
 
-Because the trigger passes a `concurrencyKey`, the home queue splits per key as usual: `concurrencyLimit: 2` caps each tenant's webhook runs, not the task overall.
+## A global cap for a shared resource
 
-### A global cap for a shared resource
-
-To cap something global, like total traffic to an external API, across many tasks and all tenants: declare a queue with only a `combinedConcurrencyLimit` and gate on it. Tenant keys still split the gate into per-key pools, but with no per-key limit the combined cap is the only constraint:
+To cap something global, like total traffic to an external API, across many tasks and all tenants: declare a limit with only a `total` and share it. It counts every run holding it, whether or not the run has a `concurrencyKey`:
 
 ```ts /trigger/sync.ts
-import { queue, task } from "@trigger.dev/sdk";
+import { concurrencyLimit, task } from "@trigger.dev/sdk";
 
-//at most 10 concurrent provider calls across every task and every tenant
-export const providerApiQueue = queue({
-  name: "provider-api",
-  combinedConcurrencyLimit: 10,
-});
+// at most 10 concurrent provider calls across every task and every tenant
+export const providerApiLimit = concurrencyLimit({ name: "provider-api", total: 10 });
 
 export const syncToProvider = task({
   id: "sync-to-provider",
-  queue: [{ name: "sync-home", concurrencyLimit: 20 }, "provider-api"],
+  concurrency: [{ total: 20 }, providerApiLimit],
   run: async (payload) => {
     //...
   },
 });
 ```
 
-```ts app/api/sync/route.ts
-//the combined cap only counts keyed runs, so every trigger passes a key
-await syncToProvider.trigger(payload, { concurrencyKey: tenantId });
-```
-
-<Warning>
-  This pattern requires every trigger to pass a `concurrencyKey`. A run triggered without one
-  bypasses the combined limit entirely. If some runs have no natural key, use the pinned-key
-  pool below instead.
-</Warning>
-
-### One shared pool ignoring keys
-
-Give a gate a literal `concurrencyKey` to pin every run into a single first-come-first-served pool, regardless of each run's own key:
-
-```ts /trigger/print.ts
-import { queue, task } from "@trigger.dev/sdk";
-
-export const printerQueue = queue({ name: "printer", concurrencyLimit: 1 });
-
-export const printLabel = task({
-  id: "print-label",
-  queue: [
-    { name: "print-home", concurrencyLimit: 5 },
-    //every run shares the single "printer" slot no matter its own key
-    { name: "printer", concurrencyKey: "shared" },
-  ],
-  run: async (payload) => {
-    //...
-  },
-});
-```
+Runs with and without a `concurrencyKey` share the same `total`, so this works even when only some of your triggers have a natural key.
 
 ## Concurrency and subtasks
 
-When you trigger a task that has subtasks, the subtasks will not inherit the queue from the parent task. Unless otherwise specified, subtasks will run on their own queue
+When you trigger a task that has subtasks, the subtasks will not inherit the parent's limits. Unless otherwise specified, subtasks run under their own task's configuration:
 
 ```ts /trigger/subtasks.ts
 export const parentTask = task({
@@ -301,7 +280,7 @@ export const parentTask = task({
   },
 });
 
-// This subtask will run on its own queue
+// This subtask runs under its own limits
 export const subtask = task({
   id: "subtask",
   run: async (payload) => {
@@ -314,40 +293,38 @@ export const subtask = task({
 
 With our [task checkpoint system](/how-it-works#the-checkpoint-resume-system), tasks can wait at various waitpoints (like waiting for subtasks to complete, delays, or external events). The way this system interacts with the concurrency system is important to understand.
 
-Concurrency is only released when a run reaches a waitpoint and is checkpointed. When a run is checkpointed, it transitions to the `WAITING` state and releases its concurrency slot back to both the queue and the environment, allowing other runs to execute or resume.
+Concurrency is only released when a run reaches a waitpoint and is checkpointed. When a run is checkpointed, it transitions to the `WAITING` state and releases its concurrency slots back to every limit it holds and the environment, allowing other runs to execute or resume.
 
 This means that:
 
 - Only actively executing runs count towards concurrency limits
 - Runs in the `WAITING` state (checkpointed at waitpoints) do not consume concurrency slots
-- You can have more runs in the `WAITING` state than your queue's concurrency limit
-- When a waiting run resumes (e.g., when a subtask completes), it must re-acquire a concurrency slot
+- You can have more runs in the `WAITING` state than a limit allows to execute
+- When a waiting run resumes (e.g., when a subtask completes), it must re-acquire its slots
 
-For example, if you have a queue with a `concurrencyLimit` of 1:
+For example, if a task has `concurrency: { total: 1 }`:
 
 - You can only have exactly 1 run executing at a time
-- You may have multiple runs in the `WAITING` state that belong to that queue
+- You may have multiple runs in the `WAITING` state for that task
 - When the executing run reaches a waitpoint and checkpoints, it releases its slot
 - The next queued run can then begin execution
 
 ### Short time-based waits keep their slot
 
-Checkpointing takes time, so a run doesn't checkpoint the moment it reaches a waitpoint. For [`wait.for()`](/wait-for) and [`wait.until()`](/wait-until) it happens 60 seconds into the wait, so anything shorter stays `EXECUTING` and holds its slot for the whole wait. If you're polling in a loop, use an interval comfortably above 60 seconds so the slot is actually released between polls.
+Checkpointing takes time, so a run doesn't checkpoint the moment it reaches a waitpoint. For [`wait.for()`](/wait-for) and [`wait.until()`](/wait-until) it happens 60 seconds into the wait, so anything shorter stays `EXECUTING` and holds its slots for the whole wait. If you're polling in a loop, use an interval comfortably above 60 seconds so the slots are actually released between polls.
 
-### Waiting for a subtask on a different queue
+### Waiting for a subtask
 
-When a parent task triggers and waits for a subtask on a different queue, the parent task will checkpoint and release its concurrency slot once it reaches the wait point. This prevents environment deadlocks where all concurrency slots would be occupied by waiting tasks.
+When a parent task triggers and waits for a subtask, the parent task will checkpoint and release its concurrency slots once it reaches the wait point. This prevents environment deadlocks where all concurrency slots would be occupied by waiting tasks.
 
 ```ts /trigger/waiting.ts
 export const parentTask = task({
   id: "parent-task",
-  queue: {
-    concurrencyLimit: 1,
-  },
+  concurrency: { total: 1 },
   run: async (payload) => {
     //trigger a subtask and wait for it to complete
     await subtask.triggerAndWait(payload);
-    // The parent task checkpoints here and releases its concurrency slot
+    // The parent task checkpoints here and releases its concurrency slots
     // allowing other tasks to execute while waiting
   },
 });
@@ -360,7 +337,82 @@ export const subtask = task({
 });
 ```
 
-When the parent task reaches the `triggerAndWait` call, it checkpoints and transitions to the `WAITING` state, releasing its concurrency slot back to both its queue and the environment. Once the subtask completes, the parent task will resume and re-acquire a concurrency slot.
+When the parent task reaches the `triggerAndWait` call, it checkpoints and transitions to the `WAITING` state, releasing its slots. Once the subtask completes, the parent task will resume and re-acquire them.
+
+## Managing concurrency limits with the SDK
+
+The `concurrencyLimits` namespace manages your named limits at runtime (anonymous inline limits appear under derived `task/<task-id>` names):
+
+```ts
+import { concurrencyLimits } from "@trigger.dev/sdk";
+```
+
+### Listing limits
+
+```ts
+import { concurrencyLimits } from "@trigger.dev/sdk";
+
+// List all limits (returns paginated results)
+const allLimits = await concurrencyLimits.list();
+
+// With pagination options
+const pagedLimits = await concurrencyLimits.list({
+  page: 1,
+  perPage: 20,
+});
+```
+
+### Retrieving a limit
+
+Retrieve a limit by its name to see its bounds and live counts:
+
+```ts
+import { concurrencyLimits } from "@trigger.dev/sdk";
+
+const limit = await concurrencyLimits.retrieve("openai");
+```
+
+The limit object contains each bound plus live counts:
+
+```ts
+{
+  id: "climit_1234",
+  name: "openai",
+  perKey: {
+    current: null,        // Enforced right now (null = no per-key bound)
+    base: null,           // Declared in your code
+    override: null,       // Override value (if set)
+    overriddenAt: null,   // When the override was applied
+  },
+  total: {
+    current: 25,
+    base: 25,
+    override: null,
+    overriddenAt: null,
+  },
+  running: 14,            // Runs executing that hold this limit
+  queued: 100,            // Runs queued that must clear this limit to execute
+}
+```
+
+### Overriding a limit
+
+Overrides change only the fields you pass; the declared values are kept and restored by `reset`. Overriding `total` to `0` blocks every run holding the limit, which is how you pause a limit:
+
+```ts
+import { concurrencyLimits } from "@trigger.dev/sdk";
+
+// Raise the shared cap
+await concurrencyLimits.override("openai", { total: 50 });
+
+// Pause the limit: nothing holding it can start
+await concurrencyLimits.override("openai", { total: 0 });
+
+// Back to the values declared in your code
+await concurrencyLimits.reset("openai");
+```
+
+Overrides survive deploys: redeploying your code keeps an active override until you reset it.
 
 ## Managing queues with the SDK
 
@@ -486,20 +538,6 @@ await queues.resetConcurrencyLimit("queue_1234");
 
 // Or using type and name
 await queues.resetConcurrencyLimit({ type: "task", name: "my-task-id" });
-```
-
-### Overriding the combined concurrency limit
-
-Queues with a `combinedConcurrencyLimit` can have that cap overridden and reset in the same way:
-
-```ts
-import { queues } from "@trigger.dev/sdk";
-
-// Allow up to 100 runs across all concurrency keys
-await queues.overrideCombinedConcurrencyLimit("queue_1234", 100);
-
-// Revert to the combinedConcurrencyLimit declared in your code
-await queues.resetCombinedConcurrencyLimit("queue_1234");
 ```
 
 Overrides survive deploys: redeploying your code keeps an active override until you reset it.
