@@ -75,11 +75,14 @@ export function useTaskTrigger<TTask extends AnyTask>(
 
     const queueName = options?.queue;
     const concurrency = options?.concurrency
-      ? (Array.isArray(options.concurrency) ? options.concurrency : [options.concurrency]).slice(
-          0,
-          2
-        )
+      ? Array.isArray(options.concurrency)
+        ? options.concurrency
+        : [options.concurrency]
       : undefined;
+
+    if (concurrency && concurrency.length > 2) {
+      throw new Error("The concurrency option accepts at most two named limits.");
+    }
 
     const handle = await apiClient.triggerTask(id, {
       payload: payloadPacket.data,

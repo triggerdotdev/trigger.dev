@@ -1,6 +1,7 @@
 ---
 "@trigger.dev/sdk": patch
 "@trigger.dev/core": patch
+"@trigger.dev/react-hooks": patch
 ---
 
 Control a task's concurrency with the new `concurrency` option, and share limits across tasks with named concurrency limits. An inline shape caps the task itself; `concurrencyLimit()` declares a limit any task can hold (up to two named limits per task), and a trigger call can switch a run's named limits with its own `concurrency` option.
