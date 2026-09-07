@@ -217,7 +217,7 @@ function triggerQueueBody(
  * Trigger-time named limits: strings only, like `queue`. They replace the task's
  * declared named limits for this run; the server resolves names to the run's gates.
  */
-function triggerConcurrencyBody(concurrency: string | string[] | undefined): {
+export function triggerConcurrencyBody(concurrency: string | string[] | undefined): {
   concurrency?: string[];
 } {
   if (!concurrency) {
