@@ -1762,6 +1762,13 @@ export class RunEngine {
     return this.runQueue.totalConcurrencyLimitsOfQueues(environment, queues);
   }
 
+  async gateQueuedCountOfQueues(
+    environment: MinimalAuthenticatedEnvironment,
+    queues: string[]
+  ): Promise<Record<string, number>> {
+    return this.runQueue.gateQueuedCountOfQueues(environment, queues);
+  }
+
   async concurrencyKeyBreakdown(
     environment: MinimalAuthenticatedEnvironment,
     queue: string,
