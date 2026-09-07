@@ -18,3 +18,5 @@ export const generateSummary = task({
 ```
 
 `perKey` caps each `concurrencyKey` pool and `total` caps across everything, keys or not. The queue-level `concurrencyLimit` option keeps working unchanged and is deprecated in favor of `concurrency`. Enforcement happens server-side; servers without support accept the option but do not enforce it yet.
+
+Manage limits at runtime with the new `concurrencyLimits` namespace: `list()` and `retrieve(name)` report each limit's bounds plus its live `running` and `queued` counts, `override(name, { perKey, total })` changes only the given bounds (overriding `total` to `0` pauses the limit), and `reset(name)` restores the declared values.

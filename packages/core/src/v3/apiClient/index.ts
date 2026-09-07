@@ -21,6 +21,9 @@ import {
   type CreateWaitpointTokenRequestBody,
   type EndAndContinueSessionRequestBody,
   type ListQueueOptions,
+  type ListConcurrencyLimitOptions,
+  ConcurrencyLimitItem,
+  type OverrideConcurrencyLimitRequestBody,
   type ListScheduleOptions,
   type ListSessionsOptions,
   type PromotePromptVersionRequestBody,
@@ -1699,6 +1702,64 @@ export class ApiClient {
         body: JSON.stringify({
           type,
         }),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  listConcurrencyLimits(options?: ListConcurrencyLimitOptions, requestOptions?: ZodFetchOptions) {
+    return zodfetchOffsetLimitPage(
+      ConcurrencyLimitItem,
+      `${this.baseUrl}/api/v1/concurrency-limits`,
+      {
+        page: options?.page,
+        limit: options?.perPage,
+      },
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  retrieveConcurrencyLimit(name: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      ConcurrencyLimitItem,
+      `${this.baseUrl}/api/v1/concurrency-limits/${encodeURIComponent(name)}`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  overrideConcurrencyLimit(
+    name: string,
+    override: OverrideConcurrencyLimitRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      ConcurrencyLimitItem,
+      `${this.baseUrl}/api/v1/concurrency-limits/${encodeURIComponent(name)}/override`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(override),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  resetConcurrencyLimit(name: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      ConcurrencyLimitItem,
+      `${this.baseUrl}/api/v1/concurrency-limits/${encodeURIComponent(name)}/reset`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify({}),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );

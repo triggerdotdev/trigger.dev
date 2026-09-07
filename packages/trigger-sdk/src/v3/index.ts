@@ -65,6 +65,7 @@ export {
 } from "./deployments.js";
 export * as envvars from "./envvars.js";
 export * as queues from "./queues.js";
+export * as concurrencyLimits from "./concurrencyLimits.js";
 export type { ImportEnvironmentVariablesParams } from "./envvars.js";
 
 export { configure, auth } from "./auth.js";
