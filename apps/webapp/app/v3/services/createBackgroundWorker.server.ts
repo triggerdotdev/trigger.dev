@@ -387,7 +387,66 @@ async function createWorkerTasks(
       if (entry) entries.push(entry);
     }
   }
+
+  await retireStaleAnonymousConcurrencyLimitRows(metadata.tasks, environment, prisma);
+
   return entries;
+}
+
+/**
+ * A task whose inline limit no longer compiles to its anonymous LIMIT row (the
+ * limit moved onto the task's own default queue, or was removed) leaves that
+ * row behind, where it would shadow the live task/<id> name on the
+ * concurrency-limits surface and keep stale engine keys. Retiring clears the
+ * row's bounds and override state — dropping it from listing and name
+ * resolution so the queue-row fallback resolves — and removes its engine keys.
+ */
+async function retireStaleAnonymousConcurrencyLimitRows(
+  tasks: TaskResource[],
+  environment: AuthenticatedEnvironment,
+  prisma: PrismaClientOrTransaction
+): Promise<void> {
+  const candidateNames = tasks
+    .filter((task) => !(task.concurrency?.inline && task.queue?.name))
+    .map((task) => anonymousConcurrencyLimitQueueName(task.id));
+  if (candidateNames.length === 0) {
+    return;
+  }
+
+  const staleRows = await prisma.taskQueue.findMany({
+    where: {
+      runtimeEnvironmentId: environment.id,
+      role: "LIMIT",
+      name: { in: candidateNames },
+      OR: [{ concurrencyLimit: { not: null } }, { totalConcurrencyLimit: { not: null } }],
+    },
+    select: { id: true, name: true },
+  });
+  if (staleRows.length === 0) {
+    return;
+  }
+
+  await prisma.taskQueue.updateMany({
+    where: { id: { in: staleRows.map((row) => row.id) } },
+    data: {
+      concurrencyLimit: null,
+      concurrencyLimitBase: null,
+      concurrencyLimitOverriddenAt: null,
+      concurrencyLimitOverriddenBy: null,
+      concurrencyLimitOverridePercent: null,
+      totalConcurrencyLimit: null,
+      totalConcurrencyLimitBase: null,
+      totalConcurrencyLimitOverriddenAt: null,
+      totalConcurrencyLimitOverriddenBy: null,
+    },
+  });
+
+  await Promise.allSettled(
+    staleRows.flatMap((row) => [
+      removeQueueConcurrencyLimits(environment, row.name),
+      removeQueueTotalConcurrencyLimits(environment, row.name),
+    ])
+  );
 }
 
 async function createWorkerTask(

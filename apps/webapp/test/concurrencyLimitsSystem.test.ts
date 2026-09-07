@@ -344,8 +344,14 @@ describe("ConcurrencyLimitsSystem", () => {
       const v1 = await system.limits.retrieve(authEnv, "task/legacy-task");
       expect(v1.isErr()).toBe(true);
 
+      /** Boundless V2 queues stay out of the list but resolve by name, so an
+       * operator can still cap an undeclared task through this surface. */
       const boundless = await system.limits.retrieve(authEnv, "task/unbounded-task");
-      expect(boundless.isErr()).toBe(true);
+      expect(boundless.isOk()).toBe(true);
+      if (boundless.isOk()) {
+        expect(boundless.value.perKey.current).toBeNull();
+        expect(boundless.value.total.current).toBeNull();
+      }
 
       const listed = await system.limits.list(authEnv, { page: 1, perPage: 50 });
       expect(listed.isOk()).toBe(true);
@@ -354,6 +360,110 @@ describe("ConcurrencyLimitsSystem", () => {
       }
     }
   );
+
+  postgresTest(
+    "a retired anonymous LIMIT row falls through to the live queue row",
+    async ({ prisma }) => {
+      const { authEnv, system, environment } = await seedEnvAndLimit(prisma, { total: 25 });
+
+      await prisma.taskQueue.create({
+        data: {
+          friendlyId: `queue_rl${environment.slug}`,
+          name: "limit/task/send-email",
+          orderableName: "send-email",
+          projectId: environment.projectId,
+          runtimeEnvironmentId: environment.id,
+          role: "LIMIT",
+          concurrencyVersion: "V2",
+        },
+      });
+      await prisma.taskQueue.create({
+        data: {
+          friendlyId: `queue_ql${environment.slug}`,
+          name: "task/send-email",
+          orderableName: "send-email-q",
+          projectId: environment.projectId,
+          runtimeEnvironmentId: environment.id,
+          role: "QUEUE",
+          concurrencyVersion: "V2",
+          concurrencyLimit: 1,
+          totalConcurrencyLimit: 10,
+        },
+      });
+
+      const retrieved = await system.limits.retrieve(authEnv, "task/send-email");
+      expect(retrieved.isOk()).toBe(true);
+      if (retrieved.isOk()) {
+        expect(retrieved.value.total).toMatchObject({ current: 10 });
+      }
+
+      const listed = await system.limits.list(authEnv, { page: 1, perPage: 50 });
+      expect(listed.isOk()).toBe(true);
+      if (listed.isOk()) {
+        expect(listed.value.filter((item) => item.name === "task/send-email")).toHaveLength(1);
+      }
+    }
+  );
+
+  postgresTest("overrides and resets preserve a queue pause in the engine", async ({ prisma }) => {
+    const { authEnv, system, environment } = await seedEnvAndLimit(prisma, { total: 25 });
+
+    await prisma.taskQueue.create({
+      data: {
+        friendlyId: `queue_p${environment.slug}`,
+        name: "task/paused-task",
+        orderableName: "paused-task",
+        projectId: environment.projectId,
+        runtimeEnvironmentId: environment.id,
+        role: "QUEUE",
+        concurrencyVersion: "V2",
+        concurrencyLimit: 1,
+        totalConcurrencyLimit: 10,
+        paused: true,
+      },
+    });
+
+    const overridden = await system.limits.override(authEnv, "task/paused-task", { total: 20 });
+    expect(overridden.isOk()).toBe(true);
+    expect(totalSyncMock).toHaveBeenCalledWith(authEnv, "task/paused-task", 20);
+    /** The pause IS the per-key engine value 0; the sync must rewrite 0, never
+     * the configured limit and never a removal. */
+    expect(perKeySyncMock).toHaveBeenCalledWith(authEnv, "task/paused-task", 0);
+    expect(perKeySyncMock).not.toHaveBeenCalledWith(authEnv, "task/paused-task", 1);
+    expect(perKeyRemoveMock).not.toHaveBeenCalledWith(authEnv, "task/paused-task");
+
+    perKeySyncMock.mockClear();
+    const reset = await system.limits.reset(authEnv, "task/paused-task");
+    expect(reset.isOk()).toBe(true);
+    expect(perKeySyncMock).toHaveBeenCalledWith(authEnv, "task/paused-task", 0);
+    expect(perKeySyncMock).not.toHaveBeenCalledWith(authEnv, "task/paused-task", 1);
+  });
+
+  postgresTest("a perKey override clears a stale percent override source", async ({ prisma }) => {
+    const { authEnv, system, environment } = await seedEnvAndLimit(prisma, { total: 25 });
+
+    const row = await prisma.taskQueue.create({
+      data: {
+        friendlyId: `queue_pc${environment.slug}`,
+        name: "task/percent-task",
+        orderableName: "percent-task",
+        projectId: environment.projectId,
+        runtimeEnvironmentId: environment.id,
+        role: "QUEUE",
+        concurrencyVersion: "V2",
+        concurrencyLimit: 50,
+        concurrencyLimitBase: 100,
+        concurrencyLimitOverriddenAt: new Date(),
+        concurrencyLimitOverridePercent: 50,
+      },
+    });
+
+    const overridden = await system.limits.override(authEnv, "task/percent-task", { perKey: 3 });
+    expect(overridden.isOk()).toBe(true);
+    const updated = await prisma.taskQueue.findFirstOrThrow({ where: { id: row.id } });
+    expect(updated.concurrencyLimit).toBe(3);
+    expect(updated.concurrencyLimitOverridePercent).toBeNull();
+  });
 
   postgresTest("retrieve misses queue-role rows and unknown names", async ({ prisma }) => {
     const { authEnv, system, environment } = await seedEnvAndLimit(prisma, { total: 25 });
