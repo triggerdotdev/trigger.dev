@@ -72,6 +72,7 @@ import {
 import type { FinishReason, ModelMessage, Tool, UIMessage, UIMessageChunk } from "ai";
 import type { ChatInputChunk, ChatTaskWirePayload } from "./ai-shared.js";
 import { chatRunTags } from "./ai-shared.js";
+import { triggerConcurrencyBody } from "./shared.js";
 
 // `StreamTextResult` is defined locally rather than imported from `ai`: its
 // generic arity diverged (v6 `StreamTextResult<TOOLS, OUTPUT>`, v7
@@ -543,6 +544,12 @@ async function openHandoverSession(opts: {
     },
     ...(opts.triggerConfig?.machine ? { machine: opts.triggerConfig.machine } : {}),
     ...(opts.triggerConfig?.queue ? { queue: opts.triggerConfig.queue } : {}),
+    ...(opts.triggerConfig?.concurrency
+      ? triggerConcurrencyBody(opts.triggerConfig.concurrency)
+      : {}),
+    ...(opts.triggerConfig?.concurrencyKey !== undefined
+      ? { concurrencyKey: opts.triggerConfig.concurrencyKey }
+      : {}),
     tags,
     ...(opts.triggerConfig?.maxAttempts !== undefined
       ? { maxAttempts: opts.triggerConfig.maxAttempts }

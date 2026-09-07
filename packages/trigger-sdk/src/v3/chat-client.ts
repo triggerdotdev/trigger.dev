@@ -671,6 +671,12 @@ export class AgentChat<TAgent = unknown> {
       },
       ...(this.triggerConfigDefault?.machine ? { machine: this.triggerConfigDefault.machine } : {}),
       ...(this.triggerConfigDefault?.queue ? { queue: this.triggerConfigDefault.queue } : {}),
+      ...(this.triggerConfigDefault?.concurrency
+        ? { concurrency: this.triggerConfigDefault.concurrency }
+        : {}),
+      ...(this.triggerConfigDefault?.concurrencyKey !== undefined
+        ? { concurrencyKey: this.triggerConfigDefault.concurrencyKey }
+        : {}),
       tags: chatRunTags(this.chatId, this.triggerConfigDefault?.tags),
       ...(this.triggerConfigDefault?.maxAttempts !== undefined
         ? { maxAttempts: this.triggerConfigDefault.maxAttempts }
