@@ -14,7 +14,7 @@ import {
 import { useOptionalProject, useProject } from "~/hooks/useProject";
 import { useShowSelfServe } from "~/hooks/useShowSelfServe";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
-import { v3BillingLimitsPath, v3BillingPath, v3QueuesPath } from "~/utils/pathBuilder";
+import { v3BillingLimitsPath, v3BillingPath, concurrencyPath } from "~/utils/pathBuilder";
 import { ENVIRONMENT_PAUSE_SOURCE_BILLING_LIMIT } from "~/utils/environmentPauseSource";
 
 function getUpgradeResetDate(): Date {
@@ -209,7 +209,7 @@ function PausedEnvironmentBanner({ hideButton }: { hideButton: boolean }) {
         hideButton ? undefined : (
           <LinkButton
             variant="tertiary/small"
-            to={v3QueuesPath(organization, project, environment)}
+            to={concurrencyPath(organization, project, environment)}
           >
             Manage
           </LinkButton>

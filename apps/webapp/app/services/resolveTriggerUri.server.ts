@@ -10,7 +10,7 @@ import {
 import {
   v3DeploymentVersionPath,
   v3ErrorPath,
-  v3QueuesPath,
+  concurrencyPath,
   v3RunPath,
   v3RunSpanPath,
   v3RunsPath,
@@ -127,7 +127,7 @@ function resolveInScope(
       // resolves to the queues list filtered to the name.
       return {
         label: parsed.name,
-        url: `${v3QueuesPath(organization, project, environment)}?query=${encodeURIComponent(
+        url: `${concurrencyPath(organization, project, environment)}?query=${encodeURIComponent(
           parsed.name
         )}`,
       };

@@ -116,7 +116,7 @@ import {
   docsPath,
   v3BatchPath,
   v3DeploymentVersionPath,
-  v3QueuePath,
+  concurrencyQueuePath,
   v3RunDownloadLogsPath,
   v3RunIdempotencyKeyResetPath,
   v3RunPath,
@@ -424,7 +424,7 @@ function RunBody({
   const resetFetcher = useTypedFetcher<typeof resetIdempotencyKeyAction>();
 
   const queuePath = queueMetrics?.queueFriendlyId
-    ? v3QueuePath(organization, project, environment, {
+    ? concurrencyQueuePath(organization, project, environment, {
         friendlyId: queueMetrics.queueFriendlyId,
       })
     : undefined;
