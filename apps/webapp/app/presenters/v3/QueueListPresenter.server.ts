@@ -79,15 +79,18 @@ function formatClickhouseDateTime(date: Date): string {
 function buildQueueListWhere(
   environmentId: string,
   query: string | undefined,
-  type: "task" | "custom" | undefined
+  type: "task" | "custom" | undefined,
+  includeLimits: boolean
 ): Prisma.TaskQueueWhereInput {
   const trimmedQuery = query?.trim();
 
   return {
     runtimeEnvironmentId: environmentId,
-    /** The type filter names queue shapes, so applying it scopes the list to queue rows;
-     * without it the list interleaves named limits alongside queues. */
-    role: type ? ("QUEUE" as const) : { in: ["QUEUE" as const, "LIMIT" as const] },
+    /** Only the dashboard interleaves named limits, and the type filter names queue
+     * shapes, so either condition scopes the list to queue rows; the public queues
+     * API always stays queue-only. */
+    role:
+      includeLimits && !type ? { in: ["QUEUE" as const, "LIMIT" as const] } : ("QUEUE" as const),
     version: "V2",
     name: trimmedQuery
       ? {
@@ -120,6 +123,7 @@ export class QueueListPresenter extends BasePresenter {
     page,
     type,
     sort = "name",
+    includeLimits = false,
   }: {
     environment: AuthenticatedEnvironment;
     query?: string;
@@ -127,13 +131,21 @@ export class QueueListPresenter extends BasePresenter {
     perPage?: number;
     type?: "task" | "custom";
     sort?: QueueListSort;
+    includeLimits?: boolean;
   }): Promise<QueueListResult> {
     const hasFilters = Boolean(query?.trim()) || type !== undefined;
 
     if (sort !== "name") {
       // Ranking is additive: any failure or unsupported input falls back to name order.
       try {
-        const ranked = await this.getRankedQueues(environment, query, page, type, sort);
+        const ranked = await this.getRankedQueues(
+          environment,
+          query,
+          page,
+          type,
+          sort,
+          includeLimits
+        );
         if (ranked) {
           return ranked;
         }
@@ -143,7 +155,13 @@ export class QueueListPresenter extends BasePresenter {
     }
 
     if (hasFilters) {
-      const { queues, hasMore } = await this.getFilteredQueues(environment, query, page, type);
+      const { queues, hasMore } = await this.getFilteredQueues(
+        environment,
+        query,
+        page,
+        type,
+        includeLimits
+      );
 
       return {
         queues,
@@ -157,11 +175,11 @@ export class QueueListPresenter extends BasePresenter {
     }
 
     const totalQueues = await this._replica.taskQueue.count({
-      where: buildQueueListWhere(environment.id, query, type),
+      where: buildQueueListWhere(environment.id, query, type, includeLimits),
     });
 
     return {
-      queues: await this.getUnfilteredQueues(environment, page, type),
+      queues: await this.getUnfilteredQueues(environment, page, type, includeLimits),
       pagination: {
         mode: "unfiltered" as const,
         currentPage: page,
@@ -182,7 +200,8 @@ export class QueueListPresenter extends BasePresenter {
     query: string | undefined,
     page: number,
     type: "task" | "custom" | undefined,
-    sort: Exclude<QueueListSort, "name">
+    sort: Exclude<QueueListSort, "name">,
+    includeLimits: boolean
   ) {
     if (type !== undefined) {
       return null;
@@ -231,7 +250,7 @@ export class QueueListPresenter extends BasePresenter {
       return null;
     }
 
-    const where = buildQueueListWhere(environment.id, query, type);
+    const where = buildQueueListWhere(environment.id, query, type, includeLimits);
     const totalQueues = await this._replica.taskQueue.count({ where });
 
     let rankedPageQueues: QueueListRow[] = [];
@@ -302,10 +321,11 @@ export class QueueListPresenter extends BasePresenter {
     environment: AuthenticatedEnvironment,
     query: string | undefined,
     page: number,
-    type: "task" | "custom" | undefined
+    type: "task" | "custom" | undefined,
+    includeLimits: boolean
   ) {
     const queues = await this._replica.taskQueue.findMany({
-      where: buildQueueListWhere(environment.id, query, type),
+      where: buildQueueListWhere(environment.id, query, type, includeLimits),
       select: queueListSelect,
       orderBy: {
         orderableName: "asc",
@@ -325,10 +345,11 @@ export class QueueListPresenter extends BasePresenter {
   private async getUnfilteredQueues(
     environment: AuthenticatedEnvironment,
     page: number,
-    type: "task" | "custom" | undefined
+    type: "task" | "custom" | undefined,
+    includeLimits: boolean
   ) {
     const queues = await this._replica.taskQueue.findMany({
-      where: buildQueueListWhere(environment.id, undefined, type),
+      where: buildQueueListWhere(environment.id, undefined, type, includeLimits),
       select: queueListSelect,
       orderBy: {
         orderableName: "asc",
