@@ -1890,8 +1890,18 @@ export const SessionTriggerConfig = z.object({
   basePayload: z.record(z.unknown()),
   machine: MachinePresetName.optional(),
   queue: z.string().max(128).optional(),
-  /** Named concurrency limits every run holds, replacing the task's declared named limits. */
-  concurrency: z.string().min(1).max(128).array().max(2).optional(),
+  /** Named concurrency limits every run holds, replacing the task's declared named limits.
+   * The charset rule is enforced here so a bad name is rejected before the session row
+   * persists, instead of surfacing from the trigger after the session already exists. */
+  concurrency: z
+    .string()
+    .regex(/^[a-zA-Z0-9_-]{1,122}$/, {
+      message:
+        "Concurrency limit names are 1-122 characters using only letters, numbers, underscores and hyphens",
+    })
+    .array()
+    .max(2)
+    .optional(),
   /** Scopes every run to its own pool under each `perKey` bound it holds. Never defaulted — a session without one shares the keyless pool. */
   concurrencyKey: ConcurrencyKeySchema.optional(),
   tags: z.array(z.string().max(128)).max(10).optional(),

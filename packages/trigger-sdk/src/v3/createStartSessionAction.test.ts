@@ -168,6 +168,26 @@ describe("chat.createStartSessionAction — runtime", () => {
     expect(lastStartBody?.triggerConfig.concurrencyKey).toBe("tenant-42");
   });
 
+  it("per-call concurrency wins over the action default, and an empty array clears it", async () => {
+    installStartFixture();
+
+    const start = chat.createStartSessionAction("fake-chat", {
+      triggerConfig: { concurrency: ["chats"] },
+    });
+
+    await start({
+      chatId: "chat-conc-override",
+      triggerConfig: { concurrency: ["priority"] },
+    });
+    expect(lastStartBody?.triggerConfig.concurrency).toEqual(["priority"]);
+
+    await start({
+      chatId: "chat-conc-clear",
+      triggerConfig: { concurrency: [] },
+    });
+    expect(lastStartBody?.triggerConfig.concurrency).toEqual([]);
+  });
+
   it("never defaults concurrencyKey from the chatId", async () => {
     installStartFixture();
 
