@@ -274,7 +274,7 @@ export type IdempotencyKeyOptionsSchema = z.infer<typeof IdempotencyKeyOptionsSc
 // with PrismaClientValidationError. Accept the intent and stringify here.
 const ConcurrencyKeySchema = z.union([z.string(), z.number()]).transform((value) => String(value));
 
-const ExternalDeploymentId: z.ZodType<string | undefined> = z.preprocess((value) => {
+const ExternalDeploymentId = z.preprocess((value) => {
   // `null` is the opt-out sentinel callers write; treat it as absent, not a validation error.
   if (value === null) {
     return undefined;
@@ -286,7 +286,7 @@ const ExternalDeploymentId: z.ZodType<string | undefined> = z.preprocess((value)
 
   const trimmed = value.trim();
   return trimmed === "" ? undefined : trimmed;
-}, z.string().max(EXTERNAL_DEPLOYMENT_ID_MAX_LENGTH, `externalId must be at most ${EXTERNAL_DEPLOYMENT_ID_MAX_LENGTH} characters`).optional());
+}, z.string().max(EXTERNAL_DEPLOYMENT_ID_MAX_LENGTH, `externalId must be at most ${EXTERNAL_DEPLOYMENT_ID_MAX_LENGTH} characters`).optional()) as unknown as z.ZodOptional<z.ZodString>;
 
 export const TriggerTaskRequestBody = z
   .object({
