@@ -465,6 +465,41 @@ describe("ConcurrencyLimitsSystem", () => {
     expect(updated.concurrencyLimitOverridePercent).toBeNull();
   });
 
+  postgresTest("an uncapped named limit stays visible and cappable", async ({ prisma }) => {
+    const { authEnv, system, environment } = await seedEnvAndLimit(prisma, { total: 25 });
+
+    /** Deploys materialize referenced-but-undeclared names as uncapped LIMIT
+     * rows; only the anonymous limit/task/ namespace treats boundless as
+     * retired. */
+    await prisma.taskQueue.create({
+      data: {
+        friendlyId: `queue_un${environment.slug}`,
+        name: "limit/acme-api",
+        orderableName: "acme-api",
+        projectId: environment.projectId,
+        runtimeEnvironmentId: environment.id,
+        role: "LIMIT",
+        concurrencyVersion: "V2",
+      },
+    });
+
+    const retrieved = await system.limits.retrieve(authEnv, "acme-api");
+    expect(retrieved.isOk()).toBe(true);
+    if (retrieved.isOk()) {
+      expect(retrieved.value.total.current).toBeNull();
+    }
+
+    const capped = await system.limits.override(authEnv, "acme-api", { total: 5 });
+    expect(capped.isOk()).toBe(true);
+    expect(totalSyncMock).toHaveBeenCalledWith(authEnv, "limit/acme-api", 5);
+
+    const listed = await system.limits.list(authEnv, { page: 1, perPage: 50 });
+    expect(listed.isOk()).toBe(true);
+    if (listed.isOk()) {
+      expect(listed.value.map((item) => item.name)).toContain("acme-api");
+    }
+  });
+
   postgresTest("retrieve misses queue-role rows and unknown names", async ({ prisma }) => {
     const { authEnv, system, environment } = await seedEnvAndLimit(prisma, { total: 25 });
 

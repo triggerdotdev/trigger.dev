@@ -190,20 +190,29 @@ function concurrencyLimitNameFromRow(row: Pick<TaskQueue, "name">): string {
  * queue compiles onto that V2 QUEUE row (the design's zero-gate-cost case). Its
  * derived `task/<id>` name resolves here too, so every declared limit is
  * retrievable and overridable through this one surface. V1 queue rows never
- * match: their limit is queue surface, managed through the queues API.
+ * match: their limit is queue surface, managed through the queues API. Only the
+ * anonymous `limit/task/` namespace requires bounds — a boundless row there is
+ * retired (its inline limit moved onto the task's own queue) and must fall
+ * through to the live queue row — while a boundless NAMED limit is a real,
+ * deliberately uncapped row (referenced without a declaration) that stays
+ * visible and cappable.
  */
 function limitRowsWhere(environment: AuthenticatedEnvironment) {
-  const hasBounds = {
-    OR: [{ concurrencyLimit: { not: null } }, { totalConcurrencyLimit: { not: null } }],
-  };
   return {
     runtimeEnvironmentId: environment.id,
     OR: [
-      { role: "LIMIT" as const, ...hasBounds },
+      {
+        role: "LIMIT" as const,
+        OR: [
+          { name: { not: { startsWith: `${LIMIT_QUEUE_PREFIX}task/` } } },
+          { concurrencyLimit: { not: null } },
+          { totalConcurrencyLimit: { not: null } },
+        ],
+      },
       {
         role: "QUEUE" as const,
         concurrencyVersion: "V2" as const,
-        ...hasBounds,
+        OR: [{ concurrencyLimit: { not: null } }, { totalConcurrencyLimit: { not: null } }],
       },
     ],
   };
@@ -224,7 +233,11 @@ function findLimitByName(
         runtimeEnvironmentId: environment.id,
         name: `${LIMIT_QUEUE_PREFIX}${name}`,
         role: "LIMIT",
-        OR: [{ concurrencyLimit: { not: null } }, { totalConcurrencyLimit: { not: null } }],
+        ...(name.startsWith("task/")
+          ? {
+              OR: [{ concurrencyLimit: { not: null } }, { totalConcurrencyLimit: { not: null } }],
+            }
+          : {}),
       },
     }),
     (error) => ({ type: "other" as const, cause: error })
