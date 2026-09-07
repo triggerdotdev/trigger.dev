@@ -164,18 +164,29 @@ end
 
 -- Per-gate queued counter: runs that are queued and must clear the gate to execute.
 -- Callers gate the delta on the actual queue-zset transition (ZADD added == 1 /
--- ZREM removed == 1) so re-enqueues and already-removed members never double count.
--- Payload-driven and flag-independent, like release, so counts stay exact across
--- flag flips. Floored at zero: a missed increment can never push a counter negative.
+-- ZREM removed == 1) so re-enqueues and already-removed members never double count;
+-- gates sharing a base (duplicate entries, key variants) count once per run. The
+-- 24h absolute TTL (set at creation, never extended) re-anchors drift from paths
+-- without the delta (rolling deploys, stale-entry cleanup): the counter resets,
+-- floored decrements absorb the pre-reset backlog as it drains, and counts converge
+-- to exact for every run enqueued after the reset. Payload-driven and
+-- flag-independent, like release, so counts stay exact across flag flips.
 local function __gateQueuedDelta(gatesKeyPrefix, msg, delta)
   if type(msg) ~= 'table' or not msg.gates then return end
+  local seenBases = {}
   for _, gate in ipairs(msg.gates) do
     local base = __gateKeys(gatesKeyPrefix, msg, gate)
-    local counterKey = base .. ':gateQueuedCounter'
-    if delta > 0 then
-      redis.call('INCRBY', counterKey, delta)
-    elseif tonumber(redis.call('GET', counterKey) or '0') > 0 then
-      redis.call('DECRBY', counterKey, -delta)
+    if not seenBases[base] then
+      seenBases[base] = true
+      local counterKey = base .. ':gateQueuedCounter'
+      if delta > 0 then
+        if redis.call('EXISTS', counterKey) == 0 then
+          redis.call('SET', counterKey, '0', 'EX', '86400')
+        end
+        redis.call('INCRBY', counterKey, delta)
+      elseif tonumber(redis.call('GET', counterKey) or '0') > 0 then
+        redis.call('DECRBY', counterKey, -delta)
+      end
     end
   end
 end
