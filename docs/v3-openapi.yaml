@@ -3123,12 +3123,14 @@ paths:
           required: false
           schema:
             type: integer
+            minimum: 1
             default: 1
         - name: perPage
           in: query
           required: false
           schema:
             type: integer
+            minimum: 1
             default: 25
             maximum: 100
       responses:
