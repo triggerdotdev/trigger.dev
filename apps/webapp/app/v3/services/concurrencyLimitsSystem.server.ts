@@ -401,9 +401,10 @@ type SyncedLimitValues = { perKey: number | null; total: number | null };
  * in the same millisecond are indistinguishable by timestamp. Matching values
  * only prove this actor once synced them, not that the engine still holds them
  * (another actor may have diverged it and written the same values back), but
- * skipping is still sound: an actor whose sync diverged the engine had its own
- * compensation fail too, so its caller received the error and retries. Callers
- * use it two ways: after a failure (a reset's enforce-first engine write preceding a
+ * skipping keeps divergence non-silent: a failed engine write always surfaces
+ * to that actor's caller, which can retry, and a stale write landing after the
+ * loop's final read (the loop is bounded) is healed by the next sync or deploy,
+ * the same residual the deploy-time queue sync accepts. Callers use it two ways: after a failure (a reset's enforce-first engine write preceding a
  * persist that then conflicts, or an override's sync failing after its persist),
  * where the original error still reaches the caller; and after a successful sync
  * with `alreadySynced` set to the values just synced, where an unchanged row
