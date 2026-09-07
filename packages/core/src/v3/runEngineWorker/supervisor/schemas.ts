@@ -132,11 +132,6 @@ export type WorkerApiRunLatestSnapshotResponseBody = z.infer<
   typeof WorkerApiRunLatestSnapshotResponseBody
 >;
 
-export const WorkerApiDequeueFromVersionResponseBody = DequeuedMessage.array();
-export type WorkerApiDequeueFromVersionResponseBody = z.infer<
-  typeof WorkerApiDequeueFromVersionResponseBody
->;
-
 export const DebugLogPropertiesValue = z.union([
   z.string(),
   z.number(),

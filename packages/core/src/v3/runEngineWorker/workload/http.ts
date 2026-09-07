@@ -9,7 +9,6 @@ import {
   WorkloadHeartbeatResponseBody,
   WorkloadRunAttemptCompleteResponseBody,
   WorkloadRunAttemptStartResponseBody,
-  WorkloadDequeueFromVersionResponseBody,
   WorkloadSuspendRunResponseBody,
   WorkloadContinueRunExecutionResponseBody,
   WorkloadRunSnapshotsSinceResponseBody,
@@ -23,18 +22,16 @@ type WorkloadHttpClientOptions = WorkloadClientCommonOptions;
 export class WorkloadHttpClient {
   private apiUrl: string;
   private runnerId: string;
-  private readonly deploymentId: string;
 
   constructor(private opts: WorkloadHttpClientOptions) {
     this.apiUrl = opts.workerApiUrl.replace(/\/$/, "");
-    this.deploymentId = opts.deploymentId;
     this.runnerId = opts.runnerId;
 
     if (!this.apiUrl) {
       throw new Error("apiURL is required and needs to be a non-empty string");
     }
 
-    if (!this.deploymentId) {
+    if (!opts.deploymentId) {
       throw new Error("deploymentId is required and needs to be a non-empty string");
     }
   }
@@ -233,19 +230,5 @@ export class WorkloadHttpClient {
     } catch (error) {
       console.error("Failed to send debug log", { error });
     }
-  }
-
-  /** @deprecated Not currently used */
-  async dequeue() {
-    return wrapZodFetch(
-      WorkloadDequeueFromVersionResponseBody,
-      `${this.apiUrl}/api/v1/workload-actions/deployments/${this.deploymentId}/dequeue`,
-      {
-        method: "GET",
-        headers: {
-          ...this.defaultHeaders(),
-        },
-      }
-    );
   }
 }

@@ -7,7 +7,6 @@ import {
   WorkerApiRunAttemptStartRequestBody,
   WorkerApiRunAttemptStartResponseBody,
   WorkerApiRunLatestSnapshotResponseBody,
-  WorkerApiDequeueFromVersionResponseBody,
   WorkerApiContinueRunExecutionRequestBody,
   WorkerApiDebugLogBody,
   WorkerApiRunSnapshotsSinceResponseBody,
@@ -60,11 +59,6 @@ export type WorkloadRunLatestSnapshotResponseBody = z.infer<
 
 export const WorkloadDebugLogRequestBody = WorkerApiDebugLogBody;
 export type WorkloadDebugLogRequestBody = z.infer<typeof WorkloadDebugLogRequestBody>;
-
-export const WorkloadDequeueFromVersionResponseBody = WorkerApiDequeueFromVersionResponseBody;
-export type WorkloadDequeueFromVersionResponseBody = z.infer<
-  typeof WorkloadDequeueFromVersionResponseBody
->;
 
 export const WorkloadRunSnapshotsSinceResponseBody = WorkerApiRunSnapshotsSinceResponseBody;
 export type WorkloadRunSnapshotsSinceResponseBody = z.infer<

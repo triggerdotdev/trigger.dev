@@ -139,21 +139,6 @@ export class SupervisorHttpClient {
     );
   }
 
-  /** @deprecated Not currently used */
-  async dequeueFromVersion(deploymentId: string, maxRunCount = 1, runnerId?: string) {
-    return this.request(
-      "dequeue_from_version",
-      WorkerApiDequeueResponseBody,
-      `${this.apiUrl}/engine/v1/worker-actions/deployments/${deploymentId}/dequeue?maxRunCount=${maxRunCount}`,
-      {
-        headers: {
-          ...this.defaultHeaders,
-          ...this.runnerIdHeader(runnerId),
-        },
-      }
-    );
-  }
-
   async heartbeatWorker(body: WorkerApiHeartbeatRequestBody) {
     return this.request(
       "heartbeat_worker",
