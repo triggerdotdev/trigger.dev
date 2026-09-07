@@ -1,6 +1,6 @@
 import { postgresTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
-import { describe, expect, vi } from "vitest";
+import { beforeEach, describe, expect, vi } from "vitest";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { ConcurrencyLimitsSystem } from "~/v3/services/concurrencyLimitsSystem.server";
 
@@ -82,6 +82,16 @@ async function seedEnvAndLimit(
 }
 
 describe("ConcurrencyLimitsSystem", () => {
+  /** Call counts must start at zero per test and leaked one-off implementations
+   * must not outlive the test that set them; mockReset also restores the default
+   * implementations given to vi.fn above. */
+  beforeEach(() => {
+    perKeySyncMock.mockReset();
+    perKeyRemoveMock.mockReset();
+    totalSyncMock.mockReset();
+    totalRemoveMock.mockReset();
+  });
+
   postgresTest(
     "override changes only the given bound and keeps the declared base",
     async ({ prisma }) => {
@@ -215,11 +225,13 @@ describe("ConcurrencyLimitsSystem", () => {
       }
 
       /** The persist already happened; compensation re-syncs it so the engine
-       * doesn't keep enforcing the old bound while the API reports the new one. */
+       * doesn't keep enforcing the old bound while the API reports the new one.
+       * Exactly two calls: the rejected primary sync, then the compensating
+       * re-sync from the fresh row — without compensation there is only one. */
       const updated = await prisma.taskQueue.findFirstOrThrow({ where: { id: row.id } });
       expect(updated.totalConcurrencyLimit).toBe(50);
+      expect(totalSyncMock).toHaveBeenCalledTimes(2);
       expect(totalSyncMock).toHaveBeenLastCalledWith(authEnv, "limit/openai", 50);
-      expect(totalSyncMock.mock.calls.length).toBeGreaterThanOrEqual(2);
     }
   );
 
@@ -248,8 +260,6 @@ describe("ConcurrencyLimitsSystem", () => {
       const final = await prisma.taskQueue.findFirstOrThrow({ where: { id: row.id } });
       expect(final.totalConcurrencyLimit).toBe(75);
       expect(engineTotal).toBe(75);
-
-      totalSyncMock.mockImplementation(async () => undefined);
     }
   );
 
