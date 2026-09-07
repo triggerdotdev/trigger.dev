@@ -1,5 +1,5 @@
 import type { TaskQueue, User } from "@trigger.dev/database";
-import { errAsync, fromPromise, okAsync } from "neverthrow";
+import { errAsync, fromPromise, okAsync, type ResultAsync } from "neverthrow";
 import { Prisma, type PrismaClientOrTransaction } from "~/db.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import {
@@ -134,12 +134,18 @@ export class ConcurrencyLimitsSystem {
       },
       reset: (environment: AuthenticatedEnvironment, name: string) => {
         return findLimitByName(this.db, environment, name)
-          .andThen((row) => syncResetToEngine(environment, row))
+          .andThen((row) =>
+            syncResetToEngine(environment, row).orElse((error) =>
+              compensateEngineFromFreshRow(this.db, environment, row.id)
+                .orElse(() => okAsync(undefined))
+                .andThen(() => errAsync(error))
+            )
+          )
           .andThen((row) =>
             resetLimitOverrides(this.db, row).orElse((error) =>
-              compensateEngineFromFreshRow(this.db, environment, row.id).andThen(() =>
-                errAsync(error)
-              )
+              compensateEngineFromFreshRow(this.db, environment, row.id)
+                .orElse(() => okAsync(undefined))
+                .andThen(() => errAsync(error))
             )
           )
           .andThen((row) =>
@@ -266,7 +272,13 @@ function applyLimitOverride(
  * override markers clear, so an engine failure leaves the markers set and a retry
  * converges instead of being rejected while the overridden limit stays enforced.
  */
-function syncResetToEngine(environment: AuthenticatedEnvironment, row: TaskQueue) {
+function syncResetToEngine(
+  environment: AuthenticatedEnvironment,
+  row: TaskQueue
+): ResultAsync<
+  TaskQueue,
+  { type: "limit_not_overridden" } | { type: "sync_limit_to_engine_failed"; cause: unknown }
+> {
   if (row.concurrencyLimitOverriddenAt === null && row.totalConcurrencyLimitOverriddenAt === null) {
     return errAsync({ type: "limit_not_overridden" as const });
   }
@@ -315,10 +327,12 @@ function resetLimitOverrides(db: PrismaClientOrTransaction, row: TaskQueue) {
 }
 
 /**
- * Optimistic update: the where clause carries the row's updatedAt as read, so ANY
- * concurrent write — another override or reset, or a deploy refreshing the declared
- * values — makes this update miss (P2025) and the caller gets a conflict instead of
- * persisting values computed from a stale row.
+ * Optimistic update: the where clause carries the row's updatedAt plus both override
+ * markers as read, so ANY concurrent write — another override or reset, or a deploy
+ * refreshing the declared values — makes this update miss (P2025) and the caller
+ * gets a conflict instead of persisting values computed from a stale row. The
+ * markers narrow the same-millisecond updatedAt window to writes that also leave
+ * both markers untouched.
  */
 function guardedLimitUpdate(
   db: PrismaClientOrTransaction,
@@ -330,6 +344,8 @@ function guardedLimitUpdate(
       where: {
         id: row.id,
         updatedAt: row.updatedAt,
+        concurrencyLimitOverriddenAt: row.concurrencyLimitOverriddenAt,
+        totalConcurrencyLimitOverriddenAt: row.totalConcurrencyLimitOverriddenAt,
       },
       data,
     }),
