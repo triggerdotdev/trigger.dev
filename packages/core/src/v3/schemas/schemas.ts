@@ -182,7 +182,7 @@ export const QueueManifest = z.object({
    * `concurrencyKey` values of this queue. On a queue with a `concurrencyKey`, `concurrencyLimit`
    * applies per key value; this is the ceiling for the whole queue.
    *
-   * Only enforced for runs triggered with a `concurrencyKey`, and requires server-side support. */
+   * Caps keyed and keyless runs together, and requires server-side support. */
   combinedConcurrencyLimit: z.number().int().min(0).max(100000).optional().nullable(),
 });
 
