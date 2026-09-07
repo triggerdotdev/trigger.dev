@@ -5575,8 +5575,18 @@ local function tryServe(ckQueueName, mayRaiseFloor, knownRegistered)
 
           -- Advance this variant's virtual time (weight hook: fixed 1 today)
           local weight = 1
-          local tag = tonumber(redis.call('ZSCORE', ckVtimeKey, ckQueueName) or floor)
-          if tag < floor then tag = floor end
+          local storedTag = redis.call('ZSCORE', ckVtimeKey, ckQueueName)
+          local tag = floor
+          if storedTag then
+            tag = tonumber(storedTag)
+            if tag < floor then tag = floor end
+          else
+            -- No entry means pass 2 reached a variant that lost its tag, so this serve is a
+            -- repair. It may still have credit parked from an earlier drain, and serving it
+            -- at the floor would hand that credit out a second time.
+            local parkedTag = redis.call('ZSCORE', ckVtimeIdleKey, ckQueueName)
+            if parkedTag and tonumber(parkedTag) > floor then tag = tonumber(parkedTag) end
+          end
           -- Pass 1 only: it walks in ascending tag order, so anything it has not visited
           -- sits above this. Pass 2 goes by message age, so its tag says nothing about the
           -- entries it skipped and must not move the floor over them.
@@ -5693,7 +5703,25 @@ local ckQueues = redis.call('ZRANGEBYSCORE', ckIndexKey, '-inf', tostring(curren
 -- because everything these two see is established work that lost its tag, which a tenant
 -- cannot mint into while the flag is on. A new enqueue-side path has to stack instead, or
 -- fresh keys start entering at the floor again.
+-- Only a member this call put at the floor may take its parked tag back: a batched ZADD
+-- reports how many it added and not which, so a live advanced tag would otherwise be
+-- rewound. Both of pass 2's registration routes need it, since a variant that drained
+-- under the flag and was re-enqueued by a flag-off instance arrives here with credit
+-- parked and no entry.
+local function restoreParkedTags(names)
+  for _, ckQueueName in ipairs(names) do
+    local cur = redis.call('ZSCORE', ckVtimeKey, ckQueueName)
+    if cur and tonumber(cur) <= floor then
+      local parked = redis.call('ZSCORE', ckVtimeIdleKey, ckQueueName)
+      if parked and tonumber(parked) > floor then
+        redis.call('ZADD', ckVtimeKey, 'XX', parked, ckQueueName)
+      end
+    end
+  end
+end
+
 local discovered = nil
+local discoveredNames = nil
 for _, ckQueueName in ipairs(ckQueues) do
   if not attempted[ckQueueName] then
     if dequeuedCount < actualMaxCount then
@@ -5703,14 +5731,17 @@ for _, ckQueueName in ipairs(ckQueues) do
       -- call however many variants it registers. Skipping attempted matters:
       -- tryServe GCs a drained variant out of both indexes, and re-adding it here
       -- would resurrect a ckVtime entry with no ckIndex member.
-      if discovered == nil then discovered = {ckVtimeKey, 'NX'} end
+      if discovered == nil then discovered = {ckVtimeKey, 'NX'}; discoveredNames = {} end
       table.insert(discovered, tostring(floor))
       table.insert(discovered, ckQueueName)
+      table.insert(discoveredNames, ckQueueName)
     end
   end
 end
 if discovered ~= nil then
-  redis.call('ZADD', unpack(discovered))
+  if redis.call('ZADD', unpack(discovered)) > 0 then
+    restoreParkedTags(discoveredNames)
+  end
 end
 
 -- One variadic ZADD NX settles the whole batch: it registers the genuinely unregistered
@@ -5727,18 +5758,7 @@ if gatedPending ~= nil then
     table.insert(gatedArgs, ckQueueName)
   end
   if redis.call('ZADD', unpack(gatedArgs)) > 0 then
-    for _, ckQueueName in ipairs(gatedPending) do
-      -- The batch ZADD reports how many it added, not which, and gatedPending can hold an
-      -- already-registered variant when the pass-1 scan was truncated. At the floor is the
-      -- discriminator: anything above it has spent credit that must not be rewound.
-      local gateCur = redis.call('ZSCORE', ckVtimeKey, ckQueueName)
-      if gateCur and tonumber(gateCur) <= floor then
-        local gateIdle = redis.call('ZSCORE', ckVtimeIdleKey, ckQueueName)
-        if gateIdle and tonumber(gateIdle) > floor then
-          redis.call('ZADD', ckVtimeKey, 'XX', gateIdle, ckQueueName)
-        end
-      end
-    end
+    restoreParkedTags(gatedPending)
     redis.call('EXPIRE', ckVtimeKey, stateTtl)
     -- This is the one write path that touches ckVtime without going through the
     -- floor-persist block below, which only runs when the call served something. Left
