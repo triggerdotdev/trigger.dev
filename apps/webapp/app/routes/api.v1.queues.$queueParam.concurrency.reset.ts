@@ -1,7 +1,7 @@
 import { json } from "@remix-run/server-runtime";
 import { type RetrieveQueueParam, RetrieveQueueType } from "@trigger.dev/core/v3";
 import { z } from "zod";
-import { toQueueItem } from "~/presenters/v3/QueueRetrievePresenter.server";
+import { toPublicQueueItem, toQueueItem } from "~/presenters/v3/QueueRetrievePresenter.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { concurrencySystem } from "~/v3/services/concurrencySystemInstance.server";
 
@@ -29,53 +29,66 @@ const route = createActionApiRoute(
             name: decodeURIComponent(params.queueParam).replace(/%2F/g, "/"),
           };
 
-    return concurrencySystem.queues.resetConcurrencyLimit(authentication.environment, input).match(
-      (queue) => {
-        return json(
-          toQueueItem({
-            friendlyId: queue.friendlyId,
-            name: queue.name,
-            type: queue.type,
-            version: queue.concurrencyVersion,
-            running: queue.running,
-            queued: queue.queued,
-            concurrencyLimit: queue.concurrencyLimit,
-            concurrencyLimitBase: queue.concurrencyLimitBase,
-            concurrencyLimitOverriddenAt: queue.concurrencyLimitOverriddenAt,
-            concurrencyLimitOverriddenBy: null,
-            paused: queue.paused,
-          }),
-          { status: 200 }
-        );
-      },
-      (error) => {
-        switch (error.type) {
-          case "queue_not_found": {
-            return json({ error: "Queue not found" }, { status: 404 });
-          }
-          case "queue_not_overridden": {
-            return json({ error: "Queue is not overridden" }, { status: 400 });
-          }
-          case "queue_update_failed": {
-            return json({ error: "Failed to update queue concurrency limit" }, { status: 500 });
-          }
-          case "sync_queue_concurrency_to_engine_failed": {
-            return json(
-              { error: "Failed to sync queue concurrency limit to engine" },
-              { status: 500 }
-            );
-          }
-          case "get_queue_stats_failed": {
-            return json({ error: "Failed to get queue stats" }, { status: 500 });
-          }
-          case "other":
-          default: {
-            error.type satisfies "other";
-            return json({ error: "Internal server error" }, { status: 500 });
+    return concurrencySystem.queues
+      .resetConcurrencyLimit(authentication.environment, input, { v1Only: true })
+      .match(
+        (queue) => {
+          return json(
+            toPublicQueueItem(
+              toQueueItem({
+                friendlyId: queue.friendlyId,
+                name: queue.name,
+                type: queue.type,
+                version: queue.concurrencyVersion,
+                running: queue.running,
+                queued: queue.queued,
+                concurrencyLimit: queue.concurrencyLimit,
+                concurrencyLimitBase: queue.concurrencyLimitBase,
+                concurrencyLimitOverriddenAt: queue.concurrencyLimitOverriddenAt,
+                concurrencyLimitOverriddenBy: null,
+                paused: queue.paused,
+              })
+            ),
+            { status: 200 }
+          );
+        },
+        (error) => {
+          switch (error.type) {
+            case "queue_version_unsupported": {
+              return json(
+                {
+                  error:
+                    "This queue's concurrency is declared with the task `concurrency` option; manage it through the concurrency-limits endpoints instead (a task's inline limit lives under its derived `task/<task-id>` name)",
+                },
+                { status: 400 }
+              );
+            }
+            case "queue_not_found": {
+              return json({ error: "Queue not found" }, { status: 404 });
+            }
+            case "queue_not_overridden": {
+              return json({ error: "Queue is not overridden" }, { status: 400 });
+            }
+            case "queue_update_failed": {
+              return json({ error: "Failed to update queue concurrency limit" }, { status: 500 });
+            }
+            case "sync_queue_concurrency_to_engine_failed": {
+              return json(
+                { error: "Failed to sync queue concurrency limit to engine" },
+                { status: 500 }
+              );
+            }
+            case "get_queue_stats_failed": {
+              return json({ error: "Failed to get queue stats" }, { status: 500 });
+            }
+            case "other":
+            default: {
+              error.type satisfies "other";
+              return json({ error: "Internal server error" }, { status: 500 });
+            }
           }
         }
-      }
-    );
+      );
   }
 );
 

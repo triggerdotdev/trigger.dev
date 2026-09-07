@@ -69,6 +69,9 @@ const QueueItemUnion = z.discriminatedUnion("version", [
   z.object({
     ...QueueItemCommon,
     version: z.literal("V2"),
+    /** Never present on V2 queues; declared so existing `queue.concurrency?.…`
+     * reads keep compiling across the union and see undefined. */
+    concurrency: z.undefined().optional(),
   }),
 ]);
 

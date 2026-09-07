@@ -1,5 +1,6 @@
 import { json } from "@remix-run/server-runtime";
-import { type QueueItem, type RetrieveQueueParam, RetrieveQueueType } from "@trigger.dev/core/v3";
+import { type RetrieveQueueParam, RetrieveQueueType } from "@trigger.dev/core/v3";
+import { toPublicQueueItem } from "~/presenters/v3/QueueRetrievePresenter.server";
 import { z } from "zod";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { PauseQueueService } from "~/v3/services/pauseQueue.server";
@@ -44,8 +45,7 @@ const route = createActionApiRoute(
       return json({ error: result.code }, { status: 400 });
     }
 
-    const q: QueueItem = result.queue;
-    return json(q);
+    return json(toPublicQueueItem(result.queue));
   }
 );
 

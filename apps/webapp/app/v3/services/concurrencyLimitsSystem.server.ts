@@ -61,10 +61,7 @@ export class ConcurrencyLimitsSystem {
       list: (environment: AuthenticatedEnvironment, page: { page: number; perPage: number }) => {
         return fromPromise(
           this.reader.taskQueue.findMany({
-            where: {
-              runtimeEnvironmentId: environment.id,
-              role: "LIMIT",
-            },
+            where: limitRowsWhere(environment),
             orderBy: { name: "asc" },
             skip: (page.page - 1) * page.perPage,
             take: page.perPage,
@@ -79,9 +76,7 @@ export class ConcurrencyLimitsSystem {
       },
       totalCount: (environment: AuthenticatedEnvironment) => {
         return fromPromise(
-          this.reader.taskQueue.count({
-            where: { runtimeEnvironmentId: environment.id, role: "LIMIT" },
-          }),
+          this.reader.taskQueue.count({ where: limitRowsWhere(environment) }),
           (error) => ({ type: "other" as const, cause: error })
         );
       },
@@ -188,6 +183,28 @@ function concurrencyLimitNameFromRow(row: Pick<TaskQueue, "name">): string {
     : row.name;
 }
 
+/**
+ * Limits live in two places: named and shared-queue inline limits are LIMIT-role
+ * rows under the `limit/` prefix, while an inline limit on a task's own default
+ * queue compiles onto that V2 QUEUE row (the design's zero-gate-cost case). Its
+ * derived `task/<id>` name resolves here too, so every declared limit is
+ * retrievable and overridable through this one surface. V1 queue rows never
+ * match: their limit is queue surface, managed through the queues API.
+ */
+function limitRowsWhere(environment: AuthenticatedEnvironment) {
+  return {
+    runtimeEnvironmentId: environment.id,
+    OR: [
+      { role: "LIMIT" as const },
+      {
+        role: "QUEUE" as const,
+        concurrencyVersion: "V2" as const,
+        OR: [{ concurrencyLimit: { not: null } }, { totalConcurrencyLimit: { not: null } }],
+      },
+    ],
+  };
+}
+
 function findLimitByName(
   db: PrismaClientOrTransaction,
   environment: AuthenticatedEnvironment,
@@ -207,22 +224,55 @@ function findLimitByName(
     }),
     (error) => ({ type: "other" as const, cause: error })
   ).andThen((row) => {
-    if (!row) {
+    if (row) {
+      return okAsync(row);
+    }
+    if (!name.startsWith("task/")) {
       return errAsync({ type: "limit_not_found" as const });
     }
-    return okAsync(row);
+    return fromPromise(
+      db.taskQueue.findFirst({
+        where: {
+          runtimeEnvironmentId: environment.id,
+          name,
+          role: "QUEUE",
+          concurrencyVersion: "V2",
+          OR: [{ concurrencyLimit: { not: null } }, { totalConcurrencyLimit: { not: null } }],
+        },
+      }),
+      (error) => ({ type: "other" as const, cause: error })
+    ).andThen((queueRow) => {
+      if (!queueRow) {
+        return errAsync({ type: "limit_not_found" as const });
+      }
+      return okAsync(queueRow);
+    });
   });
 }
 
+/**
+ * LIMIT rows read the gate machinery (group set + per-gate queued counter); a
+ * default-queue inline limit is its home queue, so the queue's own concurrency
+ * and length ARE the runs holding and waiting on the limit.
+ */
 async function toLimitItems(
   environment: AuthenticatedEnvironment,
   rows: TaskQueue[]
 ): Promise<ConcurrencyLimitItem[]> {
-  const names = rows.map((row) => row.name);
-  const [running, queued] = await Promise.all([
-    engine.totalConcurrencyOfQueues(environment, names),
-    engine.gateQueuedCountOfQueues(environment, names),
+  const limitNames = rows.filter((row) => row.role === "LIMIT").map((row) => row.name);
+  const queueNames = rows.filter((row) => row.role === "QUEUE").map((row) => row.name);
+  const [gateRunning, gateQueued, queueRunning, queueQueued] = await Promise.all([
+    engine.totalConcurrencyOfQueues(environment, limitNames),
+    engine.gateQueuedCountOfQueues(environment, limitNames),
+    queueNames.length > 0
+      ? engine.currentConcurrencyOfQueues(environment, queueNames)
+      : Promise.resolve({} as Record<string, number>),
+    queueNames.length > 0
+      ? engine.lengthOfQueues(environment, queueNames)
+      : Promise.resolve({} as Record<string, number>),
   ]);
+  const running = { ...queueRunning, ...gateRunning };
+  const queued = { ...queueQueued, ...gateQueued };
 
   return rows.map((row) => ({
     id: concurrencyLimitDisplayId(row),

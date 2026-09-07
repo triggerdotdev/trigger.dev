@@ -29,6 +29,10 @@ vi.mock("~/v3/runEngine.server", () => ({
       Object.fromEntries(queues.map((q) => [q, 0])),
     gateQueuedCountOfQueues: async (_env: unknown, queues: string[]) =>
       Object.fromEntries(queues.map((q) => [q, 0])),
+    currentConcurrencyOfQueues: async (_env: unknown, queues: string[]) =>
+      Object.fromEntries(queues.map((q) => [q, 0])),
+    lengthOfQueues: async (_env: unknown, queues: string[]) =>
+      Object.fromEntries(queues.map((q) => [q, 0])),
   },
 }));
 
@@ -260,6 +264,94 @@ describe("ConcurrencyLimitsSystem", () => {
       const final = await prisma.taskQueue.findFirstOrThrow({ where: { id: row.id } });
       expect(final.totalConcurrencyLimit).toBe(75);
       expect(engineTotal).toBe(75);
+    }
+  );
+
+  postgresTest(
+    "a default-queue inline limit resolves, overrides and resets under its task/ name",
+    async ({ prisma }) => {
+      const { authEnv, system, environment } = await seedEnvAndLimit(prisma, { total: 25 });
+
+      const queueRow = await prisma.taskQueue.create({
+        data: {
+          friendlyId: `queue_t${environment.slug}`,
+          name: "task/send-email",
+          orderableName: "send-email",
+          projectId: environment.projectId,
+          runtimeEnvironmentId: environment.id,
+          role: "QUEUE",
+          concurrencyVersion: "V2",
+          concurrencyLimit: 1,
+          totalConcurrencyLimit: 10,
+        },
+      });
+
+      const retrieved = await system.limits.retrieve(authEnv, "task/send-email");
+      expect(retrieved.isOk()).toBe(true);
+      if (retrieved.isOk()) {
+        expect(retrieved.value.name).toBe("task/send-email");
+        expect(retrieved.value.perKey).toMatchObject({ current: 1, base: 1 });
+        expect(retrieved.value.total).toMatchObject({ current: 10, base: 10 });
+      }
+
+      const overridden = await system.limits.override(authEnv, "task/send-email", { total: 20 });
+      expect(overridden.isOk()).toBe(true);
+      expect(totalSyncMock).toHaveBeenCalledWith(authEnv, "task/send-email", 20);
+
+      const reset = await system.limits.reset(authEnv, "task/send-email");
+      expect(reset.isOk()).toBe(true);
+      const final = await prisma.taskQueue.findFirstOrThrow({ where: { id: queueRow.id } });
+      expect(final.totalConcurrencyLimit).toBe(10);
+      expect(final.totalConcurrencyLimitOverriddenAt).toBeNull();
+
+      const listed = await system.limits.list(authEnv, { page: 1, perPage: 50 });
+      expect(listed.isOk()).toBe(true);
+      if (listed.isOk()) {
+        expect(listed.value.map((item) => item.name).sort()).toEqual(["openai", "task/send-email"]);
+      }
+    }
+  );
+
+  postgresTest(
+    "V1 queue rows and boundless V2 queue rows never surface as limits",
+    async ({ prisma }) => {
+      const { authEnv, system, environment } = await seedEnvAndLimit(prisma, { total: 25 });
+
+      await prisma.taskQueue.create({
+        data: {
+          friendlyId: `queue_v1${environment.slug}`,
+          name: "task/legacy-task",
+          orderableName: "legacy-task",
+          projectId: environment.projectId,
+          runtimeEnvironmentId: environment.id,
+          role: "QUEUE",
+          concurrencyVersion: "V1",
+          concurrencyLimit: 5,
+        },
+      });
+      await prisma.taskQueue.create({
+        data: {
+          friendlyId: `queue_nb${environment.slug}`,
+          name: "task/unbounded-task",
+          orderableName: "unbounded-task",
+          projectId: environment.projectId,
+          runtimeEnvironmentId: environment.id,
+          role: "QUEUE",
+          concurrencyVersion: "V2",
+        },
+      });
+
+      const v1 = await system.limits.retrieve(authEnv, "task/legacy-task");
+      expect(v1.isErr()).toBe(true);
+
+      const boundless = await system.limits.retrieve(authEnv, "task/unbounded-task");
+      expect(boundless.isErr()).toBe(true);
+
+      const listed = await system.limits.list(authEnv, { page: 1, perPage: 50 });
+      expect(listed.isOk()).toBe(true);
+      if (listed.isOk()) {
+        expect(listed.value.map((item) => item.name)).toEqual(["openai"]);
+      }
     }
   );
 
