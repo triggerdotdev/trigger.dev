@@ -67,17 +67,24 @@ export class ConcurrencySystem {
         environment: AuthenticatedEnvironment,
         queue: QueueInput,
         override: ConcurrencyLimitOverride,
-        overriddenBy?: User
+        overriddenBy?: User,
+        opts?: QueueMutationOpts
       ) => {
         return findQueueFromInput(this.db, environment, queue)
+          .andThen((queue) => guardQueueVersion(queue, opts))
           .andThen((queue) =>
             overrideQueueConcurrencyLimit(this.db, environment, queue, override, overriddenBy)
           )
           .andThen((queue) => syncQueueConcurrencyToEngine(environment, queue))
           .andThen((queue) => getQueueStats(environment, queue));
       },
-      resetConcurrencyLimit: (environment: AuthenticatedEnvironment, queue: QueueInput) => {
+      resetConcurrencyLimit: (
+        environment: AuthenticatedEnvironment,
+        queue: QueueInput,
+        opts?: QueueMutationOpts
+      ) => {
         return findQueueFromInput(this.db, environment, queue)
+          .andThen((queue) => guardQueueVersion(queue, opts))
           .andThen((queue) => resetQueueConcurrencyLimit(this.db, queue))
           .andThen((queue) => syncQueueConcurrencyToEngine(environment, queue))
           .andThen((queue) => getQueueStats(environment, queue));
@@ -178,6 +185,22 @@ function findQueueFromInput(
     queue.type === "task" ? `task/${queue.name.replace(/^task\//, "")}` : queue.name;
 
   return findQueueByName(db, environment, queueName);
+}
+
+/**
+ * The public queue override/reset endpoints are the V1 lever; a V2 queue's
+ * limits are managed through the concurrency-limits endpoints (a default-queue
+ * inline limit under its derived task/<id> name), and a V2 response hides
+ * queue-level concurrency, so mutating one here would succeed invisibly. The
+ * dashboard's own actions pass no opts and keep working on every version.
+ */
+type QueueMutationOpts = { v1Only?: boolean };
+
+function guardQueueVersion(queue: TaskQueue, opts: QueueMutationOpts | undefined) {
+  if (opts?.v1Only && queue.concurrencyVersion === "V2") {
+    return errAsync({ type: "queue_version_unsupported" as const });
+  }
+  return okAsync(queue);
 }
 
 function findQueueByFriendlyId(
