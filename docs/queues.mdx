@@ -5,7 +5,7 @@ description: "Control the order your runs execute in."
 
 import Priority from "/snippets/priority.mdx";
 
-When you trigger a task, it isn't executed immediately. Instead, the task [run](/runs) is placed into a queue for execution. Runs in a queue are started in the order they were triggered: first in, first out.
+When you trigger a task, it isn't executed immediately. Instead, the task [run](/runs) is placed into a queue for execution. Runs in a queue are started in the order they were triggered, first in, first out, unless you give a run a [priority](#priority) at trigger time.
 
 By default, each task gets its own queue, so triggering the same task ten times executes those runs in trigger order. How many of them execute *at once* is a separate question, governed by [concurrency](/concurrency) — your environment's concurrency limit, plus any limits you set on the task.
 
