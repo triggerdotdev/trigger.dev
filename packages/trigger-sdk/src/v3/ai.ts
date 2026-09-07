@@ -118,7 +118,8 @@ import {
   sessions,
   type SessionSubscribeOptions,
 } from "./sessions.js";
-import { createTask, triggerConcurrencyBody } from "./shared.js";
+import { createTask } from "./shared.js";
+import { triggerConcurrencyBody } from "./concurrency-shared.js";
 import { markChatAgentRunForStreamsWarning } from "./streams.js";
 import { tracer } from "./tracer.js";
 

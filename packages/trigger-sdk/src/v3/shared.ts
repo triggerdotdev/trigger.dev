@@ -95,6 +95,7 @@ import {
   type ConcurrencyLimit,
 } from "@trigger.dev/core/v3";
 import { tracer } from "./tracer.js";
+import { triggerConcurrencyBody, validateConcurrencyLimitName } from "./concurrency-shared.js";
 
 export type {
   AnyRunHandle,
@@ -213,29 +214,6 @@ function triggerQueueBody(
   return { queue: name ? { name } : undefined };
 }
 
-/**
- * Trigger-time named limits: strings only, like `queue`. They replace the task's
- * declared named limits for this run; the server resolves names to the run's gates.
- */
-export function triggerConcurrencyBody(concurrency: string | string[] | undefined): {
-  concurrency?: string[];
-} {
-  if (!concurrency) {
-    return {};
-  }
-  const limits = Array.isArray(concurrency) ? concurrency : [concurrency];
-  if (limits.length > 2) {
-    throw new Error("The concurrency option accepts at most two named limits.");
-  }
-  if (limits.some((name) => typeof name !== "string" || name.length === 0)) {
-    throw new Error("The concurrency option takes limit names: non-empty strings.");
-  }
-  for (const name of limits) {
-    validateConcurrencyLimitName(name);
-  }
-  return { concurrency: limits };
-}
-
 export function queue(options: QueueOptions): Queue {
   resourceCatalog.registerQueueMetadata(options);
 
@@ -261,14 +239,6 @@ export function queue(options: QueueOptions): Queue {
  * });
  * ```
  */
-function validateConcurrencyLimitName(name: string): void {
-  if (!/^[a-zA-Z0-9_-]{1,122}$/.test(name)) {
-    throw new Error(
-      `Concurrency limit "${name}": names are 1-122 characters using only letters, numbers, underscores and hyphens.`
-    );
-  }
-}
-
 export function concurrencyLimit(options: ConcurrencyLimitOptions): ConcurrencyLimit {
   validateConcurrencyLimitName(options.name);
 
