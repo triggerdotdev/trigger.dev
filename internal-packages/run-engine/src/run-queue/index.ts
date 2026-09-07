@@ -207,15 +207,6 @@ const QUEUE_METRICS_CK_GAUGE_EXTRAS = {
   ckMaxWaitMs: "__ckwait",
 };
 
-// Total-concurrency tail (gauge[10]/gauge[11]): live group cardinality + raw stored cap.
-// Requires the groupConcurrencyKey local and the __totalLimitRaw memo (one GET shared with
-// the total-cap gate); the CK scripts that run this (the Tracked variants and the CK
-// dequeue) declare both. The group SCARD stays a fresh read: it must be post-admission.
-const QUEUE_METRICS_TOTAL_GAUGE_EXTRAS = {
-  totalRunning: "redis.call('SCARD', groupConcurrencyKey)",
-  totalLimit: "__totalLimitRaw() or '0'",
-};
-
 // CK enqueue variants of the two gauges above, extended with the CK-health tail.
 const QUEUE_METRICS_CK_ENQUEUE_GAUGE_LUA = createMetricsGaugeComputeLua({
   enabledArg: "ARGV[#ARGV] == '1'",
