@@ -160,6 +160,32 @@ local function __gatesRelease(gatesKeyPrefix, rawPayload, messageId)
       redis.call('SREM', base .. ':groupConcurrency', messageId)
     end
   end
+end
+
+-- Per-gate queued counter: runs that are queued and must clear the gate to execute.
+-- Callers gate the delta on the actual queue-zset transition (ZADD added == 1 /
+-- ZREM removed == 1) so re-enqueues and already-removed members never double count.
+-- Payload-driven and flag-independent, like release, so counts stay exact across
+-- flag flips. Floored at zero: a missed increment can never push a counter negative.
+local function __gateQueuedDelta(gatesKeyPrefix, msg, delta)
+  if type(msg) ~= 'table' or not msg.gates then return end
+  for _, gate in ipairs(msg.gates) do
+    local base = __gateKeys(gatesKeyPrefix, msg, gate)
+    local counterKey = base .. ':gateQueuedCounter'
+    if delta > 0 then
+      redis.call('INCRBY', counterKey, delta)
+    elseif tonumber(redis.call('GET', counterKey) or '0') > 0 then
+      redis.call('DECRBY', counterKey, -delta)
+    end
+  end
+end
+
+local function __gateQueuedDeltaRaw(gatesKeyPrefix, rawPayload, delta)
+  if not rawPayload or rawPayload == false then return end
+  if not string.find(rawPayload, '"gates"', 1, true) then return end
+  local ok, msg = pcall(cjson.decode, rawPayload)
+  if not ok then return end
+  __gateQueuedDelta(gatesKeyPrefix, msg, delta)
 end`;
 
 // Prelude spliced at the top of every gauge-carrying script: declares the gauge slot and
@@ -653,6 +679,39 @@ export class RunQueue {
    */
   public async totalConcurrencyOfQueue(env: MinimalAuthenticatedEnvironment, queue: string) {
     return this.redis.scard(this.keys.queueGroupConcurrencyKey(env, queue));
+  }
+
+  /**
+   * Runs that are queued and must clear this gate queue to execute (the per-gate
+   * queued counter). Exact by construction: incremented per gate on enqueue and
+   * decremented on admit and on every queued-removal path, floored at zero.
+   */
+  public async gateQueuedCountOfQueue(env: MinimalAuthenticatedEnvironment, queue: string) {
+    const result = await this.redis.get(this.keys.gateQueuedCounterKey(env, queue));
+    return result ? Math.max(Number(result), 0) : 0;
+  }
+
+  /** Batch variant of gateQueuedCountOfQueue: one pipeline of GETs. */
+  public async gateQueuedCountOfQueues(
+    env: MinimalAuthenticatedEnvironment,
+    queues: string[]
+  ): Promise<Record<string, number>> {
+    const pipeline = this.redis.pipeline();
+    queues.forEach((queue) => {
+      pipeline.get(this.keys.gateQueuedCounterKey(env, queue));
+    });
+
+    const results = await pipeline.exec();
+
+    return queues.reduce(
+      (acc, queue, index) => {
+        const value = results?.[index]?.[1];
+        const parsed = typeof value === "string" ? Number(value) : 0;
+        acc[queue] = Number.isFinite(parsed) ? Math.max(parsed, 0) : 0;
+        return acc;
+      },
+      {} as Record<string, number>
+    );
   }
 
   /** Batch variant of totalConcurrencyOfQueue: one pipeline of group SCARDs. */
@@ -3773,7 +3832,10 @@ end
 redis.call('SET', messageKey, messageData)
 
 -- Add the message to the queue
-redis.call('ZADD', queueKey, messageScore, messageId)
+local added = redis.call('ZADD', queueKey, messageScore, messageId)
+if added == 1 then
+  __gateQueuedDeltaRaw(keyPrefix, messageData, 1)
+end
 
 -- Add the message to the env queue
 redis.call('ZADD', envQueueKey, messageScore, messageId)
@@ -3920,7 +3982,10 @@ end
 redis.call('SET', messageKey, messageData)
 
 -- Add the message to the queue
-redis.call('ZADD', queueKey, messageScore, messageId)
+local added = redis.call('ZADD', queueKey, messageScore, messageId)
+if added == 1 then
+  __gateQueuedDeltaRaw(keyPrefix, messageData, 1)
+end
 
 -- Add the message to the env queue
 redis.call('ZADD', envQueueKey, messageScore, messageId)
@@ -4315,6 +4380,7 @@ local added = redis.call('ZADD', queueKey, messageScore, messageId)
 redis.call('ZADD', envQueueKey, messageScore, messageId)
 if added == 1 then
   redis.call('INCR', lengthCounterKey)
+  __gateQueuedDeltaRaw(keyPrefix, messageData, 1)
 end
 
 -- Rebalance CK index
@@ -4486,6 +4552,7 @@ redis.call('ZADD', envQueueKey, messageScore, messageId)
 redis.call('ZADD', ttlQueueKey, ttlScore, ttlMember)
 if added == 1 then
   redis.call('INCR', lengthCounterKey)
+  __gateQueuedDeltaRaw(keyPrefix, messageData, 1)
 end
 
 -- Rebalance CK index
@@ -4690,6 +4757,9 @@ for i, member in ipairs(expiredMembers) do
 
       -- ZREM from queue; if successful AND this is a CK variant, DECR lengthCounter.
       local removedFromZset = redis.call('ZREM', queueKey, runId)
+      if removedFromZset == 1 then
+        __gateQueuedDeltaRaw(keyPrefix, rawPayload, -1)
+      end
 
       local envMatch = string.match(rawQueueKey, ":env:([^:]+)")
       if envMatch then
@@ -4876,8 +4946,11 @@ for i = 1, #messages, 2 do
             -- leave messageKey intact, and (re-)register the TTL entry so the
             -- TTL consumer can discover and properly expire the run. The entry
             -- is removed on first dequeue, so it cannot be assumed to exist.
-            redis.call('ZREM', queueKey, messageId)
+            local removedExpired = redis.call('ZREM', queueKey, messageId)
             redis.call('ZREM', envQueueKey, messageId)
+            if removedExpired == 1 then
+              __gateQueuedDelta(keyPrefix, messageData, -1)
+            end
             if ttlQueueKey and ttlQueueKey ~= '' then
                 local ttlMember = queueName .. '|' .. messageId .. '|' .. (messageData.orgId or '')
                 redis.call('ZADD', ttlQueueKey, ttlExpiresAt, ttlMember)
@@ -4889,8 +4962,11 @@ for i = 1, #messages, 2 do
             end
 
             if gatesAllow then
-              redis.call('ZREM', queueKey, messageId)
+              local removedFromQueue = redis.call('ZREM', queueKey, messageId)
               redis.call('ZREM', envQueueKey, messageId)
+              if removedFromQueue == 1 then
+                __gateQueuedDelta(keyPrefix, messageData, -1)
+              end
               redis.call('SADD', queueCurrentConcurrencyKey, messageId)
               redis.call('SADD', envCurrentConcurrencyKey, messageId)
               if totalConcurrencyEnabled then
@@ -5236,9 +5312,12 @@ for _, ckQueueName in ipairs(ckQueues) do
         local ttlExpiresAt = messageData and messageData.ttlExpiresAt
 
         if ttlExpiresAt and ttlExpiresAt <= currentTime then
-          redis.call('ZREM', fullQueueKey, messageId)
+          local removedExpired = redis.call('ZREM', fullQueueKey, messageId)
           redis.call('ZREM', envQueueKey, messageId)
           decrLengthCounter()
+          if removedExpired == 1 then
+            __gateQueuedDelta(keyPrefix, messageData, -1)
+          end
           if ttlQueueKey and ttlQueueKey ~= '' then
             local ttlMember = ckQueueName .. '|' .. messageId .. '|' .. (messageData.orgId or '')
             redis.call('ZADD', ttlQueueKey, ttlExpiresAt, ttlMember)
@@ -5260,9 +5339,12 @@ for _, ckQueueName in ipairs(ckQueues) do
           end
 
           if gatesAllow and totalAllows then
-            redis.call('ZREM', fullQueueKey, messageId)
+            local removedFromQueue = redis.call('ZREM', fullQueueKey, messageId)
             redis.call('ZREM', envQueueKey, messageId)
             decrLengthCounter()
+            if removedFromQueue == 1 then
+              __gateQueuedDelta(keyPrefix, messageData, -1)
+            end
             redis.call('SADD', ckConcurrencyKey, messageId)
             redis.call('SADD', envCurrentConcurrencyKey, messageId)
             if totalConcurrencyEnabled then
@@ -5475,8 +5557,11 @@ local rawPayload = redis.call('GET', messageKey)
 redis.call('DEL', messageKey)
 
 -- Remove the message from the queue
-redis.call('ZREM', messageQueueKey, messageId)
+local removedFromQueueZset = redis.call('ZREM', messageQueueKey, messageId)
 redis.call('ZREM', envQueueKey, messageId)
+if removedFromQueueZset == 1 then
+  __gateQueuedDeltaRaw(keyPrefix, rawPayload, -1)
+end
 
 -- Rebalance the parent queues
 local earliestMessage = redis.call('ZRANGE', messageQueueKey, 0, 0, 'WITHSCORES')
@@ -5541,7 +5626,10 @@ redis.call('SREM', envCurrentDequeuedKey, messageId)
 __gatesRelease(keyPrefix, messageData, messageId)
 
 -- Enqueue the message into the queue
-redis.call('ZADD', messageQueueKey, messageScore, messageId)
+local added = redis.call('ZADD', messageQueueKey, messageScore, messageId)
+if added == 1 then
+  __gateQueuedDeltaRaw(keyPrefix, messageData, 1)
+end
 redis.call('ZADD', envQueueKey, messageScore, messageId)
 
 -- Rebalance the parent queues
@@ -5578,8 +5666,11 @@ ${QUEUE_GATES_LUA_HELPERS}
 local rawPayload = redis.call('GET', messageKey)
 
 -- Remove the message from the queue
-redis.call('ZREM', messageQueue, messageId)
+local removedFromQueueZset = redis.call('ZREM', messageQueue, messageId)
 redis.call('ZREM', envQueueKey, messageId)
+if removedFromQueueZset == 1 then
+  __gateQueuedDeltaRaw(keyPrefix, rawPayload, -1)
+end
 
 -- Rebalance the parent queues
 local earliestMessage = redis.call('ZRANGE', messageQueue, 0, 0, 'WITHSCORES')
@@ -5840,6 +5931,7 @@ local removedFromZset = redis.call('ZREM', messageQueueKey, messageId)
 redis.call('ZREM', envQueueKey, messageId)
 if removedFromZset == 1 then
   decrFloored(lengthCounterKey)
+  __gateQueuedDeltaRaw(keyPrefix, rawPayload, -1)
 end
 
 -- Rebalance CK index
@@ -5963,6 +6055,9 @@ end
 -- Enqueue the message back into the CK-specific queue. INCR lengthCounter only if
 -- it's a new entry (ZADD returns 1).
 local added = redis.call('ZADD', messageQueueKey, messageScore, messageId)
+if added == 1 then
+  __gateQueuedDeltaRaw(keyPrefix, messageData, 1)
+end
 redis.call('ZADD', envQueueKey, messageScore, messageId)
 if added == 1 then
   redis.call('INCR', lengthCounterKey)
@@ -6034,6 +6129,7 @@ local removedFromZset = redis.call('ZREM', messageQueue, messageId)
 redis.call('ZREM', envQueueKey, messageId)
 if removedFromZset == 1 then
   decrFloored(lengthCounterKey)
+  __gateQueuedDeltaRaw(keyPrefix, rawPayload, -1)
 end
 
 -- Rebalance CK index

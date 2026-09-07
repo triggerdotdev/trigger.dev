@@ -26,6 +26,7 @@ const constants = {
   RUNNING_COUNTER_PART: "runningCounter",
   GROUP_CONCURRENCY_PART: "groupConcurrency",
   TOTAL_CONCURRENCY_LIMIT_PART: "totalConcurrency",
+  GATE_QUEUED_COUNTER_PART: "gateQueuedCounter",
 } as const;
 
 export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
@@ -351,6 +352,16 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
 
   queueGroupConcurrencyKeyFromQueue(queue: string): string {
     return `${this.baseQueueKeyFromQueue(queue)}:${constants.GROUP_CONCURRENCY_PART}`;
+  }
+
+  /**
+   * Counter of queued runs holding this queue as a gate: runs that are not
+   * executing, are queued, and must clear this gate to execute. Maintained
+   * exactly like the CK length counter: incremented per gate on enqueue,
+   * decremented on admit and on every queued-removal path.
+   */
+  gateQueuedCounterKey(env: RunQueueKeyProducerEnvironment, queue: string): string {
+    return `${this.queueKey(env, queue)}:${constants.GATE_QUEUED_COUNTER_PART}`;
   }
 
   /**
