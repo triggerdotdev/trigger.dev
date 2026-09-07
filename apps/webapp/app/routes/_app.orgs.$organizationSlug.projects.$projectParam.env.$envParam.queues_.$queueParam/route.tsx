@@ -119,7 +119,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   if (!environment)
     throw new Response(undefined, { status: 404, statusText: "Environment not found" });
 
-  const retrieve = await new QueueRetrievePresenter().call({ environment, queueInput: queueParam });
+  const retrieve = await new QueueRetrievePresenter().call({
+    environment,
+    queueInput: queueParam,
+    includeLimits: true,
+  });
   if (!retrieve.success) {
     throw new Response(undefined, { status: 404, statusText: "Queue not found" });
   }
