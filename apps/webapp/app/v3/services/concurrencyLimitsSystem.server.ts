@@ -128,7 +128,10 @@ export class ConcurrencyLimitsSystem {
             syncLimitToEngine(environment, row)
               .andThen(() =>
                 compensateEngineFromFreshRow(this.db, environment, row.id, {
-                  alreadySyncedAt: row.updatedAt.getTime(),
+                  alreadySynced: {
+                    perKey: row.concurrencyLimit,
+                    total: row.totalConcurrencyLimit,
+                  },
                 })
                   .orElse(() => okAsync(undefined))
                   .map(() => row)
@@ -387,28 +390,39 @@ function guardedLimitUpdate(
   );
 }
 
+type SyncedLimitValues = { perKey: number | null; total: number | null };
+
 /**
- * Re-syncs the engine from fresh reads of the row until updatedAt stops moving
- * (bounded), the same convergence the deploy sync uses: every actor writes
+ * Re-syncs the engine from fresh reads of the row until the enforced values stop
+ * moving (bounded), the same convergence the deploy sync uses: every actor writes
  * Postgres before its own engine sync, so re-syncing whatever is freshest
- * converges. Callers use it two ways: after a failure (a reset's enforce-first
- * engine write preceding a persist that then conflicts, or an override's sync
- * failing after its persist), where the original error still reaches the caller;
- * and after a successful sync with `alreadySyncedAt` set to the synced row's
- * updatedAt, where an unchanged row costs one read and a moved row is re-synced.
+ * converges. The fixpoint compares the values the engine enforces rather than
+ * updatedAt, because Prisma's @updatedAt has millisecond precision and two writes
+ * in the same millisecond are indistinguishable by timestamp; identical values
+ * mean identical engine state, so skipping those is always safe. Callers use it
+ * two ways: after a failure (a reset's enforce-first engine write preceding a
+ * persist that then conflicts, or an override's sync failing after its persist),
+ * where the original error still reaches the caller; and after a successful sync
+ * with `alreadySynced` set to the values just synced, where an unchanged row
+ * costs one read and a moved row is re-synced.
  */
 function compensateEngineFromFreshRow(
   db: PrismaClientOrTransaction,
   environment: AuthenticatedEnvironment,
   rowId: string,
-  options?: { alreadySyncedAt?: number }
+  options?: { alreadySynced?: SyncedLimitValues }
 ) {
   return fromPromise(
     (async () => {
-      let lastSyncedAt: number | null = options?.alreadySyncedAt ?? null;
+      let lastSynced: SyncedLimitValues | null = options?.alreadySynced ?? null;
       for (let i = 0; i < 3; i++) {
         const fresh = await db.taskQueue.findFirst({ where: { id: rowId } });
-        if (!fresh || fresh.updatedAt.getTime() === lastSyncedAt) {
+        if (
+          !fresh ||
+          (lastSynced !== null &&
+            fresh.concurrencyLimit === lastSynced.perKey &&
+            fresh.totalConcurrencyLimit === lastSynced.total)
+        ) {
           return;
         }
         await settleBothEngineWrites(
@@ -423,7 +437,7 @@ function compensateEngineFromFreshRow(
               )
             : removeQueueTotalConcurrencyLimits(environment, fresh.name)
         );
-        lastSyncedAt = fresh.updatedAt.getTime();
+        lastSynced = { perKey: fresh.concurrencyLimit, total: fresh.totalConcurrencyLimit };
       }
     })(),
     (error) => ({ type: "other" as const, cause: error })
