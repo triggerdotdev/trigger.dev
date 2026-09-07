@@ -451,7 +451,7 @@ async function retireStaleAnonymousConcurrencyLimitRows(
       );
       continue;
     }
-    await prisma.taskQueue.updateMany({
+    const retired = await prisma.taskQueue.updateMany({
       where: { id: row.id, updatedAt: row.updatedAt },
       data: {
         concurrencyLimit: null,
@@ -465,6 +465,31 @@ async function retireStaleAnonymousConcurrencyLimitRows(
         totalConcurrencyLimitOverriddenBy: null,
       },
     });
+    if (retired.count === 0) {
+      /** A concurrent writer (an operator override, or another deploy) took the
+       * row between the read and the null, and the key removal above may have
+       * erased the engine state that writer just synced — including a
+       * pause-by-zero. Restore the engine from the fresh row so the winner's
+       * bounds stay enforced; both writers write the same fresh values, so the
+       * race converges. */
+      const fresh = await prisma.taskQueue.findFirst({ where: { id: row.id } });
+      if (fresh) {
+        await Promise.allSettled([
+          fresh.paused
+            ? updateQueueConcurrencyLimits(environment, fresh.name, 0)
+            : typeof fresh.concurrencyLimit === "number"
+              ? updateQueueConcurrencyLimits(environment, fresh.name, fresh.concurrencyLimit)
+              : removeQueueConcurrencyLimits(environment, fresh.name),
+          typeof fresh.totalConcurrencyLimit === "number"
+            ? updateQueueTotalConcurrencyLimits(
+                environment,
+                fresh.name,
+                fresh.totalConcurrencyLimit
+              )
+            : removeQueueTotalConcurrencyLimits(environment, fresh.name),
+        ]);
+      }
+    }
   }
 }
 
