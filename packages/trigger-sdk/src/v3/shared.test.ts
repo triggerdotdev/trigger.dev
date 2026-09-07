@@ -1,8 +1,11 @@
 import { ApiClient } from "@trigger.dev/core/v3";
-import { describe, it, expect } from "vitest";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
+import { afterEach, describe, it, expect } from "vitest";
 import {
   offloadBatchItemPayloads,
   readableStreamToAsyncIterable,
+  trigger,
   uniqueBatchTaskIdentifiers,
 } from "./shared.js";
 
@@ -67,6 +70,126 @@ describe("offloadBatchItemPayloads", () => {
     const result = await offloadBatchItemPayloads([item], apiClient);
     expect(result[0]).toEqual(item);
   });
+});
+
+describe("offloaded trigger payload paths", () => {
+  let server: Server | undefined;
+
+  afterEach(async () => {
+    const running = server;
+    server = undefined;
+    if (running) {
+      running.closeAllConnections?.();
+      await new Promise<void>((resolve) => running.close(() => resolve()));
+    }
+  });
+
+  /**
+   * Stand in for the presign route and the object store, recording the packet path
+   * the SDK actually puts on the wire.
+   */
+  const startPacketServer = async (): Promise<{ origin: string; requestedPaths: string[] }> => {
+    const requestedPaths: string[] = [];
+    let origin = "";
+
+    server = createServer((request, response) => {
+      const url = new URL(request.url ?? "/", origin);
+
+      if (url.pathname.startsWith("/api/v2/packets/")) {
+        const encoded = url.pathname.slice("/api/v2/packets/".length);
+        const storagePath = decodeURIComponent(encoded);
+        requestedPaths.push(storagePath);
+
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({ presignedUrl: `${origin}/upload`, storagePath }));
+        return;
+      }
+
+      request.resume();
+      request.on("end", () => {
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end(JSON.stringify({ id: "run_test" }));
+      });
+    });
+
+    await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve));
+    origin = `http://127.0.0.1:${(server!.address() as AddressInfo).port}`;
+
+    return { origin, requestedPaths };
+  };
+
+  const NASTY_TASK_IDS = [
+    "/my-task",
+    "jobs/my-task",
+    "my-task/",
+    "a//b",
+    "jobs/../x",
+    "..",
+    "my task",
+    "caf\u00e9",
+    "\ud800",
+  ];
+
+  it("builds a path from generated ids only, whatever the task id is", async () => {
+    const { origin, requestedPaths } = await startPacketServer();
+    const apiClient = new ApiClient(origin, "tr_dev_test");
+    const payload = JSON.stringify({ blob: "x".repeat(200_000) });
+
+    const items = NASTY_TASK_IDS.map((task, index) => ({
+      index,
+      task,
+      payload,
+      options: { payloadType: "application/json" },
+    }));
+
+    const result = await offloadBatchItemPayloads(items, apiClient);
+
+    expect(requestedPaths).toHaveLength(NASTY_TASK_IDS.length);
+
+    for (const path of requestedPaths) {
+      expect(path).toMatch(
+        /^trigger\/packet_[123456789abcdefghijkmnopqrstuvwxyz]{21}\/payload\.json$/
+      );
+      expect(path).not.toContain("%");
+    }
+
+    expect(new Set(requestedPaths).size).toBe(NASTY_TASK_IDS.length);
+    expect(new Set(result.map((item) => item.payload))).toEqual(new Set(requestedPaths));
+
+    for (const [index, item] of result.entries()) {
+      expect(item.options?.payloadType).toBe("application/store");
+      expect(item.task).toBe(NASTY_TASK_IDS[index]);
+    }
+  });
+
+  /**
+   * A lone surrogate is excluded here only because the trigger endpoint's own URL
+   * builder throws on it. That happens after the payload has been offloaded, so the
+   * offload path handles the id fine, as the batch case above shows; the uploaded
+   * object is simply orphaned when the trigger call fails.
+   */
+  const TRIGGERABLE_NASTY_TASK_IDS = NASTY_TASK_IDS.filter((taskId) => taskId !== "\ud800");
+
+  it.each(TRIGGERABLE_NASTY_TASK_IDS)(
+    "keeps the task id out of the path for trigger() of %j",
+    async (taskId) => {
+      const { origin, requestedPaths } = await startPacketServer();
+
+      const handle = await trigger(
+        taskId as never,
+        { blob: "x".repeat(200_000) } as never,
+        undefined,
+        { clientConfig: { baseURL: origin, accessToken: "tr_dev_test" } }
+      );
+
+      expect(handle.id).toBe("run_test");
+      expect(requestedPaths).toHaveLength(1);
+      expect(requestedPaths[0]).toMatch(
+        /^trigger\/packet_[123456789abcdefghijkmnopqrstuvwxyz]{21}\/payload\.json$/
+      );
+      expect(requestedPaths[0]).not.toContain("%");
+    }
+  );
 });
 
 describe("readableStreamToAsyncIterable", () => {
