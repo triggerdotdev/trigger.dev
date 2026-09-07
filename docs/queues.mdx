@@ -142,17 +142,19 @@ const customQueue = await queues.retrieve({
 });
 ```
 
-The queue object contains useful information about the queue state:
+The queue object contains useful information about the queue state, and its `version` discriminates the shape:
 
 ```ts
+// V1: the queue carries its own concurrency limit and override state
 {
   id: "queue_1234",       // Queue ID
   name: "my-task-id",     // Queue name
   type: "task",           // "task" or "custom"
+  version: "V1",
   running: 5,             // Currently executing runs
   queued: 10,             // Runs waiting to execute
   paused: false,          // Whether the queue is paused
-  concurrencyLimit: 10,   // Current concurrency limit
+  concurrencyLimit: 10,   // The queue's own limit
   concurrency: {
     current: 10,          // Effective limit
     base: 10,             // Default limit from code
@@ -160,6 +162,19 @@ The queue object contains useful information about the queue state:
     overriddenAt: null,   // When override was applied
     overriddenBy: null,   // Who applied the override
   }
+}
+
+// V2: the queue is only the line runs wait in. Concurrency is declared with
+// the task `concurrency` option and managed through `concurrencyLimits`.
+{
+  id: "queue_5678",
+  name: "my-v2-task-id",
+  type: "task",
+  version: "V2",
+  running: 3,
+  queued: 12,
+  paused: false,
+  concurrencyLimit: null,
 }
 ```
 

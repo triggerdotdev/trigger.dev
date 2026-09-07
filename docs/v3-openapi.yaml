@@ -4535,7 +4535,7 @@ components:
           example: 100
     QueueObject:
       type: object
-      required: ["id", "name", "type", "running", "queued", "paused"]
+      required: ["id", "name", "type", "version", "running", "queued", "paused"]
       properties:
         id:
           type: string
@@ -4553,6 +4553,14 @@ components:
             - `task`: Created automatically for each task
             - `custom`: Created explicitly in your code using `queue()`
           example: task
+        version:
+          type: string
+          enum: [V1, V2]
+          description: |
+            Discriminates the shape:
+            - `V1`: the queue carries its own `concurrencyLimit` (applied per key when runs pass a `concurrencyKey`, to the whole queue when they don't) and its `concurrency` override state
+            - `V2`: the queue is only the line runs wait in; concurrency is declared with the task `concurrency` option and managed through the concurrency-limits endpoints. `concurrencyLimit` is always null and `concurrency` is absent.
+          example: V1
         running:
           type: integer
           description: The number of runs currently executing
@@ -4568,11 +4576,11 @@ components:
         concurrencyLimit:
           type: integer
           nullable: true
-          description: The current concurrency limit of the queue
+          description: The queue's own concurrency limit. Meaningful on V1 queues; always null on V2 queues.
           example: 10
         concurrency:
           type: object
-          description: Detailed concurrency information
+          description: Detailed concurrency information. V1 queues only.
           properties:
             current:
               type: integer
