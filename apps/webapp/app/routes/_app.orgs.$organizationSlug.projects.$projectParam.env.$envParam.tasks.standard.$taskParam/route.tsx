@@ -200,7 +200,9 @@ export default function Page() {
   });
   const queuesPath = concurrencyPath(organization, project, environment);
   const queuePath = task.queue
-    ? concurrencyQueuePath(organization, project, environment, { friendlyId: task.queue.friendlyId })
+    ? concurrencyQueuePath(organization, project, environment, {
+        friendlyId: task.queue.friendlyId,
+      })
     : undefined;
 
   const { value } = useSearchParams();
