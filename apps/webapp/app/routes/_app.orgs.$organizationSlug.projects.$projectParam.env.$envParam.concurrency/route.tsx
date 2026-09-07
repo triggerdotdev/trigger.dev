@@ -782,8 +782,12 @@ function QueuesWithMetricsView() {
                       ? Math.min(queue.concurrency.combined.current, environment.concurrencyLimit)
                       : null
                     : limit;
+                  /** A zero threshold is a pause (nothing may run), not saturation —
+                   * without the guard `running >= 0` holds for every row. */
                   const isAtConcurrencyLimit =
-                    atLimitThreshold !== null && queue.running >= atLimitThreshold;
+                    atLimitThreshold !== null &&
+                    atLimitThreshold > 0 &&
+                    queue.running >= atLimitThreshold;
                   const isAtQueueLimit =
                     environment.queueSizeLimit !== null &&
                     queue.queued >= environment.queueSizeLimit;
@@ -1970,8 +1974,12 @@ function ClassicQueuesView() {
                         ? Math.min(queue.concurrency.combined.current, environment.concurrencyLimit)
                         : null
                       : limit;
+                    /** A zero threshold is a pause (nothing may run), not saturation —
+                     * without the guard `running >= 0` holds for every row. */
                     const isAtConcurrencyLimit =
-                      atLimitThreshold !== null && queue.running >= atLimitThreshold;
+                      atLimitThreshold !== null &&
+                      atLimitThreshold > 0 &&
+                      queue.running >= atLimitThreshold;
                     const isAtQueueLimit =
                       environment.queueSizeLimit !== null &&
                       queue.queued >= environment.queueSizeLimit;
