@@ -426,7 +426,7 @@ async function createWorkerTask(
 
     if (concurrency?.inline) {
       if (!task.queue?.name) {
-        queueConcurrencyLimit = concurrency.inline.perKey ?? concurrency.inline.total;
+        queueConcurrencyLimit = concurrency.inline.perKey;
         queueTotalConcurrencyLimit = concurrency.inline.total;
       } else {
         if (compiledGates.length > 1) {
@@ -438,7 +438,7 @@ async function createWorkerTask(
         await createWorkerQueue(
           {
             name: anonymousQueueName,
-            concurrencyLimit: concurrency.inline.perKey ?? concurrency.inline.total ?? null,
+            concurrencyLimit: concurrency.inline.perKey ?? null,
             combinedConcurrencyLimit: concurrency.inline.total ?? null,
           },
           `task/${task.id}`,
@@ -707,9 +707,9 @@ function assertNotReservedQueueName(name: string, context: string): void {
 
 /**
  * Materializes the worker's declared named concurrency limits (plus any names tasks
- * reference without declaring, created uncapped) as LIMIT-role TaskQueue rows. A
- * total-only limit stores the total as its per-key limit too, so no single key (or
- * the keyless pool) can exceed it even before the group check applies.
+ * reference without declaring, created uncapped) as LIMIT-role TaskQueue rows. The
+ * columns mirror the declared shape exactly: perKey caps each key pool (and the
+ * keyless pool); total caps everything together via the group set.
  */
 async function createWorkerConcurrencyLimits(
   metadata: BackgroundWorkerMetadata,
@@ -731,7 +731,7 @@ async function createWorkerConcurrencyLimits(
     await createWorkerQueue(
       {
         name: concurrencyLimitQueueName(limit.name),
-        concurrencyLimit: limit.perKey ?? limit.total ?? null,
+        concurrencyLimit: limit.perKey ?? null,
         combinedConcurrencyLimit: limit.total ?? null,
       },
       limit.name,

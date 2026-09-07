@@ -50,7 +50,7 @@ import {
 } from "./unread-counts";
 import { AgentPanelColumn } from "./panel-layout";
 import { markerAfterActiveChat, markerAfterActivity } from "./thinking-marker";
-import { concurrencyPath } from "~/utils/pathBuilder";
+import { concurrencyLimitsPath } from "~/utils/pathBuilder";
 
 function serializePageContext(pageContext: AgentPageContext): string | undefined {
   try {
@@ -131,7 +131,7 @@ export function DashboardAgentPanel({
   const currentPage = agentPageLabel(pageContext, location.pathname);
 
   const pagePaths = useMemo<Record<string, string>>(
-    () => ({ raise_env_limit: concurrencyPath(organization, project, environment) }),
+    () => ({ raise_env_limit: concurrencyLimitsPath(organization, project, environment) }),
     [organization, project, environment]
   );
 

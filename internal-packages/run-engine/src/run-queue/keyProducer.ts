@@ -26,6 +26,7 @@ const constants = {
   RUNNING_COUNTER_PART: "runningCounter",
   GROUP_CONCURRENCY_PART: "groupConcurrency",
   TOTAL_CONCURRENCY_LIMIT_PART: "totalConcurrency",
+  GATE_QUEUED_COUNTER_PART: "gateQueuedCounter",
 } as const;
 
 export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
@@ -354,6 +355,16 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
   }
 
   /**
+   * Counter of queued runs holding this queue as a gate: runs that are not
+   * executing, are queued, and must clear this gate to execute. Maintained
+   * exactly like the CK length counter: incremented per gate on enqueue,
+   * decremented on admit and on every queued-removal path.
+   */
+  gateQueuedCounterKey(env: RunQueueKeyProducerEnvironment, queue: string): string {
+    return `${this.queueKey(env, queue)}:${constants.GATE_QUEUED_COUNTER_PART}`;
+  }
+
+  /**
    * String key holding the queue's total concurrency limit (the cap across all
    * concurrency-key variants). Absent = no total cap. Readers clamp to the
    * environment limit; the raw requested value is what's stored.
@@ -364,14 +375,6 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
 
   queueTotalConcurrencyLimitKeyFromQueue(queue: string): string {
     return `${this.baseQueueKeyFromQueue(queue)}:${constants.TOTAL_CONCURRENCY_LIMIT_PART}`;
-  }
-
-  queueCkLimitsKey(env: RunQueueKeyProducerEnvironment, queue: string): string {
-    return `${this.queueKey(env, queue)}:ckLimits`;
-  }
-
-  queueCkLimitsKeyFromQueue(queue: string): string {
-    return `${this.baseQueueKeyFromQueue(queue)}:ckLimits`;
   }
 
   isCkWildcard(queue: string): boolean {

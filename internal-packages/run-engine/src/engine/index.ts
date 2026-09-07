@@ -1748,6 +1748,27 @@ export class RunEngine {
     return this.runQueue.currentConcurrencyOfQueues(environment, queues);
   }
 
+  async totalConcurrencyOfQueues(
+    environment: MinimalAuthenticatedEnvironment,
+    queues: string[]
+  ): Promise<Record<string, number>> {
+    return this.runQueue.totalConcurrencyOfQueues(environment, queues);
+  }
+
+  async totalConcurrencyLimitsOfQueues(
+    environment: MinimalAuthenticatedEnvironment,
+    queues: string[]
+  ): Promise<Record<string, number | undefined>> {
+    return this.runQueue.totalConcurrencyLimitsOfQueues(environment, queues);
+  }
+
+  async gateQueuedCountOfQueues(
+    environment: MinimalAuthenticatedEnvironment,
+    queues: string[]
+  ): Promise<Record<string, number>> {
+    return this.runQueue.gateQueuedCountOfQueues(environment, queues);
+  }
+
   async concurrencyKeyBreakdown(
     environment: MinimalAuthenticatedEnvironment,
     queue: string,
@@ -2987,6 +3008,7 @@ export class RunEngine {
             {
               select: {
                 queue: true,
+                concurrencyKey: true,
               },
             },
             this.prisma
@@ -3008,6 +3030,7 @@ export class RunEngine {
             runId,
             orgId: latestSnapshot.organizationId,
             queue: taskRun.queue,
+            concurrencyKey: taskRun.concurrencyKey ?? undefined,
             env: {
               id: latestSnapshot.environmentId,
               type: latestSnapshot.environmentType,

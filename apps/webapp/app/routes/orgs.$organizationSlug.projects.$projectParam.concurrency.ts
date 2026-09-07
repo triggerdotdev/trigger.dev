@@ -2,7 +2,7 @@ import { redirect, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { prisma } from "~/db.server";
 import { SelectBestEnvironmentPresenter } from "~/presenters/SelectBestEnvironmentPresenter.server";
 import { requireUser } from "~/services/session.server";
-import { ProjectParamSchema, v3QueuesPath } from "~/utils/pathBuilder";
+import { ProjectParamSchema, concurrencyPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
@@ -41,5 +41,5 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const selector = new SelectBestEnvironmentPresenter();
   const environment = await selector.selectBestEnvironment(project.id, user, project.environments);
 
-  return redirect(v3QueuesPath({ slug: organizationSlug }, project, environment));
+  return redirect(concurrencyPath({ slug: organizationSlug }, project, environment));
 };

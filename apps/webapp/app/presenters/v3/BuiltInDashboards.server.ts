@@ -634,7 +634,7 @@ const queuesDashboard: BuiltInDashboard = {
       "t-pressure": { title: "Queue pressure", query: "", display: { type: "title" } },
       pressure: {
         title: "Queue pressure",
-        query: `SELECT queue,\n  argMax(max_running, bucket_start) AS running,\n  argMax(max_queued, bucket_start) AS queued,\n  argMax(max_limit, bucket_start) AS limit,\n  running + queued AS demand,\n  max(max_queued) AS peak_queued,\n  sum(throttled_count) AS throttled,\n  multiIf(running >= limit AND queued > 0, 'queue-limited', queued > 0, 'backlogged', 'healthy') AS status\nFROM queue_metrics\nGROUP BY queue\nORDER BY peak_queued DESC`,
+        query: `SELECT queue,\n  argMax(max_running, bucket_start) AS running,\n  argMax(max_queued, bucket_start) AS queued,\n  argMax(max_limit, bucket_start) AS limit,\n  running + queued AS demand,\n  max(max_queued) AS peak_queued,\n  sum(throttled_count) AS throttled,\n  multiIf(running >= limit AND queued > 0, 'queue-limited', queued > 0, 'backlogged', 'healthy') AS status\nFROM concurrency_metrics\nGROUP BY queue\nORDER BY peak_queued DESC`,
         display: {
           type: "table",
           prettyFormatting: true,
@@ -644,7 +644,7 @@ const queuesDashboard: BuiltInDashboard = {
       "t-trends": { title: "Per-queue trends", query: "", display: { type: "title" } },
       "running-q": {
         title: "Running by queue",
-        query: `SELECT timeBucket() AS t, queue, max(max_running) AS running\nFROM queue_metrics\nGROUP BY t, queue\nORDER BY t`,
+        query: `SELECT timeBucket() AS t, queue, max(max_running) AS running\nFROM concurrency_metrics\nGROUP BY t, queue\nORDER BY t`,
         // Grouped gauge: carry each queue's running across idle buckets (per-group LOCF).
         fillGaps: true,
         display: {
@@ -661,7 +661,7 @@ const queuesDashboard: BuiltInDashboard = {
       },
       "queued-q": {
         title: "Queue depth (backlog) by queue",
-        query: `SELECT timeBucket() AS t, queue, max(max_queued) AS queued\nFROM queue_metrics\nGROUP BY t, queue\nORDER BY t`,
+        query: `SELECT timeBucket() AS t, queue, max(max_queued) AS queued\nFROM concurrency_metrics\nGROUP BY t, queue\nORDER BY t`,
         // Grouped gauge: carry each queue's backlog across idle buckets (per-group LOCF).
         fillGaps: true,
         display: {
@@ -678,7 +678,7 @@ const queuesDashboard: BuiltInDashboard = {
       },
       "throttled-q": {
         title: "Throttled buckets by queue",
-        query: `SELECT timeBucket() AS t, queue, sum(throttled_count) AS throttled\nFROM queue_metrics\nGROUP BY t, queue\nORDER BY t`,
+        query: `SELECT timeBucket() AS t, queue, sum(throttled_count) AS throttled\nFROM concurrency_metrics\nGROUP BY t, queue\nORDER BY t`,
         // Grouped counter: per-group zero-fill so idle buckets read 0, not a gap.
         fillGaps: true,
         display: {
@@ -697,7 +697,7 @@ const queuesDashboard: BuiltInDashboard = {
         title: "Enqueued vs started",
         // Counter states merge per queue, then sum outside: a single merge across queues
         // mixes unrelated odometers and returns wrong totals.
-        query: `SELECT t, sum(enq) AS enqueued, sum(st) AS started\nFROM (\n  SELECT timeBucket() AS t, queue,\n    deltaSumTimestampMerge(enqueue_delta) AS enq,\n    deltaSumTimestampMerge(started_delta) AS st\n  FROM queue_metrics\n  GROUP BY t, queue\n)\nGROUP BY t\nORDER BY t`,
+        query: `SELECT t, sum(enq) AS enqueued, sum(st) AS started\nFROM (\n  SELECT timeBucket() AS t, queue,\n    deltaSumTimestampMerge(enqueue_delta) AS enq,\n    deltaSumTimestampMerge(started_delta) AS st\n  FROM concurrency_metrics\n  GROUP BY t, queue\n)\nGROUP BY t\nORDER BY t`,
         display: {
           type: "chart",
           chartType: "line",

@@ -51,7 +51,7 @@ export const loader = createLoaderApiRoute(
     findResource: async () => 1, // dummy — the queue name isn't resolved against Postgres
     authorization: {
       action: "read",
-      resource: () => ({ type: "query", id: "queue_metrics" }),
+      resource: () => ({ type: "query", id: "concurrency_metrics" }),
     },
   },
   async ({ params, searchParams, authentication }) => {

@@ -587,21 +587,21 @@ export function v3SchedulesAddOnPath(organization: OrgForPath) {
   return `/resources/orgs/${organizationParam(organization)}/schedules-addon`;
 }
 
-export function v3QueuesPath(
+export function concurrencyPath(
   organization: OrgForPath,
   project: ProjectForPath,
   environment: EnvironmentForPath
 ) {
-  return `${v3EnvironmentPath(organization, project, environment)}/queues`;
+  return `${v3EnvironmentPath(organization, project, environment)}/concurrency`;
 }
 
-export function v3QueuePath(
+export function concurrencyQueuePath(
   organization: OrgForPath,
   project: ProjectForPath,
   environment: EnvironmentForPath,
   queue: { friendlyId: string }
 ) {
-  return `${v3QueuesPath(organization, project, environment)}/${queue.friendlyId}`;
+  return `${concurrencyPath(organization, project, environment)}/${queue.friendlyId}`;
 }
 
 export function v3WaitpointTokensPath(
@@ -806,12 +806,12 @@ export function branchesDevPath(
   return `${v3EnvironmentPath(organization, project, environment)}/dev-branches`;
 }
 
-export function concurrencyPath(
+export function concurrencyLimitsPath(
   organization: OrgForPath,
   project: ProjectForPath,
   environment: EnvironmentForPath
 ) {
-  return `${v3EnvironmentPath(organization, project, environment)}/concurrency`;
+  return `${v3EnvironmentPath(organization, project, environment)}/concurrency-limits`;
 }
 
 export function limitsPath(

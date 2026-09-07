@@ -43,6 +43,7 @@ redisTest(
     });
 
     await consumer.start();
+    await emitter.waitUntilReady();
     emitter.emit("queueA", { op: "enqueue", q: "queueA" });
     emitter.emit("queueB", { op: "started", q: "queueB", wait: 42 });
 
@@ -156,6 +157,7 @@ redisTest(
     });
 
     await consumer.start();
+    await emitter.waitUntilReady();
     emitter.emit(a, { op: "enqueue", q: a });
     emitter.emit(b, { op: "enqueue", q: b });
     await waitFor(() => inserted.flatMap((i) => i.rows).length >= 2);
