@@ -417,7 +417,7 @@ async function retireStaleAnonymousConcurrencyLimitRows(
     where: {
       runtimeEnvironmentId: environment.id,
       role: "LIMIT",
-      name: { in: candidateNames },
+      name: { in: boundedIn(candidateNames) },
       OR: [{ concurrencyLimit: { not: null } }, { totalConcurrencyLimit: { not: null } }],
     },
     select: { id: true, name: true },
@@ -427,7 +427,7 @@ async function retireStaleAnonymousConcurrencyLimitRows(
   }
 
   await prisma.taskQueue.updateMany({
-    where: { id: { in: staleRows.map((row) => row.id) } },
+    where: { id: { in: boundedIn(staleRows.map((row) => row.id)) } },
     data: {
       concurrencyLimit: null,
       concurrencyLimitBase: null,
