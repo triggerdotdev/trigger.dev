@@ -156,9 +156,15 @@ describe("RunQueue queue-metrics emission", () => {
       for (const f of ["ql", "cc", "lim", "eql", "ec", "elim", "thr"]) {
         expect(gauge!.fields[f]).toBeDefined();
       }
-      // Non-CK scripts keep the 7-field gauge (no CK-health tail).
-      expect(gauge!.fields.ckq).toBeUndefined();
-      expect(gauge!.fields.ckw).toBeUndefined();
+      /**
+       * Non-CK scripts emit the full gauge tail too: zeroed CK-health fields (a base
+       * queue has no CK variants) followed by the total running/limit pair, so a
+       * keyless queue with a total limit still charts total concurrency.
+       */
+      expect(gauge!.fields.ckq).toBe("0");
+      expect(gauge!.fields.ckw).toBe("0");
+      expect(gauge!.fields.tcc).toBeDefined();
+      expect(gauge!.fields.tlim).toBeDefined();
 
       // Pins the dequeue script's sample-at-return wrapper: only the dequeue emits the
       // post-admission reading (running 1, queued 0); the enqueue gauge sees the inverse.
