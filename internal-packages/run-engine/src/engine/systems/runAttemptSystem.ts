@@ -99,6 +99,7 @@ const TASK_FRESH_TTL = 60000 * 60 * 24; // 1 day
 const TASK_STALE_TTL = 60000 * 60 * 24 * 2; // 2 days
 const MACHINE_PRESET_FRESH_TTL = 60000 * 60 * 24; // 1 day
 const MACHINE_PRESET_STALE_TTL = 60000 * 60 * 24 * 2; // 2 days
+const DEPLOYMENT_CONTEXT_SHAPE = "v2";
 const DEPLOYMENT_FRESH_TTL = 60000 * 60 * 24; // 1 day
 const DEPLOYMENT_STALE_TTL = 60000 * 60 * 24 * 2; // 2 days
 const QUEUE_FRESH_TTL = 60000 * 60; // 1 hour
@@ -2173,31 +2174,35 @@ export class RunAttemptSystem {
   async #resolveTaskRunExecutionDeployment(
     backgroundWorkerTaskId: string
   ): Promise<TaskRunExecutionDeployment | undefined> {
-    const result = await this.cache.deployments.swr(backgroundWorkerTaskId, async () => {
-      const { worker } = await this.$.readOnlyPrisma.backgroundWorkerTask.findFirstOrThrow({
-        where: { id: backgroundWorkerTaskId },
-        select: {
-          worker: {
-            select: {
-              deployment: true,
+    const result = await this.cache.deployments.swr(
+      `${DEPLOYMENT_CONTEXT_SHAPE}:${backgroundWorkerTaskId}`,
+      async () => {
+        const { worker } = await this.$.readOnlyPrisma.backgroundWorkerTask.findFirstOrThrow({
+          where: { id: backgroundWorkerTaskId },
+          select: {
+            worker: {
+              select: {
+                deployment: true,
+              },
             },
           },
-        },
-      });
+        });
 
-      if (!worker.deployment) {
-        return undefined;
+        if (!worker.deployment) {
+          return undefined;
+        }
+
+        return {
+          id: worker.deployment.friendlyId,
+          shortCode: worker.deployment.shortCode,
+          version: worker.deployment.version,
+          runtime: worker.deployment.runtime ?? "unknown",
+          runtimeVersion: worker.deployment.runtimeVersion ?? "unknown",
+          git: safeParseGitMeta(worker.deployment.git),
+          externalId: worker.deployment.externalId ?? undefined,
+        };
       }
-
-      return {
-        id: worker.deployment.friendlyId,
-        shortCode: worker.deployment.shortCode,
-        version: worker.deployment.version,
-        runtime: worker.deployment.runtime ?? "unknown",
-        runtimeVersion: worker.deployment.runtimeVersion ?? "unknown",
-        git: safeParseGitMeta(worker.deployment.git),
-      };
-    });
+    );
 
     if (result.err) {
       throw result.err;

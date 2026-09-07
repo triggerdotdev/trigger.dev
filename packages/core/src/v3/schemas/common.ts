@@ -340,6 +340,12 @@ export const TaskRunExecutionDeployment = z.object({
   runtime: z.string(),
   runtimeVersion: z.string(),
   git: GitMeta.optional(),
+  /**
+   * The `--external-id` this deployment was deployed under. Lets a run tell whether
+   * it is the deployment a version-skew pin currently names, which a version alone
+   * cannot answer.
+   */
+  externalId: z.string().optional(),
 });
 
 export type TaskRunExecutionDeployment = z.infer<typeof TaskRunExecutionDeployment>;
