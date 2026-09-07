@@ -300,7 +300,7 @@ function syncResetToEngine(
       ? updateQueueTotalConcurrencyLimits(environment, row.name, totalTarget)
       : removeQueueTotalConcurrencyLimits(environment, row.name);
 
-  return fromPromise(Promise.all([perKeySync, totalSync]), (error) => ({
+  return fromPromise(settleBothEngineWrites(perKeySync, totalSync), (error) => ({
     type: "sync_limit_to_engine_failed" as const,
     cause: error,
   })).map(() => row);
@@ -324,6 +324,19 @@ function resetLimitOverrides(db: PrismaClientOrTransaction, row: TaskQueue) {
   }
 
   return guardedLimitUpdate(db, row, data);
+}
+
+/**
+ * Both engine writes settle before a failure is reported, so no write is still in
+ * flight when a caller's compensation runs — a late sibling can never land after
+ * the compensating re-sync and leave one bound stale.
+ */
+async function settleBothEngineWrites(a: Promise<unknown>, b: Promise<unknown>): Promise<void> {
+  const results = await Promise.allSettled([a, b]);
+  const failed = results.find((result) => result.status === "rejected");
+  if (failed && failed.status === "rejected") {
+    throw failed.reason;
+  }
 }
 
 /**
@@ -379,7 +392,7 @@ function compensateEngineFromFreshRow(
         if (!fresh || fresh.updatedAt.getTime() === lastSyncedAt) {
           return;
         }
-        await Promise.all([
+        await settleBothEngineWrites(
           typeof fresh.concurrencyLimit === "number"
             ? updateQueueConcurrencyLimits(environment, fresh.name, fresh.concurrencyLimit)
             : removeQueueConcurrencyLimits(environment, fresh.name),
@@ -389,8 +402,8 @@ function compensateEngineFromFreshRow(
                 fresh.name,
                 fresh.totalConcurrencyLimit
               )
-            : removeQueueTotalConcurrencyLimits(environment, fresh.name),
-        ]);
+            : removeQueueTotalConcurrencyLimits(environment, fresh.name)
+        );
         lastSyncedAt = fresh.updatedAt.getTime();
       }
     })(),
@@ -414,7 +427,7 @@ function syncLimitToEngine(environment: AuthenticatedEnvironment, row: TaskQueue
       ? updateQueueTotalConcurrencyLimits(environment, row.name, row.totalConcurrencyLimit)
       : removeQueueTotalConcurrencyLimits(environment, row.name);
 
-  return fromPromise(Promise.all([perKeySync, totalSync]), (error) => ({
+  return fromPromise(settleBothEngineWrites(perKeySync, totalSync), (error) => ({
     type: "sync_limit_to_engine_failed" as const,
     cause: error,
   })).map(() => row);
