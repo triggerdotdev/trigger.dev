@@ -4,6 +4,7 @@ import { prisma } from "~/db.server";
 import { getTeamMembersAndInvites } from "~/models/member.server";
 import { resolveOrganizationForApiUser } from "~/services/organizationApiAccess.server";
 import { createLoaderPATApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import { absoluteUserAvatarUrl } from "~/services/userAvatar.server";
 
 const ParamsSchema = z.object({
   orgParam: z.string(),
@@ -51,7 +52,7 @@ export const loader = createLoaderPATApiRoute(
           id: member.user.id,
           name: member.user.name,
           email: member.user.email,
-          avatarUrl: member.user.avatarUrl,
+          avatarUrl: absoluteUserAvatarUrl(member.user.avatarUrl),
         },
       })),
       invites: result.invites.map((invite) => ({

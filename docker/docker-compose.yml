@@ -177,6 +177,7 @@ services:
       - |
         mc alias set local http://minio:9000 minioadmin minioadmin
         mc mb -p local/packets || true
+        mc mb -p local/avatars || true
     restart: "no"
 
   electric:

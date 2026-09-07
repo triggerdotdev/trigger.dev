@@ -416,6 +416,13 @@ export function updateUserEmail({ id, email }: Pick<User, "id" | "email">) {
   });
 }
 
+export function updateUserAvatarUrl({ id, avatarUrl }: Pick<User, "id" | "avatarUrl">) {
+  return prisma.user.update({
+    where: { id },
+    data: { avatarUrl },
+  });
+}
+
 /**
  * `updateMany` so the WHERE does the comparing: a redundant request updates zero
  * rows rather than churning the row and its updatedAt.

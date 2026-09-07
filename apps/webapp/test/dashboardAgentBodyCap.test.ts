@@ -1,12 +1,14 @@
-import express from "express";
-import type { Server } from "node:http";
+import express, { type Request as ExpressRequest } from "express";
+import http, { type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { Readable } from "node:stream";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  AVATAR_MAX_INGRESS_BYTES,
   DASHBOARD_AGENT_MAX_INGRESS_BYTES,
   dashboardAgentBodyCap,
 } from "~/services/dashboardAgentBodyCap.server";
+import { MAX_AVATAR_SIZE_IN_BYTES } from "~/utils/avatarLimits";
 
 // The cap has to hold for a body with no `content-length`: that is the case a route-level
 // check can't cover, because by then the body is already in memory.
@@ -14,9 +16,18 @@ import {
 let server: Server | undefined;
 
 /** A server whose route stands in for Remix: it reads the whole body, like `text()` would. */
-async function listen(): Promise<{ url: string; buffered: () => number }> {
+async function listen(): Promise<{
+  url: string;
+  buffered: () => number;
+  requestDestroyed: () => boolean;
+}> {
   let buffered = 0;
+  let lastRequest: ExpressRequest | undefined;
   const app = express();
+  app.use((req, _res, next) => {
+    lastRequest = req;
+    next();
+  });
   app.use(dashboardAgentBodyCap);
   app.all("*", async (req, res) => {
     try {
@@ -33,7 +44,17 @@ async function listen(): Promise<{ url: string; buffered: () => number }> {
   return {
     url: `http://127.0.0.1:${(server!.address() as AddressInfo).port}`,
     buffered: () => buffered,
+    requestDestroyed: () => lastRequest?.destroyed === true,
   };
+}
+
+/** Teardown happens on the response's "finish", which lands just after `fetch` resolves. */
+async function eventually(assertion: () => boolean) {
+  for (let attempt = 0; attempt < 50; attempt++) {
+    if (assertion()) return true;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  return assertion();
 }
 
 /** A chunked POST: `fetch` omits `content-length` for a stream body. */
@@ -57,6 +78,48 @@ function postChunked(url: string, totalBytes: number, chunkBytes = 16 * 1024) {
     body: Readable.toWeb(body) as ReadableStream,
     // @ts-expect-error — undici needs this for a streamed request body.
     duplex: "half",
+  });
+}
+
+/**
+ * `node:http` sends the path verbatim; `fetch` resolves dot segments client-side, so it cannot
+ * express this request at all.
+ */
+function postRawPath(url: string, path: string, declaredBytes: number) {
+  return new Promise<number>((resolve, reject) => {
+    let settled = false;
+    const finish = (status: number) => {
+      if (settled) return;
+      settled = true;
+      resolve(status);
+    };
+
+    const request = http.request(
+      {
+        port: Number(new URL(url).port),
+        method: "POST",
+        path,
+        headers: { "content-length": String(declaredBytes) },
+      },
+      (response) => {
+        response.resume();
+        finish(response.statusCode ?? 0);
+        request.destroy();
+      }
+    );
+
+    // A refusal answers and then tears the socket down; a write error after that is
+    // expected. Anything else still fails the test.
+    request.on("error", (error) => {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "EPIPE" || code === "ECONNRESET") finish(0);
+      else if (!settled) reject(error);
+    });
+
+    // Only a token of the declared body: an uncapped server waits for the rest, which
+    // resolves as 0 rather than hanging the test.
+    request.write(Buffer.alloc(1024, "a"));
+    setTimeout(() => finish(0), 1500).unref();
   });
 }
 
@@ -106,6 +169,21 @@ describe("the dashboard agent's ingress cap", () => {
 
     expect(response.status).toBe(413);
     expect(buffered()).toBe(0);
+  });
+
+  it("drops a refused client that never sends the body it declared", async () => {
+    const { url, buffered, requestDestroyed } = await listen();
+
+    const status = await postRawPath(
+      url,
+      "/api/v1/dashboard-agent/watches/batch-check",
+      DASHBOARD_AGENT_MAX_INGRESS_BYTES + 1
+    );
+
+    expect(status).toBe(413);
+    expect(buffered()).toBe(0);
+    // Otherwise the connection stays occupied while the client trickles the rest.
+    expect(await eventually(requestDestroyed)).toBe(true);
   });
 
   it("passes a body under the cap through untouched", async () => {
@@ -161,6 +239,70 @@ describe("the dashboard agent's ingress cap", () => {
     const size = DASHBOARD_AGENT_MAX_INGRESS_BYTES + 1024;
 
     const response = await fetch(`${url}/api/v1/runs/env/dev/dashboard-agent`, {
+      method: "POST",
+      body: "x".repeat(size),
+    });
+
+    expect(response.status).toBe(200);
+    expect(buffered()).toBe(size);
+  });
+
+  it("refuses an oversized avatar upload before it is buffered", async () => {
+    const { url, buffered } = await listen();
+    const oversized = AVATAR_MAX_INGRESS_BYTES + 512 * 1024;
+
+    const response = await postChunked(`${url}/resources/account/avatar`, oversized).catch(
+      () => undefined
+    );
+
+    if (response) expect(response.status).toBe(413);
+    expect(buffered()).toBeLessThan(oversized);
+  });
+
+  it("caps a dot segment, which the adapter normalizes away before the action runs", async () => {
+    const { url, buffered } = await listen();
+
+    // `/…/avatar/.` reaches the route as `/…/avatar/`, so the cap has to see it that way too.
+    const status = await postRawPath(
+      url,
+      "/resources/account/avatar/.",
+      AVATAR_MAX_INGRESS_BYTES + 1
+    );
+
+    expect(status).toBe(413);
+    expect(buffered()).toBe(0);
+  });
+
+  it("passes an avatar body exactly at the image cap through untouched", async () => {
+    const { url, buffered } = await listen();
+
+    const response = await postChunked(`${url}/resources/account/avatar`, MAX_AVATAR_SIZE_IN_BYTES);
+
+    expect(response.status).toBe(200);
+    expect(buffered()).toBe(MAX_AVATAR_SIZE_IN_BYTES);
+  });
+
+  it("passes a real multipart upload whose image is exactly at the cap", async () => {
+    const { url, buffered } = await listen();
+
+    const form = new FormData();
+    form.set(
+      "image",
+      new File([new Uint8Array(MAX_AVATAR_SIZE_IN_BYTES)], "avatar.png", { type: "image/png" })
+    );
+
+    const response = await fetch(`${url}/resources/account/avatar`, { method: "POST", body: form });
+
+    expect(response.status).toBe(200);
+    expect(buffered()).toBeGreaterThan(MAX_AVATAR_SIZE_IN_BYTES);
+    expect(buffered()).toBeLessThanOrEqual(AVATAR_MAX_INGRESS_BYTES);
+  });
+
+  it("leaves the presigned avatar GET path uncapped", async () => {
+    const { url, buffered } = await listen();
+    const size = AVATAR_MAX_INGRESS_BYTES + 1024;
+
+    const response = await fetch(`${url}/resources/account/avatar/user_1/abc.png`, {
       method: "POST",
       body: "x".repeat(size),
     });

@@ -257,7 +257,7 @@ async function startServer() {
 
       app.use(tenantContextMiddleware);
 
-      // Before the Remix handler: the agent's chat body is refused while it streams, so a
+      // Before the Remix handler: a capped path's body is refused while it streams, so a
       // route never buffers one that was already too large.
       app.use(dashboardAgentBodyCap);
 

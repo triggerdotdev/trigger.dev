@@ -48,7 +48,7 @@ export function UserAvatar({
     return (
       <div className={cn("grid aspect-square place-items-center", className)}>
         <img
-          className={cn("aspect-square rounded-full p-[7%]")}
+          className="size-full min-h-0 min-w-0 rounded-full object-cover"
           src={avatarUrl}
           alt={name ?? "User"}
           referrerPolicy="no-referrer"

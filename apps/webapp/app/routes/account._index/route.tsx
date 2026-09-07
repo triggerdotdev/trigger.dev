@@ -8,6 +8,7 @@ import {
 } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { EditPencilIcon } from "~/assets/icons/EditPencilIcon";
+import { ProfilePhotoEditor } from "~/components/ProfilePhotoEditor";
 import { UserProfilePhoto } from "~/components/UserProfilePhoto";
 import {
   MainHorizontallyCenteredContainer,
@@ -33,6 +34,7 @@ import { Label } from "~/components/primitives/Label";
 import { Switch } from "~/components/primitives/Switch";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { useToast } from "~/components/primitives/Toast";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import {
   SETTINGS_ROW_TITLE_GAP,
@@ -90,6 +92,7 @@ import {
 } from "~/utils/themePreference";
 import { cachedFlag, resolveOrganizationFeatureFlags } from "~/v3/featureFlags.server";
 import { requireUser } from "~/services/session.server";
+import { isAvatarUploadsEnabled } from "~/services/userAvatar.server";
 import { emailSchema, MAX_EMAIL_LENGTH } from "~/utils/emailValidation";
 import { pageMeta } from "~/utils/pageTitle";
 import { cn } from "~/utils/cn";
@@ -261,7 +264,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
     });
   }
 
-  return json({ showThemeSwitcher, sidebarContext });
+  return json({
+    showThemeSwitcher,
+    sidebarContext,
+    avatarUploadsEnabled: isAvatarUploadsEnabled(),
+  });
 }
 
 export const action: ActionFunction = async ({ request }) => {
@@ -445,6 +452,98 @@ function useProfileFieldUpdate({
   }, [fetcher.state, fetcher.data, toast, successMessage, onSuccess]);
 
   return { fetcher, error, setError, isSubmitting: fetcher.state !== "idle" };
+}
+
+function ChangeProfilePhotoButton() {
+  const user = useUser();
+  const [isOpen, setIsOpen] = useState(false);
+  const fetcher = useFetcher<{ avatarUrl?: string | null; error?: string }>();
+  const toast = useToast();
+  const isSaving = fetcher.state !== "idle";
+  const submitSeenRef = useRef(false);
+  const actionRef = useRef<"save" | "remove">("save");
+
+  useEffect(() => {
+    if (fetcher.state !== "idle") {
+      submitSeenRef.current = true;
+      return;
+    }
+    if (!submitSeenRef.current) return;
+    submitSeenRef.current = false;
+
+    const removing = actionRef.current === "remove";
+    const succeeded = removing
+      ? fetcher.data?.avatarUrl === null
+      : Boolean(fetcher.data?.avatarUrl);
+
+    if (succeeded) {
+      // oxlint-disable-next-line react/set-state-in-effect -- Closes the modal once the change has landed.
+      setIsOpen(false);
+      toast.success(
+        removing
+          ? "Your profile picture has been removed."
+          : "Your profile picture has been updated."
+      );
+      return;
+    }
+
+    toast.error(fetcher.data?.error ?? "Something went wrong. Please try again.");
+  }, [fetcher.state, fetcher.data, toast]);
+
+  const save = (blob: Blob) => {
+    actionRef.current = "save";
+    const formData = new FormData();
+    formData.append("image", blob, "avatar.png");
+    fetcher.submit(formData, {
+      method: "post",
+      action: "/resources/account/avatar",
+      encType: "multipart/form-data",
+    });
+  };
+
+  // Only our own uploads are app-relative; OAuth avatars are absolute URLs.
+  // "//host/path" is protocol-relative, so it would point off-origin.
+  const uploadedAvatarUrl =
+    user.avatarUrl?.startsWith("/") && !user.avatarUrl.startsWith("//")
+      ? user.avatarUrl
+      : undefined;
+
+  const remove = () => {
+    actionRef.current = "remove";
+    fetcher.submit(null, { method: "delete", action: "/resources/account/avatar" });
+  };
+
+  return (
+    <>
+      <SimpleTooltip
+        asChild
+        tabbable
+        disableHoverableContent
+        content="Change your profile picture"
+        button={
+          <button
+            type="button"
+            onClick={() => setIsOpen(true)}
+            aria-label="Change your profile picture"
+            className="focus-custom group cursor-pointer rounded-full outline-hidden"
+          >
+            <UserProfilePhoto
+              className="size-8 transition group-hover:opacity-60"
+              strokeWidth={1.5}
+            />
+          </button>
+        }
+      />
+      <ProfilePhotoEditor
+        open={isOpen}
+        onOpenChange={setIsOpen}
+        onSave={save}
+        currentAvatarUrl={uploadedAvatarUrl}
+        onRemove={remove}
+        isSaving={isSaving}
+      />
+    </>
+  );
 }
 
 function EditNameButton() {
@@ -780,7 +879,8 @@ function CustomizeSidebarButton({
 
 export default function Page() {
   const user = useUser();
-  const { showThemeSwitcher, sidebarContext } = useLoaderData<typeof loader>();
+  const { showThemeSwitcher, sidebarContext, avatarUploadsEnabled } =
+    useLoaderData<typeof loader>();
   const themeFetcher = useFetcher<ProfileUpdateResult>();
   const contrastFetcher = useFetcher();
   const iconContrastFetcher = useFetcher();
@@ -900,7 +1000,11 @@ export default function Page() {
                 <Label>Profile picture</Label>
               </InputGroup>
               <div className="flex flex-none items-center">
-                <UserProfilePhoto className="size-8" strokeWidth={1.5} />
+                {avatarUploadsEnabled ? (
+                  <ChangeProfilePhotoButton />
+                ) : (
+                  <UserProfilePhoto className="size-8" strokeWidth={1.5} />
+                )}
               </div>
             </div>
           </div>

@@ -1,5 +1,6 @@
 @import "react-grid-layout/css/styles.css" layer(base);
 @import "react-resizable/css/styles.css" layer(base);
+@import "react-easy-crop/react-easy-crop.css" layer(base);
 
 @import "tailwindcss";
 @import "tw-animate-css";

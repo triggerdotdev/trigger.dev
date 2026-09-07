@@ -70,6 +70,7 @@ const sections: StorySection[] = [
       { name: "Popover", slug: "popover" },
       { name: "Filter", slug: "filter" },
       { name: "Dialog", slug: "dialog" },
+      { name: "Profile photo editor", slug: "profile-photo-editor" },
       { name: "Sheet", slug: "sheet" },
       { name: "Tooltip", slug: "tooltip" },
     ],

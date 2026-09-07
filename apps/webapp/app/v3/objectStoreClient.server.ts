@@ -1,5 +1,11 @@
 import { AwsClient } from "aws4fetch";
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  NoSuchKey,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 /**
@@ -13,8 +19,15 @@ export function normalizeObjectStoreLogicalKeyPathname(logicalKey: string): stri
 }
 
 interface IObjectStoreClient {
-  putObject(key: string, body: ReadableStream | string, contentType: string): Promise<string>;
+  putObject(
+    key: string,
+    body: ReadableStream | Uint8Array | string,
+    contentType: string
+  ): Promise<string>;
   getObject(key: string): Promise<string>;
+  /** Undefined when the object is not there, so a caller can 404 instead of throwing. */
+  getObjectBytes(key: string): Promise<Uint8Array | undefined>;
+  deleteObject(key: string): Promise<void>;
   presign(key: string, method: "PUT" | "GET", expiresIn: number): Promise<string>;
 }
 
@@ -48,14 +61,15 @@ class Aws4FetchClient implements IObjectStoreClient {
 
   async putObject(
     key: string,
-    body: ReadableStream | string,
+    body: ReadableStream | Uint8Array | string,
     contentType: string
   ): Promise<string> {
     const objectUrl = this.buildUrl(key);
     const response = await this.awsClient.fetch(objectUrl, {
       method: "PUT",
       headers: { "Content-Type": contentType },
-      body,
+      // Byte bodies are valid BodyInit at runtime; the ambient fetch types don't say so.
+      body: body instanceof Uint8Array ? (body as unknown as BodyInit) : body,
     });
     if (!response.ok) {
       throw new Error(`Failed to upload to object store: ${response.statusText}`);
@@ -69,6 +83,24 @@ class Aws4FetchClient implements IObjectStoreClient {
       throw new Error(`Failed to download from object store: ${response.statusText}`);
     }
     return response.text();
+  }
+
+  async getObjectBytes(key: string): Promise<Uint8Array | undefined> {
+    const response = await this.awsClient.fetch(this.buildUrl(key));
+    if (response.status === 404) {
+      return undefined;
+    }
+    if (!response.ok) {
+      throw new Error(`Failed to download from object store: ${response.statusText}`);
+    }
+    return new Uint8Array(await response.arrayBuffer());
+  }
+
+  async deleteObject(key: string): Promise<void> {
+    const response = await this.awsClient.fetch(this.buildUrl(key), { method: "DELETE" });
+    if (!response.ok) {
+      throw new Error(`Failed to delete from object store: ${response.statusText}`);
+    }
   }
 
   async presign(key: string, method: "PUT" | "GET", expiresIn: number): Promise<string> {
@@ -120,7 +152,7 @@ class AwsSdkClient implements IObjectStoreClient {
 
   async putObject(
     key: string,
-    body: ReadableStream | string,
+    body: ReadableStream | Uint8Array | string,
     contentType: string
   ): Promise<string> {
     const s3Key = this.toS3ObjectKey(key);
@@ -144,6 +176,26 @@ class AwsSdkClient implements IObjectStoreClient {
       throw new Error(`Empty response body from object store for key: ${key}`);
     }
     return response.Body.transformToString();
+  }
+
+  async getObjectBytes(key: string): Promise<Uint8Array | undefined> {
+    try {
+      const response = await this.s3Client.send(
+        new GetObjectCommand({ Bucket: this.config.bucket, Key: this.toS3ObjectKey(key) })
+      );
+      return await response.Body?.transformToByteArray();
+    } catch (error) {
+      if (error instanceof NoSuchKey || (error as { name?: string }).name === "NotFound") {
+        return undefined;
+      }
+      throw error;
+    }
+  }
+
+  async deleteObject(key: string): Promise<void> {
+    await this.s3Client.send(
+      new DeleteObjectCommand({ Bucket: this.config.bucket, Key: this.toS3ObjectKey(key) })
+    );
   }
 
   async presign(key: string, method: "PUT" | "GET", expiresIn: number): Promise<string> {
@@ -204,12 +256,24 @@ export class ObjectStoreClient implements IObjectStoreClient {
     );
   }
 
-  putObject(key: string, body: ReadableStream | string, contentType: string): Promise<string> {
+  putObject(
+    key: string,
+    body: ReadableStream | Uint8Array | string,
+    contentType: string
+  ): Promise<string> {
     return this.impl.putObject(key, body, contentType);
   }
 
   getObject(key: string): Promise<string> {
     return this.impl.getObject(key);
+  }
+
+  getObjectBytes(key: string): Promise<Uint8Array | undefined> {
+    return this.impl.getObjectBytes(key);
+  }
+
+  deleteObject(key: string): Promise<void> {
+    return this.impl.deleteObject(key);
   }
 
   presign(key: string, method: "PUT" | "GET", expiresIn: number): Promise<string> {
