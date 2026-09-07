@@ -16,10 +16,7 @@ Declare a queue with `queue()` and set it on several tasks to interleave their r
 ```ts /trigger/emails.ts
 import { queue, task } from "@trigger.dev/sdk";
 
-const emailQueue = queue({
-  name: "emails",
-  concurrencyLimit: 5,
-});
+const emailQueue = queue({ name: "emails" });
 
 export const sendWelcomeEmail = task({
   id: "send-welcome-email",
@@ -52,10 +49,7 @@ When you trigger a task you can override its queue by name. This is really usefu
 ```ts /trigger/override-queue.ts
 import { queue, task } from "@trigger.dev/sdk";
 
-const paidQueue = queue({
-  name: "paid-users",
-  concurrencyLimit: 10,
-});
+const paidQueue = queue({ name: "paid-users" });
 
 export const generatePullRequest = task({
   id: "generate-pull-request",
