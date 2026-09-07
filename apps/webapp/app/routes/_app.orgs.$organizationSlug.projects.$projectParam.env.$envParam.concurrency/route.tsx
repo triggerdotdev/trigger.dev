@@ -191,6 +191,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       environment,
       query,
       page,
+      includeLimits: true,
       // Relevance ordering rides the metrics pipeline, so it is part of the gated UI.
       sort: queueMetricsUiEnabled ? (sort ?? "busiest") : "name",
     });
