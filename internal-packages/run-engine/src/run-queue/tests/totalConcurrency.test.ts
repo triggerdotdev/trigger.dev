@@ -207,6 +207,52 @@ describe("RunQueue total concurrency limit", () => {
     }
   );
 
+  redisTest("the total limit caps keyed and keyless runs together", async ({ redisContainer }) => {
+    const queue = createQueue(redisContainer, true);
+    try {
+      await queue.updateQueueConcurrencyLimits(authenticatedEnvDev, "task/my-task", 5);
+      await queue.updateQueueTotalConcurrencyLimits(authenticatedEnvDev, "task/my-task", 1);
+
+      const now = Date.now();
+      await queue.enqueueMessage({
+        env: authenticatedEnvDev,
+        message: makeMessage({ runId: "r0", timestamp: now - 1000 }),
+        workerQueue: "main",
+      });
+      await queue.enqueueMessage({
+        env: authenticatedEnvDev,
+        message: makeMessage({ runId: "r1", concurrencyKey: "ck-a", timestamp: now - 999 }),
+        workerQueue: "main",
+      });
+
+      const oneAdmitted = await waitFor(
+        async () => (await queue.totalConcurrencyOfQueue(authenticatedEnvDev, "task/my-task")) === 1
+      );
+      expect(oneAdmitted).toBe(true);
+
+      /** The second run must stay queued: the total pool spans keyed and keyless. */
+      await setTimeout(2000);
+      expect(await queue.totalConcurrencyOfQueue(authenticatedEnvDev, "task/my-task")).toBe(1);
+      expect(await queue.lengthOfQueue(authenticatedEnvDev, "task/my-task")).toBe(1);
+
+      const dequeued = await queue.dequeueMessageFromWorkerQueue("consumer-1", "main");
+      assertNonNullable(dequeued);
+      await queue.acknowledgeMessage(authenticatedEnvDev.organization.id, dequeued.messageId);
+
+      /** Acking the first holder frees the total pool; the other run is admitted. */
+      const secondAdmitted = await waitFor(async () => {
+        const next = await queue.dequeueMessageFromWorkerQueue("consumer-1", "main", {
+          blockingPop: false,
+        });
+        return next !== undefined && next.messageId !== dequeued.messageId;
+      });
+      expect(secondAdmitted).toBe(true);
+      expect(await queue.totalConcurrencyOfQueue(authenticatedEnvDev, "task/my-task")).toBe(1);
+    } finally {
+      await queue.quit();
+    }
+  });
+
   redisTest("enqueue fast path respects the total limit", async ({ redisContainer }) => {
     const queue = createQueue(redisContainer, true);
     try {
