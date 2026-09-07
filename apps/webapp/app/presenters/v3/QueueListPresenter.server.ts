@@ -87,21 +87,43 @@ function buildQueueListWhere(
 ): Prisma.TaskQueueWhereInput {
   const trimmedQuery = query?.trim();
 
-  return {
+  const common = {
     runtimeEnvironmentId: environmentId,
-    /** Only the dashboard interleaves named limits, and the type filter names queue
-     * shapes, so either condition scopes the list to queue rows; the public queues
-     * API always stays queue-only. */
-    role:
-      includeLimits && !type ? { in: ["QUEUE" as const, "LIMIT" as const] } : ("QUEUE" as const),
-    version: "V2",
+    version: "V2" as const,
     name: trimmedQuery
       ? {
           contains: trimmedQuery,
-          mode: "insensitive",
+          mode: "insensitive" as const,
         }
       : undefined,
     type: type ? typeToDBQueueType[type] : undefined,
+  };
+
+  /** Only the dashboard interleaves named limits, and the type filter names queue
+   * shapes, so either condition scopes the list to queue rows; the public queues
+   * API always stays queue-only. Boundless rows in the anonymous limit/task/
+   * namespace are retired (their inline limit moved onto the task's own queue)
+   * and stay hidden; boundless NAMED limits are real uncapped rows and show. */
+  if (includeLimits && !type) {
+    return {
+      ...common,
+      OR: [
+        { role: "QUEUE" as const },
+        {
+          role: "LIMIT" as const,
+          OR: [
+            { name: { not: { startsWith: "limit/task/" } } },
+            { concurrencyLimit: { not: null } },
+            { totalConcurrencyLimit: { not: null } },
+          ],
+        },
+      ],
+    };
+  }
+
+  return {
+    ...common,
+    role: "QUEUE" as const,
   };
 }
 
