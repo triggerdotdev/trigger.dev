@@ -4,7 +4,7 @@ import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server
 import { concurrencyLimitsSystem } from "~/v3/services/concurrencyLimitsSystemInstance.server";
 
 const ParamsSchema = z.object({
-  name: z.string().transform((val) => decodeURIComponent(val)),
+  name: z.string(),
 });
 
 const route = createActionApiRoute(
