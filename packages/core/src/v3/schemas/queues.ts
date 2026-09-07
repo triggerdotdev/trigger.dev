@@ -42,9 +42,11 @@ const QueueItemCommon = {
  * concurrency limit (applied per key when runs pass a `concurrencyKey`, to the
  * whole queue when they don't) and its override state. V2 queues are only the
  * line runs wait in: concurrency is declared with the task `concurrency`
- * option and read or overridden through `concurrencyLimits`.
+ * option and read or overridden through `concurrencyLimits`. A response from a
+ * server that predates the discriminator has V1 semantics by definition, so a
+ * missing `version` defaults to "V1" rather than failing the parse.
  */
-export const QueueItem = z.discriminatedUnion("version", [
+const QueueItemUnion = z.discriminatedUnion("version", [
   z.object({
     ...QueueItemCommon,
     version: z.literal("V1"),
@@ -70,7 +72,15 @@ export const QueueItem = z.discriminatedUnion("version", [
   }),
 ]);
 
-export type QueueItem = z.infer<typeof QueueItem>;
+export const QueueItem = z.preprocess(
+  (value) =>
+    value && typeof value === "object" && !("version" in value)
+      ? { ...value, version: "V1" }
+      : value,
+  QueueItemUnion
+);
+
+export type QueueItem = z.infer<typeof QueueItemUnion>;
 
 export const ListQueueOptions = z.object({
   /** The page number */
