@@ -290,7 +290,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const userId = await requireUserId(request);
   if (request.method.toLowerCase() !== "post") {
     return redirectWithErrorMessage(
-      `/orgs/${params.organizationSlug}/projects/${params.projectParam}/env/${params.envParam}/queues`,
+      `/orgs/${params.organizationSlug}/projects/${params.projectParam}/env/${params.envParam}/concurrency`,
       request,
       "Wrong method"
     );
@@ -318,7 +318,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const action = formData.get("action");
 
   const url = new URL(request.url);
-  const redirectPath = `/orgs/${organizationSlug}/projects/${projectParam}/env/${envParam}/queues${url.search}`;
+  const redirectPath = `/orgs/${organizationSlug}/projects/${projectParam}/env/${envParam}/concurrency${url.search}`;
 
   if (environment.archivedAt) {
     return redirectWithErrorMessage(redirectPath, request, "This branch is archived");
@@ -779,16 +779,21 @@ function QueuesWithMetricsView() {
                     queue.queued >= environment.queueSizeLimit;
                   const queueFilterableName = queueMetricsKey(queue);
                   const queueMetric = metricsByQueue[queueFilterableName];
-                  const queueDetailPath = concurrencyQueuePath(organization, project, env, {
-                    friendlyId: queue.id,
-                  });
                   const isLimit = queue.kind === "limit";
+                  /** The detail page is queue observability (queue metrics, run filters, pause
+                   * and override actions); a limit's activity lives on each holder's home queue,
+                   * so limit rows don't link anywhere. */
+                  const queueDetailPath = isLimit
+                    ? undefined
+                    : concurrencyQueuePath(organization, project, env, {
+                        friendlyId: queue.id,
+                      });
                   const displayName = isLimit ? queue.name.replace(/^limit\//, "") : queue.name;
                   return (
                     <TableRow key={queue.name}>
                       <TableCell
                         to={queueDetailPath}
-                        isTabbableCell
+                        isTabbableCell={!isLimit}
                         // The queue-type icon and the at-limit warning are real <button>s, so
                         // they render beside the link (leading/trailing), never inside it —
                         // otherwise the cell is invalid <a><button> nesting. The name stays the

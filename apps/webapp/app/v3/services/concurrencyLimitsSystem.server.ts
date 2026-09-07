@@ -124,7 +124,21 @@ export class ConcurrencyLimitsSystem {
 
         return findLimitByName(this.db, environment, name)
           .andThen((row) => applyLimitOverride(this.db, row, override, overriddenBy))
-          .andThen((row) => syncLimitToEngine(environment, row))
+          .andThen((row) =>
+            syncLimitToEngine(environment, row)
+              .andThen(() =>
+                compensateEngineFromFreshRow(this.db, environment, row.id, {
+                  alreadySyncedAt: row.updatedAt.getTime(),
+                })
+                  .orElse(() => okAsync(undefined))
+                  .map(() => row)
+              )
+              .orElse((error) =>
+                compensateEngineFromFreshRow(this.db, environment, row.id)
+                  .orElse(() => okAsync(undefined))
+                  .andThen(() => errAsync(error))
+              )
+          )
           .andThen((row) =>
             fromPromise(toLimitItems(environment, [row]), (error) => ({
               type: "other" as const,
@@ -374,21 +388,24 @@ function guardedLimitUpdate(
 }
 
 /**
- * A reset's engine write precedes its guarded persist (enforce-first, so an engine
- * failure retries cleanly), which leaves the engine reverted when the persist
- * conflicts or fails. This re-syncs the engine from fresh reads of the row until
- * updatedAt stops moving (bounded), the same convergence the deploy sync uses:
- * every actor writes Postgres before its own engine sync, so re-syncing whatever
- * is freshest converges. The original error still reaches the caller.
+ * Re-syncs the engine from fresh reads of the row until updatedAt stops moving
+ * (bounded), the same convergence the deploy sync uses: every actor writes
+ * Postgres before its own engine sync, so re-syncing whatever is freshest
+ * converges. Callers use it two ways: after a failure (a reset's enforce-first
+ * engine write preceding a persist that then conflicts, or an override's sync
+ * failing after its persist), where the original error still reaches the caller;
+ * and after a successful sync with `alreadySyncedAt` set to the synced row's
+ * updatedAt, where an unchanged row costs one read and a moved row is re-synced.
  */
 function compensateEngineFromFreshRow(
   db: PrismaClientOrTransaction,
   environment: AuthenticatedEnvironment,
-  rowId: string
+  rowId: string,
+  options?: { alreadySyncedAt?: number }
 ) {
   return fromPromise(
     (async () => {
-      let lastSyncedAt: number | null = null;
+      let lastSyncedAt: number | null = options?.alreadySyncedAt ?? null;
       for (let i = 0; i < 3; i++) {
         const fresh = await db.taskQueue.findFirst({ where: { id: rowId } });
         if (!fresh || fresh.updatedAt.getTime() === lastSyncedAt) {

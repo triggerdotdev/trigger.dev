@@ -202,6 +202,57 @@ describe("ConcurrencyLimitsSystem", () => {
     }
   );
 
+  postgresTest(
+    "a failed engine sync during override compensates from the fresh row",
+    async ({ prisma }) => {
+      const { authEnv, system, row } = await seedEnvAndLimit(prisma, { total: 25 });
+
+      totalSyncMock.mockRejectedValueOnce(new Error("redis down"));
+      const failed = await system.limits.override(authEnv, "openai", { total: 50 });
+      expect(failed.isErr()).toBe(true);
+      if (failed.isErr()) {
+        expect(failed.error.type).toBe("sync_limit_to_engine_failed");
+      }
+
+      /** The persist already happened; compensation re-syncs it so the engine
+       * doesn't keep enforcing the old bound while the API reports the new one. */
+      const updated = await prisma.taskQueue.findFirstOrThrow({ where: { id: row.id } });
+      expect(updated.totalConcurrencyLimit).toBe(50);
+      expect(totalSyncMock).toHaveBeenLastCalledWith(authEnv, "limit/openai", 50);
+      expect(totalSyncMock.mock.calls.length).toBeGreaterThanOrEqual(2);
+    }
+  );
+
+  postgresTest(
+    "an older override's engine write landing last is repaired by the freshness re-check",
+    async ({ prisma }) => {
+      const { authEnv, system, row } = await seedEnvAndLimit(prisma, { total: 25 });
+
+      /** `engineTotal` is written when a sync "lands", so landing order can differ
+       * from call order: the first override's write is delayed until a second,
+       * newer override has fully completed, then lands with the stale value. */
+      let engineTotal: number | null = null;
+      let secondResult: Awaited<ReturnType<typeof system.limits.override>> | undefined;
+      totalSyncMock.mockImplementation(async (_env, _name, value) => {
+        engineTotal = value as number;
+      });
+      totalSyncMock.mockImplementationOnce(async (_env, _name, value) => {
+        secondResult = await system.limits.override(authEnv, "openai", { total: 75 });
+        engineTotal = value as number;
+      });
+
+      const first = await system.limits.override(authEnv, "openai", { total: 50 });
+      expect(first.isOk()).toBe(true);
+      expect(secondResult?.isOk()).toBe(true);
+
+      const final = await prisma.taskQueue.findFirstOrThrow({ where: { id: row.id } });
+      expect(final.totalConcurrencyLimit).toBe(75);
+      expect(engineTotal).toBe(75);
+
+      totalSyncMock.mockImplementation(async () => undefined);
+    }
+  );
+
   postgresTest("retrieve misses queue-role rows and unknown names", async ({ prisma }) => {
     const { authEnv, system, environment } = await seedEnvAndLimit(prisma, { total: 25 });
 

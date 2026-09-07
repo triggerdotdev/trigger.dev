@@ -22,18 +22,9 @@ export type FoundQueue = Prettify<
 export async function getQueue(
   prismaClient: PrismaClientOrTransaction,
   environment: AuthenticatedEnvironment,
-  queue: RetrieveQueueParam,
-  options?: {
-    /**
-     * The dashboard's detail page shows limit rows too; the public API and pause
-     * flows stay scoped to queue rows.
-     */
-    includeLimits?: boolean;
-  }
+  queue: RetrieveQueueParam
 ) {
-  const role = options?.includeLimits
-    ? { in: ["QUEUE" as const, "LIMIT" as const] }
-    : ("QUEUE" as const);
+  const role = "QUEUE" as const;
 
   if (typeof queue === "string") {
     return joinQueueWithUser(
@@ -88,13 +79,11 @@ export class QueueRetrievePresenter extends BasePresenter {
   public async call({
     environment,
     queueInput,
-    includeLimits,
   }: {
     environment: AuthenticatedEnvironment;
     queueInput: RetrieveQueueParam;
-    includeLimits?: boolean;
   }) {
-    const queue = await getQueue(this._replica, environment, queueInput, { includeLimits });
+    const queue = await getQueue(this._replica, environment, queueInput);
     if (!queue) {
       return {
         success: false as const,
@@ -102,14 +91,9 @@ export class QueueRetrievePresenter extends BasePresenter {
       };
     }
 
-    const isLimitRow = queue.role === "LIMIT";
     const results = await Promise.all([
-      isLimitRow
-        ? engine.gateQueuedCountOfQueues(environment, [queue.name])
-        : engine.lengthOfQueues(environment, [queue.name]),
-      isLimitRow
-        ? engine.totalConcurrencyOfQueues(environment, [queue.name])
-        : engine.currentConcurrencyOfQueues(environment, [queue.name]),
+      engine.lengthOfQueues(environment, [queue.name]),
+      engine.currentConcurrencyOfQueues(environment, [queue.name]),
       queue.totalConcurrencyLimit != null
         ? engine.totalConcurrencyOfQueues(environment, [queue.name])
         : undefined,
@@ -144,8 +128,6 @@ export class QueueRetrievePresenter extends BasePresenter {
           queue.concurrencyLimitOverridePercent !== null
             ? Number(queue.concurrencyLimitOverridePercent)
             : null,
-        kind: isLimitRow ? ("limit" as const) : ("queue" as const),
-        concurrencyVersion: queue.concurrencyVersion,
       },
     };
   }
