@@ -426,13 +426,32 @@ async function retireStaleAnonymousConcurrencyLimitRows(
     return;
   }
 
-  /** Each null is guarded on the row's read updatedAt, so a concurrent writer
-   * (an operator override, or another deploy re-creating the limit) wins and
-   * that row is left alone — its own engine sync governs. Engine keys are only
-   * removed for rows this deploy actually retired; a racing limits-surface sync
-   * converges via its freshness re-check against the nulled row. */
+  /** Engine keys go first, and the row's bounds are only nulled once both
+   * removals succeeded: a failed removal leaves the row bounded, so the next
+   * deploy retries the retirement instead of stranding a stale engine limit
+   * (worst case a pause-by-zero) that nothing can see or clear. Each null is
+   * guarded on the row's read updatedAt, so a concurrent writer (an operator
+   * override, or another deploy re-creating the limit) wins and its own engine
+   * sync governs; a racing limits-surface sync converges via its freshness
+   * re-check against the nulled row. */
   for (const row of staleRows) {
-    const retired = await prisma.taskQueue.updateMany({
+    try {
+      await Promise.all([
+        removeQueueConcurrencyLimits(environment, row.name),
+        removeQueueTotalConcurrencyLimits(environment, row.name),
+      ]);
+    } catch (error) {
+      logger.error(
+        "retireStaleAnonymousConcurrencyLimitRows: engine cleanup failed, retrying next deploy",
+        {
+          environmentId: environment.id,
+          queueName: row.name,
+          error,
+        }
+      );
+      continue;
+    }
+    await prisma.taskQueue.updateMany({
       where: { id: row.id, updatedAt: row.updatedAt },
       data: {
         concurrencyLimit: null,
@@ -446,12 +465,6 @@ async function retireStaleAnonymousConcurrencyLimitRows(
         totalConcurrencyLimitOverriddenBy: null,
       },
     });
-    if (retired.count > 0) {
-      await Promise.allSettled([
-        removeQueueConcurrencyLimits(environment, row.name),
-        removeQueueTotalConcurrencyLimits(environment, row.name),
-      ]);
-    }
   }
 }
 
