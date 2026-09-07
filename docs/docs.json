@@ -380,9 +380,16 @@
               "management/queues/retrieve",
               "management/queues/pause",
               "management/queues/concurrency-override",
-              "management/queues/concurrency-reset",
-              "management/queues/combined-concurrency-override",
-              "management/queues/combined-concurrency-reset"
+              "management/queues/concurrency-reset"
+            ]
+          },
+          {
+            "group": "Concurrency limits API",
+            "pages": [
+              "management/concurrency-limits/list",
+              "management/concurrency-limits/retrieve",
+              "management/concurrency-limits/override",
+              "management/concurrency-limits/reset"
             ]
           },
           {
