@@ -29,6 +29,7 @@ import {
 } from "@trigger.dev/core/v3";
 import type { ChatInputChunk, ChatTaskWirePayload } from "./ai-shared.js";
 import { chatRunTags, slimSubmitMessageForWire } from "./ai-shared.js";
+import { triggerConcurrencyBody } from "./concurrency-shared.js";
 import { sessions } from "./sessions.js";
 
 // ─── Type inference ────────────────────────────────────────────────
@@ -672,7 +673,7 @@ export class AgentChat<TAgent = unknown> {
       ...(this.triggerConfigDefault?.machine ? { machine: this.triggerConfigDefault.machine } : {}),
       ...(this.triggerConfigDefault?.queue ? { queue: this.triggerConfigDefault.queue } : {}),
       ...(this.triggerConfigDefault?.concurrency
-        ? { concurrency: this.triggerConfigDefault.concurrency }
+        ? triggerConcurrencyBody(this.triggerConfigDefault.concurrency)
         : {}),
       ...(this.triggerConfigDefault?.concurrencyKey !== undefined
         ? { concurrencyKey: this.triggerConfigDefault.concurrencyKey }

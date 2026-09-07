@@ -50,6 +50,7 @@
  * `ai.ts` statically imports `agentSkillsRuntime` (which uses `node:`
  * builtins unfit for some serverless runtimes) and the heavy task
  * runtime. Allowed imports: `./ai-shared.js`, `./chat-client.js`,
+ * `./concurrency-shared.js` (dependency-free validation helpers),
  * `@trigger.dev/core/v3` (api client), `ai` (types + lightweight
  * helpers like `stepCountIs` / `convertToModelMessages`).
  */
