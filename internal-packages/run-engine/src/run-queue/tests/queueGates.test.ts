@@ -231,6 +231,51 @@ describe("RunQueue gates", () => {
     }
   );
 
+  redisTest(
+    "counts queued runs per gate and drains the counter on admit and ack",
+    async ({ redisContainer }) => {
+      const queue = createQueue(redisContainer, true);
+      try {
+        await queue.updateQueueConcurrencyLimits(authenticatedEnvDev, "task/my-task", 5);
+        await queue.updateQueueConcurrencyLimits(authenticatedEnvDev, "shared-gate", 1);
+
+        const now = Date.now();
+        for (const i of [0, 1]) {
+          await queue.enqueueMessage({
+            env: authenticatedEnvDev,
+            message: makeMessage({
+              runId: `r${i}`,
+              timestamp: now - 1000 + i,
+              gates: [{ queue: "shared-gate" }],
+            }),
+            workerQueue: "main",
+          });
+        }
+
+        const oneAdmitted = await waitFor(
+          async () =>
+            (await queue.currentConcurrencyOfQueue(authenticatedEnvDev, "shared-gate")) === 1
+        );
+        expect(oneAdmitted).toBe(true);
+
+        /** One run executes, one waits: the gate's queued counter holds the waiter. */
+        await setTimeout(2000);
+        expect(await queue.gateQueuedCountOfQueue(authenticatedEnvDev, "shared-gate")).toBe(1);
+
+        expect(await popWorkerQueue(queue, "r0")).toBe(true);
+        await queue.acknowledgeMessage(authenticatedEnvDev.organization.id, "r0");
+
+        const drained = await waitFor(async () => {
+          if (!(await popWorkerQueue(queue, "r1"))) return false;
+          return (await queue.gateQueuedCountOfQueue(authenticatedEnvDev, "shared-gate")) === 0;
+        });
+        expect(drained).toBe(true);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
   redisTest("ignores gates and holds no gate slots when disabled", async ({ redisContainer }) => {
     const queue = createQueue(redisContainer, false);
     try {
