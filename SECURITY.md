@@ -2,6 +2,10 @@
 
 We take the security of Trigger.dev seriously — for both our Cloud service and self-hosted deployments. This document explains how to report a vulnerability and what to expect from us.
 
+## Self-hosting
+
+Unlike Trigger.dev Cloud, the self-hosted setup is optimized for single-tenant use, with code and users you trust. It is not designed to run untrusted code or untrusted payloads.
+
 ## Reporting a vulnerability
 
 **Please do not report security vulnerabilities through public GitHub issues, pull requests, or our Discord.**
