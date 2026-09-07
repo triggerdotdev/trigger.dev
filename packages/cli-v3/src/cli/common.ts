@@ -5,6 +5,7 @@ import { fromZodError } from "zod-validation-error";
 import { BundleError } from "../build/bundle.js";
 import { CLOUD_API_URL } from "../consts.js";
 import { chalkError } from "../utilities/cliOutput.js";
+import { formatCommandError } from "../utilities/commandError.js";
 import { readAuthConfigCurrentProfileName } from "../utilities/configFiles.js";
 import { logger } from "../utilities/logger.js";
 import { trace } from "@opentelemetry/api";
@@ -75,7 +76,7 @@ export async function wrapCommandAction<T extends z.ZodObject<any>, TResult>(
     } else if (e instanceof BundleError) {
       process.exit(1);
     } else {
-      logger.log(`${chalkError("X Error:")} ${e instanceof Error ? e.message : String(e)}`);
+      logger.log(`${chalkError("X Error:")} ${formatCommandError(e)}`);
     }
 
     throw e;
