@@ -20,14 +20,14 @@ const LIMIT_QUEUE_PREFIX = "limit/";
 
 const LIMIT_NAME_PATTERN = /^[a-zA-Z0-9_/-]{1,122}$/;
 
-export type ConcurrencyLimitBoundValue = {
+type ConcurrencyLimitBoundValue = {
   current: number | null;
   base: number | null;
   override: number | null;
   overriddenAt: Date | null;
 };
 
-export type ConcurrencyLimitItem = {
+type ConcurrencyLimitItem = {
   id: string;
   name: string;
   perKey: ConcurrencyLimitBoundValue;
@@ -40,7 +40,7 @@ export type ConcurrencyLimitItem = {
  * An override changes only the given bounds; each bound is a non-negative integer
  * (zero blocks every run holding the limit, which is how a limit is paused).
  */
-export type ConcurrencyLimitOverrideInput = {
+type ConcurrencyLimitOverrideInput = {
   perKey?: number;
   total?: number;
 };
@@ -141,11 +141,11 @@ export class ConcurrencyLimitsSystem {
   }
 }
 
-export function concurrencyLimitDisplayId(row: Pick<TaskQueue, "friendlyId">): string {
+function concurrencyLimitDisplayId(row: Pick<TaskQueue, "friendlyId">): string {
   return `climit_${row.friendlyId.replace(/^queue_/, "")}`;
 }
 
-export function concurrencyLimitNameFromRow(row: Pick<TaskQueue, "name">): string {
+function concurrencyLimitNameFromRow(row: Pick<TaskQueue, "name">): string {
   return row.name.startsWith(LIMIT_QUEUE_PREFIX)
     ? row.name.slice(LIMIT_QUEUE_PREFIX.length)
     : row.name;
