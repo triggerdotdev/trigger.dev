@@ -3221,6 +3221,7 @@ paths:
             schema:
               type: object
               minProperties: 1
+              additionalProperties: false
               description: At least one of `perKey` or `total` must be provided.
               properties:
                 perKey:
