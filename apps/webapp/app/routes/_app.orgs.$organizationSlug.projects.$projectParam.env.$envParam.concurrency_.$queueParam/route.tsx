@@ -95,7 +95,7 @@ export const handle: Handle = {
 
 export const meta = pageMeta<typeof loader>(({ data, params }) => [
   data?.queue?.name ?? params.queueParam ?? "Queue",
-  "Queues",
+  "Concurrency",
 ]);
 
 const ParamsSchema = EnvironmentParamSchema.extend({ queueParam: z.string() });
@@ -122,7 +122,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const retrieve = await new QueueRetrievePresenter().call({
     environment,
     queueInput: queueParam,
-    includeLimits: true,
   });
   if (!retrieve.success) {
     throw new Response(undefined, { status: 404, statusText: "Queue not found" });
@@ -176,7 +175,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const { organizationSlug, projectParam, envParam, queueParam } = ParamsSchema.parse(params);
 
   const url = new URL(request.url);
-  const redirectPath = `/orgs/${organizationSlug}/projects/${projectParam}/env/${envParam}/queues/${queueParam}${url.search}`;
+  const redirectPath = `/orgs/${organizationSlug}/projects/${projectParam}/env/${envParam}/concurrency/${queueParam}${url.search}`;
 
   if (request.method.toLowerCase() !== "post") {
     return redirectWithErrorMessage(redirectPath, request, "Wrong method");
@@ -296,7 +295,7 @@ export default function Page() {
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title={queue.name} backButton={{ to: backPath, text: "Queues" }} />
+        <PageTitle title={queue.name} backButton={{ to: backPath, text: "Concurrency" }} />
       </NavBar>
       {/* Paused-queue banner — mirrors the environment-paused banner (OrgBanner) at the top of
           the page when this individual queue is paused. */}
