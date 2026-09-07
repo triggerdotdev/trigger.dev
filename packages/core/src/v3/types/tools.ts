@@ -9,10 +9,10 @@ import {
 export type ToolTaskParameters = AnyZodSchema | AISchema<any>;
 
 export type inferToolParameters<PARAMETERS extends ToolTaskParameters> =
-  PARAMETERS extends AISchema<any>
-    ? PARAMETERS["_type"]
-    : PARAMETERS extends AnyZodSchema
-      ? inferZodSchemaOutput<PARAMETERS>
+  PARAMETERS extends AnyZodSchema
+    ? inferZodSchemaOutput<PARAMETERS>
+    : PARAMETERS extends AISchema<any>
+      ? PARAMETERS["_type"]
       : never;
 
 export function convertToolParametersToSchema<TToolParameters extends ToolTaskParameters>(
