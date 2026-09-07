@@ -258,7 +258,9 @@ export default function Page() {
     taskIdentifier: task.slug,
   });
   const queuePath = task.queue
-    ? concurrencyQueuePath(organization, project, environment, { friendlyId: task.queue.friendlyId })
+    ? concurrencyQueuePath(organization, project, environment, {
+        friendlyId: task.queue.friendlyId,
+      })
     : undefined;
 
   const filters: TaskRunListSearchFilters = useMemo(() => ({ tasks: [task.slug] }), [task.slug]);
