@@ -3160,7 +3160,7 @@ export class RunQueue {
       queueCurrentDequeuedKey,
       envCurrentDequeuedKey,
       messageKey,
-      this.keys.queueGroupConcurrencyKeyFromQueue(fullQueue),
+      this.keys.queueGroupConcurrencyKey(env, queue),
       messageId,
       this.options.redis.keyPrefix ?? ""
     );
