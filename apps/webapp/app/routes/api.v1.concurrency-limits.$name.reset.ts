@@ -23,6 +23,11 @@ const route = createActionApiRoute(
         switch (error.type) {
           case "limit_not_found":
             return json({ error: "Concurrency limit not found" }, { status: 404 });
+          case "conflict":
+            return json(
+              { error: "The limit changed concurrently; retry the request" },
+              { status: 409 }
+            );
           case "limit_not_overridden":
             return json({ error: "Concurrency limit has no override to reset" }, { status: 400 });
           default:
