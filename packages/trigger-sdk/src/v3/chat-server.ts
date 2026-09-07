@@ -72,7 +72,7 @@ import {
 import type { FinishReason, ModelMessage, Tool, UIMessage, UIMessageChunk } from "ai";
 import type { ChatInputChunk, ChatTaskWirePayload } from "./ai-shared.js";
 import { chatRunTags } from "./ai-shared.js";
-import { triggerConcurrencyBody } from "./shared.js";
+import { triggerConcurrencyBody } from "./concurrency-shared.js";
 
 // `StreamTextResult` is defined locally rather than imported from `ai`: its
 // generic arity diverged (v6 `StreamTextResult<TOOLS, OUTPUT>`, v7
