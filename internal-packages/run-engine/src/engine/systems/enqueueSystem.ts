@@ -8,6 +8,7 @@ import type { RunStore } from "@internal/run-store";
 import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/isomorphic";
 import type { MinimalAuthenticatedEnvironment } from "../../shared/index.js";
 import { QUEUED_SNAPSHOT_DESCRIPTION, QUEUED_SNAPSHOT_STATUS } from "../consts.js";
+import { parseGates } from "../gateParsing.js";
 import type { ExecutionSnapshotSystem } from "./executionSnapshotSystem.js";
 import type { SystemResources } from "./systems.js";
 
@@ -15,6 +16,13 @@ export type EnqueueSystemOptions = {
   resources: SystemResources;
   executionSnapshotSystem: ExecutionSnapshotSystem;
 };
+
+function parseRunGates(
+  gates: unknown
+): Array<{ queue: string; concurrencyKey?: string }> | undefined {
+  const parsed = parseGates(gates);
+  return parsed.length > 0 ? parsed : undefined;
+}
 
 export class EnqueueSystem {
   private readonly $: SystemResources;
@@ -177,6 +185,7 @@ export class EnqueueSystem {
         environmentType: env.type,
         queue: run.queue,
         concurrencyKey: run.concurrencyKey ?? undefined,
+        gates: parseRunGates(run.gates),
         timestamp,
         eligibleAtMs,
         attempt: 0,

@@ -61,3 +61,4 @@ export type {
   WatcherEntry,
 } from "./engine/waitpointCoordinator/storeCoordinator.js";
 export { WaitpointKeyTagError } from "./engine/waitpointCoordinator/keys.js";
+export { parseGates, type ParsedGate } from "./engine/gateParsing.js";

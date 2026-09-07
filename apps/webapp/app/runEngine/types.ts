@@ -46,6 +46,8 @@ export type QueueProperties = {
   lockedQueueId?: string;
   taskTtl?: string | null;
   taskKind?: string;
+  /** Other queues the run must also hold a concurrency slot in while executing. */
+  gates?: Array<{ queue: string; concurrencyKey?: string }>;
 };
 
 export type LockedBackgroundWorker = Pick<

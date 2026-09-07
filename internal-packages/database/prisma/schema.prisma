@@ -741,6 +741,9 @@ model BackgroundWorkerTask {
   queueConfig   Json?
   retryConfig   Json?
   machineConfig Json?
+  /// Gates declared on the task: other queues its runs must also hold a concurrency
+  /// slot in while executing. Shape: [{ queue: string, concurrencyKey?: string }]
+  gates         Json?
 
   queueId String?
   queue   TaskQueue? @relation(fields: [queueId], references: [id], onDelete: SetNull, onUpdate: Cascade)
@@ -1106,6 +1109,10 @@ model TaskRun {
   priorityMs Int @default(0)
 
   concurrencyKey String?
+
+  /// Gates for this run: other queues it must also hold a concurrency slot in while
+  /// executing. Shape: [{ queue: string, concurrencyKey?: string }]
+  gates Json?
 
   delayUntil        DateTime?
   queuedAt          DateTime?

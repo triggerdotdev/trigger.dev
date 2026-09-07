@@ -26,7 +26,7 @@ import type {
   TaskRunContext,
 } from "../schemas/index.js";
 import type { IdempotencyKey } from "./idempotencyKeys.js";
-import type { QueueOptions } from "./queues.js";
+import type { QueueOptions, TaskConcurrency } from "./queues.js";
 import type { AnySchemaParseFn, inferSchemaIn, inferSchemaOut, Schema } from "./schemas.js";
 import type { inferToolParameters, ToolTaskParameters } from "./tools.js";
 import type { Prettify } from "./utils.js";
@@ -222,11 +222,25 @@ type CommonTaskOptions<
     });
    * ```
    */
-  queue?: {
-    name?: string;
-    concurrencyLimit?: number;
-    totalConcurrencyLimit?: number;
-  };
+  queue?: string | TaskQueueIn;
+
+  /**
+   * Limit how many of this task's runs execute at once, or hold shared named limits.
+   * Takes one limit or an array: an inline `{ perKey?, total? }` shape caps this task;
+   * a `concurrencyLimit()` instance (or its name) is shared across every task holding it.
+   * At most one inline limit plus up to two named limits.
+   *
+   * @example
+   *
+   * ```ts
+   * export const sendEmail = task({
+   *   id: "send-email",
+   *   concurrency: { total: 10 },
+   *   run: async (payload) => {},
+   * });
+   * ```
+   */
+  concurrency?: TaskConcurrency;
   /** Configure the spec of the [machine](https://trigger.dev/docs/machines) you want your task to run on.
    *
    * @example
@@ -394,6 +408,22 @@ type CommonTaskOptions<
 
   /** @internal Agent configuration, only set when `triggerSource` is `"agent"`. */
   agentConfig?: { type: string };
+};
+
+/**
+ * A reference to a gate: another queue a run must also hold a concurrency slot in while
+ * it executes. A plain string names the gate queue; the object form pins the gate to a
+ * literal `concurrencyKey` instead of inheriting the run's own key.
+ */
+
+type TaskQueueIn = {
+  name?: string;
+  /**
+   * @deprecated Use `concurrency` on the task instead. `concurrencyLimit: 10` applies per
+   * `concurrencyKey` when runs pass one, and to the whole queue when they don't; the task's
+   * `concurrency` option says which you mean. Existing queues keep working unchanged.
+   */
+  concurrencyLimit?: number;
 };
 
 export type TaskOptions<
@@ -811,6 +841,13 @@ export type TriggerOptions = {
    * You can override the queue for the task. If a queue doesn't exist for the given name, the run will be in the PENDING_VERSION state until the queue is created..
    */
   queue?: string;
+
+  /**
+   * Override the task's named concurrency limits for this run. Strings only, like `queue`:
+   * pass a limit's name (e.g. `paidTier.name`). Replaces the task's declared named limits;
+   * the task's inline limit always applies.
+   */
+  concurrency?: string | string[];
 
   /**
    * The `concurrencyKey` creates a copy of the queue for every unique value of the key.

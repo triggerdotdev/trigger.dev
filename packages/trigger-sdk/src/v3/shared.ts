@@ -90,6 +90,9 @@ import {
   type TriggerAndWaitOptions,
   type TriggerApiRequestOptions,
   type TriggerOptions,
+  type TaskConcurrency,
+  type ConcurrencyLimitOptions,
+  type ConcurrencyLimit,
 } from "@trigger.dev/core/v3";
 import { tracer } from "./tracer.js";
 
@@ -134,11 +137,145 @@ function resolveTriggerExternalDeploymentId(explicit?: string): string | undefin
   });
 }
 
+type NormalizedTaskQueue = {
+  queue?: { name?: string; concurrencyLimit?: number };
+};
+
+/** A task's `queue` is a queue object or a string reference to a queue defined elsewhere. */
+function normalizeTaskQueue(queue: TaskOptions<string>["queue"]): NormalizedTaskQueue {
+  if (!queue) {
+    return {};
+  }
+
+  return { queue: typeof queue === "string" ? { name: queue } : queue };
+}
+
+type NormalizedTaskConcurrency = {
+  inline?: { perKey?: number; total?: number };
+  limits?: string[];
+};
+
+/**
+ * Validates and normalizes the task `concurrency` option into its manifest shape:
+ * at most one inline limit (caps this task) plus up to two named limits (shared).
+ */
+function normalizeTaskConcurrency(
+  taskId: string,
+  concurrency: TaskConcurrency | undefined
+): NormalizedTaskConcurrency | undefined {
+  if (!concurrency) {
+    return undefined;
+  }
+
+  const items = Array.isArray(concurrency) ? concurrency : [concurrency];
+  const inline: Array<{ perKey?: number; total?: number }> = [];
+  const limits: string[] = [];
+
+  for (const item of items) {
+    if (typeof item === "string") {
+      limits.push(item);
+    } else if (
+      item &&
+      typeof item === "object" &&
+      "name" in item &&
+      typeof item.name === "string"
+    ) {
+      validateConcurrencyLimitName(item.name);
+      resourceCatalog.registerConcurrencyLimitMetadata(item);
+      limits.push(item.name);
+    } else if (item && typeof item === "object") {
+      inline.push({ perKey: item.perKey, total: item.total });
+    }
+  }
+
+  if (inline.length > 1) {
+    throw new Error(
+      `Task "${taskId}": concurrency accepts at most one inline limit. Give shared limits a name with concurrencyLimit().`
+    );
+  }
+
+  if (limits.length > 2) {
+    throw new Error(`Task "${taskId}": concurrency accepts at most two named limits.`);
+  }
+
+  return {
+    inline: inline[0],
+    limits: limits.length > 0 ? limits : undefined,
+  };
+}
+
+/** Builds the queue field of a trigger request body. */
+function triggerQueueBody(
+  queue: string | undefined,
+  fallbackQueueName?: string
+): { queue?: { name: string } } {
+  const name = queue ?? fallbackQueueName;
+  return { queue: name ? { name } : undefined };
+}
+
+/**
+ * Trigger-time named limits: strings only, like `queue`. They replace the task's
+ * declared named limits for this run; the server resolves names to the run's gates.
+ */
+function triggerConcurrencyBody(concurrency: string | string[] | undefined): {
+  concurrency?: string[];
+} {
+  if (!concurrency) {
+    return {};
+  }
+  const limits = Array.isArray(concurrency) ? concurrency : [concurrency];
+  if (limits.length > 2) {
+    throw new Error("The concurrency option accepts at most two named limits.");
+  }
+  if (limits.some((name) => typeof name !== "string" || name.length === 0)) {
+    throw new Error("The concurrency option takes limit names: non-empty strings.");
+  }
+  for (const name of limits) {
+    validateConcurrencyLimitName(name);
+  }
+  return { concurrency: limits };
+}
+
 export function queue(options: QueueOptions): Queue {
   resourceCatalog.registerQueueMetadata(options);
 
   // @ts-expect-error
   options[Symbol.for("trigger.dev/queue")] = true;
+
+  return options;
+}
+
+/**
+ * Declares a named, shareable concurrency limit. Tasks hold it via their `concurrency`
+ * option; every task holding the same limit draws from the same pools.
+ *
+ * @example
+ *
+ * ```ts
+ * export const openaiLimit = concurrencyLimit({ name: "openai", total: 25 });
+ *
+ * export const generateSummary = task({
+ *   id: "generate-summary",
+ *   concurrency: [{ total: 5 }, openaiLimit],
+ *   run: async (payload) => {},
+ * });
+ * ```
+ */
+function validateConcurrencyLimitName(name: string): void {
+  if (!/^[a-zA-Z0-9_-]{1,122}$/.test(name)) {
+    throw new Error(
+      `Concurrency limit "${name}": names are 1-122 characters using only letters, numbers, underscores and hyphens.`
+    );
+  }
+}
+
+export function concurrencyLimit(options: ConcurrencyLimitOptions): ConcurrencyLimit {
+  validateConcurrencyLimitName(options.name);
+
+  resourceCatalog.registerConcurrencyLimitMetadata(options);
+
+  // @ts-expect-error
+  options[Symbol.for("trigger.dev/concurrencyLimit")] = true;
 
   return options;
 }
@@ -172,6 +309,8 @@ export function createTask<
     | TaskOptions<TIdentifier, TInput, TOutput, TInitOutput>
     | TaskOptionsWithSchema<TIdentifier, TOutput, TInitOutput>
 ): Task<TIdentifier, TInput, TOutput> | Task<TIdentifier, any, TOutput> {
+  const normalizedQueue = normalizeTaskQueue(params.queue);
+
   const task: Task<TIdentifier, TInput, TOutput> = {
     id: params.id,
     description: params.description,
@@ -183,7 +322,7 @@ export function createTask<
         payload,
         undefined,
         {
-          queue: params.queue?.name,
+          queue: normalizedQueue.queue?.name,
           ...options,
         }
       );
@@ -196,7 +335,7 @@ export function createTask<
         options,
         undefined,
         undefined,
-        params.queue?.name
+        normalizedQueue.queue?.name
       );
     },
     triggerAndWait: (payload, options, requestOptions) => {
@@ -207,7 +346,7 @@ export function createTask<
           payload,
           undefined,
           {
-            queue: params.queue?.name,
+            queue: normalizedQueue.queue?.name,
             ...options,
           },
           requestOptions
@@ -228,7 +367,7 @@ export function createTask<
           payload,
           undefined,
           {
-            queue: params.queue?.name,
+            queue: normalizedQueue.queue?.name,
             ...options,
           }
         )
@@ -248,7 +387,7 @@ export function createTask<
         undefined,
         options,
         undefined,
-        params.queue?.name
+        normalizedQueue.queue?.name
       );
     },
   };
@@ -258,7 +397,8 @@ export function createTask<
   resourceCatalog.registerTaskMetadata({
     id: params.id,
     description: params.description,
-    queue: params.queue,
+    queue: normalizedQueue.queue,
+    concurrency: normalizeTaskConcurrency(params.id, params.concurrency),
     retry: params.retry ? { ...defaultRetryOptions, ...params.retry } : undefined,
     machine: typeof params.machine === "string" ? { preset: params.machine } : params.machine,
     triggerSource: params.triggerSource,
@@ -271,13 +411,19 @@ export function createTask<
     },
   });
 
-  const queue = params.queue;
+  const queue = normalizedQueue.queue;
 
-  if (queue && typeof queue.name === "string") {
+  /**
+   * A string queue name (bare or as a tuple's first element) is a REFERENCE to a
+   * queue defined elsewhere; registering it would create an empty definition that
+   * can shadow the real one depending on module evaluation order.
+   */
+  const homeIsReference = typeof params.queue === "string";
+
+  if (queue && typeof queue.name === "string" && !homeIsReference) {
     resourceCatalog.registerQueueMetadata({
       name: queue.name,
       concurrencyLimit: queue.concurrencyLimit,
-      totalConcurrencyLimit: queue.totalConcurrencyLimit,
     });
   }
 
@@ -327,6 +473,8 @@ export function createSchemaTask<
     ? getSchemaParseFn<inferSchemaIn<TSchema>>(params.schema)
     : undefined;
 
+  const normalizedQueue = normalizeTaskQueue(params.queue);
+
   const task: TaskWithSchema<TIdentifier, TSchema, TOutput> = {
     id: params.id,
     description: params.description,
@@ -338,7 +486,7 @@ export function createSchemaTask<
         payload,
         parsePayload,
         {
-          queue: params.queue?.name,
+          queue: normalizedQueue.queue?.name,
           ...options,
         },
         requestOptions
@@ -352,7 +500,7 @@ export function createSchemaTask<
         options,
         parsePayload,
         requestOptions,
-        params.queue?.name
+        normalizedQueue.queue?.name
       );
     },
     triggerAndWait: (payload, options) => {
@@ -363,7 +511,7 @@ export function createSchemaTask<
           payload,
           parsePayload,
           {
-            queue: params.queue?.name,
+            queue: normalizedQueue.queue?.name,
             ...options,
           }
         )
@@ -383,7 +531,7 @@ export function createSchemaTask<
           payload,
           parsePayload,
           {
-            queue: params.queue?.name,
+            queue: normalizedQueue.queue?.name,
             ...options,
           }
         )
@@ -403,7 +551,7 @@ export function createSchemaTask<
         parsePayload,
         options,
         undefined,
-        params.queue?.name
+        normalizedQueue.queue?.name
       );
     },
   };
@@ -413,7 +561,8 @@ export function createSchemaTask<
   resourceCatalog.registerTaskMetadata({
     id: params.id,
     description: params.description,
-    queue: params.queue,
+    queue: normalizedQueue.queue,
+    concurrency: normalizeTaskConcurrency(params.id, params.concurrency),
     retry: params.retry ? { ...defaultRetryOptions, ...params.retry } : undefined,
     machine: typeof params.machine === "string" ? { preset: params.machine } : params.machine,
     triggerSource: params.triggerSource,
@@ -427,13 +576,19 @@ export function createSchemaTask<
     schema: params.schema,
   });
 
-  const queue = params.queue;
+  const queue = normalizedQueue.queue;
 
-  if (queue && typeof queue.name === "string") {
+  /**
+   * A string queue name (bare or as a tuple's first element) is a REFERENCE to a
+   * queue defined elsewhere; registering it would create an empty definition that
+   * can shadow the real one depending on module evaluation order.
+   */
+  const homeIsReference = typeof params.queue === "string";
+
+  if (queue && typeof queue.name === "string" && !homeIsReference) {
     resourceCatalog.registerQueueMetadata({
       name: queue.name,
       concurrencyLimit: queue.concurrencyLimit,
-      totalConcurrencyLimit: queue.totalConcurrencyLimit,
     });
   }
 
@@ -731,7 +886,8 @@ export async function batchTriggerById<TTask extends AnyTask>(
           task: item.id,
           payload: payloadPacket.data,
           options: {
-            queue: item.options?.queue ? { name: item.options.queue } : undefined,
+            ...triggerQueueBody(item.options?.queue),
+            ...triggerConcurrencyBody(item.options?.concurrency),
             concurrencyKey: item.options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,
@@ -991,7 +1147,8 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
           payload: payloadPacket.data,
           options: {
             lockToVersion: taskContext.worker?.version,
-            queue: item.options?.queue ? { name: item.options.queue } : undefined,
+            ...triggerQueueBody(item.options?.queue),
+            ...triggerConcurrencyBody(item.options?.concurrency),
             concurrencyKey: item.options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,
@@ -1256,7 +1413,8 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
           task: item.task.id,
           payload: payloadPacket.data,
           options: {
-            queue: item.options?.queue ? { name: item.options.queue } : undefined,
+            ...triggerQueueBody(item.options?.queue),
+            ...triggerConcurrencyBody(item.options?.concurrency),
             concurrencyKey: item.options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,
@@ -1521,7 +1679,8 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
           payload: payloadPacket.data,
           options: {
             lockToVersion: taskContext.worker?.version,
-            queue: item.options?.queue ? { name: item.options.queue } : undefined,
+            ...triggerQueueBody(item.options?.queue),
+            ...triggerConcurrencyBody(item.options?.concurrency),
             concurrencyKey: item.options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,
@@ -2007,7 +2166,8 @@ async function* transformBatchItemsStream<TTask extends AnyTask>(
       task: item.id,
       payload: payloadPacket.data,
       options: {
-        queue: item.options?.queue ? { name: item.options.queue } : undefined,
+        ...triggerQueueBody(item.options?.queue),
+        ...triggerConcurrencyBody(item.options?.concurrency),
         concurrencyKey: item.options?.concurrencyKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
@@ -2063,7 +2223,8 @@ async function* transformBatchItemsStreamForWait<TTask extends AnyTask>(
       payload: payloadPacket.data,
       options: {
         lockToVersion: taskContext.worker?.version,
-        queue: item.options?.queue ? { name: item.options.queue } : undefined,
+        ...triggerQueueBody(item.options?.queue),
+        ...triggerConcurrencyBody(item.options?.concurrency),
         concurrencyKey: item.options?.concurrencyKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
@@ -2113,7 +2274,8 @@ async function* transformBatchByTaskItemsStream<TTasks extends readonly AnyTask[
       task: item.task.id,
       payload: payloadPacket.data,
       options: {
-        queue: item.options?.queue ? { name: item.options.queue } : undefined,
+        ...triggerQueueBody(item.options?.queue),
+        ...triggerConcurrencyBody(item.options?.concurrency),
         concurrencyKey: item.options?.concurrencyKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
@@ -2168,7 +2330,8 @@ async function* transformBatchByTaskItemsStreamForWait<TTasks extends readonly A
       payload: payloadPacket.data,
       options: {
         lockToVersion: taskContext.worker?.version,
-        queue: item.options?.queue ? { name: item.options.queue } : undefined,
+        ...triggerQueueBody(item.options?.queue),
+        ...triggerConcurrencyBody(item.options?.concurrency),
         concurrencyKey: item.options?.concurrencyKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
@@ -2216,11 +2379,8 @@ async function* transformSingleTaskBatchItemsStream<TPayload>(
       task: taskIdentifier,
       payload: payloadPacket.data,
       options: {
-        queue: item.options?.queue
-          ? { name: item.options.queue }
-          : queue
-            ? { name: queue }
-            : undefined,
+        ...triggerQueueBody(item.options?.queue, queue),
+        ...triggerConcurrencyBody(item.options?.concurrency),
         concurrencyKey: item.options?.concurrencyKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
@@ -2280,11 +2440,8 @@ async function* transformSingleTaskBatchItemsStreamForWait<TPayload>(
       payload: payloadPacket.data,
       options: {
         lockToVersion: taskContext.worker?.version,
-        queue: item.options?.queue
-          ? { name: item.options.queue }
-          : queue
-            ? { name: queue }
-            : undefined,
+        ...triggerQueueBody(item.options?.queue, queue),
+        ...triggerConcurrencyBody(item.options?.concurrency),
         concurrencyKey: item.options?.concurrencyKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
@@ -2334,7 +2491,8 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
     {
       payload: triggerPayloadPacket.data,
       options: {
-        queue: options?.queue ? { name: options.queue } : undefined,
+        ...triggerQueueBody(options?.queue),
+        ...triggerConcurrencyBody(options?.concurrency),
         concurrencyKey: options?.concurrencyKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: triggerPayloadPacket.dataType,
@@ -2419,11 +2577,8 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
           task: taskIdentifier,
           payload: payloadPacket.data,
           options: {
-            queue: item.options?.queue
-              ? { name: item.options.queue }
-              : queue
-                ? { name: queue }
-                : undefined,
+            ...triggerQueueBody(item.options?.queue, queue),
+            ...triggerConcurrencyBody(item.options?.concurrency),
             concurrencyKey: item.options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,
@@ -2603,7 +2758,8 @@ async function triggerAndWait_internal<TIdentifier extends string, TPayload, TOu
           payload: triggerPayloadPacket.data,
           options: {
             lockToVersion: taskContext.worker?.version, // Lock to current version because we're waiting for it to finish
-            queue: options?.queue ? { name: options.queue } : undefined,
+            ...triggerQueueBody(options?.queue),
+            ...triggerConcurrencyBody(options?.concurrency),
             concurrencyKey: options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: triggerPayloadPacket.dataType,
@@ -2693,7 +2849,8 @@ async function triggerAndSubscribe_internal<TIdentifier extends string, TPayload
           payload: triggerPayloadPacket.data,
           options: {
             lockToVersion: taskContext.worker?.version,
-            queue: options?.queue ? { name: options.queue } : undefined,
+            ...triggerQueueBody(options?.queue),
+            ...triggerConcurrencyBody(options?.concurrency),
             concurrencyKey: options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: triggerPayloadPacket.dataType,
@@ -2855,11 +3012,8 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
           payload: payloadPacket.data,
           options: {
             lockToVersion: taskContext.worker?.version,
-            queue: item.options?.queue
-              ? { name: item.options.queue }
-              : queue
-                ? { name: queue }
-                : undefined,
+            ...triggerQueueBody(item.options?.queue, queue),
+            ...triggerConcurrencyBody(item.options?.concurrency),
             concurrencyKey: item.options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,

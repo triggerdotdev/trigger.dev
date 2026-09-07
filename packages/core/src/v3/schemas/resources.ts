@@ -1,5 +1,12 @@
 import { z } from "zod";
-import { QueueManifest, RetryOptions, ScheduleMetadata } from "./schemas.js";
+import {
+  QueueGateManifest,
+  QueueManifest,
+  RetryOptions,
+  ScheduleMetadata,
+  TaskConcurrencyManifest,
+  ConcurrencyLimitManifest,
+} from "./schemas.js";
 import { MachineConfig } from "./common.js";
 import {
   WebhookVerifierArtifact,
@@ -19,6 +26,8 @@ export const TaskResource = z.object({
   filePath: z.string(),
   exportName: z.string().optional(),
   queue: QueueManifest.extend({ name: z.string().optional() }).optional(),
+  gates: QueueGateManifest.array().max(2).optional(),
+  concurrency: TaskConcurrencyManifest.optional(),
   retry: RetryOptions.optional(),
   machine: MachineConfig.optional(),
   triggerSource: z.string().optional(),
@@ -80,6 +89,7 @@ export const BackgroundWorkerMetadata = z.object({
   prompts: z.array(PromptResource).optional(),
   webhooks: z.array(WebhookResource).optional(), // NEW
   queues: z.array(QueueManifest).optional(),
+  concurrencyLimits: z.array(ConcurrencyLimitManifest).optional(),
   sourceFiles: z.array(BackgroundWorkerSourceFileMetadata).optional(),
   runtime: z.string().optional(),
   runtimeVersion: z.string().optional(),

@@ -1,7 +1,7 @@
 export * from "./cache.js";
 export * from "./config.js";
 export { retry, type RetryOptions } from "./retry.js";
-export { queue, BatchTriggerError } from "./shared.js";
+export { queue, concurrencyLimit, BatchTriggerError } from "./shared.js";
 export * from "./tasks.js";
 export * from "./batch.js";
 export * from "./wait.js";
@@ -65,6 +65,7 @@ export {
 } from "./deployments.js";
 export * as envvars from "./envvars.js";
 export * as queues from "./queues.js";
+export * as concurrencyLimits from "./concurrencyLimits.js";
 export type { ImportEnvironmentVariablesParams } from "./envvars.js";
 
 export { configure, auth } from "./auth.js";
