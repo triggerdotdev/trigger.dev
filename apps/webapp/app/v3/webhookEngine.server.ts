@@ -7,6 +7,7 @@ import { env } from "~/env.server";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import { logger } from "~/services/logger.server";
 import { S2RealtimeStreams } from "~/services/realtime/s2realtimeStreams.server";
+import { SessionTriggerConfig as SessionTriggerConfigSchema } from "@trigger.dev/core/v3";
 import {
   ensureRunForSession,
   type SessionTriggerConfig,
@@ -155,7 +156,11 @@ function createWebhookEngine() {
         }
 
         const template = (triggerConfigTemplate ?? {}) as Partial<SessionTriggerConfig>;
-        const triggerConfig: SessionTriggerConfig = {
+        /** The template arrives unvalidated (`z.record(z.unknown())` on the routing
+         * target), and continuations re-parse the stored row with a throwing parse —
+         * so anything this path persists must parse, or the session strands forever.
+         * A bad template fails the delivery terminally instead. */
+        const parsedTriggerConfig = SessionTriggerConfigSchema.safeParse({
           ...template,
           basePayload: {
             messages: [],
@@ -163,7 +168,16 @@ function createWebhookEngine() {
             chatId: externalId,
             ...(template.basePayload ?? {}),
           },
-        };
+        });
+        if (!parsedTriggerConfig.success) {
+          return {
+            success: false,
+            error: `Invalid triggerConfigTemplate on the webhook routing target: ${parsedTriggerConfig.error.issues
+              .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+              .join("; ")}`,
+          };
+        }
+        const triggerConfig: SessionTriggerConfig = parsedTriggerConfig.data;
 
         // Resume an existing session; otherwise only START one when the event is a session-start
         // (startOn). Resume-only with no session yet -> ignore (no session, no run, no egress).
