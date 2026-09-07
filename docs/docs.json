@@ -65,7 +65,8 @@
                 "group": "Wait",
                 "pages": ["wait", "wait-for", "wait-until", "wait-for-token"]
               },
-              "queue-concurrency",
+              "queues",
+              "concurrency",
               "versioning",
               "machines",
               "idempotency",
@@ -381,6 +382,15 @@
               "management/queues/pause",
               "management/queues/concurrency-override",
               "management/queues/concurrency-reset"
+            ]
+          },
+          {
+            "group": "Concurrency limits API",
+            "pages": [
+              "management/concurrency-limits/list",
+              "management/concurrency-limits/retrieve",
+              "management/concurrency-limits/override",
+              "management/concurrency-limits/reset"
             ]
           },
           {
@@ -729,6 +739,11 @@
     ]
   },
   "redirects": [
+    {
+      "source": "/queue-concurrency",
+      "destination": "/concurrency",
+      "permanent": true
+    },
     {
       "source": "/config/extensions",
       "destination": "/config/extensions/overview",
