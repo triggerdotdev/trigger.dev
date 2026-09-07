@@ -272,6 +272,11 @@ export type IdempotencyKeyOptionsSchema = z.infer<typeof IdempotencyKeyOptionsSc
 const ConcurrencyKeySchema = z.union([z.string(), z.number()]).transform((value) => String(value));
 
 const ExternalDeploymentId = z.preprocess((value) => {
+  // `null` is the opt-out sentinel callers write; treat it as absent, not a validation error.
+  if (value === null) {
+    return undefined;
+  }
+
   if (typeof value !== "string") {
     return value;
   }
@@ -1885,6 +1890,11 @@ export const SessionTriggerConfig = z.object({
   maxDuration: z.number().int().positive().optional(),
   /** Pin every run to a specific worker version. Forwarded to `TaskRunOptions.lockToVersion`. */
   lockToVersion: z.string().optional(),
+  /**
+   * Pin every run the session schedules to the deployment carrying this id, refreshed by each
+   * `sessions.start`. Independent of `lockToVersion`, which wins.
+   */
+  externalDeploymentId: ExternalDeploymentId,
   /** Region to schedule runs in. Forwarded to `TaskRunOptions.region`. */
   region: z.string().optional(),
   /** Convenience field surfaced to chat.agent via the wire payload. */
@@ -1960,6 +1970,11 @@ export const CreatedSessionResponseBody = SessionItem.extend({
   publicAccessToken: z.string(),
   /** True if the session existed already (idempotent upsert), false if newly created. */
   isCached: z.boolean(),
+  /**
+   * The session's live run is parked waiting for a deployment carrying its external deployment
+   * id. Messages sent meanwhile are durable. Optional, so older servers read as `false`.
+   */
+  pendingVersion: z.boolean().optional(),
 });
 export type CreatedSessionResponseBody = z.infer<typeof CreatedSessionResponseBody>;
 
@@ -1978,6 +1993,11 @@ export const EndAndContinueSessionRequestBody = z.object({
   callingRunId: z.string(),
   /** Free-form label for the SessionRun audit row. e.g. `"upgrade"`. */
   reason: z.string().max(64),
+  /**
+   * Re-pin the session to this id instead of clearing the pin. Only read when `reason` is
+   * `"upgrade"`. `lockToVersion` is never cleared.
+   */
+  externalDeploymentId: ExternalDeploymentId,
 });
 export type EndAndContinueSessionRequestBody = z.infer<typeof EndAndContinueSessionRequestBody>;
 
@@ -1991,6 +2011,12 @@ export const EndAndContinueSessionResponseBody = z.object({
    * to drive the next run.
    */
   swapped: z.boolean(),
+  /**
+   * The run that took over is parked waiting for its deployment. Surface this so a
+   * handoff onto a version that has not landed reads as a deploy in progress rather
+   * than a chat that went quiet.
+   */
+  pendingVersion: z.boolean().optional(),
 });
 export type EndAndContinueSessionResponseBody = z.infer<typeof EndAndContinueSessionResponseBody>;
 

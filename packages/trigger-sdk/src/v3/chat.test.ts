@@ -50,6 +50,14 @@ function sseEncode(chunks: (UIMessageChunk | Record<string, unknown>)[]): string
         headers: [["trigger-control", "upgrade-required"]],
       };
     }
+    if (type === "trigger:pending-version") {
+      return {
+        body: "",
+        seq_num: nextSeq++,
+        timestamp: 1700000000000 + i,
+        headers: [["trigger-control", "pending-version"]],
+      };
+    }
     return {
       body: JSON.stringify({ data: chunk, id: partId }),
       seq_num: nextSeq++,
@@ -516,6 +524,111 @@ describe("TriggerChatTransport", () => {
     });
   });
 
+  describe("run-pending-version", () => {
+    it("emits on send when the append response says the run is parked", async () => {
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (isSessionStreamAppendUrl(urlStr)) {
+          return new Response(JSON.stringify({ ok: true, seq: 1, pendingVersion: true }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        if (isSessionOutSubscribeUrl(urlStr)) return defaultSseResponse();
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const events: ChatTransportEvent[] = [];
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        onEvent: (e) => events.push(e),
+        sessions: { "chat-parked": { publicAccessToken: "p" } },
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-parked",
+        messageId: "m1",
+        messages: [createUserMessage("Hello")],
+        abortSignal: undefined,
+      });
+      await drainChunks(stream);
+
+      expect(events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "run-pending-version",
+            chatId: "chat-parked",
+            source: "send",
+          }),
+        ])
+      );
+    });
+
+    it("stays quiet on an ordinary append response", async () => {
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+        if (isSessionOutSubscribeUrl(urlStr)) return defaultSseResponse();
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const events: ChatTransportEvent[] = [];
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        onEvent: (e) => events.push(e),
+        sessions: { "chat-normal": { publicAccessToken: "p" } },
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-normal",
+        messageId: "m1",
+        messages: [createUserMessage("Hello")],
+        abortSignal: undefined,
+      });
+      await drainChunks(stream);
+
+      expect(events.some((e) => e.type === "run-pending-version")).toBe(false);
+    });
+
+    it("emits on start when startSession reports a parked run", async () => {
+      const events: ChatTransportEvent[] = [];
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "should-not-be-called",
+        onEvent: (e) => events.push(e),
+        startSession: vi.fn().mockResolvedValue({ publicAccessToken: "pat", pendingVersion: true }),
+      });
+
+      await transport.start("chat-start-parked");
+
+      expect(events).toEqual([
+        expect.objectContaining({
+          type: "run-pending-version",
+          chatId: "chat-start-parked",
+          source: "start",
+        }),
+      ]);
+    });
+
+    it("stays quiet when startSession reports nothing", async () => {
+      const events: ChatTransportEvent[] = [];
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "should-not-be-called",
+        onEvent: (e) => events.push(e),
+        startSession: vi.fn().mockResolvedValue({ publicAccessToken: "pat" }),
+      });
+
+      await transport.start("chat-start-normal");
+
+      expect(events.some((e) => e.type === "run-pending-version")).toBe(false);
+    });
+  });
+
   describe("sendMessages", () => {
     it("posts the user message to .in/append and streams chunks from .out", async () => {
       const requests: Array<{ url: string; init?: RequestInit }> = [];
@@ -848,6 +961,45 @@ describe("TriggerChatTransport", () => {
       expect(surfaced).toHaveLength(sampleChunks.length);
       expect(surfaced.find((c: any) => c.type === "trigger:upgrade-required")).toBeUndefined();
       expect(surfaced.find((c: any) => c.type === "trigger:turn-complete")).toBeUndefined();
+    });
+
+    it("emits run-pending-version from an upgrade handing over to an unlanded deployment", async () => {
+      const chunks: (UIMessageChunk | Record<string, unknown>)[] = [
+        ...sampleChunks.slice(0, 2),
+        { type: "trigger:pending-version" },
+        { type: "trigger:upgrade-required" },
+        ...sampleChunks.slice(2),
+        { type: "trigger:turn-complete" },
+      ];
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+        if (isSessionOutSubscribeUrl(urlStr)) return defaultSseResponse(chunks);
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const events: ChatTransportEvent[] = [];
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        onEvent: (e) => events.push(e),
+        sessions: { "chat-parked-upgrade": { publicAccessToken: "p" } },
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-parked-upgrade",
+        messageId: undefined,
+        messages: [createUserMessage("hi")],
+        abortSignal: undefined,
+      });
+      const surfaced = await drainChunks(stream);
+
+      const parked = events.filter((e) => e.type === "run-pending-version");
+      expect(parked).toHaveLength(1);
+      expect(parked[0]).toMatchObject({ source: "upgrade", chatId: "chat-parked-upgrade" });
+      expect(surfaced).toHaveLength(sampleChunks.length);
+      expect(surfaced.find((c: any) => c.type === "trigger:pending-version")).toBeUndefined();
     });
 
     it("clears isStreaming on turn-complete and notifies", async () => {
@@ -1846,6 +1998,7 @@ describe("TriggerChatTransport", () => {
       chatId: string;
       accessToken: string;
       chunks: UIMessageChunk[];
+      pendingVersion?: boolean;
     }): Response {
       return new Response(handoverSseBody(args.chunks), {
         status: 200,
@@ -1853,9 +2006,47 @@ describe("TriggerChatTransport", () => {
           "content-type": "text/event-stream",
           "X-Trigger-Chat-Id": args.chatId,
           "X-Trigger-Chat-Access-Token": args.accessToken,
+          ...(args.pendingVersion ? { "X-Trigger-Chat-Pending-Version": "1" } : {}),
         },
       });
     }
+
+    it("emits run-pending-version when the handover endpoint reports a parked run", async () => {
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (urlStr === "https://my-app.example/api/chat") {
+          return handoverResponse({
+            chatId: "chat-handover-parked",
+            accessToken: "handover-pat-parked",
+            chunks: sampleChunks,
+            pendingVersion: true,
+          });
+        }
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const events: ChatTransportEvent[] = [];
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        headStart: "https://my-app.example/api/chat",
+        onEvent: (event) => events.push(event),
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-handover-parked",
+        messageId: "m1",
+        messages: [createUserMessage("hello")],
+        abortSignal: undefined,
+      });
+      // Step 1 still arrives from the warm server.
+      expect(await drainChunks(stream)).toEqual(sampleChunks);
+
+      const parked = events.filter((e) => e.type === "run-pending-version");
+      expect(parked).toHaveLength(1);
+      expect(parked[0]).toMatchObject({ chatId: "chat-handover-parked", source: "head-start" });
+    });
 
     it("first-turn POSTs the wire payload to endpoint when no session exists", async () => {
       const requests: Array<{ url: string; init?: RequestInit }> = [];

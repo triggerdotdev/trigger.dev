@@ -23,7 +23,6 @@ import {
   type RealtimeDefinedInputStream,
   type RealtimeDefinedStream,
   resourceCatalog,
-  type SessionTriggerConfig,
   SemanticInternalAttributes,
   SESSION_IN_CONSUMED_ID_HEADER,
   SESSION_IN_EVENT_ID_HEADER,
@@ -39,6 +38,7 @@ import {
   TRIGGER_CONTROL_SUBTYPE,
   SESSION_CLOSED_HEADER,
   SESSION_CLOSED_REASON_HEADER,
+  tryCatch,
   type StreamWriteResult,
   type RouterCheckpoint,
   type SessionRouteTable,
@@ -114,12 +114,15 @@ type ToolCallOptions = {
 // pulled in transitively here never reach a client chunk.
 import { readFileInSkill, runBashInSkill } from "./agentSkillsRuntime.js";
 import { ensureAiSdkTelemetry } from "./aiAutoTelemetry.js";
+import { withResolvedExternalDeploymentId } from "./externalDeploymentId.js";
+import { type ChatVersionSkewPolicy, resolvePinToFollow } from "./chatVersionSkew.js";
 import {
   type SessionChannelHandleFor,
   type SessionHandle,
   type SessionPipeStreamOptions,
   sessions,
   type SessionSubscribeOptions,
+  type SessionTriggerConfigInput,
 } from "./sessions.js";
 import { createTask } from "./shared.js";
 import { markChatAgentRunForStreamsWarning } from "./streams.js";
@@ -719,6 +722,7 @@ type ReplaySessionInTailImpl = <TUIMessage extends UIMessage>(
   sessionId: string,
   options?: { lastEventId?: string }
 ) => Promise<{ message: TUIMessage; metadata: unknown; seqNum: number }[]>;
+
 let replaySessionInTailImpl: ReplaySessionInTailImpl | undefined;
 
 export function __setReplaySessionInTailImplForTests(
@@ -3348,6 +3352,10 @@ const chatResolvedToolsKey = locals.create<ToolSet>("chat.resolvedTools");
 
 /** @internal Flag set by `chat.requestUpgrade()` to exit the loop after the current turn. */
 const chatUpgradeRequestedKey = locals.create<boolean>("chat.upgradeRequested");
+/** @internal Target for the upgrade handoff, set by `chat.requestUpgrade({ externalDeploymentId })`. */
+const chatUpgradeExternalDeploymentIdKey = locals.create<string>(
+  "chat.upgradeExternalDeploymentId"
+);
 
 /**
  * @internal Flag set by `chat.endRun()` to exit the loop after the current
@@ -6025,6 +6033,18 @@ export type ChatAgentOptions<
   oomMachine?: MachinePresetName;
 
   /**
+   * What to do when the session's `externalDeploymentId` no longer names the deployment
+   * this run is on — after a redeploy re-pins the session, say.
+   *
+   * - `"follow"` (default) hands the conversation to the pinned deployment at the next
+   *   turn boundary, so no `chat.requestUpgrade()` of your own is needed.
+   * - `"hold"` stays put until you ask to move. Manual `chat.requestUpgrade()` works either way.
+   *
+   * Ignored for sessions with no pin, and for sessions using `lockToVersion`.
+   */
+  versionSkew?: ChatVersionSkewPolicy;
+
+  /**
    * Schema for validating `clientData` from the frontend.
    * Accepts Zod, ArkType, Valibot, or any supported schema library.
    * When provided, `clientData` is parsed and typed in all hooks and `run`.
@@ -6953,6 +6973,7 @@ function chatAgent<
     system: agentSystem,
     cacheControl: agentCacheControl,
     systemProviderOptions: agentSystemProviderOptions,
+    versionSkew,
     ...restOptions
   } = options;
 
@@ -7435,17 +7456,6 @@ function chatAgent<
         // dispatch recovered turns against half-persisted state.
         if (hookBeforeBoot) {
           await hookBeforeBoot();
-        }
-
-        // Advance the session.in cursor past every recovered user so
-        // the live subscription doesn't re-deliver them.
-        if (replayedInTail.length > 0) {
-          const lastRecoveredSeq = replayedInTail[replayedInTail.length - 1]!.seqNum;
-          const currentCursor = sessionStreams.lastSeqNum(payload.chatId, "in");
-          if (currentCursor === undefined || lastRecoveredSeq > currentCursor) {
-            sessionStreams.setLastSeqNum(payload.chatId, "in", lastRecoveredSeq);
-            sessionStreams.setLastDispatchedSeqNum(payload.chatId, "in", lastRecoveredSeq);
-          }
         }
 
         // Synthesize wire payloads for each recoveredTurn. The turn-loop
@@ -8673,9 +8683,12 @@ function chatAgent<
                     );
                   }
 
+                  await followSessionPin(currentWirePayload.chatId, versionSkew);
+
                   // chat.requestUpgrade() called in onTurnStart (or onValidateMessages) —
-                  // skip run() and signal the transport to re-trigger the same message
-                  // on the new version.
+                  // skip run() and hand over to a fresh run on the new version. The
+                  // successor picks the message up off session.in; the transport only
+                  // keeps reading.
                   if (locals.get(chatUpgradeRequestedKey)) {
                     await writeUpgradeRequiredChunk();
                     return "exit";
@@ -9418,8 +9431,8 @@ function chatAgent<
                   return "continue";
                 }
 
-                // chat.requestUpgrade() was called — exit the loop so the
-                // transport triggers a new run on the latest version.
+                // chat.requestUpgrade() was called — exit the loop; the handover
+                // has already triggered a new run on the latest version.
                 // chat.endRun() — same exit, no upgrade semantics.
                 if (locals.get(chatCloseRequestedKey)) {
                   await performChatClose();
@@ -9427,6 +9440,9 @@ function chatAgent<
                 }
 
                 if (locals.get(chatUpgradeRequestedKey) || locals.get(chatEndRunRequestedKey)) {
+                  if (locals.get(chatUpgradeRequestedKey)) {
+                    await persistUpgradeHandoff();
+                  }
                   return "exit";
                 }
 
@@ -9772,6 +9788,9 @@ function chatAgent<
 
             // chat.requestUpgrade() / chat.endRun() — exit after error turn too
             if (locals.get(chatUpgradeRequestedKey) || locals.get(chatEndRunRequestedKey)) {
+              if (locals.get(chatUpgradeRequestedKey)) {
+                await persistUpgradeHandoff();
+              }
               return;
             }
 
@@ -10418,15 +10437,22 @@ function isStopped(): boolean {
 // ---------------------------------------------------------------------------
 
 /**
- * Request that the current run exits so the next message starts on the latest
- * deployed version (via the standard continuation mechanism).
+ * Hand the conversation over to another deployment.
+ *
+ * The handover happens immediately and server-side: a successor run is created
+ * and picks the conversation up from `session.in`. The transport keeps reading
+ * the same session output, so no client action is needed and nothing waits for
+ * the next message.
+ *
+ * Without a target the session's pin is cleared, so the successor lands on the
+ * latest deployed version; with `externalDeploymentId` the session is re-pinned
+ * to that deployment.
  *
  * When called from `onTurnStart` or `onValidateMessages`, `run()` is skipped
- * entirely — the run exits immediately and the transport re-triggers the
- * same message on the new version.
+ * entirely and the successor answers the message that opened the turn.
  *
  * When called from `run()` or `chat.defer()`, the current turn completes
- * normally and the run exits afterward instead of waiting for the next message.
+ * normally and the handover happens afterward.
  *
  * Call from `onTurnStart`, `onValidateMessages`, `onChatResume`, `run()`,
  * or inside `chat.defer()`.
@@ -10446,8 +10472,47 @@ function isStopped(): boolean {
  * });
  * ```
  */
-function requestUpgrade(): void {
+function requestUpgrade(options?: { externalDeploymentId?: string }): void {
   locals.set(chatUpgradeRequestedKey, true);
+
+  // Without a target the handoff clears the session's pin; with one it re-pins to that deployment.
+  const target = options?.externalDeploymentId?.trim();
+  if (target) locals.set(chatUpgradeExternalDeploymentIdKey, target);
+}
+
+/** @internal Requests a handoff when the session's pin no longer names this deployment. */
+async function followSessionPin(
+  chatId: string | undefined,
+  policy: ChatVersionSkewPolicy | undefined
+): Promise<void> {
+  if (!chatId) {
+    return;
+  }
+
+  const deployedExternalId = locals.get(chatAgentRunContextKey)?.deployment?.externalId;
+
+  if (policy !== "hold" && !deployedExternalId) {
+    logger.debug("chat.versionSkew: cannot follow the session pin", {
+      chatId,
+      reason: "the run context carries no deployment.externalId",
+    });
+  }
+
+  const target = await resolvePinToFollow({
+    policy,
+    deployedExternalId,
+    upgradeAlreadyRequested: locals.get(chatUpgradeRequestedKey) === true,
+    readPin: async () =>
+      (await sessions.retrieve(chatId, { retry: { maxAttempts: 2, randomize: true } }))
+        .triggerConfig,
+  });
+
+  if (!target) {
+    return;
+  }
+
+  logger.info("chat.versionSkew: following the session pin", { chatId, target });
+  requestUpgrade({ externalDeploymentId: target });
 }
 
 /**
@@ -10492,11 +10557,14 @@ async function endAndContinue(): Promise<void> {
     );
   }
 
-  await performEndAndContinue();
+  await performEndAndContinue({ reason: "continuation" });
 }
 
 /** @internal Shared server handoff used by managed and custom agent loops. */
-async function performEndAndContinue(): Promise<void> {
+async function performEndAndContinue(options: {
+  reason: "continuation" | "upgrade";
+  externalDeploymentId?: string;
+}): Promise<void> {
   const chatId = locals.get(chatExternalIdKey);
   const callingRunId = locals.get(chatAgentRunContextKey)?.run.id;
 
@@ -10504,11 +10572,27 @@ async function performEndAndContinue(): Promise<void> {
     throw new Error("Cannot end and continue without an active chat agent run");
   }
 
+  const externalDeploymentId = options.externalDeploymentId;
   const apiClient = apiClientManager.clientOrThrow();
-  await apiClient.endAndContinueSession(chatId, {
+  const result = await apiClient.endAndContinueSession(chatId, {
     callingRunId,
-    reason: "upgrade",
+    reason: options.reason,
+    ...(externalDeploymentId ? { externalDeploymentId } : {}),
   });
+
+  if (result?.pendingVersion !== true) {
+    return;
+  }
+
+  // The successor parked. Say so on `.out` while this run still can — the transport's
+  // subscription survives the swap, so the client learns without waiting for its next send.
+  const [error] = await tryCatch(
+    getChatSession().out.writeControl(TRIGGER_CONTROL_SUBTYPE.PENDING_VERSION)
+  );
+
+  if (error) {
+    logger.warn("could not signal a parked handoff", { chatId, error });
+  }
 }
 
 /**
@@ -11437,6 +11521,11 @@ export type ChatSessionOptions = {
   timeout?: string;
   /** Max turns before ending. @default 100 */
   maxTurns?: number;
+  /**
+   * What to do when the session's `externalDeploymentId` no longer names this deployment.
+   * `"follow"` (default) hands over at the next turn boundary; `"hold"` stays put.
+   */
+  versionSkew?: ChatVersionSkewPolicy;
   /** Automatic context compaction — same options as `chat.agent({ compaction })`. */
   compaction?: ChatAgentCompactionOptions;
   /** Configure mid-execution message injection — same options as `chat.agent({ pendingMessages })`. */
@@ -11653,6 +11742,7 @@ function createChatSession<TClientData = unknown>(
     maxTurns = 100,
     compaction: sessionCompaction,
     pendingMessages: sessionPendingMessages,
+    versionSkew: sessionVersionSkew,
   } = options;
 
   const idleTimeoutInSeconds = sessionIdleTimeoutOpt ?? 30;
@@ -11762,6 +11852,9 @@ function createChatSession<TClientData = unknown>(
 
             // chat.requestUpgrade() / chat.endRun() — exit before waiting
             if (locals.get(chatUpgradeRequestedKey) || locals.get(chatEndRunRequestedKey)) {
+              if (locals.get(chatUpgradeRequestedKey)) {
+                await persistUpgradeHandoff();
+              }
               stop.cleanup();
               return { done: true, value: undefined };
             }
@@ -11879,6 +11972,8 @@ function createChatSession<TClientData = unknown>(
             }
             accumulator.applyHandover(pendingHandoverSignal);
           }
+
+          await followSessionPin(currentPayload.chatId, sessionVersionSkew);
 
           // chat.requestUpgrade() called before this turn — signal transport and exit
           if (locals.get(chatUpgradeRequestedKey)) {
@@ -12428,7 +12523,7 @@ export type CreateChatStartSessionActionOptions = {
    * Default trigger config used when starting a new session for a chat.
    * Per-call `params.triggerConfig` shallow-merges on top.
    */
-  triggerConfig?: Partial<SessionTriggerConfig>;
+  triggerConfig?: Partial<SessionTriggerConfigInput>;
   /**
    * Override the Trigger.dev API base URL. String applies to both
    * `/api/v1/sessions` and `/api/v1/auth/jwt/claims`; function picks per
@@ -12472,7 +12567,7 @@ export type ChatStartSessionParams<TChat extends AnyTask = AnyTask> = {
    * `chat.agent`: anything beyond `chatId`/`messages`/`trigger`/`metadata`,
    * which the runtime injects automatically).
    */
-  triggerConfig?: Partial<SessionTriggerConfig>;
+  triggerConfig?: Partial<SessionTriggerConfigInput>;
   /**
    * Opaque session-level metadata stored on the Session row. Separate from
    * the per-turn `clientData` above. Use this when you want to attach
@@ -12495,6 +12590,11 @@ export type ChatStartSessionResult = {
   runId: string;
   /** Session friendlyId — informational. */
   sessionId: string;
+  /**
+   * The session's run is parked waiting for its deployment. Messages sent meanwhile are durable
+   * and delivered once it lands; surface this so the wait reads as a deploy in progress.
+   */
+  pendingVersion?: boolean;
 };
 
 /**
@@ -12576,7 +12676,14 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
     const idleTimeoutInSeconds =
       params.triggerConfig?.idleTimeoutInSeconds ?? options?.triggerConfig?.idleTimeoutInSeconds;
 
-    const triggerConfig: SessionTriggerConfig = {
+    // Only `undefined` means "not supplied": a per-call `null` (opt out) has to beat a pinning
+    // action default, which neither truthiness nor `??` would allow.
+    const externalDeploymentId =
+      params.triggerConfig?.externalDeploymentId !== undefined
+        ? params.triggerConfig.externalDeploymentId
+        : options?.triggerConfig?.externalDeploymentId;
+
+    const triggerConfig: SessionTriggerConfigInput = {
       basePayload: {
         messages: [],
         trigger: "preload",
@@ -12603,6 +12710,7 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
               params.triggerConfig?.lockToVersion ?? options?.triggerConfig?.lockToVersion,
           }
         : {}),
+      ...(externalDeploymentId !== undefined ? { externalDeploymentId } : {}),
       ...(idleTimeoutInSeconds !== undefined ? { idleTimeoutInSeconds } : {}),
     };
 
@@ -12618,7 +12726,12 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
     const fetchOverride = options?.fetch;
     const hasOverride = baseURLOption !== undefined || fetchOverride !== undefined;
 
-    const created: { id: string; runId: string; publicAccessToken: string } = hasOverride
+    const created: {
+      id: string;
+      runId: string;
+      publicAccessToken: string;
+      pendingVersion?: boolean;
+    } = hasOverride
       ? await callSessionsCreateWithOverride({
           chatId: params.chatId,
           body: startBody,
@@ -12653,6 +12766,7 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
       publicAccessToken,
       runId: created.runId,
       sessionId: created.id,
+      ...(created.pendingVersion ? { pendingVersion: true } : {}),
     };
   };
 }
@@ -12689,12 +12803,17 @@ async function callSessionsCreateWithOverride(args: {
     type: "chat.agent";
     externalId: string;
     taskIdentifier: string;
-    triggerConfig: SessionTriggerConfig;
+    triggerConfig: SessionTriggerConfigInput;
     metadata?: Record<string, unknown>;
   };
   baseURLOption: string | ChatStartSessionBaseURLResolver | undefined;
   fetchOverride: ChatStartSessionFetchOverride | undefined;
-}): Promise<{ id: string; runId: string; publicAccessToken: string }> {
+}): Promise<{
+  id: string;
+  runId: string;
+  publicAccessToken: string;
+  pendingVersion?: boolean;
+}> {
   const accessToken = apiClientManager.accessToken;
   if (!accessToken) {
     throw new Error(
@@ -12706,7 +12825,8 @@ async function callSessionsCreateWithOverride(args: {
   const init: RequestInit = {
     method: "POST",
     headers: overrideRequestHeaders(accessToken),
-    body: JSON.stringify(args.body),
+    // This path bypasses `sessions.start`, so it resolves the pin itself.
+    body: JSON.stringify(withResolvedExternalDeploymentId(args.body)),
   };
   const response = args.fetchOverride
     ? await args.fetchOverride(url, init, ctx)
@@ -12715,7 +12835,12 @@ async function callSessionsCreateWithOverride(args: {
     const text = await response.text().catch(() => "");
     throw new Error(`sessions.start failed: ${response.status} ${text}`);
   }
-  const json = (await response.json()) as { id: string; runId: string; publicAccessToken: string };
+  const json = (await response.json()) as {
+    id: string;
+    runId: string;
+    publicAccessToken: string;
+    pendingVersion?: boolean;
+  };
   return json;
 }
 
@@ -13047,13 +13172,50 @@ async function writeTurnCompleteChunk(
  *
  * @internal
  */
+/**
+ * Persists an upgrade requested after the turn has already run.
+ *
+ * The pre-turn sites reach {@link performEndAndContinue} through
+ * {@link writeUpgradeRequiredChunk}, which is what clears (or re-points) the
+ * session's stored `externalDeploymentId`. The post-turn exits had no such path,
+ * so a `chat.requestUpgrade()` from `run()` or `chat.defer()` left the pin intact
+ * and every continuation re-pinned to the deployment the agent asked to leave.
+ *
+ * No `upgrade-required` chunk is written here: the turn already produced its
+ * answer, so there is nothing for a client to be told about.
+ */
+async function persistUpgradeHandoff(): Promise<void> {
+  const chatId = locals.get(chatExternalIdKey);
+  const callingRunId = locals.get(chatAgentRunContextKey)?.run.id;
+
+  if (!chatId || !callingRunId) {
+    return;
+  }
+
+  try {
+    await performEndAndContinue({
+      reason: "upgrade",
+      externalDeploymentId: locals.get(chatUpgradeExternalDeploymentIdKey),
+    });
+  } catch (error) {
+    logger.warn("upgrade handoff failed; session keeps its current version pin", {
+      chatId,
+      callingRunId,
+      error,
+    });
+  }
+}
+
 async function writeUpgradeRequiredChunk(): Promise<StreamWriteResult> {
   const chatId = locals.get(chatExternalIdKey);
   const callingRunId = locals.get(chatAgentRunContextKey)?.run.id;
 
   if (chatId && callingRunId) {
     try {
-      await performEndAndContinue();
+      await performEndAndContinue({
+        reason: "upgrade",
+        externalDeploymentId: locals.get(chatUpgradeExternalDeploymentIdKey),
+      });
     } catch (error) {
       // Non-fatal: the next `.in/append` re-triggers via the probe.
       // Swallow rather than throw so we still emit the chunk + exit.

@@ -71,6 +71,7 @@ export const TRIGGER_CONTROL_SUBTYPE = {
   TURN_COMPLETE: "turn-complete",
   UPGRADE_REQUIRED: "upgrade-required",
   SESSION_CLOSED: "session-closed",
+  PENDING_VERSION: "pending-version",
 } as const;
 
 export type TriggerControlSubtype =

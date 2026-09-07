@@ -348,7 +348,7 @@ describe("realtime-svc — replica-lag guards", () => {
       });
 
       // Observable: the writer re-probe recovered the live run → reuse it, do NOT trigger a second run.
-      expect(result).toEqual({ runId, triggered: false });
+      expect(result).toEqual({ runId, triggered: false, pendingVersion: false });
       expect(triggerState.calls).toHaveLength(0);
       // The replica WAS consulted first (and, frozen, missed) — proving the recovery is the writer
       // re-probe, not a lucky replica hit.
@@ -423,7 +423,7 @@ describe("realtime-svc — replica-lag guards", () => {
       });
 
       // Observable 1: the swap COMPLETED — the replica miss did not fail it.
-      expect(result).toEqual({ runId: newRunId, swapped: true });
+      expect(result).toEqual({ runId: newRunId, swapped: true, pendingVersion: false });
 
       // Observable 2: resolveRunFriendlyId missed on the replica and degraded to the cuid, so the
       // previousRunId forwarded to the triggered run is the calling run's cuid (documented fallback).

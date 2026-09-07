@@ -1,6 +1,6 @@
 import type { UIMessage, UIMessageChunk } from "ai";
 import { resourceCatalog, sessionStreams } from "@trigger.dev/core/v3";
-import type { LocalsKey } from "@trigger.dev/core/v3";
+import type { LocalsKey, SessionChannelIO } from "@trigger.dev/core/v3";
 import { runInMockTaskContext, type MockTaskContextOptions } from "@trigger.dev/core/v3/test";
 import {
   __setSessionCloseImplForTests,
@@ -295,6 +295,18 @@ export type MockChatAgentHarness = {
   failNextCloseCalls(count: number): void;
 
   /**
+   * Deliver a user message on the live `session.in` tail at an explicit
+   * seq_num, without waiting for a turn.
+   *
+   * `seedSessionInTail` only feeds the boot replay, so the two ways a record
+   * reaches a run — the boot's own read and the tail re-reading the same
+   * sequence — never coexist. Pairing them is what reproduces a record being
+   * answered twice, so a seq_num already handed to `seedSessionInTail`
+   * (`i + 1`) is the interesting argument.
+   */
+  deliverSessionInAtSeq(message: UIMessage, seqNum: number): Promise<void>;
+
+  /**
    * The most recently written snapshot, or `undefined` if no snapshot
    * has been written yet. Updated each time `writeChatSnapshot` is
    * invoked from the run loop's snapshot-write site (plan section B.6).
@@ -399,7 +411,12 @@ export function mockChatAgent(
 
   // Promise that resolves when the background task run() function returns.
   let taskFinished!: Promise<void>;
-  let sendSessionInput!: (sessionId: string, data: unknown) => Promise<void>;
+  let sendSessionInput!: (
+    sessionId: string,
+    data: unknown,
+    io?: SessionChannelIO,
+    metadata?: { id?: string; seqNum?: number }
+  ) => Promise<void>;
   let closeSessionInput: ((sessionId: string) => void) | undefined;
   let runSignal!: AbortController;
 
@@ -792,6 +809,16 @@ export function mockChatAgent(
 
     seedSessionInTail(messages) {
       seededSessionInMessages = messages;
+    },
+
+    async deliverSessionInAtSeq(message, seqNum) {
+      await harnessReady;
+      await sendSessionInput(
+        sessionId,
+        { kind: "message", payload: { chatId, trigger: "submit-message", message } },
+        "in",
+        { seqNum }
+      );
     },
 
     getSnapshot() {

@@ -16,7 +16,7 @@
  * ```
  */
 
-import type { SessionTriggerConfig, Task } from "@trigger.dev/core/v3";
+import type { Task } from "@trigger.dev/core/v3";
 import type { ModelMessage, UIMessage, UIMessageChunk } from "ai";
 // `readUIMessageStream` is a runtime value — via the ESM/CJS shim so the CJS
 // build can `require` ESM-only `ai@7` (see ../imports/ai-runtime.ts).
@@ -29,7 +29,7 @@ import {
 } from "@trigger.dev/core/v3";
 import type { ChatInputChunk, ChatTaskWirePayload } from "./ai-shared.js";
 import { chatRunTags, slimSubmitMessageForWire } from "./ai-shared.js";
-import { sessions } from "./sessions.js";
+import { sessions, type SessionTriggerConfigInput } from "./sessions.js";
 
 // ─── Type inference ────────────────────────────────────────────────
 
@@ -105,7 +105,7 @@ export type AgentChatOptions<TAgent = unknown> = {
    * Default trigger config used when starting a new session for this
    * chat. Folded into `sessions.start({...triggerConfig})` body.
    */
-  triggerConfig?: SessionTriggerConfig;
+  triggerConfig?: SessionTriggerConfigInput;
   /**
    * Override the Trigger.dev API base URL for the chat's `.in/append` and
    * `.out` SSE endpoints. String form applies to both; pass a function to
@@ -277,6 +277,16 @@ type SessionState = {
   skipToTurnComplete?: boolean;
   /** True after the session has been started (sessions.start). */
   started: boolean;
+  /**
+   * True once THIS instance has written the session's `triggerConfig`.
+   *
+   * Separate from {@link started} because a restored session is already
+   * started, by an earlier request, under whatever config that release
+   * resolved. Only `sessions.start` refreshes the stored config, so without a
+   * flag of its own a persisted conversation keeps the deployment pin it was
+   * created with for the rest of its life.
+   */
+  pinRefreshed: boolean;
 };
 
 // ─── AgentChat ─────────────────────────────────────────────────────
@@ -306,7 +316,7 @@ export class AgentChat<TAgent = unknown> {
   private readonly chatId: string;
   private readonly streamTimeoutSeconds: number;
   private readonly clientData: Record<string, unknown> | undefined;
-  private readonly triggerConfigDefault: SessionTriggerConfig | undefined;
+  private readonly triggerConfigDefault: SessionTriggerConfigInput | undefined;
   private readonly onTriggered: AgentChatOptions["onTriggered"];
   private readonly onTurnComplete: AgentChatOptions["onTurnComplete"];
   private readonly baseURLResolver: AgentChatBaseURLResolver;
@@ -336,6 +346,7 @@ export class AgentChat<TAgent = unknown> {
     this.state = {
       lastEventId: options.session?.lastEventId,
       started: hydrated,
+      pinRefreshed: !hydrated,
     };
   }
 
@@ -651,12 +662,12 @@ export class AgentChat<TAgent = unknown> {
    * same session.
    */
   private async ensureStarted(options?: { idleTimeoutInSeconds?: number }): Promise<void> {
-    if (this.state.started) return;
+    if (this.state.started && this.state.pinRefreshed) return;
 
     const idleTimeoutInSeconds =
       options?.idleTimeoutInSeconds ?? this.triggerConfigDefault?.idleTimeoutInSeconds;
 
-    const triggerConfig: SessionTriggerConfig = {
+    const triggerConfig: SessionTriggerConfigInput = {
       basePayload: {
         // `trigger: "preload"` mirrors the browser-mediated
         // `chat.createStartSessionAction` shape so the agent runtime fires
@@ -675,6 +686,17 @@ export class AgentChat<TAgent = unknown> {
       ...(this.triggerConfigDefault?.maxAttempts !== undefined
         ? { maxAttempts: this.triggerConfigDefault.maxAttempts }
         : {}),
+      ...(this.triggerConfigDefault?.maxDuration !== undefined
+        ? { maxDuration: this.triggerConfigDefault.maxDuration }
+        : {}),
+      ...(this.triggerConfigDefault?.region ? { region: this.triggerConfigDefault.region } : {}),
+      ...(this.triggerConfigDefault?.lockToVersion
+        ? { lockToVersion: this.triggerConfigDefault.lockToVersion }
+        : {}),
+      // Not truthiness: `null` opts out and must reach the resolver in `sessions.start`.
+      ...(this.triggerConfigDefault?.externalDeploymentId !== undefined
+        ? { externalDeploymentId: this.triggerConfigDefault.externalDeploymentId }
+        : {}),
       ...(idleTimeoutInSeconds !== undefined ? { idleTimeoutInSeconds } : {}),
     };
 
@@ -685,11 +707,20 @@ export class AgentChat<TAgent = unknown> {
       triggerConfig,
     });
 
+    const wasInitialStart = !this.state.started;
     this.state.started = true;
-    await this.onTriggered?.({
-      runId: created.runId,
-      chatId: this.chatId,
-    });
+    this.state.pinRefreshed = true;
+
+    // `onTriggered` is documented as the initial start, so a restored session
+    // refreshing its config does not fire it: the caller handed us that
+    // session, and a hook that writes a row would write it again on every
+    // request that rehydrates the conversation.
+    if (wasInitialStart) {
+      await this.onTriggered?.({
+        runId: created.runId,
+        chatId: this.chatId,
+      });
+    }
   }
 
   private subscribeToSessionStream(
@@ -821,6 +852,10 @@ export class AgentChat<TAgent = unknown> {
                 // `end-and-continue`; v2's chunks arrive on the same
                 // S2 stream. Filter the marker for cleanliness and
                 // keep reading.
+                continue;
+              }
+
+              if (controlValue === TRIGGER_CONTROL_SUBTYPE.PENDING_VERSION) {
                 continue;
               }
 
