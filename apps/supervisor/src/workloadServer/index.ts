@@ -197,7 +197,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
    * Verify the deployment token from the workload deployment-id header and return the verified
    * environment_id to forward upstream. The env id is only forwarded in enforce mode: in log mode
    * we still verify + record metrics but attach no header (so the platform never scopes). Only
-   * enforce fails a request, and only for a present-but-invalid token; absent and legacy ids pass.
+   * enforce fails a request, and only for an absent or invalid token; legacy bare ids pass.
    *
    * `claims` are returned on any valid token, for local use only - never to scope the platform,
    * which is why environmentId stays gated on enforce.
@@ -213,7 +213,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
 
     const result = await verifyDeploymentIdHeader(this.deploymentIdFromRequest(req), "http");
 
-    if (result.outcome === "jwt_invalid" && workloadTokenEnforced) {
+    if (workloadTokenEnforced && (result.outcome === "jwt_invalid" || result.outcome === "token_absent")) {
       return { ok: false };
     }
 
@@ -735,6 +735,11 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
             "GET",
             async () => {
               const { req, reply, params } = ctx;
+              const auth = await this.authorizeWorkloadRequest(req);
+              if (!auth.ok) {
+                reply.empty(401);
+                return;
+              }
               const dequeueResponse = await this.workerClient.dequeueFromVersion(
                 params.deploymentId,
                 1,
