@@ -94,6 +94,7 @@ export class PauseQueueService extends BaseService {
           friendlyId: updatedQueue.friendlyId,
           name: updatedQueue.name,
           type: updatedQueue.type,
+          version: updatedQueue.concurrencyVersion,
           running: results[1]?.[updatedQueue.name] ?? 0,
           queued: results[0]?.[updatedQueue.name] ?? 0,
           concurrencyLimit: updatedQueue.concurrencyLimit ?? null,
@@ -101,9 +102,6 @@ export class PauseQueueService extends BaseService {
           concurrencyLimitOverriddenAt: updatedQueue.concurrencyLimitOverriddenAt ?? null,
           concurrencyLimitOverriddenBy: queue.concurrencyLimitOverriddenBy ?? null,
           paused: updatedQueue.paused,
-          totalConcurrencyLimit: updatedQueue.totalConcurrencyLimit ?? null,
-          totalConcurrencyLimitBase: updatedQueue.totalConcurrencyLimitBase ?? null,
-          totalConcurrencyLimitOverriddenAt: updatedQueue.totalConcurrencyLimitOverriddenAt ?? null,
         }),
       };
     } catch (error) {

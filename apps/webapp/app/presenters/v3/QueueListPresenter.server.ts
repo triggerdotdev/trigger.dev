@@ -7,7 +7,8 @@ import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstan
 import { logger } from "~/services/logger.server";
 import { engine } from "~/v3/runEngine.server";
 import { BasePresenter } from "./basePresenter.server";
-import { toQueueItem } from "./QueueRetrievePresenter.server";
+import { toQueueItem, toQueueLimits } from "./QueueRetrievePresenter.server";
+import type { QueueLimits } from "~/components/queues/queue-limits";
 
 type QueueListEngine = Pick<
   RunEngine,
@@ -59,6 +60,8 @@ type QueueListItem = ReturnType<typeof toQueueItem> & {
   kind: "queue" | "limit";
   /** V2 rows hold the new perKey/total vocabulary in their limit columns. */
   concurrencyVersion: "V1" | "V2";
+  /** The row's configured bounds, dashboard-only (the public shape hides them on V2). */
+  limits: QueueLimits;
 };
 
 type QueueListPagination =
@@ -427,39 +430,45 @@ export class QueueListPresenter extends BasePresenter {
 
     const overriddenByMap = new Map(overriddenByUsers.map((u) => [u.id, u]));
 
-    return queues.map((queue) => ({
-      ...toQueueItem({
-        friendlyId: queue.friendlyId,
-        name: queue.name,
-        type: queue.type,
-        running:
-          queue.role === "LIMIT"
-            ? (totalRunningByQueue[queue.name] ?? 0)
-            : (runningByQueue[queue.name] ?? 0),
-        queued:
-          queue.role === "LIMIT"
-            ? (gateQueuedByQueue[queue.name] ?? 0)
-            : (queuedByQueue[queue.name] ?? 0),
-        concurrencyLimit: queue.concurrencyLimit ?? null,
-        concurrencyLimitBase: queue.concurrencyLimitBase ?? null,
-        concurrencyLimitOverriddenAt: queue.concurrencyLimitOverriddenAt ?? null,
-        concurrencyLimitOverriddenBy: queue.concurrencyLimitOverriddenBy
-          ? (overriddenByMap.get(queue.concurrencyLimitOverriddenBy) ?? null)
-          : null,
-        paused: queue.paused,
-        totalConcurrencyLimit: queue.totalConcurrencyLimit,
-        totalConcurrencyLimitBase: queue.totalConcurrencyLimitBase,
-        totalConcurrencyLimitOverriddenAt: queue.totalConcurrencyLimitOverriddenAt,
-        totalRunning:
-          queue.totalConcurrencyLimit !== null ? (totalRunningByQueue[queue.name] ?? 0) : null,
-      }),
-      // Prisma returns Decimal; the client only needs a plain number (null for absolute overrides).
-      concurrencyLimitOverridePercent:
-        queue.concurrencyLimitOverridePercent !== null
-          ? Number(queue.concurrencyLimitOverridePercent)
-          : null,
-      kind: queue.role === "LIMIT" ? ("limit" as const) : ("queue" as const),
-      concurrencyVersion: queue.concurrencyVersion,
-    }));
+    return queues.map((queue) => {
+      const overriddenByUser = queue.concurrencyLimitOverriddenBy
+        ? (overriddenByMap.get(queue.concurrencyLimitOverriddenBy) ?? null)
+        : null;
+      return {
+        ...toQueueItem({
+          friendlyId: queue.friendlyId,
+          name: queue.name,
+          type: queue.type,
+          version: queue.concurrencyVersion,
+          running:
+            queue.role === "LIMIT"
+              ? (totalRunningByQueue[queue.name] ?? 0)
+              : (runningByQueue[queue.name] ?? 0),
+          queued:
+            queue.role === "LIMIT"
+              ? (gateQueuedByQueue[queue.name] ?? 0)
+              : (queuedByQueue[queue.name] ?? 0),
+          concurrencyLimit: queue.concurrencyLimit ?? null,
+          concurrencyLimitBase: queue.concurrencyLimitBase ?? null,
+          concurrencyLimitOverriddenAt: queue.concurrencyLimitOverriddenAt ?? null,
+          concurrencyLimitOverriddenBy: overriddenByUser,
+          paused: queue.paused,
+        }),
+        // Prisma returns Decimal; the client only needs a plain number (null for absolute overrides).
+        concurrencyLimitOverridePercent:
+          queue.concurrencyLimitOverridePercent !== null
+            ? Number(queue.concurrencyLimitOverridePercent)
+            : null,
+        kind: queue.role === "LIMIT" ? ("limit" as const) : ("queue" as const),
+        concurrencyVersion: queue.concurrencyVersion,
+        limits: toQueueLimits(queue, {
+          totalRunning:
+            queue.totalConcurrencyLimit !== null ? (totalRunningByQueue[queue.name] ?? 0) : null,
+          overriddenByName: overriddenByUser
+            ? (overriddenByUser.displayName ?? overriddenByUser.name ?? null)
+            : null,
+        }),
+      };
+    });
   }
 }

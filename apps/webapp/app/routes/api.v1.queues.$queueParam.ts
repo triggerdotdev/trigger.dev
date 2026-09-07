@@ -1,7 +1,10 @@
 import { json } from "@remix-run/server-runtime";
-import { type QueueItem, type RetrieveQueueParam, RetrieveQueueType } from "@trigger.dev/core/v3";
+import { type RetrieveQueueParam, RetrieveQueueType } from "@trigger.dev/core/v3";
 import { z } from "zod";
-import { QueueRetrievePresenter } from "~/presenters/v3/QueueRetrievePresenter.server";
+import {
+  QueueRetrievePresenter,
+  toPublicQueueItem,
+} from "~/presenters/v3/QueueRetrievePresenter.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { determineEngineVersion } from "~/v3/engineVersion.server";
 
@@ -52,7 +55,6 @@ export const loader = createLoaderApiRoute(
       return json({ error: result.code }, { status: 404 });
     }
 
-    const q: QueueItem = result.queue;
-    return json(q);
+    return json(toPublicQueueItem(result.queue));
   }
 );

@@ -1,9 +1,9 @@
 import { AdjustmentsHorizontalIcon, PauseIcon, PlayIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, useNavigation } from "@remix-run/react";
-import type { QueueItem } from "@trigger.dev/core/v3/schemas";
 import { useEffect, useState } from "react";
 import { cn } from "~/utils/cn";
+import type { QueueLimits } from "~/components/queues/queue-limits";
 import { Button, type ButtonVariant } from "~/components/primitives/Buttons";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
@@ -159,7 +159,12 @@ export function QueueOverrideConcurrencyButton({
   environmentConcurrencyLimit,
   trigger,
 }: {
-  queue: QueueItem & { concurrencyLimitOverridePercent: number | null };
+  queue: {
+    id: string;
+    name: string;
+    limits: QueueLimits;
+    concurrencyLimitOverridePercent: number | null;
+  };
   environmentConcurrencyLimit: number;
   /** How to render the dialog trigger. "menu-item" (default) is a PopoverMenuItem for row menus;
    * "button" is a standalone labeled button; "icon" is an icon-only button with the label in a
@@ -172,14 +177,14 @@ export function QueueOverrideConcurrencyButton({
     queue.concurrencyLimitOverridePercent !== null ? "percent" : "absolute"
   );
   const [concurrencyLimit, setConcurrencyLimit] = useState<string>(
-    queue.concurrencyLimit?.toString() ?? environmentConcurrencyLimit.toString()
+    queue.limits.perKey.current?.toString() ?? environmentConcurrencyLimit.toString()
   );
   const [percent, setPercent] = useState<string>(
     queue.concurrencyLimitOverridePercent?.toString() ?? "100"
   );
 
-  const isOverridden = !!queue.concurrency?.overriddenAt;
-  const currentLimit = queue.concurrencyLimit ?? environmentConcurrencyLimit;
+  const isOverridden = !!queue.limits.perKey.overriddenAt;
+  const currentLimit = queue.limits.perKey.current ?? environmentConcurrencyLimit;
 
   useEffect(() => {
     if (navigation.state === "loading" || navigation.state === "idle") {
@@ -277,10 +282,10 @@ export function QueueOverrideConcurrencyButton({
           {isOverridden ? (
             <Paragraph variant="small">
               This queue's concurrency limit is currently overridden to {currentLimit}.
-              {typeof queue.concurrency?.base === "number" &&
-                ` The original limit set in code was ${queue.concurrency.base}.`}{" "}
+              {typeof queue.limits.perKey.base === "number" &&
+                ` The original limit set in code was ${queue.limits.perKey.base}.`}{" "}
               You can update the override or remove it to restore the{" "}
-              {typeof queue.concurrency?.base === "number"
+              {typeof queue.limits.perKey.base === "number"
                 ? "limit set in code"
                 : "environment concurrency limit"}
               .
@@ -288,7 +293,7 @@ export function QueueOverrideConcurrencyButton({
           ) : (
             <Paragraph variant="small">
               Override this queue's concurrency limit. The current limit is {currentLimit}, which is
-              set {queue.concurrencyLimit !== null ? "in code" : "by the environment"}.
+              set {queue.limits.perKey.current !== null ? "in code" : "by the environment"}.
             </Paragraph>
           )}
           <Form method="post" onSubmit={() => setIsOpen(false)} className="space-y-3">
