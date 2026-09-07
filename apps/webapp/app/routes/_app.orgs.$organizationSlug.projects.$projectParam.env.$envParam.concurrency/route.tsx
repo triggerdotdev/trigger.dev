@@ -772,14 +772,14 @@ function QueuesWithMetricsView() {
             <TableBody>
               {queueRows.length > 0 ? (
                 queueRows.map((queue) => {
-                  const limit = queue.concurrencyLimit ?? environment.concurrencyLimit;
+                  const limit = queue.limits.perKey.current ?? environment.concurrencyLimit;
                   const isLimit = queue.kind === "limit";
                   /** A limit row's `running` counts holders across every key, so only its
                    * total bound compares against it; a perKey-only limit has no aggregate
                    * threshold and never reads as at-limit here. */
                   const atLimitThreshold = isLimit
-                    ? queue.concurrency?.combined?.current != null
-                      ? Math.min(queue.concurrency.combined.current, environment.concurrencyLimit)
+                    ? queue.limits.total?.current != null
+                      ? Math.min(queue.limits.total.current, environment.concurrencyLimit)
                       : null
                     : limit;
                   /** A zero threshold is a pause (nothing may run), not saturation —
@@ -898,12 +898,9 @@ function QueuesWithMetricsView() {
                         className={cn(
                           "w-[1%]",
                           queue.paused ? "opacity-50" : undefined,
-                          queue.concurrency?.combined?.current != null &&
-                            (queue.concurrency.combined.running ?? 0) >=
-                              Math.min(
-                                queue.concurrency.combined.current,
-                                environment.concurrencyLimit
-                              )
+                          queue.limits.total?.current != null &&
+                            (queue.limits.total.running ?? 0) >=
+                              Math.min(queue.limits.total.current, environment.concurrencyLimit)
                             ? "text-warning"
                             : queue.running > 0 && "text-text-bright"
                         )}
@@ -917,14 +914,16 @@ function QueuesWithMetricsView() {
                         className={cn(
                           "w-[1%]",
                           queue.paused ? "opacity-50" : undefined,
-                          queue.concurrency?.overriddenAt && "font-medium text-text-bright"
+                          queue.limits.perKey.overriddenAt && "font-medium text-text-bright"
                         )}
                         // The combined-limit hint is a tooltip button, so it renders beside the
                         // link (trailing) rather than nested inside the <a>; the number stays the
                         // link.
                         trailingContent={
-                          queue.concurrency?.combined?.current != null &&
-                          !(queue.concurrencyVersion === "V2" && queue.concurrencyLimit == null) ? (
+                          queue.limits.total?.current != null &&
+                          !(
+                            queue.concurrencyVersion === "V2" && queue.limits.perKey.current == null
+                          ) ? (
                             <SimpleTooltip
                               disableHoverableContent
                               buttonClassName="-ml-1 cursor-default"
@@ -932,7 +931,7 @@ function QueuesWithMetricsView() {
                                 <span className="text-text-dimmed bg-repeat-x pb-[3px] [background-image:linear-gradient(to_right,currentColor_2px,transparent_2px)] [background-position:bottom] [background-size:4px_1px] group-hover/table-row:text-text-bright">
                                   (
                                   {Math.min(
-                                    queue.concurrency.combined.current,
+                                    queue.limits.total.current,
                                     environment.concurrencyLimit
                                   )}
                                   )
@@ -942,7 +941,7 @@ function QueuesWithMetricsView() {
                                 <>
                                   Total limit: at most{" "}
                                   {Math.min(
-                                    queue.concurrency.combined.current,
+                                    queue.limits.total.current,
                                     environment.concurrencyLimit
                                   )}{" "}
                                   runs across all concurrency keys of this queue. The main limit
@@ -955,18 +954,16 @@ function QueuesWithMetricsView() {
                         }
                       >
                         {queue.concurrencyVersion === "V2" &&
-                        queue.concurrencyLimit == null &&
-                        queue.concurrency?.combined?.current != null ? (
+                        queue.limits.perKey.current == null &&
+                        queue.limits.total?.current != null ? (
                           <>
-                            {Math.min(
-                              queue.concurrency.combined.current,
-                              environment.concurrencyLimit
-                            )}
+                            {Math.min(queue.limits.total.current, environment.concurrencyLimit)}
                             <span className="ml-1 text-text-dimmed group-hover/table-row:text-text-bright">
                               total
                             </span>
                           </>
-                        ) : queue.concurrencyVersion === "V2" && queue.concurrencyLimit != null ? (
+                        ) : queue.concurrencyVersion === "V2" &&
+                          queue.limits.perKey.current != null ? (
                           <>
                             {limit}
                             <span className="ml-1 text-text-dimmed group-hover/table-row:text-text-bright">
@@ -994,7 +991,7 @@ function QueuesWithMetricsView() {
                         // button, so it renders beside the link (trailing) rather than nested
                         // inside the <a>, and the label itself stays the link.
                         trailingContent={
-                          queue.concurrency?.overriddenAt ? (
+                          queue.limits.perKey.overriddenAt ? (
                             <InfoIconTooltip
                               content={
                                 queue.concurrencyLimitOverridePercent !== null
@@ -1012,9 +1009,9 @@ function QueuesWithMetricsView() {
                           ) : undefined
                         }
                       >
-                        {queue.concurrency?.overriddenAt
+                        {queue.limits.perKey.overriddenAt
                           ? "Override"
-                          : queue.concurrencyLimit
+                          : queue.limits.perKey.current
                             ? "User"
                             : "Environment"}
                       </TableCell>
@@ -1964,14 +1961,14 @@ function ClassicQueuesView() {
               <TableBody>
                 {queues.length > 0 ? (
                   queues.map((queue) => {
-                    const limit = queue.concurrencyLimit ?? environment.concurrencyLimit;
+                    const limit = queue.limits.perKey.current ?? environment.concurrencyLimit;
                     const isLimit = queue.kind === "limit";
                     /** A limit row's `running` counts holders across every key, so only its
                      * total bound compares against it; a perKey-only limit has no aggregate
                      * threshold and never reads as at-limit here. */
                     const atLimitThreshold = isLimit
-                      ? queue.concurrency?.combined?.current != null
-                        ? Math.min(queue.concurrency.combined.current, environment.concurrencyLimit)
+                      ? queue.limits.total?.current != null
+                        ? Math.min(queue.limits.total.current, environment.concurrencyLimit)
                         : null
                       : limit;
                     /** A zero threshold is a pause (nothing may run), not saturation —
@@ -1992,7 +1989,7 @@ function ClassicQueuesView() {
                           <span className="flex items-center gap-2">
                             <QueueName {...queue} />
                             {isLimit ? <Badge variant="extra-small">Limit</Badge> : null}
-                            {queue.concurrency?.overriddenAt ? (
+                            {queue.limits.perKey.overriddenAt ? (
                               <SimpleTooltip
                                 button={
                                   <Badge variant="extra-small" className="text-text-bright">
@@ -2036,12 +2033,9 @@ function ClassicQueuesView() {
                           className={cn(
                             "w-[1%] pl-16 tabular-nums",
                             queue.paused ? "opacity-50" : undefined,
-                            queue.concurrency?.combined?.current != null &&
-                              (queue.concurrency.combined.running ?? 0) >=
-                                Math.min(
-                                  queue.concurrency.combined.current,
-                                  environment.concurrencyLimit
-                                )
+                            queue.limits.total?.current != null &&
+                              (queue.limits.total.running ?? 0) >=
+                                Math.min(queue.limits.total.current, environment.concurrencyLimit)
                               ? "text-warning"
                               : queue.running > 0 && "text-text-bright",
                             isAtConcurrencyLimit && "text-warning"
@@ -2054,21 +2048,18 @@ function ClassicQueuesView() {
                           className={cn(
                             "w-[1%] pl-16 tabular-nums",
                             queue.paused ? "opacity-50" : undefined,
-                            queue.concurrency?.overriddenAt && "font-medium text-text-bright"
+                            queue.limits.perKey.overriddenAt && "font-medium text-text-bright"
                           )}
                         >
                           {queue.concurrencyVersion === "V2" &&
-                          queue.concurrencyLimit == null &&
-                          queue.concurrency?.combined?.current != null ? (
+                          queue.limits.perKey.current == null &&
+                          queue.limits.total?.current != null ? (
                             <>
-                              {Math.min(
-                                queue.concurrency.combined.current,
-                                environment.concurrencyLimit
-                              )}
+                              {Math.min(queue.limits.total.current, environment.concurrencyLimit)}
                               <span className="ml-1 text-text-dimmed">total</span>
                             </>
                           ) : queue.concurrencyVersion === "V2" &&
-                            queue.concurrencyLimit != null ? (
+                            queue.limits.perKey.current != null ? (
                             <>
                               {limit}
                               <span className="ml-1 text-text-dimmed">per key</span>
@@ -2076,8 +2067,10 @@ function ClassicQueuesView() {
                           ) : (
                             limit
                           )}
-                          {queue.concurrency?.combined?.current != null &&
-                          !(queue.concurrencyVersion === "V2" && queue.concurrencyLimit == null) ? (
+                          {queue.limits.total?.current != null &&
+                          !(
+                            queue.concurrencyVersion === "V2" && queue.limits.perKey.current == null
+                          ) ? (
                             <SimpleTooltip
                               disableHoverableContent
                               buttonClassName="ml-1 cursor-default"
@@ -2085,7 +2078,7 @@ function ClassicQueuesView() {
                                 <span className="text-text-dimmed bg-repeat-x pb-[3px] [background-image:linear-gradient(to_right,currentColor_2px,transparent_2px)] [background-position:bottom] [background-size:4px_1px]">
                                   (
                                   {Math.min(
-                                    queue.concurrency.combined.current,
+                                    queue.limits.total.current,
                                     environment.concurrencyLimit
                                   )}
                                   )
@@ -2095,7 +2088,7 @@ function ClassicQueuesView() {
                                 <>
                                   Total limit: at most{" "}
                                   {Math.min(
-                                    queue.concurrency.combined.current,
+                                    queue.limits.total.current,
                                     environment.concurrencyLimit
                                   )}{" "}
                                   runs across all concurrency keys of this queue. The main limit
@@ -2112,12 +2105,12 @@ function ClassicQueuesView() {
                             "w-[1%] pl-16",
                             queue.paused ? "opacity-50" : undefined,
                             isAtConcurrencyLimit && "text-warning",
-                            queue.concurrency?.overriddenAt && "font-medium text-text-bright"
+                            queue.limits.perKey.overriddenAt && "font-medium text-text-bright"
                           )}
                         >
-                          {queue.concurrency?.overriddenAt ? (
+                          {queue.limits.perKey.overriddenAt ? (
                             <span className="text-text-bright">Override</span>
-                          ) : queue.concurrencyLimit ? (
+                          ) : queue.limits.perKey.current ? (
                             "User"
                           ) : (
                             "Environment"

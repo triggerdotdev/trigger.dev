@@ -1,6 +1,7 @@
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { QueueItem } from "@trigger.dev/core/v3/schemas";
+import type { QueueLimits } from "~/components/queues/queue-limits";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { MainCenteredContainer, PageContainer } from "~/components/layout/AppLayout";
@@ -288,7 +289,7 @@ export default function Page() {
     paused: queue.paused,
     running: queue.running,
     queued: queue.queued,
-    limit: queue.concurrencyLimit ?? environmentConcurrencyLimit,
+    limit: queue.limits.perKey.current ?? environmentConcurrencyLimit,
     oldestWaitMs,
   });
 
@@ -399,7 +400,7 @@ export default function Page() {
               ids={ids}
               timeRange={timeRange}
               queueName={fullName}
-              hasTotalLimit={queue.concurrency?.combined?.current != null}
+              hasTotalLimit={queue.limits.total?.current != null}
             />
           )}
         </MetricsLayout.Content>
@@ -1141,7 +1142,7 @@ function QueueStats({
 }: {
   // Carries the percent override source-of-truth (not part of the shared QueueItem contract) so the
   // override dialog reopens in percent mode for percent-based overrides.
-  queue: QueueItem & { concurrencyLimitOverridePercent: number | null };
+  queue: QueueItem & { concurrencyLimitOverridePercent: number | null; limits: QueueLimits };
   environmentConcurrencyLimit: number;
   queuedRunsPath: string;
   oldestWaitMs: number | null;
@@ -1194,7 +1195,7 @@ function QueueStats({
   const queuedDisplay = queuedLive ?? queue.queued;
   // Limit is queue config, not a live signal: keep the loader's value. Only if the loader had none
   // do we fall back to the CH gauge for display.
-  const limitDisplay = queue.concurrencyLimit ?? (limitLive || null);
+  const limitDisplay = queue.limits.perKey.current ?? (limitLive || null);
   // Keyed queues report head-of-line wait via CH (max_ck_wait_ms); use it as the live headline when
   // present. Non-keyed queues have no CH signal, so they stay on the loader value.
   const oldestWaitDisplayMs = ckWaitLive !== null && ckWaitLive > 0 ? ckWaitLive : oldestWaitMs;

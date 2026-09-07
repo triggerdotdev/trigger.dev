@@ -1,10 +1,10 @@
 import { json } from "@remix-run/server-runtime";
-import { type QueueItem } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import {
   QUEUE_LIST_DEFAULT_ITEMS_PER_PAGE,
   QueueListPresenter,
 } from "~/presenters/v3/QueueListPresenter.server";
+import { toPublicQueueItem } from "~/presenters/v3/QueueRetrievePresenter.server";
 import { toOffsetLimitQueueListPagination } from "~/presenters/v3/queueListPagination.server";
 import { logger } from "~/services/logger.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
@@ -45,7 +45,7 @@ export const loader = createLoaderApiRoute(
         page: searchParams.page ?? 1,
       });
 
-      const queues: QueueItem[] = result.queues;
+      const queues = result.queues.map(toPublicQueueItem);
       return json(
         {
           data: queues,

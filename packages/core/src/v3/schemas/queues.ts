@@ -13,7 +13,7 @@ export type QueueType = z.infer<typeof QueueType>;
 export const RetrieveQueueType = z.enum([...queueTypes, "id"]);
 export type RetrieveQueueType = z.infer<typeof RetrieveQueueType>;
 
-export const QueueItem = z.object({
+const QueueItemCommon = {
   /** The queue id, e.g. queue_12345 */
   id: z.string(),
   /** The queue name */
@@ -30,39 +30,45 @@ export const QueueItem = z.object({
   queued: z.number(),
   /** Whether the queue is paused. If it's paused, no new runs will be started. */
   paused: z.boolean(),
-  /** The concurrency limit of the queue */
+  /**
+   * The queue's own concurrency limit. Meaningful on V1 queues only; always
+   * null on V2 queues (kept on both so existing clients keep parsing).
+   */
   concurrencyLimit: z.number().nullable(),
-  /** The concurrency limit of the queue */
-  concurrency: z
-    .object({
-      /** The effective/current concurrency limit */
-      current: z.number().nullable(),
-      /** The base concurrency limit (default) */
-      base: z.number().nullable(),
-      /** The effective/current concurrency limit */
-      override: z.number().nullable(),
-      /** When the override was applied */
-      overriddenAt: z.coerce.date().nullable(),
-      /** Who overrode the concurrency limit (will be null if overridden via the API) */
-      overriddenBy: z.string().nullable(),
-      /** The combined concurrency cap across all concurrencyKey values of the queue */
-      combined: z
-        .object({
-          /** The current combined concurrency limit as declared or overridden (null = no cap). Enforcement clamps it to the environment concurrency limit at admit time. */
-          current: z.number().nullable(),
-          /** The declared combined limit an override reverts to on reset */
-          base: z.number().nullable(),
-          /** The overridden combined limit, when an override is active */
-          override: z.number().nullable(),
-          /** When the combined override was applied */
-          overriddenAt: z.coerce.date().nullable(),
-          /** Runs currently in flight across all concurrencyKey values */
-          running: z.number().nullable(),
-        })
-        .optional(),
-    })
-    .optional(),
-});
+};
+
+/**
+ * The queue's `version` discriminates its shape. V1 queues carry their own
+ * concurrency limit (applied per key when runs pass a `concurrencyKey`, to the
+ * whole queue when they don't) and its override state. V2 queues are only the
+ * line runs wait in: concurrency is declared with the task `concurrency`
+ * option and read or overridden through `concurrencyLimits`.
+ */
+export const QueueItem = z.discriminatedUnion("version", [
+  z.object({
+    ...QueueItemCommon,
+    version: z.literal("V1"),
+    /** The queue's concurrency limit override state */
+    concurrency: z
+      .object({
+        /** The effective/current concurrency limit */
+        current: z.number().nullable(),
+        /** The base concurrency limit (default) */
+        base: z.number().nullable(),
+        /** The overridden concurrency limit, when an override is active */
+        override: z.number().nullable(),
+        /** When the override was applied */
+        overriddenAt: z.coerce.date().nullable(),
+        /** Who overrode the concurrency limit (will be null if overridden via the API) */
+        overriddenBy: z.string().nullable(),
+      })
+      .optional(),
+  }),
+  z.object({
+    ...QueueItemCommon,
+    version: z.literal("V2"),
+  }),
+]);
 
 export type QueueItem = z.infer<typeof QueueItem>;
 
