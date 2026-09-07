@@ -54,7 +54,7 @@ export function OrgBanner() {
     showSelfServe,
   });
 
-  const hideQueuesButton = location.pathname.endsWith("/queues");
+  const hideConcurrencyButton = location.pathname.endsWith("/concurrency");
   const hideBillingLimitBanner = location.pathname.endsWith("/settings/billing-limits");
 
   switch (bannerKind) {
@@ -70,7 +70,7 @@ export function OrgBanner() {
       return isArchived ? (
         <ArchivedEnvironmentBanner />
       ) : (
-        <PausedEnvironmentBanner hideButton={hideQueuesButton} />
+        <PausedEnvironmentBanner hideButton={hideConcurrencyButton} />
       );
     default:
       return null;
