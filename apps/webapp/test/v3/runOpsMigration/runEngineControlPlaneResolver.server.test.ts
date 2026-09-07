@@ -154,8 +154,53 @@ describe("RunEngineControlPlaneResolver adapter", () => {
       expect(env!.maximumConcurrencyLimit).toBe(9);
       expect(env!.concurrencyLimitBurstFactor.toNumber()).toBe(2);
       expect(env!.archivedAt).toBeNull();
+      expect(env!.projectDeletedAt).toBeNull();
+      expect(env!.organizationDeletedAt).toBeNull();
 
       expect(await adapter.resolveEnv("env_missing")).toBeNull();
+    }
+  );
+
+  heteroPostgresTest(
+    "resolveEnv carries the project and organization soft-delete tombstones the engine guards on",
+    async ({ prisma14 }) => {
+      const { organization, project, environment } = await seedEnv(prisma14, "PRODUCTION");
+      const deletedAt = new Date();
+
+      await prisma14.project.update({ where: { id: project.id }, data: { deletedAt } });
+      await prisma14.organization.update({ where: { id: organization.id }, data: { deletedAt } });
+
+      const env = await new RunEngineControlPlaneResolver(buildAppResolver(prisma14)).resolveEnv(
+        environment.id
+      );
+
+      expect(env!.projectDeletedAt).toEqual(deletedAt);
+      expect(env!.organizationDeletedAt).toEqual(deletedAt);
+    }
+  );
+
+  /**
+   * The delete is applied WITHOUT calling invalidateEnvironment, which models it happening in a
+   * different process: that is the only kind this process's cache never hears about, and the
+   * reason the guards cannot make their decision on `resolveEnv`.
+   */
+  heteroPostgresTest(
+    "resolveEnvDeletionState sees a deletion the warm per-process env cache is still hiding",
+    async ({ prisma14 }) => {
+      const { project, environment } = await seedEnv(prisma14, "PRODUCTION");
+      const appResolver = buildAppResolver(prisma14, { splitEnabled: true });
+      const adapter = new RunEngineControlPlaneResolver(appResolver);
+
+      expect((await adapter.resolveEnv(environment.id))!.projectDeletedAt).toBeNull();
+
+      const deletedAt = new Date();
+      await prisma14.project.update({ where: { id: project.id }, data: { deletedAt } });
+
+      expect((await adapter.resolveEnv(environment.id))!.projectDeletedAt).toBeNull();
+
+      const deletionState = await adapter.resolveEnvDeletionState(environment.id);
+      expect(deletionState!.projectDeletedAt).toEqual(deletedAt);
+      expect(await appResolver.resolveEnvDeletionState("env_missing")).toBeNull();
     }
   );
 

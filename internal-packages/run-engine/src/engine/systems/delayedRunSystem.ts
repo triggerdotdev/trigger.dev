@@ -4,6 +4,7 @@ import type { PrismaClientOrTransaction, TaskRun } from "@trigger.dev/database";
 import { getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
 import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/isomorphic";
 import type { EnqueueSystem } from "./enqueueSystem.js";
+import { deletedEnvironmentReason, MISSING_ENVIRONMENT_REASON } from "../controlPlaneResolver.js";
 import { ServiceValidationError } from "../errors.js";
 
 export type DelayedRunSystemOptions = {
@@ -104,6 +105,17 @@ export class DelayedRunSystem {
     );
   }
 
+  /**
+   * Moves a delayed run into the queue once its `delayUntil` has passed.
+   *
+   * A run whose project or organization was deleted while it waited is cancelled instead of
+   * enqueued: enqueuing would re-add the environment queue that deletion removed, and the run
+   * would execute (and alert) long after the customer left.
+   *
+   * The deletion state is read authoritatively rather than off the resolved env, because
+   * enqueuing on stale state is what re-arms the whole failure mode. This runs once per
+   * delayed run coming due, so the extra read is not on a hot path.
+   */
   async enqueueDelayedRun({ runId }: { runId: string }) {
     // Use lock to prevent race with debounce rescheduling
     return await this.$.runLock.lock("enqueueDelayedRun", [runId], async () => {
@@ -131,6 +143,35 @@ export class DelayedRunSystem {
 
       if (!env) {
         throw new Error(`#enqueueDelayedRun: environment not found for run: ${runId}`);
+      }
+
+      const deletionState = await this.$.controlPlaneResolver.resolveEnvDeletionState(
+        run.runtimeEnvironmentId
+      );
+      const deletedReason = deletionState
+        ? deletedEnvironmentReason(deletionState)
+        : MISSING_ENVIRONMENT_REASON;
+
+      if (deletedReason) {
+        this.$.logger.warn("enqueueDelayedRun: environment is not runnable, cancelling the run", {
+          runId,
+          projectId: env.projectId,
+          organizationId: env.organizationId,
+          reason: deletedReason,
+          deletionStateFound: deletionState !== null,
+        });
+
+        await this.$.worker.enqueue({
+          id: `cancelRun:${runId}`,
+          job: "cancelRun",
+          payload: {
+            runId,
+            completedAt: new Date(),
+            reason: deletedReason,
+          },
+        });
+
+        return;
       }
 
       // Check if delayUntil has been rescheduled to the future (e.g., by debounce)

@@ -497,6 +497,9 @@ describe("RunEngine trigger/create routing", () => {
         async resolveEnv(): Promise<any> {
           return null;
         }
+        async resolveEnvDeletionState(): Promise<any> {
+          return null;
+        }
         async resolveAuthenticatedEnv(): Promise<any> {
           return null;
         }

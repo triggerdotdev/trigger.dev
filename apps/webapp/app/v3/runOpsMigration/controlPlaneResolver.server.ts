@@ -14,6 +14,7 @@ import {
   resolvedWorkerDeploymentSelect,
   resolvedWorkerTaskSelect,
   type ResolvedAuthenticatedEnv,
+  type EnvDeletionState,
   type ResolvedEnv,
   type ResolvedWorkerVersion,
   type ResolvedRunLockedWorker,
@@ -140,7 +141,13 @@ export class ControlPlaneResolver {
         archivedAt: true,
         maximumConcurrencyLimit: true,
         concurrencyLimitBurstFactor: true,
-        project: { select: { organizationId: true } },
+        project: {
+          select: {
+            organizationId: true,
+            deletedAt: true,
+            organization: { select: { deletedAt: true } },
+          },
+        },
         parentEnvironment: { select: { type: true } },
       },
     });
@@ -158,6 +165,36 @@ export class ControlPlaneResolver {
       parentEnvironmentType: env.parentEnvironment?.type ?? null,
       maximumConcurrencyLimit: env.maximumConcurrencyLimit,
       concurrencyLimitBurstFactor: env.concurrencyLimitBurstFactor,
+      projectDeletedAt: env.project.deletedAt,
+      organizationDeletedAt: env.project.organization.deletedAt,
+    };
+  }
+
+  /**
+   * The soft-delete tombstones, always read from the control-plane primary and never cached.
+   *
+   * `resolveEnv` is cache-fronted per process when split is on, and `invalidateEnvironment` /
+   * `invalidateOrganization` only clear the process that handled the delete, so every other
+   * process can serve pre-deletion state until its entry expires. A caller whose decision must
+   * not be made on that stale value uses this instead.
+   */
+  async resolveEnvDeletionState(environmentId: string): Promise<EnvDeletionState | null> {
+    const env = await this.controlPlanePrimary.runtimeEnvironment.findFirst({
+      where: { id: environmentId },
+      select: {
+        project: {
+          select: { deletedAt: true, organization: { select: { deletedAt: true } } },
+        },
+      },
+    });
+
+    if (!env) {
+      return null;
+    }
+
+    return {
+      projectDeletedAt: env.project.deletedAt,
+      organizationDeletedAt: env.project.organization.deletedAt,
     };
   }
 

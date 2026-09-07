@@ -1634,6 +1634,9 @@ describe("RunEngine ttl", () => {
       });
       const resolver: ControlPlaneResolver = {
         resolveAuthenticatedEnv: passthrough.resolveAuthenticatedEnv.bind(passthrough),
+        async resolveEnvDeletionState() {
+          return null;
+        },
         resolveWorkerVersion: passthrough.resolveWorkerVersion.bind(passthrough),
         assertEnvExists: passthrough.assertEnvExists.bind(passthrough),
         async resolveEnv() {

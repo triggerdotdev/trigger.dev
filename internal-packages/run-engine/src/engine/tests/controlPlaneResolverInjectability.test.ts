@@ -153,6 +153,8 @@ describe("RunEngine controlPlaneResolver injectability", () => {
         concurrencyLimitBurstFactor: new Prisma.Decimal(3),
         projectId: "proj_sentinel",
         organizationId: "org_sentinel",
+        projectDeletedAt: null,
+        organizationDeletedAt: null,
         project: { id: "proj_sentinel" },
         organization: { id: "org_sentinel" },
       };
@@ -160,6 +162,12 @@ describe("RunEngine controlPlaneResolver injectability", () => {
       const sentinel: ControlPlaneResolver = {
         async resolveEnv(): Promise<ResolvedEngineEnv | null> {
           return sentinelEnv;
+        },
+        async resolveEnvDeletionState() {
+          return {
+            projectDeletedAt: sentinelEnv.projectDeletedAt,
+            organizationDeletedAt: sentinelEnv.organizationDeletedAt,
+          };
         },
         async resolveAuthenticatedEnv(): Promise<ResolvedAuthenticatedEnv | null> {
           return null;

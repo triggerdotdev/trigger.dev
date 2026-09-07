@@ -40,7 +40,19 @@ export type ResolvedEnv = {
   // ignore these additive fields.
   maximumConcurrencyLimit: number;
   concurrencyLimitBurstFactor: Prisma.Decimal;
+  /**
+   * Soft-delete tombstones. The engine gates enqueue and dequeue on these, and alerts skip a
+   * deleted project, so a deleted project's pending work neither runs nor pages anyone.
+   */
+  projectDeletedAt: Date | null;
+  organizationDeletedAt: Date | null;
 };
+
+/**
+ * Just the soft-delete tombstones. Structurally identical to the run-engine
+ * `EnvDeletionState`; declared here so the app resolver stays engine-agnostic.
+ */
+export type EnvDeletionState = Pick<ResolvedEnv, "projectDeletedAt" | "organizationDeletedAt">;
 
 /**
  * The BackgroundWorkerTask columns the dequeue resolve path reads. Mirrors run-engine's

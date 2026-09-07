@@ -17,6 +17,7 @@ export { readExternalDeploymentIdAnnotation } from "./engine/systems/pendingVers
 export { PassthroughControlPlaneResolver } from "./engine/controlPlaneResolver.js";
 export type {
   ControlPlaneResolver,
+  EnvDeletionState,
   ResolvedEngineEnv,
   ResolvedAuthenticatedEnv,
   ResolvedWorkerVersion,

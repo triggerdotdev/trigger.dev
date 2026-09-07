@@ -1,5 +1,6 @@
 import type {
   ControlPlaneResolver as EngineControlPlaneResolver,
+  EnvDeletionState,
   ResolvedAuthenticatedEnv,
   ResolvedEngineEnv,
   ResolvedWorkerVersion,
@@ -40,9 +41,15 @@ export class RunEngineControlPlaneResolver implements EngineControlPlaneResolver
       concurrencyLimitBurstFactor: env.concurrencyLimitBurstFactor,
       projectId: env.projectId,
       organizationId: env.organizationId,
+      projectDeletedAt: env.projectDeletedAt,
+      organizationDeletedAt: env.organizationDeletedAt,
       project: { id: env.projectId },
       organization: { id: env.organizationId },
     };
+  }
+
+  async resolveEnvDeletionState(environmentId: string): Promise<EnvDeletionState | null> {
+    return this.#resolver.resolveEnvDeletionState(environmentId);
   }
 
   async resolveWorkerVersion(args: {
