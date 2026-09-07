@@ -4709,8 +4709,16 @@ for i, member in ipairs(expiredMembers) do
       redis.call('SREM', envConcurrencyKey, runId)
       redis.call('SREM', envDequeuedKey, runId)
 
-      -- Rebalance CK index AND update counters if this is a CK queue
+      -- Mirror the currentConcurrency SREM into the base groupConcurrency set for
+      -- keyed and keyless queues alike, so a defensive removal always drains the
+      -- total pool too.
       local ckMatch = string.match(rawQueueKey, "(.-):ck:")
+      if removedFromCurrent == 1 then
+        local groupBase = ckMatch or rawQueueKey
+        redis.call('SREM', keyPrefix .. groupBase .. ":groupConcurrency", runId)
+      end
+
+      -- Rebalance CK index AND update counters if this is a CK queue
       if ckMatch then
         local lengthCounterKey = keyPrefix .. ckMatch .. ":lengthCounter"
         local runningCounterKey = keyPrefix .. ckMatch .. ":runningCounter"
@@ -4719,10 +4727,6 @@ for i, member in ipairs(expiredMembers) do
         end
         if removedFromDequeued == 1 then
           decrFloored(runningCounterKey)
-        end
-        -- Mirror the per-CK currentConcurrency SREM into the base groupConcurrency set
-        if removedFromCurrent == 1 then
-          redis.call('SREM', keyPrefix .. ckMatch .. ":groupConcurrency", runId)
         end
 
         local ckIndexKey = keyPrefix .. ckMatch .. ":ckIndex"
