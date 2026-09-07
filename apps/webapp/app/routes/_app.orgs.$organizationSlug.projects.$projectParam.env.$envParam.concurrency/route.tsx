@@ -773,13 +773,22 @@ function QueuesWithMetricsView() {
               {queueRows.length > 0 ? (
                 queueRows.map((queue) => {
                   const limit = queue.concurrencyLimit ?? environment.concurrencyLimit;
-                  const isAtConcurrencyLimit = queue.running >= limit;
+                  const isLimit = queue.kind === "limit";
+                  /** A limit row's `running` counts holders across every key, so only its
+                   * total bound compares against it; a perKey-only limit has no aggregate
+                   * threshold and never reads as at-limit here. */
+                  const atLimitThreshold = isLimit
+                    ? queue.concurrency?.combined?.current != null
+                      ? Math.min(queue.concurrency.combined.current, environment.concurrencyLimit)
+                      : null
+                    : limit;
+                  const isAtConcurrencyLimit =
+                    atLimitThreshold !== null && queue.running >= atLimitThreshold;
                   const isAtQueueLimit =
                     environment.queueSizeLimit !== null &&
                     queue.queued >= environment.queueSizeLimit;
                   const queueFilterableName = queueMetricsKey(queue);
                   const queueMetric = metricsByQueue[queueFilterableName];
-                  const isLimit = queue.kind === "limit";
                   /** The detail page is queue observability (queue metrics, run filters, pause
                    * and override actions); a limit's activity lives on each holder's home queue,
                    * so limit rows don't link anywhere. */
@@ -1014,7 +1023,7 @@ function QueuesWithMetricsView() {
                           paused={queue.paused}
                           running={queue.running}
                           queued={queue.queued}
-                          limit={limit}
+                          limit={atLimitThreshold ?? 0}
                         />
                       </TableCell>
                       <TableCell
@@ -1952,11 +1961,20 @@ function ClassicQueuesView() {
                 {queues.length > 0 ? (
                   queues.map((queue) => {
                     const limit = queue.concurrencyLimit ?? environment.concurrencyLimit;
-                    const isAtConcurrencyLimit = queue.running >= limit;
+                    const isLimit = queue.kind === "limit";
+                    /** A limit row's `running` counts holders across every key, so only its
+                     * total bound compares against it; a perKey-only limit has no aggregate
+                     * threshold and never reads as at-limit here. */
+                    const atLimitThreshold = isLimit
+                      ? queue.concurrency?.combined?.current != null
+                        ? Math.min(queue.concurrency.combined.current, environment.concurrencyLimit)
+                        : null
+                      : limit;
+                    const isAtConcurrencyLimit =
+                      atLimitThreshold !== null && queue.running >= atLimitThreshold;
                     const isAtQueueLimit =
                       environment.queueSizeLimit !== null &&
                       queue.queued >= environment.queueSizeLimit;
-                    const isLimit = queue.kind === "limit";
                     const queueFilterableName = `${queue.type === "task" ? "task/" : ""}${
                       queue.name
                     }`;
