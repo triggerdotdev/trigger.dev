@@ -1,7 +1,7 @@
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
-import { regenerateApiKey } from "~/models/api-key.server";
+import { regenerateApiKey, RootApiKeyNotVisibleError } from "~/models/api-key.server";
 import {
   authenticatedEnvironmentForAuthentication,
   authenticateRequest,
@@ -67,6 +67,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ apiKey: updatedEnvironment.apiKey });
   } catch (error) {
     if (error instanceof Response) throw error;
+    if (error instanceof RootApiKeyNotVisibleError) {
+      return json({ error: error.message }, { status: 409 });
+    }
     logger.error("Failed to regenerate API key", { error });
     return json({ error: "Internal Server Error" }, { status: 500 });
   }

@@ -61,6 +61,8 @@ export async function createRuntimeEnvironment(
     organizationId: string;
     type: RuntimeEnvironmentType;
     orgMemberId?: string | null;
+    apiKey?: string;
+    rootApiKeyHiddenAt?: Date | null;
     slug?: string;
   }
 ) {
@@ -72,7 +74,8 @@ export async function createRuntimeEnvironment(
       projectId: options.projectId,
       organizationId: options.organizationId,
       orgMemberId: options.orgMemberId ?? null,
-      apiKey: uniqueId("api"),
+      rootApiKeyHiddenAt: options.rootApiKeyHiddenAt ?? null,
+      apiKey: options.apiKey ?? uniqueId("api"),
       pkApiKey: uniqueId("pk"),
       shortcode: uniqueId("sc"),
     },

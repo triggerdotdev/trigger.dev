@@ -3,10 +3,16 @@ import { resolveAuthFeatureControls } from "~/services/authFeatureControls";
 import { FEATURE_FLAG, FeatureFlagCatalog, ORG_LOCKED_FLAGS } from "~/v3/featureFlags";
 
 describe("auth feature controls", () => {
-  it("uses safe defaults for a cold or missing snapshot", () => {
+  it("defaults lookup to enabled for a cold or missing snapshot", () => {
     expect(resolveAuthFeatureControls(undefined)).toEqual({
-      additionalApiKeyLookupEnabled: false,
+      additionalApiKeyLookupEnabled: true,
     });
+  });
+
+  it("allows the global flag to disable lookup", () => {
+    expect(
+      resolveAuthFeatureControls({ [FEATURE_FLAG.additionalApiKeyLookupEnabled]: false })
+    ).toEqual({ additionalApiKeyLookupEnabled: false });
   });
 
   it("accepts only strict booleans and locks org overrides", () => {

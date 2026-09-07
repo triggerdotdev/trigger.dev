@@ -7,7 +7,10 @@ export type AuthFeatureControls = {
 export function resolveAuthFeatureControls(
   flags: Partial<FeatureFlagCatalog> | Record<string, unknown> | undefined
 ): AuthFeatureControls {
+  const additionalApiKeyLookupEnabled = flags?.[FEATURE_FLAG.additionalApiKeyLookupEnabled];
+
   return {
-    additionalApiKeyLookupEnabled: flags?.[FEATURE_FLAG.additionalApiKeyLookupEnabled] === true,
+    additionalApiKeyLookupEnabled:
+      additionalApiKeyLookupEnabled === undefined || additionalApiKeyLookupEnabled === true,
   };
 }

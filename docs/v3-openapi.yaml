@@ -929,7 +929,7 @@ paths:
         - lang: curl
           source: |-
             curl -X GET "https://api.trigger.dev/api/v1/deployments" \
-              -H "Authorization: Bearer tr_dev_1234"
+              -H "Authorization: Bearer tr_dev_sk_1234"
 
   "/api/v1/deployments/{deploymentId}":
     parameters:
@@ -1044,7 +1044,7 @@ paths:
         - lang: curl
           source: |-
             curl -X GET "https://api.trigger.dev/api/v1/deployments/deployment_1234" \
-              -H "Authorization: Bearer tr_dev_1234"
+              -H "Authorization: Bearer tr_dev_sk_1234"
 
   "/api/v1/deployments/latest":
     get:
@@ -1117,7 +1117,7 @@ paths:
         - lang: curl
           source: |-
             curl -X GET "https://api.trigger.dev/api/v1/deployments/latest" \
-              -H "Authorization: Bearer tr_dev_1234"
+              -H "Authorization: Bearer tr_dev_sk_1234"
 
   "/api/v1/deployments/{version}/promote":
     parameters:
@@ -1182,7 +1182,7 @@ paths:
         - lang: curl
           source: |-
             curl -X POST "https://api.trigger.dev/api/v1/deployments/20250228.1/promote" \
-              -H "Authorization: Bearer tr_dev_1234" \
+              -H "Authorization: Bearer tr_dev_sk_1234" \
               -H "Content-Type: application/json"
 
   "/api/v1/query":
@@ -1289,7 +1289,7 @@ paths:
           label: cURL - Basic query
           source: |-
             curl -X POST "https://api.trigger.dev/api/v1/query" \
-              -H "Authorization: Bearer tr_dev_1234" \
+              -H "Authorization: Bearer tr_dev_sk_1234" \
               -H "Content-Type: application/json" \
               -d '{
                 "query": "SELECT run_id, status FROM runs LIMIT 10",
@@ -1301,7 +1301,7 @@ paths:
           label: cURL - Aggregation query
           source: |-
             curl -X POST "https://api.trigger.dev/api/v1/query" \
-              -H "Authorization: Bearer tr_dev_1234" \
+              -H "Authorization: Bearer tr_dev_sk_1234" \
               -H "Content-Type: application/json" \
               -d '{
                 "query": "SELECT task_identifier, count() as runs, countIf(status = '\''Failed'\'') as failures FROM runs GROUP BY task_identifier",
@@ -1374,7 +1374,7 @@ paths:
           label: cURL
           source: |-
             curl "https://api.trigger.dev/api/v1/query/schema" \
-              -H "Authorization: Bearer tr_dev_1234"
+              -H "Authorization: Bearer tr_dev_sk_1234"
 
   "/api/v1/query/dashboards":
     get:
@@ -1429,7 +1429,7 @@ paths:
           label: cURL
           source: |-
             curl "https://api.trigger.dev/api/v1/query/dashboards" \
-              -H "Authorization: Bearer tr_dev_1234"
+              -H "Authorization: Bearer tr_dev_sk_1234"
 
   "/api/v1/runs/{runId}/reschedule":
     parameters:
@@ -2431,7 +2431,7 @@ paths:
           source: |-
             curl -X POST "https://api.trigger.dev/api/v1/tasks/my-task/trigger" \
               -H "Content-Type: application/json" \
-              -H "Authorization: Bearer tr_dev_1234" \
+              -H "Authorization: Bearer tr_dev_sk_1234" \
               -d '{
                     "payload": {
                       "message": "Hello, world!"
@@ -2455,7 +2455,7 @@ paths:
             url = "https://api.trigger.dev/api/v1/tasks/my-task/trigger"
             headers = {
                 "Content-Type": "application/json",
-                "Authorization": "Bearer tr_dev_1234"
+                "Authorization": "Bearer tr_dev_sk_1234"
             }
             data = {
                 "payload": {
@@ -2548,7 +2548,7 @@ paths:
           source: |-
             curl -X POST "https://api.trigger.dev/api/v1/tasks/my-task/batch" \
               -H "Content-Type: application/json" \
-              -H "Authorization: Bearer tr_dev_1234" \
+              -H "Authorization: Bearer tr_dev_sk_1234" \
               -d '{
                     "items": [
                       { "payload": { "message": "Hello, world!" } },
@@ -2626,7 +2626,7 @@ paths:
           source: |-
             curl -X POST "https://api.trigger.dev/api/v1/tasks/batch" \
               -H "Content-Type: application/json" \
-              -H "Authorization: Bearer tr_dev_1234" \
+              -H "Authorization: Bearer tr_dev_sk_1234" \
               -d '{
                     "items": [
                       {
@@ -4135,16 +4135,16 @@ components:
       type: http
       scheme: bearer
       description: |
-        Use your project-specific Secret API key. Will start with `tr_dev_`, `tr_prod`, `tr_stg`, etc.
+        Use a named environment API key. It starts with `tr_dev_sk_`, `tr_prod_sk_`, `tr_stg_sk_`, etc.
 
-        You can find your Secret API key in the API Keys section of your Trigger.dev project dashboard.
+        Create a named API key in the API Keys section of your Trigger.dev project dashboard. Choose the narrowest access preset that supports your integration.
 
         Our TypeScript SDK will default to using the value of the `TRIGGER_SECRET_KEY` environment variable if it is set. If you are using the SDK in a different environment, you can set the key using the `configure` function.
 
         ```typescript
         import { configure } from "@trigger.dev/sdk";
 
-        configure({ accessToken: "tr_dev_1234" });
+        configure({ accessToken: "tr_dev_sk_1234" });
         ```
 
     personalAccessToken:

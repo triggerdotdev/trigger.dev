@@ -53,7 +53,11 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { MAX_API_KEY_TASK_IDENTIFIERS } from "~/consts";
-import { createEnvironmentApiKey, revokeEnvironmentApiKey } from "~/models/api-key.server";
+import {
+  createEnvironmentApiKey,
+  disableRootApiKeyVisibility,
+  revokeEnvironmentApiKey,
+} from "~/models/api-key.server";
 import {
   redirectWithErrorMessage,
   redirectWithSuccessMessage,
@@ -112,9 +116,15 @@ const CreateApiKeySchema = z.object({
     .default([]),
 });
 
+const DISABLE_ROOT_API_KEY_VISIBILITY_CONFIRMATION = "disable root key visibility";
+
 const ApiKeyActionSchema = z.discriminatedUnion("action", [
   CreateApiKeySchema,
   z.object({ action: z.literal("revoke"), apiKeyId: z.string().min(1) }),
+  z.object({
+    action: z.literal("disable-root"),
+    confirmation: z.literal(DISABLE_ROOT_API_KEY_VISIBILITY_CONFIRMATION),
+  }),
 ]);
 
 type ApiKeyActionData =
@@ -162,11 +172,7 @@ export const loader = dashboardLoader(
           ...data.environment,
           apiKey: canReadApiKeys ? data.environment.apiKey : null,
         },
-        rootApiKey: {
-          ...data.rootApiKey,
-          value: canReadApiKeys ? data.rootApiKey.value : null,
-          obfuscated: canReadApiKeys ? data.rootApiKey.obfuscated : null,
-        },
+        rootApiKey: canReadApiKeys ? data.rootApiKey : null,
         apiKeys: canReadApiKeys ? data.apiKeys : [],
         canReadApiKeys,
         canWriteApiKeys,
@@ -283,6 +289,18 @@ export const action = dashboardAction(
 
           return redirectWithSuccessMessage(returnPath, request, "API key revoked");
         }
+        case "disable-root": {
+          await disableRootApiKeyVisibility({
+            environmentId: keyEnvironmentId,
+            userId: user.id,
+          });
+
+          return redirectWithSuccessMessage(
+            returnPath,
+            request,
+            "Root API key visibility disabled"
+          );
+        }
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to update API keys";
@@ -361,10 +379,12 @@ export default function Page() {
           <div className="max-h-full min-h-full overflow-y-auto border-t border-grid-dimmed">
             <div className="flex h-fit items-center justify-end gap-2 p-2">
               <div className="flex items-center gap-2">
-                <EnvironmentVariablesDialog
-                  environmentType={environment.type}
-                  envBlock={envBlock}
-                />
+                {envBlock ? (
+                  <EnvironmentVariablesDialog
+                    environmentType={environment.type}
+                    envBlock={envBlock}
+                  />
+                ) : null}
                 <RevokedFilter checked={showRevoked} />
                 {additionalApiKeyIssuanceEnabled ? (
                   <NewApiKeyDialog
@@ -381,48 +401,49 @@ export default function Page() {
             <Table>
               <ApiKeyTableHeader />
               <TableBody>
-                <TableRow className="h-[3.25rem] [&_td]:py-2">
-                  <TableCell>
-                    <div className="flex items-center gap-1.5 text-text-bright">
-                      <KeyIcon className="size-4" />
-                      {rootApiKey.name}
-                      <Badge variant="extra-small">Root</Badge>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex w-64 items-center justify-between gap-2">
-                      <span className="font-mono text-text-dimmed">
-                        {rootApiKey.obfuscated ?? "–"}
-                      </span>
-                      {rootApiKey.value ? (
+                {rootApiKey ? (
+                  <TableRow className="h-[3.25rem] [&_td]:py-2">
+                    <TableCell>
+                      <div className="flex items-center gap-1.5 text-text-bright">
+                        <KeyIcon className="size-4" />
+                        {rootApiKey.name}
+                        <Badge variant="extra-small">Root</Badge>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex w-64 items-center justify-between gap-2">
+                        <span className="font-mono text-text-dimmed">{rootApiKey.obfuscated}</span>
                         <CopyButton value={rootApiKey.value} variant="icon" size="small" />
-                      ) : null}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <ApiKeyStatus now={loadedAt} />
-                  </TableCell>
-                  <TableCell>
-                    <ApiKeyAccess label="No restrictions" />
-                  </TableCell>
-                  <TableCell>–</TableCell>
-                  <TableCell>–</TableCell>
-                  <TableCell>–</TableCell>
-                  <TableCellMenu
-                    isSticky
-                    className="w-32"
-                    hiddenButtons={
-                      canWriteApiKeys ? (
-                        <RegenerateApiKeyModal
-                          id={environment.keyEnvironmentId}
-                          title={environmentFullTitle(apiKeyEnvironmentLabel)}
-                          hasVercelIntegration={hasVercelIntegration}
-                          isDevelopment={environment.type === "DEVELOPMENT"}
-                        />
-                      ) : null
-                    }
-                  />
-                </TableRow>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <ApiKeyStatus now={loadedAt} />
+                    </TableCell>
+                    <TableCell>
+                      <ApiKeyAccess label="No restrictions" />
+                    </TableCell>
+                    <TableCell>–</TableCell>
+                    <TableCell>–</TableCell>
+                    <TableCell>–</TableCell>
+                    <TableCellMenu
+                      isSticky
+                      className="w-32"
+                      hiddenButtons={
+                        <>
+                          {canWriteApiKeys ? (
+                            <RegenerateApiKeyModal
+                              id={environment.keyEnvironmentId}
+                              title={environmentFullTitle(apiKeyEnvironmentLabel)}
+                              hasVercelIntegration={hasVercelIntegration}
+                              isDevelopment={environment.type === "DEVELOPMENT"}
+                            />
+                          ) : null}
+                          <DisableRootApiKeyButton canWrite={canWriteApiKeys} />
+                        </>
+                      }
+                    />
+                  </TableRow>
+                ) : null}
 
                 {apiKeys.map((apiKey) => {
                   const isExpired = apiKey.expiresAt
@@ -1268,6 +1289,75 @@ function TaskAccessPanel({
         )}
       </div>
     </div>
+  );
+}
+
+function DisableRootApiKeyButton({ canWrite }: { canWrite: boolean }) {
+  const [confirmation, setConfirmation] = useState("");
+
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button
+          variant="minimal/small"
+          LeadingIcon={NoSymbolIcon}
+          disabled={!canWrite}
+          tooltip={
+            canWrite ? undefined : "You don't have permission to disable root API key visibility"
+          }
+        >
+          Disable root key visibility…
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-md">
+        <DialogHeader>Disable root API key visibility</DialogHeader>
+        <Form method="post" className="flex flex-col gap-4 pt-3">
+          <input type="hidden" name="action" value="disable-root" />
+          <Callout variant="warning">
+            The root API key will no longer be displayed for this environment. A new hidden root key
+            will be generated, and this can't be reversed.
+          </Callout>
+          <Paragraph>
+            The current root key will remain valid for 24 hours. Create and deploy an additional API
+            key everywhere it is used before then. Existing additional API keys are not affected.
+          </Paragraph>
+          <InputGroup className="max-w-full">
+            <Paragraph variant="small/bright">
+              Enter{" "}
+              <InlineCode variant="small">
+                {DISABLE_ROOT_API_KEY_VISIBILITY_CONFIRMATION}
+              </InlineCode>{" "}
+              to confirm:
+            </Paragraph>
+            <Input
+              name="confirmation"
+              type="text"
+              placeholder={DISABLE_ROOT_API_KEY_VISIBILITY_CONFIRMATION}
+              autoComplete="off"
+              fullWidth
+              value={confirmation}
+              onChange={(event) => setConfirmation(event.target.value)}
+            />
+          </InputGroup>
+          <FormButtons
+            confirmButton={
+              <Button
+                type="submit"
+                variant="danger/medium"
+                disabled={confirmation !== DISABLE_ROOT_API_KEY_VISIBILITY_CONFIRMATION}
+              >
+                Disable root key visibility
+              </Button>
+            }
+            cancelButton={
+              <DialogClose asChild>
+                <Button variant="tertiary/medium">Cancel</Button>
+              </DialogClose>
+            }
+          />
+        </Form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

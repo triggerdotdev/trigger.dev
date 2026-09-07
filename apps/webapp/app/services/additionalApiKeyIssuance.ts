@@ -4,7 +4,8 @@ export function resolveAdditionalApiKeyIssuance(
   globalFlags: Partial<FeatureFlagCatalog> | Record<string, unknown> | undefined,
   organizationFlags: Record<string, unknown> | undefined
 ): boolean {
-  if (globalFlags?.[FEATURE_FLAG.additionalApiKeyIssuanceEnabled] !== true) {
+  const issuanceEnabled = globalFlags?.[FEATURE_FLAG.additionalApiKeyIssuanceEnabled];
+  if (issuanceEnabled !== undefined && issuanceEnabled !== true) {
     return false;
   }
 
@@ -13,5 +14,6 @@ export function resolveAdditionalApiKeyIssuance(
     return organizationOverride;
   }
 
-  return globalFlags?.[FEATURE_FLAG.additionalApiKeysEnabled] === true;
+  const additionalApiKeysEnabled = globalFlags?.[FEATURE_FLAG.additionalApiKeysEnabled];
+  return additionalApiKeysEnabled === undefined || additionalApiKeysEnabled === true;
 }

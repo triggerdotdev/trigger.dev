@@ -43,12 +43,11 @@ export const FEATURE_FLAG = {
   deployBuildPathPreview: "deployBuildPathPreview",
   deployBuildPathStaging: "deployBuildPathStaging",
   deployBuildPathProduction: "deployBuildPathProduction",
-  // Per-organization rollout for creating additional environment API keys.
+  // Per-organization control for creating additional environment API keys. Defaults on.
   additionalApiKeysEnabled: "additionalApiKeysEnabled",
-  // System-wide kill switch for issuing additional environment API keys.
+  // System-wide kill switch for issuing additional environment API keys. Defaults on.
   additionalApiKeyIssuanceEnabled: "additionalApiKeyIssuanceEnabled",
-  // System-wide kill switch for additional (scoped) environment API-key lookup.
-  // Defaults off; enable during rollout once the new lookup path is trusted.
+  // System-wide kill switch for additional (scoped) environment API-key lookup. Defaults on.
   additionalApiKeyLookupEnabled: "additionalApiKeyLookupEnabled",
 } as const;
 
@@ -158,8 +157,7 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.deployBuildPathPreview]: DeployBuildPath,
   [FEATURE_FLAG.deployBuildPathStaging]: DeployBuildPath,
   [FEATURE_FLAG.deployBuildPathProduction]: DeployBuildPath,
-  // Strict booleans prevent a stringified "false" from silently enabling API-key
-  // creation or lookup. Cold/absent values resolve to the safe `false`.
+  // Strict booleans prevent stringified values from silently changing API-key behavior.
   [FEATURE_FLAG.additionalApiKeysEnabled]: z.boolean(),
   [FEATURE_FLAG.additionalApiKeyIssuanceEnabled]: z.boolean(),
   [FEATURE_FLAG.additionalApiKeyLookupEnabled]: z.boolean(),

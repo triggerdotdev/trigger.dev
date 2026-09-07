@@ -227,6 +227,7 @@ export async function createEnvironment({
       slug,
       apiKey,
       pkApiKey,
+      rootApiKeyHiddenAt: new Date(),
       shortcode,
       autoEnableInternalSources: type !== "DEVELOPMENT",
       maximumConcurrencyLimit: limit,

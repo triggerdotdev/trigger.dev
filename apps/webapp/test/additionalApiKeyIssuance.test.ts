@@ -14,8 +14,8 @@ describe("additional API key issuance controls", () => {
     expect(ORG_LOCKED_FLAGS).toContain(FEATURE_FLAG.additionalApiKeyIssuanceEnabled);
   });
 
-  it("defaults to disabled", () => {
-    expect(resolveAdditionalApiKeyIssuance(undefined, undefined)).toBe(false);
+  it("defaults to enabled", () => {
+    expect(resolveAdditionalApiKeyIssuance(undefined, undefined)).toBe(true);
   });
 
   it("requires the system-wide issuance gate", () => {
@@ -24,6 +24,12 @@ describe("additional API key issuance controls", () => {
         { [FEATURE_FLAG.additionalApiKeyIssuanceEnabled]: false },
         { [FEATURE_FLAG.additionalApiKeysEnabled]: true }
       )
+    ).toBe(false);
+  });
+
+  it("allows the global rollout flag to disable issuance", () => {
+    expect(
+      resolveAdditionalApiKeyIssuance({ [FEATURE_FLAG.additionalApiKeysEnabled]: false }, undefined)
     ).toBe(false);
   });
 
