@@ -78,6 +78,10 @@ const SemanticAttributes = {
  * during a rolling upgrade), including runs parked in the DLQ or suspended on
  * checkpoints, which older rules based on the queue zset could never prune.
  */
+/** TTL for gate queued counters: refreshed on every delta and on every read, so an
+ * active or observed gate never re-anchors; the Lua helper inlines the same value. */
+const GATE_QUEUED_COUNTER_TTL_SECONDS = 86400;
+
 const QUEUE_GATES_LUA_HELPERS = `
 local function __gateKeys(gatesKeyPrefix, msg, gate)
   local base = gatesKeyPrefix .. '{org:' .. msg.orgId .. '}:proj:' .. msg.projectId .. ':env:' .. msg.environmentId .. ':queue:' .. gate.queue
@@ -696,29 +700,34 @@ export class RunQueue {
 
   /**
    * Runs that are queued and must clear this gate queue to execute (the per-gate
-   * queued counter). Exact by construction: incremented per gate on enqueue and
-   * decremented on admit and on every queued-removal path, floored at zero.
+   * queued counter): incremented per gate on enqueue and decremented on admit and
+   * on every queued-removal path, floored at zero. Reads refresh the counter's
+   * TTL, so a gate anyone observes (dashboard, API) never expires while idle —
+   * e.g. a paused limit with a stalled backlog keeps its count over a quiet
+   * weekend; only gates nobody touches or reads for a day re-anchor.
    */
   public async gateQueuedCountOfQueue(env: MinimalAuthenticatedEnvironment, queue: string) {
-    const result = await this.redis.get(this.keys.gateQueuedCounterKey(env, queue));
-    return result ? Math.max(Number(result), 0) : 0;
+    const counts = await this.gateQueuedCountOfQueues(env, [queue]);
+    return counts[queue] ?? 0;
   }
 
-  /** Batch variant of gateQueuedCountOfQueue: one pipeline of GETs. */
+  /** Batch variant: one pipeline of GETs, each with a TTL refresh. */
   public async gateQueuedCountOfQueues(
     env: MinimalAuthenticatedEnvironment,
     queues: string[]
   ): Promise<Record<string, number>> {
     const pipeline = this.redis.pipeline();
     queues.forEach((queue) => {
-      pipeline.get(this.keys.gateQueuedCounterKey(env, queue));
+      const key = this.keys.gateQueuedCounterKey(env, queue);
+      pipeline.get(key);
+      pipeline.expire(key, GATE_QUEUED_COUNTER_TTL_SECONDS, "XX");
     });
 
     const results = await pipeline.exec();
 
     return queues.reduce(
       (acc, queue, index) => {
-        const value = results?.[index]?.[1];
+        const value = results?.[index * 2]?.[1];
         const parsed = typeof value === "string" ? Number(value) : 0;
         acc[queue] = Number.isFinite(parsed) ? Math.max(parsed, 0) : 0;
         return acc;
