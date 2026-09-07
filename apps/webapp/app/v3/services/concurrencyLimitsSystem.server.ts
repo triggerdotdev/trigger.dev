@@ -136,9 +136,11 @@ export class ConcurrencyLimitsSystem {
         return findLimitByName(this.db, environment, name)
           .andThen((row) =>
             syncResetToEngine(environment, row).orElse((error) =>
-              compensateEngineFromFreshRow(this.db, environment, row.id)
-                .orElse(() => okAsync(undefined))
-                .andThen(() => errAsync(error))
+              error.type === "limit_not_overridden"
+                ? errAsync(error)
+                : compensateEngineFromFreshRow(this.db, environment, row.id)
+                    .orElse(() => okAsync(undefined))
+                    .andThen(() => errAsync(error))
             )
           )
           .andThen((row) =>
