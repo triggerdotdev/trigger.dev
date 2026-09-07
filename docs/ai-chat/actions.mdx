@@ -44,7 +44,7 @@ export const myChat = chat.agent({
     // returning void → side-effect-only, no model call
   },
 
-  run: async ({ messages, signal }) => {
+  run: async ({ messages, signal, streamText }) => {
     return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
   },
 });
@@ -52,66 +52,68 @@ export const myChat = chat.agent({
 
 **Lifecycle flow:** Wake → parse action against `actionSchema` → `hydrateMessages` (if set) → **`onAction`** → apply `chat.history` mutations → emit `trigger:turn-complete` → wait for next message.
 
-## Returning a model response from an action
+When `onAction` returns `chat.turn()`, the flow continues instead of emitting `trigger:turn-complete`: the edit is snapshotted, then a turn runs on the edited history with `trigger: "action-turn"`, so `onTurnStart`, `run()`, `onBeforeTurnComplete` and `onTurnComplete` all fire and the answer is persisted like any turn's. See [Answering after an action](#answering-after-an-action).
 
-`onAction` can return a `StreamTextResult`, `string`, or `UIMessage` to produce a response. All three are sent to the frontend and added to the conversation just like a normal turn's answer, but the rest of the turn machinery (`onTurnStart`, `onTurnComplete`, etc.) still does not fire. A returned `UIMessage` must have `role: "assistant"`; its text and `data-*` parts are delivered, and other part types are dropped.
+## Answering after an action
+
+An action is a state edit. To answer after the edit, return `chat.turn()`: the edit is applied and snapshotted, then a turn runs on the edited history exactly as a message turn does. `onTurnStart`, `run()`, `onBeforeTurnComplete` and `onTurnComplete` fire, the turn counter advances, and the answer gets everything a turn has: the agent's system prompt and tools, steering, compaction, injected instructions and persistence.
 
 ```ts
-onAction: async ({ action, messages }) => {
-  if (action.type === "regenerate") {
-    chat.history.slice(0, -1); // drop the last assistant
-    return streamText({
-      model: anthropic("claude-sonnet-4-5"),
-      messages,
-      stopWhen: stepCountIs(15),
-    });
+onAction: async ({ action }) => {
+  switch (action.type) {
+    case "undo":
+      chat.history.slice(0, -2);
+      return; // edit only, no turn
+
+    case "regenerate":
+      chat.history.slice(0, -1);
+      return chat.turn(); // answer the edited history
+
+    case "retry-formal":
+      chat.history.slice(0, -1);
+      chat.inject([{ role: "system", content: "Answer formally this time." }]);
+      return chat.turn(); // with a one-shot instruction
   }
-  // other actions return void → side-effect only
 }
 ```
 
-This is useful for actions that both mutate state and want a fresh model response (regenerate-from-here, retry-with-different-style).
+`run()` receives the edited history with no incoming user message, the same shape as a `regenerate-message` turn, and its `trigger` is `"action-turn"`, so a `run()` that returns early on `"action"` (the pre-May behaviour, when actions invoked `run()` directly) still answers. Returning anything other than `chat.turn()` or nothing is an error; a response can no longer be returned from `onAction` directly.
 
 ### Actions and persistence
 
-An action is not a turn, so `onTurnComplete` never fires, and that is where an app that owns its own transcript normally writes. What that means depends on which persistence model you use.
+An action that returns nothing does not fire `onTurnComplete`, and that is where an app that owns its own transcript normally writes. What that means depends on which persistence model you use.
 
-**Platform-managed** (no `hydrateMessages`): nothing to do. After an action that changed the conversation (a `chat.history` mutation, a response returned from `onAction`, or both), the runtime writes the snapshot, so the change survives the run ending.
+**Platform-managed** (no `hydrateMessages`): nothing to do. After an action that changed the conversation, the runtime writes the snapshot, so the edit survives the run ending. An action that returns `chat.turn()` is followed by a turn, which persists its answer the way every turn does.
 
-**Your own store** (`hydrateMessages` registered): the runtime deliberately does not write, because your store is the source of truth. A history mutation and a returned response both live only in the running worker until you persist them, and a continuation rehydrates from your store, not from what the worker had in memory. `chat.pipeAndCapture` hands you the same assistant message the runtime would have captured:
+**Your own store** (`hydrateMessages` registered): the runtime deliberately does not write, because your store is the source of truth. A history edit lives only in the running worker until you persist it, and a continuation rehydrates from your store, not from what the worker had in memory. Mirror each edit in your store, not only additions: a regenerate is a delete *and* an insert. The answer that follows `chat.turn()` reaches your store through `onTurnComplete`, like any turn's answer.
 
 ```ts
-onAction: async ({ action, messages }) => {
+onAction: async ({ action, chatId }) => {
   if (action.type === "undo") {
     chat.history.slice(0, -2);
     await db.deleteLastExchange(chatId); // the rollback is yours to persist
   }
-
   if (action.type === "regenerate") {
     chat.history.slice(0, -1);
-    await db.deleteLastAssistant(chatId); // drop the answer being replaced
-    const { message } = await chat.pipeAndCapture(
-      streamText({ model: anthropic("claude-sonnet-4-5"), messages })
-    );
-    if (message) await db.saveMessage(message); // then store the new one
+    await db.deleteLastAssistant(chatId); // the delete half
+    return chat.turn(); // the insert half arrives in onTurnComplete
   }
 },
+onTurnComplete: async ({ chatId, newUIMessages }) => {
+  await db.saveMessages(chatId, newUIMessages);
+},
 ```
-
-Mirror each mutation in your store, not only the additions. A `chat.history` mutation is invisible to your database, so a regenerate is a delete *and* an insert. Saving the new answer without removing the old one leaves both in the canonical transcript, and the next hydration returns the two of them. (An append-only or branching store is the exception: there you write a new version and resolve the head on read.)
-
-Returning the stream instead of piping it yourself still works and still reaches the browser, but you have no message to store, so the next run does not know about it.
 
 ## Gating actions on HITL state
 
 If you have a [human-in-the-loop](/ai-chat/patterns/human-in-the-loop) tool waiting on `addToolOutput`, you usually want to refuse competing actions like `regenerate` until the answer arrives. [`chat.history.getPendingToolCalls()`](/ai-chat/backend#chat-history) gives you exactly that signal:
 
 ```ts
-onAction: async ({ action, messages, signal }) => {
+onAction: async ({ action }) => {
   if (action.type === "regenerate") {
     if (chat.history.getPendingToolCalls().length > 0) return; // gated
     chat.history.slice(0, -1);
-    return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
+    return chat.turn();
   }
 },
 ```
@@ -135,7 +137,7 @@ The action payload is validated against `actionSchema` on the backend; invalid a
 ## See also
 
 - [`chat.history`](/ai-chat/backend#chat-history): the imperative API actions use to mutate state
-- [Sending actions from the frontend](/ai-chat/frontend#sending-actions): `transport.sendAction` ergonomics
+- [Sending actions from the frontend](/ai-chat/frontend#sending-actions): sending actions through `useChat` so a turn that follows one renders like any turn
 - [`hydrateMessages`](/ai-chat/lifecycle-hooks#hydratemessages): fires before `onAction` when set
 - [Branching conversations](/ai-chat/patterns/branching-conversations): pairs action handlers with backend-controlled history
 - [Human-in-the-loop](/ai-chat/patterns/human-in-the-loop): gating fresh actions while a tool is waiting

@@ -33,6 +33,7 @@ The most powerful pattern combines `chat.defer()` (background work) with `chat.i
 ```ts
 export const myChat = chat.agent({
   id: "my-chat",
+  registry,
   onTurnComplete: async ({ messages }) => {
     // Kick off background analysis, doesn't block the turn
     chat.defer(
@@ -47,9 +48,8 @@ export const myChat = chat.agent({
       })()
     );
   },
-  run: async ({ messages, signal }) => {
+  run: async ({ messages, signal, streamText }) => {
     return streamText({
-      ...chat.toStreamTextOptions({ registry }),
       messages,
       abortSignal: signal,
       stopWhen: stepCountIs(15),
@@ -77,7 +77,7 @@ A cheap model reviews the agent's response after each turn and injects coaching 
 ```ts
 import { chat } from "@trigger.dev/sdk/ai";
 import { prompts } from "@trigger.dev/sdk";
-import { streamText, generateObject, createProviderRegistry, stepCountIs } from "ai";
+import { generateObject, createProviderRegistry, stepCountIs } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 
@@ -98,6 +98,7 @@ Be concise. Only flag issues worth fixing.`,
 
 export const myChat = chat.agent({
   id: "my-chat",
+  registry,
   onTurnComplete: async ({ messages }) => {
     chat.defer(
       (async () => {
@@ -139,9 +140,8 @@ export const myChat = chat.agent({
       })()
     );
   },
-  run: async ({ messages, signal }) => {
+  run: async ({ messages, signal, streamText }) => {
     return streamText({
-      ...chat.toStreamTextOptions({ registry }),
       messages,
       abortSignal: signal,
       stopWhen: stepCountIs(15),
@@ -170,7 +170,7 @@ export const myChat = chat.agent({
     // Analytics: fire-and-forget, irrelevant to resume.
     chat.defer(analytics.track("turn_started", { chatId, runId }));
   },
-  run: async ({ messages, signal }) => {
+  run: async ({ messages, signal, streamText }) => {
     return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
   },
 });

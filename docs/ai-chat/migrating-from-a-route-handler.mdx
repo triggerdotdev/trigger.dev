@@ -56,7 +56,7 @@ Then make these changes:
 - Create a `chat.agent` task in `trigger/chat.ts`. Move the existing `streamText` call
   into its `run` function UNCHANGED — same model, same `system`, same `temperature`,
   same `stopWhen`, same provider options. Do not rewrite the prompt or swap the model.
-- Spread `...chat.toStreamTextOptions({ tools })` as the FIRST property of that
+- Take `streamText` from the `run` argument, so the managed options apply to that
   `streamText` call, so the explicit options after it still win.
 - `run` receives `ModelMessage[]` already. Delete the `convertToModelMessages` call.
 - Forward the `signal` from `run` as `abortSignal` so Stop works.
@@ -145,10 +145,9 @@ import { tools } from "@/lib/tools";
 export const myChat = chat.agent({
   id: "my-chat",
   tools,
-  run: async ({ messages, tools, signal }) =>
+  run: async ({ messages, tools, signal, streamText }) =>
     streamText({
-      // Spread first, so every option below still wins.
-      ...chat.toStreamTextOptions({ tools }),
+      tools,
       model: anthropic("claude-sonnet-4-5"),
       system: "You are a helpful assistant.",
       messages,
@@ -163,10 +162,10 @@ Four things changed inside the `streamText` call, and `tools` moved onto the age
 - **`messages` arrives as `ModelMessage[]`.** The runtime converts the frontend's `UIMessage[]` for you, so `convertToModelMessages` is gone.
 - **`abortSignal` comes from `signal` on the payload**, not `req.signal`. It fires on stop and on cancel.
 - **Return the `StreamTextResult`.** It's piped to the frontend automatically — no `toUIMessageStreamResponse`. If `streamText` is buried in a helper, call `await chat.pipe(result)` from anywhere in the task instead and let `run` resolve `void`.
-- **`...chat.toStreamTextOptions()` is spread first.** It wires up the `prepareStep` callback behind [compaction](/ai-chat/compaction), [mid-turn steering](/ai-chat/pending-messages), and [background injection](/ai-chat/background-injection), plus the system prompt set via [`chat.prompt()`](/ai-chat/backend#using-prompts) and telemetry.
+- **`streamText` comes from the `run` argument, not from `ai`.** It carries the `prepareStep` behind [compaction](/ai-chat/compaction), [mid-turn steering](/ai-chat/pending-messages) and [background injection](/ai-chat/background-injection), plus the system prompt set via [`chat.prompt()`](/ai-chat/backend#using-prompts) and telemetry.
 
 <Warning>
-  Omitting `...chat.toStreamTextOptions()` throws no error — compaction, steering, and background injection just silently never run. Spread it first so any explicit override you write after it takes precedence.
+  Importing `streamText` from `ai` instead throws no error: compaction, steering and background injection never run. Spreading `chat.toStreamTextOptions()` into the imported one is the equivalent, and is what a custom agent has to do, since it has no `run` argument. A `chat.headStart` route gets a bound `streamText` of its own.
 </Warning>
 
 There's no `maxDuration` equivalent to set. A turn isn't bounded by a function timeout; a run stays alive across turns and suspends when nothing is happening.
@@ -357,9 +356,9 @@ export const myChat = chat.agent({
       }),
     ]);
   },
-  run: async ({ messages, tools, signal }) =>
+  run: async ({ messages, tools, signal, streamText }) =>
     streamText({
-      ...chat.toStreamTextOptions({ tools }),
+      tools,
       model: anthropic("claude-sonnet-4-5"),
       system: "You are a helpful assistant.",
       messages,
@@ -468,18 +467,21 @@ Head Start brings the route handler back for exactly that first turn. It runs st
 
     export const chatHandler = chat.headStart({
       agentId: "my-chat",
-      run: async ({ chat: helper }) =>
+      run: async ({ streamText }) =>
         streamText({
-          ...helper.toStreamTextOptions({ tools: headStartTools }),
           model: anthropic("claude-sonnet-4-5"),
           system: "You are a helpful assistant.",
+          tools: headStartTools,
         }),
     });
     ```
 
-    <Warning>
-      Spread `toStreamTextOptions()` first and add only your own keys after it. It owns `messages`, `tools`, `abortSignal`, and `stopWhen` — and unlike the agent-side spread, re-setting any of those breaks the handover rather than degrading it. `stopWhen` in particular is pinned to `stepCountIs(1)`: the agent, not the handler, runs step 2 onward.
-    </Warning>
+    <Note>
+      That `streamText` owns `messages`, `prompt`, `abortSignal` and `stopWhen`. Passing one is
+      a type error, and a runtime throw if you get past the types. Unlike the agent side, re-setting one breaks the
+      handover rather than degrading it: `stopWhen` is pinned to `stepCountIs(1)`
+      because the agent, not the handler, runs step 2 onward.
+    </Note>
 
     Your provider keys never leave your server — the first-turn model call runs in your process, so that environment needs whatever the model requires.
   </Step>
@@ -558,7 +560,7 @@ The shape is identical outside Next.js. The agent task and the React component d
 
 **The head-start route dies mid-turn on Vercel.** The handler holds the SSE response open until the agent signals turn-complete, so the function timeout has to cover the whole turn, not just step 1. Set `maxDuration` on that route segment.
 
-**Compaction and steering do nothing.** The `...chat.toStreamTextOptions()` spread is missing, or something before it in the object is overwriting `prepareStep`. Spread it as the first property.
+**Compaction and steering do nothing.** `run` is calling the `streamText` imported from `ai` rather than the one in its argument. Destructure `streamText` from the `run` argument, or spread `chat.toStreamTextOptions()` into the imported one.
 
 **`toModelOutput` works on the first turn, then stops.** Tools are declared only on `streamText`. Declare the same set on `chat.agent({ tools })` too, and read it back off the `run` payload.
 

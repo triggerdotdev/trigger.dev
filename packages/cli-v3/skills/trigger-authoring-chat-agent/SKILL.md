@@ -2,7 +2,7 @@
 name: trigger-authoring-chat-agent
 description: >
   Author and run a durable AI chat agent with chat.agent from @trigger.dev/sdk/ai: the per-turn
-  run loop, why you MUST spread ...chat.toStreamTextOptions() first, returning a StreamTextResult
+  run loop, why you MUST take streamText from the run argument rather than importing it from ai, returning a StreamTextResult
   vs calling chat.pipe(), the two server actions (chat.createStartSessionAction +
   auth.createPublicToken), and wiring useChat to useTriggerChatTransport. Load this when building,
   modifying, or debugging a chat backend (the agent task or its lifecycle hooks) or its React
@@ -16,26 +16,30 @@ library: trigger.dev
 
 The full, version-pinned reference ships **inside your installed `@trigger.dev/sdk`**. Read it before writing code — it always matches the SDK version in this project, so it never drifts:
 
-- **Skill:** `node_modules/@trigger.dev/sdk/skills/trigger-authoring-chat-agent/SKILL.md` — the per-turn run loop, `chat.toStreamTextOptions()`, the two server actions, typed tools/data parts, and the React transport.
+- **Skill:** `node_modules/@trigger.dev/sdk/skills/trigger-authoring-chat-agent/SKILL.md` — the per-turn run loop, the managed `streamText`, the two server actions, typed tools/data parts, and the React transport.
 - **Docs:** the full, version-pinned docs ship bundled at `node_modules/@trigger.dev/sdk/docs/ai-chat/`; the skill above lists the exact pages it draws from in its `sources:` frontmatter. Grep for an API, e.g. `grep -rl "toStreamTextOptions" node_modules/@trigger.dev/sdk/docs/`.
 
 If those paths don't exist, `@trigger.dev/sdk` isn't installed yet — install it first. In a non-hoisted layout, resolve the package with `node -p "require.resolve('@trigger.dev/sdk/package.json')"` and read `skills/` + `docs/` beside it.
 
 ## Common mistakes
 
-- **CRITICAL: forgetting `...chat.toStreamTextOptions()`.**
+- **CRITICAL: calling the `streamText` imported from `ai`.**
   ```ts
   // Wrong - compaction / steering / background injection silently no-op
-  return streamText({ model, messages, abortSignal: signal });
-  // Correct - spread FIRST so explicit overrides win
-  return streamText({ ...chat.toStreamTextOptions(), model, messages, abortSignal: signal });
+  import { streamText } from "ai";
+  run: async ({ messages, signal }) => streamText({ model, messages, abortSignal: signal });
+  // Correct - the run argument's streamText carries the managed options
+  run: async ({ messages, signal, streamText }) => streamText({ model, messages, abortSignal: signal });
   ```
-  It wires the `prepareStep` callback behind compaction, mid-turn steering, and background
-  injection, injects the system prompt from `chat.prompt()`, resolves the registry model, and adds
-  telemetry. Omitting it makes all of those silently no-op with no error.
+  The SDK's one carries the `prepareStep` behind compaction, mid-turn steering and background
+  injection, the system prompt from `chat.prompt()` or `chat.agent({ system })`, the registry-resolved
+  model, and telemetry. The imported one carries none of it, with no error.
+  `...chat.toStreamTextOptions()` does the same job by hand, and is what a custom agent has to use,
+  since it has no `run` argument. A `chat.headStart` route gets a bound `streamText` too, and there it
+  also owns `messages`, `stopWhen` and `abortSignal`.
 
 - **Declaring tools only on `streamText`.** Also declare them on `chat.agent({ tools })`, read them
-  back from `run`, and pass `chat.toStreamTextOptions({ tools })`. Otherwise each tool's
+  back from `run`, and pass that set as `tools`. Otherwise each tool's
   `toModelOutput` runs on turn 1 but is dropped when history is re-converted on later turns.
 
 - **Not forwarding `signal` for stop.** Without `abortSignal: signal`, Stop updates the UI but the
