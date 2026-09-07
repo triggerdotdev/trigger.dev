@@ -393,7 +393,7 @@ describe("pages named after a resource", () => {
   it("truncate to the list they were reached from", () => {
     expect(projectPortablePage("runs/run_123")).toBe("runs");
     expect(projectPortablePage("batches/batch_123")).toBe("batches");
-    expect(projectPortablePage("queues/my-queue")).toBe("queues");
+    expect(projectPortablePage("concurrency/my-queue")).toBe("concurrency");
     expect(projectPortablePage("schedules/sched_123")).toBe("schedules");
     expect(projectPortablePage("schedules/edit/sched_123")).toBe("schedules");
     expect(projectPortablePage("deployments/deploy_123")).toBe("deployments");
@@ -670,11 +670,11 @@ describe("pathForEnvironmentSwitch", () => {
 
     expect(
       pathForEnvironmentSwitch({
-        location: locationOn("queues/my-queue", "?page=2"),
+        location: locationOn("concurrency/my-queue", "?page=2"),
         environmentPathname: environmentLocation.pathname,
         environmentSlug: "prod",
       })
-    ).toBe("/orgs/acme/projects/api/env/prod/queues");
+    ).toBe("/orgs/acme/projects/api/env/prod/concurrency");
   });
 
   it("only swaps the environment slug when it cannot tell where the environment path ends", () => {

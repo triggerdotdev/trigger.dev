@@ -49,6 +49,7 @@ const SECTION_LABELS: Record<string, string> = {
   batches: "Batches",
   "bulk-actions": "Bulk actions",
   branches: "Branches",
+  concurrency: "Concurrency",
   "concurrency-limits": "Concurrency limits",
   dashboards: "Dashboards",
   deployments: "Deployments",

@@ -87,7 +87,7 @@ import {
   docsPath,
   EnvironmentParamSchema,
   v3BillingPath,
-  v3QueuePath,
+  concurrencyQueuePath,
   v3RunsPath,
 } from "~/utils/pathBuilder";
 import type { Handle } from "~/utils/handle";
@@ -485,7 +485,7 @@ function QueuesWithMetricsView() {
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title="Queues" />
+        <PageTitle title="Concurrency" />
         <PageAccessories>
           <AdminDebugTooltip />
           <WhenAgentUnavailable>
@@ -778,7 +778,7 @@ function QueuesWithMetricsView() {
                     queue.queued >= environment.queueSizeLimit;
                   const queueFilterableName = queueMetricsKey(queue);
                   const queueMetric = metricsByQueue[queueFilterableName];
-                  const queueDetailPath = v3QueuePath(organization, project, env, {
+                  const queueDetailPath = concurrencyQueuePath(organization, project, env, {
                     friendlyId: queue.id,
                   });
                   const isLimit = queue.kind === "limit";
@@ -1748,7 +1748,7 @@ function ClassicQueuesView() {
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title="Queues" />
+        <PageTitle title="Concurrency" />
         <PageAccessories>
           <AdminDebugTooltip />
           <WhenAgentUnavailable>

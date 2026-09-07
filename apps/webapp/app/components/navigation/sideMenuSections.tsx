@@ -39,7 +39,7 @@ import {
   v3ProjectAlertsPath,
   v3ProjectSettingsIntegrationsPath,
   v3PromptsPath,
-  v3QueuesPath,
+  concurrencyPath,
   v3WaitpointTokensPath,
 } from "~/utils/pathBuilder";
 import { AlphaBadge, NewBadge } from "../FeatureBadges";
@@ -160,10 +160,10 @@ export function buildSideMenuSections({
               } satisfies SideMenuItemConfig,
               {
                 id: "queues",
-                name: "Queues",
+                name: "Concurrency",
                 icon: QueuesIcon,
                 activeIconColor: "text-queues",
-                to: v3QueuesPath(organization, project, environment),
+                to: concurrencyPath(organization, project, environment),
                 dataAction: "queues",
               } satisfies SideMenuItemConfig,
               {

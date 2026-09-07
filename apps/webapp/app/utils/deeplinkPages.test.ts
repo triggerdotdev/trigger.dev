@@ -20,7 +20,7 @@ const ROUTES_DIR = join(APP_DIR, "routes");
 const ENV_ROUTE_PREFIX = "_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.";
 
 // Route files that name no deeplink: the environment root, and Remix's layout-opt-out spelling.
-const NOT_DEEPLINK_NAMES = new Set(["_index", "queues_"]);
+const NOT_DEEPLINK_NAMES = new Set(["_index", "concurrency_", "queues"]);
 
 const PROBE = "probe_01ABC";
 
@@ -54,7 +54,7 @@ function isRouteModule(entry: string): boolean {
   return existsSync(join(path, "route.tsx")) || existsSync(join(path, "route.ts"));
 }
 
-// A trailing `_` only opts out of the parent layout: `queues_.$queueParam` serves `/queues/{id}`.
+// A trailing `_` only opts out of the parent layout: `concurrency_.$queueParam` serves `/concurrency/{id}`.
 const envRoutes: string[][] = routeEntries
   .filter((entry) => entry.startsWith(ENV_ROUTE_PREFIX) && isRouteModule(entry))
   .map((entry) =>
@@ -281,9 +281,9 @@ describe("the route Remix compiles from the filename", () => {
     expect(compiledUrl("routes/login.magic")).toBe("/login/magic");
     expect(
       compiledUrl(
-        "routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues_.$queueParam"
+        "routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.concurrency_.$queueParam"
       )
-    ).toBe("/orgs/:organizationSlug/projects/:projectParam/env/:envParam/queues/:queueParam");
+    ).toBe("/orgs/:organizationSlug/projects/:projectParam/env/:envParam/concurrency/:queueParam");
   });
 });
 
