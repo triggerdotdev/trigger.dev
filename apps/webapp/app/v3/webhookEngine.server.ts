@@ -7,6 +7,7 @@ import { env } from "~/env.server";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import { logger } from "~/services/logger.server";
 import { S2RealtimeStreams } from "~/services/realtime/s2realtimeStreams.server";
+import { SessionTriggerConfig as SessionTriggerConfigSchema } from "@trigger.dev/core/v3";
 import {
   ensureRunForSession,
   type SessionTriggerConfig,
@@ -154,17 +155,6 @@ function createWebhookEngine() {
           return { success: false, errorType: "NOT_FOUND", error: "Environment not found" };
         }
 
-        const template = (triggerConfigTemplate ?? {}) as Partial<SessionTriggerConfig>;
-        const triggerConfig: SessionTriggerConfig = {
-          ...template,
-          basePayload: {
-            messages: [],
-            trigger: "preload",
-            chatId: externalId,
-            ...(template.basePayload ?? {}),
-          },
-        };
-
         // Resume an existing session; otherwise only START one when the event is a session-start
         // (startOn). Resume-only with no session yet -> ignore (no session, no run, no egress).
         const existing = await findSessionByExternalId(environment, externalId);
@@ -175,15 +165,64 @@ function createWebhookEngine() {
             skippedReason: "startOn: not a session-start event",
           };
         }
-        const { session, isCached } = existing
-          ? { session: existing, isCached: true }
-          : await findOrCreateSession({
-              environment,
-              externalId,
-              type: "chat.agent",
-              taskIdentifier,
-              triggerConfig,
-            });
+
+        let session;
+        let isCached;
+        if (existing) {
+          session = existing;
+          isCached = true;
+        } else {
+          /** The template arrives unvalidated (`z.record(z.unknown())` on the routing
+           * target), and continuations re-parse the stored row with a throwing parse —
+           * so anything this path persists must parse, or the session strands forever.
+           * A bad template fails the CREATE delivery terminally; resumes above never
+           * touch the template, so a broken template can't stop existing sessions.
+           * Known fields persist normalized (the parse output) while unknown template
+           * keys are kept as the pre-validation path stored them; a non-object
+           * `basePayload` is rejected rather than spread into index-keyed garbage. */
+          const template = (triggerConfigTemplate ?? {}) as Partial<SessionTriggerConfig>;
+          if (
+            template.basePayload !== undefined &&
+            (typeof template.basePayload !== "object" ||
+              template.basePayload === null ||
+              Array.isArray(template.basePayload))
+          ) {
+            return {
+              success: false,
+              error:
+                "Invalid triggerConfigTemplate on the webhook routing target: basePayload must be an object",
+            };
+          }
+          const assembled = {
+            ...template,
+            basePayload: {
+              messages: [],
+              trigger: "preload",
+              chatId: externalId,
+              ...(template.basePayload ?? {}),
+            },
+          };
+          const parsedTriggerConfig = SessionTriggerConfigSchema.safeParse(assembled);
+          if (!parsedTriggerConfig.success) {
+            return {
+              success: false,
+              error: `Invalid triggerConfigTemplate on the webhook routing target: ${parsedTriggerConfig.error.issues
+                .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+                .join("; ")}`,
+            };
+          }
+          const triggerConfig: SessionTriggerConfig = {
+            ...assembled,
+            ...parsedTriggerConfig.data,
+          };
+          ({ session, isCached } = await findOrCreateSession({
+            environment,
+            externalId,
+            type: "chat.agent",
+            taskIdentifier,
+            triggerConfig,
+          }));
+        }
 
         if (session.closedAt || (session.expiresAt && session.expiresAt.getTime() < Date.now())) {
           return { success: false, error: "Session is closed or expired" };

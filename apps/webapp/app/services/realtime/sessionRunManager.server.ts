@@ -318,6 +318,8 @@ async function triggerSessionRun(params: {
     options: {
       ...(config.machine ? { machine: config.machine as never } : {}),
       ...(config.queue ? { queue: { name: config.queue } } : {}),
+      ...(config.concurrency ? { concurrency: config.concurrency } : {}),
+      ...(config.concurrencyKey !== undefined ? { concurrencyKey: config.concurrencyKey } : {}),
       ...(config.tags ? { tags: config.tags } : {}),
       ...(config.maxAttempts !== undefined ? { maxAttempts: config.maxAttempts } : {}),
       ...(config.maxDuration !== undefined ? { maxDuration: config.maxDuration } : {}),

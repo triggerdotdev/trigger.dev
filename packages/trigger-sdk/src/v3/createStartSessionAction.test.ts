@@ -150,6 +150,67 @@ describe("chat.createStartSessionAction — runtime", () => {
     expect(lastStartBody?.triggerConfig.lockToVersion).toBe("20260101.1");
   });
 
+  it("forwards concurrency and concurrencyKey from triggerConfig, with per-call precedence", async () => {
+    installStartFixture();
+
+    const start = chat.createStartSessionAction("fake-chat", {
+      triggerConfig: {
+        concurrency: ["chats"],
+        concurrencyKey: "tenant-default",
+      },
+    });
+    await start({
+      chatId: "chat-conc",
+      triggerConfig: { concurrencyKey: "tenant-42" },
+    });
+
+    expect(lastStartBody?.triggerConfig.concurrency).toEqual(["chats"]);
+    expect(lastStartBody?.triggerConfig.concurrencyKey).toBe("tenant-42");
+  });
+
+  it("per-call concurrency wins over the action default, and an empty array clears it", async () => {
+    installStartFixture();
+
+    const start = chat.createStartSessionAction("fake-chat", {
+      triggerConfig: { concurrency: ["chats"] },
+    });
+
+    await start({
+      chatId: "chat-conc-override",
+      triggerConfig: { concurrency: ["priority"] },
+    });
+    expect(lastStartBody?.triggerConfig.concurrency).toEqual(["priority"]);
+
+    await start({
+      chatId: "chat-conc-clear",
+      triggerConfig: { concurrency: [] },
+    });
+    expect(lastStartBody?.triggerConfig.concurrency).toEqual([]);
+  });
+
+  it("never defaults concurrencyKey from the chatId", async () => {
+    installStartFixture();
+
+    const start = chat.createStartSessionAction("fake-chat");
+    await start({ chatId: "chat-no-key" });
+
+    expect(lastStartBody?.triggerConfig.concurrencyKey).toBeUndefined();
+    expect(lastStartBody?.triggerConfig.concurrency).toBeUndefined();
+  });
+
+  it("rejects invalid trigger-time limit names before any network call", async () => {
+    installStartFixture();
+
+    const start = chat.createStartSessionAction("fake-chat", {
+      triggerConfig: { concurrency: ["not a valid name!"] },
+    });
+
+    await expect(start({ chatId: "chat-bad-limit" })).rejects.toThrow(
+      /letters, numbers, underscores and hyphens/
+    );
+    expect(lastStartBody).toBeUndefined();
+  });
+
   it("server-mints override tokens for additional API keys", async () => {
     const requests: Array<{ url: string; body: unknown }> = [];
     const start = chat.createStartSessionAction("fake-chat", {
