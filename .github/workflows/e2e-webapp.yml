@@ -53,7 +53,7 @@ jobs:
         run: sudo systemctl restart docker
 
       - name: ⬇️ Checkout repo
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -64,7 +64,7 @@ jobs:
           version: 10.33.2
 
       - name: ⎔ Setup node
-        uses: WarpBuilds/setup-node@bc639b444d583175926b588962199c247d23e8d3 # v6
+        uses: WarpBuilds/setup-node@2867cf8f859d73439e1ad18b542617e5a29f0f10 # v7.0.0
         with:
           node-version: 24.18.0
           cache: "pnpm"
@@ -72,7 +72,7 @@ jobs:
       # ..to avoid rate limits when pulling images
       - name: 🐳 Login to DockerHub
         if: ${{ env.DOCKERHUB_USERNAME }}
-        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
