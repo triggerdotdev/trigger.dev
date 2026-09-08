@@ -1,6 +1,6 @@
 import type { AgentPageContext, SuggestedPrompt } from "@internal/dashboard-agent-contracts";
+import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { BetaBadge } from "~/components/FeatureBadges";
-import { AgentMonoLogo } from "~/components/primitives/AgentDotMatrix";
 import { Header1 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { DashboardAgentSuggestedPrompts } from "./DashboardAgentSuggestedPrompts";
@@ -29,12 +29,12 @@ export function DashboardAgentHero({
       <div className="m-auto flex w-full max-w-2xl flex-col items-center gap-5">
         <div className="flex flex-col items-center gap-1.5 text-center">
           <Header1 className="flex items-center gap-2">
-            <AgentMonoLogo size={22} decorative />
+            <AISparkleIcon className="size-[22px]" />
             Ask Trigger
             <BetaBadge />
           </Header1>
           <Paragraph variant="small" className="text-text-dimmed">
-            About your runs, errors, or how Trigger.dev works.
+            Ask about your runs, errors, or how Trigger works.
           </Paragraph>
         </div>
         {composer}

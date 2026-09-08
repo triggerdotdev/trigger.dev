@@ -1,8 +1,9 @@
 import type { UIMessage } from "@ai-sdk/react";
 import { useLocation } from "@remix-run/react";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
+import { motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { AgentSpinner } from "~/components/primitives/Spinner";
+import { Spinner } from "~/components/primitives/Spinner";
 import { useToast } from "~/components/primitives/Toast";
 import { useAgentPageContext } from "~/hooks/useAgentPageContext";
 import { useDashboardAgentBaseUrl } from "~/hooks/useDashboardAgentBaseUrl";
@@ -39,7 +40,7 @@ import type { DashboardAgentChat as DashboardAgentChatListItem } from "./Dashboa
 import type { SuggestedPrompt, WatchSpec } from "@internal/dashboard-agent-contracts";
 import { resolveOpenedChat, type OpenedChatResponse } from "./opened-chat";
 import type { AgentPageContext } from "./page-context-types";
-import { agentPageLabel } from "./page-label";
+import { agentPageEntityId } from "./page-label";
 import { explicitPromptTarget } from "./explicit-prompt";
 import { escapeClosesPanel } from "./panel-escape";
 import {
@@ -48,7 +49,7 @@ import {
   settleReadChats,
   unreadWorkCount,
 } from "./unread-counts";
-import { AgentPanelColumn } from "./panel-layout";
+import { AgentPanelColumn, type DashboardAgentMode, type DragHandleProps } from "./panel-layout";
 import { markerAfterActiveChat, markerAfterActivity } from "./thinking-marker";
 import { concurrencyPath } from "~/utils/pathBuilder";
 import { scopeMatchesPath, sessionPathFor } from "./agent-scope";
@@ -83,12 +84,17 @@ export function DashboardAgentPanel({
   onChatRead,
   onUnreadWorkChange,
   onTurnActivityChange,
-  isFullscreen = false,
-  onToggleFullscreen,
+  mode = "floating",
+  onModeChange,
+  dragHandleProps,
+  dragHandleClassName,
 }: {
   onClose: () => void;
-  isFullscreen?: boolean;
-  onToggleFullscreen?: () => void;
+  mode?: DashboardAgentMode;
+  onModeChange?: (mode: DashboardAgentMode) => void;
+  /** Spread onto the header, which is the floating window's drag handle; already filtered by `FloatingAgentWindow`. */
+  dragHandleProps?: DragHandleProps;
+  dragHandleClassName?: string;
   // Every `seq` below distinguishes repeat requests with identical contents.
   requestedMessage?: { text: string; seq: number };
   openChatRequest?: { chatId: string; seq: number };
@@ -130,8 +136,7 @@ export function DashboardAgentPanel({
   const [loading, setLoading] = useState(
     () => readLastChat(storageKey)?.path === location.pathname
   );
-
-  const currentPage = agentPageLabel(pageContext, location.pathname);
+  const entityId = agentPageEntityId(pageContext, location.pathname);
 
   const pagePaths = useMemo<Record<string, string>>(
     () => ({ raise_env_limit: concurrencyPath(organization, project, environment) }),
@@ -624,7 +629,7 @@ export function DashboardAgentPanel({
   return (
     <div
       ref={panelRef}
-      className="flex h-full flex-col bg-background-bright animate-in slide-in-from-right-2 duration-150"
+      className="flex h-full flex-col bg-background-bright animate-in fade-in zoom-in-95 duration-150"
       // A React handler, not a global hotkey, so Esc stays scoped to the panel.
       onKeyDown={(event) => {
         if (
@@ -639,26 +644,26 @@ export function DashboardAgentPanel({
         onClose();
       }}
     >
-      <DashboardAgentHeader
-        title={headerTitle}
-        chats={chats}
-        currentChatId={active?.chatId ?? ""}
-        thinkingChatId={thinkingChatId}
-        onNewChat={newChat}
-        showNewChat={active !== null}
-        onOpenHistory={loadHistory}
-        onSelectChat={switchChat}
-        onDeleteChat={deleteChat}
-        onToggleFullscreen={onToggleFullscreen ?? (() => {})}
-        isFullscreen={isFullscreen}
-        onClose={onClose}
-      />
+      <motion.div {...dragHandleProps} className={dragHandleClassName}>
+        <DashboardAgentHeader
+          title={headerTitle}
+          chats={chats}
+          currentChatId={active?.chatId ?? ""}
+          thinkingChatId={thinkingChatId}
+          onOpenHistory={loadHistory}
+          onSelectChat={switchChat}
+          onDeleteChat={deleteChat}
+          mode={mode}
+          onModeChange={onModeChange ?? (() => {})}
+          onClose={onClose}
+        />
+      </motion.div>
 
       {/* Always mounted, so the chat keeps its transport, session and transcript. */}
-      <AgentPanelColumn fullscreen={isFullscreen}>
+      <AgentPanelColumn fullscreen={mode === "fullscreen"}>
         {loading ? (
           <div className="flex flex-1 items-center justify-center">
-            <AgentSpinner size={20} />
+            <Spinner className="size-5" />
           </div>
         ) : active ? (
           <DashboardAgentChat
@@ -674,9 +679,9 @@ export function DashboardAgentPanel({
             clientData={clientData}
             apiOrigin={apiOrigin}
             actionPath={actionPath}
-            projectSlug={project.slug}
+            projectName={project.name}
             environmentSlug={environment.slug}
-            currentPage={currentPage}
+            entityId={entityId}
             promotedPrompt={promotedPrompt}
             watches={chatWatches}
             pagePaths={pagePaths}
@@ -690,13 +695,15 @@ export function DashboardAgentPanel({
             onTurnSettled={loadHistory}
             onActivityChange={handleActivityChange}
             onQuotaChange={handleQuotaChange}
+            onNewChat={newChat}
+            showNewChat={active !== null}
           />
         ) : (
           <DashboardAgentDraft
             onSubmit={createChat}
-            projectSlug={project.slug}
+            projectName={project.name}
             environmentSlug={environment.slug}
-            currentPage={currentPage}
+            entityId={entityId}
             pageContext={pageContext}
             promotedPrompt={promotedPrompt}
             watchCard={watchCardElement}

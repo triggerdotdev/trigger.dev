@@ -12,18 +12,18 @@ import { readDismissedPromptIds, resolveSuggestedPromptsBySlot } from "./suggest
 // returns the id, and only then does `DashboardAgentChat` mount.
 export function DashboardAgentDraft({
   onSubmit,
-  projectSlug,
+  projectName,
   environmentSlug,
-  currentPage,
+  entityId,
   pageContext,
   promotedPrompt,
   watchCard,
   capReached,
 }: {
   onSubmit: (text: string) => void;
-  projectSlug: string;
+  projectName: string;
   environmentSlug: string;
-  currentPage: string;
+  entityId?: string;
   pageContext?: AgentPageContext;
   promotedPrompt?: SuggestedPrompt;
   watchCard?: React.ReactNode;
@@ -72,9 +72,9 @@ export function DashboardAgentDraft({
               planResolved={capReached.planResolved}
               context={
                 <DashboardAgentContextBanner
-                  projectSlug={projectSlug}
+                  projectName={projectName}
                   environmentSlug={environmentSlug}
-                  currentPage={currentPage}
+                  entityId={entityId}
                 />
               }
             />
@@ -92,9 +92,9 @@ export function DashboardAgentDraft({
               placeholderSuggestion={watchCard ? undefined : placeholderSuggestion}
               context={
                 <DashboardAgentContextBanner
-                  projectSlug={projectSlug}
+                  projectName={projectName}
                   environmentSlug={environmentSlug}
-                  currentPage={currentPage}
+                  entityId={entityId}
                 />
               }
             />

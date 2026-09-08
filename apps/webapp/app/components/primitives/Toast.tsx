@@ -1,7 +1,7 @@
 import { EnvelopeIcon, ExclamationCircleIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { CheckCircleIcon } from "@heroicons/react/24/solid";
+import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { useThemeMode } from "~/hooks/useThemeMode";
-import { AgentMonoLogo } from "./AgentDotMatrix";
 import { useSearchParams } from "@remix-run/react";
 import { useEffect, useMemo } from "react";
 import { useTypedLoaderData } from "remix-typedjson";
@@ -98,7 +98,7 @@ export function ToastUI({
         "self-end rounded-md border border-grid-bright bg-background-dimmed",
         variant === "success" && "border-success",
         variant === "error" && "border-error",
-        variant === "agent" && "border-[#41FF54]/25 light:border-success/60 dark:bg-secondary"
+        variant === "agent" && "border-primary/50 dark:bg-secondary"
       )}
       style={{
         width: toastWidth,
@@ -111,7 +111,7 @@ export function ToastUI({
           <CheckCircleIcon className={cn("size-4 min-w-4 text-success", title && "mt-1")} />
         ) : variant === "agent" ? (
           <span className={cn("flex size-4 min-w-4 items-center", title && "mt-1")}>
-            <AgentMonoLogo size={16} decorative />
+            <AISparkleIcon className="size-4" />
           </span>
         ) : (
           <ExclamationCircleIcon className={cn("size-4 min-w-4 text-error", title && "mt-1")} />

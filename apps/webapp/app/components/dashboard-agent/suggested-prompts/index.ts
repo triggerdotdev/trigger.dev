@@ -1,9 +1,5 @@
 // Client-safe only: the promoted-slot flag reader lives in `promotedPrompt.server.ts`.
-export {
-  resolveSuggestedPrompts,
-  resolveSuggestedPromptsBySlot,
-  type ResolvedPromptSlot,
-} from "./resolver";
+export { resolveSuggestedPrompts, resolveSuggestedPromptsBySlot } from "./resolver";
 export {
   agentsAgentPageContext,
   alertsAgentPageContext,

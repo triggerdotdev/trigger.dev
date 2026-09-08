@@ -1,4 +1,3 @@
-import { MagnifyingGlassIcon } from "@heroicons/react/20/solid";
 import { Button } from "~/components/primitives/Buttons";
 import { useDashboardAgent } from "./dashboardAgentLauncher";
 
@@ -7,7 +6,6 @@ export function InvestigateButton({
   prompt,
   label = "Investigate",
   size = "small",
-  variant = "primary",
   fullWidth,
   className,
   tooltip,
@@ -16,7 +14,6 @@ export function InvestigateButton({
   prompt: string;
   label?: string;
   size?: "small" | "medium";
-  variant?: "primary" | "secondary" | "minimal";
   fullWidth?: boolean;
   className?: string;
   tooltip?: string;
@@ -29,9 +26,7 @@ export function InvestigateButton({
   return (
     <Button
       type="button"
-      variant={`${variant}/${size}`}
-      LeadingIcon={MagnifyingGlassIcon}
-      leadingIconClassName={variant === "primary" ? undefined : "text-text-dimmed"}
+      variant={`ask-trigger/${size}`}
       fullWidth={fullWidth}
       textAlignLeft={fullWidth}
       className={className}

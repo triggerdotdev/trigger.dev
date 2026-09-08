@@ -91,7 +91,14 @@ export function useTriggerChatTransport<TTask extends AnyTask = AnyTask>(
   }
 
   // Keep callbacks up to date without recreating the transport.
-  const { onSessionChange, clientData, onEvent } = options;
+  const {
+    onSessionChange,
+    clientData,
+    onEvent,
+    accessToken,
+    startSession,
+    fetch: fetchOverride,
+  } = options;
   useEffect(() => {
     ref.current?.setOnSessionChange(onSessionChange);
   }, [onSessionChange]);
@@ -106,6 +113,23 @@ export function useTriggerChatTransport<TTask extends AnyTask = AnyTask>(
   useEffect(() => {
     ref.current?.setClientData(clientData as Record<string, unknown> | undefined);
   }, [clientData]);
+
+  // Same for the request-time callbacks: a host that closes over a changing
+  // endpoint (a dashboard navigating between projects) would otherwise keep
+  // sending to the one captured on first render.
+  useEffect(() => {
+    ref.current?.setAccessToken(accessToken);
+  }, [accessToken]);
+
+  useEffect(() => {
+    ref.current?.setStartSession(
+      startSession as Parameters<TriggerChatTransport["setStartSession"]>[0]
+    );
+  }, [startSession]);
+
+  useEffect(() => {
+    ref.current?.setFetch(fetchOverride);
+  }, [fetchOverride]);
 
   // Note: dispose() is NOT called in effect cleanup because React strict mode
   // runs cleanup+re-setup, but the transport lives in a ref and isn't recreated.

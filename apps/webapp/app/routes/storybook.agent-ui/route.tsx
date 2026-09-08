@@ -132,9 +132,9 @@ function HeroHarness({
                 isStreaming={false}
                 context={
                   <DashboardAgentContextBanner
-                    projectSlug="demo-storefront"
+                    projectName="Demo Storefront"
                     environmentSlug="prod"
-                    currentPage="Runs"
+                    entityId="run_a1b2c3d4e5f6"
                   />
                 }
               />
@@ -318,16 +318,16 @@ const STATES: Record<string, React.ReactNode> = {
 
   "banner-prod": (
     <DashboardAgentContextBanner
-      projectSlug="demo-storefront"
+      projectName="Demo Storefront"
       environmentSlug="prod"
-      currentPage="Runs"
+      entityId="run_a1b2c3d4e5f6"
     />
   ),
   "banner-preview-long": (
     <DashboardAgentContextBanner
-      projectSlug="demo-storefront"
+      projectName="Demo Storefront"
       environmentSlug="preview-demo-feature-rework-receipt-email-batching"
-      currentPage="Deployments"
+      entityId="20240101.1"
     />
   ),
 };

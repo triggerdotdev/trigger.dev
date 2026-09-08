@@ -11,7 +11,7 @@ export type AgentListRowVariant = "default" | "promoted" | "selected";
 const ROW_VARIANTS: Record<AgentListRowVariant, string> = {
   default:
     "border-grid-bright bg-background-bright/40 text-text-dimmed hover:border-border-bright hover:text-text-bright",
-  promoted: "border-indigo-500/40 bg-indigo-500/5 text-text-bright hover:border-indigo-500/60",
+  promoted: "border-primary/40 bg-primary/5 text-text-bright hover:border-primary/60",
   selected: "border-border-bright bg-background-bright text-text-bright",
 };
 
@@ -49,7 +49,7 @@ export function AgentListRow({
         ) : null}
         {unread ? (
           <>
-            <span aria-hidden className="size-2 shrink-0 rounded-full bg-indigo-500" />
+            <span aria-hidden className="size-2 shrink-0 rounded-full bg-primary" />
             <span className="sr-only">Unread.</span>
           </>
         ) : null}

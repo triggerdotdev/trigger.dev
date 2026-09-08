@@ -21,7 +21,7 @@ import { useId, useState } from "react";
 import { Button } from "~/components/primitives/Buttons";
 import { Checkbox } from "~/components/primitives/Checkbox";
 import { Input } from "~/components/primitives/Input";
-import { AgentSpinner } from "~/components/primitives/Spinner";
+import { ButtonSpinner } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";
 import { ChatSystemBlock } from "./chat-layout";
 import {
@@ -56,11 +56,6 @@ const VARIANT_LABEL: Record<WatchKind, string> = {
   error_recurrence: "if it recurs",
   health_recovery: "when it recovers",
 };
-
-/** Hoisted so the submit button's icon component keeps a stable identity. */
-function ButtonSpinner() {
-  return <AgentSpinner size={14} />;
-}
 
 /** Controlled, unlike `CheckboxWithLabel`: the draft is the only thing that says what's on. */
 function Toggle({

@@ -10,11 +10,15 @@ import {
 import { useLocation, useNavigate } from "@remix-run/react";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { PlusIcon } from "~/assets/icons/PlusIcon";
+import { Button } from "~/components/primitives/Buttons";
+import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { useToast } from "~/components/primitives/Toast";
 import { AgentQuotaNotice, AgentUpgradeBlock } from "./AgentUpgradeGate";
 import { DashboardAgentComposer } from "./DashboardAgentComposer";
 import { DashboardAgentContextBanner } from "./DashboardAgentContextBanner";
 import { DashboardAgentHero } from "./DashboardAgentHero";
+import { NEW_CHAT_SHORTCUT } from "./DashboardAgentHeader";
 import { DashboardAgentMessages, type TurnActivity } from "./DashboardAgentMessages";
 import { MESSAGE_TOO_LARGE_ERROR } from "./message-limits";
 import {
@@ -57,6 +61,23 @@ export type DashboardAgentSession = {
   lastEventId?: string;
 };
 
+/** The transport's `sessions` option for one chat. Extracted so the resume wiring is testable. */
+export function chatSessionsOption(
+  chatId: string,
+  session: DashboardAgentSession | null,
+  streaming: boolean | undefined
+) {
+  if (!session) return undefined;
+  return {
+    [chatId]: {
+      publicAccessToken: session.publicAccessToken,
+      lastEventId: session.lastEventId,
+      // Mid-turn chats must be marked streaming or the transport won't resume `session.out`.
+      isStreaming: streaming ?? false,
+    },
+  };
+}
+
 // Matches the agent's clientDataSchema input.
 export type DashboardAgentClientData = {
   userId: string;
@@ -75,9 +96,9 @@ export function DashboardAgentChat({
   clientData,
   apiOrigin,
   actionPath,
-  projectSlug,
+  projectName,
   environmentSlug,
-  currentPage,
+  entityId,
   pendingFirstMessage,
   streaming,
   sendRequest,
@@ -91,6 +112,8 @@ export function DashboardAgentChat({
   onTurnSettled,
   onActivityChange,
   onQuotaChange,
+  onNewChat,
+  showNewChat,
 }: {
   chatId: string;
   initialMessages: UIMessage[];
@@ -98,10 +121,10 @@ export function DashboardAgentChat({
   clientData: DashboardAgentClientData;
   apiOrigin: string;
   actionPath: string;
-  projectSlug: string;
+  projectName: string;
   environmentSlug: string;
-  // Display label only; the path the agent sees is `clientData.currentPage`.
-  currentPage: string;
+  /** Shown in the context banner; the path the agent sees is `clientData.currentPage`. */
+  entityId?: string;
   // Undefined for head-started and resumed chats.
   pendingFirstMessage?: string;
   streaming?: boolean;
@@ -120,6 +143,8 @@ export function DashboardAgentChat({
   onActivityChange?: (chatId: string, activity: TurnActivity | null) => void;
   /** The poll lives here, so this is where the panel learns the cap has lifted. */
   onQuotaChange?: (quota: MessageQuota) => void;
+  onNewChat: () => void;
+  showNewChat: boolean;
 }) {
   const [input, setInput] = useState("");
   // Set when the server refuses a send over the cap, so the block shows at once rather than
@@ -169,16 +194,7 @@ export function DashboardAgentChat({
       return res;
     },
     clientData,
-    sessions: session
-      ? {
-          [chatId]: {
-            publicAccessToken: session.publicAccessToken,
-            lastEventId: session.lastEventId,
-            // Mid-turn chats must be marked streaming or the transport won't resume `session.out`.
-            isStreaming: streaming ?? false,
-          },
-        }
-      : undefined,
+    sessions: chatSessionsOption(chatId, session, streaming),
     startSession: async ({ chatId }) => {
       const body = new FormData();
       body.set("intent", "start");
@@ -535,18 +551,48 @@ export function DashboardAgentChat({
     onActivityChange?.(chatId, activity);
   }, [chatId, activity, onActivityChange]);
 
+  const isDraftState = messages.length === 0 && !pendingFirstMessage;
+
+  const contextBanner = (
+    <DashboardAgentContextBanner
+      projectName={projectName}
+      environmentSlug={environmentSlug}
+      entityId={entityId}
+    />
+  );
+
   return (
     <>
       <WatchChips
         watches={watches.filter((watch) => watch.status === "active")}
         onCancel={onCancelWatch}
       />
-      {messages.length === 0 && !pendingFirstMessage ? (
+      {isDraftState ? (
         <DashboardAgentHero
           onSelect={submit}
           pageContext={clientData.pageContext}
           promoted={promotedPrompt}
           promptsDisabledReason={atMessageCap ? MESSAGE_QUOTA_REACHED_REASON : undefined}
+          composer={
+            atMessageCap ? (
+              <AgentUpgradeBlock
+                limit={messageCapLimit}
+                planResolved={messageCapPlanResolved}
+                context={contextBanner}
+              />
+            ) : (
+              <DashboardAgentComposer
+                layout="hero"
+                value={input}
+                onChange={setInput}
+                onSubmit={() => submit(input)}
+                onStop={stop}
+                isStreaming={isStreaming}
+                focusKey={sendRequest?.seq}
+                context={contextBanner}
+              />
+            )
+          }
         />
       ) : (
         <DashboardAgentMessages
@@ -563,17 +609,11 @@ export function DashboardAgentChat({
         />
       )}
       {watchCard ? <div className="px-3 pb-2">{watchCard}</div> : null}
-      {atMessageCap ? (
+      {isDraftState ? null : atMessageCap ? (
         <AgentUpgradeBlock
           limit={messageCapLimit}
           planResolved={messageCapPlanResolved}
-          context={
-            <DashboardAgentContextBanner
-              projectSlug={projectSlug}
-              environmentSlug={environmentSlug}
-              currentPage={currentPage}
-            />
-          }
+          context={contextBanner}
         />
       ) : (
         <>
@@ -584,12 +624,23 @@ export function DashboardAgentChat({
             onStop={stop}
             isStreaming={isStreaming}
             focusKey={sendRequest?.seq}
-            context={
-              <DashboardAgentContextBanner
-                projectSlug={projectSlug}
-                environmentSlug={environmentSlug}
-                currentPage={currentPage}
-              />
+            context={contextBanner}
+            trailingAction={
+              showNewChat && (
+                <Button
+                  variant="minimal/small"
+                  className="aspect-square h-6 shrink-0 p-1 mr-[6px]"
+                  aria-label="New chat"
+                  tooltip={
+                    <span className="flex items-center">
+                      New chat
+                      <ShortcutKey shortcut={NEW_CHAT_SHORTCUT} variant="medium" />
+                    </span>
+                  }
+                  onClick={onNewChat}
+                  LeadingIcon={<PlusIcon className="size-4 text-text-dimmed" />}
+                />
+              )
             }
           />
           {quota.kind === "within" && (

@@ -740,12 +740,12 @@ type ChatSessionState = {
  */
 export class TriggerChatTransport implements ChatTransport<UIMessage> {
   private readonly taskId: string;
-  private readonly resolveAccessToken: (params: AccessTokenParams) => string | Promise<string>;
-  private readonly resolveStartSession:
+  private resolveAccessToken: (params: AccessTokenParams) => string | Promise<string>;
+  private resolveStartSession:
     | ((params: StartSessionParams<Record<string, unknown>>) => Promise<StartSessionResult>)
     | undefined;
   private readonly resolveBaseURLFn: ChatBaseURLResolver;
-  private readonly fetchOverride: ChatFetchOverride | undefined;
+  private fetchOverride: ChatFetchOverride | undefined;
   private readonly extraHeaders: Record<string, string>;
   private readonly streamTimeoutSeconds: number;
   private defaultMetadata: Record<string, unknown> | undefined;
@@ -1538,6 +1538,29 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     this.defaultMetadata = clientData;
   }
 
+  /**
+   * Update the request-time callbacks. Same reason as `setClientData`:
+   * a host that rebuilds these per render (a dashboard navigating between
+   * projects) would otherwise keep hitting the endpoint captured at
+   * construction. Every read goes through the live field, so the next
+   * request uses the latest callback.
+   */
+  setAccessToken(accessToken: (params: AccessTokenParams) => string | Promise<string>): void {
+    this.resolveAccessToken = accessToken;
+  }
+
+  setStartSession(
+    startSession:
+      | ((params: StartSessionParams<Record<string, unknown>>) => Promise<StartSessionResult>)
+      | undefined
+  ): void {
+    this.resolveStartSession = startSession;
+  }
+
+  setFetch(fetchOverride: ChatFetchOverride | undefined): void {
+    this.fetchOverride = fetchOverride;
+  }
+
   // -------------------------------------------------------------------------
   // Multi-tab coordination passthrough
   // -------------------------------------------------------------------------
@@ -1714,6 +1737,37 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   private resolveBaseURL(ctx: ChatTransportEndpointContext): string {
     const raw = this.resolveBaseURLFn(ctx);
     return raw.replace(/\/$/, "");
+  }
+
+  /**
+   * `fetchClient` for an `out` subscription. Reads `this.fetchOverride` on
+   * every call, not once per subscription: a watch-mode subscription
+   * reconnects for the lifetime of the page, and `setFetch` may have swapped
+   * the override in between.
+   */
+  private sseFetchClient(ctx: ChatTransportEndpointContext): typeof fetch {
+    return ((input, init) => {
+      const override = this.fetchOverride;
+      if (!override) return fetch(input, init);
+      if (typeof input === "string") {
+        return override(input, init ?? {}, ctx);
+      }
+      if (input instanceof URL) {
+        return override(input.toString(), init ?? {}, ctx);
+      }
+      // Request — preserve its url + intrinsic init, let any provided init
+      // override on top (matches fetch(Request, init) semantics).
+      return override(
+        input.url,
+        {
+          method: input.method,
+          headers: input.headers,
+          signal: input.signal,
+          ...(init ?? {}),
+        },
+        ctx
+      );
+    }) as typeof fetch;
   }
 
   private async doFetch(
@@ -1984,30 +2038,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             : () => {};
 
         const sseCtx: ChatTransportEndpointContext = { endpoint: "out", chatId };
-        const fetchOverride = this.fetchOverride;
-        const sseFetchClient: typeof fetch | undefined = fetchOverride
-          ? (((input, init) => {
-              if (typeof input === "string") {
-                return fetchOverride(input, init ?? {}, sseCtx);
-              }
-              if (input instanceof URL) {
-                return fetchOverride(input.toString(), init ?? {}, sseCtx);
-              }
-              // Request — preserve its url + intrinsic init, let any
-              // provided init override on top (matches fetch(Request, init)
-              // semantics).
-              return fetchOverride(
-                input.url,
-                {
-                  method: input.method,
-                  headers: input.headers,
-                  signal: input.signal,
-                  ...(init ?? {}),
-                },
-                sseCtx
-              );
-            }) as typeof fetch)
-          : undefined;
+        const sseFetchClient = this.sseFetchClient(sseCtx);
         let sawFirstChunk = false;
         let sinceInSeq = options?.sinceInSeq;
 

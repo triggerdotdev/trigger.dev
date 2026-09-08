@@ -1,9 +1,5 @@
-import {
-  AgentSpinner,
-  ButtonSpinner,
-  Spinner,
-  SpinnerWhite,
-} from "~/components/primitives/Spinner";
+import { ButtonSpinner, Spinner, SpinnerWhite } from "~/components/primitives/Spinner";
+import { TextShimmer } from "~/components/primitives/TextShimmer";
 import { Story, StoryGrid, StoryPage, StorySection } from "../storybook/StoryKit";
 
 const NAMED = ["blue", "white", "muted", "dark", "inherit"] as const;
@@ -12,7 +8,7 @@ export default function Story_() {
   return (
     <StoryPage
       title="Spinners"
-      componentNames={["Spinner.tsx"]}
+      componentNames={["Spinner.tsx", "TextShimmer.tsx"]}
       description="Every colour option and the exported presets. `inherit` takes the surrounding text colour."
     >
       <StorySection title="Named colours" description="Shown on a raised surface.">
@@ -66,11 +62,27 @@ export default function Story_() {
               <ButtonSpinner />
             </span>
           </Story>
-          <Story label="AgentSpinner">
-            <AgentSpinner />
-          </Story>
           <Story label="Custom colours">
             <Spinner color={{ background: "#EA189E", foreground: "#6532F5" }} />
+          </Story>
+        </StoryGrid>
+      </StorySection>
+
+      <StorySection
+        title="TextShimmer"
+        description="Progress shown as text rather than an icon; static dimmed text under `prefers-reduced-motion`."
+      >
+        <StoryGrid min="11rem">
+          <Story label="Sentence case">
+            <TextShimmer className="text-sm">Thinking…</TextShimmer>
+          </Story>
+          <Story label="Longer label">
+            <TextShimmer className="text-sm">Asking support…</TextShimmer>
+          </Story>
+          <Story label="Uppercase chip label">
+            <TextShimmer className="text-xxs font-medium uppercase tracking-wider">
+              Watch
+            </TextShimmer>
           </Story>
         </StoryGrid>
       </StorySection>

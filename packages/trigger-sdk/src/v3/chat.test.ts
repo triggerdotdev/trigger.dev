@@ -317,6 +317,120 @@ describe("TriggerChatTransport", () => {
     });
   });
 
+  describe("setAccessToken / setStartSession / setFetch", () => {
+    it("swaps startSession and accessToken at runtime", async () => {
+      const startSession1 = vi.fn().mockResolvedValue({ publicAccessToken: "pat-1" });
+      const startSession2 = vi.fn().mockResolvedValue({ publicAccessToken: "pat-2" });
+      const accessToken2 = vi.fn().mockReturnValue("pat-3");
+
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "old-pat",
+        startSession: startSession1,
+      });
+
+      transport.setStartSession(startSession2);
+      const started = await transport.start("chat-1");
+      expect(startSession1).not.toHaveBeenCalled();
+      expect(started.publicAccessToken).toBe("pat-2");
+
+      // No startSession: the session PAT comes from `accessToken` instead.
+      transport.setStartSession(undefined);
+      transport.setAccessToken(accessToken2);
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+        if (isSessionOutSubscribeUrl(urlStr)) return defaultSseResponse();
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-2",
+        messageId: undefined,
+        messages: [createUserMessage("Hi")],
+        abortSignal: undefined,
+      });
+      await drainChunks(stream);
+      expect(accessToken2).toHaveBeenCalledWith({ chatId: "chat-2" });
+    });
+
+    it("serves a stream reconnect through the fetch set after the first connect", async () => {
+      const subscribes: string[] = [];
+      const respond = async (urlStr: string, servedBy: string) => {
+        if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+        if (isSessionOutSubscribeUrl(urlStr)) {
+          subscribes.push(servedBy);
+          // First window ends mid-turn, so the transport resubscribes.
+          return subscribes.length === 1
+            ? defaultSseResponse([{ type: "text-start", id: "part-1" }])
+            : defaultSseResponse([
+                { type: "text-delta", id: "part-1", delta: "resumed" },
+                { type: "trigger:turn-complete" },
+              ]);
+        }
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      };
+
+      let transport: TriggerChatTransport;
+      const fetch2 = vi.fn(async (url: string) => respond(url, "fetch2"));
+      const fetch1 = vi.fn(async (url: string) => {
+        const response = await respond(url, "fetch1");
+        // The host swaps the override while the first stream window is open.
+        if (isSessionOutSubscribeUrl(url)) transport.setFetch(fetch2);
+        return response;
+      });
+
+      transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        sessions: { "chat-reconnect": { publicAccessToken: "p" } },
+        fetch: fetch1,
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-reconnect",
+        messageId: undefined,
+        messages: [createUserMessage("hi")],
+        abortSignal: undefined,
+      });
+      await drainChunks(stream);
+
+      expect(subscribes).toEqual(["fetch1", "fetch2"]);
+    });
+
+    it("swaps the fetch override at runtime", async () => {
+      const respond = async (urlStr: string) => {
+        if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+        if (isSessionOutSubscribeUrl(urlStr)) return defaultSseResponse();
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      };
+      const fetch1 = vi.fn(async (url: string) => respond(url));
+      const fetch2 = vi.fn(async (url: string) => respond(url));
+
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        baseURL: "https://api.test.trigger.dev",
+        sessions: { "chat-1": { publicAccessToken: "p" } },
+        fetch: fetch1,
+      });
+
+      transport.setFetch(fetch2);
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-1",
+        messageId: "m1",
+        messages: [createUserMessage("Hello")],
+        abortSignal: undefined,
+      });
+      await drainChunks(stream);
+
+      expect(fetch1).not.toHaveBeenCalled();
+      expect(fetch2).toHaveBeenCalled();
+    });
+  });
+
   describe("start", () => {
     it("calls the customer's startSession callback and caches the returned PAT", async () => {
       const startSession = vi.fn().mockResolvedValue({ publicAccessToken: "session-pat-1" });

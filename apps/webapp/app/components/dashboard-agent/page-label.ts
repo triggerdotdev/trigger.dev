@@ -116,3 +116,63 @@ export function agentPageLabel(
   // Prefer the path the `other` page carries: it is what the agent was told.
   return pageLabelFromPath(page?.kind === "other" && page.path ? page.path : pathname);
 }
+
+/**
+ * The one entity a detail page is about, for the chat's context line.
+ *
+ * Secondary ids are deliberately absent: a run detail names the run, not its task, and
+ * `batches.latestFailedBatchId` describes a row in a list rather than the page's subject.
+ */
+const ENTITY_ID_FIELD: Partial<Record<AgentPage["kind"], string>> = {
+  run: "runId",
+  error: "fingerprint",
+  queue: "name",
+  deployment: "version",
+  task: "taskId",
+  schedule: "scheduleId",
+  batch: "batchId",
+  test: "taskId",
+  waitpoints: "tokenId",
+  bulkactions: "bulkActionId",
+  agents: "agentId",
+  playground: "agentId",
+  prompts: "slug",
+  models: "modelId",
+  sessions: "sessionId",
+  dashboards: "title",
+};
+
+// The segment after the section on an env-scoped path, e.g. `…/env/dev/runs/run_abc123`.
+const ENV_DETAIL_INDEX = 7;
+
+export function entityIdFromPath(pathname: string): string | undefined {
+  const segments = pathname.split("/").filter(Boolean);
+  if (
+    segments[0] !== "orgs" ||
+    segments[2] !== "projects" ||
+    segments[ENV_MARKER_INDEX] !== "env"
+  ) {
+    return undefined;
+  }
+  // No section means the env root, which is about no entity.
+  if (!segments[ENV_SECTION_INDEX]) return undefined;
+  return segments[ENV_DETAIL_INDEX] || undefined;
+}
+
+/**
+ * `undefined` on list and overview pages, so the context line simply omits the segment.
+ * A classified page answers from its own context; only `other` falls back to the path.
+ */
+export function agentPageEntityId(
+  pageContext: AgentPageContext | undefined,
+  pathname: string
+): string | undefined {
+  const page = pageContext?.page;
+  if (page && page.kind !== "other") {
+    const field = ENTITY_ID_FIELD[page.kind];
+    if (!field) return undefined;
+    const value = (page as Record<string, unknown>)[field];
+    return typeof value === "string" && value ? value : undefined;
+  }
+  return entityIdFromPath(page?.kind === "other" && page.path ? page.path : pathname);
+}

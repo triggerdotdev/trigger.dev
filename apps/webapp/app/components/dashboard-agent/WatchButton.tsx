@@ -1,4 +1,3 @@
-import { EyeIcon } from "@heroicons/react/20/solid";
 import type { WatchSpec } from "@internal/dashboard-agent-contracts";
 import { Button } from "~/components/primitives/Buttons";
 import { useDashboardAgent } from "./dashboardAgentLauncher";
@@ -9,7 +8,6 @@ export function WatchButton({
   spec,
   label = "Watch…",
   size = "small",
-  variant = "secondary",
   fullWidth,
   className,
   tooltip,
@@ -17,7 +15,6 @@ export function WatchButton({
   spec: WatchSpec;
   label?: string;
   size?: "small" | "medium";
-  variant?: "primary" | "secondary" | "minimal";
   fullWidth?: boolean;
   className?: string;
   tooltip?: string;
@@ -30,9 +27,7 @@ export function WatchButton({
   return (
     <Button
       type="button"
-      variant={`${variant}/${size}`}
-      LeadingIcon={EyeIcon}
-      leadingIconClassName={variant === "primary" ? undefined : "text-text-dimmed"}
+      variant={`ask-trigger/${size}`}
       fullWidth={fullWidth}
       textAlignLeft={fullWidth}
       className={className}

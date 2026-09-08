@@ -2,6 +2,7 @@ import { $transaction, prisma } from "~/db.server";
 import { logger } from "./logger.server";
 import { type UserFromSession } from "./session.server";
 import {
+  type ChatOpenMode,
   type DashboardPreferences,
   type FavoritePage,
   mergeHiddenItems,
@@ -270,6 +271,36 @@ export async function updateSystemThemePreference({
       ),
       ${key}::text[],
       to_jsonb(${theme}::text)
+    )
+    WHERE id = ${user.id}
+  `;
+}
+
+export async function updateChatOpenModePreference({
+  user,
+  chatOpenMode,
+}: {
+  user: UserFromSession;
+  chatOpenMode: ChatOpenMode;
+}) {
+  if (user.isImpersonating) {
+    return;
+  }
+
+  if (user.dashboardPreferences.chatOpenMode === chatOpenMode) {
+    return;
+  }
+
+  // Narrow jsonb_set write: see updateThemePreference.
+  return prisma.$executeRaw`
+    UPDATE "User"
+    SET "dashboardPreferences" = jsonb_set(
+      COALESCE(
+        "dashboardPreferences",
+        '{"version":"1","projects":{}}'::jsonb
+      ),
+      '{chatOpenMode}',
+      to_jsonb(${chatOpenMode}::text)
     )
     WHERE id = ${user.id}
   `;

@@ -12,6 +12,9 @@ import { z } from "zod";
 import {
   forceSettledInvestigationState,
   formatTriggerUri,
+  investigateMessageId,
+  settledMessageId,
+  wakeMessageId,
   watchResolutions,
   watchResultNeedsAttention,
   type InvestigationState,
@@ -476,7 +479,7 @@ async function narrateWatchWake(args: {
   messages: ModelMessage[];
 }): Promise<void> {
   const { action, chatId, uiMessages } = args;
-  const messageId = `wake:${action.id}`;
+  const messageId = wakeMessageId(action.id);
 
   // Dedup on the action id. Durable, because the history it checks is the
   // snapshot the SDK reseeds on every boot — not per-process state.
@@ -689,8 +692,8 @@ async function conductWatchInvestigation(args: {
   messages: ModelMessage[];
 }): Promise<void> {
   const { action, chatId, clientData, uiMessages } = args;
-  const messageId = `investigate:${action.id}`;
-  const closingMessageId = `${messageId}:settled`;
+  const messageId = investigateMessageId(action.id);
+  const closingMessageId = settledMessageId(messageId);
   const projectRef = clientData?.projectRef;
   const environmentRef = clientData?.environmentId;
 

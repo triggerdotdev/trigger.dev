@@ -342,7 +342,6 @@ export default function Page() {
             {degraded ? (
               <InvestigateButton
                 prompt={queueBacklogPrompt(fullName)}
-                variant="secondary"
                 tooltip="Ask why this queue is backed up"
               />
             ) : null}

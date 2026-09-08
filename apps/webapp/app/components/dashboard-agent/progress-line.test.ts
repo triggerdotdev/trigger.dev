@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   earliestInFlightToolCall,
+  hasUnfinishedTextPart,
   inFlightToolName,
   liveInvestigation,
   liveProgress,
@@ -254,5 +255,73 @@ describe("liveProgress", () => {
     expect(
       liveProgress([...submitted, assistant([investigationPart("inv_1", 2, "concluded")])], null)
     ).toBeNull();
+  });
+});
+
+/**
+ * A watch wake, the investigation it triggers and a settlement card are all appended
+ * after the answer they follow, and all carry `role: "assistant"`. Reading the literal
+ * last message would hide the call a hang deadline is timing, and let a dead turn look
+ * finished.
+ */
+describe("in-flight detection behind a trailing agent record", () => {
+  const ask = { id: "msg_user", role: "user", parts: [{ type: "text", text: "why?" }] };
+  const answering = { id: "msg_answer", ...assistant([pendingTool("run_query")]) };
+  const answered = { id: "msg_answer", ...assistant([settledTool("run_query")]) };
+  const streaming = {
+    id: "msg_answer",
+    ...assistant([{ type: "text", text: "Looking", state: "streaming" }]),
+  };
+  const wake = {
+    id: "wake:watch:watch_1:fired",
+    ...assistant([{ type: "text", text: "Your watch fired." }]),
+  };
+  const investigation = {
+    id: "investigate:watch:watch_1:fired",
+    ...assistant([{ type: "text", text: "Looking into it." }]),
+  };
+  const turnFailed = {
+    id: "turn-error:2",
+    ...assistant([{ type: "text", text: "That turn failed." }]),
+  };
+
+  it("still finds the pending call when a wake lands on top of it", () => {
+    expect(earliestInFlightToolCall([ask, answering, wake])).toEqual({
+      callId: "run_query",
+      name: "run_query",
+    });
+    expect(inFlightToolName([ask, answering, wake])).toBe("run_query");
+  });
+
+  it("finds it behind a whole watch investigation, not just one record", () => {
+    expect(earliestInFlightToolCall([ask, answering, wake, investigation])).toEqual({
+      callId: "run_query",
+      name: "run_query",
+    });
+  });
+
+  it("finds nothing once that turn's call has settled", () => {
+    expect(earliestInFlightToolCall([ask, answered, wake])).toBeUndefined();
+    expect(inFlightToolName([ask, answered, wake])).toBeNull();
+  });
+
+  it("does not reach back past the turn boundary into an older turn", () => {
+    expect(earliestInFlightToolCall([ask, answering, ask, answered])).toBeUndefined();
+  });
+
+  it("stops at a stored failure: that turn ended and nothing is pending", () => {
+    expect(earliestInFlightToolCall([ask, answering, turnFailed])).toBeUndefined();
+  });
+
+  it("reads streaming text behind a wake as still in flight", () => {
+    expect(hasUnfinishedTextPart([ask, streaming, wake])).toBe(true);
+    expect(hasUnfinishedTextPart([ask, answered, wake])).toBe(false);
+  });
+
+  it("keeps the progress line up while a wake lands mid-turn", () => {
+    expect(liveProgress([ask, answering, wake], "working")).toEqual({
+      source: "tool",
+      label: "Running a query…",
+    });
   });
 });

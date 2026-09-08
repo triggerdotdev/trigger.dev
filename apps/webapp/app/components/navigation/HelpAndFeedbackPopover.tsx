@@ -13,7 +13,6 @@ import { ASK_AGENT_LABEL } from "~/components/dashboard-agent/agent-identity";
 import { aiMenuEntries } from "~/components/dashboard-agent/ai-entry-points";
 import { ASK_AI_SHORTCUT, askAiCanOpen } from "~/components/dashboard-agent/ask-ai-channels";
 import { requestAskAi } from "~/components/dashboard-agent/askAiOpenRequest";
-import { AgentMonoLogo } from "~/components/primitives/AgentDotMatrix";
 import { TOGGLE_PANEL_SHORTCUT } from "~/components/dashboard-agent/dashboardAgentLauncher";
 import {
   requestDashboardAgent,
@@ -139,7 +138,7 @@ export function HelpAndFeedback({
                   entry === "agent" ? (
                     <SideMenuItemButton
                       key={entry}
-                      icon={<AgentMonoLogo size={18} decorative />}
+                      icon={AISparkleIcon}
                       name={ASK_AGENT_LABEL}
                       data-action="ask-agent"
                       trailing={<ShortcutKey shortcut={TOGGLE_PANEL_SHORTCUT} variant="medium" />}

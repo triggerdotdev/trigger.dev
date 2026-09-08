@@ -41,3 +41,21 @@ describe("the composer's Escape wiring", () => {
     );
   });
 });
+
+// Source-level checks: the composer's own layout, which no pure helper can answer for.
+describe("the composer's context row and text box", () => {
+  it("renders the context once, below the text box, in either layout", () => {
+    const sites = [...COMPOSER.matchAll(/\{context \?\? <span \/>\}/g)];
+    // Two source sites, one per layout: the `isHero` branches are exclusive, so a
+    // rendered composer shows the context exactly once.
+    expect(sites).toHaveLength(2);
+    for (const site of sites) {
+      expect(site.index).toBeGreaterThan(COMPOSER.indexOf("<textarea"));
+    }
+  });
+
+  it("gives the text box a 1.5 line height, so a growing draft stays legible", () => {
+    const textarea = COMPOSER.slice(COMPOSER.indexOf("<textarea"));
+    expect(textarea.slice(0, textarea.indexOf("/>"))).toContain("leading-[1.5]");
+  });
+});
