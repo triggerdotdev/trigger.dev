@@ -63,6 +63,12 @@ export default defineConfig({
 
 In this example we're using env vars from [Infisical](https://infisical.com).
 
+<Tip>
+  Infisical also offers a native [Secret Sync](/deploy-environment-variables#infisical-secret-sync)
+  that pushes secrets to Trigger.dev without a build extension or a redeploy. Use `syncEnvVars` when
+  you want to resolve secrets at deploy time in code, or for a service without a native sync.
+</Tip>
+
 ```ts trigger.config.ts
 import { defineConfig } from "@trigger.dev/sdk";
 import { syncEnvVars } from "@trigger.dev/build/extensions/core";

@@ -184,14 +184,35 @@ For more information about the context object, see the [Context documentation](/
 
 ### Sync env vars from another service
 
-You could use the SDK functions above but it's much easier to use our `syncEnvVars` build extension in your `trigger.config` file.
+There are two ways to pull secrets from another service into Trigger.dev: a native **Secret Sync** (currently [Infisical](https://infisical.com)), or the `syncEnvVars` build extension for any other service.
+
+#### Infisical Secret Sync
+
+If your secrets live in [Infisical](https://infisical.com), sync them natively, without a build extension or a redeploy. You configure the sync in the Infisical dashboard, and it pushes secrets straight to your [Environment Variables page](#in-the-dashboard) in Trigger.dev. When a secret changes in Infisical the sync updates the matching variable, and your tasks pick up the new value on their next run.
+
+Set it up in Infisical in two steps:
+
+1. Add a **Trigger.dev App Connection** using a Trigger.dev Personal Access Token from your account settings. Self-hosted instances are supported.
+2. Create a **Secret Sync**: choose the connection, pick the target organization, project and environment (Production, Staging, Development, or Preview), and set the secret path to sync.
+
+Follow the [Trigger.dev Secret Sync guide](https://infisical.com/docs/integrations/secret-syncs/trigger-dev) in the Infisical docs for the full walkthrough.
+
+<Note>
+  A Secret Sync only overwrites the keys it manages, leaving variables you set manually untouched.
+  Synced variables are marked as [secret](#secret-environment-variables) by default, so they appear
+  redacted on the Environment Variables page.
+</Note>
+
+#### Using the `syncEnvVars` build extension
+
+For any other service, use our `syncEnvVars` build extension in your `trigger.config` file to resolve secrets at deploy time.
 
 <Note>
   To use the `syncEnvVars` build extension, you should first install the `@trigger.dev/build`
   package into your devDependencies.
 </Note>
 
-In this example we're using env vars from [Infisical](https://infisical.com).
+In this example we're using env vars from [Infisical](https://infisical.com), but you can adapt it to any secrets manager.
 
 ```ts trigger.config.ts
 import { defineConfig } from "@trigger.dev/sdk";
