@@ -44,7 +44,7 @@ export type ChatSnapshotV1<TUIMessage extends UIMessage = UIMessage> = {
  */
 export const ChatSnapshotV1Schema = z.object({
   version: z.literal(1),
-  savedAt: z.number(),
+  savedAt: z.number().optional(),
   messages: z.array(z.unknown()),
   lastOutEventId: z.string().optional(),
   lastInEventId: z.string().optional(),
@@ -81,7 +81,7 @@ export type TranscriptSnapshotV2<TUIMessage extends UIMessage = UIMessage> = {
 
 export const TranscriptSnapshotV2Schema = z.object({
   version: z.literal(2),
-  savedAt: z.number(),
+  savedAt: z.number().optional(),
   messages: z.array(
     z.object({
       id: z.string(),
@@ -102,6 +102,9 @@ export const TranscriptSnapshotV2Schema = z.object({
  * `message` are dropped; a version 2 entry whose `message.id` disagrees with
  * the envelope `id` is dropped too, since a reader keys by one and renders by
  * the other. A caller never sees an entry it would crash on or mis-order.
+ * A missing `savedAt` defaults to `0` rather than rejecting the whole blob:
+ * the field only orders snapshot history before live chunks, and dropping a
+ * whole conversation over an absent timestamp is the wrong failure mode.
  * Returns `undefined` for an unknown version or a body that is not a
  * snapshot; callers treat that as "no snapshot".
  */
@@ -119,7 +122,7 @@ export function parseTranscriptSnapshot<TUIMessage extends UIMessage = UIMessage
     }
     return {
       version: 2,
-      savedAt: v2.data.savedAt,
+      savedAt: v2.data.savedAt ?? 0,
       messages,
       state: v2.data.state ?? null,
       lastOutEventId: v2.data.lastOutEventId,
@@ -137,7 +140,7 @@ export function parseTranscriptSnapshot<TUIMessage extends UIMessage = UIMessage
     }
     return {
       version: 2,
-      savedAt: v1.data.savedAt,
+      savedAt: v1.data.savedAt ?? 0,
       messages,
       state: null,
       lastOutEventId: v1.data.lastOutEventId,

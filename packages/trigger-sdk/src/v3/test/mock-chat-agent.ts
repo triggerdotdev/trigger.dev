@@ -336,6 +336,16 @@ function isControlChunk(chunk: unknown): boolean {
 }
 
 /**
+ * Highest `session.in` seqNum any harness has produced for a session id,
+ * keyed by `sessionId`. Production `session.in` is a durable S2 stream whose
+ * seqNums are monotonic across the runs of a chat; a fresh in-memory manager
+ * per `mockChatAgent` would otherwise restart at 0, so a continuation's
+ * follow-up message would collide with the resume floor and be dropped. This
+ * survives the per-run manager reset so continuation runs stay monotonic.
+ */
+const durableSessionInSeq = new Map<string, number>();
+
+/**
  * Create an offline test harness for a `chat.agent` task.
  *
  * The harness starts the agent's `run()` function in a mocked task context,
@@ -574,7 +584,21 @@ export function mockChatAgent(
       ...(options.headStartMessages ? { headStartMessages: options.headStartMessages } : {}),
     };
 
-    sendSessionInput = drivers.sessions.in.send;
+    const durableSeq = durableSessionInSeq.get(sessionId);
+    if (durableSeq !== undefined) {
+      sessionStreams.setLastSeqNum(sessionId, "in", durableSeq);
+    }
+    const rawSendSessionInput = drivers.sessions.in.send;
+    sendSessionInput = async (id, data, io, metadata) => {
+      await rawSendSessionInput(id, data, io, metadata);
+      const io2 = io ?? "in";
+      if (io2 === "in") {
+        const latest = sessionStreams.lastSeqNum(id, "in");
+        if (latest !== undefined) {
+          durableSessionInSeq.set(id, Math.max(durableSessionInSeq.get(id) ?? latest, latest));
+        }
+      }
+    };
     closeSessionInput = drivers.sessions.in.close;
 
     // Record every chunk written to session.out, detect turn-complete.
