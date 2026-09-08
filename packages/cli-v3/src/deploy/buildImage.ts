@@ -2,9 +2,10 @@ import { logger } from "../utilities/logger.js";
 import { depot } from "@depot/cli";
 import { x } from "tinyexec";
 import type { BuildManifest, BuildRuntime } from "@trigger.dev/core/v3/schemas";
-import { networkInterfaces } from "os";
-import { join } from "path";
+import { homedir, networkInterfaces, tmpdir } from "os";
+import { join, resolve } from "path";
 import { safeReadJSONFile } from "../utilities/fileSystem.js";
+import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { readFileSync } from "fs";
 
 import { isLinux } from "std-env";
@@ -474,6 +475,10 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
 
   const errors: string[] = [];
 
+  const writeRegistryAuthFile = process.env.TRIGGER_REGISTRY_AUTH === "file";
+  let authConfigDir: string | undefined;
+  let buildEnv: NodeJS.ProcessEnv | undefined;
+
   let cloudRegistryHost: string | undefined;
   if (push && options.authenticateToRegistry) {
     cloudRegistryHost =
@@ -499,32 +504,56 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
       };
     }
 
-    logger.debug(`Logging in to docker registry: ${cloudRegistryHost}`);
+    if (writeRegistryAuthFile) {
+      const [authDirError, result] = await tryCatch(
+        createRegistryAuthConfigDir(cloudRegistryHost, credentials)
+      );
 
-    const loginProcess = x(
-      "docker",
-      ["login", "--username", credentials.username, "--password-stdin", cloudRegistryHost],
-      {
-        nodeOptions: {
-          cwd: options.cwd,
-        },
+      if (authDirError) {
+        return {
+          ok: false as const,
+          error: `Failed to write registry auth for ${cloudRegistryHost}: ${authDirError.message}`,
+          logs: "",
+        };
       }
-    );
 
-    loginProcess.process?.stdin?.write(credentials.password);
-    loginProcess.process?.stdin?.end();
-
-    for await (const line of loginProcess) {
-      errors.push(line);
-      logger.debug(line);
-    }
-
-    if (loginProcess.exitCode !== 0) {
-      return {
-        ok: false as const,
-        error: `Failed to login to registry: ${cloudRegistryHost}`,
-        logs: extractLogs(errors),
+      authConfigDir = result;
+      // buildx keeps its builder state under $DOCKER_CONFIG/buildx, so point it back at
+      // the real location while the ephemeral config dir supplies only the registry auth.
+      const realConfigDir = resolve(process.env.DOCKER_CONFIG ?? join(homedir(), ".docker"));
+      buildEnv = {
+        ...process.env,
+        DOCKER_CONFIG: authConfigDir,
+        BUILDX_CONFIG: process.env.BUILDX_CONFIG ?? join(realConfigDir, "buildx"),
       };
+    } else {
+      logger.debug(`Logging in to docker registry: ${cloudRegistryHost}`);
+
+      const loginProcess = x(
+        "docker",
+        ["login", "--username", credentials.username, "--password-stdin", cloudRegistryHost],
+        {
+          nodeOptions: {
+            cwd: options.cwd,
+          },
+        }
+      );
+
+      loginProcess.process?.stdin?.write(credentials.password);
+      loginProcess.process?.stdin?.end();
+
+      for await (const line of loginProcess) {
+        errors.push(line);
+        logger.debug(line);
+      }
+
+      if (loginProcess.exitCode !== 0) {
+        return {
+          ok: false as const,
+          error: `Failed to login to registry: ${cloudRegistryHost}`,
+          logs: extractLogs(errors),
+        };
+      }
     }
 
     options.onLog?.(`Successfully logged in to the remote registry`);
@@ -598,6 +627,7 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
   const buildProcess = x("docker", args, {
     nodeOptions: {
       cwd: options.cwd,
+      env: buildEnv,
     },
   });
 
@@ -610,8 +640,7 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
 
   if (buildProcess.exitCode !== 0) {
     if (cloudRegistryHost) {
-      logger.debug(`Logging out from docker registry: ${cloudRegistryHost}`);
-      await x("docker", ["logout", cloudRegistryHost]);
+      await clearRegistryAuth(cloudRegistryHost, authConfigDir);
     }
 
     return {
@@ -660,8 +689,7 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
   }
 
   if (cloudRegistryHost) {
-    logger.debug(`Logging out from docker registry: ${cloudRegistryHost}`);
-    await x("docker", ["logout", cloudRegistryHost]);
+    await clearRegistryAuth(cloudRegistryHost, authConfigDir);
   }
 
   return {
@@ -670,6 +698,60 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
     digest,
     logs: extractLogs(errors),
   };
+}
+
+// An ephemeral docker config dir holding only this deploy's registry auth entry, passed
+// to the build via DOCKER_CONFIG. Nothing shared is read or mutated, and a fresh config
+// has no credsStore, so docker resolves the entry from the file.
+async function createRegistryAuthConfigDir(
+  host: string,
+  credentials: { username: string; password: string }
+) {
+  const dir = await mkdtemp(join(tmpdir(), "trigger-docker-"));
+  const realConfigDir = resolve(process.env.DOCKER_CONFIG ?? join(homedir(), ".docker"));
+
+  // docker login stores Docker Hub credentials under the legacy index key
+  const bareHost = host.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  const authKey =
+    bareHost === "docker.io" || bareHost === "registry-1.docker.io"
+      ? "https://index.docker.io/v1/"
+      : bareHost;
+
+  // Carry over the context selection (e.g. OrbStack/colima) so endpoint resolution
+  // still works; the contexts store and CLI plugins are shared read-only via symlink.
+  const realConfig = (await safeReadJSONFile(join(realConfigDir, "config.json"))) as
+    | { currentContext?: string }
+    | undefined;
+
+  await writeFile(
+    join(dir, "config.json"),
+    JSON.stringify({
+      ...(realConfig?.currentContext ? { currentContext: realConfig.currentContext } : {}),
+      auths: {
+        [authKey]: {
+          auth: Buffer.from(`${credentials.username}:${credentials.password}`).toString("base64"),
+        },
+      },
+    }),
+    { mode: 0o600 }
+  );
+
+  await tryCatch(symlink(join(realConfigDir, "contexts"), join(dir, "contexts")));
+  await tryCatch(symlink(join(realConfigDir, "cli-plugins"), join(dir, "cli-plugins")));
+
+  logger.debug(`Wrote registry auth for ${host} to ${dir}`);
+
+  return dir;
+}
+
+async function clearRegistryAuth(host: string, authConfigDir: string | undefined) {
+  if (!authConfigDir) {
+    logger.debug(`Logging out from docker registry: ${host}`);
+    await x("docker", ["logout", host]);
+    return;
+  }
+
+  await tryCatch(rm(authConfigDir, { recursive: true, force: true }));
 }
 
 function extractLogs(outputs: string[]) {
