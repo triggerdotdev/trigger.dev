@@ -1239,6 +1239,17 @@ export const ScheduleObject = z.object({
   nextRun: z.coerce.date().nullish(),
   /** The stable assigned time for the next nominal CRON time. */
   nextRunEffectiveAt: z.coerce.date().nullish(),
+  /**
+   * Present when a non-overridable plan policy applies a minimum window to this schedule (e.g.
+   * a free-plan schedule's 60-minute minimum). The configured `window` is returned separately
+   * and unchanged; this describes the floor applied on top of it.
+   */
+  appliedSchedulePolicy: z
+    .object({
+      minimumWindowSeconds: z.number(),
+      reason: z.literal("free_schedule"),
+    })
+    .optional(),
   environments: z.array(
     z.object({
       id: z.string(),

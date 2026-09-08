@@ -131,6 +131,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
           environments: schedule.environments,
           nextRun: schedule.nextRun,
           nextRunEffectiveAt: schedule.nextRunEffectiveAt,
+          appliedSchedulePolicy: schedule.appliedSchedulePolicy,
         };
 
         return json(responseObject, { status: 200 });

@@ -1,4 +1,9 @@
-import { calculateEffectiveScheduleTime, calculateSchedulePhase } from "@internal/schedule-engine";
+import {
+  calculateEffectiveScheduleTime,
+  calculateSchedulePhase,
+  resolveScheduleWindow,
+  type ScheduleWindowSource,
+} from "@internal/schedule-engine";
 import {
   ScheduleWindow,
   parseScheduleWindow,
@@ -10,6 +15,13 @@ const SECONDS_PER_UNIT = {
   m: 60,
   h: 3_600,
 } as const;
+
+/**
+ * The default spread window captured on a new schedule when the org rollout flag is enabled.
+ * Persisted per-schedule so a later change to this constant only affects schedules created after
+ * the change; existing rows keep whatever they captured.
+ */
+export const NEW_SCHEDULE_DEFAULT_WINDOW_DURATION_SECONDS = 3_600;
 
 export type ScheduleWindowDatabaseFields = {
   windowDurationSeconds: number | null;
@@ -44,6 +56,23 @@ export function normalizeScheduleWindow(window: string | undefined): ScheduleWin
   };
 }
 
+function formatDurationSeconds(durationSeconds: number): string {
+  if (durationSeconds === 0) {
+    return "0m";
+  }
+
+  if (durationSeconds % SECONDS_PER_UNIT.h === 0) {
+    return `${durationSeconds / SECONDS_PER_UNIT.h}h`;
+  }
+
+  return `${durationSeconds / SECONDS_PER_UNIT.m}m`;
+}
+
+/**
+ * The user-configured window only. Returns undefined when the user configured nothing, even if a
+ * default was captured — the edit form must show the field blank so the captured default surfaces
+ * through the placeholder copy rather than as a value the user appears to have typed.
+ */
 export function formatScheduleWindow({
   windowDurationSeconds,
   windowPercentage,
@@ -56,15 +85,30 @@ export function formatScheduleWindow({
     return undefined;
   }
 
-  if (windowDurationSeconds === 0) {
-    return "0m";
+  return formatDurationSeconds(windowDurationSeconds);
+}
+
+/**
+ * The resolved effective window used for scheduling, with its provenance. Falls back to the
+ * captured schedule default when the user configured nothing. Used by the list/inspector and the
+ * public API so a defaulted schedule reads back as e.g. "60m" with source "schedule_default".
+ */
+export function formatResolvedScheduleWindow(fields: {
+  windowDurationSeconds: number | null;
+  windowPercentage: number | null;
+  defaultWindowDurationSeconds?: number | null;
+}): { window: string | undefined; source: ScheduleWindowSource | undefined } {
+  const { window, source } = resolveScheduleWindow(fields);
+
+  if (!window) {
+    return { window: undefined, source: undefined };
   }
 
-  if (windowDurationSeconds % SECONDS_PER_UNIT.h === 0) {
-    return `${windowDurationSeconds / SECONDS_PER_UNIT.h}h`;
+  if (window.type === "percentage") {
+    return { window: `${window.percentage}%`, source };
   }
 
-  return `${windowDurationSeconds / SECONDS_PER_UNIT.m}m`;
+  return { window: formatDurationSeconds(window.durationSeconds), source };
 }
 
 export function calculateNextScheduleRunTimes({
@@ -76,6 +120,8 @@ export function calculateNextScheduleRunTimes({
   phaseSecret,
   windowDurationSeconds,
   windowPercentage,
+  defaultWindowDurationSeconds,
+  minimumWindowDurationSeconds = null,
   from = new Date(),
   count = 1,
 }: {
@@ -87,6 +133,8 @@ export function calculateNextScheduleRunTimes({
   phaseSecret: string;
   windowDurationSeconds: number | null;
   windowPercentage: number | null;
+  defaultWindowDurationSeconds?: number | null;
+  minimumWindowDurationSeconds?: number | null;
   from?: Date;
   count?: number;
 }): ScheduleRunTiming[] {
@@ -101,12 +149,11 @@ export function calculateNextScheduleRunTimes({
       environmentId,
       deduplicationKey,
     });
-  const window: NormalizedScheduleWindow | undefined =
-    windowPercentage !== null
-      ? { type: "percentage", percentage: windowPercentage }
-      : windowDurationSeconds !== null
-        ? { type: "duration", durationSeconds: windowDurationSeconds }
-        : undefined;
+  const window: NormalizedScheduleWindow | undefined = resolveScheduleWindow({
+    windowDurationSeconds,
+    windowPercentage,
+    defaultWindowDurationSeconds,
+  }).window;
   const nominalTimes = nextScheduledTimestamps(cron, timezone, from, count + 1);
 
   return nominalTimes.slice(0, count).map((nominalAt, index) => ({
@@ -116,6 +163,7 @@ export function calculateNextScheduleRunTimes({
       nextNominalAt: nominalTimes[index + 1],
       schedulePhase: phase,
       window,
+      minimumWindowDurationSeconds,
     }).effectiveAt,
   }));
 }

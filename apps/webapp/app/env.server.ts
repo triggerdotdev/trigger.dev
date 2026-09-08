@@ -1837,7 +1837,7 @@ const EnvironmentSchema = z
     SCHEDULE_WORKER_CRON_SPREAD_FRACTION: z.coerce
       .number()
       .catch(0)
-      .default(0)
+      .default(1)
       .transform((value) => (Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0)),
 
     SCHEDULE_WORKER_REDIS_HOST: z

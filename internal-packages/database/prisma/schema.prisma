@@ -2385,6 +2385,9 @@ model TaskSchedule {
   windowDurationSeconds Int?
   windowPercentage      Int?
 
+  defaultWindowDurationSeconds Int?
+  minimumWindowDurationSeconds Int?
+
   ///Can be provided by the user then accessed inside a run
   externalId String?
 

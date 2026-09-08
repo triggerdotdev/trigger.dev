@@ -73,6 +73,7 @@ export async function action({ request }: ActionFunctionArgs) {
       environments: schedule.environments,
       nextRun: schedule.nextRun,
       nextRunEffectiveAt: schedule.nextRunEffectiveAt,
+      appliedSchedulePolicy: schedule.appliedSchedulePolicy,
     };
 
     return json(responseObject, { status: 200 });
@@ -133,6 +134,13 @@ export async function loader({ request }: LoaderFunctionArgs) {
       active: schedule.active,
       nextRun: schedule.nextRun,
       nextRunEffectiveAt: schedule.nextRunEffectiveAt,
+      appliedSchedulePolicy:
+        schedule.minimumWindowDurationSeconds !== null
+          ? {
+              minimumWindowSeconds: schedule.minimumWindowDurationSeconds,
+              reason: "free_schedule" as const,
+            }
+          : undefined,
       environments: schedule.environments,
     })),
     pagination: {

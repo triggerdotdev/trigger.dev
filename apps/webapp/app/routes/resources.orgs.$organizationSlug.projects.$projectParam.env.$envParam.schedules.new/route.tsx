@@ -399,10 +399,18 @@ export function UpsertScheduleForm({
                 onChange={(event) => setScheduleWindowValue(event.target.value)}
               />
               {scheduleWindowResult === undefined ? (
-                <Hint>
-                  Assigns each run a stable time after its CRON time. Use minutes, hours, or a
-                  percentage of the interval.
-                </Hint>
+                schedule?.hasCapturedDefaultWindow ? (
+                  <Hint>
+                    This schedule uses the 60-minute default window. Enter a value to override it,
+                    or <code>0m</code> to use the one-minute minimum.
+                  </Hint>
+                ) : (
+                  <Hint>
+                    Assigns each run a stable time after its CRON time, capped at the next CRON
+                    occurrence. Use minutes, hours, or a percentage of the interval. Every schedule
+                    gets at least a one-minute spread; enter <code>0m</code> for that minimum.
+                  </Hint>
+                )
               ) : scheduleWindowResult.isValid ? (
                 <ValidationMessage
                   id={scheduleWindow.errorId}

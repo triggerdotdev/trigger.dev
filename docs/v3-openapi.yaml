@@ -5832,6 +5832,19 @@ components:
           format: date-time
           description: The next time the schedule will run
           example: "2024-04-01T00:00:00Z"
+        appliedSchedulePolicy:
+          type: object
+          description: Present only when a non-overridable plan policy applies a minimum window to this schedule (for example, a free-plan schedule's minimum run interval). The configured `window` is returned separately and unchanged.
+          properties:
+            minimumWindowSeconds:
+              type: number
+              example: 3600
+              description: The minimum window, in seconds, applied on top of the configured window.
+            reason:
+              type: string
+              enum:
+                - free_schedule
+              description: Why the minimum window is applied.
         environments:
           type: array
           items:

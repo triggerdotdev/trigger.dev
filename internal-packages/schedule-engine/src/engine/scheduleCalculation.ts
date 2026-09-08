@@ -44,6 +44,7 @@ export function calculateNextSchedulableOccurrence({
   now,
   schedulePhase,
   window,
+  minimumWindowDurationSeconds,
   cronSpreadEnabled,
 }: {
   schedule: string;
@@ -52,6 +53,7 @@ export function calculateNextSchedulableOccurrence({
   now: Date;
   schedulePhase: number;
   window?: NormalizedScheduleWindow;
+  minimumWindowDurationSeconds?: number | null;
   cronSpreadEnabled: boolean;
 }): SchedulableOccurrence {
   const occurrenceAt = (
@@ -63,6 +65,7 @@ export function calculateNextSchedulableOccurrence({
       nextNominalAt,
       schedulePhase,
       window,
+      minimumWindowDurationSeconds,
     });
 
     return {

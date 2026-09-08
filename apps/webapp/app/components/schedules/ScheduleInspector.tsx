@@ -56,6 +56,7 @@ type ScheduleInspectorData = {
   cronDescription: string;
   timezone: string;
   window?: string;
+  windowSource?: "explicit" | "schedule_default";
   externalId: string | null;
   deduplicationKey: string | null;
   userProvidedDeduplicationKey: boolean;
@@ -145,7 +146,10 @@ export function ScheduleInspector({
               </Property.Item>
               <Property.Item>
                 <Property.Label>Window</Property.Label>
-                <Property.Value>{schedule.window ?? "-"}</Property.Value>
+                <Property.Value>
+                  {schedule.window ?? "-"}
+                  {schedule.windowSource === "schedule_default" ? " · Default" : ""}
+                </Property.Value>
               </Property.Item>
               <Property.Item className="gap-1">
                 <Property.Label>Environment</Property.Label>

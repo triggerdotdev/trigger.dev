@@ -2,6 +2,7 @@ import {
   MINIMUM_SCHEDULE_RANGE_MS,
   calculateEffectiveScheduleTime,
   calculateSchedulePhase,
+  resolveScheduleWindow,
 } from "@internal/schedule-engine";
 import { type NormalizedScheduleWindow } from "@trigger.dev/core/v3";
 import {
@@ -21,6 +22,9 @@ export type ScheduleTimingInput = {
   schedulePhase: number | null;
   windowDurationSeconds: number | null;
   windowPercentage: number | null;
+  defaultWindowDurationSeconds?: number | null;
+  /** Persisted plan-policy floor (seconds). Null means unrestricted/grandfathered. */
+  minimumWindowDurationSeconds: number | null;
   active: boolean;
   updatedAt: Date;
 };
@@ -87,14 +91,18 @@ export function resolveScheduleTimings(
   const previousCache = new Map<string, Date | undefined>();
 
   return inputs.map((input) => {
-    const window: NormalizedScheduleWindow | undefined =
-      input.windowPercentage !== null
-        ? { type: "percentage", percentage: input.windowPercentage }
-        : input.windowDurationSeconds !== null
-          ? { type: "duration", durationSeconds: input.windowDurationSeconds }
-          : undefined;
+    const window: NormalizedScheduleWindow | undefined = resolveScheduleWindow({
+      windowDurationSeconds: input.windowDurationSeconds,
+      windowPercentage: input.windowPercentage,
+      defaultWindowDurationSeconds: input.defaultWindowDurationSeconds,
+    }).window;
 
-    const steps = window ? 2 : 1;
+    // A persisted policy floor (e.g. the free-plan 60m minimum) behaves like a window: it can
+    // bind against the next nominal gap, so we must walk the second step to measure that gap.
+    // Windowless, unrestricted schedules keep the one-step fast path (see the doc comment).
+    const hasPolicyMinimum =
+      input.minimumWindowDurationSeconds !== null && input.minimumWindowDurationSeconds > 0;
+    const steps = window || hasPolicyMinimum ? 2 : 1;
     const key = `${cacheKey(input.cron, input.timezone)}\n${steps}`;
 
     let nominalTimes = nominalCache.get(key);
@@ -120,6 +128,7 @@ export function resolveScheduleTimings(
       nextNominalAt,
       schedulePhase: phase,
       window,
+      minimumWindowDurationSeconds: input.minimumWindowDurationSeconds,
     });
 
     return {

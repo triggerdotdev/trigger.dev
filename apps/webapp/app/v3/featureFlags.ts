@@ -49,6 +49,8 @@ export const FEATURE_FLAG = {
   additionalApiKeyIssuanceEnabled: "additionalApiKeyIssuanceEnabled",
   // System-wide kill switch for additional (scoped) environment API-key lookup. Defaults on.
   additionalApiKeyLookupEnabled: "additionalApiKeyLookupEnabled",
+  scheduleDefaultWindowEnabled: "scheduleDefaultWindowEnabled",
+  freeScheduleMinimumWindowEnabled: "freeScheduleMinimumWindowEnabled",
 } as const;
 
 export const FeatureFlagCatalog = {
@@ -161,6 +163,8 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.additionalApiKeysEnabled]: z.boolean(),
   [FEATURE_FLAG.additionalApiKeyIssuanceEnabled]: z.boolean(),
   [FEATURE_FLAG.additionalApiKeyLookupEnabled]: z.boolean(),
+  [FEATURE_FLAG.scheduleDefaultWindowEnabled]: z.boolean(),
+  [FEATURE_FLAG.freeScheduleMinimumWindowEnabled]: z.boolean(),
 };
 
 export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;
