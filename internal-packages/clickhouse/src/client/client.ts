@@ -99,7 +99,7 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
     });
     this.queryErrors = this.meter.createCounter("clickhouse.query.errors", {
       description:
-        "ClickHouse query errors by type, e.g. MEMORY_LIMIT_EXCEEDED or TIMEOUT_EXCEEDED",
+        "ClickHouse query and insert errors by type, e.g. MEMORY_LIMIT_EXCEEDED or NO_SUCH_COLUMN_IN_TABLE",
     });
 
     this.client = createClient({
@@ -125,6 +125,14 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
 
   public async close() {
     await this.client.close();
+  }
+
+  private recordInsertError(operation: string, error: Error): void {
+    this.queryErrors.add(1, {
+      client: this.name,
+      operation,
+      error_type: (error instanceof ClickHouseError ? error.type : undefined) ?? "other",
+    });
   }
 
   private recordQueryMetrics(
@@ -947,6 +955,7 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
 
           const error = new InsertError(generateErrorMessage(v.error.issues));
 
+          this.recordInsertError(req.name, error);
           recordSpanError(span, error);
 
           return [error, null];
@@ -976,6 +985,7 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
           });
 
           recordClickhouseError(span, clickhouseError);
+          this.recordInsertError(req.name, clickhouseError);
 
           return [toInsertError(clickhouseError), null];
         }
@@ -1068,6 +1078,8 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
           });
 
           recordClickhouseError(span, clickhouseError);
+          this.recordInsertError(req.name, clickhouseError);
+
           return [toInsertError(clickhouseError), null];
         }
 
@@ -1131,6 +1143,7 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
           });
 
           recordClickhouseError(span, clickhouseError);
+          this.recordInsertError(req.name, clickhouseError);
 
           return [toInsertError(clickhouseError), null];
         }
@@ -1231,6 +1244,8 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
           });
 
           recordClickhouseError(span, clickhouseError);
+          this.recordInsertError(req.name, clickhouseError);
+
           return [toInsertError(clickhouseError), null];
         }
 
@@ -1321,8 +1336,11 @@ function classifyClickhouseError(
 }
 
 function toInsertError(error: Error): InsertError {
-  const rawMessage = error instanceof ClickHouseError ? error.rawMessage : undefined;
-  return new InsertError(error.message, { rawMessage });
+  const isClickhouseError = error instanceof ClickHouseError;
+  return new InsertError(error.message, {
+    rawMessage: isClickhouseError ? error.rawMessage : undefined,
+    clickhouseErrorType: isClickhouseError ? error.type : undefined,
+  });
 }
 
 function recordClickhouseError(span: Span, error: Error): void {

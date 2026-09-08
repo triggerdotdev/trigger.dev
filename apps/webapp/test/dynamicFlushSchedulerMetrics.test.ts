@@ -130,4 +130,229 @@ describe("DynamicFlushScheduler self-observability", () => {
       metricSum(rm, "ingest.flush.batches", { scheduler: "failing_events", outcome: "ok" })
     ).toBe(0);
   });
+
+  it("counts the items lost when a batch is abandoned", async () => {
+    const metrics = createInMemoryMetrics();
+
+    const scheduler = new DynamicFlushScheduler<Item>({
+      name: "failing_events",
+      batchSize: 3,
+      flushInterval: 50,
+      meter: metrics.meter,
+      loadSheddingEnabled: false,
+      callback: async () => {
+        throw new Error("No such column attributes_input in table");
+      },
+    });
+    cleanups.push(async () => {
+      await scheduler.shutdown();
+      await metrics.shutdown();
+    });
+
+    scheduler.addToBatch([{ id: 1 }, { id: 2 }, { id: 3 }]);
+
+    await vi.waitFor(
+      async () => {
+        const rm = await latestMetrics(metrics);
+        expect(metricSum(rm, "ingest.flush.items_lost", { scheduler: "failing_events" })).toBe(3);
+      },
+      { timeout: 8000, interval: 100 }
+    );
+
+    // The success-only items counter must not move: it means "landed", and these did not.
+    const rm = await latestMetrics(metrics);
+    expect(metricSum(rm, "ingest.flush.items", { scheduler: "failing_events" })).toBe(0);
+  });
+
+  it("releases queue depth when a batch is abandoned", async () => {
+    const metrics = createInMemoryMetrics();
+
+    const scheduler = new DynamicFlushScheduler<Item>({
+      name: "failing_events",
+      batchSize: 2,
+      flushInterval: 50,
+      meter: metrics.meter,
+      loadSheddingEnabled: false,
+      callback: async () => {
+        throw new Error("insert failed");
+      },
+    });
+    cleanups.push(async () => {
+      await scheduler.shutdown();
+      await metrics.shutdown();
+    });
+
+    scheduler.addToBatch([{ id: 1 }, { id: 2 }]);
+
+    await vi.waitFor(
+      async () => {
+        const rm = await latestMetrics(metrics);
+        expect(
+          metricSum(rm, "ingest.flush.batches", {
+            scheduler: "failing_events",
+            outcome: "failed",
+          })
+        ).toBeGreaterThanOrEqual(1);
+      },
+      { timeout: 8000, interval: 100 }
+    );
+
+    // Regression: depth used to be decremented only on success, so an abandoned batch left
+    // the gauge permanently inflated and it read as backlog rather than as loss.
+    await vi.waitFor(
+      async () => {
+        const rm = await latestMetrics(metrics);
+        expect(gaugeValue(rm, "ingest.flush.queue_depth", { scheduler: "failing_events" })).toBe(0);
+      },
+      { timeout: 4000, interval: 100 }
+    );
+  });
+
+  it("reports the age of the oldest batch still waiting to flush", async () => {
+    const metrics = createInMemoryMetrics();
+
+    const scheduler = new DynamicFlushScheduler<Item>({
+      name: "test_events",
+      batchSize: 10,
+      // Long enough that only reaching batchSize flushes, so the first items sit and age.
+      flushInterval: 60_000,
+      meter: metrics.meter,
+      loadSheddingEnabled: false,
+      callback: async () => {},
+    });
+    cleanups.push(async () => {
+      await scheduler.shutdown();
+      await metrics.shutdown();
+    });
+
+    scheduler.addToBatch([{ id: 1 }, { id: 2 }]);
+
+    await vi.waitFor(
+      async () => {
+        const rm = await latestMetrics(metrics);
+        expect(
+          gaugeValue(rm, "ingest.flush.oldest_pending_age", { scheduler: "test_events" })
+        ).toBeGreaterThan(0);
+      },
+      { timeout: 4000, interval: 50 }
+    );
+
+    // Reaching batchSize drains everything, so nothing is pending and the age resets.
+    scheduler.addToBatch([
+      { id: 3 },
+      { id: 4 },
+      { id: 5 },
+      { id: 6 },
+      { id: 7 },
+      { id: 8 },
+      { id: 9 },
+      { id: 10 },
+    ]);
+
+    await vi.waitFor(
+      async () => {
+        const rm = await latestMetrics(metrics);
+        expect(
+          gaugeValue(rm, "ingest.flush.oldest_pending_age", { scheduler: "test_events" })
+        ).toBe(0);
+      },
+      { timeout: 4000, interval: 50 }
+    );
+  });
+
+  it("keeps reporting an age while the only batch is in flight", async () => {
+    const metrics = createInMemoryMetrics();
+
+    let releaseFlush: (() => void) | undefined;
+    const flushHung = new Promise<void>((resolve) => {
+      releaseFlush = resolve;
+    });
+
+    const scheduler = new DynamicFlushScheduler<Item>({
+      name: "hanging_events",
+      // One item fills a batch, so it is dequeued at once and nothing is left queued behind it.
+      batchSize: 1,
+      flushInterval: 60_000,
+      meter: metrics.meter,
+      loadSheddingEnabled: false,
+      callback: async () => {
+        await flushHung;
+      },
+    });
+    cleanups.push(async () => {
+      releaseFlush?.();
+      await scheduler.shutdown();
+      await metrics.shutdown();
+    });
+
+    scheduler.addToBatch([{ id: 1 }]);
+
+    // The batch is out of batchQueue and inside the flush, which is where the age used to be
+    // dropped: the gauge read 0 while the item had not been stored and never would be.
+    await vi.waitFor(
+      async () => {
+        const rm = await latestMetrics(metrics);
+        expect(
+          gaugeValue(rm, "ingest.flush.oldest_pending_age", { scheduler: "hanging_events" })
+        ).toBeGreaterThan(0);
+      },
+      { timeout: 4000, interval: 50 }
+    );
+
+    releaseFlush?.();
+
+    await vi.waitFor(
+      async () => {
+        const rm = await latestMetrics(metrics);
+        expect(
+          gaugeValue(rm, "ingest.flush.oldest_pending_age", { scheduler: "hanging_events" })
+        ).toBe(0);
+      },
+      { timeout: 4000, interval: 50 }
+    );
+  });
+
+  it("reports the oldest of several waiting batches, not the newest", async () => {
+    const metrics = createInMemoryMetrics();
+
+    let releaseFlush: (() => void) | undefined;
+    const flushHung = new Promise<void>((resolve) => {
+      releaseFlush = resolve;
+    });
+
+    const scheduler = new DynamicFlushScheduler<Item>({
+      name: "backlog_events",
+      batchSize: 1,
+      flushInterval: 60_000,
+      maxConcurrency: 1,
+      minConcurrency: 1,
+      meter: metrics.meter,
+      loadSheddingEnabled: false,
+      callback: async () => {
+        await flushHung;
+      },
+    });
+    cleanups.push(async () => {
+      releaseFlush?.();
+      await scheduler.shutdown();
+      await metrics.shutdown();
+    });
+
+    scheduler.addToBatch([{ id: 1 }]);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    scheduler.addToBatch([{ id: 2 }]);
+
+    // Must track the first batch, not the second: the age of a backlog is the age of its head.
+    await vi.waitFor(
+      async () => {
+        const rm = await latestMetrics(metrics);
+        expect(
+          gaugeValue(rm, "ingest.flush.oldest_pending_age", { scheduler: "backlog_events" })
+        ).toBeGreaterThan(250);
+      },
+      { timeout: 4000, interval: 50 }
+    );
+
+    releaseFlush?.();
+  });
 });

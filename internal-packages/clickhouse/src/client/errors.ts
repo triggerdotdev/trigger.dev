@@ -32,10 +32,17 @@ export class InsertError extends BaseError {
    * which serialize own enumerable properties. Direct reads still work.
    */
   declare readonly rawMessage?: string;
-  constructor(message: string, options?: { rawMessage?: string }) {
+  /**
+   * The underlying ClickHouse error type (e.g. `NO_SUCH_COLUMN_IN_TABLE`) when the failure came
+   * from ClickHouse rejecting the insert, else undefined. Mirrors `QueryError`, so callers can
+   * tell a schema mismatch from a transient fault without parsing the message.
+   */
+  public readonly clickhouseErrorType?: string;
+  constructor(message: string, options?: { rawMessage?: string; clickhouseErrorType?: string }) {
     super({
       message,
     });
+    this.clickhouseErrorType = options?.clickhouseErrorType;
     Object.defineProperty(this, "rawMessage", {
       value: options?.rawMessage,
       enumerable: false,

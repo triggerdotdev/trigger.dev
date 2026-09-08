@@ -45,3 +45,17 @@ describe("InsertError.rawMessage", () => {
     expect(Object.keys(error)).not.toContain("rawMessage");
   });
 });
+
+describe("InsertError.clickhouseErrorType", () => {
+  it("carries the ClickHouse error type when the server rejected the insert", () => {
+    const error = new InsertError("No such column attributes_input in table", {
+      clickhouseErrorType: "NO_SUCH_COLUMN_IN_TABLE",
+    });
+
+    expect(error.clickhouseErrorType).toBe("NO_SUCH_COLUMN_IN_TABLE");
+  });
+
+  it("is undefined when the failure did not come from ClickHouse", () => {
+    expect(new InsertError("socket hang up").clickhouseErrorType).toBeUndefined();
+  });
+});
