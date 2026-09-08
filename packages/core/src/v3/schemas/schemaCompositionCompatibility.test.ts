@@ -8,12 +8,17 @@ const require = createRequire(import.meta.url);
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
 describe("schema composition compatibility", () => {
-  it.each(["zod", "zod-v3-floor"])(
-    "parses composed schemas with %s and a Zod 3 root",
-    async (zodPackage) => {
-      const result = await build({
-        stdin: {
-          contents: `
+  it.each([
+    { name: "zod", v3: require.resolve("zod/v3"), v4: require.resolve("zod/v4") },
+    {
+      name: "zod-v3-floor",
+      v3: require.resolve("zod-v3-floor/v3"),
+      v4: require.resolve("zod-v3-floor/v4"),
+    },
+  ])("parses composed schemas with $name and a Zod 3 root", async ({ v3, v4 }) => {
+    const result = await build({
+      stdin: {
+        contents: `
           import { ScheduleMetadata, WebhookMetadata } from "./src/v3/schemas/schemas.ts";
           import { WebhookResource } from "./src/v3/schemas/resources.ts";
           import { FetchRetryHeadersStrategy } from "./src/v3/schemas/fetch.ts";
@@ -52,39 +57,38 @@ describe("schema composition compatibility", () => {
             }),
           };
         `,
-          loader: "ts",
-          resolveDir: packageRoot,
-        },
-        bundle: true,
-        format: "esm",
-        platform: "node",
-        target: "node20",
-        write: false,
-        plugins: [
-          {
-            name: "resolve-root-zod-to-v3",
-            setup(build) {
-              build.onResolve({ filter: /^zod$/ }, () => ({
-                path: require.resolve(`${zodPackage}/v3`),
-              }));
-              build.onResolve({ filter: /^zod\/v4$/ }, () => ({
-                path: require.resolve(`${zodPackage}/v4`),
-              }));
-            },
+        loader: "ts",
+        resolveDir: packageRoot,
+      },
+      bundle: true,
+      format: "esm",
+      platform: "node",
+      target: "node20",
+      write: false,
+      plugins: [
+        {
+          name: "resolve-root-zod-to-v3",
+          setup(build) {
+            build.onResolve({ filter: /^zod$/ }, () => ({
+              path: v3,
+            }));
+            build.onResolve({ filter: /^zod\/v4$/ }, () => ({
+              path: v4,
+            }));
           },
-        ],
-      });
+        },
+      ],
+    });
 
-      const bundledModule = await import(
-        `data:text/javascript;base64,${Buffer.from(result.outputFiles[0]!.text).toString("base64")}`
-      );
+    const bundledModule = await import(
+      `data:text/javascript;base64,${Buffer.from(result.outputFiles[0]!.text).toString("base64")}`
+    );
 
-      expect(bundledModule.parsed).toMatchObject({
-        retry: { resetFormat: "unix_timestamp" },
-        schedule: { window: "10%" },
-        metadata: { id: "my-webhook" },
-        resource: { id: "my-webhook" },
-      });
-    }
-  );
+    expect(bundledModule.parsed).toMatchObject({
+      retry: { resetFormat: "unix_timestamp" },
+      schedule: { window: "10%" },
+      metadata: { id: "my-webhook" },
+      resource: { id: "my-webhook" },
+    });
+  });
 });
