@@ -450,14 +450,7 @@ async function retireStaleAnonymousConcurrencyLimitRows(
       name: { in: boundedIn(candidateNames) },
       OR: [{ concurrencyLimit: { not: null } }, { totalConcurrencyLimit: { not: null } }],
     },
-    select: {
-      id: true,
-      name: true,
-      updatedAt: true,
-      paused: true,
-      concurrencyLimit: true,
-      totalConcurrencyLimit: true,
-    },
+    select: { id: true, name: true, updatedAt: true },
   });
   if (staleRows.length === 0) {
     return;
@@ -472,21 +465,30 @@ async function retireStaleAnonymousConcurrencyLimitRows(
    * sync governs; a racing limits-surface sync converges via its freshness
    * re-check against the nulled row. */
   for (const row of staleRows) {
-    try {
-      await Promise.all([
-        removeQueueConcurrencyLimits(environment, row.name),
-        removeQueueTotalConcurrencyLimits(environment, row.name),
-      ]);
-    } catch (error) {
+    /** Both removals settle before anything else runs, so no removal is still
+     * in flight when the heal writes; on any failure the heal re-reads the row
+     * fresh (a concurrent writer may have moved it since the findMany) and
+     * re-syncs the engine to whatever is persisted now. */
+    const removals = await Promise.allSettled([
+      removeQueueConcurrencyLimits(environment, row.name),
+      removeQueueTotalConcurrencyLimits(environment, row.name),
+    ]);
+    const removalFailures = removals.filter((result) => result.status === "rejected");
+    if (removalFailures.length > 0) {
       logger.error(
         "retireStaleAnonymousConcurrencyLimitRows: engine cleanup failed, healing and retrying next deploy",
         {
           environmentId: environment.id,
           queueName: row.name,
-          error,
+          errors: removalFailures.map((failure) =>
+            String((failure as PromiseRejectedResult).reason)
+          ),
         }
       );
-      await syncLimitRowEngineStateBestEffort(environment, row);
+      const fresh = await prisma.taskQueue.findFirst({ where: { id: row.id } });
+      if (fresh) {
+        await syncLimitRowEngineStateBestEffort(environment, fresh);
+      }
       continue;
     }
     const retired = await prisma.taskQueue.updateMany({
