@@ -514,8 +514,12 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
     loginProcess.process?.stdin?.write(credentials.password);
     loginProcess.process?.stdin?.end();
 
+    // Login output (incl. docker's credential-storage warning) stays out of the build
+    // logs; it is fully visible at debug level and returned when the login itself fails.
+    const loginLogs: string[] = [];
+
     for await (const line of loginProcess) {
-      errors.push(line);
+      loginLogs.push(line);
       logger.debug(line);
     }
 
@@ -523,10 +527,12 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
       return {
         ok: false as const,
         error: `Failed to login to registry: ${cloudRegistryHost}`,
-        logs: extractLogs(errors),
+        logs: extractLogs(loginLogs),
       };
     }
 
+    // `errors` is the shared build log buffer; keep a marker there so failure logs show auth ran
+    errors.push(`Logged in to ${cloudRegistryHost}`);
     options.onLog?.(`Successfully logged in to the remote registry`);
   }
 
