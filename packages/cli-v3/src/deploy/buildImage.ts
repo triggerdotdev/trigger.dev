@@ -396,7 +396,9 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
     for await (const line of inspectProcess) {
       inspectLogs.push(line);
 
-      if (line.match(/Driver Options:\s+network="([^"]+)"/)?.at(1) === options.network) {
+      // The driver options line may carry more opts than network (sorted, e.g. image=
+      // before network=), so match network= anywhere on it.
+      if (line.match(/Driver Options:.*\bnetwork="([^"]+)"/)?.at(1) === options.network) {
         hasCorrectNetwork = true;
       }
     }
