@@ -749,10 +749,17 @@ async function openHandoverSession(opts: {
     if (!sessionWriter) return;
     try {
       await sessionWriter.wait();
-    } catch {
-      // Drop write errors — the customer's response stream is the
-      // source of truth for what the user sees. Durability/resume
-      // best-effort.
+    } catch (error) {
+      // Dropped, not thrown: the customer's response stream is the source of
+      // truth for what the user sees. Logged so the loss is diagnosable.
+      const { message, code, status, origin } = (error ?? {}) as Record<string, unknown>;
+      console.warn("[chat.handover] session.out write failed", {
+        chatId,
+        message,
+        code,
+        status,
+        origin,
+      });
     }
   };
 
