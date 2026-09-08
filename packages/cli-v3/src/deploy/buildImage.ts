@@ -514,8 +514,12 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
     loginProcess.process?.stdin?.write(credentials.password);
     loginProcess.process?.stdin?.end();
 
+    // Kept out of `errors` so docker login noise (e.g. the unencrypted-credentials
+    // warning) doesn't surface in build failure logs.
+    const loginLogs: string[] = [];
+
     for await (const line of loginProcess) {
-      errors.push(line);
+      loginLogs.push(line);
       logger.debug(line);
     }
 
@@ -523,7 +527,7 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
       return {
         ok: false as const,
         error: `Failed to login to registry: ${cloudRegistryHost}`,
-        logs: extractLogs(errors),
+        logs: extractLogs(loginLogs),
       };
     }
 
@@ -595,20 +599,39 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
 
   logger.debug(`docker ${args.join(" ")}`, { cwd: options.cwd });
 
-  const buildProcess = x("docker", args, {
-    nodeOptions: {
-      cwd: options.cwd,
-    },
-  });
+  const runBuild = async () => {
+    const buildProcess = x("docker", args, {
+      nodeOptions: {
+        cwd: options.cwd,
+      },
+    });
 
-  for await (const line of buildProcess) {
-    // line will be from stderr/stdout in the order you'd see it in a term
-    errors.push(line);
-    logger.debug(line);
-    options.onLog?.(line);
+    const attemptLogs: string[] = [];
+    for await (const line of buildProcess) {
+      // line will be from stderr/stdout in the order you'd see it in a term
+      attemptLogs.push(line);
+      errors.push(line);
+      logger.debug(line);
+      options.onLog?.(line);
+    }
+
+    return { exitCode: buildProcess.exitCode, attemptLogs };
+  };
+
+  let buildResult = await runBuild();
+
+  // BuildKit can intermittently fail to come up (slow boot, or its container removed
+  // underneath buildx): restart it and retry the build once before failing the deploy.
+  if (
+    buildResult.exitCode !== 0 &&
+    buildResult.attemptLogs.some((line) => line.includes("waiting for BuildKit"))
+  ) {
+    options.onLog?.(`BuildKit was not ready, restarting it and retrying the build`);
+    await x("docker", ["rm", "-f", `buildx_buildkit_${builder}0`]);
+    buildResult = await runBuild();
   }
 
-  if (buildProcess.exitCode !== 0) {
+  if (buildResult.exitCode !== 0) {
     if (cloudRegistryHost) {
       logger.debug(`Logging out from docker registry: ${cloudRegistryHost}`);
       await x("docker", ["logout", cloudRegistryHost]);
