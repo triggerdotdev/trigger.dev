@@ -18,7 +18,11 @@ import invariant from "tiny-invariant";
 import { env } from "./env.server";
 import { logger } from "./services/logger.server";
 import { isValidDatabaseUrl } from "./utils/db";
-import { buildPrismaConnectionUrl } from "./utils/prismaConnectionUrl";
+import {
+  buildPrismaConnectionUrl,
+  connectionLifetimePoolOptions,
+  resolveConnectionLifetimeSeconds,
+} from "./utils/prismaConnectionUrl";
 import {
   captureInfrastructureErrors,
   infraErrorAlreadyLogged,
@@ -670,11 +674,13 @@ function buildDriverAdapterPool(
   poolTimeoutSeconds: number,
   connectionLimit: number
 ): DriverAdapterPool {
+  const lifetimeSeconds = resolveConnectionLifetimeSeconds(env.DATABASE_MAX_CONNECTION_LIFETIME);
   const pool = new Pool({
     connectionString,
     max: connectionLimit,
     connectionTimeoutMillis: poolTimeoutSeconds * 1000,
     application_name: env.SERVICE_NAME,
+    ...connectionLifetimePoolOptions(lifetimeSeconds),
   });
   pool.on("error", (error) => {
     logger.error("prisma driver adapter pool error", {
@@ -730,6 +736,9 @@ export function buildWriterClient({
     poolTimeout: (poolTimeout ?? env.DATABASE_POOL_TIMEOUT).toString(),
     connectTimeout: (connectTimeout ?? env.DATABASE_CONNECTION_TIMEOUT).toString(),
     applicationName: env.SERVICE_NAME,
+    maxConnectionLifetime: resolveConnectionLifetimeSeconds(
+      env.DATABASE_MAX_CONNECTION_LIFETIME
+    )?.toString(),
   });
 
   console.log(
@@ -916,6 +925,9 @@ export function buildReplicaClient({
     poolTimeout: (poolTimeout ?? env.DATABASE_POOL_TIMEOUT).toString(),
     connectTimeout: (connectTimeout ?? env.DATABASE_CONNECTION_TIMEOUT).toString(),
     applicationName: env.SERVICE_NAME,
+    maxConnectionLifetime: resolveConnectionLifetimeSeconds(
+      env.DATABASE_MAX_CONNECTION_LIFETIME
+    )?.toString(),
   });
 
   console.log(
@@ -1092,6 +1104,9 @@ function buildRunOpsClient({
     poolTimeout: poolTimeout.toString(),
     connectTimeout: connectTimeout.toString(),
     applicationName: env.SERVICE_NAME,
+    maxConnectionLifetime: resolveConnectionLifetimeSeconds(
+      env.DATABASE_MAX_CONNECTION_LIFETIME
+    )?.toString(),
   });
 
   console.log(

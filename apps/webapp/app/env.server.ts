@@ -184,6 +184,8 @@ const EnvironmentSchema = z
     DATABASE_WRITER_CONNECTION_TIMEOUT: OptionalIntEnv,
     DATABASE_READ_REPLICA_POOL_TIMEOUT: OptionalIntEnv,
     DATABASE_READ_REPLICA_CONNECTION_TIMEOUT: OptionalIntEnv,
+    // Max age of a pooled connection, in seconds. Unset or 0 leaves it uncapped.
+    DATABASE_MAX_CONNECTION_LIFETIME: OptionalLimitEnv,
     DATABASE_TRANSACTION_MAX_WAIT_MS: IntEnvWithDefault(10000),
     DATABASE_TRANSACTION_START_RETRY_ENABLED: BoolEnvWithDefault(true),
     DATABASE_TRANSACTION_START_RETRY_MAX_ATTEMPTS: IntEnvWithDefault(3),
