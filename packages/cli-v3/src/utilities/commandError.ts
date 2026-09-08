@@ -1,6 +1,8 @@
 const UNSUPPORTED_ZOD_MESSAGE = `Your installed Zod version is not supported by Trigger.dev.
 
-Trigger.dev requires zod@^3.25.56 or zod@^4.0.0. Upgrade Zod, reinstall your dependencies, and try again.`;
+Trigger.dev requires zod@^3.25.56 or zod@^4.0.0. Upgrade Zod, reinstall your dependencies, and try again.
+
+See https://trigger.dev/docs/troubleshooting-zod for upgrade guidance.`;
 
 export function formatCommandError(error: unknown): string {
   if (isUnsupportedZodError(error)) {
