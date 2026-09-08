@@ -25,7 +25,10 @@ async function seedDashboardAgentWatchTestData(prisma: PrismaClient, slugBase: s
   const user = await prisma.user.create({
     data: { email: `${slug}@example.com`, authenticationMethod: "MAGIC_LINK" },
   });
-  const organization = await prisma.organization.create({ data: { title: slug, slug } });
+  const organization = await prisma.organization.create({
+    // Watches are flagged off by default, so a watch suite's org opts in.
+    data: { title: slug, slug, featureFlags: { dashboardAgentWatchEnabled: true } },
+  });
   await prisma.orgMember.create({
     data: { organizationId: organization.id, userId: user.id, role: "ADMIN" },
   });

@@ -19,6 +19,7 @@ export function DashboardAgentDraft({
   promotedPrompt,
   watchCard,
   capReached,
+  watchEnabled = false,
 }: {
   onSubmit: (text: string) => void;
   projectName: string;
@@ -28,6 +29,8 @@ export function DashboardAgentDraft({
   promotedPrompt?: SuggestedPrompt;
   watchCard?: React.ReactNode;
   capReached?: { limit: number; planResolved: boolean } | null;
+  /** Withholds the `watch` chip while watch functionality is behind its flag. */
+  watchEnabled?: boolean;
 }) {
   const [input, setInput] = useState("");
 
@@ -40,9 +43,10 @@ export function DashboardAgentDraft({
         {
           promoted: promotedPrompt,
           dismissedIds,
+          watchEnabled,
         }
       )[0]?.prompt.prompt,
-    [pageContext, promotedPrompt, dismissedIds]
+    [pageContext, promotedPrompt, dismissedIds, watchEnabled]
   );
 
   const submit = useCallback(
@@ -63,6 +67,7 @@ export function DashboardAgentDraft({
       pageContext={pageContext}
       promoted={promotedPrompt}
       promptsDisabledReason={capReached ? MESSAGE_QUOTA_REACHED_REASON : undefined}
+      watchEnabled={watchEnabled}
       composer={
         capReached ? (
           <div className="flex w-full flex-col gap-3">

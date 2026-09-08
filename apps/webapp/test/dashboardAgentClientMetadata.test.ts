@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
+  watchEnabled: false,
   findEnvironmentBySlug: vi.fn<(...args: any[]) => Promise<any>>(),
   startSession: vi.fn<(...args: any[]) => Promise<any>>(),
   chatExists: vi.fn<(...args: any[]) => Promise<any>>(),
@@ -15,11 +16,15 @@ vi.mock("~/services/session.server", () => ({
 vi.mock("~/v3/canAccessDashboardAgent.server", () => ({
   canAccessDashboardAgent: async () => true,
 }));
+vi.mock("~/v3/canUseDashboardAgentWatches.server", () => ({
+  canUseDashboardAgentWatches: async () => mocks.watchEnabled,
+}));
 vi.mock("~/models/project.server", () => ({
-  findProjectBySlug: async () => ({
+  findProjectWithOrgFlagsBySlug: async () => ({
     id: "proj_real",
     organizationId: "org_real",
     externalRef: "proj_ref_real",
+    organization: { featureFlags: {} },
   }),
 }));
 vi.mock("~/models/runtimeEnvironment.server", () => ({
@@ -138,6 +143,26 @@ describe.each([
     const data = await call({ currentPage: "/runs", pageContext: { kind: "runs" } });
 
     expect(data).toMatchObject({ currentPage: "/runs", pageContext: { kind: "runs" } });
+  });
+
+  // The watch flag is resolved server-side per turn, so a client can neither ask for the
+  // watch tools nor keep them once the org loses the flag.
+  it("says watches are off however the client asks", async () => {
+    mocks.watchEnabled = false;
+
+    expect(await call({ currentPage: "/runs", watchEnabled: true })).toMatchObject({
+      watchEnabled: false,
+    });
+  });
+
+  it("says watches are on for an org that has them", async () => {
+    mocks.watchEnabled = true;
+
+    expect(await call({ currentPage: "/runs", watchEnabled: false })).toMatchObject({
+      watchEnabled: true,
+    });
+
+    mocks.watchEnabled = false;
   });
 });
 

@@ -25,6 +25,12 @@ describe("quotaResponseUpdate", () => {
     expect(quotaResponseUpdate(null)).toBeNull();
     expect(quotaResponseUpdate({ limit: 50 })).toBeNull();
   });
+
+  it("signals disabled explicitly, so a mounted client can drop its cache", () => {
+    // `enabled: false` is a deliberate signal, not a degraded body — it must not fall
+    // through to the "changes nothing" null branch above.
+    expect(quotaResponseUpdate({ enabled: false })).toEqual({ disabled: true });
+  });
 });
 
 describe("resolveMessageLimit", () => {
@@ -115,13 +121,33 @@ describe("parseQuotaReachedResponse", () => {
 });
 
 describe("shouldClearCapReached", () => {
-  const readQuota = (data: { used?: number; limit?: number | null } | null) => {
+  const readQuota = (
+    data: { used?: number; limit?: number | null; enabled?: boolean } | null,
+    isFreePlan = true
+  ) => {
     const update = quotaResponseUpdate(data);
+    const disabled = update !== null && "disabled" in update;
+    const read = disabled || update === null ? undefined : update;
     return resolveMessageQuota({
-      isFreePlan: true,
-      used: update?.used,
-      limit: resolveMessageLimit(update?.limit),
+      isFreePlan,
+      used: read?.used,
+      limit: resolveMessageLimit(read?.limit),
+      disabled,
     });
+  };
+
+  // Mirrors `useAgentMessageQuota`'s full return: the plan model resolves what the UI shows,
+  // and `provenCapacity` carries the raw server read alongside it.
+  const readQuotaWithCapacity = (
+    data: { used?: number; limit?: number | null; enabled?: boolean } | null,
+    isFreePlan = true
+  ) => {
+    const update = quotaResponseUpdate(data);
+    const read = update !== null && !("disabled" in update) ? update : undefined;
+    return {
+      ...readQuota(data, isFreePlan),
+      provenCapacity: read !== undefined && read.limit !== null ? read.used < read.limit : false,
+    };
   };
 
   it("releases the block once a read shows capacity", () => {
@@ -137,10 +163,49 @@ describe("shouldClearCapReached", () => {
     expect(shouldClearCapReached(readQuota({ limit: 20 }))).toBe(false);
   });
 
+  it("releases a paid plan's block on a capacity read, which its plan model calls unlimited", () => {
+    // The server caps every plan from the org's billing limit, but a paid plan has no nudge
+    // to show, so it resolves to `unlimited` — without the raw read the block would only ever
+    // lift on the quota being switched off.
+    const paid = readQuotaWithCapacity({ used: 10, limit: 500 }, false);
+    expect(paid.kind).toBe("unlimited");
+    expect(shouldClearCapReached(paid)).toBe(true);
+
+    // Still refused at the limit: the read proves the cap, not capacity.
+    expect(shouldClearCapReached(readQuotaWithCapacity({ used: 500, limit: 500 }, false))).toBe(
+      false
+    );
+  });
+
+  it("shows a paid plan no quota UI either way", () => {
+    // The display resolution is untouched: a paying org never sees "N of 20 messages".
+    expect(readQuota({ used: 10, limit: 500 }, false)).toMatchObject({ kind: "unlimited" });
+    expect(readQuota({ used: 25, limit: null }, false)).toMatchObject({ kind: "unlimited" });
+  });
+
+  it("keeps a null server limit under the free plan's own nudge", () => {
+    // No limit from the server means the client nudge governs, so a free plan over it stays
+    // blocked — the raw read must not wave it through.
+    const overNudge = readQuotaWithCapacity({ used: 25, limit: null });
+    expect(overNudge.kind).toBe("reached");
+    expect(shouldClearCapReached(overNudge)).toBe(false);
+  });
+
   it("keeps the block while the plan hasn't resolved", () => {
     expect(shouldClearCapReached(resolveMessageQuota({ isFreePlan: undefined, used: 0 }))).toBe(
       false
     );
+  });
+
+  it("releases the block when the server says the quota is off, clearing the stale cap read", () => {
+    // A client mounted while quota was on and blocked at 20/20, then the switch flips off:
+    // the disabled signal must clear the cached read AND release the block, not just one.
+    const wasReached = readQuota({ used: 20, limit: 20 });
+    expect(shouldClearCapReached(wasReached)).toBe(false);
+
+    const nowDisabled = readQuota({ enabled: false });
+    expect(nowDisabled).toEqual({ kind: "unlimited", reason: "disabled" });
+    expect(shouldClearCapReached(nowDisabled)).toBe(true);
   });
 });
 

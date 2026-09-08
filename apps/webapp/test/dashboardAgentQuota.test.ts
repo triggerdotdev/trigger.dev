@@ -11,14 +11,18 @@ import { applyDashboardAgentMigrations } from "@internal/dashboard-agent-db/test
 import { postgresTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
 import { afterEach, describe, expect, it } from "vitest";
-import {
+
+// Quota is off by default (TRI-12863); these tests exercise the enforced path, so flip it
+// before env.server.ts (imported by both modules below) loads.
+process.env.DASHBOARD_AGENT_QUOTA_ENABLED = "1";
+const { limitValueAllowingZero } = await import("~/services/platform.v3.server");
+const {
   agentTurnCountsAgainstQuota,
   checkAgentMessageQuota,
   currentAgentMessagePeriod,
   resolveAgentMessageQuota,
   UNLIMITED_AGENT_MESSAGES,
-} from "~/services/dashboardAgentQuota.server";
-import { limitValueAllowingZero } from "~/services/platform.v3.server";
+} = await import("~/services/dashboardAgentQuota.server");
 
 /**
  * Server-side agent message quota (TRI-12863): a per-(org, period) counter that a deleted chat

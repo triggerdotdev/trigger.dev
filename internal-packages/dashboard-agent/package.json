@@ -10,6 +10,7 @@
     "./tool-curation": "./src/tool-curation.ts",
     "./tool-schemas": "./src/tool-schemas.ts",
     "./prompt-prefix": "./src/prompt-prefix.ts",
+    "./prompt-assembly": "./src/prompt-assembly.ts",
     "./model-provider": "./src/model-provider.ts"
   },
   "dependencies": {

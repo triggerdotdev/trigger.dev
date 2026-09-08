@@ -20,7 +20,7 @@ export function WatchButton({
   tooltip?: string;
 }) {
   const agent = useDashboardAgent();
-  if (!agent) {
+  if (!agent || !agent.watchEnabled) {
     return null;
   }
 

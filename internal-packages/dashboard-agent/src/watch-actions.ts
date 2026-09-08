@@ -424,7 +424,7 @@ async function narrateWithPlan(input: {
     return plan.text;
   }
 
-  const resolved = await getSystemPrompt(modeFor(args.clientData));
+  const resolved = await getSystemPrompt(modeFor(args.clientData), { watchEnabled: true });
   const wake = wakePrompt(action, tenancy);
   const result =
     plan.model === "haiku"
@@ -777,8 +777,8 @@ async function conductWatchInvestigation(args: {
 
   const store = getStore();
   let answered: UIMessage | undefined;
-  const resolved = await getSystemPrompt(modeFor(clientData));
-  const tools = buildTurnTools(chatId, clientData);
+  const resolved = await getSystemPrompt(modeFor(clientData), { watchEnabled: true });
+  const tools = buildTurnTools(chatId, clientData && { ...clientData, watchEnabled: true });
   let step = 0;
   const result = streamText({
     model:

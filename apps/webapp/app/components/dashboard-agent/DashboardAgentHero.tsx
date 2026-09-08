@@ -12,6 +12,7 @@ export function DashboardAgentHero({
   dismissedIds,
   composer,
   promptsDisabledReason,
+  watchEnabled = false,
 }: {
   /** Receives the prompt text to send, not the button label. */
   onSelect: (prompt: string) => void;
@@ -21,6 +22,8 @@ export function DashboardAgentHero({
   composer?: React.ReactNode;
   /** Set to disable the suggestion chips and say why. */
   promptsDisabledReason?: string;
+  /** Withholds the `watch` chip while watch functionality is behind its flag. */
+  watchEnabled?: boolean;
 }) {
   // Centred by the child's `m-auto`, not by `justify-center`: auto margins give up their space
   // once the content outgrows the panel, so the heading stays scrollable to.
@@ -44,6 +47,7 @@ export function DashboardAgentHero({
           promoted={promoted}
           dismissedIds={dismissedIds}
           disabledReason={promptsDisabledReason}
+          watchEnabled={watchEnabled}
         />
       </div>
     </div>

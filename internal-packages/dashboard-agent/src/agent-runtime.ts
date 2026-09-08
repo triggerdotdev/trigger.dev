@@ -26,7 +26,8 @@ import {
   type InvestigationState,
 } from "@internal/dashboard-agent-contracts";
 import { withCacheBreakpoint } from "./model-provider";
-import { codeSystemPrompt, systemPrompt } from "./prompts";
+import { composeSystemPrompt, type DashboardAgentMode } from "./prompt-assembly";
+import { codeSystemPrompt, systemPrompt, watchSystemPrompt } from "./prompts";
 import { buildDashboardAgentTools } from "./tools";
 
 /**
@@ -269,7 +270,6 @@ export const dashboardAgentToolsKey = locals.create<ToolSet>("dashboard-agent.to
 // The system prompt is dashboard-managed. Resolving it is an API call, so it is
 // cached per worker process; workers are short-lived, so a dashboard edit lands
 // within a recycle.
-type DashboardAgentMode = "assistant" | "code";
 
 // The snapshot is fetched and extracted on the agent worker, so its URL must be one the
 // server would have minted: plain https. The host check lives in repo-tools' fetch.
@@ -291,13 +291,30 @@ export function modeFor(clientData: { repoSnapshot?: unknown } | undefined): Das
 
 let cachedSystemPrompt: Awaited<ReturnType<typeof systemPrompt.resolve>> | undefined;
 let cachedCodePrompt: Awaited<ReturnType<typeof codeSystemPrompt.resolve>> | undefined;
-export async function getSystemPrompt(mode: DashboardAgentMode = "assistant") {
-  if (mode === "code") {
-    cachedCodePrompt ??= await codeSystemPrompt.resolve({});
-    return cachedCodePrompt;
-  }
-  cachedSystemPrompt ??= await systemPrompt.resolve({});
-  return cachedSystemPrompt;
+let cachedWatchPrompt: Awaited<ReturnType<typeof watchSystemPrompt.resolve>> | undefined;
+export async function getSystemPrompt(
+  mode: DashboardAgentMode = "assistant",
+  options: { watchEnabled?: boolean } = {}
+) {
+  const base = await (async () => {
+    if (mode === "code") {
+      cachedCodePrompt ??= await codeSystemPrompt.resolve({});
+      return cachedCodePrompt;
+    }
+    cachedSystemPrompt ??= await systemPrompt.resolve({});
+    return cachedSystemPrompt;
+  })();
+
+  // The watch guidance is only shown when the turn actually has the watch tool,
+  // so a turn without it never offers to tell the user later.
+  if (!options.watchEnabled) return base;
+  cachedWatchPrompt ??= await watchSystemPrompt.resolve({});
+  return {
+    ...base,
+    // Both ids, so telemetry names the prompt the turn actually ran.
+    promptId: `${base.promptId}+${cachedWatchPrompt.promptId}`,
+    text: composeSystemPrompt(base.text, cachedWatchPrompt.text),
+  };
 }
 
 // A chat belongs to an org + user; project/env/page are per-turn context, since
@@ -312,6 +329,9 @@ export const clientDataSchema = z.object({
   currentPage: z.string().optional(),
   // Structured version of `currentPage`, injected by the `in` proxy.
   pageContext: agentPageContextSchema.optional(),
+  // Whether this turn may offer watches, resolved server-side. Defaults to off, so a
+  // host that doesn't send it gets no watch tools and no watch guidance.
+  watchEnabled: z.boolean().default(false),
   // Injected server-side by the `in` proxy each turn, never sent from the
   // browser: a short-lived read-only delegated token, the API origin to call
   // back to, and the project ref + env its tools read.

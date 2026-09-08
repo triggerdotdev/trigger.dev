@@ -81,8 +81,15 @@ vi.mock("~/services/session.server", () => ({
 vi.mock("~/v3/canAccessDashboardAgent.server", () => ({
   canAccessDashboardAgent: async () => true,
 }));
+vi.mock("~/v3/canUseDashboardAgentWatches.server", () => ({
+  canUseDashboardAgentWatches: async () => true,
+}));
 vi.mock("~/models/project.server", () => ({
-  findProjectBySlug: async () => ({ id: "project_1", externalRef: "proj_1" }),
+  findProjectWithOrgFlagsBySlug: async () => ({
+    id: "project_1",
+    externalRef: "proj_1",
+    organization: { featureFlags: {} },
+  }),
 }));
 vi.mock("~/db.server", () => ({
   prisma: {},

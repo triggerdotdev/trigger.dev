@@ -43,6 +43,8 @@ export type DashboardAgentMessagesProps = {
   pagePaths?: Record<string, string>;
   /** Optional: without it a wake banner falls back to kind-agnostic wording. */
   watches?: WakeWatch[];
+  /** Withholds the wake banner and watch result cards while the flag is off. */
+  watchEnabled?: boolean;
 };
 
 // Cached so a stripped message keeps its identity across renders and memoization holds:
@@ -236,6 +238,7 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
   pagePaths,
   watches,
   investigationWinners,
+  watchEnabled = false,
 }: {
   message: UIMessage;
   onIntent?: (intent: AgentIntent) => void;
@@ -244,6 +247,8 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
   watches?: WakeWatch[];
   /** See {@link winningInvestigationOccurrences}. */
   investigationWinners?: Map<string, string>;
+  /** Withholds the wake banner and watch result cards while the flag is off. */
+  watchEnabled?: boolean;
 }) {
   if (message.role === "user") {
     return (
@@ -291,6 +296,7 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
             pagePaths={pagePaths}
             answered={answerContinuesAfter(parts as never, i)}
             watchOfferedInTurn={watchOfferedInTurn}
+            watchEnabled={watchEnabled}
           />
         </ChatCardSlot>
       );
@@ -317,7 +323,7 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
     body.push(renderDashboardPart(part, i, resolveUri));
   }
 
-  const wake = wakeRefFromMessageId(message.id);
+  const wake = watchEnabled ? wakeRefFromMessageId(message.id) : undefined;
   if (wake) {
     return (
       <ChatTurn>
@@ -352,6 +358,7 @@ export function DashboardAgentTurns({
   resolveUri,
   pagePaths,
   watches,
+  watchEnabled = false,
 }: DashboardAgentMessagesProps) {
   // Must be the exact parts the turns render: the winners map keys by part index.
   const stripped = useMemo(() => messages.map(stripStepParts), [messages]);
@@ -375,6 +382,7 @@ export function DashboardAgentTurns({
           pagePaths={pagePaths}
           watches={watches}
           investigationWinners={investigationWinners}
+          watchEnabled={watchEnabled}
         />
       ))}
       {progress && (

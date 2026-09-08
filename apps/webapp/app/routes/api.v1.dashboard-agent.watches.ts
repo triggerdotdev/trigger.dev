@@ -10,6 +10,7 @@ import {
   resolveChatWatchContext,
 } from "~/services/dashboardAgentWatches.server";
 import { authenticateUatOrApiRequest } from "~/services/uatRoutePreamble.server";
+import { canUseDashboardAgentWatches } from "~/v3/canUseDashboardAgentWatches.server";
 
 /**
  * Programmatic watch creation (MCP). Only the agent's delegated user-actor token is
@@ -90,6 +91,16 @@ export async function action({ request }: ActionFunctionArgs) {
     // A chat belongs to one org; its watches can't point at another org's env.
     if (environment.organizationId !== chat.organizationId) {
       return json({ error: "Environment not found", code: "invalid_target" }, { status: 404 });
+    }
+    // Watches off for this org: the route doesn't exist, same as no agent access.
+    if (
+      !(await canUseDashboardAgentWatches({
+        userId,
+        organizationSlug: environment.organization.slug,
+        orgFeatureFlags: environment.organization.featureFlags as Record<string, unknown> | null,
+      }))
+    ) {
+      return json({ error: "Not found" }, { status: 404 });
     }
     // Same check as `environmentId`, for callers that send the project instead.
     if (parsed.projectRef && environment.project.externalRef !== parsed.projectRef) {

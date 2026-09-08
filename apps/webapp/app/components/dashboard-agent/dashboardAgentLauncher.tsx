@@ -28,6 +28,8 @@ type DashboardAgentContextValue = {
   unreadWakes: number;
   /** Chats that answered, settled or woke while the panel was closed. */
   unreadWork: number;
+  /** Watch functionality is behind this flag; `WatchButton` renders nothing without it. */
+  watchEnabled: boolean;
 };
 
 const DashboardAgentContext = createContext<DashboardAgentContextValue | null>(null);

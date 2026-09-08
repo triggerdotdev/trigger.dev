@@ -425,9 +425,12 @@ export const dashboardAgent = chat.agent({
     // Set every turn so continuation runs (which skip onChatStart) still get the
     // prompt; the resolve is cached per process. The cache breakpoint on the system
     // block carries through toStreamTextOptions() and survives suspend/resume.
-    chat.prompt.set(await getSystemPrompt(modeFor(clientData)), {
-      providerOptions: withCacheBreakpoint(undefined, "prefix"),
-    });
+    chat.prompt.set(
+      await getSystemPrompt(modeFor(clientData), { watchEnabled: clientData?.watchEnabled }),
+      {
+        providerOptions: withCacheBreakpoint(undefined, "prefix"),
+      }
+    );
   },
 
   // The last point at which a write still lands ahead of the client's settle:
@@ -527,7 +530,9 @@ export const dashboardAgent = chat.agent({
         ) {
           logger.debug("dashboard-agent turn eval skipped: the org doesn't allow it", { chatId });
         } else {
-          const resolved = await getSystemPrompt(modeFor(clientData));
+          const resolved = await getSystemPrompt(modeFor(clientData), {
+            watchEnabled: clientData.watchEnabled,
+          });
           // On a Head Start turn the question arrives in the boot payload rather than
           // newUIMessages, so read the latest user message from the full transcript.
           const userMessage = [...uiMessages].reverse().find((m) => m.role === "user");

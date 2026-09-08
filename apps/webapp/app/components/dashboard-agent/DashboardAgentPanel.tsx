@@ -25,6 +25,7 @@ import {
   writeLastChat,
 } from "./last-chat-storage";
 import { DashboardAgentDraft } from "./DashboardAgentDraft";
+import { DraftQuotaPoller } from "./DraftQuotaPoller";
 import {
   parseQuotaReachedResponse,
   shouldClearCapReached,
@@ -88,6 +89,7 @@ export function DashboardAgentPanel({
   onModeChange,
   dragHandleProps,
   dragHandleClassName,
+  watchEnabled = false,
 }: {
   onClose: () => void;
   mode?: DashboardAgentMode;
@@ -95,6 +97,8 @@ export function DashboardAgentPanel({
   /** Spread onto the header, which is the floating window's drag handle; already filtered by `FloatingAgentWindow`. */
   dragHandleProps?: DragHandleProps;
   dragHandleClassName?: string;
+  /** Withholds every watch affordance while the flag is off. Defaults false until sourced. */
+  watchEnabled?: boolean;
   // Every `seq` below distinguishes repeat requests with identical contents.
   requestedMessage?: { text: string; seq: number };
   openChatRequest?: { chatId: string; seq: number };
@@ -128,10 +132,16 @@ export function DashboardAgentPanel({
   // A message asked for while the hooks still held the previous project: it is sent once
   // they catch up rather than dropped.
   const [pendingCreate, setPendingCreate] = useState<string | null>(null);
-  // A refused `create` over the cap: the draft shows the upgrade block instead of a raw toast.
+  // A refused `create` over the cap: the draft shows the upgrade block instead of a raw
+  // toast. Cleared only by a poll newer than `refusalGenRef` — see `handleQuotaChange` below.
   const [capReached, setCapReached] = useState<{ limit: number; planResolved: boolean } | null>(
     null
   );
+  // Owned here (survives a chat switch, unlike the chat instance's own state): bumped on
+  // every 403, so a poll already in flight when a refusal lands can't be read as proof the
+  // cap it just set is gone. Ordered by generation, not the wall clock — two events racing
+  // in the same millisecond would otherwise tie under `Date.now()`.
+  const refusalGenRef = useRef(0);
   // Starts true so an `openWith` request waits for the restore instead of racing it.
   const [loading, setLoading] = useState(
     () => readLastChat(storageKey)?.path === location.pathname
@@ -312,6 +322,7 @@ export function DashboardAgentPanel({
         if (!res.ok || !data.chatId || !data.publicAccessToken) {
           const reached = parseQuotaReachedResponse(res.status, data);
           if (reached) {
+            refusalGenRef.current += 1;
             setCapReached(reached);
             setActive(null);
             return;
@@ -439,23 +450,27 @@ export function DashboardAgentPanel({
 
   const handledWatchSeq = useRef<number | undefined>(undefined);
   useEffect(() => {
-    if (!watchRequest || handledWatchSeq.current === watchRequest.seq) return;
+    if (!watchEnabled || !watchRequest || handledWatchSeq.current === watchRequest.seq) return;
     handledWatchSeq.current = watchRequest.seq;
     dispatchWatchCard({
       type: "open",
       draft: watchDraftFor(watchRequest.spec),
       requestId: generateFriendlyId("wreq"),
     });
-  }, [watchRequest]);
+  }, [watchRequest, watchEnabled]);
 
   // Nothing is posted or persisted until the card is submitted.
-  const openWatchCard = useCallback((spec: WatchSpec) => {
-    dispatchWatchCard({
-      type: "open",
-      draft: watchDraftFor(spec),
-      requestId: generateFriendlyId("wreq"),
-    });
-  }, []);
+  const openWatchCard = useCallback(
+    (spec: WatchSpec) => {
+      if (!watchEnabled) return;
+      dispatchWatchCard({
+        type: "open",
+        draft: watchDraftFor(spec),
+        requestId: generateFriendlyId("wreq"),
+      });
+    },
+    [watchEnabled]
+  );
 
   const dismissWatchCard = () => dispatchWatchCard({ type: "dismissed" });
   const activeChatId = active?.chatId;
@@ -524,16 +539,17 @@ export function DashboardAgentPanel({
     loadHistory,
   ]);
 
-  const watchCardElement = watchCard.draft ? (
-    <WatchCard
-      draft={watchCard.draft}
-      onChange={(draft) => dispatchWatchCard({ type: "edit", draft })}
-      onSubmit={() => void submitWatch()}
-      onCancel={dismissWatchCard}
-      pending={watchCard.pending}
-      error={watchCard.error}
-    />
-  ) : null;
+  const watchCardElement =
+    watchEnabled && watchCard.draft ? (
+      <WatchCard
+        draft={watchCard.draft}
+        onChange={(draft) => dispatchWatchCard({ type: "edit", draft })}
+        onSubmit={() => void submitWatch()}
+        onCancel={dismissWatchCard}
+        pending={watchCard.pending}
+        error={watchCard.error}
+      />
+    ) : null;
 
   const newChat = useCallback(() => {
     claimChatSlot();
@@ -542,9 +558,16 @@ export function DashboardAgentPanel({
   }, [claimChatSlot]);
 
   // Released only by a read that proves capacity: an unknown quota keeps the block.
-  const handleQuotaChange = useCallback((quota: MessageQuota) => {
-    if (shouldClearCapReached(quota)) setCapReached(null);
-  }, []);
+  // Only a poll newer than the latest refusal (`quota.pollIsFresh`) may lift it — see
+  // `refusalGenRef` above.
+  const handleQuotaChange = useCallback(
+    (quota: MessageQuota & { pollIsFresh: boolean; provenCapacity: boolean }) => {
+      setCapReached((current) =>
+        current && quota.pollIsFresh && shouldClearCapReached(quota) ? null : current
+      );
+    },
+    []
+  );
 
   const switchChat = useCallback(
     (id: string) => {
@@ -695,20 +718,33 @@ export function DashboardAgentPanel({
             onTurnSettled={loadHistory}
             onActivityChange={handleActivityChange}
             onQuotaChange={handleQuotaChange}
+            refusalGenRef={refusalGenRef}
             onNewChat={newChat}
             showNewChat={active !== null}
+            watchEnabled={watchEnabled}
           />
         ) : (
-          <DashboardAgentDraft
-            onSubmit={createChat}
-            projectName={project.name}
-            environmentSlug={environment.slug}
-            entityId={entityId}
-            pageContext={pageContext}
-            promotedPrompt={promotedPrompt}
-            watchCard={watchCardElement}
-            capReached={capReached}
-          />
+          <>
+            {/* Only while blocked: an idle draft's read could not act on anything. */}
+            {capReached ? (
+              <DraftQuotaPoller
+                actionPath={actionPath}
+                refusalGenRef={refusalGenRef}
+                onQuotaChange={handleQuotaChange}
+              />
+            ) : null}
+            <DashboardAgentDraft
+              onSubmit={createChat}
+              projectName={project.name}
+              environmentSlug={environment.slug}
+              entityId={entityId}
+              pageContext={pageContext}
+              promotedPrompt={promotedPrompt}
+              watchCard={watchCardElement}
+              capReached={capReached}
+              watchEnabled={watchEnabled}
+            />
+          </>
         )}
       </AgentPanelColumn>
     </div>

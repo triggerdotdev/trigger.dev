@@ -6,9 +6,15 @@ import {
 } from "@internal/dashboard-agent-db";
 import { getCachedLimitAllowingZero } from "./platform.v3.server";
 import { logger } from "./logger.server";
+import { env } from "~/env.server";
 
 // The repo's unlimited sentinel. Never Infinity: it serializes to null in the limit cache.
 export const UNLIMITED_AGENT_MESSAGES = 100_000_000;
+
+/** The dashboard agent is free for now (TRI-12863): quota stays unenforced until this flips. */
+export function isDashboardAgentQuotaEnabled(): boolean {
+  return env.DASHBOARD_AGENT_QUOTA_ENABLED === "1";
+}
 
 // Filled by cloud billing (TRI-12863 P0). Absent until then, and always on self-hosted,
 // so the fallback applies and the cap is effectively off.
@@ -41,6 +47,10 @@ export async function resolveAgentMessageQuota(
     readLimit?: (organizationId: string) => Promise<number>;
   }
 ): Promise<AgentMessageQuota | undefined> {
+  if (!isDashboardAgentQuotaEnabled()) {
+    return { reached: false, used: 0, limit: UNLIMITED_AGENT_MESSAGES };
+  }
+
   const readLimit =
     params.readLimit ??
     (async (organizationId: string) => {
@@ -78,6 +88,8 @@ export async function recordAgentMessageSent(
   db: DashboardAgentDb,
   params: { organizationId: string; now?: Date }
 ): Promise<void> {
+  if (!isDashboardAgentQuotaEnabled()) return;
+
   try {
     await incrementAgentMessageUsage(db, {
       organizationId: params.organizationId,

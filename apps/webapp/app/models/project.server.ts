@@ -159,6 +159,27 @@ export async function findProjectBySlug(orgSlug: string, projectSlug: string, us
   });
 }
 
+/**
+ * The same membership-scoped lookup with the organization's feature flags attached, for a
+ * request that has to answer an org flag as well: one read instead of two.
+ */
+export async function findProjectWithOrgFlagsBySlug(
+  orgSlug: string,
+  projectSlug: string,
+  userId: string
+) {
+  return await $replica.project.findFirst({
+    where: {
+      slug: projectSlug,
+      organization: {
+        slug: orgSlug,
+        members: { some: { userId } },
+      },
+    },
+    include: { organization: { select: { featureFlags: true } } },
+  });
+}
+
 export async function findProjectByRef(externalRef: string, userId: string) {
   // Find the project scoped to the organization, making sure the user belongs to that org
   return await $replica.project.findFirst({

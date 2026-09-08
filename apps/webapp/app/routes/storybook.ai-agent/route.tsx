@@ -42,6 +42,7 @@ const storybookAgent = {
   openWithWatch: () => {},
   unreadWakes: 0,
   unreadWork: 0,
+  watchEnabled: false,
 };
 
 // Experiments for the trigger.dev AI dashboard-agent identity: a resting logo

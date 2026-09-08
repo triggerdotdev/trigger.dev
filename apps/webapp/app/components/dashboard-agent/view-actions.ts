@@ -5,11 +5,12 @@ import {
   isTriggerUri,
   type ActionsBlockAction,
   type ChartAction,
+  type InvestigationAction,
   type ReportViewModelPayload,
   type ViewBlock,
 } from "@internal/dashboard-agent-contracts";
 
-type CardAction = ChartAction | ActionsBlockAction;
+type CardAction = ChartAction | ActionsBlockAction | InvestigationAction;
 
 export function renderableActions<T extends CardAction>(actions: T[]): T[] {
   return actions.filter((action) => {

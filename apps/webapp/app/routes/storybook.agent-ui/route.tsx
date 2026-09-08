@@ -33,6 +33,7 @@ function MessageHarness({
         error={withError && transcript.error ? new Error(transcript.error) : undefined}
         onRetry={withError ? noop : undefined}
         onDismissError={withError ? noop : undefined}
+        watchEnabled
       />
     </div>
   );
@@ -162,6 +163,7 @@ function LiveInvestigationHarness() {
         messages={messages}
         activity="working"
         resolveUri={fixtureResolveUri}
+        watchEnabled
       />
     </div>
   );
@@ -236,7 +238,7 @@ const wakeWatches: WakeWatch[] = [
 function WakeHarness({ message, watches }: { message: UIMessage; watches?: WakeWatch[] }) {
   return (
     <div className={PANEL_FRAME}>
-      <DashboardAgentMessages messages={[message]} activity={null} watches={watches} />
+      <DashboardAgentMessages messages={[message]} activity={null} watches={watches} watchEnabled />
     </div>
   );
 }

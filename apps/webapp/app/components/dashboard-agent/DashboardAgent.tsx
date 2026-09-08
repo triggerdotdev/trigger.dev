@@ -53,6 +53,8 @@ export function DashboardAgent({
   initialUnreadWork = 0,
   /** Also from the page load: a watch is running, so a wake can still arrive in this tab. */
   hasActiveWatches = false,
+  /** From the chat loader; withholds every watch affordance until it turns up there. */
+  watchEnabled = false,
 }: {
   children: React.ReactNode;
   hasAccess?: boolean;
@@ -61,6 +63,7 @@ export function DashboardAgent({
   /** Chats whose transcript moved on since their owner last looked. */
   initialUnreadWork?: number;
   hasActiveWatches?: boolean;
+  watchEnabled?: boolean;
 }) {
   const organization = useOrganization();
   const project = useProject();
@@ -255,12 +258,18 @@ export function DashboardAgent({
           wakes?: WatchWake[];
         };
         if (cancelled) return;
+        setUnreadWork(Math.max(0, data.unreadWork ?? 0));
+
+        if (!watchEnabled) {
+          setUnreadWakes(0);
+          return;
+        }
+
         // The wakes list carries read ones too, so only unread ones are subtracted.
         const unreadInView = (data.wakes ?? []).filter(
           (wake) => wake.unread && wake.chatId === visibleChat.current
         ).length;
         setUnreadWakes(Math.max(0, (data.unreadWakes ?? 0) - unreadInView));
-        setUnreadWork(Math.max(0, data.unreadWork ?? 0));
 
         const fresh = wakesToToast(data.wakes, toastedWakes.current);
         for (const wake of fresh) rememberToasted(wake.watchId);
@@ -293,7 +302,7 @@ export function DashboardAgent({
       cancelled = true;
       stop();
     };
-  }, [hasAccess, watching, actionPath, setPanelOpen, openChat, rememberToasted]);
+  }, [hasAccess, watching, watchEnabled, actionPath, setPanelOpen, openChat, rememberToasted]);
 
   // Zeroes the wake dot right away; the poll restores the truth if another chat has one. The
   // work count is not touched here: the panel derives it from the chat list.
@@ -347,8 +356,16 @@ export function DashboardAgent({
   });
 
   const context = useMemo(
-    () => ({ open, setOpen: setPanelOpen, openWith, openWithWatch, unreadWakes, unreadWork }),
-    [open, setPanelOpen, openWith, openWithWatch, unreadWakes, unreadWork]
+    () => ({
+      open,
+      setOpen: setPanelOpen,
+      openWith,
+      openWithWatch,
+      unreadWakes,
+      unreadWork,
+      watchEnabled,
+    }),
+    [open, setPanelOpen, openWith, openWithWatch, unreadWakes, unreadWork, watchEnabled]
   );
 
   if (!hasAccess) {
@@ -402,6 +419,7 @@ export function DashboardAgent({
                     // The panel's own count, off the chat list it has already marked read.
                     onUnreadWorkChange={setUnreadWork}
                     onTurnActivityChange={handleTurnActivityChange}
+                    watchEnabled={watchEnabled}
                     mode={mode}
                     onModeChange={changeMode}
                     dragHandleProps={dragHandleProps}

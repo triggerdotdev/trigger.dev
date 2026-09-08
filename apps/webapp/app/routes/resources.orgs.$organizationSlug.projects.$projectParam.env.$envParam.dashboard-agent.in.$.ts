@@ -9,7 +9,7 @@ import {
 } from "~/components/dashboard-agent/message-limits";
 import { MESSAGE_QUOTA_REACHED_ERROR } from "~/components/dashboard-agent/message-quota";
 import { chatExists } from "@internal/dashboard-agent-db";
-import { findProjectBySlug } from "~/models/project.server";
+import { findProjectWithOrgFlagsBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
   dashboardAgentApiOrigin,
@@ -22,6 +22,7 @@ import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
 import { wellFormMessageText } from "~/services/dashboardAgentMessageText.server";
 import {
   agentTurnCountsAgainstQuota,
+  isDashboardAgentQuotaEnabled,
   recordAgentMessageSent,
   resolveAgentMessageQuota,
 } from "~/services/dashboardAgentQuota.server";
@@ -30,6 +31,7 @@ import { requireUser } from "~/services/session.server";
 import { readBoundedBodyText } from "~/utils/boundedRequestBody.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
+import { canUseDashboardAgentWatches } from "~/v3/canUseDashboardAgentWatches.server";
 
 // Same-origin proxy for the chat append request. It mints a read-only delegated token scoped
 // to the environment in this URL, so the token never reaches the browser.
@@ -89,7 +91,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return tooLarge();
   }
 
-  const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
+  const project = await findProjectWithOrgFlagsBySlug(organizationSlug, projectParam, user.id);
   if (!project) return json({ error: "Project not found" }, { status: 404 });
 
   // The SDK builds the upstream path (`realtime/v1/sessions/{chatId}/in/append`); it arrives
@@ -169,7 +171,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
       // Only a real user message consumes quota; action turns were refused above.
       countsAgainstQuota = agentTurnCountsAgainstQuota(parsed);
-      if (countsAgainstQuota) {
+      if (countsAgainstQuota && isDashboardAgentQuotaEnabled()) {
         const quota = await resolveAgentMessageQuota(dashboardAgentDb, {
           organizationId: project.organizationId,
         });
@@ -190,6 +192,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
       parsed.payload.metadata = {
         ...pickAgentClientMetadata(parsed.payload.metadata),
+        // Resolved per turn, server-side: off means no watch tools and no watch guidance.
+        watchEnabled: await canUseDashboardAgentWatches({
+          userId: user.id,
+          organizationSlug,
+          orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
+        }),
         userActorToken,
         apiOrigin: userApiOrigin,
         projectRef: project.externalRef,
@@ -218,7 +226,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     const text = await upstream.text();
     // Charge quota only for a delivered message: a non-2xx upstream (or a throw below)
     // must not burn a send that never reached the agent.
-    if (countsAgainstQuota && upstream.ok) {
+    if (countsAgainstQuota && upstream.ok && isDashboardAgentQuotaEnabled()) {
       await recordAgentMessageSent(dashboardAgentDb, {
         organizationId: project.organizationId,
       });

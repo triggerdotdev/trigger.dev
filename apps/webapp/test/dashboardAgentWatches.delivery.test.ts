@@ -55,6 +55,12 @@ vi.mock("~/db.server", () => {
   return { prisma: proxy, $replica: proxy, sqlDatabaseSchema: undefined };
 });
 
+const session = vi.hoisted(() => ({ userId: "" }));
+
+vi.mock("~/services/session.server", () => ({
+  requireUser: async () => ({ id: session.userId, admin: false, isImpersonating: false }),
+}));
+
 vi.mock("~/services/dashboardAgentDb.server", () => ({
   get dashboardAgentDb() {
     return ctx.agentDb;
@@ -75,6 +81,8 @@ const {
 const { sweepDashboardAgentWatches, WATCH_DELIVERY_GRACE_MS, WATCH_EXPIRY_GRACE_MS } =
   await import("~/services/dashboardAgentWatchSweep.server");
 const { subscribeUserToWatchAlerts } = await import("~/services/dashboardAgentWatchAlerts.server");
+const { loader: chatLoader } =
+  await import("~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.dashboard-agent");
 
 const harness = new DashboardAgentWatchesTestHarness(ctx, createDashboardAgentWatch);
 const boot = harness.boot.bind(harness);
@@ -1363,6 +1371,82 @@ describe("the watch card submit", () => {
       const block = (parts[0] as any).data.blocks[0];
       expect(block.outcome).toBe("watching");
       expect(block.headline).toContain("Watching");
+    }
+  );
+});
+
+/**
+ * The wake poll behind the watch flag. The wake is really in the store either way, so an
+ * org with watches off is answered from the flag rather than from an empty table.
+ */
+describe("the wake poll", () => {
+  async function poll(seeded: Seeded) {
+    session.userId = seeded.user.id;
+    const response = await chatLoader({
+      request: new Request(
+        `https://app.trigger.dev/resources/orgs/${seeded.organization.slug}/projects/${seeded.project.slug}/env/prod/dashboard-agent?unread=1`
+      ),
+      params: {
+        organizationSlug: seeded.organization.slug,
+        projectParam: seeded.project.slug,
+        envParam: "prod",
+      },
+      context: {},
+    } as any);
+    expect(response.status).toBe(200);
+    return (await response.json()) as { unreadWakes: number; wakes: unknown[] };
+  }
+
+  async function deliveredWake(seeded: Seeded) {
+    await seedChat(seeded, "chat_1");
+    const created = await create({ seeded, chatId: "chat_1" });
+    if (!created.ok || !created.watching) throw new Error("expected a watch");
+    await transitionWatchCondition(ctx.agentDb, {
+      id: created.watchId,
+      resolution: "condition_met",
+    });
+    await markWatchDelivered(ctx.agentDb, { id: created.watchId });
+    return created.watchId;
+  }
+
+  postgresTest(
+    "carries the wake when the org has watches on",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "pollon");
+      await prisma.organization.update({
+        where: { id: seeded.organization.id },
+        data: { featureFlags: { hasDashboardAgentAccess: true, dashboardAgentWatchEnabled: true } },
+      });
+      const watchId = await deliveredWake(seeded);
+
+      expect(await poll(seeded)).toMatchObject({
+        unreadWakes: 1,
+        wakes: [{ watchId, chatId: "chat_1" }],
+      });
+    }
+  );
+
+  postgresTest(
+    "answers empty when the org has watches off",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "polloff");
+      const watchId = await deliveredWake(seeded);
+      await prisma.organization.update({
+        where: { id: seeded.organization.id },
+        data: { featureFlags: { hasDashboardAgentAccess: true } },
+      });
+
+      // Still delivered in the store — the poll just doesn't read it.
+      expect(
+        await countUnreadWatchWakes(ctx.agentDb, {
+          organizationId: seeded.organization.id,
+          userId: seeded.user.id,
+        })
+      ).toBe(1);
+      expect(watchId).toBeTruthy();
+      expect(await poll(seeded)).toMatchObject({ unreadWakes: 0, wakes: [] });
     }
   );
 });

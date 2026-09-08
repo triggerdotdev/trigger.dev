@@ -309,12 +309,15 @@ export function ReportView({
    * org/project/env slugs.
    */
   pagePaths,
+  watchEnabled = false,
 }: {
   vm: ReportViewModelPayload;
   reportUri?: string;
   onIntent?: (intent: AgentIntent) => void;
   resolveUri?: (uri: string) => ResolvedUri | null;
   pagePaths?: Record<string, string>;
+  /** Withholds the recovery-watch footer action while watch functionality is behind its flag. */
+  watchEnabled?: boolean;
 }) {
   const layout = buildReportLayout(vm, messagesFor(vm.title));
   const severity = layout.headline.severity;
@@ -324,18 +327,19 @@ export function ReportView({
 
   // Only offered when there is something to recover from, and only for the health
   // report, which is the one with a recovery watch kind.
-  const recoveryWatch: AgentIntent | null = reportOffersRecoveryWatch(vm)
-    ? {
-        kind: "watch",
-        spec: {
-          kind: "health_recovery",
-          report: "health",
-          fromSeverity: vm.summary.severity,
-          note: `${vm.scope} health back to normal`,
-          ...RECOVERY_WATCH,
-        },
-      }
-    : null;
+  const recoveryWatch: AgentIntent | null =
+    watchEnabled && reportOffersRecoveryWatch(vm)
+      ? {
+          kind: "watch",
+          spec: {
+            kind: "health_recovery",
+            report: "health",
+            fromSeverity: vm.summary.severity,
+            note: `${vm.scope} health back to normal`,
+            ...RECOVERY_WATCH,
+          },
+        }
+      : null;
 
   // Links a footer action already speaks for aren't repeated as reading matter.
   const footerLinkKeys = new Set(layout.footer.map((entry) => entry.link).filter(Boolean));

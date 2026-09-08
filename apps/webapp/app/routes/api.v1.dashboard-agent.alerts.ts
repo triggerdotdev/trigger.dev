@@ -17,6 +17,7 @@ import {
 } from "~/services/dashboardAgentWatchAlerts.server";
 import { logger } from "~/services/logger.server";
 import { authenticateUatOrApiRequest } from "~/services/uatRoutePreamble.server";
+import { canUseDashboardAgentWatches } from "~/v3/canUseDashboardAgentWatches.server";
 
 /**
  * `GET` lists this chat's project's watch alerts; `POST` subscribes the user's email. Only
@@ -144,6 +145,18 @@ export async function action({ request }: ActionFunctionArgs) {
     );
   }
   const { environment } = context;
+
+  // Watch alerts exist only to report a watch firing, so they subscribe nobody while the
+  // org has watches off — the alert tools come and go with the watch tool.
+  if (
+    !(await canUseDashboardAgentWatches({
+      userId,
+      organizationSlug: environment.organization.slug,
+      orgFeatureFlags: environment.organization.featureFlags as Record<string, unknown> | null,
+    }))
+  ) {
+    return json({ error: "Not found" }, { status: 404 });
+  }
 
   const gate = await canUseDashboardAgentEmailAlerts({
     userId,

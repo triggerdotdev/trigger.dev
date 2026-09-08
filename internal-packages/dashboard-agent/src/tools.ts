@@ -37,14 +37,17 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     projectRef: ctx.projectRef,
     environmentId: ctx.environmentId,
     investigations: ctx.investigations,
+    watchEnabled: ctx.watchEnabled,
     reads: ledger,
   });
 
   const apiTools: ToolSet = {
     ...buildApiTools({ ctx, client, renderInvestigations, reads: ledger }),
     ...buildNavigationTools(ctx),
-    ...buildWatchTools({ ctx, reads: ledger }),
-    ...buildAlertTools({ ctx, client }),
+    // Alerts exist only to report a watch firing, so they come and go with the watch tool.
+    ...(ctx.watchEnabled
+      ? { ...buildWatchTools({ ctx, reads: ledger }), ...buildAlertTools({ ctx, client }) }
+      : {}),
     ...buildLocateTool({ ctx, client, reads: ledger }),
   };
 

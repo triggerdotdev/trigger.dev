@@ -9,7 +9,7 @@ import {
 } from "@internal/dashboard-agent-contracts";
 import { useLocation, useNavigate } from "@remix-run/react";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { PlusIcon } from "~/assets/icons/PlusIcon";
 import { Button } from "~/components/primitives/Buttons";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
@@ -25,6 +25,7 @@ import {
   FREE_PLAN_MESSAGE_LIMIT,
   MESSAGE_QUOTA_REACHED_REASON,
   parseQuotaReachedResponse,
+  shouldClearCapReached,
   type MessageQuota,
 } from "./message-quota";
 import { createTranscriptOrder, orderTranscript } from "./message-order";
@@ -112,8 +113,10 @@ export function DashboardAgentChat({
   onTurnSettled,
   onActivityChange,
   onQuotaChange,
+  refusalGenRef,
   onNewChat,
   showNewChat,
+  watchEnabled = false,
 }: {
   chatId: string;
   initialMessages: UIMessage[];
@@ -142,16 +145,26 @@ export function DashboardAgentChat({
   onTurnSettled: () => void;
   onActivityChange?: (chatId: string, activity: TurnActivity | null) => void;
   /** The poll lives here, so this is where the panel learns the cap has lifted. */
-  onQuotaChange?: (quota: MessageQuota) => void;
+  onQuotaChange?: (
+    quota: MessageQuota & { pollSeq: number; pollIsFresh: boolean; provenCapacity: boolean }
+  ) => void;
+  /** Owned by the panel (survives a chat switch): bumped on every 403, ordering refusals
+   * against polls by generation rather than the wall clock. */
+  refusalGenRef: MutableRefObject<number>;
   onNewChat: () => void;
   showNewChat: boolean;
+  /** Withholds watch chips, the watch result card and the wake banner while the flag is off. */
+  watchEnabled?: boolean;
 }) {
   const [input, setInput] = useState("");
   // Set when the server refuses a send over the cap, so the block shows at once rather than
-  // waiting for the next quota poll.
-  const [quotaReached, setQuotaReached] = useState<{ limit: number; planResolved: boolean } | null>(
-    null
-  );
+  // waiting for the next quota poll. Cleared only by a poll whose fetch started at the same
+  // `refusalGenRef` generation it resolved at (see `useAgentMessageQuota`'s `pollIsFresh`) —
+  // a poll already in flight when this refusal lands must not lift it.
+  const [quotaReached, setQuotaReached] = useState<{
+    limit: number;
+    planResolved: boolean;
+  } | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const toast = useToast();
@@ -187,6 +200,7 @@ export function DashboardAgentChat({
           .catch(() => null)) as { error?: string; limit?: number } | null;
         const reached = parseQuotaReachedResponse(res.status, data);
         if (reached) {
+          refusalGenRef.current += 1;
           setQuotaReached(reached);
           throw new Error("You've reached your message limit.");
         }
@@ -337,12 +351,20 @@ export function DashboardAgentChat({
   const effectiveError = error ?? deadlineError ?? stopFailedError;
 
   // Read here, not in the panel, so it re-reads as each turn settles.
-  const quota = useAgentMessageQuota({ actionPath, chatId, status });
+  const quota = useAgentMessageQuota({ actionPath, chatId, status, refusalGenRef });
   useEffect(() => {
     onQuotaChange?.(quota);
-    // The quota object is rebuilt every render; only its kind is acted on.
+    // Released only by a read that proves capacity, or the server saying the quota is off
+    // outright — a stale refusal from before the switch flipped must not linger. Keyed on
+    // `pollSeq`, not just `kind`/`reason`: a within → (403 latches quotaReached) → within
+    // read comes back with the same kind, and must still re-check on that fresh poll.
+    // `pollIsFresh` also rejects a poll whose fetch started before this refusal — it can
+    // still resolve after, and its stale `within` must not lift a cap just set.
+    setQuotaReached((current) =>
+      current && quota.pollIsFresh && shouldClearCapReached(quota) ? null : current
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quota.kind, onQuotaChange]);
+  }, [quota.pollSeq, onQuotaChange]);
   // Either the poll saw the cap, or a send was just refused over it.
   const atMessageCap = quota.kind === "reached" || quotaReached !== null;
   const messageCapLimit =
@@ -563,10 +585,12 @@ export function DashboardAgentChat({
 
   return (
     <>
-      <WatchChips
-        watches={watches.filter((watch) => watch.status === "active")}
-        onCancel={onCancelWatch}
-      />
+      {watchEnabled ? (
+        <WatchChips
+          watches={watches.filter((watch) => watch.status === "active")}
+          onCancel={onCancelWatch}
+        />
+      ) : null}
       {isDraftState ? (
         <DashboardAgentHero
           onSelect={submit}
@@ -593,6 +617,7 @@ export function DashboardAgentChat({
               />
             )
           }
+          watchEnabled={watchEnabled}
         />
       ) : (
         <DashboardAgentMessages
@@ -606,6 +631,7 @@ export function DashboardAgentChat({
           pagePaths={pagePaths}
           watches={watches}
           resolveUri={resolveUri}
+          watchEnabled={watchEnabled}
         />
       )}
       {watchCard ? <div className="px-3 pb-2">{watchCard}</div> : null}

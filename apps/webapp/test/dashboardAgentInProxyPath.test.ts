@@ -13,6 +13,7 @@ import { afterEach, expect, describe, vi } from "vitest";
 
 const ctx = vi.hoisted(() => ({
   agentDb: undefined as unknown as DashboardAgentDb,
+  watchEnabled: true,
 }));
 
 vi.mock("~/services/dashboardAgentDb.server", () => ({
@@ -26,11 +27,15 @@ vi.mock("~/services/session.server", () => ({
 vi.mock("~/v3/canAccessDashboardAgent.server", () => ({
   canAccessDashboardAgent: async () => true,
 }));
+vi.mock("~/v3/canUseDashboardAgentWatches.server", () => ({
+  canUseDashboardAgentWatches: async () => ctx.watchEnabled,
+}));
 vi.mock("~/models/project.server", () => ({
-  findProjectBySlug: async (_org: string, projectParam: string) => ({
+  findProjectWithOrgFlagsBySlug: async (_org: string, projectParam: string) => ({
     id: `proj_${projectParam}`,
     organizationId: ORG,
     externalRef: `ref_${projectParam}`,
+    organization: { featureFlags: {} },
   }),
 }));
 vi.mock("~/models/runtimeEnvironment.server", () => ({
@@ -267,6 +272,24 @@ describe("the dashboard agent in-proxy path", () => {
         environment: { id: string };
       };
       expect(call.environment).toMatchObject({ id: "env_proj_web_dev" });
+    },
+    30_000
+  );
+
+  postgresTest(
+    "refuses the card's submit outright when the org has watches off",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const chatId = await createChatIn("api");
+      ctx.watchEnabled = false;
+
+      try {
+        const response = await postWatchCreate("api", chatId, "wreq_flag_off");
+        expect(response.status).toBe(404);
+        expect(submitDashboardAgentWatch).not.toHaveBeenCalled();
+      } finally {
+        ctx.watchEnabled = true;
+      }
     },
     30_000
   );

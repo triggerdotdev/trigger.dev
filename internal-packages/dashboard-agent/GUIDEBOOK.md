@@ -2,9 +2,10 @@
 
 An AI assistant in a side panel on every dashboard page. It reads your runs,
 errors, queues, deploys and health through the same APIs you use, answers in
-place, renders rich cards, and can keep watching things after the conversation
-ends. Read-only by design: the only things it ever creates are its own watches
-and, with your explicit yes, an email alert subscription.
+place, and renders rich cards. Where watches are enabled for the org (see
+below), it can also keep watching things after the conversation ends.
+Read-only by design: the only things it ever creates are its own watches and,
+with your explicit yes, an email alert subscription.
 
 Branch: `feat/dashboard-agent-flows`.
 
@@ -25,12 +26,13 @@ concludes on a live card with cited evidence — or says honestly that it's
 inconclusive and what to check next. With a connected GitHub repo it reads your
 actual source at the deployed commit and cites file:line.
 
-**Watch** — a durable condition the platform checks on a schedule (no LLM in
-the checks), which wakes the chat with the outcome. Ten kinds, listed below. It
-answers **once**, then stops.
+**Watch** *(flag-gated, off by default — see below)* — a durable condition the
+platform checks on a schedule (no LLM in the checks), which wakes the chat
+with the outcome. Ten kinds, listed below. It answers **once**, then stops.
 
-**Alerts** — when a watch is created (or fires) without a subscription, the
-agent offers an email alert — one line, created only if you say yes. Standing
+**Alerts** *(flag-gated with Watch)* — when a watch is created (or fires)
+without a subscription, the agent offers an email alert — one line, created
+only if you say yes. Standing
 subscription on the standard alert channels: shows up on the project's Alerts
 page, fires for every watch fire, one-click unsubscribe in every email.
 
@@ -65,6 +67,24 @@ it creation refuses with "The dashboard agent is not configured, so watches
 can't be scheduled." (`isDashboardAgentConfigured`, `dashboardAgent.server.ts`).
 The same gate stops the sweep delivering wakes — it still finalizes the rows.
 
+### Two more switches
+
+**Watches, off by default.** `canUseDashboardAgentWatches`
+(`apps/webapp/app/v3/canUseDashboardAgentWatches.server.ts`) resolves the
+`dashboardAgentWatchEnabled` flag, org override over the `DASHBOARD_AGENT_WATCH_ENABLED`
+env default. Off means: no watch or alert tools and no watch prompt section
+(`prompt-assembly.ts`, `tools.ts`), no watch/alert buttons, chips, cards, wake
+banners, toasts or the unread dot, no wake feed, and the watch-create and
+alert-create APIs answer 404. A watch created before the flag was turned off
+keeps ticking and delivering, `watch-cancel` still works (it is not gated),
+and the head-start assembly (`dashboardAgentHeadStart.server.ts`) resolves the
+same prompt/tool set the turn itself would.
+
+**Message quota, off by default.** `isDashboardAgentQuotaEnabled`
+(`dashboardAgentQuota.server.ts`) reads `DASHBOARD_AGENT_QUOTA_ENABLED`. Off
+means the quota is never checked, never recorded, and the user never sees a
+cap notice — every turn resolves unlimited.
+
 ---
 
 ## Where the buttons are
@@ -72,6 +92,8 @@ The same gate stops the sweep delivering wakes — it still finalizes the rows.
 Two separate mechanisms, decided differently.
 
 ### Buttons on the page itself
+
+Every `Watch…` row below only shows when watches are flag-enabled for the org.
 
 | Page | Button | Shown when |
 | --- | --- | --- |
@@ -115,7 +137,8 @@ current severity as `fromSeverity`, 5 min / 6 h.
 ### Chips in the agent panel
 
 An empty chat offers up to five. They come from *two* places, resolved into the
-same slots.
+same slots. The `watch` slot is dropped entirely when watches are off for the
+org, so a slot behind it can take its place.
 
 *The page registry* (`suggested-prompts/page-prompts.ts`) answers by page kind
 and its fields. Only `error` and `queue` contribute a watch chip:
@@ -154,6 +177,10 @@ chip per slot. Over the cap of five, whole slots are dropped in the order
 ---
 
 ## The ten watch kinds, and what makes each fire
+
+Everything from here to "The two follow-ups" only applies when watches are
+flag-enabled for the org — with the flag off, none of it is reachable, though
+a watch created while it was on keeps checking and delivering.
 
 The spec union is `internal-packages/dashboard-agent-contracts/src/watch.ts`.
 Every check is deterministic and runs without an LLM.

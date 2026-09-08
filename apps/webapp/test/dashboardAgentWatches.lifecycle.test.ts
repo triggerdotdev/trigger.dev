@@ -732,6 +732,29 @@ describe("the createWatch endpoint's authorization", () => {
   );
 
   postgresTest(
+    "404s for an org with watches turned off, writing nothing",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "watchflag");
+      await seedChat(seeded, "chat_1");
+      // The seed opts the org in; this is the default an unflagged org has.
+      await prisma.organization.update({
+        where: { id: seeded.organization.id },
+        data: { featureFlags: {} },
+      });
+      ctx.actor = {
+        userId: seeded.user.id,
+        client: "dashboard-agent",
+        environmentId: seeded.environment.id,
+      };
+
+      const response = await post(validBody("chat_1"));
+      expect(response.status).toBe(404);
+      expect(await listActiveWatchesForChat(ctx.agentDb, { chatId: "chat_1" })).toHaveLength(0);
+    }
+  );
+
+  postgresTest(
     "refuses a token with no environment scope",
     async ({ prisma, postgresContainer }) => {
       await boot(prisma, postgresContainer.getConnectionUri());
@@ -1237,6 +1260,38 @@ describe("the agent's alert boundary", () => {
       expect(
         await prisma.projectAlertChannel.count({ where: { projectId: seeded.project.id } })
       ).toBe(1);
+    }
+  );
+
+  postgresTest(
+    "subscribes nobody when the org has watches off",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "alert-flag-off");
+      const member = await seedMember(prisma, seeded);
+      await createChat(ctx.agentDb, {
+        id: "chat_member",
+        organizationId: seeded.organization.id,
+        userId: member.id,
+      });
+      await prisma.organization.update({
+        where: { id: seeded.organization.id },
+        data: { featureFlags: {} },
+      });
+
+      ctx.actor = {
+        userId: member.id,
+        client: "dashboard-agent",
+        environmentId: seeded.environment.id,
+      };
+
+      const response = (await alertsAction(
+        createRequest({ chatId: "chat_member", channel: "email" })
+      )) as Response;
+      expect(response.status).toBe(404);
+      expect(
+        await prisma.projectAlertChannel.count({ where: { projectId: seeded.project.id } })
+      ).toBe(0);
     }
   );
 

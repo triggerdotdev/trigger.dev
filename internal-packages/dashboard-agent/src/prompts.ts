@@ -3,6 +3,7 @@ import {
   DASHBOARD_AGENT_CODE_SYSTEM_PROMPT,
   DASHBOARD_AGENT_MODEL,
   DASHBOARD_AGENT_SYSTEM_PROMPT,
+  DASHBOARD_AGENT_WATCH_PROMPT,
 } from "./tool-schemas";
 
 /**
@@ -32,6 +33,14 @@ export const codeSystemPrompt = prompts.define({
     "System prompt for the in-dashboard agent when the project's GitHub repo is connected.",
   model: `anthropic:${DASHBOARD_AGENT_MODEL}`,
   content: DASHBOARD_AGENT_CODE_SYSTEM_PROMPT,
+});
+
+// Appended to either system prompt for a turn whose client enables watches.
+export const watchSystemPrompt = prompts.define({
+  id: "dashboard-agent-system-watches",
+  description: "Watch guidance, appended for turns where the dashboard agent can schedule watches.",
+  model: `anthropic:${DASHBOARD_AGENT_MODEL}`,
+  content: DASHBOARD_AGENT_WATCH_PROMPT,
 });
 
 export const titlePrompt = prompts.define({
