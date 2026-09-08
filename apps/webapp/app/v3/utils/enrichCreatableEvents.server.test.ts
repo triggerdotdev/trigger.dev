@@ -212,3 +212,100 @@ describe("enrichLlmMetrics — provider-reported cost", () => {
     expect(out._llmMetrics?.costSource).toBe("registry");
   });
 });
+
+// The two spans below are the real shapes of a single AI SDK v7 agent call, as
+// emitted by @ai-sdk/otel: an `invoke_agent` wrapper around a `chat` span, both
+// carrying identical usage. Pricing both is what doubled every aggregate.
+const AGENT_CALL_USAGE = {
+  "gen_ai.request.model": "gpt-5.6-luna",
+  "gen_ai.response.model": "gpt-5.6-luna",
+  "gen_ai.usage.input_tokens": 10357,
+  "gen_ai.usage.output_tokens": 200,
+};
+
+describe("enrichLlmMetrics — agent-level spans", () => {
+  it("does not write an llm_metrics row for the invoke_agent wrapper", () => {
+    setLlmPricingRegistry(registryReturning(catalogCost({ totalCost: 0.05 })));
+
+    const event = enrichOne(
+      makeEvent({
+        ...AGENT_CALL_USAGE,
+        "gen_ai.operation.name": "invoke_agent",
+        "ai.operationId": "ai.generateText",
+      })
+    );
+
+    expect(event._llmMetrics).toBeUndefined();
+  });
+
+  it("still shows the cost on the wrapper span so the trace view is unchanged", () => {
+    setLlmPricingRegistry(registryReturning(catalogCost({ totalCost: 0.05 })));
+
+    const event = enrichOne(
+      makeEvent({
+        ...AGENT_CALL_USAGE,
+        "gen_ai.operation.name": "invoke_agent",
+        "ai.operationId": "ai.generateText",
+      })
+    );
+
+    expect(costPillText(event)).toBeDefined();
+    expect(event.properties["trigger.llm.total_cost"]).toBe(0.05);
+  });
+
+  it("writes the row for the inference span the wrapper wraps", () => {
+    setLlmPricingRegistry(registryReturning(catalogCost({ totalCost: 0.05 })));
+
+    const event = enrichOne(
+      makeEvent({
+        ...AGENT_CALL_USAGE,
+        "gen_ai.operation.name": "chat",
+        "ai.operationId": "ai.generateText.doGenerate",
+      })
+    );
+
+    expect(event._llmMetrics).toBeDefined();
+    expect(event._llmMetrics?.totalCost).toBe(0.05);
+  });
+
+  it("counts a lone inference span whose vendor id looks like a wrapper", () => {
+    // Some setups emit one span per call carrying `ai.operationId:
+    // "ai.generateText"` and no child. The semantic operation says `chat`, so
+    // this is real spend. Keying the skip on the vendor id would erase it.
+    setLlmPricingRegistry(registryReturning(catalogCost({ totalCost: 0.0153 })));
+
+    const event = enrichOne(
+      makeEvent({
+        "gen_ai.request.model": "gemini-3.8-flash",
+        "gen_ai.usage.input_tokens": 5650,
+        "gen_ai.usage.output_tokens": 120,
+        "gen_ai.operation.name": "chat",
+        "ai.operationId": "ai.generateText",
+      })
+    );
+
+    expect(event._llmMetrics).toBeDefined();
+    expect(event._llmMetrics?.totalCost).toBe(0.0153);
+  });
+
+  it("counts an unrecognised operation rather than dropping the spend", () => {
+    setLlmPricingRegistry(registryReturning(catalogCost({ totalCost: 0.02 })));
+
+    const event = enrichOne(
+      makeEvent({
+        ...AGENT_CALL_USAGE,
+        "gen_ai.operation.name": "some_future_operation",
+      })
+    );
+
+    expect(event._llmMetrics).toBeDefined();
+  });
+
+  it("counts a span with no gen_ai.operation.name at all", () => {
+    setLlmPricingRegistry(registryReturning(catalogCost({ totalCost: 0.02 })));
+
+    const event = enrichOne(makeEvent({ ...AGENT_CALL_USAGE }));
+
+    expect(event._llmMetrics).toBeDefined();
+  });
+});
