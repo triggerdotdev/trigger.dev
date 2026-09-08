@@ -17,11 +17,9 @@
  * recognise a version silently fall back to no-snapshot behaviour.
  */
 
-import { z } from "zod";
+import { z } from "zod/v4";
 
-import type { UIMessage } from "ai";
-
-export type ChatSnapshotV1<TUIMessage extends UIMessage = UIMessage> = {
+export type ChatSnapshotV1<TUIMessage = unknown> = {
   version: 1;
   savedAt: number;
   messages: TUIMessage[];

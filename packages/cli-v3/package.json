@@ -128,8 +128,8 @@
     "tinyexec": "^0.3.1",
     "tinyglobby": "^0.2.10",
     "xdg-app-paths": "^8.3.0",
-    "zod": "3.25.76",
-    "zod-validation-error": "^1.5.0"
+    "zod": "4.5.4",
+    "zod-validation-error": "^5.0.0"
   },
   "engines": {
     "node": ">=18.20.0"

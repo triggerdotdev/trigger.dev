@@ -99,11 +99,11 @@ export const watchWakeActionSchema = z.object({
       checkEveryMinutes: z.number().optional(),
     })
     .passthrough(),
-  facts: z.record(z.unknown()).default({}),
+  facts: z.record(z.string(), z.unknown()).default({}),
   // Optional for the same reason: an older watcher predating the resolution model
   // sends neither, and the narration falls back to the transport encoding.
   resolution: z.enum(watchResolutions).optional(),
-  observed: z.record(z.unknown()).optional(),
+  observed: z.record(z.string(), z.unknown()).optional(),
   note: z.string().optional(),
   investigateOnAttention: z.boolean().optional(),
 });
@@ -150,9 +150,9 @@ export const watchInvestigateActionSchema = z.object({
       checkEveryMinutes: z.number().optional(),
     })
     .passthrough(),
-  facts: z.record(z.unknown()).default({}),
+  facts: z.record(z.string(), z.unknown()).default({}),
   resolution: z.enum(watchResolutions).optional(),
-  observed: z.record(z.unknown()).optional(),
+  observed: z.record(z.string(), z.unknown()).optional(),
   note: z.string().optional(),
   investigationId: z.string().optional(),
 });

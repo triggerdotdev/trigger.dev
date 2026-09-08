@@ -63,7 +63,7 @@ export type TriggerEnvironmentType = z.infer<typeof TriggerEnvironmentType>;
  * Only explicitly `false` entries disable sync.
  */
 const SyncEnvVarsMappingSchema = z
-  .record(EnvSlugSchema, z.record(z.string(), z.boolean()))
+  .partialRecord(EnvSlugSchema, z.record(z.string(), z.boolean()))
   .default({});
 
 export type SyncEnvVarsMapping = z.infer<typeof SyncEnvVarsMappingSchema>;

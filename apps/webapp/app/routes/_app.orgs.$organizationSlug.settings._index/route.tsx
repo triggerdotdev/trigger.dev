@@ -1,6 +1,6 @@
 import colorWheelIcon from "../../assets/images/color-wheel.png";
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
-import { conformZodMessage, parseWithZod } from "@conform-to/zod";
+import { conformZodMessage, parseWithZod } from "@conform-to/zod/v4";
 import {
   CheckIcon,
   ExclamationTriangleIcon,

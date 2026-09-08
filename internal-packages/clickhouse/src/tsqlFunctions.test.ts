@@ -101,7 +101,7 @@ async function assertQueryExecutes(client: ClickhouseClient, tsqlQuery: string):
   const [error] = await executeTSQL(client, {
     name: "func-test",
     query: tsqlQuery,
-    schema: z.record(z.any()),
+    schema: z.record(z.string(), z.any()),
     enforcedWhereClause,
     tableSchema: [taskRunsSchema],
   });

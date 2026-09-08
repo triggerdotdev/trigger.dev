@@ -343,6 +343,14 @@ describe("InitializeDeploymentRequestBody", () => {
 });
 
 describe("TriggerTaskRequestBody", () => {
+  it("accepts a missing payload", () => {
+    const result = TriggerTaskRequestBody.safeParse({
+      options: {},
+    });
+
+    expect(result.success).toBe(true);
+  });
+
   it("accepts application/store payload as a non-empty string", () => {
     const result = TriggerTaskRequestBody.safeParse({
       payload: "packets/payloads/file.json",

@@ -1,7 +1,7 @@
 // Import JSONSchema from core to ensure compatibility
 import type { JSONSchema } from "@trigger.dev/core/v3";
 import { zodToJsonSchema } from "zod-to-json-schema";
-import * as z4 from "zod/v4";
+import * as z4 from "zod/v4/core";
 import { convertSchema } from "@sodaru/yup-to-json-schema";
 import { JSONSchema as EffectJSONSchema } from "effect";
 
@@ -41,9 +41,23 @@ export function schemaToJsonSchema(
   schema: Schema,
   options?: ConversionOptions
 ): ConversionResult | undefined {
+  if (schema === null || (typeof schema !== "object" && typeof schema !== "function")) {
+    return undefined;
+  }
+
   const parser = schema as any;
 
-  // Check if schema has a built-in toJsonSchema method (e.g., ArkType, Zod 4)
+  if (isZodSchema(parser)) {
+    const jsonSchema = convertZodSchema(parser, options);
+
+    if (jsonSchema) {
+      return {
+        jsonSchema: jsonSchema,
+      };
+    }
+  }
+
+  // Check if schema has a built-in toJsonSchema method (e.g., ArkType)
   if (typeof parser.toJsonSchema === "function") {
     try {
       const jsonSchema = parser.toJsonSchema();
@@ -53,16 +67,6 @@ export function schemaToJsonSchema(
       };
     } catch (_error) {
       // If toJsonSchema fails, continue to other checks
-    }
-  }
-
-  if (isZodSchema(parser)) {
-    const jsonSchema = convertZodSchema(parser, options);
-
-    if (jsonSchema) {
-      return {
-        jsonSchema: jsonSchema,
-      };
     }
   }
 
@@ -111,11 +115,18 @@ export function isZodSchema(schema: any): boolean {
 }
 
 function isZod3Schema(schema: any): boolean {
-  return "_def" in schema && "parse" in schema && "parseAsync" in schema && "safeParse" in schema;
+  return (
+    typeof schema === "object" &&
+    schema !== null &&
+    "_def" in schema &&
+    "parse" in schema &&
+    "parseAsync" in schema &&
+    "safeParse" in schema
+  );
 }
 
 function isZod4Schema(schema: any): boolean {
-  return "_zod" in schema;
+  return typeof schema === "object" && schema !== null && "_zod" in schema;
 }
 
 function convertZodSchema(schema: any, options?: ConversionOptions): JSONSchema | undefined {
@@ -145,7 +156,48 @@ function convertZod4Schema(schema: any, options?: ConversionOptions): JSONSchema
     target: "draft-7",
     io: "output",
     reused: useReferences ? "ref" : "inline",
+    override: ({ zodSchema, jsonSchema }) => {
+      const def = zodSchema._zod.def;
+      if (def.type === "undefined") {
+        throw new Error("Undefined cannot be represented in JSON Schema");
+      }
+
+      if (def.type === "object" && jsonSchema.required) {
+        // Early Zod 4 permalinks do not propagate optional output through unions.
+        const required = jsonSchema.required.filter((key) => {
+          const field = def.shape[key];
+          return !field || field._zod.optout === "optional" || !hasOptionalOutput(field);
+        });
+        if (required.length > 0) {
+          jsonSchema.required = required;
+        } else {
+          delete jsonSchema.required;
+        }
+      }
+    },
   }) as JSONSchema;
+}
+
+function hasOptionalOutput(schema: z4.$ZodType, seen = new Set<z4.$ZodType>()): boolean {
+  if (schema._zod.optout === "optional") return true;
+  if (seen.has(schema)) return false;
+  seen.add(schema);
+
+  const def = (schema as z4.$ZodTypes)._zod.def;
+  switch (def.type) {
+    case "union":
+      return def.options.some((option) => hasOptionalOutput(option, seen));
+    case "nullable":
+    case "readonly":
+    case "catch":
+      return hasOptionalOutput(def.innerType, seen);
+    case "lazy":
+      return hasOptionalOutput(def.getter(), seen);
+    case "pipe":
+      return hasOptionalOutput(def.out, seen);
+    default:
+      return false;
+  }
 }
 
 function isYupSchema(schema: any): boolean {

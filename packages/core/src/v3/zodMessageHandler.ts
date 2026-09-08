@@ -1,25 +1,29 @@
-import { z } from "zod";
+import { z } from "zod/v4";
+import type {
+  AnyZodSchema,
+  ZodErrorLike,
+  inferZodSchemaInput,
+  inferZodSchemaOutput,
+} from "./types/schemas.js";
 import type { StructuredLogger } from "./utils/structuredLogger.js";
 
 export class ZodSchemaParsedError extends Error {
   constructor(
-    public error: z.ZodError,
+    public error: ZodErrorLike,
     public payload: unknown
   ) {
     super(error.message);
   }
 }
 
-export type ZodMessageValueSchema<TDiscriminatedUnion extends z.ZodDiscriminatedUnion<any, any>> =
-  | z.ZodFirstPartySchemaTypes
-  | TDiscriminatedUnion;
+export type ZodMessageValueSchema<TSchema extends AnyZodSchema = AnyZodSchema> = TSchema;
 
 export interface ZodMessageCatalogSchema {
-  [key: string]: ZodMessageValueSchema<any>;
+  [key: string]: AnyZodSchema;
 }
 
 export type ZodMessageHandlers<TCatalogSchema extends ZodMessageCatalogSchema> = Partial<{
-  [K in keyof TCatalogSchema]: (payload: z.infer<TCatalogSchema[K]>) => Promise<any>;
+  [K in keyof TCatalogSchema]: (payload: inferZodSchemaOutput<TCatalogSchema[K]>) => Promise<any>;
 }>;
 
 export type ZodMessageHandlerOptions<TMessageCatalog extends ZodMessageCatalogSchema> = {
@@ -33,13 +37,13 @@ export type MessageFromSchema<
   TMessageCatalog extends ZodMessageCatalogSchema,
 > = {
   type: K;
-  payload: z.input<TMessageCatalog[K]>;
+  payload: inferZodSchemaInput<TMessageCatalog[K]>;
 };
 
 export type MessagePayloadFromSchema<
   K extends keyof TMessageCatalog,
   TMessageCatalog extends ZodMessageCatalogSchema,
-> = z.output<TMessageCatalog[K]>;
+> = inferZodSchemaOutput<TMessageCatalog[K]>;
 
 export type MessageFromCatalog<TMessageCatalog extends ZodMessageCatalogSchema> = {
   [K in keyof TMessageCatalog]: MessageFromSchema<K, TMessageCatalog>;
@@ -109,7 +113,8 @@ export class ZodMessageHandler<TMessageCatalog extends ZodMessageCatalogSchema> 
       };
     }
 
-    const ack = await handler(parsedMessage.data.payload);
+    // parsedMessage.data.payload is parsed output at runtime; zod v4 distinguishes input/output
+    const ack = await handler(parsedMessage.data.payload as Parameters<typeof handler>[0]);
 
     return {
       success: true,
@@ -232,7 +237,7 @@ export function parseMessageFromCatalog<TMessageCatalog extends ZodMessageCatalo
 
 type ZodMessageSenderCallback<TMessageCatalog extends ZodMessageCatalogSchema> = (message: {
   type: keyof TMessageCatalog;
-  payload: z.infer<TMessageCatalog[keyof TMessageCatalog]>;
+  payload: inferZodSchemaOutput<TMessageCatalog[keyof TMessageCatalog]>;
   version: "v1";
 }) => Promise<void>;
 
@@ -262,7 +267,7 @@ export class ZodMessageSender<TMessageCatalog extends ZodMessageCatalogSchema> {
 
   public async send<K extends keyof TMessageCatalog>(
     type: K,
-    payload: z.input<TMessageCatalog[K]>
+    payload: inferZodSchemaInput<TMessageCatalog[K]>
   ) {
     const schema = this.#schema[type];
 
@@ -277,7 +282,13 @@ export class ZodMessageSender<TMessageCatalog extends ZodMessageCatalogSchema> {
     }
 
     try {
-      await this.#sender({ type, payload, version: "v1" });
+      // Preserve the original payload on the wire for backwards compatibility. Validation is
+      // intentionally side-effect-free here; receivers parse the payload into the schema output.
+      await this.#sender({
+        type,
+        payload: payload as unknown as inferZodSchemaOutput<TMessageCatalog[keyof TMessageCatalog]>,
+        version: "v1",
+      });
     } catch (error) {
       console.error("[ZodMessageSender] Failed to send message", error);
     }
@@ -317,7 +328,7 @@ export class ZodMessageSender<TMessageCatalog extends ZodMessageCatalogSchema> {
 export async function sendMessageInCatalog<TMessageCatalog extends ZodMessageCatalogSchema>(
   catalog: TMessageCatalog,
   type: keyof TMessageCatalog,
-  payload: z.input<TMessageCatalog[keyof TMessageCatalog]>,
+  payload: inferZodSchemaInput<TMessageCatalog[keyof TMessageCatalog]>,
   sender: ZodMessageSenderCallback<TMessageCatalog>
 ) {
   const schema = catalog[type];
@@ -332,9 +343,15 @@ export async function sendMessageInCatalog<TMessageCatalog extends ZodMessageCat
     throw new ZodSchemaParsedError(parsedPayload.error, payload);
   }
 
-  await sender({ type, payload, version: "v1" });
+  // Preserve the original payload on the wire for backwards compatibility. Validation is
+  // intentionally side-effect-free here; receivers parse the payload into the schema output.
+  await sender({
+    type,
+    payload: payload as unknown as inferZodSchemaOutput<TMessageCatalog[keyof TMessageCatalog]>,
+    version: "v1",
+  });
 }
 
 export type MessageCatalogToSocketIoEvents<TCatalog extends ZodMessageCatalogSchema> = {
-  [K in keyof TCatalog]: (message: z.infer<TCatalog[K]>) => void;
+  [K in keyof TCatalog]: (message: inferZodSchemaOutput<TCatalog[K]>) => void;
 };

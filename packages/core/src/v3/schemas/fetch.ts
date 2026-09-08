@@ -1,4 +1,5 @@
-import { z } from "zod";
+import { z } from "zod/v4";
+import { discriminatedUnion } from "../utils/zod.js";
 import { RetryOptions } from "./schemas.js";
 import { EventFilter } from "./eventFilter.js";
 import type { Prettify } from "../types/index.js";
@@ -24,7 +25,9 @@ export const FetchRetryHeadersStrategy = z.object({
       "iso_8601_duration_openai_variant",
     ])
     .default("unix_timestamp")
-    .optional(),
+    .optional()
+    // Early Zod 4 permalinks skip defaults inside optional schemas.
+    .overwrite((value) => value ?? "unix_timestamp"),
 });
 
 export type FetchRetryHeadersStrategy = z.infer<typeof FetchRetryHeadersStrategy>;
@@ -39,7 +42,7 @@ export const FetchRetryBackoffStrategy = RetryOptions.extend({
 /** The `backoff` strategy retries the request with an exponential backoff. */
 export type FetchRetryBackoffStrategy = z.infer<typeof FetchRetryBackoffStrategy>;
 
-export const FetchRetryStrategy = z.discriminatedUnion("strategy", [
+export const FetchRetryStrategy = discriminatedUnion("strategy", [
   FetchRetryHeadersStrategy,
   FetchRetryBackoffStrategy,
 ]);

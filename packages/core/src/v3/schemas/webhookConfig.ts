@@ -1,7 +1,8 @@
-import { z } from "zod";
+import { z } from "zod/v4";
+import { discriminatedUnion } from "../utils/zod.js";
 
-// Ingress webhook verification config. Kept in a LEAF module (imports only `z`) so it
-// can be consumed by resources.ts / schemas.ts without dragging in the alert-webhook
+// Ingress webhook verification config. Kept in a LEAF module (imports only `z` and
+// the Zod compatibility helper) so it can be consumed by resources.ts / schemas.ts without dragging in the alert-webhook
 // `Webhook` union in webhooks.ts, which imports api.js (RunStatus). resources.ts is
 // imported by api.ts, so a resources -> webhooks -> api edge would be a module-init cycle.
 
@@ -24,7 +25,7 @@ export type WebhookIdempotencyField = z.infer<typeof WebhookIdempotencyField>;
 // Where a scalar value comes from. Used for the timestamp and for signing-string template vars.
 // "signatureField" reads a field parsed out of the signature header (e.g. Stripe `t`).
 // "url" is the inbound request URL (e.g. Square signs `{url}{body}`). "constant" is a literal.
-export const WebhookValueSource = z.discriminatedUnion("from", [
+export const WebhookValueSource = discriminatedUnion("from", [
   z.object({ from: z.literal("header"), name: z.string() }),
   z.object({ from: z.literal("signatureField"), field: z.string() }),
   z.object({ from: z.literal("body"), path: z.string() }),
@@ -68,7 +69,7 @@ export const WebhookSigningString = z.union([
   z.literal("raw"),
   z.object({
     template: z.string(),
-    vars: z.record(WebhookValueSource).optional(),
+    vars: z.record(z.string(), WebhookValueSource).optional(),
   }),
 ]);
 export type WebhookSigningString = z.infer<typeof WebhookSigningString>;
@@ -133,7 +134,7 @@ export const WebhookUrlSecretConfig = z.object({
 });
 export type WebhookUrlSecretConfig = z.infer<typeof WebhookUrlSecretConfig>;
 
-export const WebhookVerifierConfig = z.discriminatedUnion("scheme", [
+export const WebhookVerifierConfig = discriminatedUnion("scheme", [
   WebhookHmacConfig,
   WebhookSharedSecretConfig,
   WebhookUrlSecretConfig,
@@ -152,7 +153,7 @@ export const WebhookHandshakeConfig = z.object({
 export type WebhookHandshakeConfig = z.infer<typeof WebhookHandshakeConfig>;
 
 // ── Verifier artifact: data-only tagged union stored on WebhookEndpoint.verifierArtifact ──
-export const WebhookVerifierArtifact = z.discriminatedUnion("kind", [
+export const WebhookVerifierArtifact = discriminatedUnion("kind", [
   z.object({
     kind: z.literal("config"),
     config: WebhookVerifierConfig,
@@ -173,7 +174,7 @@ export type WebhookVerifierArtifact = z.infer<typeof WebhookVerifierArtifact>;
 // session: keyTemplate resolves the externalId, deliverAs selects the mode. "action" (chat.event)
 // carries actionType → the onAction envelope's action.type; "message" (channels) carries connectorId
 // → the run resolves the connector's inbound() mapper and runs a turn.
-export const WebhookRoutingTarget = z.discriminatedUnion("type", [
+export const WebhookRoutingTarget = discriminatedUnion("type", [
   z.object({ type: z.literal("task"), taskId: z.string() }),
   z.object({
     type: z.literal("session"),
@@ -182,7 +183,7 @@ export const WebhookRoutingTarget = z.discriminatedUnion("type", [
     deliverAs: z.enum(["action", "message"]),
     actionType: z.string().optional(),
     connectorId: z.string().optional(),
-    triggerConfigTemplate: z.record(z.unknown()).optional(),
+    triggerConfigTemplate: z.record(z.string(), z.unknown()).optional(),
     // Gate session CREATION: an event that already resolves to an existing session always resumes it,
     // but a key with no session is only started when the event matches this filter. Absent => always start.
     startOn: z.string().optional(),

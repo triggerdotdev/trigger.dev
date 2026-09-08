@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v4";
 // Reuse the source-side enum (provider | integrator | either) rather than redefining it.
 import { WebhookSecretProvisioning } from "./webhookConfig.js";
 
@@ -75,7 +75,7 @@ export const WebhookDeliveryObject = WebhookDeliveryListItem.extend({
   /** The size-capped, verified event body. */
   event: z.unknown().nullable(),
   /** The inbound request headers. */
-  headers: z.record(z.string()).nullable(),
+  headers: z.record(z.string(), z.string()).nullable(),
   rawBodyHash: z.string().nullable(),
   error: z.string().nullable(),
   /** For a `filtered` delivery: why it was not routed (failing clause + actual value). */
