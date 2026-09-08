@@ -109,6 +109,7 @@ import {
   zodfetchCursorPage,
   zodfetchOffsetLimitPage,
 } from "./core.js";
+import { encodeTaskIdForPath } from "./encodeTaskIdForPath.js";
 import { ApiConnectionError, ApiError, BatchNotSealedError } from "./errors.js";
 import { refreshAccessTokenOnce, type RefreshAccessTokenFn } from "./refreshAccessToken.js";
 import {
@@ -207,6 +208,7 @@ export type {
 };
 
 export * from "./getBranch.js";
+export { encodeTaskIdForPath } from "./encodeTaskIdForPath.js";
 
 export type CreatePublicTokenRequestBody = {
   scopes: string[];
@@ -358,7 +360,7 @@ export class ApiClient {
     clientOptions?: ClientTriggerOptions,
     requestOptions?: TriggerRequestOptions
   ) {
-    const encodedTaskId = encodeURIComponent(taskId);
+    const encodedTaskId = encodeTaskIdForPath(taskId);
 
     return zodfetch(
       TriggerTaskResponse,

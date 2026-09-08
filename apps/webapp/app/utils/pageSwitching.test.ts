@@ -468,14 +468,22 @@ describe("pages named after something the environment did not issue", () => {
     expect(organizationPortablePage("models/gpt-5")).toBe("models");
   });
 
-  it("keep nothing but a single plain name in that last segment", () => {
+  it("carry a percent-encoded slash in the last segment verbatim", () => {
+    expect(environmentPortablePage("test/tasks/types%2Fzod")).toBe("test/tasks/types%2Fzod");
+    expect(environmentPortablePage("test/tasks/%2Fmy-task")).toBe("test/tasks/%2Fmy-task");
+    expect(environmentPortablePage("models/my%2Fmodel")).toBe("models/my%2Fmodel");
+    expect(environmentPortablePage("models/%2f%2fevil.example.com")).toBe(
+      "models/%2f%2fevil.example.com"
+    );
+  });
+
+  it("drop an empty or traversal-shaped last segment to the list page", () => {
     expect(environmentPortablePage("tasks/standard/..%2f..%2flogin")).toBe("");
     expect(environmentPortablePage("tasks/standard/../../login")).toBe("");
     expect(environmentPortablePage("agents/%2e%2e")).toBe("agents");
     expect(environmentPortablePage("agents/..")).toBe("agents");
     expect(environmentPortablePage("agents/%zz")).toBe("agents");
     expect(environmentPortablePage("agents/")).toBe("agents");
-    expect(environmentPortablePage("models/my%2Fmodel")).toBe("models");
     expect(environmentPortablePage("prompts/my-prompt/extra")).toBe("prompts");
   });
 });
@@ -552,7 +560,6 @@ describe("a page suffix that is not a plain relative page", () => {
       "..%2fbranches",
       "tasks/standard/../../login",
       "agents/..%2f..%2flogin",
-      "models/%2f%2fevil.example.com",
       "dashboards/custom/..%2f..%2flogin",
     ];
 

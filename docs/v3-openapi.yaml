@@ -3912,7 +3912,10 @@ components:
       required: true
       schema:
         type: string
-      description: The id of a task
+      description: |
+        The id of a task. If the id contains characters that are reserved in a URL path, such as a
+        slash (`/`), percent-encode it when building the request path (e.g. `types/zod` becomes
+        `types%2Fzod`).
       example: my-task
     runsFilterWithEnv:
       in: query

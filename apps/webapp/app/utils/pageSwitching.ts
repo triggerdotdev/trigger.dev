@@ -91,9 +91,12 @@ function nearestPage(suffix: string, pages: ReadonlySet<string>): string {
 }
 
 /**
- * `suffix` itself when its last segment names the same thing in every environment, as long as that
- * segment is a single plain one — a traversal or an encoded path in its place falls through to the
- * list page above it.
+ * `suffix` itself when its last segment names the same thing in every environment. The last segment
+ * is carried through verbatim (still percent-encoded), so an id that decodes to one containing a `/`
+ * (e.g. a task id like `types/zod`, or one that starts with a slash, encoded as `types%2Fzod` /
+ * `%2Fmy-task`) keeps its page: the encoded slash stays inside the one segment and never becomes a
+ * nested path. Only a decoded segment that is empty or shaped like a traversal (a `.` or `..` path
+ * segment, or a backslash) falls through to the list page above it.
  */
 function environmentNeutralPage(suffix: string): string | undefined {
   const boundary = suffix.lastIndexOf("/");
@@ -111,7 +114,10 @@ function environmentNeutralPage(suffix: string): string | undefined {
     return undefined;
   }
 
-  return slug !== "" && !/^\.+$/.test(slug) && !/[/\\]/.test(slug) ? suffix : undefined;
+  if (slug === "" || slug.includes("\\")) return undefined;
+  if (slug.split("/").some((part) => part === "." || part === "..")) return undefined;
+
+  return suffix;
 }
 
 /** The page to keep when only the environment changes. */

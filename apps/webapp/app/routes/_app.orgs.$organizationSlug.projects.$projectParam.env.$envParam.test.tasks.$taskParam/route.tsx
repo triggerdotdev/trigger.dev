@@ -139,7 +139,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
     if (result.foundTask && result.triggerSource === "WEBHOOK") {
       throw redirect(
-        `/orgs/${organizationSlug}/projects/${projectParam}/env/${envParam}/webhooks/${taskParam}?tab=console`
+        `/orgs/${organizationSlug}/projects/${projectParam}/env/${envParam}/webhooks/${encodeURIComponent(
+          taskParam
+        )}?tab=console`
       );
     }
 
