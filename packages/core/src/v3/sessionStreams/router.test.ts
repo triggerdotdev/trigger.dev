@@ -573,3 +573,76 @@ describe("SessionChannelRouter: untake", () => {
     expect(r.pendingCount("messages")).toBe(1);
   });
 });
+
+describe("SessionChannelRouter: recovered claim/settle floor", () => {
+  it("drops a claimed record on ingest instead of queueing it", () => {
+    const r = router();
+    r.restore({ resumeFrom: 0 });
+    r.markRecovered([1, 2]);
+    expect(r.ingest(rec(1, "message"))).toEqual({ action: "drop", reason: "recovered" });
+    expect(r.hasPending("messages")).toBe(false);
+  });
+
+  it("holds the resume floor below the earliest owed record until it is settled", () => {
+    const r = router();
+    r.restore({ resumeFrom: 0 });
+    r.markRecovered([1, 2]);
+    expect(r.resumeFloor()).toBe(0);
+    r.settleRecovered(1);
+    expect(r.resumeFloor()).toBe(1);
+    r.settleRecovered(2);
+    expect(r.resumeFloor()).toBe(2);
+  });
+
+  it("advances the floor after settling even when the tail never re-delivers", () => {
+    const r = router();
+    r.restore({ resumeFrom: 0 });
+    r.markRecovered([1, 2]);
+    r.settleRecovered(1);
+    r.settleRecovered(2);
+    expect(r.resumeFloor()).toBe(2);
+    expect(r.appliedThrough()).toBe(2);
+  });
+
+  it("keeps dropping a claimed record after it is settled, so a late tail re-read is never answered", () => {
+    const r = router();
+    r.restore({ resumeFrom: 0 });
+    r.markRecovered([1]);
+    r.settleRecovered(1);
+    expect(r.ingest(rec(1, "message"))).toEqual({ action: "drop", reason: "recovered" });
+    expect(r.hasPending("messages")).toBe(false);
+  });
+
+  it("queues a live record whose sequence was never claimed", () => {
+    const r = router();
+    r.restore({ resumeFrom: 0 });
+    r.markRecovered([1, 2]);
+    expect(r.ingest(rec(3, "message"))).toEqual({ action: "queue", route: "messages" });
+  });
+
+  it("advances only over the contiguous claimed run, holding the floor below a gap", () => {
+    const r = router();
+    r.restore({ resumeFrom: 0 });
+    r.markRecovered([1, 3]);
+    r.settleRecovered(1);
+    r.settleRecovered(3);
+    expect(r.resumeFloor()).toBe(1);
+  });
+
+  it("holds the floor below an unclaimed gap while later claims are owed and the tail is silent", () => {
+    const r = router();
+    r.restore({ resumeFrom: 0 });
+    r.markRecovered([1, 2, 5, 6]);
+    r.settleRecovered(1);
+    r.settleRecovered(2);
+    expect(r.resumeFloor()).toBe(2);
+  });
+
+  it("clears claims and owed records on reset", () => {
+    const r = router();
+    r.restore({ resumeFrom: 0 });
+    r.markRecovered([1, 2]);
+    r.reset();
+    expect(r.ingest(rec(1, "message"))).toEqual({ action: "queue", route: "messages" });
+  });
+});

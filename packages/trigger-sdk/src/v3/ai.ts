@@ -2322,7 +2322,11 @@ async function findSessionInReplayWindowEnd(
  */
 async function installChatInputRouter(
   chatId: string,
-  options?: { fallbackResumeFrom?: number; recoveredThrough?: number; resuming?: boolean }
+  options?: {
+    fallbackResumeFrom?: number;
+    recoveredSeqNums?: readonly number[];
+    resuming?: boolean;
+  }
 ): Promise<SessionChannelRouter> {
   const entry = chatInputRouterEntry(chatId);
   if (entry.attached) return entry.router;
@@ -2353,19 +2357,12 @@ async function installChatInputRouter(
     }
   }
 
-  // A boot that replayed `.in` itself has already answered everything up to
-  // `recoveredThrough`, so the floor has to cover it before the tail opens.
-  if (options?.recoveredThrough !== undefined) {
-    const recovered = options.recoveredThrough;
-    checkpoint.resumeFrom = Math.max(checkpoint.resumeFrom ?? recovered, recovered);
-    checkpoint.appliedThrough = Math.max(
-      checkpoint.appliedThrough ?? checkpoint.resumeFrom,
-      checkpoint.resumeFrom
-    );
-  }
-
   const router = entry.router;
   router.restore(checkpoint);
+
+  if (options?.recoveredSeqNums && options.recoveredSeqNums.length > 0) {
+    router.markRecovered(options.recoveredSeqNums);
+  }
 
   const floor = router.resumeFrom();
   if (floor !== undefined) {
@@ -7272,6 +7269,20 @@ function chatAgent<
       // `messagesInput.waitWithIdleTimeout` so recovered turns fire first.
       const bootInjectedQueue: ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>[] =
         [];
+      const recoveredSeqByPayload = new WeakMap<
+        ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>,
+        number
+      >();
+      const dispatchBootInjected = (): ChatTaskWirePayload<
+        TUIMessage,
+        inferSchemaIn<TClientDataSchema>
+      > => bootInjectedQueue.shift()!;
+      const settleRecoveredTurn = (
+        wirePayload: ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>
+      ) => {
+        const settledSeq = recoveredSeqByPayload.get(wirePayload);
+        if (settledSeq !== undefined) chatInputRouter().settleRecovered(settledSeq);
+      };
       const couldHavePriorState = payload.continuation === true || ctx.attempt.number > 1;
 
       // `.in` resume cursor, computed at most once per boot. The boot
@@ -7437,18 +7448,11 @@ function chatAgent<
 
       // ── session.in router ──────────────────────────────────────────
       //
-      // Reads the turn boundary and subscribes in one call. `bootInCursor` is
-      // only a fallback: the boot block above may already have resolved a
-      // cursor from the snapshot, which is used when the boundary itself
-      // carries none. Everything the boot replayed off `.in` is dispatched from
-      // `bootInjectedQueue` below, so it goes into the floor here — folded in
-      // after the subscription opens, the live tail re-delivers it as a turn.
-      const lastRecoveredInSeq =
-        replayedInTail.length > 0 ? replayedInTail[replayedInTail.length - 1]!.seqNum : undefined;
+      const recoveredSeqNums = replayedInTail.map((r) => r.seqNum);
 
       await installChatInputRouter(payload.chatId, {
         fallbackResumeFrom: bootInCursorResolved ? bootInCursor : undefined,
-        recoveredThrough: lastRecoveredInSeq,
+        recoveredSeqNums,
         resuming: Boolean(payload.continuation) || ctx.attempt.number > 1,
       });
 
@@ -7538,7 +7542,7 @@ function chatAgent<
         // branches: at n=1 the orphan partial is dropped and the interrupted
         // user is re-dispatched as a fresh turn instead.
         let seedChain: TUIMessage[];
-        let recoveredTurns: TUIMessage[];
+        let recoveredEntries: { message: TUIMessage; seqNum: number | undefined }[];
         if (hookChain !== undefined) {
           seedChain = hookChain;
         } else if (partialAssistant !== undefined && inFlightUsers.length > 1) {
@@ -7547,11 +7551,22 @@ function chatAgent<
           seedChain = settledMessages;
         }
         if (hookRecoveredTurns !== undefined) {
-          recoveredTurns = hookRecoveredTurns;
+          const seqNumsByRecoveredId = new Map<string, number[]>();
+          for (const entry of replayedInTail) {
+            const existing = seqNumsByRecoveredId.get(entry.message.id);
+            if (existing) existing.push(entry.seqNum);
+            else seqNumsByRecoveredId.set(entry.message.id, [entry.seqNum]);
+          }
+          recoveredEntries = hookRecoveredTurns.map((message) => ({
+            message,
+            seqNum: seqNumsByRecoveredId.get(message.id)?.shift(),
+          }));
         } else if (partialAssistant !== undefined && inFlightUsers.length > 1) {
-          recoveredTurns = inFlightUsers.slice(1);
+          recoveredEntries = replayedInTail
+            .slice(1)
+            .map((r) => ({ message: r.message, seqNum: r.seqNum }));
         } else {
-          recoveredTurns = inFlightUsers;
+          recoveredEntries = replayedInTail.map((r) => ({ message: r.message, seqNum: r.seqNum }));
         }
         // `beforeBoot` errors bubble — the customer opted into blocking
         // persistence and a failure there should fail the run rather than
@@ -7582,12 +7597,13 @@ function chatAgent<
         for (const entry of replayedInTail) {
           metadataById.set(entry.message.id, entry.metadata);
         }
-        for (const msg of recoveredTurns) {
+        const dispatchedRecoveredSeqs = new Set<number>();
+        for (const { message: msg, seqNum } of recoveredEntries) {
           if (wireMessageId && msg.id === wireMessageId) continue;
           const recoveredMetadata = metadataById.has(msg.id)
             ? metadataById.get(msg.id)
             : payload.metadata;
-          bootInjectedQueue.push({
+          const injectedPayload = {
             chatId: payload.chatId,
             sessionId: payload.sessionId,
             metadata: recoveredMetadata,
@@ -7596,7 +7612,17 @@ function chatAgent<
             messageId: msg.id,
             continuation: payload.continuation,
             previousRunId: payload.previousRunId,
-          } as ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>);
+          } as ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>;
+          bootInjectedQueue.push(injectedPayload);
+          if (seqNum !== undefined) {
+            recoveredSeqByPayload.set(injectedPayload, seqNum);
+            dispatchedRecoveredSeqs.add(seqNum);
+          }
+        }
+        for (const entry of replayedInTail) {
+          if (!dispatchedRecoveredSeqs.has(entry.seqNum)) {
+            chatInputRouter().settleRecovered(entry.seqNum);
+          }
         }
 
         accumulatedUIMessages = seedChain;
@@ -7780,7 +7806,7 @@ function chatAgent<
          */
         let dispatchedRecoveredFirstTurn = false;
         if (preloaded && bootInjectedQueue.length > 0) {
-          currentWirePayload = bootInjectedQueue.shift()!;
+          currentWirePayload = dispatchBootInjected();
           dispatchedRecoveredFirstTurn = true;
         }
 
@@ -8031,7 +8057,7 @@ function chatAgent<
           // waiting on the live session.in. Subsequent recovered turns
           // get drained by the end-of-turn picker below.
           if (bootInjectedQueue.length > 0) {
-            currentWirePayload = bootInjectedQueue.shift()!;
+            currentWirePayload = dispatchBootInjected();
           } else {
             const effectiveIdleTimeout = idleTimeoutInSeconds ?? payload.idleTimeoutInSeconds;
             const effectiveTurnTimeout =
@@ -8686,6 +8712,7 @@ function chatAgent<
                     chatId: currentWirePayload.chatId,
                     messageId: currentWirePayload.messageId,
                   });
+                  settleRecoveredTurn(currentWirePayload);
                   await writeTurnCompleteChunk(currentWirePayload.chatId);
                   // Not a turn — don't consume an iteration.
                   turn--;
@@ -9504,6 +9531,8 @@ function chatAgent<
                     locals.set(chatResponsePartsKey, []);
                   }
 
+                  settleRecoveredTurn(currentWirePayload);
+
                   // Write turn-complete control chunk — closes the frontend stream.
                   const turnCompleteResult = await writeTurnCompleteChunk(
                     currentWirePayload.chatId,
@@ -9634,7 +9663,7 @@ function chatAgent<
                 // produced these from in-flight user messages on session.in
                 // that the dead predecessor never acknowledged.
                 if (bootInjectedQueue.length > 0) {
-                  currentWirePayload = bootInjectedQueue.shift()!;
+                  currentWirePayload = dispatchBootInjected();
                   return "continue";
                 }
 
@@ -10012,7 +10041,7 @@ function chatAgent<
             // recovered turn shouldn't strand the rest of the boot queue
             // until an unrelated live message arrives.
             if (bootInjectedQueue.length > 0) {
-              currentWirePayload = bootInjectedQueue.shift()!;
+              currentWirePayload = dispatchBootInjected();
               continue;
             }
 
