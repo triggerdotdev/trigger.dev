@@ -3,7 +3,7 @@ import { formatCommandError } from "./commandError.js";
 
 const expectedMessage = `Your installed Zod version is not supported by Trigger.dev.
 
-Trigger.dev requires zod@^3.25.76 or zod@^4.0.0. Upgrade Zod, reinstall your dependencies, and try again.`;
+Trigger.dev requires zod@^3.25.56 or zod@^4.0.0. Upgrade Zod, reinstall your dependencies, and try again.`;
 
 describe("formatCommandError", () => {
   it("explains when the installed Zod package does not export zod/v4", () => {

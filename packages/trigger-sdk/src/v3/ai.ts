@@ -2,7 +2,7 @@ import {
   type AnyTask,
   type Task,
   accessoryAttributes,
-  type ChatSnapshotV1,
+  type ChatSnapshotV1 as CoreChatSnapshotV1,
   type ApiClientConfiguration,
   apiClientManager,
   type AppendStreamOptions,
@@ -253,7 +253,10 @@ async function findLatestSessionInCursor(chatId: string): Promise<number | undef
  *
  * @internal
  */
-export type { ChatSnapshotV1, ChatInputChunk, ChatTaskWirePayload };
+export type ChatSnapshotV1<TUIMessage extends UIMessage = UIMessage> =
+  CoreChatSnapshotV1<TUIMessage>;
+/** @internal */
+export type { ChatInputChunk, ChatTaskWirePayload };
 
 /**
  * Test-only override hook — `mockChatAgent` installs a fake to return

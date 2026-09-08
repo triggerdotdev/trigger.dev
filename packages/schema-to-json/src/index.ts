@@ -156,7 +156,48 @@ function convertZod4Schema(schema: any, options?: ConversionOptions): JSONSchema
     target: "draft-7",
     io: "output",
     reused: useReferences ? "ref" : "inline",
+    override: ({ zodSchema, jsonSchema }) => {
+      const def = zodSchema._zod.def;
+      if (def.type === "undefined") {
+        throw new Error("Undefined cannot be represented in JSON Schema");
+      }
+
+      if (def.type === "object" && jsonSchema.required) {
+        // Early Zod 4 permalinks do not propagate optional output through unions.
+        const required = jsonSchema.required.filter((key) => {
+          const field = def.shape[key];
+          return !field || field._zod.optout === "optional" || !hasOptionalOutput(field);
+        });
+        if (required.length > 0) {
+          jsonSchema.required = required;
+        } else {
+          delete jsonSchema.required;
+        }
+      }
+    },
   }) as JSONSchema;
+}
+
+function hasOptionalOutput(schema: z4.$ZodType, seen = new Set<z4.$ZodType>()): boolean {
+  if (schema._zod.optout === "optional") return true;
+  if (seen.has(schema)) return false;
+  seen.add(schema);
+
+  const def = (schema as z4.$ZodTypes)._zod.def;
+  switch (def.type) {
+    case "union":
+      return def.options.some((option) => hasOptionalOutput(option, seen));
+    case "nullable":
+    case "readonly":
+    case "catch":
+      return hasOptionalOutput(def.innerType, seen);
+    case "lazy":
+      return hasOptionalOutput(def.getter(), seen);
+    case "pipe":
+      return hasOptionalOutput(def.out, seen);
+    default:
+      return false;
+  }
 }
 
 function isYupSchema(schema: any): boolean {

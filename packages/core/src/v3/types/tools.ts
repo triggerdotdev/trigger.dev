@@ -1,10 +1,18 @@
-import type { Schema as AISchema } from "ai";
 import {
   isSchemaZodEsque,
   type AnyZodSchema,
   type inferZodSchemaOutput,
   type Schema,
 } from "./schemas.js";
+
+type ValidationResult<T> = { success: true; value: T } | { success: false; error: Error };
+
+// The structural contract keeps Zod-only consumers independent of the optional AI SDK.
+type AISchema<T> = {
+  _type: T;
+  readonly jsonSchema: unknown;
+  readonly validate?: (value: unknown) => ValidationResult<T> | PromiseLike<ValidationResult<T>>;
+};
 
 export type ToolTaskParameters = AnyZodSchema | AISchema<any>;
 

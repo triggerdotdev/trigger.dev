@@ -1,5 +1,6 @@
 import * as z3 from "zod/v3";
 import * as z4 from "zod/v4";
+import * as zFloor from "zod-v3-floor/v4";
 import * as y from "yup";
 // @ts-ignore
 import { type } from "arktype";
@@ -83,6 +84,37 @@ describe("schemaToJsonSchema", () => {
       expect(result?.jsonSchema).toBeDefined();
       // The exact structure depends on zod-to-json-schema implementation
     });
+  });
+
+  describe.each([
+    { name: "minimum Zod 3 permalink", z: zFloor },
+    { name: "current Zod 4", z: z4 },
+  ])("$name", ({ z }) => {
+    it("preserves optional union properties through wrappers", () => {
+      const optionalUnion = z.union([z.string(), z.number().optional()]);
+      const schema = z.object({
+        required: z.string(),
+        value: optionalUnion,
+        nested: z.union([z.boolean(), optionalUnion]),
+        readonly: optionalUnion.readonly(),
+        nullable: optionalUnion.nullable(),
+        lazy: z.lazy(() => optionalUnion),
+        defaulted: optionalUnion.default("fallback"),
+      });
+
+      expect(schemaToJsonSchema(schema)?.jsonSchema.required).toEqual(["required", "defaulted"]);
+    });
+
+    it("rejects undefined union alternatives instead of treating them as null", () => {
+      expect(() => schemaToJsonSchema(z.union([z.string(), z.undefined()]))).toThrow(
+        "Undefined cannot be represented in JSON Schema"
+      );
+    });
+  });
+
+  it("preserves explicitly required metadata on current optional schemas", () => {
+    const schema = z4.object({ value: z4.string().optional() }).meta({ required: ["value"] });
+    expect(schemaToJsonSchema(schema)?.jsonSchema.required).toEqual(["value"]);
   });
 
   describe("Yup schemas", () => {

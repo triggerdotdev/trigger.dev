@@ -25,7 +25,9 @@ export const FetchRetryHeadersStrategy = z.object({
       "iso_8601_duration_openai_variant",
     ])
     .default("unix_timestamp")
-    .optional(),
+    .optional()
+    // Early Zod 4 permalinks skip defaults inside optional schemas.
+    .overwrite((value) => value ?? "unix_timestamp"),
 });
 
 export type FetchRetryHeadersStrategy = z.infer<typeof FetchRetryHeadersStrategy>;
