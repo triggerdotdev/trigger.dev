@@ -45,7 +45,11 @@ function byteLength(body: string): number {
   return new TextEncoder().encode(body).byteLength;
 }
 import { ChatTabCoordinator } from "./chat-tab-coordinator.js";
-import { slimSubmitMessageForWire } from "./ai-shared.js";
+import {
+  MAX_EOF_RESUBSCRIBES,
+  slimSubmitMessageForWire,
+  waitBeforeEofResubscribe,
+} from "./ai-shared.js";
 
 const DEFAULT_BASE_URL = "https://api.trigger.dev";
 
@@ -2086,12 +2090,6 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
           }
         };
 
-        // A body that ends without a turn-complete is only terminal when the
-        // server says the session settled — otherwise the turn is still
-        // running and we lost the connection (long-poll window closed, proxy
-        // restarted). Resubscribe from `state.lastEventId`, bounded so a
-        // permanently empty stream can't spin.
-        const MAX_EOF_RESUBSCRIBES = 5;
         let eofResubscribes = 0;
 
         const resumeAfterEof = async () => {
@@ -2104,21 +2102,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             !combinedSignal.aborted
           ) {
             eofResubscribes++;
-            // Sleep, but wake immediately on abort — otherwise a stop lands
-            // mid-backoff and the stream stays open for the rest of it.
-            await new Promise<void>((resolve) => {
-              let timer: ReturnType<typeof setTimeout>;
-              const done = () => {
-                clearTimeout(timer);
-                combinedSignal.removeEventListener("abort", done);
-                resolve();
-              };
-              // Jitter the backoff so many clients reconnecting after the same
-              // dropped window don't resubscribe in lockstep.
-              const backoff = Math.min(100 * 2 ** (eofResubscribes - 1), 5_000);
-              timer = setTimeout(done, backoff * (0.5 + Math.random() * 0.5));
-              combinedSignal.addEventListener("abort", done);
-            });
+            await waitBeforeEofResubscribe(eofResubscribes, combinedSignal);
             if (combinedSignal.aborted) break;
             const opened = await openWithAuthRetry();
             if (opened) return opened;

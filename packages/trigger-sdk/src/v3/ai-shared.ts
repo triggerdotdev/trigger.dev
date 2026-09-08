@@ -238,3 +238,36 @@ export function chatRunTags(chatId: string, userTags: string[] = []): string[] {
   const tags = chatTag.length <= MAX_RUN_TAG_LENGTH ? [chatTag, ...userTags] : [...userTags];
   return tags.slice(0, MAX_RUN_TAGS);
 }
+
+/**
+ * A session body that ends without a turn-complete is only terminal when the
+ * server says the session settled — otherwise the turn is still running and
+ * the connection was lost (long-poll window closed, proxy restarted). Both
+ * transports resubscribe from the last event id, bounded so a permanently
+ * empty stream can't spin.
+ */
+export const MAX_EOF_RESUBSCRIBES = 5;
+
+/**
+ * Backoff before the nth (1-based) EOF resubscribe, jittered so many clients
+ * dropped by the same window don't reconnect in lockstep. Resolves early on
+ * abort — otherwise a stop landing mid-backoff leaves the stream open for the
+ * rest of it.
+ */
+export function waitBeforeEofResubscribe(attempt: number, signal: AbortSignal): Promise<void> {
+  // An already-aborted signal never fires `abort` again, so a listener added
+  // here would wait out the whole backoff.
+  if (signal.aborted) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    let timer: ReturnType<typeof setTimeout>;
+    const done = () => {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", done);
+      resolve();
+    };
+    const backoff = Math.min(100 * 2 ** (attempt - 1), 5_000);
+    timer = setTimeout(done, backoff * (0.5 + Math.random() * 0.5));
+    signal.addEventListener("abort", done);
+    if (signal.aborted) done();
+  });
+}
