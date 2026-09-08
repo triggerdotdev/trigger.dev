@@ -401,6 +401,36 @@ async function createWorkerTasks(
  * row's bounds and override state — dropping it from listing and name
  * resolution so the queue-row fallback resolves — and removes its engine keys.
  */
+/**
+ * Best-effort engine sync of a limit row's bounds (pause-aware): both writes
+ * settle, and any rejection is surfaced in the logs rather than swallowed — a
+ * silent failure here is a limit the dashboard reports but the engine does not
+ * enforce.
+ */
+async function syncLimitRowEngineStateBestEffort(
+  environment: AuthenticatedEnvironment,
+  row: Pick<TaskQueue, "name" | "paused" | "concurrencyLimit" | "totalConcurrencyLimit">
+): Promise<void> {
+  const results = await Promise.allSettled([
+    row.paused
+      ? updateQueueConcurrencyLimits(environment, row.name, 0)
+      : typeof row.concurrencyLimit === "number"
+        ? updateQueueConcurrencyLimits(environment, row.name, row.concurrencyLimit)
+        : removeQueueConcurrencyLimits(environment, row.name),
+    typeof row.totalConcurrencyLimit === "number"
+      ? updateQueueTotalConcurrencyLimits(environment, row.name, row.totalConcurrencyLimit)
+      : removeQueueTotalConcurrencyLimits(environment, row.name),
+  ]);
+  const failures = results.filter((result) => result.status === "rejected");
+  if (failures.length > 0) {
+    logger.error("syncLimitRowEngineStateBestEffort: engine sync failed", {
+      environmentId: environment.id,
+      queueName: row.name,
+      errors: failures.map((failure) => String((failure as PromiseRejectedResult).reason)),
+    });
+  }
+}
+
 async function retireStaleAnonymousConcurrencyLimitRows(
   tasks: TaskResource[],
   environment: AuthenticatedEnvironment,
@@ -420,7 +450,14 @@ async function retireStaleAnonymousConcurrencyLimitRows(
       name: { in: boundedIn(candidateNames) },
       OR: [{ concurrencyLimit: { not: null } }, { totalConcurrencyLimit: { not: null } }],
     },
-    select: { id: true, name: true, updatedAt: true },
+    select: {
+      id: true,
+      name: true,
+      updatedAt: true,
+      paused: true,
+      concurrencyLimit: true,
+      totalConcurrencyLimit: true,
+    },
   });
   if (staleRows.length === 0) {
     return;
@@ -442,13 +479,14 @@ async function retireStaleAnonymousConcurrencyLimitRows(
       ]);
     } catch (error) {
       logger.error(
-        "retireStaleAnonymousConcurrencyLimitRows: engine cleanup failed, retrying next deploy",
+        "retireStaleAnonymousConcurrencyLimitRows: engine cleanup failed, healing and retrying next deploy",
         {
           environmentId: environment.id,
           queueName: row.name,
           error,
         }
       );
+      await syncLimitRowEngineStateBestEffort(environment, row);
       continue;
     }
     const retired = await prisma.taskQueue.updateMany({
@@ -474,20 +512,7 @@ async function retireStaleAnonymousConcurrencyLimitRows(
        * race converges. */
       const fresh = await prisma.taskQueue.findFirst({ where: { id: row.id } });
       if (fresh) {
-        await Promise.allSettled([
-          fresh.paused
-            ? updateQueueConcurrencyLimits(environment, fresh.name, 0)
-            : typeof fresh.concurrencyLimit === "number"
-              ? updateQueueConcurrencyLimits(environment, fresh.name, fresh.concurrencyLimit)
-              : removeQueueConcurrencyLimits(environment, fresh.name),
-          typeof fresh.totalConcurrencyLimit === "number"
-            ? updateQueueTotalConcurrencyLimits(
-                environment,
-                fresh.name,
-                fresh.totalConcurrencyLimit
-              )
-            : removeQueueTotalConcurrencyLimits(environment, fresh.name),
-        ]);
+        await syncLimitRowEngineStateBestEffort(environment, fresh);
       }
     }
   }
