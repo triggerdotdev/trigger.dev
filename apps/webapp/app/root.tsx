@@ -80,11 +80,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const features = featuresForRequest(request);
   const timezone = await getTimezonePreference(request);
 
-  // Deprecated with `AskAI.tsx`: kept so the widget still has its config if it is ever remounted.
-  const kapa = {
-    websiteId: env.KAPA_AI_WEBSITE_ID,
-  };
-
   const user = await getUser(request);
   // Feature-flagged; while off everyone stays on Dark at contrast 0. Admins
   // always get it. Cached: this loader runs on every request and navigation.
@@ -144,7 +139,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       apiOrigin: env.API_ORIGIN ?? env.APP_ORIGIN,
       dashboardAgentBaseUrl: env.DASHBOARD_AGENT_BASE_URL ?? "https://api.trigger.dev",
       triggerCliTag: env.TRIGGER_CLI_TAG,
-      kapa,
       timezone,
       showThemeSwitcher,
       iconContrast,

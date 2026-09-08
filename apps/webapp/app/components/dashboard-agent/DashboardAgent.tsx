@@ -12,8 +12,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { useUser } from "~/hooks/useUser";
-import { useAskAiAvailability } from "~/hooks/useAskAiAvailability";
-import { agentDeepLinkParams, ASK_AI_SHORTCUT, askAiChannelTarget } from "./ask-ai-channels";
+import { agentDeepLinkParams } from "./ask-ai-channels";
 import { DashboardAgentPanel } from "./DashboardAgentPanel";
 import { DashboardAgentProvider, TOGGLE_PANEL_SHORTCUT } from "./dashboardAgentLauncher";
 import { useDashboardAgentOpenRequests } from "./dashboardAgentOpenRequest";
@@ -336,23 +335,11 @@ export function DashboardAgent({
     enabledOnInputElements: true,
   });
 
-  // ⌘I and the CLI's `?aiHelp=` link are Ask AI's; the agent only answers them where Ask AI
-  // cannot open.
-  const askAi = useAskAiAvailability();
-  const ownsAskAiChannels = askAiChannelTarget(askAi) === "dashboard-agent";
-
-  useShortcutKeys({
-    shortcut: ASK_AI_SHORTCUT,
-    action: () => setPanelOpen(true),
-    disabled: !hasAccess || !ownsAskAiChannels,
-    enabledOnInputElements: true,
-  });
-
   useDashboardAgentOpenRequests({
     enabled: hasAccess,
     openWith,
     setOpen: setPanelOpen,
-    deepLinkParams: agentDeepLinkParams(askAi),
+    deepLinkParams: agentDeepLinkParams(),
   });
 
   const context = useMemo(

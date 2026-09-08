@@ -72,7 +72,7 @@ export function useDashboardAgentOpenRequests({
   enabled,
   openWith,
   setOpen,
-  /** `agentDeepLinkParams` decides these; `aiHelp` is Ask AI's unless it cannot open. */
+  /** `agentDeepLinkParams`: the agent always reads `aiHelp`. */
   deepLinkParams,
 }: {
   enabled: boolean;

@@ -133,7 +133,7 @@ export function aiHelpLink({
   const url = new URL(`/projects/${project}/ai-help`, dashboardUrl);
   url.search = searchParams.toString();
 
-  log.message(chalkLink(cliLink("💡 Get a fix for this error using AI", url.toString())));
+  log.message(chalkLink(cliLink("💡 Ask Trigger about this error", url.toString())));
 }
 
 export function cliLink(text: string, url: string, options?: TerminalLinkOptions) {
