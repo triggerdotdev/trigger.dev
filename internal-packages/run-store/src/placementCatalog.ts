@@ -180,6 +180,13 @@ export const PLACEMENT_SITES: readonly PlacementSite[] = [
     why: "Routes by waitpoint id when the filter names one, and sums across every store otherwise, because an updateMany that lands on the wrong database reports zero rows instead of failing.",
   },
   {
+    method: "markWaitpointCompleted",
+    basis: "own-id",
+    missMode: "silent",
+    routes: ["#resolveWaitpointStore(waitpointId)"],
+    why: "Always keyed by a single waitpoint id, so it routes straight to the owning store. The PENDING-guarded update matches zero rows on an idempotent replay (the row is already COMPLETED); THAT case is intentionally silent at the store layer. A genuine misroute is NOT silently tolerated: completeWaitpoint re-reads the row from the resolved store's primary (findWaitpointOnPrimary) right after and throws unless it is present and COMPLETED, so a wrong-store completion fails loudly and retryably rather than stranding the run.",
+  },
+  {
     method: "upsertWaitpointTag",
     basis: "shard-hint",
     missMode: "silent",

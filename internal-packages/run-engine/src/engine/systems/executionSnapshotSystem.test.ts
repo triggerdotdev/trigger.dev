@@ -56,12 +56,14 @@ function createEngineOptions(redisOptions: any, prisma: any, store?: PostgresRun
 class CountingPostgresRunStore extends PostgresRunStore {
   public creates = 0;
   public latestReads = 0;
+  public snapshotCreateIds: (string | undefined)[] = [];
 
   override async createExecutionSnapshot(
     input: CreateExecutionSnapshotInput,
     tx?: any
   ): ReturnType<PostgresRunStore["createExecutionSnapshot"]> {
     this.creates++;
+    this.snapshotCreateIds.push(input.id);
     return super.createExecutionSnapshot(input, tx);
   }
 
@@ -129,6 +131,98 @@ describe("executionSnapshotSystem store routing (single-DB passthrough)", () => 
       await engine.quit();
     }
   });
+
+  // A transition routed through the engine hands the store a stable id, so a blip-retry inside the
+  // store replays the same transition idempotently instead of duplicating it.
+  containerTest(
+    "snapshot transitions carry a store-supplied id",
+    async ({ prisma, redisOptions }) => {
+      const countingStore = new CountingPostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const engine = new RunEngine(createEngineOptions(redisOptions, prisma, countingStore));
+
+      try {
+        const run = await triggerRun(engine, prisma, "run_snapid1");
+        const latest = await getLatestExecutionSnapshot(prisma, run.id, countingStore);
+        countingStore.snapshotCreateIds.length = 0;
+
+        const created = await engine.executionSnapshotSystem.createExecutionSnapshot(prisma, {
+          run: { id: run.id, status: latest.runStatus, attemptNumber: latest.attemptNumber },
+          snapshot: { executionStatus: latest.executionStatus, description: "test transition" },
+          previousSnapshotId: latest.id,
+          environmentId: latest.environmentId,
+          environmentType: latest.environmentType,
+          projectId: latest.projectId,
+          organizationId: latest.organizationId,
+        });
+
+        expect(created.id).toBeDefined();
+        expect(SnapshotId.fromFriendlyId(SnapshotId.toFriendlyId(created.id))).toBe(created.id);
+        expect(countingStore.snapshotCreateIds).toEqual([created.id]);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  // The transition-id invariant: each engine transition mints its OWN id, so two transitions never
+  // collide; but replaying ONE transition (the same supplied id, as a blip-retry does) stays a single
+  // row. This is what makes the store's conflict-ignoring insert safe: ids are per-transition, so a
+  // replay is only ever the same transition, never different data reusing an id.
+  containerTest(
+    "distinct engine transitions mint distinct ids; a replayed store write retains one id",
+    async ({ prisma, redisOptions }) => {
+      const countingStore = new CountingPostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const engine = new RunEngine(createEngineOptions(redisOptions, prisma, countingStore));
+
+      try {
+        const run = await triggerRun(engine, prisma, "run_txids1");
+        const latest = await getLatestExecutionSnapshot(prisma, run.id, countingStore);
+
+        const base = {
+          run: { id: run.id, status: latest.runStatus, attemptNumber: latest.attemptNumber },
+          environmentId: latest.environmentId,
+          environmentType: latest.environmentType,
+          projectId: latest.projectId,
+          organizationId: latest.organizationId,
+        };
+
+        // Two separate engine transitions receive two different ids (fresh mint per transition).
+        const t1 = await engine.executionSnapshotSystem.createExecutionSnapshot(prisma, {
+          ...base,
+          snapshot: { executionStatus: latest.executionStatus, description: "transition 1" },
+          previousSnapshotId: latest.id,
+        });
+        const t2 = await engine.executionSnapshotSystem.createExecutionSnapshot(prisma, {
+          ...base,
+          snapshot: { executionStatus: latest.executionStatus, description: "transition 2" },
+          previousSnapshotId: t1.id,
+        });
+        expect(t1.id).not.toBe(t2.id);
+
+        // Replaying ONE store operation (the same supplied transition id) retains one id and one row.
+        const transitionId = SnapshotId.generate().id;
+        const input = {
+          id: transitionId,
+          run: { id: run.id, status: latest.runStatus, attemptNumber: latest.attemptNumber ?? 1 },
+          snapshot: { executionStatus: latest.executionStatus, description: "replayed transition" },
+          environmentId: latest.environmentId,
+          environmentType: latest.environmentType,
+          projectId: latest.projectId,
+          organizationId: latest.organizationId,
+        };
+        const first = await countingStore.createExecutionSnapshot(input);
+        const second = await countingStore.createExecutionSnapshot(input);
+
+        expect(first.id).toBe(transitionId);
+        expect(second.id).toBe(transitionId);
+        expect(await prisma.taskRunExecutionSnapshot.count({ where: { id: transitionId } })).toBe(
+          1
+        );
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
 
   // getLatestExecutionSnapshot reads through the store, routed by run id.
   containerTest(

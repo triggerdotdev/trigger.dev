@@ -63,6 +63,7 @@ export const RUN_STORE_METHOD_NAMES = [
   "findManyWaitpoints",
   "updateWaitpoint",
   "updateManyWaitpoints",
+  "markWaitpointCompleted",
   "forWaitpointCompletion",
   "findManyTaskRunWaitpoints",
   "deleteManyTaskRunWaitpoints",

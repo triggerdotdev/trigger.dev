@@ -147,17 +147,10 @@ export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator 
     }
 
     // 1. Complete the Waitpoint (if not completed)
+    // Replay-safe completion: the store builds the PENDING guard and COMPLETED values internally and
+    // retries this (and only this) waitpoint-update path on a connection blip.
     const [updateError, updateResult] = await tryCatch(
-      store.updateManyWaitpoints({
-        where: { id: waitpointId, status: "PENDING" },
-        data: {
-          status: "COMPLETED",
-          completedAt: new Date(),
-          output: output?.value,
-          outputType: output?.type,
-          outputIsError: output?.isError,
-        },
-      })
+      store.markWaitpointCompleted(waitpointId, { output })
     );
 
     if (updateError) {

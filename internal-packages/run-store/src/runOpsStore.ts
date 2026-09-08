@@ -1878,6 +1878,20 @@ export class RoutingRunStore implements RunStore {
     return this.#sumCounts((store) => store.updateManyWaitpoints(args));
   }
 
+  async markWaitpointCompleted(
+    waitpointId: string,
+    completion: {
+      output?: { value?: string; type?: string; isError?: boolean };
+      completedAt?: Date;
+    }
+  ): Promise<Prisma.BatchPayload> {
+    // Always keyed by a single waitpointId, so it routes straight to the owning store (never fans out)
+    // and applies exactly once. The method takes no caller transaction (see the interface), so there is
+    // nothing to honor or drop across the DB boundary.
+    const store = await this.#resolveWaitpointStore(waitpointId);
+    return store.markWaitpointCompleted(waitpointId, completion);
+  }
+
   // Residency guard: selects the owning store by waitpointId.
   async forWaitpointCompletion(
     waitpointId: string,

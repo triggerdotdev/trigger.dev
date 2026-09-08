@@ -587,6 +587,16 @@ export class DelegatingRunStore implements RunStore {
     return this.delegate.updateManyWaitpoints(args, tx);
   }
 
+  markWaitpointCompleted(
+    waitpointId: string,
+    completion: {
+      output?: { value?: string; type?: string; isError?: boolean };
+      completedAt?: Date;
+    }
+  ): Promise<Prisma.BatchPayload> {
+    return this.delegate.markWaitpointCompleted(waitpointId, completion);
+  }
+
   forWaitpointCompletion(
     waitpointId: string,
     context: ForWaitpointCompletionContext

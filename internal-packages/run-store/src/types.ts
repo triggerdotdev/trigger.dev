@@ -842,6 +842,23 @@ export interface RunStore {
     args: Prisma.WaitpointUpdateManyArgs,
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.BatchPayload>;
+  /**
+   * Replay-safe waitpoint completion: transitions a single waitpoint PENDING -> COMPLETED by stable
+   * id. The status guard and the completed values are constructed inside the implementation, so the
+   * write is always idempotent (a replay matches 0 rows) and safe to retry on a connection blip. This
+   * is the ONLY waitpoint-update path that receives infra retry; `updateManyWaitpoints` does not.
+   *
+   * Takes NO caller transaction on purpose: it is a standalone, always-retried write that runs on its
+   * own writer client. A completion that must be part of a caller-owned transaction uses a different
+   * (non-retried) path.
+   */
+  markWaitpointCompleted(
+    waitpointId: string,
+    completion: {
+      output?: { value?: string; type?: string; isError?: boolean };
+      completedAt?: Date;
+    }
+  ): Promise<Prisma.BatchPayload>;
 
   /**
    * Select the run-ops store that OWNS a waitpoint completion, by waitpointId
