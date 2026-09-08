@@ -809,6 +809,11 @@ export function mockChatAgent(
 
     seedSessionInTail(messages) {
       seededSessionInMessages = messages;
+      // The seeded tail occupies seqNums 1..n of the channel, so anything sent
+      // live afterwards has to continue above it.
+      if (messages.length > 0) {
+        sessionStreams.setLastSeqNum(sessionId, "in", messages.length);
+      }
     },
 
     async deliverSessionInAtSeq(message, seqNum) {

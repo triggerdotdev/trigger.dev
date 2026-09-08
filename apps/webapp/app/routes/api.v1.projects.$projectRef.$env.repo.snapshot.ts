@@ -37,7 +37,8 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       authentication.authenticationResult,
       projectRef,
       env,
-      triggerBranch
+      triggerBranch,
+      { organizationScoped: true }
     );
 
     // The signed URL exposes the project's whole source tree, so gate it like the environment's

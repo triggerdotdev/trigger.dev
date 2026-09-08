@@ -15,7 +15,9 @@ function stubFetch() {
     const url = typeof input === "string" ? input : input.url;
     requested.push(url);
     if (url.endsWith("/jwt")) {
-      return new Response(JSON.stringify({ token: "env-jwt" }), { status: 200 });
+      return new Response(JSON.stringify({ token: "env-jwt", environmentId: "env_1" }), {
+        status: 200,
+      });
     }
     return new Response(JSON.stringify({}), { status: 200 });
   });
@@ -46,12 +48,18 @@ describe("model-supplied ids in tool request paths", () => {
   });
   afterEach(() => vi.unstubAllGlobals());
 
-  it.each([
-    [
-      "list_environments",
+  // A project ref has a format, so a traversing one is refused rather than escaped.
+  it("list_environments rejects a ref that isn't one, without asking", async () => {
+    const result: any = await (tools().list_environments as any).execute(
       { projectRef: TRAVERSING_ID },
-      `/api/v1/projects/${ESCAPED_ID}/environments`,
-    ],
+      {} as any
+    );
+
+    expect(result.error).toContain("isn't a project ref");
+    expect(requested).toEqual([]);
+  });
+
+  it.each([
     ["get_run", { runId: TRAVERSING_ID }, `/api/v3/runs/${ESCAPED_ID}`],
     ["get_run_trace", { runId: TRAVERSING_ID }, `/api/v1/runs/${ESCAPED_ID}/trace`],
     ["get_error", { errorId: TRAVERSING_ID }, `/api/v1/errors/${ESCAPED_ID}`],

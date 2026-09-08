@@ -1182,6 +1182,7 @@ describe("buildDashboardAgentTools", () => {
         "list_projects",
         "list_runs",
         "list_tasks",
+        "locate",
         "navigate_to",
         "run_query",
         "render_view",
@@ -1966,7 +1967,7 @@ describe("buildDashboardAgentTools", () => {
 
   it("exchanges the env JWT once per tool set, however many env-scoped tools call the API", async () => {
     const fetchStub = stubFetch((url) => {
-      if (url.endsWith("/jwt")) return { body: { token: "jwt_1" } };
+      if (url.endsWith("/jwt")) return { body: { token: "jwt_1", environmentId: "env_1" } };
       return { body: { data: [], results: [], trace: { traceId: "t1" } } };
     });
     try {
@@ -2010,7 +2011,8 @@ describe("buildDashboardAgentTools", () => {
   it("re-exchanges once and retries when the cached env JWT is rejected", async () => {
     let minted = 0;
     const fetchStub = stubFetch((url, init) => {
-      if (url.endsWith("/jwt")) return { body: { token: `jwt_${++minted}` } };
+      if (url.endsWith("/jwt"))
+        return { body: { token: `jwt_${++minted}`, environmentId: "env_1" } };
       const token = (init?.headers as Record<string, string> | undefined)?.Authorization;
       // The first token is stale (minted at its expiry edge); the second works.
       if (token === "Bearer jwt_1") return { status: 401, body: {} };
@@ -2042,7 +2044,7 @@ describe("buildDashboardAgentTools", () => {
 
   it("retries an unauthorized env call only once, then reports the failure", async () => {
     const fetchStub = stubFetch((url) => {
-      if (url.endsWith("/jwt")) return { body: { token: "jwt_x" } };
+      if (url.endsWith("/jwt")) return { body: { token: "jwt_x", environmentId: "env_1" } };
       return { status: 401, body: {} };
     });
     try {
@@ -2085,7 +2087,7 @@ describe("buildDashboardAgentTools", () => {
 
   it("render_view fails with the chart query's own error, committing no blocks", async () => {
     const fetchStub = stubFetch((url) => {
-      if (url.endsWith("/jwt")) return { body: { token: "jwt_1" } };
+      if (url.endsWith("/jwt")) return { body: { token: "jwt_1", environmentId: "env_1" } };
       return { status: 400, body: { error: "Unknown column createdAt" } };
     });
     try {
@@ -2105,7 +2107,7 @@ describe("buildDashboardAgentTools", () => {
     // the sibling test below relies on.
     const queryBodies: unknown[] = [];
     const fetchStub = stubFetch((url, init) => {
-      if (url.endsWith("/jwt")) return { body: { token: "jwt_1" } };
+      if (url.endsWith("/jwt")) return { body: { token: "jwt_1", environmentId: "env_1" } };
       queryBodies.push(JSON.parse(String(init?.body)));
       return { body: { results: [{ bucket: "2026-01-01T00:00:00Z", runs: 1 }] } };
     });
@@ -2123,7 +2125,7 @@ describe("buildDashboardAgentTools", () => {
 
   it("render_view commits the chart when the validation request itself fails", async () => {
     const fetchStub = stubFetch((url) => {
-      if (url.endsWith("/jwt")) return { body: { token: "jwt_1" } };
+      if (url.endsWith("/jwt")) return { body: { token: "jwt_1", environmentId: "env_1" } };
       throw new Error("ECONNREFUSED");
     });
     try {

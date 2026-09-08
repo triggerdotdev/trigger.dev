@@ -25,6 +25,11 @@ describe("buildSessionRunOptions", () => {
     expect(buildSessionRunOptions(baseConfig)).not.toHaveProperty("externalDeploymentId");
   });
 
+  it("forwards the configured ttl, and omits it when unset", () => {
+    expect(buildSessionRunOptions({ ...baseConfig, ttl: "10m" }).ttl).toBe("10m");
+    expect(buildSessionRunOptions(baseConfig)).not.toHaveProperty("ttl");
+  });
+
   it("still maps the rest of the config", () => {
     const options = buildSessionRunOptions({
       ...baseConfig,

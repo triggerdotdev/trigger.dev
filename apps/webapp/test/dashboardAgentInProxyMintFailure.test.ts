@@ -7,6 +7,11 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("~/db.server", () => ({ $replica: {} }));
 vi.mock("~/env.server", () => ({ env: { SESSION_SECRET: "test-session-secret" } }));
+vi.mock("~/services/dashboardAgentDb.server", () => ({ dashboardAgentDb: {} }));
+vi.mock("@internal/dashboard-agent-db", async (importOriginal) => ({
+  ...((await importOriginal()) as Record<string, unknown>),
+  chatExists: async () => true,
+}));
 vi.mock("~/services/session.server", () => ({
   requireUser: async () => ({ id: "usr_real", admin: false, isImpersonating: false }),
 }));

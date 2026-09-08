@@ -2472,7 +2472,7 @@ async function findSessionInReplayWindowEnd(
  */
 async function installChatInputRouter(
   chatId: string,
-  options?: { fallbackResumeFrom?: number; resuming?: boolean }
+  options?: { fallbackResumeFrom?: number; recoveredThrough?: number; resuming?: boolean }
 ): Promise<SessionChannelRouter> {
   const entry = chatInputRouterEntry(chatId);
   if (entry.attached) return entry.router;
@@ -2503,6 +2503,17 @@ async function installChatInputRouter(
     }
   }
 
+  // A boot that replayed `.in` itself has already answered everything up to
+  // `recoveredThrough`, so the floor has to cover it before the tail opens.
+  if (options?.recoveredThrough !== undefined) {
+    const recovered = options.recoveredThrough;
+    checkpoint.resumeFrom = Math.max(checkpoint.resumeFrom ?? recovered, recovered);
+    checkpoint.appliedThrough = Math.max(
+      checkpoint.appliedThrough ?? checkpoint.resumeFrom,
+      checkpoint.resumeFrom
+    );
+  }
+
   const router = entry.router;
   router.restore(checkpoint);
 
@@ -2513,6 +2524,9 @@ async function installChatInputRouter(
   }
 
   sessionStreams.onRecord(chatId, "in", (record) => {
+    // The floor is the tail's `Last-Event-ID`, but a reconnect can still
+    // re-deliver below it and a replayable route would re-queue it.
+    if (floor !== undefined && record.seqNum <= floor) return true;
     router.ingest(record);
     return true;
   });
@@ -7344,9 +7358,15 @@ function chatAgent<
       // Reads the turn boundary and subscribes in one call. `bootInCursor` is
       // only a fallback: the boot block above may already have resolved a
       // cursor from the snapshot, which is used when the boundary itself
-      // carries none.
+      // carries none. Everything the boot replayed off `.in` is dispatched from
+      // `bootInjectedQueue` below, so it goes into the floor here — folded in
+      // after the subscription opens, the live tail re-delivers it as a turn.
+      const lastRecoveredInSeq =
+        replayedInTail.length > 0 ? replayedInTail[replayedInTail.length - 1]!.seqNum : undefined;
+
       await installChatInputRouter(payload.chatId, {
         fallbackResumeFrom: bootInCursorResolved ? bootInCursor : undefined,
+        recoveredThrough: lastRecoveredInSeq,
         resuming: Boolean(payload.continuation) || ctx.attempt.number > 1,
       });
 
@@ -8158,6 +8178,9 @@ function chatAgent<
                 const turnNewModelMessages: ModelMessage[] = [];
                 const turnNewUIMessages: TUIMessage[] = [];
                 locals.set(chatTurnNewUIMessagesKey, turnNewUIMessages);
+                // A head-start handover deliberately resumes from an assistant
+                // message it spliced in, so it isn't a no-op turn.
+                let splicedHandoverPartial = false;
 
                 // ── Action handling ──────────────────────────────────────
                 // Actions arrive on the same input stream but with
@@ -8526,11 +8549,37 @@ function chatAgent<
                         messageId: locals.get(chatHandoverMessageIdKey),
                       });
                       locals.set(chatHandoverPartialKey, []); // consume once
+                      splicedHandoverPartial = true;
                     }
                   }
 
                   locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                 } // end if (trigger !== "action")
+
+                // ── No-op turn ──────────────────────────────────────────
+                //
+                // A submit that added no new user message and leaves the model
+                // chain ending on an assistant message has nothing to answer —
+                // calling the model would prefill its own last reply. Keyed on
+                // the model tail, so a `tool`-terminated chain (a merged tool
+                // approval) still runs.
+                const isNoOpTurn =
+                  !isAction &&
+                  !splicedHandoverPartial &&
+                  currentWirePayload.trigger === "submit-message" &&
+                  turnNewUIMessages.length === 0 &&
+                  accumulatedMessages[accumulatedMessages.length - 1]?.role === "assistant";
+
+                if (isNoOpTurn) {
+                  msgSub?.off();
+                  logger.warn("chat.agent: turn added no new user message; skipping the model", {
+                    chatId: currentWirePayload.chatId,
+                    messageId: currentWirePayload.messageId,
+                  });
+                  await writeTurnCompleteChunk(currentWirePayload.chatId);
+                  // Not a turn — don't consume an iteration.
+                  turn--;
+                }
 
                 // ── Action result handling ──────────────────────────────
                 // For action turns, skip the turn machinery entirely.
@@ -8567,7 +8616,9 @@ function chatAgent<
                   }
                 }
 
-                if (!isAction || actionTurn) {
+                // A no-op turn skips this block, and with it `followSessionPin`:
+                // there is nothing to answer, so nothing to hand over.
+                if ((!isAction || actionTurn) && !isNoOpTurn) {
                   // Mint a scoped public access token once per turn, reused for
                   // onChatStart, onTurnStart, onTurnComplete, and the turn-complete chunk.
                   const currentRunId = ctx.run.id;
@@ -12709,6 +12760,9 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
             lockToVersion:
               params.triggerConfig?.lockToVersion ?? options?.triggerConfig?.lockToVersion,
           }
+        : {}),
+      ...(params.triggerConfig?.ttl !== undefined || options?.triggerConfig?.ttl !== undefined
+        ? { ttl: params.triggerConfig?.ttl ?? options?.triggerConfig?.ttl }
         : {}),
       ...(externalDeploymentId !== undefined ? { externalDeploymentId } : {}),
       ...(idleTimeoutInSeconds !== undefined ? { idleTimeoutInSeconds } : {}),

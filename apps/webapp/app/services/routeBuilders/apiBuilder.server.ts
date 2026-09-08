@@ -16,7 +16,7 @@ import {
   resolveAndRecheckUserActorClaims,
   updateLastAccessedAtIfStale,
 } from "../personalAccessToken.server";
-import { assertUserActorScope } from "../userActorEnvironment.server";
+import { assertTokenOrganizationClaim, assertUserActorScope } from "../userActorEnvironment.server";
 import { safeJsonParse } from "~/utils/json";
 import type { AuthenticatedWorkerInstance } from "~/v3/services/worker/workerGroupTokenService.server";
 import { WorkerGroupTokenService } from "~/v3/services/worker/workerGroupTokenService.server";
@@ -528,6 +528,13 @@ type PATLoaderRouteBuilderOptions<
   // which mutate nothing — otherwise such a token is refused for want of anything to check.
   // Loaders only: an action mutates by definition, so the action options forbid it.
   identityOnly?: true;
+  // Opts a read into being reachable by an organization-scoped user-actor token: the claim is
+  // checked against the organization the route names (or an environment's / project's), and the
+  // user's membership is rechecked from the replica. `true` requires the route to name one, and
+  // is refused when it names nothing. `"tokenOrganization"` is the explicit opt-in for an
+  // org-level read that names nothing and filters its own queries by `userActor.organizationId`.
+  // Tokens without an organization claim are unaffected.
+  organizationScoped?: true | "tokenOrganization";
 };
 
 type PATHandlerFunction<
@@ -568,6 +575,7 @@ export function createLoaderPATApiRoute<
       corsStrategy = "none",
       context: contextFn,
       identityOnly,
+      organizationScoped,
       authorization,
     } = options;
 
@@ -643,7 +651,7 @@ export function createLoaderPATApiRoute<
       // host can decide whether to fire the update (smart-skip in
       // `updateLastAccessedAtIfStale` — no DB roundtrip when the
       // cached timestamp is fresher than the throttle window).
-      const ctx = contextFn ? await contextFn(parsedParams, request) : {};
+      const ctx: PATRouteContext = contextFn ? await contextFn(parsedParams, request) : {};
 
       let authenticationResult: UserActorAuthenticatedActor;
       let ability: RbacAbility;
@@ -671,7 +679,7 @@ export function createLoaderPATApiRoute<
             corsStrategy !== "none"
           );
         }
-        await assertUserActorScope(claims, ctx, { identityOnly });
+        await assertUserActorScope(claims, ctx, { identityOnly, organizationScoped });
         authenticationResult = { userId: uatAuth.userId, userActor: claims };
         ability = uatAuth.ability;
       } else {
@@ -688,6 +696,26 @@ export function createLoaderPATApiRoute<
         ability = patAuth.ability;
         // Throttled in the helper (no DB write when the cached value is fresh).
         await updateLastAccessedAtIfStale(patAuth.tokenId, patAuth.lastAccessedAt);
+      }
+
+      if (organizationScoped === "tokenOrganization") {
+        assertTokenOrganizationClaim(authenticationResult.userActor);
+
+        const claimedOrganizationId = authenticationResult.userActor?.organizationId;
+        if (claimedOrganizationId && !ctx.organizationId) {
+          const flooredAuth = await rbac.authenticateUserActor(request, {
+            ...ctx,
+            organizationId: claimedOrganizationId,
+          });
+          if (!flooredAuth.ok) {
+            return await wrapResponse(
+              request,
+              json({ error: flooredAuth.error }, { status: 403 }),
+              corsStrategy !== "none"
+            );
+          }
+          ability = flooredAuth.ability;
+        }
       }
 
       if (authorization) {

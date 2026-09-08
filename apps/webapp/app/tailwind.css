@@ -725,14 +725,16 @@
     @apply my-2 border-charcoal-600;
   }
   & table {
-    @apply w-full my-2 border-collapse;
+    @apply my-2 border-collapse;
+    width: auto;
+    max-width: 100%;
   }
   & th,
   & td {
     @apply border border-grid-bright px-2 py-1 text-left;
   }
   & th {
-    @apply font-semibold;
+    @apply font-semibold whitespace-nowrap;
     background-color: var(--muted);
   }
 

@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiClientManager } from "@trigger.dev/core/v3";
+import type { CreateSessionRequestBody, CreatedSessionResponseBody } from "@trigger.dev/core/v3";
 
 import { AgentChat } from "./chat-client.js";
+import { __setSessionStartImplForTests } from "./sessions.js";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -165,5 +167,47 @@ describe("AgentChat session restoration", () => {
 
       expect(triggered).toEqual(["run_test"]);
     });
+  });
+});
+
+describe("AgentChat", () => {
+  afterEach(() => {
+    __setSessionStartImplForTests(undefined);
+  });
+
+  it("forwards the configured ttl when starting a session", async () => {
+    let capturedBody: CreateSessionRequestBody | undefined;
+    __setSessionStartImplForTests((body) => {
+      capturedBody = body;
+      const result: CreatedSessionResponseBody = {
+        id: "session_1",
+        externalId: body.externalId ?? null,
+        type: body.type,
+        taskIdentifier: body.taskIdentifier,
+        triggerConfig: body.triggerConfig,
+        currentRunId: "run_1",
+        tags: body.tags ?? [],
+        metadata: null,
+        closedAt: null,
+        closedReason: null,
+        expiresAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        runId: "run_1",
+        publicAccessToken: "pat_test",
+        isCached: false,
+      };
+      return result;
+    });
+
+    const chat = new AgentChat({
+      agent: "my-agent",
+      id: "chat_1",
+      triggerConfig: { basePayload: {}, ttl: "1h" },
+    });
+
+    await chat.preload();
+
+    expect(capturedBody?.triggerConfig.ttl).toBe("1h");
   });
 });

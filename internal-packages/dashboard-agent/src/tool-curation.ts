@@ -1,21 +1,17 @@
 import type { JSONValue } from "@ai-sdk/provider";
-import { sliceWellFormed } from "@internal/dashboard-agent-contracts";
+import { sliceWellFormed, type QueueGrounding } from "@internal/dashboard-agent-contracts";
 
-/**
- * Everything that trims an API payload down to what a tool returns, plus the two
- * `toModelOutput` projections and the period clamp. No IO, no auth.
- */
+// Trims API payloads down to what a tool returns, plus the toModelOutput projections
+// and the period clamp. No IO, no auth.
 
-// Free-text captured from runs, errors and commits is authored outside our
-// system, so it can carry text that reads like instructions to the model. Fence
-// it in a hard-to-spoof provenance delimiter (named to the model in the system
-// prompt) and cap its length so one field can't bury the fence or blow context.
+// Free-text from runs/errors/commits is authored outside our system, so it can carry
+// text that reads like instructions. Fence it in a hard-to-spoof delimiter (named to the
+// model in the system prompt) and cap its length so one field can't blow context.
 const MAX_UNTRUSTED_FIELD_CHARS = 4096;
 export function fenceUntrusted(label: string, text: unknown): string | undefined {
   if (text === undefined || text === null) return undefined;
-  // Neutralize the guillemet delimiter bytes so the payload can't reproduce the
-  // closing token and break out of its own fence. Guillemets are effectively
-  // absent from real run/error/commit text, so flattening them to ASCII is safe.
+  // Neutralize guillemet bytes so the payload can't reproduce the closing token and
+  // break out of its own fence — they're effectively absent from real run/error text.
   const raw = String(text).replaceAll("«", "<").replaceAll("»", ">");
   const capped =
     raw.length > MAX_UNTRUSTED_FIELD_CHARS
@@ -26,15 +22,19 @@ export function fenceUntrusted(label: string, text: unknown): string | undefined
   return `«untrusted:${label}» ${capped} «/untrusted:${label}»`;
 }
 
-export function curateProjects(data: unknown) {
+// Fail closed: with no organization to scope to, nothing is trustworthy to return.
+export function curateProjects(data: unknown, organizationId: string | undefined) {
+  if (!organizationId) return { projects: [] };
   const projects = Array.isArray(data) ? data : [];
   return {
-    projects: projects.map((p: any) => ({
-      ref: p.externalRef,
-      name: p.name,
-      slug: p.slug,
-      organization: p.organization?.title,
-    })),
+    projects: projects
+      .filter((p: any) => p.organization?.id === organizationId)
+      .map((p: any) => ({
+        ref: p.externalRef,
+        name: p.name,
+        slug: p.slug,
+        organization: p.organization?.title,
+      })),
   };
 }
 
@@ -48,6 +48,29 @@ export function curateEnvironments(data: unknown) {
       branchName: e.branchName ?? undefined,
     })),
   };
+}
+
+// A retry or expiry-requeue makes "when did it first start waiting" ambiguous, so only a
+// first, non-expired attempt counts as a reliable queue-wait reading.
+function queueWait(run: any): { queueWaitMs: number | null; queueWaitReliable: boolean } {
+  const startedAtMs = run.startedAt ? Date.parse(run.startedAt) : undefined;
+  const createdAtMs = run.createdAt ? Date.parse(run.createdAt) : undefined;
+  const delayedUntilMs = run.delayedUntil ? Date.parse(run.delayedUntil) : undefined;
+
+  const queueWaitReliable =
+    startedAtMs !== undefined &&
+    typeof run.attemptCount === "number" &&
+    run.attemptCount <= 1 &&
+    !run.expiredAt;
+
+  if (!queueWaitReliable || startedAtMs === undefined || createdAtMs === undefined) {
+    return { queueWaitMs: null, queueWaitReliable };
+  }
+  const queueStartMs = Math.max(createdAtMs, delayedUntilMs ?? createdAtMs);
+  const queueWaitMs = startedAtMs - queueStartMs;
+  // A negative wait is clock skew, not a measurement — never a reliable reading.
+  if (queueWaitMs < 0) return { queueWaitMs: null, queueWaitReliable: false };
+  return { queueWaitMs, queueWaitReliable };
 }
 
 export function curateRun(run: any) {
@@ -68,6 +91,7 @@ export function curateRun(run: any) {
     costInCents: run.costInCents,
     attemptCount: run.attemptCount,
     tags: run.tags,
+    ...queueWait(run),
     error: run.error
       ? {
           name: fenceUntrusted("errorName", run.error.name),
@@ -116,6 +140,7 @@ export function curateTrace(data: unknown) {
     const d = span.data ?? {};
     // The two flags are emitted only when true; absent means false.
     spans.push({
+      id: span.id,
       depth,
       message: fenceUntrusted("spanMessage", d.message),
       task: d.taskSlug,
@@ -172,8 +197,7 @@ export function curateError(group: any) {
   };
 }
 
-// The card's copy: everything it draws, including the per-metric `series` and the
-// `links` recommendations key into. The model's copy is trimmed separately by
+// The card's copy: everything it draws. The model's copy is trimmed separately by
 // `getReportModelOutput`, so this costs no context.
 export function curateReport(data: unknown) {
   const vm = (data ?? {}) as any;
@@ -210,8 +234,7 @@ export function curateReport(data: unknown) {
       series: m.series,
       breakdown: m.breakdown,
       annotation: m.annotation,
-      // "unknown" means `value` is a placeholder, not a measurement. "measured" is the
-      // default and is dropped.
+      // "unknown" means `value` is a placeholder; "measured" is the default and is dropped.
       ...(m.availability === "unknown" ? { availability: "unknown" } : {}),
       severity: m.severity,
     })),
@@ -233,14 +256,8 @@ export function curateReport(data: unknown) {
   };
 }
 
-/**
- * What the model sees of a `render_view` result: an acknowledgement, not the card.
- *
- * The blocks are the panel's view model and the canonicalized copy is larger than
- * what the model wrote, so echoing it back cost the prefix twice per investigation
- * and again in the judge payload. Errors pass through verbatim — the prompt tells
- * the model to read them and render again.
- */
+// What the model sees of a `render_view` result: an acknowledgement, not the card —
+// echoing the canonicalized copy back would cost the prefix twice per investigation.
 export function renderViewModelOutput(output: unknown): JSONValue {
   const result = (output ?? {}) as {
     error?: string;
@@ -255,11 +272,8 @@ export function renderViewModelOutput(output: unknown): JSONValue {
   };
 }
 
-/**
- * What the model sees of a `get_report` result: the graded findings and metric
- * values, without the render-only detail the report card draws from (per-key
- * breakdowns, metric annotations, finding observations and exclusions, footer).
- */
+// What the model sees of a `get_report` result: graded findings and metric values,
+// without the render-only detail the report card draws from.
 export function getReportModelOutput(output: unknown): JSONValue {
   const vm = (output ?? {}) as any;
   if (vm.error !== undefined) return { error: vm.error };
@@ -307,6 +321,21 @@ export function curateDeploy(deployment: any) {
     commitRef: fenceUntrusted("commitRef", git?.commitRef),
     pullRequestNumber: git?.pullRequestNumber,
     error: deployment?.error ? { name: deployment.error.name } : undefined,
+  };
+}
+
+// Concurrency keys are set by whoever triggers the run, so they arrive as untrusted text.
+export function curateQueueGrounding(grounding: QueueGrounding): QueueGrounding {
+  if ("status" in grounding) return grounding;
+  return {
+    ...grounding,
+    concurrencyKeys: {
+      ...grounding.concurrencyKeys,
+      rows: grounding.concurrencyKeys.rows.map((row) => ({
+        ...row,
+        key: fenceUntrusted("concurrencyKey", row.key)!,
+      })),
+    },
   };
 }
 

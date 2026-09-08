@@ -9,15 +9,53 @@
 // Deliberately minimal — no fetch interception, no build-version polling, no server
 // build-id contract, no form snapshot, no blocking overlay.
 
+export type StaleAssetRecovery = { recover: () => void };
+
+/**
+ * The same bounded, budget-checked reload as `staleAssetRecoveryScript`, but without
+ * installing the page-wide `error`/`unhandledrejection` listeners: for callers that
+ * already know a load failed and only need to ask "should this reload the page",
+ * without also registering another pair of global listeners per call.
+ */
+export function createStaleAssetRecovery(): StaleAssetRecovery {
+  const KEY = "trigger:assetReload";
+  const MAX_RELOADS = 2;
+  const WINDOW_MS = 300000;
+  let recovering = false;
+
+  function budgetAllows() {
+    try {
+      const raw = sessionStorage.getItem(KEY);
+      let state = raw ? (JSON.parse(raw) as { n: number; t: number }) : { n: 0, t: 0 };
+      if (Date.now() - state.t > WINDOW_MS) state = { n: 0, t: 0 };
+      if (state.n >= MAX_RELOADS) return false;
+      sessionStorage.setItem(KEY, JSON.stringify({ n: state.n + 1, t: Date.now() }));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function recover() {
+    if (recovering) return;
+    recovering = true;
+    if (navigator.onLine === false) return;
+    if (budgetAllows()) location.reload();
+  }
+
+  return { recover };
+}
+
 // The recovery logic runs as an inline <script> injected before <Links /> (see the
 // component below), so it must execute before the app bundle and before the stylesheet
 // can fail to load. It is authored as a normal, type-checked and lint-checked function
 // and serialized with .toString() at render time — NOT hand-written into a string — so
 // the logic is real code the compiler and linter can see. Because it is serialized, it
-// must stay fully self-contained: no imports, no references to module scope, and plain
-// ES that the bundler won't rewrite to reach a hoisted helper. It returns its `recover`
-// closure purely so the unit test can drive the logic directly (the inline IIFE that
-// runs in the browser ignores the return value).
+// must stay fully self-contained: no imports, no references to module scope (including
+// `createStaleAssetRecovery` above — this duplicates its budget/recover logic), and
+// plain ES that the bundler won't rewrite to reach a hoisted helper. It returns its
+// `recover` closure purely so the unit test can drive the logic directly (the inline
+// IIFE that runs in the browser ignores the return value).
 export function staleAssetRecoveryScript() {
   var KEY = "trigger:assetReload";
   var MAX_RELOADS = 2;

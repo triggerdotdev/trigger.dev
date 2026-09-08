@@ -53,7 +53,9 @@ vi.mock("~/services/clickhouse/clickhouseFactoryInstance.server", () => ({
   clickhouseFactory: { getClickhouseForOrganization: async () => ({}) },
 }));
 vi.mock("~/services/dashboardAgentDb.server", () => ({ dashboardAgentDb: {} }));
-vi.mock("~/services/resolveTriggerUri.server", () => ({ resolveTriggerUri: () => null }));
+vi.mock("~/services/resolveTriggerUriInOrganization.server", () => ({
+  resolveTriggerUrisInOrganization: async () => new Map(),
+}));
 // Spread the real module so this doesn't have to track every query the route imports.
 vi.mock("@internal/dashboard-agent-db", async (importOriginal) => ({
   ...((await importOriginal()) as Record<string, unknown>),

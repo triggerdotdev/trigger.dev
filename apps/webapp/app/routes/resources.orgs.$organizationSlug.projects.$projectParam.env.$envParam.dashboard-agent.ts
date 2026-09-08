@@ -61,7 +61,7 @@ import {
   UNLIMITED_AGENT_MESSAGES,
 } from "~/services/dashboardAgentQuota.server";
 import { logger } from "~/services/logger.server";
-import { resolveTriggerUri } from "~/services/resolveTriggerUri.server";
+import { resolveTriggerUrisInOrganization } from "~/services/resolveTriggerUriInOrganization.server";
 import { requireUser } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
@@ -230,20 +230,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     unreadWakes,
   });
 };
-
-/** Only a source URI needs the connected repository, so a batch without one skips the read. */
-async function findRepositoryForSourceUris(projectId: string, uris: string[]) {
-  if (!uris.some((uri) => uri.includes("/source/"))) return null;
-
-  const connected = await $replica.connectedGithubRepository.findFirst({
-    where: {
-      projectId,
-      repository: { installation: { deletedAt: null, suspendedAt: null } },
-    },
-    select: { repository: { select: { fullName: true } } },
-  });
-  return connected?.repository ?? null;
-}
 
 function messageTooLarge() {
   return json({ error: MESSAGE_TOO_LARGE_ERROR, code: MESSAGE_TOO_LARGE_CODE }, { status: 413 });
@@ -441,18 +427,17 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     }
   }
 
-  // Scoped by the environment in the URL: the resolver refuses a URI naming a
-  // different project or environment.
+  // Scoped by the organization, not by the environment in the URL: the agent reads across the
+  // organization's projects, so a citation resolves against its own project and environment.
   if (parsed.data.intent === "resolve") {
     const uri = parsed.data.uri;
     if (!uri) return json({ error: "uri is required" }, { status: 400 });
 
-    const environment = await findEnvironmentBySlug(project.id, envParam, userId);
-    if (!environment) return json({ error: "Environment not found" }, { status: 404 });
-
-    const repository = await findRepositoryForSourceUris(project.id, [uri]);
-
-    const resolved = resolveTriggerUri({ ...environment, repository }, uri);
+    const resolved = (
+      await resolveTriggerUrisInOrganization({ userId, organizationId: project.organizationId }, [
+        uri,
+      ])
+    ).get(uri);
     if (!resolved) return json({ error: "Nothing to open for that link" }, { status: 404 });
 
     return json({
@@ -463,7 +448,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 
   // The card's citations in one request: one environment lookup and one repo lookup for the
-  // whole batch, same environment scope as `resolve`.
+  // whole batch, same organization scope as `resolve`.
   if (parsed.data.intent === "resolve-many") {
     let uris: string[];
     try {
@@ -481,16 +466,15 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       return json({ error: "Too many links in one request" }, { status: 400 });
     }
 
-    const environment = await findEnvironmentBySlug(project.id, envParam, userId);
-    if (!environment) return json({ error: "Environment not found" }, { status: 404 });
-
-    const repository = await findRepositoryForSourceUris(project.id, uris);
-    const scope = { ...environment, repository };
+    const hits = await resolveTriggerUrisInOrganization(
+      { userId, organizationId: project.organizationId },
+      uris
+    );
 
     // A null entry is the definitive "nothing to open": the client caches it.
     const resolved: Record<string, { path: string; label: string; external: boolean } | null> = {};
     for (const uri of uris) {
-      const hit = resolveTriggerUri(scope, uri);
+      const hit = hits.get(uri);
       resolved[uri] = hit
         ? { path: hit.url, label: hit.label, external: hit.external ?? false }
         : null;

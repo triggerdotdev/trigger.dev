@@ -228,6 +228,8 @@ export type GetJWTRequestBody = z.infer<typeof GetJWTRequestBody>;
 
 export const GetJWTResponse = z.object({
   token: z.string(),
+  // The environment the exchange resolved, so a caller that named a slug learns the id.
+  environmentId: z.string().optional(),
 });
 
 export type GetJWTResponse = z.infer<typeof GetJWTResponse>;
@@ -1899,6 +1901,8 @@ export const SessionTriggerConfig = z.object({
   region: z.string().optional(),
   /** Convenience field surfaced to chat.agent via the wire payload. */
   idleTimeoutInSeconds: z.number().int().positive().max(3600).optional(),
+  /** How long a run may sit undequeued before it expires. Forwarded to `TaskRunOptions.ttl`. */
+  ttl: z.string().or(z.number().nonnegative().int()).optional(),
 });
 export type SessionTriggerConfig = z.infer<typeof SessionTriggerConfig>;
 

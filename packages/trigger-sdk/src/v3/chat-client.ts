@@ -693,6 +693,9 @@ export class AgentChat<TAgent = unknown> {
       ...(this.triggerConfigDefault?.lockToVersion
         ? { lockToVersion: this.triggerConfigDefault.lockToVersion }
         : {}),
+      ...(this.triggerConfigDefault?.ttl !== undefined
+        ? { ttl: this.triggerConfigDefault.ttl }
+        : {}),
       // Not truthiness: `null` opts out and must reach the resolver in `sessions.start`.
       ...(this.triggerConfigDefault?.externalDeploymentId !== undefined
         ? { externalDeploymentId: this.triggerConfigDefault.externalDeploymentId }

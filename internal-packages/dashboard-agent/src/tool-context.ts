@@ -12,6 +12,9 @@ import type { InvestigationsCapability } from "./tool-investigations";
 export type DashboardAgentToolContext = {
   userActorToken?: string;
   apiOrigin?: string;
+  // The conversation's own organization: `list_projects` only ever returns projects
+  // belonging to it, even if the upstream route ever answered more broadly.
+  organizationId?: string;
   projectRef?: string;
   // Canonical API env name (dev/staging/prod/preview), resolved by the proxy.
   environmentName?: string;

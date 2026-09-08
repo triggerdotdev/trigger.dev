@@ -51,6 +51,7 @@ import {
 import { AgentPanelColumn } from "./panel-layout";
 import { markerAfterActiveChat, markerAfterActivity } from "./thinking-marker";
 import { concurrencyPath } from "~/utils/pathBuilder";
+import { scopeMatchesPath, sessionPathFor } from "./agent-scope";
 
 function serializePageContext(pageContext: AgentPageContext): string | undefined {
   try {
@@ -109,7 +110,6 @@ export function DashboardAgentPanel({
   const pageContext = useAgentPageContext();
   const toast = useToast();
 
-  const actionPath = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboard-agent`;
   const storageKey = lastChatStorageKey(organization.id);
 
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -119,6 +119,9 @@ export function DashboardAgentPanel({
   // Until the list has arrived, the page load's server count is the better answer.
   const [chatsLoaded, setChatsLoaded] = useState(false);
   const [active, setActive] = useState<ActiveChat | null>(null);
+  // A message asked for while the hooks still held the previous project: it is sent once
+  // they catch up rather than dropped.
+  const [pendingCreate, setPendingCreate] = useState<string | null>(null);
   // A refused `create` over the cap: the draft shows the upgrade block instead of a raw toast.
   const [capReached, setCapReached] = useState<{ limit: number; planResolved: boolean } | null>(
     null
@@ -138,17 +141,37 @@ export function DashboardAgentPanel({
   // A fresh object every render, so the clientData memo keys off the serialized form.
   const pageContextKey = serializePageContext(pageContext);
 
-  const clientData = useMemo<DashboardAgentClientData>(
+  // Path and client data come out of one memo: a render can never post to the project it
+  // has just left with the data of the one it has arrived at.
+  const scope = useMemo(
     () => ({
-      userId: user.id,
-      organizationId: organization.id,
-      projectId: project.id,
-      environmentId: environment.id,
-      currentPage: location.pathname,
-      pageContext: pageContextKey ? (JSON.parse(pageContextKey) as AgentPageContext) : undefined,
+      actionPath: sessionPathFor(
+        { slug: organization.slug },
+        { slug: project.slug },
+        { slug: environment.slug }
+      ),
+      clientData: {
+        userId: user.id,
+        organizationId: organization.id,
+        projectId: project.id,
+        environmentId: environment.id,
+        currentPage: location.pathname,
+        pageContext: pageContextKey ? (JSON.parse(pageContextKey) as AgentPageContext) : undefined,
+      } satisfies DashboardAgentClientData,
     }),
-    [user.id, organization.id, project.id, environment.id, location.pathname, pageContextKey]
+    [
+      user.id,
+      organization.id,
+      organization.slug,
+      project.id,
+      project.slug,
+      environment.id,
+      environment.slug,
+      location.pathname,
+      pageContextKey,
+    ]
   );
+  const { actionPath, clientData } = scope;
 
   const [thinkingChatId, setThinkingChatId] = useState<string | null>(null);
   const handleActivityChange = useCallback(
@@ -253,6 +276,13 @@ export function DashboardAgentPanel({
 
   const createChat = useCallback(
     async (text: string) => {
+      // The browser has already moved on; the hooks have not. Creating here would file the
+      // chat under the project the user just left, so it waits for them to catch up.
+      if (!scopeMatchesPath(location.pathname, actionPath)) {
+        setPendingCreate(text);
+        return;
+      }
+      setPendingCreate(null);
       const seq = claimChatSlot();
       setLoading(true);
       try {
@@ -303,8 +333,13 @@ export function DashboardAgentPanel({
         if (seq === openChatRequestSeq.current) setLoading(false);
       }
     },
-    [actionPath, claimChatSlot, clientData, organization.id, toast]
+    [actionPath, claimChatSlot, clientData, location.pathname, organization.id, toast]
   );
+
+  useEffect(() => {
+    if (pendingCreate === null || !scopeMatchesPath(location.pathname, actionPath)) return;
+    void createChat(pendingCreate);
+  }, [pendingCreate, location.pathname, actionPath, createChat]);
 
   const restored = useRef(false);
   useEffect(() => {

@@ -5,6 +5,7 @@ import { mockChatAgent } from "../src/v3/test/index.js";
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { simulateReadableStream, streamText } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
+import { TestSessionStreamManager } from "@trigger.dev/core/v3/test";
 import { describe, expect, it, vi } from "vitest";
 import type { RecoveryBootEvent, RecoveryBootResult } from "../src/v3/ai.js";
 import { __setReplaySessionOutTailImplForTests, chat } from "../src/v3/ai.js";
@@ -511,6 +512,101 @@ describe("onRecoveryBoot — chat.agent recovery hook", () => {
     } finally {
       await harness.close();
       warnSpy.mockRestore();
+    }
+  });
+});
+
+describe("continuation boot — the message that resumed the run", () => {
+  it("is not dispatched a second time when the live tail re-delivers it", async () => {
+    const sessionStreamManager = new TestSessionStreamManager();
+    let modelCalls = 0;
+    const model = new MockLanguageModelV3({
+      doStream: async () => {
+        modelCalls++;
+        return { stream: textStream("answered") };
+      },
+    });
+    const u1 = userMessage("the message that woke the run", "u-1");
+    const agent = chat.agent({
+      id: "recovery-boot.no-redispatch",
+      run: async ({ messages, signal }) => streamText({ model, messages, abortSignal: signal }),
+    });
+    const harness = mockChatAgent(agent, {
+      chatId: "no-redispatch",
+      continuation: true,
+      previousRunId: "run_prior",
+      taskContext: { sessionStreamManager },
+    });
+    // Seeded at seqNum 1 by the harness — the same record the live tail
+    // re-delivers below when the boot floor doesn't cover it.
+    harness.seedSessionInTail([u1 as never]);
+    try {
+      await new Promise((r) => setTimeout(r, 100));
+      expect(modelCalls).toBe(1);
+
+      await sessionStreamManager.__sendFromTest(
+        harness.chatId,
+        "in",
+        {
+          kind: "message",
+          payload: {
+            chatId: harness.chatId,
+            trigger: "submit-message",
+            message: u1,
+            messageId: u1.id,
+          },
+        },
+        { seqNum: 1 }
+      );
+      await new Promise((r) => setTimeout(r, 100));
+
+      expect(modelCalls).toBe(1);
+      expect(
+        harness.allRawChunks.filter(
+          (chunk) => (chunk as { type?: string }).type === "trigger:turn-complete"
+        )
+      ).toHaveLength(1);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("does not call the model for a turn that added no new user message", async () => {
+    let modelCalls = 0;
+    const model = new MockLanguageModelV3({
+      doStream: async () => {
+        modelCalls++;
+        return { stream: textStream("second answer") };
+      },
+    });
+    const u1 = userMessage("the question", "u-1");
+    const a1 = assistantMessage("the completed answer", "a-1");
+    const agent = chat.agent({
+      id: "recovery-boot.no-op-turn",
+      run: async ({ messages, signal }) => streamText({ model, messages, abortSignal: signal }),
+    });
+    const harness = mockChatAgent(agent, {
+      chatId: "no-op-turn",
+      continuation: true,
+      previousRunId: "run_prior",
+      snapshot: { version: 1, messages: [u1, a1] } as never,
+    });
+    try {
+      // Same message id as the settled user message: it merges onto the
+      // accumulator, so the turn adds nothing and the chain still ends on
+      // the assistant's completed answer.
+      const turn = await harness.sendMessage(u1 as never);
+      await new Promise((r) => setTimeout(r, 20));
+
+      expect(modelCalls).toBe(0);
+      // The client still gets its turn-complete, so the stream closes.
+      expect(
+        turn.rawChunks.some(
+          (chunk) => (chunk as { type?: string }).type === "trigger:turn-complete"
+        )
+      ).toBe(true);
+    } finally {
+      await harness.close();
     }
   });
 });

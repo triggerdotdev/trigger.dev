@@ -49,7 +49,8 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       authentication.authenticationResult,
       projectRef,
       env,
-      triggerBranch
+      triggerBranch,
+      { organizationScoped: true }
     );
 
     // The answer is a deployment's git metadata, so it's gated like the deployments list.

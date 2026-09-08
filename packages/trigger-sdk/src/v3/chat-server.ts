@@ -638,6 +638,7 @@ async function openHandoverSession(opts: {
     ...(opts.triggerConfig?.lockToVersion
       ? { lockToVersion: opts.triggerConfig.lockToVersion }
       : {}),
+    ...(opts.triggerConfig?.ttl !== undefined ? { ttl: opts.triggerConfig.ttl } : {}),
     // Not truthiness: `null` opts this chat out of pinning and must reach the resolver.
     ...(opts.triggerConfig?.externalDeploymentId !== undefined
       ? { externalDeploymentId: opts.triggerConfig.externalDeploymentId }

@@ -1,12 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { inFlightToolName, liveInvestigation, liveProgress } from "./progress-line";
+import {
+  earliestInFlightToolCall,
+  inFlightToolName,
+  liveInvestigation,
+  liveProgress,
+} from "./progress-line";
 
 function assistant(parts: unknown[]) {
   return { role: "assistant", parts };
 }
 
-function pendingTool(name: string) {
-  return { type: `tool-${name}`, state: "input-available" };
+function pendingTool(name: string, callId = name) {
+  return { type: `tool-${name}`, state: "input-available", toolCallId: callId };
+}
+
+function settledTool(name: string, callId = name) {
+  return { type: `tool-${name}`, state: "output-available", toolCallId: callId };
 }
 
 function investigationPart(
@@ -56,6 +65,37 @@ describe("inFlightToolName", () => {
         { role: "user", parts: [{ type: "text", text: "never mind" }] },
       ])
     ).toBeNull();
+  });
+});
+
+describe("earliestInFlightToolCall", () => {
+  it("returns the earliest pending call in emission order", () => {
+    expect(
+      earliestInFlightToolCall([assistant([pendingTool("get_run"), pendingTool("run_query")])])
+    ).toEqual({ callId: "get_run", name: "get_run" });
+  });
+
+  it("distinguishes two parallel calls to the same tool by call id, not name", () => {
+    expect(
+      earliestInFlightToolCall([
+        assistant([pendingTool("get_run", "call_1"), pendingTool("get_run", "call_2")]),
+      ])
+    ).toEqual({ callId: "call_1", name: "get_run" });
+  });
+
+  it("is undefined once nothing is in flight", () => {
+    expect(earliestInFlightToolCall([assistant([settledTool("get_run")])])).toBeUndefined();
+    expect(earliestInFlightToolCall([])).toBeUndefined();
+  });
+
+  it("counts an empty-string call id as present — only a missing id is skipped", () => {
+    expect(earliestInFlightToolCall([assistant([pendingTool("get_run", "")])])).toEqual({
+      callId: "",
+      name: "get_run",
+    });
+    expect(
+      earliestInFlightToolCall([assistant([{ type: "tool-get_run", state: "input-available" }])])
+    ).toBeUndefined();
   });
 });
 
@@ -113,17 +153,13 @@ describe("liveProgress", () => {
     });
   });
 
-  it("prefers a tool's phrase over the generic activity", () => {
-    expect(liveProgress([assistant([pendingTool("get_queue")])], "working")).toEqual({
+  it.each([
+    ["a known tool, over the generic activity", "get_queue", "Reading the queue…"],
+    ["an unknown tool, without a label of its own", "brand_new_tool", "Running brand_new_tool…"],
+  ])("prefers a tool's phrase — %s", (_name, tool, label) => {
+    expect(liveProgress([assistant([pendingTool(tool)])], "working")).toEqual({
       source: "tool",
-      label: "Reading the queue…",
-    });
-  });
-
-  it("names an unknown tool without a label of its own", () => {
-    expect(liveProgress([assistant([pendingTool("brand_new_tool")])], "working")).toEqual({
-      source: "tool",
-      label: "Running brand_new_tool…",
+      label,
     });
   });
 

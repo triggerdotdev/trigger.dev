@@ -310,6 +310,7 @@ export function buildSessionRunOptions(config: SessionTriggerConfig) {
     ...(config.lockToVersion ? { lockToVersion: config.lockToVersion } : {}),
     ...(config.externalDeploymentId ? { externalDeploymentId: config.externalDeploymentId } : {}),
     ...(config.region ? { region: config.region } : {}),
+    ...(config.ttl !== undefined ? { ttl: config.ttl } : {}),
   };
 }
 

@@ -7,9 +7,88 @@ import {
   type InvestigationStateInput,
   type ParsedTriggerUri,
 } from "@internal/dashboard-agent-contracts";
-import type { SourceReadLookup } from "./tool-source-ledger";
+import { bareFingerprint } from "./tool-read-scope";
+import type { ReadScope, ScopedReadKind, SourceReadLookup } from "./tool-source-ledger";
 
-export type EvidenceScope = { projectRef: string; environmentId: string };
+/** The kind+id a parsed URI's identity keys scoped reads off of, or none. */
+function scopedIdentity(
+  parsed: ParsedTriggerUri
+): { kind: ScopedReadKind; id: string } | undefined {
+  switch (parsed.kind) {
+    case "error":
+      return { kind: "error", id: bareFingerprint(parsed.fingerprint) };
+    case "queue":
+      return { kind: "queue", id: parsed.name };
+    case "deployment":
+      return { kind: "deployment", id: parsed.version };
+    case "report":
+      return { kind: "report", id: parsed.key };
+    default:
+      return undefined;
+  }
+}
+
+/** The inverse of `scopedIdentity`'s kind+id mapping: builds the parsed URI for a scoped kind. */
+function scopedParsedUri(kind: ScopedReadKind, scope: ReadScope, id: string): ParsedTriggerUri {
+  switch (kind) {
+    case "error":
+      return { ...scope, kind: "error", fingerprint: id };
+    case "queue":
+      return { ...scope, kind: "queue", name: id };
+    case "deployment":
+      return { ...scope, kind: "deployment", version: id };
+    case "report":
+      return { ...scope, kind: "report", key: id };
+  }
+}
+
+// A name isn't globally unique, so this checks membership across every scope read this turn.
+function scopeIsAcceptable(
+  parsed: ParsedTriggerUri,
+  reads: SourceReadLookup,
+  base: ReadScope
+): boolean {
+  if (parsed.projectRef === base.projectRef && parsed.environmentId === base.environmentId) {
+    return true;
+  }
+  if (parsed.kind === "run" || parsed.kind === "span") {
+    const scope = reads.scopeForRun(parsed.runId);
+    return (
+      !!scope &&
+      scope.projectRef === parsed.projectRef &&
+      scope.environmentId === parsed.environmentId
+    );
+  }
+  const identity = scopedIdentity(parsed);
+  if (!identity) return false;
+  return reads
+    .scopesForScopedRead(identity.kind, identity.id)
+    .some((s) => s.projectRef === parsed.projectRef && s.environmentId === parsed.environmentId);
+}
+
+// Two or more scopes with none matching the conversation's own: no default isn't a guess.
+function preferFromScopes(
+  scopes: ReadScope[],
+  base: ReadScope
+): { ok: true; scope: ReadScope } | { ok: false } {
+  if (scopes.length === 0) return { ok: true, scope: base };
+  if (scopes.length === 1) return { ok: true, scope: scopes[0]! };
+  const matchesBase = scopes.some(
+    (s) => s.projectRef === base.projectRef && s.environmentId === base.environmentId
+  );
+  return matchesBase ? { ok: true, scope: base } : { ok: false };
+}
+
+// Exposes `preferFromScopes`'s rule to callers outside evidence canonicalization.
+export function resolvedScopeFor(
+  kind: "run" | ScopedReadKind,
+  id: string,
+  reads: SourceReadLookup,
+  base: ReadScope
+): { ok: true; scope: ReadScope } | { ok: false } {
+  if (kind === "run") return { ok: true, scope: reads.scopeForRun(id) ?? base };
+  return preferFromScopes(reads.scopesForScopedRead(kind, id), base);
+}
 
 /**
  * Builds the canonical `trigger://` URI for a cited ref. A ref that can't be
@@ -17,7 +96,7 @@ export type EvidenceScope = { projectRef: string; environmentId: string };
  */
 function canonicalizeEvidence(
   items: EvidenceRef[],
-  scope: EvidenceScope,
+  scope: ReadScope,
   reads: SourceReadLookup
 ): { evidence: Evidence[]; errors: string[] } {
   const evidence: Evidence[] = [];
@@ -26,14 +105,15 @@ function canonicalizeEvidence(
 
   for (const item of items) {
     if (item.kind === "span") {
+      const runId = item.runId.trim();
       evidence.push({
         kind: "span",
         label: item.label,
         ...(item.excerpt === undefined ? {} : { excerpt: item.excerpt }),
         uri: formatTriggerUri({
-          ...base,
+          ...(reads.scopeForRun(runId) ?? base),
           kind: "span",
-          runId: item.runId.trim(),
+          runId,
           spanId: item.spanId.trim(),
         }),
       });
@@ -42,8 +122,7 @@ function canonicalizeEvidence(
 
     if (item.kind === "source") {
       const path = item.path.trim().replace(/^\/+/, "");
-      // The commit comes from this turn's read ledger and nowhere else: the turn's
-      // snapshot sha is not proof of reading.
+      // From this turn's read ledger and nowhere else: a snapshot sha isn't proof of reading.
       const claimed = item.sha?.trim();
       if (claimed && !reads.wasReadThisTurn(path, claimed)) {
         errors.push(
@@ -61,12 +140,19 @@ function canonicalizeEvidence(
         );
         continue;
       }
+      const preferred = preferFromScopes(reads.scopesForSourceRead(path, sha), base);
+      if (!preferred.ok) {
+        errors.push(
+          `source "${path}" was read from more than one environment this turn — cite the one you mean`
+        );
+        continue;
+      }
       evidence.push({
         kind: "source",
         label: item.label,
         ...(item.excerpt === undefined ? {} : { excerpt: item.excerpt }),
         uri: formatTriggerUri({
-          ...base,
+          ...preferred.scope,
           kind: "source",
           sha,
           path,
@@ -78,8 +164,7 @@ function canonicalizeEvidence(
 
     let ref = item.uri.trim();
 
-    // Already a full URI: kind and scope both have to match, so a URI from another
-    // scope can't be smuggled in.
+    // Already a full URI: kind and scope both have to match — no smuggling in another scope.
     const asUri = safeParseTriggerUri(ref);
     if (asUri.success) {
       const parsedUri = asUri.data;
@@ -87,17 +172,20 @@ function canonicalizeEvidence(
         errors.push(`${item.kind} evidence cites a ${parsedUri.kind} URI (${ref})`);
         continue;
       }
-      if (
-        parsedUri.projectRef !== scope.projectRef ||
-        parsedUri.environmentId !== scope.environmentId
-      ) {
-        errors.push(`${ref} belongs to a different project or environment`);
+      if (!scopeIsAcceptable(parsedUri, reads, base)) {
+        const identity = scopedIdentity(parsedUri);
+        const ambiguous = identity
+          ? reads.scopesForScopedRead(identity.kind, identity.id).length > 1
+          : false;
+        errors.push(
+          `${ref} belongs to a different project or environment` +
+            (ambiguous ? " (it was read from more than one this turn — cite the one you mean)" : "")
+        );
         continue;
       }
-      // A canonical URI never carries the friendly "error_" prefix.
       const normalizedUri =
         parsedUri.kind === "error"
-          ? { ...parsedUri, fingerprint: parsedUri.fingerprint.replace(/^error_/, "") }
+          ? { ...parsedUri, fingerprint: bareFingerprint(parsedUri.fingerprint) }
           : parsedUri;
       evidence.push({ ...item, uri: formatTriggerUri(normalizedUri) });
       continue;
@@ -117,21 +205,24 @@ function canonicalizeEvidence(
     let parsed: ParsedTriggerUri;
     switch (item.kind) {
       case "run":
-        parsed = { ...base, kind: "run", runId: ref };
+        parsed = { ...(reads.scopeForRun(ref) ?? base), kind: "run", runId: ref };
         break;
       case "error":
-        // The errors API returns "error_<fingerprint>" but the URI keys on the raw one.
-        parsed = { ...base, kind: "error", fingerprint: ref.replace(/^error_/, "") };
-        break;
       case "queue":
-        parsed = { ...base, kind: "queue", name: ref };
-        break;
       case "deployment":
-        parsed = { ...base, kind: "deployment", version: ref };
+      case "report": {
+        const kind = item.kind;
+        const id = kind === "error" ? bareFingerprint(ref) : ref;
+        const preferred = preferFromScopes(reads.scopesForScopedRead(kind, id), base);
+        if (!preferred.ok) {
+          errors.push(
+            `${kind} ${ref} was read from more than one environment this turn — cite the one you mean`
+          );
+          continue;
+        }
+        parsed = scopedParsedUri(kind, preferred.scope, id);
         break;
-      case "report":
-        parsed = { ...base, kind: "report", key: ref };
-        break;
+      }
       case "investigation":
         parsed = { ...base, kind: "investigation", investigationId: ref };
         break;
@@ -147,7 +238,7 @@ function canonicalizeEvidence(
 
 export function canonicalizeInvestigationState(
   state: InvestigationStateInput,
-  scope: EvidenceScope,
+  scope: ReadScope,
   reads: SourceReadLookup
 ): { state: InvestigationState; errors: string[] } {
   const own = canonicalizeEvidence(state.evidence, scope, reads);

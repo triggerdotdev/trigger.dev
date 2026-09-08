@@ -1,13 +1,5 @@
-/**
- * The Dashboard Agent uses an environment-scoped form of the existing user-actor credential.
- * MCP and the CLI may use their existing ones. Both normalize into the same authorized
- * capability context, so every route calls in here rather than deriving the rule itself.
- *
- * The rule: a token signed for one environment may only act inside it. A route that names nothing
- * to check the claim against is refused too, unless it declares itself identity-only. Anything
- * with no claim is environment-agnostic and unaffected — except a dashboard-agent token, which
- * always carries one, so its absence is a failed mint rather than a flow. Mismatches throw 403.
- */
+/** A token signed for one environment may only act inside it; a claimless token is unaffected,
+ * except a dashboard-agent token, which always carries one. Mismatches throw 403. */
 
 import { json } from "@remix-run/server-runtime";
 import { type UserActorClaims } from "@trigger.dev/rbac";
@@ -31,13 +23,59 @@ export function assertUserActorEnvironment(
   throw forbiddenEnvironment("This token isn't scoped to that environment.");
 }
 
+/** An org-scoped token may act in any environment of the org, gated on live per-request membership. */
+export async function assertUserActorEnvironmentAccess(
+  userActor: UserActorClaims | undefined,
+  environment: { id: string; organizationId: string }
+): Promise<void> {
+  if (!userActor) return;
+
+  if (!userActor.organizationId) {
+    assertUserActorEnvironment(userActor, environment.id);
+    return;
+  }
+
+  await assertUserActorOrganizationAccess(userActor, environment.organizationId);
+}
+
+/** The organization claim alone: must name this organization, and its user must still be a member. */
+export async function assertUserActorOrganizationAccess(
+  userActor: UserActorClaims | undefined,
+  organizationId: string
+): Promise<void> {
+  if (!userActor) return;
+
+  if (userActor.organizationId !== organizationId) {
+    throw forbiddenEnvironment("This token isn't scoped to that organization.");
+  }
+
+  const organization = await $replica.organization.findFirst({
+    where: {
+      id: organizationId,
+      deletedAt: null,
+      members: { some: { userId: userActor.userId } },
+    },
+    select: { id: true },
+  });
+
+  if (!organization) {
+    throw forbiddenEnvironment("You no longer have access to that organization.");
+  }
+}
+
 /** The same check for a route that names an org/project rather than one environment. */
 export async function assertUserActorScope(
   userActor: UserActorClaims | undefined,
   scope: { organizationId?: string; projectId?: string; environmentId?: string },
-  route?: { identityOnly?: boolean }
+  route?: { identityOnly?: boolean; organizationScoped?: true | "tokenOrganization" }
 ): Promise<void> {
   if (!userActor) return;
+
+  const organizationId = userActor.organizationId;
+  if (route?.organizationScoped && organizationId) {
+    await assertOrganizationScope(userActor, organizationId, scope, route.organizationScoped);
+    return;
+  }
 
   if (!userActor.environmentId) {
     assertClaimIsOptional(userActor);
@@ -49,8 +87,7 @@ export async function assertUserActorScope(
     return;
   }
 
-  // A route that names nothing offers no way to honour the claim, so it isn't reachable unless it
-  // has declared itself identity-only.
+  // A route naming nothing can't honour the claim, so it's unreachable unless identity-only.
   if (!scope.organizationId && !scope.projectId) {
     if (route?.identityOnly) return;
     throw forbiddenEnvironment("This token is scoped to an environment this route doesn't name.");
@@ -73,20 +110,74 @@ export async function assertUserActorScope(
   }
 }
 
+/** Resolves the organization from whatever the route names; nothing named is only reachable via `"tokenOrganization"`. */
+async function assertOrganizationScope(
+  userActor: UserActorClaims,
+  organizationId: string,
+  scope: { organizationId?: string; projectId?: string; environmentId?: string },
+  mode: true | "tokenOrganization"
+): Promise<void> {
+  if (scope.environmentId) {
+    const environment = await $replica.runtimeEnvironment.findFirst({
+      where: { id: scope.environmentId },
+      select: { organizationId: true },
+    });
+    if (!environment) {
+      throw forbiddenEnvironment("This token isn't scoped to that organization.");
+    }
+    await assertUserActorOrganizationAccess(userActor, environment.organizationId);
+    return;
+  }
+
+  if (scope.projectId) {
+    const project = await $replica.project.findFirst({
+      where: { id: scope.projectId, deletedAt: null },
+      select: { organizationId: true },
+    });
+    if (!project) {
+      throw forbiddenEnvironment("This token isn't scoped to that organization.");
+    }
+    await assertUserActorOrganizationAccess(userActor, project.organizationId);
+    return;
+  }
+
+  if (scope.organizationId) {
+    await assertUserActorOrganizationAccess(userActor, scope.organizationId);
+    return;
+  }
+
+  if (mode !== "tokenOrganization") {
+    throw forbiddenEnvironment("This token is scoped to an organization this route doesn't name.");
+  }
+
+  await assertUserActorOrganizationAccess(userActor, organizationId);
+}
+
+/** A `"tokenOrganization"` route scopes by the claim alone, so a claimless caller has no scope. */
+export function assertTokenOrganizationClaim(userActor: UserActorClaims | undefined): void {
+  if (userActor?.organizationId) return;
+
+  throw forbiddenEnvironment("This route requires a token scoped to an organization.");
+}
+
 /** `scoped: false` keeps the project-wide answer every claimless caller already gets. */
 export type UserActorEnvironmentScope =
   | { scoped: false }
   | { scoped: true; environmentId: string; slug: string; organizationId: string };
 
-/**
- * The claim as a mandatory filter for a route that lists across a project. A conflicting request
- * filter is refused rather than overridden, so a caller never gets another environment's answer.
- */
+/** The claim as a mandatory filter for listing across a project; a conflicting filter is refused. */
 export async function resolveUserActorEnvironmentScope(
   userActor: UserActorClaims | undefined,
-  target: { projectId: string; requestedEnvironmentSlugs?: string[] }
+  target: { projectId: string; requestedEnvironmentSlugs?: string[] },
+  route?: { organizationScoped?: boolean }
 ): Promise<UserActorEnvironmentScope> {
   if (!userActor) return { scoped: false };
+
+  // Org-scoped routes already checked the claim against the project's organization, so every
+  // project of that org is answered project-wide; the environment claim narrows nothing here.
+  if (route?.organizationScoped && userActor.organizationId) {
+    return { scoped: false };
+  }
 
   if (!userActor.environmentId) {
     assertClaimIsOptional(userActor);
@@ -117,6 +208,10 @@ export async function resolveUserActorEnvironmentScope(
 }
 
 function assertClaimIsOptional(userActor: UserActorClaims): void {
+  // An organization claim is a scope of its own; a route that doesn't check it can't honour it.
+  if (userActor.organizationId) {
+    throw forbiddenEnvironment("This token is scoped to an organization this route doesn't name.");
+  }
   if (userActor.client !== DASHBOARD_AGENT_CLIENT) return;
   throw forbiddenEnvironment("This token isn't scoped to an environment.");
 }

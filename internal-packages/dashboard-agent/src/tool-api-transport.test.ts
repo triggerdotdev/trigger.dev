@@ -17,6 +17,8 @@ const CTX = {
   environmentName: "prod",
 };
 
+const TARGET = { projectRef: "proj_ref", environmentName: "prod" };
+
 function tools() {
   return buildApiTools({
     ctx: CTX,
@@ -93,7 +95,7 @@ describe("a broken request reads as a broken request, never as an answer", () =>
       "fetch",
       vi.fn(async (url: string) =>
         url.endsWith("/jwt")
-          ? Response.json({ token: "jwt" })
+          ? Response.json({ token: "jwt", environmentId: "env_1" })
           : Response.json(
               { error: "We're experiencing a lot of queries at the moment." },
               { status: 429 }
@@ -101,7 +103,7 @@ describe("a broken request reads as a broken request, never as an answer", () =>
       )
     );
 
-    const result = await createApiClient(CTX).postQuery("SELECT 1", undefined);
+    const result = await createApiClient(CTX).postQuery("SELECT 1", undefined, TARGET);
 
     expect(result).toMatchObject({ ok: false, kind: "busy" });
     expect((result as { error: string }).error).toContain("retry the same query shortly");
@@ -113,12 +115,16 @@ describe("a broken request reads as a broken request, never as an answer", () =>
       "fetch",
       vi.fn(async (url: string) =>
         url.endsWith("/jwt")
-          ? Response.json({ token: "jwt" })
+          ? Response.json({ token: "jwt", environmentId: "env_1" })
           : Response.json({ error: "Unknown expression identifier 'createdAt'." }, { status: 400 })
       )
     );
 
-    const result = await createApiClient(CTX).postQuery("SELECT createdAt FROM runs", undefined);
+    const result = await createApiClient(CTX).postQuery(
+      "SELECT createdAt FROM runs",
+      undefined,
+      TARGET
+    );
 
     expect(result).toMatchObject({
       ok: false,

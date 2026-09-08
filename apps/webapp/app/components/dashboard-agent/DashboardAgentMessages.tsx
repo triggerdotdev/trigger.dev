@@ -163,19 +163,6 @@ export function splitActionsBlocks<T>(blocks: T[]): { content: T[]; actions: T[]
 // #region chat-layout transcript
 // `chat-layout.test.ts` fails if a spacing utility class appears in this region.
 
-/** Until the resolver answers, the link degrades to its plain label, never a dead href. */
-const TRIGGER_MD_LINK = /\[([^\]]+)\]\((trigger:\/\/[^\s)]+)\)/g;
-function resolveTriggerLinks(
-  text: string,
-  resolveUri?: (uri: string) => ResolvedUri | null
-): string {
-  if (!text.includes("trigger://")) return text;
-  return text.replace(TRIGGER_MD_LINK, (whole, label: string, uri: string) => {
-    const resolved = resolveUri?.(uri);
-    return resolved ? `[${label}](${resolved.url})` : label;
-  });
-}
-
 function renderDashboardPart(
   part: UIMessage["parts"][number],
   i: number,
@@ -191,9 +178,8 @@ function renderDashboardPart(
   const type = part.type as string;
 
   if (type === "text") {
-    // Images last: the link resolver's output is model-supplied too.
     return p.text ? (
-      <ChatText key={i} text={stripModelImages(resolveTriggerLinks(p.text, resolveUri))} />
+      <ChatText key={i} text={stripModelImages(p.text)} resolveUri={resolveUri} />
     ) : null;
   }
 

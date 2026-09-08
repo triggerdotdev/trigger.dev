@@ -37,7 +37,9 @@ vi.mock("~/services/dashboardAgentHeadStart.server", () => ({
   startDashboardAgentHeadStart: vi.fn(),
 }));
 vi.mock("~/services/dashboardAgentDb.server", () => ({ dashboardAgentDb: {} }));
-vi.mock("~/services/resolveTriggerUri.server", () => ({ resolveTriggerUri: () => null }));
+vi.mock("~/services/resolveTriggerUriInOrganization.server", () => ({
+  resolveTriggerUrisInOrganization: async () => new Map(),
+}));
 vi.mock("@internal/dashboard-agent-db", () => ({
   chatExists: vi.fn(),
   countUserMessages: vi.fn(),

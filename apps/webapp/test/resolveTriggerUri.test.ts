@@ -1,6 +1,21 @@
 import { formatTriggerUri } from "@internal/dashboard-agent-contracts";
-import { describe, expect, it } from "vitest";
+import { postgresTest } from "@internal/testcontainers";
+import type { PrismaClient } from "@trigger.dev/database";
+import { describe, expect, it, vi } from "vitest";
 import { resolveTriggerUri, type TriggerUriScope } from "~/services/resolveTriggerUri.server";
+import { seedAgentWorld, type AgentWorld } from "./helpers/dashboardAgentWorld";
+const db = vi.hoisted(() => ({ client: null as unknown as PrismaClient }));
+
+vi.mock("~/db.server", () => ({
+  get prisma() {
+    return db.client;
+  },
+  get $replica() {
+    return db.client;
+  },
+}));
+
+import { resolveTriggerUrisInOrganization } from "~/services/resolveTriggerUriInOrganization.server";
 import {
   v3DeploymentVersionPath,
   v3ErrorPath,
@@ -191,5 +206,94 @@ describe("resolveTriggerUri: source URIs", () => {
         })
       )
     ).toBeNull();
+  });
+});
+
+// Live Postgres, no mocks beyond `db.server` (pointed at the container's client): the
+// organization scope, membership join and dev-environment ownership rules are real.
+describe("resolveTriggerUrisInOrganization", () => {
+  vi.setConfig({ testTimeout: 60_000 });
+
+  const runUri = (project: { externalRef: string }, environment: { id: string }) =>
+    formatTriggerUri({
+      kind: "run",
+      projectRef: project.externalRef,
+      environmentId: environment.id,
+      runId: "run_abc123",
+    });
+
+  /** A fresh world per case: each container test gets its own cloned database. */
+  function worldTest(name: string, fn: (world: AgentWorld) => Promise<void>) {
+    postgresTest(name, async ({ prisma }) => {
+      db.client = prisma;
+      await fn(await seedAgentWorld(prisma));
+    });
+  }
+
+  worldTest("resolves another project in the same organization", async (world) => {
+    const uri = runUri(world.p2, world.p2Prod);
+    const resolved = await resolveTriggerUrisInOrganization(world.actor, [uri]);
+
+    expect(resolved.get(uri)).toEqual({
+      label: "run_abc123",
+      url: v3RunPath(world.orgA, world.p2, world.p2Prod, { friendlyId: "run_abc123" }),
+    });
+  });
+
+  worldTest("resolves the actor's own development environment", async (world) => {
+    const uri = runUri(world.p1, world.p1Dev);
+    const resolved = await resolveTriggerUrisInOrganization(world.actor, [uri]);
+
+    expect(resolved.get(uri)?.url).toBe(
+      v3RunPath(world.orgA, world.p1, world.p1Dev, { friendlyId: "run_abc123" })
+    );
+  });
+
+  // Each of these is its own gate: another member's private dev environment, a soft-deleted
+  // project, a non-member, an archived environment, a soft-deleted organization, the
+  // organization boundary, and a URI whose two halves name different projects.
+  const refused: Array<
+    [
+      string,
+      (world: AgentWorld) => { actor: { userId: string; organizationId: string }; uri: string },
+    ]
+  > = [
+    [
+      "another member's development environment",
+      (w) => ({ actor: w.actor, uri: runUri(w.p2, w.p2Dev) }),
+    ],
+    [
+      "a deleted project",
+      (w) => ({ actor: w.actor, uri: runUri(w.deletedProject, w.deletedProd) }),
+    ],
+    [
+      "a user who is not a member of the organization",
+      (w) => ({ actor: w.stranger, uri: runUri(w.p2, w.p2Prod) }),
+    ],
+    ["an archived environment", (w) => ({ actor: w.actor, uri: runUri(w.p2, w.p2Archived) })],
+    ["a deleted organization", (w) => ({ actor: w.deletedOrgActor, uri: runUri(w.p4, w.p4Prod) })],
+    ["another organization's project", (w) => ({ actor: w.actor, uri: runUri(w.p3, w.p3Prod) })],
+    [
+      "a URI whose project and environment disagree",
+      (w) => ({ actor: w.actor, uri: runUri(w.p1, w.p2Prod) }),
+    ],
+  ];
+
+  for (const [what, pick] of refused) {
+    worldTest(`refuses ${what}`, async (world) => {
+      const { actor, uri } = pick(world);
+      const resolved = await resolveTriggerUrisInOrganization(actor, [uri]);
+
+      expect(resolved.get(uri)).toBeNull();
+    });
+  }
+
+  worldTest("returns an entry per URI, malformed ones included", async (world) => {
+    const good = runUri(world.p2, world.p2Prod);
+    const resolved = await resolveTriggerUrisInOrganization(world.actor, [good, "not-a-uri", ""]);
+
+    expect(resolved.get(good)).not.toBeNull();
+    expect(resolved.get("not-a-uri")).toBeNull();
+    expect(resolved.get("")).toBeNull();
   });
 });

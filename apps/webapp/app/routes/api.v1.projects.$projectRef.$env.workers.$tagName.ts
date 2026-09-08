@@ -7,6 +7,7 @@ import {
   authenticatedEnvironmentForAuthentication,
   branchNameFromRequest,
 } from "~/services/apiAuth.server";
+import { authorizePatEnvironmentAccess } from "~/services/environmentVariableApiAccess.server";
 import { logger } from "~/services/logger.server";
 import { authenticateUatOrApiRequest } from "~/services/uatRoutePreamble.server";
 import { v3RunsPath } from "~/utils/pathBuilder";
@@ -22,8 +23,6 @@ type ParamsSchema = z.infer<typeof ParamsSchema>;
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
   try {
-    // Accepts a user-actor token as well as a PAT. There's no ability check here, so the
-    // token's cap isn't enforced (matches PAT behavior).
     const authentication = await authenticateUatOrApiRequest(request);
 
     if (!authentication) {
@@ -43,8 +42,21 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       authentication.authenticationResult,
       projectRef,
       env,
-      triggerBranch
+      triggerBranch,
+      { organizationScoped: true }
     );
+
+    // The answer is deployment/worker info, so it's gated like the deployments list.
+    const denied = await authorizePatEnvironmentAccess({
+      request,
+      authType: authentication.authenticationResult.type,
+      organizationId: runtimeEnv.organizationId,
+      projectId: runtimeEnv.project.id,
+      envType: runtimeEnv.type,
+      resource: "deployments",
+      action: "read",
+    });
+    if (denied) return denied;
 
     const currentWorker = await findCurrentWorkerFromEnvironment(
       {

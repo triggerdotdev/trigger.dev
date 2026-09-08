@@ -701,10 +701,18 @@ type ChatSessionState = {
   lastEventId?: string;
   /** `.in` append sequence used to filter stale turn boundaries after reconnecting. */
   activeInputSeq?: number;
-  /** Set when the stream was aborted mid-turn (stop). On reconnect, skip chunks until trigger:turn-complete. */
+  /**
+   * Set when the stream was aborted mid-turn (stop). Skip chunks until the
+   * stopped turn's trigger:turn-complete — survives a reconnect and a retry
+   * send, so the stopped turn's tail never renders into the new turn.
+   */
   skipToTurnComplete?: boolean;
+  /** `.in` seq of the turn the gate supersedes; only its boundary (or a later one) clears the gate. */
+  supersededInputSeq?: number;
   /** Whether the agent is currently streaming a response. Set on first chunk, cleared on turn-complete. */
   isStreaming?: boolean;
+  /** Set once the outstanding turn is declared dead: a later stop must not gate the next turn on it. */
+  outstandingTurnAbandoned?: boolean;
   /** Set once the session is closed. Terminal — sends and reconnects stop. */
   closed?: boolean;
   /** The reason the session was closed, when one was given. */
@@ -961,12 +969,9 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       this.activeStreams.delete(chatId);
     }
 
-    // A stop that never saw its TURN_COMPLETE leaves the flag set, and the new
-    // turn would be skipped record by record.
-    state.skipToTurnComplete = false;
-
     state.activeInputSeq = inSeq;
     state.isStreaming = true;
+    state.outstandingTurnAbandoned = false;
     this.notifySessionChange(chatId, state);
 
     // Owning turn: aborting this live send stops the turn the user drives.
@@ -1323,7 +1328,15 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       return false;
     }
 
-    state.skipToTurnComplete = true;
+    // Only gate when a sent turn is still outstanding. A stop at a boundary has
+    // nothing to supersede, and gating it would swallow the next turn.
+    if (
+      !state.outstandingTurnAbandoned &&
+      (state.isStreaming || state.activeInputSeq !== undefined)
+    ) {
+      state.skipToTurnComplete = true;
+      state.supersededInputSeq = state.activeInputSeq;
+    }
 
     const activeStream = this.activeStreams.get(chatId);
     if (activeStream) {
@@ -1343,6 +1356,19 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     state.isStreaming = false;
     this.notifySessionChange(chatId, state);
     return true;
+  };
+
+  /**
+   * Clear the supersede gate armed by a stop. Call this when the stopped
+   * turn died without ever writing its `trigger:turn-complete` boundary,
+   * otherwise the next turn stays gated forever.
+   */
+  clearSupersedeGate = (chatId: string): void => {
+    const state = this.sessions.get(chatId);
+    if (!state) return;
+    state.skipToTurnComplete = false;
+    state.supersededInputSeq = undefined;
+    state.outstandingTurnAbandoned = true;
   };
 
   /**
@@ -1398,14 +1424,11 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       this.activeStreams.delete(chatId);
     }
 
-    // A stop that never saw its TURN_COMPLETE leaves the flag set, and the new
-    // turn would be skipped record by record.
-    state.skipToTurnComplete = false;
-
     // Mark streaming + persist so a reload mid-action resumes (reconnectToStream
     // no-ops when the persisted session says isStreaming: false).
     state.activeInputSeq = inSeq;
     state.isStreaming = true;
+    state.outstandingTurnAbandoned = false;
     this.notifySessionChange(chatId, state);
 
     // Owning action: aborting this send stops the turn the user drives.
@@ -1586,6 +1609,8 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     if (reason) state.closedReason = reason;
     state.isStreaming = false;
     state.activeInputSeq = undefined;
+    state.skipToTurnComplete = false;
+    state.supersededInputSeq = undefined;
 
     this.emitEvent({
       type: "session-closed",
@@ -1880,8 +1905,14 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       abortSignal.addEventListener(
         "abort",
         () => {
-          if (options?.sendStopOnAbort !== false) {
+          // A late abort (unmount, or the consumer dropping a drained stream)
+          // has no turn to stop: don't gate the next one, don't write a stop.
+          const outstanding =
+            !state.outstandingTurnAbandoned &&
+            (state.isStreaming || state.activeInputSeq !== undefined);
+          if (options?.sendStopOnAbort !== false && outstanding && !internalAbort.signal.aborted) {
             state.skipToTurnComplete = true;
+            state.supersededInputSeq = state.activeInputSeq;
             this.appendInputChunk(
               chatId,
               state.publicAccessToken,
@@ -2194,11 +2225,52 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               }
             }
 
-            if (state.skipToTurnComplete) {
-              if (controlValue === TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) {
-                state.skipToTurnComplete = false;
+            if (
+              state.skipToTurnComplete &&
+              controlValue !== TRIGGER_CONTROL_SUBTYPE.SESSION_CLOSED &&
+              controlValue !== TRIGGER_CONTROL_SUBTYPE.PENDING_VERSION
+            ) {
+              // Fall through on a boundary so the `sinceInSeq` check and the
+              // turn-completed emit below still run; content records are skipped.
+              // A close is terminal and a pending version is the gated turn's own
+              // handover status, so neither is ever gated away.
+              if (controlValue !== TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) continue;
+              // A boundary older than the superseded turn is not its boundary —
+              // keep gating. A header-less boundary (legacy wire) still clears.
+              const gateCursorRaw = headerValue(value.headers, SESSION_IN_EVENT_ID_HEADER);
+              const gateCursor =
+                gateCursorRaw !== undefined ? Number.parseInt(gateCursorRaw, 10) : NaN;
+              if (
+                state.supersededInputSeq !== undefined &&
+                !Number.isNaN(gateCursor) &&
+                gateCursor < state.supersededInputSeq
+              ) {
+                continue;
               }
-              continue;
+              state.skipToTurnComplete = false;
+              state.supersededInputSeq = undefined;
+              // This boundary is the new turn's own, so the gate swallowed its
+              // output: fail the turn instead of completing an empty answer, and
+              // leave nothing armed for the retry.
+              if (
+                sinceInSeq !== undefined &&
+                !Number.isNaN(gateCursor) &&
+                gateCursor >= sinceInSeq
+              ) {
+                // The lost boundary may also carry the session close.
+                if (headerValue(value.headers, SESSION_CLOSED_HEADER) === "true") {
+                  this.markSessionClosed(
+                    chatId,
+                    state,
+                    headerValue(value.headers, SESSION_CLOSED_REASON_HEADER),
+                    "stream"
+                  );
+                }
+                state.activeInputSeq = undefined;
+                state.isStreaming = false;
+                this.notifySessionChange(chatId, state);
+                throw new Error("The previous turn's output was lost. Try again.");
+              }
             }
 
             if (controlValue === TRIGGER_CONTROL_SUBTYPE.UPGRADE_REQUIRED) {

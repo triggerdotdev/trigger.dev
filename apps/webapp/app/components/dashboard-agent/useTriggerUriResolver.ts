@@ -57,7 +57,7 @@ export function useTriggerUriResolver(actionPath: string): (uri: string) => Reso
         .then(async (res) => {
           if (!res.ok) throw new Error(`Failed to resolve links (${res.status})`);
           return (await res.json()) as {
-            resolved?: Record<string, { path?: string; label?: string } | null>;
+            resolved?: Record<string, { path?: string; label?: string; external?: boolean } | null>;
           };
         })
         .then((data) => {
@@ -65,7 +65,9 @@ export function useTriggerUriResolver(actionPath: string): (uri: string) => Reso
           const entries: Record<string, ResolvedUri | null> = {};
           for (const uri of batch) {
             const hit = data.resolved?.[uri];
-            entries[uri] = hit?.path ? { url: hit.path, label: hit.label ?? uri } : null;
+            entries[uri] = hit?.path
+              ? { url: hit.path, label: hit.label ?? uri, external: hit.external }
+              : null;
           }
           record(entries);
         })

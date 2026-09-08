@@ -1730,6 +1730,29 @@ export class RunEngine {
     return this.runQueue.currentConcurrencyOfEnvironment(environment);
   }
 
+  async operationalCurrentConcurrencyOfEnvironment(
+    environment: MinimalAuthenticatedEnvironment
+  ): Promise<number> {
+    return this.runQueue.operationalCurrentConcurrencyOfEnvironment(environment);
+  }
+
+  async getEnvConcurrencyLimit(environment: MinimalAuthenticatedEnvironment): Promise<number> {
+    return this.runQueue.getEnvConcurrencyLimit(environment);
+  }
+
+  async getEnvConcurrencyLimitWithBurstFactor(
+    environment: MinimalAuthenticatedEnvironment
+  ): Promise<number> {
+    return this.runQueue.getEnvConcurrencyLimitWithBurstFactor(environment);
+  }
+
+  async getQueueConcurrencyLimit(
+    environment: MinimalAuthenticatedEnvironment,
+    queue: string
+  ): Promise<number | undefined> {
+    return this.runQueue.getQueueConcurrencyLimit(environment, queue);
+  }
+
   async lengthOfQueues(
     environment: MinimalAuthenticatedEnvironment,
     queues: string[]

@@ -6,8 +6,8 @@
  * of the address, and the API's resolver needs both to land on the row the dashboard selected.
  *
  * Returned as a pair so no caller can take the name without it. Handing the JWT exchange a bare
- * "preview" resolves the parent, and the delegated token's `environmentId` claim then correctly
- * refuses it — the guard is the detector, not the defect.
+ * "preview" resolves the parent, which the exchange refuses: an environment claim on the mismatch,
+ * an organization claim on the missing branch.
  *
  * Kept free of heavy imports so both mint sites and their tests can use the real thing.
  */

@@ -17,7 +17,6 @@ import {
   type AuthenticationResult,
 } from "~/services/apiAuth.server";
 import { env as appEnv } from "~/env.server";
-import { assertUserActorEnvironment } from "~/services/userActorEnvironment.server";
 import { assertSourcePatActive } from "~/services/personalAccessToken.server";
 import { logger } from "~/services/logger.server";
 import { authorizePatEnvironmentAccess } from "~/services/environmentVariableApiAccess.server";
@@ -90,6 +89,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       authenticationResult = {
         type: "personalAccessToken",
         result: { userId: claims.userId },
+        userActor: claims,
       };
     } else {
       authenticationResult = await authenticateRequest(request, {
@@ -112,15 +112,21 @@ export async function action({ request, params }: ActionFunctionArgs) {
     const { projectRef, env } = parsedParams.data;
     const triggerBranch = branchNameFromRequest(request);
 
+    // Org-scoped: an org-claim token mints for any environment of its organization, gated on live
+    // membership; an environment-claim token still mints only for the one it names.
     const runtimeEnv = await authenticatedEnvironmentForAuthentication(
       authenticationResult,
       projectRef,
       env,
-      triggerBranch
+      triggerBranch,
+      { organizationScoped: true }
     );
 
-    // A user-actor token signed for one environment mints only for that one.
-    assertUserActorEnvironment(userActor, runtimeEnv.id);
+    // A bare "preview" resolves the family's parent, which is nobody's address — the branch is the
+    // rest of it. An environment claim refuses the mismatch by itself; an org claim doesn't.
+    if (userActor?.organizationId && runtimeEnv.type === "PREVIEW" && !runtimeEnv.branchName) {
+      return json({ error: "Missing branch for the preview environment" }, { status: 400 });
+    }
 
     // This mints a JWT signed with the environment's secret key. For a PAT
     // (a user), gate it on env-tier read:apiKeys so a restricted role can't
@@ -202,7 +208,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       expirationTime,
     });
 
-    return json({ token: jwt });
+    return json({ token: jwt, environmentId: runtimeEnv.id });
   } catch (error) {
     if (error instanceof Response) throw error;
     logger.error("Failed to generate env JWT", { error });

@@ -53,7 +53,7 @@ import {
 } from "./report-sparkline";
 import { reportOffersRecoveryWatch } from "./view-actions";
 
-export type ResolvedUri = { label: string; url: string };
+export type ResolvedUri = { label: string; url: string; external?: boolean };
 
 /** How often a recovery watch polls, and how long it lives. Aggregate conditions floor at 5m. */
 const RECOVERY_WATCH = { checkEveryMinutes: 5, maxHours: 6 } as const;
@@ -159,8 +159,12 @@ function footerEntryNode({
           ? target.resolved.url
           : REFERENCE_URL_FALLBACK[code];
     if (href) {
+      const external =
+        target.kind === "resource" && target.resolved
+          ? !!target.resolved.external
+          : !href.startsWith("/");
       return (
-        <ReportFooterLink href={href} external={!href.startsWith("/")}>
+        <ReportFooterLink href={href} external={external}>
           {label}
         </ReportFooterLink>
       );
@@ -386,7 +390,9 @@ export function ReportView({
       footerItems.push({
         code: link.key,
         node: (
-          <ReportFooterLink href={target.resolved.url}>{target.resolved.label}</ReportFooterLink>
+          <ReportFooterLink href={target.resolved.url} external={target.resolved.external}>
+            {target.resolved.label}
+          </ReportFooterLink>
         ),
       });
     }

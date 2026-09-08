@@ -18,7 +18,12 @@ function queryTool(postQuery: DashboardAgentApiClient["postQuery"]) {
     validateChartQuery: async () => null,
   } as unknown as DashboardAgentApiClient;
   const tools = buildApiTools({
-    ctx: { userActorToken: "uat", apiOrigin: client.origin },
+    ctx: {
+      userActorToken: "uat",
+      apiOrigin: client.origin,
+      projectRef: "proj_ref",
+      environmentName: "prod",
+    },
     client,
     renderInvestigations: (() => []) as any,
   });

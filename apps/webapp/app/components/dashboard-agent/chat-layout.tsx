@@ -5,6 +5,7 @@ import { createContext, Suspense, useContext } from "react";
 import { StreamdownRenderer } from "~/components/code/StreamdownRenderer";
 import { AgentSpinner } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";
+import type { ResolvedUri } from "./ReportView";
 
 const TRANSCRIPT_INSET_X = "px-4";
 const TRANSCRIPT_INSET_Y = "py-4";
@@ -80,7 +81,15 @@ export function ChatTurn({
   );
 }
 
-export function ChatText({ speaker = "assistant", text }: { speaker?: ChatRole; text: string }) {
+export function ChatText({
+  speaker = "assistant",
+  text,
+  resolveUri,
+}: {
+  speaker?: ChatRole;
+  text: string;
+  resolveUri?: (uri: string) => ResolvedUri | null;
+}) {
   if (speaker === "user") {
     return (
       <div className="max-w-[80%] rounded-lg bg-background-raised px-4 py-2.5 text-sm text-text-bright">
@@ -91,7 +100,7 @@ export function ChatText({ speaker = "assistant", text }: { speaker?: ChatRole; 
   return (
     <div className="streamdown-container min-w-0 font-sans text-sm font-normal text-text-dimmed wrap-anywhere">
       <Suspense fallback={<span className="whitespace-pre-wrap">{text}</span>}>
-        <StreamdownRenderer>{text}</StreamdownRenderer>
+        <StreamdownRenderer resolveTriggerUri={resolveUri}>{text}</StreamdownRenderer>
       </Suspense>
     </div>
   );

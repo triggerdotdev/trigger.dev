@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { UIMessage, UIMessageChunk } from "ai";
-import { TriggerChatTransport, createChatTransport, type ChatTransportEvent } from "./chat.js";
+import {
+  TriggerChatTransport,
+  createChatTransport,
+  type ChatTransportEvent,
+  type ChatSessionPersistedState,
+  type TriggerChatTransportOptions,
+} from "./chat.js";
 
 // ───────────────────────────────────────────────────────────────────────────
 // Test helpers
@@ -35,6 +41,8 @@ function sseEncode(chunks: (UIMessageChunk | Record<string, unknown>)[]): string
       const headers: Array<[string, string]> = [["trigger-control", "turn-complete"]];
       const token = (chunk as { publicAccessToken?: string }).publicAccessToken;
       if (token) headers.push(["public-access-token", token]);
+      const cursor = (chunk as { sessionInEventId?: number }).sessionInEventId;
+      if (cursor !== undefined) headers.push(["session-in-event-id", String(cursor)]);
       return {
         body: "",
         seq_num: nextSeq++,
@@ -1104,6 +1112,395 @@ describe("TriggerChatTransport", () => {
       });
       const ok = await transport.stopGeneration("never-started");
       expect(ok).toBe(false);
+    });
+  });
+
+  describe("retry after stop (stopped turn stays gated)", () => {
+    function settled(response: Response): Response {
+      const headers = new Headers(response.headers);
+      headers.set("X-Session-Settled", "true");
+      return new Response(response.body, { status: 200, headers });
+    }
+
+    function gateTransport(
+      sessions: Record<string, ChatSessionPersistedState>,
+      overrides: Partial<TriggerChatTransportOptions> = {}
+    ) {
+      return new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        sessions,
+        ...overrides,
+      });
+    }
+
+    // Builds a transport with a single hydrated session and stops it, since
+    // every "retry after stop" case starts from an already-stopped turn.
+    async function armedGate(
+      chatId: string,
+      state: ChatSessionPersistedState,
+      overrides: Partial<TriggerChatTransportOptions> = {}
+    ) {
+      const transport = gateTransport({ [chatId]: state }, overrides);
+      expect(await transport.stopGeneration(chatId)).toBe(true);
+      return transport;
+    }
+
+    function send(
+      transport: TriggerChatTransport,
+      chatId: string,
+      opts: {
+        trigger?: "submit-message" | "regenerate-message";
+        text?: string;
+        abortSignal?: AbortSignal;
+      } = {}
+    ) {
+      return transport.sendMessages({
+        trigger: opts.trigger ?? "submit-message",
+        chatId,
+        messageId: undefined,
+        messages: [createUserMessage(opts.text ?? "hi")],
+        abortSignal: opts.abortSignal,
+      });
+    }
+
+    // `.in` seq of the retried send. The stopped turn's boundary carries a lower
+    // cursor, the new turn's carries this one.
+    const RETRY_SEQ = 10;
+
+    function mockFetch(outResponses: (() => Response)[]) {
+      let subscribeCount = 0;
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (isSessionStreamAppendUrl(urlStr)) {
+          return new Response(JSON.stringify({ ok: true, seq: RETRY_SEQ }), { status: 200 });
+        }
+        if (isSessionOutSubscribeUrl(urlStr)) {
+          const next = outResponses[Math.min(subscribeCount++, outResponses.length - 1)]!;
+          return next();
+        }
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+    }
+
+    it("drops the stopped turn's tail and delivers the new turn after its turn-complete", async () => {
+      mockFetch([
+        () =>
+          defaultSseResponse([
+            // Tail of the stopped turn, then its boundary, then the new turn.
+            { type: "text-delta", id: "old", delta: "stale" },
+            { type: "text-end", id: "old" },
+            { type: "trigger:turn-complete", sessionInEventId: RETRY_SEQ - 1 },
+            { type: "text-start", id: "new" },
+            { type: "text-delta", id: "new", delta: "fresh" },
+            { type: "text-end", id: "new" },
+            { type: "trigger:turn-complete", sessionInEventId: RETRY_SEQ },
+          ]),
+      ]);
+
+      const transport = await armedGate("chat-retry", {
+        publicAccessToken: "p",
+        isStreaming: true,
+      });
+
+      const stream = await send(transport, "chat-retry", { trigger: "regenerate-message" });
+
+      expect(await drainChunks(stream)).toEqual([
+        { type: "text-start", id: "new" },
+        { type: "text-delta", id: "new", delta: "fresh" },
+        { type: "text-end", id: "new" },
+      ]);
+    });
+
+    it("leaves the turn in flight while the stopped turn never reaches its boundary", async () => {
+      // No first-chunk event fires, so a caller's no-first-event deadline
+      // would surface a retryable error.
+      mockFetch([
+        () =>
+          settled(
+            defaultSseResponse([
+              { type: "text-delta", id: "old", delta: "stale" },
+              { type: "text-end", id: "old" },
+            ])
+          ),
+      ]);
+
+      const events: ChatTransportEvent[] = [];
+      const transport = await armedGate(
+        "chat-orphan",
+        { publicAccessToken: "p", isStreaming: true },
+        { onEvent: (e) => events.push(e) }
+      );
+
+      const stream = await send(transport, "chat-orphan");
+
+      expect(await drainChunks(stream)).toEqual([]);
+      expect(events.some((e) => e.type === "first-chunk")).toBe(false);
+      expect(events.some((e) => e.type === "turn-completed")).toBe(false);
+      expect(transport.getSession("chat-orphan")?.activeInputSeq).toBe(RETRY_SEQ);
+    });
+
+    it("keeps gating until the superseded turn's own boundary", async () => {
+      // `.in` seq of the turn being stopped; an even older boundary can only be
+      // a replay and must not reopen the gate.
+      const STOPPED_SEQ = 5;
+      mockFetch([
+        () =>
+          defaultSseResponse([
+            { type: "text-delta", id: "old", delta: "stale" },
+            { type: "trigger:turn-complete", sessionInEventId: STOPPED_SEQ - 2 },
+            { type: "text-delta", id: "old", delta: "still stale" },
+            { type: "trigger:turn-complete", sessionInEventId: STOPPED_SEQ },
+            { type: "text-delta", id: "new", delta: "fresh" },
+            { type: "trigger:turn-complete", sessionInEventId: RETRY_SEQ },
+          ]),
+      ]);
+
+      const events: ChatTransportEvent[] = [];
+      const transport = await armedGate(
+        "chat-replayed-boundary",
+        { publicAccessToken: "p", isStreaming: true, activeInputSeq: STOPPED_SEQ },
+        { onEvent: (e) => events.push(e) }
+      );
+
+      const stream = await send(transport, "chat-replayed-boundary");
+
+      expect(await drainChunks(stream)).toEqual([
+        { type: "text-delta", id: "new", delta: "fresh" },
+      ]);
+      expect(events.filter((e) => e.type === "turn-completed")).toHaveLength(1);
+    });
+
+    it("lets a pending-version through while the gate is armed", async () => {
+      // The handover the gate is waiting on is exactly when the successor can
+      // land on a deployment that has not built yet.
+      mockFetch([
+        () =>
+          defaultSseResponse([
+            { type: "text-delta", id: "old", delta: "stale" },
+            { type: "trigger:pending-version" },
+            { type: "trigger:turn-complete", sessionInEventId: RETRY_SEQ - 1 },
+            { type: "trigger:turn-complete", sessionInEventId: RETRY_SEQ },
+          ]),
+      ]);
+
+      const events: ChatTransportEvent[] = [];
+      const transport = await armedGate(
+        "chat-gated-pending",
+        { publicAccessToken: "p", isStreaming: true, activeInputSeq: 5 },
+        { onEvent: (e) => events.push(e) }
+      );
+
+      const stream = await send(transport, "chat-gated-pending");
+      expect(await drainChunks(stream)).toEqual([]);
+      expect(events.filter((e) => e.type === "run-pending-version")).toHaveLength(1);
+    });
+
+    it("clears the gate on a header-less boundary (legacy wire)", async () => {
+      // No cursor to compare, so the boundary is taken as the superseded turn's:
+      // the tail is dropped, the turn closes, and the next send is not gated.
+      mockFetch([
+        () =>
+          defaultSseResponse([
+            { type: "text-delta", id: "old", delta: "stale" },
+            { type: "trigger:turn-complete" },
+          ]),
+        () => defaultSseResponse(),
+      ]);
+
+      const transport = await armedGate("chat-legacy-boundary", {
+        publicAccessToken: "p",
+        isStreaming: true,
+        activeInputSeq: 5,
+      });
+
+      const stream = await send(transport, "chat-legacy-boundary");
+      expect(await drainChunks(stream)).toEqual([]);
+
+      const next = await send(transport, "chat-legacy-boundary", { text: "again" });
+      expect(await drainChunks(next)).toEqual(sampleChunks);
+    });
+
+    it("does not gate a stop with no turn outstanding", async () => {
+      mockFetch([() => defaultSseResponse()]);
+
+      const transport = await armedGate("chat-idle-stop", { publicAccessToken: "p" });
+
+      const stream = await send(transport, "chat-idle-stop");
+
+      expect(await drainChunks(stream)).toEqual(sampleChunks);
+    });
+
+    it("does not arm or write a stop when the abort lands after the boundary", async () => {
+      const bodies: string[] = [];
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (isSessionStreamAppendUrl(urlStr)) {
+          bodies.push(init!.body as string);
+          return new Response(JSON.stringify({ ok: true, seq: RETRY_SEQ }), { status: 200 });
+        }
+        if (isSessionOutSubscribeUrl(urlStr)) return defaultSseResponse();
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const controller = new AbortController();
+      const transport = gateTransport({ "chat-late-abort": { publicAccessToken: "p" } });
+
+      const stream = await send(transport, "chat-late-abort", { abortSignal: controller.signal });
+      expect(await drainChunks(stream)).toEqual(sampleChunks);
+
+      // The turn is over; the consumer dropping the stream must not gate the next.
+      controller.abort();
+      expect(bodies.some((b) => JSON.parse(b).kind === "stop")).toBe(false);
+
+      const next = await send(transport, "chat-late-abort", { text: "again" });
+      expect(await drainChunks(next)).toEqual(sampleChunks);
+    });
+
+    it("errors the turn when the gate swallowed the new turn's own output", async () => {
+      // The stopped run died without writing a boundary, so the gate ate the new
+      // turn: surface an error rather than complete an empty answer.
+      mockFetch([
+        () =>
+          defaultSseResponse([
+            { type: "text-delta", id: "old", delta: "stale" },
+            { type: "text-start", id: "new" },
+            { type: "trigger:turn-complete", sessionInEventId: RETRY_SEQ },
+          ]),
+        () => defaultSseResponse(),
+      ]);
+
+      const events: ChatTransportEvent[] = [];
+      const transport = await armedGate(
+        "chat-no-old-boundary",
+        { publicAccessToken: "p", isStreaming: true },
+        { onEvent: (e) => events.push(e) }
+      );
+
+      const stream = await send(transport, "chat-no-old-boundary");
+
+      await expect(drainChunks(stream)).rejects.toThrow(/output was lost/);
+      expect(events.some((e) => e.type === "turn-completed")).toBe(false);
+      expect(events.some((e) => e.type === "stream-error")).toBe(true);
+      expect(transport.getSession("chat-no-old-boundary")?.isStreaming).toBe(false);
+      expect(transport.getSession("chat-no-old-boundary")?.activeInputSeq).toBeUndefined();
+
+      // Nothing left armed: the next send streams normally.
+      const next = await send(transport, "chat-no-old-boundary", { text: "again" });
+      expect(await drainChunks(next)).toEqual(sampleChunks);
+    });
+
+    it("delivers records again after clearSupersedeGate", async () => {
+      mockFetch([() => defaultSseResponse()]);
+
+      const transport = await armedGate("chat-escape", {
+        publicAccessToken: "p",
+        isStreaming: true,
+      });
+      transport.clearSupersedeGate("chat-escape");
+
+      const stream = await send(transport, "chat-escape");
+
+      expect(await drainChunks(stream)).toEqual(sampleChunks);
+    });
+
+    it("does not re-arm the gate when a retry stops a turn the deadline abandoned", async () => {
+      const outResponses = [
+        () =>
+          defaultSseResponse([
+            { type: "text-start", id: "new" },
+            { type: "text-delta", id: "new", delta: "hello" },
+            { type: "text-end", id: "new" },
+            { type: "trigger:turn-complete", sessionInEventId: 11 },
+          ]),
+        () => settled(defaultSseResponse([{ type: "text-delta", id: "b", delta: "partial" }])),
+        () =>
+          defaultSseResponse([
+            { type: "text-delta", id: "b", delta: "stale" },
+            { type: "trigger:turn-complete", sessionInEventId: 12 },
+            { type: "text-delta", id: "c", delta: "after" },
+            { type: "trigger:turn-complete", sessionInEventId: 14 },
+          ]),
+      ];
+      let appendSeq = 9;
+      let subscribeCount = 0;
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (isSessionStreamAppendUrl(urlStr)) {
+          return new Response(JSON.stringify({ ok: true, seq: ++appendSeq }), { status: 200 });
+        }
+        if (isSessionOutSubscribeUrl(urlStr)) {
+          return outResponses[Math.min(subscribeCount++, outResponses.length - 1)]!();
+        }
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const transport = gateTransport({
+        "chat-abandoned": { publicAccessToken: "p", isStreaming: true, activeInputSeq: 5 },
+      });
+
+      transport.clearSupersedeGate("chat-abandoned");
+      expect(await transport.stopGeneration("chat-abandoned")).toBe(true);
+
+      const retry = await send(transport, "chat-abandoned", { text: "retry" });
+
+      expect(await drainChunks(retry)).toEqual([
+        { type: "text-start", id: "new" },
+        { type: "text-delta", id: "new", delta: "hello" },
+        { type: "text-end", id: "new" },
+      ]);
+
+      // The abandoned turn is behind us: a later stop must gate again as usual.
+      const next = await send(transport, "chat-abandoned", { text: "next" });
+      expect(await drainChunks(next)).toEqual([{ type: "text-delta", id: "b", delta: "partial" }]);
+
+      expect(await transport.stopGeneration("chat-abandoned")).toBe(true);
+
+      const afterStop = await send(transport, "chat-abandoned", { text: "again" });
+
+      expect(await drainChunks(afterStop)).toEqual([
+        { type: "text-delta", id: "c", delta: "after" },
+      ]);
+    });
+
+    it("keeps the gate out of the persisted session", async () => {
+      mockFetch([() => defaultSseResponse()]);
+
+      const sessions: Record<string, unknown> = {};
+      const transport = await armedGate(
+        "chat-persist",
+        { publicAccessToken: "p" },
+        {
+          onSessionChange: (chatId, session) => {
+            sessions[chatId] = session;
+          },
+        }
+      );
+
+      expect(transport.getSession("chat-persist")).not.toHaveProperty("skipToTurnComplete");
+      expect(sessions["chat-persist"]).not.toHaveProperty("skipToTurnComplete");
+    });
+
+    it("clears on the first turn-complete after two consecutive stops", async () => {
+      mockFetch([
+        () =>
+          defaultSseResponse([
+            { type: "text-delta", id: "old", delta: "stale" },
+            { type: "trigger:turn-complete", sessionInEventId: RETRY_SEQ - 1 },
+            { type: "text-start", id: "new" },
+            { type: "trigger:turn-complete", sessionInEventId: RETRY_SEQ },
+          ]),
+      ]);
+
+      const transport = await armedGate("chat-double-stop", {
+        publicAccessToken: "p",
+        isStreaming: true,
+      });
+      expect(await transport.stopGeneration("chat-double-stop")).toBe(true);
+
+      const stream = await send(transport, "chat-double-stop");
+
+      expect(await drainChunks(stream)).toEqual([{ type: "text-start", id: "new" }]);
     });
   });
 

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { MachinePresetName } from "@trigger.dev/core/v3";
+import { parseNaturalLanguageDurationInMs } from "@trigger.dev/core/v3/isomorphic";
 import { BoolEnv } from "./utils/boolEnv";
 import { isValidDatabaseUrl } from "./utils/db";
 import { parseRunOpsShards, validateShardListAgainstNewUrl } from "~/v3/runOpsShards.server";
@@ -217,6 +218,15 @@ const EnvironmentSchema = z
     // Pins agent sessions to a specific deployed version (paired with
     // --skip-promotion deploys); unset => the project env's current version.
     DASHBOARD_AGENT_VERSION: z.string().optional(),
+    // How long an agent turn's run may sit undequeued before it expires,
+    // so a superseded/never-picked-up run doesn't wait indefinitely.
+    DASHBOARD_AGENT_RUN_TTL: z
+      .string()
+      .refine(
+        (v) => parseNaturalLanguageDurationInMs(v) !== undefined,
+        "must be a duration like 2m, 90s, 1h30m"
+      )
+      .default("2m"),
     // Global default for the `hasDashboardAgentAccess` flag. "0" (off) ships the
     // agent dark; flip to "1" to enable it for everyone at GA. Per-org overrides
     // (org featureFlags) win regardless.

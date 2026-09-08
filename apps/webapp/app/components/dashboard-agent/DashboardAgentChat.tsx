@@ -9,7 +9,7 @@ import {
 } from "@internal/dashboard-agent-contracts";
 import { useLocation, useNavigate } from "@remix-run/react";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useToast } from "~/components/primitives/Toast";
 import { AgentQuotaNotice, AgentUpgradeBlock } from "./AgentUpgradeGate";
 import { DashboardAgentComposer } from "./DashboardAgentComposer";
@@ -27,16 +27,27 @@ import { createTranscriptOrder, orderTranscript } from "./message-order";
 import { navigateDestination } from "./navigate-target";
 import { pendingNavigateIntents, pendingWatchIntents } from "./pending-intents";
 import type { AgentPageContext } from "./page-context-types";
+import { earliestInFlightToolCall } from "./progress-line";
 import { retryAction } from "./retry-action";
 import {
   fetchChatTranscript,
   pollSettledTranscript,
   transcriptLooksUnfinished,
 } from "./settled-transcript";
+import { toolPendingLabel } from "./tool-labels";
 import { takeNavigateIntent } from "./turn-navigation";
 import { sendRequestOutcome } from "./send-request";
+import {
+  createKeyedDeadline,
+  isTurnInFlight,
+  NO_FIRST_EVENT_DEADLINE_MS,
+  noFirstEventKey,
+  TOOL_HUNG_DEADLINE_MS,
+  type TurnDeadlineState,
+} from "./turn-deadlines";
 import { teardownCancelsTurn, unmountTeardown } from "./turn-teardown";
 import { useAgentMessageQuota } from "./useAgentMessageQuota";
+import { useRetryController } from "./use-retry-controller";
 import { useTriggerUriResolver } from "./useTriggerUriResolver";
 import { WatchChips, type WatchChip } from "./WatchChips";
 
@@ -213,6 +224,102 @@ export function DashboardAgentChat({
 
   const messages = orderTranscript(rawMessages, orderRef.current);
 
+  // Independent of the SDK's own `error`: a deadline firing never touches the server
+  // turn or `status`, it only bounds how long the panel waits before saying something.
+  const [deadlineState, setDeadlineState] = useState<TurnDeadlineState | null>(null);
+  const [hungTool, setHungTool] = useState<string | null>(null);
+  // A resend re-enters `status: "submitted"`, the same value a stuck turn left it in —
+  // `setStatus` is a no-op when unchanged, so nothing re-triggers the effect below without this.
+  const [attempt, setAttempt] = useState(0);
+  const noFirstEventDeadline = useRef(
+    createKeyedDeadline<"submitted">({
+      deadlineMs: NO_FIRST_EVENT_DEADLINE_MS,
+      onTimeout: () => {
+        // Nothing ever streamed, so the prior run may have died without writing a
+        // `trigger:turn-complete` boundary — the one thing that normally clears the
+        // supersede gate a stop arms. Left gated, the retry below would be silently
+        // ignored server-side. Not done on the tool-hung path: there, a real turn did
+        // start, so a stop (if the user retries) is what should arm/clear the gate.
+        transport.clearSupersedeGate(chatId);
+        setDeadlineState("no_first_event");
+      },
+      onClear: () => setDeadlineState((current) => (current === "no_first_event" ? null : current)),
+    })
+  ).current;
+  // Keyed by call id, not name: a name key would restart the window whenever a
+  // parallel sibling call settles or is replaced by a same-named call, masking a
+  // genuinely hung one. Read by the timeout callback for the label, since by the time
+  // it fires the tracked call is still the earliest pending one (same key, no reset).
+  const hungToolNameRef = useRef<string | null>(null);
+  const toolHungDeadline = useRef(
+    createKeyedDeadline<string>({
+      deadlineMs: TOOL_HUNG_DEADLINE_MS,
+      onTimeout: () => {
+        setDeadlineState("tool_hung");
+        setHungTool(hungToolNameRef.current);
+      },
+      onClear: () => setDeadlineState((current) => (current === "tool_hung" ? null : current)),
+    })
+  ).current;
+  useEffect(() => {
+    noFirstEventDeadline.sync(noFirstEventKey(status));
+  }, [status, noFirstEventDeadline, attempt]);
+  useEffect(() => {
+    // The earliest still-pending call is the one actually at risk of exceeding the deadline.
+    const earliest = isTurnInFlight(status) ? earliestInFlightToolCall(messages) : undefined;
+    hungToolNameRef.current = earliest?.name ?? null;
+    toolHungDeadline.sync(earliest?.callId ?? null);
+  }, [messages, status, toolHungDeadline]);
+
+  const deadlineError = useMemo(() => {
+    if (!deadlineState) return undefined;
+    if (deadlineState === "no_first_event") {
+      return new Error("The agent hasn't started responding. It may not be running — try again.");
+    }
+    return new Error(
+      `${toolPendingLabel(hungTool ?? "")} is taking longer than expected. It may not be running — try again.`
+    );
+  }, [deadlineState, hungTool]);
+
+  // Where this tab asked for the running turn, stamped only where a turn is actually started
+  // here. A turn this tab resumed leaves it null, which is what tells `takeNavigateIntent` the
+  // tab cannot claim the user is still on the page that asked. Never cleared on settle: the
+  // navigate intent can be committed alongside the status going ready.
+  const turnStartedPathRef = useRef<string | null>(null);
+
+  const onRetrySettled = useCallback(
+    (willResend: boolean) => {
+      setDeadlineState(null);
+      // Reset the deadlines' own key, not just the displayed state: a dangling tool part
+      // that already fired once would otherwise never re-arm (same key, no change to sync).
+      noFirstEventDeadline.reset();
+      toolHungDeadline.reset();
+      if (!willResend) return;
+      setAttempt((current) => current + 1);
+      turnStartedPathRef.current = renderedPathRef.current;
+    },
+    [noFirstEventDeadline, toolHungDeadline]
+  );
+
+  const {
+    stop,
+    retry: retryAgainstAction,
+    dismissError,
+    stopFailedError,
+  } = useRetryController({
+    chatId,
+    transport,
+    status,
+    stop: aiStop,
+    sendMessage,
+    regenerate,
+    clearError,
+    onSettled: onRetrySettled,
+  });
+
+  // The SDK's own error wins when both are present — it's the more specific failure.
+  const effectiveError = error ?? deadlineError ?? stopFailedError;
+
   // Read here, not in the panel, so it re-reads as each turn settles.
   const quota = useAgentMessageQuota({ actionPath, chatId, status });
   useEffect(() => {
@@ -228,7 +335,11 @@ export function DashboardAgentChat({
   // carries the plan limit the server resolved.
   const messageCapPlanResolved = quotaReached?.planResolved ?? false;
 
-  const isStreaming = status === "streaming";
+  // Named for the composer's stop-vs-send affordance, but gates on the whole in-flight
+  // window (submitted or streaming): a deadline error can only ever show while the turn
+  // is still in flight, and a fresh send during that window would race it instead of
+  // going through `useRetryController`'s stop-first path.
+  const isStreaming = isTurnInFlight(status);
   // From status, not the last part: the indicator must stay up through silent tool calls.
   const activity: TurnActivity | null =
     status === "submitted" ? "thinking" : status === "streaming" ? "working" : null;
@@ -246,12 +357,6 @@ export function DashboardAgentChat({
       return missing.length === 0 ? current : [...current, ...missing];
     });
   }, [appendedMessages, setMessages]);
-
-  // Where this tab asked for the running turn, stamped only where a turn is actually started
-  // here. A turn this tab resumed leaves it null, which is what tells `takeNavigateIntent` the
-  // tab cannot claim the user is still on the page that asked. Never cleared on settle: the
-  // navigate intent can be committed alongside the status going ready.
-  const turnStartedPathRef = useRef<string | null>(null);
 
   const sentFirst = useRef(false);
   useEffect(() => {
@@ -290,22 +395,15 @@ export function DashboardAgentChat({
     submit(sendRequest.text);
   }, [sendRequest, submit, canSend]);
 
+  // Over the cap, a retry only earns another 403 — same guard as `submit`. A watch's
+  // consent record is a user message nobody typed, so retry never treats it as one.
   const retry = useCallback(() => {
-    // Over the cap, a retry only earns another 403 — same guard as `submit`.
     if (atMessageCap) return;
-    // A watch's consent record is a user message nobody typed, so retry never treats it as one.
     const action = retryAction(
       messages.filter((m) => !(m.role === "user" && isWatchRequestMessageId(m.id)))
     );
-    if (!action) return;
-    clearError();
-    turnStartedPathRef.current = renderedPathRef.current;
-    if (action.kind === "regenerate") {
-      void regenerate();
-      return;
-    }
-    void sendMessage({ text: action.text, messageId: action.messageId });
-  }, [messages, sendMessage, regenerate, clearError, atMessageCap]);
+    retryAgainstAction(action);
+  }, [messages, atMessageCap, retryAgainstAction]);
 
   const resolveUri = useTriggerUriResolver(actionPath);
 
@@ -386,23 +484,27 @@ export function DashboardAgentChat({
     if (proposed) onWatchIntent?.(proposed.spec);
   }, [messages, onWatchIntent]);
 
-  const stop = useCallback(() => {
-    transport.stopGeneration(chatId);
-    aiStop();
-  }, [transport, chatId, aiStop]);
-
   const teardownRef = useRef<() => void>(() => {});
 
   teardownRef.current = () => {
-    if (status !== "streaming" && status !== "submitted") return;
+    if (!isTurnInFlight(status)) return;
     const reason = unmountTeardown({
       renderedPath: renderedPathRef.current,
       livePath: window.location.pathname,
     });
     if (!teardownCancelsTurn(reason)) return;
-    stop();
+    // Fire-and-forget: nothing is mounted to show a stop failure after unmount, and an
+    // uncaught rejection here would otherwise surface as an unhandled rejection.
+    void stop().catch(() => {});
   };
   useEffect(() => () => teardownRef.current(), []);
+  useEffect(
+    () => () => {
+      noFirstEventDeadline.reset();
+      toolHungDeadline.reset();
+    },
+    [noFirstEventDeadline, toolHungDeadline]
+  );
 
   // Read by the settle effect, which must not re-run when the transcript changes.
   const messagesRef = useRef(messages);
@@ -450,10 +552,10 @@ export function DashboardAgentChat({
         <DashboardAgentMessages
           messages={messages}
           activity={activity}
-          error={error}
+          error={effectiveError}
           onRetry={retry}
           retryDisabledReason={atMessageCap ? MESSAGE_QUOTA_REACHED_REASON : undefined}
-          onDismissError={clearError}
+          onDismissError={dismissError}
           onIntent={handleIntent}
           pagePaths={pagePaths}
           watches={watches}
