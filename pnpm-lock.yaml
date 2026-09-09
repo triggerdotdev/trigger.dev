@@ -1266,6 +1266,9 @@ importers:
       rimraf:
         specifier: 6.0.1
         version: 6.0.1
+      tsx:
+        specifier: 4.17.0
+        version: 4.17.0
 
   internal-packages/run-ops-database:
     dependencies:

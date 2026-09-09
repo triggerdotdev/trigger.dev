@@ -39,15 +39,17 @@
     "@internal/testcontainers": "workspace:*",
     "@opentelemetry/sdk-metrics": "2.7.1",
     "@types/seedrandom": "^3.0.8",
-    "rimraf": "6.0.1"
+    "rimraf": "6.0.1",
+    "tsx": "4.17.0"
   },
   "scripts": {
     "clean": "rimraf dist",
-    "typecheck": "tsc --noEmit -p tsconfig.build.json && tsc --noEmit -p tsconfig.freeze-test.json",
+    "typecheck": "tsc --noEmit -p tsconfig.build.json && tsc --noEmit -p tsconfig.freeze-test.json && tsc --noEmit -p tsconfig.harness.json",
     "test": "vitest --sequence.concurrent=false --no-file-parallelism",
     "test:coverage": "vitest --sequence.concurrent=false --no-file-parallelism --coverage.enabled",
     "build": "pnpm run clean && tsc -p tsconfig.build.json",
     "dev": "tsc --watch  -p tsconfig.build.json",
-    "test:bench": "vitest --config ./vitest.bench.config.ts --run"
+    "test:bench": "vitest --config ./vitest.bench.config.ts --run",
+    "harness:waitpoint-fanout": "tsx harness/waitpointFanout.ts"
   }
 }

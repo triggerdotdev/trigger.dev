@@ -42,25 +42,60 @@ export type {
   BatchCompletionCallback,
 } from "./batch-queue/types.js";
 
-// Waitpoint store coordinator. Exported but not yet wired: a later ticket routes
-// WaitpointSystem onto it behind a per-organisation flag.
+// Waitpoint store coordinator and its fanout worker. Exported but not yet wired: a later
+// ticket routes WaitpointSystem onto them behind a per-organisation flag, and the worker
+// stays disabled by default until then.
 export {
-  WaitpointStoreCoordinator,
+  DEFAULT_TERMINAL_RETENTION_MS,
+  WaitpointCompletionConflictError,
   WaitpointNotFoundError,
+  WaitpointStoreCoordinator,
 } from "./engine/waitpointCoordinator/storeCoordinator.js";
 export type {
   AbsorbResult,
   BlockEdge,
   BlockState,
   BlockStateEdge,
+  CleanupReason,
+  CleanupResult,
   CompleteResult,
   CreateIfAbsentResult,
+  DeliverResult,
+  FanoutAckResult,
+  FanoutBacklog,
+  FanoutClaim,
+  FanoutPageEntry,
+  FanoutReleaseAction,
+  FanoutReleaseResult,
+  FanoutState,
+  HandoffState,
   RegisterOrReportResult,
   WaitpointCompletion,
   WaitpointCompletionOutput,
+  WaitpointDiagnostics,
   WaitpointRecordInput,
   WaitpointStatus,
   WaitpointStoreCoordinatorOptions,
   WatcherEntry,
 } from "./engine/waitpointCoordinator/storeCoordinator.js";
-export { WaitpointKeyTagError } from "./engine/waitpointCoordinator/keys.js";
+export { WaitpointFanoutWorker } from "./engine/waitpointCoordinator/fanoutWorker.js";
+export type {
+  FanoutTickSummary,
+  FanoutVisitSummary,
+  FanoutWorkerHooks,
+  WaitpointFanoutWorkerOptions,
+} from "./engine/waitpointCoordinator/fanoutWorker.js";
+export {
+  assertFanoutWorkerLimits,
+  completionFingerprint,
+  DEFAULT_FANOUT_RETRY_POLICY,
+} from "./engine/waitpointCoordinator/fanoutPolicy.js";
+export type {
+  FanoutRetryPolicy,
+  FanoutWorkerLimits,
+  WatcherDeliveryOutcome,
+} from "./engine/waitpointCoordinator/fanoutPolicy.js";
+export {
+  FANOUT_PARTITION_COUNT,
+  WaitpointKeyTagError,
+} from "./engine/waitpointCoordinator/keys.js";
