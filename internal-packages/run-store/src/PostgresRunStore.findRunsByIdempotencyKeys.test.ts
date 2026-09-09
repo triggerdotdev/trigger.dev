@@ -1,5 +1,5 @@
 import { postgresTest } from "@internal/testcontainers";
-import type { PrismaClient } from "@trigger.dev/database";
+import type { PrismaClient, TaskRunStatus } from "@trigger.dev/database";
 import { describe, expect } from "vitest";
 import { PostgresRunStore } from "./PostgresRunStore.js";
 
@@ -38,6 +38,7 @@ async function createRun(
     taskIdentifier: string;
     idempotencyKey: string;
     idempotencyKeyExpiresAt?: Date;
+    status?: TaskRunStatus;
   }
 ) {
   await prisma.taskRun.create({
@@ -46,6 +47,7 @@ async function createRun(
       taskIdentifier: params.taskIdentifier,
       idempotencyKey: params.idempotencyKey,
       idempotencyKeyExpiresAt: params.idempotencyKeyExpiresAt ?? null,
+      ...(params.status ? { status: params.status } : {}),
       payload: "{}",
       payloadType: "application/json",
       runtimeEnvironmentId: params.runtimeEnvironmentId,
@@ -103,6 +105,42 @@ describe("PostgresRunStore.findRunsByIdempotencyKeys", () => {
       expiresAt.toISOString()
     );
     expect(byKey.get("idem-2")?.idempotencyKeyExpiresAt).toBeNull();
+  });
+
+  // Regression for #4819: the batch trigger path decides whether a cached match is still reusable
+  // by feeding this row's status to `shouldIdempotencyKeyBeCleared`. Before the fix the query did
+  // not select `status` at all, so a key pointing at a dead run was returned as cached forever.
+  postgresTest("returns the run status so callers can reject dead runs", async ({ prisma }) => {
+    const { project, environment } = await seedEnvironment(prisma);
+    const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+    await createRun(prisma, {
+      runtimeEnvironmentId: environment.id,
+      projectId: project.id,
+      friendlyId: "run_dead",
+      taskIdentifier: "task-a",
+      idempotencyKey: "idem-dead",
+      status: "CRASHED",
+    });
+    await createRun(prisma, {
+      runtimeEnvironmentId: environment.id,
+      projectId: project.id,
+      friendlyId: "run_live",
+      taskIdentifier: "task-a",
+      idempotencyKey: "idem-live",
+      status: "EXECUTING",
+    });
+
+    const rows = await store.findRunsByIdempotencyKeys({
+      runtimeEnvironmentId: environment.id,
+      taskIdentifier: "task-a",
+      idempotencyKeys: ["idem-dead", "idem-live"],
+    });
+
+    const byKey = new Map(rows.map((r) => [r.idempotencyKey, r]));
+    expect(rows).toHaveLength(2);
+    expect(byKey.get("idem-dead")?.status).toBe("CRASHED");
+    expect(byKey.get("idem-live")?.status).toBe("EXECUTING");
   });
 
   postgresTest("short-circuits on an empty key list without querying", async ({ prisma }) => {

@@ -27,7 +27,11 @@ import { mintBatchFriendlyId } from "~/v3/runOpsMigration/mintBatchFriendlyId.se
 import { batchTriggerWorker } from "../batchTriggerWorker.server";
 import { guardQueueSizeLimitsForEnv } from "../queueSizeLimits.server";
 import { downloadPacketFromObjectStore, uploadPacketToObjectStore } from "../objectStore.server";
-import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
+import {
+  isFinalAttemptStatus,
+  isFinalRunStatus,
+  shouldIdempotencyKeyBeCleared,
+} from "../taskStatus";
 import { startActiveSpan } from "../tracer.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { OutOfEntitlementError, TriggerTaskService } from "./triggerTask.server";
@@ -439,8 +443,10 @@ export class BatchTriggerV3Service extends BaseService {
       )
     ).flat();
 
-    // Build the run IDs in order: reuse an unexpired cached id, else mint a new id (and record any
-    // expired cached id so its idempotency key can be cleared below).
+    // Build the run IDs in order: reuse a still-valid cached id, else mint a new id (and record the
+    // superseded cached id so its idempotency key can be cleared below). "Still valid" means both
+    // that the key has not timed out and that the run it points at has not reached a clearable
+    // terminal state.
     const expiredRunIds = new Set<string>();
 
     const runs = await Promise.all(
@@ -450,7 +456,16 @@ export class BatchTriggerV3Service extends BaseService {
         );
 
         if (cachedRun) {
-          if (cachedRun.idempotencyKeyExpiresAt && cachedRun.idempotencyKeyExpiresAt < new Date()) {
+          // Reuse the cached id only if the key is still live AND the run it points at is still
+          // usable. A run that reached a clearable terminal state (failed statuses + EXPIRED) is
+          // treated exactly like an expired key: clear it and mint a fresh run, matching the
+          // single-trigger path in `IdempotencyKeyConcern.handleExistingRun`. Sharing the branch
+          // matters - it is what adds the run to `expiredRunIds`, so the stale key cannot survive
+          // to the next batch.
+          const keyTimeExpired =
+            !!cachedRun.idempotencyKeyExpiresAt && cachedRun.idempotencyKeyExpiresAt < new Date();
+
+          if (keyTimeExpired || shouldIdempotencyKeyBeCleared(cachedRun.status)) {
             expiredRunIds.add(cachedRun.friendlyId);
 
             return {

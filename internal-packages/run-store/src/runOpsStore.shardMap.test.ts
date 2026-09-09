@@ -622,6 +622,7 @@ describe("RoutingRunStore findRunsByIdempotencyKeys tiebreak", () => {
     friendlyId: `run_${id}`,
     idempotencyKey: "k",
     idempotencyKeyExpiresAt: null,
+    status: "PENDING",
   });
 
   it("keeps NEW-wins across the gen-1 pair even when legacy is older", async () => {

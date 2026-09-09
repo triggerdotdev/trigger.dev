@@ -28,6 +28,10 @@ export type IdempotencyKeyRunMatch = {
   friendlyId: string;
   idempotencyKey: string | null;
   idempotencyKeyExpiresAt: Date | null;
+  /** Callers decide whether a cached match is still reusable: a run that reached a clearable
+   *  terminal state must not be handed back as cached. Policy lives in the webapp
+   *  (`shouldIdempotencyKeyBeCleared`); the store just returns the column. */
+  status: TaskRunStatus;
 };
 
 export type CreateRunSnapshotInput = {
