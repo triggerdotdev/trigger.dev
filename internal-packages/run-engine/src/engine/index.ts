@@ -210,6 +210,7 @@ export class RunEngine {
       defaultEnvConcurrency: options.queue?.defaultEnvConcurrency ?? 10,
       defaultEnvConcurrencyBurstFactor: options.queue?.defaultEnvConcurrencyBurstFactor,
       totalConcurrencyEnabled: options.queue?.totalConcurrencyEnabled,
+      gatesEnabled: options.queue?.gatesEnabled,
       logger: new Logger("RunQueue", options.queue?.logLevel ?? "info"),
       redis: { ...options.queue.redis, keyPrefix: `${options.queue.redis.keyPrefix}runqueue:` },
       retryOptions: options.queue?.retryOptions,
