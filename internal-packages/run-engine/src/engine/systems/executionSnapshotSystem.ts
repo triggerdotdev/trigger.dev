@@ -564,7 +564,8 @@ export class ExecutionSnapshotSystem {
       this.$.logger.log("heartbeatRun: no longer the latest snapshot, stopping the heartbeat.", {
         runId,
         snapshotId,
-        latestSnapshot,
+        latestSnapshotId: latestSnapshot.id,
+        latestSnapshotExecutionStatus: latestSnapshot.executionStatus,
         workerId,
         runnerId,
       });
@@ -576,7 +577,7 @@ export class ExecutionSnapshotSystem {
       this.$.logger.debug("heartbeatRun: worker ID does not match the latest snapshot", {
         runId,
         snapshotId,
-        latestSnapshot,
+        latestSnapshotWorkerId: latestSnapshot.workerId,
         workerId,
         runnerId,
       });

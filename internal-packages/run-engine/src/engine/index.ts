@@ -2692,7 +2692,8 @@ export class RunEngine {
           {
             runId,
             snapshotId,
-            latestSnapshot: latestSnapshot,
+            latestSnapshotId: latestSnapshot.id,
+            latestSnapshotExecutionStatus: latestSnapshot.executionStatus,
           }
         );
 
@@ -2701,7 +2702,8 @@ export class RunEngine {
 
       this.logger.log("RunEngine.#handleStalledSnapshot() handling stalled snapshot", {
         runId,
-        snapshot: latestSnapshot,
+        snapshotId: latestSnapshot.id,
+        executionStatus: latestSnapshot.executionStatus,
       });
 
       switch (latestSnapshot.executionStatus) {
@@ -2728,7 +2730,8 @@ export class RunEngine {
               "RunEngine.#handleStalledSnapshot() PENDING_EXECUTING run not found",
               {
                 runId,
-                snapshot: latestSnapshot,
+                snapshotId: latestSnapshot.id,
+                executionStatus: latestSnapshot.executionStatus,
               }
             );
 
@@ -2827,7 +2830,9 @@ export class RunEngine {
 
           this.logger.info("handleStalledSnapshot SUSPENDED continueRunIfUnblocked", {
             runId,
-            result,
+            continuationStatus: result.status,
+            reason: result.status === "skipped" ? result.reason : undefined,
+            waitpointCount: "waitpoints" in result ? result.waitpoints.length : undefined,
             snapshotId: latestSnapshot.id,
           });
 
@@ -2840,7 +2845,8 @@ export class RunEngine {
               if (result.waitpoints.length === 0) {
                 this.logger.info("handleStalledSnapshot SUSPENDED blocked but no waitpoints", {
                   runId,
-                  result,
+                  continuationStatus: result.status,
+                  waitpointCount: result.waitpoints.length,
                   snapshotId: latestSnapshot.id,
                 });
                 // If the run is blocked but there are no waitpoints, we don't restart the heartbeat
@@ -2856,7 +2862,8 @@ export class RunEngine {
                   "handleStalledSnapshot SUSPENDED blocked but no run or batch waitpoints",
                   {
                     runId,
-                    result,
+                    continuationStatus: result.status,
+                    waitpointCount: result.waitpoints.length,
                     snapshotId: latestSnapshot.id,
                   }
                 );
@@ -2877,7 +2884,8 @@ export class RunEngine {
                   "handleStalledSnapshot SUSPENDED blocked with waitpoints, max retries reached",
                   {
                     runId,
-                    result,
+                    continuationStatus: result.status,
+                    waitpointCount: result.waitpoints.length,
                     snapshotId: latestSnapshot.id,
                     restartAttempt: $restartAttempt,
                     maxCount,
@@ -2898,7 +2906,8 @@ export class RunEngine {
                 "handleStalledSnapshot SUSPENDED blocked with waitpoints, restarting heartbeat",
                 {
                   runId,
-                  result,
+                  continuationStatus: result.status,
+                  waitpointCount: result.waitpoints.length,
                   snapshotId: latestSnapshot.id,
                   delayMs,
                   restartAttempt: $restartAttempt,
@@ -2998,12 +3007,14 @@ export class RunEngine {
           if (!gotRequeued) {
             this.logger.error("RunEngine.handleRepairSnapshot QUEUED repair failed", {
               runId,
-              snapshot: latestSnapshot,
+              snapshotId: latestSnapshot.id,
+              executionStatus: latestSnapshot.executionStatus,
             });
           } else {
             this.logger.log("RunEngine.handleRepairSnapshot QUEUED repair successful", {
               runId,
-              snapshot: latestSnapshot,
+              snapshotId: latestSnapshot.id,
+              executionStatus: latestSnapshot.executionStatus,
             });
           }
 

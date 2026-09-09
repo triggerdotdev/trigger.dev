@@ -555,7 +555,7 @@ export class WaitpointSystem {
       if (blockingWaitpoints.some((w) => w.waitpoint.status !== "COMPLETED")) {
         this.$.logger.debug(`continueRunIfUnblocked: blocking waitpoints still exist`, {
           runId,
-          blockingWaitpoints,
+          blockingWaitpointCount: blockingWaitpoints.length,
         });
 
         return {
@@ -599,7 +599,7 @@ export class WaitpointSystem {
         case "RUN_CREATED": {
           this.$.logger.info(`continueRunIfUnblocked: run is run created, skipping`, {
             runId,
-            snapshot,
+            snapshotId: snapshot.id,
             executionStatus: snapshot.executionStatus,
           });
 
@@ -611,7 +611,7 @@ export class WaitpointSystem {
         case "DELAYED": {
           this.$.logger.debug(`continueRunIfUnblocked: run is delayed, skipping`, {
             runId,
-            snapshot,
+            snapshotId: snapshot.id,
             executionStatus: snapshot.executionStatus,
           });
 
@@ -623,7 +623,7 @@ export class WaitpointSystem {
         case "QUEUED": {
           this.$.logger.info(`continueRunIfUnblocked: run is queued, skipping`, {
             runId,
-            snapshot,
+            snapshotId: snapshot.id,
             executionStatus: snapshot.executionStatus,
           });
 
@@ -635,7 +635,7 @@ export class WaitpointSystem {
         case "PENDING_EXECUTING": {
           this.$.logger.info(`continueRunIfUnblocked: run is pending executing, skipping`, {
             runId,
-            snapshot,
+            snapshotId: snapshot.id,
             executionStatus: snapshot.executionStatus,
           });
 
@@ -647,7 +647,7 @@ export class WaitpointSystem {
         case "QUEUED_EXECUTING": {
           this.$.logger.info(`continueRunIfUnblocked: run is already queued executing, skipping`, {
             runId,
-            snapshot,
+            snapshotId: snapshot.id,
             executionStatus: snapshot.executionStatus,
           });
 
@@ -659,7 +659,7 @@ export class WaitpointSystem {
         case "EXECUTING": {
           this.$.logger.info(`continueRunIfUnblocked: run is already executing, skipping`, {
             runId,
-            snapshot,
+            snapshotId: snapshot.id,
             executionStatus: snapshot.executionStatus,
           });
 
@@ -672,7 +672,7 @@ export class WaitpointSystem {
         case "FINISHED": {
           this.$.logger.debug(`continueRunIfUnblocked: run is finished, skipping`, {
             runId,
-            snapshot,
+            snapshotId: snapshot.id,
             executionStatus: snapshot.executionStatus,
           });
           return {
@@ -710,8 +710,10 @@ export class WaitpointSystem {
             `continueRunIfUnblocked: run was still executing, sending notification`,
             {
               runId,
-              snapshot,
-              newSnapshot,
+              snapshotId: snapshot.id,
+              snapshotExecutionStatus: snapshot.executionStatus,
+              newSnapshotId: newSnapshot.id,
+              newSnapshotExecutionStatus: newSnapshot.executionStatus,
             }
           );
 
@@ -731,7 +733,12 @@ export class WaitpointSystem {
             if (snapshot.runStatus === "CANCELED") {
               this.$.logger.warn(
                 `continueRunIfUnblocked: run was canceled while suspended, skipping`,
-                { runId, snapshot }
+                {
+                  runId,
+                  snapshotId: snapshot.id,
+                  executionStatus: snapshot.executionStatus,
+                  runStatus: snapshot.runStatus,
+                }
               );
               return {
                 status: "skipped",
@@ -741,7 +748,9 @@ export class WaitpointSystem {
 
             this.$.logger.error(`continueRunIfUnblocked: run is suspended, but has no checkpoint`, {
               runId,
-              snapshot,
+              snapshotId: snapshot.id,
+              executionStatus: snapshot.executionStatus,
+              runStatus: snapshot.runStatus,
             });
             throw new Error(
               `continueRunIfUnblocked: run is suspended, but has no checkpoint: ${runId}`
@@ -767,8 +776,10 @@ export class WaitpointSystem {
 
           this.$.logger.debug(`continueRunIfUnblocked: run goes to QUEUED`, {
             runId,
-            snapshot,
-            newSnapshot,
+            snapshotId: snapshot.id,
+            snapshotExecutionStatus: snapshot.executionStatus,
+            newSnapshotId: newSnapshot.id,
+            newSnapshotExecutionStatus: newSnapshot.executionStatus,
           });
 
           break;
@@ -787,7 +798,7 @@ export class WaitpointSystem {
 
         this.$.logger.debug(`continueRunIfUnblocked: removed blocking waitpoints`, {
           runId,
-          blockingWaitpoints,
+          blockingWaitpointCount: blockingWaitpoints.length,
         });
       }
 
