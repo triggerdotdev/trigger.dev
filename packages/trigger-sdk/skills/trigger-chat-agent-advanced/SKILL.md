@@ -227,8 +227,11 @@ export const myChat = chat.agent({
 
 Send from the browser through `useChat`, so the answer a turn produces renders like any turn:
 `sendMessage(undefined, { body: { action: { type: "regenerate" } } })`, `regenerate({ body: { action } })`,
-or `useChatActions({ sendMessage })` from `@trigger.dev/sdk/chat/react`. `transport.sendAction(chatId, action)`
-returns a raw stream the caller must read itself. Server-side, use
+or `useChatActions({ sendMessage })` from `@trigger.dev/sdk/chat/react`. For regeneration, use
+`regenerate()` from `useChat` (Vercel AI SDK) which removes the last assistant message before
+streaming the new one; calling `sendMessage` with a regenerate action appends without removal,
+leaving both answers visible. `transport.sendAction(chatId, action)` returns a raw stream the
+caller must read and apply itself. Server-side, use
 `agentChat.sendAction({ type: "rollback", targetMessageId: "msg-3" })`.
 
 ### 6. Fast starts: Head Start
