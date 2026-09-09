@@ -9149,6 +9149,7 @@ function chatAgent<
                   // The onFinish callback fires even on abort/stop, so partial responses
                   // from stopped generation are captured correctly.
                   let rawResponseMessage: TUIMessage | undefined;
+                  let responseWasSkipped = false;
                   if (capturedResponseMessage) {
                     // Keep the raw message before cleanup for users who want custom handling
                     rawResponseMessage = capturedResponseMessage;
@@ -9231,6 +9232,8 @@ function chatAgent<
                       } catch {
                         // Conversion failed — skip accumulation for this turn
                       }
+                    } else {
+                      responseWasSkipped = true;
                     }
                   }
                   // If there's no captured response (manual pipe mode) but there are
@@ -9482,18 +9485,22 @@ function chatAgent<
                         parts: [...(msg.parts ?? []), ...lateParts],
                       } as TUIMessage;
                       capturedResponseMessage = accumulatedUIMessages[idx] as TUIMessage;
-                    } else {
+                      capturedPartialResponse = capturedResponseMessage;
+                      turnCompleteEvent.responseMessage = capturedResponseMessage;
+                      turnCompleteEvent.uiMessages = accumulatedUIMessages;
+                      locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+                    } else if (responseWasSkipped) {
                       capturedResponseMessage = {
                         ...capturedResponseMessage,
                         parts: [...(capturedResponseMessage.parts ?? []), ...lateParts],
                       } as TUIMessage;
                       accumulatedUIMessages.push(capturedResponseMessage);
                       turnNewUIMessages.push(capturedResponseMessage);
+                      capturedPartialResponse = capturedResponseMessage;
+                      turnCompleteEvent.responseMessage = capturedResponseMessage;
+                      turnCompleteEvent.uiMessages = accumulatedUIMessages;
+                      locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                     }
-                    capturedPartialResponse = capturedResponseMessage;
-                    turnCompleteEvent.responseMessage = capturedResponseMessage;
-                    turnCompleteEvent.uiMessages = accumulatedUIMessages;
-                    locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                     locals.set(chatResponsePartsKey, []);
                   }
 

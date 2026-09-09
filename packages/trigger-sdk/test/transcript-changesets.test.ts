@@ -557,6 +557,29 @@ describe("chat.agent transcript changesets", () => {
       await harness.close();
     }
   });
+
+  it("does not resurrect a response onBeforeTurnComplete removed while writing a late part", async () => {
+    const chatId = "changeset-hook-removed";
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({ stream: simulateReadableStream({ chunks: textChunks("answer") }) }),
+    });
+    const agent = chat.agent({
+      id: "changeset-hook-removed",
+      onBeforeTurnComplete: async ({ writer }) => {
+        chat.history.slice(0, -1);
+        writer.write({ type: "data-note", data: { text: "late note" } } as never);
+      },
+      run: async ({ messages, signal }) => streamText({ model, messages, abortSignal: signal }),
+    });
+    const harness = mockChatAgent(agent, { chatId });
+    try {
+      await harness.sendMessage(userMessage("hello", "u1"));
+      await waitFor(() => storage.changesets.length === 1, "turn save");
+      expect(storage.transcript(chatId)!.entries.map((e) => e.message.role)).toEqual(["user"]);
+    } finally {
+      await harness.close();
+    }
+  });
 });
 
 function assistantMessage(id: string): UIMessage {
