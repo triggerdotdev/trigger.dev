@@ -61,7 +61,14 @@ export type RouterDropReason =
    */
   | "replayed"
   /** An `at-arrival` record with no handler attached right now. */
-  | "no-handler";
+  | "no-handler"
+  /**
+   * A record the boot took responsibility for over HTTP (see
+   * {@link SessionChannelRouter.markRecovered}). It is dropped however late the
+   * live tail re-delivers it, so a recovered message is never also answered as
+   * a router turn.
+   */
+  | "recovered";
 
 export type RouterDecision =
   /** Handed to a consumer that was already waiting, or to a live handler. */
@@ -143,6 +150,8 @@ export class SessionChannelRouter {
   #highestSeq: number | undefined;
   #resumeFrom: number | undefined;
   #appliedThrough: number | undefined;
+  #claimed = new Set<number>();
+  #owed = new Set<number>();
   #onDrop?: (record: SessionStreamRecord, reason: RouterDropReason, route?: string) => void;
 
   constructor(
@@ -198,6 +207,57 @@ export class SessionChannelRouter {
   }
 
   /**
+   * Declare the sequences a continuation boot already read over HTTP and took
+   * responsibility for dispatching itself, so the live tail's re-read of the
+   * same records does not answer them a second time.
+   *
+   * Two effects, deliberately separate:
+   *
+   * - Every claimed sequence is dropped in {@link ingest} however late it
+   *   arrives (`"recovered"`), so a record the boot owns never also becomes a
+   *   router turn. This survives the boot settling it — the boot owns its
+   *   disposition for the whole run, and the tail may re-deliver at any time.
+   * - Each claimed sequence is also *owed*: it holds the resume floor exactly
+   *   like a queued record would, until the boot {@link settleRecovered}s it.
+   *   Suppressing the second delivery without this would let a turn boundary
+   *   publish a floor past a message the boot has not answered yet, turning a
+   *   duplicate into a dropped message.
+   *
+   * `#highestSeq` is advanced over the contiguous run of claimed sequences from
+   * the current high water, so once every claim is settled the floor can move
+   * past them even if the tail never re-delivers (a silent tail then degrades
+   * to a duplicate, never a loss). The advance stops at the first gap so a
+   * record the boot left for the router is never skipped.
+   */
+  markRecovered(seqNums: Iterable<number>): void {
+    const nums = [...seqNums].filter((n) => Number.isFinite(n)).sort((a, b) => a - b);
+    if (nums.length === 0) return;
+    for (const n of nums) {
+      this.#claimed.add(n);
+      this.#owed.add(n);
+    }
+    let base = this.#highestSeq ?? nums[0]! - 1;
+    while (this.#claimed.has(base + 1)) base++;
+    if (this.#highestSeq === undefined || base > this.#highestSeq) {
+      this.#highestSeq = base;
+    }
+    const maxClaimed = nums[nums.length - 1]!;
+    if (this.#appliedThrough === undefined || maxClaimed > this.#appliedThrough) {
+      this.#appliedThrough = maxClaimed;
+    }
+  }
+
+  /**
+   * Release a claimed sequence's hold on the resume floor once the boot has
+   * decided its disposition (dispatched it as a turn, folded it into the seed
+   * chain, or deliberately dropped it). It stays claimed, so a late tail
+   * re-delivery is still dropped rather than answered again.
+   */
+  settleRecovered(seqNum: number): void {
+    this.#owed.delete(seqNum);
+  }
+
+  /**
    * Classify one record and act on it. The record's destination is decided
    * here, once, and never by whichever consumer happens to be waiting.
    *
@@ -211,6 +271,10 @@ export class SessionChannelRouter {
       if (this.#highestSeq === undefined || record.seqNum > this.#highestSeq) {
         this.#highestSeq = record.seqNum;
       }
+    }
+
+    if (this.#claimed.has(record.seqNum)) {
+      return this.#drop(record, "recovered");
     }
 
     const kind = this.#kindOf(record.data);
@@ -307,6 +371,9 @@ export class SessionChannelRouter {
     for (const state of this.#routes.values()) {
       const pending = state.earliestUnrecovered();
       if (pending !== undefined) earliestPending = Math.min(earliestPending, pending);
+    }
+    for (const owed of this.#owed) {
+      if (owed < earliestPending) earliestPending = owed;
     }
 
     if (earliestPending === Infinity) return this.#highestSeq;
@@ -518,5 +585,7 @@ export class SessionChannelRouter {
     this.#highestSeq = undefined;
     this.#resumeFrom = undefined;
     this.#appliedThrough = undefined;
+    this.#claimed.clear();
+    this.#owed.clear();
   }
 }
