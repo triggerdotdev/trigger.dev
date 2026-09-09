@@ -64,7 +64,9 @@ jobs:
           printf '%s\0' "$PACKAGES" | grep -zqxE '[a-z0-9][a-z0-9 .+:=~-]*' || { echo "invalid packages value"; exit 1; }
           printf '%s\0' "$BUILD_PACKAGES" | grep -zqxE '[a-z0-9][a-z0-9 .+:=~-]*' || { echo "invalid buildPackages value"; exit 1; }
           printf '%s\0' "$SUITE" | grep -zqxE '[a-z]+' || { echo "invalid suite value"; exit 1; }
-          jq -e '.images | length > 0 and all((.repo | test("^[a-z0-9-]+$")) and (.tag | test("^[a-z0-9.-]+$")) and (.base | test("^[a-zA-Z0-9./:@-]+$")))' base-images/images.json > /dev/null \
+          # runtimeKind/bunSource are optional (node entries omit them); when present they
+          # feed FROM/COPY, so validate their shape too.
+          jq -e '.images | length > 0 and all((.repo | test("^[a-z0-9-]+$")) and (.tag | test("^[a-z0-9.-]+$")) and (.base | test("^[a-zA-Z0-9./:@-]+$")) and ((.runtimeKind // "node") | test("^(node|bun)$")) and ((.bunSource // "scratch") | test("^[a-zA-Z0-9./:@-]+$")))' base-images/images.json > /dev/null \
             || { echo "invalid images entries"; exit 1; }
 
           SNAPSHOT="$SNAPSHOT_INPUT"
@@ -146,6 +148,8 @@ jobs:
           tags: triggerdotdev/${{ matrix.image.repo }}:${{ matrix.image.tag }}-build
           build-args: |
             BASE_IMAGE=${{ matrix.image.base }}
+            RUNTIME_KIND=${{ matrix.image.runtimeKind || 'node' }}
+            BUN_SOURCE_IMAGE=${{ matrix.image.bunSource || 'scratch' }}
             DEBIAN_SNAPSHOT=${{ needs.setup.outputs.snapshot }}
             DEBIAN_SUITE=${{ needs.setup.outputs.suite }}
             PACKAGES=${{ needs.setup.outputs.packages }}
@@ -174,6 +178,8 @@ jobs:
             triggerdotdev/${{ matrix.image.repo }}:${{ matrix.image.tag }}-${{ needs.setup.outputs.publish_id }}
           build-args: |
             BASE_IMAGE=${{ matrix.image.base }}
+            RUNTIME_KIND=${{ matrix.image.runtimeKind || 'node' }}
+            BUN_SOURCE_IMAGE=${{ matrix.image.bunSource || 'scratch' }}
             DEBIAN_SNAPSHOT=${{ needs.setup.outputs.snapshot }}
             DEBIAN_SUITE=${{ needs.setup.outputs.suite }}
             PACKAGES=${{ needs.setup.outputs.packages }}
@@ -199,6 +205,8 @@ jobs:
             triggerdotdev/${{ matrix.image.repo }}:${{ matrix.image.tag }}-build-${{ needs.setup.outputs.publish_id }}
           build-args: |
             BASE_IMAGE=${{ matrix.image.base }}
+            RUNTIME_KIND=${{ matrix.image.runtimeKind || 'node' }}
+            BUN_SOURCE_IMAGE=${{ matrix.image.bunSource || 'scratch' }}
             DEBIAN_SNAPSHOT=${{ needs.setup.outputs.snapshot }}
             DEBIAN_SUITE=${{ needs.setup.outputs.suite }}
             PACKAGES=${{ needs.setup.outputs.packages }}

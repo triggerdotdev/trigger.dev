@@ -5,8 +5,37 @@
 # from a pinned Debian snapshot, then apt is restored to the live archive.
 
 ARG BASE_IMAGE
+# node entries leave these at their defaults; bun entries set RUNTIME_KIND=bun
+# and BUN_SOURCE_IMAGE so the runtime-bun stage below is selected. For node builds
+# neither the bun-source stage nor runtime-bun is in the target's graph, so the
+# scratch default is never pulled or copied.
+ARG RUNTIME_KIND=node
+ARG BUN_SOURCE_IMAGE=scratch
 
-FROM ${BASE_IMAGE} AS runtime
+# We build our own bun images instead of depending on a third-party one: the
+# bun binary is copied from the official oven/bun image (pinned by digest in
+# images.json) onto either a node slim base (the node+bun "legacy" image, which
+# keeps a node binary for tasks that shell out to it) or a plain debian slim base
+# (the node-less images, which contain no node at all). Layout matches what
+# deployed bun tasks expect: bun on PATH at /usr/local/bin/bun, BUN_INSTALL_BIN
+# pointing there (resolved by execPathForRuntime), and a bun user/group at uid/gid
+# 1001 (the node base already owns 1000; supervisor pins bun tasks to 1001).
+FROM ${BUN_SOURCE_IMAGE} AS bun-source
+
+FROM ${BASE_IMAGE} AS runtime-node
+
+FROM ${BASE_IMAGE} AS runtime-bun
+ARG BUN_INSTALL_BIN=/usr/local/bin
+ENV BUN_INSTALL_BIN=${BUN_INSTALL_BIN}
+# Ephemeral task containers gain nothing from the on-disk transpiler cache.
+ENV BUN_RUNTIME_TRANSPILER_CACHE_PATH=0
+COPY --from=bun-source /usr/local/bin/bun /usr/local/bin/bun
+RUN groupadd bun --gid 1001 && \
+  useradd bun --uid 1001 --gid bun --shell /bin/sh --create-home && \
+  ln -sf /usr/local/bin/bun /usr/local/bin/bunx && \
+  bun --version
+
+FROM runtime-${RUNTIME_KIND} AS runtime
 
 ARG DEBIAN_SNAPSHOT
 ARG DEBIAN_SUITE=bookworm
