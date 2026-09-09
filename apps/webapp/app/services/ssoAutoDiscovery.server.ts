@@ -45,11 +45,11 @@ export async function ssoRedirectForEmail(
     Promise.resolve(ssoController.decideRouteForEmail(normalised))
   );
   if (error) {
-    logger.warn("SSO auto-discovery fail-open (threw)", { error, email: normalised });
+    logger.warn("SSO auto-discovery fail-open (threw)", { error });
     return null;
   }
   if (decision.isErr()) {
-    logger.warn("SSO auto-discovery fail-open", { reason: decision.error, email: normalised });
+    logger.warn("SSO auto-discovery fail-open", { reason: decision.error });
     return null;
   }
   if (decision.value.kind !== "sso_required") return null;

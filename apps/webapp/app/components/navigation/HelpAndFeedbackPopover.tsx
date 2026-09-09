@@ -10,16 +10,11 @@ import { RadarPulseIcon } from "~/assets/icons/RadarPulseIcon";
 import { StarIcon } from "~/assets/icons/StarIcon";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { ASK_AGENT_LABEL } from "~/components/dashboard-agent/agent-identity";
-import { aiMenuEntries } from "~/components/dashboard-agent/ai-entry-points";
-import { ASK_AI_SHORTCUT, askAiCanOpen } from "~/components/dashboard-agent/ask-ai-channels";
-import { requestAskAi } from "~/components/dashboard-agent/askAiOpenRequest";
-import { AgentMonoLogo } from "~/components/primitives/AgentDotMatrix";
 import { TOGGLE_PANEL_SHORTCUT } from "~/components/dashboard-agent/dashboardAgentLauncher";
 import {
   requestDashboardAgent,
   useDashboardAgentAvailable,
 } from "~/components/dashboard-agent/dashboardAgentOpenRequest";
-import { useAskAiAvailability } from "~/hooks/useAskAiAvailability";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { useRecentChangelogs } from "~/routes/resources.platform-changelogs";
@@ -51,8 +46,6 @@ export function HelpAndFeedback({
   const [isFeedbackOpen, setFeedbackOpen] = useState(false);
   const _currentPlan = useCurrentPlan();
   const agentAvailable = useDashboardAgentAvailable();
-  const askAiAvailable = askAiCanOpen(useAskAiAvailability());
-  const aiEntries = aiMenuEntries({ agent: agentAvailable, askAi: askAiAvailable });
   const { changelogs } = useRecentChangelogs(organizationId, projectId);
 
   useShortcutKeys({
@@ -130,38 +123,21 @@ export function HelpAndFeedback({
           align="start"
         >
           <>
-            {/* This popover lives in the app layout, above both AI hosts, so it opens them
-                through their open-request bridges rather than context. The hosts register the
-                keystrokes; this only shows them. */}
-            {aiEntries.length > 0 && (
+            {/* This popover lives in the app layout, above the agent host, so it opens it
+                through its open-request bridge rather than context. The host registers the
+                keystroke; this only shows it. */}
+            {agentAvailable && (
               <div className="flex flex-col gap-1 p-1">
-                {aiEntries.map((entry) =>
-                  entry === "agent" ? (
-                    <SideMenuItemButton
-                      key={entry}
-                      icon={<AgentMonoLogo size={18} decorative />}
-                      name={ASK_AGENT_LABEL}
-                      data-action="ask-agent"
-                      trailing={<ShortcutKey shortcut={TOGGLE_PANEL_SHORTCUT} variant="medium" />}
-                      onClick={() => {
-                        setHelpMenuOpen(false);
-                        requestDashboardAgent();
-                      }}
-                    />
-                  ) : (
-                    <SideMenuItemButton
-                      key={entry}
-                      icon={AISparkleIcon}
-                      name="Ask AI"
-                      data-action="ask-ai"
-                      trailing={<ShortcutKey shortcut={ASK_AI_SHORTCUT} variant="medium" />}
-                      onClick={() => {
-                        setHelpMenuOpen(false);
-                        requestAskAi();
-                      }}
-                    />
-                  )
-                )}
+                <SideMenuItemButton
+                  icon={AISparkleIcon}
+                  name={ASK_AGENT_LABEL}
+                  data-action="ask-agent"
+                  trailing={<ShortcutKey shortcut={TOGGLE_PANEL_SHORTCUT} variant="medium" />}
+                  onClick={() => {
+                    setHelpMenuOpen(false);
+                    requestDashboardAgent();
+                  }}
+                />
               </div>
             )}
             <div className="flex flex-col gap-1 p-1">

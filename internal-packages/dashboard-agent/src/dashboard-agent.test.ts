@@ -47,6 +47,9 @@ import {
   userMessage,
   type StoreCalls,
 } from "./test-support";
+import { getSystemPrompt } from "./agent-runtime";
+import { systemPromptFor } from "./prompt-assembly";
+import { DASHBOARD_AGENT_WATCH_TOOL_NAMES } from "./tool-schemas";
 import { buildDashboardAgentTools } from "./tools";
 
 describe("dashboardAgent (mock harness)", () => {
@@ -1075,6 +1078,24 @@ describe("a turn that ends in an error", () => {
   });
 });
 
+describe("the system prompt", () => {
+  it("only carries the watch guidance when watches are enabled", async () => {
+    for (const mode of ["assistant", "code"] as const) {
+      const off = await getSystemPrompt(mode);
+      expect(off.text).not.toContain("Watches — telling the user later");
+      expect(off.text).not.toContain("schedule_watch");
+
+      expect(off.text).toBe(systemPromptFor(mode));
+
+      const on = await getSystemPrompt(mode, { watchEnabled: true });
+      expect(on.text).toContain("Watches — telling the user later");
+      expect(on.text).toContain("schedule_watch");
+      // The turn's prompt is exactly what the head-start helper composes.
+      expect(on.text).toBe(systemPromptFor(mode, { watchEnabled: true }));
+    }
+  });
+});
+
 // Back-compat: resumed chats replay their original metadata shape.
 describe("clientDataSchema", () => {
   it("accepts the old shape a chat created before pageContext replays", () => {
@@ -1086,6 +1107,18 @@ describe("clientDataSchema", () => {
       apiOrigin: "http://localhost:3030",
     });
     expect(parsed.success).toBe(true);
+  });
+
+  it("defaults watchEnabled to false, and takes it when the host sends it", () => {
+    const absent = clientDataSchema.safeParse({ userId: "user_1", organizationId: "org_1" });
+    expect(absent.data?.watchEnabled).toBe(false);
+
+    const enabled = clientDataSchema.safeParse({
+      userId: "user_1",
+      organizationId: "org_1",
+      watchEnabled: true,
+    });
+    expect(enabled.data?.watchEnabled).toBe(true);
   });
 
   it("accepts only the org + user pair", () => {
@@ -1165,8 +1198,6 @@ describe("buildDashboardAgentTools", () => {
       [
         "ask_support",
         "correlate_version",
-        "create_alert",
-        "delete_alert",
         "get_current_page",
         "get_deploy",
         "get_error",
@@ -1175,17 +1206,16 @@ describe("buildDashboardAgentTools", () => {
         "get_report",
         "get_run",
         "get_run_trace",
-        "list_alerts",
         "list_deploys",
         "list_environments",
         "list_errors",
         "list_projects",
         "list_runs",
         "list_tasks",
+        "locate",
         "navigate_to",
         "run_query",
         "render_view",
-        "schedule_watch",
         "search_docs",
       ].sort()
     );
@@ -1202,6 +1232,17 @@ describe("buildDashboardAgentTools", () => {
       expect(result).toHaveProperty("error");
       expect(typeof result.error).toBe("string");
     }
+  });
+
+  // The alert tools report a watch firing, so they are watch tools too.
+  it("only registers the watch tools when the client enables them", () => {
+    for (const ctx of [{}, { watchEnabled: false }]) {
+      const names = Object.keys(buildDashboardAgentTools(ctx));
+      for (const name of DASHBOARD_AGENT_WATCH_TOOL_NAMES) expect(names).not.toContain(name);
+    }
+
+    const enabled = Object.keys(buildDashboardAgentTools({ watchEnabled: true }));
+    for (const name of DASHBOARD_AGENT_WATCH_TOOL_NAMES) expect(enabled).toContain(name);
   });
 
   it("render_view echoes a validated view spec back as its output", async () => {
@@ -1566,6 +1607,7 @@ describe("buildDashboardAgentTools", () => {
       ...SCOPE,
       investigations: capability,
       repoSnapshot: codeSnapshot,
+      watchEnabled: true,
     });
 
     // Cited but never read: the render fails on the citation, so there is no card to
@@ -1626,6 +1668,27 @@ describe("buildDashboardAgentTools", () => {
       (a: { kind: string }) => a.kind
     );
     expect(kinds).not.toContain("watch_recurrence");
+  });
+
+  // The button opens the watch card, so it is only offered when the turn can watch.
+  it("offers the repeat watch only when the client enables watches", async () => {
+    const citesError = {
+      ...concludedState,
+      evidence: [{ kind: "error", uri: "error_c4b4a797397a9c43", label: "the error group" }],
+    };
+    const kindsFor = async (watchEnabled: boolean) => {
+      const { capability } = fakeInvestigations();
+      const tools = buildDashboardAgentTools({
+        ...SCOPE,
+        investigations: capability,
+        watchEnabled,
+      });
+      const output = await renderInvestigation(tools, citesError);
+      return (output.blocks[0].capabilities?.actions ?? []).map((a: { kind: string }) => a.kind);
+    };
+
+    expect(await kindsFor(false)).not.toContain("watch_recurrence");
+    expect(await kindsFor(true)).toContain("watch_recurrence");
   });
 
   it("offers no actions while an investigation is still in progress", async () => {
@@ -1857,6 +1920,7 @@ describe("buildDashboardAgentTools", () => {
     userActorToken: "uat_token",
     apiOrigin: "http://localhost:3030",
     chatId: "chat_1",
+    watchEnabled: true,
   };
 
   const RUN_WATCH = {
@@ -1966,7 +2030,7 @@ describe("buildDashboardAgentTools", () => {
 
   it("exchanges the env JWT once per tool set, however many env-scoped tools call the API", async () => {
     const fetchStub = stubFetch((url) => {
-      if (url.endsWith("/jwt")) return { body: { token: "jwt_1" } };
+      if (url.endsWith("/jwt")) return { body: { token: "jwt_1", environmentId: "env_1" } };
       return { body: { data: [], results: [], trace: { traceId: "t1" } } };
     });
     try {
@@ -2010,7 +2074,8 @@ describe("buildDashboardAgentTools", () => {
   it("re-exchanges once and retries when the cached env JWT is rejected", async () => {
     let minted = 0;
     const fetchStub = stubFetch((url, init) => {
-      if (url.endsWith("/jwt")) return { body: { token: `jwt_${++minted}` } };
+      if (url.endsWith("/jwt"))
+        return { body: { token: `jwt_${++minted}`, environmentId: "env_1" } };
       const token = (init?.headers as Record<string, string> | undefined)?.Authorization;
       // The first token is stale (minted at its expiry edge); the second works.
       if (token === "Bearer jwt_1") return { status: 401, body: {} };
@@ -2042,7 +2107,7 @@ describe("buildDashboardAgentTools", () => {
 
   it("retries an unauthorized env call only once, then reports the failure", async () => {
     const fetchStub = stubFetch((url) => {
-      if (url.endsWith("/jwt")) return { body: { token: "jwt_x" } };
+      if (url.endsWith("/jwt")) return { body: { token: "jwt_x", environmentId: "env_1" } };
       return { status: 401, body: {} };
     });
     try {
@@ -2085,7 +2150,7 @@ describe("buildDashboardAgentTools", () => {
 
   it("render_view fails with the chart query's own error, committing no blocks", async () => {
     const fetchStub = stubFetch((url) => {
-      if (url.endsWith("/jwt")) return { body: { token: "jwt_1" } };
+      if (url.endsWith("/jwt")) return { body: { token: "jwt_1", environmentId: "env_1" } };
       return { status: 400, body: { error: "Unknown column createdAt" } };
     });
     try {
@@ -2105,7 +2170,7 @@ describe("buildDashboardAgentTools", () => {
     // the sibling test below relies on.
     const queryBodies: unknown[] = [];
     const fetchStub = stubFetch((url, init) => {
-      if (url.endsWith("/jwt")) return { body: { token: "jwt_1" } };
+      if (url.endsWith("/jwt")) return { body: { token: "jwt_1", environmentId: "env_1" } };
       queryBodies.push(JSON.parse(String(init?.body)));
       return { body: { results: [{ bucket: "2026-01-01T00:00:00Z", runs: 1 }] } };
     });
@@ -2123,7 +2188,7 @@ describe("buildDashboardAgentTools", () => {
 
   it("render_view commits the chart when the validation request itself fails", async () => {
     const fetchStub = stubFetch((url) => {
-      if (url.endsWith("/jwt")) return { body: { token: "jwt_1" } };
+      if (url.endsWith("/jwt")) return { body: { token: "jwt_1", environmentId: "env_1" } };
       throw new Error("ECONNREFUSED");
     });
     try {
@@ -2221,6 +2286,7 @@ describe("watch alert tools", () => {
     projectRef: "proj_abc",
     environmentName: "prod",
     chatId: "chat_alerts",
+    watchEnabled: true,
   };
 
   // Hands back the tool's result and the request the webapp would have received.
@@ -2358,7 +2424,12 @@ describe("watch alert tools", () => {
       ["create_alert", {}],
       ["delete_alert", { alertId: "alert_1" }],
     ] as const) {
-      const { result, requests } = await callAlertTool(name, input, { body: {} }, {});
+      const { result, requests } = await callAlertTool(
+        name,
+        input,
+        { body: {} },
+        { watchEnabled: true }
+      );
       expect(typeof result.error).toBe("string");
       expect(requests).toHaveLength(0);
     }

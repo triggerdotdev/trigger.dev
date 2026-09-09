@@ -12,6 +12,7 @@ import type { Server as IoServer } from "socket.io";
 import type { WebSocketServer } from "ws";
 import type { RateLimitMiddleware } from "~/services/apiRateLimit.server";
 import { type RunWithHttpContextFunction } from "~/services/httpAsyncStorage.server";
+import { sanitizeHttpUrl } from "./app/utils/sanitizeHttpUrl";
 import cluster from "node:cluster";
 import os from "node:os";
 
@@ -146,16 +147,7 @@ async function startServer() {
   // log dominates log volume. HTTP_ACCESS_LOG_DISABLED suppresses successful
   // (2xx) access logs; non-2xx responses are always logged so errors stay visible.
   const suppressSuccessfulAccessLogs = process.env.HTTP_ACCESS_LOG_DISABLED === "1";
-  // Strip the query string from webhook ingress URLs (they may carry a
-  // url-secret) before they reach the access log. Other paths pass through.
-  morgan.token("url-redacted", (req: any) => {
-    const url: string = req.originalUrl ?? req.url ?? "";
-    if (url.startsWith("/webhooks/v1/ingest/")) {
-      const q = url.indexOf("?");
-      return q === -1 ? url : url.slice(0, q);
-    }
-    return url;
-  });
+  morgan.token("url-redacted", (req: any) => sanitizeHttpUrl(req.originalUrl ?? req.url ?? ""));
   app.use(
     morgan(":method :url-redacted :status :res[content-length] - :response-time ms", {
       skip: (_req, res) =>
@@ -230,7 +222,13 @@ async function startServer() {
       res.on("close", () => abortController.abort());
 
       runWithHttpContext(
-        { requestId, path: req.url, host: req.hostname, method: req.method, abortController },
+        {
+          requestId,
+          path: sanitizeHttpUrl(req.url),
+          host: req.hostname,
+          method: req.method,
+          abortController,
+        },
         next
       );
     });

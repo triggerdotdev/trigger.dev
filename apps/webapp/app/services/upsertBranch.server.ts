@@ -182,6 +182,7 @@ export class UpsertBranchService {
           slug: branchSlug,
           apiKey,
           pkApiKey,
+          rootApiKeyHiddenAt: now,
           shortcode,
           maximumConcurrencyLimit: parentEnvironment.maximumConcurrencyLimit,
           paused: billingPause.paused,

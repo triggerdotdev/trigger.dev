@@ -2,7 +2,7 @@ import { signUserActorToken } from "@trigger.dev/rbac";
 import { TriggerClient } from "@trigger.dev/sdk";
 import { chat } from "@trigger.dev/sdk/ai";
 import { Counter } from "prom-client";
-import { prisma } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { metricsRegister } from "~/metrics.server";
 import { singleton } from "~/utils/singleton";
@@ -60,15 +60,26 @@ export function dashboardAgentUserApiOrigin(): string {
 // metadata so the token reaches the agent without ever touching the browser.
 //
 // Endpoints that bind something to one environment read `environmentId` off the token,
-// so the agent can't name a different one in a request body.
-export function mintDashboardAgentUserActorToken(
+// so the agent can't name a different one in a request body. `organizationId` is what lets an
+// org-scoped endpoint read across the org's projects; it is derived from the environment rather
+// than taken from the caller.
+export async function mintDashboardAgentUserActorToken(
   userId: string,
   opts: { environmentId: string }
 ): Promise<string> {
+  const environment = await $replica.runtimeEnvironment.findFirst({
+    where: { id: opts.environmentId },
+    select: { organizationId: true },
+  });
+  if (!environment) {
+    throw new Error(`Environment ${opts.environmentId} not found`);
+  }
+
   return signUserActorToken(env.SESSION_SECRET, {
     userId,
     client: "dashboard-agent",
     environmentId: opts.environmentId,
+    organizationId: environment.organizationId,
     cap: DASHBOARD_AGENT_UAT_CAP,
     expirationTime: Math.floor(Date.now() / 1000) + DASHBOARD_AGENT_UAT_TTL_SECONDS,
   });
@@ -88,8 +99,16 @@ export function isDashboardAgentConfigured(): boolean {
 
 // Pins every agent session (and its continuation runs) to a deployed version
 // when DASHBOARD_AGENT_VERSION is set; unset runs on the env's current version.
-export function dashboardAgentTriggerConfig(): { lockToVersion: string } | undefined {
-  return env.DASHBOARD_AGENT_VERSION ? { lockToVersion: env.DASHBOARD_AGENT_VERSION } : undefined;
+// `ttl` always applies, so an agent run that never gets dequeued expires
+// instead of sitting in the queue indefinitely.
+export function dashboardAgentTriggerConfig(): {
+  lockToVersion?: string;
+  ttl: string;
+} {
+  return {
+    ...(env.DASHBOARD_AGENT_VERSION ? { lockToVersion: env.DASHBOARD_AGENT_VERSION } : {}),
+    ttl: env.DASHBOARD_AGENT_RUN_TTL,
+  };
 }
 
 export async function startDashboardAgentSession(params: {

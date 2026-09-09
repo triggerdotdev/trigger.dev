@@ -5,6 +5,7 @@ import { fromZodError } from "zod-validation-error";
 import { BundleError } from "../build/bundle.js";
 import { CLOUD_API_URL } from "../consts.js";
 import { chalkError } from "../utilities/cliOutput.js";
+import { formatCommandError } from "../utilities/commandError.js";
 import { readAuthConfigCurrentProfileName } from "../utilities/configFiles.js";
 import { logger } from "../utilities/logger.js";
 import { trace } from "@opentelemetry/api";
@@ -42,7 +43,7 @@ export async function handleTelemetry(action: () => Promise<void>) {
   }
 }
 
-export async function wrapCommandAction<T extends z.AnyZodObject, TResult>(
+export async function wrapCommandAction<T extends z.ZodObject<any>, TResult>(
   name: string,
   schema: T,
   options: unknown,
@@ -55,7 +56,7 @@ export async function wrapCommandAction<T extends z.AnyZodObject, TResult>(
       throw new Error(fromZodError(parsedOptions.error).toString());
     }
 
-    logger.loggerLevel = parsedOptions.data.logLevel;
+    logger.loggerLevel = parsedOptions.data.logLevel as typeof logger.loggerLevel;
 
     logger.debug(`Running "${name}" with the following options`, {
       options: options,
@@ -75,7 +76,7 @@ export async function wrapCommandAction<T extends z.AnyZodObject, TResult>(
     } else if (e instanceof BundleError) {
       process.exit(1);
     } else {
-      logger.log(`${chalkError("X Error:")} ${e instanceof Error ? e.message : String(e)}`);
+      logger.log(`${chalkError("X Error:")} ${formatCommandError(e)}`);
     }
 
     throw e;

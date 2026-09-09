@@ -236,8 +236,9 @@ export async function runLongRunningTask() {
 </CodeGroup>
 
 <Warning>
-  You need to set your `TRIGGER_SECRET_KEY` environment variable in your `.env` or `.env.local` file
-  to trigger tasks from your code. See the [API keys page](/apikeys) for more information.
+  Create a named **Trigger only** API key in your Development environment and set it as
+  `TRIGGER_SECRET_KEY` in your `.env` or `.env.local` file. See the [API keys page](/apikeys)
+  for more information.
 </Warning>
 
 #### Example 2: A cron task

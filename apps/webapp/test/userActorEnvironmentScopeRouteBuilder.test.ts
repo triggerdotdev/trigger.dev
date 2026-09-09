@@ -1,7 +1,13 @@
-import { buildJwtAbility, signUserActorToken, type UserActorClaims } from "@trigger.dev/rbac";
+import {
+  buildJwtAbility,
+  signUserActorToken,
+  verifyUserActorToken,
+  type UserActorClaims,
+} from "@trigger.dev/rbac";
 import { json } from "@remix-run/server-runtime";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import * as webappRouteMocks from "./helpers/webappRouteMocks";
 
 const SESSION_SECRET = "test-session-secret";
 
@@ -13,6 +19,8 @@ const mocks = vi.hoisted(() => ({
   authenticateUserActor: vi.fn(),
   authenticatePat: vi.fn(),
   findFirst: vi.fn(),
+  projectFindFirst: vi.fn(),
+  organizationFindFirst: vi.fn(),
 }));
 
 vi.mock("~/services/rbac.server", () => ({
@@ -23,38 +31,31 @@ vi.mock("~/services/rbac.server", () => ({
 }));
 vi.mock("~/db.server", () => ({
   prisma: {},
-  $replica: { runtimeEnvironment: { findFirst: mocks.findFirst } },
+  $replica: {
+    runtimeEnvironment: { findFirst: mocks.findFirst },
+    project: { findFirst: mocks.projectFindFirst },
+    organization: { findFirst: mocks.organizationFindFirst },
+  },
 }));
 vi.mock("~/env.server", () => ({ env: { SESSION_SECRET: "test-session-secret" } }));
-vi.mock("~/services/personalAccessToken.server", async () => {
-  const { verifyUserActorToken } = await import("@trigger.dev/rbac");
-  return {
-    updateLastAccessedAtIfStale: vi.fn(),
-    // Mirror production: recover the token's own claims from the bearer when the plugin
-    // returned identity only. Test tokens carry no source PAT, so no liveness recheck.
-    resolveAndRecheckUserActorClaims: async (claims: unknown, bearer: string) =>
-      claims ?? (await verifyUserActorToken("test-session-secret", bearer)),
-  };
-});
-vi.mock("~/services/authTelemetry.server", () => ({
-  authenticateBearerWithTelemetry: vi.fn(),
-}));
-vi.mock("~/services/logger.server", () => ({
-  logger: { debug: vi.fn(), error: vi.fn(), warn: vi.fn(), info: vi.fn() },
-}));
-vi.mock("~/services/tenantContext.server", () => ({
-  tenantContext: { enrich: vi.fn() },
-  tenantContextFromAuthEnvironment: vi.fn(),
-}));
-vi.mock("~/v3/services/worker/workerGroupTokenService.server", () => ({
-  WorkerGroupTokenService: class {},
-}));
-vi.mock("~/v3/services/common.server", () => ({
-  ServiceValidationError: class extends Error {},
-}));
-vi.mock("@internal/run-engine", () => ({
-  EngineServiceValidationError: class extends Error {},
-}));
+vi.mock(
+  "~/services/personalAccessToken.server",
+  // Mirror production: recover the token's own claims from the bearer when the plugin returned
+  // identity only. Test tokens carry no source PAT, so no liveness recheck.
+  () =>
+    webappRouteMocks.personalAccessTokenMock({
+      resolveAndRecheckUserActorClaims: async (claims, bearer) =>
+        claims ?? (await verifyUserActorToken("test-session-secret", bearer)),
+    })
+);
+vi.mock("~/services/authTelemetry.server", () => webappRouteMocks.authTelemetryMock());
+vi.mock("~/services/logger.server", () => webappRouteMocks.loggerMock());
+vi.mock("~/services/tenantContext.server", () => webappRouteMocks.tenantContextMock());
+vi.mock("~/v3/services/worker/workerGroupTokenService.server", () =>
+  webappRouteMocks.workerGroupTokenServiceMock()
+);
+vi.mock("~/v3/services/common.server", () => webappRouteMocks.serviceValidationErrorMock());
+vi.mock("@internal/run-engine", () => webappRouteMocks.engineServiceValidationErrorMock());
 
 import { createLoaderPATApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
@@ -106,6 +107,14 @@ async function callRoute(
   return { status: response.status, body: await response.json() };
 }
 
+function agentClaims(): UserActorClaims {
+  return {
+    userId: USER_ID,
+    client: "dashboard-agent",
+    environmentId: CLAIMED_ENVIRONMENT_ID,
+  };
+}
+
 function controllerResult(claims: UserActorClaims | undefined) {
   return {
     ok: true,
@@ -120,17 +129,13 @@ describe("user-actor environment claim through a PAT route builder", () => {
   beforeEach(() => {
     mocks.authenticateUserActor.mockReset();
     mocks.findFirst.mockReset();
+    // The default caller is a dashboard-agent token with the environment claim; the cases that
+    // need another controller answer override this.
+    mocks.authenticateUserActor.mockImplementation(async () => controllerResult(agentClaims()));
   });
 
   it("hands the claim to the handler when the URL targets the claimed environment's project", async () => {
     const token = await agentToken();
-    mocks.authenticateUserActor.mockImplementation(async () =>
-      controllerResult({
-        userId: USER_ID,
-        client: "dashboard-agent",
-        environmentId: CLAIMED_ENVIRONMENT_ID,
-      })
-    );
     mocks.findFirst.mockResolvedValue({ organizationId: "org_1", projectId: "proj_1" });
 
     const result = await callRoute(
@@ -144,13 +149,6 @@ describe("user-actor environment claim through a PAT route builder", () => {
 
   it("fails closed when the URL targets another project", async () => {
     const token = await agentToken();
-    mocks.authenticateUserActor.mockImplementation(async () =>
-      controllerResult({
-        userId: USER_ID,
-        client: "dashboard-agent",
-        environmentId: CLAIMED_ENVIRONMENT_ID,
-      })
-    );
     mocks.findFirst.mockResolvedValue({ organizationId: "org_1", projectId: "proj_1" });
 
     const result = await callRoute(
@@ -164,13 +162,6 @@ describe("user-actor environment claim through a PAT route builder", () => {
 
   it("fails closed when a route names a different environment", async () => {
     const token = await agentToken();
-    mocks.authenticateUserActor.mockImplementation(async () =>
-      controllerResult({
-        userId: USER_ID,
-        client: "dashboard-agent",
-        environmentId: CLAIMED_ENVIRONMENT_ID,
-      })
-    );
 
     const result = await callRoute(
       projectRoute(() => ({ projectId: "proj_1", environmentId: "env_prod" })),
@@ -215,13 +206,6 @@ describe("user-actor environment claim through a PAT route builder", () => {
 
   it("fails closed on a route that names nothing to check the claim against", async () => {
     const token = await agentToken();
-    mocks.authenticateUserActor.mockImplementation(async () =>
-      controllerResult({
-        userId: USER_ID,
-        client: "dashboard-agent",
-        environmentId: CLAIMED_ENVIRONMENT_ID,
-      })
-    );
 
     const result = await callRoute(contextlessRoute(), token);
 
@@ -233,13 +217,6 @@ describe("user-actor environment claim through a PAT route builder", () => {
 
   it("admits a claim-bearing token on a route that declares itself identity-only", async () => {
     const token = await agentToken();
-    mocks.authenticateUserActor.mockImplementation(async () =>
-      controllerResult({
-        userId: USER_ID,
-        client: "dashboard-agent",
-        environmentId: CLAIMED_ENVIRONMENT_ID,
-      })
-    );
 
     const result = await callRoute(contextlessRoute({ identityOnly: true }), token);
 
@@ -261,5 +238,262 @@ describe("user-actor environment claim through a PAT route builder", () => {
 
     expect(result.status).toBe(200);
     expect(result.body.environmentId).toBeNull();
+  });
+});
+
+/**
+ * The org-scoped opt-in: a token carrying an organization claim reads across that organization's
+ * projects on a route that has declared itself org-scoped, and every request rechecks membership.
+ * Routes without the flag keep the narrow environment check.
+ */
+describe("organization-scoped user-actor routes through the PAT route builder", () => {
+  const ORGANIZATION_ID = "org_1";
+
+  function orgClaims() {
+    return { ...agentClaims(), organizationId: ORGANIZATION_ID };
+  }
+
+  function orgToken() {
+    return signUserActorToken(SESSION_SECRET, { ...orgClaims(), cap: ["read:runs"] });
+  }
+
+  /** The org-scoped variant of `projectRoute`. */
+  function orgScopedRoute(
+    context: () => { organizationId?: string; projectId?: string; environmentId?: string }
+  ) {
+    return createLoaderPATApiRoute(
+      {
+        params: z.object({ projectRef: z.string() }),
+        context,
+        organizationScoped: true,
+        authorization: { action: "read", resource: () => ({ type: "runs" }) },
+      },
+      async ({ authentication }) =>
+        json({ organizationId: authentication.userActor?.organizationId ?? null })
+    );
+  }
+
+  /** An org-level read that names nothing: scoped to the token's own organization. */
+  function orgLevelRoute() {
+    return createLoaderPATApiRoute(
+      { organizationScoped: "tokenOrganization" },
+      async ({ authentication }) =>
+        json({ organizationId: authentication.userActor?.organizationId ?? null })
+    );
+  }
+
+  /** The same route without the explicit opt-in: nothing to check the claim against. */
+  function namelessRoute() {
+    return createLoaderPATApiRoute({ organizationScoped: true }, async () => json({}));
+  }
+
+  beforeEach(() => {
+    mocks.authenticateUserActor.mockReset();
+    mocks.findFirst.mockReset();
+    mocks.projectFindFirst.mockReset();
+    mocks.organizationFindFirst.mockReset();
+    mocks.organizationFindFirst.mockResolvedValue({ id: ORGANIZATION_ID });
+    mocks.authenticateUserActor.mockImplementation(async () => controllerResult(orgClaims()));
+  });
+
+  type AuthCase = {
+    name: string;
+    setup?: () => void;
+    route: () => ReturnType<typeof projectRoute>;
+    token: () => string | Promise<string>;
+    status: number;
+    check?: (result: { status: number; body: any }) => void;
+  };
+
+  const forbidden = (result: { body: any }) =>
+    expect(result.body.code).toBe("forbidden_environment");
+
+  const authCases: AuthCase[] = [
+    {
+      name: "admits a sibling environment of the claimed organization",
+      setup: () => mocks.findFirst.mockResolvedValue({ organizationId: ORGANIZATION_ID }),
+      route: () => orgScopedRoute(() => ({ environmentId: "env_prod" })),
+      token: orgToken,
+      status: 200,
+      check: (r) => expect(r.body.organizationId).toBe(ORGANIZATION_ID),
+    },
+    {
+      name: "403s a scope naming both the claimed organization and another org's environment",
+      setup: () => mocks.findFirst.mockResolvedValue({ organizationId: "org_other" }),
+      route: () =>
+        orgScopedRoute(() => ({ organizationId: ORGANIZATION_ID, environmentId: "env_prod" })),
+      token: orgToken,
+      status: 403,
+      check: forbidden,
+    },
+    {
+      name: "admits another project of the claimed organization",
+      setup: () => mocks.projectFindFirst.mockResolvedValue({ organizationId: ORGANIZATION_ID }),
+      route: () => orgScopedRoute(() => ({ projectId: "proj_other" })),
+      token: orgToken,
+      status: 200,
+    },
+    {
+      name: "403s the same sibling environment on a route without the flag",
+      setup: () => mocks.findFirst.mockResolvedValue({ organizationId: ORGANIZATION_ID }),
+      route: () => projectRoute(() => ({ environmentId: "env_prod" })),
+      token: orgToken,
+      status: 403,
+      check: forbidden,
+    },
+    {
+      name: "403s a project of another organization",
+      setup: () => mocks.projectFindFirst.mockResolvedValue({ organizationId: "org_other" }),
+      route: () => orgScopedRoute(() => ({ projectId: "proj_other" })),
+      token: orgToken,
+      status: 403,
+    },
+    {
+      name: "admits an org-level route that names nothing, for a current member",
+      route: orgLevelRoute,
+      token: orgToken,
+      status: 200,
+      check: (r) => expect(r.body.organizationId).toBe(ORGANIZATION_ID),
+    },
+    {
+      name: "403s a token-organization route for a plain PAT",
+      setup: () =>
+        mocks.authenticatePat.mockImplementation(async () => ({
+          ok: true,
+          userId: USER_ID,
+          ability: buildJwtAbility(["read:runs"]),
+        })),
+      route: orgLevelRoute,
+      token: () => "tr_pat_1234",
+      status: 403,
+      check: forbidden,
+    },
+    {
+      // A claimless token from another client passes the environment path untouched, so only the
+      // builder's own guard can turn it away.
+      name: "403s a token-organization route for a claimless user-actor token",
+      setup: () =>
+        mocks.authenticateUserActor.mockImplementation(async () =>
+          controllerResult({ userId: USER_ID, client: "personal-access-token" })
+        ),
+      route: orgLevelRoute,
+      token: () =>
+        signUserActorToken(SESSION_SECRET, {
+          userId: USER_ID,
+          client: "personal-access-token",
+          cap: ["read:runs"],
+        }),
+      status: 403,
+      check: forbidden,
+    },
+    {
+      name: "403s an opted-in route whose projectRef resolves to no organization",
+      route: () => orgScopedRoute(() => ({})),
+      token: orgToken,
+      status: 403,
+      // Nothing to check the claim against, so membership is never read.
+      check: (r) => {
+        forbidden(r);
+        expect(mocks.organizationFindFirst).not.toHaveBeenCalled();
+      },
+    },
+    {
+      name: "403s a route that names nothing without the token-organization opt-in",
+      route: namelessRoute,
+      token: orgToken,
+      status: 403,
+      check: (r) => {
+        forbidden(r);
+        expect(mocks.organizationFindFirst).not.toHaveBeenCalled();
+      },
+    },
+    {
+      name: "403s the org-level route once the user is no longer a member",
+      setup: () => mocks.organizationFindFirst.mockResolvedValue(null),
+      route: orgLevelRoute,
+      token: orgToken,
+      status: 403,
+      check: forbidden,
+    },
+    {
+      name: "403s an organization claim with no environment claim on a route without the flag",
+      setup: () =>
+        mocks.authenticateUserActor.mockImplementation(async () =>
+          controllerResult({
+            userId: USER_ID,
+            client: "dashboard-agent",
+            organizationId: ORGANIZATION_ID,
+          })
+        ),
+      route: () => projectRoute(() => ({ projectId: "proj_1" })),
+      token: () =>
+        signUserActorToken(SESSION_SECRET, {
+          userId: USER_ID,
+          client: "dashboard-agent",
+          organizationId: ORGANIZATION_ID,
+          cap: ["read:runs"],
+        }),
+      status: 403,
+      check: forbidden,
+    },
+  ];
+
+  it.each(authCases)("$name", async ({ setup, route, token, status, check }) => {
+    setup?.();
+    const result = await callRoute(route(), await token());
+
+    expect(result.status).toBe(status);
+    check?.(result);
+  });
+
+  it("gives an environment that doesn't exist and one in another org the same 403", async () => {
+    mocks.findFirst.mockResolvedValueOnce(null);
+    const notFound = await callRoute(
+      orgScopedRoute(() => ({ environmentId: "env_missing" })),
+      await orgToken()
+    );
+
+    mocks.findFirst.mockResolvedValueOnce({ organizationId: "org_other" });
+    const foreignOrg = await callRoute(
+      orgScopedRoute(() => ({ environmentId: "env_prod" })),
+      await orgToken()
+    );
+
+    expect(notFound.status).toBe(403);
+    expect(notFound).toEqual(foreignOrg);
+  });
+
+  it("gives a project that doesn't exist and one in another org the same 403", async () => {
+    mocks.projectFindFirst.mockResolvedValueOnce(null);
+    const notFound = await callRoute(
+      orgScopedRoute(() => ({ projectId: "proj_missing" })),
+      await orgToken()
+    );
+
+    mocks.projectFindFirst.mockResolvedValueOnce({ organizationId: "org_other" });
+    const foreignOrg = await callRoute(
+      orgScopedRoute(() => ({ projectId: "proj_other" })),
+      await orgToken()
+    );
+
+    expect(notFound.status).toBe(403);
+    expect(notFound).toEqual(foreignOrg);
+  });
+
+  it("applies the environment check to a token with no organization claim", async () => {
+    mocks.authenticateUserActor.mockImplementation(async () => controllerResult(agentClaims()));
+
+    const denied = await callRoute(
+      orgScopedRoute(() => ({ environmentId: "env_prod" })),
+      await agentToken()
+    );
+    const allowed = await callRoute(
+      orgScopedRoute(() => ({ environmentId: CLAIMED_ENVIRONMENT_ID })),
+      await agentToken()
+    );
+
+    expect(denied.status).toBe(403);
+    expect(allowed.status).toBe(200);
+    expect(mocks.organizationFindFirst).not.toHaveBeenCalled();
   });
 });

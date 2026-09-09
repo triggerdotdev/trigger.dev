@@ -126,7 +126,7 @@ containerTest(
       scopes: ["admin"],
     });
     expect(apiKeyPresets).toHaveBeenCalledWith(organization.id);
-    expect(result.rootApiKey.obfuscated).toBe(`tr_prod_••••••••${environment.apiKey.slice(-4)}`);
+    expect(result.rootApiKey?.obfuscated).toBe(`tr_prod_••••••••${environment.apiKey.slice(-4)}`);
     expect(keysByName.get("Full access")?.obfuscated).toBe("tr_prod_sk_••••••••full");
     expect(keysByName.get("Full access")?.access).toMatchObject({
       presetId: null,
@@ -152,6 +152,89 @@ containerTest(
     expect(keysByName.get("Full access")).not.toHaveProperty("scopes");
     expect(keysByName.get("Restricted access")).not.toHaveProperty("scopes");
     expect(keysByName.has("Revoked key")).toBe(false);
+  }
+);
+
+containerTest(
+  "does not return hidden root key material and preserves additional keys",
+  async ({ prisma }) => {
+    const { organization, project, user } = await createTestOrgProjectWithMember(prisma);
+    const environment = await createRuntimeEnvironment(prisma, {
+      projectId: project.id,
+      organizationId: organization.id,
+      type: "PRODUCTION",
+      slug: uniqueId("prod"),
+      apiKey: `tr_prod_${uniqueId("hidden-root")}_xQ9Z`,
+      rootApiKeyHiddenAt: new Date(),
+    });
+    await prisma.apiKey.create({
+      data: {
+        name: "Application key",
+        keyHash: uniqueId("app-hash"),
+        lastFour: "safe",
+        runtimeEnvironmentId: environment.id,
+        createdByUserId: user.id,
+        presetId: null,
+        scopes: ["admin"],
+      },
+    });
+    const presenter = new ApiKeysPresenter(prisma, {
+      apiKeyPresets: async () => [],
+      describeApiKeyPolicy: async () => ({}),
+    });
+
+    const result = await presenter.call({
+      userId: user.id,
+      organizationSlug: organization.slug,
+      projectSlug: project.slug,
+      environmentSlug: environment.slug,
+    });
+    const serialized = JSON.stringify(result);
+
+    expect(result.rootApiKey).toBeNull();
+    expect(result.environment.apiKey).toBeNull();
+    expect(result.apiKeys).toHaveLength(1);
+    expect(result.apiKeys[0]?.name).toBe("Application key");
+    expect(serialized).not.toContain(environment.apiKey);
+    expect(serialized).not.toContain(environment.apiKey.slice(-4));
+  }
+);
+
+containerTest(
+  "uses the parent environment's root key visibility for branches",
+  async ({ prisma }) => {
+    const { organization, project, user } = await createTestOrgProjectWithMember(prisma);
+    const parent = await createRuntimeEnvironment(prisma, {
+      projectId: project.id,
+      organizationId: organization.id,
+      type: "PREVIEW",
+      slug: uniqueId("preview"),
+      rootApiKeyHiddenAt: new Date(),
+    });
+    const branch = await prisma.runtimeEnvironment.create({
+      data: {
+        slug: uniqueId("preview-branch"),
+        type: "PREVIEW",
+        projectId: project.id,
+        organizationId: organization.id,
+        parentEnvironmentId: parent.id,
+        branchName: "feature/hidden-root",
+        apiKey: uniqueId("api"),
+        pkApiKey: uniqueId("pk"),
+        shortcode: uniqueId("sc"),
+      },
+    });
+    const presenter = new ApiKeysPresenter(prisma);
+
+    const result = await presenter.call({
+      userId: user.id,
+      organizationSlug: organization.slug,
+      projectSlug: project.slug,
+      environmentSlug: branch.slug,
+    });
+
+    expect(result.rootApiKey).toBeNull();
+    expect(result.environment.apiKey).toBeNull();
   }
 );
 

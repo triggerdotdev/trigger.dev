@@ -2,7 +2,7 @@ import {
   type AnyTask,
   type Task,
   accessoryAttributes,
-  type ChatSnapshotV1,
+  type ChatSnapshotV1 as CoreChatSnapshotV1,
   type ApiClientConfiguration,
   apiClientManager,
   type AppendStreamOptions,
@@ -23,7 +23,6 @@ import {
   type RealtimeDefinedInputStream,
   type RealtimeDefinedStream,
   resourceCatalog,
-  type SessionTriggerConfig,
   SemanticInternalAttributes,
   SESSION_IN_CONSUMED_ID_HEADER,
   SESSION_IN_EVENT_ID_HEADER,
@@ -39,6 +38,7 @@ import {
   TRIGGER_CONTROL_SUBTYPE,
   SESSION_CLOSED_HEADER,
   SESSION_CLOSED_REASON_HEADER,
+  tryCatch,
   type StreamWriteResult,
   type RouterCheckpoint,
   type SessionRouteTable,
@@ -77,6 +77,33 @@ import {
   zodSchema,
 } from "../imports/ai-runtime.js";
 import {
+  createTranscriptShadow,
+  defaultStorage,
+  diffTranscript,
+  parseTranscriptRuntimeState,
+  restoreModelLane,
+  type TranscriptChange,
+  type TranscriptChangeReason,
+  type TranscriptLoadResult,
+  type TranscriptRuntimeState,
+  type TranscriptShadow,
+  type TranscriptStorage,
+  type TranscriptStorageContext,
+} from "./transcriptStorage.js";
+
+let transcriptStorageOverride: TranscriptStorage<unknown> | undefined;
+
+/**
+ * Test-only override for the storage `chat.agent` persists through, so a
+ * test can capture the exact changesets the runtime produces.
+ * @internal
+ */
+export function __setTranscriptStorageForTests(
+  storage: TranscriptStorage<unknown> | undefined
+): void {
+  transcriptStorageOverride = storage;
+}
+import {
   type ChatInputChunk,
   type ChatTaskWirePayload,
   type InferChatClientData,
@@ -114,12 +141,15 @@ type ToolCallOptions = {
 // pulled in transitively here never reach a client chunk.
 import { readFileInSkill, runBashInSkill } from "./agentSkillsRuntime.js";
 import { ensureAiSdkTelemetry } from "./aiAutoTelemetry.js";
+import { withResolvedExternalDeploymentId } from "./externalDeploymentId.js";
+import { type ChatVersionSkewPolicy, resolvePinToFollow } from "./chatVersionSkew.js";
 import {
   type SessionChannelHandleFor,
   type SessionHandle,
   type SessionPipeStreamOptions,
   sessions,
   type SessionSubscribeOptions,
+  type SessionTriggerConfigInput,
 } from "./sessions.js";
 import { createTask } from "./shared.js";
 import { markChatAgentRunForStreamsWarning } from "./streams.js";
@@ -237,224 +267,46 @@ async function findLatestSessionInCursor(chatId: string): Promise<number | undef
 }
 
 /**
- * Versioned blob written to S3 after every turn completes (when no
- * `hydrateMessages` hook is registered). Read at run boot to seed the
- * accumulator with prior conversation state, replacing the old wire-borne
- * full-history seed.
+ * Versioned blob written to the object store after every turn completes
+ * (when no `hydrateMessages` hook is registered). Read at run boot to seed
+ * the accumulator with prior conversation state.
  *
- * The shape is shared with the Sessions dashboard (which reads the same
- * blob to render the full conversation transcript) via
- * `@trigger.dev/core/v3`. Customer code shouldn't reach in here — the
- * SDK transports surface the messages through the standard `messages`
- * accumulator.
+ * The shape is shared with the Sessions dashboard via `@trigger.dev/core/v3`.
+ * Customer code shouldn't reach in here; the SDK transports surface the
+ * messages through the standard `messages` accumulator.
  *
  * @internal
  */
-export type { ChatSnapshotV1, ChatInputChunk, ChatTaskWirePayload };
+export type ChatSnapshotV1<TUIMessage extends UIMessage = UIMessage> =
+  CoreChatSnapshotV1<TUIMessage>;
+/** @internal */
+export type { ChatInputChunk, ChatTaskWirePayload };
 
-/**
- * Test-only override hook — `mockChatAgent` installs a fake to return
- * synthetic snapshots without hitting S3. Mirrors the `__set*ImplForTests`
- * pattern in `sessions.ts`. Not part of the public API.
- * @internal
- */
-type ReadChatSnapshotImpl = <TUIMessage extends UIMessage>(
-  sessionId: string
-) => Promise<ChatSnapshotV1<TUIMessage> | undefined> | ChatSnapshotV1<TUIMessage> | undefined;
-let readChatSnapshotImpl: ReadChatSnapshotImpl | undefined;
+export {
+  __readChatSnapshotProductionPathForTests,
+  __setReadChatSnapshotImplForTests,
+  __setWriteChatSnapshotImplForTests,
+  __writeChatSnapshotProductionPathForTests,
+} from "./chatSnapshotIo.js";
 
-export function __setReadChatSnapshotImplForTests(impl: ReadChatSnapshotImpl | undefined): void {
-  readChatSnapshotImpl = impl;
-}
-
-/**
- * Test-only override hook — see `__setReadChatSnapshotImplForTests`. The
- * mock harness records writes for assertion via this setter. Not public.
- * @internal
- */
-type WriteChatSnapshotImpl = <TUIMessage extends UIMessage>(
-  sessionId: string,
-  snapshot: ChatSnapshotV1<TUIMessage>
-) => Promise<void> | void;
-let writeChatSnapshotImpl: WriteChatSnapshotImpl | undefined;
-
-export function __setWriteChatSnapshotImplForTests(impl: WriteChatSnapshotImpl | undefined): void {
-  writeChatSnapshotImpl = impl;
-}
-
-/**
- * Read the persisted snapshot for a session. Returns `undefined` on:
- *   - missing object (404 from the presigned GET — fresh session, never
- *     persisted)
- *   - presign failure (network/auth issue)
- *   - malformed JSON
- *   - version mismatch (forward-compat — older runtimes ignore newer blobs)
- *
- * Always swallows errors via `logger.warn`. The agent boot loop must stay
- * available even if S3 hiccups; the worst case is replaying more of
- * `session.out` than strictly necessary.
- * @internal
- */
-async function readChatSnapshot<TUIMessage extends UIMessage>(
-  sessionId: string
-): Promise<ChatSnapshotV1<TUIMessage> | undefined> {
-  if (readChatSnapshotImpl) {
-    return (await readChatSnapshotImpl<TUIMessage>(sessionId)) ?? undefined;
-  }
-  const apiClient = apiClientManager.clientOrThrow();
-  let presignedUrl: string;
-  try {
-    const resp = await apiClient.getChatSnapshotUrl(sessionId);
-    presignedUrl = resp.presignedUrl;
-  } catch (error) {
-    logger.warn("chat.agent: snapshot presign (read) failed; continuing without snapshot", {
-      error: error instanceof Error ? error.message : String(error),
-      sessionId,
-    });
-    return undefined;
-  }
-  let response: Response;
-  try {
-    response = await fetch(presignedUrl, { method: "GET" });
-  } catch (error) {
-    logger.warn("chat.agent: snapshot fetch failed; continuing without snapshot", {
-      error: error instanceof Error ? error.message : String(error),
-      sessionId,
-    });
-    return undefined;
-  }
-  if (response.status === 404) {
-    // First-ever boot for this session — no snapshot yet. Caller falls
-    // through to replay-only.
-    return undefined;
-  }
-  if (!response.ok) {
-    logger.warn("chat.agent: snapshot fetch returned non-OK; continuing without snapshot", {
-      status: response.status,
-      sessionId,
-    });
-    return undefined;
-  }
-  let parsed: unknown;
-  try {
-    parsed = await response.json();
-  } catch (error) {
-    logger.warn("chat.agent: snapshot JSON parse failed; continuing without snapshot", {
-      error: error instanceof Error ? error.message : String(error),
-      sessionId,
-    });
-    return undefined;
-  }
-  if (!parsed || typeof parsed !== "object") return undefined;
-  const candidate = parsed as Partial<ChatSnapshotV1<TUIMessage>>;
-  if (candidate.version !== 1 || !Array.isArray(candidate.messages)) {
-    logger.warn("chat.agent: snapshot version/shape mismatch; ignoring", {
-      version: candidate.version,
-      sessionId,
-    });
-    return undefined;
-  }
-  return candidate as ChatSnapshotV1<TUIMessage>;
-}
-
-/**
- * Persist the snapshot for a session. Awaited by callers immediately after
- * `onTurnComplete` — the agent may suspend right after this point, and
- * fire-and-forget promises don't reliably complete on suspend.
- *
- * Errors are swallowed via `logger.warn`. A failed write means the next
- * boot replays slightly more of `session.out` (back to the previous
- * snapshot's cursor) instead of failing — the conversation stays
- * coherent, only the boot path does marginally more work.
- * @internal
- */
-async function writeChatSnapshot<TUIMessage extends UIMessage>(
-  sessionId: string,
-  snapshot: ChatSnapshotV1<TUIMessage>
-): Promise<void> {
-  if (writeChatSnapshotImpl) {
-    await writeChatSnapshotImpl<TUIMessage>(sessionId, snapshot);
-    return;
-  }
-  const apiClient = apiClientManager.clientOrThrow();
-  let presignedUrl: string;
-  try {
-    const resp = await apiClient.createChatSnapshotUploadUrl(sessionId);
-    presignedUrl = resp.presignedUrl;
-  } catch (error) {
-    logger.warn("chat.agent: snapshot presign (write) failed; next run will replay further", {
-      error: error instanceof Error ? error.message : String(error),
-      sessionId,
-    });
-    return;
-  }
-  let response: Response;
-  try {
-    response = await fetch(presignedUrl, {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(snapshot),
-    });
-  } catch (error) {
-    logger.warn("chat.agent: snapshot upload failed; next run will replay further", {
-      error: error instanceof Error ? error.message : String(error),
-      sessionId,
-    });
-    return;
-  }
-  if (!response.ok) {
-    logger.warn("chat.agent: snapshot upload returned non-OK; next run will replay further", {
-      status: response.status,
-      sessionId,
-    });
-  }
-}
-
-/**
- * Test-only entry point that bypasses `__setReadChatSnapshotImplForTests`
- * and reaches the real `apiClient.getPayloadUrl` + `fetch` + JSON-parse path.
- * Used by `chat-snapshot.test.ts` to verify 404 / 500 / malformed JSON /
- * version-mismatch / network-error behavior end-to-end. Tests mock global
- * `fetch` and the api-client config; this wrapper lets them drive the
- * production code without the override hook short-circuiting.
- *
- * Not part of the public API. The `__` prefix and `ForTests` suffix mirror
- * the override-hook setters above.
- * @internal
- */
-export async function __readChatSnapshotProductionPathForTests<TUIMessage extends UIMessage>(
-  sessionId: string
-): Promise<ChatSnapshotV1<TUIMessage> | undefined> {
-  const saved = readChatSnapshotImpl;
-  readChatSnapshotImpl = undefined;
-  try {
-    return await readChatSnapshot<TUIMessage>(sessionId);
-  } finally {
-    readChatSnapshotImpl = saved;
-  }
-}
-
-/**
- * Test-only entry point that bypasses `__setWriteChatSnapshotImplForTests`
- * and reaches the real `apiClient.createUploadPayloadUrl` + `fetch` PUT
- * path. Pairs with `__readChatSnapshotProductionPathForTests` — see that
- * function's note for the rationale.
- *
- * Not part of the public API.
- * @internal
- */
-export async function __writeChatSnapshotProductionPathForTests<TUIMessage extends UIMessage>(
-  sessionId: string,
-  snapshot: ChatSnapshotV1<TUIMessage>
-): Promise<void> {
-  const saved = writeChatSnapshotImpl;
-  writeChatSnapshotImpl = undefined;
-  try {
-    await writeChatSnapshot<TUIMessage>(sessionId, snapshot);
-  } finally {
-    writeChatSnapshotImpl = saved;
-  }
-}
+export {
+  defaultStorage,
+  memoryTranscriptStorage,
+  reduceTranscriptChanges,
+  snapshotTranscriptStorage,
+  type LoadContextEvent,
+  type MemoryTranscriptStorage,
+  type TranscriptChange,
+  type TranscriptChangeReason,
+  type TranscriptChangeset,
+  type TranscriptCursors,
+  type TranscriptLoadOptions,
+  type TranscriptLoadResult,
+  type TranscriptScope,
+  type TranscriptState,
+  type TranscriptStorage,
+  type TranscriptStorageContext,
+} from "./transcriptStorage.js";
 
 /**
  * Merge two `UIMessage[]` lists by `id`, with the second list winning on
@@ -719,6 +571,7 @@ type ReplaySessionInTailImpl = <TUIMessage extends UIMessage>(
   sessionId: string,
   options?: { lastEventId?: string }
 ) => Promise<{ message: TUIMessage; metadata: unknown; seqNum: number }[]>;
+
 let replaySessionInTailImpl: ReplaySessionInTailImpl | undefined;
 
 export function __setReplaySessionInTailImplForTests(
@@ -1496,7 +1349,8 @@ async function reportChatCustomAgentClientDataError(
   error: unknown,
   options: { writeToStream: boolean; callHandler?: boolean }
 ): Promise<void> {
-  const errorText = error instanceof Error ? error.message : "An unexpected error occurred";
+  const errorText =
+    error instanceof Error && error.message ? error.message : "An unexpected error occurred";
   logger.warn("chat.customAgent: clientData validation failed", {
     chatId: payload.chatId,
     trigger: payload.trigger,
@@ -2468,7 +2322,7 @@ async function findSessionInReplayWindowEnd(
  */
 async function installChatInputRouter(
   chatId: string,
-  options?: { fallbackResumeFrom?: number; resuming?: boolean }
+  options?: { fallbackResumeFrom?: number; recoveredThrough?: number; resuming?: boolean }
 ): Promise<SessionChannelRouter> {
   const entry = chatInputRouterEntry(chatId);
   if (entry.attached) return entry.router;
@@ -2499,6 +2353,17 @@ async function installChatInputRouter(
     }
   }
 
+  // A boot that replayed `.in` itself has already answered everything up to
+  // `recoveredThrough`, so the floor has to cover it before the tail opens.
+  if (options?.recoveredThrough !== undefined) {
+    const recovered = options.recoveredThrough;
+    checkpoint.resumeFrom = Math.max(checkpoint.resumeFrom ?? recovered, recovered);
+    checkpoint.appliedThrough = Math.max(
+      checkpoint.appliedThrough ?? checkpoint.resumeFrom,
+      checkpoint.resumeFrom
+    );
+  }
+
   const router = entry.router;
   router.restore(checkpoint);
 
@@ -2509,6 +2374,9 @@ async function installChatInputRouter(
   }
 
   sessionStreams.onRecord(chatId, "in", (record) => {
+    // The floor is the tail's `Last-Event-ID`, but a reconnect can still
+    // re-deliver below it and a replayable route would re-queue it.
+    if (floor !== undefined && record.seqNum <= floor) return true;
     router.ingest(record);
     return true;
   });
@@ -2713,6 +2581,13 @@ function spliceHandoverPartial(
  * @internal
  */
 const chatBackgroundQueueKey = locals.create<ModelMessage[]>("chat.backgroundQueue");
+/**
+ * Background injections a step-boundary drain handed to the model this turn,
+ * with the transcript message they followed. Reconciled into the model lane
+ * and the persisted injections once the turn's response is in.
+ */
+const chatPendingBackgroundKey =
+  locals.create<{ afterId: string; messages: ModelMessage[] }[]>("chat.pendingBackground");
 
 /**
  * System-role context injected mid-conversation, held for the instructions lane.
@@ -3348,6 +3223,10 @@ const chatResolvedToolsKey = locals.create<ToolSet>("chat.resolvedTools");
 
 /** @internal Flag set by `chat.requestUpgrade()` to exit the loop after the current turn. */
 const chatUpgradeRequestedKey = locals.create<boolean>("chat.upgradeRequested");
+/** @internal Target for the upgrade handoff, set by `chat.requestUpgrade({ externalDeploymentId })`. */
+const chatUpgradeExternalDeploymentIdKey = locals.create<string>(
+  "chat.upgradeExternalDeploymentId"
+);
 
 /**
  * @internal Flag set by `chat.endRun()` to exit the loop after the current
@@ -5189,6 +5068,13 @@ function toStreamTextOptions(options?: ToStreamTextOptionsOptions): Record<strin
       if (bgQueue && bgQueue.length > 0) {
         const injected = bgQueue.splice(0); // drain
         resultMessages = [...(resultMessages ?? messages), ...injected];
+        const pendingBackground = locals.get(chatPendingBackgroundKey) ?? [];
+        pendingBackground.push({
+          afterId:
+            (locals.get(chatCurrentUIMessagesKey) as UIMessage[] | undefined)?.at(-1)?.id ?? "",
+          messages: injected,
+        });
+        locals.set(chatPendingBackgroundKey, pendingBackground);
       }
 
       return resultMessages ? { messages: resultMessages } : undefined;
@@ -5325,6 +5211,18 @@ function isUIMessageStreamable(value: unknown): value is UIMessageStreamable {
     value !== null &&
     "toUIMessageStream" in value &&
     typeof (value as any).toUIMessageStream === "function"
+  );
+}
+
+const warnedHydrateMessagesDeprecated = new Set<string>();
+function warnHydrateMessagesDeprecatedOnce(agentId: string) {
+  if (warnedHydrateMessagesDeprecated.has(agentId)) return;
+  warnedHydrateMessagesDeprecated.add(agentId);
+  console.warn(
+    `[chat.agent] \`hydrateMessages\` on "${agentId}" is deprecated. Give the agent a transcript ` +
+      "storage instead: `save` receives every change to the conversation and `loadContext` " +
+      "lets the application own the model's context, with crash recovery and durable " +
+      "compaction that `hydrateMessages` never had."
   );
 }
 
@@ -5538,8 +5436,9 @@ export type RecoveryPendingToolCall = {
  * `chat.endRun()` with no buffered user messages, fresh chat, OOM retry
  * after a successful turn-complete with no in-flight tail).
  *
- * Does NOT fire when `hydrateMessages` is registered (the customer owns
- * persistence; recovery decisions live in their own DB query).
+ * Fires regardless of who owns the model's context. With `hydrateMessages`
+ * or a storage `loadContext`, the recovered tail reaches that hook in
+ * `previousMessages` on the next turn.
  */
 export type RecoveryBootEvent<TUIM extends UIMessage = UIMessage> = {
   /** Task run context — same as `task({ run })` second-argument `ctx`. */
@@ -5609,8 +5508,9 @@ export type RecoveryBootResult<TUIM extends UIMessage = UIMessage> = {
    * context, mutate its tool parts to inject synthesized results,
    * collapse history, etc.
    *
-   * Ignored when `hydrateMessages` is registered (the hydrate hook
-   * runs per-turn and overwrites the chain).
+   * With `hydrateMessages` or a storage `loadContext`, this chain is what
+   * the hook receives as `previousMessages` on the next turn; the hook's
+   * return value is the chain the model sees.
    */
   chain?: TUIM[];
   /**
@@ -6025,6 +5925,18 @@ export type ChatAgentOptions<
   oomMachine?: MachinePresetName;
 
   /**
+   * What to do when the session's `externalDeploymentId` no longer names the deployment
+   * this run is on — after a redeploy re-pins the session, say.
+   *
+   * - `"follow"` (default) hands the conversation to the pinned deployment at the next
+   *   turn boundary, so no `chat.requestUpgrade()` of your own is needed.
+   * - `"hold"` stays put until you ask to move. Manual `chat.requestUpgrade()` works either way.
+   *
+   * Ignored for sessions with no pin, and for sessions using `lockToVersion`.
+   */
+  versionSkew?: ChatVersionSkewPolicy;
+
+  /**
    * Schema for validating `clientData` from the frontend.
    * Accepts Zod, ArkType, Valibot, or any supported schema library.
    * When provided, `clientData` is parsed and typed in all hooks and `run`.
@@ -6183,9 +6095,9 @@ export type ChatAgentOptions<
    * continuation after `chat.endRun()` with no buffered user, a fresh
    * chat, or an OOM retry on top of a complete snapshot.
    *
-   * Does NOT fire when `hydrateMessages` is registered — that hook owns
-   * the per-turn chain and overlapping recovery decisions belong in the
-   * customer's DB.
+   * Fires regardless of who owns the model's context; a `hydrateMessages`
+   * hook or a storage `loadContext` receives the recovered tail in
+   * `previousMessages` on the next turn.
    *
    * Defaults (returned when the hook is omitted or returns no field):
    *   - With two or more in-flight users, the partial and the user it
@@ -6325,6 +6237,33 @@ export type ChatAgentOptions<
   hydrateMessages?: (
     event: HydrateMessagesEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>
   ) => TUIMessage[] | Promise<TUIMessage[]>;
+
+  /**
+   * Where the conversation is persisted. The runtime calls `save` after
+   * every turn, failed turn and history-changing action with the changes
+   * since the last save, and `load` once when a new run boots to continue
+   * the conversation.
+   *
+   * Defaults to `defaultStorage`, the platform's snapshot in object storage
+   * that the Sessions dashboard renders. Bring your own to write each change
+   * to your database; `memoryTranscriptStorage()` is the reference
+   * implementation and `runTranscriptStorageTests` from
+   * `@trigger.dev/sdk/ai/test` checks yours against the contract.
+   *
+   * A storage with `loadContext` also owns the model's context on every
+   * turn, which is what `hydrateMessages` did. The two cannot be combined.
+   *
+   * @example
+   * ```ts
+   * chat.agent({
+   *   id: "my-chat",
+   *   storage: myPostgresTranscriptStorage,
+   *   run: async ({ messages, signal, streamText }) =>
+   *     streamText({ model, messages, abortSignal: signal }),
+   * });
+   * ```
+   */
+  storage?: TranscriptStorage<inferSchemaOut<TClientDataSchema>>;
 
   /**
    * Called at the start of every turn, after message accumulation and `onChatStart` (turn 0),
@@ -6928,6 +6867,7 @@ function chatAgent<
     onChatStart,
     onValidateMessages,
     hydrateMessages,
+    storage,
     actionSchema,
     onAction,
     onTurnStart,
@@ -6953,8 +6893,26 @@ function chatAgent<
     system: agentSystem,
     cacheControl: agentCacheControl,
     systemProviderOptions: agentSystemProviderOptions,
+    versionSkew,
     ...restOptions
   } = options;
+
+  if (hydrateMessages) {
+    if (storage) {
+      throw new Error(
+        `chat.agent: "${options.id}" sets both \`hydrateMessages\` and \`storage\`. ` +
+          "`hydrateMessages` is deprecated and replaced by the storage: `save` receives every " +
+          "change and `loadContext` on the storage owns the model's context. Remove `hydrateMessages`."
+      );
+    }
+    if (typeof (transcriptStorageOverride ?? defaultStorage).loadContext === "function") {
+      throw new Error(
+        `chat.agent: "${options.id}" sets \`hydrateMessages\` and uses a transcript storage with ` +
+          "`loadContext`. Both would own the model's context; keep one."
+      );
+    }
+    warnHydrateMessagesDeprecatedOnce(options.id);
+  }
 
   const parseClientData = clientDataSchema ? getSchemaParseFn(clientDataSchema) : undefined;
   const parseAction = actionSchema ? getSchemaParseFn(actionSchema) : undefined;
@@ -7067,6 +7025,23 @@ function chatAgent<
       // registered) — the wire is delta-only now, no longer a seed.
       let accumulatedMessages: ModelMessage[] = [];
       /**
+       * Give the model accumulator the background injections a step-boundary
+       * drain handed to the model this turn, and record them for persistence.
+       * Returns how many model messages were appended.
+       */
+      const reconcilePendingBackground = (): number => {
+        const pending = locals.get(chatPendingBackgroundKey);
+        if (!pending || pending.length === 0) return 0;
+        locals.set(chatPendingBackgroundKey, []);
+        let appended = 0;
+        for (const entry of pending) {
+          accumulatedMessages.push(...entry.messages);
+          laneInjections.push(entry);
+          appended += entry.messages.length;
+        }
+        return appended;
+      };
+      /**
        * Give the model accumulator the steering messages a drain consumed,
        * in the form the model actually received. Appended, never reconverted
        * from the UI lane, so a model-only compaction summary survives. Called
@@ -7105,7 +7080,48 @@ function chatAgent<
       // collectively cost ~600ms on every first-message TTFC. Both reads
       // swallow errors internally; the agent stays available either way.
       const sessionIdForSnapshot = payload.sessionId ?? payload.chatId;
-      let bootSnapshot: ChatSnapshotV1<TUIMessage> | undefined;
+      const transcriptStorage: TranscriptStorage<unknown> =
+        (storage as TranscriptStorage<unknown> | undefined) ??
+        transcriptStorageOverride ??
+        defaultStorage;
+      const storageLoadContext = transcriptStorage.loadContext?.bind(transcriptStorage);
+      /**
+       * Who supplies the model's context each turn: the deprecated
+       * `hydrateMessages` hook, the storage's `loadContext`, or (undefined)
+       * the runtime's own transcript.
+       */
+      const loadContextHook = hydrateMessages
+        ? (event: HydrateMessagesEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>) =>
+            hydrateMessages(event)
+        : storageLoadContext
+          ? (event: HydrateMessagesEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>) =>
+              storageLoadContext<TUIMessage>(
+                { chatId: event.chatId, clientData: event.clientData },
+                event
+              )
+          : undefined;
+      let transcriptShadow: TranscriptShadow = createTranscriptShadow([]);
+      let bootTranscriptState: unknown = null;
+      /**
+       * True while the model lane holds a compaction summary, so it cannot be
+       * rebuilt from the transcript and has to be persisted as state. Reset
+       * wherever the lane is reconverted from the UI lane.
+       */
+      let laneCompacted = false;
+      /** Conversational `chat.inject` messages in the lane, anchored to the transcript. */
+      let laneInjections: NonNullable<TranscriptRuntimeState["injections"]> = [];
+      let persistedStateSet = false;
+      let bootSnapshot:
+        | { messages: TUIMessage[]; lastOutEventId?: string; lastInEventId?: string }
+        | undefined;
+      let bootClientData: unknown = payload.metadata;
+      if (parseClientData) {
+        try {
+          bootClientData = await parseClientData(payload.metadata);
+        } catch {
+          bootClientData = payload.metadata;
+        }
+      }
 
       /**
        * The `lastOutEventId` the most recent snapshot carried.
@@ -7117,33 +7133,113 @@ function chatAgent<
        */
       let lastSnapshotOutEventId: string | undefined;
 
+      const storageTrigger = (trigger: string): TranscriptStorageContext["trigger"] =>
+        trigger === "regenerate-message"
+          ? "regenerate-message"
+          : trigger === "action" || trigger === "action-turn"
+            ? "action"
+            : "submit-message";
+
+      /**
+       * Hand the runtime's view of the transcript to the storage as a
+       * changeset: the diff against what was last saved, plus the cursors the
+       * next boot resumes from. The shadow only advances when the save
+       * succeeds, so a failed save is folded into the next changeset.
+       */
+      /** The runtime's opaque state as of the last save; carried on every changeset's transcript. */
+      let transcriptState: unknown | null = null;
+      const saveTranscript = async (opts: {
+        reason: TranscriptChangeReason;
+        messages: TUIMessage[];
+        turn: number;
+        trigger: TranscriptStorageContext["trigger"];
+        clientData: unknown;
+        lastOutEventId: string | undefined;
+        nonFinalIds?: ReadonlySet<string>;
+      }) => {
+        const { changes, shadow } = diffTranscript(transcriptShadow, opts.messages, {
+          nonFinalIds: opts.nonFinalIds,
+        });
+        const throughId = opts.messages.at(-1)?.id ?? "";
+        const queued = locals.get(chatBackgroundQueueKey) ?? [];
+        const runtimeState: TranscriptRuntimeState | null =
+          laneCompacted || laneInjections.length > 0 || queued.length > 0
+            ? {
+                v: 1,
+                ...(laneCompacted
+                  ? {
+                      compaction: {
+                        modelMessages: accumulatedMessages,
+                        throughId,
+                      },
+                    }
+                  : {}),
+                ...(laneInjections.length > 0 ? { injections: laneInjections } : {}),
+                ...(queued.length > 0 ? { queued: [...queued] } : {}),
+              }
+            : null;
+        if (runtimeState !== null || persistedStateSet) {
+          changes.push({ op: "state", value: runtimeState } satisfies TranscriptChange);
+        }
+        transcriptState = runtimeState;
+        const inCursor = chatInputRouter().resumeFloor();
+        await transcriptStorage.save(
+          {
+            chatId: payload.chatId,
+            clientData: opts.clientData,
+            turn: opts.turn,
+            trigger: opts.trigger,
+            runId: ctx.run.id,
+            ctx,
+          },
+          {
+            reason: opts.reason,
+            changes,
+            transcript: {
+              entries: opts.messages.map((message) => ({
+                id: message.id,
+                final: !shadow.nonFinal.has(message.id),
+                message,
+              })),
+              state: transcriptState,
+            },
+            cursors: {
+              lastOutEventId: opts.lastOutEventId,
+              lastInEventId: inCursor !== undefined ? String(inCursor) : undefined,
+            },
+          }
+        );
+        transcriptShadow = shadow;
+        persistedStateSet = runtimeState !== null;
+      };
+
       /**
        * Persist the accumulator outside a turn.
        *
        * An action is not a turn, so it never reaches the turn-complete path where
-       * the snapshot is normally written — but it can change the conversation in
-       * two ways: a `chat.history` mutation, and a response streamed back from
-       * `onAction`. Both have to survive, and one write at the end of the action
-       * covers both rather than writing twice for a regenerate that does both.
+       * the transcript is normally saved, but a `chat.history` mutation changes
+       * the conversation and has to survive the run ending.
        *
        * Cursor-neutral: an action has no turn cursor of its own, and writing
        * `undefined` would drop the resume point the last turn established and make
        * the next boot replay from further back.
        */
-      const writeSnapshotOutsideTurn = async (reason: string) => {
+      const writeSnapshotOutsideTurn = async (
+        reason: string,
+        turnContext: { turn: number; clientData: unknown }
+      ) => {
         if (hydrateMessages) return;
         try {
           await tracer.startActiveSpan(
             "snapshot.write",
             async () => {
-              const snapshotInCursor = chatInputRouter().resumeFloor();
-              await writeChatSnapshot<TUIMessage>(sessionIdForSnapshot, {
-                version: 1,
-                savedAt: Date.now(),
+              await saveTranscript({
+                reason: "action",
                 messages: accumulatedUIMessages,
+                turn: turnContext.turn,
+                trigger: "action",
+                clientData: turnContext.clientData,
                 lastOutEventId: lastSnapshotOutEventId,
-                lastInEventId:
-                  snapshotInCursor !== undefined ? String(snapshotInCursor) : undefined,
               });
             },
             {
@@ -7184,7 +7280,7 @@ function chatAgent<
       let bootInCursor: number | undefined;
       let bootInCursorResolved = false;
 
-      if (!hydrateMessages && couldHavePriorState) {
+      if (couldHavePriorState) {
         // Single parent span for the whole boot read phase — snapshot
         // read, session.out replay, session.in replay. Per-phase timing
         // + result counts are attributes on the span.
@@ -7194,17 +7290,38 @@ function chatAgent<
             // snapshot read
             const snapStart = Date.now();
             try {
-              bootSnapshot = await readChatSnapshot<TUIMessage>(sessionIdForSnapshot);
+              const loaded = hydrateMessages
+                ? undefined
+                : await transcriptStorage.load<TUIMessage>({
+                    chatId: payload.chatId,
+                    clientData: bootClientData,
+                  });
+              if (loaded) {
+                transcriptShadow = createTranscriptShadow(
+                  loaded.messages,
+                  new Set(loaded.nonFinalIds ?? [])
+                );
+                bootTranscriptState = loaded.state;
+                transcriptState = loaded.state ?? null;
+                persistedStateSet = loaded.state !== null && loaded.state !== undefined;
+                bootSnapshot = {
+                  messages: loaded.messages,
+                  lastOutEventId: loaded.cursors?.lastOutEventId,
+                  lastInEventId: loaded.cursors?.lastInEventId,
+                };
+              }
             } catch (error) {
-              // `readChatSnapshot` already swallows + warns internally; this catch
-              // is just belt-and-suspenders against tracer/span errors.
-              logger.warn("chat.agent: snapshot read failed; continuing without snapshot", {
+              logger.warn("chat.agent: transcript load failed; continuing from the stream tail", {
                 error: error instanceof Error ? error.message : String(error),
                 sessionId: sessionIdForSnapshot,
               });
             }
             bootSpan.setAttribute("chat.boot.snapshot.durationMs", Date.now() - snapStart);
-            bootSpan.setAttribute("chat.boot.snapshot.present", !!bootSnapshot);
+            bootSpan.setAttribute(
+              "chat.boot.snapshot.present",
+              bootSnapshot !== undefined &&
+                (bootSnapshot.messages.length > 0 || bootSnapshot.lastOutEventId !== undefined)
+            );
             bootSpan.setAttribute(
               "chat.boot.snapshot.messageCount",
               bootSnapshot?.messages?.length ?? 0
@@ -7323,14 +7440,20 @@ function chatAgent<
       // Reads the turn boundary and subscribes in one call. `bootInCursor` is
       // only a fallback: the boot block above may already have resolved a
       // cursor from the snapshot, which is used when the boundary itself
-      // carries none.
+      // carries none. Everything the boot replayed off `.in` is dispatched from
+      // `bootInjectedQueue` below, so it goes into the floor here — folded in
+      // after the subscription opens, the live tail re-delivers it as a turn.
+      const lastRecoveredInSeq =
+        replayedInTail.length > 0 ? replayedInTail[replayedInTail.length - 1]!.seqNum : undefined;
+
       await installChatInputRouter(payload.chatId, {
         fallbackResumeFrom: bootInCursorResolved ? bootInCursor : undefined,
+        recoveredThrough: lastRecoveredInSeq,
         resuming: Boolean(payload.continuation) || ctx.attempt.number > 1,
       });
 
       // ── Recovery boot + chain reconstruction ────────────────────────
-      if (!hydrateMessages) {
+      {
         const settledMessages = mergeByIdReplaceWins<TUIMessage>(
           (bootSnapshot?.messages as TUIMessage[]) ?? [],
           replayedSettled
@@ -7437,17 +7560,6 @@ function chatAgent<
           await hookBeforeBoot();
         }
 
-        // Advance the session.in cursor past every recovered user so
-        // the live subscription doesn't re-deliver them.
-        if (replayedInTail.length > 0) {
-          const lastRecoveredSeq = replayedInTail[replayedInTail.length - 1]!.seqNum;
-          const currentCursor = sessionStreams.lastSeqNum(payload.chatId, "in");
-          if (currentCursor === undefined || lastRecoveredSeq > currentCursor) {
-            sessionStreams.setLastSeqNum(payload.chatId, "in", lastRecoveredSeq);
-            sessionStreams.setLastDispatchedSeqNum(payload.chatId, "in", lastRecoveredSeq);
-          }
-        }
-
         // Synthesize wire payloads for each recoveredTurn. The turn-loop
         // pops these ahead of `messagesInput.waitWithIdleTimeout` so they
         // dispatch as normal turns with the existing hook stack.
@@ -7499,6 +7611,7 @@ function chatAgent<
         // and it's safe because the route handler isn't subject to the
         // `/in/append` 512 KiB cap.
         if (
+          !loadContextHook &&
           accumulatedUIMessages.length === 0 &&
           payload.trigger === "handover-prepare" &&
           Array.isArray(payload.headStartMessages) &&
@@ -7532,7 +7645,21 @@ function chatAgent<
             }
           }
           try {
-            accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+            const bootRuntimeState = parseTranscriptRuntimeState(bootTranscriptState);
+            const restored = await restoreModelLane(
+              accumulatedUIMessages,
+              bootRuntimeState,
+              (messages) => toModelMessages(messages)
+            );
+            accumulatedMessages = restored.messages;
+            laneCompacted = restored.compacted;
+            laneInjections = restored.injections;
+            if (bootRuntimeState?.queued && bootRuntimeState.queued.length > 0) {
+              locals.set(chatBackgroundQueueKey, [
+                ...(locals.get(chatBackgroundQueueKey) ?? []),
+                ...bootRuntimeState.queued,
+              ]);
+            }
           } catch (error) {
             logger.warn("chat.agent: toModelMessages failed at boot; starting empty", {
               error: error instanceof Error ? error.message : String(error),
@@ -7981,6 +8108,7 @@ function chatAgent<
         }
 
         for (let turn = 0; turn < maxTurns; turn++) {
+          let turnClientData: unknown = payload.metadata;
           // Declared here so the finally can detach it — a handler leaked past
           // its turn duplicates every mid-stream message into the shared buffer.
           let turnMsgSub: { off: () => void } | undefined;
@@ -8011,6 +8139,7 @@ function chatAgent<
             const clientData = (
               parseClientData ? await parseClientData(wireMetadata) : wireMetadata
             ) as inferSchemaOut<TClientDataSchema>;
+            turnClientData = clientData;
             const lastUserMessage = extractLastUserMessageText(cleanedIncomingMessages);
 
             // Actions are not turns. They use a different span name
@@ -8059,6 +8188,7 @@ function chatAgent<
                 locals.set(chatDeferKey, new Set());
                 locals.set(chatCompactionStateKey, undefined);
                 locals.set(chatSteeringQueueKey, []);
+                locals.set(chatPendingBackgroundKey, []);
                 locals.set(chatResponsePartsKey, []);
                 // NOTE: chatBackgroundQueueKey is NOT reset here — messages injected
                 // by deferred work from the previous turn's onTurnComplete need to
@@ -8148,6 +8278,9 @@ function chatAgent<
                 const turnNewModelMessages: ModelMessage[] = [];
                 const turnNewUIMessages: TUIMessage[] = [];
                 locals.set(chatTurnNewUIMessagesKey, turnNewUIMessages);
+                // A head-start handover deliberately resumes from an assistant
+                // message it spliced in, so it isn't a no-op turn.
+                let splicedHandoverPartial = false;
 
                 // ── Action handling ──────────────────────────────────────
                 // Actions arrive on the same input stream but with
@@ -8176,11 +8309,11 @@ function chatAgent<
                     : currentWirePayload.action;
 
                   // Hydrate messages from backend if configured
-                  if (hydrateMessages) {
+                  if (loadContextHook) {
                     const hydrated = await tracer.startActiveSpan(
                       "hydrateMessages()",
                       async () => {
-                        return hydrateMessages({
+                        return loadContextHook({
                           chatId: currentWirePayload.chatId,
                           turn,
                           trigger: "action",
@@ -8202,6 +8335,8 @@ function chatAgent<
                     );
                     accumulatedUIMessages = [...hydrated] as TUIMessage[];
                     accumulatedMessages = await toModelMessages(hydrated);
+                    laneCompacted = false;
+                    laneInjections = [];
                     locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                   }
 
@@ -8239,6 +8374,8 @@ function chatAgent<
                       locals.set(chatOverrideMessagesKey, undefined);
                       accumulatedUIMessages = [...actionOverride] as TUIMessage[];
                       accumulatedMessages = await toModelMessages(actionOverride);
+                      laneCompacted = false;
+                      laneInjections = [];
                       locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
 
                       actionChangedHistory = true;
@@ -8264,7 +8401,7 @@ function chatAgent<
                   // incoming messages instead (gated on the pending handover).
                   if (
                     turn === 0 &&
-                    hydrateMessages &&
+                    loadContextHook &&
                     cleanedUIMessages.length === 0 &&
                     (locals.get(chatHandoverPartialKey)?.length ?? 0) > 0 &&
                     Array.isArray(payload.headStartMessages) &&
@@ -8301,7 +8438,7 @@ function chatAgent<
                     )) as TUIMessage[];
                   }
 
-                  if (hydrateMessages) {
+                  if (loadContextHook) {
                     // Snapshot the ids the accumulator knew BEFORE this
                     // turn ran — used below to decide whether an
                     // incoming wire message is genuinely new or just a
@@ -8324,7 +8461,7 @@ function chatAgent<
                     const hydrated = await tracer.startActiveSpan(
                       "hydrateMessages()",
                       async () => {
-                        return hydrateMessages({
+                        return loadContextHook({
                           chatId: currentWirePayload.chatId,
                           turn,
                           trigger: currentWirePayload.trigger as
@@ -8371,6 +8508,8 @@ function chatAgent<
 
                     accumulatedUIMessages = merged;
                     accumulatedMessages = await toModelMessages(merged);
+                    laneCompacted = false;
+                    laneInjections = [];
                     locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
 
                     // Track new messages for onTurnComplete.newUIMessages.
@@ -8420,6 +8559,8 @@ function chatAgent<
                         accumulatedUIMessages.pop();
                       }
                       accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+                      laneCompacted = false;
+                      laneInjections = [];
                     } else if (cleanedUIMessages.length > 0) {
                       // Submit-message (and the special-cased
                       // handover-prepare → submit-message rewrite earlier in
@@ -8473,6 +8614,8 @@ function chatAgent<
                             "chat.agent: replaced message not found at the model lane tail; reconverting the lane"
                           );
                           accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+                          laneCompacted = false;
+                          laneInjections = [];
                         }
                       } else {
                         const incomingModelMessages = await toModelMessages(cleanedUIMessages);
@@ -8516,11 +8659,37 @@ function chatAgent<
                         messageId: locals.get(chatHandoverMessageIdKey),
                       });
                       locals.set(chatHandoverPartialKey, []); // consume once
+                      splicedHandoverPartial = true;
                     }
                   }
 
                   locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                 } // end if (trigger !== "action")
+
+                // ── No-op turn ──────────────────────────────────────────
+                //
+                // A submit that added no new user message and leaves the model
+                // chain ending on an assistant message has nothing to answer —
+                // calling the model would prefill its own last reply. Keyed on
+                // the model tail, so a `tool`-terminated chain (a merged tool
+                // approval) still runs.
+                const isNoOpTurn =
+                  !isAction &&
+                  !splicedHandoverPartial &&
+                  currentWirePayload.trigger === "submit-message" &&
+                  turnNewUIMessages.length === 0 &&
+                  accumulatedMessages[accumulatedMessages.length - 1]?.role === "assistant";
+
+                if (isNoOpTurn) {
+                  msgSub?.off();
+                  logger.warn("chat.agent: turn added no new user message; skipping the model", {
+                    chatId: currentWirePayload.chatId,
+                    messageId: currentWirePayload.messageId,
+                  });
+                  await writeTurnCompleteChunk(currentWirePayload.chatId);
+                  // Not a turn — don't consume an iteration.
+                  turn--;
+                }
 
                 // ── Action result handling ──────────────────────────────
                 // For action turns, skip the turn machinery entirely.
@@ -8537,7 +8706,7 @@ function chatAgent<
                     // history rather than from the snapshot the edit replaced.
                     // The turn then does its own hooks, completion and snapshot.
                     if (actionChangedHistory) {
-                      await writeSnapshotOutsideTurn("action");
+                      await writeSnapshotOutsideTurn("action", { turn, clientData });
                     }
                     actionTurn = true;
                   } else if (actionResult !== undefined) {
@@ -8549,7 +8718,7 @@ function chatAgent<
                   } else {
                     msgSub?.off();
                     if (actionChangedHistory) {
-                      await writeSnapshotOutsideTurn("action");
+                      await writeSnapshotOutsideTurn("action", { turn, clientData });
                     }
                     await writeTurnCompleteChunk(currentWirePayload.chatId);
                     // Don't consume a turn iteration — actions aren't turns.
@@ -8557,7 +8726,9 @@ function chatAgent<
                   }
                 }
 
-                if (!isAction || actionTurn) {
+                // A no-op turn skips this block, and with it `followSessionPin`:
+                // there is nothing to answer, so nothing to hand over.
+                if ((!isAction || actionTurn) && !isNoOpTurn) {
                   // Mint a scoped public access token once per turn, reused for
                   // onChatStart, onTurnStart, onTurnComplete, and the turn-complete chunk.
                   const currentRunId = ctx.run.id;
@@ -8654,6 +8825,8 @@ function chatAgent<
                           locals.set(chatOverrideMessagesKey, undefined);
                           accumulatedUIMessages = [...turnStartOverride] as TUIMessage[];
                           accumulatedMessages = await toModelMessages(turnStartOverride);
+                          laneCompacted = false;
+                          laneInjections = [];
                           locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                         }
                       },
@@ -8673,9 +8846,12 @@ function chatAgent<
                     );
                   }
 
+                  await followSessionPin(currentWirePayload.chatId, versionSkew);
+
                   // chat.requestUpgrade() called in onTurnStart (or onValidateMessages) —
-                  // skip run() and signal the transport to re-trigger the same message
-                  // on the new version.
+                  // skip run() and hand over to a fresh run on the new version. The
+                  // successor picks the message up off session.in; the transport only
+                  // keeps reading.
                   if (locals.get(chatUpgradeRequestedKey)) {
                     await writeUpgradeRequiredChunk();
                     return "exit";
@@ -8719,7 +8895,12 @@ function chatAgent<
                     const lastAccumulated = accumulatedMessages[accumulatedMessages.length - 1];
                     const bgQueue = locals.get(chatBackgroundQueueKey);
                     if (bgQueue && bgQueue.length > 0 && lastAccumulated?.role !== "tool") {
-                      accumulatedMessages.push(...bgQueue.splice(0));
+                      const injected = bgQueue.splice(0);
+                      accumulatedMessages.push(...injected);
+                      laneInjections.push({
+                        afterId: accumulatedUIMessages.at(-1)?.id ?? "",
+                        messages: injected,
+                      });
                     }
 
                     if (isHeadStartFinalTurn) {
@@ -8912,6 +9093,8 @@ function chatAgent<
                     accumulatedMessages = await toModelMessages(
                       runOverride.filter((m) => !pendingIds.has(m.id))
                     );
+                    laneCompacted = false;
+                    laneInjections = [];
                     locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                   }
 
@@ -8937,6 +9120,8 @@ function chatAgent<
                     accumulatedMessages = taskCompactionConfig?.compactModelMessages
                       ? await taskCompactionConfig.compactModelMessages(compactEvent)
                       : modelOnlyOverride;
+                    laneCompacted = true;
+                    laneInjections = [];
 
                     // Apply UI messages: callback or default (preserve all)
                     if (taskCompactionConfig?.compactUIMessages) {
@@ -8955,14 +9140,16 @@ function chatAgent<
                   // before the response is appended so the order stays
                   // steer-then-answer. Outside the `capturedResponseMessage`
                   // branches below, so a turn that captured no response is covered.
-                  const steerTailThisTurn = reconcilePendingSteer({
-                    turnNew: turnNewModelMessages,
-                  }).reduce((n, e) => n + e.model.length, 0);
+                  const steerTailThisTurn =
+                    reconcilePendingSteer({
+                      turnNew: turnNewModelMessages,
+                    }).reduce((n, e) => n + e.model.length, 0) + reconcilePendingBackground();
 
                   // Append the assistant's response (partial or complete) to the accumulator.
                   // The onFinish callback fires even on abort/stop, so partial responses
                   // from stopped generation are captured correctly.
                   let rawResponseMessage: TUIMessage | undefined;
+                  let responseWasSkipped = false;
                   if (capturedResponseMessage) {
                     // Keep the raw message before cleanup for users who want custom handling
                     rawResponseMessage = capturedResponseMessage;
@@ -8988,54 +9175,65 @@ function chatAgent<
                       } as TUIMessage;
                       locals.set(chatResponsePartsKey, []);
                     }
-                    // Tool-approval continuations: the AI SDK reuses the trailing
-                    // assistant's ID (via originalMessages) so the captured response
-                    // carries the same ID as an existing message. Replace in place
-                    // instead of pushing a duplicate. For action turns this never
-                    // matches because originalMessages is omitted (fresh ID).
-                    const existingIdx = capturedResponseMessage.id
-                      ? accumulatedUIMessages.findIndex((m) => m.id === capturedResponseMessage!.id)
-                      : -1;
-                    const previousAtIdx =
-                      existingIdx !== -1 ? accumulatedUIMessages[existingIdx] : undefined;
-                    if (existingIdx !== -1) {
-                      accumulatedUIMessages[existingIdx] = capturedResponseMessage;
-                    } else {
-                      accumulatedUIMessages.push(capturedResponseMessage);
-                    }
-                    turnNewUIMessages.push(capturedResponseMessage);
-                    locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
-                    // Record toolCallId → head messageId so a HITL
-                    // continuation next turn can recover the head id
-                    // even if the AI SDK regenerates it. See
-                    // `chatToolCallToMessageIdKey` for the full
-                    // rationale (TRI-9137).
-                    recordToolCallIdsFromMessage(capturedResponseMessage);
-                    try {
-                      const responseModelMessages = await toModelMessages([
-                        stripProviderMetadata(capturedResponseMessage),
-                      ]);
+                    const responseHasContent = capturedResponseMessage.parts.some(
+                      (part) => part.type !== "step-start"
+                    );
+                    if (responseHasContent) {
+                      // Tool-approval continuations: the AI SDK reuses the trailing
+                      // assistant's ID (via originalMessages) so the captured response
+                      // carries the same ID as an existing message. Replace in place
+                      // instead of pushing a duplicate. For action turns this never
+                      // matches because originalMessages is omitted (fresh ID).
+                      const existingIdx = capturedResponseMessage.id
+                        ? accumulatedUIMessages.findIndex(
+                            (m) => m.id === capturedResponseMessage!.id
+                          )
+                        : -1;
+                      const previousAtIdx =
+                        existingIdx !== -1 ? accumulatedUIMessages[existingIdx] : undefined;
                       if (existingIdx !== -1) {
-                        const ok =
-                          previousAtIdx !== undefined &&
-                          (await replaceModelRun(
-                            accumulatedMessages,
-                            previousAtIdx,
-                            capturedResponseMessage,
-                            steerTailThisTurn
-                          ));
-                        if (!ok) {
-                          logger.warn(
-                            "chat.agent: replaced response not found at the model lane tail; reconverting the lane"
-                          );
-                          accumulatedMessages = await toModelMessages(accumulatedUIMessages);
-                        }
+                        accumulatedUIMessages[existingIdx] = capturedResponseMessage;
                       } else {
-                        accumulatedMessages.push(...responseModelMessages);
+                        accumulatedUIMessages.push(capturedResponseMessage);
                       }
-                      turnNewModelMessages.push(...responseModelMessages);
-                    } catch {
-                      // Conversion failed — skip accumulation for this turn
+                      turnNewUIMessages.push(capturedResponseMessage);
+                      locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+                      // Record toolCallId → head messageId so a HITL
+                      // continuation next turn can recover the head id
+                      // even if the AI SDK regenerates it. See
+                      // `chatToolCallToMessageIdKey` for the full
+                      // rationale (TRI-9137).
+                      recordToolCallIdsFromMessage(capturedResponseMessage);
+                      try {
+                        const responseModelMessages = await toModelMessages([
+                          stripProviderMetadata(capturedResponseMessage),
+                        ]);
+                        if (existingIdx !== -1) {
+                          const ok =
+                            previousAtIdx !== undefined &&
+                            (await replaceModelRun(
+                              accumulatedMessages,
+                              previousAtIdx,
+                              capturedResponseMessage,
+                              steerTailThisTurn
+                            ));
+                          if (!ok) {
+                            logger.warn(
+                              "chat.agent: replaced response not found at the model lane tail; reconverting the lane"
+                            );
+                            accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+                            laneCompacted = false;
+                            laneInjections = [];
+                          }
+                        } else {
+                          accumulatedMessages.push(...responseModelMessages);
+                        }
+                        turnNewModelMessages.push(...responseModelMessages);
+                      } catch {
+                        // Conversion failed — skip accumulation for this turn
+                      }
+                    } else {
+                      responseWasSkipped = true;
                     }
                   }
                   // If there's no captured response (manual pipe mode) but there are
@@ -9148,6 +9346,9 @@ function chatAgent<
                                     },
                                   ];
 
+                              laneCompacted = true;
+                              laneInjections = [];
+
                               // UI messages: callback or default (preserve all)
                               if (outerCompaction.compactUIMessages) {
                                 accumulatedUIMessages = (await outerCompaction.compactUIMessages(
@@ -9252,6 +9453,8 @@ function chatAgent<
                           locals.set(chatOverrideMessagesKey, undefined);
                           accumulatedUIMessages = [...override] as TUIMessage[];
                           accumulatedMessages = await toModelMessages(override);
+                          laneCompacted = false;
+                          laneInjections = [];
                           locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                           // Update event so onTurnComplete sees compacted messages
                           turnCompleteEvent.messages = accumulatedMessages;
@@ -9285,6 +9488,18 @@ function chatAgent<
                       capturedPartialResponse = capturedResponseMessage;
                       turnCompleteEvent.responseMessage = capturedResponseMessage;
                       turnCompleteEvent.uiMessages = accumulatedUIMessages;
+                      locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+                    } else if (responseWasSkipped) {
+                      capturedResponseMessage = {
+                        ...capturedResponseMessage,
+                        parts: [...(capturedResponseMessage.parts ?? []), ...lateParts],
+                      } as TUIMessage;
+                      accumulatedUIMessages.push(capturedResponseMessage);
+                      turnNewUIMessages.push(capturedResponseMessage);
+                      capturedPartialResponse = capturedResponseMessage;
+                      turnCompleteEvent.responseMessage = capturedResponseMessage;
+                      turnCompleteEvent.uiMessages = accumulatedUIMessages;
+                      locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                     }
                     locals.set(chatResponsePartsKey, []);
                   }
@@ -9311,6 +9526,8 @@ function chatAgent<
                           locals.set(chatOverrideMessagesKey, undefined);
                           accumulatedUIMessages = [...turnCompleteOverride] as TUIMessage[];
                           accumulatedMessages = await toModelMessages(turnCompleteOverride);
+                          laneCompacted = false;
+                          laneInjections = [];
                           locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                         }
                       },
@@ -9369,16 +9586,19 @@ function chatAgent<
                       await tracer.startActiveSpan(
                         "snapshot.write",
                         async () => {
-                          const snapshotInCursor = chatInputRouter().resumeFloor();
                           lastSnapshotOutEventId =
                             turnCompleteResult?.lastEventId ?? lastSnapshotOutEventId;
-                          await writeChatSnapshot<TUIMessage>(sessionIdForSnapshot, {
-                            version: 1,
-                            savedAt: Date.now(),
+                          await saveTranscript({
+                            reason: "turn-complete",
                             messages: accumulatedUIMessages,
+                            turn,
+                            trigger: storageTrigger(currentWirePayload.trigger),
+                            clientData,
                             lastOutEventId: lastSnapshotOutEventId,
-                            lastInEventId:
-                              snapshotInCursor !== undefined ? String(snapshotInCursor) : undefined,
+                            nonFinalIds:
+                              wasStopped && capturedResponseMessage?.id
+                                ? new Set([capturedResponseMessage.id])
+                                : undefined,
                           });
                         },
                         {
@@ -9418,8 +9638,8 @@ function chatAgent<
                   return "continue";
                 }
 
-                // chat.requestUpgrade() was called — exit the loop so the
-                // transport triggers a new run on the latest version.
+                // chat.requestUpgrade() was called — exit the loop; the handover
+                // has already triggered a new run on the latest version.
                 // chat.endRun() — same exit, no upgrade semantics.
                 if (locals.get(chatCloseRequestedKey)) {
                   await performChatClose();
@@ -9427,6 +9647,9 @@ function chatAgent<
                 }
 
                 if (locals.get(chatUpgradeRequestedKey) || locals.get(chatEndRunRequestedKey)) {
+                  if (locals.get(chatUpgradeRequestedKey)) {
+                    await persistUpgradeHandoff();
+                  }
                   return "exit";
                 }
 
@@ -9555,7 +9778,9 @@ function chatAgent<
             try {
               await withChatWriter(async (writer) => {
                 const errorText =
-                  turnError instanceof Error ? turnError.message : "An unexpected error occurred";
+                  turnError instanceof Error && turnError.message
+                    ? turnError.message
+                    : "An unexpected error occurred";
                 writer.write({ type: "error", errorText } as any);
               });
               // Signal turn complete so the client knows this turn is done
@@ -9639,6 +9864,7 @@ function chatAgent<
             let erroredNewModelMessages: ModelMessage[] = [];
 
             const reconciledSteer = reconcilePendingSteer();
+            const backgroundTailThisTurn = reconcilePendingBackground();
 
             if (!responseCommitted) {
               try {
@@ -9674,13 +9900,16 @@ function chatAgent<
                       accumulatedMessages,
                       erroredUIMessages[partialIdx]!,
                       partialResponse!,
-                      reconciledSteer.reduce((n, e) => n + e.model.length, 0)
+                      reconciledSteer.reduce((n, e) => n + e.model.length, 0) +
+                        backgroundTailThisTurn
                     );
                     if (!ok) {
                       logger.warn(
                         "chat.agent: replaced partial not found at the model lane tail; reconverting the lane"
                       );
                       accumulatedMessages = await toModelMessages(erroredUIMessagesWithPartial);
+                      laneCompacted = false;
+                      laneInjections = [];
                     }
                   }
                   accumulatedUIMessages = erroredUIMessagesWithPartial;
@@ -9748,14 +9977,15 @@ function chatAgent<
             // neither the snapshot nor the replayable `.in` tail.
             if (!hydrateMessages) {
               try {
-                const errorSnapshotInCursor = chatInputRouter().resumeFloor();
-                await writeChatSnapshot<TUIMessage>(sessionIdForSnapshot, {
-                  version: 1,
-                  savedAt: Date.now(),
+                await saveTranscript({
+                  reason: "turn-error",
                   messages: erroredUIMessagesWithPartial,
-                  lastOutEventId: errorTurnCompleteResult?.lastEventId,
-                  lastInEventId:
-                    errorSnapshotInCursor !== undefined ? String(errorSnapshotInCursor) : undefined,
+                  turn,
+                  trigger: storageTrigger(currentWirePayload.trigger),
+                  clientData: turnClientData,
+                  lastOutEventId: lastSnapshotOutEventId,
+                  nonFinalIds:
+                    includePartial && partialResponse ? new Set([partialResponse.id]) : undefined,
                 });
               } catch (error) {
                 logger.warn("chat.agent: error-path snapshot write failed", {
@@ -9772,6 +10002,9 @@ function chatAgent<
 
             // chat.requestUpgrade() / chat.endRun() — exit after error turn too
             if (locals.get(chatUpgradeRequestedKey) || locals.get(chatEndRunRequestedKey)) {
+              if (locals.get(chatUpgradeRequestedKey)) {
+                await persistUpgradeHandoff();
+              }
               return;
             }
 
@@ -10418,15 +10651,22 @@ function isStopped(): boolean {
 // ---------------------------------------------------------------------------
 
 /**
- * Request that the current run exits so the next message starts on the latest
- * deployed version (via the standard continuation mechanism).
+ * Hand the conversation over to another deployment.
+ *
+ * The handover happens immediately and server-side: a successor run is created
+ * and picks the conversation up from `session.in`. The transport keeps reading
+ * the same session output, so no client action is needed and nothing waits for
+ * the next message.
+ *
+ * Without a target the session's pin is cleared, so the successor lands on the
+ * latest deployed version; with `externalDeploymentId` the session is re-pinned
+ * to that deployment.
  *
  * When called from `onTurnStart` or `onValidateMessages`, `run()` is skipped
- * entirely — the run exits immediately and the transport re-triggers the
- * same message on the new version.
+ * entirely and the successor answers the message that opened the turn.
  *
  * When called from `run()` or `chat.defer()`, the current turn completes
- * normally and the run exits afterward instead of waiting for the next message.
+ * normally and the handover happens afterward.
  *
  * Call from `onTurnStart`, `onValidateMessages`, `onChatResume`, `run()`,
  * or inside `chat.defer()`.
@@ -10446,8 +10686,47 @@ function isStopped(): boolean {
  * });
  * ```
  */
-function requestUpgrade(): void {
+function requestUpgrade(options?: { externalDeploymentId?: string }): void {
   locals.set(chatUpgradeRequestedKey, true);
+
+  // Without a target the handoff clears the session's pin; with one it re-pins to that deployment.
+  const target = options?.externalDeploymentId?.trim();
+  if (target) locals.set(chatUpgradeExternalDeploymentIdKey, target);
+}
+
+/** @internal Requests a handoff when the session's pin no longer names this deployment. */
+async function followSessionPin(
+  chatId: string | undefined,
+  policy: ChatVersionSkewPolicy | undefined
+): Promise<void> {
+  if (!chatId) {
+    return;
+  }
+
+  const deployedExternalId = locals.get(chatAgentRunContextKey)?.deployment?.externalId;
+
+  if (policy !== "hold" && !deployedExternalId) {
+    logger.debug("chat.versionSkew: cannot follow the session pin", {
+      chatId,
+      reason: "the run context carries no deployment.externalId",
+    });
+  }
+
+  const target = await resolvePinToFollow({
+    policy,
+    deployedExternalId,
+    upgradeAlreadyRequested: locals.get(chatUpgradeRequestedKey) === true,
+    readPin: async () =>
+      (await sessions.retrieve(chatId, { retry: { maxAttempts: 2, randomize: true } }))
+        .triggerConfig,
+  });
+
+  if (!target) {
+    return;
+  }
+
+  logger.info("chat.versionSkew: following the session pin", { chatId, target });
+  requestUpgrade({ externalDeploymentId: target });
 }
 
 /**
@@ -10492,11 +10771,14 @@ async function endAndContinue(): Promise<void> {
     );
   }
 
-  await performEndAndContinue();
+  await performEndAndContinue({ reason: "continuation" });
 }
 
 /** @internal Shared server handoff used by managed and custom agent loops. */
-async function performEndAndContinue(): Promise<void> {
+async function performEndAndContinue(options: {
+  reason: "continuation" | "upgrade";
+  externalDeploymentId?: string;
+}): Promise<void> {
   const chatId = locals.get(chatExternalIdKey);
   const callingRunId = locals.get(chatAgentRunContextKey)?.run.id;
 
@@ -10504,11 +10786,27 @@ async function performEndAndContinue(): Promise<void> {
     throw new Error("Cannot end and continue without an active chat agent run");
   }
 
+  const externalDeploymentId = options.externalDeploymentId;
   const apiClient = apiClientManager.clientOrThrow();
-  await apiClient.endAndContinueSession(chatId, {
+  const result = await apiClient.endAndContinueSession(chatId, {
     callingRunId,
-    reason: "upgrade",
+    reason: options.reason,
+    ...(externalDeploymentId ? { externalDeploymentId } : {}),
   });
+
+  if (result?.pendingVersion !== true) {
+    return;
+  }
+
+  // The successor parked. Say so on `.out` while this run still can — the transport's
+  // subscription survives the swap, so the client learns without waiting for its next send.
+  const [error] = await tryCatch(
+    getChatSession().out.writeControl(TRIGGER_CONTROL_SUBTYPE.PENDING_VERSION)
+  );
+
+  if (error) {
+    logger.warn("could not signal a parked handoff", { chatId, error });
+  }
 }
 
 /**
@@ -11437,6 +11735,11 @@ export type ChatSessionOptions = {
   timeout?: string;
   /** Max turns before ending. @default 100 */
   maxTurns?: number;
+  /**
+   * What to do when the session's `externalDeploymentId` no longer names this deployment.
+   * `"follow"` (default) hands over at the next turn boundary; `"hold"` stays put.
+   */
+  versionSkew?: ChatVersionSkewPolicy;
   /** Automatic context compaction — same options as `chat.agent({ compaction })`. */
   compaction?: ChatAgentCompactionOptions;
   /** Configure mid-execution message injection — same options as `chat.agent({ pendingMessages })`. */
@@ -11653,6 +11956,7 @@ function createChatSession<TClientData = unknown>(
     maxTurns = 100,
     compaction: sessionCompaction,
     pendingMessages: sessionPendingMessages,
+    versionSkew: sessionVersionSkew,
   } = options;
 
   const idleTimeoutInSeconds = sessionIdleTimeoutOpt ?? 30;
@@ -11762,6 +12066,9 @@ function createChatSession<TClientData = unknown>(
 
             // chat.requestUpgrade() / chat.endRun() — exit before waiting
             if (locals.get(chatUpgradeRequestedKey) || locals.get(chatEndRunRequestedKey)) {
+              if (locals.get(chatUpgradeRequestedKey)) {
+                await persistUpgradeHandoff();
+              }
               stop.cleanup();
               return { done: true, value: undefined };
             }
@@ -11879,6 +12186,8 @@ function createChatSession<TClientData = unknown>(
             }
             accumulator.applyHandover(pendingHandoverSignal);
           }
+
+          await followSessionPin(currentPayload.chatId, sessionVersionSkew);
 
           // chat.requestUpgrade() called before this turn — signal transport and exit
           if (locals.get(chatUpgradeRequestedKey)) {
@@ -12428,7 +12737,7 @@ export type CreateChatStartSessionActionOptions = {
    * Default trigger config used when starting a new session for a chat.
    * Per-call `params.triggerConfig` shallow-merges on top.
    */
-  triggerConfig?: Partial<SessionTriggerConfig>;
+  triggerConfig?: Partial<SessionTriggerConfigInput>;
   /**
    * Override the Trigger.dev API base URL. String applies to both
    * `/api/v1/sessions` and `/api/v1/auth/jwt/claims`; function picks per
@@ -12472,7 +12781,7 @@ export type ChatStartSessionParams<TChat extends AnyTask = AnyTask> = {
    * `chat.agent`: anything beyond `chatId`/`messages`/`trigger`/`metadata`,
    * which the runtime injects automatically).
    */
-  triggerConfig?: Partial<SessionTriggerConfig>;
+  triggerConfig?: Partial<SessionTriggerConfigInput>;
   /**
    * Opaque session-level metadata stored on the Session row. Separate from
    * the per-turn `clientData` above. Use this when you want to attach
@@ -12495,6 +12804,11 @@ export type ChatStartSessionResult = {
   runId: string;
   /** Session friendlyId — informational. */
   sessionId: string;
+  /**
+   * The session's run is parked waiting for its deployment. Messages sent meanwhile are durable
+   * and delivered once it lands; surface this so the wait reads as a deploy in progress.
+   */
+  pendingVersion?: boolean;
 };
 
 /**
@@ -12576,7 +12890,14 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
     const idleTimeoutInSeconds =
       params.triggerConfig?.idleTimeoutInSeconds ?? options?.triggerConfig?.idleTimeoutInSeconds;
 
-    const triggerConfig: SessionTriggerConfig = {
+    // Only `undefined` means "not supplied": a per-call `null` (opt out) has to beat a pinning
+    // action default, which neither truthiness nor `??` would allow.
+    const externalDeploymentId =
+      params.triggerConfig?.externalDeploymentId !== undefined
+        ? params.triggerConfig.externalDeploymentId
+        : options?.triggerConfig?.externalDeploymentId;
+
+    const triggerConfig: SessionTriggerConfigInput = {
       basePayload: {
         messages: [],
         trigger: "preload",
@@ -12603,6 +12924,10 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
               params.triggerConfig?.lockToVersion ?? options?.triggerConfig?.lockToVersion,
           }
         : {}),
+      ...(params.triggerConfig?.ttl !== undefined || options?.triggerConfig?.ttl !== undefined
+        ? { ttl: params.triggerConfig?.ttl ?? options?.triggerConfig?.ttl }
+        : {}),
+      ...(externalDeploymentId !== undefined ? { externalDeploymentId } : {}),
       ...(idleTimeoutInSeconds !== undefined ? { idleTimeoutInSeconds } : {}),
     };
 
@@ -12618,7 +12943,12 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
     const fetchOverride = options?.fetch;
     const hasOverride = baseURLOption !== undefined || fetchOverride !== undefined;
 
-    const created: { id: string; runId: string; publicAccessToken: string } = hasOverride
+    const created: {
+      id: string;
+      runId: string;
+      publicAccessToken: string;
+      pendingVersion?: boolean;
+    } = hasOverride
       ? await callSessionsCreateWithOverride({
           chatId: params.chatId,
           body: startBody,
@@ -12653,6 +12983,7 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
       publicAccessToken,
       runId: created.runId,
       sessionId: created.id,
+      ...(created.pendingVersion ? { pendingVersion: true } : {}),
     };
   };
 }
@@ -12689,12 +13020,17 @@ async function callSessionsCreateWithOverride(args: {
     type: "chat.agent";
     externalId: string;
     taskIdentifier: string;
-    triggerConfig: SessionTriggerConfig;
+    triggerConfig: SessionTriggerConfigInput;
     metadata?: Record<string, unknown>;
   };
   baseURLOption: string | ChatStartSessionBaseURLResolver | undefined;
   fetchOverride: ChatStartSessionFetchOverride | undefined;
-}): Promise<{ id: string; runId: string; publicAccessToken: string }> {
+}): Promise<{
+  id: string;
+  runId: string;
+  publicAccessToken: string;
+  pendingVersion?: boolean;
+}> {
   const accessToken = apiClientManager.accessToken;
   if (!accessToken) {
     throw new Error(
@@ -12706,7 +13042,8 @@ async function callSessionsCreateWithOverride(args: {
   const init: RequestInit = {
     method: "POST",
     headers: overrideRequestHeaders(accessToken),
-    body: JSON.stringify(args.body),
+    // This path bypasses `sessions.start`, so it resolves the pin itself.
+    body: JSON.stringify(withResolvedExternalDeploymentId(args.body)),
   };
   const response = args.fetchOverride
     ? await args.fetchOverride(url, init, ctx)
@@ -12715,7 +13052,12 @@ async function callSessionsCreateWithOverride(args: {
     const text = await response.text().catch(() => "");
     throw new Error(`sessions.start failed: ${response.status} ${text}`);
   }
-  const json = (await response.json()) as { id: string; runId: string; publicAccessToken: string };
+  const json = (await response.json()) as {
+    id: string;
+    runId: string;
+    publicAccessToken: string;
+    pendingVersion?: boolean;
+  };
   return json;
 }
 
@@ -12782,6 +13124,68 @@ async function mintPublicTokenWithOverride(args: {
   });
 }
 
+export type CreateChatLoadTranscriptActionOptions = {
+  /**
+   * Scope the action to a specific API client configuration (secret key,
+   * base URL) instead of the process-wide one. The default storage reads
+   * through this client.
+   */
+  apiClient?: ApiClientConfiguration;
+  /** Page size when the caller passes none. */
+  limit?: number;
+};
+
+export type ChatLoadTranscriptParams<TClientData = unknown> = {
+  chatId: string;
+  clientData?: TClientData;
+  limit?: number;
+  before?: string;
+};
+
+/**
+ * Creates a server-side helper that reads a conversation from a transcript
+ * storage, for rendering history before the chat connects. Works the same
+ * for every storage, the platform default included, so the browser never
+ * reads a store directly and the secret key stays on the server.
+ *
+ * Wrap it in a Next.js server action (or any server-side handler), scope it
+ * to the authenticated user through `clientData`, and pass the result to
+ * `useLoadTranscript` in the browser.
+ *
+ * @example
+ * ```ts
+ * // actions.ts
+ * "use server";
+ * import { chat, defaultStorage } from "@trigger.dev/sdk/ai";
+ *
+ * export const loadTranscript = chat.createLoadTranscriptAction(defaultStorage, { limit: 50 });
+ * ```
+ */
+function createChatLoadTranscriptAction<TClientData = unknown>(
+  storage: TranscriptStorage<TClientData>,
+  options?: CreateChatLoadTranscriptActionOptions
+): (params: ChatLoadTranscriptParams<TClientData>) => Promise<TranscriptLoadResult> {
+  return async (params) => {
+    if (!params.chatId) {
+      throw new Error("chat.createLoadTranscriptAction: params.chatId is required.");
+    }
+    if (options?.apiClient) {
+      const { apiClient, ...rest } = options;
+      return apiClientManager.runWithConfig(apiClient, () =>
+        createChatLoadTranscriptAction(storage, rest)(params)
+      );
+    }
+    const limit = params.limit ?? options?.limit;
+    return storage.load(
+      { chatId: params.chatId, clientData: params.clientData as TClientData },
+      {
+        ...(limit !== undefined ? { limit } : {}),
+        ...(params.before !== undefined ? { before: params.before } : {}),
+      }
+    );
+  };
+}
+
 export const chat = {
   /** Create a chat agent. See {@link chatAgent}. */
   agent: chatAgent,
@@ -12793,6 +13197,8 @@ export const chat = {
   withClientData,
   /** Create a server-side helper for starting (or resuming) a Session for a chatId. See {@link createChatStartSessionAction}. */
   createStartSessionAction: createChatStartSessionAction,
+  /** Returns a server-side helper that reads a conversation from a transcript storage. */
+  createLoadTranscriptAction: createChatLoadTranscriptAction,
   /** Pipe a stream to the chat transport. See {@link pipeChat}. */
   pipe: pipeChat,
   /** Return from `onAction` to run a turn on the edited history. See {@link chatTurn}. */
@@ -13047,13 +13453,50 @@ async function writeTurnCompleteChunk(
  *
  * @internal
  */
+/**
+ * Persists an upgrade requested after the turn has already run.
+ *
+ * The pre-turn sites reach {@link performEndAndContinue} through
+ * {@link writeUpgradeRequiredChunk}, which is what clears (or re-points) the
+ * session's stored `externalDeploymentId`. The post-turn exits had no such path,
+ * so a `chat.requestUpgrade()` from `run()` or `chat.defer()` left the pin intact
+ * and every continuation re-pinned to the deployment the agent asked to leave.
+ *
+ * No `upgrade-required` chunk is written here: the turn already produced its
+ * answer, so there is nothing for a client to be told about.
+ */
+async function persistUpgradeHandoff(): Promise<void> {
+  const chatId = locals.get(chatExternalIdKey);
+  const callingRunId = locals.get(chatAgentRunContextKey)?.run.id;
+
+  if (!chatId || !callingRunId) {
+    return;
+  }
+
+  try {
+    await performEndAndContinue({
+      reason: "upgrade",
+      externalDeploymentId: locals.get(chatUpgradeExternalDeploymentIdKey),
+    });
+  } catch (error) {
+    logger.warn("upgrade handoff failed; session keeps its current version pin", {
+      chatId,
+      callingRunId,
+      error,
+    });
+  }
+}
+
 async function writeUpgradeRequiredChunk(): Promise<StreamWriteResult> {
   const chatId = locals.get(chatExternalIdKey);
   const callingRunId = locals.get(chatAgentRunContextKey)?.run.id;
 
   if (chatId && callingRunId) {
     try {
-      await performEndAndContinue();
+      await performEndAndContinue({
+        reason: "upgrade",
+        externalDeploymentId: locals.get(chatUpgradeExternalDeploymentIdKey),
+      });
     } catch (error) {
       // Non-fatal: the next `.in/append` re-triggers via the probe.
       // Swallow rather than throw so we still emit the chunk + exit.

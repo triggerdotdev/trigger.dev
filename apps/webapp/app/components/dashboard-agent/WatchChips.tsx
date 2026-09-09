@@ -13,7 +13,7 @@ import type {
   WatchSemanticIcon,
   WatchStatus,
 } from "@internal/dashboard-agent-contracts";
-import { AgentSpinner } from "~/components/primitives/Spinner";
+import { Spinner } from "~/components/primitives/Spinner";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { cn } from "~/utils/cn";
 import { type AgentTone, TONE_ICON_COLOR } from "./agent-badges";
@@ -48,7 +48,15 @@ const SEMANTIC_ICON: Record<WatchSemanticIcon, (props: { className?: string }) =
  * `run_finished` watch on a failed run resolves `condition_met`. Cancellation has none.
  */
 function StatusIcon({ watch }: { watch: WatchChip }) {
-  if (watch.status === "active") return <AgentSpinner size={14} />;
+  if (watch.status === "active") {
+    // `inherit` plus the neutral tone, so it reads like the other status glyphs.
+    return (
+      <Spinner
+        className={cn("size-3.5 shrink-0", TONE_ICON_COLOR.neutral as string)}
+        color="inherit"
+      />
+    );
+  }
 
   if (watch.status === "cancelled") {
     return <NoSymbolIcon className={cn("size-3.5 shrink-0", TONE_ICON_COLOR.neutral as string)} />;

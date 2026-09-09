@@ -1,4 +1,4 @@
-import { VIEW_BLOCK_VERSION } from "@internal/dashboard-agent-contracts";
+import { isTrailingAgentRecord, VIEW_BLOCK_VERSION } from "@internal/dashboard-agent-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { liveProgress } from "./progress-line";
 import {
@@ -116,6 +116,27 @@ describe("replacing a stale running step from the re-read", () => {
     expect(merged.map((message) => message.id)).toEqual([RUNNING_STEP.id, SETTLED.id]);
     expect(merged[0]).toBe(RUNNING_STEP);
   });
+
+  // A prose-only turn: no tool part, just a `text` part the stream never marked done.
+  const RUNNING_TEXT = {
+    id: "msg_text",
+    role: "assistant",
+    parts: [{ type: "text", text: "Concurrency on the ", state: "streaming" }],
+  };
+
+  const FINISHED_TEXT = {
+    id: "msg_text",
+    role: "assistant",
+    parts: [
+      { type: "text", text: "Concurrency on the `emails` queue hit its limit.", state: "done" },
+    ],
+  };
+
+  it("swaps a still-streaming text part for its settled version too", () => {
+    const merged = mergeSettledMessages([RUNNING_TEXT], [FINISHED_TEXT]);
+    expect(merged).toEqual([FINISHED_TEXT]);
+    expect(transcriptLooksUnfinished(merged)).toBe(false);
+  });
 });
 
 describe("reading the transcript endpoint", () => {
@@ -171,8 +192,24 @@ describe("deciding whether a settled turn is worth re-reading", () => {
     parts: [{ type: "tool-get_report", toolCallId: "call_1", state: "input-available" }],
   };
 
+  // A prose-only reply: no tool part to catch, just a `text` part still streaming.
+  const DANGLING_TEXT = {
+    id: "msg_dangling_text",
+    role: "assistant",
+    parts: [{ type: "text", text: "Concurrency on the ", state: "streaming" }],
+  };
+
   it("re-reads when the stream died mid-tool, not only when a card is open", () => {
     expect(transcriptLooksUnfinished([DANGLING_TOOL])).toBe(true);
+  });
+
+  it("re-reads when the stream died mid-text, with no tool part at all", () => {
+    expect(transcriptLooksUnfinished([DANGLING_TEXT])).toBe(true);
+  });
+
+  it("leaves a finished text part alone", () => {
+    const finished = { ...DANGLING_TEXT, parts: [{ type: "text", text: "Done.", state: "done" }] };
+    expect(transcriptLooksUnfinished([finished])).toBe(false);
   });
 
   it("re-reads while a card is still open", () => {
@@ -281,5 +318,115 @@ describe("an already-open panel when a turn is exhausted", () => {
     });
 
     expect(reads).toBe(1);
+  });
+});
+
+/**
+ * A watch wake and an investigation settlement are appended to the chat after the turn
+ * they follow, and both are stored with `role: "assistant"`. Reading only the last
+ * message would call a still-streaming turn settled and skip the resume on reopen.
+ */
+describe("transcriptLooksUnfinished behind a trailing record", () => {
+  const userAsk = { id: "msg_user", role: "user", parts: [{ type: "text", text: "why?" }] };
+
+  const danglingTool = {
+    id: "msg_answer",
+    role: "assistant",
+    parts: [{ type: "tool-run_query", state: "input-available" }],
+  };
+  const streamingText = {
+    id: "msg_answer",
+    role: "assistant",
+    parts: [{ type: "text", text: "Looking at", state: "streaming" }],
+  };
+  const finishedAnswer = {
+    id: "msg_answer",
+    role: "assistant",
+    parts: [
+      { type: "tool-run_query", state: "output-available", output: {} },
+      { type: "text", text: "Nothing is failing." },
+    ],
+  };
+  // The wire shape the panel really stores: see `wakeRefFromMessageId` in WakeBanner.
+  const wake = {
+    id: "wake:watch:watch_1:fired",
+    role: "assistant",
+    parts: [{ type: "text", text: "Your watch fired." }],
+  };
+  const turnFailed = {
+    id: "turn-error:2",
+    role: "assistant",
+    parts: [{ type: "text", text: "That turn failed." }],
+  };
+
+  it("still reads a dangling tool call behind a wake as unfinished", () => {
+    expect(transcriptLooksUnfinished([userAsk, danglingTool, wake])).toBe(true);
+  });
+
+  it("still reads streaming text behind a wake as unfinished", () => {
+    expect(transcriptLooksUnfinished([userAsk, streamingText, wake])).toBe(true);
+  });
+
+  it("walks back over several trailing records, not just the last one", () => {
+    const settlement = cardMessage({
+      id: `investigation-settlement:${INVESTIGATION_ID}:2`,
+      revision: 2,
+      outcome: "resolved",
+    });
+    expect(transcriptLooksUnfinished([userAsk, danglingTool, settlement, wake])).toBe(true);
+  });
+
+  it("reads a finished answer behind a wake as settled", () => {
+    expect(transcriptLooksUnfinished([userAsk, finishedAnswer, wake])).toBe(false);
+  });
+
+  it("does not carry an older turn's dangling part into a finished one", () => {
+    expect(transcriptLooksUnfinished([userAsk, danglingTool, userAsk, finishedAnswer])).toBe(false);
+  });
+
+  it("stops at a stored failure: that turn ended, badly, and will not resume", () => {
+    expect(transcriptLooksUnfinished([userAsk, danglingTool, turnFailed])).toBe(false);
+  });
+
+  it("has no turn to read when only records follow the ask", () => {
+    expect(transcriptLooksUnfinished([userAsk, wake])).toBe(false);
+  });
+
+  // A wake can also start an investigation, which appends its own assistant messages —
+  // `investigate:watch:…` and, on a forced close, `investigate:watch:…:settled`.
+  const investigation = {
+    id: "investigate:watch:watch_1:fired",
+    role: "assistant",
+    parts: [{ type: "text", text: "Looking into the wake." }],
+  };
+  const investigationSettled = {
+    id: "investigate:watch:watch_1:fired:settled",
+    role: "assistant",
+    parts: [{ type: "text", text: "Closed it out." }],
+  };
+
+  it("still reads the interrupted reply behind a watch investigation as unfinished", () => {
+    expect(transcriptLooksUnfinished([userAsk, danglingTool, investigation])).toBe(true);
+  });
+
+  it("still reads it as unfinished once that investigation has settled", () => {
+    expect(
+      transcriptLooksUnfinished([userAsk, danglingTool, investigation, investigationSettled])
+    ).toBe(true);
+  });
+
+  it("reads a finished reply behind a watch investigation as settled", () => {
+    expect(
+      transcriptLooksUnfinished([userAsk, finishedAnswer, investigation, investigationSettled])
+    ).toBe(false);
+  });
+
+  it("treats an ordinary answer as the turn, never as a record", () => {
+    expect(isTrailingAgentRecord(finishedAnswer.id)).toBe(false);
+    expect(isTrailingAgentRecord(danglingTool.id)).toBe(false);
+    expect(isTrailingAgentRecord(userAsk.id)).toBe(false);
+    for (const record of [wake, investigation, investigationSettled]) {
+      expect(isTrailingAgentRecord(record.id), record.id).toBe(true);
+    }
   });
 });

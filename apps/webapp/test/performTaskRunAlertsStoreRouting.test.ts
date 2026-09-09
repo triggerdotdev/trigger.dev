@@ -245,3 +245,71 @@ describe("PerformTaskRunAlertsService passthrough (single-DB)", () => {
     }
   );
 });
+
+async function seedAlertableRun(prisma: PrismaClient, suffix: string) {
+  const id = generateRunOpsId();
+  const { project, organization, runtimeEnvironment } = await seedProject(prisma, suffix);
+
+  await seedRun(
+    prisma,
+    { id, friendlyId: `run_${id}` },
+    {
+      runtimeEnvironmentId: runtimeEnvironment.id,
+      projectId: project.id,
+      organizationId: organization.id,
+    }
+  );
+  await prisma.projectAlertChannel.create({
+    data: {
+      friendlyId: `alert_${id}`,
+      name: "test-channel",
+      projectId: project.id,
+      alertTypes: ["TASK_RUN"],
+      environmentTypes: ["PRODUCTION"],
+      type: "EMAIL",
+      properties: { type: "EMAIL", email: "test@example.com" },
+      enabled: true,
+    },
+  });
+
+  return { id, project, organization };
+}
+
+function buildAlertsService(prisma: PrismaClient) {
+  return new PerformTaskRunAlertsService({
+    prisma,
+    runStore: new PostgresRunStore({ prisma, readOnlyPrisma: prisma }),
+    controlPlaneResolver: buildControlPlaneResolver(prisma),
+  });
+}
+
+describe("PerformTaskRunAlertsService deleted project/organization", () => {
+  postgresTest("sends no alert once the project is deleted", async ({ prisma }) => {
+    const { id, project } = await seedAlertableRun(prisma, "del-project");
+
+    await prisma.project.update({ where: { id: project.id }, data: { deletedAt: new Date() } });
+
+    await buildAlertsService(prisma)
+      .call(id)
+      .catch(() => {});
+
+    const delivered = await prisma.projectAlert.findMany({ where: { projectId: project.id } });
+    expect(delivered.length).toBe(0);
+  });
+
+  postgresTest("sends no alert once the organization is deleted", async ({ prisma }) => {
+    const { id, project, organization } = await seedAlertableRun(prisma, "del-org");
+
+    await prisma.organization.update({
+      where: { id: organization.id },
+      data: { deletedAt: new Date() },
+    });
+
+    await buildAlertsService(prisma)
+      .call(id)
+      .catch(() => {});
+
+    const delivered = await prisma.projectAlert.findMany({ where: { projectId: project.id } });
+    expect(delivered.length).toBe(0);
+  });
+});

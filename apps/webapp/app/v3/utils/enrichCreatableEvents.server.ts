@@ -45,6 +45,22 @@ function enrichCreatableEvent(event: CreateEventInput): CreateEventInput {
   return event;
 }
 
+/**
+ * OTel GenAI operations that wrap other spans rather than performing inference
+ * themselves. Everything else (`chat`, `generate_content`, `text_completion`,
+ * `embeddings`, and any operation we do not recognise) is treated as billable.
+ * Defaulting to billable keeps an unknown or future operation counted rather
+ * than silently dropping spend.
+ *
+ * @see https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-spans/
+ */
+const AGENT_LEVEL_GEN_AI_OPERATIONS = new Set(["invoke_agent", "create_agent", "execute_tool"]);
+
+function isAgentLevelOperation(props: Record<string, unknown>): boolean {
+  const genAiOperation = props["gen_ai.operation.name"];
+  return typeof genAiOperation === "string" && AGENT_LEVEL_GEN_AI_OPERATIONS.has(genAiOperation);
+}
+
 function enrichLlmMetrics(event: CreateEventInput): void {
   const props = event.properties;
   if (!props) return;
@@ -137,6 +153,19 @@ function enrichLlmMetrics(event: CreateEventInput): void {
 
   // Only write llm_metrics when cost data is available
   if (!cost && !providerCost) return;
+
+  // An agent-level span wraps the inference spans that did the work and repeats
+  // their usage, so pricing both sides doubles every aggregate built on this
+  // table. Skip the row for wrappers; the span keeps the `trigger.llm.*`
+  // attributes and the cost pill written above, so the trace view is unchanged.
+  //
+  // The discriminator is the OTel GenAI semantic convention, not the AI SDK's
+  // `ai.operationId`. The vendor id describes the SDK call that produced the
+  // span (`ai.generateText` for both the wrapper and, in some setups, a lone
+  // inference span) while `gen_ai.operation.name` describes what the span IS.
+  // Keying on the vendor id would drop single inference spans that never had a
+  // child, which is real spend.
+  if (isAgentLevelOperation(props)) return;
 
   // Build metadata map from run tags and ai.telemetry.metadata.*
   const metadata: Record<string, string> = {};

@@ -9,6 +9,7 @@ import { postgresTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
 import { signUserActorToken } from "@trigger.dev/rbac";
 import { expect, vi } from "vitest";
+import * as webappRouteMocks from "./helpers/webappRouteMocks";
 
 const SESSION_SECRET = "test-session-secret-for-project-wide-scope";
 
@@ -18,41 +19,19 @@ const ctx = vi.hoisted(() => ({
   presenterEnvironments: [] as Array<{ id: string; organizationId: string } | undefined>,
 }));
 
-vi.mock("~/db.server", () => {
-  const proxy = new Proxy(
-    {},
-    { get: (_target, prop) => (ctx.prisma as unknown as Record<string, unknown>)[prop as string] }
-  );
-  return { prisma: proxy, $replica: proxy, sqlDatabaseSchema: undefined };
-});
+vi.mock("~/db.server", () => webappRouteMocks.dbServerProxyMock(ctx));
 vi.mock("~/env.server", () => ({
   env: { SESSION_SECRET: "test-session-secret-for-project-wide-scope" },
 }));
-vi.mock("~/services/logger.server", () => ({
-  logger: { debug: vi.fn(), error: vi.fn(), warn: vi.fn(), info: vi.fn() },
-}));
-vi.mock("~/services/personalAccessToken.server", () => ({
-  updateLastAccessedAtIfStale: vi.fn(),
-  // The plugin already verified the claims; test tokens carry no source PAT, so the
-  // liveness recheck is a no-op that hands the claims straight back.
-  resolveAndRecheckUserActorClaims: async (claims: unknown) => claims,
-}));
-vi.mock("~/services/authTelemetry.server", () => ({
-  authenticateBearerWithTelemetry: vi.fn(),
-}));
-vi.mock("~/services/tenantContext.server", () => ({
-  tenantContext: { enrich: vi.fn() },
-  tenantContextFromAuthEnvironment: vi.fn(),
-}));
-vi.mock("~/v3/services/worker/workerGroupTokenService.server", () => ({
-  WorkerGroupTokenService: class {},
-}));
-vi.mock("~/v3/services/common.server", () => ({
-  ServiceValidationError: class extends Error {},
-}));
-vi.mock("@internal/run-engine", () => ({
-  EngineServiceValidationError: class extends Error {},
-}));
+vi.mock("~/services/logger.server", () => webappRouteMocks.loggerMock());
+vi.mock("~/services/personalAccessToken.server", () => webappRouteMocks.personalAccessTokenMock());
+vi.mock("~/services/authTelemetry.server", () => webappRouteMocks.authTelemetryMock());
+vi.mock("~/services/tenantContext.server", () => webappRouteMocks.tenantContextMock());
+vi.mock("~/v3/services/worker/workerGroupTokenService.server", () =>
+  webappRouteMocks.workerGroupTokenServiceMock()
+);
+vi.mock("~/v3/services/common.server", () => webappRouteMocks.serviceValidationErrorMock());
+vi.mock("@internal/run-engine", () => webappRouteMocks.engineServiceValidationErrorMock());
 
 vi.mock("~/services/clickhouse/clickhouseFactoryInstance.server", () => ({
   clickhouseFactory: { getClickhouseForOrganization: vi.fn() },
@@ -83,33 +62,14 @@ vi.mock("~/presenters/v3/ApiRunListPresenter.server", async () => {
 
 // The RBAC controller is the OSS fallback's behaviour: verify the token, ability from its own cap.
 vi.mock("~/services/rbac.server", async () => {
-  const { buildJwtAbility, verifyUserActorToken } = await import("@trigger.dev/rbac");
-  const bearerOf = (request: Request) =>
-    request.headers
-      .get("Authorization")
-      ?.replace(/^Bearer /, "")
-      .trim() ?? "";
+  const { buildJwtAbility } = await import("@trigger.dev/rbac");
+  const webappRouteMocks = await import("./helpers/webappRouteMocks");
 
   return {
     rbac: {
-      authenticateUserActor: async (request: Request, context: any) => {
-        const claims = await verifyUserActorToken(
-          "test-session-secret-for-project-wide-scope",
-          bearerOf(request)
-        );
-        if (!claims) return { ok: false, status: 401, error: "Invalid user-actor token" };
-        return {
-          ok: true,
-          userId: claims.userId,
-          claims,
-          subject: {
-            type: "userActor",
-            userId: claims.userId,
-            organizationId: context.organizationId ?? "",
-          },
-          ability: buildJwtAbility(claims.cap ?? ["read:all"]),
-        };
-      },
+      authenticateUserActor: webappRouteMocks.ossAuthenticateUserActor(
+        "test-session-secret-for-project-wide-scope"
+      ),
       authenticatePat: async (_request: Request, context: any) => ({
         ok: true,
         tokenId: "tok_test",
@@ -129,6 +89,7 @@ vi.mock("~/services/rbac.server", async () => {
 const { loader: environmentsLoader } =
   await import("~/routes/api.v1.projects.$projectRef.environments");
 const { loader: runsLoader } = await import("~/routes/api.v1.projects.$projectRef.runs");
+const { loader: projectsLoader } = await import("~/routes/api.v1.projects");
 
 function suffix() {
   return Math.random().toString(36).slice(2, 10);
@@ -170,13 +131,62 @@ async function seedProject(prisma: PrismaClient) {
   };
 }
 
-function agentToken(userId: string, environmentId?: string, client = "dashboard-agent") {
+function agentToken(
+  userId: string,
+  environmentId?: string,
+  client = "dashboard-agent",
+  organizationId?: string
+) {
   return signUserActorToken(SESSION_SECRET, {
     userId,
     client,
     ...(environmentId ? { environmentId } : {}),
+    ...(organizationId ? { organizationId } : {}),
     cap: ["read:runs", "read:environments"],
   });
+}
+
+/** A second project of the same org, with a prod env and another member's own dev env. */
+async function seedSibling(
+  prisma: PrismaClient,
+  organizationId: string
+): Promise<{ project: { id: string; externalRef: string }; prodId: string; otherDevId: string }> {
+  const slug = `sibling_${suffix()}`;
+  const project = await prisma.project.create({
+    data: { name: slug, slug, organizationId, externalRef: `proj_${slug}` },
+  });
+  const prod = await prisma.runtimeEnvironment.create({
+    data: {
+      slug: "prod",
+      type: "PRODUCTION",
+      projectId: project.id,
+      organizationId,
+      apiKey: `tr_prod_${slug}`,
+      pkApiKey: `pk_prod_${slug}`,
+      shortcode: `p${suffix()}`,
+    },
+  });
+
+  const other = await prisma.user.create({
+    data: { email: `${slug}@example.com`, authenticationMethod: "MAGIC_LINK" },
+  });
+  const membership = await prisma.orgMember.create({
+    data: { organizationId, userId: other.id, role: "MEMBER" },
+  });
+  const otherDev = await prisma.runtimeEnvironment.create({
+    data: {
+      slug: "dev",
+      type: "DEVELOPMENT",
+      projectId: project.id,
+      organizationId,
+      orgMemberId: membership.id,
+      apiKey: `tr_dev_${slug}`,
+      pkApiKey: `pk_dev_${slug}`,
+      shortcode: `d${suffix()}`,
+    },
+  });
+
+  return { project, prodId: prod.id, otherDevId: otherDev.id };
 }
 
 async function call(
@@ -202,13 +212,26 @@ async function call(
 /** A PAT is prefixed `tr_pat_` so the route builder takes the PAT branch. */
 const PAT = "tr_pat_testtoken";
 
-postgresTest(
-  "a user-actor token scoped to one environment lists only that environment",
-  async ({ prisma }) => {
-    ctx.prisma = prisma;
-    const seeded = await seedProject(prisma);
-    ctx.patUserId = seeded.user.id;
+type Seeded = Awaited<ReturnType<typeof seedProject>>;
 
+/** Each case: the container's client wired in, one seeded project, a fresh presenter log. */
+function scopeTest(name: string, fn: (seeded: Seeded) => Promise<void>) {
+  postgresTest(
+    name,
+    async ({ prisma }) => {
+      ctx.prisma = prisma;
+      ctx.presenterEnvironments = [];
+      const seeded = await seedProject(prisma);
+      ctx.patUserId = seeded.user.id;
+      await fn(seeded);
+    },
+    60_000
+  );
+}
+
+scopeTest(
+  "a user-actor token scoped to one environment lists only that environment",
+  async (seeded) => {
     const scoped = await call(environmentsLoader, {
       projectRef: seeded.project.externalRef,
       token: await agentToken(seeded.user.id, seeded.envA.id),
@@ -216,39 +239,24 @@ postgresTest(
 
     expect(scoped.status).toBe(200);
     expect(scoped.body.map((env: any) => env.id)).toEqual([seeded.envA.id]);
-  },
-  60_000
+  }
 );
 
-postgresTest(
-  "a user-actor token sees only its own environment's runs",
-  async ({ prisma }) => {
-    ctx.prisma = prisma;
-    ctx.presenterEnvironments = [];
-    const seeded = await seedProject(prisma);
-    ctx.patUserId = seeded.user.id;
+scopeTest("a user-actor token sees only its own environment's runs", async (seeded) => {
+  const scoped = await call(runsLoader, {
+    projectRef: seeded.project.externalRef,
+    token: await agentToken(seeded.user.id, seeded.envA.id),
+  });
 
-    const scoped = await call(runsLoader, {
-      projectRef: seeded.project.externalRef,
-      token: await agentToken(seeded.user.id, seeded.envA.id),
-    });
+  expect(scoped.status).toBe(200);
+  expect(ctx.presenterEnvironments).toEqual([
+    { id: seeded.envA.id, organizationId: seeded.organization.id },
+  ]);
+});
 
-    expect(scoped.status).toBe(200);
-    expect(ctx.presenterEnvironments).toEqual([
-      { id: seeded.envA.id, organizationId: seeded.organization.id },
-    ]);
-  },
-  60_000
-);
-
-postgresTest(
+scopeTest(
   "a user-actor token asking for another environment is refused, not overridden",
-  async ({ prisma }) => {
-    ctx.prisma = prisma;
-    ctx.presenterEnvironments = [];
-    const seeded = await seedProject(prisma);
-    ctx.patUserId = seeded.user.id;
-
+  async (seeded) => {
     const conflicting = await call(runsLoader, {
       projectRef: seeded.project.externalRef,
       token: await agentToken(seeded.user.id, seeded.envA.id),
@@ -258,42 +266,36 @@ postgresTest(
     expect(conflicting.status).toBe(403);
     expect(conflicting.body.code).toBe("forbidden_environment");
     expect(ctx.presenterEnvironments).toEqual([]);
-  },
-  60_000
+  }
 );
 
-postgresTest(
-  "a claimless dashboard-agent token is refused",
-  async ({ prisma }) => {
-    ctx.prisma = prisma;
-    const seeded = await seedProject(prisma);
-    ctx.patUserId = seeded.user.id;
+scopeTest("a claimless dashboard-agent token is refused", async (seeded) => {
+  // The agent always mints per-environment, so a claimless one of its own is a bug, not a flow.
+  const claimless = await call(environmentsLoader, {
+    projectRef: seeded.project.externalRef,
+    token: await agentToken(seeded.user.id, undefined),
+  });
 
-    // The agent always mints per-environment, so a claimless one of its own is a bug, not a flow.
-    const claimless = await call(environmentsLoader, {
-      projectRef: seeded.project.externalRef,
-      token: await agentToken(seeded.user.id, undefined),
-    });
+  expect(claimless.status).toBe(403);
+  expect(claimless.body.code).toBe("forbidden_environment");
+});
 
-    expect(claimless.status).toBe(403);
-    expect(claimless.body.code).toBe("forbidden_environment");
-  },
-  60_000
-);
+// Both of these read the whole project as they always have: the public PAT exchange mints
+// claimless tokens, so narrowing either would be a breaking change. No forced environment, and
+// the request's own filter is honoured rather than refused.
+const projectWide: Array<[string, (seeded: Seeded) => Promise<string> | string]> = [
+  [
+    "a claimless user-actor token from another client",
+    (seeded) => agentToken(seeded.user.id, undefined, "mcp"),
+  ],
+  ["a personal access token", () => PAT],
+];
 
-postgresTest(
-  "a claimless user-actor token from another client still gets the project-wide answer",
-  async ({ prisma }) => {
-    ctx.prisma = prisma;
-    ctx.presenterEnvironments = [];
-    const seeded = await seedProject(prisma);
-    ctx.patUserId = seeded.user.id;
-
-    // The public PAT exchange mints claimless tokens, so narrowing one would be a breaking
-    // change: it reads the whole project as it always has.
+for (const [who, tokenFor] of projectWide) {
+  scopeTest(`${who} still gets the project-wide answer`, async (seeded) => {
     const environments = await call(environmentsLoader, {
       projectRef: seeded.project.externalRef,
-      token: await agentToken(seeded.user.id, undefined, "mcp"),
+      token: await tokenFor(seeded),
     });
 
     expect(environments.status).toBe(200);
@@ -303,44 +305,107 @@ postgresTest(
 
     const runs = await call(runsLoader, {
       projectRef: seeded.project.externalRef,
-      token: await agentToken(seeded.user.id, undefined, "mcp"),
+      token: await tokenFor(seeded),
       search: `?filter[env]=${seeded.envB.slug}`,
     });
 
-    // No forced environment, and its own filter is honoured rather than refused.
     expect(runs.status).toBe(200);
     expect(ctx.presenterEnvironments).toEqual([undefined]);
-  },
-  60_000
-);
+  });
+}
 
-postgresTest(
-  "a personal access token still gets the project-wide answer",
-  async ({ prisma }) => {
-    ctx.prisma = prisma;
-    ctx.presenterEnvironments = [];
-    const seeded = await seedProject(prisma);
-    ctx.patUserId = seeded.user.id;
+scopeTest(
+  "an organization-scoped token lists a sibling project, without other members' dev environments",
+  async (seeded) => {
+    const sibling = await seedSibling(ctx.prisma, seeded.organization.id);
 
-    const environments = await call(environmentsLoader, {
-      projectRef: seeded.project.externalRef,
-      token: PAT,
+    const response = await call(environmentsLoader, {
+      projectRef: sibling.project.externalRef,
+      token: await agentToken(
+        seeded.user.id,
+        seeded.envA.id,
+        "dashboard-agent",
+        seeded.organization.id
+      ),
     });
 
-    expect(environments.status).toBe(200);
-    expect(environments.body.map((env: any) => env.id).sort()).toEqual(
-      [seeded.envA.id, seeded.envB.id].sort()
+    expect(response.status).toBe(200);
+    expect(response.body.map((env: any) => env.id)).toEqual([sibling.prodId]);
+  }
+);
+
+scopeTest("a token claiming another organization is refused", async (seeded) => {
+  const foreign = await ctx.prisma.organization.create({
+    data: { title: `foreign_${suffix()}`, slug: `foreign_${suffix()}` },
+  });
+
+  const response = await call(environmentsLoader, {
+    projectRef: seeded.project.externalRef,
+    token: await agentToken(seeded.user.id, seeded.envA.id, "dashboard-agent", foreign.id),
+  });
+
+  expect(response.status).toBe(403);
+  expect(response.body.code).toBe("forbidden_environment");
+});
+
+/** The projects list names no organization, so only the claim can narrow it. */
+async function listProjects(token: string) {
+  const request = new Request("https://api.trigger.dev/api/v1/projects", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  try {
+    const response = await (projectsLoader as any)({ request, params: {}, context: {} });
+    return { status: response.status, body: await response.json() };
+  } catch (thrown) {
+    if (thrown instanceof Response) {
+      return { status: thrown.status, body: await thrown.json() };
+    }
+    throw thrown;
+  }
+}
+
+/** A V3 project in another organization the same user belongs to. */
+async function seedSecondOrganization(prisma: PrismaClient, userId: string) {
+  const slug = `other_${suffix()}`;
+  const organization = await prisma.organization.create({ data: { title: slug, slug } });
+  await prisma.orgMember.create({
+    data: { organizationId: organization.id, userId, role: "ADMIN" },
+  });
+  return prisma.project.create({
+    data: {
+      name: slug,
+      slug,
+      organizationId: organization.id,
+      externalRef: `proj_${slug}`,
+      version: "V3",
+    },
+  });
+}
+
+scopeTest(
+  "an organization-scoped token lists only that organization's projects",
+  async (seeded) => {
+    await ctx.prisma.project.update({ where: { id: seeded.project.id }, data: { version: "V3" } });
+    const elsewhere = await seedSecondOrganization(ctx.prisma, seeded.user.id);
+
+    const scoped = await listProjects(
+      await agentToken(seeded.user.id, seeded.envA.id, "dashboard-agent", seeded.organization.id)
     );
 
-    const runs = await call(runsLoader, {
-      projectRef: seeded.project.externalRef,
-      token: PAT,
-      search: `?filter[env]=${seeded.envB.slug}`,
-    });
-
-    // No forced environment: the request's own filter decides, as before.
-    expect(runs.status).toBe(200);
-    expect(ctx.presenterEnvironments).toEqual([undefined]);
-  },
-  60_000
+    expect(scoped.status).toBe(200);
+    expect(scoped.body.map((project: any) => project.id)).toEqual([seeded.project.id]);
+    expect(scoped.body.map((project: any) => project.id)).not.toContain(elsewhere.id);
+  }
 );
+
+scopeTest("a personal access token still lists every organization's projects", async (seeded) => {
+  await ctx.prisma.project.update({ where: { id: seeded.project.id }, data: { version: "V3" } });
+  const elsewhere = await seedSecondOrganization(ctx.prisma, seeded.user.id);
+
+  const all = await listProjects(PAT);
+
+  expect(all.status).toBe(200);
+  expect(all.body.map((project: any) => project.id).sort()).toEqual(
+    [seeded.project.id, elsewhere.id].sort()
+  );
+});

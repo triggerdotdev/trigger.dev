@@ -223,7 +223,11 @@ function PopoverArrowTrigger({
       >
         {children}
       </Paragraph>
-      <DropdownIcon className={cn("size-4 min-w-4 transition", variantStyles.icon)} />
+      {/* `data-agent-no-drag`: an opt-out marker draggable-window hosts check via closest().
+          `contents` keeps this wrapper invisible to layout. */}
+      <span data-agent-no-drag className="contents">
+        <DropdownIcon className={cn("size-4 min-w-4 transition", variantStyles.icon)} />
+      </span>
     </PopoverTrigger>
   );
 }

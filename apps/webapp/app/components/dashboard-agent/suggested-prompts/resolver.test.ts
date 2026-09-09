@@ -26,7 +26,11 @@ const docsId = (key: keyof typeof demoPageContexts) =>
 
 describe("resolveSuggestedPrompts", () => {
   it("fills all five slots when the page has a promoted chip, signals and defaults", () => {
-    const prompts = resolveSuggestedPrompts(demoPageContexts.error, { promoted, now: NOW });
+    const prompts = resolveSuggestedPrompts(demoPageContexts.error, {
+      promoted,
+      now: NOW,
+      watchEnabled: true,
+    });
 
     expect(prompts).toHaveLength(5);
     expect(ids(prompts)).toEqual([
@@ -40,7 +44,10 @@ describe("resolveSuggestedPrompts", () => {
   });
 
   it("drops to four slots when nothing is promoted", () => {
-    const prompts = resolveSuggestedPrompts(demoPageContexts.error, { now: NOW });
+    const prompts = resolveSuggestedPrompts(demoPageContexts.error, {
+      now: NOW,
+      watchEnabled: true,
+    });
 
     expect(prompts).toHaveLength(4);
     expect(ids(prompts)).toEqual([
@@ -85,7 +92,7 @@ describe("resolveSuggestedPrompts", () => {
       signals: [...demoPageContexts.queue.signals, demoFreshFailureSignal],
     };
 
-    const prompts = resolveSuggestedPrompts(context, { promoted, now: NOW });
+    const prompts = resolveSuggestedPrompts(context, { promoted, now: NOW, watchEnabled: true });
 
     expect(ids(prompts)).toEqual([
       promoted.id,
@@ -126,10 +133,11 @@ describe("resolveSuggestedPrompts", () => {
   });
 
   it("collapses a slot with nothing left to offer", () => {
-    const full = resolveSuggestedPrompts(demoPageContexts.error, { now: NOW });
+    const full = resolveSuggestedPrompts(demoPageContexts.error, { now: NOW, watchEnabled: true });
     const dismissed = resolveSuggestedPrompts(demoPageContexts.error, {
       now: NOW,
       dismissedIds: ["sp:error-watch-recurrence"],
+      watchEnabled: true,
     });
 
     expect(ids(dismissed)).not.toContain("sp:error-watch-recurrence");
@@ -169,7 +177,10 @@ describe("resolveSuggestedPrompts", () => {
   });
 
   it("words the waiting-run and slow-run chips for their slots", () => {
-    const waiting = resolveSuggestedPrompts(demoPageContexts.waitingRun, { now: NOW });
+    const waiting = resolveSuggestedPrompts(demoPageContexts.waitingRun, {
+      now: NOW,
+      watchEnabled: true,
+    });
     const waitingChip = waiting.find((p) => p.id === "sp:waiting-run");
     expect(waitingChip?.label).toBe("Tell me when this run starts");
     expect(waitingChip?.prompt).toContain("queue");
@@ -188,6 +199,44 @@ describe("resolveSuggestedPrompts", () => {
     );
 
     expect(ids(prompts)).toEqual(ids(GENERIC_PROMPTS));
+  });
+
+  it("withholds the watch slot while watch functionality is disabled", () => {
+    const prompts = resolveSuggestedPrompts(demoPageContexts.error, {
+      now: NOW,
+      watchEnabled: false,
+    });
+
+    expect(ids(prompts)).toEqual(["sp:fresh-failure", "sp:error-similar", docsId("error")]);
+  });
+
+  it("withholds a signal's watch chip the same way", () => {
+    const context = {
+      ...demoPageContexts.queue,
+      signals: [...demoPageContexts.queue.signals, demoFreshFailureSignal],
+    };
+    const prompts = resolveSuggestedPrompts(context, { now: NOW, watchEnabled: false });
+
+    expect(ids(prompts)).toEqual([
+      "sp:fresh-failure",
+      "sp:queue-backlog",
+      "sp:queue-state",
+      docsId("queue"),
+    ]);
+  });
+
+  it("drops the watch slot outright once disabled, rather than backfilling it", () => {
+    const prompts = resolveSuggestedPrompts(demoPageContexts.queue, {
+      now: NOW,
+      watchEnabled: false,
+    });
+
+    expect(ids(prompts)).toEqual([
+      "sp:queue-backlog-cause",
+      "sp:queue-backlog",
+      "sp:queue-state",
+      docsId("queue"),
+    ]);
   });
 
   it("exposes the contract's resolver shape with options bound", () => {

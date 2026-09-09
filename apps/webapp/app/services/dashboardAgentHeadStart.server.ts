@@ -1,10 +1,5 @@
-import {
-  DASHBOARD_AGENT_CODE_SYSTEM_PROMPT,
-  DASHBOARD_AGENT_MODEL,
-  DASHBOARD_AGENT_SYSTEM_PROMPT,
-  dashboardAgentCodeToolSchemas,
-  dashboardAgentToolSchemas,
-} from "@internal/dashboard-agent/tool-schemas";
+import { DASHBOARD_AGENT_MODEL } from "@internal/dashboard-agent/tool-schemas";
+import { systemPromptFor, toolSchemasFor } from "@internal/dashboard-agent/prompt-assembly";
 import {
   describePromptPrefix,
   promptCacheAttributes,
@@ -94,10 +89,11 @@ export async function startDashboardAgentHeadStart(params: {
   messages: UIMessage[];
   mode: "assistant" | "code";
   metadata: Record<string, unknown>;
+  watchEnabled: boolean;
 }): Promise<void> {
-  const tools = params.mode === "code" ? dashboardAgentCodeToolSchemas : dashboardAgentToolSchemas;
-  const system =
-    params.mode === "code" ? DASHBOARD_AGENT_CODE_SYSTEM_PROMPT : DASHBOARD_AGENT_SYSTEM_PROMPT;
+  // The same assembly the agent run uses, so both sides hand the provider one prefix.
+  const tools = toolSchemasFor(params.mode, { watchEnabled: params.watchEnabled });
+  const system = systemPromptFor(params.mode, { watchEnabled: params.watchEnabled });
 
   const { completion } = await chatServer.startHeadStart({
     agentId: TASK_ID,

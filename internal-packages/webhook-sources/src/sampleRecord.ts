@@ -26,7 +26,7 @@ export const SampleRecord = z.object({
   name: z.string(),
   description: z.string().optional(),
   body: z.unknown(),
-  extraHeaders: z.record(z.string()).optional(),
+  extraHeaders: z.record(z.string(), z.string()).optional(),
   docsUrl: z.string().optional(),
   provenance: SampleProvenance,
 });

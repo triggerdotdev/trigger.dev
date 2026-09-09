@@ -437,6 +437,7 @@ export class ExecutionSnapshotSystem {
   public async createExecutionSnapshot(
     prisma: PrismaClientOrTransaction,
     {
+      snapshotId,
       run,
       snapshot,
       previousSnapshotId,
@@ -451,6 +452,12 @@ export class ExecutionSnapshotSystem {
       completedWaitpoints,
       error,
     }: {
+      /**
+       * Caller-supplied TRANSITION id: minted once per logical transition (e.g. so a publish guard can
+       * arm keyed by it before the write) and NEVER reused for different snapshot data. The store insert
+       * ignores conflicts, so a reused id keeps the first committed row and silently drops the new data.
+       */
+      snapshotId?: string;
       run: { id: string; status: TaskRunStatus; attemptNumber?: number | null };
       snapshot: {
         executionStatus: TaskRunExecutionStatus;
@@ -478,8 +485,16 @@ export class ExecutionSnapshotSystem {
     // The heartbeat/eventBus side effects below are unchanged.
     store?: RunStore
   ) {
+    // Mint the snapshot id here (above the store) unless the caller supplied one, so a connection-blip
+    // retry inside the store replays the SAME transition idempotently (the store's conflict-ignoring
+    // insert keyed by the id, then a read) instead of duplicating it. The id is a transition id: minted
+    // once per transition, never reused for different data. A caller supplies it only to arm a publish
+    // guard keyed by the id before the write.
+    const id = snapshotId ?? SnapshotId.generate().id;
+
     const newSnapshot = await (store ?? this.$.runStore).createExecutionSnapshot(
       {
+        id,
         run,
         snapshot,
         previousSnapshotId,
@@ -549,7 +564,8 @@ export class ExecutionSnapshotSystem {
       this.$.logger.log("heartbeatRun: no longer the latest snapshot, stopping the heartbeat.", {
         runId,
         snapshotId,
-        latestSnapshot,
+        latestSnapshotId: latestSnapshot.id,
+        latestSnapshotExecutionStatus: latestSnapshot.executionStatus,
         workerId,
         runnerId,
       });
@@ -561,7 +577,7 @@ export class ExecutionSnapshotSystem {
       this.$.logger.debug("heartbeatRun: worker ID does not match the latest snapshot", {
         runId,
         snapshotId,
-        latestSnapshot,
+        latestSnapshotWorkerId: latestSnapshot.workerId,
         workerId,
         runnerId,
       });

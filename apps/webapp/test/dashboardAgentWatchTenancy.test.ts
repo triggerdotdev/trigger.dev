@@ -256,6 +256,42 @@ describe("the submission ledger's tenancy", () => {
   );
 
   postgresTest(
+    "a watch takes the environment it was submitted from, not the chat's first one",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seedOrg(prisma, "tenancy-scope");
+      const staging = await environmentFor(
+        prisma,
+        seeded.organization.id,
+        seeded.project.id,
+        `env_${suffix()}`,
+        "staging"
+      );
+      await createChat(ctx.agentDb, {
+        id: "chat_1",
+        organizationId: seeded.organization.id,
+        userId: seeded.user.id,
+      });
+
+      const production = await submit({ seeded, chatId: "chat_1" });
+      expect(production.ok).toBe(true);
+
+      const inStaging = await submit({
+        seeded,
+        chatId: "chat_1",
+        environment: staging,
+        clientRequestId: "wreq_2",
+      });
+      expect(inStaging.ok).toBe(true);
+
+      expect(
+        await getWatchSubmission(ctx.agentDb, { chatId: "chat_1", clientRequestId: "wreq_2" })
+      ).toMatchObject({ environmentId: staging.id });
+    },
+    30_000
+  );
+
+  postgresTest(
     "the same chat and request id in a second environment is refused, not replayed",
     async ({ prisma, postgresContainer }) => {
       await boot(prisma, postgresContainer.getConnectionUri());

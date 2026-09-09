@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v4";
 
 /**
  * The lifecycle state of an error group. Mirrors the dashboard's

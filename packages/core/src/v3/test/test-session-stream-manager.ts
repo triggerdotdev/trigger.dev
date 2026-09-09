@@ -220,7 +220,11 @@ export class TestSessionStreamManager implements SessionStreamManager {
   }
 
   setLastSeqNum(sessionId: string, io: SessionChannelIO, seqNum: number): void {
-    this.seqNums.set(keyFor(sessionId, io), seqNum);
+    const key = keyFor(sessionId, io);
+    const current = this.seqNums.get(key);
+    if (current === undefined || seqNum > current) {
+      this.seqNums.set(key, seqNum);
+    }
   }
 
   consumeRecord(sessionId: string, io: SessionChannelIO, seqNum: number): void {

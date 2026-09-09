@@ -258,7 +258,7 @@ export class AIRunFilterService {
       const validationResult = AIFilters.safeParse(output.filters);
       if (!validationResult.success) {
         logger.error("AI filter validation failed", {
-          errors: validationResult.error.errors,
+          errors: validationResult.error.issues,
           filters: output.filters,
         });
 

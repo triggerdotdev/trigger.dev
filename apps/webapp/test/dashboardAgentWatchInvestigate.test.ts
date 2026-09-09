@@ -21,6 +21,7 @@ vi.mock("~/services/dashboardAgentDb.server", () => ({ dashboardAgentDb: {} }));
 vi.mock("@internal/dashboard-agent-db", async (importOriginal) => ({
   ...((await importOriginal()) as any),
   getWatch: async () => ctx.watch,
+  chatExists: async () => true,
 }));
 
 vi.mock("~/services/dashboardAgentWatchToken.server", () => ({
@@ -80,8 +81,15 @@ vi.mock("~/services/session.server", () => ({
 vi.mock("~/v3/canAccessDashboardAgent.server", () => ({
   canAccessDashboardAgent: async () => true,
 }));
+vi.mock("~/v3/canUseDashboardAgentWatches.server", () => ({
+  canUseDashboardAgentWatches: async () => true,
+}));
 vi.mock("~/models/project.server", () => ({
-  findProjectBySlug: async () => ({ id: "project_1", externalRef: "proj_1" }),
+  findProjectWithOrgFlagsBySlug: async () => ({
+    id: "project_1",
+    externalRef: "proj_1",
+    organization: { featureFlags: {} },
+  }),
 }));
 vi.mock("~/db.server", () => ({
   prisma: {},

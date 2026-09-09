@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  FANOUT_PARTITION_COUNT,
   WaitpointKeyTagError,
   assertSingleSlot,
   edgeField,
+  fanoutIndexKeys,
+  fanoutPartition,
   idempotencyKey,
   runBlockKeys,
   waitpointIdFromEdgeField,
@@ -11,25 +14,81 @@ import {
 } from "./keys.js";
 
 describe("waitpointKeys", () => {
-  it("puts the record and its watchers under one hash tag", () => {
+  it("puts the record, its watchers, its queue and its fanout entry under one hash tag", () => {
     const k = waitpointKeys("abc123w");
-    expect(k.record).toBe("wp:{abc123w}");
-    expect(k.watchers).toBe("wp:{abc123w}:w");
+    expect(k.record).toBe("wp:v1:{abc123w}");
+    expect(k.watchers).toBe("wp:v1:{abc123w}:w");
+    expect(k.queue).toBe("wp:v1:{abc123w}:q");
+    expect(k.fanout).toBe("wp:v1:{abc123w}:f");
+    // Colocation is what lets completion and fanout creation be one atomic script.
+    expect(() => assertSingleSlot("wpComplete", Object.values(k))).not.toThrow();
+  });
+});
+
+describe("runBlockKeys", () => {
+  it("puts the block state under the run's tag", () => {
+    const k = runBlockKeys("run_abc");
+    expect(k.state).toBe("wp:v1:run:{run_abc}:st");
+    expect(() => assertSingleSlot("runAbsorbBlockers", Object.values(k))).not.toThrow();
+  });
+});
+
+describe("fanoutPartition", () => {
+  it("is deterministic", () => {
+    expect(fanoutPartition("w_abc")).toBe(fanoutPartition("w_abc"));
+  });
+
+  it("stays inside the partition count for every id it is given", () => {
+    for (let i = 0; i < 2_000; i++) {
+      const partition = fanoutPartition(`waitpoint_${i}`);
+      expect(Number.isInteger(partition)).toBe(true);
+      expect(partition).toBeGreaterThanOrEqual(0);
+      expect(partition).toBeLessThan(FANOUT_PARTITION_COUNT);
+    }
+  });
+
+  it("handles the empty id without producing NaN", () => {
+    expect(fanoutPartition("")).toBeGreaterThanOrEqual(0);
+    expect(fanoutPartition("")).toBeLessThan(FANOUT_PARTITION_COUNT);
+  });
+
+  it("uses every partition over a realistic id population", () => {
+    // A hash that collapsed onto a few partitions would serialise the sweep and defeat the
+    // point of partitioning at all.
+    const used = new Set(
+      Array.from({ length: 5_000 }, (_, i) => fanoutPartition(`waitpoint_abc${i}defg`))
+    );
+    expect(used.size).toBe(FANOUT_PARTITION_COUNT);
+  });
+});
+
+describe("fanoutIndexKeys", () => {
+  it("shares one tag per partition, so an entry can move between indexes atomically", () => {
+    const k = fanoutIndexKeys(3);
+    expect(k.due).toBe("wp:v1:f{p3}:due");
+    expect(k.quarantine).toBe("wp:v1:f{p3}:quar");
+    expect(() => assertSingleSlot("wpFanoutIndex", [k.due, k.quarantine])).not.toThrow();
+  });
+
+  it("keeps different partitions on different tags", () => {
+    expect(() =>
+      assertSingleSlot("wpFanoutIndex", [fanoutIndexKeys(0).due, fanoutIndexKeys(1).due])
+    ).toThrow(WaitpointKeyTagError);
   });
 });
 
 describe("runBlockKeys", () => {
   it("puts all three run keys under one hash tag", () => {
     const k = runBlockKeys("run_abc");
-    expect(k.pend).toBe("wp:run:{run_abc}:pend");
-    expect(k.done).toBe("wp:run:{run_abc}:done");
-    expect(k.edge).toBe("wp:run:{run_abc}:edge");
+    expect(k.pend).toBe("wp:v1:run:{run_abc}:pend");
+    expect(k.done).toBe("wp:v1:run:{run_abc}:done");
+    expect(k.edge).toBe("wp:v1:run:{run_abc}:edge");
   });
 });
 
 describe("idempotencyKey", () => {
   it("tags by environment, so one environment's reservations share a slot", () => {
-    expect(idempotencyKey("env_1", "my-key")).toBe("wp:idem:{env_1}:my-key");
+    expect(idempotencyKey("env_1", "my-key")).toBe("wp:v1:idem:{env_1}:my-key");
   });
 });
 
@@ -65,10 +124,16 @@ describe("waitpointIdFromEdgeField", () => {
 });
 
 describe("watcherField", () => {
-  it("keys by run id and batch index, so one run can watch at several indexes", () => {
-    expect(watcherField("run_a", 2)).toBe("run_a#2");
-    expect(watcherField("run_a")).toBe("run_a#");
-    expect(watcherField("run_a", 0)).not.toBe(watcherField("run_a"));
+  it("keys by run id, batch index and block id, so one run can watch at several indexes", () => {
+    expect(watcherField("run_a", "blk_1", 2)).toBe("run_a#2#blk_1");
+    expect(watcherField("run_a", "blk_1")).toBe("run_a##blk_1");
+    expect(watcherField("run_a", "blk_1", 0)).not.toBe(watcherField("run_a", "blk_1"));
+  });
+
+  // The reason the block is in the field at all: two registrations of the same run on the
+  // same waitpoint, from different blocks, must not collide under HSETNX.
+  it("separates two blocks of the same run on the same waitpoint", () => {
+    expect(watcherField("run_a", "blk_1")).not.toBe(watcherField("run_a", "blk_2"));
   });
 });
 

@@ -33,6 +33,9 @@ vi.mock("~/services/session.server", () => ({
 vi.mock("~/v3/canAccessDashboardAgent.server", () => ({
   canAccessDashboardAgent: async () => true,
 }));
+vi.mock("~/v3/canUseDashboardAgentWatches.server", () => ({
+  canUseDashboardAgentWatches: async () => true,
+}));
 
 vi.mock("~/services/dashboardAgentDb.server", () => ({
   get dashboardAgentDb() {

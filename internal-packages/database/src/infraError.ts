@@ -1,8 +1,10 @@
 import { Prisma } from "../generated/prisma";
 
-// Prisma connectivity / infrastructure error codes — connection-level failures,
-// not query- or validation-level ones (e.g. P1001 "Can't reach database server").
-const INFRASTRUCTURE_PRISMA_CODES = new Set(["P1001", "P1002", "P1008", "P1017"]);
+// Prisma connection-level failure codes: P1001 "Can't reach database server", P1002 "server timed out"
+// during connect, P1017 "Server has closed the connection". Each is proof of a lost or unreachable
+// connection. P1008 "Operations timed out" is deliberately NOT here: it is a generic operation timeout,
+// not proof of connection loss, so it is retryable only WITH a connectivity signal (see below).
+const INFRASTRUCTURE_PRISMA_CODES = new Set(["P1001", "P1002", "P1017"]);
 
 const CONNECTIVITY_ERRNO = new Set([
   "ECONNREFUSED",
@@ -14,7 +16,7 @@ const CONNECTIVITY_ERRNO = new Set([
 ]);
 
 const CONNECTIVITY_MESSAGE =
-  /ECONNREFUSED|ENOTFOUND|ETIMEDOUT|ECONNRESET|EHOSTUNREACH|database not reachable|can't reach database|connection terminated|server has closed the connection|timed out fetching a new connection/i;
+  /ECONNREFUSED|ENOTFOUND|ETIMEDOUT|ECONNRESET|EHOSTUNREACH|database not reachable|can't reach database|connection terminated|terminating connection|server has closed the connection|client has encountered a connection error|timed out fetching a new connection/i;
 
 // Connection-pool exhaustion (P2024). Matched only to EXCLUDE it from retry:
 // retrying against an already-exhausted pool deepens the contention rather than
@@ -46,7 +48,9 @@ export function isInfrastructureError(error: unknown): boolean {
   }
 
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
-    if (INFRASTRUCTURE_PRISMA_CODES.has(error.code)) {
+    // P1008 is a generic operation timeout: still "infrastructure" for logging, but only RETRYABLE
+    // with a connectivity signal (see isRetryableInfrastructureError).
+    if (INFRASTRUCTURE_PRISMA_CODES.has(error.code) || error.code === "P1008") {
       return true;
     }
     return error.code === "P2010" && looksLikeConnectivityError(error);
@@ -64,37 +68,51 @@ export function isInfrastructureError(error: unknown): boolean {
  * retried. This is the default retry gate for `withInfraRetry`.
  */
 export function isRetryableInfrastructureError(error: unknown): boolean {
+  // Recognise the Prisma error TYPE by name, not `instanceof`: the run-ops client is a separately
+  // generated Prisma runtime, so its error classes are not the control-plane `Prisma.*` classes an
+  // `instanceof` here would test. A run-ops panic (or any run-ops error) must be classified by the
+  // same rules, or a foreign panic with a connectivity-ish message would fall through as retryable.
+  const name = (error as { name?: unknown })?.name;
+  const code = (error as { code?: unknown })?.code;
+  const message = (error as { message?: unknown })?.message;
+
   // Never retry pool exhaustion (P2024): another attempt only competes for the
   // same exhausted pool. Checked before the connectivity fallbacks because its
   // message otherwise matches CONNECTIVITY_MESSAGE.
-  const message = (error as { message?: unknown })?.message;
   if (
-    (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2024") ||
+    (name === "PrismaClientKnownRequestError" && code === "P2024") ||
     (typeof message === "string" && POOL_EXHAUSTION_MESSAGE.test(message))
   ) {
     return false;
   }
 
-  if (error instanceof Prisma.PrismaClientRustPanicError) {
+  // Never retry a Rust-engine panic, from EITHER generated runtime.
+  if (name === "PrismaClientRustPanicError") {
     return false;
   }
 
-  if (error instanceof Prisma.PrismaClientInitializationError) {
+  if (name === "PrismaClientInitializationError") {
+    const errorCode = (error as { errorCode?: unknown })?.errorCode;
     return (
-      (typeof error.errorCode === "string" && INFRASTRUCTURE_PRISMA_CODES.has(error.errorCode)) ||
+      (typeof errorCode === "string" && INFRASTRUCTURE_PRISMA_CODES.has(errorCode)) ||
       looksLikeConnectivityError(error)
     );
   }
 
-  if (error instanceof Prisma.PrismaClientUnknownRequestError) {
+  if (name === "PrismaClientUnknownRequestError") {
     return looksLikeConnectivityError(error);
   }
 
-  if (error instanceof Prisma.PrismaClientKnownRequestError) {
-    if (INFRASTRUCTURE_PRISMA_CODES.has(error.code)) {
+  if (name === "PrismaClientKnownRequestError") {
+    if (typeof code === "string" && INFRASTRUCTURE_PRISMA_CODES.has(code)) {
       return true;
     }
-    return error.code === "P2010" && looksLikeConnectivityError(error);
+    // P1008 ("operations timed out") is only a retryable blip when it also carries a connectivity
+    // signal; a bare P1008 is a generic timeout and retrying it can deepen load in an incident.
+    if (code === "P1008") {
+      return looksLikeConnectivityError(error);
+    }
+    return code === "P2010" && looksLikeConnectivityError(error);
   }
 
   return looksLikeConnectivityError(error);

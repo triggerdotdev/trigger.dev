@@ -17,7 +17,7 @@ import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-r
 import type { RbacAbility, RbacResource } from "@trigger.dev/rbac";
 import type { z } from "zod";
 
-type AnyZodSchema = z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
+type AnyZodSchema = z.ZodType;
 
 type InferZod<T> = T extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
   ? z.infer<T>

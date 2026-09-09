@@ -47,6 +47,7 @@ import {
   ApiBranchListResponseBody,
   GenerateRegistryCredentialsResponseBody,
   RemoteBuildProviderStatusResponseBody,
+  encodeTaskIdForPath,
 } from "@trigger.dev/core/v3";
 import {
   ReportViewModelSchema,
@@ -743,11 +744,15 @@ export class CliApiClient {
       throw new Error("triggerTaskRun: No access token");
     }
 
-    return wrapZodFetch(TriggerTaskResponse, `${this.apiURL}/api/v1/tasks/${taskId}/trigger`, {
-      method: "POST",
-      headers: this.getHeaders(),
-      body: JSON.stringify(body ?? {}),
-    });
+    return wrapZodFetch(
+      TriggerTaskResponse,
+      `${this.apiURL}/api/v1/tasks/${encodeTaskIdForPath(taskId)}/trigger`,
+      {
+        method: "POST",
+        headers: this.getHeaders(),
+        body: JSON.stringify(body ?? {}),
+      }
+    );
   }
 
   get dev() {

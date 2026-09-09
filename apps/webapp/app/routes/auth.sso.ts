@@ -55,9 +55,9 @@ export async function action({ request }: ActionFunctionArgs) {
     );
     if (rateError) {
       if (rateError instanceof SsoRateLimitError) {
-        logger.warn("SSO login rate limit exceeded", { clientIp, email });
+        logger.warn("SSO login rate limit exceeded", { clientIp });
       } else {
-        logger.error("SSO login rate limiter failed", { clientIp, email, error: rateError });
+        logger.error("SSO login rate limiter failed", { clientIp, error: rateError });
       }
       return redirect(`/login/sso?email=${encodeURIComponent(email)}&error=rate_limited`);
     }
@@ -78,7 +78,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
   const begun = await ssoController.beginAuthorization({ email, redirectTo, flow });
   if (begun.isErr()) {
-    logger.warn("SSO beginAuthorization failed", { reason: begun.error, email, flow });
+    logger.warn("SSO beginAuthorization failed", { reason: begun.error, flow });
     return redirect(`/login/sso?email=${encodeURIComponent(email)}&error=${begun.error}`);
   }
 

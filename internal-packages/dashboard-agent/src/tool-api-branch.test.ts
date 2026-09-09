@@ -66,7 +66,7 @@ function stubFetch(opts: { tokenEnvironmentId: string; jwtStatus?: () => number 
     if (url.endsWith("/jwt")) {
       const forced = opts.jwtStatus?.();
       if (forced) return new Response("nope", { status: forced });
-      return Response.json({ token: `env-jwt:${resolved}` });
+      return Response.json({ token: `env-jwt:${resolved}`, environmentId: resolved });
     }
     return Response.json({ environmentId: resolved });
   });

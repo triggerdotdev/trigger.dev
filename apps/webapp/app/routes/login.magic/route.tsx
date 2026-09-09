@@ -185,13 +185,11 @@ export async function action({ request }: ActionFunctionArgs) {
           if (error instanceof MagicLinkRateLimitError) {
             logger.warn("Login magic link rate limit exceeded", {
               clientIp,
-              email,
               error,
             });
           } else {
             logger.error("Failed sending login magic link", {
               clientIp,
-              email,
               error,
             });
           }

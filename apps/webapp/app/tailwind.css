@@ -98,6 +98,7 @@
   --animate-accordion-up: accordion-up 0.2s ease-out;
   --animate-tile-scroll: tile-move 0.5s infinite linear;
   --animate-tile-scroll-offset: tile-move-offset 0.5s infinite linear;
+  --animate-text-shimmer: text-shimmer 2s infinite linear;
 
   @keyframes accordion-down {
     from {
@@ -129,6 +130,15 @@
     }
     100% {
       background-position: 7px;
+    }
+  }
+  /* Starts and ends off the glyphs, so the highlight sweeps through once a cycle. */
+  @keyframes text-shimmer {
+    0% {
+      background-position: 150% 0;
+    }
+    100% {
+      background-position: -50% 0;
     }
   }
 }
@@ -725,14 +735,16 @@
     @apply my-2 border-charcoal-600;
   }
   & table {
-    @apply w-full my-2 border-collapse;
+    @apply my-2 border-collapse;
+    width: auto;
+    max-width: 100%;
   }
   & th,
   & td {
     @apply border border-grid-bright px-2 py-1 text-left;
   }
   & th {
-    @apply font-semibold;
+    @apply font-semibold whitespace-nowrap;
     background-color: var(--muted);
   }
 

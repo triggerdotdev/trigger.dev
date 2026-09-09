@@ -2,6 +2,8 @@ import { type ClickHouseClient, createClient } from "@clickhouse/client";
 import { type StartedPostgreSqlContainer, PostgreSqlContainer } from "@testcontainers/postgresql";
 import type { StartedRedisContainer } from "@testcontainers/redis";
 import { PrismaClient } from "@trigger.dev/database";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { Pool } from "pg";
 import { RunOpsPrismaClient } from "@internal/run-ops-database";
 import Redis, { type RedisOptions } from "ioredis";
 import path from "path";
@@ -357,6 +359,29 @@ export const postgresTest = withWarmup(
 
 export type PostgresBlipTestContext = PostgresTestContext & { blip: DbBlipController };
 
+// Blip tests run against the pg driver adapter (PrismaPg + pg.Pool), not the default Rust engine:
+// production uses the adapter, and only the adapter's pool reconnects transparently after a severed
+// connection, so a retried statement lands on a fresh connection. The Rust engine reuses the dead
+// one for a bare statement, which the adapter path never does.
+const blipPrismaFromContainer = async (
+  { postgresContainer }: { postgresContainer: StartedPostgreSqlContainer },
+  use: Use<PrismaClient>
+) => {
+  const pool = new Pool({ connectionString: postgresContainer.getConnectionUri() });
+  // A severed connection surfaces asynchronously as an 'error' on the pool and on the checked-out
+  // client; swallow both so a deliberately induced blip can't crash the test worker before the pool
+  // replaces the connection. The query itself still rejects, which is what the retry path observes.
+  pool.on("error", () => {});
+  pool.on("connect", (client) => client.on("error", () => {}));
+  const prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
+  try {
+    await use(prisma);
+  } finally {
+    await logCleanup("blipPrisma", prisma.$disconnect());
+    await logCleanup("blipPool", pool.end());
+  }
+};
+
 const blipFromContainer = async (
   { postgresContainer }: { postgresContainer: StartedPostgreSqlContainer } & TestContext,
   use: Use<DbBlipController>
@@ -373,7 +398,7 @@ const blipFromContainer = async (
 export const postgresBlipTest = withWarmup(
   test.extend<PostgresBlipTestContext>({
     postgresContainer: clonedPostgresContainer,
-    prisma: prismaFromContainer,
+    prisma: blipPrismaFromContainer,
     blip: blipFromContainer,
   }),
   async () => {
@@ -515,6 +540,73 @@ const heteroRunOpsFixtures = {
 export const heteroRunOpsPostgresTest = test.extend<HeteroRunOpsPostgresTestContext>({
   ...heteroRunOpsFixtures,
 });
+
+export type HeteroRunOpsBlipTestContext = {
+  postgresContainer14: StartedPostgreSqlContainer;
+  postgresContainer17: StartedPostgreSqlContainer;
+  uri14: string;
+  uri17: string;
+  prisma14: PrismaClient;
+  prisma17: RunOpsPrismaClient;
+  blip14: DbBlipController;
+  blip17: DbBlipController;
+};
+
+// heteroRunOpsPostgresTest but each client is adapter-backed (PrismaPg + pg.Pool) and paired with a
+// DbBlipController, so a routing (RunOpsStore) test can sever EITHER run-ops database mid-statement
+// and prove the cross-DB read/hydration retry recovers on the prod runtime.
+export const heteroRunOpsBlipTest = withWarmup(
+  test.extend<HeteroRunOpsBlipTestContext>({
+    postgresContainer14: heteroRunOpsFixtures.postgresContainer14,
+    postgresContainer17: heteroRunOpsFixtures.postgresContainer17,
+    uri14: heteroRunOpsFixtures.uri14,
+    uri17: heteroRunOpsFixtures.uri17,
+    prisma14: async ({ uri14 }: { uri14: string }, use: Use<PrismaClient>) => {
+      const pool = new Pool({ connectionString: uri14 });
+      pool.on("error", () => {});
+      pool.on("connect", (client) => client.on("error", () => {}));
+      const prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
+      try {
+        await use(prisma);
+      } finally {
+        await logCleanup("heteroBlipPrisma14", prisma.$disconnect());
+        await logCleanup("heteroBlipPool14", pool.end());
+      }
+    },
+    prisma17: async ({ uri17 }: { uri17: string }, use: Use<RunOpsPrismaClient>) => {
+      const pool = new Pool({ connectionString: uri17 });
+      pool.on("error", () => {});
+      pool.on("connect", (client) => client.on("error", () => {}));
+      const prisma = new RunOpsPrismaClient({ adapter: new PrismaPg(pool) });
+      try {
+        await use(prisma);
+      } finally {
+        await logCleanup("heteroBlipPrisma17", prisma.$disconnect());
+        await logCleanup("heteroBlipPool17", pool.end());
+      }
+    },
+    blip14: async ({ uri14 }: { uri14: string }, use: Use<DbBlipController>) => {
+      const handle = await createDbBlipController(uri14);
+      try {
+        await use(handle);
+      } finally {
+        await handle.close();
+      }
+    },
+    blip17: async ({ uri17 }: { uri17: string }, use: Use<DbBlipController>) => {
+      const handle = await createDbBlipController(uri17);
+      try {
+        await use(handle);
+      } finally {
+        await handle.close();
+      }
+    },
+  }),
+  async () => {
+    await getWorkerPostgresContainer();
+    await getRunOpsWorkerPostgresContainer17();
+  }
+);
 
 type ThreeDbRunOpsPostgresTestContext = {
   // Control-plane DB — full @trigger.dev/database schema.
@@ -957,6 +1049,30 @@ export const containerTest = withWarmup(
   async ({ redisContainer, clickhouseContainer }) => {
     void redisContainer;
     void clickhouseContainer;
+    await getWorkerPostgresContainer();
+  }
+);
+
+export type ContainerBlipTestContext = PostgresBlipTestContext & {
+  redisContainer: StartedRedisContainer;
+  resetRedis: void;
+  redisOptions: RedisOptions;
+};
+
+// postgresBlipTest (adapter-backed postgres + a DbBlipController) composed with a worker-scoped
+// Redis, so a blip test can drive a full RunEngine through its real surfaces (trigger, waitpoint
+// completion, continue) while severing the database connection mid-operation.
+export const containerBlipTest = withWarmup(
+  test.extend<ContainerBlipTestContext>({
+    postgresContainer: clonedPostgresContainer,
+    prisma: blipPrismaFromContainer,
+    blip: blipFromContainer,
+    redisContainer: [bootWorkerRedis, { scope: "worker" }],
+    resetRedis: [flushRedis, { auto: true }],
+    redisOptions,
+  }),
+  async ({ redisContainer }) => {
+    void redisContainer;
     await getWorkerPostgresContainer();
   }
 );

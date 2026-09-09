@@ -29,6 +29,46 @@ describe("withInfraRetry", () => {
     expect(t.calls()).toBe(1);
   });
 
+  it("isEnabled() false gates off even when options.enabled is true", async () => {
+    const t = makeThunk(Infinity);
+    await expect(
+      withInfraRetry(t.run, {
+        options: { ...options, enabled: true },
+        isEnabled: () => false,
+        isRetryable: retryable,
+        sleep: noSleep,
+      })
+    ).rejects.toThrow("infra");
+    expect(t.calls()).toBe(1);
+  });
+
+  it("isEnabled() true enables retry even when options.enabled is false (async supported)", async () => {
+    const t = makeThunk(2);
+    const result = await withInfraRetry(t.run, {
+      options: { ...options, enabled: false },
+      isEnabled: async () => true,
+      isRetryable: retryable,
+      sleep: noSleep,
+    });
+    expect(result).toBe("ok");
+    expect(t.calls()).toBe(3);
+  });
+
+  it("a throwing isEnabled() gate runs the op once and never propagates the gate error", async () => {
+    const t = makeThunk(Infinity);
+    await expect(
+      withInfraRetry(t.run, {
+        options: { ...options, enabled: true },
+        isEnabled: () => {
+          throw new Error("flag store is down");
+        },
+        isRetryable: retryable,
+        sleep: noSleep,
+      })
+    ).rejects.toThrow("infra"); // the op's own error, not the gate error
+    expect(t.calls()).toBe(1);
+  });
+
   it("retries a retryable error until it succeeds", async () => {
     const t = makeThunk(2);
     const result = await withInfraRetry(t.run, { options, isRetryable: retryable, sleep: noSleep });

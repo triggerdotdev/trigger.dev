@@ -158,8 +158,6 @@ export async function streamDeploymentEvents(
   renderer: BuildLogRenderer,
   onFinalized: () => void
 ): Promise<DeploymentFinalizedEvent["data"] | undefined> {
-  let finalEvent: DeploymentFinalizedEvent["data"] | undefined;
-
   for await (const record of records) {
     const result = DeploymentEventFromString.safeParse(record.body);
     if (!result.success) {
@@ -182,9 +180,8 @@ export async function streamDeploymentEvents(
         break;
       }
       case "finalized": {
-        finalEvent = event.data;
         onFinalized();
-        break;
+        return event.data;
       }
       default: {
         event satisfies never;
@@ -193,5 +190,5 @@ export async function streamDeploymentEvents(
     }
   }
 
-  return finalEvent;
+  return undefined;
 }

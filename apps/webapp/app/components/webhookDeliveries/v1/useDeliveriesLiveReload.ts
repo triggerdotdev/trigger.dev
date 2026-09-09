@@ -227,7 +227,6 @@ export function useDeliveriesLiveReload({
   useInterval({
     interval: DELIVERIES_POLL_INTERVAL_MS,
     onLoad: true,
-    pauseWhenHidden: true,
     disabled: !shouldPoll,
     callback: () => {
       loadDeliveriesPoll(checkNewDeliveriesOnTick());

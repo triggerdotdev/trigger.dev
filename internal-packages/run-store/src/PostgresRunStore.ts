@@ -1,7 +1,13 @@
-import { Prisma, boundedIn, withTransactionStartRetry } from "@trigger.dev/database";
+import {
+  Prisma,
+  boundedIn,
+  withInfraRetry,
+  withTransactionStartRetry,
+} from "@trigger.dev/database";
 import type {
   BatchTaskRun,
   BatchTaskRunItemStatus,
+  InfraRetryConfig,
   PrismaClient,
   PrismaClientOrTransaction,
   TaskRun,
@@ -29,8 +35,10 @@ import type {
   RunStore,
   TaskRunWithWaitpoint,
 } from "./types.js";
+import { isReadReplicaClient } from "./readReplicaClient.js";
 import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
 import type { ShardKey } from "@trigger.dev/core/v3/isomorphic";
+import type { SnapshotRoute } from "./snapshotResidency.js";
 
 // Loose delegate method shape: each generated client types delegate methods as
 // `<T>(args: PackageLocalArgs<T>) => PrismaPromise<…>` against its own nominal
@@ -57,7 +65,7 @@ export interface RunOpsCapableClient {
   taskRunAttempt: RunOpsDelegate<"create" | "findFirst" | "findMany" | "update">;
   taskRunExecutionSnapshot: RunOpsDelegate<"create" | "findFirst" | "findMany">;
   taskRunWaitpoint: RunOpsDelegate<"deleteMany" | "findMany">;
-  taskRunCheckpoint: RunOpsDelegate<"create">;
+  taskRunCheckpoint: RunOpsDelegate<"create" | "findFirst">;
   checkpoint: RunOpsDelegate<"create" | "findFirst">;
   checkpointRestoreEvent: RunOpsDelegate<"create" | "findFirst">;
   taskRunDependency: RunOpsDelegate<"create" | "findFirst" | "findMany">;
@@ -120,12 +128,18 @@ export type PostgresRunStoreOptions = {
   /** Env-driven P2028-at-acquisition retry config, threaded from the app boundary (IoC). */
   transactionStartRetry?: TransactionStartRetryConfig;
   /**
-   * When false the store writes no execution-snapshot rows: every nested `executionSnapshots.create`
-   * is omitted and `createExecutionSnapshot` echoes its input instead of inserting. Only the
-   * redis-only dial position sets this, once the Redis store is the sole snapshot writer.
-   * Defaults to true, so the store behaves exactly as it always has.
+   * Env-driven connection-blip retry, threaded from the app boundary (IoC). When set (and enabled)
+   * the store retries safe-to-replay operations (reads, the status-guarded completion write, and a
+   * snapshot write carrying a caller-supplied id) on an infrastructure/connectivity error. Undefined
+   * leaves every operation running exactly once, preserving existing behavior.
    */
-  snapshotWrites?: boolean;
+  infraRetry?: InfraRetryConfig;
+  /**
+   * Same as {@link infraRetry} but for operations that run on the READ-ONLY (replica) client, with
+   * its own budget so a replica retry storm cannot drain the writer's. Defaults to `infraRetry`
+   * when omitted (single-pool callers/tests share one budget, as before).
+   */
+  readInfraRetry?: InfraRetryConfig;
 };
 
 // A caller sub-select for a relation: `{ select?, include? }` or `true` for a bare `key: true`.
@@ -646,9 +660,10 @@ export class PostgresRunStore implements RunStore {
   private readonly prisma: RunOpsCapableClient;
   private readonly readOnlyPrisma: RunOpsCapableClient;
   private readonly schemaVariant: RunStoreSchemaVariant;
-  private readonly snapshotWrites: boolean;
   private readonly maxWait?: number;
   private readonly transactionStartRetry?: TransactionStartRetryConfig;
+  private readonly infraRetry?: InfraRetryConfig;
+  private readonly readInfraRetry?: InfraRetryConfig;
 
   constructor(options: PostgresRunStoreOptions) {
     // Normalize foreign (run-ops-generation) Prisma known-request-errors to the control-plane
@@ -659,7 +674,16 @@ export class PostgresRunStore implements RunStore {
     this.schemaVariant = options.schemaVariant ?? "legacy";
     this.maxWait = options.maxWait;
     this.transactionStartRetry = options.transactionStartRetry;
-    this.snapshotWrites = options.snapshotWrites ?? true;
+    this.infraRetry = options.infraRetry;
+    this.readInfraRetry = options.readInfraRetry ?? options.infraRetry;
+  }
+
+  // The per-write Postgres snapshot-row decision, read straight off the snapshot input the decorator
+  // forwards. Absent means write (the safe default): an unwired store, or any caller that supplies no
+  // control, keeps the full Postgres log. Only an explicit `false` — set by the decorator for a
+  // redis-only-born run — suppresses the row.
+  #writesSnapshot(writeSnapshotRow?: boolean): boolean {
+    return writeSnapshotRow !== false;
   }
 
   /**
@@ -667,14 +691,20 @@ export class PostgresRunStore implements RunStore {
    * key and `undefined` alike, so spreading an empty object drops the nested write entirely rather
    * than sending an empty one.
    */
-  #nestedSnapshot(create: Prisma.TaskRunExecutionSnapshotUncheckedCreateWithoutRunInput):
+  #nestedSnapshot(
+    create: Prisma.TaskRunExecutionSnapshotUncheckedCreateWithoutRunInput,
+    // The write decision, taken from the snapshot input's `writeSnapshotRow` by the caller. Threaded
+    // in (rather than re-derived here) so a method that also writes join rows guarded on the same
+    // decision resolves it ONCE and cannot split a snapshot from its links. Defaults to write.
+    writes: boolean = true
+  ):
     | {
         executionSnapshots: {
           create: Prisma.TaskRunExecutionSnapshotUncheckedCreateWithoutRunInput;
         };
       }
     | Record<string, never> {
-    return this.snapshotWrites ? { executionSnapshots: { create } } : {};
+    return writes ? { executionSnapshots: { create } } : {};
   }
 
   // The writer handle in read-client form, so the routing layer can honor a caller-passed client
@@ -764,13 +794,14 @@ export class PostgresRunStore implements RunStore {
       workerId: params.snapshot.workerId,
       runnerId: params.snapshot.runnerId,
     };
+    const writesSnapshot = this.#writesSnapshot(params.snapshot.writeSnapshotRow);
 
     if (this.schemaVariant === "dedicated") {
       if (!params.associatedWaitpoint) {
         const run = (await this.#writeClientWithoutTransaction(tx).taskRun.create({
           data: {
             ...params.data,
-            ...this.#nestedSnapshot(snapshotCreate),
+            ...this.#nestedSnapshot(snapshotCreate, writesSnapshot),
           },
         })) as TaskRun;
         return { ...run, associatedWaitpoint: null };
@@ -782,7 +813,7 @@ export class PostgresRunStore implements RunStore {
           const run = (await c.taskRun.create({
             data: {
               ...params.data,
-              ...this.#nestedSnapshot(snapshotCreate),
+              ...this.#nestedSnapshot(snapshotCreate, writesSnapshot),
             },
           })) as TaskRun;
 
@@ -799,7 +830,7 @@ export class PostgresRunStore implements RunStore {
       },
       data: {
         ...params.data,
-        ...this.#nestedSnapshot(snapshotCreate),
+        ...this.#nestedSnapshot(snapshotCreate, writesSnapshot),
         associatedWaitpoint: params.associatedWaitpoint
           ? {
               create: params.associatedWaitpoint,
@@ -857,7 +888,10 @@ export class PostgresRunStore implements RunStore {
     return client.taskRun.create({
       data: {
         ...params.data,
-        ...this.#nestedSnapshot(snapshotCreate),
+        ...this.#nestedSnapshot(
+          snapshotCreate,
+          this.#writesSnapshot(params.snapshot.writeSnapshotRow)
+        ),
       },
     });
   }
@@ -951,21 +985,24 @@ export class PostgresRunStore implements RunStore {
         outputType: data.outputType,
         usageDurationMs: data.usageDurationMs,
         costInCents: data.costInCents,
-        ...this.#nestedSnapshot({
-          id: data.snapshot.id,
-          createdAt: data.snapshot.createdAt,
-          updatedAt: data.snapshot.createdAt,
-          executionStatus: data.snapshot.executionStatus,
-          description: data.snapshot.description,
-          runStatus: data.snapshot.runStatus,
-          attemptNumber: data.snapshot.attemptNumber,
-          environmentId: data.snapshot.environmentId,
-          environmentType: data.snapshot.environmentType,
-          projectId: data.snapshot.projectId,
-          organizationId: data.snapshot.organizationId,
-          workerId: data.snapshot.workerId,
-          runnerId: data.snapshot.runnerId,
-        }),
+        ...this.#nestedSnapshot(
+          {
+            id: data.snapshot.id,
+            createdAt: data.snapshot.createdAt,
+            updatedAt: data.snapshot.createdAt,
+            executionStatus: data.snapshot.executionStatus,
+            description: data.snapshot.description,
+            runStatus: data.snapshot.runStatus,
+            attemptNumber: data.snapshot.attemptNumber,
+            environmentId: data.snapshot.environmentId,
+            environmentType: data.snapshot.environmentType,
+            projectId: data.snapshot.projectId,
+            organizationId: data.snapshot.organizationId,
+            workerId: data.snapshot.workerId,
+            runnerId: data.snapshot.runnerId,
+          },
+          this.#writesSnapshot(data.snapshot.writeSnapshotRow)
+        ),
       },
       { select: args.select }
     ) as Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
@@ -1158,19 +1195,22 @@ export class PostgresRunStore implements RunStore {
         completedAt: data.completedAt,
         expiredAt: data.expiredAt,
         error: data.error as Prisma.InputJsonValue,
-        ...this.#nestedSnapshot({
-          id: data.snapshot.id,
-          createdAt: data.snapshot.createdAt,
-          updatedAt: data.snapshot.createdAt,
-          engine: data.snapshot.engine,
-          executionStatus: data.snapshot.executionStatus,
-          description: data.snapshot.description,
-          runStatus: data.snapshot.runStatus,
-          environmentId: data.snapshot.environmentId,
-          environmentType: data.snapshot.environmentType,
-          projectId: data.snapshot.projectId,
-          organizationId: data.snapshot.organizationId,
-        }),
+        ...this.#nestedSnapshot(
+          {
+            id: data.snapshot.id,
+            createdAt: data.snapshot.createdAt,
+            updatedAt: data.snapshot.createdAt,
+            engine: data.snapshot.engine,
+            executionStatus: data.snapshot.executionStatus,
+            description: data.snapshot.description,
+            runStatus: data.snapshot.runStatus,
+            environmentId: data.snapshot.environmentId,
+            environmentType: data.snapshot.environmentType,
+            projectId: data.snapshot.projectId,
+            organizationId: data.snapshot.organizationId,
+          },
+          this.#writesSnapshot(data.snapshot.writeSnapshotRow)
+        ),
       },
       { select: args.select }
     ) as Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
@@ -1273,6 +1313,12 @@ export class PostgresRunStore implements RunStore {
   ): Promise<Prisma.TaskRunGetPayload<{}>> {
     const dedicated = this.schemaVariant === "dedicated";
 
+    // Resolve the snapshot-write decision ONCE for both the nested snapshot below and the join-row
+    // connect after the update. The update awaits between the two, so reading `writeSnapshotRow`
+    // twice off the same input is harmless, but resolving once keeps the snapshot and its
+    // completed-waitpoint links from ever splitting.
+    const writesSnapshot = this.#writesSnapshot(data.snapshot.writeSnapshotRow);
+
     const result = await prisma.taskRun.update({
       where: { id: runId },
       data: {
@@ -1290,33 +1336,36 @@ export class PostgresRunStore implements RunStore {
         cliVersion: data.cliVersion ?? undefined,
         maxDurationInSeconds: data.maxDurationInSeconds ?? undefined,
         maxAttempts: data.maxAttempts ?? undefined,
-        ...this.#nestedSnapshot({
-          id: data.snapshot.id,
-          createdAt: data.snapshot.createdAt,
-          updatedAt: data.snapshot.createdAt,
-          engine: "V2",
-          executionStatus: "PENDING_EXECUTING",
-          description: "Run was dequeued for execution",
-          runStatus: "PENDING",
-          attemptNumber: data.snapshot.attemptNumber ?? undefined,
-          previousSnapshotId: data.snapshot.previousSnapshotId,
-          environmentId: data.snapshot.environmentId,
-          environmentType: data.snapshot.environmentType,
-          projectId: data.snapshot.projectId,
-          organizationId: data.snapshot.organizationId,
-          checkpointId: data.snapshot.checkpointId ?? undefined,
-          batchId: data.snapshot.batchId ?? undefined,
-          // Completed-waitpoint links are inserted FK-free after create (below) for BOTH schemas.
-          completedWaitpointOrder: data.snapshot.completedWaitpointOrder,
-          workerId: data.snapshot.workerId ?? undefined,
-          runnerId: data.snapshot.runnerId ?? undefined,
-        }),
+        ...this.#nestedSnapshot(
+          {
+            id: data.snapshot.id,
+            createdAt: data.snapshot.createdAt,
+            updatedAt: data.snapshot.createdAt,
+            engine: "V2",
+            executionStatus: "PENDING_EXECUTING",
+            description: "Run was dequeued for execution",
+            runStatus: "PENDING",
+            attemptNumber: data.snapshot.attemptNumber ?? undefined,
+            previousSnapshotId: data.snapshot.previousSnapshotId,
+            environmentId: data.snapshot.environmentId,
+            environmentType: data.snapshot.environmentType,
+            projectId: data.snapshot.projectId,
+            organizationId: data.snapshot.organizationId,
+            checkpointId: data.snapshot.checkpointId ?? undefined,
+            batchId: data.snapshot.batchId ?? undefined,
+            // Completed-waitpoint links are inserted FK-free after create (below) for BOTH schemas.
+            completedWaitpointOrder: data.snapshot.completedWaitpointOrder,
+            workerId: data.snapshot.workerId ?? undefined,
+            runnerId: data.snapshot.runnerId ?? undefined,
+          },
+          writesSnapshot
+        ),
       },
     });
 
     // The join rows link to the snapshot row above. With snapshot writes off there is no such row,
     // so inserting them would leave dangling links for a snapshot that only the Redis store holds.
-    if (this.snapshotWrites) {
+    if (writesSnapshot) {
       if (dedicated) {
         await this.#connectCompletedWaitpoints(
           prisma,
@@ -1397,19 +1446,22 @@ export class PostgresRunStore implements RunStore {
           completedAt: data.completedAt,
           expiredAt: data.expiredAt,
           error: data.error as Prisma.InputJsonValue,
-          ...this.#nestedSnapshot({
-            id: data.snapshot.id,
-            createdAt: data.snapshot.createdAt,
-            updatedAt: data.snapshot.createdAt,
-            engine: data.snapshot.engine,
-            executionStatus: data.snapshot.executionStatus,
-            description: data.snapshot.description,
-            runStatus: data.snapshot.runStatus,
-            environmentId: data.snapshot.environmentId,
-            environmentType: data.snapshot.environmentType,
-            projectId: data.snapshot.projectId,
-            organizationId: data.snapshot.organizationId,
-          }),
+          ...this.#nestedSnapshot(
+            {
+              id: data.snapshot.id,
+              createdAt: data.snapshot.createdAt,
+              updatedAt: data.snapshot.createdAt,
+              engine: data.snapshot.engine,
+              executionStatus: data.snapshot.executionStatus,
+              description: data.snapshot.description,
+              runStatus: data.snapshot.runStatus,
+              environmentId: data.snapshot.environmentId,
+              environmentType: data.snapshot.environmentType,
+              projectId: data.snapshot.projectId,
+              organizationId: data.snapshot.organizationId,
+            },
+            this.#writesSnapshot(data.snapshot.writeSnapshotRow)
+          ),
         },
       });
     } catch (error) {
@@ -1471,20 +1523,23 @@ export class PostgresRunStore implements RunStore {
         delayUntil: data.delayUntil,
         ...(data.queueTimestamp !== undefined && { queueTimestamp: data.queueTimestamp }),
         ...(data.snapshot &&
-          this.#nestedSnapshot({
-            id: data.snapshot.id,
-            createdAt: data.snapshot.createdAt,
-            updatedAt: data.snapshot.createdAt,
-            engine: "V2",
-            executionStatus: data.snapshot.executionStatus ?? "DELAYED",
-            description:
-              data.snapshot.description ?? "Delayed run was rescheduled to a future date",
-            runStatus: data.snapshot.runStatus ?? "DELAYED",
-            environmentId: data.snapshot.environmentId,
-            environmentType: data.snapshot.environmentType,
-            projectId: data.snapshot.projectId,
-            organizationId: data.snapshot.organizationId,
-          })),
+          this.#nestedSnapshot(
+            {
+              id: data.snapshot.id,
+              createdAt: data.snapshot.createdAt,
+              updatedAt: data.snapshot.createdAt,
+              engine: "V2",
+              executionStatus: data.snapshot.executionStatus ?? "DELAYED",
+              description:
+                data.snapshot.description ?? "Delayed run was rescheduled to a future date",
+              runStatus: data.snapshot.runStatus ?? "DELAYED",
+              environmentId: data.snapshot.environmentId,
+              environmentType: data.snapshot.environmentType,
+              projectId: data.snapshot.projectId,
+              organizationId: data.snapshot.organizationId,
+            },
+            this.#writesSnapshot(data.snapshot.writeSnapshotRow)
+          )),
       },
     });
   }
@@ -1996,7 +2051,24 @@ export class PostgresRunStore implements RunStore {
     // can be served from a lagging read replica, so a snapshot that commits before its links can be
     // read back waitpoint-less and the runner's resume is lost (the run hangs). This is the warm-continue
     // path: the engine threads its base prisma through as `tx`, which is not a real transaction.
-    return this.#withOptionalTransaction(tx, (c) => this.#createExecutionSnapshot(input, c));
+    const run = () =>
+      this.#withOptionalTransaction(tx, (c) => this.#createExecutionSnapshot(input, c));
+
+    // Retry a connection blip only where it is safe: a caller-supplied id makes the write idempotent
+    // (the conflict-ignoring insert makes a replay a no-op and the primary-key read returns the
+    // canonical row), and only when the caller did not hand us their own transaction (re-running a
+    // statement inside an aborted tx is unsafe).
+    const callerTx =
+      tx !== undefined && typeof (tx as { $transaction?: unknown }).$transaction !== "function";
+    if (input.id !== undefined && !callerTx) {
+      return withInfraRetry(run, this.infraRetry);
+    }
+    return run();
+  }
+
+  // A plain Postgres store has no MemoryDB residency, so it never carries a route.
+  async readSnapshotRoute(): Promise<SnapshotRoute | undefined> {
+    return undefined;
   }
 
   async #createExecutionSnapshot(
@@ -2036,10 +2108,10 @@ export class PostgresRunStore implements RunStore {
 
     // Redis-only: no row is written and the decorator owns the document. Echo the input in the shape
     // the caller expects, so every caller of this method keeps working while Postgres holds nothing.
-    if (!this.snapshotWrites) {
+    if (!this.#writesSnapshot(input.writeSnapshotRow)) {
       if (!id) {
         throw new Error(
-          "PostgresRunStore.createExecutionSnapshot: snapshotWrites is off, so the caller must supply the snapshot id"
+          "PostgresRunStore.createExecutionSnapshot: snapshot row is suppressed, so the caller must supply the snapshot id"
         );
       }
 
@@ -2075,36 +2147,52 @@ export class PostgresRunStore implements RunStore {
 
     const dedicated = this.schemaVariant === "dedicated";
 
-    const newSnapshot = await prisma.taskRunExecutionSnapshot.create({
-      data: {
-        id,
-        createdAt,
-        updatedAt: createdAt,
-        engine: "V2",
-        executionStatus: snapshot.executionStatus,
-        description: snapshot.description,
-        previousSnapshotId,
-        runId: run.id,
-        // We can't set the runStatus to DEQUEUED because it will break older runners
-        runStatus: run.status === "DEQUEUED" ? "PENDING" : run.status,
-        attemptNumber: run.attemptNumber ?? undefined,
-        batchId,
-        environmentId,
-        environmentType,
-        projectId,
-        organizationId,
-        checkpointId,
-        workerId,
-        runnerId,
-        metadata: snapshot.metadata ?? undefined,
-        // Completed-waitpoint links are inserted FK-free after create (below) for BOTH schemas, so a
-        // cross-DB (NEW-resident) token can be recorded without a Prisma `connect` existence check.
-        completedWaitpointOrder,
-        isValid: !error,
-        error,
-      },
-      include: { checkpoint: true },
-    });
+    const data = {
+      id,
+      createdAt,
+      updatedAt: createdAt,
+      engine: "V2" as const,
+      executionStatus: snapshot.executionStatus,
+      description: snapshot.description,
+      previousSnapshotId,
+      runId: run.id,
+      // We can't set the runStatus to DEQUEUED because it will break older runners
+      runStatus: run.status === "DEQUEUED" ? ("PENDING" as const) : run.status,
+      attemptNumber: run.attemptNumber ?? undefined,
+      batchId,
+      environmentId,
+      environmentType,
+      projectId,
+      organizationId,
+      checkpointId,
+      workerId,
+      runnerId,
+      metadata: snapshot.metadata ?? undefined,
+      // Completed-waitpoint links are inserted FK-free after create (below) for BOTH schemas, so a
+      // cross-DB (NEW-resident) token can be recorded without a Prisma `connect` existence check.
+      completedWaitpointOrder,
+      isValid: !error,
+      error,
+    };
+
+    // A caller-supplied id makes the write idempotent via an atomic conflict-ignoring insert
+    // (INSERT ... ON CONFLICT DO NOTHING). Whether this call inserted the row or replayed an earlier
+    // committed attempt, the following primary-key read returns the single canonical snapshot, so a
+    // blip-retry never aborts the transaction on a unique violation and concurrent same-id calls are
+    // resolved by the database rather than racing. Without an id, plain create mints a fresh cuid.
+    let newSnapshot: Prisma.TaskRunExecutionSnapshotGetPayload<{ include: { checkpoint: true } }>;
+    if (id !== undefined) {
+      await prisma.taskRunExecutionSnapshot.createMany({ data, skipDuplicates: true });
+      newSnapshot = await prisma.taskRunExecutionSnapshot.findUniqueOrThrow({
+        where: { id },
+        include: { checkpoint: true },
+      });
+    } else {
+      newSnapshot = await prisma.taskRunExecutionSnapshot.create({
+        data,
+        include: { checkpoint: true },
+      });
+    }
 
     const completedWaitpointIds = completedWaitpoints?.map((w) => w.id) ?? [];
     if (dedicated) {
@@ -2421,29 +2509,48 @@ export class PostgresRunStore implements RunStore {
     return this.#findWaitpointOn(this.prisma, args);
   }
 
+  // Retries a replay-safe op (a read, or an idempotent write) on a connection blip, but never when
+  // `client` is an interactive-transaction client (a tx client has no `$transaction`) — retrying a
+  // statement inside an aborted transaction is unsafe. No-ops unless `infraRetry` is enabled.
+  #maybeInfraRetry<R>(client: object, run: () => Promise<R>): Promise<R> {
+    // Budget by the physical pool: any replica read gets the replica budget so a replica retry storm
+    // can't drain the writer's. Match the replica BRAND as well as object identity, so a branded replica
+    // that is not the stored object still bills the replica budget. The routing store today maps a
+    // branded replica to this store's stored replica rather than forwarding the caller's wrapper, so the
+    // brand check hardens direct callers and any future wrapper-preserving path, not a current one.
+    // Anything else (the writer for a read-your-writes read) uses the writer budget: it IS the writer pool.
+    const config =
+      client === this.readOnlyPrisma || isReadReplicaClient(client)
+        ? this.readInfraRetry
+        : this.infraRetry;
+    return "$transaction" in client ? withInfraRetry(run, config) : run();
+  }
+
   #findWaitpointOn<T extends Prisma.WaitpointFindFirstArgs>(
     prisma: ReadClient | RunOpsCapableClient,
     args: Prisma.SelectSubset<T, Prisma.WaitpointFindFirstArgs>
   ): Promise<Prisma.WaitpointGetPayload<T> | null> {
-    if (this.schemaVariant !== "dedicated") {
-      return prisma.waitpoint.findFirst(args) as Promise<Prisma.WaitpointGetPayload<T> | null>;
-    }
+    return this.#maybeInfraRetry(prisma, () => {
+      if (this.schemaVariant !== "dedicated") {
+        return prisma.waitpoint.findFirst(args) as Promise<Prisma.WaitpointGetPayload<T> | null>;
+      }
 
-    const { where, orderBy, take, skip, cursor, ...projection } = args as Record<string, any>;
-    return this.#runDedicatedSelect(
-      prisma as RunOpsCapableClient,
-      (stripped) =>
-        (prisma as RunOpsCapableClient).waitpoint.findFirst({
-          where,
-          orderBy,
-          take,
-          skip,
-          cursor,
-          ...stripped,
-        }),
-      projection,
-      WAITPOINT_DEDICATED
-    ) as Promise<Prisma.WaitpointGetPayload<T> | null>;
+      const { where, orderBy, take, skip, cursor, ...projection } = args as Record<string, any>;
+      return this.#runDedicatedSelect(
+        prisma as RunOpsCapableClient,
+        (stripped) =>
+          (prisma as RunOpsCapableClient).waitpoint.findFirst({
+            where,
+            orderBy,
+            take,
+            skip,
+            cursor,
+            ...stripped,
+          }),
+        projection,
+        WAITPOINT_DEDICATED
+      ) as Promise<Prisma.WaitpointGetPayload<T> | null>;
+    });
   }
 
   async findManyWaitpoints<T extends Prisma.WaitpointFindManyArgs>(
@@ -2454,27 +2561,31 @@ export class PostgresRunStore implements RunStore {
   ): Promise<Prisma.WaitpointGetPayload<T>[]> {
     const prisma = client ?? this.readOnlyPrisma;
 
-    if (this.schemaVariant !== "dedicated") {
-      return prisma.waitpoint.findMany(args) as Promise<Prisma.WaitpointGetPayload<T>[]>;
-    }
+    // Wrapped like the other reads: the routing store's cross-DB edge hydration resolves the
+    // `waitpoint` relation through here, so a blip during hydration must retry too.
+    return this.#maybeInfraRetry(prisma, async () => {
+      if (this.schemaVariant !== "dedicated") {
+        return prisma.waitpoint.findMany(args) as Promise<Prisma.WaitpointGetPayload<T>[]>;
+      }
 
-    const { where, orderBy, take, skip, cursor, ...projection } = args as Record<string, any>;
-    const { stripped, requested } = stripDedicatedRelations(projection, WAITPOINT_DEDICATED);
-    const rows = (await (prisma as RunOpsCapableClient).waitpoint.findMany({
-      where,
-      orderBy,
-      take,
-      skip,
-      cursor,
-      ...stripped,
-    })) as Record<string, unknown>[];
-    await this.#hydrateDedicatedRelations(
-      prisma as RunOpsCapableClient,
-      rows,
-      requested,
-      WAITPOINT_DEDICATED
-    );
-    return rows as Prisma.WaitpointGetPayload<T>[];
+      const { where, orderBy, take, skip, cursor, ...projection } = args as Record<string, any>;
+      const { stripped, requested } = stripDedicatedRelations(projection, WAITPOINT_DEDICATED);
+      const rows = (await (prisma as RunOpsCapableClient).waitpoint.findMany({
+        where,
+        orderBy,
+        take,
+        skip,
+        cursor,
+        ...stripped,
+      })) as Record<string, unknown>[];
+      await this.#hydrateDedicatedRelations(
+        prisma as RunOpsCapableClient,
+        rows,
+        requested,
+        WAITPOINT_DEDICATED
+      );
+      return rows as Prisma.WaitpointGetPayload<T>[];
+    });
   }
 
   async updateWaitpoint<T extends Prisma.WaitpointUpdateArgs>(
@@ -2490,9 +2601,36 @@ export class PostgresRunStore implements RunStore {
     args: Prisma.WaitpointUpdateManyArgs,
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.BatchPayload> {
+    // Generic update: NOT retried. It accepts arbitrary update args, which may be non-idempotent (e.g.
+    // a Prisma increment), so replaying it on a blip is unsafe. Replay-safe waitpoint completion has
+    // its own retried path, markWaitpointCompleted.
     const prisma = tx ?? this.prisma;
-
     return prisma.waitpoint.updateMany(args);
+  }
+
+  async markWaitpointCompleted(
+    waitpointId: string,
+    completion: {
+      output?: { value?: string; type?: string; isError?: boolean };
+      completedAt?: Date;
+    }
+  ): Promise<Prisma.BatchPayload> {
+    // Deliberately takes NO caller transaction: this is a standalone, retried completion write, so it
+    // always runs on its own writer client and is always eligible for the infra retry. Replay-safe by
+    // construction: the PENDING status guard and COMPLETED values are built here, never supplied by the
+    // caller, so a blip-retry replaying the same transition matches 0 rows instead of double-applying.
+    return this.#maybeInfraRetry(this.prisma, () =>
+      this.prisma.waitpoint.updateMany({
+        where: { id: waitpointId, status: "PENDING" },
+        data: {
+          status: "COMPLETED",
+          completedAt: completion.completedAt ?? new Date(),
+          output: completion.output?.value,
+          outputType: completion.output?.type,
+          outputIsError: completion.output?.isError,
+        },
+      })
+    );
   }
 
   async forWaitpointCompletion(
@@ -2509,40 +2647,42 @@ export class PostgresRunStore implements RunStore {
   ): Promise<Prisma.TaskRunWaitpointGetPayload<T>[]> {
     const prisma = client ?? this.readOnlyPrisma;
 
-    if (this.schemaVariant !== "dedicated") {
-      return prisma.taskRunWaitpoint.findMany(args) as Promise<
-        Prisma.TaskRunWaitpointGetPayload<T>[]
-      >;
-    }
+    return this.#maybeInfraRetry(prisma, async () => {
+      if (this.schemaVariant !== "dedicated") {
+        return prisma.taskRunWaitpoint.findMany(args) as Promise<
+          Prisma.TaskRunWaitpointGetPayload<T>[]
+        >;
+      }
 
-    // Dedicated subset: strip the `waitpoint`/`taskRun` relation keys (no relation on the subset →
-    // straight-through would throw a Prisma validation error), run the scalar findMany, then hydrate
-    // from the edge's own client. A cross-DB token is missed here and re-resolved by the router.
-    const { where, orderBy, take, skip, cursor, ...projection } = args as Record<string, any>;
-    const { stripped, requested } = stripDedicatedRelations(
-      projection,
-      TASK_RUN_WAITPOINT_DEDICATED
-    );
-    // Keep the scalar ids the hydrators key off through a narrowed select.
-    if (stripped.select) {
-      stripped.select.waitpointId = true;
-      stripped.select.taskRunId = true;
-    }
-    const rows = (await (prisma as RunOpsCapableClient).taskRunWaitpoint.findMany({
-      where,
-      orderBy,
-      take,
-      skip,
-      cursor,
-      ...stripped,
-    })) as Record<string, unknown>[];
-    await this.#hydrateDedicatedRelations(
-      prisma as RunOpsCapableClient,
-      rows,
-      requested,
-      TASK_RUN_WAITPOINT_DEDICATED
-    );
-    return rows as Prisma.TaskRunWaitpointGetPayload<T>[];
+      // Dedicated subset: strip the `waitpoint`/`taskRun` relation keys (no relation on the subset →
+      // straight-through would throw a Prisma validation error), run the scalar findMany, then hydrate
+      // from the edge's own client. A cross-DB token is missed here and re-resolved by the router.
+      const { where, orderBy, take, skip, cursor, ...projection } = args as Record<string, any>;
+      const { stripped, requested } = stripDedicatedRelations(
+        projection,
+        TASK_RUN_WAITPOINT_DEDICATED
+      );
+      // Keep the scalar ids the hydrators key off through a narrowed select.
+      if (stripped.select) {
+        stripped.select.waitpointId = true;
+        stripped.select.taskRunId = true;
+      }
+      const rows = (await (prisma as RunOpsCapableClient).taskRunWaitpoint.findMany({
+        where,
+        orderBy,
+        take,
+        skip,
+        cursor,
+        ...stripped,
+      })) as Record<string, unknown>[];
+      await this.#hydrateDedicatedRelations(
+        prisma as RunOpsCapableClient,
+        rows,
+        requested,
+        TASK_RUN_WAITPOINT_DEDICATED
+      );
+      return rows as Prisma.TaskRunWaitpointGetPayload<T>[];
+    });
   }
 
   async deleteManyTaskRunWaitpoints(
@@ -2551,7 +2691,9 @@ export class PostgresRunStore implements RunStore {
   ): Promise<Prisma.BatchPayload> {
     const prisma = tx ?? this.prisma;
 
-    return prisma.taskRunWaitpoint.deleteMany(args);
+    // Safe to retry: deleting the same edges again on a blip replay matches 0 rows. #maybeInfraRetry
+    // skips the retry when `tx` is a caller transaction (a bounded unblock delete passes none).
+    return this.#maybeInfraRetry(prisma, () => prisma.taskRunWaitpoint.deleteMany(args));
   }
 
   // The dedicated subset schema lacks control-plane relations; a pass-through include/select of one
@@ -2606,6 +2748,19 @@ export class PostgresRunStore implements RunStore {
     const prisma = tx ?? this.prisma;
 
     return prisma.taskRunCheckpoint.create(args) as Promise<Prisma.TaskRunCheckpointGetPayload<T>>;
+  }
+
+  async findTaskRunCheckpointById(
+    checkpointId: string,
+    // `ownerRunId` selects residency at the router; a single store has one client and ignores it.
+    _ownerRunId: string,
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunCheckpointGetPayload<{}> | null> {
+    const prisma = client ?? this.readOnlyPrisma;
+
+    return prisma.taskRunCheckpoint.findFirst({
+      where: { id: checkpointId },
+    }) as Promise<Prisma.TaskRunCheckpointGetPayload<{}> | null>;
   }
 
   // --- BatchTaskRun (run-ops) ---

@@ -29,7 +29,7 @@ const DashboardAgentWatchAlertPayload = z.object({
   kind: z.string(),
   note: z.string(),
   firedAt: z.string(),
-  facts: z.record(z.unknown()),
+  facts: z.record(z.string(), z.unknown()),
   // Optional so a job enqueued before this deploy still validates and delivers.
   resolution: watchResolutionSchema.optional().catch(undefined),
   // `.catch` so an unrecognized observation shape degrades instead of dropping the alert.

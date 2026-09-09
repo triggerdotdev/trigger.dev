@@ -14,19 +14,22 @@ export function resolveMessageLimit(serverLimit: number | null | undefined): num
 }
 
 /**
- * What a `?quota=1` body should change, or null for a degraded one. Both fields move together:
- * applying a `{}` on top of a good read would keep the count and drop back to the nudge limit,
- * which reads as "reached" against a cap the server never set.
+ * What a `?quota=1` body should change: a coherent `{used, limit}` read, `disabled` when the
+ * server has turned the quota off (an explicit signal, not the caller's stale cache), or null
+ * for a degraded body. `used`/`limit` move together: applying a `{}` on top of a good read
+ * field-by-field would keep the count and drop back to the nudge limit, which reads as
+ * "reached" against a cap the server never set.
  */
 export function quotaResponseUpdate(
-  data: { used?: number; limit?: number | null } | null | undefined
-): { used: number; limit: number | null } | null {
+  data: { used?: number; limit?: number | null; enabled?: boolean } | null | undefined
+): { used: number; limit: number | null } | { disabled: true } | null {
+  if (data?.enabled === false) return { disabled: true };
   if (typeof data?.used !== "number") return null;
   return { used: data.used, limit: typeof data.limit === "number" ? data.limit : null };
 }
 
 export type MessageQuota =
-  | { kind: "unlimited" }
+  | { kind: "unlimited"; reason?: "disabled" }
   | { kind: "within"; used: number; limit: number; remaining: number }
   | { kind: "reached"; used: number; limit: number };
 
@@ -36,11 +39,14 @@ export function resolveMessageQuota({
   isFreePlan,
   used,
   limit = FREE_PLAN_MESSAGE_LIMIT,
+  disabled,
 }: {
   isFreePlan: boolean | undefined;
   used: number | undefined;
   limit?: number;
+  disabled?: boolean;
 }): MessageQuota {
+  if (disabled) return { kind: "unlimited", reason: "disabled" };
   if (isFreePlan !== true || used === undefined) return { kind: "unlimited" };
   const remaining = Math.max(0, limit - used);
   return remaining === 0
@@ -49,12 +55,18 @@ export function resolveMessageQuota({
 }
 
 /**
- * Whether a refusal-set cap can be released: only a read that proves capacity is back. An
- * unknown quota (degraded read, plan not resolved) keeps the block, so the composer never
- * flashes back for someone the server is about to refuse again.
+ * Whether a refusal-set cap can be released: a read that proves capacity is back, or the
+ * server saying the quota is off outright. Absent any server read (degraded body, nothing
+ * read yet) the block stays, so the composer never flashes back for someone the server is
+ * about to refuse again.
+ *
+ * `provenCapacity` carries the raw server read past the plan model: the server enforces the
+ * same billing limit on every plan, but a paid plan resolves to `unlimited` here (it has no
+ * nudge to show), so its `within` read would otherwise never release the block.
  */
-export function shouldClearCapReached(quota: MessageQuota): boolean {
-  return quota.kind === "within";
+export function shouldClearCapReached(quota: MessageQuota & { provenCapacity?: boolean }): boolean {
+  if (quota.provenCapacity) return true;
+  return quota.kind === "within" || (quota.kind === "unlimited" && quota.reason === "disabled");
 }
 
 // The server code both the create and `in` paths refuse with. The client owns the copy,

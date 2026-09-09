@@ -45,12 +45,6 @@ export function addGoogleStrategy(
       }
 
       try {
-        logger.debug("Google login", {
-          emails,
-          profile,
-          extraParams,
-        });
-
         const { user, isNewUser } = await findOrCreateUser({
           email,
           authenticationMethod: "GOOGLE",

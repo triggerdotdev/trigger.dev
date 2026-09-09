@@ -64,6 +64,7 @@ import {
   getErrorGroups,
   getErrorInstances,
   getErrorGroupsListQueryBuilder,
+  getErrorGroupLocationsQueryBuilder,
   getErrorHourlyOccurrences,
   getErrorOccurrencesListQueryBuilder,
   createErrorOccurrencesQueryBuilder,
@@ -358,6 +359,9 @@ export class ClickHouse {
       getHourlyOccurrences: getErrorHourlyOccurrences(this.reader),
       affectedVersionsQueryBuilder: getErrorAffectedVersionsQueryBuilder(this.reader),
       listQueryBuilder: getErrorGroupsListQueryBuilder(this.reader),
+      locationsQueryBuilder: getErrorGroupLocationsQueryBuilder(this.reader, {
+        max_execution_time: 10,
+      }),
       occurrencesListQueryBuilder: getErrorOccurrencesListQueryBuilder(this.reader),
       createOccurrencesQueryBuilder: (intervalExpr: string) =>
         createErrorOccurrencesQueryBuilder(this.reader, intervalExpr),

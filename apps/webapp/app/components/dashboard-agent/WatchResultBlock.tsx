@@ -17,24 +17,31 @@ import { TONE_ICON_COLOR } from "./agent-badges";
 import { cn } from "~/utils/cn";
 
 /**
- * Icon and label per outcome. A confirmation is not a success (nothing has happened
- * yet) so it wears the neutral eye; the check belongs to the one-shot that did
- * answer the question.
+ * Every outcome keeps a static icon. Nothing animates: the block is frozen at append time
+ * and never hears that the watch fired, expired or was cancelled, so an animated label
+ * would still be running on a watch that ended hours ago. Live state is the chips' job.
  */
 const OUTCOME = {
-  watching: { label: "Watch", Icon: EyeIcon, tone: "neutral" },
-  already_true: { label: "Watch", Icon: CheckCircleIcon, tone: "success" },
-  impossible: { label: "Watch", Icon: InformationCircleIcon, tone: "neutral" },
+  watching: {
+    label: "Watch",
+    icon: <EyeIcon className="size-3.5 shrink-0 text-text-dimmed" />,
+  },
+  already_true: {
+    label: "Watch",
+    icon: <CheckCircleIcon className={cn("size-3.5 shrink-0", TONE_ICON_COLOR.success)} />,
+  },
+  impossible: {
+    label: "Watch",
+    icon: <InformationCircleIcon className={cn("size-3.5 shrink-0", TONE_ICON_COLOR.neutral)} />,
+  },
 } as const;
 
 export function WatchResultBlock({ block }: { block: WatchResultBlockPayload }) {
-  const { label, Icon, tone } = OUTCOME[block.outcome] ?? OUTCOME.watching;
+  const outcome = OUTCOME[block.outcome] ?? OUTCOME.watching;
+  const { label, icon } = outcome;
 
   return (
-    <ChatSystemBlock
-      label={label}
-      icon={<Icon className={cn("size-3.5 shrink-0", TONE_ICON_COLOR[tone])} />}
-    >
+    <ChatSystemBlock label={label} icon={icon}>
       <p className="text-sm text-text-bright">{block.headline}</p>
       {block.lifetime ? <p className="text-xs text-text-dimmed">{block.lifetime}</p> : null}
       {block.detail ? <p className="text-xs text-text-dimmed">{block.detail}</p> : null}

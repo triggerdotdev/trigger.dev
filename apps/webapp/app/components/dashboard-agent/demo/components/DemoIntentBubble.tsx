@@ -22,9 +22,7 @@ export function DemoIntentBubble({
     <div
       className={cn(
         "rounded-md border px-3 py-3",
-        rejected
-          ? "border-border-bright bg-background-bright/40"
-          : "border-indigo-500/30 bg-indigo-500/5"
+        rejected ? "border-border-bright bg-background-bright/40" : "border-primary/30 bg-primary/5"
       )}
     >
       <ChatStatusLine

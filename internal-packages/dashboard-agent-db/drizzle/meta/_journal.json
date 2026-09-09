@@ -43,6 +43,13 @@
       "when": 1786376934874,
       "tag": "0005_ambitious_mordo",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788600710042,
+      "tag": "0006_wooden_shaman",
+      "breakpoints": true
     }
   ]
 }

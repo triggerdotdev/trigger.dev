@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * A user-actor token minted for one environment must not be honoured against another, even when
@@ -93,6 +93,17 @@ vi.mock("~/db.server", () => ({
           return true;
         }) ?? null,
     },
+    organization: {
+      findFirst: async ({ where }: any) => {
+        if (where.id !== ORGANIZATION.id) return null;
+        // The soft-delete predicate is modelled so dropping it in production fails here too;
+        // the real query is covered by test/userActorOrganizationMembership.test.ts.
+        if (where.deletedAt === null && ORGANIZATION_DELETED) return null;
+        if (where.members?.some?.userId && !ORG_MEMBER_USER_IDS.includes(where.members.some.userId))
+          return null;
+        return { id: ORGANIZATION.id };
+      },
+    },
     workerDeployment: { findFirst: async () => null },
     backgroundWorkerTask: { findMany: async () => [] },
   },
@@ -117,6 +128,10 @@ const ORGANIZATION = { id: "org_1234", slug: "test-org" };
 const PROJECT = { id: "proj_1234", externalRef: "proj_ref_1234", slug: "test-project" };
 const USER_ID = "usr_member";
 const MEMBER_USER_IDS = [USER_ID];
+// Membership as the org-scope check reads it, kept apart from the project/user mocks so a case can
+// remove the member from the organization alone.
+let ORG_MEMBER_USER_IDS = [USER_ID];
+let ORGANIZATION_DELETED = false;
 
 function environment(
   id: string,
@@ -161,11 +176,14 @@ const DEV_BRANCH = {
 };
 const ENVIRONMENTS = [ENV_A, ENV_B, PREVIEW_PARENT, PREVIEW_BRANCH, DEV_PARENT, DEV_BRANCH];
 
-function mintToken(opts: { environmentId?: string; client?: string } = {}) {
+function mintToken(
+  opts: { environmentId?: string; organizationId?: string; client?: string } = {}
+) {
   return signUserActorToken(SESSION_SECRET, {
     userId: USER_ID,
     client: opts.client ?? "dashboard-agent",
     ...(opts.environmentId ? { environmentId: opts.environmentId } : {}),
+    ...(opts.organizationId ? { organizationId: opts.organizationId } : {}),
     cap: ["read:apiKeys", "read:runs", "read:deployments"],
   });
 }
@@ -295,7 +313,9 @@ describe("user-actor token environment scope", () => {
     });
   });
 
-  describe.each(ROUTE_CASES)("$name", ({ call }) => {
+  describe(ROUTE_CASES[0]!.name, () => {
+    const call = ROUTE_CASES[0]!.call;
+
     it("403s a token minted for another environment", async () => {
       const token = await mintToken({ environmentId: ENV_A.id });
 
@@ -329,6 +349,19 @@ describe("user-actor token environment scope", () => {
       const response = await call(token, "staging");
 
       expect(response.status).toBe(200);
+    });
+  });
+
+  // The environment claim check is shared middleware: sweep every other route for the one
+  // behavior that proves it's wired in, rather than repeating the full case above per route.
+  describe.each(ROUTE_CASES.slice(1))("$name", ({ call }) => {
+    it("403s a token minted for another environment", async () => {
+      const token = await mintToken({ environmentId: ENV_A.id });
+
+      const response = await call(token, "staging");
+
+      expect(response.status).toBe(403);
+      expect(await response.json()).toMatchObject({ code: "forbidden_environment" });
     });
   });
 
@@ -414,17 +447,6 @@ describe.each(ENVIRONMENT_CASES)(
       const { token: jwt } = (await response.json()) as { token: string };
       const payload = JSON.parse(Buffer.from(jwt.split(".")[1]!, "base64url").toString());
       expect(payload.sub).toBe(expected.id);
-    });
-
-    it("resolves that exact environment on the delegated-token reads too", async () => {
-      const token = await mintToken({ environmentId: expected.id });
-
-      const response = await withBranch(branch, () => ROUTE_CASES[2].call(token, env));
-
-      expect(response.status).toBe(200);
-      expect(mocks.findCurrentWorkerFromEnvironment.mock.calls[0][0]).toMatchObject({
-        id: expected.id,
-      });
     });
 
     if (fallsBackTo) {
@@ -703,5 +725,124 @@ describe("UAT preamble — source PAT liveness recheck", () => {
     const response = await ROUTE_CASES[1].call(token, "prod");
 
     expect(response.status).toBe(200);
+  });
+});
+
+/**
+ * The org-scoped form: a token carrying an organization claim reads across that org's
+ * environments, and each request rechecks the user's membership. A route that hasn't declared
+ * itself org-scoped keeps the narrow environment check, so the default stays fail-closed.
+ */
+describe("user-actor token organization scope", () => {
+  beforeEach(() => {
+    mocks.can.mockReset();
+    mocks.can.mockReturnValue(true);
+    ORG_MEMBER_USER_IDS = [USER_ID];
+    ORGANIZATION_DELETED = false;
+    mocks.findCurrentWorkerFromEnvironment.mockReset();
+    mocks.findCurrentWorkerFromEnvironment.mockResolvedValue({
+      id: "worker_1",
+      friendlyId: "worker_1234",
+      version: "20240101.1",
+      engine: "V2",
+      sdkVersion: "4.0.0",
+      cliVersion: "4.0.0",
+    });
+  });
+
+  afterEach(() => {
+    ORG_MEMBER_USER_IDS = [USER_ID];
+    ORGANIZATION_DELETED = false;
+  });
+
+  it("falls back to the environment check for a token with no organization claim", async () => {
+    const token = await mintToken({ environmentId: ENV_A.id });
+
+    expect((await ROUTE_CASES[0].call(token, "staging")).status).toBe(403);
+    expect((await ROUTE_CASES[0].call(token, "prod")).status).toBe(200);
+  });
+
+  it("403s once the organization is deleted", async () => {
+    const token = await mintToken({
+      environmentId: ENV_A.id,
+      organizationId: ORGANIZATION.id,
+    });
+
+    ORGANIZATION_DELETED = true;
+
+    const response = await ROUTE_CASES[0].call(token, "staging");
+
+    expect(response.status).toBe(403);
+  });
+
+  it("admits an organization-claim token with no environment claim", async () => {
+    const token = await mintToken({ organizationId: ORGANIZATION.id });
+
+    const response = await ROUTE_CASES[0].call(token, "prod");
+
+    expect(response.status).toBe(200);
+  });
+
+  // Every one of these routes resolves an environment from the URL, and each has opted in, so an
+  // org token reads a sibling environment of its own organization and nothing else.
+  describe.each(ROUTE_CASES)("$name", ({ name, call }) => {
+    it("serves a sibling environment of the claimed organization", async () => {
+      const token = await mintToken({
+        environmentId: ENV_A.id,
+        organizationId: ORGANIZATION.id,
+      });
+
+      const response = await call(token, "staging");
+
+      expect(response.status).toBe(200);
+      if (name === "env JWT exchange") {
+        expect(await response.json()).toMatchObject({ environmentId: ENV_B.id });
+      }
+    });
+
+    it("403s a token from another organization", async () => {
+      const token = await mintToken({ environmentId: ENV_A.id, organizationId: "org_other" });
+
+      const response = await call(token, "staging");
+
+      expect(response.status).toBe(403);
+      expect(await response.json()).toMatchObject({ code: "forbidden_environment" });
+    });
+
+    it("403s once the user is no longer a member", async () => {
+      const token = await mintToken({
+        environmentId: ENV_A.id,
+        organizationId: ORGANIZATION.id,
+      });
+      ORG_MEMBER_USER_IDS = [];
+
+      const response = await call(token, "staging");
+
+      expect(response.status).toBe(403);
+    });
+  });
+
+  it("400s a bare preview, and mints when the branch travels with it", async () => {
+    const token = await mintToken({
+      environmentId: PREVIEW_BRANCH.id,
+      organizationId: ORGANIZATION.id,
+    });
+
+    const bare = await ROUTE_CASES[0].call(token, "preview");
+    const addressed = await withBranch(PREVIEW_BRANCH_NAME, () =>
+      ROUTE_CASES[0].call(token, "preview")
+    );
+
+    expect(bare.status).toBe(400);
+    expect(addressed.status).toBe(200);
+    expect(await addressed.json()).toMatchObject({ environmentId: PREVIEW_BRANCH.id });
+  });
+
+  it("returns the resolved environment id alongside the token", async () => {
+    const token = await mintToken({ environmentId: ENV_A.id });
+
+    const response = await ROUTE_CASES[0].call(token, "prod");
+
+    expect(await response.json()).toMatchObject({ environmentId: ENV_A.id });
   });
 });

@@ -8,7 +8,8 @@ import {
   MESSAGE_TOO_LARGE_ERROR,
 } from "~/components/dashboard-agent/message-limits";
 import { MESSAGE_QUOTA_REACHED_ERROR } from "~/components/dashboard-agent/message-quota";
-import { findProjectBySlug } from "~/models/project.server";
+import { chatExists } from "@internal/dashboard-agent-db";
+import { findProjectWithOrgFlagsBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
   dashboardAgentApiOrigin,
@@ -21,6 +22,7 @@ import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
 import { wellFormMessageText } from "~/services/dashboardAgentMessageText.server";
 import {
   agentTurnCountsAgainstQuota,
+  isDashboardAgentQuotaEnabled,
   recordAgentMessageSent,
   resolveAgentMessageQuota,
 } from "~/services/dashboardAgentQuota.server";
@@ -29,6 +31,7 @@ import { requireUser } from "~/services/session.server";
 import { readBoundedBodyText } from "~/utils/boundedRequestBody.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
+import { canUseDashboardAgentWatches } from "~/v3/canUseDashboardAgentWatches.server";
 
 // Same-origin proxy for the chat append request. It mints a read-only delegated token scoped
 // to the environment in this URL, so the token never reaches the browser.
@@ -47,6 +50,10 @@ const FORWARDED_HEADERS = [
 // extracted on the agent worker, so a client-supplied one is SSRF from inside the worker
 // network plus an attacker-controlled untar.
 const CLIENT_METADATA_KEYS = ["currentPage", "pageContext"] as const;
+
+// The one upstream path the SDK sends through this proxy. The id group is the
+// server-minted shape: `chat_<nanoid>` and `chat_<sha256 prefix>`.
+const UPSTREAM_PATH = /^realtime\/v1\/sessions\/([A-Za-z0-9_-]+)\/in\/append$/;
 
 export function pickAgentClientMetadata(
   metadata: Record<string, unknown> | undefined
@@ -84,24 +91,41 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return tooLarge();
   }
 
-  const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
+  const project = await findProjectWithOrgFlagsBySlug(organizationSlug, projectParam, user.id);
   if (!project) return json({ error: "Project not found" }, { status: 404 });
 
-  // The SDK builds the upstream path (`realtime/v1/sessions/{chatId}/in/append`);
-  // it arrives here as the splat. Forward it verbatim to the Trigger API.
+  // The SDK builds the upstream path (`realtime/v1/sessions/{chatId}/in/append`); it arrives
+  // here as the splat, already URL-decoded. Anything else is refused and the URL is rebuilt
+  // from the captured chat id — a `..` in the splat would otherwise reach a chat other than
+  // the one authorized below.
   const upstreamPath = params["*"];
-  if (!upstreamPath) return json({ error: "Not found" }, { status: 404 });
+  const upstream = upstreamPath ? UPSTREAM_PATH.exec(upstreamPath) : null;
+  if (!upstream) return json({ error: "Not found" }, { status: 404 });
+  const chatId = upstream[1];
 
   const apiOrigin = dashboardAgentApiOrigin();
   const userApiOrigin = dashboardAgentUserApiOrigin();
   const url = new URL(request.url);
-  const upstreamUrl = `${apiOrigin.replace(/\/$/, "")}/${upstreamPath}${url.search}`;
+  const upstreamUrl = `${apiOrigin.replace(
+    /\/$/,
+    ""
+  )}/realtime/v1/sessions/${chatId}/in/append${url.search}`;
 
   // Membership-scoped: `(projectId, slug)` is not unique because every developer has their own
   // dev row, and a token must never be minted for someone else's environment — or for none.
   const runtimeEnv = await findEnvironmentBySlug(project.id, envParam, user.id);
   if (!runtimeEnv) return json({ error: "Environment not found" }, { status: 404 });
   const environmentAddress = dashboardAgentEnvironmentAddress(runtimeEnv);
+
+  if (
+    !(await chatExists(dashboardAgentDb, {
+      chatId,
+      userId: user.id,
+      organizationId: project.organizationId,
+    }))
+  ) {
+    return json({ error: "Chat not found" }, { status: 404 });
+  }
 
   // Null without a connected GitHub repo, and the agent stays in assistant mode.
   const repoSnapshot = await resolveDashboardAgentRepoSnapshot(project.id);
@@ -147,7 +171,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
       // Only a real user message consumes quota; action turns were refused above.
       countsAgainstQuota = agentTurnCountsAgainstQuota(parsed);
-      if (countsAgainstQuota) {
+      if (countsAgainstQuota && isDashboardAgentQuotaEnabled()) {
         const quota = await resolveAgentMessageQuota(dashboardAgentDb, {
           organizationId: project.organizationId,
         });
@@ -168,6 +192,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
       parsed.payload.metadata = {
         ...pickAgentClientMetadata(parsed.payload.metadata),
+        // Resolved per turn, server-side: off means no watch tools and no watch guidance.
+        watchEnabled: await canUseDashboardAgentWatches({
+          userId: user.id,
+          organizationSlug,
+          orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
+        }),
         userActorToken,
         apiOrigin: userApiOrigin,
         projectRef: project.externalRef,
@@ -196,7 +226,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     const text = await upstream.text();
     // Charge quota only for a delivered message: a non-2xx upstream (or a throw below)
     // must not burn a send that never reached the agent.
-    if (countsAgainstQuota && upstream.ok) {
+    if (countsAgainstQuota && upstream.ok && isDashboardAgentQuotaEnabled()) {
       await recordAgentMessageSent(dashboardAgentDb, {
         organizationId: project.organizationId,
       });

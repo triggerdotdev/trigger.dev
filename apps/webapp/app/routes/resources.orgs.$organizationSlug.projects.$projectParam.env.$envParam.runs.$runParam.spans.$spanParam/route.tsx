@@ -1174,11 +1174,7 @@ function RunBody({
                   recommendation: tell me when it finishes. Only while the run can
                   still change — a finished run has nothing left to wait for. */}
               {isFinalRunStatus(run.status) ? null : (
-                <WatchButton
-                  spec={runWatchRecommendation(run.friendlyId)}
-                  variant="primary"
-                  className="self-start"
-                />
+                <WatchButton spec={runWatchRecommendation(run.friendlyId)} className="self-start" />
               )}
               <RunTimeline run={run} />
 

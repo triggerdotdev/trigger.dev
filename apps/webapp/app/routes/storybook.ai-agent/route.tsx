@@ -1,6 +1,15 @@
 import { ComponentNames } from "../storybook/StoryKit";
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
+import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { LogoIcon } from "~/components/LogoIcon";
+import { InvestigateButton } from "~/components/dashboard-agent/InvestigateButton";
+import {
+  DashboardAgentLauncher,
+  DashboardAgentProvider,
+} from "~/components/dashboard-agent/dashboardAgentLauncher";
+import { failedRunPrompt } from "~/components/dashboard-agent/investigate-prompts";
+import { runWatchRecommendation } from "~/components/dashboard-agent/watch-recommendations";
+import { WatchButton } from "~/components/dashboard-agent/WatchButton";
 import { Button, type ButtonVariant } from "~/components/primitives/Buttons";
 import {
   ClientTabs,
@@ -13,13 +22,28 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   AgentDotMatrix,
   AgentMonoLogo,
+  dotMatrixGeometry,
   DOT_MATRIX_PALETTES,
   DOT_SHAPES,
   EXTRA_FACE_SHAPES,
   FACE_SHAPES,
+  MATRIX,
   type DotMatrixPaletteName,
   type DotShapeName,
 } from "~/components/primitives/AgentDotMatrix";
+import { cn } from "~/utils/cn";
+
+// Storybook-only stand-in for the real provider, so InvestigateButton/WatchButton/
+// DashboardAgentLauncher render instead of bailing out with no panel to open.
+const storybookAgent = {
+  open: false,
+  setOpen: () => {},
+  openWith: () => {},
+  openWithWatch: () => {},
+  unreadWakes: 0,
+  unreadWork: 0,
+  watchEnabled: false,
+};
 
 // Experiments for the trigger.dev AI dashboard-agent identity: a resting logo
 // that animates while the agent thinks. Each tab is a separate experiment.
@@ -47,6 +71,9 @@ export default function Story() {
           <ClientTabsTrigger variant="underline" value="orbit-dots">
             Orbit dots
           </ClientTabsTrigger>
+          <ClientTabsTrigger variant="underline" value="sparkles">
+            Sparkles
+          </ClientTabsTrigger>
         </ClientTabsList>
         <ClientTabsContent value="dot-matrix">
           <DotMatrixTab />
@@ -56,6 +83,9 @@ export default function Story() {
         </ClientTabsContent>
         <ClientTabsContent value="orbit-dots">
           <OrbitDotsTab />
+        </ClientTabsContent>
+        <ClientTabsContent value="sparkles">
+          <SparklesTab />
         </ClientTabsContent>
       </ClientTabs>
     </div>
@@ -180,6 +210,88 @@ function DotMatrixTab() {
           </div>
         ))}
       </div>
+      <div className="flex flex-wrap items-end gap-8 rounded-md border border-grid-bright bg-background-bright px-6 py-5">
+        <DotGridEditor />
+      </div>
+    </div>
+  );
+}
+
+// 1.5x the 32px candidate icons this replaced.
+const EDITOR_SIZE = 48;
+
+/** Renders a flat `MATRIX * MATRIX` lit/unlit array using `dotMatrixGeometry`, so pitch and dot radius always match the Shape library above. */
+function DotGrid({
+  lit,
+  size,
+  onToggle,
+}: {
+  lit: boolean[];
+  size: number;
+  onToggle?: (index: number) => void;
+}) {
+  const { pitch, dotR } = dotMatrixGeometry(size);
+  const center = (i: number) => i * pitch + pitch / 2;
+
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox={`0 0 ${size} ${size}`}
+      className="rounded-md border border-grid-bright"
+    >
+      {lit.map((isLit, i) => {
+        const r = Math.floor(i / MATRIX);
+        const c = i % MATRIX;
+        return (
+          <circle
+            key={i}
+            cx={center(c)}
+            cy={center(r)}
+            r={dotR}
+            fill="currentColor"
+            opacity={isLit ? 1 : 0.25}
+            className={cn(
+              onToggle && "cursor-pointer focus-visible:outline focus-visible:outline-2",
+              isLit ? "text-success" : "text-text-dimmed"
+            )}
+            onClick={onToggle ? () => onToggle(i) : undefined}
+            {...(onToggle && {
+              role: "button",
+              tabIndex: 0,
+              "aria-pressed": isLit,
+              "aria-label": `Dot ${r + 1}, ${c + 1}`,
+              onKeyDown: (event: React.KeyboardEvent) => {
+                if (event.key !== "Enter" && event.key !== " ") return;
+                event.preventDefault();
+                onToggle(i);
+              },
+            })}
+          />
+        );
+      })}
+    </svg>
+  );
+}
+
+/** Interactive `MATRIX`x`MATRIX` grid: click a dot to toggle it on (accent) or off (ghost). */
+function DotGridEditor() {
+  const [lit, setLit] = useState<boolean[]>(() => new Array(MATRIX * MATRIX).fill(false));
+
+  const toggle = (index: number) => {
+    setLit((current) => current.map((value, i) => (i === index ? !value : value)));
+  };
+
+  const rows = Array.from({ length: MATRIX }, (_, r) =>
+    Array.from({ length: MATRIX }, (_, c) => (lit[r * MATRIX + c] ? "#" : ".")).join("")
+  );
+
+  return (
+    <div className="flex flex-col items-start gap-2">
+      <DotGrid lit={lit} size={EDITOR_SIZE} onToggle={toggle} />
+      <pre className="rounded border border-grid-bright bg-charcoal-900 px-2 py-1 font-mono text-[10px] leading-tight text-text-dimmed">
+        {rows.join("\n")}
+      </pre>
     </div>
   );
 }
@@ -397,6 +509,49 @@ function OrbitDotsTab() {
         <Scrubber sizes={[20, 32, 48, 72, 140]} orb={{ adaptive: true }} />
       </section>
     </div>
+  );
+}
+
+// --- Sparkles (the shipped "Ask Trigger" glyph) ---------------------------------
+
+function SparklesTab() {
+  return (
+    <DashboardAgentProvider value={storybookAgent}>
+      <div className="flex flex-col gap-6 py-6">
+        <Paragraph variant="small" className="mt-2 -mb-3 max-w-3xl">
+          The static sparkles glyph used everywhere the agent appears, at a few sizes:
+        </Paragraph>
+        <div className="flex flex-wrap items-end gap-8 rounded-md border border-grid-bright bg-background-bright px-6 py-5">
+          {[
+            ["size-4", "16"],
+            ["size-5", "20"],
+            ["size-[22px]", "22"],
+            ["size-6", "24"],
+          ].map(([sizeClass, label]) => (
+            <div key={label} className="flex flex-col items-center gap-2">
+              <AISparkleIcon className={sizeClass} />
+              <div className="text-[10px] uppercase tracking-wide text-text-dimmed">{label}px</div>
+            </div>
+          ))}
+        </div>
+        <Paragraph variant="small" className="mt-2 -mb-3 max-w-3xl">
+          The launcher button:
+        </Paragraph>
+        <div className="flex flex-wrap items-center gap-6 rounded-md border border-grid-bright bg-background-bright px-6 py-5">
+          <DashboardAgentLauncher />
+        </div>
+        <Paragraph variant="small" className="mt-2 -mb-3 max-w-3xl">
+          In-chat action buttons, same style:
+        </Paragraph>
+        <div className="flex flex-wrap items-center gap-6 rounded-md border border-grid-bright bg-background-bright px-6 py-5">
+          <InvestigateButton
+            prompt={failedRunPrompt("run_storybook")}
+            label="Investigate this error"
+          />
+          <WatchButton spec={runWatchRecommendation("run_storybook")} label="Watch…" />
+        </div>
+      </div>
+    </DashboardAgentProvider>
   );
 }
 

@@ -20,6 +20,7 @@ export function DashboardAgentComposer({
   isStreaming,
   focusKey,
   context,
+  trailingAction,
   layout = "docked",
   autoFocus = true,
   placeholderSuggestion,
@@ -32,6 +33,8 @@ export function DashboardAgentComposer({
   // Bump to move focus back to the textarea.
   focusKey?: string | number;
   context?: React.ReactNode;
+  // Rendered right-aligned next to `context`, below the input.
+  trailingAction?: React.ReactNode;
   layout?: DashboardAgentComposerLayout;
   autoFocus?: boolean;
   // Shown as the placeholder while the field is empty. Tab accepts it as editable
@@ -81,10 +84,9 @@ export function DashboardAgentComposer({
         isHero ? "w-full" : "bg-background-bright px-3 pb-3 pt-1"
       )}
     >
-      {isHero ? null : context}
       <div
         className={cn(
-          "border border-border-bright bg-background-bright transition focus-within:border-border-brighter",
+          "border border-border-bright/50 bg-background-bright transition focus-within:border-ring",
           isHero ? "rounded-lg p-2" : "rounded-md p-1"
         )}
       >
@@ -138,20 +140,27 @@ export function DashboardAgentComposer({
             placeholder={placeholderSuggestion ?? "Type a message…"}
             aria-label="Message the dashboard agent"
             className={cn(
-              "max-h-[40vh] flex-1 resize-none border-0 bg-transparent px-1.5 py-0.5 text-sm leading-6 text-text-bright placeholder-text-dimmed outline-hidden ring-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control field-sizing-content focus:outline-hidden focus:ring-0",
+              "max-h-[40vh] flex-1 resize-none border-0 bg-transparent px-1.5 py-0.5 text-sm leading-[1.5] text-text-bright placeholder-text-dimmed outline-hidden ring-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control field-sizing-content focus:outline-hidden focus:ring-0",
               isHero && "w-full"
             )}
           />
           {isHero ? (
             <div className="flex min-w-0 items-center justify-between gap-2">
               {context ?? <span />}
-              {sendButton}
+              {/* `shrink-0`, so a long context truncates instead of squeezing Send out. */}
+              <div className="shrink-0">{sendButton}</div>
             </div>
           ) : (
             sendButton
           )}
         </div>
       </div>
+      {isHero ? null : (
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          {context ?? <span />}
+          {trailingAction ? <div className="shrink-0">{trailingAction}</div> : null}
+        </div>
+      )}
       {/* Mounted from the start, empty until there is something to say: a region that appears
           with its first message goes unannounced in several screen readers. */}
       <p className="sr-only" aria-live="polite">

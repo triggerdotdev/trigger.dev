@@ -1,5 +1,7 @@
 import {
+  MAX_SCHEDULE_PHASE,
   MINIMUM_SCHEDULE_RANGE_MS,
+  SCHEDULE_PHASE_DENOMINATOR,
   calculateEffectiveScheduleTime,
   calculateSchedulePhase,
 } from "@internal/schedule-engine";
@@ -112,6 +114,7 @@ function input(overrides: Partial<ScheduleTimingInput> = {}): ScheduleTimingInpu
     schedulePhase: null,
     windowDurationSeconds: null,
     windowPercentage: null,
+    minimumWindowDurationSeconds: null,
     active: true,
     updatedAt: new Date("2020-01-01T00:00:00.000Z"),
     ...overrides,
@@ -341,5 +344,48 @@ describe("resolveScheduleTimings", () => {
     expect(
       resolveScheduleTimings([], { phaseSecret: PHASE_SECRET, includeLastRun: true, now })
     ).toEqual([]);
+  });
+
+  it("spreads a windowless restricted hourly schedule across the 60-minute policy floor", () => {
+    const [restricted] = resolveScheduleTimings(
+      [
+        input({
+          cron: "0 * * * *",
+          schedulePhase: SCHEDULE_PHASE_DENOMINATOR / 2,
+          minimumWindowDurationSeconds: 3_600,
+        }),
+      ],
+      { phaseSecret: PHASE_SECRET, includeLastRun: false, now }
+    );
+    const [unrestricted] = resolveScheduleTimings(
+      [input({ cron: "0 * * * *", schedulePhase: SCHEDULE_PHASE_DENOMINATOR / 2 })],
+      { phaseSecret: PHASE_SECRET, includeLastRun: false, now }
+    );
+
+    // An unrestricted windowless schedule spreads only within the 60-second baseline (30s at
+    // half phase); the policy floor spreads the restricted one across the full hour (30m).
+    expect(unrestricted.nextRunEffectiveAt.getTime() - unrestricted.nextRun.getTime()).toBe(30_000);
+    expect(restricted.nextRunEffectiveAt.getTime() - restricted.nextRun.getTime()).toBe(
+      30 * 60_000
+    );
+  });
+
+  it("lets a larger configured window win over the policy floor", () => {
+    // 200m window on a 3-hour cron: above the 60m floor and not capped by the 3h gap.
+    const [timing] = resolveScheduleTimings(
+      [
+        input({
+          cron: "0 */3 * * *",
+          schedulePhase: MAX_SCHEDULE_PHASE,
+          windowDurationSeconds: 200 * 60,
+          minimumWindowDurationSeconds: 3_600,
+        }),
+      ],
+      { phaseSecret: PHASE_SECRET, includeLastRun: false, now }
+    );
+
+    const offsetMs = timing.nextRunEffectiveAt.getTime() - timing.nextRun.getTime();
+    expect(offsetMs).toBeGreaterThan(60 * 60_000);
+    expect(offsetMs).toBeLessThan(200 * 60_000);
   });
 });

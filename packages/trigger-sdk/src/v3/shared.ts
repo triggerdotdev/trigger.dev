@@ -17,18 +17,16 @@ import {
   createErrorTaskError,
   defaultRetryOptions,
   flattenIdempotencyKey,
-  getEnvVar,
+  generateFriendlyId,
   getIdempotencyKeyOptions,
   getSchemaParseFn,
   lifecycleHooks,
   makeIdempotencyKey,
   packetRequiresOffloading,
-  resolveExternalDeploymentId,
   parsePacket,
   RateLimitError,
   resourceCatalog,
   runtime,
-  sdkScope,
   SemanticInternalAttributes,
   stringifyIO,
   SubtaskUnwrapError,
@@ -91,6 +89,7 @@ import {
   type TriggerApiRequestOptions,
   type TriggerOptions,
 } from "@trigger.dev/core/v3";
+import { resolveTriggerExternalDeploymentId, scopedEnvVar } from "./externalDeploymentId.js";
 import { tracer } from "./tracer.js";
 
 export type {
@@ -119,20 +118,6 @@ export type {
 export { SubtaskUnwrapError, TaskRunPromise };
 
 export type Context = TaskRunContext;
-
-function scopedEnvVar(name: string): string | undefined {
-  const scope = sdkScope.getStore();
-  if (scope && !scope.inheritContext) return undefined;
-  return getEnvVar(name);
-}
-
-function resolveTriggerExternalDeploymentId(explicit?: string): string | undefined {
-  return resolveExternalDeploymentId({
-    explicit,
-    clientConfig: apiClientManager.externalDeploymentId,
-    read: scopedEnvVar,
-  });
-}
 
 export function queue(options: QueueOptions): Queue {
   resourceCatalog.registerQueueMetadata(options);
@@ -1786,7 +1771,7 @@ async function offloadBatchItemPayload(
 
   const exported = await conditionallyExportPacket(
     packet,
-    createTriggerPayloadPathPrefix(item.task),
+    createTriggerPayloadPathPrefix(),
     undefined,
     apiClient
   );
@@ -2317,8 +2302,7 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
   const parsedPayload = parsePayload ? await parsePayload(payload) : payload;
   const { packet: triggerPayloadPacket, payloadSize } = await prepareTriggerPayload(
     parsedPayload,
-    apiClient,
-    id
+    apiClient
   );
 
   // Process idempotency key and extract options for storage
@@ -2582,8 +2566,7 @@ async function triggerAndWait_internal<TIdentifier extends string, TPayload, TOu
   const parsedPayload = parsePayload ? await parsePayload(payload) : payload;
   const { packet: triggerPayloadPacket, payloadSize } = await prepareTriggerPayload(
     parsedPayload,
-    apiClient,
-    id
+    apiClient
   );
 
   // Process idempotency key and extract options for storage
@@ -2673,8 +2656,7 @@ async function triggerAndSubscribe_internal<TIdentifier extends string, TPayload
   const parsedPayload = parsePayload ? await parsePayload(payload) : payload;
   const { packet: triggerPayloadPacket, payloadSize } = await prepareTriggerPayload(
     parsedPayload,
-    apiClient,
-    id
+    apiClient
   );
 
   const processedIdempotencyKey = await makeIdempotencyKey(options?.idempotencyKey);
@@ -3199,8 +3181,7 @@ function registerTaskLifecycleHooks<
 
 async function prepareTriggerPayload(
   payload: unknown,
-  apiClient: ApiClient,
-  taskId: string
+  apiClient: ApiClient
 ): Promise<{ packet: IOPacket; payloadSize: number }> {
   const payloadPacket = await stringifyIO(payload);
   // Measure the serialized size before any offload, so it reflects the real payload
@@ -3208,14 +3189,20 @@ async function prepareTriggerPayload(
   const { size: payloadSize } = packetRequiresOffloading(payloadPacket);
   const packet = await conditionallyExportPacket(
     payloadPacket,
-    createTriggerPayloadPathPrefix(taskId),
+    createTriggerPayloadPathPrefix(),
     undefined,
     apiClient
   );
   return { packet, payloadSize };
 }
 
-function createTriggerPayloadPathPrefix(taskId: string): string {
-  const safeTaskId = encodeURIComponent(taskId);
-  return `trigger/${safeTaskId}/${Date.now()}-${Math.random().toString(36).slice(2)}/payload`;
+/**
+ * Build the object-storage path prefix for an offloaded trigger payload.
+ *
+ * Every segment is generated here, so nothing caller-controlled reaches the key.
+ * The id's alphabet is lowercase alphanumeric, which no layer between here and the
+ * object store rewrites, so the path the SDK asks for is the path that gets stored.
+ */
+function createTriggerPayloadPathPrefix(): string {
+  return `trigger/${generateFriendlyId("packet")}/payload`;
 }

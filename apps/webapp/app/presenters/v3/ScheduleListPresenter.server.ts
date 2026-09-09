@@ -5,7 +5,8 @@ import { getTaskIdentifiers } from "~/models/task.server";
 import { getCurrentPlan, getPlans } from "~/services/platform.v3.server";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
-import { formatScheduleWindow } from "~/v3/scheduleWindow.server";
+import { formatResolvedScheduleWindow } from "~/v3/scheduleWindow.server";
+import { type ScheduleWindowSource } from "@internal/schedule-engine";
 import { CheckScheduleService } from "~/v3/services/checkSchedule.server";
 import { resolveScheduleTimings } from "~/v3/scheduleTimings.server";
 import { env } from "~/env.server";
@@ -37,6 +38,8 @@ type ScheduleListItem = {
   cronDescription: string;
   timezone: string;
   window?: string;
+  windowSource?: ScheduleWindowSource;
+  minimumWindowDurationSeconds: number | null;
   externalId: string | null;
   nextRun: Date;
   nextRunEffectiveAt: Date;
@@ -223,6 +226,8 @@ export class ScheduleListPresenter extends BasePresenter {
         timezone: true,
         windowDurationSeconds: true,
         windowPercentage: true,
+        defaultWindowDurationSeconds: true,
+        minimumWindowDurationSeconds: true,
         externalId: true,
         instances: {
           select: {
@@ -300,6 +305,8 @@ export class ScheduleListPresenter extends BasePresenter {
         schedulePhase: instances[index].schedulePhase,
         windowDurationSeconds: schedule.windowDurationSeconds,
         windowPercentage: schedule.windowPercentage,
+        defaultWindowDurationSeconds: schedule.defaultWindowDurationSeconds,
+        minimumWindowDurationSeconds: schedule.minimumWindowDurationSeconds,
         active: schedule.active,
         updatedAt: schedule.updatedAt,
       })),
@@ -308,6 +315,7 @@ export class ScheduleListPresenter extends BasePresenter {
 
     const schedules: ScheduleListItem[] = rawSchedules.map((schedule, index) => {
       const { nextRun, nextRunEffectiveAt, lastRun } = timings[index];
+      const resolvedWindow = formatResolvedScheduleWindow(schedule);
 
       return {
         id: schedule.id,
@@ -319,7 +327,9 @@ export class ScheduleListPresenter extends BasePresenter {
         cron: schedule.generatorExpression,
         cronDescription: schedule.generatorDescription,
         timezone: schedule.timezone,
-        window: formatScheduleWindow(schedule),
+        window: resolvedWindow.window,
+        windowSource: resolvedWindow.source,
+        minimumWindowDurationSeconds: schedule.minimumWindowDurationSeconds,
         active: schedule.active,
         externalId: schedule.externalId,
         lastRun,

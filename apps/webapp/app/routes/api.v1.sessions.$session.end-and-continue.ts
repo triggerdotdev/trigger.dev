@@ -117,6 +117,7 @@ const { action, loader } = createActionApiRoute(
         callingRunId: callingRun.id,
         environment: authentication.environment,
         reason,
+        externalDeploymentId: body.externalDeploymentId,
       });
 
       // Read-after-write: the swap just triggered (or claimed) the
@@ -133,6 +134,7 @@ const { action, loader } = createActionApiRoute(
       const responseBody: EndAndContinueSessionResponseBody = {
         runId: run?.friendlyId ?? result.runId,
         swapped: result.swapped,
+        pendingVersion: result.pendingVersion,
       };
       return json<EndAndContinueSessionResponseBody>(responseBody);
     } catch (error) {

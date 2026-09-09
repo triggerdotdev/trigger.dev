@@ -49,7 +49,8 @@ const RECURRENCE_WATCH = { checkEveryMinutes: 15, maxHours: WATCH_MAX_HOURS } as
  */
 function investigationCapabilities(
   state: InvestigationState,
-  reads: SourceReadLookup
+  reads: SourceReadLookup,
+  watchEnabled: boolean
 ): InvestigationCapabilities | null {
   if (state.outcome === "in_progress") return null;
 
@@ -89,7 +90,12 @@ function investigationCapabilities(
   // "Watch for a repeat" needs a cited error fingerprint to pre-fill from, so without
   // one it is left off.
   const parsedError = errorUri ? safeParseTriggerUri(errorUri) : undefined;
-  if (state.outcome === "concluded" && parsedError?.success && parsedError.data.kind === "error") {
+  if (
+    watchEnabled &&
+    state.outcome === "concluded" &&
+    parsedError?.success &&
+    parsedError.data.kind === "error"
+  ) {
     actions.push({
       kind: "watch_recurrence",
       label: "Watch for a repeat",
@@ -131,6 +137,8 @@ export type InvestigationRenderer = (
 export type InvestigationRendererContext = {
   projectRef?: string;
   environmentId?: string;
+  // Off by default: without the watch tool the card must not offer "Watch for a repeat".
+  watchEnabled?: boolean;
   investigations?: InvestigationsCapability;
   reads: SourceReadLookup;
 };
@@ -238,7 +246,7 @@ export function createInvestigationRenderer(
       investigationId = result.id;
       revision = result.revision;
 
-      const capabilities = investigationCapabilities(state, reads);
+      const capabilities = investigationCapabilities(state, reads, ctx.watchEnabled === true);
 
       const parsed = investigationBlockSchema.safeParse({
         ...block,

@@ -1,4 +1,5 @@
-import { z } from "zod";
+import { z } from "zod/v4";
+import { discriminatedUnion } from "../utils/zod.js";
 import { RunStatus } from "./api.js";
 import { RuntimeEnvironmentTypeSchema, TaskRunError } from "./common.js";
 
@@ -257,7 +258,7 @@ const commonProperties = {
 };
 
 /** Represents all possible webhook types */
-export const Webhook = z.discriminatedUnion("type", [
+export const Webhook = discriminatedUnion("type", [
   /** Run failed alert webhook */
   z.object({
     ...commonProperties,

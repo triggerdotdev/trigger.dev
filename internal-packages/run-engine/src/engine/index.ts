@@ -315,6 +315,12 @@ export class RunEngine {
             deferCount: payload.deferCount,
           });
         },
+        ensureWaitpointCompleted: async ({ payload }) => {
+          await this.waitpointSystem.ensureWaitpointCompleted({
+            waitpointId: payload.waitpointId,
+            output: payload.output,
+          });
+        },
         enqueueDelayedRun: async ({ payload }) => {
           await this.delayedRunSystem.enqueueDelayedRun({ runId: payload.runId });
         },
@@ -423,6 +429,7 @@ export class RunEngine {
       resources,
       executionSnapshotSystem: this.executionSnapshotSystem,
       enqueueSystem: this.enqueueSystem,
+      completionGuardDelayMs: options.completionGuardDelayMs,
     });
 
     this.ttlSystem = new TtlSystem({
@@ -1730,6 +1737,29 @@ export class RunEngine {
     return this.runQueue.currentConcurrencyOfEnvironment(environment);
   }
 
+  async operationalCurrentConcurrencyOfEnvironment(
+    environment: MinimalAuthenticatedEnvironment
+  ): Promise<number> {
+    return this.runQueue.operationalCurrentConcurrencyOfEnvironment(environment);
+  }
+
+  async getEnvConcurrencyLimit(environment: MinimalAuthenticatedEnvironment): Promise<number> {
+    return this.runQueue.getEnvConcurrencyLimit(environment);
+  }
+
+  async getEnvConcurrencyLimitWithBurstFactor(
+    environment: MinimalAuthenticatedEnvironment
+  ): Promise<number> {
+    return this.runQueue.getEnvConcurrencyLimitWithBurstFactor(environment);
+  }
+
+  async getQueueConcurrencyLimit(
+    environment: MinimalAuthenticatedEnvironment,
+    queue: string
+  ): Promise<number | undefined> {
+    return this.runQueue.getQueueConcurrencyLimit(environment, queue);
+  }
+
   async lengthOfQueues(
     environment: MinimalAuthenticatedEnvironment,
     queues: string[]
@@ -2097,6 +2127,7 @@ export class RunEngine {
   async completeWaitpoint({
     id,
     output,
+    armGuard,
   }: {
     id: string;
     output?: {
@@ -2104,6 +2135,13 @@ export class RunEngine {
       type?: string;
       isError: boolean;
     };
+    /**
+     * Arm the durable write-ahead completion guard for this call. The engine does NOT arm implicitly:
+     * left undefined it defaults to false, so a caller must opt in explicitly. The runtime-flag gate
+     * lives at the guarded boundary (completeWaitpointWithGuard in the webapp), which passes armGuard
+     * only when runStoreInfraRetryEnabled is on. Internal/system callers leave it unset (unarmed).
+     */
+    armGuard?: boolean;
   }): Promise<Waitpoint> {
     // Consult the cross-seam guard FIRST so an unclassifiable id fails loudly
     // here (never a silent local apply). Do NOT branch on decision.store: store routing is
@@ -2113,7 +2151,7 @@ export class RunEngine {
     if (guard) {
       await guard({ waitpointId: id, routeKind: "RESUME_TOKEN" });
     }
-    return this.waitpointSystem.completeWaitpoint({ id, output });
+    return this.waitpointSystem.completeWaitpoint({ id, output, armGuard: armGuard ?? false });
   }
 
   /**
@@ -2654,7 +2692,8 @@ export class RunEngine {
           {
             runId,
             snapshotId,
-            latestSnapshot: latestSnapshot,
+            latestSnapshotId: latestSnapshot.id,
+            latestSnapshotExecutionStatus: latestSnapshot.executionStatus,
           }
         );
 
@@ -2663,7 +2702,8 @@ export class RunEngine {
 
       this.logger.log("RunEngine.#handleStalledSnapshot() handling stalled snapshot", {
         runId,
-        snapshot: latestSnapshot,
+        snapshotId: latestSnapshot.id,
+        executionStatus: latestSnapshot.executionStatus,
       });
 
       switch (latestSnapshot.executionStatus) {
@@ -2690,7 +2730,8 @@ export class RunEngine {
               "RunEngine.#handleStalledSnapshot() PENDING_EXECUTING run not found",
               {
                 runId,
-                snapshot: latestSnapshot,
+                snapshotId: latestSnapshot.id,
+                executionStatus: latestSnapshot.executionStatus,
               }
             );
 
@@ -2789,7 +2830,9 @@ export class RunEngine {
 
           this.logger.info("handleStalledSnapshot SUSPENDED continueRunIfUnblocked", {
             runId,
-            result,
+            continuationStatus: result.status,
+            reason: result.status === "skipped" ? result.reason : undefined,
+            waitpointCount: "waitpoints" in result ? result.waitpoints.length : undefined,
             snapshotId: latestSnapshot.id,
           });
 
@@ -2802,7 +2845,8 @@ export class RunEngine {
               if (result.waitpoints.length === 0) {
                 this.logger.info("handleStalledSnapshot SUSPENDED blocked but no waitpoints", {
                   runId,
-                  result,
+                  continuationStatus: result.status,
+                  waitpointCount: result.waitpoints.length,
                   snapshotId: latestSnapshot.id,
                 });
                 // If the run is blocked but there are no waitpoints, we don't restart the heartbeat
@@ -2818,7 +2862,8 @@ export class RunEngine {
                   "handleStalledSnapshot SUSPENDED blocked but no run or batch waitpoints",
                   {
                     runId,
-                    result,
+                    continuationStatus: result.status,
+                    waitpointCount: result.waitpoints.length,
                     snapshotId: latestSnapshot.id,
                   }
                 );
@@ -2839,7 +2884,8 @@ export class RunEngine {
                   "handleStalledSnapshot SUSPENDED blocked with waitpoints, max retries reached",
                   {
                     runId,
-                    result,
+                    continuationStatus: result.status,
+                    waitpointCount: result.waitpoints.length,
                     snapshotId: latestSnapshot.id,
                     restartAttempt: $restartAttempt,
                     maxCount,
@@ -2860,7 +2906,8 @@ export class RunEngine {
                 "handleStalledSnapshot SUSPENDED blocked with waitpoints, restarting heartbeat",
                 {
                   runId,
-                  result,
+                  continuationStatus: result.status,
+                  waitpointCount: result.waitpoints.length,
                   snapshotId: latestSnapshot.id,
                   delayMs,
                   restartAttempt: $restartAttempt,
@@ -2960,12 +3007,14 @@ export class RunEngine {
           if (!gotRequeued) {
             this.logger.error("RunEngine.handleRepairSnapshot QUEUED repair failed", {
               runId,
-              snapshot: latestSnapshot,
+              snapshotId: latestSnapshot.id,
+              executionStatus: latestSnapshot.executionStatus,
             });
           } else {
             this.logger.log("RunEngine.handleRepairSnapshot QUEUED repair successful", {
               runId,
-              snapshot: latestSnapshot,
+              snapshotId: latestSnapshot.id,
+              executionStatus: latestSnapshot.executionStatus,
             });
           }
 

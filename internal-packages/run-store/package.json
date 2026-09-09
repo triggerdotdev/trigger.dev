@@ -16,7 +16,8 @@
   "dependencies": {
     "@internal/redis": "workspace:*",
     "@trigger.dev/core": "workspace:*",
-    "@trigger.dev/database": "workspace:*"
+    "@trigger.dev/database": "workspace:*",
+    "lru-cache": "^11.2.4"
   },
   "devDependencies": {
     "@internal/run-ops-database": "workspace:*",

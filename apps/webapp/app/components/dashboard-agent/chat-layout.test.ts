@@ -41,8 +41,8 @@ describe("chat-layout enforcement", () => {
       });
 
       for (const [i, region] of regions.entries()) {
-        it(`renders no spinner of its own in transcript region ${i + 1}`, () => {
-          expect(region).not.toContain("AgentSpinner");
+        it(`renders no progress indicator of its own in transcript region ${i + 1}`, () => {
+          expect(region).not.toContain("TextShimmer");
         });
 
         it(`writes no spacing class in transcript region ${i + 1}`, () => {
@@ -85,10 +85,21 @@ describe("chat-layout enforcement", () => {
       }
     });
 
-    it("renders the agent spinner from exactly one micro-layout", () => {
-      const renderSites = [...source.matchAll(/<AgentSpinner\b/g)];
-      expect(renderSites).toHaveLength(1);
-      expect(source).toContain("export function ChatProgress(");
+    it("renders the turn's progress indicator from only its two named micro-layouts", () => {
+      // The progress line always, and a system block's label when its work is still
+      // running. A third site means some block grew its own live indicator.
+      const renderSites = [...source.matchAll(/<TextShimmer\b/g)];
+      expect(renderSites).toHaveLength(2);
+      expect(source).not.toContain("AgentSpinner");
+
+      // Up to the next top-level declaration, so nested braces can't end the slice early.
+      const body = (name: string) => {
+        const from = source.slice(source.indexOf(`export function ${name}(`));
+        const next = from.indexOf("\nexport ", 1);
+        return next === -1 ? from : from.slice(0, next);
+      };
+      expect(body("ChatProgress")).toMatch(/<TextShimmer\b/);
+      expect(body("ChatSystemBlock")).toMatch(/shimmerLabel \? <TextShimmer\b/);
     });
 
     it("renders assistant text as prose, not as a card", () => {

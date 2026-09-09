@@ -26,6 +26,7 @@ import type {
 } from "@trigger.dev/database";
 import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
 import type { Residency, ShardKey } from "@trigger.dev/core/v3/isomorphic";
+import type { SnapshotRoute } from "./snapshotResidency.js";
 import type {
   ClearIdempotencyKeyInput,
   CompletionSnapshotInput,
@@ -483,6 +484,10 @@ export class DelegatingRunStore implements RunStore {
     return this.delegate.createExecutionSnapshot(input, tx);
   }
 
+  readSnapshotRoute(runId: string, organizationId: string): Promise<SnapshotRoute | undefined> {
+    return this.delegate.readSnapshotRoute(runId, organizationId);
+  }
+
   findSnapshotCompletedWaitpointIds(
     snapshotId: string,
     client?: ReadClient,
@@ -587,6 +592,16 @@ export class DelegatingRunStore implements RunStore {
     return this.delegate.updateManyWaitpoints(args, tx);
   }
 
+  markWaitpointCompleted(
+    waitpointId: string,
+    completion: {
+      output?: { value?: string; type?: string; isError?: boolean };
+      completedAt?: Date;
+    }
+  ): Promise<Prisma.BatchPayload> {
+    return this.delegate.markWaitpointCompleted(waitpointId, completion);
+  }
+
   forWaitpointCompletion(
     waitpointId: string,
     context: ForWaitpointCompletionContext
@@ -621,6 +636,14 @@ export class DelegatingRunStore implements RunStore {
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunCheckpointGetPayload<T>> {
     return this.delegate.createTaskRunCheckpoint(args, ownerRunId, tx);
+  }
+
+  findTaskRunCheckpointById(
+    checkpointId: string,
+    ownerRunId: string,
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunCheckpointGetPayload<{}> | null> {
+    return this.delegate.findTaskRunCheckpointById(checkpointId, ownerRunId, client);
   }
 
   createBatchTaskRun(

@@ -26,6 +26,13 @@ export type DynamicFlushSchedulerConfig<T> = {
 
 export class DynamicFlushScheduler<T> {
   private batchQueue: T[][];
+  // First-item time per queued batch, pushed and shifted in lockstep with batchQueue. A
+  // dequeued batch hands its time to inFlightSince, because the limiter can hold it and a
+  // retry can hold it longer, and it is unflushed for all of that.
+  private batchQueuedAt: number[];
+  private readonly inFlightSince = new Map<number, number>();
+  private inFlightSeq = 0;
+  private currentBatchStartedAt: number | undefined;
   private currentBatch: T[];
   private readonly BATCH_SIZE: number;
   private readonly FLUSH_INTERVAL: number;
@@ -69,6 +76,7 @@ export class DynamicFlushScheduler<T> {
   private _flushDurationHistogram?: Histogram;
   private _batchSizeHistogram?: Histogram;
   private _droppedEventsCounter?: Counter;
+  private _itemsLostCounter?: Counter;
 
   constructor(config: DynamicFlushSchedulerConfig<T>) {
     const schedulerName = config.name ?? "unknown";
@@ -76,6 +84,7 @@ export class DynamicFlushScheduler<T> {
     this._batchOkAttrs = { scheduler: schedulerName, outcome: "ok" };
     this._batchFailedAttrs = { scheduler: schedulerName, outcome: "failed" };
     this.batchQueue = [];
+    this.batchQueuedAt = [];
     this.currentBatch = [];
     this.BATCH_SIZE = config.batchSize;
     this.currentBatchSize = config.batchSize;
@@ -126,6 +135,10 @@ export class DynamicFlushScheduler<T> {
       description: "Events dropped by load shedding before they reached the sink",
       unit: "events",
     });
+    this._itemsLostCounter = meter.createCounter("ingest.flush.items_lost", {
+      description: "Items in batches abandoned after retries were exhausted, so never stored",
+      unit: "items",
+    });
 
     // Pull-based gauges: read at export time only, so they add zero hot-path cost.
     const queueDepthGauge = meter.createObservableGauge("ingest.flush.queue_depth", {
@@ -139,15 +152,38 @@ export class DynamicFlushScheduler<T> {
     const loadSheddingGauge = meter.createObservableGauge("ingest.flush.load_shedding", {
       description: "1 while actively shedding load, otherwise 0",
     });
+    const oldestPendingAgeGauge = meter.createObservableGauge("ingest.flush.oldest_pending_age", {
+      description: "Age of the oldest item not yet stored, or 0 when nothing is pending",
+      unit: "ms",
+    });
 
     meter.addBatchObservableCallback(
       (result) => {
         result.observe(queueDepthGauge, this.totalQueuedItems, this._metricAttrs);
         result.observe(concurrencyGauge, this.limiter.concurrency, this._metricAttrs);
         result.observe(loadSheddingGauge, this.isLoadShedding ? 1 : 0, this._metricAttrs);
+        result.observe(oldestPendingAgeGauge, this.#oldestPendingAgeMs(), this._metricAttrs);
       },
-      [queueDepthGauge, concurrencyGauge, loadSheddingGauge]
+      [queueDepthGauge, concurrencyGauge, loadSheddingGauge, oldestPendingAgeGauge]
     );
+  }
+
+  // The oldest of everything unflushed: a queued batch, one in flight, or the one still
+  // accumulating. Queued is checked first because it is FIFO, but a batch in flight is
+  // usually the older, so both are compared rather than preferred.
+  #oldestPendingAgeMs(): number {
+    let oldest: number | undefined = this.batchQueuedAt[0];
+
+    for (const since of this.inFlightSince.values()) {
+      if (oldest === undefined || since < oldest) {
+        oldest = since;
+      }
+    }
+
+    oldest ??= this.currentBatchStartedAt;
+
+    // Clamped because Date.now() can step backwards.
+    return oldest === undefined ? 0 : Math.max(0, Date.now() - oldest);
   }
 
   addToBatch(items: T[]): void {
@@ -190,6 +226,10 @@ export class DynamicFlushScheduler<T> {
       });
     }
 
+    if (this.currentBatch.length === 0 && itemsToAdd.length > 0) {
+      this.currentBatchStartedAt = Date.now();
+    }
+
     this.currentBatch.push(...itemsToAdd);
     this.totalQueuedItems += itemsToAdd.length;
 
@@ -206,7 +246,9 @@ export class DynamicFlushScheduler<T> {
     if (this.currentBatch.length === 0) return;
 
     this.batchQueue.push(this.currentBatch);
+    this.batchQueuedAt.push(this.currentBatchStartedAt ?? Date.now());
     this.currentBatch = [];
+    this.currentBatchStartedAt = undefined;
     this.flushBatches();
     this.resetFlushTimer();
   }
@@ -250,22 +292,35 @@ export class DynamicFlushScheduler<T> {
   }
 
   private async flushBatches(): Promise<void> {
-    const batchesToFlush: T[][] = [];
+    const batchesToFlush: { batch: T[]; token: number }[] = [];
 
     // Dequeue all available batches up to current concurrency limit
     while (this.batchQueue.length > 0 && batchesToFlush.length < this.limiter.concurrency) {
       const batch = this.batchQueue.shift();
+      const queuedAt = this.batchQueuedAt.shift();
       if (batch) {
-        batchesToFlush.push(batch);
+        // Registered here rather than inside the limiter callback, which does not run until a
+        // slot frees: the wait for that slot is part of what the age has to cover.
+        const token = ++this.inFlightSeq;
+        this.inFlightSince.set(token, queuedAt ?? Date.now());
+        batchesToFlush.push({ batch, token });
       }
     }
 
     if (batchesToFlush.length === 0) return;
 
     // Schedule all batches for concurrent processing
-    const flushPromises = batchesToFlush.map((batch) =>
+    const flushPromises = batchesToFlush.map(({ batch, token }) =>
       this.limiter(async () => {
         const itemCount = batch.length;
+
+        // Released once per batch, by whichever of the two outcomes gets there.
+        let depthReleased = false;
+        const releaseDepth = () => {
+          if (depthReleased) return;
+          depthReleased = true;
+          this.totalQueuedItems -= itemCount;
+        };
 
         // eslint-disable-next-line no-this-alias
         const self = this;
@@ -276,7 +331,7 @@ export class DynamicFlushScheduler<T> {
             await self.callback(flushId, batchToFlush);
 
             const duration = Date.now() - startTime;
-            self.totalQueuedItems -= itemCount;
+            releaseDepth();
             self.consecutiveFlushFailures = 0;
             self.lastFlushTime = Date.now();
             self.metrics.flushedBatches++;
@@ -323,11 +378,18 @@ export class DynamicFlushScheduler<T> {
 
         const [flushError] = await tryCatch(tryFlush(nanoid(), batch));
 
+        this.inFlightSince.delete(token);
+
         if (flushError) {
           this.logger.error("Error flushing batch", {
             error: flushError,
+            itemCount,
           });
           this._batchesCounter?.add(1, this._batchFailedAttrs);
+          this._itemsLostCounter?.add(itemCount, this._metricAttrs);
+          // Only the success path released the depth, which left an abandoned batch inflating
+          // the gauge forever, where it read as backlog rather than as loss.
+          releaseDepth();
         }
       })
     );

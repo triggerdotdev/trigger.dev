@@ -27,6 +27,11 @@ import type { AuthenticatedEnvironment } from "@trigger.dev/core/v3/auth/environ
  * so a `ResolvedEngineEnv` is a structural supertype of it and can be passed directly
  * to `enqueueSystem.enqueueRun({ env })`. `concurrencyLimitBurstFactor` stays a
  * `Prisma.Decimal` (do NOT coerce); `maximumConcurrencyLimit` is non-null per schema.
+ *
+ * `projectDeletedAt`/`organizationDeletedAt` are the soft-delete tombstones the engine gates
+ * enqueue and dequeue on, so a deleted project's work stops instead of running weeks later.
+ * Every implementation of this interface MUST populate them; a resolver that leaves them null
+ * silently disables both guards.
  */
 export type ResolvedEngineEnv = {
   id: string;
@@ -36,9 +41,47 @@ export type ResolvedEngineEnv = {
   concurrencyLimitBurstFactor: Prisma.Decimal;
   projectId: string;
   organizationId: string;
+  projectDeletedAt: Date | null;
+  organizationDeletedAt: Date | null;
   project: { id: string };
   organization: { id: string };
 };
+
+/**
+ * Just the soft-delete tombstones, read from the authoritative source rather than from
+ * whatever `resolveEnv` has cached.
+ */
+export type EnvDeletionState = Pick<
+  ResolvedEngineEnv,
+  "projectDeletedAt" | "organizationDeletedAt"
+>;
+
+/**
+ * Recorded when the environment row itself is absent, so there is no tombstone to read. Only
+ * ever reached from an authoritative read: a cached absence is not trustworthy enough to end
+ * a run on.
+ */
+export const MISSING_ENVIRONMENT_REASON = "The environment was deleted";
+
+/**
+ * The reason a run on this environment must not execute, or `null` when it may. Doubles as the
+ * enqueue/dequeue guard and as the cancellation reason recorded on the run, so the two call
+ * sites cannot drift apart.
+ */
+export function deletedEnvironmentReason(env: {
+  projectDeletedAt: Date | null;
+  organizationDeletedAt: Date | null;
+}): string | null {
+  if (env.organizationDeletedAt) {
+    return "The organization was deleted";
+  }
+
+  if (env.projectDeletedAt) {
+    return "The project was deleted";
+  }
+
+  return null;
+}
 
 /**
  * The richer control-plane env primitive: the slim, structural
@@ -127,6 +170,14 @@ export type WorkerVersionDispatchFilter = {
 
 export interface ControlPlaneResolver {
   resolveEnv(environmentId: string): Promise<ResolvedEngineEnv | null>;
+  /**
+   * The deletion tombstones read straight from the authoritative control-plane source, never
+   * from a cache. An implementation may serve `resolveEnv` from a per-process cache whose
+   * invalidation does not reach other processes, so a decision that must not act on
+   * pre-deletion state for even a moment reads it here instead. Returns `null` when the
+   * environment does not exist.
+   */
+  resolveEnvDeletionState(environmentId: string): Promise<EnvDeletionState | null>;
   resolveAuthenticatedEnv(environmentId: string): Promise<ResolvedAuthenticatedEnv | null>;
   resolveWorkerVersion(
     args: {
@@ -174,8 +225,8 @@ export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
         maximumConcurrencyLimit: true,
         concurrencyLimitBurstFactor: true,
         projectId: true,
-        project: { select: { id: true, organizationId: true } },
-        organization: { select: { id: true } },
+        project: { select: { id: true, organizationId: true, deletedAt: true } },
+        organization: { select: { id: true, deletedAt: true } },
       },
     });
 
@@ -191,8 +242,35 @@ export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
       concurrencyLimitBurstFactor: env.concurrencyLimitBurstFactor,
       projectId: env.projectId,
       organizationId: env.project.organizationId,
+      projectDeletedAt: env.project.deletedAt,
+      organizationDeletedAt: env.organization.deletedAt,
       project: { id: env.project.id },
       organization: { id: env.organization.id },
+    };
+  }
+
+  /**
+   * Passthrough holds no cache, so `resolveEnv` is already authoritative and this exists to
+   * satisfy the seam. It reads the org tombstone through `project.organization` (the same path
+   * the webapp resolver uses) rather than the environment's own organization relation.
+   */
+  async resolveEnvDeletionState(environmentId: string): Promise<EnvDeletionState | null> {
+    const env = await this.#prisma.runtimeEnvironment.findFirst({
+      where: { id: environmentId },
+      select: {
+        project: {
+          select: { deletedAt: true, organization: { select: { deletedAt: true } } },
+        },
+      },
+    });
+
+    if (!env) {
+      return null;
+    }
+
+    return {
+      projectDeletedAt: env.project.deletedAt,
+      organizationDeletedAt: env.project.organization.deletedAt,
     };
   }
 

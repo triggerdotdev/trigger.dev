@@ -4,6 +4,7 @@ import { useFetcher, type ShouldRevalidateFunction } from "@remix-run/react";
 import { useEffect, useRef } from "react";
 import { useLatest } from "react-use";
 import { requireUserId } from "~/services/session.server";
+import { useInterval } from "~/hooks/useInterval";
 import {
   getActivePlatformNotifications,
   verifyOrgMembership,
@@ -54,15 +55,15 @@ export function usePlatformNotifications(organizationId: string, projectId: stri
     }
   }, [load, state, url]);
 
-  useEffect(() => {
-    const interval = setInterval(() => {
+  useInterval({
+    interval: POLL_INTERVAL_MS,
+    onLoad: false,
+    callback: () => {
       if (stateRef.current === "idle") {
         load(url);
       }
-    }, POLL_INTERVAL_MS);
-
-    return () => clearInterval(interval);
-  }, [load, stateRef, url]);
+    },
+  });
 
   return {
     notifications: fetcher.data?.notifications ?? [],

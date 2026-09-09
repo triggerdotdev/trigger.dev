@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { hotkeyOptions } from "~/hooks/useShortcutKeys";
-import { ASK_AI_SHORTCUT } from "./ask-ai-channels";
 import { TOGGLE_PANEL_SHORTCUT } from "./dashboardAgentLauncher";
 
 const enabled = { isEnabled: true };
@@ -18,10 +17,6 @@ describe("the agent's shortcuts", () => {
     const options = hotkeyOptions({ shortcut: TOGGLE_PANEL_SHORTCUT, ...enabled });
     expect(options.enableOnFormTags).toBe(true);
     expect(options.enableOnContentEditable).toBe(true);
-  });
-
-  it("leaves Cmd-I's default alone", () => {
-    expect(hotkeyOptions({ shortcut: ASK_AI_SHORTCUT, ...enabled }).preventDefault).toBe(false);
   });
 });
 

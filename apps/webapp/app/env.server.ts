@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { MachinePresetName } from "@trigger.dev/core/v3";
+import { parseNaturalLanguageDurationInMs } from "@trigger.dev/core/v3/isomorphic";
 import { BoolEnv } from "./utils/boolEnv";
 import { isValidDatabaseUrl } from "./utils/db";
 import { parseRunOpsShards, validateShardListAgainstNewUrl } from "~/v3/runOpsShards.server";
@@ -183,6 +184,8 @@ const EnvironmentSchema = z
     DATABASE_WRITER_CONNECTION_TIMEOUT: OptionalIntEnv,
     DATABASE_READ_REPLICA_POOL_TIMEOUT: OptionalIntEnv,
     DATABASE_READ_REPLICA_CONNECTION_TIMEOUT: OptionalIntEnv,
+    // Max age of a pooled connection, in seconds. Unset or 0 leaves it uncapped.
+    DATABASE_MAX_CONNECTION_LIFETIME: OptionalLimitEnv,
     DATABASE_TRANSACTION_MAX_WAIT_MS: IntEnvWithDefault(10000),
     DATABASE_TRANSACTION_START_RETRY_ENABLED: BoolEnvWithDefault(true),
     DATABASE_TRANSACTION_START_RETRY_MAX_ATTEMPTS: IntEnvWithDefault(3),
@@ -217,6 +220,15 @@ const EnvironmentSchema = z
     // Pins agent sessions to a specific deployed version (paired with
     // --skip-promotion deploys); unset => the project env's current version.
     DASHBOARD_AGENT_VERSION: z.string().optional(),
+    // How long an agent turn's run may sit undequeued before it expires,
+    // so a superseded/never-picked-up run doesn't wait indefinitely.
+    DASHBOARD_AGENT_RUN_TTL: z
+      .string()
+      .refine(
+        (v) => parseNaturalLanguageDurationInMs(v) !== undefined,
+        "must be a duration like 2m, 90s, 1h30m"
+      )
+      .default("2m"),
     // Global default for the `hasDashboardAgentAccess` flag. "0" (off) ships the
     // agent dark; flip to "1" to enable it for everyone at GA. Per-org overrides
     // (org featureFlags) win regardless.
@@ -226,6 +238,12 @@ const EnvironmentSchema = z
     // "1" gives admins/impersonators an everywhere-preview (default off),
     // separate from the per-org rollout flag above.
     DASHBOARD_AGENT_ADMIN_PREVIEW: z.string().default("0"),
+    // Free for now (TRI-12863): "0" (default) leaves the message quota unenforced,
+    // unrecorded and hidden. The quota code stays in place behind this switch.
+    DASHBOARD_AGENT_QUOTA_ENABLED: z.string().default("0"),
+    // Global default for the `dashboardAgentWatchEnabled` flag: "0" (default) ships
+    // watches dark. Per-org overrides win regardless.
+    DASHBOARD_AGENT_WATCH_ENABLED: z.string().default("0"),
     // Anthropic key for the dashboard agent's Head Start route only (the warm
     // first-turn step-1 LLM call runs in this process). The agent run itself
     // uses its own key on the Trigger side. When unset, Head Start is disabled
@@ -1825,7 +1843,7 @@ const EnvironmentSchema = z
     SCHEDULE_WORKER_CRON_SPREAD_FRACTION: z.coerce
       .number()
       .catch(0)
-      .default(0)
+      .default(1)
       .transform((value) => (Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0)),
 
     SCHEDULE_WORKER_REDIS_HOST: z
@@ -1930,10 +1948,6 @@ const EnvironmentSchema = z
 
     SLACK_BOT_TOKEN: z.string().optional(),
     SLACK_SIGNUP_REASON_CHANNEL_ID: z.string().optional(),
-
-    // kapa.ai — read by the root loader; unset turns Ask AI off, and ⌘I then opens the agent
-    // for users who have agent access, or does nothing for everyone else.
-    KAPA_AI_WEBSITE_ID: z.string().optional(),
 
     // BetterStack
     BETTERSTACK_API_KEY: z.string().optional(),

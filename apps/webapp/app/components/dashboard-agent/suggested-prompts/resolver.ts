@@ -15,9 +15,10 @@ import {
   type PromptSlot,
 } from "./registry";
 
-export type ResolvedPromptSlot = "promoted" | PromptSlot;
+// Internal: `ResolvedSuggestedPrompt` carries it, so nothing outside needs the name.
+type ResolvedPromptSlot = "promoted" | PromptSlot;
 
-/** The hero styles each button by slot (`PROMPT_SLOT_BUTTON`), so slots survive resolution. */
+/** Slots survive resolution so callers can keep at most one prompt per slot; they carry no styling. */
 export type ResolvedSuggestedPrompt = {
   slot: ResolvedPromptSlot;
   prompt: SuggestedPrompt;
@@ -28,6 +29,8 @@ export type ResolveSuggestedPromptsOptions = {
   promoted?: SuggestedPrompt;
   dismissedIds?: string[];
   now?: number;
+  /** The `watch` slot is withheld unless explicitly enabled: omitting this must not reintroduce watch prompts. */
+  watchEnabled?: boolean;
 };
 
 export function resolveSuggestedPrompts(
@@ -63,7 +66,9 @@ export function resolveSuggestedPromptsBySlot(
     take("promoted", [{ ...opts.promoted, source: "promoted" }]);
   }
 
+  const watchEnabled = opts.watchEnabled ?? false;
   for (const slot of PROMPT_SLOTS) {
+    if (slot === "watch" && !watchEnabled) continue;
     take(slot, [...contextual[slot], pageSlots[slot]]);
   }
 

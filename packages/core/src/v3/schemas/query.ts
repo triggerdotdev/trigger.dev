@@ -1,4 +1,5 @@
-import { z } from "zod";
+import { z } from "zod/v4";
+import { discriminatedUnion } from "../utils/zod.js";
 import type { IdempotencyKeyScope } from "../idempotency-key-catalog/catalog.js";
 import type { MachinePresetName, RuntimeEnvironmentType } from "./common.js";
 
@@ -21,7 +22,7 @@ export type QueryExecuteRequestBody = z.infer<typeof QueryExecuteRequestBody>;
  */
 export const QueryExecuteJSONResponseBody = z.object({
   format: z.literal("json"),
-  results: z.array(z.record(z.any())),
+  results: z.array(z.record(z.string(), z.any())),
 });
 
 export type QueryExecuteJSONResponseBody = z.infer<typeof QueryExecuteJSONResponseBody>;
@@ -36,7 +37,7 @@ export const QueryExecuteCSVResponseBody = z.object({
 
 export type QueryExecuteCSVResponseBody = z.infer<typeof QueryExecuteCSVResponseBody>;
 
-export const QueryExecuteResponseBody = z.discriminatedUnion("format", [
+export const QueryExecuteResponseBody = discriminatedUnion("format", [
   QueryExecuteJSONResponseBody,
   QueryExecuteCSVResponseBody,
 ]);

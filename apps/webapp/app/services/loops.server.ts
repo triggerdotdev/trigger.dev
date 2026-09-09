@@ -13,7 +13,7 @@ class LoopsClient {
     email: string;
     name: string | null;
   }) {
-    logger.info(`Loops send "sign-up" event`, { userId, email, name });
+    logger.info(`Loops send "sign-up" event`, { userId });
     return this.#sendEvent({
       email,
       userId,
@@ -53,10 +53,7 @@ class LoopsClient {
       if (!response.ok) {
         logger.error(`Loops sendEvent ${eventName} bad status`, {
           status: response.status,
-          email,
           userId,
-          firstName,
-          eventProperties,
           eventName,
         });
         return false;

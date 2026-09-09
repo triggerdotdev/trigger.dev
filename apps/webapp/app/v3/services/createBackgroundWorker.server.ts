@@ -23,6 +23,7 @@ import { $transaction, Prisma, boundedIn, webhookPrisma } from "~/db.server";
 import { sanitizeQueueName } from "~/models/taskQueue.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { safeEnvironmentLogFields } from "~/services/safeEnvironmentLog";
 import { syncTaskIdentifiers } from "~/services/taskIdentifierRegistry.server";
 import {
   type TaskMetadataCache,
@@ -36,12 +37,21 @@ import {
   updateEnvConcurrencyLimits,
   updateQueueConcurrencyLimits,
 } from "../runQueue.server";
+import { resolveScheduleWindow } from "@internal/schedule-engine";
 import { scheduleEngine } from "../scheduleEngine.server";
 import { normalizeScheduleWindow } from "../scheduleWindow.server";
+import { resolveNewScheduleDefaultWindowSeconds } from "../scheduleDefaultWindow.server";
+import {
+  assertCronMeetsFreeMinimum,
+  minimumWindowForNewSchedule,
+  resolveFreeSchedulePolicyContext,
+  resolveMinimumWindowOnUpdate,
+} from "../freeSchedulePolicy.server";
 import { calculateNextBuildVersion } from "../utils/calculateNextBuildVersion";
 import { clampMaxDuration } from "../utils/maxDuration";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { CheckScheduleService } from "./checkSchedule.server";
+import { CronPattern } from "../schedules";
 import { projectPubSub } from "./projectPubSub.server";
 
 import { assertNoDuplicateTaskIds } from "./duplicateTaskIds.server";
@@ -90,6 +100,13 @@ export class CreateBackgroundWorkerService extends BaseService {
       });
 
       const latestBackgroundWorker = project.backgroundWorkers[0];
+
+      // Validate before persisting a worker or accepting a matching hash from an earlier attempt.
+      const preparedSchedules = await prepareDeclarativeSchedules(
+        body.metadata.tasks,
+        environment,
+        this._prisma
+      );
 
       if (latestBackgroundWorker?.contentHash === body.metadata.contentHash) {
         return latestBackgroundWorker;
@@ -144,7 +161,7 @@ export class CreateBackgroundWorkerService extends BaseService {
         logger.error("Error creating background worker files", {
           error: filesError,
           backgroundWorker,
-          environment,
+          environment: safeEnvironmentLogFields(environment),
         });
 
         throw new ServiceValidationError("Error creating background worker files");
@@ -173,13 +190,20 @@ export class CreateBackgroundWorkerService extends BaseService {
         logger.error("Error creating worker resources", {
           error: resourcesError,
           backgroundWorker,
-          environment,
+          environment: safeEnvironmentLogFields(environment),
         });
         throw new ServiceValidationError("Error creating worker resources");
       }
 
       const [schedulesError] = await tryCatch(
-        syncDeclarativeSchedules(body.metadata.tasks, backgroundWorker, environment, this._prisma)
+        syncDeclarativeSchedules(
+          body.metadata.tasks,
+          backgroundWorker,
+          environment,
+          this._prisma,
+          scheduleEngine,
+          preparedSchedules
+        )
       );
 
       if (schedulesError) {
@@ -189,7 +213,7 @@ export class CreateBackgroundWorkerService extends BaseService {
           logger.warn("Error syncing declarative schedules", {
             error: schedulesError.message,
             backgroundWorker,
-            environment,
+            environment: safeEnvironmentLogFields(environment),
           });
           throw schedulesError;
         }
@@ -201,7 +225,7 @@ export class CreateBackgroundWorkerService extends BaseService {
         logger.error("Error syncing declarative schedules", {
           error: schedulesError,
           backgroundWorker,
-          environment,
+          environment: safeEnvironmentLogFields(environment),
         });
 
         throw new ServiceValidationError("Error syncing declarative schedules");
@@ -221,7 +245,7 @@ export class CreateBackgroundWorkerService extends BaseService {
           logger.warn("Error syncing declarative webhooks", {
             error: webhooksError.message,
             backgroundWorker,
-            environment,
+            environment: safeEnvironmentLogFields(environment),
           });
           throw webhooksError;
         }
@@ -229,7 +253,7 @@ export class CreateBackgroundWorkerService extends BaseService {
         logger.error("Error syncing declarative webhooks", {
           error: webhooksError,
           backgroundWorker,
-          environment,
+          environment: safeEnvironmentLogFields(environment),
         });
 
         throw new ServiceValidationError("Error syncing declarative webhooks");
@@ -248,7 +272,7 @@ export class CreateBackgroundWorkerService extends BaseService {
         logger.error("Error syncing task identifiers", {
           error: syncIdentifiersError,
           backgroundWorker,
-          environment,
+          environment: safeEnvironmentLogFields(environment),
         });
       }
 
@@ -280,7 +304,7 @@ export class CreateBackgroundWorkerService extends BaseService {
         logger.error("Error updating environment concurrency limits", {
           error: updateConcurrencyLimitsError,
           backgroundWorker,
-          environment,
+          environment: safeEnvironmentLogFields(environment),
         });
       }
 
@@ -298,7 +322,7 @@ export class CreateBackgroundWorkerService extends BaseService {
         logger.error("Error publishing WORKER_CREATED event", {
           error: publishError,
           backgroundWorker,
-          environment,
+          environment: safeEnvironmentLogFields(environment),
         });
       }
 
@@ -387,7 +411,6 @@ async function createWorkerTask(
   prisma: PrismaClientOrTransaction,
   tasksToBackgroundFiles?: Map<string, string>
 ): Promise<TaskMetadataEntry | null> {
-  // Hoisted so the P2002 catch branch can return the same entry shape.
   let queue: TaskQueue | undefined;
   let resolvedTriggerSource: "SCHEDULED" | "AGENT" | "WEBHOOK" | "STANDARD" | undefined;
   let resolvedTtl: string | null | undefined;
@@ -422,28 +445,51 @@ async function createWorkerTask(
     resolvedTtl =
       typeof task.ttl === "number" ? (stringifyDuration(task.ttl) ?? null) : (task.ttl ?? null);
 
-    await prisma.backgroundWorkerTask.create({
-      data: {
-        friendlyId: generateFriendlyId("task"),
-        projectId: worker.projectId,
-        runtimeEnvironmentId: worker.runtimeEnvironmentId,
-        workerId: worker.id,
-        slug: task.id,
-        description: task.description,
-        filePath: task.filePath,
-        exportName: task.exportName,
-        retryConfig: task.retry,
-        queueConfig: task.queue,
-        machineConfig: task.machine,
-        triggerSource: resolvedTriggerSource,
-        config: task.agentConfig ? (task.agentConfig as any) : undefined,
-        fileId: tasksToBackgroundFiles?.get(task.id) ?? null,
-        maxDurationInSeconds: task.maxDuration ? clampMaxDuration(task.maxDuration) : null,
-        ttl: resolvedTtl,
-        queueId: queue.id,
-        payloadSchema: task.payloadSchema as any,
-      },
-    });
+    let taskPersisted = false;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const result = await prisma.backgroundWorkerTask.createMany({
+        data: {
+          friendlyId: generateFriendlyId("task"),
+          projectId: worker.projectId,
+          runtimeEnvironmentId: worker.runtimeEnvironmentId,
+          workerId: worker.id,
+          slug: task.id,
+          description: task.description,
+          filePath: task.filePath,
+          exportName: task.exportName,
+          retryConfig: task.retry,
+          queueConfig: task.queue,
+          machineConfig: task.machine,
+          triggerSource: resolvedTriggerSource,
+          config: task.agentConfig ? (task.agentConfig as any) : undefined,
+          fileId: tasksToBackgroundFiles?.get(task.id) ?? null,
+          maxDurationInSeconds: task.maxDuration ? clampMaxDuration(task.maxDuration) : null,
+          ttl: resolvedTtl,
+          queueId: queue.id,
+          payloadSchema: task.payloadSchema as any,
+        },
+        skipDuplicates: true,
+      });
+
+      if (result.count === 1) {
+        taskPersisted = true;
+        break;
+      }
+
+      const existing = await prisma.backgroundWorkerTask.findFirst({
+        where: { workerId: worker.id, slug: task.id },
+        select: { id: true },
+      });
+
+      if (existing) {
+        taskPersisted = true;
+        break;
+      }
+    }
+
+    if (!taskPersisted) {
+      throw new Error("Failed to create background worker task after unique constraint conflicts");
+    }
 
     return {
       slug: task.id,
@@ -454,38 +500,13 @@ async function createWorkerTask(
     };
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
-      // The error code for unique constraint violation in Prisma is P2002
-      if (error.code === "P2002") {
-        // Retry landing after the first attempt's row was already written.
-        const existing = await prisma.backgroundWorkerTask.findFirst({
-          where: { workerId: worker.id, slug: task.id },
-          select: { id: true },
-        });
-
-        logger.warn("Attempted to recreate background worker task", {
-          task,
-          worker,
-        });
-
-        if (existing && queue && resolvedTriggerSource && resolvedTtl !== undefined) {
-          return {
-            slug: task.id,
-            ttl: resolvedTtl,
-            triggerSource: resolvedTriggerSource,
-            queueId: queue.id,
-            queueName: queue.name,
-          };
-        }
-      } else {
-        logger.error("Prisma Error creating background worker task", {
-          error: {
-            code: error.code,
-            message: error.message,
-          },
-          task,
-          worker,
-        });
-      }
+      logger.error("Prisma Error creating background worker task", {
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+        workerId: worker.id,
+      });
     } else if (error instanceof Error) {
       logger.error("Error creating background worker task", {
         error: {
@@ -493,14 +514,12 @@ async function createWorkerTask(
           message: error.message,
           stack: error.stack,
         },
-        task,
-        worker,
+        workerId: worker.id,
       });
     } else {
       logger.error("Unknown error creating background worker task", {
         error,
-        task,
-        worker,
+        workerId: worker.id,
       });
     }
     return null;
@@ -816,16 +835,38 @@ export async function syncDeclarativeWebhooks(
   }
 }
 
-export async function syncDeclarativeSchedules(
+type MaybeNormalizedScheduleWindow = ReturnType<typeof resolveScheduleWindow>["window"];
+
+function scheduleWindowsEqual(
+  a: MaybeNormalizedScheduleWindow,
+  b: MaybeNormalizedScheduleWindow
+): boolean {
+  if (!a || !b) {
+    return a === b;
+  }
+  if (a.type !== b.type) {
+    return false;
+  }
+  return a.type === "duration" && b.type === "duration"
+    ? a.durationSeconds === b.durationSeconds
+    : a.type === "percentage" && b.type === "percentage"
+      ? a.percentage === b.percentage
+      : false;
+}
+
+async function prepareDeclarativeSchedules(
   tasks: TaskResource[],
-  worker: BackgroundWorker,
   environment: AuthenticatedEnvironment,
   prisma: PrismaClientOrTransaction
 ) {
-  const tasksWithDeclarativeSchedules = tasks.filter((task) => task.schedule);
+  const tasksWithDeclarativeSchedules = tasks.filter(
+    (task): task is TaskResource & { schedule: NonNullable<TaskResource["schedule"]> } =>
+      task.schedule !== undefined &&
+      (!task.schedule.environments?.length || task.schedule.environments.includes(environment.type))
+  );
   logger.info("Syncing declarative schedules", {
     tasksWithDeclarativeSchedules,
-    environment,
+    environment: safeEnvironmentLogFields(environment),
   });
 
   const existingDeclarativeSchedules = await prisma.taskSchedule.findMany({
@@ -846,6 +887,8 @@ export async function syncDeclarativeSchedules(
       timezone: true,
       windowDurationSeconds: true,
       windowPercentage: true,
+      defaultWindowDurationSeconds: true,
+      minimumWindowDurationSeconds: true,
       instances: {
         select: {
           environmentId: true,
@@ -854,35 +897,86 @@ export async function syncDeclarativeSchedules(
     },
   });
 
-  const checkSchedule = new CheckScheduleService(prisma);
+  const existingByTask = new Map(
+    existingDeclarativeSchedules.map((schedule) => [schedule.taskIdentifier, schedule])
+  );
+  const hasNewSchedules = tasksWithDeclarativeSchedules.some(
+    (task) => !existingByTask.has(task.id)
+  );
+  const hasRestrictedSchedules = tasksWithDeclarativeSchedules.some((task) => {
+    const existing = existingByTask.get(task.id);
+    return existing && existing.minimumWindowDurationSeconds !== null;
+  });
+
+  // Restricted rows still check paid status with rollout off.
+  const defaultWindowDurationSeconds = hasNewSchedules
+    ? await resolveNewScheduleDefaultWindowSeconds(prisma, environment.organizationId)
+    : null;
+  const policy =
+    hasNewSchedules || hasRestrictedSchedules
+      ? await resolveFreeSchedulePolicyContext({
+          id: environment.organizationId,
+          featureFlags: environment.organization.featureFlags,
+        })
+      : undefined;
+
+  const preparedTasks = [];
+  for (const task of tasksWithDeclarativeSchedules) {
+    const existingSchedule = existingByTask.get(task.id);
+
+    const minimumWindowDurationSeconds = existingSchedule
+      ? existingSchedule.minimumWindowDurationSeconds === null
+        ? null
+        : resolveMinimumWindowOnUpdate(policy!, existingSchedule.minimumWindowDurationSeconds)
+            .minimumWindowDurationSeconds
+      : minimumWindowForNewSchedule(policy!, "DECLARATIVE");
+
+    if (minimumWindowDurationSeconds !== null) {
+      const cron = CronPattern.safeParse(task.schedule.cron);
+      if (!cron.success) {
+        throw new ServiceValidationError(
+          `Invalid cron expression: ${cron.error.issues[0].message}`
+        );
+      }
+      assertCronMeetsFreeMinimum({
+        cron: task.schedule.cron,
+        timezone: task.schedule.timezone,
+        minimumWindowDurationSeconds,
+        scheduleType: "DECLARATIVE",
+        environmentType: environment.type,
+        taskIdentifier: task.id,
+      });
+    }
+    preparedTasks.push({
+      task,
+      existingSchedule,
+      minimumWindowDurationSeconds,
+    });
+  }
+
+  return { existingDeclarativeSchedules, preparedTasks, defaultWindowDurationSeconds };
+}
+
+export async function syncDeclarativeSchedules(
+  tasks: TaskResource[],
+  worker: BackgroundWorker,
+  environment: AuthenticatedEnvironment,
+  prisma: PrismaClientOrTransaction,
+  engine: Pick<typeof scheduleEngine, "registerNextTaskScheduleInstance"> = scheduleEngine,
+  prepared?: Awaited<ReturnType<typeof prepareDeclarativeSchedules>>
+) {
+  const { existingDeclarativeSchedules, preparedTasks, defaultWindowDurationSeconds } =
+    prepared ?? (await prepareDeclarativeSchedules(tasks, environment, prisma));
 
   //start out by assuming they're all missing
   const missingSchedules = new Set<string>(
     existingDeclarativeSchedules.map((schedule) => schedule.id)
   );
 
-  //create/update schedules (+ instances)
-  for (const task of tasksWithDeclarativeSchedules) {
-    if (task.schedule === undefined) continue;
+  const checkSchedule = new CheckScheduleService(prisma);
 
-    // Check if this schedule should be created in the current environment
-    if (task.schedule.environments && task.schedule.environments.length > 0) {
-      if (!task.schedule.environments.includes(environment.type)) {
-        logger.debug("Skipping schedule creation due to environment filter", {
-          taskId: task.id,
-          environmentType: environment.type,
-          allowedEnvironments: task.schedule.environments,
-        });
-        continue;
-      }
-    }
-
-    const existingSchedule = existingDeclarativeSchedules.find(
-      (schedule) =>
-        schedule.taskIdentifier === task.id &&
-        schedule.instances.some((instance) => instance.environmentId === environment.id)
-    );
-
+  // Resource and quota checks must stay after worker resources exist and between schedule writes.
+  for (const { task, existingSchedule, minimumWindowDurationSeconds } of preparedTasks) {
     //this throws errors if the schedule is invalid
     await checkSchedule.call(
       environment.projectId,
@@ -896,13 +990,26 @@ export async function syncDeclarativeSchedules(
       [environment.id]
     );
 
+    const normalizedWindow = normalizeScheduleWindow(task.schedule.window);
+
     if (existingSchedule) {
-      const normalizedWindow = normalizeScheduleWindow(task.schedule.window);
+      // Compare effective windows so equivalent explicit/default values preserve the pending job.
+      const previousWindow = resolveScheduleWindow({
+        windowDurationSeconds: existingSchedule.windowDurationSeconds,
+        windowPercentage: existingSchedule.windowPercentage,
+        defaultWindowDurationSeconds: existingSchedule.defaultWindowDurationSeconds,
+      }).window;
+      const nextWindow = resolveScheduleWindow({
+        windowDurationSeconds: normalizedWindow.windowDurationSeconds,
+        windowPercentage: normalizedWindow.windowPercentage,
+        defaultWindowDurationSeconds: existingSchedule.defaultWindowDurationSeconds,
+      }).window;
       const timingChanged =
         existingSchedule.generatorExpression !== task.schedule.cron ||
         existingSchedule.timezone !== task.schedule.timezone ||
-        existingSchedule.windowDurationSeconds !== normalizedWindow.windowDurationSeconds ||
-        existingSchedule.windowPercentage !== normalizedWindow.windowPercentage;
+        !scheduleWindowsEqual(previousWindow, nextWindow) ||
+        // Clearing the minimum changes the effective range.
+        existingSchedule.minimumWindowDurationSeconds !== minimumWindowDurationSeconds;
       const schedule = await prisma.taskSchedule.update({
         where: {
           id: existingSchedule.id,
@@ -911,6 +1018,7 @@ export async function syncDeclarativeSchedules(
           generatorExpression: task.schedule.cron,
           generatorDescription: cronstrue.toString(task.schedule.cron),
           timezone: task.schedule.timezone,
+          minimumWindowDurationSeconds,
           ...normalizedWindow,
         },
         include: {
@@ -919,16 +1027,19 @@ export async function syncDeclarativeSchedules(
       });
 
       missingSchedules.delete(existingSchedule.id);
-      const instance = schedule.instances.at(0);
-      if (instance) {
-        await scheduleEngine.registerNextTaskScheduleInstance({
-          instanceId: instance.id,
-          preserveExistingJob: !timingChanged,
-        });
-      } else {
+      const instances = timingChanged
+        ? schedule.instances
+        : schedule.instances.filter((instance) => instance.environmentId === environment.id);
+      if (instances.length === 0) {
         throw new CreateDeclarativeScheduleError(
           `Missing instance for declarative schedule ${schedule.id}`
         );
+      }
+      for (const instance of instances) {
+        await engine.registerNextTaskScheduleInstance({
+          instanceId: instance.id,
+          preserveExistingJob: !timingChanged,
+        });
       }
     } else {
       const newSchedule = await prisma.taskSchedule.create({
@@ -940,7 +1051,9 @@ export async function syncDeclarativeSchedules(
           generatorDescription: cronstrue.toString(task.schedule.cron),
           timezone: task.schedule.timezone,
           type: "DECLARATIVE",
-          ...normalizeScheduleWindow(task.schedule.window),
+          minimumWindowDurationSeconds,
+          ...normalizedWindow,
+          defaultWindowDurationSeconds,
           instances: {
             create: [
               {
@@ -958,7 +1071,7 @@ export async function syncDeclarativeSchedules(
       const instance = newSchedule.instances.at(0);
 
       if (instance) {
-        await scheduleEngine.registerNextTaskScheduleInstance({ instanceId: instance.id });
+        await engine.registerNextTaskScheduleInstance({ instanceId: instance.id });
       } else {
         throw new CreateDeclarativeScheduleError(
           `Missing instance for declarative schedule ${newSchedule.id}`

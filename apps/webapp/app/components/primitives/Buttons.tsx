@@ -9,7 +9,7 @@ import React, {
 } from "react";
 import { type ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
-import { AgentMonoLogo } from "./AgentDotMatrix";
+import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { ShortcutKey } from "./ShortcutKey";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./Tooltip";
 import { Icon, type RenderIcon } from "./Icon";
@@ -120,7 +120,7 @@ const theme = {
     textColor:
       "text-text-bright transition light:group-hover/button:text-charcoal-800 group-disabled/button:text-text-dimmed/80",
     button:
-      "cursor-pointer bg-secondary border border-[#41FF54]/25 dark:group-hover/button:bg-background-raised dark:group-hover/button:border-[#41FF54]/40 light:group-hover/button:bg-[#e4ffe8] light:group-hover/button:border-[#41FF54]/60 light:border-success/60 group-disabled/button:bg-secondary group-disabled/button:opacity-60 group-disabled/button:cursor-default group-disabled/button:pointer-events-none",
+      "cursor-pointer bg-secondary border border-primary/50 dark:group-hover/button:bg-background-raised dark:group-hover/button:border-primary/70 light:group-hover/button:bg-primary/5 light:group-hover/button:border-primary/70 light:border-primary/50 group-disabled/button:bg-secondary group-disabled/button:opacity-60 group-disabled/button:cursor-default group-disabled/button:pointer-events-none",
     shortcut:
       "border-text-dimmed/40 text-text-dimmed dark:group-hover/button:text-text-bright dark:group-hover/button:border-text-dimmed light:group-hover/button:text-charcoal-800 light:group-hover/button:border-charcoal-800/60",
     icon: "text-text-bright light:group-hover/button:text-charcoal-800",
@@ -142,14 +142,23 @@ function createVariant(sizeName: Size, themeName: Theme) {
   };
 }
 
-// ask-trigger supplies its own leading logo. Pass an explicit `LeadingIcon` to animate it.
-function createAskTriggerVariant(sizeName: Size, opticalPadding: string, logoSize: number) {
+// ask-trigger supplies its own leading sparkles. Pass an explicit `LeadingIcon` to override it.
+const logoSizeClass = {
+  16: "size-4",
+  20: "size-5",
+} as const;
+
+function createAskTriggerVariant(
+  sizeName: Size,
+  opticalPadding: string,
+  logoSize: keyof typeof logoSizeClass
+) {
   const base = createVariant(sizeName, "ask-trigger");
   return {
     ...base,
     button: cn(base.button, opticalPadding),
     iconSpacing: "gap-x-1.5",
-    defaultLeadingIcon: <AgentMonoLogo size={logoSize} decorative />,
+    defaultLeadingIcon: <AISparkleIcon className={cn("shrink-0", logoSizeClass[logoSize])} />,
   };
 }
 

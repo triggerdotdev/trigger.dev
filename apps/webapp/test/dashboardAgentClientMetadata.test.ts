@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
+  watchEnabled: false,
   findEnvironmentBySlug: vi.fn<(...args: any[]) => Promise<any>>(),
   startSession: vi.fn<(...args: any[]) => Promise<any>>(),
   chatExists: vi.fn<(...args: any[]) => Promise<any>>(),
@@ -15,11 +16,15 @@ vi.mock("~/services/session.server", () => ({
 vi.mock("~/v3/canAccessDashboardAgent.server", () => ({
   canAccessDashboardAgent: async () => true,
 }));
+vi.mock("~/v3/canUseDashboardAgentWatches.server", () => ({
+  canUseDashboardAgentWatches: async () => mocks.watchEnabled,
+}));
 vi.mock("~/models/project.server", () => ({
-  findProjectBySlug: async () => ({
+  findProjectWithOrgFlagsBySlug: async () => ({
     id: "proj_real",
     organizationId: "org_real",
     externalRef: "proj_ref_real",
+    organization: { featureFlags: {} },
   }),
 }));
 vi.mock("~/models/runtimeEnvironment.server", () => ({
@@ -38,7 +43,9 @@ vi.mock("~/services/dashboardAgentHeadStart.server", () => ({
   startDashboardAgentHeadStart: vi.fn(),
 }));
 vi.mock("~/services/dashboardAgentDb.server", () => ({ dashboardAgentDb: {} }));
-vi.mock("~/services/resolveTriggerUri.server", () => ({ resolveTriggerUri: () => null }));
+vi.mock("~/services/resolveTriggerUriInOrganization.server", () => ({
+  resolveTriggerUrisInOrganization: async () => new Map(),
+}));
 // The chat route reaches the ClickHouse factory through the watch services, and the factory
 // builds its client at import time from an env var no test sets.
 vi.mock("~/services/clickhouse/clickhouseFactoryInstance.server", () => ({
@@ -85,6 +92,80 @@ async function appendTurn(metadata: Record<string, unknown>): Promise<Record<str
   return forwarded.payload.metadata as Record<string, unknown>;
 }
 
+async function startChat(clientData: Record<string, unknown>) {
+  const form = new URLSearchParams({
+    intent: "start",
+    chatId: "chat_real",
+    clientData: JSON.stringify(clientData),
+  });
+
+  const response = await chatAction({
+    request: new Request(
+      "https://app.trigger.dev/resources/orgs/acme/projects/api/env/dev/dashboard-agent",
+      {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: form.toString(),
+      }
+    ),
+    params: { organizationSlug: "acme", projectParam: "api", envParam: "dev" },
+    context: {},
+  } as any);
+
+  expect(response.status).toBe(200);
+  expect(mocks.startSession).toHaveBeenCalledTimes(1);
+  return mocks.startSession.mock.calls[0][0].clientData as Record<string, unknown>;
+}
+
+describe.each([
+  ["in proxy", appendTurn],
+  ["start intent", startChat],
+] as const)("dashboard agent %s — whitelisted page context", (_name, call) => {
+  beforeEach(() => {
+    mocks.findEnvironmentBySlug.mockReset().mockResolvedValue({
+      id: "env_real",
+      type: "DEVELOPMENT",
+      branchName: null,
+    });
+    mocks.fetch.mockReset();
+    mocks.fetch.mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })
+    );
+    vi.stubGlobal("fetch", mocks.fetch);
+    mocks.chatExists.mockReset().mockResolvedValue(true);
+    mocks.startSession.mockReset().mockResolvedValue({ publicAccessToken: "pat_public" });
+  });
+
+  it("keeps the whitelisted page context", async () => {
+    const data = await call({ currentPage: "/runs", pageContext: { kind: "runs" } });
+
+    expect(data).toMatchObject({ currentPage: "/runs", pageContext: { kind: "runs" } });
+  });
+
+  // The watch flag is resolved server-side per turn, so a client can neither ask for the
+  // watch tools nor keep them once the org loses the flag.
+  it("says watches are off however the client asks", async () => {
+    mocks.watchEnabled = false;
+
+    expect(await call({ currentPage: "/runs", watchEnabled: true })).toMatchObject({
+      watchEnabled: false,
+    });
+  });
+
+  it("says watches are on for an org that has them", async () => {
+    mocks.watchEnabled = true;
+
+    expect(await call({ currentPage: "/runs", watchEnabled: false })).toMatchObject({
+      watchEnabled: true,
+    });
+
+    mocks.watchEnabled = false;
+  });
+});
+
 describe("dashboard agent `in` proxy — client metadata", () => {
   beforeEach(() => {
     mocks.findEnvironmentBySlug.mockReset();
@@ -101,16 +182,6 @@ describe("dashboard agent `in` proxy — client metadata", () => {
       })
     );
     vi.stubGlobal("fetch", mocks.fetch);
-  });
-
-  it("keeps the whitelisted page context", async () => {
-    const metadata = await appendTurn({
-      currentPage: "/orgs/acme/projects/api/env/dev/runs",
-      pageContext: { kind: "runs" },
-    });
-
-    expect(metadata.currentPage).toBe("/orgs/acme/projects/api/env/dev/runs");
-    expect(metadata.pageContext).toEqual({ kind: "runs" });
   });
 
   it("ignores a client-sent copy of every server-owned field", async () => {
@@ -195,37 +266,6 @@ describe("dashboard agent `start` intent — client metadata", () => {
       type: "DEVELOPMENT",
       branchName: null,
     });
-  });
-
-  async function startChat(clientData: Record<string, unknown>) {
-    const form = new URLSearchParams({
-      intent: "start",
-      chatId: "chat_real",
-      clientData: JSON.stringify(clientData),
-    });
-
-    const response = await chatAction({
-      request: new Request(
-        "https://app.trigger.dev/resources/orgs/acme/projects/api/env/dev/dashboard-agent",
-        {
-          method: "POST",
-          headers: { "content-type": "application/x-www-form-urlencoded" },
-          body: form.toString(),
-        }
-      ),
-      params: { organizationSlug: "acme", projectParam: "api", envParam: "dev" },
-      context: {},
-    } as any);
-
-    expect(response.status).toBe(200);
-    expect(mocks.startSession).toHaveBeenCalledTimes(1);
-    return mocks.startSession.mock.calls[0][0].clientData as Record<string, unknown>;
-  }
-
-  it("keeps the whitelisted page context", async () => {
-    const clientData = await startChat({ currentPage: "/runs", pageContext: { kind: "runs" } });
-
-    expect(clientData).toMatchObject({ currentPage: "/runs", pageContext: { kind: "runs" } });
   });
 
   it("drops every server-owned field a client sends", async () => {

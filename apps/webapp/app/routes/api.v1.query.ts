@@ -94,14 +94,12 @@ const { action, loader } = createActionApiRoute(
       if (queryResult.error instanceof QueryError) {
         logger.warn("Query API error", {
           error: queryResult.error.message,
-          query,
         });
         return json({ error: queryResult.error.message }, { status: 400 });
       }
 
       logger.error("Query API error", {
         error: queryResult.error,
-        query,
       });
 
       return json(
@@ -113,7 +111,7 @@ const { action, loader } = createActionApiRoute(
     const { result, periodClipped: _periodClipped, maxQueryPeriod: _maxQueryPeriod } = queryResult;
 
     if (format === "csv") {
-      const csv = rowsToCSV(result.rows, result.columns);
+      const csv = rowsToCSV(result.rows as Record<string, unknown>[], result.columns);
 
       return json({
         format: "csv",

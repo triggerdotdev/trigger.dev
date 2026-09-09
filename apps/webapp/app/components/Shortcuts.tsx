@@ -2,12 +2,10 @@ import { KeyboardIcon } from "~/assets/icons/KeyboardIcon";
 import { useState } from "react";
 import { ASK_AGENT_LABEL } from "~/components/dashboard-agent/agent-identity";
 import { type AiShortcutRow, aiShortcutRows } from "~/components/dashboard-agent/ai-entry-points";
-import { ASK_AI_SHORTCUT, askAiCanOpen } from "~/components/dashboard-agent/ask-ai-channels";
 import { useDashboardAgentAvailable } from "~/components/dashboard-agent/dashboardAgentOpenRequest";
 import { NEW_CHAT_SHORTCUT } from "~/components/dashboard-agent/DashboardAgentHeader";
 import { TOGGLE_PANEL_SHORTCUT } from "~/components/dashboard-agent/dashboardAgentLauncher";
 import { COLUMNS_SHORTCUT } from "~/components/runs/v3/RunsDisplayOptions";
-import { useAskAiAvailability } from "~/hooks/useAskAiAvailability";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { Header3 } from "./primitives/Headers";
 import { SideMenuItemButton } from "./navigation/SideMenuItem";
@@ -50,8 +48,7 @@ export function ShortcutsAutoOpen() {
 
 function ShortcutContent() {
   const agent = useDashboardAgentAvailable();
-  const askAi = askAiCanOpen(useAskAiAvailability());
-  const rows = aiShortcutRows({ agent, askAi });
+  const rows = aiShortcutRows({ agent });
   const shows = (row: AiShortcutRow) => rows.includes(row);
 
   return (
@@ -85,15 +82,6 @@ function ShortcutContent() {
                   shortcut={{ key: TOGGLE_PANEL_SHORTCUT.key }}
                   variant="medium/bright"
                 />
-              </Shortcut>
-            )}
-            {shows("ask-ai") && (
-              <Shortcut name="Ask AI">
-                <ShortcutKey
-                  shortcut={{ modifiers: ASK_AI_SHORTCUT.modifiers }}
-                  variant="medium/bright"
-                />
-                <ShortcutKey shortcut={{ key: ASK_AI_SHORTCUT.key }} variant="medium/bright" />
               </Shortcut>
             )}
             <Shortcut name="Filter">

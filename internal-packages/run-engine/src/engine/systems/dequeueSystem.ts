@@ -16,6 +16,7 @@ import type {
   ResolvedWorkerDeployment,
   ResolvedWorkerTask,
 } from "../controlPlaneResolver.js";
+import { deletedEnvironmentReason, MISSING_ENVIRONMENT_REASON } from "../controlPlaneResolver.js";
 
 import { sendNotificationToWorker } from "../eventBus.js";
 import { getMachinePreset } from "../machinePresets.js";
@@ -69,7 +70,8 @@ type RunWithBackgroundWorkerTasksResult =
         | "TASK_NEVER_REGISTERED"
         | "BACKGROUND_WORKER_MISMATCH"
         | "QUEUE_NOT_FOUND"
-        | "RUN_ENVIRONMENT_ARCHIVED";
+        | "RUN_ENVIRONMENT_ARCHIVED"
+        | "RUN_PROJECT_DELETED";
       message: string;
       run: RunWithDequeueScalars;
       environmentType: RuntimeEnvironmentType;
@@ -267,6 +269,50 @@ export class DequeueSystem {
               }
 
               if (snapshot.executionStatus === "QUEUED_EXECUTING") {
+                const resumeEnv = await this.$.controlPlaneResolver.resolveEnv(
+                  snapshot.environmentId
+                );
+
+                let resumeDeletedReason: string | null;
+
+                if (resumeEnv) {
+                  resumeDeletedReason = deletedEnvironmentReason(resumeEnv);
+                } else {
+                  const resumeDeletionState =
+                    await this.$.controlPlaneResolver.resolveEnvDeletionState(
+                      snapshot.environmentId
+                    );
+                  resumeDeletedReason = resumeDeletionState
+                    ? deletedEnvironmentReason(resumeDeletionState)
+                    : MISSING_ENVIRONMENT_REASON;
+                }
+
+                if (resumeDeletedReason) {
+                  span.setAttribute("result", "RUN_PROJECT_DELETED");
+                  this.$.logger.warn(
+                    "RunEngine.dequeueFromWorkerQueue(): Not resuming a run on an environment that is no longer runnable",
+                    {
+                      runId,
+                      latestSnapshot: snapshot.id,
+                      reason: resumeDeletedReason,
+                      envResolved: resumeEnv !== null,
+                    }
+                  );
+
+                  await this.$.worker.enqueue({
+                    id: `cancelRun:${runId}`,
+                    job: "cancelRun",
+                    payload: {
+                      runId,
+                      completedAt: new Date(),
+                      reason: resumeDeletedReason,
+                    },
+                  });
+                  await this.$.runQueue.acknowledgeMessage(orgId, runId);
+
+                  return;
+                }
+
                 const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(
                   prisma,
                   {
@@ -328,6 +374,27 @@ export class DequeueSystem {
                         result,
                       }
                     );
+                    await this.$.runQueue.acknowledgeMessage(orgId, runId);
+                    return;
+                  }
+                  case "RUN_PROJECT_DELETED": {
+                    this.$.logger.warn(
+                      "RunEngine.dequeueFromWorkerQueue(): Run project or organization deleted",
+                      {
+                        runId,
+                        latestSnapshot: snapshot.id,
+                        result,
+                      }
+                    );
+                    await this.$.worker.enqueue({
+                      id: `cancelRun:${runId}`,
+                      job: "cancelRun",
+                      payload: {
+                        runId,
+                        completedAt: new Date(),
+                        reason: result.message,
+                      },
+                    });
                     await this.$.runQueue.acknowledgeMessage(orgId, runId);
                     return;
                   }
@@ -882,6 +949,19 @@ export class DequeueSystem {
           success: false as const,
           code: "RUN_ENVIRONMENT_ARCHIVED",
           message: `Run is on an archived environment: ${run.id}`,
+          run,
+          environmentType: env.type,
+        };
+      }
+
+      const deletedReason = deletedEnvironmentReason(env);
+
+      if (deletedReason) {
+        span.setAttribute("result", "RUN_PROJECT_DELETED");
+        return {
+          success: false as const,
+          code: "RUN_PROJECT_DELETED",
+          message: deletedReason,
           run,
           environmentType: env.type,
         };

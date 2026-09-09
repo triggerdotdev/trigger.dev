@@ -415,6 +415,8 @@ export class KubernetesWorkloadManager implements WorkloadManager {
       // The schedule vs non-schedule distinction is all we need for the current metrics
       // and pool-level scheduling decisions; finer-grained source breakdowns live in run annotations.
       scheduled: String(this.#isScheduledRun(opts)),
+      // The isolation lane, not opts.runtime (the task runtime).
+      "compute.trigger.dev/runtime": "container",
     };
 
     // Add privatelink label for CiliumNetworkPolicy matching

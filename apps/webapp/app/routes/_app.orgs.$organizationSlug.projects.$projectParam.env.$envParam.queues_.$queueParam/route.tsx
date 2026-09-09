@@ -342,7 +342,6 @@ export default function Page() {
             {degraded ? (
               <InvestigateButton
                 prompt={queueBacklogPrompt(fullName)}
-                variant="secondary"
                 tooltip="Ask why this queue is backed up"
               />
             ) : null}
@@ -909,7 +908,6 @@ function useConcurrencyKeys(opts: {
     interval: 30_000,
     onLoad: false,
     onFocus: true,
-    pauseWhenHidden: true,
     callback: load,
   });
 

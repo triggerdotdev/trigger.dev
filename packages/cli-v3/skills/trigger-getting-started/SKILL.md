@@ -43,10 +43,11 @@ headlessly. When you reach them, stop and ask the user to do them, then continue
 1. **Authenticating the CLI.** `npx trigger.dev@latest login` opens a browser for the
    user to sign in. If they have no account, point them to https://cloud.trigger.dev
    (or a self-hosted instance) first. You cannot complete this for them.
-2. **The secret key and project ref.** `TRIGGER_SECRET_KEY` and the project ref
-   (`proj_...`) come from the dashboard. Ask the user to copy the **DEV** secret key
-   from the project's API Keys page, and to pick or create the project so you have its
-   ref. `trigger init` can select the project interactively once the user is logged in.
+2. **The environment API key and project ref.** `TRIGGER_SECRET_KEY` and the project ref
+   (`proj_...`) come from the dashboard. Ask the user to create a named API key with
+   **Trigger only** access in their Development environment, and to pick or create the
+   project so you have its ref. `trigger init` can select the project interactively once
+   the user is logged in.
 
 Treat these as handoffs: state exactly what you need, wait for the user, then resume.
 
@@ -126,14 +127,15 @@ to `.gitignore` (the CLI writes local dev state there).
 .trigger
 ```
 
-### 6. Set the secret key (human step)
+### 6. Create an environment API key (human step)
 
-For triggering from your own code, set `TRIGGER_SECRET_KEY` to the DEV key from the
-dashboard's API Keys page. Self-hosted users also set `TRIGGER_API_URL`.
+For triggering from your own code, create a named API key with **Trigger only** access in
+your Development environment and set it as `TRIGGER_SECRET_KEY`. Self-hosted users also
+set `TRIGGER_API_URL`.
 
 ```bash
 # .env (or .env.local for Next.js)
-TRIGGER_SECRET_KEY=tr_dev_xxxxxxxx
+TRIGGER_SECRET_KEY=tr_dev_sk_xxxxxxxx
 ```
 
 ### 7. Run the dev server
@@ -171,9 +173,9 @@ See the manual setup docs for full Turborepo examples before scaffolding either.
 ## Common mistakes
 
 1. **Trying to do the human-only steps headlessly.** You cannot complete `trigger login`
-   or read the dashboard secret key for the user.
+   or create and copy an environment API key for the user.
    - Wrong: spawning `trigger login` and waiting on it to finish in an agent session.
-   - Correct: ask the user to log in and to paste the DEV key, then continue.
+   - Correct: ask the user to log in, create a named Development environment API key, and paste it, then continue.
 
 2. **Mismatched CLI and SDK versions.** A `trigger.dev` CLI on a different major than
    `@trigger.dev/sdk` breaks dev/deploy.

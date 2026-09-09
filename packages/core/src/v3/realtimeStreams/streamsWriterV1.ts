@@ -54,6 +54,9 @@ export class StreamsWriterV1<T> implements StreamsWriter {
     this.startBuffering();
 
     this.streamPromise = this.initializeServerStream();
+    // Same detached-writer guard as `StreamsWriterV2`: `wait()` still surfaces
+    // the error, but an unawaited failure never reaches Node as unhandled.
+    this.streamPromise.catch(() => {});
   }
 
   private generateClientId(): string {

@@ -177,17 +177,18 @@ describe("transport send events", () => {
 describe("stopped turn followed by a new turn", () => {
   /**
    * `.out` stub that honours the `Last-Event-ID` cursor like the server does, so
-   * a resubscribe cannot replay records the reader already consumed. A stop that
-   * never saw its turn-complete is therefore unrecoverable unless the new send
-   * clears the skip state.
+   * a resubscribe cannot replay records the reader already consumed. Legacy v1
+   * frames carry no `session-in-event-id`, so the stopped turn's boundary is
+   * indistinguishable from this turn's: the tail is dropped and the turn closes.
    */
-  function cursoredOneTurnTransport() {
+  function cursoredTwoTurnTransport() {
     const frames = [
-      { id: "1", data: `{"type":"text-delta","id":"t1","delta":"hello"}` },
+      { id: "1", data: `{"type":"text-delta","id":"t1","delta":"stale"}` },
       { id: "2", data: `{"type":"trigger:turn-complete"}` },
     ];
 
     return makeTransport({
+      sessions: { c1: { publicAccessToken: "tok_test", isStreaming: true } },
       fetch: async (_url, init, ctx) => {
         if (ctx.endpoint === "in") return jsonOk();
 
@@ -205,8 +206,8 @@ describe("stopped turn followed by a new turn", () => {
     });
   }
 
-  it("streams a sendMessages turn after a stop that never saw turn-complete", async () => {
-    const { transport, events } = cursoredOneTurnTransport();
+  it("drops the stopped turn's tail and closes the sendMessages turn", async () => {
+    const { transport, events } = cursoredTwoTurnTransport();
 
     expect(await transport.stopGeneration("c1")).toBe(true);
     events.length = 0;
@@ -220,12 +221,12 @@ describe("stopped turn followed by a new turn", () => {
     });
     const chunks = await readAll(stream);
 
-    expect(chunks).toEqual([{ type: "text-delta", id: "t1", delta: "hello" }]);
+    expect(chunks).toEqual([]);
     expect(events.some((e) => e.type === "turn-completed")).toBe(true);
   });
 
-  it("streams a sendAction turn after a stop that never saw turn-complete", async () => {
-    const { transport, events } = cursoredOneTurnTransport();
+  it("drops the stopped turn's tail and closes the sendAction turn", async () => {
+    const { transport, events } = cursoredTwoTurnTransport();
 
     expect(await transport.stopGeneration("c1")).toBe(true);
     events.length = 0;
@@ -233,7 +234,7 @@ describe("stopped turn followed by a new turn", () => {
     const stream = await transport.sendAction("c1", { type: "undo" });
     const chunks = await readAll(stream);
 
-    expect(chunks).toEqual([{ type: "text-delta", id: "t1", delta: "hello" }]);
+    expect(chunks).toEqual([]);
     expect(events.some((e) => e.type === "turn-completed")).toBe(true);
   });
 });

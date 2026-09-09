@@ -49,13 +49,43 @@ describe("looksLikeConnectivityError", () => {
 
 describe("isRetryableInfrastructureError", () => {
   it("retries connection-level codes and connectivity errnos/messages", () => {
-    for (const code of ["P1001", "P1002", "P1008", "P1017"]) {
+    for (const code of ["P1001", "P1002", "P1017"]) {
       expect(isRetryableInfrastructureError(known(code, "boom"))).toBe(true);
     }
     expect(isRetryableInfrastructureError({ code: "ECONNRESET" })).toBe(true);
     expect(isRetryableInfrastructureError(new Error("server has closed the connection"))).toBe(
       true
     );
+  });
+
+  it("does not retry a bare P1008 operation-timeout, but does with a connectivity signal", () => {
+    // P1008 is a generic operation timeout: retrying it by code alone can deepen load in an incident.
+    expect(isRetryableInfrastructureError(known("P1008", "Operations timed out"))).toBe(false);
+    expect(isRetryableInfrastructureError(known("P1008", "boom"))).toBe(false);
+    // Only when its message also carries a supported connectivity signal.
+    expect(
+      isRetryableInfrastructureError(known("P1008", "Connection terminated unexpectedly"))
+    ).toBe(true);
+    expect(isRetryableInfrastructureError(known("P1008", "server has closed the connection"))).toBe(
+      true
+    );
+  });
+
+  it("retries the two production pg-adapter mid-statement connection-loss shapes", () => {
+    // Shape 1: the pg driver surfaces a terminated connection as an unknown-request error whose
+    // message carries the connectivity signature.
+    expect(
+      isRetryableInfrastructureError({
+        name: "PrismaClientUnknownRequestError",
+        message: "Connection terminated unexpectedly",
+      })
+    ).toBe(true);
+    // Shape 2: the raw socket error bubbles up with a connectivity errno.
+    expect(
+      isRetryableInfrastructureError(
+        Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" })
+      )
+    ).toBe(true);
   });
 
   it("does not retry query/validation errors", () => {
@@ -86,12 +116,53 @@ describe("isRetryableInfrastructureError", () => {
     ).toBe(false);
   });
 
+  it("never retries a panic from the run-ops runtime, even with a connectivity-ish message", () => {
+    // The run-ops client is a separately generated Prisma runtime, so its panic is not the
+    // control-plane class. Recognised by name so it can never fall through to the message check.
+    const foreignPanic = {
+      name: "PrismaClientRustPanicError",
+      message: "connection terminated: RUST PANIC in query engine",
+    };
+    expect(isRetryableInfrastructureError(foreignPanic)).toBe(false);
+  });
+
+  it("retries a run-ops-runtime known-request error by name + code, not instanceof", () => {
+    const foreignKnown = { name: "PrismaClientKnownRequestError", code: "P1017", message: "" };
+    expect(isRetryableInfrastructureError(foreignKnown)).toBe(true);
+  });
+
   it("never retries pool exhaustion (P2024), even though its message looks like connectivity", () => {
     const poolMsg = "Timed out fetching a new connection from the connection pool";
     expect(isRetryableInfrastructureError(known("P2024", poolMsg))).toBe(false);
     expect(isRetryableInfrastructureError(new Error(poolMsg))).toBe(false);
     // The broad classifier still flags it (used for logging, not retry).
     expect(isInfrastructureError(new Error(poolMsg))).toBe(true);
+  });
+
+  it("retries the pg driver adapter's mid-statement connection-loss error", () => {
+    // The adapter surfaces a killed-mid-statement connection as this unknown-request error; without
+    // matching it, a blip during an in-flight statement is never retried.
+    expect(
+      isRetryableInfrastructureError(
+        new Prisma.PrismaClientUnknownRequestError(
+          "Client has encountered a connection error and is not queryable",
+          { clientVersion: "6.14.0" }
+        )
+      )
+    ).toBe(true);
+  });
+
+  it("retries the raw admin-shutdown 'terminating connection' error (pg 57P01)", () => {
+    // The other shape a mid-statement backend kill produces on the adapter: the raw PostgreSQL
+    // 57P01 fatal surfaced as an unknown-request error. Both shapes must be retryable.
+    expect(
+      isRetryableInfrastructureError(
+        new Prisma.PrismaClientUnknownRequestError(
+          "terminating connection due to administrator command",
+          { clientVersion: "6.14.0" }
+        )
+      )
+    ).toBe(true);
   });
 
   it("retries an unknown-request error only with a connectivity signal", () => {

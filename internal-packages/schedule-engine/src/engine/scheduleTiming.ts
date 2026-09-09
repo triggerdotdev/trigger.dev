@@ -31,6 +31,63 @@ export type EffectiveScheduleTime = {
   windowWasCappedToInterval: boolean;
 };
 
+/**
+ * The three window inputs stored on a TaskSchedule row. `defaultWindowDurationSeconds` is the
+ * default captured when the schedule was created (null for legacy/grandfathered rows).
+ */
+export type ScheduleWindowFields = {
+  windowDurationSeconds: number | null;
+  windowPercentage: number | null;
+  defaultWindowDurationSeconds?: number | null;
+};
+
+/** Where the effective window came from. `undefined` means the schedule is grandfathered. */
+export type ScheduleWindowSource = "explicit" | "schedule_default";
+
+/**
+ * Pure resolution of a schedule's effective window from its stored fields.
+ *
+ * Precedence:
+ *   1. Explicit percentage (including 0%).
+ *   2. Explicit duration (including 0m — this disables a larger default but still
+ *      receives the engine's 60-second platform minimum downstream).
+ *   3. Captured schedule default.
+ *   4. No window — grandfathered rows fall through to the 60-second minimum only.
+ *
+ * The engine and every dashboard/API surface must resolve through this so Redis timing and
+ * displayed `nextRunEffectiveAt` can never disagree.
+ */
+export function resolveScheduleWindow(fields: ScheduleWindowFields): {
+  window: NormalizedScheduleWindow | undefined;
+  source: ScheduleWindowSource | undefined;
+} {
+  if (fields.windowPercentage !== null) {
+    return {
+      window: { type: "percentage", percentage: fields.windowPercentage },
+      source: "explicit",
+    };
+  }
+
+  if (fields.windowDurationSeconds !== null) {
+    return {
+      window: { type: "duration", durationSeconds: fields.windowDurationSeconds },
+      source: "explicit",
+    };
+  }
+
+  if (
+    fields.defaultWindowDurationSeconds !== null &&
+    fields.defaultWindowDurationSeconds !== undefined
+  ) {
+    return {
+      window: { type: "duration", durationSeconds: fields.defaultWindowDurationSeconds },
+      source: "schedule_default",
+    };
+  }
+
+  return { window: undefined, source: undefined };
+}
+
 export function validateScheduleWindow(window: NormalizedScheduleWindow): void {
   if (window.type === "duration") {
     if (
@@ -57,6 +114,25 @@ export function validateScheduleWindow(window: NormalizedScheduleWindow): void {
   }
 }
 
+/**
+ * A persisted plan minimum in seconds, converted to milliseconds. A non-positive or absent
+ * value contributes no floor. Rejects unsafe/negative inputs so a corrupt row can't produce a
+ * nonsensical range.
+ */
+export function resolvePolicyMinimumMs(minimumWindowDurationSeconds?: number | null): number {
+  if (minimumWindowDurationSeconds === undefined || minimumWindowDurationSeconds === null) {
+    return 0;
+  }
+
+  if (!Number.isSafeInteger(minimumWindowDurationSeconds) || minimumWindowDurationSeconds < 0) {
+    throw new RangeError(
+      "minimumWindowDurationSeconds must be a non-negative integer number of seconds"
+    );
+  }
+
+  return minimumWindowDurationSeconds * 1_000;
+}
+
 export function resolveScheduleWindowMs(
   window: NormalizedScheduleWindow | undefined,
   intervalMs: number
@@ -81,17 +157,24 @@ export function resolveScheduleWindowMs(
  *
  * An absolute window is a maximum. Each occurrence caps it at the interval to its next nominal
  * tick, guaranteeing that the effective time never reaches or passes the next occurrence.
+ *
+ * `minimumWindowDurationSeconds` is a persisted policy floor (e.g. the free-plan 60-minute
+ * minimum). It raises the requested range but is still capped by the next nominal interval, so
+ * a policy minimum never pushes an occurrence past the following one. Null/undefined means no
+ * policy floor applies (grandfathered/unrestricted schedules).
  */
 export function calculateEffectiveScheduleTime({
   nominalAt,
   nextNominalAt,
   schedulePhase,
   window,
+  minimumWindowDurationSeconds,
 }: {
   nominalAt: Date;
   nextNominalAt: Date;
   schedulePhase: number;
   window?: NormalizedScheduleWindow;
+  minimumWindowDurationSeconds?: number | null;
 }): EffectiveScheduleTime {
   assertValidDate(nominalAt, "nominalAt");
   assertValidDate(nextNominalAt, "nextNominalAt");
@@ -101,7 +184,8 @@ export function calculateEffectiveScheduleTime({
   assertPositiveInterval(intervalMs);
 
   const windowMs = resolveScheduleWindowMs(window, intervalMs);
-  const requestedRangeMs = Math.max(MINIMUM_SCHEDULE_RANGE_MS, windowMs);
+  const policyMinimumMs = resolvePolicyMinimumMs(minimumWindowDurationSeconds);
+  const requestedRangeMs = Math.max(MINIMUM_SCHEDULE_RANGE_MS, windowMs, policyMinimumMs);
   const effectiveRangeMs = Math.min(intervalMs, requestedRangeMs);
   const windowWasCappedToInterval = effectiveRangeMs !== requestedRangeMs;
   const offsetMs = Number(

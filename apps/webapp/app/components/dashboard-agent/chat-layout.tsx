@@ -3,8 +3,9 @@
 import type { Ref } from "react";
 import { createContext, Suspense, useContext } from "react";
 import { StreamdownRenderer } from "~/components/code/StreamdownRenderer";
-import { AgentSpinner } from "~/components/primitives/Spinner";
+import { TextShimmer } from "~/components/primitives/TextShimmer";
 import { cn } from "~/utils/cn";
+import type { ResolvedUri } from "./ReportView";
 
 const TRANSCRIPT_INSET_X = "px-4";
 const TRANSCRIPT_INSET_Y = "py-4";
@@ -80,7 +81,15 @@ export function ChatTurn({
   );
 }
 
-export function ChatText({ speaker = "assistant", text }: { speaker?: ChatRole; text: string }) {
+export function ChatText({
+  speaker = "assistant",
+  text,
+  resolveUri,
+}: {
+  speaker?: ChatRole;
+  text: string;
+  resolveUri?: (uri: string) => ResolvedUri | null;
+}) {
   if (speaker === "user") {
     return (
       <div className="max-w-[80%] rounded-lg bg-background-raised px-4 py-2.5 text-sm text-text-bright">
@@ -91,7 +100,7 @@ export function ChatText({ speaker = "assistant", text }: { speaker?: ChatRole; 
   return (
     <div className="streamdown-container min-w-0 font-sans text-sm font-normal text-text-dimmed wrap-anywhere">
       <Suspense fallback={<span className="whitespace-pre-wrap">{text}</span>}>
-        <StreamdownRenderer>{text}</StreamdownRenderer>
+        <StreamdownRenderer resolveTriggerUri={resolveUri}>{text}</StreamdownRenderer>
       </Suspense>
     </div>
   );
@@ -101,17 +110,14 @@ export function ChatCardSlot({ children }: { children: React.ReactNode }) {
   return <div className="min-w-0">{children}</div>;
 }
 
-// The transcript's only `AgentSpinner`. Hosts keep it mounted for the whole turn
-// and swap `children`; remounting restarts the animation.
+// The transcript's only progress indicator: the label itself shimmers, so a turn in
+// flight reads without an icon. Hosts keep it mounted for the whole turn and swap
+// `children`; remounting restarts the animation.
 export function ChatProgress({ children }: { children: React.ReactNode }) {
   const insetClass = useInsetClass();
   return (
     <div className={cn(insetClass, "flex items-start text-sm text-text-dimmed", ROW_GAP)}>
-      {/* text-sm line box is 20px, the spinner 12px: 4px centres it on line one. */}
-      <span className="mt-1 shrink-0">
-        <AgentSpinner size={12} />
-      </span>
-      {children}
+      <TextShimmer>{children}</TextShimmer>
     </div>
   );
 }
@@ -152,11 +158,14 @@ const BLOCK_INSET = "px-3 py-2.5";
 export function ChatSystemBlock({
   label,
   icon,
+  shimmerLabel,
   children,
   actions,
 }: {
   label: string;
   icon?: React.ReactNode;
+  /** For a block whose work is still running: the label shimmers instead of wearing a spinner. */
+  shimmerLabel?: boolean;
   children: React.ReactNode;
   actions?: React.ReactNode;
 }) {
@@ -171,7 +180,7 @@ export function ChatSystemBlock({
       <div className={cn("flex items-center", CHIP_GAP)}>
         {icon}
         <span className="text-xxs font-medium uppercase tracking-wider text-text-dimmed">
-          {label}
+          {shimmerLabel ? <TextShimmer>{label}</TextShimmer> : label}
         </span>
       </div>
       <div className={cn("min-w-0", BLOCK_LINE_GAP)}>{children}</div>

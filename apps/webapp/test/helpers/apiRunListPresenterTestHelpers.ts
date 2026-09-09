@@ -157,6 +157,8 @@ export async function insertTaskRunV2Rows(clickhouse: ClickHouse, runs: TaskRun[
     task_version: run.taskVersion ?? "",
     sdk_version: run.sdkVersion ?? "",
     cli_version: run.cliVersion ?? "",
+    output: null,
+    error: null,
     machine_preset: run.machinePreset ?? "",
     root_run_id: "",
     parent_run_id: "",

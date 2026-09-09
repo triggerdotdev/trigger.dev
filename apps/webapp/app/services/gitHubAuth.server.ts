@@ -36,12 +36,6 @@ export function addGitHubStrategy(
       }
 
       try {
-        logger.debug("GitHub login", {
-          emails,
-          profile,
-          extraParams,
-        });
-
         const { user, isNewUser } = await findOrCreateUser({
           email,
           authenticationMethod: "GITHUB",

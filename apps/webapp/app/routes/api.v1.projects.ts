@@ -7,10 +7,15 @@ import { createLoaderPATApiRoute } from "~/services/routeBuilders/apiBuilder.ser
 export const loader = createLoaderPATApiRoute(
   { identityOnly: true },
   async ({ authentication }) => {
+    // A token minted for one organization sees only its projects, server-side. Still intersected
+    // with the caller's membership.
+    const claimedOrganizationId = authentication.userActor?.organizationId;
+
     const projects = await prisma.project.findMany({
       where: {
         organization: {
           deletedAt: null,
+          ...(claimedOrganizationId ? { id: claimedOrganizationId } : {}),
           members: {
             some: {
               userId: authentication.userId,

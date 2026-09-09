@@ -43,6 +43,8 @@ export type DashboardAgentMessagesProps = {
   pagePaths?: Record<string, string>;
   /** Optional: without it a wake banner falls back to kind-agnostic wording. */
   watches?: WakeWatch[];
+  /** Withholds the wake banner and watch result cards while the flag is off. */
+  watchEnabled?: boolean;
 };
 
 // Cached so a stripped message keeps its identity across renders and memoization holds:
@@ -163,19 +165,6 @@ export function splitActionsBlocks<T>(blocks: T[]): { content: T[]; actions: T[]
 // #region chat-layout transcript
 // `chat-layout.test.ts` fails if a spacing utility class appears in this region.
 
-/** Until the resolver answers, the link degrades to its plain label, never a dead href. */
-const TRIGGER_MD_LINK = /\[([^\]]+)\]\((trigger:\/\/[^\s)]+)\)/g;
-function resolveTriggerLinks(
-  text: string,
-  resolveUri?: (uri: string) => ResolvedUri | null
-): string {
-  if (!text.includes("trigger://")) return text;
-  return text.replace(TRIGGER_MD_LINK, (whole, label: string, uri: string) => {
-    const resolved = resolveUri?.(uri);
-    return resolved ? `[${label}](${resolved.url})` : label;
-  });
-}
-
 function renderDashboardPart(
   part: UIMessage["parts"][number],
   i: number,
@@ -191,9 +180,8 @@ function renderDashboardPart(
   const type = part.type as string;
 
   if (type === "text") {
-    // Images last: the link resolver's output is model-supplied too.
     return p.text ? (
-      <ChatText key={i} text={stripModelImages(resolveTriggerLinks(p.text, resolveUri))} />
+      <ChatText key={i} text={stripModelImages(p.text)} resolveUri={resolveUri} />
     ) : null;
   }
 
@@ -250,6 +238,7 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
   pagePaths,
   watches,
   investigationWinners,
+  watchEnabled = false,
 }: {
   message: UIMessage;
   onIntent?: (intent: AgentIntent) => void;
@@ -258,6 +247,8 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
   watches?: WakeWatch[];
   /** See {@link winningInvestigationOccurrences}. */
   investigationWinners?: Map<string, string>;
+  /** Withholds the wake banner and watch result cards while the flag is off. */
+  watchEnabled?: boolean;
 }) {
   if (message.role === "user") {
     return (
@@ -305,6 +296,7 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
             pagePaths={pagePaths}
             answered={answerContinuesAfter(parts as never, i)}
             watchOfferedInTurn={watchOfferedInTurn}
+            watchEnabled={watchEnabled}
           />
         </ChatCardSlot>
       );
@@ -331,7 +323,7 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
     body.push(renderDashboardPart(part, i, resolveUri));
   }
 
-  const wake = wakeRefFromMessageId(message.id);
+  const wake = watchEnabled ? wakeRefFromMessageId(message.id) : undefined;
   if (wake) {
     return (
       <ChatTurn>
@@ -366,6 +358,7 @@ export function DashboardAgentTurns({
   resolveUri,
   pagePaths,
   watches,
+  watchEnabled = false,
 }: DashboardAgentMessagesProps) {
   // Must be the exact parts the turns render: the winners map keys by part index.
   const stripped = useMemo(() => messages.map(stripStepParts), [messages]);
@@ -389,6 +382,7 @@ export function DashboardAgentTurns({
           pagePaths={pagePaths}
           watches={watches}
           investigationWinners={investigationWinners}
+          watchEnabled={watchEnabled}
         />
       ))}
       {progress && (

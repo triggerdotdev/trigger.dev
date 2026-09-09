@@ -38,7 +38,7 @@ export function makeFlag(_prisma: PrismaClientOrTransaction = prisma) {
       const parsed = flagSchema.safeParse(override);
 
       if (parsed.success) {
-        return parsed.data;
+        return parsed.data as z.infer<(typeof FeatureFlagCatalog)[T]>;
       }
 
       // an override that fails the schema is ignored: the global value still wins
@@ -54,7 +54,7 @@ export function makeFlag(_prisma: PrismaClientOrTransaction = prisma) {
       const parsed = flagSchema.safeParse(value.value);
 
       if (parsed.success) {
-        return parsed.data;
+        return parsed.data as z.infer<(typeof FeatureFlagCatalog)[T]>;
       }
     }
 

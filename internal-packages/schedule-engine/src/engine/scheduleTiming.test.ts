@@ -6,9 +6,69 @@ import {
   calculateEffectiveScheduleTime,
   calculateSchedulePhase,
   parseScheduleWindow,
+  resolvePolicyMinimumMs,
+  resolveScheduleWindow,
   resolveScheduleWindowMs,
   validateScheduleWindow,
 } from "./scheduleTiming.js";
+
+describe("resolveScheduleWindow", () => {
+  it("prefers an explicit percentage over everything, including a captured default", () => {
+    expect(
+      resolveScheduleWindow({
+        windowDurationSeconds: null,
+        windowPercentage: 25,
+        defaultWindowDurationSeconds: 3_600,
+      })
+    ).toEqual({ window: { type: "percentage", percentage: 25 }, source: "explicit" });
+  });
+
+  it("prefers an explicit duration over a captured default", () => {
+    expect(
+      resolveScheduleWindow({
+        windowDurationSeconds: 900,
+        windowPercentage: null,
+        defaultWindowDurationSeconds: 3_600,
+      })
+    ).toEqual({ window: { type: "duration", durationSeconds: 900 }, source: "explicit" });
+  });
+
+  it("treats an explicit 0m as an explicit window that disables the default", () => {
+    expect(
+      resolveScheduleWindow({
+        windowDurationSeconds: 0,
+        windowPercentage: null,
+        defaultWindowDurationSeconds: 3_600,
+      })
+    ).toEqual({ window: { type: "duration", durationSeconds: 0 }, source: "explicit" });
+  });
+
+  it("falls back to the captured default when nothing is explicit", () => {
+    expect(
+      resolveScheduleWindow({
+        windowDurationSeconds: null,
+        windowPercentage: null,
+        defaultWindowDurationSeconds: 3_600,
+      })
+    ).toEqual({ window: { type: "duration", durationSeconds: 3_600 }, source: "schedule_default" });
+  });
+
+  it("resolves to no window for a grandfathered row with no default", () => {
+    expect(
+      resolveScheduleWindow({
+        windowDurationSeconds: null,
+        windowPercentage: null,
+        defaultWindowDurationSeconds: null,
+      })
+    ).toEqual({ window: undefined, source: undefined });
+
+    // An omitted default field behaves the same as null.
+    expect(resolveScheduleWindow({ windowDurationSeconds: null, windowPercentage: null })).toEqual({
+      window: undefined,
+      source: undefined,
+    });
+  });
+});
 
 describe("parseScheduleWindow", () => {
   it.each([
@@ -220,6 +280,102 @@ describe("calculateEffectiveScheduleTime", () => {
         schedulePhase: 0,
       })
     ).toThrow("Nominal schedule interval must be a positive integer");
+  });
+});
+
+describe("resolvePolicyMinimumMs", () => {
+  it("treats null/undefined as no floor", () => {
+    expect(resolvePolicyMinimumMs(null)).toBe(0);
+    expect(resolvePolicyMinimumMs(undefined)).toBe(0);
+    expect(resolvePolicyMinimumMs(0)).toBe(0);
+  });
+
+  it("converts seconds to milliseconds", () => {
+    expect(resolvePolicyMinimumMs(3_600)).toBe(3_600_000);
+  });
+
+  it.each([-1, 1.5, Number.NaN])("rejects invalid value %s", (value) => {
+    expect(() => resolvePolicyMinimumMs(value)).toThrow("non-negative integer");
+  });
+});
+
+describe("calculateEffectiveScheduleTime with a policy minimum", () => {
+  const nominalAt = new Date("2026-08-10T10:00:00.000Z");
+  // Hourly cron: nominal ticks are 60 minutes apart.
+  const nextNominalAt = new Date("2026-08-10T11:00:00.000Z");
+
+  it("raises the requested range to the 60-minute policy floor when no window is set", () => {
+    const timing = calculateEffectiveScheduleTime({
+      nominalAt,
+      nextNominalAt,
+      schedulePhase: SCHEDULE_PHASE_DENOMINATOR / 2,
+      minimumWindowDurationSeconds: 3_600,
+    });
+
+    expect(timing.windowMs).toBe(0);
+    expect(timing.effectiveRangeMs).toBe(3_600_000);
+    expect(timing.windowWasCappedToInterval).toBe(false);
+    // Half phase spreads to the midpoint of the hour.
+    expect(timing.effectiveAt).toEqual(new Date("2026-08-10T10:30:00.000Z"));
+  });
+
+  it("lifts a smaller configured window up to the policy floor", () => {
+    const timing = calculateEffectiveScheduleTime({
+      nominalAt,
+      nextNominalAt,
+      schedulePhase: SCHEDULE_PHASE_DENOMINATOR / 2,
+      window: { type: "duration", durationSeconds: 5 * 60 },
+      minimumWindowDurationSeconds: 3_600,
+    });
+
+    expect(timing.windowMs).toBe(300_000);
+    expect(timing.effectiveRangeMs).toBe(3_600_000);
+  });
+
+  it("lets a larger configured window win over the policy floor", () => {
+    const timing = calculateEffectiveScheduleTime({
+      nominalAt,
+      // Two-hour interval so a 200m window is not capped by the next tick.
+      nextNominalAt: new Date("2026-08-10T12:00:00.000Z"),
+      schedulePhase: SCHEDULE_PHASE_DENOMINATOR / 2,
+      window: { type: "duration", durationSeconds: 200 * 60 },
+      minimumWindowDurationSeconds: 3_600,
+    });
+
+    expect(timing.windowMs).toBe(200 * 60_000);
+    // Capped to the 2-hour interval, still above the policy floor.
+    expect(timing.effectiveRangeMs).toBe(2 * 60 * 60_000);
+    expect(timing.windowWasCappedToInterval).toBe(true);
+  });
+
+  it("caps the policy floor at the next nominal interval", () => {
+    // Hypothetical: a 60m floor on a 5-minute interval would be capped to 5 minutes. (Enrolled
+    // schedules reject sub-hourly crons before persistence; this is the engine's safety net.)
+    const timing = calculateEffectiveScheduleTime({
+      nominalAt,
+      nextNominalAt: new Date("2026-08-10T10:05:00.000Z"),
+      schedulePhase: SCHEDULE_PHASE_DENOMINATOR / 2,
+      minimumWindowDurationSeconds: 3_600,
+    });
+
+    expect(timing.effectiveRangeMs).toBe(300_000);
+    expect(timing.windowWasCappedToInterval).toBe(true);
+  });
+
+  it("is a no-op when the floor is null", () => {
+    const withNull = calculateEffectiveScheduleTime({
+      nominalAt,
+      nextNominalAt,
+      schedulePhase: SCHEDULE_PHASE_DENOMINATOR / 2,
+      minimumWindowDurationSeconds: null,
+    });
+    const without = calculateEffectiveScheduleTime({
+      nominalAt,
+      nextNominalAt,
+      schedulePhase: SCHEDULE_PHASE_DENOMINATOR / 2,
+    });
+
+    expect(withNull).toEqual(without);
   });
 });
 

@@ -63,6 +63,10 @@ function fakeStore(slot: Slot): FakeStore {
     findBatchTaskRunItem: record("findBatchTaskRunItem", { slot }),
     upsertWaitpointTag: record("upsertWaitpointTag", { slot }),
     findManyWaitpointTags: record("findManyWaitpointTags", tagRows(slot)),
+    // The gen-1 pair probes findWaitpoint on its home store before completing; a truthy row means
+    // "resident here", so the router resolves straight to home with no cross-store fallback.
+    findWaitpoint: record("findWaitpoint", { id: "probe" }),
+    markWaitpointCompleted: record("markWaitpointCompleted", { count: 1 }),
   } as unknown as FakeStore;
 }
 
@@ -123,6 +127,31 @@ for (const topology of TOPOLOGIES) {
       // The tx is neither a select/include projection nor forwarded: the sub-store sees a 3-arg call
       // whose projection slot is undefined.
       expect(legacyStore.calls[0]?.args).toEqual(["legacy_run", DATA, undefined]);
+    });
+  });
+
+  describe(`RoutingRunStore.markWaitpointCompleted (${topology.name})`, () => {
+    const COMPLETION = { output: { value: "{}", type: "application/json", isError: false } };
+
+    it("routes by waitpointId to the owning store, applies exactly once, and forwards no tx", async () => {
+      const { router, newStore, legacyStore } = buildRouter(topology);
+      await router.markWaitpointCompleted("new_wp", COMPLETION);
+      const newCalls = newStore.calls.filter((c) => c.method === "markWaitpointCompleted");
+      expect(newCalls).toHaveLength(1);
+      // Exactly TWO args: (waitpointId, completion). A leaked caller tx would appear as a third arg
+      // and fail this deep-equal, proving the router neither drops-and-retries nor threads a tx.
+      expect(newCalls[0]?.args).toEqual(["new_wp", COMPLETION]);
+      expect(legacyStore.calls.filter((c) => c.method === "markWaitpointCompleted")).toHaveLength(
+        0
+      );
+    });
+
+    it("routes a cuid/legacy waitpointId to the legacy store", async () => {
+      const { router, newStore, legacyStore } = buildRouter(topology);
+      await router.markWaitpointCompleted("legacy_wp", COMPLETION);
+      const legacyCalls = legacyStore.calls.filter((c) => c.method === "markWaitpointCompleted");
+      expect(legacyCalls[0]?.args).toEqual(["legacy_wp", COMPLETION]);
+      expect(newStore.calls.filter((c) => c.method === "markWaitpointCompleted")).toHaveLength(0);
     });
   });
 

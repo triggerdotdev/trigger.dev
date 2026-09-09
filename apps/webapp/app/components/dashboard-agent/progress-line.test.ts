@@ -1,12 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { inFlightToolName, liveInvestigation, liveProgress } from "./progress-line";
+import {
+  earliestInFlightToolCall,
+  hasUnfinishedTextPart,
+  inFlightToolName,
+  liveInvestigation,
+  liveProgress,
+} from "./progress-line";
 
 function assistant(parts: unknown[]) {
   return { role: "assistant", parts };
 }
 
-function pendingTool(name: string) {
-  return { type: `tool-${name}`, state: "input-available" };
+function pendingTool(name: string, callId = name) {
+  return { type: `tool-${name}`, state: "input-available", toolCallId: callId };
+}
+
+function settledTool(name: string, callId = name) {
+  return { type: `tool-${name}`, state: "output-available", toolCallId: callId };
 }
 
 function investigationPart(
@@ -56,6 +66,37 @@ describe("inFlightToolName", () => {
         { role: "user", parts: [{ type: "text", text: "never mind" }] },
       ])
     ).toBeNull();
+  });
+});
+
+describe("earliestInFlightToolCall", () => {
+  it("returns the earliest pending call in emission order", () => {
+    expect(
+      earliestInFlightToolCall([assistant([pendingTool("get_run"), pendingTool("run_query")])])
+    ).toEqual({ callId: "get_run", name: "get_run" });
+  });
+
+  it("distinguishes two parallel calls to the same tool by call id, not name", () => {
+    expect(
+      earliestInFlightToolCall([
+        assistant([pendingTool("get_run", "call_1"), pendingTool("get_run", "call_2")]),
+      ])
+    ).toEqual({ callId: "call_1", name: "get_run" });
+  });
+
+  it("is undefined once nothing is in flight", () => {
+    expect(earliestInFlightToolCall([assistant([settledTool("get_run")])])).toBeUndefined();
+    expect(earliestInFlightToolCall([])).toBeUndefined();
+  });
+
+  it("counts an empty-string call id as present — only a missing id is skipped", () => {
+    expect(earliestInFlightToolCall([assistant([pendingTool("get_run", "")])])).toEqual({
+      callId: "",
+      name: "get_run",
+    });
+    expect(
+      earliestInFlightToolCall([assistant([{ type: "tool-get_run", state: "input-available" }])])
+    ).toBeUndefined();
   });
 });
 
@@ -113,17 +154,13 @@ describe("liveProgress", () => {
     });
   });
 
-  it("prefers a tool's phrase over the generic activity", () => {
-    expect(liveProgress([assistant([pendingTool("get_queue")])], "working")).toEqual({
+  it.each([
+    ["a known tool, over the generic activity", "get_queue", "Reading the queue…"],
+    ["an unknown tool, without a label of its own", "brand_new_tool", "Running brand_new_tool…"],
+  ])("prefers a tool's phrase — %s", (_name, tool, label) => {
+    expect(liveProgress([assistant([pendingTool(tool)])], "working")).toEqual({
       source: "tool",
-      label: "Reading the queue…",
-    });
-  });
-
-  it("names an unknown tool without a label of its own", () => {
-    expect(liveProgress([assistant([pendingTool("brand_new_tool")])], "working")).toEqual({
-      source: "tool",
-      label: "Running brand_new_tool…",
+      label,
     });
   });
 
@@ -218,5 +255,73 @@ describe("liveProgress", () => {
     expect(
       liveProgress([...submitted, assistant([investigationPart("inv_1", 2, "concluded")])], null)
     ).toBeNull();
+  });
+});
+
+/**
+ * A watch wake, the investigation it triggers and a settlement card are all appended
+ * after the answer they follow, and all carry `role: "assistant"`. Reading the literal
+ * last message would hide the call a hang deadline is timing, and let a dead turn look
+ * finished.
+ */
+describe("in-flight detection behind a trailing agent record", () => {
+  const ask = { id: "msg_user", role: "user", parts: [{ type: "text", text: "why?" }] };
+  const answering = { id: "msg_answer", ...assistant([pendingTool("run_query")]) };
+  const answered = { id: "msg_answer", ...assistant([settledTool("run_query")]) };
+  const streaming = {
+    id: "msg_answer",
+    ...assistant([{ type: "text", text: "Looking", state: "streaming" }]),
+  };
+  const wake = {
+    id: "wake:watch:watch_1:fired",
+    ...assistant([{ type: "text", text: "Your watch fired." }]),
+  };
+  const investigation = {
+    id: "investigate:watch:watch_1:fired",
+    ...assistant([{ type: "text", text: "Looking into it." }]),
+  };
+  const turnFailed = {
+    id: "turn-error:2",
+    ...assistant([{ type: "text", text: "That turn failed." }]),
+  };
+
+  it("still finds the pending call when a wake lands on top of it", () => {
+    expect(earliestInFlightToolCall([ask, answering, wake])).toEqual({
+      callId: "run_query",
+      name: "run_query",
+    });
+    expect(inFlightToolName([ask, answering, wake])).toBe("run_query");
+  });
+
+  it("finds it behind a whole watch investigation, not just one record", () => {
+    expect(earliestInFlightToolCall([ask, answering, wake, investigation])).toEqual({
+      callId: "run_query",
+      name: "run_query",
+    });
+  });
+
+  it("finds nothing once that turn's call has settled", () => {
+    expect(earliestInFlightToolCall([ask, answered, wake])).toBeUndefined();
+    expect(inFlightToolName([ask, answered, wake])).toBeNull();
+  });
+
+  it("does not reach back past the turn boundary into an older turn", () => {
+    expect(earliestInFlightToolCall([ask, answering, ask, answered])).toBeUndefined();
+  });
+
+  it("stops at a stored failure: that turn ended and nothing is pending", () => {
+    expect(earliestInFlightToolCall([ask, answering, turnFailed])).toBeUndefined();
+  });
+
+  it("reads streaming text behind a wake as still in flight", () => {
+    expect(hasUnfinishedTextPart([ask, streaming, wake])).toBe(true);
+    expect(hasUnfinishedTextPart([ask, answered, wake])).toBe(false);
+  });
+
+  it("keeps the progress line up while a wake lands mid-turn", () => {
+    expect(liveProgress([ask, answering, wake], "working")).toEqual({
+      source: "tool",
+      label: "Running a query…",
+    });
   });
 });

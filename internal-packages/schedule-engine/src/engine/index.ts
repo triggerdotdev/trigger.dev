@@ -17,6 +17,7 @@ import type {
 } from "./types.js";
 import {
   calculateSchedulePhase,
+  resolveScheduleWindow,
   SCHEDULE_PHASE_DENOMINATOR,
   type NormalizedScheduleWindow,
 } from "./scheduleTiming.js";
@@ -242,6 +243,7 @@ export class ScheduleEngine {
           now: registrationTime,
           schedulePhase,
           window: scheduleWindow,
+          minimumWindowDurationSeconds: instance.taskSchedule.minimumWindowDurationSeconds,
           cronSpreadEnabled: cronSpreadActive,
         });
         const appliedDelayMs = effectiveAt.getTime() - nominalAt.getTime();
@@ -555,6 +557,7 @@ export class ScheduleEngine {
             now: actualExecutionTime,
             schedulePhase,
             window: scheduleWindow,
+            minimumWindowDurationSeconds: instance.taskSchedule.minimumWindowDurationSeconds,
             cronSpreadEnabled: cronSpreadActive,
           });
           const upcoming = [
@@ -1039,17 +1042,15 @@ export class ScheduleEngine {
 function normalizedScheduleWindow({
   windowDurationSeconds,
   windowPercentage,
+  defaultWindowDurationSeconds,
 }: {
   windowDurationSeconds: number | null;
   windowPercentage: number | null;
+  defaultWindowDurationSeconds?: number | null;
 }): NormalizedScheduleWindow | undefined {
-  if (windowPercentage !== null) {
-    return { type: "percentage", percentage: windowPercentage };
-  }
-
-  if (windowDurationSeconds !== null) {
-    return { type: "duration", durationSeconds: windowDurationSeconds };
-  }
-
-  return undefined;
+  return resolveScheduleWindow({
+    windowDurationSeconds,
+    windowPercentage,
+    defaultWindowDurationSeconds,
+  }).window;
 }

@@ -138,11 +138,6 @@ export interface ClickhouseReader {
      */
     settings?: ClickHouseSettings;
     /**
-     * Extra fields to attach to the error log if the query fails. Use this to
-     * record what produced the SQL, e.g. the TSQL a caller actually wrote.
-     */
-    logFields?: Record<string, unknown>;
-    /**
      * Set when the SQL originates from whoever made the request rather than
      * from us. Invalid-SQL rejections are then their mistake, not a bug.
      */

@@ -1,8 +1,12 @@
-import type { PrismaClient, RuntimeEnvironment } from "@trigger.dev/database";
+import type {
+  PrismaClient,
+  PrismaTransactionClient,
+  RuntimeEnvironment,
+} from "@trigger.dev/database";
 import type { HostRbacController } from "@trigger.dev/rbac";
 import { customAlphabet } from "nanoid";
 import { MAX_API_KEY_TASK_IDENTIFIERS } from "~/consts";
-import { boundedIn, prisma } from "~/db.server";
+import { $transaction, boundedIn, prisma } from "~/db.server";
 import { RuntimeEnvironmentType } from "~/database-types";
 import { canIssueAdditionalApiKeys } from "~/services/additionalApiKeyIssuance.server";
 import { apiKeyTelemetry, type ApiKeyTelemetry } from "~/services/apiKeyTelemetry.server";
@@ -17,87 +21,187 @@ const apiKeyId = customAlphabet(
 
 const REVOKED_API_KEY_GRACE_PERIOD_MS = 24 * 60 * 60 * 1000;
 
-type RegenerateAPIKeyInput = {
+type RootApiKeyMutationInput = {
   userId: string;
   environmentId: string;
 };
 
-export async function regenerateApiKey({ userId, environmentId }: RegenerateAPIKeyInput) {
-  const environment = await prisma.runtimeEnvironment.findUnique({
+export class RootApiKeyNotVisibleError extends Error {
+  constructor() {
+    super("The root API key is no longer visible");
+    this.name = "RootApiKeyNotVisibleError";
+  }
+}
+
+async function findRootApiKeyEnvironment(
+  { userId, environmentId }: RootApiKeyMutationInput,
+  prismaClient: PrismaClient
+) {
+  const requestedEnvironment = await prismaClient.runtimeEnvironment.findFirst({
     where: {
       id: environmentId,
+      organization: { members: { some: { userId } } },
+      OR: [
+        { type: { not: RuntimeEnvironmentType.DEVELOPMENT } },
+        {
+          type: RuntimeEnvironmentType.DEVELOPMENT,
+          orgMember: { userId },
+        },
+      ],
     },
-    include: {
-      organization: true,
-      project: true,
+    select: { id: true, parentEnvironmentId: true },
+  });
+
+  if (!requestedEnvironment) {
+    throw new Error("User does not have permission to manage this root API key");
+  }
+
+  const environment = await prismaClient.runtimeEnvironment.findFirst({
+    where: {
+      id: requestedEnvironment.parentEnvironmentId ?? requestedEnvironment.id,
+      organization: { members: { some: { userId } } },
+      OR: [
+        { type: { not: RuntimeEnvironmentType.DEVELOPMENT } },
+        {
+          type: RuntimeEnvironmentType.DEVELOPMENT,
+          orgMember: { userId },
+        },
+      ],
+    },
+    select: {
+      id: true,
+      apiKey: true,
+      pkApiKey: true,
+      rootApiKeyHiddenAt: true,
+      type: true,
+      projectId: true,
+      branchName: true,
     },
   });
 
   if (!environment) {
-    throw new Error("Environment does not exist");
+    throw new Error("User does not have permission to manage this root API key");
   }
 
-  // check if the user is part of the org
-  const organization = await prisma.organization.findFirst({
-    where: {
-      id: environment.organization.id,
-      members: { some: { userId } },
-    },
-  });
-
-  if (!organization) {
-    throw new Error("User does not have permission to regenerate API key");
+  if (environment.rootApiKeyHiddenAt) {
+    throw new RootApiKeyNotVisibleError();
   }
 
-  // check if it is the user's dev environment
-  if (environment.type === RuntimeEnvironmentType.DEVELOPMENT) {
-    if (!environment.orgMemberId) {
-      throw new Error("User does not have permission to regenerate API key");
-    }
+  return environment;
+}
 
-    const orgMember = await prisma.orgMember.findFirst({
-      where: {
-        organizationId: organization.id,
-        userId: userId,
-        id: environment.orgMemberId,
-      },
-    });
+async function lockVisibleRootApiKeyEnvironment(
+  prismaClient: PrismaTransactionClient,
+  environmentId: string
+) {
+  const [environment] = await prismaClient.$queryRaw<
+    Array<{ apiKey: string; rootApiKeyHiddenAt: Date | null }>
+  >`
+    SELECT "apiKey", "rootApiKeyHiddenAt"
+    FROM "public"."RuntimeEnvironment"
+    WHERE "id" = ${environmentId}
+    FOR UPDATE
+  `;
 
-    if (!orgMember) {
-      throw new Error("User does not have permission to regenerate API key");
-    }
+  if (!environment || environment.rootApiKeyHiddenAt) {
+    throw new RootApiKeyNotVisibleError();
   }
 
-  // generate and store new keys
+  return environment;
+}
+
+export async function regenerateApiKey(
+  input: RootApiKeyMutationInput,
+  { prismaClient = prisma }: { prismaClient?: PrismaClient } = {}
+) {
+  const environment = await findRootApiKeyEnvironment(input, prismaClient);
   const newApiKey = createApiKeyForEnv(environment.type);
   const newPkApiKey = createPkApiKeyForEnv(environment.type);
-
   const revokedApiKeyExpiresAt = new Date(Date.now() + REVOKED_API_KEY_GRACE_PERIOD_MS);
 
-  const updatedEnviroment = await prisma.$transaction(async (tx) => {
-    await tx.revokedApiKey.create({
-      data: {
-        apiKey: environment.apiKey,
-        runtimeEnvironmentId: environment.id,
-        expiresAt: revokedApiKeyExpiresAt,
-      },
-    });
+  const updatedEnvironment = await $transaction(
+    prismaClient,
+    "regenerate root API key",
+    async (tx) => {
+      const currentEnvironment = await lockVisibleRootApiKeyEnvironment(tx, environment.id);
 
-    return tx.runtimeEnvironment.update({
-      data: {
+      await tx.runtimeEnvironment.update({
+        where: { id: environment.id },
+        data: {
+          apiKey: newApiKey,
+          pkApiKey: newPkApiKey,
+        },
+      });
+
+      await tx.revokedApiKey.create({
+        data: {
+          apiKey: currentEnvironment.apiKey,
+          runtimeEnvironmentId: environment.id,
+          expiresAt: revokedApiKeyExpiresAt,
+        },
+      });
+
+      return { ...environment, apiKey: newApiKey, pkApiKey: newPkApiKey };
+    }
+  );
+
+  if (!updatedEnvironment) {
+    throw new Error("The root API key could not be regenerated");
+  }
+
+  controlPlaneResolver.invalidateEnvironment(environment.id);
+
+  return updatedEnvironment;
+}
+
+export async function disableRootApiKeyVisibility(
+  input: RootApiKeyMutationInput,
+  { prismaClient = prisma }: { prismaClient?: PrismaClient } = {}
+) {
+  const environment = await findRootApiKeyEnvironment(input, prismaClient);
+  const newApiKey = createApiKeyForEnv(environment.type);
+  const newPkApiKey = createPkApiKeyForEnv(environment.type);
+  const rootApiKeyHiddenAt = new Date();
+
+  const updatedEnvironment = await $transaction(
+    prismaClient,
+    "disable root API key visibility",
+    async (tx) => {
+      const currentEnvironment = await lockVisibleRootApiKeyEnvironment(tx, environment.id);
+
+      await tx.runtimeEnvironment.update({
+        where: { id: environment.id },
+        data: {
+          apiKey: newApiKey,
+          pkApiKey: newPkApiKey,
+          rootApiKeyHiddenAt,
+        },
+      });
+
+      await tx.revokedApiKey.create({
+        data: {
+          apiKey: currentEnvironment.apiKey,
+          runtimeEnvironmentId: environment.id,
+          expiresAt: new Date(Date.now() + REVOKED_API_KEY_GRACE_PERIOD_MS),
+        },
+      });
+
+      return {
+        ...environment,
         apiKey: newApiKey,
         pkApiKey: newPkApiKey,
-      },
-      where: {
-        id: environmentId,
-      },
-    });
-  });
+        rootApiKeyHiddenAt,
+      };
+    }
+  );
 
-  // The env's apiKey changed in the control-plane; drop any cached copy.
-  controlPlaneResolver.invalidateEnvironment(environmentId);
+  if (!updatedEnvironment) {
+    throw new Error("Root API key visibility could not be disabled");
+  }
 
-  return updatedEnviroment;
+  controlPlaneResolver.invalidateEnvironment(environment.id);
+
+  return updatedEnvironment;
 }
 
 export async function createEnvironmentApiKey(

@@ -1,13 +1,8 @@
 import { type LoaderFunctionArgs, redirect } from "@remix-run/server-runtime";
 import { z } from "zod";
-import {
-  aiHelpDocsUrl,
-  aiHelpRedirectUrl,
-  askAiCanOpen,
-} from "~/components/dashboard-agent/ask-ai-channels";
+import { aiHelpDocsUrl, aiHelpRedirectUrl } from "~/components/dashboard-agent/ask-ai-channels";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
-import { featuresForRequest } from "~/features.server";
 import { hasAdminDisplayAccess, requireUser } from "~/services/session.server";
 import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
 import { v3EnvironmentPath } from "~/utils/pathBuilder";
@@ -50,20 +45,15 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   }
 
   const showAdminUi = hasAdminDisplayAccess(user);
-  const canOpenSomething =
-    askAiCanOpen({
-      isManagedCloud: featuresForRequest(request).isManagedCloud,
-      kapaWebsiteId: env.KAPA_AI_WEBSITE_ID,
-    }) ||
-    (await canAccessDashboardAgent({
-      userId,
-      isAdmin: showAdminUi && user.admin,
-      isImpersonating: showAdminUi && user.isImpersonating,
-      organizationSlug: project.organization.slug,
-      orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
-    }));
+  const canOpenAgent = await canAccessDashboardAgent({
+    userId,
+    isAdmin: showAdminUi && user.admin,
+    isImpersonating: showAdminUi && user.isImpersonating,
+    organizationSlug: project.organization.slug,
+    orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
+  });
 
-  if (!canOpenSomething) {
+  if (!canOpenAgent) {
     return redirect(aiHelpDocsUrl(query));
   }
 

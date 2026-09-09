@@ -10,7 +10,9 @@ import { DASHBOARD_AGENT_ENV_JWT_SCOPES } from "./tool-schemas.js";
 // be read as a definite 404.
 export type FetchResult =
   | { ok: true; data: unknown }
-  | { ok: false; status: number }
+  // `data` is best-effort: present only when the error response had a parseable JSON body (e.g.
+  // locate's 404 carries `{ found: false, truncated: true }`), absent otherwise.
+  | { ok: false; status: number; data?: unknown }
   | { ok: false; transport: string };
 
 /** How a failed GET is phrased, so "couldn't read" never reads as "isn't there". */
@@ -70,7 +72,13 @@ export async function apiGet(
   } catch (error) {
     return { ok: false, transport: (error as Error).message };
   }
-  if (!res.ok) return { ok: false, status: res.status };
+  if (!res.ok) {
+    try {
+      return { ok: false, status: res.status, data: await res.json() };
+    } catch {
+      return { ok: false, status: res.status };
+    }
+  }
   try {
     return { ok: true, data: await res.json() };
   } catch (error) {
@@ -78,23 +86,27 @@ export async function apiGet(
   }
 }
 
+/** Which environment a read is aimed at. Explicit on every call: one turn may read two. */
+export type EnvTarget = { projectRef: string; environmentName: string; branch?: string };
+
 // The exchange ceilings these scopes to the delegated token's read-only cap, so the
 // JWT can never widen the grant.
 async function exchangeEnvJwt(
   origin: string,
   userActorToken: string,
-  projectRef: string,
-  environmentName: string,
-  branch?: string
-): Promise<{ ok: true; token: string } | EnvUnavailable> {
+  target: EnvTarget
+): Promise<{ ok: true; token: string; environmentId?: string } | EnvUnavailable> {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${userActorToken}`,
     "Content-Type": "application/json",
   };
-  if (branch) headers["x-trigger-branch"] = branch;
+  if (target.branch) headers["x-trigger-branch"] = target.branch;
+  const path = `/api/v1/projects/${encodeURIComponent(target.projectRef)}/${encodeURIComponent(
+    target.environmentName
+  )}/jwt`;
   let res: Response;
   try {
-    res = await fetch(`${origin}/api/v1/projects/${projectRef}/${environmentName}/jwt`, {
+    res = await fetch(`${origin}${path}`, {
       method: "POST",
       headers,
       body: JSON.stringify({ claims: { scopes: [...DASHBOARD_AGENT_ENV_JWT_SCOPES] } }),
@@ -104,9 +116,9 @@ async function exchangeEnvJwt(
     return { ok: false, envUnavailable: "unknown" };
   }
   if (!res.ok) return { ok: false, envUnavailable: "unknown", status: res.status };
-  const data = (await res.json().catch(() => ({}))) as { token?: string };
+  const data = (await res.json().catch(() => ({}))) as { token?: string; environmentId?: string };
   if (!data.token) return { ok: false, envUnavailable: "unknown" };
-  return { ok: true, token: data.token };
+  return { ok: true, token: data.token, environmentId: data.environmentId };
 }
 
 export type DashboardAgentApiClient = {
@@ -114,45 +126,71 @@ export type DashboardAgentApiClient = {
   origin: string;
   /** Whether this turn has both a delegated token and an origin to spend it on. */
   hasAuth: boolean;
-  /** A GET as the environment JWT, or why no environment JWT could be made. */
-  envApiGet(path: string): Promise<EnvFetchResult>;
-  postQuery(query: string, period: string | undefined): Promise<QueryPostResult | EnvUnavailable>;
-  validateChartQuery(query: string, period: string | undefined): Promise<string | null>;
+  /** A GET as the target's environment JWT, or why no environment JWT could be made. */
+  envApiGet(path: string, target: EnvTarget): Promise<EnvFetchResult>;
+  postQuery(
+    query: string,
+    period: string | undefined,
+    target: EnvTarget
+  ): Promise<QueryPostResult | EnvUnavailable>;
+  validateChartQuery(
+    query: string,
+    period: string | undefined,
+    target: EnvTarget | undefined
+  ): Promise<string | null>;
+  /** The RuntimeEnvironment id the exchange resolved the target to, when it landed. */
+  environmentIdFor(target: EnvTarget): Promise<string | undefined>;
 };
 
 export type ApiClientContext = {
   userActorToken?: string;
   apiOrigin?: string;
+  // Fallback identity only, for an exchange that answered without an `environmentId`
+  // (a webapp from before that field, mid-deploy) — never a target itself.
   projectRef?: string;
   environmentName?: string;
   environmentBranch?: string;
+  environmentId?: string;
 };
 
 export function createApiClient(ctx: ApiClientContext): DashboardAgentApiClient {
-  const { userActorToken, apiOrigin, projectRef, environmentName, environmentBranch } = ctx;
+  const { userActorToken, apiOrigin } = ctx;
   const origin = apiOrigin ? apiOrigin.replace(/\/$/, "") : "";
   const hasAuth = Boolean(userActorToken && origin);
 
-  // Turn-scoped, since the tool set is rebuilt per turn, and keyed by project +
-  // environment. Caching the promise makes concurrent calls share one exchange.
-  type EnvJwt = { ok: true; token: string } | EnvUnavailable;
+  // A different target keeps failing closed: cross-target evidence may never guess its scope.
+  function conversationEnvironmentId(target: EnvTarget): string | undefined {
+    const sameEnvironment =
+      target.projectRef === ctx.projectRef &&
+      target.environmentName === ctx.environmentName &&
+      (target.branch || undefined) === (ctx.environmentBranch || undefined);
+    return sameEnvironment ? ctx.environmentId : undefined;
+  }
+
+  // Turn-scoped, since the tool set is rebuilt per turn, and keyed by the whole target,
+  // branch included. Caching the promise makes concurrent calls share one exchange.
+  type EnvJwt = { ok: true; token: string; environmentId: string } | EnvUnavailable;
   const envJwts = new Map<string, Promise<EnvJwt>>();
-  function getEnvJwt(refresh = false): Promise<EnvJwt> {
-    if (!hasAuth || !projectRef || !environmentName) return Promise.resolve(MISSING_ENV);
-    const key = `${projectRef}/${environmentName}/${environmentBranch ?? ""}`;
+  function getEnvJwt(target: EnvTarget, refresh = false): Promise<EnvJwt> {
+    if (!hasAuth) return Promise.resolve(MISSING_ENV);
+    const key = `${target.projectRef}/${target.environmentName}/${target.branch ?? ""}`;
     if (refresh) envJwts.delete(key);
     let pending = envJwts.get(key);
     if (!pending) {
       // A failed exchange is not cached: a 403 or a 5xx would otherwise pin the whole turn.
-      pending = exchangeEnvJwt(
-        origin,
-        userActorToken!,
-        projectRef,
-        environmentName,
-        environmentBranch
-      ).then((result) => {
-        if (!result.ok) envJwts.delete(key);
-        return result;
+      pending = exchangeEnvJwt(origin, userActorToken!, target).then((result) => {
+        if (!result.ok) {
+          envJwts.delete(key);
+          return result;
+        }
+        // Without an id the read would work while every scope it is evidence for silently
+        // degrades, so an exchange that names no environment is a failed exchange.
+        const environmentId = result.environmentId ?? conversationEnvironmentId(target);
+        if (!environmentId) {
+          envJwts.delete(key);
+          return { ok: false, envUnavailable: "unknown" } satisfies EnvUnavailable;
+        }
+        return { ok: true, token: result.token, environmentId };
       });
       envJwts.set(key, pending);
     }
@@ -164,14 +202,15 @@ export function createApiClient(ctx: ApiClientContext): DashboardAgentApiClient 
    * since a token can be minted stale.
    */
   async function withEnvJwt<T extends object>(
+    target: EnvTarget,
     call: (jwt: string) => Promise<T>,
     isUnauthorized: (result: T) => boolean
   ): Promise<T | EnvUnavailable> {
-    const jwt = await getEnvJwt();
+    const jwt = await getEnvJwt(target);
     if (!jwt.ok) return jwt;
     const first = await call(jwt.token);
     if (!isUnauthorized(first)) return first;
-    const fresh = await getEnvJwt(true);
+    const fresh = await getEnvJwt(target, true);
     if (!fresh.ok) return first;
     return call(fresh.token);
   }
@@ -179,17 +218,24 @@ export function createApiClient(ctx: ApiClientContext): DashboardAgentApiClient 
   const unauthorizedGet = (result: FetchResult) =>
     !result.ok && "status" in result && result.status === 401;
 
-  function envApiGet(path: string): Promise<EnvFetchResult> {
-    return withEnvJwt((jwt) => apiGet(origin, path, jwt), unauthorizedGet);
+  function envApiGet(path: string, target: EnvTarget): Promise<EnvFetchResult> {
+    return withEnvJwt(target, (jwt) => apiGet(origin, path, jwt), unauthorizedGet);
+  }
+
+  async function environmentIdFor(target: EnvTarget): Promise<string | undefined> {
+    const jwt = await getEnvJwt(target);
+    return jwt.ok ? jwt.environmentId : undefined;
   }
 
   // A POST, so it can't use envApiGet, but keeps the same JWT cache and one-shot
   // re-exchange on a 401. Shared by run_query and chart-block validation.
   async function postQuery(
     query: string,
-    period: string | undefined
+    period: string | undefined,
+    target: EnvTarget
   ): Promise<QueryPostResult | EnvUnavailable> {
     const attempt = await withEnvJwt<{ res: Response } | { error: string }>(
+      target,
       async (jwt) => {
         try {
           return {
@@ -240,9 +286,11 @@ export function createApiClient(ctx: ApiClientContext): DashboardAgentApiClient 
   // Skipped rather than blocking the render when there is no token or the request broke.
   async function validateChartQuery(
     query: string,
-    period: string | undefined
+    period: string | undefined,
+    target: EnvTarget | undefined
   ): Promise<string | null> {
-    const result = await postQuery(query, period);
+    if (!target) return null;
+    const result = await postQuery(query, period, target);
     if (isEnvUnavailable(result) || result.ok) return null;
     if (result.kind === "transport" || result.kind === "busy") {
       logger.warn("Skipped chart query validation", { error: result.error });
@@ -251,5 +299,5 @@ export function createApiClient(ctx: ApiClientContext): DashboardAgentApiClient 
     return result.error;
   }
 
-  return { origin, hasAuth, envApiGet, postQuery, validateChartQuery };
+  return { origin, hasAuth, envApiGet, postQuery, validateChartQuery, environmentIdFor };
 }

@@ -115,6 +115,7 @@
                   "ai-chat/pending-messages",
                   "ai-chat/background-injection",
                   "ai-chat/actions",
+                  "ai-chat/transcript-storage",
                   "ai-chat/error-handling"
                 ]
               },
@@ -278,6 +279,7 @@
               "how-to-reduce-your-spend",
               "troubleshooting-debugging-in-vscode",
               "upgrading-packages",
+              "troubleshooting-zod",
               "troubleshooting-uptime-status",
               "troubleshooting-github-issues",
               "request-feature"
@@ -537,12 +539,14 @@
             "group": "Example projects",
             "pages": [
               "guides/example-projects/anchor-browser-web-scraper",
+              "guides/example-projects/ask-trigger-chat-agent",
               "guides/example-projects/batch-llm-evaluator",
               "guides/example-projects/claude-changelog-generator",
               "guides/example-projects/claude-github-wiki",
               "guides/example-projects/claude-thinking-chatbot",
               "guides/example-projects/clickhouse-chat-agent",
               "guides/example-projects/cursor-background-agent",
+              "guides/example-projects/elevenlabs-voice-agent",
               "guides/example-projects/human-in-the-loop-workflow",
               "guides/example-projects/mastra-agents-with-memory",
               "guides/example-projects/meme-generator-human-in-the-loop",

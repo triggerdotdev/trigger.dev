@@ -196,11 +196,13 @@ instructions, `onTurnStart` and `onTurnComplete`, persistence), and `run()` rece
 `trigger: "action-turn"`. `onAction` has no `streamText` argument, and returning a
 `StreamTextResult`, string or `UIMessage` from it throws.
 
-Persistence splits by model. Without `hydrateMessages` the runtime snapshots the conversation after
-an action that changed it, before any turn starts, so a rollback survives the run ending. With
-`hydrateMessages` your store is the source of truth and the runtime does not write, so mirror every
-mutation yourself: a regenerate is a delete in `onAction` and an insert that arrives in
-`onTurnComplete` like any turn's answer.
+Persistence splits by model. With transcript storage (`storage` on `chat.agent`; the platform
+snapshot by default), the runtime hands storage a changeset with `reason: "action"` after an action
+that changed the conversation: an undo is one `truncateAfter`, a regenerate is a `truncateAfter`
+followed by the new answer's `put` when the turn completes, and an edit is a `put` for the edited
+id. With the deprecated `hydrateMessages` your store is the source of truth and the runtime does
+not write, so mirror every mutation yourself: a regenerate is a delete and an insert, and the
+answer that follows `chat.turn()` arrives through `onTurnComplete` like any turn's answer.
 
 ```ts
 export const myChat = chat.agent({

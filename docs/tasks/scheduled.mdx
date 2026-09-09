@@ -184,6 +184,30 @@ const createdSchedule = await schedules.create({
   is the assigned time the run will actually start.
 </Note>
 
+### Free-plan minimum window
+
+Schedules created while an organization is on a free plan run no more than once per hour and use a minimum 60-minute window.
+
+- The minimum applies to the **cron cadence**: creating or deploying a schedule whose cron fires more often than once an hour is rejected with an actionable error. Change the cron expression or upgrade before saving.
+- Omitted, zero (`"0m"` / `"0%"`), or smaller windows are treated as the 60-minute minimum. A larger configured window still wins, subject to the usual cap at the next cron occurrence.
+- The policy applies to **all environment types**, including Development.
+- It is captured when the schedule is created. Existing schedules — and schedules created while paid, even after a later downgrade — are **grandfathered** and keep running unchanged.
+- Upgrading does not immediately rewrite existing schedules. A free-created restriction is cleared the next time the schedule is saved (imperative/dashboard) or redeployed (declarative) while the organization is paying.
+- No runs are ever skipped or coalesced: unsupported high-frequency schedules are rejected at create/update time rather than silently thinned out.
+- Self-hosted deployments, and any case where the billing plan can't be determined, are unrestricted.
+
+When a schedule is subject to this policy, the API returns an `appliedSchedulePolicy` object alongside the configured `window`:
+
+```json
+{
+  "window": "0m",
+  "appliedSchedulePolicy": {
+    "minimumWindowSeconds": 3600,
+    "reason": "free_schedule"
+  }
+}
+```
+
 ## Supported cron syntax
 
 ```

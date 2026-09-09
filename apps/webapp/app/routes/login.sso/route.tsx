@@ -1,5 +1,5 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { ArrowLeftIcon, ArrowUpRightIcon } from "@heroicons/react/20/solid";
 import type { LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
 import { Form, useNavigation } from "@remix-run/react";
@@ -67,7 +67,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 // inline error before submit. Server-side errors keep flowing via ?error=.
 const ssoEmailSchema = z.object({
   email: z
-    .string({ required_error: "Enter your enterprise email address" })
+    .string({ error: "Enter your enterprise email address" })
     .email("Enter a valid email address"),
 });
 

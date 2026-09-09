@@ -83,8 +83,10 @@ const FIXTURES: Record<EnvelopedViewBlock["type"], EnvelopedViewBlock> = {
 
 const blockTypes = viewBlockSchema.options.map((option) => option.shape.type.value);
 
-function renderedChildren(blocks: EnvelopedViewBlock[]) {
-  const tree = ViewBlocks({ blocks, onIntent: () => {} });
+function renderedChildren(blocks: EnvelopedViewBlock[], watchEnabled = true) {
+  // `watch_result` renders nothing unless the flag is on: this proves every type has a
+  // renderer, so the flag must be, not the withholding this file isn't testing.
+  const tree = ViewBlocks({ blocks, onIntent: () => {}, watchEnabled });
   expect(isValidElement(tree)).toBe(true);
   const children = (tree as { props: { children: unknown } }).props.children;
   return Array.isArray(children) ? children : [children];
@@ -104,6 +106,12 @@ describe("ViewBlocks covers the block contract", () => {
     const [rendered] = renderedChildren([block]);
     expect(rendered, `ViewBlocks renders nothing for a ${type} block`).not.toBeNull();
     expect(isValidElement(rendered)).toBe(true);
+  });
+
+  it("withholds the watch_result block while watch functionality is disabled", () => {
+    const block = viewBlockSchema.parse(FIXTURES.watch_result) as EnvelopedViewBlock;
+    const [rendered] = renderedChildren([block], false);
+    expect(rendered).toBeNull();
   });
 
   it("renders every block type together, in order", () => {

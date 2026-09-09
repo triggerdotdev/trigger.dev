@@ -17,6 +17,36 @@ export const ErrorGroupsListQueryResult = z.object({
 
 export type ErrorGroupsListQueryResult = z.infer<typeof ErrorGroupsListQueryResult>;
 
+export const ErrorGroupLocationsQueryResult = z.object({
+  environment_id: z.string(),
+  task_identifier: z.string(),
+});
+
+export type ErrorGroupLocationsQueryResult = z.infer<typeof ErrorGroupLocationsQueryResult>;
+
+/**
+ * Gets a query builder for locating which (environment, task) pairs a fingerprint has occurred
+ * in, across an entire organization in one query — `errors_v1` is `ORDER BY (organization_id,
+ * project_id, environment_id, task_identifier, error_fingerprint)`, so filtering by
+ * `organization_id` alone still prunes to that org's key range.
+ */
+export function getErrorGroupLocationsQueryBuilder(
+  ch: ClickhouseReader,
+  settings?: ClickHouseSettings
+) {
+  return ch.queryBuilder({
+    name: "getErrorGroupLocations",
+    baseQuery: `
+      SELECT
+        environment_id,
+        task_identifier
+      FROM trigger_dev.errors_v1
+    `,
+    schema: ErrorGroupLocationsQueryResult,
+    settings,
+  });
+}
+
 /**
  * Gets a query builder for listing error groups from the pre-aggregated errors_v1 table.
  * Allows flexible filtering and pagination.

@@ -67,8 +67,11 @@ export class CheckpointSystem {
 
       if (!isValidSnapshot) {
         this.$.logger.info("Tried to createCheckpoint on an invalid snapshot", {
-          snapshot,
+          runId,
           snapshotId,
+          latestSnapshotId: snapshot.id,
+          latestSnapshotExecutionStatus: snapshot.executionStatus,
+          latestSnapshotPreviousSnapshotId: snapshot.previousSnapshotId,
         });
 
         this.$.eventBus.emit("incomingCheckpointDiscarded", {
@@ -94,7 +97,9 @@ export class CheckpointSystem {
 
       if (!isCheckpointable(snapshot.executionStatus)) {
         this.$.logger.error("Tried to createCheckpoint on a run in an invalid state", {
-          snapshot,
+          runId,
+          snapshotId: snapshot.id,
+          executionStatus: snapshot.executionStatus,
         });
 
         this.$.eventBus.emit("incomingCheckpointDiscarded", {
@@ -130,7 +135,9 @@ export class CheckpointSystem {
 
       if (!run) {
         this.$.logger.error("Run not found for createCheckpoint", {
-          snapshot,
+          runId,
+          snapshotId: snapshot.id,
+          executionStatus: snapshot.executionStatus,
         });
 
         throw new ServiceValidationError("Run not found", 404);
@@ -140,7 +147,9 @@ export class CheckpointSystem {
 
       if (!env) {
         this.$.logger.error("Environment not found for createCheckpoint", {
-          snapshot,
+          runId,
+          snapshotId: snapshot.id,
+          executionStatus: snapshot.executionStatus,
           runtimeEnvironmentId: run.runtimeEnvironmentId,
         });
 
@@ -208,8 +217,11 @@ export class CheckpointSystem {
         });
 
         this.$.logger.debug("Releasing concurrency for run because it was checkpointed", {
-          snapshot,
-          newSnapshot,
+          runId,
+          snapshotId: snapshot.id,
+          executionStatus: snapshot.executionStatus,
+          newSnapshotId: newSnapshot.id,
+          newExecutionStatus: newSnapshot.executionStatus,
         });
 
         if (run.organizationId) {
@@ -246,8 +258,11 @@ export class CheckpointSystem {
         });
 
         this.$.logger.debug("Releasing concurrency for run because it was checkpointed", {
-          snapshot,
-          newSnapshot,
+          runId,
+          snapshotId: snapshot.id,
+          executionStatus: snapshot.executionStatus,
+          newSnapshotId: newSnapshot.id,
+          newExecutionStatus: newSnapshot.executionStatus,
         });
 
         if (run.organizationId) {
@@ -335,7 +350,9 @@ export class CheckpointSystem {
 
       if (!run) {
         this.$.logger.error("Run not found for createCheckpoint", {
-          snapshot,
+          runId,
+          snapshotId: snapshot.id,
+          executionStatus: snapshot.executionStatus,
         });
 
         throw new ServiceValidationError("Run not found", 404);

@@ -10,6 +10,7 @@ export const FEATURE_FLAG = {
   hasAiAccess: "hasAiAccess",
   hasDashboardAgentAccess: "hasDashboardAgentAccess",
   dashboardAgentTurnEvalsEnabled: "dashboardAgentTurnEvalsEnabled",
+  dashboardAgentWatchEnabled: "dashboardAgentWatchEnabled",
   promotedDashboardAgentPrompt: "promotedDashboardAgentPrompt",
   hasComputeAccess: "hasComputeAccess",
   hasPrivateConnections: "hasPrivateConnections",
@@ -43,13 +44,14 @@ export const FEATURE_FLAG = {
   deployBuildPathPreview: "deployBuildPathPreview",
   deployBuildPathStaging: "deployBuildPathStaging",
   deployBuildPathProduction: "deployBuildPathProduction",
-  // Per-organization rollout for creating additional environment API keys.
+  // Per-organization control for creating additional environment API keys. Defaults on.
   additionalApiKeysEnabled: "additionalApiKeysEnabled",
-  // System-wide kill switch for issuing additional environment API keys.
+  // System-wide kill switch for issuing additional environment API keys. Defaults on.
   additionalApiKeyIssuanceEnabled: "additionalApiKeyIssuanceEnabled",
-  // System-wide kill switch for additional (scoped) environment API-key lookup.
-  // Defaults off; enable during rollout once the new lookup path is trusted.
+  // System-wide kill switch for additional (scoped) environment API-key lookup. Defaults on.
   additionalApiKeyLookupEnabled: "additionalApiKeyLookupEnabled",
+  scheduleDefaultWindowEnabled: "scheduleDefaultWindowEnabled",
+  freeScheduleMinimumWindowEnabled: "freeScheduleMinimumWindowEnabled",
 } as const;
 
 export const FeatureFlagCatalog = {
@@ -68,6 +70,11 @@ export const FeatureFlagCatalog = {
   // Strict z.boolean(): coercion reads the string "false" as true, which would keep judging
   // an org that asked us to stop.
   [FEATURE_FLAG.dashboardAgentTurnEvalsEnabled]: z.boolean(),
+  // Gates the agent's watches — the tools, the prompt guidance and the watch UI.
+  // Per-org override wins over DASHBOARD_AGENT_WATCH_ENABLED; both default off.
+  // Strict z.boolean(): coercion reads the string "false" as true, which would
+  // turn the switch on for an org that never asked for it.
+  [FEATURE_FLAG.dashboardAgentWatchEnabled]: z.boolean(),
   // A JSON string because this catalog is scalar-only. Validated where it's read, in
   // `suggested-prompts/promotedPrompt.server.ts`.
   [FEATURE_FLAG.promotedDashboardAgentPrompt]: z.string(),
@@ -158,11 +165,12 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.deployBuildPathPreview]: DeployBuildPath,
   [FEATURE_FLAG.deployBuildPathStaging]: DeployBuildPath,
   [FEATURE_FLAG.deployBuildPathProduction]: DeployBuildPath,
-  // Strict booleans prevent a stringified "false" from silently enabling API-key
-  // creation or lookup. Cold/absent values resolve to the safe `false`.
+  // Strict booleans prevent stringified values from silently changing API-key behavior.
   [FEATURE_FLAG.additionalApiKeysEnabled]: z.boolean(),
   [FEATURE_FLAG.additionalApiKeyIssuanceEnabled]: z.boolean(),
   [FEATURE_FLAG.additionalApiKeyLookupEnabled]: z.boolean(),
+  [FEATURE_FLAG.scheduleDefaultWindowEnabled]: z.boolean(),
+  [FEATURE_FLAG.freeScheduleMinimumWindowEnabled]: z.boolean(),
 };
 
 export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;
@@ -248,8 +256,10 @@ export type FeatureFlagCatalog = z.infer<typeof FeatureFlagCatalogSchema>;
 export function validateFeatureFlagValue<T extends FeatureFlagKey>(
   key: T,
   value: unknown
-): z.SafeParseReturnType<unknown, z.infer<(typeof FeatureFlagCatalog)[T]>> {
-  return FeatureFlagCatalog[key].safeParse(value);
+): ReturnType<(typeof FeatureFlagCatalog)[T]["safeParse"]> {
+  return FeatureFlagCatalog[key].safeParse(value) as ReturnType<
+    (typeof FeatureFlagCatalog)[T]["safeParse"]
+  >;
 }
 
 // Utility function to validate partial feature flags (all keys optional)
@@ -313,23 +323,28 @@ export type FlagControlType =
   | { type: "number"; min?: number; max?: number }
   | { type: "string" };
 
-function getFlagControlType(schema: z.ZodTypeAny): FlagControlType {
-  const typeName = schema._def.typeName;
+function getFlagControlType(schema: z.ZodType): FlagControlType {
+  // zod v4: schema.def.type is a lowercase tag ("boolean"/"enum"/"number"/...).
+  const def = schema.def as {
+    type: string;
+    checks?: Array<{ _zod?: { def?: { check?: string; value?: number } } }>;
+  };
 
-  if (typeName === "ZodBoolean") {
+  if (def.type === "boolean") {
     return { type: "boolean" };
   }
 
-  if (typeName === "ZodEnum") {
-    return { type: "enum", options: schema._def.values as string[] };
+  if (def.type === "enum") {
+    return { type: "enum", options: (schema as z.ZodEnum).options as string[] };
   }
 
-  // z.coerce.number() reports as ZodNumber; pull min/max out of its checks
-  // so the UI can render a constrained number input instead of free text.
-  if (typeName === "ZodNumber") {
-    const checks = (schema._def.checks ?? []) as Array<{ kind: string; value?: number }>;
-    const min = checks.find((c) => c.kind === "min")?.value;
-    const max = checks.find((c) => c.kind === "max")?.value;
+  // z.coerce.number() reports as "number"; pull min/max out of its v4 checks
+  // (each check carries `_zod.def.{check,value}`) so the UI can render a
+  // constrained number input instead of free text.
+  if (def.type === "number") {
+    const checks = def.checks ?? [];
+    const min = checks.find((c) => c._zod?.def?.check === "greater_than")?._zod?.def?.value;
+    const max = checks.find((c) => c._zod?.def?.check === "less_than")?._zod?.def?.value;
     return { type: "number", min, max };
   }
 

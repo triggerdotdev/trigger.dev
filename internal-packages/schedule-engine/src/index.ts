@@ -8,12 +8,16 @@ export {
   calculateEffectiveScheduleTime,
   calculateSchedulePhase,
   parseScheduleWindow,
+  resolvePolicyMinimumMs,
+  resolveScheduleWindow,
   resolveScheduleWindowMs,
   validateScheduleWindow,
 } from "./engine/scheduleTiming.js";
 export type {
   EffectiveScheduleTime,
   NormalizedScheduleWindow,
+  ScheduleWindowFields,
+  ScheduleWindowSource,
   SchedulePhaseInput,
 } from "./engine/scheduleTiming.js";
 export type {

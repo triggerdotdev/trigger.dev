@@ -32,7 +32,7 @@ import { MESSAGE_QUOTA_REACHED_ERROR } from "~/components/dashboard-agent/messag
 import { MAX_URIS_PER_RESOLVE_REQUEST } from "~/components/dashboard-agent/resolve-uris";
 import { $replica } from "~/db.server";
 import { env } from "~/env.server";
-import { findProjectBySlug } from "~/models/project.server";
+import { findProjectWithOrgFlagsBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
   authorizeWatchEnvironmentById,
@@ -40,6 +40,7 @@ import {
   deleteChatWithWatches,
   listActiveWatchesForChats,
   submitDashboardAgentWatch,
+  type ChatWatchChip,
 } from "~/services/dashboardAgentWatches.server";
 import {
   dashboardAgentUserApiOrigin,
@@ -56,15 +57,17 @@ import { watchErrorStatus } from "~/services/dashboardAgentWatchErrorStatus.serv
 import { startDashboardAgentHeadStart } from "~/services/dashboardAgentHeadStart.server";
 import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
 import {
+  isDashboardAgentQuotaEnabled,
   recordAgentMessageSent,
   resolveAgentMessageQuota,
   UNLIMITED_AGENT_MESSAGES,
 } from "~/services/dashboardAgentQuota.server";
 import { logger } from "~/services/logger.server";
-import { resolveTriggerUri } from "~/services/resolveTriggerUri.server";
+import { resolveTriggerUrisInOrganization } from "~/services/resolveTriggerUriInOrganization.server";
 import { requireUser } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
+import { canUseDashboardAgentWatches } from "~/v3/canUseDashboardAgentWatches.server";
 // The client-metadata whitelist lives with the `in` proxy, the other mint site, so the two cannot
 // drift apart.
 import { pickAgentClientMetadata } from "./resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.dashboard-agent.in.$";
@@ -133,16 +136,25 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
         slug: projectParam,
         organization: { slug: organizationSlug, members: { some: { userId } } },
       },
-      select: { organizationId: true },
+      select: { organizationId: true, organization: { select: { featureFlags: true } } },
     });
     if (!scoped) return json({ error: "Project not found" }, { status: 404 });
 
+    // No watches means no wakes: the feed isn't read at all when they're off.
+    const watchEnabled = await canUseDashboardAgentWatches({
+      userId,
+      organizationSlug,
+      orgFeatureFlags: (scoped.organization.featureFlags as Record<string, unknown>) ?? {},
+    });
+
     const [feed, unreadWork] = await Promise.all([
-      readWatchWakeFeed(dashboardAgentDb, {
-        organizationId: scoped.organizationId,
-        userId,
-        deliveredAfter: new Date(Date.now() - 15 * 60 * 1000),
-      }),
+      watchEnabled
+        ? readWatchWakeFeed(dashboardAgentDb, {
+            organizationId: scoped.organizationId,
+            userId,
+            deliveredAfter: new Date(Date.now() - 15 * 60 * 1000),
+          })
+        : { unreadWakes: 0, wakes: [] },
       // The dot has two sources; the poll is where a closed panel learns about either.
       countChatsWithUnreadWork(dashboardAgentDb, {
         organizationId: scoped.organizationId,
@@ -155,11 +167,17 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     return json({ ...feed, unreadWork });
   }
 
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+  const project = await findProjectWithOrgFlagsBySlug(organizationSlug, projectParam, userId);
   if (!project) return json({ error: "Project not found" }, { status: 404 });
+  const orgFeatureFlags = (project.organization.featureFlags as Record<string, unknown>) ?? {};
 
   // The per-period counter, org-wide: a deleted chat can't lower it within the period.
   if (searchParams.get("quota") === "1") {
+    // Free for now: tell a mounted client explicitly, so it drops any cached used/limit
+    // and cap-reached state from before the switch flipped off, instead of keeping it
+    // until remount (a `{}` body would silently ignore and keep the stale state).
+    if (!isDashboardAgentQuotaEnabled()) return json({ enabled: false });
+
     const quota = await resolveAgentMessageQuota(dashboardAgentDb, {
       organizationId: project.organizationId,
     });
@@ -189,21 +207,34 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     userId,
   });
 
-  // One query each for all the listed chats, never one per row.
+  const watchEnabled = await canUseDashboardAgentWatches({
+    userId,
+    organizationSlug,
+    orgFeatureFlags,
+  });
+
+  // One query each for all the listed chats, never one per row. With watches off the
+  // history carries none, so an org that loses the flag stops seeing its old ones.
   const [watchesByChat, unreadWakes, unreadChatIds, investigatingChatIds] = await Promise.all([
-    listActiveWatchesForChats({
-      chatIds: chats.map((chat) => chat.id),
-      organizationId: project.organizationId,
-      userId,
-    }),
-    countUnreadWatchWakes(dashboardAgentDb, {
-      organizationId: project.organizationId,
-      userId,
-    }),
-    listChatIdsWithUnreadWakes(dashboardAgentDb, {
-      organizationId: project.organizationId,
-      userId,
-    }),
+    watchEnabled
+      ? listActiveWatchesForChats({
+          chatIds: chats.map((chat) => chat.id),
+          organizationId: project.organizationId,
+          userId,
+        })
+      : ({} as Record<string, ChatWatchChip[]>),
+    watchEnabled
+      ? countUnreadWatchWakes(dashboardAgentDb, {
+          organizationId: project.organizationId,
+          userId,
+        })
+      : 0,
+    watchEnabled
+      ? listChatIdsWithUnreadWakes(dashboardAgentDb, {
+          organizationId: project.organizationId,
+          userId,
+        })
+      : new Set<string>(),
     listChatIdsWithOpenInvestigations(dashboardAgentDb, {
       organizationId: project.organizationId,
       userId,
@@ -231,20 +262,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   });
 };
 
-/** Only a source URI needs the connected repository, so a batch without one skips the read. */
-async function findRepositoryForSourceUris(projectId: string, uris: string[]) {
-  if (!uris.some((uri) => uri.includes("/source/"))) return null;
-
-  const connected = await $replica.connectedGithubRepository.findFirst({
-    where: {
-      projectId,
-      repository: { installation: { deletedAt: null, suspendedAt: null } },
-    },
-    select: { repository: { select: { fullName: true } } },
-  });
-  return connected?.repository ?? null;
-}
-
 function messageTooLarge() {
   return json({ error: MESSAGE_TOO_LARGE_ERROR, code: MESSAGE_TOO_LARGE_CODE }, { status: 413 });
 }
@@ -271,8 +288,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     return messageTooLarge();
   }
 
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+  const project = await findProjectWithOrgFlagsBySlug(organizationSlug, projectParam, userId);
   if (!project) return json({ error: "Project not found" }, { status: 404 });
+  const orgFeatureFlags = (project.organization.featureFlags as Record<string, unknown>) ?? {};
 
   const parsed = ActionBody.safeParse(Object.fromEntries(await request.formData()));
   if (!parsed.success) return json({ error: "Invalid request" }, { status: 400 });
@@ -320,6 +338,13 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     }
     // Only the whitelisted page context survives; the rest is injected below.
     const clientContext = pickAgentClientMetadata(clientData);
+    // Server-resolved, never sent by the browser: off means the turn gets no watch
+    // tools and no watch guidance.
+    const watchEnabled = await canUseDashboardAgentWatches({
+      userId,
+      organizationSlug,
+      orgFeatureFlags,
+    });
 
     // Membership-scoped: dev rows are per-developer, so a token must never be minted for
     // someone else's environment — or, when nothing resolves, for no environment at all.
@@ -342,6 +367,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             // The agent validates run metadata against its clientDataSchema, so the
             // per-turn client context must accompany the injected auth and context fields.
             ...clientContext,
+            watchEnabled,
             userActorToken: await mintDashboardAgentUserActorToken(userId, {
               environmentId: runtimeEnv.id,
             }),
@@ -374,6 +400,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             messages: [firstMessage],
             mode: repoSnapshot ? "code" : "assistant",
             metadata: headStartMetadata,
+            watchEnabled,
           });
         } else {
           // Cold start: the client sends the first message through the `in` proxy, which
@@ -384,6 +411,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             chatId,
             clientData: {
               ...clientContext,
+              watchEnabled,
               organizationId: project.organizationId,
               userId,
               projectId: project.id,
@@ -441,18 +469,17 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     }
   }
 
-  // Scoped by the environment in the URL: the resolver refuses a URI naming a
-  // different project or environment.
+  // Scoped by the organization, not by the environment in the URL: the agent reads across the
+  // organization's projects, so a citation resolves against its own project and environment.
   if (parsed.data.intent === "resolve") {
     const uri = parsed.data.uri;
     if (!uri) return json({ error: "uri is required" }, { status: 400 });
 
-    const environment = await findEnvironmentBySlug(project.id, envParam, userId);
-    if (!environment) return json({ error: "Environment not found" }, { status: 404 });
-
-    const repository = await findRepositoryForSourceUris(project.id, [uri]);
-
-    const resolved = resolveTriggerUri({ ...environment, repository }, uri);
+    const resolved = (
+      await resolveTriggerUrisInOrganization({ userId, organizationId: project.organizationId }, [
+        uri,
+      ])
+    ).get(uri);
     if (!resolved) return json({ error: "Nothing to open for that link" }, { status: 404 });
 
     return json({
@@ -463,7 +490,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 
   // The card's citations in one request: one environment lookup and one repo lookup for the
-  // whole batch, same environment scope as `resolve`.
+  // whole batch, same organization scope as `resolve`.
   if (parsed.data.intent === "resolve-many") {
     let uris: string[];
     try {
@@ -481,16 +508,15 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       return json({ error: "Too many links in one request" }, { status: 400 });
     }
 
-    const environment = await findEnvironmentBySlug(project.id, envParam, userId);
-    if (!environment) return json({ error: "Environment not found" }, { status: 404 });
-
-    const repository = await findRepositoryForSourceUris(project.id, uris);
-    const scope = { ...environment, repository };
+    const hits = await resolveTriggerUrisInOrganization(
+      { userId, organizationId: project.organizationId },
+      uris
+    );
 
     // A null entry is the definitive "nothing to open": the client caches it.
     const resolved: Record<string, { path: string; label: string; external: boolean } | null> = {};
     for (const uri of uris) {
-      const hit = resolveTriggerUri(scope, uri);
+      const hit = hits.get(uri);
       resolved[uri] = hit
         ? { path: hit.url, label: hit.label, external: hit.external ?? false }
         : null;
@@ -502,6 +528,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   // The configuration card's submit path. The environment comes from the URL and goes
   // through the same re-authorization a background tick passes, never from the body.
   if (parsed.data.intent === "watch-create") {
+    if (!(await canUseDashboardAgentWatches({ userId, organizationSlug, orgFeatureFlags }))) {
+      return json({ error: "Not found" }, { status: 404 });
+    }
+
     // No fallback: a per-condition key would identify the condition rather than this
     // submit, so a re-watch could replay a stale terminal outcome.
     const clientRequestId = parsed.data.clientRequestId;
@@ -612,6 +642,13 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           chatId,
           clientData: {
             ...pickAgentClientMetadata(clientData),
+            // Server-resolved, like every other field here: the resumed run's first turn
+            // gets no watch tools while the flag is off.
+            watchEnabled: await canUseDashboardAgentWatches({
+              userId,
+              organizationSlug,
+              orgFeatureFlags,
+            }),
             organizationId: project.organizationId,
             userId,
             projectId: project.id,

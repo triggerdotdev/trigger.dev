@@ -12,6 +12,9 @@ import { z } from "zod";
 import {
   forceSettledInvestigationState,
   formatTriggerUri,
+  investigateMessageId,
+  settledMessageId,
+  wakeMessageId,
   watchResolutions,
   watchResultNeedsAttention,
   type InvestigationState,
@@ -96,11 +99,11 @@ export const watchWakeActionSchema = z.object({
       checkEveryMinutes: z.number().optional(),
     })
     .passthrough(),
-  facts: z.record(z.unknown()).default({}),
+  facts: z.record(z.string(), z.unknown()).default({}),
   // Optional for the same reason: an older watcher predating the resolution model
   // sends neither, and the narration falls back to the transport encoding.
   resolution: z.enum(watchResolutions).optional(),
-  observed: z.record(z.unknown()).optional(),
+  observed: z.record(z.string(), z.unknown()).optional(),
   note: z.string().optional(),
   investigateOnAttention: z.boolean().optional(),
 });
@@ -147,9 +150,9 @@ export const watchInvestigateActionSchema = z.object({
       checkEveryMinutes: z.number().optional(),
     })
     .passthrough(),
-  facts: z.record(z.unknown()).default({}),
+  facts: z.record(z.string(), z.unknown()).default({}),
   resolution: z.enum(watchResolutions).optional(),
-  observed: z.record(z.unknown()).optional(),
+  observed: z.record(z.string(), z.unknown()).optional(),
   note: z.string().optional(),
   investigationId: z.string().optional(),
 });
@@ -421,7 +424,7 @@ async function narrateWithPlan(input: {
     return plan.text;
   }
 
-  const resolved = await getSystemPrompt(modeFor(args.clientData));
+  const resolved = await getSystemPrompt(modeFor(args.clientData), { watchEnabled: true });
   const wake = wakePrompt(action, tenancy);
   const result =
     plan.model === "haiku"
@@ -476,7 +479,7 @@ async function narrateWatchWake(args: {
   messages: ModelMessage[];
 }): Promise<void> {
   const { action, chatId, uiMessages } = args;
-  const messageId = `wake:${action.id}`;
+  const messageId = wakeMessageId(action.id);
 
   // Dedup on the action id. Durable, because the history it checks is the
   // snapshot the SDK reseeds on every boot — not per-process state.
@@ -689,8 +692,8 @@ async function conductWatchInvestigation(args: {
   messages: ModelMessage[];
 }): Promise<void> {
   const { action, chatId, clientData, uiMessages } = args;
-  const messageId = `investigate:${action.id}`;
-  const closingMessageId = `${messageId}:settled`;
+  const messageId = investigateMessageId(action.id);
+  const closingMessageId = settledMessageId(messageId);
   const projectRef = clientData?.projectRef;
   const environmentRef = clientData?.environmentId;
 
@@ -774,8 +777,8 @@ async function conductWatchInvestigation(args: {
 
   const store = getStore();
   let answered: UIMessage | undefined;
-  const resolved = await getSystemPrompt(modeFor(clientData));
-  const tools = buildTurnTools(chatId, clientData);
+  const resolved = await getSystemPrompt(modeFor(clientData), { watchEnabled: true });
+  const tools = buildTurnTools(chatId, clientData && { ...clientData, watchEnabled: true });
   let step = 0;
   const result = streamText({
     model:

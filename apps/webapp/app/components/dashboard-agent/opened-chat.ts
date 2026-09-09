@@ -1,4 +1,5 @@
 import type { UIMessage } from "@ai-sdk/react";
+import { transcriptLooksUnfinished } from "./settled-transcript";
 
 export type OpenedChatResponse = {
   messages?: UIMessage[];
@@ -11,6 +12,8 @@ export type OpenedChat =
       chatId: string;
       messages: UIMessage[];
       session: { publicAccessToken: string; lastEventId?: string } | null;
+      // True if the transcript still reads as mid-turn, so the transport resumes it.
+      streaming: boolean;
     }
   // Deleted, or belonging to someone else: the read failed, so there is no chat to show.
   | { kind: "gone" };
@@ -23,15 +26,17 @@ export function resolveOpenedChat(
   if (!response) return { kind: "gone" };
 
   const session = response.session;
+  const messages = response.messages ?? [];
   return {
     kind: "chat",
     chatId,
-    messages: response.messages ?? [],
+    messages,
     session: session?.publicAccessToken
       ? {
           publicAccessToken: session.publicAccessToken,
           lastEventId: session.lastEventId ?? undefined,
         }
       : null,
+    streaming: transcriptLooksUnfinished(messages),
   };
 }

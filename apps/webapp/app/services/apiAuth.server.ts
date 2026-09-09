@@ -19,7 +19,10 @@ import type {
   RbacResource,
   UserActorClaims,
 } from "@trigger.dev/rbac";
-import { assertUserActorEnvironment } from "./userActorEnvironment.server";
+import {
+  assertUserActorEnvironment,
+  assertUserActorEnvironmentAccess,
+} from "./userActorEnvironment.server";
 import { type RuntimeEnvironmentForEnvRepo } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import {
   type PersonalAccessTokenAuthenticationResult,
@@ -641,13 +644,20 @@ export async function authenticatedEnvironmentForAuthentication(
   auth: AuthenticationResult,
   projectRef: string,
   slug: string,
-  branch?: string
+  branch?: string,
+  route?: { organizationScoped?: boolean }
 ): Promise<AuthenticatedEnvironment> {
   const environment = await resolveEnvironmentForAuthentication(auth, projectRef, slug, branch);
 
   if (auth.type === "personalAccessToken") {
     // Either place the claims ride: on the actor (the shape every layer keeps) or beside it.
-    assertUserActorEnvironment(auth.result.userActor ?? auth.userActor, environment.id);
+    const userActor = auth.result.userActor ?? auth.userActor;
+
+    if (route?.organizationScoped) {
+      await assertUserActorEnvironmentAccess(userActor, environment);
+    } else {
+      assertUserActorEnvironment(userActor, environment.id);
+    }
   }
 
   return environment;

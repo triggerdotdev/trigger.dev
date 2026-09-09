@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   mintUserActorToken: vi.fn(),
   mintPublicToken: vi.fn(),
   headStart: vi.fn(),
+  watchEnabled: false,
   startSession: vi.fn(),
   softDeleteChat: vi.fn(),
   logger: { debug: vi.fn(), error: vi.fn(), warn: vi.fn(), info: vi.fn() },
@@ -24,11 +25,15 @@ vi.mock("~/services/session.server", () => ({
 vi.mock("~/v3/canAccessDashboardAgent.server", () => ({
   canAccessDashboardAgent: async () => true,
 }));
+vi.mock("~/v3/canUseDashboardAgentWatches.server", () => ({
+  canUseDashboardAgentWatches: async () => mocks.watchEnabled,
+}));
 vi.mock("~/models/project.server", () => ({
-  findProjectBySlug: async () => ({
+  findProjectWithOrgFlagsBySlug: async () => ({
     id: "proj_real",
     organizationId: "org_real",
     externalRef: "proj_ref_real",
+    organization: { featureFlags: {} },
   }),
 }));
 vi.mock("~/models/runtimeEnvironment.server", () => ({
@@ -53,7 +58,9 @@ vi.mock("~/services/clickhouse/clickhouseFactoryInstance.server", () => ({
   clickhouseFactory: { getClickhouseForOrganization: async () => ({}) },
 }));
 vi.mock("~/services/dashboardAgentDb.server", () => ({ dashboardAgentDb: {} }));
-vi.mock("~/services/resolveTriggerUri.server", () => ({ resolveTriggerUri: () => null }));
+vi.mock("~/services/resolveTriggerUriInOrganization.server", () => ({
+  resolveTriggerUrisInOrganization: async () => new Map(),
+}));
 // Spread the real module so this doesn't have to track every query the route imports.
 vi.mock("@internal/dashboard-agent-db", async (importOriginal) => ({
   ...((await importOriginal()) as Record<string, unknown>),
@@ -245,5 +252,45 @@ describe("dashboard agent chat creation — a start that fails part way", () => 
     expect(response.status).toBe(500);
     const logged = mocks.logger.error.mock.calls.map((call: any[]) => call[1]?.error?.message);
     expect(logged).toContain("session create failed");
+  });
+});
+
+// The warm first turn's tools and prompt are built from this flag, so it travels with the
+// head start rather than being read again downstream.
+describe("dashboard agent chat creation — the watch flag", () => {
+  beforeEach(() => {
+    mocks.createChat.mockReset().mockResolvedValue(undefined);
+    mocks.headStart.mockReset().mockResolvedValue(undefined);
+    mocks.findEnvironmentBySlug
+      .mockReset()
+      .mockResolvedValue({ id: "env_real", type: "DEVELOPMENT" });
+    mocks.mintUserActorToken.mockReset().mockResolvedValue("tr_uat_real");
+    mocks.mintPublicToken.mockReset().mockResolvedValue("pat_public");
+    mocks.env.ANTHROPIC_API_KEY = "sk-test";
+    mocks.watchEnabled = false;
+  });
+
+  it("hands the head start watches off by default", async () => {
+    expect((await createChatRequest()).status).toBe(200);
+
+    expect(mocks.headStart).toHaveBeenCalledWith(
+      expect.objectContaining({
+        watchEnabled: false,
+        metadata: expect.objectContaining({ watchEnabled: false }),
+      })
+    );
+  });
+
+  it("hands the head start watches on for an org that has them", async () => {
+    mocks.watchEnabled = true;
+
+    expect((await createChatRequest()).status).toBe(200);
+
+    expect(mocks.headStart).toHaveBeenCalledWith(
+      expect.objectContaining({
+        watchEnabled: true,
+        metadata: expect.objectContaining({ watchEnabled: true }),
+      })
+    );
   });
 });

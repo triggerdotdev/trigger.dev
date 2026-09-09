@@ -7,17 +7,26 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("~/db.server", () => ({ $replica: {} }));
 vi.mock("~/env.server", () => ({ env: { SESSION_SECRET: "test-session-secret" } }));
+vi.mock("~/services/dashboardAgentDb.server", () => ({ dashboardAgentDb: {} }));
+vi.mock("@internal/dashboard-agent-db", async (importOriginal) => ({
+  ...((await importOriginal()) as Record<string, unknown>),
+  chatExists: async () => true,
+}));
 vi.mock("~/services/session.server", () => ({
   requireUser: async () => ({ id: "usr_real", admin: false, isImpersonating: false }),
 }));
 vi.mock("~/v3/canAccessDashboardAgent.server", () => ({
   canAccessDashboardAgent: async () => true,
 }));
+vi.mock("~/v3/canUseDashboardAgentWatches.server", () => ({
+  canUseDashboardAgentWatches: async () => false,
+}));
 vi.mock("~/models/project.server", () => ({
-  findProjectBySlug: async () => ({
+  findProjectWithOrgFlagsBySlug: async () => ({
     id: "proj_real",
     organizationId: "org_real",
     externalRef: "proj_ref_real",
+    organization: { featureFlags: {} },
   }),
 }));
 vi.mock("~/models/runtimeEnvironment.server", () => ({

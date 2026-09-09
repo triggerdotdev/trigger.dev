@@ -63,6 +63,7 @@ vi.mock("~/db.server", () => ({
   prisma: {},
   $replica: {
     project: { findFirst: async () => ({ organizationId: "org_1" }) },
+    organization: { findFirst: async () => ({ id: "org_1" }) },
     runtimeEnvironment: {
       findFirst: mocks.environmentFindFirst,
       findMany: mocks.environmentFindMany,
@@ -93,7 +94,10 @@ vi.mock("~/v3/services/worker/workerGroupTokenService.server", () => ({
 vi.mock("~/v3/services/common.server", () => ({ ServiceValidationError: class extends Error {} }));
 vi.mock("@internal/run-engine", () => ({ EngineServiceValidationError: class extends Error {} }));
 
-import { loader } from "~/routes/api.v1.projects.$projectRef.environments";
+import {
+  loader,
+  MAX_PROJECT_ENVIRONMENTS,
+} from "~/routes/api.v1.projects.$projectRef.environments";
 
 async function listEnvironments(token: string) {
   const response = await loader({
@@ -103,7 +107,7 @@ async function listEnvironments(token: string) {
     params: { projectRef: "proj_ref" },
     context: {},
   } as any);
-  return { status: response.status, body: await response.json() };
+  return { status: response.status, body: await response.json(), headers: response.headers };
 }
 
 function agentToken(environmentId?: string) {
@@ -175,5 +179,107 @@ describe("listing a project's environments with an environment-scoped token", ()
 
     expect(result.status).toBe(200);
     expect(result.body).toEqual([expect.objectContaining({ id: PARENT_PREVIEW.id })]);
+  });
+
+  it("lists branch environments for an organization-scoped token", async () => {
+    const token = await signUserActorToken(SESSION_SECRET, {
+      userId: USER_ID,
+      client: "dashboard-agent",
+      organizationId: "org_1",
+      cap: ["read:environments"],
+    });
+    mocks.authenticateUserActor.mockResolvedValue({
+      ok: true,
+      userId: USER_ID,
+      claims: { userId: USER_ID, client: "dashboard-agent", organizationId: "org_1" },
+      ability: buildJwtAbility(["read:environments"]),
+    });
+
+    const result = await listEnvironments(token);
+
+    expect(result.status).toBe(200);
+    expect(result.body).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: BRANCH_CHILD.id })])
+    );
+  });
+
+  it("caps an organization-scoped token's branch environments and flags the truncation", async () => {
+    const manyBranches = Array.from({ length: MAX_PROJECT_ENVIRONMENTS + 5 }, (_, i) => ({
+      id: `env_preview_branch_${i}`,
+      slug: `branch-${i}`,
+      type: "PREVIEW",
+      isBranchableEnvironment: false,
+      parentEnvironmentId: PARENT_PREVIEW.id,
+      branchName: `feat/${i}`,
+      paused: false,
+      projectId: PROJECT_ID,
+      organizationId: "org_1",
+      archivedAt: null,
+    }));
+    mocks.environmentFindMany.mockImplementation(async ({ where, take }: any) => {
+      const rows = [PARENT_PREVIEW, ...manyBranches].filter(
+        (env) => where.projectId === env.projectId
+      );
+      return typeof take === "number" ? rows.slice(0, take) : rows;
+    });
+
+    const token = await signUserActorToken(SESSION_SECRET, {
+      userId: USER_ID,
+      client: "dashboard-agent",
+      organizationId: "org_1",
+      cap: ["read:environments"],
+    });
+    mocks.authenticateUserActor.mockResolvedValue({
+      ok: true,
+      userId: USER_ID,
+      claims: { userId: USER_ID, client: "dashboard-agent", organizationId: "org_1" },
+      ability: buildJwtAbility(["read:environments"]),
+    });
+
+    const result = await listEnvironments(token);
+
+    expect(result.status).toBe(200);
+    expect(result.body.length).toBe(MAX_PROJECT_ENVIRONMENTS);
+    expect(result.headers.get("X-Truncated")).toBe("true");
+  });
+
+  it("returns exactly the cap of organization-scoped branch environments untruncated", async () => {
+    const exactlyAtCap = Array.from({ length: MAX_PROJECT_ENVIRONMENTS - 1 }, (_, i) => ({
+      id: `env_preview_branch_at_cap_${i}`,
+      slug: `branch-cap-${i}`,
+      type: "PREVIEW",
+      isBranchableEnvironment: false,
+      parentEnvironmentId: PARENT_PREVIEW.id,
+      branchName: `feat/cap-${i}`,
+      paused: false,
+      projectId: PROJECT_ID,
+      organizationId: "org_1",
+      archivedAt: null,
+    }));
+    mocks.environmentFindMany.mockImplementation(async ({ where, take }: any) => {
+      const rows = [PARENT_PREVIEW, ...exactlyAtCap].filter(
+        (env) => where.projectId === env.projectId
+      );
+      return typeof take === "number" ? rows.slice(0, take) : rows;
+    });
+
+    const token = await signUserActorToken(SESSION_SECRET, {
+      userId: USER_ID,
+      client: "dashboard-agent",
+      organizationId: "org_1",
+      cap: ["read:environments"],
+    });
+    mocks.authenticateUserActor.mockResolvedValue({
+      ok: true,
+      userId: USER_ID,
+      claims: { userId: USER_ID, client: "dashboard-agent", organizationId: "org_1" },
+      ability: buildJwtAbility(["read:environments"]),
+    });
+
+    const result = await listEnvironments(token);
+
+    expect(result.status).toBe(200);
+    expect(result.body.length).toBe(MAX_PROJECT_ENVIRONMENTS);
+    expect(result.headers.get("X-Truncated")).toBeNull();
   });
 });

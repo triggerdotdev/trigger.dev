@@ -1,4 +1,5 @@
-import { z } from "zod";
+import { z } from "zod/v4";
+import { discriminatedUnion } from "../../utils/zod.js";
 import {
   WorkerApiRunHeartbeatRequestBody,
   WorkerApiHeartbeatResponseBody,
@@ -7,7 +8,6 @@ import {
   WorkerApiRunAttemptStartRequestBody,
   WorkerApiRunAttemptStartResponseBody,
   WorkerApiRunLatestSnapshotResponseBody,
-  WorkerApiDequeueFromVersionResponseBody,
   WorkerApiContinueRunExecutionRequestBody,
   WorkerApiDebugLogBody,
   WorkerApiRunSnapshotsSinceResponseBody,
@@ -19,7 +19,7 @@ export type WorkloadHeartbeatRequestBody = z.infer<typeof WorkloadHeartbeatReque
 export const WorkloadHeartbeatResponseBody = WorkerApiHeartbeatResponseBody;
 export type WorkloadHeartbeatResponseBody = z.infer<typeof WorkloadHeartbeatResponseBody>;
 
-export const WorkloadSuspendRunResponseBody = z.discriminatedUnion("ok", [
+export const WorkloadSuspendRunResponseBody = discriminatedUnion("ok", [
   z.object({
     ok: z.literal(true),
   }),
@@ -60,11 +60,6 @@ export type WorkloadRunLatestSnapshotResponseBody = z.infer<
 
 export const WorkloadDebugLogRequestBody = WorkerApiDebugLogBody;
 export type WorkloadDebugLogRequestBody = z.infer<typeof WorkloadDebugLogRequestBody>;
-
-export const WorkloadDequeueFromVersionResponseBody = WorkerApiDequeueFromVersionResponseBody;
-export type WorkloadDequeueFromVersionResponseBody = z.infer<
-  typeof WorkloadDequeueFromVersionResponseBody
->;
 
 export const WorkloadRunSnapshotsSinceResponseBody = WorkerApiRunSnapshotsSinceResponseBody;
 export type WorkloadRunSnapshotsSinceResponseBody = z.infer<

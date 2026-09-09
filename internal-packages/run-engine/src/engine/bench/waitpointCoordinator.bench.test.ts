@@ -8,9 +8,12 @@
  *     `COUNT(*) ... WHERE status='PENDING'`, over the same population. Like for like.
  *  2. Read amplification — the store's `readBlockState` against a full-payload `SELECT`
  *     of the same waitpoints. Like for like.
- *  3. Store-only write paths — block+complete+deliver and K-watcher fan-out. Absolute
- *     numbers with NO Postgres counterpart: no single statement on the previous path
- *     corresponds to a Redis round trip that both blocks a run and delivers to watchers.
+ *  3. Store-only write paths — block+complete+drain, then foreground completion versus
+ *     worker drain at several fan-out widths. Absolute numbers with NO Postgres
+ *     counterpart: no single statement on the previous path corresponds to a Redis round
+ *     trip that both blocks a run and delivers to watchers. The width sweep is the
+ *     evidence for the flat-foreground claim — completion should not track K, the drain
+ *     should.
  *  4. Register cost versus edge count — `registerBlocks` registers each edge with its own
  *     round trip before the single absorb. This measures whether that serial loop is a
  *     real cost at a wide fan-in, or a non-issue, at several fan-in widths.
@@ -19,10 +22,11 @@
  * empty table measures nothing.
  *
  * Knobs: BENCH_WP_ITERATIONS, BENCH_WP_FANIN, BENCH_WP_WATCHERS, BENCH_WP_REGISTER_WIDTHS,
- * BENCH_WP_REGISTER_SAMPLES.
+ * BENCH_WP_REGISTER_SAMPLES, BENCH_WP_FANOUT_WIDTHS.
  */
 import { containerTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
+import { WaitpointFanoutWorker } from "../waitpointCoordinator/fanoutWorker.js";
 import {
   WaitpointStoreCoordinator,
   type BlockEdge,
@@ -40,6 +44,13 @@ const REGISTER_WIDTHS = (process.env.BENCH_WP_REGISTER_WIDTHS ?? "1,10,100,1001"
   .map((raw) => Number(raw.trim()))
   .filter((width) => Number.isFinite(width) && width > 0);
 const REGISTER_SAMPLES = Number(process.env.BENCH_WP_REGISTER_SAMPLES ?? 20);
+const FANOUT_WIDTHS = (process.env.BENCH_WP_FANOUT_WIDTHS ?? `1,10,100,${WATCHERS}`)
+  .split(",")
+  .map((raw) => Number(raw.trim()))
+  .filter(
+    (width, index, all) => Number.isFinite(width) && width > 0 && all.indexOf(width) === index
+  )
+  .sort((a, b) => a - b);
 const NOW = new Date().toISOString();
 
 type Sample = { label: string; count: number; p50: number; p99: number; totalMs: number };
@@ -121,6 +132,7 @@ containerTest(
   async ({ prisma, redisOptions }) => {
     const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
     const store = new WaitpointStoreCoordinator({ redisOptions });
+    const worker = new WaitpointFanoutWorker({ coordinator: store, enabled: true });
     const samples: Sample[] = [];
     const registerCost: Array<{
       width: number;
@@ -143,13 +155,18 @@ containerTest(
       }
       await store.registerBlocks({
         runId: "bench_run_fanin",
+        blockId: "bench_blk_fanin",
         edges: ids.map((id, index) => edge(id, index)),
       });
 
       // --- group 1: the pending-count gate, like for like ---
       samples.push(
         await measure("store.pendingCount", ITERATIONS, async () => {
-          await store.absorbBlockers({ runId: "bench_run_fanin", edges: [] });
+          await store.absorbBlockers({
+            runId: "bench_run_fanin",
+            blockId: "bench_blk_fanin",
+            edges: [],
+          });
         })
       );
       samples.push(
@@ -179,40 +196,50 @@ containerTest(
             record: record(id, env.id, env.project.id),
             status: "PENDING",
           });
-          await store.registerBlocks({ runId: `bench_run_${i}`, edges: [edge(id)] });
-          const done = await store.complete({ waitpointId: id, completion });
-          for (const watcher of done.watchers) {
-            await store.deliverCompletion({
-              runId: watcher.runId,
-              waitpointId: id,
-              completion: done.completion!,
-            });
-          }
+          await store.registerBlocks({
+            runId: `bench_run_${i}`,
+            blockId: `bench_blk_${i}`,
+            edges: [edge(id)],
+          });
+          await store.complete({ waitpointId: id, completion });
+          await worker.visit(id);
         })
       );
 
-      const fanOutId = "bench_fanout_w";
-      await store.createIfAbsent({
-        record: record(fanOutId, env.id, env.project.id),
-        status: "PENDING",
-      });
-      for (let i = 0; i < WATCHERS; i++) {
-        await store.registerBlocks({ runId: `bench_watcher_${i}`, edges: [edge(fanOutId)] });
+      // Foreground completion versus watcher count. The claim under test is that the
+      // first number is FLAT in K while the second grows with it — that is what "bounded
+      // foreground completion" means in practice, and a single width could not show it.
+      for (const width of FANOUT_WIDTHS) {
+        const fanOutId = `bench_fanout_w_${width}`;
+        await store.createIfAbsent({
+          record: record(fanOutId, env.id, env.project.id),
+          status: "PENDING",
+        });
+        for (let i = 0; i < width; i++) {
+          await store.registerBlocks({
+            runId: `bench_watcher_${width}_${i}`,
+            blockId: `bench_blk_watcher_${width}_${i}`,
+            edges: [edge(fanOutId)],
+          });
+        }
+
+        samples.push(
+          await measure(`store.complete(foreground, watchers=${width})`, 1, async () => {
+            await store.complete({ waitpointId: fanOutId, completion });
+          })
+        );
+        samples.push(
+          await measure(`worker.drain(watchers=${width})`, 1, async () => {
+            let visits = 0;
+            // The visit page budget is bounded, so a wide fan-out takes several visits.
+            for (;;) {
+              const summary = await worker.visit(fanOutId);
+              visits++;
+              if (summary.outcome !== "more" || visits > 1_000) break;
+            }
+          })
+        );
       }
-      samples.push(
-        await measure(`store.complete+deliver(watchers=${WATCHERS})`, 1, async () => {
-          const done = await store.complete({ waitpointId: fanOutId, completion });
-          // Serial on purpose: this is the worst case, and it is the number that says
-          // whether delivery needs to pipeline.
-          for (const watcher of done.watchers) {
-            await store.deliverCompletion({
-              runId: watcher.runId,
-              waitpointId: fanOutId,
-              completion: done.completion!,
-            });
-          }
-        })
-      );
 
       // --- group 4: register cost versus edge count ---
       // registerBlocks registers each edge with its own round trip, serially, before the
@@ -236,7 +263,12 @@ containerTest(
           `store.registerBlocks(edges=${width})`,
           REGISTER_SAMPLES,
           async () => {
-            await store.registerBlocks({ runId: `bench_register_${width}_${call++}`, edges });
+            const n = call++;
+            await store.registerBlocks({
+              runId: `bench_register_${width}_${n}`,
+              blockId: `bench_blk_register_${width}_${n}`,
+              edges,
+            });
           }
         );
         samples.push(sample);

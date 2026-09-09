@@ -5,12 +5,8 @@ import {
   PROMPT_CACHE_CONTROL,
   promptCacheAttributes,
 } from "./prompt-prefix";
-import {
-  DASHBOARD_AGENT_CODE_SYSTEM_PROMPT,
-  DASHBOARD_AGENT_SYSTEM_PROMPT,
-  dashboardAgentCodeToolSchemas,
-  dashboardAgentToolSchemas,
-} from "./tool-schemas";
+import { DASHBOARD_AGENT_SYSTEM_PROMPT, dashboardAgentToolSchemas } from "./tool-schemas";
+import { systemPromptFor, toolSchemasFor } from "./prompt-assembly";
 import { buildDashboardAgentTools } from "./tools";
 import type { RepoSnapshot } from "./repo-tools";
 
@@ -29,32 +25,33 @@ const snapshot: RepoSnapshot = {
  * cache separately and every call pays a fresh write.
  */
 describe("the head-start and agent prefixes are the same prefix", () => {
-  it("matches in assistant mode", () => {
-    const headStart = describePromptPrefix({
-      system: DASHBOARD_AGENT_SYSTEM_PROMPT,
-      tools: dashboardAgentToolSchemas,
-    });
-    const agent = describePromptPrefix({
-      system: DASHBOARD_AGENT_SYSTEM_PROMPT,
-      tools: buildDashboardAgentTools(SCOPE),
-    });
+  // The head-start step composes its prefix from the shared helpers; the agent run
+  // builds the real tool set. Both flag values, both modes, or the cache splits.
+  for (const mode of ["assistant", "code"] as const) {
+    for (const watchEnabled of [false, true]) {
+      it(`matches in ${mode} mode with watches ${watchEnabled ? "on" : "off"}`, () => {
+        const ctx = {
+          ...SCOPE,
+          watchEnabled,
+          ...(mode === "code" ? { repoSnapshot: snapshot } : {}),
+        };
+        const headStart = describePromptPrefix({
+          system: systemPromptFor(mode, { watchEnabled }),
+          tools: toolSchemasFor(mode, { watchEnabled }),
+        });
+        const agent = describePromptPrefix({
+          system: systemPromptFor(mode, { watchEnabled }),
+          tools: buildDashboardAgentTools(ctx),
+        });
 
-    expect(agent.fingerprint).toBe(headStart.fingerprint);
-    expect(agent.chars).toBe(headStart.chars);
-  });
-
-  it("matches in code mode", () => {
-    const headStart = describePromptPrefix({
-      system: DASHBOARD_AGENT_CODE_SYSTEM_PROMPT,
-      tools: dashboardAgentCodeToolSchemas,
-    });
-    const agent = describePromptPrefix({
-      system: DASHBOARD_AGENT_CODE_SYSTEM_PROMPT,
-      tools: buildDashboardAgentTools({ ...SCOPE, repoSnapshot: snapshot }),
-    });
-
-    expect(agent.fingerprint).toBe(headStart.fingerprint);
-  });
+        expect(Object.keys(toolSchemasFor(mode, { watchEnabled }))).toEqual(
+          Object.keys(buildDashboardAgentTools(ctx))
+        );
+        expect(agent.fingerprint).toBe(headStart.fingerprint);
+        expect(agent.chars).toBe(headStart.chars);
+      });
+    }
+  }
 
   it("notices a reordered or changed tool set", () => {
     const base = describePromptPrefix({
@@ -88,18 +85,19 @@ describe("the head-start and agent prefixes are the same prefix", () => {
  * drift. The snapshot below is the itemised diff a reviewer reads.
  */
 const PREFIX_BUDGET = {
-  assistant: { chars: 77_000, estimatedTokens: 19_500, tools: 24, promptChars: 27_000 },
-  code: { chars: 83_000, estimatedTokens: 21_000, tools: 28, promptChars: 29_500 },
+  assistant: { chars: 78_000, estimatedTokens: 19_500, tools: 25, promptChars: 28_600 },
+  code: { chars: 84_000, estimatedTokens: 21_000, tools: 29, promptChars: 30_900 },
 } as const;
 
+// Measured with watches on: the biggest prefix a turn can hand the provider.
 describe("the prefix stays inside its budget", () => {
   const assistant = describePromptPrefixParts({
-    system: DASHBOARD_AGENT_SYSTEM_PROMPT,
-    tools: dashboardAgentToolSchemas,
+    system: systemPromptFor("assistant", { watchEnabled: true }),
+    tools: toolSchemasFor("assistant", { watchEnabled: true }),
   });
   const code = describePromptPrefixParts({
-    system: DASHBOARD_AGENT_CODE_SYSTEM_PROMPT,
-    tools: dashboardAgentCodeToolSchemas,
+    system: systemPromptFor("code", { watchEnabled: true }),
+    tools: toolSchemasFor("code", { watchEnabled: true }),
   });
 
   it("holds the assistant-mode ceilings", () => {

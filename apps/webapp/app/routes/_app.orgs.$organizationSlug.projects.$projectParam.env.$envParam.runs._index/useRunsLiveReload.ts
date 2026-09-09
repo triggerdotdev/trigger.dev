@@ -284,7 +284,6 @@ export function useRunsLiveReload({
   useInterval({
     interval: RUNS_POLL_INTERVAL_MS,
     onLoad: true,
-    pauseWhenHidden: true,
     disabled: !shouldPoll,
     callback: () => {
       loadRunsPoll(checkNewRunsOnTick());

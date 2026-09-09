@@ -1,4 +1,9 @@
-import { IN_FLIGHT_TOOL_STATES, inFlightToolName, liveInvestigation } from "./progress-line";
+import {
+  hasUnfinishedTextPart,
+  IN_FLIGHT_TOOL_STATES,
+  inFlightToolName,
+  liveInvestigation,
+} from "./progress-line";
 
 /**
  * Re-reading the stored transcript once a turn settles.
@@ -11,15 +16,16 @@ import { IN_FLIGHT_TOOL_STATES, inFlightToolName, liveInvestigation } from "./pr
 
 type Identified = { id: string };
 
-/** A message whose stream died mid-tool: a `tool-*` part still reads as running. */
+/** A message whose stream died mid-tool or mid-text: a part still reads as running. */
 function stillRunning(message: unknown): boolean {
   const parts = (message as { parts?: ReadonlyArray<{ type?: string; state?: string }> })?.parts;
   if (!Array.isArray(parts)) return false;
   return parts.some(
     (part) =>
-      typeof part?.type === "string" &&
-      part.type.startsWith("tool-") &&
-      IN_FLIGHT_TOOL_STATES.has(part.state ?? "")
+      (typeof part?.type === "string" &&
+        part.type.startsWith("tool-") &&
+        IN_FLIGHT_TOOL_STATES.has(part.state ?? "")) ||
+      (part?.type === "text" && part.state === "streaming")
   );
 }
 
@@ -63,9 +69,18 @@ export function hasOpenInvestigation(messages: ReadonlyArray<unknown>): boolean 
  * Whether the transcript still reads as mid-turn. A stream that dies without
  * `turn-complete` leaves the tool part it was on dangling forever, so an open card is
  * not the only shape a re-read has to recover from.
+ *
+ * The part checks resolve the turn's own message themselves (`activeTurnMessage`), so a
+ * wake landing while the answer is still streaming cannot make the chat look settled and
+ * skip the resume. An open investigation is still read across the whole transcript,
+ * since its settlement can arrive in any later message.
  */
 export function transcriptLooksUnfinished(messages: ReadonlyArray<unknown>): boolean {
-  return hasOpenInvestigation(messages) || inFlightToolName(messages as never) !== null;
+  return (
+    hasOpenInvestigation(messages) ||
+    inFlightToolName(messages as never) !== null ||
+    hasUnfinishedTextPart(messages as never)
+  );
 }
 
 /**

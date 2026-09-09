@@ -63,14 +63,17 @@ export class TtlSystem {
 
       if (run.status !== "PENDING") {
         this.$.logger.debug("Run cannot be expired because it's not in PENDING status", {
-          run,
+          runId: run.id,
+          status: run.status,
         });
         return;
       }
 
       if (run.lockedAt) {
         this.$.logger.debug("Run cannot be expired because it's locked, so will run", {
-          run,
+          runId: run.id,
+          status: run.status,
+          lockedAt: run.lockedAt,
         });
         return;
       }

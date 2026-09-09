@@ -1,5 +1,5 @@
 import { useRevalidator } from "@remix-run/react";
-import { useEffect, useRef } from "react";
+import { useInterval } from "./useInterval";
 
 type UseAutoRevalidateOptions = {
   interval?: number; // in milliseconds
@@ -7,45 +7,30 @@ type UseAutoRevalidateOptions = {
   disabled?: boolean;
 };
 
+/**
+ * Re-runs the current route's loaders on a timer.
+ *
+ * Ticks are skipped while the tab is hidden. A backgrounded tab has no one watching it,
+ * and at the default interval it would otherwise spend a working day accumulating
+ * thousands of chances to catch a dropped connection — each one fatal to the page.
+ * Returning to the tab fires the focus handler, so the data is still fresh on arrival.
+ */
 export function useAutoRevalidate(options: UseAutoRevalidateOptions = {}) {
   const { interval = 5000, onFocus = true, disabled = false } = options;
   const revalidator = useRevalidator();
-  const revalidatorRef = useRef(revalidator);
-  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
-  revalidatorRef.current = revalidator;
 
-  useEffect(() => {
-    if (!interval || interval <= 0 || disabled) return;
-
-    const intervalId = setInterval(() => {
-      if (revalidatorRef.current.state === "loading") {
+  useInterval({
+    interval,
+    onFocus,
+    disabled,
+    onLoad: false,
+    callback: () => {
+      if (revalidator.state === "loading") {
         return;
       }
-      revalidatorRef.current.revalidate();
-    }, interval);
-
-    return () => clearInterval(intervalId);
-  }, [interval, disabled]);
-
-  useEffect(() => {
-    if (!onFocus || disabled) return;
-
-    const handleFocus = () => {
-      if (document.visibilityState === "visible" && revalidatorRef.current.state !== "loading") {
-        revalidatorRef.current.revalidate();
-      }
-    };
-
-    // Revalidate when the page becomes visible
-    document.addEventListener("visibilitychange", handleFocus);
-    // Revalidate when the window gains focus
-    window.addEventListener("focus", handleFocus);
-
-    return () => {
-      document.removeEventListener("visibilitychange", handleFocus);
-      window.removeEventListener("focus", handleFocus);
-    };
-  }, [onFocus, disabled]);
+      revalidator.revalidate();
+    },
+  });
 
   return revalidator;
 }

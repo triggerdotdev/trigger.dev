@@ -316,9 +316,11 @@ model OrgMemberInvite {
 }
 
 model RuntimeEnvironment {
-  id     String @id @default(cuid())
-  slug   String
-  apiKey String @unique
+  id                 String    @id @default(cuid())
+  slug               String
+  apiKey             String    @unique
+  /// Non-null prevents the root API key from being returned to users.
+  rootApiKeyHiddenAt DateTime?
 
   /// @deprecated was for v2
   pkApiKey String @unique
@@ -2382,6 +2384,9 @@ model TaskSchedule {
   // Cron spread
   windowDurationSeconds Int?
   windowPercentage      Int?
+
+  defaultWindowDurationSeconds Int?
+  minimumWindowDurationSeconds Int?
 
   ///Can be provided by the user then accessed inside a run
   externalId String?

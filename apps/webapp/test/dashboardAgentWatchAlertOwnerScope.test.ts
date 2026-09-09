@@ -129,7 +129,10 @@ function fakeCheckDeps(): WatchCheckDeps {
 /** One organization with a production environment, and two members of it. */
 async function seedProject(prisma: PrismaClient) {
   const slug = `alertscope_${suffix()}`;
-  const organization = await prisma.organization.create({ data: { title: slug, slug } });
+  const organization = await prisma.organization.create({
+    // Watches are flagged off by default, so this suite's org opts in.
+    data: { title: slug, slug, featureFlags: { dashboardAgentWatchEnabled: true } },
+  });
   const project = await prisma.project.create({
     data: { name: slug, slug, organizationId: organization.id, externalRef: `proj_${slug}` },
   });

@@ -5,7 +5,10 @@ import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { NextRunListPresenter } from "./NextRunListPresenter.server";
 import { scheduleWhereClause } from "~/models/schedules.server";
-import { calculateNextScheduleRunTimes, formatScheduleWindow } from "~/v3/scheduleWindow.server";
+import {
+  calculateNextScheduleRunTimes,
+  formatResolvedScheduleWindow,
+} from "~/v3/scheduleWindow.server";
 import { env } from "~/env.server";
 
 type ViewScheduleOptions = {
@@ -40,6 +43,8 @@ export class ViewSchedulePresenter {
         timezone: true,
         windowDurationSeconds: true,
         windowPercentage: true,
+        defaultWindowDurationSeconds: true,
+        minimumWindowDurationSeconds: true,
         externalId: true,
         deduplicationKey: true,
         userProvidedDeduplicationKey: true,
@@ -101,6 +106,8 @@ export class ViewSchedulePresenter {
           phaseSecret: env.ENCRYPTION_KEY,
           windowDurationSeconds: schedule.windowDurationSeconds,
           windowPercentage: schedule.windowPercentage,
+          defaultWindowDurationSeconds: schedule.defaultWindowDurationSeconds,
+          minimumWindowDurationSeconds: schedule.minimumWindowDurationSeconds,
           count: 5,
         })
       : [];
@@ -120,7 +127,8 @@ export class ViewSchedulePresenter {
         timezone: schedule.timezone,
         cron: schedule.generatorExpression,
         cronDescription: schedule.generatorDescription,
-        window: formatScheduleWindow(schedule),
+        window: formatResolvedScheduleWindow(schedule).window,
+        windowSource: formatResolvedScheduleWindow(schedule).source,
         nextRuns,
         runs,
         environments: schedule.instances.map((instance) => {
@@ -168,6 +176,13 @@ export class ViewSchedulePresenter {
       active: result.schedule.active,
       nextRun: result.schedule.nextRuns[0]?.nominalAt ?? null,
       nextRunEffectiveAt: result.schedule.nextRuns[0]?.effectiveAt ?? null,
+      appliedSchedulePolicy:
+        result.schedule.minimumWindowDurationSeconds !== null
+          ? {
+              minimumWindowSeconds: result.schedule.minimumWindowDurationSeconds,
+              reason: "free_schedule" as const,
+            }
+          : undefined,
       generator: {
         type: "CRON",
         expression: result.schedule.cron,

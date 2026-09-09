@@ -82,6 +82,15 @@ class CountingRunStore extends PostgresRunStore {
     this.calls.push("updateManyWaitpoints");
     return super.updateManyWaitpoints(args, tx);
   }
+  // The completion write goes through markWaitpointCompleted (the replay-safe completion method), so
+  // it is the DB step the guard must precede on every completion route.
+  override async markWaitpointCompleted(
+    waitpointId: string,
+    completion: Parameters<PostgresRunStore["markWaitpointCompleted"]>[1]
+  ): Promise<Prisma.BatchPayload> {
+    this.calls.push("markWaitpointCompleted");
+    return super.markWaitpointCompleted(waitpointId, completion);
+  }
   override async findManyTaskRunWaitpoints<T extends Prisma.TaskRunWaitpointFindManyArgs>(
     args: Prisma.SelectSubset<T, Prisma.TaskRunWaitpointFindManyArgs>,
     client?: any
@@ -753,10 +762,15 @@ describe("WaitpointSystem completion fan-out + residency store-selection guard",
   // than) the first completion DB write on the same store.
   function expectGuardFiredBeforeUpdate(calls: string[]) {
     const guardIdx = calls.indexOf("forWaitpointCompletion");
-    const updateIdx = calls.indexOf("updateManyWaitpoints");
+    // The completion DB write is markWaitpointCompleted (some routes may also touch
+    // updateManyWaitpoints); take whichever completion write lands first.
+    const writeIdx = ["markWaitpointCompleted", "updateManyWaitpoints"]
+      .map((m) => calls.indexOf(m))
+      .filter((i) => i >= 0)
+      .sort((a, b) => a - b)[0];
     expect(guardIdx).toBeGreaterThanOrEqual(0);
-    expect(updateIdx).toBeGreaterThanOrEqual(0);
-    expect(guardIdx).toBeLessThanOrEqual(updateIdx);
+    expect(writeIdx).toBeGreaterThanOrEqual(0);
+    expect(guardIdx).toBeLessThanOrEqual(writeIdx);
   }
 
   // ----- Group 1: EXHAUSTIVE route enumeration -----
@@ -781,10 +795,10 @@ describe("WaitpointSystem completion fan-out + residency store-selection guard",
 
         expect(store.calls).toContain("forWaitpointCompletion");
         const guardIdx = store.calls.indexOf("forWaitpointCompletion");
-        const updateIdx = store.calls.indexOf("updateManyWaitpoints");
-        // Synchronous route: guard is strictly the first DB step.
+        const writeIdx = store.calls.indexOf("markWaitpointCompleted");
+        // Synchronous route: guard is strictly the first DB step, before the completion write.
         expect(guardIdx).toBe(0);
-        expect(updateIdx).toBeGreaterThan(guardIdx);
+        expect(writeIdx).toBeGreaterThan(guardIdx);
       } finally {
         await engine.quit();
       }

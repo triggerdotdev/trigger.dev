@@ -6,6 +6,9 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import { sliceWellFormed } from "@internal/dashboard-agent-contracts";
 import { tool, type ToolSet } from "ai";
+import { resolveTarget, type TargetInput } from "./tool-api";
+import type { EnvTarget } from "./tool-api-client";
+import type { DashboardAgentToolContext } from "./tool-context";
 import {
   getRepoInfoSchema,
   listFilesSchema,
@@ -207,34 +210,75 @@ export async function disposeRepoWorkspaces(): Promise<void> {
 }
 
 /** Resolve a run-pinned snapshot for a runId, or null. See the webapp's repo/snapshot route. */
-export type RunSnapshotResolver = (runId: string) => Promise<RepoSnapshot | null>;
+export type RunSnapshotResolver = (
+  runId: string,
+  target: EnvTarget
+) => Promise<RepoSnapshot | null>;
+
+// The reader resolves the target once and hands it over, so the source ledger never has to
+// resolve it again and reach a different answer.
+export type SourceReadReporter = (read: {
+  path: string;
+  sha: string;
+  target?: EnvTarget;
+  /** Whether the read named a project, environment or branch of its own. */
+  targeted: boolean;
+}) => void | Promise<void>;
 
 export function buildRepoTools(
   defaultSnapshot: RepoSnapshot,
-  resolveRunSnapshot?: RunSnapshotResolver
+  ctx: DashboardAgentToolContext,
+  options: { resolveRunSnapshot?: RunSnapshotResolver; onSourceRead?: SourceReadReporter } = {}
 ): ToolSet {
-  // Pick the snapshot for a call: a runId pins to that run's deployed commit
-  // (resolved server-side), otherwise the default tracked-branch snapshot.
-  async function snapshotFor(runId?: string): Promise<RepoSnapshot | { error: string }> {
-    if (!runId) return defaultSnapshot;
+  const { resolveRunSnapshot, onSourceRead } = options;
+  // A runId pins to that run's deployed commit; otherwise the default tracked-branch
+  // snapshot, which is the conversation's own repo — another environment needs a run to pin to.
+  type Resolved = { snapshot: RepoSnapshot; target?: EnvTarget; targeted: boolean };
+  async function snapshotFor(
+    input: TargetInput & { runId?: string }
+  ): Promise<Resolved | { error: string }> {
+    const named =
+      input.project !== undefined || input.environment !== undefined || input.branch !== undefined;
+    // An untargeted read needs no environment at all — a missing one just means no scope.
+    if (!input.runId && !named) {
+      const scope = await resolveTarget({}, ctx, "read source from");
+      return {
+        snapshot: defaultSnapshot,
+        targeted: false,
+        ...(scope.ok ? { target: scope.target } : {}),
+      };
+    }
+    const resolved = await resolveTarget(input, ctx, "read source from");
+    if (!resolved.ok) return { error: resolved.error };
+    if (!input.runId) {
+      return resolved.conversationScope
+        ? { snapshot: defaultSnapshot, target: resolved.target, targeted: named }
+        : {
+            error:
+              "Name a runId too: source in another environment is read from the commit one of its runs deployed.",
+          };
+    }
     if (!resolveRunSnapshot)
       return { error: "Reading a specific run's source isn't available here." };
-    const snap = await resolveRunSnapshot(runId);
-    return (
-      snap ?? {
-        error: `Couldn't resolve the source for ${runId} (it may be a dev run, or the project has no connected repo).`,
-      }
-    );
+    const snap = await resolveRunSnapshot(input.runId, resolved.target);
+    if (!snap) {
+      return {
+        error: `Couldn't resolve the source for ${input.runId} (it may be a dev run, or the project has no connected repo).`,
+      };
+    }
+    return { snapshot: snap, target: resolved.target, targeted: named };
   }
 
   // snapshotFor + ensureWorkspace, returning the workdir or an error result.
-  async function loadWorkdir(runId?: string): Promise<{ workdir: string } | { error: string }> {
-    const snap = await snapshotFor(runId);
-    if ("error" in snap) return snap;
+  async function loadWorkdir(
+    input: TargetInput & { runId?: string }
+  ): Promise<(Resolved & { workdir: string }) | { error: string }> {
+    const resolved = await snapshotFor(input);
+    if ("error" in resolved) return resolved;
     try {
       // Canonicalize the root so the per-tool realpath checks below compare
       // against the real workspace path (tmpdir is itself a symlink on macOS).
-      return { workdir: await realpath(await ensureWorkspace(snap)) };
+      return { ...resolved, workdir: await realpath(await ensureWorkspace(resolved.snapshot)) };
     } catch (error) {
       return { error: `Couldn't load the repository: ${(error as Error).message}` };
     }
@@ -243,22 +287,24 @@ export function buildRepoTools(
   return {
     get_repo_info: tool({
       ...getRepoInfoSchema,
-      execute: async ({ runId }) => {
-        const snap = await snapshotFor(runId);
-        if ("error" in snap) return snap;
+      execute: async (input) => {
+        const resolved = await snapshotFor(input);
+        if ("error" in resolved) return resolved;
+        const { snapshot } = resolved;
         return {
-          owner: snap.owner,
-          repo: snap.repo,
-          sha: snap.sha,
-          defaultBranch: snap.defaultBranch,
+          owner: snapshot.owner,
+          repo: snapshot.repo,
+          sha: snapshot.sha,
+          defaultBranch: snapshot.defaultBranch,
         };
       },
     }),
 
     list_files: tool({
       ...listFilesSchema,
-      execute: async ({ glob, path, runId }) => {
-        const loaded = await loadWorkdir(runId);
+      execute: async (input) => {
+        const { glob, path } = input;
+        const loaded = await loadWorkdir(input);
         if ("error" in loaded) return loaded;
         const { workdir } = loaded;
         const args = ["--files"];
@@ -291,8 +337,9 @@ export function buildRepoTools(
 
     read_file: tool({
       ...readFileSchema,
-      execute: async ({ path, startLine, endLine, runId }) => {
-        const loaded = await loadWorkdir(runId);
+      execute: async (input) => {
+        const { path, startLine, endLine } = input;
+        const loaded = await loadWorkdir(input);
         if ("error" in loaded) return loaded;
         const { workdir } = loaded;
         const target = safeResolve(workdir, path);
@@ -308,6 +355,15 @@ export function buildRepoTools(
           whole = (await readFile(realTarget ?? target)).toString("utf8");
         } catch {
           return { error: `Couldn't read ${path} (not found or not a file).` };
+        }
+        // A targeted read is citable only with the scope it resolved, so it is never reported without one.
+        if (!loaded.targeted || loaded.target) {
+          await onSourceRead?.({
+            path,
+            sha: loaded.snapshot.sha,
+            target: loaded.target,
+            targeted: loaded.targeted,
+          });
         }
         // The range is applied before the cap: capping first made a range past the
         // ceiling come back empty rather than as the lines that were asked for.
@@ -339,8 +395,9 @@ export function buildRepoTools(
 
     search_code: tool({
       ...searchCodeSchema,
-      execute: async ({ query, glob, maxResults, runId }) => {
-        const loaded = await loadWorkdir(runId);
+      execute: async (input) => {
+        const { query, glob, maxResults } = input;
+        const loaded = await loadWorkdir(input);
         if ("error" in loaded) return loaded;
         const { workdir } = loaded;
         const cap = Math.min(maxResults ?? 40, MAX_MATCHES);

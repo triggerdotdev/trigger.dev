@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { QueryResultsChart } from "~/components/code/QueryResultsChart";
 import type { ChartConfiguration } from "~/components/metrics/QueryWidget";
 import { Button } from "~/components/primitives/Buttons";
-import { AgentSpinner } from "~/components/primitives/Spinner";
+import { TextShimmer } from "~/components/primitives/TextShimmer";
 import { useOptionalEnvironment } from "~/hooks/useEnvironment";
 import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { useOptionalProject } from "~/hooks/useProject";
@@ -158,9 +158,8 @@ export function AgentChart({
       ) : null}
       <div className={cn(AGENT_CHART_PLOT_CLASS)}>
         {state.status === "loading" ? (
-          <div className="flex h-full items-center justify-center gap-2 text-xs text-text-dimmed">
-            <AgentSpinner size={12} />
-            Running query…
+          <div className="flex h-full items-center justify-center text-xs text-text-dimmed">
+            <TextShimmer>Running query…</TextShimmer>
           </div>
         ) : state.status === "error" ? (
           <div className="flex h-full items-center justify-center px-3 text-center text-xs text-error">

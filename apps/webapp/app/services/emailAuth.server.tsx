@@ -28,7 +28,7 @@ const emailStrategy = new EmailLinkStrategy(
     form: FormData;
     magicLinkVerify: boolean;
   }) => {
-    logger.info("Magic link user authenticated", { email, magicLinkVerify });
+    logger.info("Magic link user authenticated", { magicLinkVerify });
 
     // Gate the link CLICK, not just the send: a magic link issued before
     // SSO enforcement flipped on (or replayed within its validity

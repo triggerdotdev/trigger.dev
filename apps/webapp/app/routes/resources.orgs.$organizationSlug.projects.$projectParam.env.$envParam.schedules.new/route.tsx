@@ -1,5 +1,5 @@
 import { getFormProps, getInputProps, getSelectProps, useForm } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { ScheduleWindow } from "@trigger.dev/core/v3";
 import { CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import {
@@ -228,7 +228,7 @@ export function UpsertScheduleForm({
     const result = ScheduleWindow.safeParse(scheduleWindowValue);
     scheduleWindowResult = result.success
       ? { isValid: true }
-      : { isValid: false, error: result.error.errors[0].message };
+      : { isValid: false, error: result.error.issues[0].message };
   }
 
   if (cronPattern !== "") {
@@ -237,7 +237,7 @@ export function UpsertScheduleForm({
     if (!result.success) {
       cronPatternResult = {
         isValid: false,
-        error: result.error.errors[0].message,
+        error: result.error.issues[0].message,
       };
     } else {
       try {
@@ -399,10 +399,18 @@ export function UpsertScheduleForm({
                 onChange={(event) => setScheduleWindowValue(event.target.value)}
               />
               {scheduleWindowResult === undefined ? (
-                <Hint>
-                  Assigns each run a stable time after its CRON time. Use minutes, hours, or a
-                  percentage of the interval.
-                </Hint>
+                schedule?.hasCapturedDefaultWindow ? (
+                  <Hint>
+                    This schedule uses the 60-minute default window. Enter a value to override it,
+                    or <code>0m</code> to use the one-minute minimum.
+                  </Hint>
+                ) : (
+                  <Hint>
+                    Assigns each run a stable time after its CRON time, capped at the next CRON
+                    occurrence. Use minutes, hours, or a percentage of the interval. Every schedule
+                    gets at least a one-minute spread; enter <code>0m</code> for that minimum.
+                  </Hint>
+                )
               ) : scheduleWindowResult.isValid ? (
                 <ValidationMessage
                   id={scheduleWindow.errorId}

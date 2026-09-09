@@ -1,4 +1,3 @@
-import { AgentMonoLogo } from "~/components/primitives/AgentDotMatrix";
 import { cn } from "~/utils/cn";
 
 type CustomColor = {
@@ -43,6 +42,8 @@ export function Spinner({
 
   const currentColor = typeof color === "string" ? colors[color] : color;
 
+  // Reduced motion keeps the ring, just still: hiding it leaves an icon-only
+  // loading state with nothing in it at all.
   return (
     <svg
       width="20"
@@ -50,7 +51,7 @@ export function Spinner({
       viewBox="0 0 20 20"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      className={cn("animate-spin motion-reduce:hidden", className)}
+      className={cn("animate-spin motion-reduce:animate-none", className)}
     >
       <rect
         x="2"
@@ -85,17 +86,4 @@ export function ButtonSpinner() {
 
 export function SpinnerWhite({ className }: { className?: string }) {
   return <Spinner className={className} color="white" />;
-}
-
-/** The dashboard agent's spinner. `size` is the logo's pixel size; the matrix does not scale from CSS. */
-export function AgentSpinner({ size = 16 }: { size?: number }) {
-  return (
-    <AgentMonoLogo
-      size={size}
-      active
-      // Resting on the playlist's first shape avoids a logo-head flash on mount.
-      restShape="square"
-      decorative
-    />
-  );
 }

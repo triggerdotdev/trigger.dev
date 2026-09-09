@@ -1,31 +1,10 @@
-import {
-  BookOpenIcon,
-  ChartBarIcon,
-  EyeIcon,
-  MagnifyingGlassIcon,
-  QuestionMarkCircleIcon,
-  SparklesIcon,
-} from "@heroicons/react/20/solid";
 import type { AgentPageContext, SuggestedPrompt } from "@internal/dashboard-agent-contracts";
 import { useMemo, useState } from "react";
-import { Button, type ButtonVariant } from "~/components/primitives/Buttons";
-import type { RenderIcon } from "~/components/primitives/Icon";
-import {
-  readDismissedPromptIds,
-  resolveSuggestedPromptsBySlot,
-  type ResolvedPromptSlot,
-} from "./suggested-prompts";
+import { Button } from "~/components/primitives/Buttons";
+import { readDismissedPromptIds, resolveSuggestedPromptsBySlot } from "./suggested-prompts";
 
-// The only slot-to-button-style mapping: a new slot is styled here and nowhere else.
-const PROMPT_SLOT_BUTTON: Record<ResolvedPromptSlot, { variant: ButtonVariant; icon: RenderIcon }> =
-  {
-    promoted: { variant: "primary/small", icon: SparklesIcon },
-    investigate: { variant: "primary/small", icon: MagnifyingGlassIcon },
-    watch: { variant: "secondary/small", icon: EyeIcon },
-    status: { variant: "secondary/small", icon: ChartBarIcon },
-    explain: { variant: "tertiary/small", icon: QuestionMarkCircleIcon },
-    docs: { variant: "docs/small", icon: BookOpenIcon },
-  };
+// Every slot renders the same way: no per-slot styling to keep in sync here.
+const PROMPT_BUTTON_VARIANT = "secondary/small";
 
 // This surface never writes dismissals; only the row surfaces do.
 export function DashboardAgentSuggestedPrompts({
@@ -34,6 +13,7 @@ export function DashboardAgentSuggestedPrompts({
   promoted,
   dismissedIds,
   disabledReason,
+  watchEnabled = false,
 }: {
   /** Receives the prompt text to send, not the button label. */
   onSelect: (prompt: string) => void;
@@ -44,6 +24,8 @@ export function DashboardAgentSuggestedPrompts({
   dismissedIds?: string[];
   /** Set to disable every chip and say why, e.g. over the message cap. */
   disabledReason?: string;
+  /** Withholds the `watch` chip while watch functionality is behind its flag. */
+  watchEnabled?: boolean;
 }) {
   // Read once on mount: re-reading per render churns the resolved set.
   const [storedDismissedIds] = useState<string[]>(() =>
@@ -56,29 +38,25 @@ export function DashboardAgentSuggestedPrompts({
     () =>
       resolveSuggestedPromptsBySlot(
         pageContext ?? { page: { kind: "other", path: "" }, signals: [] },
-        { promoted, dismissedIds: effectiveDismissedIds }
+        { promoted, dismissedIds: effectiveDismissedIds, watchEnabled }
       ),
-    [pageContext, promoted, effectiveDismissedIds]
+    [pageContext, promoted, effectiveDismissedIds, watchEnabled]
   );
 
   return (
     <div className="flex flex-wrap items-center justify-center gap-1.5">
-      {prompts.map(({ slot, prompt }) => {
-        const style = PROMPT_SLOT_BUTTON[slot];
-        return (
-          <Button
-            key={prompt.id}
-            variant={style.variant}
-            LeadingIcon={style.icon}
-            onClick={() => onSelect(prompt.prompt)}
-            disabled={!!disabledReason}
-            tooltip={disabledReason}
-            aria-label={disabledReason ? `${prompt.label} — ${disabledReason}` : undefined}
-          >
-            {prompt.label}
-          </Button>
-        );
-      })}
+      {prompts.map(({ prompt }) => (
+        <Button
+          key={prompt.id}
+          variant={PROMPT_BUTTON_VARIANT}
+          onClick={() => onSelect(prompt.prompt)}
+          disabled={!!disabledReason}
+          tooltip={disabledReason}
+          aria-label={disabledReason ? `${prompt.label} — ${disabledReason}` : undefined}
+        >
+          {prompt.label}
+        </Button>
+      ))}
     </div>
   );
 }

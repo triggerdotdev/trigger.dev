@@ -70,6 +70,7 @@ export class ApiKeysPresenter {
         select: {
           id: true,
           apiKey: true,
+          rootApiKeyHiddenAt: true,
           type: true,
           apiKeys: {
             where: showRevoked ? undefined : { revokedAt: null },
@@ -119,20 +120,23 @@ export class ApiKeysPresenter {
     ]);
     const presetsById = new Map(presets?.map((preset) => [preset.id, preset]));
     const { taskIdentifiers, organizationId: _organizationId, ...environmentData } = environment;
+    const rootApiKey = keyEnvironment.rootApiKeyHiddenAt
+      ? null
+      : {
+          id: keyEnvironment.id,
+          name: "Root API key",
+          value: keyEnvironment.apiKey,
+          obfuscated: obfuscateApiKey(keyEnvironment.type, keyEnvironment.apiKey.slice(-4)),
+        };
 
     return {
       environment: {
         ...environmentData,
-        apiKey: keyEnvironment.apiKey,
+        apiKey: rootApiKey?.value ?? null,
         keyEnvironmentId,
       },
       availableTasks: taskIdentifiers.map((task) => task.slug),
-      rootApiKey: {
-        id: keyEnvironment.id,
-        name: "Root API key",
-        value: keyEnvironment.apiKey,
-        obfuscated: obfuscateApiKey(keyEnvironment.type, keyEnvironment.apiKey.slice(-4)),
-      },
+      rootApiKey,
       apiKeys: keyEnvironment.apiKeys.map((apiKey, index) => {
         const { presetId, scopes, ...apiKeyData } = apiKey;
         const description = policyDescriptions[index];

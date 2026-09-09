@@ -2,6 +2,7 @@ import type { SuggestedPrompt, WatchSpec } from "@internal/dashboard-agent-contr
 import { useLocation } from "@remix-run/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  collapsibleHandleClassName,
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
@@ -10,16 +11,15 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
-import { useAskAiAvailability } from "~/hooks/useAskAiAvailability";
-import { agentDeepLinkParams, ASK_AI_SHORTCUT, askAiChannelTarget } from "./ask-ai-channels";
+import { useUser } from "~/hooks/useUser";
+import { agentDeepLinkParams } from "./ask-ai-channels";
 import { DashboardAgentPanel } from "./DashboardAgentPanel";
 import { DashboardAgentProvider, TOGGLE_PANEL_SHORTCUT } from "./dashboardAgentLauncher";
 import { useDashboardAgentOpenRequests } from "./dashboardAgentOpenRequest";
 import {
   agentHiddenContentClassName,
-  agentTakeoverClassName,
-  readAgentFullscreen,
-  writeAgentFullscreen,
+  FloatingAgentWindow,
+  useAgentPanelMode,
 } from "./panel-layout";
 import { nextPendingTurnChatId } from "./pending-turn";
 import { nextVisibleChat } from "./unread-counts";
@@ -35,6 +35,10 @@ import {
 
 const TOASTED_WAKES_STORAGE_KEY = "tdev:dashboard-agent:toasted-wakes";
 
+// Superseded by the account preference; a stray value here would otherwise pin the mode
+// forever if this cleanup effect never ran.
+const STALE_MODE_STORAGE_KEYS = ["tdev:dashboard-agent:mode", "tdev:dashboard-agent:fullscreen"];
+
 // Shorter than the poll interval, so a stuck request is dropped before the next tick.
 const UNREAD_REQUEST_TIMEOUT_MS = 30_000;
 
@@ -48,6 +52,8 @@ export function DashboardAgent({
   initialUnreadWork = 0,
   /** Also from the page load: a watch is running, so a wake can still arrive in this tab. */
   hasActiveWatches = false,
+  /** From the chat loader; withholds every watch affordance until it turns up there. */
+  watchEnabled = false,
 }: {
   children: React.ReactNode;
   hasAccess?: boolean;
@@ -56,10 +62,13 @@ export function DashboardAgent({
   /** Chats whose transcript moved on since their owner last looked. */
   initialUnreadWork?: number;
   hasActiveWatches?: boolean;
+  watchEnabled?: boolean;
 }) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
+  const user = useUser();
+  const modePreference = user.dashboardPreferences.chatOpenMode;
   const actionPath = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboard-agent`;
 
   const [open, setOpen] = useState(false);
@@ -114,14 +123,21 @@ export function DashboardAgent({
     setUnreadWakes(initialUnreadWakes);
     setUnreadWork(initialUnreadWork);
   }, [environment.id, initialUnreadWakes, initialUnreadWork]);
-  // Read lazily so SSR always renders the side panel.
-  const [fullscreen, setFullscreen] = useState(readAgentFullscreen);
+  // Every open starts from the account preference; in-chat switches (toggle, drag-to-dock)
+  // are transient and never write it back.
+  const { mode, changeMode, resetToPreference, revertFullscreen } = useAgentPanelMode(
+    modePreference,
+    open
+  );
+  const fullscreen = mode === "fullscreen";
 
-  const toggleFullscreen = useCallback(() => {
-    setFullscreen((current) => {
-      writeAgentFullscreen(!current);
-      return !current;
-    });
+  // Superseded localStorage keys; harmless to skip if storage is unavailable.
+  useEffect(() => {
+    try {
+      for (const key of STALE_MODE_STORAGE_KEYS) window.localStorage.removeItem(key);
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   // Pathname only: filter and search-param changes must keep fullscreen.
@@ -130,11 +146,8 @@ export function DashboardAgent({
   useEffect(() => {
     if (previousPathname.current === pathname) return;
     previousPathname.current = pathname;
-    setFullscreen((current) => {
-      if (current) writeAgentFullscreen(false);
-      return false;
-    });
-  }, [pathname]);
+    revertFullscreen();
+  }, [pathname, revertFullscreen]);
   const [newChatSeq, setNewChatSeq] = useState(0);
   const [requestedMessage, setRequestedMessage] = useState<
     { text: string; seq: number } | undefined
@@ -165,13 +178,14 @@ export function DashboardAgent({
       setOpen(false);
       // Pending requests must be dropped or a stale one re-applies on the next open.
       visibleChat.current = null;
-      setFullscreen(false);
-      writeAgentFullscreen(false);
+      // Any transient in-chat mode switch applied only until close; the next open
+      // starts from the account preference again.
+      resetToPreference();
       setRequestedMessage(undefined);
       setOpenChatRequest(undefined);
       setWatchRequest(undefined);
     },
-    [openPanel]
+    [openPanel, resetToPreference]
   );
 
   const openChat = useCallback(
@@ -243,12 +257,18 @@ export function DashboardAgent({
           wakes?: WatchWake[];
         };
         if (cancelled) return;
+        setUnreadWork(Math.max(0, data.unreadWork ?? 0));
+
+        if (!watchEnabled) {
+          setUnreadWakes(0);
+          return;
+        }
+
         // The wakes list carries read ones too, so only unread ones are subtracted.
         const unreadInView = (data.wakes ?? []).filter(
           (wake) => wake.unread && wake.chatId === visibleChat.current
         ).length;
         setUnreadWakes(Math.max(0, (data.unreadWakes ?? 0) - unreadInView));
-        setUnreadWork(Math.max(0, data.unreadWork ?? 0));
 
         const fresh = wakesToToast(data.wakes, toastedWakes.current);
         for (const wake of fresh) rememberToasted(wake.watchId);
@@ -281,7 +301,7 @@ export function DashboardAgent({
       cancelled = true;
       stop();
     };
-  }, [hasAccess, watching, actionPath, setPanelOpen, openChat, rememberToasted]);
+  }, [hasAccess, watching, watchEnabled, actionPath, setPanelOpen, openChat, rememberToasted]);
 
   // Zeroes the wake dot right away; the poll restores the truth if another chat has one. The
   // work count is not touched here: the panel derives it from the chat list.
@@ -315,28 +335,24 @@ export function DashboardAgent({
     enabledOnInputElements: true,
   });
 
-  // ⌘I and the CLI's `?aiHelp=` link are Ask AI's; the agent only answers them where Ask AI
-  // cannot open.
-  const askAi = useAskAiAvailability();
-  const ownsAskAiChannels = askAiChannelTarget(askAi) === "dashboard-agent";
-
-  useShortcutKeys({
-    shortcut: ASK_AI_SHORTCUT,
-    action: () => setPanelOpen(true),
-    disabled: !hasAccess || !ownsAskAiChannels,
-    enabledOnInputElements: true,
-  });
-
   useDashboardAgentOpenRequests({
     enabled: hasAccess,
     openWith,
     setOpen: setPanelOpen,
-    deepLinkParams: agentDeepLinkParams(askAi),
+    deepLinkParams: agentDeepLinkParams(),
   });
 
   const context = useMemo(
-    () => ({ open, setOpen: setPanelOpen, openWith, openWithWatch, unreadWakes, unreadWork }),
-    [open, setPanelOpen, openWith, openWithWatch, unreadWakes, unreadWork]
+    () => ({
+      open,
+      setOpen: setPanelOpen,
+      openWith,
+      openWithWatch,
+      unreadWakes,
+      unreadWork,
+      watchEnabled,
+    }),
+    [open, setPanelOpen, openWith, openWithWatch, unreadWakes, unreadWork, watchEnabled]
   );
 
   if (!hasAccess) {
@@ -346,7 +362,10 @@ export function DashboardAgent({
   return (
     <DashboardAgentProvider value={context}>
       {open ? (
-        // `relative` is the takeover's containing block.
+        // `relative` is the fullscreen takeover's containing block. The ResizablePanelGroup
+        // stays mounted across all three modes — only its sizing/handle degenerate outside
+        // rightPanel — so `FloatingAgentWindow` (and the chat panel inside it) sits at the
+        // same tree position in every mode and a mode switch never remounts it.
         <div className="relative h-full min-h-0">
           <ResizablePanelGroup
             orientation="horizontal"
@@ -358,25 +377,43 @@ export function DashboardAgent({
             </ResizablePanel>
             <ResizableHandle
               id="dashboard-agent-handle"
-              className={fullscreen ? "invisible" : undefined}
+              size={mode === "rightPanel" ? "3px" : "0px"}
+              className={collapsibleHandleClassName(mode === "rightPanel")}
             />
-            <ResizablePanel id="dashboard-agent-panel" default="380px" min="320px" max="720px">
-              <div className={agentTakeoverClassName(fullscreen)}>
-                <DashboardAgentPanel
-                  onClose={() => setPanelOpen(false)}
-                  requestedMessage={requestedMessage}
-                  openChatRequest={openChatRequest}
-                  watchRequest={watchRequest}
-                  newChatSeq={newChatSeq}
-                  promotedPrompt={promotedPrompt}
-                  onChatRead={markChatRead}
-                  // The panel's own count, off the chat list it has already marked read.
-                  onUnreadWorkChange={setUnreadWork}
-                  onTurnActivityChange={handleTurnActivityChange}
-                  isFullscreen={fullscreen}
-                  onToggleFullscreen={toggleFullscreen}
-                />
-              </div>
+            <ResizablePanel
+              id="dashboard-agent-panel"
+              default="380px"
+              min="320px"
+              max="720px"
+              collapsible
+              collapsed={mode !== "rightPanel"}
+              collapsedSize="0px"
+              // Non-rightPanel modes render through position:fixed/absolute, which must
+              // escape this panel's own clipping box to avoid being cut to its 0px width.
+              // Tailwind v4's important modifier is a trailing `!`, not a leading one.
+              className={mode === "rightPanel" ? undefined : "overflow-visible!"}
+            >
+              <FloatingAgentWindow mode={mode} onRequestModeChange={changeMode}>
+                {({ dragHandleProps, dragHandleClassName }) => (
+                  <DashboardAgentPanel
+                    onClose={() => setPanelOpen(false)}
+                    requestedMessage={requestedMessage}
+                    openChatRequest={openChatRequest}
+                    watchRequest={watchRequest}
+                    newChatSeq={newChatSeq}
+                    promotedPrompt={promotedPrompt}
+                    onChatRead={markChatRead}
+                    // The panel's own count, off the chat list it has already marked read.
+                    onUnreadWorkChange={setUnreadWork}
+                    onTurnActivityChange={handleTurnActivityChange}
+                    watchEnabled={watchEnabled}
+                    mode={mode}
+                    onModeChange={changeMode}
+                    dragHandleProps={dragHandleProps}
+                    dragHandleClassName={dragHandleClassName}
+                  />
+                )}
+              </FloatingAgentWindow>
             </ResizablePanel>
           </ResizablePanelGroup>
         </div>

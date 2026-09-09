@@ -127,6 +127,8 @@ export class EditSchedulePresenter {
         timezone: true,
         windowDurationSeconds: true,
         windowPercentage: true,
+        defaultWindowDurationSeconds: true,
+        minimumWindowDurationSeconds: true,
         taskIdentifier: true,
         instances: {
           select: {
@@ -147,7 +149,12 @@ export class EditSchedulePresenter {
     return {
       ...schedule,
       cron: schedule.generatorExpression,
+      // The form shows only the user-configured value; a blank field lets a captured default
+      // surface through the placeholder copy rather than appearing as a typed value.
       window: formatScheduleWindow(schedule),
+      // Whether this schedule carries a captured default, so the form copy can say "clearing
+      // returns to the 60-minute default" only for the new cohort, never for a grandfathered row.
+      hasCapturedDefaultWindow: schedule.defaultWindowDurationSeconds !== null,
       environments: schedule.instances.flatMap((instance) => {
         const environment = possibleEnvironments.find((env) => env.id === instance.environmentId);
         if (!environment) {

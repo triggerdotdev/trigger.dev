@@ -1,9 +1,10 @@
-import { z } from "zod";
+import { z } from "zod/v4";
 import { ImportTaskFileErrors, WorkerManifest } from "./build.js";
 import { TaskRunExecution, TaskRunExecutionResult } from "./common.js";
 import { RunEngineVersionSchema, TaskRunExecutionMetrics } from "./schemas.js";
 import { CompletedWaitpoint } from "./runEngine.js";
 import { DebugLogPropertiesInput } from "../runEngineWorker/supervisor/schemas.js";
+import type { ZodIssueLike } from "../types/schemas.js";
 
 export const ServerBackgroundWorker = z.object({
   id: z.string(),
@@ -27,7 +28,7 @@ export const UncaughtExceptionMessage = z.object({
 export const TaskMetadataFailedToParseData = z.object({
   version: z.literal("v1").default("v1"),
   tasks: z.unknown(),
-  zodIssues: z.custom<z.ZodIssue[]>((v) => {
+  zodIssues: z.custom<ReadonlyArray<ZodIssueLike>>((v) => {
     return Array.isArray(v) && v.every((issue) => typeof issue === "object" && "message" in issue);
   }),
 });
@@ -90,10 +91,10 @@ export const WorkerToExecutorMessageCatalog = {
     message: z.object({
       version: z.literal("v1").default("v1"),
       execution: TaskRunExecution,
-      traceContext: z.record(z.unknown()),
+      traceContext: z.record(z.string(), z.unknown()),
       metadata: ServerBackgroundWorker,
       metrics: TaskRunExecutionMetrics.optional(),
-      env: z.record(z.string()).optional(),
+      env: z.record(z.string(), z.string()).optional(),
       isWarmStart: z.boolean().optional(),
     }),
   },

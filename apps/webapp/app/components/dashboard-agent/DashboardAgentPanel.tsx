@@ -1,8 +1,9 @@
 import type { UIMessage } from "@ai-sdk/react";
 import { useLocation } from "@remix-run/react";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
+import { motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { AgentSpinner } from "~/components/primitives/Spinner";
+import { Spinner } from "~/components/primitives/Spinner";
 import { useToast } from "~/components/primitives/Toast";
 import { useAgentPageContext } from "~/hooks/useAgentPageContext";
 import { useDashboardAgentBaseUrl } from "~/hooks/useDashboardAgentBaseUrl";
@@ -24,6 +25,7 @@ import {
   writeLastChat,
 } from "./last-chat-storage";
 import { DashboardAgentDraft } from "./DashboardAgentDraft";
+import { DraftQuotaPoller } from "./DraftQuotaPoller";
 import {
   parseQuotaReachedResponse,
   shouldClearCapReached,
@@ -39,7 +41,7 @@ import type { DashboardAgentChat as DashboardAgentChatListItem } from "./Dashboa
 import type { SuggestedPrompt, WatchSpec } from "@internal/dashboard-agent-contracts";
 import { resolveOpenedChat, type OpenedChatResponse } from "./opened-chat";
 import type { AgentPageContext } from "./page-context-types";
-import { agentPageLabel } from "./page-label";
+import { agentPageEntityId } from "./page-label";
 import { explicitPromptTarget } from "./explicit-prompt";
 import { escapeClosesPanel } from "./panel-escape";
 import {
@@ -48,9 +50,10 @@ import {
   settleReadChats,
   unreadWorkCount,
 } from "./unread-counts";
-import { AgentPanelColumn } from "./panel-layout";
+import { AgentPanelColumn, type DashboardAgentMode, type DragHandleProps } from "./panel-layout";
 import { markerAfterActiveChat, markerAfterActivity } from "./thinking-marker";
 import { concurrencyPath } from "~/utils/pathBuilder";
+import { scopeMatchesPath, sessionPathFor } from "./agent-scope";
 
 function serializePageContext(pageContext: AgentPageContext): string | undefined {
   try {
@@ -82,12 +85,20 @@ export function DashboardAgentPanel({
   onChatRead,
   onUnreadWorkChange,
   onTurnActivityChange,
-  isFullscreen = false,
-  onToggleFullscreen,
+  mode = "floating",
+  onModeChange,
+  dragHandleProps,
+  dragHandleClassName,
+  watchEnabled = false,
 }: {
   onClose: () => void;
-  isFullscreen?: boolean;
-  onToggleFullscreen?: () => void;
+  mode?: DashboardAgentMode;
+  onModeChange?: (mode: DashboardAgentMode) => void;
+  /** Spread onto the header, which is the floating window's drag handle; already filtered by `FloatingAgentWindow`. */
+  dragHandleProps?: DragHandleProps;
+  dragHandleClassName?: string;
+  /** Withholds every watch affordance while the flag is off. Defaults false until sourced. */
+  watchEnabled?: boolean;
   // Every `seq` below distinguishes repeat requests with identical contents.
   requestedMessage?: { text: string; seq: number };
   openChatRequest?: { chatId: string; seq: number };
@@ -109,7 +120,6 @@ export function DashboardAgentPanel({
   const pageContext = useAgentPageContext();
   const toast = useToast();
 
-  const actionPath = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboard-agent`;
   const storageKey = lastChatStorageKey(organization.id);
 
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -119,16 +129,24 @@ export function DashboardAgentPanel({
   // Until the list has arrived, the page load's server count is the better answer.
   const [chatsLoaded, setChatsLoaded] = useState(false);
   const [active, setActive] = useState<ActiveChat | null>(null);
-  // A refused `create` over the cap: the draft shows the upgrade block instead of a raw toast.
+  // A message asked for while the hooks still held the previous project: it is sent once
+  // they catch up rather than dropped.
+  const [pendingCreate, setPendingCreate] = useState<string | null>(null);
+  // A refused `create` over the cap: the draft shows the upgrade block instead of a raw
+  // toast. Cleared only by a poll newer than `refusalGenRef` — see `handleQuotaChange` below.
   const [capReached, setCapReached] = useState<{ limit: number; planResolved: boolean } | null>(
     null
   );
+  // Owned here (survives a chat switch, unlike the chat instance's own state): bumped on
+  // every 403, so a poll already in flight when a refusal lands can't be read as proof the
+  // cap it just set is gone. Ordered by generation, not the wall clock — two events racing
+  // in the same millisecond would otherwise tie under `Date.now()`.
+  const refusalGenRef = useRef(0);
   // Starts true so an `openWith` request waits for the restore instead of racing it.
   const [loading, setLoading] = useState(
     () => readLastChat(storageKey)?.path === location.pathname
   );
-
-  const currentPage = agentPageLabel(pageContext, location.pathname);
+  const entityId = agentPageEntityId(pageContext, location.pathname);
 
   const pagePaths = useMemo<Record<string, string>>(
     () => ({ raise_env_limit: concurrencyPath(organization, project, environment) }),
@@ -138,17 +156,37 @@ export function DashboardAgentPanel({
   // A fresh object every render, so the clientData memo keys off the serialized form.
   const pageContextKey = serializePageContext(pageContext);
 
-  const clientData = useMemo<DashboardAgentClientData>(
+  // Path and client data come out of one memo: a render can never post to the project it
+  // has just left with the data of the one it has arrived at.
+  const scope = useMemo(
     () => ({
-      userId: user.id,
-      organizationId: organization.id,
-      projectId: project.id,
-      environmentId: environment.id,
-      currentPage: location.pathname,
-      pageContext: pageContextKey ? (JSON.parse(pageContextKey) as AgentPageContext) : undefined,
+      actionPath: sessionPathFor(
+        { slug: organization.slug },
+        { slug: project.slug },
+        { slug: environment.slug }
+      ),
+      clientData: {
+        userId: user.id,
+        organizationId: organization.id,
+        projectId: project.id,
+        environmentId: environment.id,
+        currentPage: location.pathname,
+        pageContext: pageContextKey ? (JSON.parse(pageContextKey) as AgentPageContext) : undefined,
+      } satisfies DashboardAgentClientData,
     }),
-    [user.id, organization.id, project.id, environment.id, location.pathname, pageContextKey]
+    [
+      user.id,
+      organization.id,
+      organization.slug,
+      project.id,
+      project.slug,
+      environment.id,
+      environment.slug,
+      location.pathname,
+      pageContextKey,
+    ]
   );
+  const { actionPath, clientData } = scope;
 
   const [thinkingChatId, setThinkingChatId] = useState<string | null>(null);
   const handleActivityChange = useCallback(
@@ -253,6 +291,13 @@ export function DashboardAgentPanel({
 
   const createChat = useCallback(
     async (text: string) => {
+      // The browser has already moved on; the hooks have not. Creating here would file the
+      // chat under the project the user just left, so it waits for them to catch up.
+      if (!scopeMatchesPath(location.pathname, actionPath)) {
+        setPendingCreate(text);
+        return;
+      }
+      setPendingCreate(null);
       const seq = claimChatSlot();
       setLoading(true);
       try {
@@ -277,6 +322,7 @@ export function DashboardAgentPanel({
         if (!res.ok || !data.chatId || !data.publicAccessToken) {
           const reached = parseQuotaReachedResponse(res.status, data);
           if (reached) {
+            refusalGenRef.current += 1;
             setCapReached(reached);
             setActive(null);
             return;
@@ -303,8 +349,13 @@ export function DashboardAgentPanel({
         if (seq === openChatRequestSeq.current) setLoading(false);
       }
     },
-    [actionPath, claimChatSlot, clientData, organization.id, toast]
+    [actionPath, claimChatSlot, clientData, location.pathname, organization.id, toast]
   );
+
+  useEffect(() => {
+    if (pendingCreate === null || !scopeMatchesPath(location.pathname, actionPath)) return;
+    void createChat(pendingCreate);
+  }, [pendingCreate, location.pathname, actionPath, createChat]);
 
   const restored = useRef(false);
   useEffect(() => {
@@ -399,23 +450,27 @@ export function DashboardAgentPanel({
 
   const handledWatchSeq = useRef<number | undefined>(undefined);
   useEffect(() => {
-    if (!watchRequest || handledWatchSeq.current === watchRequest.seq) return;
+    if (!watchEnabled || !watchRequest || handledWatchSeq.current === watchRequest.seq) return;
     handledWatchSeq.current = watchRequest.seq;
     dispatchWatchCard({
       type: "open",
       draft: watchDraftFor(watchRequest.spec),
       requestId: generateFriendlyId("wreq"),
     });
-  }, [watchRequest]);
+  }, [watchRequest, watchEnabled]);
 
   // Nothing is posted or persisted until the card is submitted.
-  const openWatchCard = useCallback((spec: WatchSpec) => {
-    dispatchWatchCard({
-      type: "open",
-      draft: watchDraftFor(spec),
-      requestId: generateFriendlyId("wreq"),
-    });
-  }, []);
+  const openWatchCard = useCallback(
+    (spec: WatchSpec) => {
+      if (!watchEnabled) return;
+      dispatchWatchCard({
+        type: "open",
+        draft: watchDraftFor(spec),
+        requestId: generateFriendlyId("wreq"),
+      });
+    },
+    [watchEnabled]
+  );
 
   const dismissWatchCard = () => dispatchWatchCard({ type: "dismissed" });
   const activeChatId = active?.chatId;
@@ -484,16 +539,17 @@ export function DashboardAgentPanel({
     loadHistory,
   ]);
 
-  const watchCardElement = watchCard.draft ? (
-    <WatchCard
-      draft={watchCard.draft}
-      onChange={(draft) => dispatchWatchCard({ type: "edit", draft })}
-      onSubmit={() => void submitWatch()}
-      onCancel={dismissWatchCard}
-      pending={watchCard.pending}
-      error={watchCard.error}
-    />
-  ) : null;
+  const watchCardElement =
+    watchEnabled && watchCard.draft ? (
+      <WatchCard
+        draft={watchCard.draft}
+        onChange={(draft) => dispatchWatchCard({ type: "edit", draft })}
+        onSubmit={() => void submitWatch()}
+        onCancel={dismissWatchCard}
+        pending={watchCard.pending}
+        error={watchCard.error}
+      />
+    ) : null;
 
   const newChat = useCallback(() => {
     claimChatSlot();
@@ -502,9 +558,16 @@ export function DashboardAgentPanel({
   }, [claimChatSlot]);
 
   // Released only by a read that proves capacity: an unknown quota keeps the block.
-  const handleQuotaChange = useCallback((quota: MessageQuota) => {
-    if (shouldClearCapReached(quota)) setCapReached(null);
-  }, []);
+  // Only a poll newer than the latest refusal (`quota.pollIsFresh`) may lift it — see
+  // `refusalGenRef` above.
+  const handleQuotaChange = useCallback(
+    (quota: MessageQuota & { pollIsFresh: boolean; provenCapacity: boolean }) => {
+      setCapReached((current) =>
+        current && quota.pollIsFresh && shouldClearCapReached(quota) ? null : current
+      );
+    },
+    []
+  );
 
   const switchChat = useCallback(
     (id: string) => {
@@ -589,7 +652,7 @@ export function DashboardAgentPanel({
   return (
     <div
       ref={panelRef}
-      className="flex h-full flex-col bg-background-bright animate-in slide-in-from-right-2 duration-150"
+      className="flex h-full flex-col bg-background-bright animate-in fade-in zoom-in-95 duration-150"
       // A React handler, not a global hotkey, so Esc stays scoped to the panel.
       onKeyDown={(event) => {
         if (
@@ -604,26 +667,26 @@ export function DashboardAgentPanel({
         onClose();
       }}
     >
-      <DashboardAgentHeader
-        title={headerTitle}
-        chats={chats}
-        currentChatId={active?.chatId ?? ""}
-        thinkingChatId={thinkingChatId}
-        onNewChat={newChat}
-        showNewChat={active !== null}
-        onOpenHistory={loadHistory}
-        onSelectChat={switchChat}
-        onDeleteChat={deleteChat}
-        onToggleFullscreen={onToggleFullscreen ?? (() => {})}
-        isFullscreen={isFullscreen}
-        onClose={onClose}
-      />
+      <motion.div {...dragHandleProps} className={dragHandleClassName}>
+        <DashboardAgentHeader
+          title={headerTitle}
+          chats={chats}
+          currentChatId={active?.chatId ?? ""}
+          thinkingChatId={thinkingChatId}
+          onOpenHistory={loadHistory}
+          onSelectChat={switchChat}
+          onDeleteChat={deleteChat}
+          mode={mode}
+          onModeChange={onModeChange ?? (() => {})}
+          onClose={onClose}
+        />
+      </motion.div>
 
       {/* Always mounted, so the chat keeps its transport, session and transcript. */}
-      <AgentPanelColumn fullscreen={isFullscreen}>
+      <AgentPanelColumn fullscreen={mode === "fullscreen"}>
         {loading ? (
           <div className="flex flex-1 items-center justify-center">
-            <AgentSpinner size={20} />
+            <Spinner className="size-5" />
           </div>
         ) : active ? (
           <DashboardAgentChat
@@ -639,9 +702,9 @@ export function DashboardAgentPanel({
             clientData={clientData}
             apiOrigin={apiOrigin}
             actionPath={actionPath}
-            projectSlug={project.slug}
+            projectName={project.name}
             environmentSlug={environment.slug}
-            currentPage={currentPage}
+            entityId={entityId}
             promotedPrompt={promotedPrompt}
             watches={chatWatches}
             pagePaths={pagePaths}
@@ -655,18 +718,33 @@ export function DashboardAgentPanel({
             onTurnSettled={loadHistory}
             onActivityChange={handleActivityChange}
             onQuotaChange={handleQuotaChange}
+            refusalGenRef={refusalGenRef}
+            onNewChat={newChat}
+            showNewChat={active !== null}
+            watchEnabled={watchEnabled}
           />
         ) : (
-          <DashboardAgentDraft
-            onSubmit={createChat}
-            projectSlug={project.slug}
-            environmentSlug={environment.slug}
-            currentPage={currentPage}
-            pageContext={pageContext}
-            promotedPrompt={promotedPrompt}
-            watchCard={watchCardElement}
-            capReached={capReached}
-          />
+          <>
+            {/* Only while blocked: an idle draft's read could not act on anything. */}
+            {capReached ? (
+              <DraftQuotaPoller
+                actionPath={actionPath}
+                refusalGenRef={refusalGenRef}
+                onQuotaChange={handleQuotaChange}
+              />
+            ) : null}
+            <DashboardAgentDraft
+              onSubmit={createChat}
+              projectName={project.name}
+              environmentSlug={environment.slug}
+              entityId={entityId}
+              pageContext={pageContext}
+              promotedPrompt={promotedPrompt}
+              watchCard={watchCardElement}
+              capReached={capReached}
+              watchEnabled={watchEnabled}
+            />
+          </>
         )}
       </AgentPanelColumn>
     </div>

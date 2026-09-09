@@ -33,6 +33,7 @@ function MessageHarness({
         error={withError && transcript.error ? new Error(transcript.error) : undefined}
         onRetry={withError ? noop : undefined}
         onDismissError={withError ? noop : undefined}
+        watchEnabled
       />
     </div>
   );
@@ -132,9 +133,9 @@ function HeroHarness({
                 isStreaming={false}
                 context={
                   <DashboardAgentContextBanner
-                    projectSlug="demo-storefront"
+                    projectName="Demo Storefront"
                     environmentSlug="prod"
-                    currentPage="Runs"
+                    entityId="run_a1b2c3d4e5f6"
                   />
                 }
               />
@@ -162,6 +163,7 @@ function LiveInvestigationHarness() {
         messages={messages}
         activity="working"
         resolveUri={fixtureResolveUri}
+        watchEnabled
       />
     </div>
   );
@@ -236,7 +238,7 @@ const wakeWatches: WakeWatch[] = [
 function WakeHarness({ message, watches }: { message: UIMessage; watches?: WakeWatch[] }) {
   return (
     <div className={PANEL_FRAME}>
-      <DashboardAgentMessages messages={[message]} activity={null} watches={watches} />
+      <DashboardAgentMessages messages={[message]} activity={null} watches={watches} watchEnabled />
     </div>
   );
 }
@@ -318,16 +320,16 @@ const STATES: Record<string, React.ReactNode> = {
 
   "banner-prod": (
     <DashboardAgentContextBanner
-      projectSlug="demo-storefront"
+      projectName="Demo Storefront"
       environmentSlug="prod"
-      currentPage="Runs"
+      entityId="run_a1b2c3d4e5f6"
     />
   ),
   "banner-preview-long": (
     <DashboardAgentContextBanner
-      projectSlug="demo-storefront"
+      projectName="Demo Storefront"
       environmentSlug="preview-demo-feature-rework-receipt-email-batching"
-      currentPage="Deployments"
+      entityId="20240101.1"
     />
   ),
 };

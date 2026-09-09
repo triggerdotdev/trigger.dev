@@ -55,6 +55,13 @@ const VIA_DELEGATED_TOKEN: Read[] = [
     path: "/api/v1/projects/:ref/:env/repo/snapshot",
     resource: { type: "apiKeys" },
   },
+  { tool: "locate (run)", path: "/api/v1/locate/run/:id", resource: { type: "runs" } },
+  {
+    tool: "locate (deployment)",
+    path: "/api/v1/locate/deployment/:id",
+    resource: { type: "deployments" },
+  },
+  { tool: "locate (error)", path: "/api/v1/locate/error/:id", resource: { type: "errors" } },
 ];
 
 describe("what the agent's environment JWT may read", () => {

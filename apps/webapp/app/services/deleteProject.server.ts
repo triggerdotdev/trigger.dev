@@ -58,7 +58,7 @@ export class DeleteProjectService {
       },
     });
 
-    // project.deletedAt (which gates env resolution) changed; drop every cached env of this project.
+    /** project.deletedAt, which the engine gates enqueue and dequeue on, changed; drop every cached env of this project. */
     for (const environment of project.environments) {
       controlPlaneResolver.invalidateEnvironment(environment.id);
     }

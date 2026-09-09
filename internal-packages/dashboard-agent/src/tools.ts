@@ -4,6 +4,7 @@ import { buildAlertTools } from "./tool-alerts";
 import { buildApiTools } from "./tool-api";
 import { createApiClient } from "./tool-api-client";
 import { createInvestigationRenderer } from "./tool-investigations";
+import { buildLocateTool } from "./tool-locate";
 import { buildNavigationTools } from "./tool-navigation";
 import { createSourceReadLedger } from "./tool-source-ledger";
 import { buildWatchTools } from "./watch-tools";
@@ -30,25 +31,33 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     environmentName: ctx.environmentName,
     environmentBranch: ctx.environmentBranch,
     repoSnapshot: ctx.repoSnapshot,
+    environmentIdFor: client.environmentIdFor,
   });
   const renderInvestigations = createInvestigationRenderer({
     projectRef: ctx.projectRef,
     environmentId: ctx.environmentId,
     investigations: ctx.investigations,
+    watchEnabled: ctx.watchEnabled,
     reads: ledger,
   });
 
   const apiTools: ToolSet = {
-    ...buildApiTools({ ctx, client, renderInvestigations }),
+    ...buildApiTools({ ctx, client, renderInvestigations, reads: ledger }),
     ...buildNavigationTools(ctx),
-    ...buildWatchTools(),
-    ...buildAlertTools({ ctx, client }),
+    // Alerts exist only to report a watch firing, so they come and go with the watch tool.
+    ...(ctx.watchEnabled
+      ? { ...buildWatchTools({ ctx, reads: ledger }), ...buildAlertTools({ ctx, client }) }
+      : {}),
+    ...buildLocateTool({ ctx, client, reads: ledger }),
   };
 
   // Code mode: when the project has a connected repo, add the source tools.
   if (!ctx.repoSnapshot) return apiTools;
   return {
     ...apiTools,
-    ...ledger.withReadTracking(buildRepoTools(ctx.repoSnapshot, ledger.resolveRunSnapshot)),
+    ...buildRepoTools(ctx.repoSnapshot, ctx, {
+      resolveRunSnapshot: ledger.resolveRunSnapshot,
+      onSourceRead: ledger.recordRepoRead,
+    }),
   };
 }

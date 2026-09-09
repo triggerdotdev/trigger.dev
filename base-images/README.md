@@ -1,15 +1,37 @@
 # Deploy base images
 
 Base images for deployed task containers, published to Docker Hub as
-`triggerdotdev/node:<major>-bookworm` and `triggerdotdev/bun:<line>-node<major>-bookworm`,
-each with a `-build` variant that adds the native-module toolchain
-(python3, make, g++).
+`triggerdotdev/node:<major>-bookworm`, `triggerdotdev/bun:<line>-bookworm`
+(node-less) and `triggerdotdev/bun:<line>-node<major>-bookworm` (node + bun), each
+with a `-build` variant that adds the native-module toolchain (python3, make,
+g++).
 
 Each image is its upstream slim base (pinned by digest in `images.json`) with
 all preinstalled Debian packages upgraded to the pinned snapshot state, plus
 the system packages deployed tasks rely on: busybox, ca-certificates,
 dumb-init, git, openssl. apt stays configured for the live Debian archive, so
 images derived from these behave like their upstream bases.
+
+### The bun images
+
+The bun images (`runtimeKind: "bun"` in `images.json`) are composed rather than
+taken from a single upstream: the bun binary is copied from the official
+`oven/bun` slim image (`bunSource`) onto a separately pinned `base`, both by
+digest. Two flavours share that mechanism:
+
+- `bun:<line>-node<major>-bookworm` starts from the same `node:<major>-slim`
+  base as the node images, so a `node` binary stays present for tasks that shell
+  out to it. This is the `bun-legacy` runtime.
+- `bun:<line>-bookworm` starts from `debian:bookworm-slim` and contains **no
+  node binary**. These back the versioned `bun-1.3` / `bun-1.4` runtimes; a task
+  that spawns `node` must stay on the node + bun image or add node itself.
+
+Both give bun at `/usr/local/bin/bun` with `BUN_INSTALL_BIN=/usr/local/bin`
+(what `execPathForRuntime` resolves) and a `bun` user/group at uid/gid 1001 (the
+node base already owns 1000; the supervisor pins bun task pods to 1001). We build
+these ourselves instead of depending on a third-party combined bun+node image, so
+the bun version moves by bumping `bunSource`, and every input carries the same
+provenance and snapshot layering as the node images.
 
 ## Tags and pinning
 

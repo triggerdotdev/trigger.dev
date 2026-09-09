@@ -19,16 +19,19 @@ import {
   ExclamationTriangleIcon,
   InformationCircleIcon,
 } from "@heroicons/react/20/solid";
-import type {
-  WatchObservedOutcome,
-  WatchResolution,
-  WatchSemanticIcon,
+import {
+  WAKE_MESSAGE_ID_PREFIX,
+  type WatchObservedOutcome,
+  type WatchResolution,
+  type WatchSemanticIcon,
 } from "@internal/dashboard-agent-contracts";
 import { cn } from "~/utils/cn";
 import { type AgentTone, TONE_ICON_COLOR } from "./agent-badges";
 import { presentResolvedWatch, WATCH_PRESENTATION_FALLBACK } from "~/presenters/v3/dashboardAgent";
 
-const WAKE_ID_PREFIX = "wake:watch:";
+// The wake half of a watch action's message id: `wake:` from contracts, `watch:` from
+// the action id `watch:{watchId}:{outcome}` that `watch-delivery` mints.
+const WAKE_ID_PREFIX = `${WAKE_MESSAGE_ID_PREFIX}watch:`;
 
 /**
  * The wire encoding in a wake's message id, not the resolution: `window_completed`

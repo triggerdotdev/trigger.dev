@@ -67,6 +67,18 @@ export class PerformTaskRunAlertsService extends BaseService {
       },
     });
 
+    if (alertChannels.length === 0) {
+      return;
+    }
+
+    const deletionState = await this.#controlPlaneResolver.resolveEnvDeletionState(
+      run.runtimeEnvironmentId
+    );
+
+    if (!deletionState || deletionState.projectDeletedAt || deletionState.organizationDeletedAt) {
+      return;
+    }
+
     for (const alertChannel of alertChannels) {
       await this.#createAndSendAlert(alertChannel, run);
     }

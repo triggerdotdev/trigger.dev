@@ -116,7 +116,6 @@ function createWorkerNamespace({
       logger.debug("Worker authentication", {
         namespace,
         socketId: socket.id,
-        headers: Object.fromEntries(headers),
       });
 
       const request = new Request("https://example.com", {

@@ -3,6 +3,7 @@ import {
   curateDeploy,
   curateError,
   curateErrors,
+  curateProjects,
   curateRun,
   curateTrace,
   fenceUntrusted,
@@ -79,13 +80,30 @@ describe("curation fences untrusted free-text", () => {
     const out = curateTrace({
       trace: {
         traceId: "trace_1",
-        rootSpan: { data: { message: injection, taskSlug: "send-receipt", level: "ERROR" } },
+        rootSpan: {
+          id: "span_1",
+          data: { message: injection, taskSlug: "send-receipt", level: "ERROR" },
+        },
       },
     });
     const span = out.spans[0]!;
     expect(span.message).toBe(`«untrusted:spanMessage» ${injection} «/untrusted:spanMessage»`);
     expect(span.task).toBe("send-receipt");
     expect(span.level).toBe("ERROR");
+  });
+
+  it("exposes each span's id so it can be cited", () => {
+    const out = curateTrace({
+      trace: {
+        traceId: "trace_1",
+        rootSpan: {
+          id: "span_root",
+          data: { message: "root" },
+          children: [{ id: "span_child", data: { message: "child" } }],
+        },
+      },
+    });
+    expect(out.spans.map((s) => s.id)).toEqual(["span_root", "span_child"]);
   });
 
   it("fences errorMessage and errorType in list and detail, but not the id", () => {
@@ -132,5 +150,85 @@ describe("curation fences untrusted free-text", () => {
     const out = curateDeploy({ git: { commitMessage: long } });
     expect(out.commitMessage).toContain("…[truncated 904 chars]");
     expect(out.commitMessage).not.toContain("a".repeat(5000));
+  });
+});
+
+describe("curateRun queue wait", () => {
+  const CREATED = "2024-01-01T00:00:00.000Z";
+  const STARTED = "2024-01-01T00:00:05.000Z";
+
+  it("computes queue wait for a plain, first-attempt run", () => {
+    const out = curateRun({ id: "run_1", createdAt: CREATED, startedAt: STARTED, attemptCount: 1 });
+    expect(out.queueWaitMs).toBe(5000);
+    expect(out.queueWaitReliable).toBe(true);
+  });
+
+  it("measures the wait from delayedUntil, not createdAt, for a delayed run", () => {
+    const out = curateRun({
+      id: "run_1",
+      createdAt: CREATED,
+      delayedUntil: "2024-01-01T00:01:00.000Z",
+      startedAt: "2024-01-01T00:01:02.000Z",
+      attemptCount: 1,
+    });
+    expect(out.queueWaitMs).toBe(2000);
+    expect(out.queueWaitReliable).toBe(true);
+  });
+
+  it.each([
+    ["once the run has retried", { createdAt: CREATED, startedAt: STARTED, attemptCount: 2 }],
+    ["when the run has not started", { createdAt: CREATED, attemptCount: 1 }],
+    [
+      "when the run expired",
+      {
+        createdAt: CREATED,
+        startedAt: STARTED,
+        attemptCount: 1,
+        expiredAt: "2024-01-01T00:00:10.000Z",
+      },
+    ],
+    ["when attemptCount is missing", { createdAt: CREATED, startedAt: STARTED }],
+    [
+      "when the computed wait is negative (clock skew)",
+      { createdAt: STARTED, startedAt: CREATED, attemptCount: 1 },
+    ],
+  ])("is null and unreliable %s", (_name, fields) => {
+    const out = curateRun({ id: "run_1", ...fields });
+    expect(out.queueWaitMs).toBeNull();
+    expect(out.queueWaitReliable).toBe(false);
+  });
+});
+
+describe("curateProjects", () => {
+  const DATA = [
+    {
+      externalRef: "proj_1",
+      name: "One",
+      slug: "one",
+      organization: { id: "org_1", title: "Org" },
+    },
+    {
+      externalRef: "proj_2",
+      name: "Two",
+      slug: "two",
+      organization: { id: "org_2", title: "Other" },
+    },
+    { externalRef: "proj_3", name: "Three", slug: "three" },
+  ];
+
+  it("fails closed with no organization to scope to", () => {
+    expect(curateProjects(DATA, undefined)).toEqual({ projects: [] });
+  });
+
+  it("returns only projects belonging to the given organization", () => {
+    expect(curateProjects(DATA, "org_1")).toEqual({
+      projects: [{ ref: "proj_1", name: "One", slug: "one", organization: "Org" }],
+    });
+  });
+
+  it("never matches a project with no organization id, even against no organizationId", () => {
+    // `undefined === undefined` must not count as a match.
+    expect(curateProjects(DATA, "org_3")).toEqual({ projects: [] });
+    expect(curateProjects(DATA, undefined)).toEqual({ projects: [] });
   });
 });

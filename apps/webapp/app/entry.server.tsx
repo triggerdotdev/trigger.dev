@@ -290,6 +290,17 @@ function logError(error: unknown, request?: Request) {
   console.error(error);
 }
 
+// Without a listener Node escalates a rejection into the uncaughtException
+// handler below, which exits the process. Log it (Sentry via Logger.onError)
+// and keep serving. Wrapped in singleton() so Remix's dev-mode CJS reloads
+// don't stack duplicate listeners.
+singleton("UnhandledRejectionHandler", () => {
+  process.on("unhandledRejection", (reason) => {
+    logger.error("unhandledRejection", { error: reason });
+  });
+  return true;
+});
+
 process.on("uncaughtException", (error, origin) => {
   if (
     error instanceof Prisma.PrismaClientKnownRequestError ||

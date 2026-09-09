@@ -40,6 +40,9 @@
     "internal-packages/otlp-importer": {
       "ignoreDependencies": ["ts-proto"]
     },
+    "internal-packages/run-engine": {
+      "entry": ["harness/**/*.ts"]
+    },
     "internal-packages/run-ops-database": {
       "ignoreDependencies": ["@prisma/client", "prisma"]
     },

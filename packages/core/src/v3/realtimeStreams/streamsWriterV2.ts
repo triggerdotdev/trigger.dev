@@ -108,6 +108,10 @@ export class StreamsWriterV2<T = any> implements StreamsWriter {
     this.consumerStream = consumerStream;
 
     this.streamPromise = this.initializeServerStream();
+    // Detached writers (e.g. the head-start drain) call `wait()` long after a
+    // failed append rejects; without this the rejection is unhandled and Node
+    // takes the process down. `wait()` still surfaces the error.
+    this.streamPromise.catch(() => {});
   }
 
   private handleAbort(): void {

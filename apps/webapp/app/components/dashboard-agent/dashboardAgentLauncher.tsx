@@ -28,6 +28,8 @@ type DashboardAgentContextValue = {
   unreadWakes: number;
   /** Chats that answered, settled or woke while the panel was closed. */
   unreadWork: number;
+  /** Watch functionality is behind this flag; `WatchButton` renders nothing without it. */
+  watchEnabled: boolean;
 };
 
 const DashboardAgentContext = createContext<DashboardAgentContextValue | null>(null);
@@ -46,6 +48,9 @@ export function DashboardAgentLauncher() {
   }
 
   const { open, setOpen, unreadWakes, unreadWork } = agent;
+  // The open window is its own affordance and carries the close control. Only the button
+  // goes: `TOGGLE_PANEL_SHORTCUT` is registered by `DashboardAgent`, so the keystroke
+  // keeps working with nothing rendered here.
   if (open) {
     return null;
   }
@@ -74,7 +79,7 @@ export function DashboardAgentLauncher() {
           </Button>
           {hasUnread && (
             // The ring matches the `NavBar` surface the launcher sits on.
-            <span className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-indigo-500 ring-2 ring-background-bright" />
+            <span className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-primary ring-2 ring-background-bright" />
           )}
         </span>
       }

@@ -1,5 +1,5 @@
 import { nanoid } from "nanoid";
-import { z } from "zod";
+import { z } from "zod/v4";
 import { VERSION } from "../../version.js";
 import { isAdditionalApiKey } from "../apiKeys.js";
 import type { ApiClientConfiguration } from "../apiClientManager-api.js";
@@ -51,6 +51,7 @@ import {
   CreateSessionStreamWaitpointResponseBody,
   CreateStreamResponseBody,
   CreateUploadPayloadUrlResponseBody,
+  SessionTranscriptResponseBody,
   CreateWaitpointTokenResponseBody,
   CreatedSessionResponseBody,
   DeletedScheduleObject,
@@ -109,6 +110,7 @@ import {
   zodfetchCursorPage,
   zodfetchOffsetLimitPage,
 } from "./core.js";
+import { encodeTaskIdForPath } from "./encodeTaskIdForPath.js";
 import { ApiConnectionError, ApiError, BatchNotSealedError } from "./errors.js";
 import { refreshAccessTokenOnce, type RefreshAccessTokenFn } from "./refreshAccessToken.js";
 import {
@@ -207,6 +209,7 @@ export type {
 };
 
 export * from "./getBranch.js";
+export { encodeTaskIdForPath } from "./encodeTaskIdForPath.js";
 
 export type CreatePublicTokenRequestBody = {
   scopes: string[];
@@ -358,7 +361,7 @@ export class ApiClient {
     clientOptions?: ClientTriggerOptions,
     requestOptions?: TriggerRequestOptions
   ) {
-    const encodedTaskId = encodeURIComponent(taskId);
+    const encodedTaskId = encodeTaskIdForPath(taskId);
 
     return zodfetch(
       TriggerTaskResponse,
@@ -701,6 +704,30 @@ export class ApiClient {
     return zodfetch(
       CreateUploadPayloadUrlResponseBody,
       `${this.baseUrl}/api/v1/sessions/${encodeURIComponent(sessionId)}/snapshot-url`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  /**
+   * One page of a `chat.agent` session's persisted transcript, most recent
+   * messages first when `limit` is set. Secret key only.
+   */
+  getSessionTranscript(
+    sessionId: string,
+    options?: { limit?: number; before?: string },
+    requestOptions?: ZodFetchOptions
+  ) {
+    const query = new URLSearchParams();
+    if (options?.limit !== undefined) query.set("limit", String(options.limit));
+    if (options?.before !== undefined) query.set("before", options.before);
+    const suffix = query.size > 0 ? `?${query.toString()}` : "";
+    return zodfetch(
+      SessionTranscriptResponseBody,
+      `${this.baseUrl}/api/v1/sessions/${encodeURIComponent(sessionId)}/transcript${suffix}`,
       {
         method: "GET",
         headers: this.#getHeaders(false),
@@ -1977,7 +2004,7 @@ export class ApiClient {
 
   async generateJWTClaims(requestOptions?: ZodFetchOptions): Promise<Record<string, any>> {
     return zodfetch(
-      z.record(z.any()),
+      z.record(z.string(), z.any()),
       `${this.baseUrl}/api/v1/auth/jwt/claims`,
       {
         method: "POST",

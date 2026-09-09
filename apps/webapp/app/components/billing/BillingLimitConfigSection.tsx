@@ -1,6 +1,6 @@
 import { getFormProps, useForm, type SubmissionResult } from "@conform-to/react";
 
-import { parseWithZod } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { Form, useActionData } from "@remix-run/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
@@ -38,7 +38,7 @@ export const billingLimitFormSchema = z.discriminatedUnion("mode", [
   z.object({
     mode: z.literal("custom"),
     amount: z.coerce
-      .number({ invalid_type_error: "Not a valid amount" })
+      .number({ error: "Not a valid amount" })
       .positive("Amount must be greater than 0"),
     cancelInProgressRuns: z
       .preprocess((v) => v === "on" || v === true || v === "true", z.boolean())
@@ -115,7 +115,10 @@ export function BillingLimitConfigSection({
     billingLimit.isConfigured && billingLimit.mode === "custom"
       ? (billingLimit.amountCents / 100).toFixed(2)
       : "";
-  const savedCancelInProgressRuns = billingLimit.isConfigured && billingLimit.cancelInProgressRuns;
+  // Unconfigured limits default to cancelling in-progress runs; saved configs keep their stored choice.
+  const savedCancelInProgressRuns = billingLimit.isConfigured
+    ? billingLimit.cancelInProgressRuns
+    : true;
 
   // Unconfigured limit starts with nothing selected.
   const resetMode: "" | "none" | "plan" | "custom" = billingLimit.isConfigured ? savedMode : "";

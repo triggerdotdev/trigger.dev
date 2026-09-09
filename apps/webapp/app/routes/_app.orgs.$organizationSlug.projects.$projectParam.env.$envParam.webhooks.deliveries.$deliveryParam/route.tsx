@@ -154,7 +154,6 @@ export default function Page() {
   const inFlight = delivery?.status === "PENDING" || delivery?.status === "PROCESSING";
   useInterval({
     interval: 3000,
-    pauseWhenHidden: true,
     disabled: !inFlight,
     callback: () => revalidator.revalidate(),
   });

@@ -1,5 +1,5 @@
 import { postgresAndMinioTest } from "@internal/testcontainers";
-import { type IOPacket } from "@trigger.dev/core/v3";
+import { generateFriendlyId, type IOPacket } from "@trigger.dev/core/v3";
 import { type PrismaClient } from "@trigger.dev/database";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { env } from "~/env.server";
@@ -160,6 +160,22 @@ describe("Object Storage", () => {
       expect(() => assertSafePacketRelativePath(parseStorageUri("s3://../evil.json").path)).toThrow(
         ServiceValidationError
       );
+    });
+  });
+
+  describe("offloaded trigger payload paths", () => {
+    /**
+     * The SDK names an offloaded trigger payload with the same generated id, so this
+     * pins the half of that contract the server owns: the guard must keep accepting
+     * every character the id generator can emit.
+     */
+    it("accepts the path shape the SDK builds for an offloaded payload", () => {
+      const id = generateFriendlyId("packet");
+      const path = `trigger/${id}/payload.json`;
+
+      expect(id).toMatch(/^packet_[123456789abcdefghijkmnopqrstuvwxyz]{21}$/);
+      expect(() => assertSafePacketRelativePath(path)).not.toThrow();
+      expect(resolveSafePacketRelativePath(path)).toBe(path);
     });
   });
 

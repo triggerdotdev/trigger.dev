@@ -17,6 +17,7 @@ import { selectAccessibleEnvironment } from "~/utils/environmentAccess";
 import { EnvironmentParamSchema, v3ProjectPath } from "~/utils/pathBuilder";
 import { getPromotedDashboardAgentPrompt } from "~/components/dashboard-agent/suggested-prompts/promotedPrompt.server";
 import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
+import { canUseDashboardAgentWatches } from "~/v3/canUseDashboardAgentWatches.server";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
@@ -97,6 +98,16 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
   });
 
+  // Watches are a separate switch inside the agent, default off, so the panel renders
+  // without any watch affordance until an org gets it.
+  const dashboardAgentWatchEnabled = hasDashboardAgentAccess
+    ? await canUseDashboardAgentWatches({
+        userId: user.id,
+        organizationSlug,
+        orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
+      })
+    : false;
+
   const promotedDashboardAgentPrompt = hasDashboardAgentAccess
     ? await getPromotedDashboardAgentPrompt({
         orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
@@ -105,18 +116,19 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   // One narrow read per page load, so the wake signal reaches a browser that has never opened
   // the panel — including one whose watch hasn't fired yet. The poll never asks for this.
-  let dashboardAgentActivity: DashboardAgentWakeActivity = {
-    unreadWakes: 0,
-    hasActiveWatches: false,
-  };
+  const noWakeActivity: DashboardAgentWakeActivity = { unreadWakes: 0, hasActiveWatches: false };
+  let dashboardAgentActivity = noWakeActivity;
   let dashboardAgentUnreadWork = 0;
   if (hasDashboardAgentAccess) {
     try {
       [dashboardAgentActivity, dashboardAgentUnreadWork] = await Promise.all([
-        readDashboardAgentWakeActivity(dashboardAgentDb, {
-          organizationId: project.organization.id,
-          userId: user.id,
-        }),
+        // Not read at all with watches off, so a rolled-back flag leaves no wake dot behind.
+        dashboardAgentWatchEnabled
+          ? readDashboardAgentWakeActivity(dashboardAgentDb, {
+              organizationId: project.organization.id,
+              userId: user.id,
+            })
+          : noWakeActivity,
         countChatsWithUnreadWork(dashboardAgentDb, {
           organizationId: project.organization.id,
           userId: user.id,
@@ -131,6 +143,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return {
     ...project,
     hasDashboardAgentAccess,
+    dashboardAgentWatchEnabled,
     promotedDashboardAgentPrompt,
     dashboardAgentActivity,
     dashboardAgentUnreadWork,
@@ -140,6 +153,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 export default function Page() {
   const {
     hasDashboardAgentAccess,
+    dashboardAgentWatchEnabled,
     promotedDashboardAgentPrompt,
     dashboardAgentActivity,
     dashboardAgentUnreadWork,
@@ -147,6 +161,7 @@ export default function Page() {
   return (
     <DashboardAgent
       hasAccess={hasDashboardAgentAccess}
+      watchEnabled={dashboardAgentWatchEnabled}
       promotedPrompt={promotedDashboardAgentPrompt ?? undefined}
       initialUnreadWakes={dashboardAgentActivity.unreadWakes}
       initialUnreadWork={dashboardAgentUnreadWork}

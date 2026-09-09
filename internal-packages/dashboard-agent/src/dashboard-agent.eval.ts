@@ -27,6 +27,8 @@ const CLIENT_DATA = {
   organizationId: "org_eval",
   projectRef: "proj_eval1",
   environmentId: "env_eval1",
+  // The eval suite covers the watch cases, so it runs as a watch-enabled client.
+  watchEnabled: true,
   pageContext: {
     page: { kind: "run" as const, runId: "run_a1", status: "FAILED", taskId: "send-receipt" },
     signals: [

@@ -17,6 +17,7 @@ export function ViewBlocks({
   pagePaths,
   answered = false,
   watchOfferedInTurn = false,
+  watchEnabled = false,
 }: {
   blocks: ViewBlock[];
   onIntent?: (intent: AgentIntent) => void;
@@ -26,6 +27,8 @@ export function ViewBlocks({
   answered?: boolean;
   /** A card in another of this turn's parts already offers the watch; see `view-actions`. */
   watchOfferedInTurn?: boolean;
+  /** Withholds the watch result card while watch functionality is behind its flag. */
+  watchEnabled?: boolean;
 }) {
   if (!Array.isArray(blocks)) return null;
   const entries = latestRevisionEntries(blocks);
@@ -48,7 +51,7 @@ export function ViewBlocks({
                 key={key}
                 block={block}
                 onIntent={onIntent}
-                dropWatch={watchOfferedOnCard}
+                dropWatch={watchOfferedOnCard || !watchEnabled}
               />
             );
           // Revisions share the investigationId, so latest-wins keeps one card.
@@ -60,11 +63,12 @@ export function ViewBlocks({
                 resolveUri={resolveUri}
                 onIntent={onIntent}
                 answered={answered}
+                watchEnabled={watchEnabled}
               />
             );
           // Host-emitted only, so the model cannot fabricate a confirmation.
           case "watch_result":
-            return <WatchResultBlock key={key} block={block} />;
+            return watchEnabled ? <WatchResultBlock key={key} block={block} /> : null;
           case "report":
             return (
               <ReportView
@@ -74,6 +78,7 @@ export function ViewBlocks({
                 onIntent={onIntent}
                 resolveUri={resolveUri}
                 pagePaths={pagePaths}
+                watchEnabled={watchEnabled}
               />
             );
           default:

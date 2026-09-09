@@ -9,7 +9,6 @@ import {
   type WorkloadClientToServerEvents,
   type WorkloadContinueRunExecutionResponseBody,
   WorkloadDebugLogRequestBody,
-  type WorkloadDequeueFromVersionResponseBody,
   WorkloadHeartbeatRequestBody,
   type WorkloadHeartbeatResponseBody,
   WorkloadRunAttemptCompleteRequestBody,
@@ -721,43 +720,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
               { highFrequency: true }
             ),
         }
-      )
-      .route("/api/v1/workload-actions/deployments/:deploymentId/dequeue", "GET", {
-        paramsSchema: z.object({
-          deploymentId: z.string(),
-        }),
-
-        handler: async (ctx) =>
-          this.wideRoute(
-            ctx,
-            "deployment.dequeue",
-            "/api/v1/workload-actions/deployments/:deploymentId/dequeue",
-            "GET",
-            async () => {
-              const { req, reply, params } = ctx;
-              const dequeueResponse = await this.workerClient.dequeueFromVersion(
-                params.deploymentId,
-                1,
-                this.runnerIdFromRequest(req)
-              );
-
-              if (!dequeueResponse.success) {
-                this.logger.error("Failed to get latest snapshot", {
-                  deploymentId: params.deploymentId,
-                  error: dequeueResponse.error,
-                });
-                reply.empty(500);
-                return;
-              }
-
-              reply.json(
-                dequeueResponse.data.map(
-                  legacifyCheckpointType
-                ) satisfies WorkloadDequeueFromVersionResponseBody
-              );
-            }
-          ),
-      });
+      );
 
     if (env.SEND_RUN_DEBUG_LOGS) {
       httpServer.route("/api/v1/workload-actions/runs/:runFriendlyId/logs/debug", "POST", {

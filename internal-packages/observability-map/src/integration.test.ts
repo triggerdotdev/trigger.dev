@@ -255,8 +255,20 @@ describe("the package's tests are wired into the gate", () => {
     expect(obsmap).not.toContain("internal-packages/rbac");
 
     const internal = text.split("            internal:")[1]!.split("            obsmap:")[0]!;
-    expect(internal).toContain(`'${PATH_PREFIX}packages/**'`);
     expect(internal).toContain(`'${PATH_PREFIX}internal-packages/**'`);
+
+    // Whichever filter carries packages/** into `internal`, plugins must stay in it.
+    const sharedBlock = text.split("            shared_packages:")[1];
+    if (sharedBlock) {
+      const shared = sharedBlock.split("\n  code-quality:")[0]!;
+      expect(shared).toContain(`'${PATH_PREFIX}packages/**'`);
+      expect(shared).not.toContain("packages/plugins");
+      expect(text).toContain(
+        "internal: ${{ steps.filter.outputs.internal == 'true' || steps.shared_packages_filter.outputs.shared_packages == 'true' }}"
+      );
+    } else {
+      expect(internal).toContain(`'${PATH_PREFIX}packages/**'`);
+    }
   });
 
   // Naming this package here as well ran the suite twice on every pull request touching it. Asserted

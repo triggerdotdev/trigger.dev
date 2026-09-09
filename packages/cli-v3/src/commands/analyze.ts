@@ -113,14 +113,14 @@ const ImportSchema = z.object({
   kind: ImportKind,
   external: z.boolean().optional(),
   original: z.string().optional(),
-  with: z.record(z.string()).optional(),
+  with: z.record(z.string(), z.string()).optional(),
 });
 
 const InputSchema = z.object({
   bytes: z.number(),
   imports: z.array(ImportSchema),
   format: z.enum(["cjs", "esm"]).optional(),
-  with: z.record(z.string()).optional(),
+  with: z.record(z.string(), z.string()).optional(),
 });
 
 const OutputImportSchema = z.object({

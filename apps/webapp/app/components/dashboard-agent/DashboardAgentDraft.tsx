@@ -12,22 +12,25 @@ import { readDismissedPromptIds, resolveSuggestedPromptsBySlot } from "./suggest
 // returns the id, and only then does `DashboardAgentChat` mount.
 export function DashboardAgentDraft({
   onSubmit,
-  projectSlug,
+  projectName,
   environmentSlug,
-  currentPage,
+  entityId,
   pageContext,
   promotedPrompt,
   watchCard,
   capReached,
+  watchEnabled = false,
 }: {
   onSubmit: (text: string) => void;
-  projectSlug: string;
+  projectName: string;
   environmentSlug: string;
-  currentPage: string;
+  entityId?: string;
   pageContext?: AgentPageContext;
   promotedPrompt?: SuggestedPrompt;
   watchCard?: React.ReactNode;
   capReached?: { limit: number; planResolved: boolean } | null;
+  /** Withholds the `watch` chip while watch functionality is behind its flag. */
+  watchEnabled?: boolean;
 }) {
   const [input, setInput] = useState("");
 
@@ -40,9 +43,10 @@ export function DashboardAgentDraft({
         {
           promoted: promotedPrompt,
           dismissedIds,
+          watchEnabled,
         }
       )[0]?.prompt.prompt,
-    [pageContext, promotedPrompt, dismissedIds]
+    [pageContext, promotedPrompt, dismissedIds, watchEnabled]
   );
 
   const submit = useCallback(
@@ -63,6 +67,7 @@ export function DashboardAgentDraft({
       pageContext={pageContext}
       promoted={promotedPrompt}
       promptsDisabledReason={capReached ? MESSAGE_QUOTA_REACHED_REASON : undefined}
+      watchEnabled={watchEnabled}
       composer={
         capReached ? (
           <div className="flex w-full flex-col gap-3">
@@ -72,9 +77,9 @@ export function DashboardAgentDraft({
               planResolved={capReached.planResolved}
               context={
                 <DashboardAgentContextBanner
-                  projectSlug={projectSlug}
+                  projectName={projectName}
                   environmentSlug={environmentSlug}
-                  currentPage={currentPage}
+                  entityId={entityId}
                 />
               }
             />
@@ -92,9 +97,9 @@ export function DashboardAgentDraft({
               placeholderSuggestion={watchCard ? undefined : placeholderSuggestion}
               context={
                 <DashboardAgentContextBanner
-                  projectSlug={projectSlug}
+                  projectName={projectName}
                   environmentSlug={environmentSlug}
-                  currentPage={currentPage}
+                  entityId={entityId}
                 />
               }
             />

@@ -40,6 +40,9 @@ export class SessionStreamInstance<T> implements StreamsWriter {
 
   constructor(private options: SessionStreamInstanceOptions<T>) {
     this.streamPromise = this.initializeWriter();
+    // Same detached-writer guard as `StreamsWriterV2`: the error is still
+    // surfaced by `wait()` / `stream`.
+    this.streamPromise.catch(() => {});
   }
 
   private async initializeWriter(): Promise<StreamsWriterV2<T>> {

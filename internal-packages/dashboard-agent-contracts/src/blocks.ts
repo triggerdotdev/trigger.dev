@@ -256,7 +256,7 @@ export const reportMetricSchema = z
       })
       .passthrough()
       .optional(),
-    breakdown: z.record(z.number()).optional(),
+    breakdown: z.record(z.string(), z.number()).optional(),
     annotation: z
       .object({ code: reasonCodeSchema, value: z.number().optional() })
       .passthrough()
@@ -272,7 +272,7 @@ export const reportRecommendationSchema = z
   .passthrough();
 
 const codeWithEvidenceSchema = z
-  .object({ code: reasonCodeSchema, evidence: z.record(z.number()).optional() })
+  .object({ code: reasonCodeSchema, evidence: z.record(z.string(), z.number()).optional() })
   .passthrough();
 
 export const reportFindingSchema = z
@@ -337,7 +337,7 @@ export const reportViewModelSchema = z
     findings: z.array(reportFindingSchema).default([]),
     metrics: z.array(reportMetricSchema).default([]),
     /** Free-form. The card reads only `trustworthy`. */
-    facts: z.record(z.unknown()).default({}),
+    facts: z.record(z.string(), z.unknown()).default({}),
     links: z.array(reportLinkSchema).default([]),
     footer: z.array(reportFooterEntrySchema).default([]),
   })

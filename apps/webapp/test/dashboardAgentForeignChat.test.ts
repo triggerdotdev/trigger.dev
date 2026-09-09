@@ -16,11 +16,15 @@ vi.mock("~/services/session.server", () => ({
 vi.mock("~/v3/canAccessDashboardAgent.server", () => ({
   canAccessDashboardAgent: async () => true,
 }));
+vi.mock("~/v3/canUseDashboardAgentWatches.server", () => ({
+  canUseDashboardAgentWatches: async () => false,
+}));
 vi.mock("~/models/project.server", () => ({
-  findProjectBySlug: async () => ({
+  findProjectWithOrgFlagsBySlug: async () => ({
     id: "proj_real",
     organizationId: "org_real",
     externalRef: "proj_ref_real",
+    organization: { featureFlags: {} },
   }),
 }));
 vi.mock("~/models/runtimeEnvironment.server", () => ({ findEnvironmentBySlug: vi.fn() }));
@@ -37,7 +41,9 @@ vi.mock("~/services/dashboardAgentHeadStart.server", () => ({
   startDashboardAgentHeadStart: vi.fn(),
 }));
 vi.mock("~/services/dashboardAgentDb.server", () => ({ dashboardAgentDb: {} }));
-vi.mock("~/services/resolveTriggerUri.server", () => ({ resolveTriggerUri: () => null }));
+vi.mock("~/services/resolveTriggerUriInOrganization.server", () => ({
+  resolveTriggerUrisInOrganization: async () => new Map(),
+}));
 vi.mock("@internal/dashboard-agent-db", () => ({
   chatExists: vi.fn(),
   countUserMessages: vi.fn(),

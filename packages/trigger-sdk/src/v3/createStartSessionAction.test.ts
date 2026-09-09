@@ -150,6 +150,17 @@ describe("chat.createStartSessionAction — runtime", () => {
     expect(lastStartBody?.triggerConfig.lockToVersion).toBe("20260101.1");
   });
 
+  it("forwards ttl from triggerConfig", async () => {
+    installStartFixture();
+
+    const start = chat.createStartSessionAction("fake-chat", {
+      triggerConfig: { ttl: "2m" },
+    });
+    await start({ chatId: "chat-ttl" });
+
+    expect(lastStartBody?.triggerConfig.ttl).toBe("2m");
+  });
+
   it("server-mints override tokens for additional API keys", async () => {
     const requests: Array<{ url: string; body: unknown }> = [];
     const start = chat.createStartSessionAction("fake-chat", {

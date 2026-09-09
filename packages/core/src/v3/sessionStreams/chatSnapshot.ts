@@ -17,11 +17,11 @@
  * recognise a version silently fall back to no-snapshot behaviour.
  */
 
-import { z } from "zod";
+import { z } from "zod/v4";
 
 import type { UIMessage } from "ai";
 
-export type ChatSnapshotV1<TUIMessage extends UIMessage = UIMessage> = {
+export type ChatSnapshotV1<TUIMessage = unknown> = {
   version: 1;
   savedAt: number;
   messages: TUIMessage[];
@@ -44,11 +44,137 @@ export type ChatSnapshotV1<TUIMessage extends UIMessage = UIMessage> = {
  */
 export const ChatSnapshotV1Schema = z.object({
   version: z.literal(1),
-  savedAt: z.number(),
+  savedAt: z.number().optional(),
   messages: z.array(z.unknown()),
   lastOutEventId: z.string().optional(),
   lastInEventId: z.string().optional(),
 });
+
+/**
+ * One transcript entry in a version 2 snapshot. `id` duplicates
+ * `message.id` so a reader can address entries without inspecting the
+ * message body; `final` is false for a partial assistant message captured
+ * by an errored or stopped turn.
+ */
+export type TranscriptSnapshotEntry<TUIMessage extends UIMessage = UIMessage> = {
+  id: string;
+  final: boolean;
+  message: TUIMessage;
+};
+
+/**
+ * Version 2 of the persisted transcript blob. Entries are ordered by array
+ * position. `state` is an opaque record the runtime uses for compaction and
+ * other cross-run bookkeeping; `null` when nothing has been recorded.
+ *
+ * Readers must accept version 1 as well; writers only emit version 2. Use
+ * {@link parseTranscriptSnapshot} to read either.
+ */
+export type TranscriptSnapshotV2<TUIMessage extends UIMessage = UIMessage> = {
+  version: 2;
+  savedAt: number;
+  messages: TranscriptSnapshotEntry<TUIMessage>[];
+  state: unknown | null;
+  lastOutEventId?: string;
+  lastInEventId?: string;
+};
+
+export const TranscriptSnapshotV2Schema = z.object({
+  version: z.literal(2),
+  savedAt: z.number().optional(),
+  messages: z.array(
+    z.object({
+      id: z.string(),
+      final: z.boolean(),
+      message: z.unknown(),
+    })
+  ),
+  state: z.unknown().nullable(),
+  lastOutEventId: z.string().optional(),
+  lastInEventId: z.string().optional(),
+});
+
+/**
+ * Parse a fetched snapshot blob of any known version into the version 2
+ * shape. A version 1 blob is upgraded in memory: every message becomes a
+ * `final: true` entry keyed by its `id` and `state` is `null`. In both
+ * versions, entries without a non-empty string `id` or a non-null object
+ * `message` are dropped; a version 2 entry whose `message.id` disagrees with
+ * the envelope `id` is dropped too, since a reader keys by one and renders by
+ * the other. A caller never sees an entry it would crash on or mis-order.
+ * A missing `savedAt` defaults to `0` rather than rejecting the whole blob:
+ * the field only orders snapshot history before live chunks, and dropping a
+ * whole conversation over an absent timestamp is the wrong failure mode.
+ * Returns `undefined` for an unknown version or a body that is not a
+ * snapshot; callers treat that as "no snapshot".
+ */
+export function parseTranscriptSnapshot<TUIMessage extends UIMessage = UIMessage>(
+  input: unknown
+): TranscriptSnapshotV2<TUIMessage> | undefined {
+  const v2 = TranscriptSnapshotV2Schema.safeParse(input);
+  if (v2.success) {
+    const messages: TranscriptSnapshotEntry<TUIMessage>[] = [];
+    for (const entry of v2.data.messages) {
+      if (entry.id.length === 0) continue;
+      if (typeof entry.message !== "object" || entry.message === null) continue;
+      if ((entry.message as { id?: unknown }).id !== entry.id) continue;
+      messages.push({ id: entry.id, final: entry.final, message: entry.message as TUIMessage });
+    }
+    return {
+      version: 2,
+      savedAt: v2.data.savedAt ?? 0,
+      messages,
+      state: v2.data.state ?? null,
+      lastOutEventId: v2.data.lastOutEventId,
+      lastInEventId: v2.data.lastInEventId,
+    };
+  }
+
+  const v1 = ChatSnapshotV1Schema.safeParse(input);
+  if (v1.success) {
+    const messages: TranscriptSnapshotEntry<TUIMessage>[] = [];
+    for (const raw of v1.data.messages) {
+      const id = (raw as { id?: unknown } | null)?.id;
+      if (typeof id !== "string" || id.length === 0) continue;
+      messages.push({ id, final: true, message: raw as TUIMessage });
+    }
+    return {
+      version: 2,
+      savedAt: v1.data.savedAt ?? 0,
+      messages,
+      state: null,
+      lastOutEventId: v1.data.lastOutEventId,
+      lastInEventId: v1.data.lastInEventId,
+    };
+  }
+
+  return undefined;
+}
+
+/**
+ * Select one page of transcript entries, newest last. `before` keeps only the
+ * entries ordered before that id; `limit` keeps the last that many. A
+ * non-positive `limit` is treated as no limit (every entry, no cursor), so a
+ * caller cannot mistake an empty page for the end of the transcript. The
+ * returned `nextCursor` is the id to pass as `before` for the previous page,
+ * absent when there is no earlier page.
+ */
+export function pageTranscriptEntries<TUIMessage extends UIMessage = UIMessage>(
+  all: TranscriptSnapshotEntry<TUIMessage>[],
+  opts: { limit?: number; before?: string } | undefined
+): { entries: TranscriptSnapshotEntry<TUIMessage>[]; nextCursor: string | undefined } {
+  let entries = all;
+  if (opts?.before !== undefined) {
+    const idx = entries.findIndex((e) => e.id === opts.before);
+    if (idx !== -1) entries = entries.slice(0, idx);
+  }
+  let nextCursor: string | undefined;
+  if (opts?.limit !== undefined && opts.limit > 0 && entries.length > opts.limit) {
+    entries = entries.slice(entries.length - opts.limit);
+    nextCursor = entries[0]?.id;
+  }
+  return { entries, nextCursor };
+}
 
 /**
  * S3 key suffix for a session's snapshot blob. The webapp's presigned

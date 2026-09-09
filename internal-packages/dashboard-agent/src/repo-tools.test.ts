@@ -34,7 +34,9 @@ const pinnedSnapshot: RepoSnapshot = {
 const resolveRunSnapshot = async (runId: string) =>
   runId === "run_pinned" ? pinnedSnapshot : null;
 
-const tools = buildRepoTools(snapshot, resolveRunSnapshot);
+const CTX = { projectRef: "proj_ref", environmentName: "dev" };
+
+const tools = buildRepoTools(snapshot, CTX, { resolveRunSnapshot });
 // Tool.execute takes (input, options); options is unused by these tools.
 const call = (tool: any, input: any) => tool.execute(input, {} as any);
 
@@ -209,7 +211,7 @@ describe("repo-tools", () => {
         repo: "attacker",
         sha: "b".repeat(40),
       };
-      const res: any = await call(buildRepoTools(bad).read_file, { path: "README.md" });
+      const res: any = await call(buildRepoTools(bad, CTX).read_file, { path: "README.md" });
       expect(res.error).toMatch(/Couldn't load the repository/);
       expect(res.error).toMatch(/not a valid URL|not allowed/);
     }
