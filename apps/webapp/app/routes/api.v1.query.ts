@@ -94,14 +94,12 @@ const { action, loader } = createActionApiRoute(
       if (queryResult.error instanceof QueryError) {
         logger.warn("Query API error", {
           error: queryResult.error.message,
-          query,
         });
         return json({ error: queryResult.error.message }, { status: 400 });
       }
 
       logger.error("Query API error", {
         error: queryResult.error,
-        query,
       });
 
       return json(

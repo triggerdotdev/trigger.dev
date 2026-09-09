@@ -3,6 +3,7 @@ import { type IOPacket } from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { safeEnvironmentLogFields } from "~/services/safeEnvironmentLog";
 import { ServiceValidationError } from "~/v3/services/common.server";
 import { singleton } from "~/utils/singleton";
 import {
@@ -275,7 +276,10 @@ export async function downloadPacketFromObjectStore(
 
   // There shouldn't be an offloaded packet with undefined data…
   if (!packet.data) {
-    logger.error("Object store packet has undefined data", { packet, environment });
+    logger.error("Object store packet has undefined data", {
+      packet,
+      environment: safeEnvironmentLogFields(environment),
+    });
     return {
       dataType: "application/json",
       data: undefined,

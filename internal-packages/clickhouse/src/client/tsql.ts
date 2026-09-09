@@ -191,7 +191,6 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
   const maxRows = options.querySettings?.maxRows;
 
   let generatedSql: string | undefined;
-  let generatedParams: Record<string, unknown> | undefined;
 
   try {
     // 1. Compile the TSQL query to ClickHouse SQL
@@ -213,7 +212,6 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
     });
 
     generatedSql = sql;
-    generatedParams = params;
 
     // 2. Execute the query (or EXPLAIN) with stats
     const queryToExecute = isExplain ? `EXPLAIN indexes = 1 ${sql}` : sql;
@@ -225,7 +223,6 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
       // EXPLAIN returns rows with an 'explain' column
       schema: isExplain ? z.object({ explain: z.string() }) : options.schema,
       settings: options.clickhouseSettings,
-      logFields: { tsql: options.query },
       userAuthoredQuery: options.userAuthoredQuery,
     });
 
@@ -260,7 +257,6 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
             params: z.record(z.string(), z.any()),
             schema: z.object({ explain: z.string() }),
             settings: options.clickhouseSettings,
-            logFields: { tsql: options.query },
             userAuthoredQuery: options.userAuthoredQuery,
           });
 
@@ -321,10 +317,7 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
 
     const logFields = {
       name: options.name,
-      error: errorMessage,
-      tsql: options.query,
-      generatedSql: generatedSql ?? "(compilation failed)",
-      generatedParams: generatedParams ?? {},
+      error: { name: error instanceof Error ? error.name : "UnknownError" },
     };
 
     const callerWroteABadQuery = options.userAuthoredQuery && error instanceof ExposedTSQLError;

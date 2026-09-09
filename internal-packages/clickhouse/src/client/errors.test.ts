@@ -1,5 +1,6 @@
 import { ClickHouseError, parseError } from "@clickhouse/client";
 import { describe, expect, it } from "vitest";
+import { clickhouseErrorDescriptor } from "./client.js";
 import { InsertError } from "./errors.js";
 
 const rawMessage =
@@ -19,6 +20,47 @@ describe("patched ClickHouseError.rawMessage", () => {
     expect(Object.keys(error)).not.toContain("rawMessage");
     expect(JSON.stringify(error)).not.toContain("customer-payload");
     expect(JSON.stringify({ ...error })).not.toContain("customer-payload");
+  });
+});
+
+describe("ClickHouse error logging", () => {
+  it("keeps driver message and row fragments out of the log descriptor", () => {
+    const error = parseError(rawMessage);
+    const originalMessage = error.message;
+    const descriptor = clickhouseErrorDescriptor(error);
+
+    expect(descriptor).toEqual({
+      name: "ClickHouseError",
+      code: "117",
+      type: "INCORRECT_DATA",
+    });
+    expect(JSON.stringify(descriptor)).not.toContain("customer-payload");
+    expect(error.message).toBe(originalMessage);
+    expect((error as ClickHouseError).rawMessage).toBe(rawMessage);
+  });
+
+  it("does not throw when an error property getter throws", () => {
+    const error = Object.create(Error.prototype);
+    Object.defineProperties(error, {
+      name: { get: () => "HostileError" },
+      code: {
+        get() {
+          throw new Error("private-code");
+        },
+      },
+      message: {
+        get() {
+          throw new Error("private-message");
+        },
+      },
+      stack: {
+        get() {
+          throw new Error("private-stack");
+        },
+      },
+    });
+
+    expect(clickhouseErrorDescriptor(error)).toEqual({ name: "HostileError" });
   });
 });
 

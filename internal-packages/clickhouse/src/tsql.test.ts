@@ -1633,20 +1633,24 @@ describe("TSQL Error Log Levels", () => {
       name: "test",
       url: clickhouseContainer.getConnectionUrl(),
     });
+    const query = "SELECT private_column_marker FROM task_runs";
 
     const [error] = await executeTSQL(client, {
       name: "test-unknown-column",
-      query: "SELECT nope FROM task_runs",
-      schema: z.object({ nope: z.string() }),
+      query,
+      schema: z.object({ private_column_marker: z.string() }),
       enforcedWhereClause: {
-        organization_id: { op: "eq", value: "org_tenant1" },
+        organization_id: { op: "eq", value: "private_param_marker" },
       },
       tableSchema: [taskRunsSchema],
       userAuthoredQuery: true,
     });
 
     expect(error).not.toBeNull();
+    expect(error?.context?.query).toBe(query);
     expect(logged(warnSpy)).toContain("[TSQL] Invalid query");
+    expect(logged(warnSpy)).not.toContain("private_column_marker");
+    expect(logged(warnSpy)).not.toContain("private_param_marker");
     expect(logged(errorSpy)).not.toContain("[TSQL] Query error");
   });
 
@@ -1673,26 +1677,31 @@ describe("TSQL Error Log Levels", () => {
   });
 
   clickhouseTest(
-    "logs a query ClickHouse rejects at execution as an error, with the TSQL that produced it",
+    "logs a query ClickHouse rejects at execution without query contents",
     async ({ clickhouseContainer }) => {
       const client = new ClickhouseClient({
         name: "test",
         url: clickhouseContainer.getConnectionUrl(),
       });
+      const query = "SELECT toDateTime(tags) AS private_query_marker FROM task_runs";
 
       const [error] = await executeTSQL(client, {
         name: "test-execution-error",
-        query: "SELECT toDateTime(tags) AS bad FROM task_runs",
-        schema: z.object({ bad: z.string() }),
+        query,
+        schema: z.object({ private_query_marker: z.string() }),
         enforcedWhereClause: {
-          organization_id: { op: "eq", value: "org_tenant1" },
+          organization_id: { op: "eq", value: "private_param_marker" },
         },
         tableSchema: [taskRunsSchema],
       });
 
       expect(error).not.toBeNull();
+      expect(error?.context?.query).toBe(query);
       expect(logged(errorSpy)).toContain("Error querying clickhouse");
-      expect(logged(errorSpy)).toContain("SELECT toDateTime(tags) AS bad FROM task_runs");
+      expect(logged(errorSpy)).toContain('"name":"ClickHouseError"');
+      expect(logged(errorSpy)).toMatch(/"type":"[A-Z_]+"/);
+      expect(logged(errorSpy)).not.toContain("private_query_marker");
+      expect(logged(errorSpy)).not.toContain("private_param_marker");
     }
   );
 

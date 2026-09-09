@@ -18,6 +18,7 @@ import {
 } from "../personalAccessToken.server";
 import { assertTokenOrganizationClaim, assertUserActorScope } from "../userActorEnvironment.server";
 import { safeJsonParse } from "~/utils/json";
+import { sanitizeHttpUrl } from "~/utils/sanitizeHttpUrl";
 import type { AuthenticatedWorkerInstance } from "~/v3/services/worker/workerGroupTokenService.server";
 import { WorkerGroupTokenService } from "~/v3/services/worker/workerGroupTokenService.server";
 import type { API_VERSIONS } from "~/api/versions";
@@ -31,24 +32,70 @@ import { tenantContext, tenantContextFromAuthEnvironment } from "~/services/tena
 // Client aborts and service-level validation errors aren't bugs — they're
 // expected at API boundaries. Log them at `warn` so they stay in stdout
 // without flowing to Sentry via Logger.onError.
+type DrizzleQueryError = Error & {
+  query: string;
+  params: unknown[];
+  cause?: unknown;
+};
+
+function isDrizzleQueryError(error: unknown): error is DrizzleQueryError {
+  if (!(error instanceof Error)) return false;
+
+  try {
+    return (
+      error.message.startsWith("Failed query:") &&
+      typeof (error as Partial<DrizzleQueryError>).query === "string" &&
+      Array.isArray((error as Partial<DrizzleQueryError>).params)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function safeErrorCode(error: unknown): string | number | boolean | undefined {
+  if ((typeof error !== "object" && typeof error !== "function") || error === null) return;
+
+  try {
+    const code = (error as { code?: unknown }).code;
+    return typeof code === "string" || typeof code === "number" || typeof code === "boolean"
+      ? code
+      : undefined;
+  } catch {
+    return;
+  }
+}
+
+export function boundaryErrorLogValue(error: unknown) {
+  if (isDrizzleQueryError(error)) {
+    const code = safeErrorCode(error.cause);
+    return {
+      name: "DrizzleQueryError",
+      message: "Database query failed",
+      ...(code === undefined ? {} : { causeCode: code }),
+    };
+  }
+
+  return error instanceof Error
+    ? { name: error.name, message: error.message, stack: error.stack }
+    : String(error);
+}
+
 function logBoundaryError(
   message: "Error in loader" | "Error in action" | "Unroutable id",
   error: unknown,
   url: string
 ) {
-  const formatted =
-    error instanceof Error
-      ? { name: error.name, message: error.message, stack: error.stack }
-      : String(error);
+  const formatted = boundaryErrorLogValue(error);
+  const sanitizedUrl = sanitizeHttpUrl(url);
   const isExpected =
     error instanceof Error &&
     (error.name === "AbortError" ||
       error instanceof ServiceValidationError ||
       error instanceof EngineServiceValidationError);
   if (isExpected) {
-    logger.warn(message, { error: formatted, url });
+    logger.warn(message, { error: formatted, url: sanitizedUrl });
   } else {
-    logger.error(message, { error: formatted, url });
+    logger.error(message, { error: formatted, url: sanitizedUrl });
   }
 }
 
@@ -466,7 +513,10 @@ export function createLoaderApiRoute<
           corsStrategy !== "none"
         );
       } catch (innerError) {
-        logger.error("[apiBuilder] Failed to handle error", { error, innerError });
+        logger.error("[apiBuilder] Failed to handle error", {
+          error: boundaryErrorLogValue(error),
+          innerError: boundaryErrorLogValue(innerError),
+        });
 
         return json({ error: "Internal Server Error" }, { status: 500 });
       }
@@ -769,7 +819,10 @@ export function createLoaderPATApiRoute<
           corsStrategy !== "none"
         );
       } catch (innerError) {
-        logger.error("[apiBuilder] Failed to handle error", { error, innerError });
+        logger.error("[apiBuilder] Failed to handle error", {
+          error: boundaryErrorLogValue(error),
+          innerError: boundaryErrorLogValue(innerError),
+        });
 
         return json({ error: "Internal Server Error" }, { status: 500 });
       }
@@ -1061,7 +1114,10 @@ export function createActionPATApiRoute<
           corsStrategy !== "none"
         );
       } catch (innerError) {
-        logger.error("[apiBuilder] Failed to handle error", { error, innerError });
+        logger.error("[apiBuilder] Failed to handle error", {
+          error: boundaryErrorLogValue(error),
+          innerError: boundaryErrorLogValue(innerError),
+        });
 
         return json({ error: "Internal Server Error" }, { status: 500 });
       }
@@ -1407,7 +1463,10 @@ export function createActionApiRoute<
           corsStrategy !== "none"
         );
       } catch (innerError) {
-        logger.error("[apiBuilder] Failed to handle error", { error, innerError });
+        logger.error("[apiBuilder] Failed to handle error", {
+          error: boundaryErrorLogValue(error),
+          innerError: boundaryErrorLogValue(innerError),
+        });
 
         return json({ error: "Internal Server Error" }, { status: 500 });
       }
@@ -1679,7 +1738,10 @@ export function createMultiMethodApiRoute<
           corsStrategy !== "none"
         );
       } catch (innerError) {
-        logger.error("[apiBuilder] Failed to handle error", { error, innerError });
+        logger.error("[apiBuilder] Failed to handle error", {
+          error: boundaryErrorLogValue(error),
+          innerError: boundaryErrorLogValue(innerError),
+        });
         return json({ error: "Internal Server Error" }, { status: 500 });
       }
     }

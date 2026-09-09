@@ -23,6 +23,7 @@ import { $transaction, Prisma, boundedIn, webhookPrisma } from "~/db.server";
 import { sanitizeQueueName } from "~/models/taskQueue.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { safeEnvironmentLogFields } from "~/services/safeEnvironmentLog";
 import { syncTaskIdentifiers } from "~/services/taskIdentifierRegistry.server";
 import {
   type TaskMetadataCache,
@@ -160,7 +161,7 @@ export class CreateBackgroundWorkerService extends BaseService {
         logger.error("Error creating background worker files", {
           error: filesError,
           backgroundWorker,
-          environment,
+          environment: safeEnvironmentLogFields(environment),
         });
 
         throw new ServiceValidationError("Error creating background worker files");
@@ -189,7 +190,7 @@ export class CreateBackgroundWorkerService extends BaseService {
         logger.error("Error creating worker resources", {
           error: resourcesError,
           backgroundWorker,
-          environment,
+          environment: safeEnvironmentLogFields(environment),
         });
         throw new ServiceValidationError("Error creating worker resources");
       }
@@ -212,7 +213,7 @@ export class CreateBackgroundWorkerService extends BaseService {
           logger.warn("Error syncing declarative schedules", {
             error: schedulesError.message,
             backgroundWorker,
-            environment,
+            environment: safeEnvironmentLogFields(environment),
           });
           throw schedulesError;
         }
@@ -224,7 +225,7 @@ export class CreateBackgroundWorkerService extends BaseService {
         logger.error("Error syncing declarative schedules", {
           error: schedulesError,
           backgroundWorker,
-          environment,
+          environment: safeEnvironmentLogFields(environment),
         });
 
         throw new ServiceValidationError("Error syncing declarative schedules");
@@ -244,7 +245,7 @@ export class CreateBackgroundWorkerService extends BaseService {
           logger.warn("Error syncing declarative webhooks", {
             error: webhooksError.message,
             backgroundWorker,
-            environment,
+            environment: safeEnvironmentLogFields(environment),
           });
           throw webhooksError;
         }
@@ -252,7 +253,7 @@ export class CreateBackgroundWorkerService extends BaseService {
         logger.error("Error syncing declarative webhooks", {
           error: webhooksError,
           backgroundWorker,
-          environment,
+          environment: safeEnvironmentLogFields(environment),
         });
 
         throw new ServiceValidationError("Error syncing declarative webhooks");
@@ -271,7 +272,7 @@ export class CreateBackgroundWorkerService extends BaseService {
         logger.error("Error syncing task identifiers", {
           error: syncIdentifiersError,
           backgroundWorker,
-          environment,
+          environment: safeEnvironmentLogFields(environment),
         });
       }
 
@@ -303,7 +304,7 @@ export class CreateBackgroundWorkerService extends BaseService {
         logger.error("Error updating environment concurrency limits", {
           error: updateConcurrencyLimitsError,
           backgroundWorker,
-          environment,
+          environment: safeEnvironmentLogFields(environment),
         });
       }
 
@@ -321,7 +322,7 @@ export class CreateBackgroundWorkerService extends BaseService {
         logger.error("Error publishing WORKER_CREATED event", {
           error: publishError,
           backgroundWorker,
-          environment,
+          environment: safeEnvironmentLogFields(environment),
         });
       }
 
@@ -865,7 +866,7 @@ async function prepareDeclarativeSchedules(
   );
   logger.info("Syncing declarative schedules", {
     tasksWithDeclarativeSchedules,
-    environment,
+    environment: safeEnvironmentLogFields(environment),
   });
 
   const existingDeclarativeSchedules = await prisma.taskSchedule.findMany({

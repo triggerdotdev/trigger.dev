@@ -5,6 +5,7 @@ import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { devPresence } from "~/presenters/v3/DevPresence.server";
 import { logger } from "~/services/logger.server";
+import { safeEnvironmentLogFields } from "~/services/safeEnvironmentLog";
 import { singleton } from "~/utils/singleton";
 import { OutOfEntitlementError, TriggerTaskService } from "./services/triggerTask.server";
 import { meter, tracer } from "./tracer.server";
@@ -100,7 +101,7 @@ function createScheduleEngine() {
 
         logger.debug("Triggering scheduled task", {
           taskIdentifier,
-          environment,
+          environment: safeEnvironmentLogFields(environment),
           payload,
           scheduleInstanceId,
           scheduleId,

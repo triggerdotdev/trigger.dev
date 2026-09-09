@@ -209,8 +209,6 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
         async (span): Promise<Result<z.output<TOut>[], QueryError>> => {
           this.logger.debug("Querying clickhouse", {
             name: req.name,
-            query: req.query.replace(/\s+/g, " "),
-            params,
             settings: req.settings,
             attributes: options?.attributes,
             queryId,
@@ -232,8 +230,6 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
             this.logger.error("Error parsing query params", {
               name: req.name,
               error: validParams.error,
-              query: req.query,
-              params,
               queryId,
             });
 
@@ -264,9 +260,7 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
           if (clickhouseError) {
             const errorLogFields = {
               name: req.name,
-              error: clickhouseError,
-              query: req.query,
-              params,
+              error: clickhouseErrorDescriptor(clickhouseError),
               queryId,
             };
 
@@ -306,8 +300,6 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
             this.logger.error("Error parsing clickhouse query result", {
               name: req.name,
               error: parsed.error,
-              query: req.query,
-              params,
               queryId,
             });
 
@@ -371,11 +363,6 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
      */
     settings?: ClickHouseSettings;
     /**
-     * Extra fields to attach to the error log if the query fails. Use this to
-     * record what produced the SQL, e.g. the TSQL a caller actually wrote.
-     */
-    logFields?: Record<string, unknown>;
-    /**
      * Set when the SQL originates from whoever made the request rather than
      * from us. Invalid-SQL rejections are then their mistake, not a bug.
      */
@@ -395,8 +382,6 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
         ): Promise<Result<{ rows: z.output<TOut>[]; stats: QueryStats }, QueryError>> => {
           this.logger.debug("Querying clickhouse with stats", {
             name: req.name,
-            query: req.query.replace(/\s+/g, " "),
-            params,
             settings: req.settings,
             attributes: options?.attributes,
             queryId,
@@ -418,8 +403,6 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
             this.logger.error("Error parsing query params", {
               name: req.name,
               error: validParams.error,
-              query: req.query,
-              params,
               queryId,
             });
 
@@ -449,11 +432,8 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
 
           if (clickhouseError) {
             const errorLogFields = {
-              ...req.logFields,
               name: req.name,
-              error: clickhouseError,
-              query: req.query,
-              params,
+              error: clickhouseErrorDescriptor(clickhouseError),
               queryId,
             };
 
@@ -531,8 +511,6 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
             this.logger.error("Error parsing clickhouse query result", {
               name: req.name,
               error: parsed.error,
-              query: req.query,
-              params,
               queryId,
             });
 
@@ -586,8 +564,6 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
         async (span): Promise<Result<TOut[], QueryError>> => {
           this.logger.debug("Querying clickhouse fast", {
             name: req.name,
-            query: req.query.replace(/\s+/g, " "),
-            params,
             settings: req.settings,
             attributes: options?.attributes,
             queryId,
@@ -618,9 +594,7 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
           if (clickhouseError) {
             const errorLogFields = {
               name: req.name,
-              error: clickhouseError,
-              query: req.query,
-              params,
+              error: clickhouseErrorDescriptor(clickhouseError),
               queryId,
             };
 
@@ -732,8 +706,6 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
 
       self.logger.debug("Streaming clickhouse fast", {
         name: req.name,
-        query: req.query.replace(/\s+/g, " "),
-        params,
         settings: req.settings,
         queryId,
       });
@@ -783,9 +755,7 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
       } catch (error) {
         const errorLogFields = {
           name: req.name,
-          error,
-          query: req.query,
-          params,
+          error: clickhouseErrorDescriptor(error),
           queryId,
         };
 
@@ -860,7 +830,6 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
         this.logger.debug("Running clickhouse command", {
           clientName: this.name,
           name: req.name,
-          query: req.query.replace(/\s+/g, " "),
           settings: req.settings,
           attributes: options?.attributes,
           queryId,
@@ -882,8 +851,7 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
         if (clickhouseError) {
           this.logger.error("Error running clickhouse command", {
             name: req.name,
-            error: clickhouseError,
-            query: req.query,
+            error: clickhouseErrorDescriptor(clickhouseError),
             queryId,
           });
           recordClickhouseError(span, clickhouseError);
@@ -980,7 +948,7 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
         if (clickhouseError) {
           this.logger.error("Error inserting into clickhouse", {
             name: req.name,
-            error: clickhouseError,
+            error: clickhouseErrorDescriptor(clickhouseError),
             table: req.table,
           });
 
@@ -1073,7 +1041,7 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
         if (clickhouseError) {
           this.logger.error("Error inserting into clickhouse", {
             name: req.name,
-            error: clickhouseError,
+            error: clickhouseErrorDescriptor(clickhouseError),
             table: req.table,
           });
 
@@ -1138,7 +1106,7 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
         if (clickhouseError) {
           this.logger.error("Error inserting into clickhouse", {
             name: req.name,
-            error: clickhouseError,
+            error: clickhouseErrorDescriptor(clickhouseError),
             table: req.table,
           });
 
@@ -1239,7 +1207,7 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
         if (clickhouseError) {
           this.logger.error("Error inserting into clickhouse", {
             name: req.name,
-            error: clickhouseError,
+            error: clickhouseErrorDescriptor(clickhouseError),
             table: req.table,
           });
 
@@ -1343,15 +1311,50 @@ function toInsertError(error: Error): InsertError {
   });
 }
 
-function recordClickhouseError(span: Span, error: Error): void {
-  if (error instanceof ClickHouseError) {
-    span.setAttributes({
-      "clickhouse.error.code": error.code,
-      "clickhouse.error.message": error.message,
-      "clickhouse.error.type": error.type,
-    });
+export function clickhouseErrorDescriptor(error: unknown) {
+  const descriptor: { name: string; code?: string | number; type?: string } = {
+    name: "UnknownError",
+  };
+
+  if ((typeof error !== "object" && typeof error !== "function") || error === null) {
+    return descriptor;
   }
-  recordSpanError(span, error);
+
+  try {
+    const name =
+      error instanceof ClickHouseError
+        ? "ClickHouseError"
+        : error instanceof Error
+          ? error.name
+          : undefined;
+    if (typeof name === "string") {
+      descriptor.name = name;
+    }
+
+    const { code, type } = error as { code?: unknown; type?: unknown };
+    if (typeof code === "string" || typeof code === "number") {
+      descriptor.code = code;
+    }
+    if (typeof type === "string") {
+      descriptor.type = type;
+    }
+  } catch {
+    return descriptor;
+  }
+
+  return descriptor;
+}
+
+function recordClickhouseError(span: Span, error: Error): void {
+  const descriptor = clickhouseErrorDescriptor(error);
+  span.setAttributes({
+    "clickhouse.error.name": descriptor.name,
+    ...(descriptor.code === undefined ? {} : { "clickhouse.error.code": descriptor.code }),
+    ...(descriptor.type === undefined ? {} : { "clickhouse.error.type": descriptor.type }),
+  });
+  const telemetryError = new Error("ClickHouse request failed");
+  telemetryError.name = descriptor.name;
+  recordSpanError(span, telemetryError);
 }
 
 function convertLogLevelToClickhouseLogLevel(logLevel?: LogLevel): ClickHouseLogLevel {
