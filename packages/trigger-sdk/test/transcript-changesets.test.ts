@@ -528,6 +528,35 @@ describe("chat.agent transcript changesets", () => {
       await harness.close();
     }
   });
+
+  it("persists a late response part written by onBeforeTurnComplete on an empty response", async () => {
+    const chatId = "changeset-late-part";
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({
+        stream: simulateReadableStream({
+          chunks: [{ type: "finish", finishReason: { unified: "stop", raw: "stop" }, usage }],
+        }),
+      }),
+    });
+    const agent = chat.agent({
+      id: "changeset-late-part",
+      onBeforeTurnComplete: async ({ writer }) => {
+        writer.write({ type: "data-note", data: { text: "late note" } } as never);
+      },
+      run: async ({ messages, signal }) => streamText({ model, messages, abortSignal: signal }),
+    });
+    const harness = mockChatAgent(agent, { chatId });
+    try {
+      await harness.sendMessage(userMessage("hello", "u1"));
+      await waitFor(() => storage.changesets.length === 1, "turn save");
+      const entries = storage.transcript(chatId)!.entries;
+      expect(entries.map((e) => e.message.role)).toEqual(["user", "assistant"]);
+      const assistant = entries.find((e) => e.message.role === "assistant");
+      expect(JSON.stringify(assistant?.message)).toContain("late note");
+    } finally {
+      await harness.close();
+    }
+  });
 });
 
 function assistantMessage(id: string): UIMessage {

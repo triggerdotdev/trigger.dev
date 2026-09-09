@@ -9482,10 +9482,18 @@ function chatAgent<
                         parts: [...(msg.parts ?? []), ...lateParts],
                       } as TUIMessage;
                       capturedResponseMessage = accumulatedUIMessages[idx] as TUIMessage;
-                      capturedPartialResponse = capturedResponseMessage;
-                      turnCompleteEvent.responseMessage = capturedResponseMessage;
-                      turnCompleteEvent.uiMessages = accumulatedUIMessages;
+                    } else {
+                      capturedResponseMessage = {
+                        ...capturedResponseMessage,
+                        parts: [...(capturedResponseMessage.parts ?? []), ...lateParts],
+                      } as TUIMessage;
+                      accumulatedUIMessages.push(capturedResponseMessage);
+                      turnNewUIMessages.push(capturedResponseMessage);
                     }
+                    capturedPartialResponse = capturedResponseMessage;
+                    turnCompleteEvent.responseMessage = capturedResponseMessage;
+                    turnCompleteEvent.uiMessages = accumulatedUIMessages;
+                    locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                     locals.set(chatResponsePartsKey, []);
                   }
 
