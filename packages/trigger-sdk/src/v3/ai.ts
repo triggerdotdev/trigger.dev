@@ -81,7 +81,6 @@ import {
   defaultStorage,
   diffTranscript,
   parseTranscriptRuntimeState,
-  prefixFingerprint,
   restoreModelLane,
   type TranscriptChange,
   type TranscriptChangeReason,
@@ -1350,7 +1349,8 @@ async function reportChatCustomAgentClientDataError(
   error: unknown,
   options: { writeToStream: boolean; callHandler?: boolean }
 ): Promise<void> {
-  const errorText = error instanceof Error ? error.message : "An unexpected error occurred";
+  const errorText =
+    error instanceof Error && error.message ? error.message : "An unexpected error occurred";
   logger.warn("chat.customAgent: clientData validation failed", {
     chatId: payload.chatId,
     trigger: payload.trigger,
@@ -7171,7 +7171,6 @@ function chatAgent<
                       compaction: {
                         modelMessages: accumulatedMessages,
                         throughId,
-                        fingerprint: prefixFingerprint(shadow, throughId),
                       },
                     }
                   : {}),
@@ -9175,56 +9174,63 @@ function chatAgent<
                       } as TUIMessage;
                       locals.set(chatResponsePartsKey, []);
                     }
-                    // Tool-approval continuations: the AI SDK reuses the trailing
-                    // assistant's ID (via originalMessages) so the captured response
-                    // carries the same ID as an existing message. Replace in place
-                    // instead of pushing a duplicate. For action turns this never
-                    // matches because originalMessages is omitted (fresh ID).
-                    const existingIdx = capturedResponseMessage.id
-                      ? accumulatedUIMessages.findIndex((m) => m.id === capturedResponseMessage!.id)
-                      : -1;
-                    const previousAtIdx =
-                      existingIdx !== -1 ? accumulatedUIMessages[existingIdx] : undefined;
-                    if (existingIdx !== -1) {
-                      accumulatedUIMessages[existingIdx] = capturedResponseMessage;
-                    } else {
-                      accumulatedUIMessages.push(capturedResponseMessage);
-                    }
-                    turnNewUIMessages.push(capturedResponseMessage);
-                    locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
-                    // Record toolCallId → head messageId so a HITL
-                    // continuation next turn can recover the head id
-                    // even if the AI SDK regenerates it. See
-                    // `chatToolCallToMessageIdKey` for the full
-                    // rationale (TRI-9137).
-                    recordToolCallIdsFromMessage(capturedResponseMessage);
-                    try {
-                      const responseModelMessages = await toModelMessages([
-                        stripProviderMetadata(capturedResponseMessage),
-                      ]);
+                    const responseHasContent = capturedResponseMessage.parts.some(
+                      (part) => part.type !== "step-start"
+                    );
+                    if (responseHasContent) {
+                      // Tool-approval continuations: the AI SDK reuses the trailing
+                      // assistant's ID (via originalMessages) so the captured response
+                      // carries the same ID as an existing message. Replace in place
+                      // instead of pushing a duplicate. For action turns this never
+                      // matches because originalMessages is omitted (fresh ID).
+                      const existingIdx = capturedResponseMessage.id
+                        ? accumulatedUIMessages.findIndex(
+                            (m) => m.id === capturedResponseMessage!.id
+                          )
+                        : -1;
+                      const previousAtIdx =
+                        existingIdx !== -1 ? accumulatedUIMessages[existingIdx] : undefined;
                       if (existingIdx !== -1) {
-                        const ok =
-                          previousAtIdx !== undefined &&
-                          (await replaceModelRun(
-                            accumulatedMessages,
-                            previousAtIdx,
-                            capturedResponseMessage,
-                            steerTailThisTurn
-                          ));
-                        if (!ok) {
-                          logger.warn(
-                            "chat.agent: replaced response not found at the model lane tail; reconverting the lane"
-                          );
-                          accumulatedMessages = await toModelMessages(accumulatedUIMessages);
-                          laneCompacted = false;
-                          laneInjections = [];
-                        }
+                        accumulatedUIMessages[existingIdx] = capturedResponseMessage;
                       } else {
-                        accumulatedMessages.push(...responseModelMessages);
+                        accumulatedUIMessages.push(capturedResponseMessage);
                       }
-                      turnNewModelMessages.push(...responseModelMessages);
-                    } catch {
-                      // Conversion failed — skip accumulation for this turn
+                      turnNewUIMessages.push(capturedResponseMessage);
+                      locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+                      // Record toolCallId → head messageId so a HITL
+                      // continuation next turn can recover the head id
+                      // even if the AI SDK regenerates it. See
+                      // `chatToolCallToMessageIdKey` for the full
+                      // rationale (TRI-9137).
+                      recordToolCallIdsFromMessage(capturedResponseMessage);
+                      try {
+                        const responseModelMessages = await toModelMessages([
+                          stripProviderMetadata(capturedResponseMessage),
+                        ]);
+                        if (existingIdx !== -1) {
+                          const ok =
+                            previousAtIdx !== undefined &&
+                            (await replaceModelRun(
+                              accumulatedMessages,
+                              previousAtIdx,
+                              capturedResponseMessage,
+                              steerTailThisTurn
+                            ));
+                          if (!ok) {
+                            logger.warn(
+                              "chat.agent: replaced response not found at the model lane tail; reconverting the lane"
+                            );
+                            accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+                            laneCompacted = false;
+                            laneInjections = [];
+                          }
+                        } else {
+                          accumulatedMessages.push(...responseModelMessages);
+                        }
+                        turnNewModelMessages.push(...responseModelMessages);
+                      } catch {
+                        // Conversion failed — skip accumulation for this turn
+                      }
                     }
                   }
                   // If there's no captured response (manual pipe mode) but there are
@@ -9757,7 +9763,9 @@ function chatAgent<
             try {
               await withChatWriter(async (writer) => {
                 const errorText =
-                  turnError instanceof Error ? turnError.message : "An unexpected error occurred";
+                  turnError instanceof Error && turnError.message
+                    ? turnError.message
+                    : "An unexpected error occurred";
                 writer.write({ type: "error", errorText } as any);
               });
               // Signal turn complete so the client knows this turn is done

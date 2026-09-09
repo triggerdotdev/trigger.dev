@@ -496,7 +496,7 @@ export function mockChatAgent(
   __setReplaySessionInTailImplForTests(async () => {
     return seededSessionInMessages.map((message, i) => ({
       message,
-      metadata: undefined,
+      metadata: clientData,
       seqNum: i + 1,
     })) as never;
   });

@@ -8,9 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod/v4";
 import { __setTranscriptStorageForTests, chat } from "../src/v3/ai.js";
 import {
-  createTranscriptShadow,
   memoryTranscriptStorage,
-  prefixFingerprint,
   restoreModelLane,
   type MemoryTranscriptStorage,
   type TranscriptChange,
@@ -506,6 +504,30 @@ describe("chat.agent transcript changesets", () => {
       await second.close();
     }
   });
+
+  it("does not persist a content-less assistant response", async () => {
+    const chatId = "changeset-empty-response";
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({
+        stream: simulateReadableStream({
+          chunks: [{ type: "finish", finishReason: { unified: "stop", raw: "stop" }, usage }],
+        }),
+      }),
+    });
+    const agent = chat.agent({
+      id: "changeset-empty-response",
+      run: async ({ messages, signal }) => streamText({ model, messages, abortSignal: signal }),
+    });
+    const harness = mockChatAgent(agent, { chatId });
+    try {
+      await harness.sendMessage(userMessage("hello", "u1"));
+      await waitFor(() => storage.changesets.length === 1, "turn save");
+      expect(putIds(storage.changesets[0]!.changeset.changes)).toEqual(["u1"]);
+      expect(storage.transcript(chatId)!.entries.map((e) => e.id)).toEqual(["u1"]);
+    } finally {
+      await harness.close();
+    }
+  });
 });
 
 function assistantMessage(id: string): UIMessage {
@@ -515,24 +537,38 @@ function assistantMessage(id: string): UIMessage {
 describe("restoreModelLane", () => {
   it("restores a compacted lane that covers an emptied transcript", async () => {
     const summary = { role: "assistant" as const, content: "[Conversation summary] all of it" };
-    const fingerprint = prefixFingerprint(createTranscriptShadow([]), "");
     const restored = await restoreModelLane(
       [userMessage("two", "u-2")],
-      { v: 1, compaction: { modelMessages: [summary], throughId: "", fingerprint } },
+      { v: 1, compaction: { modelMessages: [summary], throughId: "" } },
       async (messages) => messages.map((m) => ({ role: m.role, content: m.id }) as never)
     );
     expect(restored.compacted).toBe(true);
     expect(restored.messages).toEqual([summary, { role: "user", content: "u-2" }]);
   });
 
-  it("ignores a compacted lane whose covered prefix changed", async () => {
-    const shadow = createTranscriptShadow([userMessage("one", "u-1"), assistantMessage("a-1")]);
+  it("ignores a compacted lane whose throughId is no longer in the transcript", async () => {
     const state = {
       v: 1 as const,
       compaction: {
         modelMessages: [{ role: "assistant" as const, content: "summary" }],
         throughId: "a-1",
-        fingerprint: prefixFingerprint(shadow, "a-1"),
+      },
+    };
+    const restored = await restoreModelLane(
+      [userMessage("one", "u-1"), userMessage("two", "u-2")],
+      state,
+      async (messages) => messages.map((m) => ({ role: m.role, content: m.id }) as never)
+    );
+    expect(restored.compacted).toBe(false);
+    expect(restored.messages.map((m) => m.content)).toEqual(["u-1", "u-2"]);
+  });
+
+  it("keeps a compacted lane when a prefix message is edited in place", async () => {
+    const state = {
+      v: 1 as const,
+      compaction: {
+        modelMessages: [{ role: "assistant" as const, content: "summary" }],
+        throughId: "a-1",
       },
     };
     const edited = {
@@ -544,8 +580,11 @@ describe("restoreModelLane", () => {
       state,
       async (messages) => messages.map((m) => ({ role: m.role, content: m.id }) as never)
     );
-    expect(restored.compacted).toBe(false);
-    expect(restored.messages.map((m) => m.content)).toEqual(["u-1", "a-1", "u-2"]);
+    expect(restored.compacted).toBe(true);
+    expect(restored.messages).toEqual([
+      { role: "assistant", content: "summary" },
+      { role: "user", content: "u-2" },
+    ]);
   });
 
   it("applies persisted injections when the compacted lane is invalidated", async () => {
@@ -554,7 +593,6 @@ describe("restoreModelLane", () => {
       compaction: {
         modelMessages: [{ role: "assistant" as const, content: "STALE SUMMARY" }],
         throughId: "gone",
-        fingerprint: "does-not-match",
       },
       injections: [
         {
@@ -573,13 +611,11 @@ describe("restoreModelLane", () => {
   });
 
   it("does not re-apply an injection a valid compaction already covers", async () => {
-    const shadow = createTranscriptShadow([userMessage("one", "u-1")]);
     const state = {
       v: 1 as const,
       compaction: {
         modelMessages: [{ role: "assistant" as const, content: "SUMMARY WITH THE NOTE BAKED IN" }],
         throughId: "u-1",
-        fingerprint: prefixFingerprint(shadow, "u-1"),
       },
       injections: [
         {
