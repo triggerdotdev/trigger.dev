@@ -20,9 +20,9 @@ jobs:
     outputs:
       code: ${{ steps.code_filter.outputs.code }}
       typecheck_self: ${{ steps.filter.outputs.typecheck_self }}
-      webapp: ${{ steps.filter.outputs.webapp }}
+      webapp: ${{ steps.filter.outputs.webapp == 'true' || steps.shared_packages_filter.outputs.shared_packages == 'true' }}
       packages: ${{ steps.filter.outputs.packages }}
-      internal: ${{ steps.filter.outputs.internal }}
+      internal: ${{ steps.filter.outputs.internal == 'true' || steps.shared_packages_filter.outputs.shared_packages == 'true' }}
       obsmap: ${{ steps.filter.outputs.obsmap }}
       cli: ${{ steps.filter.outputs.cli }}
       sdk: ${{ steps.filter.outputs.sdk }}
@@ -62,7 +62,6 @@ jobs:
               - '.github/workflows/code-quality.yml'
             webapp:
               - 'apps/webapp/**'
-              - 'packages/**'
               - 'internal-packages/**'
               - '.github/workflows/pr_checks.yml'
               - '.github/workflows/unit-tests-webapp.yml'
@@ -85,7 +84,6 @@ jobs:
               - 'turbo.json'
             internal:
               - 'internal-packages/**'
-              - 'packages/**'
               - '.github/workflows/pr_checks.yml'
               - '.github/workflows/unit-tests-internal.yml'
               - '.configs/**'
@@ -111,7 +109,7 @@ jobs:
             #
             # Deliberately NOT here: this package's own paths, and packages/plugins/src and
             # internal-packages/rbac/src, the other two trees webappSymbols.test.ts reads.
-            # `internal` above already matches `internal-packages/**` and `packages/**`, and
+            # `internal` above already matches `internal-packages/**` and the shared packages, and
             # `unit-tests-internal.yml` runs `turbo run test --filter "@internal/*"`, which picks up
             # @internal/observability-map and runs the same vitest suite. Listing them here as well
             # ran the suite twice on every PR touching them, which was this filter's own doing.
@@ -147,6 +145,19 @@ jobs:
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
               - 'turbo.json'
+
+      # Only the packages the webapp and internal packages depend on; the rest run their own suites.
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        id: shared_packages_filter
+        with:
+          predicate-quantifier: every
+          filters: |
+            shared_packages:
+              - 'packages/**'
+              - '!packages/cli-v3/**'
+              - '!packages/react-hooks/**'
+              - '!packages/python/**'
+              - '!packages/rsc/**'
 
   code-quality:
     uses: ./.github/workflows/code-quality.yml
