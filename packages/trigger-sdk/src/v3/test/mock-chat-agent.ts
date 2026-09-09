@@ -488,15 +488,10 @@ export function mockChatAgent(
     } as never;
   });
 
-  // session.in tail override: each seeded UIMessage becomes a
-  // { message, metadata: undefined, seqNum: i+1 } entry. Mirrors the
-  // seq-num pattern from the out-tail stub so cursor-advance logic is
-  // exercised correctly. `metadata` is `undefined` for seeded users —
-  // the boot path falls back to `payload.metadata` for those.
   __setReplaySessionInTailImplForTests(async () => {
     return seededSessionInMessages.map((message, i) => ({
       message,
-      metadata: undefined,
+      metadata: clientData,
       seqNum: i + 1,
     })) as never;
   });

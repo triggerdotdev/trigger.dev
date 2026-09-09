@@ -405,15 +405,17 @@ type ModelLaneInjection = { afterId: string; messages: ModelMessage[] };
  * model's context that cannot be rebuilt from the transcript. Opaque to a
  * storage; only the runtime reads it.
  *
- * `compaction` is the whole model lane after a compaction, valid for the
- * transcript prefix ending at `throughId` whose fingerprint matches, so a
- * rollback or edit of that prefix makes it unusable and the next save
- * clears it. `injections` are conversational messages `chat.inject` added,
- * anchored after the transcript message they followed.
+ * `compaction` is the whole model lane after a compaction, covering the
+ * transcript prefix ending at `throughId`. It is used as long as `throughId`
+ * still exists in the transcript, so a rollback or truncation that removes it
+ * rebuilds the lane from the transcript instead. Editing a message before
+ * `throughId` in place is unsupported and does not invalidate the lane.
+ * `injections` are conversational messages `chat.inject` added, anchored
+ * after the transcript message they followed.
  */
 export type TranscriptRuntimeState = {
   v: 1;
-  compaction?: { modelMessages: ModelMessage[]; throughId: string; fingerprint: string };
+  compaction?: { modelMessages: ModelMessage[]; throughId: string };
   injections?: ModelLaneInjection[];
   /** `chat.inject` messages queued but not yet drained into a turn when the save happened. */
   queued?: ModelMessage[];
@@ -429,13 +431,11 @@ export function parseTranscriptRuntimeState(value: unknown): TranscriptRuntimeSt
     compaction &&
     typeof compaction === "object" &&
     Array.isArray(compaction.modelMessages) &&
-    typeof compaction.throughId === "string" &&
-    typeof compaction.fingerprint === "string"
+    typeof compaction.throughId === "string"
   ) {
     out.compaction = {
       modelMessages: compaction.modelMessages as ModelMessage[],
       throughId: compaction.throughId,
-      fingerprint: compaction.fingerprint,
     };
   }
   if (Array.isArray(record.injections)) {
@@ -453,34 +453,10 @@ export function parseTranscriptRuntimeState(value: unknown): TranscriptRuntimeSt
 }
 
 /**
- * A 32-bit FNV-1a hash over the fingerprints of the messages up to and
- * including `throughId`, in order. Cheap enough to compute on every save
- * because the per-message fingerprints already exist in the shadow.
- */
-export function prefixFingerprint(shadow: TranscriptShadow, throughId: string): string {
-  let hash = 0x811c9dc5;
-  if (throughId === "") return hash.toString(16).padStart(8, "0");
-  const mix = (s: string) => {
-    for (let i = 0; i < s.length; i++) {
-      hash ^= s.charCodeAt(i);
-      hash = Math.imul(hash, 0x01000193) >>> 0;
-    }
-  };
-  for (const id of shadow.ids) {
-    mix(id);
-    mix(" ");
-    mix(shadow.fingerprints.get(id) ?? "");
-    mix("");
-    if (id === throughId) return hash.toString(16).padStart(8, "0");
-  }
-  return "";
-}
-
-/**
  * Rebuild the model lane for a transcript at boot. Uses the persisted
- * compacted lane when the transcript prefix it covers is unchanged, then
- * converts the rest of the transcript, re-inserting persisted injections
- * after the messages they followed.
+ * compacted lane while the transcript still contains its `throughId`
+ * boundary, then converts the rest of the transcript, re-inserting persisted
+ * injections after the messages they followed.
  */
 export async function restoreModelLane<TUIMessage extends UIMessage>(
   messages: TUIMessage[],
@@ -494,11 +470,7 @@ export async function restoreModelLane<TUIMessage extends UIMessage>(
   if (state?.compaction) {
     const throughId = state.compaction.throughId;
     const idx = throughId === "" ? -1 : messages.findIndex((m) => m.id === throughId);
-    if (
-      (idx !== -1 || throughId === "") &&
-      prefixFingerprint(createTranscriptShadow(messages), throughId) ===
-        state.compaction.fingerprint
-    ) {
+    if (idx !== -1 || throughId === "") {
       lane.push(...state.compaction.modelMessages);
       start = idx + 1;
       compacted = true;

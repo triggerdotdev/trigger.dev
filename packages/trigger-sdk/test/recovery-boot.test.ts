@@ -7,6 +7,7 @@ import { simulateReadableStream, streamText } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import { TestSessionStreamManager } from "@trigger.dev/core/v3/test";
 import { describe, expect, it, vi } from "vitest";
+import { z } from "zod/v4";
 import type { RecoveryBootEvent, RecoveryBootResult } from "../src/v3/ai.js";
 import { __setReplaySessionOutTailImplForTests, chat } from "../src/v3/ai.js";
 
@@ -605,6 +606,35 @@ describe("continuation boot — the message that resumed the run", () => {
           (chunk) => (chunk as { type?: string }).type === "trigger:turn-complete"
         )
       ).toBe(true);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("re-dispatches a recovered in-flight user for a clientData-scoped agent", async () => {
+    let modelCalls = 0;
+    const model = new MockLanguageModelV3({
+      doStream: async () => {
+        modelCalls++;
+        return { stream: textStream("answered") };
+      },
+    });
+    const u1 = userMessage("the interrupted question", "u-1");
+    const agent = chat.agent({
+      id: "recovery-boot.clientdata-scoped",
+      clientDataSchema: z.object({ userId: z.string() }),
+      run: async ({ messages, signal }) => streamText({ model, messages, abortSignal: signal }),
+    });
+    const harness = mockChatAgent(agent, {
+      chatId: "clientdata-scoped",
+      continuation: true,
+      previousRunId: "run_prior",
+      clientData: { userId: "u_123" },
+    });
+    harness.seedSessionInTail([u1 as never]);
+    try {
+      await new Promise((r) => setTimeout(r, 100));
+      expect(modelCalls).toBe(1);
     } finally {
       await harness.close();
     }
