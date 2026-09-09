@@ -315,6 +315,12 @@ export class RunEngine {
             deferCount: payload.deferCount,
           });
         },
+        ensureWaitpointCompleted: async ({ payload }) => {
+          await this.waitpointSystem.ensureWaitpointCompleted({
+            waitpointId: payload.waitpointId,
+            output: payload.output,
+          });
+        },
         enqueueDelayedRun: async ({ payload }) => {
           await this.delayedRunSystem.enqueueDelayedRun({ runId: payload.runId });
         },
@@ -423,6 +429,7 @@ export class RunEngine {
       resources,
       executionSnapshotSystem: this.executionSnapshotSystem,
       enqueueSystem: this.enqueueSystem,
+      completionGuardDelayMs: options.completionGuardDelayMs,
     });
 
     this.ttlSystem = new TtlSystem({
@@ -2120,6 +2127,7 @@ export class RunEngine {
   async completeWaitpoint({
     id,
     output,
+    armGuard,
   }: {
     id: string;
     output?: {
@@ -2127,6 +2135,13 @@ export class RunEngine {
       type?: string;
       isError: boolean;
     };
+    /**
+     * Arm the durable write-ahead completion guard for this call. The engine does NOT arm implicitly:
+     * left undefined it defaults to false, so a caller must opt in explicitly. The runtime-flag gate
+     * lives at the guarded boundary (completeWaitpointWithGuard in the webapp), which passes armGuard
+     * only when runStoreInfraRetryEnabled is on. Internal/system callers leave it unset (unarmed).
+     */
+    armGuard?: boolean;
   }): Promise<Waitpoint> {
     // Consult the cross-seam guard FIRST so an unclassifiable id fails loudly
     // here (never a silent local apply). Do NOT branch on decision.store: store routing is
@@ -2136,7 +2151,7 @@ export class RunEngine {
     if (guard) {
       await guard({ waitpointId: id, routeKind: "RESUME_TOKEN" });
     }
-    return this.waitpointSystem.completeWaitpoint({ id, output });
+    return this.waitpointSystem.completeWaitpoint({ id, output, armGuard: armGuard ?? false });
   }
 
   /**

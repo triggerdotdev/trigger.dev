@@ -8,6 +8,7 @@ import type {
   Waitpoint,
 } from "@trigger.dev/database";
 import { assertNever } from "assert-never";
+import { WaitpointCompletionGuardArmedError } from "../errors.js";
 import { sendNotificationToWorker } from "../eventBus.js";
 import { isFinalRunStatus } from "../statuses.js";
 import { LegacyPostgresWaitpointCoordinator } from "../waitpointCoordinator/legacyPostgresCoordinator.js";
@@ -21,7 +22,11 @@ export type WaitpointSystemOptions = {
   resources: SystemResources;
   executionSnapshotSystem: ExecutionSnapshotSystem;
   enqueueSystem: EnqueueSystem;
+  /** Grace before an unacked completion guard fires. Short in tests. Defaults to 30s. */
+  completionGuardDelayMs?: number;
 };
+
+const DEFAULT_COMPLETION_GUARD_DELAY_MS = 30_000;
 
 type WaitpointContinuationWaitpoint = Pick<Waitpoint, "id" | "type" | "completedAfter" | "status">;
 
@@ -44,11 +49,14 @@ export class WaitpointSystem {
   private readonly executionSnapshotSystem: ExecutionSnapshotSystem;
   private readonly enqueueSystem: EnqueueSystem;
   private readonly coordinator: WaitpointCoordinator;
+  private readonly completionGuardDelayMs: number;
 
   constructor(private readonly options: WaitpointSystemOptions) {
     this.$ = options.resources;
     this.executionSnapshotSystem = options.executionSnapshotSystem;
     this.enqueueSystem = options.enqueueSystem;
+    this.completionGuardDelayMs =
+      options.completionGuardDelayMs ?? DEFAULT_COMPLETION_GUARD_DELAY_MS;
     this.coordinator = new LegacyPostgresWaitpointCoordinator({
       runStore: this.$.runStore,
       prisma: this.$.prisma,
@@ -73,6 +81,7 @@ export class WaitpointSystem {
   async completeWaitpoint({
     id,
     output,
+    armGuard = false,
   }: {
     id: string;
     output?: {
@@ -80,55 +89,122 @@ export class WaitpointSystem {
       type?: string;
       isError: boolean;
     };
+    /**
+     * Arm the write-ahead completion guard before the mutation (the manual/API path sets this when
+     * the flag is on). The guard's own replay calls with `armGuard: false` so it never re-arms.
+     */
+    armGuard?: boolean;
   }): Promise<Waitpoint> {
-    const { waitpoint, blockedRuns } = await this.coordinator.complete({
-      waitpointId: id,
-      output,
-    });
-
-    if (blockedRuns.length === 0) {
-      this.$.logger.debug(`completeWaitpoint: no TaskRunWaitpoints found for waitpoint`, {
-        waitpointId: id,
-      });
+    // Armed BEFORE the first mutation, so a committed completion can never exist without a durable
+    // watcher. If this arm itself fails (e.g. the guard's Redis enqueue), the error propagates raw and
+    // is NOT wrapped below, so the caller never mistakes an un-armed failure for a durable one.
+    if (armGuard) {
+      await this.#scheduleCompletionGuard(id, output);
     }
 
-    // 3. Schedule trying to continue the runs
-    for (const run of blockedRuns) {
-      const jobId = `continueRunIfUnblocked:${run.taskRunId}`;
-      //50ms in the future
-      const availableAt = new Date(Date.now() + 50);
-
-      this.$.logger.debug(`completeWaitpoint: enqueueing continueRunIfUnblocked`, {
+    // Past this point the guard is persisted and owns eventual completion, so a later failure is
+    // wrapped as WaitpointCompletionGuardArmedError: the API boundary may then return success for a
+    // retryable cause, knowing the guard will replay it.
+    try {
+      const { waitpoint, blockedRuns } = await this.coordinator.complete({
         waitpointId: id,
-        runId: run.taskRunId,
-        jobId,
-        availableAt,
+        output,
       });
 
-      await this.$.worker.enqueue({
-        //this will debounce the call
-        id: jobId,
-        job: "continueRunIfUnblocked",
-        payload: { runId: run.taskRunId },
-        availableAt,
-      });
-
-      // emit an event to complete associated cached runs
-      if (run.spanIdToComplete) {
-        this.$.eventBus.emit("cachedRunCompleted", {
-          time: new Date(),
-          span: {
-            id: run.spanIdToComplete,
-            createdAt: run.createdAt,
-          },
-          blockedRunId: run.taskRunId,
-          hasError: output?.isError ?? false,
-          cachedRunId: waitpoint.completedByTaskRunId ?? undefined,
+      if (blockedRuns.length === 0) {
+        this.$.logger.debug(`completeWaitpoint: no TaskRunWaitpoints found for waitpoint`, {
+          waitpointId: id,
         });
       }
-    }
 
-    return waitpoint;
+      // 3. Schedule trying to continue the runs
+      for (const run of blockedRuns) {
+        const jobId = `continueRunIfUnblocked:${run.taskRunId}`;
+        //50ms in the future
+        const availableAt = new Date(Date.now() + 50);
+
+        this.$.logger.debug(`completeWaitpoint: enqueueing continueRunIfUnblocked`, {
+          waitpointId: id,
+          runId: run.taskRunId,
+          jobId,
+          availableAt,
+        });
+
+        await this.$.worker.enqueue({
+          //this will debounce the call
+          id: jobId,
+          job: "continueRunIfUnblocked",
+          payload: { runId: run.taskRunId },
+          availableAt,
+        });
+
+        // emit an event to complete associated cached runs
+        if (run.spanIdToComplete) {
+          this.$.eventBus.emit("cachedRunCompleted", {
+            time: new Date(),
+            span: {
+              id: run.spanIdToComplete,
+              createdAt: run.createdAt,
+            },
+            blockedRunId: run.taskRunId,
+            hasError: output?.isError ?? false,
+            cachedRunId: waitpoint.completedByTaskRunId ?? undefined,
+          });
+        }
+      }
+
+      // Ack only now: the transition committed and every blocked-run fanout was enqueued, so the guard
+      // has nothing left to re-deliver. If we died before here, the unacked guard fires and replays.
+      if (armGuard) {
+        await this.#ackCompletionGuard(id);
+      }
+
+      return waitpoint;
+    } catch (error) {
+      if (armGuard) {
+        throw new WaitpointCompletionGuardArmedError(id, { cause: error });
+      }
+      throw error;
+    }
+  }
+
+  #completionGuardId(waitpointId: string): string {
+    return `ensureWaitpointCompleted:${waitpointId}`;
+  }
+
+  // Arm the write-ahead guard with the FIRST writer's output (enqueueOnce never overwrites an armed
+  // guard), delayed so the inline path has time to finish and ack it. The winning output is anchored
+  // by the status-guarded update regardless, so a replay never overwrites it.
+  async #scheduleCompletionGuard(
+    waitpointId: string,
+    output?: { value: string; type?: string; isError: boolean }
+  ): Promise<void> {
+    await this.$.worker.enqueueOnce({
+      id: this.#completionGuardId(waitpointId),
+      job: "ensureWaitpointCompleted",
+      payload: { waitpointId, output },
+      availableAt: new Date(Date.now() + this.completionGuardDelayMs),
+    });
+  }
+
+  async #ackCompletionGuard(waitpointId: string): Promise<void> {
+    await this.$.worker.ack(this.#completionGuardId(waitpointId));
+  }
+
+  /**
+   * Redelivery handler for the completion guard: replays the completion + fanout idempotently when
+   * the inline path died after arming. `armGuard: false` so it never re-arms itself; the status-guarded
+   * update makes the transition a no-op on replay and the debounced continueRunIfUnblocked makes each
+   * resume happen exactly once. Redis-worker retries this job until it succeeds (blip passes).
+   */
+  public async ensureWaitpointCompleted({
+    waitpointId,
+    output,
+  }: {
+    waitpointId: string;
+    output?: { value: string; type?: string; isError: boolean };
+  }): Promise<void> {
+    await this.completeWaitpoint({ id: waitpointId, output, armGuard: false });
   }
 
   /**

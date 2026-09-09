@@ -3,6 +3,8 @@ export {
   RunDuplicateIdempotencyKeyError,
   RunOneTimeUseTokenError,
   ServiceValidationError as EngineServiceValidationError,
+  WaitpointCompletionGuardArmedError,
+  isWaitpointCompletionGuardArmedError,
 } from "./engine/errors.js";
 export type { EventBusEventArgs, EventBusEvents } from "./engine/eventBus.js";
 export { PARKED_ON_EXTERNAL_DEPLOYMENT_STATUS_REASON } from "./engine/systems/pendingVersionSystem.js";

@@ -103,6 +103,28 @@ export const workerCatalog = {
       maxTimeoutInMs: 300_000,
     },
   },
+  // Write-ahead guard for a MANUAL/API waitpoint completion (the run-finish path is already covered
+  // by ensureRunFinalized). Armed before the completion mutation and acked once the transition and
+  // every fanout enqueue succeed; it only executes when the inline path died in between. The payload
+  // is the first-writer's output (enqueueOnce), so a replay preserves the winning completion.
+  ensureWaitpointCompleted: {
+    schema: z.object({
+      waitpointId: z.string(),
+      output: z
+        .object({
+          value: z.string(),
+          type: z.string().optional(),
+          isError: z.boolean(),
+        })
+        .optional(),
+    }),
+    visibilityTimeoutMs: 30_000,
+    retry: {
+      maxAttempts: 10_000,
+      minTimeoutInMs: 1_000,
+      maxTimeoutInMs: 300_000,
+    },
+  },
   enqueueDelayedRun: {
     schema: z.object({
       runId: z.string(),
