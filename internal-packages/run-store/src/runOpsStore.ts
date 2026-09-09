@@ -35,6 +35,7 @@ import type {
   WaitpointColocationOptions,
 } from "./types.js";
 import { Logger } from "@trigger.dev/core/logger";
+import type { SnapshotRoute } from "./snapshotResidency.js";
 import { isReadReplicaClient } from "./readReplicaClient.js";
 import { CONNECTED_RUNS_LIMIT } from "./PostgresRunStore.js";
 import { noopRoutingStoreMetrics, type RoutingStoreMetrics } from "./routingStoreMetrics.js";
@@ -1343,6 +1344,14 @@ export class RoutingRunStore implements RunStore {
     return store.createExecutionSnapshot(input, undefined);
   }
 
+  // The route lives on the run's owning store (its decorated leaf), so read it there by run id.
+  async readSnapshotRoute(
+    runId: string,
+    organizationId: string
+  ): Promise<SnapshotRoute | undefined> {
+    return this.#routeOrNew(runId).readSnapshotRoute(runId, organizationId);
+  }
+
   // The CompletedWaitpoint join co-locates with the snapshot, which co-locates with its run. When the
   // caller threads the run id (executionSnapshotSystem has it in scope), route to the run's store — no
   // fan-out. Snapshot ids are cuids (they always classify LEGACY), so absent a run id we can't route
@@ -2095,6 +2104,20 @@ export class RoutingRunStore implements RunStore {
     }
     const store = this.#route(ownerRunId);
     return store.createTaskRunCheckpoint(args, ownerRunId, undefined);
+  }
+
+  async findTaskRunCheckpointById(
+    checkpointId: string,
+    ownerRunId: string,
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunCheckpointGetPayload<{}> | null> {
+    // Co-located with its owner run, so route by ownerRunId and read that store's own primary.
+    const store = this.#route(ownerRunId);
+    return store.findTaskRunCheckpointById(
+      checkpointId,
+      ownerRunId,
+      RoutingRunStore.#ownPrimary(store, client)
+    );
   }
 
   // ---------------------------------------------------------------------------

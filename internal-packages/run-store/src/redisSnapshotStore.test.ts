@@ -1,11 +1,10 @@
 // Unit suite for the raw Redis execution-snapshot store. Redis-only: the store holds no Prisma
 // reference, so no Postgres container is needed.
-import { expect, describe, vi } from "vitest";
+import { expect, describe } from "vitest";
 import { redisTest, slotOf } from "@internal/testcontainers";
 import { createRedisClient } from "@internal/redis";
 import { Logger } from "@trigger.dev/core/logger";
 import {
-  snapshotKeys,
   deriveOrder,
   isValidFor,
   RedisSnapshotStore,
@@ -13,16 +12,19 @@ import {
   type CompletedWaitpointsPointer,
   type CompletedWaitpointRecord,
 } from "./redisSnapshotStore.js";
+import { snapshotKeys } from "./snapshotKeys.js";
 
-describe("snapshotKeys", () => {
-  it("puts every core key under one hash tag", () => {
-    const k = snapshotKeys("run_abc123");
-    expect(k.e).toBe("snap:{run_abc123}:e");
-    expect(k.idx).toBe("snap:{run_abc123}:idx");
-    expect(k.cur).toBe("snap:{run_abc123}:cur");
-    expect(k.seq).toBe("snap:{run_abc123}:seq");
-  });
-});
+// Keys are derived, never hardcoded: the layout is versioned and partition-tagged, so the wp cycle
+// key is the entry key with ':e' stripped and ':wp:<n>' appended, exactly as the Lua prelude does.
+const wpKey = (runId: string, n: number): string => `${snapshotKeys(runId).e.slice(0, -2)}:wp:${n}`;
+
+// A real Logger that records its warn calls, so the tests can assert on them without a spy framework.
+class RecordingLogger extends Logger {
+  readonly warnings: Array<{ message: string; fields?: Record<string, unknown> }> = [];
+  override warn(message: string, ...args: Array<Record<string, unknown> | undefined>) {
+    this.warnings.push({ message, fields: args[0] });
+  }
+}
 
 describe("deriveOrder", () => {
   it("drops entries with no index, sorts by index, and maps to id", () => {
@@ -269,7 +271,7 @@ describe("append", () => {
           },
         });
 
-        const storedRaw = await raw.hget("snap:{run_1}:wp:1", "records");
+        const storedRaw = await raw.hget(wpKey("run_1", 1), "records");
         expect(JSON.parse(storedRaw!)).toEqual(records);
       } finally {
         raw.disconnect();
@@ -304,11 +306,11 @@ describe("append", () => {
             ],
           },
         });
-        expect(await raw.hget("snap:{run_1}:wp:1", "records")).not.toBeNull();
+        expect(await raw.hget(wpKey("run_1", 1), "records")).not.toBeNull();
 
         // Only the counter is lost, as under maxmemory eviction. A birth does not check seq, so
         // the next new cycle re-mints cycleSeq 1 onto the surviving key.
-        await raw.del("snap:{run_1}:seq");
+        await raw.del(snapshotKeys("run_1").seq);
 
         await store.append({
           entry: entry({ id: "snap_2" }),
@@ -317,8 +319,8 @@ describe("append", () => {
           cycle: { kind: "new", completedWaitpoints: [{ id: "w_b", index: 0 }] },
         });
 
-        expect(await raw.hget("snap:{run_1}:wp:1", "order")).toBe(JSON.stringify(["w_b"]));
-        expect(await raw.hget("snap:{run_1}:wp:1", "records")).toBeNull();
+        expect(await raw.hget(wpKey("run_1", 1), "order")).toBe(JSON.stringify(["w_b"]));
+        expect(await raw.hget(wpKey("run_1", 1), "records")).toBeNull();
       } finally {
         raw.disconnect();
         await store.quit();
@@ -354,7 +356,12 @@ describe("append", () => {
         });
 
         // Lose the whole keyspace except the cycle key, as under maxmemory eviction.
-        await raw.del("snap:{run_1}:e", "snap:{run_1}:idx", "snap:{run_1}:cur", "snap:{run_1}:seq");
+        await raw.del(
+          snapshotKeys("run_1").e,
+          snapshotKeys("run_1").idx,
+          snapshotKeys("run_1").cur,
+          snapshotKeys("run_1").seq
+        );
 
         const carried = await store.append({
           entry: entry({ id: "snap_2" }),
@@ -561,7 +568,7 @@ describe("cycle key deletion sweep", () => {
           for (const subset of powerset(KEY_SUFFIXES)) {
             replays++;
             const runId = `run_sweep_${injectionPoint}_${replays}`;
-            const base = `snap:{${runId}}`;
+            const base = snapshotKeys(runId).e.slice(0, -2);
             const damage = async () => {
               if (subset.length > 0) {
                 await raw.del(...subset.map((s) => `${base}:${s}`));
@@ -662,8 +669,7 @@ describe("read-side cycle mismatch", () => {
         recordCycleMismatch: () => calls.push("mismatch"),
         recordLatency: () => {},
       };
-      const logger = new Logger("test", "debug");
-      const warnSpy = vi.spyOn(logger, "warn");
+      const logger = new RecordingLogger("test", "debug");
       const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 1000, metrics, logger });
       const raw = createRedisClient(redisOptions);
       try {
@@ -682,16 +688,15 @@ describe("read-side cycle mismatch", () => {
 
         // The pointer's count field (written at append time) survives; only the cycle key's order
         // field is wiped, so a read must catch the disagreement instead of reporting count 1.
-        await raw.hdel("snap:{run_1}:wp:1", "order");
+        await raw.hdel(wpKey("run_1", 1), "order");
 
         const read = await store.getById("run_1", "s2");
         expect(read?.cycle).toEqual({ cycleSeq: 1, count: 1 });
         expect(read?.completedWaitpointIds?.order).toEqual([]);
         expect(calls).toEqual(["mismatch"]);
-        expect(warnSpy).toHaveBeenCalledWith(
-          expect.stringContaining("cycle"),
-          expect.objectContaining({ runId: "run_1" })
-        );
+        expect(
+          logger.warnings.some((w) => w.message.includes("cycle") && w.fields?.runId === "run_1")
+        ).toBe(true);
       } finally {
         await raw.quit();
         await store.quit();
@@ -712,11 +717,11 @@ describe("TTL rule", () => {
         cycle: { kind: "new", completedWaitpoints: [{ id: "w_a", index: 0 }] },
       });
       for (const key of [
-        "snap:{run_1}:e",
-        "snap:{run_1}:idx",
-        "snap:{run_1}:cur",
-        "snap:{run_1}:seq",
-        "snap:{run_1}:wp:1",
+        snapshotKeys("run_1").e,
+        snapshotKeys("run_1").idx,
+        snapshotKeys("run_1").cur,
+        snapshotKeys("run_1").seq,
+        wpKey("run_1", 1),
       ]) {
         expect(await raw.pttl(key)).toBe(-1);
       }
@@ -752,12 +757,12 @@ describe("TTL rule", () => {
         });
         expect(r).toMatchObject({ ttl: "completion" });
         for (const key of [
-          "snap:{run_1}:e",
-          "snap:{run_1}:idx",
-          "snap:{run_1}:cur",
-          "snap:{run_1}:seq",
-          "snap:{run_1}:wp:1",
-          "snap:{run_1}:wp:2",
+          snapshotKeys("run_1").e,
+          snapshotKeys("run_1").idx,
+          snapshotKeys("run_1").cur,
+          snapshotKeys("run_1").seq,
+          wpKey("run_1", 1),
+          wpKey("run_1", 2),
         ]) {
           const ttl = await raw.pttl(key);
           expect(ttl).toBeGreaterThan(0);
@@ -793,12 +798,12 @@ describe("TTL rule", () => {
       });
 
       const keys = [
-        "snap:{run_1}:e",
-        "snap:{run_1}:idx",
-        "snap:{run_1}:cur",
-        "snap:{run_1}:seq",
-        "snap:{run_1}:wp:1",
-        "snap:{run_1}:wp:2",
+        snapshotKeys("run_1").e,
+        snapshotKeys("run_1").idx,
+        snapshotKeys("run_1").cur,
+        snapshotKeys("run_1").seq,
+        wpKey("run_1", 1),
+        wpKey("run_1", 2),
       ];
       // Shrink first: a re-apply is then the only way the TTL can go back up.
       for (const key of keys) {
@@ -834,14 +839,19 @@ describe("TTL rule", () => {
         isTerminal: true,
       });
       // Simulate the completion TTL firing.
-      await raw.del("snap:{run_1}:e", "snap:{run_1}:idx", "snap:{run_1}:cur", "snap:{run_1}:seq");
+      await raw.del(
+        snapshotKeys("run_1").e,
+        snapshotKeys("run_1").idx,
+        snapshotKeys("run_1").cur,
+        snapshotKeys("run_1").seq
+      );
       const after = await store.append({
         entry: entry({ id: "s4" }),
         kind: "transition",
         isTerminal: false,
       });
       expect(after).toEqual({ outcome: "skippedNoKeyspace" });
-      expect(await raw.exists("snap:{run_1}:e")).toBe(0);
+      expect(await raw.exists(snapshotKeys("run_1").e)).toBe(0);
     } finally {
       await raw.quit();
       await store.quit();
@@ -1004,7 +1014,7 @@ describe("getSince", () => {
 
         // The mirror of the case the append script documents: idx survives while the entry body in
         // `e` is gone. The seq field is left in place so the id still resolves.
-        await raw.hdel("snap:{run_1}:e", "s1");
+        await raw.hdel(snapshotKeys("run_1").e, "s1");
 
         const r = await store.getSince("run_1", "s0");
         expect(r.kind).toBe("hit");
@@ -1039,7 +1049,7 @@ describe("getSince", () => {
 
         // s2 is the newest and its body is gone. s1 must come back with ITS OWN waitpoints,
         // never s2's -- a dropped row must not donate its cycle data to the next one.
-        await raw.hdel("snap:{run_1}:e", "s2");
+        await raw.hdel(snapshotKeys("run_1").e, "s2");
 
         const r = await store.getSince("run_1", "s0");
         expect(r.kind).toBe("hit");
@@ -1287,12 +1297,12 @@ describe("hash tag and keyPrefix", () => {
   it("every key for one run lands in one cluster slot", () => {
     // Keys come from snapshotKeys() plus the wp:<n> suffix the Lua prelude derives the same way,
     // with a keyPrefix prepended by hand as ioredis would. A dropped hash tag would split the slots.
-    // Pin the shared helper before trusting it: the published XMODEM check value, and two known
-    // slots (one matching cluster-key-slot, one a different run's tag as a negative control --
-    // otherwise a constant-valued crc16 would satisfy slots.size === 1 for the wrong reason).
+    // Pin the shared helper before trusting it: the published XMODEM check value, then the slot of
+    // each run's PARTITION tag (run_1 -> p151, run_2 -> p045). Two different partitions land in two
+    // different slots -- a constant-valued crc16 would satisfy slots.size === 1 for the wrong reason.
     expect(slotOf("123456789")).toBe(0x31c3);
-    expect(slotOf("engine:snap:{run_1}:e")).toBe(8108);
-    expect(slotOf("engine:snap:{run_2}:e")).toBe(12239);
+    expect(slotOf(`engine:${snapshotKeys("run_1").e}`)).toBe(11506);
+    expect(slotOf(`engine:${snapshotKeys("run_2").e}`)).toBe(10359);
 
     const k = snapshotKeys("run_1");
     const base = k.e.slice(0, -2);
@@ -1317,15 +1327,15 @@ describe("hash tag and keyPrefix", () => {
         isTerminal: false,
         cycle: { kind: "new", completedWaitpoints: [{ id: "w_a", index: 0 }] },
       });
-      expect(await raw.exists("engine:snap:{run_1}:wp:1")).toBe(1);
-      expect(await raw.exists("snap:{run_1}:wp:1")).toBe(0);
+      expect(await raw.exists(`engine:${wpKey("run_1", 1)}`)).toBe(1);
+      expect(await raw.exists(wpKey("run_1", 1))).toBe(0);
 
       await store.append({
         entry: entry({ id: "s2", executionStatus: "FINISHED" }),
         kind: "transition",
         isTerminal: true,
       });
-      const ttl = await raw.pttl("engine:snap:{run_1}:wp:1");
+      const ttl = await raw.pttl(`engine:${wpKey("run_1", 1)}`);
       expect(ttl).toBeGreaterThan(50_000);
       expect(ttl).toBeLessThanOrEqual(60_000);
     } finally {
@@ -1468,8 +1478,7 @@ describe("observability", () => {
   redisTest(
     "names the run in a high-water warning, and stays silent under a high threshold",
     async ({ redisOptions }) => {
-      const loudLogger = new Logger("test", "debug");
-      const loudWarn = vi.spyOn(loudLogger, "warn");
+      const loudLogger = new RecordingLogger("test", "debug");
       const loud = new RedisSnapshotStore({
         redisOptions,
         completedTtlMs: 1000,
@@ -1477,8 +1486,7 @@ describe("observability", () => {
         highWater: { entryBytes: 1, cycleKeyBytes: 1, cycleCount: 0 },
       });
 
-      const quietLogger = new Logger("test", "debug");
-      const quietWarn = vi.spyOn(quietLogger, "warn");
+      const quietLogger = new RecordingLogger("test", "debug");
       const quiet = new RedisSnapshotStore({
         redisOptions,
         completedTtlMs: 1000,
@@ -1493,9 +1501,9 @@ describe("observability", () => {
           isTerminal: false,
           cycle: { kind: "new", completedWaitpoints: [{ id: "w_a", index: 0 }] },
         });
-        expect(loudWarn).toHaveBeenCalledTimes(3);
-        for (const [, payload] of loudWarn.mock.calls) {
-          expect(payload).toMatchObject({ runId: "run_loud" });
+        expect(loudLogger.warnings).toHaveLength(3);
+        for (const w of loudLogger.warnings) {
+          expect(w.fields).toMatchObject({ runId: "run_loud" });
         }
 
         // Same shape of append, high thresholds: proves the mark is respected, not just logged.
@@ -1505,7 +1513,7 @@ describe("observability", () => {
           isTerminal: false,
           cycle: { kind: "new", completedWaitpoints: [{ id: "w_a", index: 0 }] },
         });
-        expect(quietWarn).not.toHaveBeenCalled();
+        expect(quietLogger.warnings).toHaveLength(0);
       } finally {
         await loud.quit();
         await quiet.quit();

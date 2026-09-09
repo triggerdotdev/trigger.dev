@@ -13,6 +13,8 @@ import type {
 } from "@trigger.dev/database";
 import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
 import type { Residency, ShardKey } from "@trigger.dev/core/v3/isomorphic";
+import type { CompletedWaitpointRecord } from "./redisSnapshotStore.js";
+import type { SnapshotRoute, SnapshotRouteWire } from "./snapshotResidency.js";
 
 /**
  * Client accepted by the read methods. Reads route through the replica by
@@ -29,6 +31,21 @@ export type IdempotencyKeyRunMatch = {
   idempotencyKey: string | null;
   idempotencyKeyExpiresAt: Date | null;
 };
+
+/**
+ * Per-write Postgres snapshot-row control, set by the snapshot decorator from the run's fixed
+ * residency. `false` suppresses the Postgres snapshot row (a redis-only-born run whose only home is
+ * Redis); absent or `true` writes it (every Postgres-backed run, and the default when no decorator
+ * is wired). The store reads THIS, never the org dial, so residency is a per-run decision.
+ */
+export type SnapshotWriteControl = { writeSnapshotRow?: boolean };
+
+/**
+ * The run's versioned storage route, stamped on the queue message from its BIRTH residency and passed
+ * back on a TRANSITION write, so a poll-lagging consumer honors the run's true residency instead of
+ * mis-routing the transition to Postgres. NEVER set on a birth input; validated at consumption.
+ */
+export type SnapshotRouteControl = { snapshotRoute?: SnapshotRouteWire };
 
 export type CreateRunSnapshotInput = {
   /** Caller-minted creation instant. Absent, Postgres applies its own default. The decorator sets
@@ -47,7 +64,7 @@ export type CreateRunSnapshotInput = {
   organizationId: string;
   workerId?: string;
   runnerId?: string;
-};
+} & SnapshotWriteControl;
 
 export type CompletionSnapshotInput = {
   /** Caller-minted creation instant. Absent, Postgres applies its own default. The decorator sets
@@ -68,7 +85,8 @@ export type CompletionSnapshotInput = {
   organizationId: string;
   workerId?: string;
   runnerId?: string;
-};
+} & SnapshotWriteControl &
+  SnapshotRouteControl;
 
 export type PromotePendingVersionArgs = {
   status?: Extract<TaskRunStatus, "PENDING" | "DELAYED">;
@@ -95,7 +113,8 @@ export type ExpireSnapshotInput = {
   environmentType: RuntimeEnvironmentType;
   projectId: string;
   organizationId: string;
-};
+} & SnapshotWriteControl &
+  SnapshotRouteControl;
 
 export type RescheduleSnapshotInput = {
   /** Caller-minted creation instant. Absent, Postgres applies its own default. The decorator sets
@@ -113,7 +132,8 @@ export type RescheduleSnapshotInput = {
   executionStatus?: TaskRunExecutionStatus;
   runStatus?: TaskRunStatus;
   description?: string;
-};
+} & SnapshotWriteControl &
+  SnapshotRouteControl;
 
 export type LockSnapshotInput = {
   /** Caller-minted creation instant. Absent, Postgres applies its own default. The decorator sets
@@ -134,7 +154,8 @@ export type LockSnapshotInput = {
   completedWaitpointOrder: string[];
   workerId?: string;
   runnerId?: string;
-};
+} & SnapshotWriteControl &
+  SnapshotRouteControl;
 
 export type RunAssociatedWaitpointInput = {
   id: string;
@@ -215,6 +236,12 @@ export type CreateRunInput = {
   data: CreateRunData;
   snapshot: CreateRunSnapshotInput;
   associatedWaitpoint?: RunAssociatedWaitpointInput;
+  /**
+   * Called once, at an ENROLLED birth only, with the run's decided SnapshotRoute, so the trigger path can
+   * stamp it on the initial queue message WITHOUT a durable-state lookup. Never called for a never-enrolled
+   * (postgres) run. The base store ignores it.
+   */
+  onBirthResidency?: (route: SnapshotRoute) => void;
 };
 
 export type CreateCancelledRunInput = {
@@ -352,8 +379,16 @@ export type CreateExecutionSnapshotInput = {
   workerId?: string;
   runnerId?: string;
   completedWaitpoints?: { id: string; index?: number }[];
+  /**
+   * Lazily resolves the full completed-waitpoint records for a redis-primary write, which live in the
+   * MemoryDB cycle so a read reproduces the Postgres join. A THUNK, not an array, so the extra Postgres
+   * fetch is deferred to the cycle-building path and never runs on the postgres early-return or a
+   * forward-carry. Ignored by the Postgres delegate; set only on a fresh redis-only completion.
+   */
+  resolveCompletedWaitpointRecords?: () => Promise<CompletedWaitpointRecord[]>;
   error?: string;
-};
+} & SnapshotWriteControl &
+  SnapshotRouteControl;
 
 // Create payload for `createBatchTaskRun`: scalar `runtimeEnvironmentId` (the FK is
 // dropped for cross-DB residency; env existence is validated app-side at create).
@@ -761,6 +796,10 @@ export interface RunStore {
     input: CreateExecutionSnapshotInput,
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<{ include: { checkpoint: true } }>>;
+  // The run's versioned storage route, from its durable BIRTH residency, to stamp on a queue message
+  // so a poll-lagging consumer honors the run's true residency. Undefined for a never-enrolled /
+  // pre-cutover run (no route, no cost). A store with no snapshot decorator returns undefined.
+  readSnapshotRoute(runId: string, organizationId: string): Promise<SnapshotRoute | undefined>;
 
   // Implicit-join group
   /** `runId` (when known) routes to the run's store — the snapshot + its join co-locate with the run;
@@ -898,6 +937,15 @@ export interface RunStore {
     ownerRunId?: string,
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunCheckpointGetPayload<T>>;
+
+  // Residency-aware direct checkpoint read by id. A snapshot served from Redis carries only the
+  // checkpointId; the checkpoint hydrates by reading TaskRunCheckpoint directly, NOT via the snapshot
+  // row, which at redis-only is suppressed. `ownerRunId` routes to the run's co-located store.
+  findTaskRunCheckpointById(
+    checkpointId: string,
+    ownerRunId: string,
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunCheckpointGetPayload<{}> | null>;
 
   // --- BatchTaskRun (run-ops) ---
   // Batch row is born on the run-ops store at create. `findBatchTaskRunById`
