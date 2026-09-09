@@ -262,6 +262,7 @@ export function createTask<
     resourceCatalog.registerQueueMetadata({
       name: queue.name,
       concurrencyLimit: queue.concurrencyLimit,
+      totalConcurrencyLimit: queue.totalConcurrencyLimit,
     });
   }
 
@@ -417,6 +418,7 @@ export function createSchemaTask<
     resourceCatalog.registerQueueMetadata({
       name: queue.name,
       concurrencyLimit: queue.concurrencyLimit,
+      totalConcurrencyLimit: queue.totalConcurrencyLimit,
     });
   }
 

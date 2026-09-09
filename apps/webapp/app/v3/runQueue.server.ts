@@ -40,6 +40,23 @@ export async function updateQueueConcurrencyLimits(
   await engine.runQueue.updateQueueConcurrencyLimits(environment, queueName, concurrency);
 }
 
+/** Updates the RunQueue total concurrency limit for a queue (the cap across all concurrency-key values) */
+export async function updateQueueTotalConcurrencyLimits(
+  environment: AuthenticatedEnvironment,
+  queueName: string,
+  totalConcurrency: number
+) {
+  await engine.runQueue.updateQueueTotalConcurrencyLimits(environment, queueName, totalConcurrency);
+}
+
+/** Removes the RunQueue total concurrency limit for a queue */
+export async function removeQueueTotalConcurrencyLimits(
+  environment: AuthenticatedEnvironment,
+  queueName: string
+) {
+  await engine.runQueue.removeQueueTotalConcurrencyLimits(environment, queueName);
+}
+
 /** Removes the RunQueue limits for a queue */
 export async function removeQueueConcurrencyLimits(
   environment: AuthenticatedEnvironment,
