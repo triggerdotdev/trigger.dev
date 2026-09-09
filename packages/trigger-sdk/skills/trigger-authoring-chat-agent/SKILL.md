@@ -222,8 +222,9 @@ frontend, narrow `useChat` with `InferChatUIMessage<typeof myChat>` from `@trigg
 `chat.agent` accepts hooks that fire in a fixed per-turn order:
 
 ```text
-onValidateMessages -> hydrateMessages -> onChatStart (chat's first message only)
-  -> onTurnStart -> run() -> onBeforeTurnComplete -> onTurnComplete
+onValidateMessages -> storage.loadContext (or the deprecated hydrateMessages)
+  -> onChatStart (chat's first message only)
+  -> onTurnStart -> run() -> onBeforeTurnComplete -> onTurnComplete -> storage.save
 ```
 
 `onBoot` fires once per worker process (every fresh boot, including continuation runs) and is where

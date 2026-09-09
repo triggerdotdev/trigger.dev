@@ -762,6 +762,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   private _onEvent: ((event: ChatTransportEvent) => void) | undefined;
 
   private sessions: Map<string, ChatSessionState> = new Map();
+  private pendingResumeCursors: Map<string, string> = new Map();
   private activeStreams: Map<string, AbortController> = new Map();
   private pendingStarts: Map<string, Promise<ChatSessionState>> = new Map();
   // Last turn-producing send per chat — attribution source for the
@@ -1453,13 +1454,46 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   };
 
   setSession(chatId: string, session: ChatSessionPersistedState): void {
-    this.sessions.set(chatId, {
-      publicAccessToken: session.publicAccessToken,
-      lastEventId: session.lastEventId,
-      activeInputSeq: session.activeInputSeq,
-      isStreaming: session.isStreaming,
-    });
+    this.sessions.set(
+      chatId,
+      this.applyPendingResumeCursor(chatId, {
+        publicAccessToken: session.publicAccessToken,
+        lastEventId: session.lastEventId,
+        activeInputSeq: session.activeInputSeq,
+        isStreaming: session.isStreaming,
+      })
+    );
     this.notifySessionChange(chatId, this.toPersisted(this.sessions.get(chatId)!));
+  }
+
+  /**
+   * Seed the `.out` resume cursor from a loaded transcript. Applied to the
+   * session now if it exists, otherwise held until the session is created so
+   * the first live subscription opens past the persisted history instead of
+   * replaying it. Never moves an existing cursor backward: the transcript load
+   * is async, so a live `.out` record can already have advanced the session
+   * past the snapshot, and overwriting it would replay those records.
+   */
+  seedResumeCursor = (chatId: string, lastEventId: string): void => {
+    const existing = this.sessions.get(chatId);
+    if (existing?.publicAccessToken) {
+      if (existing.lastEventId === undefined) {
+        existing.lastEventId = lastEventId;
+        this.notifySessionChange(chatId, this.toPersisted(existing));
+      }
+      this.pendingResumeCursors.delete(chatId);
+      return;
+    }
+    this.pendingResumeCursors.set(chatId, lastEventId);
+  };
+
+  private applyPendingResumeCursor(chatId: string, state: ChatSessionState): ChatSessionState {
+    const pending = this.pendingResumeCursors.get(chatId);
+    if (pending !== undefined && state.lastEventId === undefined) {
+      state.lastEventId = pending;
+    }
+    this.pendingResumeCursors.delete(chatId);
+    return state;
   }
 
   setOnSessionChange(
@@ -1697,7 +1731,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     // `sessions: { ... }` already, or the very first `accessToken` call
     // returns a PAT for an out-of-band-created session.
     const token = await this.resolveAccessToken({ chatId });
-    const state: ChatSessionState = { publicAccessToken: token };
+    const state = this.applyPendingResumeCursor(chatId, { publicAccessToken: token });
     this.sessions.set(chatId, state);
     this.notifySessionChange(chatId, state);
     return state;
@@ -1725,10 +1759,10 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       });
     }
 
-    const state: ChatSessionState = {
+    const state = this.applyPendingResumeCursor(chatId, {
       publicAccessToken,
       isStreaming: false,
-    };
+    });
     this.sessions.set(chatId, state);
     this.notifySessionChange(chatId, state);
     return state;

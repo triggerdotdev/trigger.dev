@@ -1,6 +1,6 @@
 import type { UIMessage, UIMessageChunk } from "ai";
 import { resourceCatalog, sessionStreams } from "@trigger.dev/core/v3";
-import type { LocalsKey, SessionChannelIO } from "@trigger.dev/core/v3";
+import type { LocalsKey, SessionChannelIO, TranscriptSnapshotV2 } from "@trigger.dev/core/v3";
 import { runInMockTaskContext, type MockTaskContextOptions } from "@trigger.dev/core/v3/test";
 import {
   __setSessionCloseImplForTests,
@@ -101,7 +101,7 @@ export type MockChatAgentOptions = {
    *
    * See plan section B.3 for the boot orchestration spec.
    */
-  snapshot?: ChatSnapshotV1;
+  snapshot?: ChatSnapshotV1 | TranscriptSnapshotV2;
   /**
    * Set `payload.continuation = true` on the initial wire payload. Used
    * to simulate a continuation-run boot (a new run picking up after a
@@ -237,7 +237,7 @@ export type MockChatAgentHarness = {
    * Effective on the next run boot only. Calling mid-turn is a no-op
    * because the snapshot read happens once at run boot.
    */
-  seedSnapshot(snapshot: ChatSnapshotV1 | undefined): void;
+  seedSnapshot(snapshot: ChatSnapshotV1 | TranscriptSnapshotV2 | undefined): void;
 
   /**
    * Pre-seed `session.out` chunks for the next boot's replay. The runtime's
@@ -311,7 +311,7 @@ export type MockChatAgentHarness = {
    * has been written yet. Updated each time `writeChatSnapshot` is
    * invoked from the run loop's snapshot-write site (plan section B.6).
    */
-  getSnapshot(): ChatSnapshotV1 | undefined;
+  getSnapshot(): TranscriptSnapshotV2 | undefined;
 
   /**
    * Close the chat session cleanly. Sends `trigger: "close"` and awaits the
@@ -334,6 +334,16 @@ function isControlChunk(chunk: unknown): boolean {
   const type = (chunk as { type?: string }).type;
   return typeof type === "string" && CONTROL_CHUNK_TYPES.has(type);
 }
+
+/**
+ * Highest `session.in` seqNum any harness has produced for a session id,
+ * keyed by `sessionId`. Production `session.in` is a durable S2 stream whose
+ * seqNums are monotonic across the runs of a chat; a fresh in-memory manager
+ * per `mockChatAgent` would otherwise restart at 0, so a continuation's
+ * follow-up message would collide with the resume floor and be dropped. This
+ * survives the per-run manager reset so continuation runs stay monotonic.
+ */
+const durableSessionInSeq = new Map<string, number>();
 
 /**
  * Create an offline test harness for a `chat.agent` task.
@@ -440,8 +450,8 @@ export function mockChatAgent(
   // `lastWrittenSnapshot` for harness consumers to assert via
   // `getSnapshot()`. Installed below alongside the session overrides;
   // cleared on close in the same finally block.
-  let seededSnapshot: ChatSnapshotV1 | undefined = options.snapshot;
-  let lastWrittenSnapshot: ChatSnapshotV1 | undefined;
+  let seededSnapshot: ChatSnapshotV1 | TranscriptSnapshotV2 | undefined = options.snapshot;
+  let lastWrittenSnapshot: TranscriptSnapshotV2 | undefined;
   let seededReplayChunks: UIMessageChunk[] = [];
   let seededReplayPartial: UIMessage | undefined;
   let seededSessionInMessages: UIMessage[] = [];
@@ -450,12 +460,10 @@ export function mockChatAgent(
 
   __resetChatInputRouterForTests();
 
-  __setReadChatSnapshotImplForTests(<T extends UIMessage>(_id: string) => {
-    return seededSnapshot as ChatSnapshotV1<T> | undefined;
-  });
+  __setReadChatSnapshotImplForTests(() => seededSnapshot);
   __setWriteChatSnapshotImplForTests(
-    <T extends UIMessage>(_id: string, snapshot: ChatSnapshotV1<T>) => {
-      lastWrittenSnapshot = snapshot as ChatSnapshotV1;
+    <T extends UIMessage>(_id: string, snapshot: TranscriptSnapshotV2<T>) => {
+      lastWrittenSnapshot = snapshot as TranscriptSnapshotV2;
     }
   );
 
@@ -576,7 +584,21 @@ export function mockChatAgent(
       ...(options.headStartMessages ? { headStartMessages: options.headStartMessages } : {}),
     };
 
-    sendSessionInput = drivers.sessions.in.send;
+    const durableSeq = durableSessionInSeq.get(sessionId);
+    if (durableSeq !== undefined) {
+      sessionStreams.setLastSeqNum(sessionId, "in", durableSeq);
+    }
+    const rawSendSessionInput = drivers.sessions.in.send;
+    sendSessionInput = async (id, data, io, metadata) => {
+      await rawSendSessionInput(id, data, io, metadata);
+      const io2 = io ?? "in";
+      if (io2 === "in") {
+        const latest = sessionStreams.lastSeqNum(id, "in");
+        if (latest !== undefined) {
+          durableSessionInSeq.set(id, Math.max(durableSessionInSeq.get(id) ?? latest, latest));
+        }
+      }
+    };
     closeSessionInput = drivers.sessions.in.close;
 
     // Record every chunk written to session.out, detect turn-complete.
