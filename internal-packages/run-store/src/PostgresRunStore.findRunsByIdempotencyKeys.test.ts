@@ -105,6 +105,42 @@ describe("PostgresRunStore.findRunsByIdempotencyKeys", () => {
     expect(byKey.get("idem-2")?.idempotencyKeyExpiresAt).toBeNull();
   });
 
+  postgresTest("returns run status so callers can reject dead cached runs", async ({ prisma }) => {
+    const { project, environment } = await seedEnvironment(prisma);
+    const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+    await createRun(prisma, {
+      runtimeEnvironmentId: environment.id,
+      projectId: project.id,
+      friendlyId: "run_crashed1",
+      taskIdentifier: "task-a",
+      idempotencyKey: "idem-dead",
+    });
+    await prisma.taskRun.update({
+      where: { friendlyId: "run_crashed1" },
+      data: { status: "CRASHED" },
+    });
+    await createRun(prisma, {
+      runtimeEnvironmentId: environment.id,
+      projectId: project.id,
+      friendlyId: "run_ok1",
+      taskIdentifier: "task-a",
+      idempotencyKey: "idem-live",
+    });
+
+    const rows = await store.findRunsByIdempotencyKeys({
+      runtimeEnvironmentId: environment.id,
+      taskIdentifier: "task-a",
+      idempotencyKeys: ["idem-dead", "idem-live"],
+    });
+
+    const byKey = new Map(rows.map((r) => [r.idempotencyKey, r]));
+    // batchTriggerV3 clears the key and mints a fresh run when shouldIdempotencyKeyBeCleared(status)
+    // holds - it can only do that if the lookup actually returns the status column.
+    expect(byKey.get("idem-dead")?.status).toBe("CRASHED");
+    expect(byKey.get("idem-live")?.status).toBe("PENDING");
+  });
+
   postgresTest("short-circuits on an empty key list without querying", async ({ prisma }) => {
     const { environment } = await seedEnvironment(prisma);
     const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });

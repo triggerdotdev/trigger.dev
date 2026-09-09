@@ -30,6 +30,7 @@ export type IdempotencyKeyRunMatch = {
   friendlyId: string;
   idempotencyKey: string | null;
   idempotencyKeyExpiresAt: Date | null;
+  status: TaskRunStatus;
 };
 
 /**
