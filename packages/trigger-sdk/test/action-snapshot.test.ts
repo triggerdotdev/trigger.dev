@@ -7,7 +7,7 @@ import { chat } from "../src/v3/ai.js";
 import { simulateReadableStream, streamText } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
-import { z } from "zod";
+import { z } from "zod/v4";
 
 function textStream(text: string): ReadableStream<LanguageModelV3StreamPart> {
   return simulateReadableStream({
@@ -63,7 +63,10 @@ describe("snapshot durability of history mutated by an action", () => {
       await new Promise((r) => setTimeout(r, 30));
 
       // After a turn the snapshot holds the exchange.
-      expect(harness.getSnapshot()?.messages.map((m) => m.role)).toEqual(["user", "assistant"]);
+      expect(harness.getSnapshot()?.messages.map((e) => e.message.role)).toEqual([
+        "user",
+        "assistant",
+      ]);
 
       await harness.sendAction({ type: "undo" });
       await new Promise((r) => setTimeout(r, 30));

@@ -8,7 +8,7 @@ import { locals } from "@trigger.dev/core/v3";
 import { simulateReadableStream, streamText, tool, validateUIMessages } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
-import { z } from "zod";
+import { z } from "zod/v4";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -1875,9 +1875,9 @@ describe("mockChatAgent", () => {
         await new Promise((r) => setTimeout(r, 50));
         const snap = harness.getSnapshot();
         expect(snap).toBeDefined();
-        expect(snap!.version).toBe(1);
+        expect(snap!.version).toBe(2);
         // The snapshot reflects the post-turn accumulator: 1 user + 1 assistant.
-        const roles = snap!.messages.map((m) => m.role);
+        const roles = snap!.messages.map((e) => e.message.role);
         expect(roles).toEqual(["user", "assistant"]);
         // TestSessionStreamManager assigns the same zero-based sequence
         // numbers as the durable channel, so the committed input cursor is
