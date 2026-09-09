@@ -1,11 +1,13 @@
 import { ScheduleEngine } from "@internal/schedule-engine";
 import { containerTest } from "@internal/testcontainers";
+import type { BackgroundWorkerMetadata } from "@trigger.dev/core/v3";
 import type { PrismaClient } from "@trigger.dev/database";
 import { describe, expect, vi } from "vitest";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
 import {
   CreateBackgroundWorkerService,
+  createWorkerResources,
   syncDeclarativeSchedules,
 } from "~/v3/services/createBackgroundWorker.server";
 
@@ -123,6 +125,22 @@ function declarativeTasks(schedule: { cron: string; timezone: string; window?: s
   return [{ id: "my-task", schedule }] as TasksArg;
 }
 
+function workerMetadata(description: string) {
+  return {
+    contentHash: "duplicate-task-content",
+    tasks: [
+      {
+        id: "duplicate-task",
+        description,
+        filePath: "src/trigger/duplicate-task.ts",
+        exportName: "duplicateTask",
+        queue: { name: "duplicate-task-queue" },
+      },
+    ],
+    queues: [{ name: "duplicate-task-queue" }],
+  } as unknown as BackgroundWorkerMetadata;
+}
+
 async function seedScheduledTask(
   prisma: PrismaClient,
   projectId: string,
@@ -151,6 +169,82 @@ async function seedScheduledTask(
     },
   });
 }
+
+describe("worker task creation", () => {
+  containerTest(
+    "preserves one task when concurrent registration transactions target the same worker and slug",
+    async ({ prisma }) => {
+      const { project, devEnv } = await seedProjectWithEnvs(prisma);
+      const worker = await prisma.backgroundWorker.create({
+        data: {
+          friendlyId: `worker_${devEnv.id}`,
+          contentHash: "duplicate-task-content",
+          version: "20260811.1",
+          metadata: {},
+          projectId: project.id,
+          runtimeEnvironmentId: devEnv.id,
+        },
+      });
+      const queue = await prisma.taskQueue.create({
+        data: {
+          friendlyId: `queue_${devEnv.id}`,
+          name: "duplicate-task-queue",
+          type: "NAMED",
+          version: "V2",
+          paused: true,
+          projectId: project.id,
+          runtimeEnvironmentId: devEnv.id,
+        },
+      });
+      const environment = { ...asEnv(devEnv), project } as AuthenticatedEnvironment;
+
+      const entries = await Promise.all(
+        ["first registration", "second registration"].map((description) =>
+          prisma.$transaction((tx) =>
+            createWorkerResources(workerMetadata(description), worker, environment, tx)
+          )
+        )
+      );
+
+      expect(entries).toEqual([
+        [
+          {
+            slug: "duplicate-task",
+            ttl: null,
+            triggerSource: "STANDARD",
+            queueId: queue.id,
+            queueName: queue.name,
+          },
+        ],
+        [
+          {
+            slug: "duplicate-task",
+            ttl: null,
+            triggerSource: "STANDARD",
+            queueId: queue.id,
+            queueName: queue.name,
+          },
+        ],
+      ]);
+
+      const created = await prisma.backgroundWorkerTask.findUniqueOrThrow({
+        where: { workerId_slug: { workerId: worker.id, slug: "duplicate-task" } },
+      });
+      expect(["first registration", "second registration"]).toContain(created.description);
+      expect(await prisma.backgroundWorkerTask.count({ where: { workerId: worker.id } })).toBe(1);
+
+      await prisma.$transaction((tx) =>
+        createWorkerResources(workerMetadata("replacement"), worker, environment, tx)
+      );
+
+      const afterRetry = await prisma.backgroundWorkerTask.findUniqueOrThrow({
+        where: { workerId_slug: { workerId: worker.id, slug: "duplicate-task" } },
+      });
+      expect(afterRetry.id).toBe(created.id);
+      expect(afterRetry.description).toBe(created.description);
+    }
+  );
+});
 
 describe("declarative schedule preflight", () => {
   containerTest("rejects identical retries before persisting a worker", async ({ prisma }) => {

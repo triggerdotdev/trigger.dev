@@ -410,7 +410,6 @@ async function createWorkerTask(
   prisma: PrismaClientOrTransaction,
   tasksToBackgroundFiles?: Map<string, string>
 ): Promise<TaskMetadataEntry | null> {
-  // Hoisted so the P2002 catch branch can return the same entry shape.
   let queue: TaskQueue | undefined;
   let resolvedTriggerSource: "SCHEDULED" | "AGENT" | "WEBHOOK" | "STANDARD" | undefined;
   let resolvedTtl: string | null | undefined;
@@ -445,28 +444,51 @@ async function createWorkerTask(
     resolvedTtl =
       typeof task.ttl === "number" ? (stringifyDuration(task.ttl) ?? null) : (task.ttl ?? null);
 
-    await prisma.backgroundWorkerTask.create({
-      data: {
-        friendlyId: generateFriendlyId("task"),
-        projectId: worker.projectId,
-        runtimeEnvironmentId: worker.runtimeEnvironmentId,
-        workerId: worker.id,
-        slug: task.id,
-        description: task.description,
-        filePath: task.filePath,
-        exportName: task.exportName,
-        retryConfig: task.retry,
-        queueConfig: task.queue,
-        machineConfig: task.machine,
-        triggerSource: resolvedTriggerSource,
-        config: task.agentConfig ? (task.agentConfig as any) : undefined,
-        fileId: tasksToBackgroundFiles?.get(task.id) ?? null,
-        maxDurationInSeconds: task.maxDuration ? clampMaxDuration(task.maxDuration) : null,
-        ttl: resolvedTtl,
-        queueId: queue.id,
-        payloadSchema: task.payloadSchema as any,
-      },
-    });
+    let taskPersisted = false;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const result = await prisma.backgroundWorkerTask.createMany({
+        data: {
+          friendlyId: generateFriendlyId("task"),
+          projectId: worker.projectId,
+          runtimeEnvironmentId: worker.runtimeEnvironmentId,
+          workerId: worker.id,
+          slug: task.id,
+          description: task.description,
+          filePath: task.filePath,
+          exportName: task.exportName,
+          retryConfig: task.retry,
+          queueConfig: task.queue,
+          machineConfig: task.machine,
+          triggerSource: resolvedTriggerSource,
+          config: task.agentConfig ? (task.agentConfig as any) : undefined,
+          fileId: tasksToBackgroundFiles?.get(task.id) ?? null,
+          maxDurationInSeconds: task.maxDuration ? clampMaxDuration(task.maxDuration) : null,
+          ttl: resolvedTtl,
+          queueId: queue.id,
+          payloadSchema: task.payloadSchema as any,
+        },
+        skipDuplicates: true,
+      });
+
+      if (result.count === 1) {
+        taskPersisted = true;
+        break;
+      }
+
+      const existing = await prisma.backgroundWorkerTask.findFirst({
+        where: { workerId: worker.id, slug: task.id },
+        select: { id: true },
+      });
+
+      if (existing) {
+        taskPersisted = true;
+        break;
+      }
+    }
+
+    if (!taskPersisted) {
+      throw new Error("Failed to create background worker task after unique constraint conflicts");
+    }
 
     return {
       slug: task.id,
@@ -477,38 +499,13 @@ async function createWorkerTask(
     };
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
-      // The error code for unique constraint violation in Prisma is P2002
-      if (error.code === "P2002") {
-        // Retry landing after the first attempt's row was already written.
-        const existing = await prisma.backgroundWorkerTask.findFirst({
-          where: { workerId: worker.id, slug: task.id },
-          select: { id: true },
-        });
-
-        logger.warn("Attempted to recreate background worker task", {
-          task,
-          worker,
-        });
-
-        if (existing && queue && resolvedTriggerSource && resolvedTtl !== undefined) {
-          return {
-            slug: task.id,
-            ttl: resolvedTtl,
-            triggerSource: resolvedTriggerSource,
-            queueId: queue.id,
-            queueName: queue.name,
-          };
-        }
-      } else {
-        logger.error("Prisma Error creating background worker task", {
-          error: {
-            code: error.code,
-            message: error.message,
-          },
-          task,
-          worker,
-        });
-      }
+      logger.error("Prisma Error creating background worker task", {
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+        workerId: worker.id,
+      });
     } else if (error instanceof Error) {
       logger.error("Error creating background worker task", {
         error: {
@@ -516,14 +513,12 @@ async function createWorkerTask(
           message: error.message,
           stack: error.stack,
         },
-        task,
-        worker,
+        workerId: worker.id,
       });
     } else {
       logger.error("Unknown error creating background worker task", {
         error,
-        task,
-        worker,
+        workerId: worker.id,
       });
     }
     return null;
