@@ -1,3 +1,4 @@
+import { Redis } from "@internal/redis";
 import { postgresAndRedisTest } from "@internal/testcontainers";
 import { LogicalReplicationClient } from "./client.js";
 import { setTimeout } from "timers/promises";
@@ -463,6 +464,365 @@ describe("Replication Client", () => {
       expect(becameLeader).toBe(true);
 
       await b.shutdown();
+    }
+  );
+
+  postgresAndRedisTest(
+    "a failed leader-lock extend re-acquires or steps down instead of looping forever",
+    async ({ postgresContainer, prisma, redisOptions }) => {
+      await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
+
+      const slotName = "lock_recovery_slot";
+      // Same key prefix the client derives, so raw reads and writes here hit
+      // the very key Redlock is holding.
+      const lockKey = `logical-replication-client:${slotName}`;
+      const redis = new Redis({
+        ...redisOptions,
+        keyPrefix: `${redisOptions.keyPrefix}logical-replication-client:`,
+      });
+
+      const client = new LogicalReplicationClient({
+        name: "lock-recovery",
+        slotName,
+        publicationName: "lock_recovery_pub",
+        redisOptions,
+        table: "TaskRun",
+        pgConfig: { connectionString: postgresContainer.getConnectionUri() },
+        resubscribeOnFailure: true,
+        resubscribeMinDelayMs: 200,
+        resubscribeMaxDelayMs: 400,
+        leaderLockTimeoutMs: 2000,
+        leaderLockExtendIntervalMs: 300,
+        leaderLockAcquireAdditionalTimeMs: 200,
+        leaderLockRetryIntervalMs: 100,
+      });
+      const elections: boolean[] = [];
+      const lockErrors: string[] = [];
+      client.events.on("leaderElection", (won) => elections.push(won));
+      client.events.on("error", (error) => {
+        // Only the lock-related failures matter here; the client may surface
+        // unrelated connection noise on stop/resubscribe.
+        const message = String((error as Error)?.message ?? error);
+        if (/already-expired|unable to achieve a quorum|extend/i.test(message)) {
+          lockErrors.push(message);
+        }
+      });
+
+      try {
+        await client.subscribe();
+        expect(elections).toEqual([true]);
+        expect(await redis.exists(lockKey)).toBe(1);
+
+        // 1. The lock disappears underneath us (Redis restarted, key expired) and
+        //    nobody else wants it. The next extend fails; the client must take the
+        //    lock again and keep streaming — no election flip, no error spam.
+        await redis.del(lockKey);
+        await setTimeout(1200); // several heartbeat ticks
+        expect(await redis.exists(lockKey)).toBe(1);
+        expect(elections).toEqual([true]);
+        expect(lockErrors).toHaveLength(0);
+        expect(client.isStopped).toBe(false);
+
+        // 2. Redis stops answering while the key is still ours (a network blip,
+        //    a restart with persistence). Deny the lock scripts so every extend
+        //    and re-acquire fails, but leave the key in place. The client must
+        //    keep streaming under the still-valid TTL, then reclaim the SAME
+        //    lock once Redis answers again — no election flip, no error, no
+        //    stream restart. (ACL rule changes apply to connected clients.)
+        const valueBefore = await redis.get(lockKey);
+        await redis.call("ACL", "SETUSER", "default", "-eval", "-evalsha");
+        try {
+          await setTimeout(700); // 2-3 failed heartbeat ticks, well inside the 2s TTL
+          expect(elections).toEqual([true]);
+          expect(lockErrors).toHaveLength(0);
+          expect(client.isStopped).toBe(false);
+        } finally {
+          await redis.call("ACL", "SETUSER", "default", "+eval", "+evalsha");
+        }
+        await setTimeout(900);
+        expect(await redis.get(lockKey)).toBe(valueBefore);
+        expect(elections).toEqual([true]);
+        expect(lockErrors).toHaveLength(0);
+        expect(client.isStopped).toBe(false);
+
+        // 3. Someone else holds the lock when our extend fails. We must step down
+        //    exactly once, then win it back when they let go — the pre-fix client
+        //    logged "Cannot extend an already-expired lock" every tick forever.
+        await redis.set(lockKey, "someone-else", "PX", 1500);
+        await setTimeout(1200);
+        expect(elections).toContain(false);
+        // Exactly one surfaced failure for the step-down, not one per tick.
+        expect(lockErrors).toHaveLength(1);
+
+        let regained = false;
+        for (let i = 0; i < 40; i++) {
+          if (elections.filter((won) => won).length >= 2) {
+            regained = true;
+            break;
+          }
+          await setTimeout(250);
+        }
+        expect(regained).toBe(true);
+        // Regaining leadership must not have kept emitting extend failures.
+        expect(lockErrors).toHaveLength(1);
+        expect(await redis.exists(lockKey)).toBe(1);
+      } finally {
+        await client.shutdown();
+        await redis.quit();
+      }
+    }
+  );
+
+  postgresAndRedisTest(
+    "a client without resubscribe steps down and stops instead of streaming without the lock",
+    async ({ postgresContainer, prisma, redisOptions }) => {
+      await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
+
+      const slotName = "lock_recovery_noresub_slot";
+      const lockKey = `logical-replication-client:${slotName}`;
+      const redis = new Redis({
+        ...redisOptions,
+        keyPrefix: `${redisOptions.keyPrefix}logical-replication-client:`,
+      });
+
+      const client = new LogicalReplicationClient({
+        name: "lock-recovery-noresub",
+        slotName,
+        publicationName: "lock_recovery_noresub_pub",
+        redisOptions,
+        table: "TaskRun",
+        pgConfig: { connectionString: postgresContainer.getConnectionUri() },
+        leaderLockTimeoutMs: 2000,
+        leaderLockExtendIntervalMs: 300,
+        leaderLockAcquireAdditionalTimeMs: 200,
+        leaderLockRetryIntervalMs: 100,
+      });
+      const elections: boolean[] = [];
+      const lockErrors: string[] = [];
+      client.events.on("leaderElection", (won) => elections.push(won));
+      client.events.on("error", (error) => {
+        const message = String((error as Error)?.message ?? error);
+        if (/already-expired|unable to achieve a quorum|extend/i.test(message)) {
+          lockErrors.push(message);
+        }
+      });
+
+      try {
+        await client.subscribe();
+        expect(elections).toEqual([true]);
+
+        // Someone else takes the key. With nothing to resubscribe, the pre-fix
+        // client announced the loss and then kept streaming the slot, lockless,
+        // until the process died.
+        await redis.set(lockKey, "someone-else", "PX", 1500);
+        for (let i = 0; i < 30 && !elections.includes(false); i++) {
+          await setTimeout(100);
+        }
+        await setTimeout(500); // let the pg client finish ending
+        expect(elections).toEqual([true, false]);
+        expect(lockErrors).toHaveLength(1);
+        expect(client.isStopped).toBe(true);
+        const backends = await prisma.$queryRaw<{ count: bigint }[]>`
+          SELECT count(*) AS count FROM pg_stat_activity WHERE application_name = 'lock-recovery-noresub'
+        `;
+        expect(Number(backends[0].count)).toBe(0);
+
+        // The other holder is long gone; nothing on this client contends again.
+        await setTimeout(2000);
+        expect(elections).toEqual([true, false]);
+        expect(lockErrors).toHaveLength(1);
+        expect(client.isStopped).toBe(true);
+        expect(await redis.exists(lockKey)).toBe(0);
+      } finally {
+        await client.shutdown();
+        await redis.quit();
+      }
+    }
+  );
+
+  postgresAndRedisTest(
+    "an extend rejection that lands after the lock was replaced starts no recovery",
+    async ({ postgresContainer, prisma, redisOptions }) => {
+      await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
+
+      const slotName = "lock_recovery_stale_slot";
+      const lockKey = `logical-replication-client:${slotName}`;
+      const redis = new Redis({
+        ...redisOptions,
+        keyPrefix: `${redisOptions.keyPrefix}logical-replication-client:`,
+      });
+
+      const client = new LogicalReplicationClient({
+        name: "lock-recovery-stale",
+        slotName,
+        publicationName: "lock_recovery_stale_pub",
+        redisOptions,
+        table: "TaskRun",
+        pgConfig: { connectionString: postgresContainer.getConnectionUri() },
+        resubscribeOnFailure: true,
+        resubscribeMinDelayMs: 200,
+        resubscribeMaxDelayMs: 400,
+        leaderLockTimeoutMs: 2000,
+        leaderLockExtendIntervalMs: 300,
+        leaderLockAcquireAdditionalTimeMs: 200,
+        leaderLockRetryIntervalMs: 100,
+      });
+      const elections: boolean[] = [];
+      const lockErrors: string[] = [];
+      client.events.on("leaderElection", (won) => elections.push(won));
+      client.events.on("error", (error) => {
+        const message = String((error as Error)?.message ?? error);
+        if (/already-expired|unable to achieve a quorum|extend/i.test(message)) {
+          lockErrors.push(message);
+        }
+      });
+
+      const redlock = client["redlock"];
+      const realExtend = redlock.extend.bind(redlock);
+      let openGate: () => void = () => {};
+      const gate = new Promise<void>((resolve) => (openGate = resolve));
+      let extendSpy: ReturnType<typeof vi.spyOn> | undefined;
+      let acquireSpy: ReturnType<typeof vi.spyOn> | undefined;
+
+      try {
+        await client.subscribe();
+        expect(elections).toEqual([true]);
+
+        // Park the first extend after the takeover below; every later one runs
+        // for real. This is the tick a slow Redis leaves in flight while the next
+        // tick already fails, recovers, and moves on.
+        let parked = false;
+        extendSpy = vi
+          .spyOn(redlock, "extend")
+          .mockImplementation(async (...args: Parameters<typeof realExtend>) => {
+            if (!parked) {
+              parked = true;
+              await gate;
+            }
+            return realExtend(...args);
+          });
+        acquireSpy = vi.spyOn(redlock, "acquire");
+
+        // Someone else takes the key: the next real extend fails, the client steps
+        // down once, and wins the slot back once the other holder expires.
+        await redis.set(lockKey, "someone-else", "PX", 1500);
+        let regained = false;
+        for (let i = 0; i < 60; i++) {
+          if (elections.filter((won) => won).length >= 2) {
+            regained = true;
+            break;
+          }
+          await setTimeout(100);
+        }
+        expect(regained).toBe(true);
+        expect(elections.filter((won) => !won)).toHaveLength(1);
+        expect(lockErrors).toHaveLength(1);
+        // Re-election fires before the new stream is up; wait until it is, so the
+        // stale rejection below meets a running client, not one still subscribing.
+        for (let i = 0; i < 40 && client.isStopped; i++) {
+          await setTimeout(100);
+        }
+        expect(client.isStopped).toBe(false);
+
+        // Now the parked extend rejects. Its lock was dropped at the step-down and
+        // replaced at re-election, so it must not start a recovery: no acquire, no
+        // second announcement, no error.
+        const acquiresBefore = acquireSpy.mock.calls.length;
+        openGate();
+        await setTimeout(600);
+        expect(acquireSpy.mock.calls.length).toBe(acquiresBefore);
+        expect(elections.filter((won) => !won)).toHaveLength(1);
+        expect(lockErrors).toHaveLength(1);
+        expect(client.isStopped).toBe(false);
+        expect(await redis.exists(lockKey)).toBe(1);
+      } finally {
+        openGate();
+        extendSpy?.mockRestore();
+        acquireSpy?.mockRestore();
+        await client.shutdown();
+        await redis.quit();
+      }
+    }
+  );
+
+  postgresAndRedisTest(
+    "shutdown during leader-lock recovery releases the re-acquired lock and stays quiet",
+    async ({ postgresContainer, prisma, redisOptions }) => {
+      await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
+
+      const slotName = "lock_recovery_shutdown_slot";
+      const lockKey = `logical-replication-client:${slotName}`;
+      const redis = new Redis({
+        ...redisOptions,
+        keyPrefix: `${redisOptions.keyPrefix}logical-replication-client:`,
+      });
+
+      const client = new LogicalReplicationClient({
+        name: "lock-recovery-shutdown",
+        slotName,
+        publicationName: "lock_recovery_shutdown_pub",
+        redisOptions,
+        table: "TaskRun",
+        pgConfig: { connectionString: postgresContainer.getConnectionUri() },
+        resubscribeOnFailure: true,
+        resubscribeMinDelayMs: 200,
+        resubscribeMaxDelayMs: 400,
+        leaderLockTimeoutMs: 2000,
+        leaderLockExtendIntervalMs: 300,
+        leaderLockAcquireAdditionalTimeMs: 200,
+        leaderLockRetryIntervalMs: 100,
+      });
+      const elections: boolean[] = [];
+      const lockErrors: string[] = [];
+      client.events.on("leaderElection", (won) => elections.push(won));
+      client.events.on("error", (error) => {
+        const message = String((error as Error)?.message ?? error);
+        if (/already-expired|unable to achieve a quorum|extend/i.test(message)) {
+          lockErrors.push(message);
+        }
+      });
+
+      const redlock = client["redlock"];
+      const realAcquire = redlock.acquire.bind(redlock);
+      let openGate: () => void = () => {};
+      const gate = new Promise<void>((resolve) => (openGate = resolve));
+      let acquireSpy: ReturnType<typeof vi.spyOn> | undefined;
+
+      try {
+        await client.subscribe();
+        expect(elections).toEqual([true]);
+
+        // Hold the recovery's re-acquire open so shutdown() can land while it is
+        // in flight — the window a Redis that answers slowly opens in production.
+        acquireSpy = vi
+          .spyOn(redlock, "acquire")
+          .mockImplementation(async (...args: Parameters<typeof realAcquire>) => {
+            await gate;
+            return realAcquire(...args);
+          });
+
+        // The key vanishes → the next extend fails → recovery calls acquire and parks on the gate.
+        await redis.del(lockKey);
+        for (let i = 0; i < 30 && acquireSpy.mock.calls.length === 0; i++) {
+          await setTimeout(100);
+        }
+        expect(acquireSpy.mock.calls.length).toBeGreaterThan(0);
+
+        await client.shutdown();
+        openGate();
+        await setTimeout(600); // > resubscribeMaxDelayMs: a wrongly scheduled resubscribe would have fired
+
+        // stop() owns the teardown: the recovered lock is released, and there is
+        // no lost-leadership announcement, error, or resubscribe after shutdown.
+        expect(await redis.exists(lockKey)).toBe(0);
+        expect(elections).toEqual([true]);
+        expect(lockErrors).toHaveLength(0);
+        expect(client.isStopped).toBe(true);
+      } finally {
+        acquireSpy?.mockRestore();
+        await client.shutdown();
+        await redis.quit();
+      }
     }
   );
 });
