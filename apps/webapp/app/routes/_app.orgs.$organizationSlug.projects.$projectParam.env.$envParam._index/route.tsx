@@ -68,11 +68,13 @@ import {
 } from "~/components/runs/v3/TaskTriggerSource";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useEventSource } from "~/hooks/useEventSource";
+import { useFeatureFlags } from "~/hooks/useFeatureFlags";
 import { useFuzzyFilter } from "~/hooks/useFuzzyFilter";
-import { useOrganization } from "~/hooks/useOrganizations";
+import { useIsImpersonating, useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { useOptionalUser } from "~/hooks/useUser";
 import { prisma } from "~/db.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
@@ -212,6 +214,15 @@ const TASK_TYPE_SEGMENTS: {
   { value: "SCHEDULED", tooltip: "Scheduled tasks", source: "SCHEDULED" },
   { value: "WEBHOOK", tooltip: "Webhook tasks", source: "WEBHOOK" },
 ];
+
+/** Mirrors the side menu's Webhooks gate, so the two surfaces can't disagree
+ *  about whether this org has webhooks. */
+function useHasWebhooksAccess() {
+  const user = useOptionalUser();
+  const isImpersonating = useIsImpersonating();
+  const featureFlags = useFeatureFlags();
+  return Boolean(user?.admin || isImpersonating || featureFlags.hasWebhooksAccess);
+}
 
 const PAGE_SIZE = 25;
 const TASK_FILTER_KEYS = ["slug", "filePath", "triggerSource"];
@@ -570,6 +581,10 @@ function RunningCell({ state }: { state: UnifiedRunningState | undefined }) {
 
 function TaskTypeFilter() {
   const { values, replace } = useSearchParams();
+  const hasWebhooksAccess = useHasWebhooksAccess();
+  const segments = hasWebhooksAccess
+    ? TASK_TYPE_SEGMENTS
+    : TASK_TYPE_SEGMENTS.filter((option) => option.value !== "WEBHOOK");
   const raw = parseTypesParam(values("types"));
   // Single-select: exactly one kind selects it, anything else falls back to All.
   const current: TaskTypeSegment = raw.length === 1 ? raw[0] : ALL_TASK_TYPES;
@@ -581,7 +596,7 @@ function TaskTypeFilter() {
 
   return (
     <>
-      {TASK_TYPE_SEGMENTS.map((option, index) => (
+      {segments.map((option, index) => (
         <TaskTypeShortcut
           key={option.value}
           shortcut={String(index)}
@@ -593,7 +608,7 @@ function TaskTypeFilter() {
         value={current}
         variant="secondary/small"
         onChange={select}
-        options={TASK_TYPE_SEGMENTS.map((option, index) => ({
+        options={segments.map((option, index) => ({
           value: option.value,
           label: <TaskTypeSegmentLabel option={option} shortcut={String(index)} />,
         }))}
@@ -766,6 +781,8 @@ function FailedToLoadStats() {
 }
 
 function TaskTypeBreakdown() {
+  const hasWebhooksAccess = useHasWebhooksAccess();
+
   return (
     <div className="flex flex-col gap-2.5">
       <div>
@@ -799,16 +816,18 @@ function TaskTypeBreakdown() {
           you need.
         </Paragraph>
       </div>
-      <div>
-        <div className="flex items-center gap-1.5">
-          <WebhookIcon className="size-4.5 shrink-0 text-webhooks" />
-          <Paragraph variant="small/bright">Webhook task</Paragraph>
+      {hasWebhooksAccess && (
+        <div>
+          <div className="flex items-center gap-1.5">
+            <WebhookIcon className="size-4.5 shrink-0 text-webhooks" />
+            <Paragraph variant="small/bright">Webhook task</Paragraph>
+          </div>
+          <Paragraph variant="small" className="mt-1">
+            Runs from a verified inbound event sent to a hosted endpoint. Each delivery is logged,
+            and a successful one starts a run.
+          </Paragraph>
         </div>
-        <Paragraph variant="small" className="mt-1">
-          Runs from a verified inbound event sent to a hosted endpoint. Each delivery is logged, and
-          a successful one starts a run.
-        </Paragraph>
-      </div>
+      )}
     </div>
   );
 }
