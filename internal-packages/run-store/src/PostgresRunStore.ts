@@ -27,6 +27,7 @@ import type {
   FinalizeRunData,
   ForWaitpointCompletionContext,
   IdempotencyKeyRunMatch,
+  LatestExecutionSnapshotRead,
   LockRunData,
   PromotePendingVersionArgs,
   ReadClient,
@@ -1930,9 +1931,7 @@ export class PostgresRunStore implements RunStore {
     runId: string,
     client?: ReadClient,
     environmentId?: string
-  ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<{
-    include: { completedWaitpoints: true; checkpoint: true };
-  }> | null> {
+  ): Promise<LatestExecutionSnapshotRead | null> {
     const prisma = client ?? this.readOnlyPrisma;
     const where = { runId, isValid: true, ...(environmentId ? { environmentId } : {}) };
 

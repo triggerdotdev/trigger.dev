@@ -6,7 +6,7 @@ import {
   type Result,
 } from "@internal/redis";
 import { Logger } from "@trigger.dev/core/logger";
-import type { CompletedWaitpoint } from "@trigger.dev/core/v3/schemas";
+import type { SnapshotReadWaitpoint } from "./types.js";
 import {
   SNAPSHOT_NAMESPACE,
   SNAPSHOT_STATE_VERSION,
@@ -117,8 +117,8 @@ export type CompletedWaitpointRecordOutput =
   | null;
 
 /**
- * One completed waitpoint, one per DISTINCT id in a wait cycle. The resolver expands
- * this into one CompletedWaitpoint per position of the id in the cycle's order list.
+ * One completed waitpoint, one per DISTINCT id in a wait cycle. The resolver turns each into one
+ * unenhanced read row; run-engine's enhancement step is what expands it across the cycle's order.
  */
 export type CompletedWaitpointRecord = {
   id: string;
@@ -158,10 +158,14 @@ export type ResolveCompletedWaitpointsArgs = {
 /**
  * This lane owns the signature. The waitpoint lane owns the implementation, which
  * lives in run-engine because a deriveFromRun record needs a Postgres read.
+ *
+ * It returns UNENHANCED rows, one per distinct record: the read is a store read, so it produces the
+ * same material a Postgres read produces and leaves index expansion and the nested completion objects
+ * to run-engine's single enhancement step.
  */
 export type CompletedWaitpointResolver = (
   args: ResolveCompletedWaitpointsArgs
-) => Promise<CompletedWaitpoint[]>;
+) => Promise<SnapshotReadWaitpoint[]>;
 
 export type SnapshotEntryInput = {
   id: string;

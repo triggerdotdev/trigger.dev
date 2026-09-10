@@ -6,13 +6,12 @@
 import { isDeepStrictEqual } from "node:util";
 import { describe, expect, it } from "vitest";
 import type { Waitpoint } from "@trigger.dev/database";
-import { BatchId, RunId } from "@trigger.dev/core/v3/isomorphic";
-import type { CompletedWaitpoint } from "@trigger.dev/core/v3";
 import type {
   CompletedWaitpointRecord,
   CompletedWaitpointResolver,
   CompletedWaitpointsPointer,
   ResolveCompletedWaitpointsArgs,
+  SnapshotReadWaitpoint,
 } from "@internal/run-store";
 
 // The frozen key sets, pinned exactly and bidirectionally. Renames, removals, widenings and
@@ -103,19 +102,15 @@ function recordOutputFor(w: Waitpoint): CompletedWaitpointRecord["output"] {
   return { inline: w.output };
 }
 
-// The READ side of the freeze. Iterates `records`, never `order`.
+// The READ side of the freeze. Iterates `records`, never `order`, and returns ONE unenhanced row per
+// distinct record: no index, no nested completion objects. Index expansion and those objects belong
+// to the single enhancement step, which both backends then go through identically.
 async function referenceResolver(
   args: ResolveCompletedWaitpointsArgs,
   lookupRunOutput: (runId: string) => Promise<string | undefined>
-): Promise<CompletedWaitpoint[]> {
-  const out: CompletedWaitpoint[] = [];
+): Promise<SnapshotReadWaitpoint[]> {
+  const out: SnapshotReadWaitpoint[] = [];
   for (const record of args.records) {
-    const indexes: (number | undefined)[] = [];
-    for (let i = 0; i < args.order.length; i++) {
-      if (args.order[i] === record.id) indexes.push(i);
-    }
-    if (indexes.length === 0) indexes.push(undefined);
-
     let output: string | undefined;
     if (record.output === null) {
       output = undefined;
@@ -132,37 +127,23 @@ async function referenceResolver(
       throw new Error(`unknown record output variant: ${JSON.stringify(_never)}`);
     }
 
-    for (const index of indexes) {
-      out.push({
-        id: record.id,
-        // Unreachable: the oracle's own loop pushes a non-negative integer or undefined.
-        // Reproduced because the frozen index-expansion rule names it.
-        index: index === -1 ? undefined : index,
-        friendlyId: record.friendlyId,
-        type: record.type,
-        completedAt: new Date(record.completedAt),
-        idempotencyKey: record.idempotencyKey,
-        completedByTaskRun: record.completedByTaskRunId
-          ? {
-              id: record.completedByTaskRunId,
-              friendlyId: RunId.toFriendlyId(record.completedByTaskRunId),
-              batch: args.batchId
-                ? { id: args.batchId, friendlyId: BatchId.toFriendlyId(args.batchId) }
-                : undefined,
-            }
-          : undefined,
-        completedAfter: record.completedAfter ? new Date(record.completedAfter) : undefined,
-        completedByBatch: record.completedByBatchId
-          ? {
-              id: record.completedByBatchId,
-              friendlyId: BatchId.toFriendlyId(record.completedByBatchId),
-            }
-          : undefined,
-        output,
-        outputType: record.outputType,
-        outputIsError: record.outputIsError,
-      });
-    }
+    out.push({
+      id: record.id,
+      friendlyId: record.friendlyId,
+      type: record.type,
+      completedAt: new Date(record.completedAt),
+      completedByTaskRunId: record.completedByTaskRunId ?? null,
+      completedByBatchId: record.completedByBatchId ?? null,
+      completedAfter: record.completedAfter ? new Date(record.completedAfter) : null,
+      output: output ?? null,
+      outputType: record.outputType,
+      outputIsError: record.outputIsError,
+      // The record already carries the resolved user-visible key, so it is re-expressed as the
+      // triple the enhancement step reads: a key present means user-provided and active.
+      idempotencyKey: record.idempotencyKey ?? "",
+      userProvidedIdempotencyKey: record.idempotencyKey !== undefined,
+      inactiveIdempotencyKey: null,
+    });
   }
   return out;
 }
@@ -181,13 +162,18 @@ function makeSnapshot(batchId: string | null) {
   return { id: "snap_1", runId: "run_1", batchId, checkpoint: null } as never;
 }
 
+// Parity is asserted on the FINAL runner-facing payload, not on the resolver's intermediate rows:
+// both sides go through the one enhancement step, the Postgres side over its own waitpoint rows and
+// the Redis side over the resolver's rows. Comparing the intermediate is what let a Redis read that
+// dropped every RUN/BATCH completion association still look correct here.
 async function assertParity(
   waitpoints: Waitpoint[],
   order: string[],
   batchId: string | null,
   runOutputs: Record<string, string> = {}
 ) {
-  const enhanced = enhanceExecutionSnapshotWithWaitpoints(makeSnapshot(batchId), waitpoints, order);
+  const snapshot = makeSnapshot(batchId);
+  const enhanced = enhanceExecutionSnapshotWithWaitpoints(snapshot, waitpoints, order);
   const args: ResolveCompletedWaitpointsArgs = {
     runId: "run_1",
     batchId: batchId ?? undefined,
@@ -197,7 +183,9 @@ async function assertParity(
   };
   // count-carried-forward behaviour (order.length, not the record count) is covered by
   // the run-store Redis suite, not here -- this line only constructs `args`, not asserts.
-  const resolved = await referenceResolver(args, async (id) => runOutputs[id]);
+  const rows = await referenceResolver(args, async (id) => runOutputs[id]);
+  const resolvedEnhanced = enhanceExecutionSnapshotWithWaitpoints(snapshot, rows, order);
+  const resolved = resolvedEnhanced.completedWaitpoints;
   expect(resolved).toEqual(enhanced.completedWaitpoints);
   return { enhanced, resolved };
 }
@@ -410,7 +398,11 @@ describe("the completed-waitpoints freeze", () => {
     });
     expect(resolved).toHaveLength(1);
     expect(resolved[0]!.id).toBe("wp_hook");
-    expect(resolved[0]!.index).toBe(0);
+    // The hook returns an UNENHANCED row even though the id sits at order position 0: no index and
+    // no nested completion objects. Enhancement is the caller's single step.
+    expect(resolved[0]!).not.toHaveProperty("index");
+    expect(resolved[0]!).not.toHaveProperty("completedByTaskRun");
+    expect(resolved[0]!).not.toHaveProperty("completedByBatch");
   });
 
   it("round-trips all four waitpoint types", async () => {
@@ -601,8 +593,9 @@ describe("the exhaustive parity grid", () => {
                               ? [id]
                               : [id, id];
 
+                        const snapshot = makeSnapshot(readingBatchId);
                         const enhanced = enhanceExecutionSnapshotWithWaitpoints(
-                          makeSnapshot(readingBatchId),
+                          snapshot,
                           [w],
                           order
                         );
@@ -613,10 +606,15 @@ describe("the exhaustive parity grid", () => {
                           order,
                           records: [toRecord(w)],
                         };
-                        const resolved = await referenceResolver(
+                        const rows = await referenceResolver(
                           args,
                           async (runId) => RUN_OUTPUT_LOOKUP[runId]
                         );
+                        const resolved = enhanceExecutionSnapshotWithWaitpoints(
+                          snapshot,
+                          rows,
+                          order
+                        ).completedWaitpoints;
 
                         if (!isDeepStrictEqual(resolved, enhanced.completedWaitpoints)) {
                           failures.push({

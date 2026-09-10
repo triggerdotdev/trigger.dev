@@ -436,6 +436,49 @@ export interface WaitpointColocationOptions {
   residency?: Residency;
 }
 
+/**
+ * One completed waitpoint as a SNAPSHOT READ returns it, whichever backend served the read: exactly
+ * the fields run-engine's `enhanceExecutionSnapshotWithWaitpoints` consumes, and nothing more.
+ *
+ * Deliberately UNENHANCED — scalar ids, no `index`, no nested completion objects. Positional
+ * expansion over `completedWaitpointOrder`, `index`, the nested `completedByTaskRun` /
+ * `completedByBatch` objects and their friendly ids all belong to that one enhancement step, so a
+ * Redis-served and a Postgres-served read hand it identical material and cannot diverge.
+ */
+export type SnapshotReadWaitpoint = {
+  id: string;
+  friendlyId: string;
+  type: Waitpoint["type"];
+  completedAt: Date | null;
+  output: string | null;
+  outputType: string;
+  outputIsError: boolean;
+  completedByTaskRunId: string | null;
+  completedByBatchId: string | null;
+  completedAfter: Date | null;
+  /**
+   * The raw triple, not a pre-resolved key: the enhancement step owns the
+   * `userProvidedIdempotencyKey && !inactiveIdempotencyKey` user-visibility rule for every backend.
+   */
+  idempotencyKey: string;
+  userProvidedIdempotencyKey: boolean;
+  inactiveIdempotencyKey: string | null;
+};
+
+// A Postgres waitpoint row IS one of these, so that read path returns its rows unchanged. Drift on
+// either side breaks here rather than at a runtime cast.
+const _pgWaitpointSatisfiesSnapshotRead: (w: Waitpoint) => SnapshotReadWaitpoint = (w) => w;
+void _pgWaitpointSatisfiesSnapshotRead;
+
+/**
+ * What `findLatestExecutionSnapshot` returns. A redis-primary run has no Postgres snapshot row, so
+ * its payload is reproduced from MemoryDB; this type is what keeps that reproduction honest instead
+ * of claiming to be a Prisma relation payload.
+ */
+export type LatestExecutionSnapshotRead = Prisma.TaskRunExecutionSnapshotGetPayload<{
+  include: { checkpoint: true };
+}> & { completedWaitpoints: SnapshotReadWaitpoint[] };
+
 export interface RunStore {
   /**
    * Run a co-resident multi-write unit atomically on the store that OWNS `runId`. The callback gets
@@ -781,9 +824,7 @@ export interface RunStore {
     // When set, scopes the read to this environment (tenant boundary); a run in another env reads as
     // not-found. Omit to read regardless of environment (internal callers).
     environmentId?: string
-  ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<{
-    include: { completedWaitpoints: true; checkpoint: true };
-  }> | null>;
+  ): Promise<LatestExecutionSnapshotRead | null>;
   findExecutionSnapshot<T extends Prisma.TaskRunExecutionSnapshotFindFirstArgs>(
     args: Prisma.SelectSubset<T, Prisma.TaskRunExecutionSnapshotFindFirstArgs>,
     client?: ReadClient

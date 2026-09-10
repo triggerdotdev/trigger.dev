@@ -25,6 +25,7 @@ import type {
   FinalizeRunData,
   ForWaitpointCompletionContext,
   IdempotencyKeyRunMatch,
+  LatestExecutionSnapshotRead,
   LockRunData,
   PromotePendingVersionArgs,
   ReadClient,
@@ -1243,9 +1244,7 @@ export class RoutingRunStore implements RunStore {
     runId: string,
     client?: ReadClient,
     environmentId?: string
-  ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<{
-    include: { completedWaitpoints: true; checkpoint: true };
-  }> | null> {
+  ): Promise<LatestExecutionSnapshotRead | null> {
     const owningStore = this.#routeOrNew(runId);
     const snapshot = await owningStore.findLatestExecutionSnapshot(
       runId,

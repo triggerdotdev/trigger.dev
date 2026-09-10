@@ -10,7 +10,11 @@ import type {
   TaskRunStatus,
   Waitpoint,
 } from "@trigger.dev/database";
-import type { RunStore } from "@internal/run-store";
+import type {
+  LatestExecutionSnapshotRead,
+  RunStore,
+  SnapshotReadWaitpoint,
+} from "@internal/run-store";
 import { ExecutionSnapshotNotFoundError, ServiceValidationError } from "../errors.js";
 import type { HeartbeatTimeouts } from "../types.js";
 import type { SystemResources } from "./systems.js";
@@ -31,13 +35,6 @@ export interface EnhancedExecutionSnapshot extends TaskRunExecutionSnapshot {
   completedWaitpoints: CompletedWaitpoint[];
 }
 
-type ExecutionSnapshotWithCheckAndWaitpoints = Prisma.TaskRunExecutionSnapshotGetPayload<{
-  include: {
-    checkpoint: true;
-    completedWaitpoints: true;
-  };
-}>;
-
 type ExecutionSnapshotWithCheckpoint = Prisma.TaskRunExecutionSnapshotGetPayload<{
   include: {
     checkpoint: true;
@@ -45,7 +42,7 @@ type ExecutionSnapshotWithCheckpoint = Prisma.TaskRunExecutionSnapshotGetPayload
 }>;
 
 function enhanceExecutionSnapshot(
-  snapshot: ExecutionSnapshotWithCheckAndWaitpoints
+  snapshot: LatestExecutionSnapshotRead
 ): EnhancedExecutionSnapshot {
   return enhanceExecutionSnapshotWithWaitpoints(
     snapshot,
@@ -57,10 +54,15 @@ function enhanceExecutionSnapshot(
 /**
  * Transforms a snapshot (with checkpoint but without waitpoints) into an EnhancedExecutionSnapshot
  * by combining it with pre-fetched waitpoints.
+ *
+ * This is the ONE place that expands a distinct waitpoint across its repeated positions in
+ * `completedWaitpointOrder`, assigns `index`, and builds the nested `completedByTaskRun` (with its
+ * batch) and `completedByBatch` objects. Every backend feeds it the same unenhanced rows, so none of
+ * them can produce a runner payload the others would not.
  */
 export function enhanceExecutionSnapshotWithWaitpoints(
   snapshot: ExecutionSnapshotWithCheckpoint,
-  waitpoints: Waitpoint[],
+  waitpoints: SnapshotReadWaitpoint[],
   completedWaitpointOrder: string[]
 ): EnhancedExecutionSnapshot {
   return {

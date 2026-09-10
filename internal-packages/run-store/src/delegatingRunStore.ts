@@ -39,6 +39,7 @@ import type {
   FinalizeRunData,
   ForWaitpointCompletionContext,
   IdempotencyKeyRunMatch,
+  LatestExecutionSnapshotRead,
   LockRunData,
   PromotePendingVersionArgs,
   ReadClient,
@@ -457,9 +458,7 @@ export class DelegatingRunStore implements RunStore {
     // When set, scopes the read to this environment (tenant boundary); a run in another env reads as
     // not-found. Omit to read regardless of environment (internal callers).
     environmentId?: string
-  ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<{
-    include: { completedWaitpoints: true; checkpoint: true };
-  }> | null> {
+  ): Promise<LatestExecutionSnapshotRead | null> {
     return this.delegate.findLatestExecutionSnapshot(runId, client, environmentId);
   }
 
