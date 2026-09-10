@@ -207,6 +207,7 @@ A few things to get right:
 
 - Pick one view and stay with it. Apply `changes` if you store rows, write `transcript` if you store a document; don't mix them within one save.
 - `put` for a known id replaces the message in place; position and ordering don't change.
+- Order is the message's position in the transcript. A document store gets it from `transcript.entries`. A row store needs an order column set once, when a `put` first inserts an id, following the order the `put`s arrive in, and left unchanged when a later `put` replaces that id in place. Don't sort by a write timestamp: a replaced message has to keep its place, and a steering message sent mid-turn sorts before the answer it shaped even though its row is written later.
 - `truncateAfter` and `remove` are idempotent. Applying a changeset twice gives the same result as applying it once.
 - `load` with no options returns the whole conversation in order. With `limit`, return the most recent messages and a `nextCursor` (the id of the oldest returned message) when earlier messages exist.
 - Scope reads and writes by `clientData` where your backend enforces tenancy.
