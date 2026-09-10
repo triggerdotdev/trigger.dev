@@ -685,6 +685,15 @@ export const BuildServerMetadata = z.object({
 
 export type BuildServerMetadata = z.infer<typeof BuildServerMetadata>;
 
+export const GetDeploymentArtifactUrlResponseBody = z.object({
+  url: z.string().url(),
+  expiresAt: z.string().datetime(),
+});
+
+export type GetDeploymentArtifactUrlResponseBody = z.infer<
+  typeof GetDeploymentArtifactUrlResponseBody
+>;
+
 export const ProgressDeploymentRequestBody = z.object({
   contentHash: z.string().optional(),
   gitMeta: GitMeta.optional(),

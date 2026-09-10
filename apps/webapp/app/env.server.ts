@@ -867,6 +867,12 @@ const EnvironmentSchema = z
       .number()
       .int()
       .default(100 * 1024 * 1024), // 100MB
+    DEPLOYMENT_ARTIFACT_DOWNLOAD_URL_TTL_SECONDS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .max(60 * 60 * 24 * 7) // SigV4 presign limit
+      .default(60 * 10), // 10 minutes
     DEPLOYMENT_BUILD_ENV_VARS_SIZE_LIMIT_BYTES: z.coerce
       .number()
       .int()
