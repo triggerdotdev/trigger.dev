@@ -51,18 +51,40 @@ With `hydrateMessages`, your hook was the source of truth for history and the ru
         }
         if (!chat) return { messages: [], state: null };
 
-        const rows = await db.message.findMany({
-          where: { chatId },
-          orderBy: { position: "asc" },
-        });
+        const cursors = {
+          lastOutEventId: chat.session?.lastEventId ?? undefined,
+          lastInEventId: chat.session?.lastInEventId ?? undefined,
+        };
+
+        let before: number | undefined;
+        if (opts?.before) {
+          const anchor = await db.message.findUnique({
+            where: { chatId_id: { chatId, id: opts.before } },
+          });
+          if (!anchor) return { messages: [], state: chat.transcriptState, cursors };
+          before = anchor.position;
+        }
+        const where = { chatId, ...(before !== undefined ? { position: { lt: before } } : {}) };
+
+        let rows;
+        let nextCursor: string | undefined;
+        if (opts?.limit) {
+          const page = await db.message.findMany({
+            where,
+            orderBy: { position: "desc" },
+            take: opts.limit + 1,
+          });
+          rows = page.slice(0, opts.limit).reverse();
+          if (page.length > opts.limit) nextCursor = rows[0]?.id;
+        } else {
+          rows = await db.message.findMany({ where, orderBy: { position: "asc" } });
+        }
 
         return {
           messages: rows.map((row) => row.message),
           state: chat.transcriptState,
-          cursors: {
-            lastOutEventId: chat.session?.lastEventId ?? undefined,
-            lastInEventId: chat.session?.lastInEventId ?? undefined,
-          },
+          cursors,
+          nextCursor,
           nonFinalIds: rows.filter((row) => row.status === "partial").map((row) => row.id),
         };
       },
@@ -73,7 +95,7 @@ With `hydrateMessages`, your hook was the source of truth for history and the ru
     };
     ```
 
-    With `opts.limit`, return the most recent messages and a `nextCursor` (the id of the oldest returned message) when earlier ones exist; `opts.before` pages backwards from that id. The runtime never passes them, but the [history read](/ai-chat/transcript-storage#reading-the-transcript) your frontend uses does.
+    The runtime calls `load` with no options and wants the whole conversation. The [history read](/ai-chat/transcript-storage#reading-the-transcript) your frontend uses passes `limit`, and later `before`, so the example fetches one row more than the page to learn whether earlier messages exist and returns the oldest included id as `nextCursor`.
   </Step>
 
   <Step title="Implement save">
