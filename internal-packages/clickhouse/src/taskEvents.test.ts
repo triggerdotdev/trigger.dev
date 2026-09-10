@@ -63,10 +63,10 @@ function readColumnKinds(ch: ClickHouse) {
 
 describe("task events v2", () => {
   clickhouseTest(
-    "computes attributes_text when the writer omits it",
+    "stores attributes_text serialized by the writer",
     async ({ clickhouseContainer }) => {
       const ch = new ClickHouse({ url: clickhouseContainer.getConnectionUrl(), name: "test" });
-      const spanId = "span_computed_attributes";
+      const spanId = "span_serialized_attributes";
 
       const [insertError] = await ch.taskEventsV2.insert([
         {
@@ -87,7 +87,7 @@ describe("task events v2", () => {
       expect(readError).toBeNull();
       expect(rows).toEqual([
         {
-          attributes_text: '{"a":"hello","nested":{"enabled":true},"z":1}',
+          attributes_text: '{"z":1,"a":"hello","nested":{"enabled":true}}',
           has_inserted_at: 1,
         },
       ]);
@@ -95,15 +95,15 @@ describe("task events v2", () => {
   );
 
   clickhouseTest(
-    "accepts attributes_text supplied by the writer",
+    "computes attributes_text for a writer that omits it",
     async ({ clickhouseContainer }) => {
       const ch = new ClickHouse({ url: clickhouseContainer.getConnectionUrl(), name: "test" });
-      const spanId = "span_supplied_attributes";
+      const spanId = "span_computed_attributes";
 
-      // A writer that serializes attributes itself can send the column directly.
-      // The DEFAULT expression only applies when the column is omitted.
+      // An older writer that only sends the JSON column still gets attributes_text
+      // from the DEFAULT expression, so both writer generations can coexist.
       const insert = ch.writer.insertUnsafe<Record<string, unknown>>({
-        name: "insertTaskEventsV2WithAttributesText",
+        name: "insertTaskEventsV2WithoutAttributesText",
         table: "trigger_dev.task_events_v2",
         columns: [
           "environment_id",
@@ -120,7 +120,6 @@ describe("task events v2", () => {
           "kind",
           "status",
           "attributes",
-          "attributes_text",
           "metadata",
           "expires_at",
         ],
@@ -130,8 +129,7 @@ describe("task events v2", () => {
       const [insertError] = await insert([
         {
           ...baseEvent(spanId),
-          attributes: { supplied: false },
-          attributes_text: '{"supplied":true}',
+          attributes: { z: 1, a: "hello" },
         },
       ]);
       expect(insertError).toBeNull();
@@ -141,7 +139,7 @@ describe("task events v2", () => {
         spanId,
       });
       expect(readError).toBeNull();
-      expect(rows).toEqual([{ attributes_text: '{"supplied":true}', has_inserted_at: 1 }]);
+      expect(rows).toEqual([{ attributes_text: '{"a":"hello","z":1}', has_inserted_at: 1 }]);
     }
   );
 

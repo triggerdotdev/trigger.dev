@@ -195,7 +195,7 @@ const TASK_EVENT_V2_INSERT_COLUMNS = [
   "kind",
   "status",
   "attributes",
-  "attributes_input",
+  "attributes_text",
   "metadata",
   "expires_at",
   "machine_id",
@@ -226,14 +226,25 @@ export const TaskEventV2Input = z.object({
 
 export type TaskEventV2Input = z.input<typeof TaskEventV2Input>;
 
-type TaskEventV2DualAttributesInput = TaskEventV2Input & {
-  attributes_input: unknown;
+type TaskEventV2Row = TaskEventV2Input & {
+  attributes_text: string;
 };
 
-function withAttributesInput(event: TaskEventV2Input): TaskEventV2DualAttributesInput {
+// attributes_text is serialized by the writer rather than computed by ClickHouse,
+// so the stored text is exactly what was sent and the table does not have to
+// parse and re-encode the attributes on every insert.
+export function serializeTaskEventAttributes(attributes: unknown): string {
+  if (attributes === null || attributes === undefined) {
+    return "{}";
+  }
+
+  return JSON.stringify(attributes) ?? "{}";
+}
+
+function toTaskEventV2Row(event: TaskEventV2Input): TaskEventV2Row {
   return {
     ...event,
-    attributes_input: event.attributes,
+    attributes_text: serializeTaskEventAttributes(event.attributes),
   };
 }
 
@@ -241,7 +252,7 @@ export function insertTaskEventsV2(
   ch: ClickhouseWriter,
   settings?: ClickHouseSettings
 ): ClickhouseInsertFunction<TaskEventV2Input> {
-  const insert = ch.insertUnsafe<TaskEventV2DualAttributesInput>({
+  const insert = ch.insertUnsafe<TaskEventV2Row>({
     name: "insertTaskEventsV2",
     table: "trigger_dev.task_events_v2",
     columns: TASK_EVENT_V2_INSERT_COLUMNS,
@@ -256,9 +267,7 @@ export function insertTaskEventsV2(
   });
 
   return (events, options) => {
-    const values = Array.isArray(events)
-      ? events.map(withAttributesInput)
-      : withAttributesInput(events);
+    const values = Array.isArray(events) ? events.map(toTaskEventV2Row) : toTaskEventV2Row(events);
 
     return insert(values, options);
   };
