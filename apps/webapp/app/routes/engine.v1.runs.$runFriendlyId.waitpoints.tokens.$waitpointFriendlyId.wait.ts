@@ -2,11 +2,12 @@ import { json } from "@remix-run/server-runtime";
 import { type WaitForWaitpointTokenResponseBody } from "@trigger.dev/core/v3";
 import { RunId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import { z } from "zod";
-import type { PrismaReplicaClient } from "~/db.server";
+import { prisma, type PrismaReplicaClient } from "~/db.server";
 import { resolveWaitpointThroughReadThrough } from "~/runEngine/concerns/resolveWaitpointThroughReadThrough.server";
 import { logger } from "~/services/logger.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { engine } from "~/v3/runEngine.server";
+import { runStore } from "~/v3/runStore.server";
 
 const { action } = createActionApiRoute(
   {
@@ -23,7 +24,19 @@ const { action } = createActionApiRoute(
     const runId = RunId.toId(params.runFriendlyId);
 
     try {
-      //check permissions
+      const run = await runStore.findRun(
+        {
+          id: runId,
+          runtimeEnvironmentId: authentication.environment.id,
+        },
+        { select: { id: true } },
+        prisma
+      );
+
+      if (!run) {
+        throw new Response("You don't have permissions for this run", { status: 401 });
+      }
+
       const waitpoint = await resolveWaitpointThroughReadThrough({
         waitpointId,
         environmentId: authentication.environment.id,
@@ -49,7 +62,7 @@ const { action } = createActionApiRoute(
       }
 
       const _result = await engine.blockRunWithWaitpoint({
-        runId,
+        runId: run.id,
         waitpoints: [waitpointId],
         projectId: authentication.environment.project.id,
         organizationId: authentication.environment.organization.id,
