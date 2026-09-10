@@ -62,9 +62,11 @@ import {
   getSelfServePurchaseBlockReason,
 } from "~/services/platform.v3.server";
 import { textLinkClassName } from "~/components/primitives/TextLink";
+import { rbac } from "~/services/rbac.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { formatCurrency, formatNumber } from "~/utils/numberFormatter";
+import { isPaidAddOnPurchase } from "~/utils/paidAddOnPermissions";
 import { concurrencyPath, EnvironmentParamSchema, v3BillingPath } from "~/utils/pathBuilder";
 import { AllocateConcurrencyService } from "~/v3/services/allocateConcurrency.server";
 import { SetConcurrencyAddOnService } from "~/v3/services/setConcurrencyAddOn.server";
@@ -95,6 +97,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     });
   }
 
+  const auth = await rbac.authenticateSession(request, {
+    userId,
+    organizationId: project.organizationId,
+  });
+  const canManageBilling = auth.ok && auth.ability.can("manage", { type: "billing" });
+
   const presenter = new ManageConcurrencyPresenter();
   const [error, result] = await tryCatch(
     presenter.call({
@@ -116,7 +124,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throw new Response(null, { status: 404, statusText: "Plans not found" });
   }
 
-  return typedjson(result);
+  return typedjson({ ...result, canManageBilling });
 };
 
 const FormSchema = z.discriminatedUnion("action", [
@@ -160,6 +168,21 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
   if (submission.status !== "success") {
     return json(submission.reply());
+  }
+
+  if (isPaidAddOnPurchase(submission.value.action)) {
+    const auth = await rbac.authenticateSession(request, {
+      userId,
+      organizationId: project.organizationId,
+    });
+    if (!auth.ok || !auth.ability.can("manage", { type: "billing" })) {
+      return json(
+        submission.reply({
+          fieldErrors: { amount: ["You don't have permission to manage billing."] },
+        }),
+        { status: 403 }
+      );
+    }
   }
 
   if (submission.value.action === "allocate") {
@@ -252,6 +275,7 @@ export default function Page() {
     environments,
     concurrencyPricing,
     maxQuota,
+    canManageBilling,
   } = useTypedLoaderData<typeof loader>();
 
   return (
@@ -287,6 +311,7 @@ export default function Page() {
               environments={environments}
               concurrencyPricing={concurrencyPricing}
               maxQuota={maxQuota}
+              canManageBilling={canManageBilling}
             />
           ) : (
             <NotUpgradable environments={environments} />
@@ -317,7 +342,8 @@ function Upgradable({
   environments,
   concurrencyPricing,
   maxQuota,
-}: ConcurrencyResult) {
+  canManageBilling,
+}: ConcurrencyResult & { canManageBilling: boolean }) {
   const lastSubmission = useActionData();
   const [form, fields] = useForm({
     id: "allocate-concurrency",
@@ -360,6 +386,7 @@ function Upgradable({
               extraConcurrency={extraConcurrency}
               extraUnallocatedConcurrency={extraUnallocatedConcurrency}
               maxQuota={maxQuota}
+              canManageBilling={canManageBilling}
               disabled={unallocated < 0 ? false : allocationModified}
             />
           </div>
@@ -614,6 +641,7 @@ function PurchaseConcurrencyModal({
   extraConcurrency,
   extraUnallocatedConcurrency,
   maxQuota,
+  canManageBilling,
   disabled,
 }: {
   concurrencyPricing: {
@@ -623,6 +651,7 @@ function PurchaseConcurrencyModal({
   extraConcurrency: number;
   extraUnallocatedConcurrency: number;
   maxQuota: number;
+  canManageBilling: boolean;
   disabled: boolean;
 }) {
   const showSelfServe = useShowSelfServe();
@@ -828,7 +857,12 @@ function PurchaseConcurrencyModal({
                   <Button
                     variant="danger/medium"
                     type="submit"
-                    disabled={isLoading || state === "need_to_increase_unallocated"}
+                    disabled={
+                      !canManageBilling || isLoading || state === "need_to_increase_unallocated"
+                    }
+                    tooltip={
+                      canManageBilling ? undefined : "You don't have permission to manage billing"
+                    }
                     LeadingIcon={isLoading ? SpinnerWhite : undefined}
                   >
                     {`Remove ${formatNumber(extraConcurrency - amountValue)} concurrency`}
@@ -840,7 +874,10 @@ function PurchaseConcurrencyModal({
                   <Button
                     variant="primary/medium"
                     type="submit"
-                    disabled={isLoading || state === "no_change"}
+                    disabled={!canManageBilling || isLoading || state === "no_change"}
+                    tooltip={
+                      canManageBilling ? undefined : "You don't have permission to manage billing"
+                    }
                     LeadingIcon={isLoading ? SpinnerWhite : undefined}
                   >
                     {`Purchase ${formatNumber(amountValue - extraConcurrency)} concurrency`}

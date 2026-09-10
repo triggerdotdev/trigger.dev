@@ -38,7 +38,7 @@ export class SetSchedulesAddOnService extends BaseService {
             return { success: true };
           }
           case "error": {
-            return { success: false, error: result.error };
+            return { success: false, error: "Failed to update schedules. Please try again." };
           }
           case "max_quota_reached": {
             return {
@@ -57,6 +57,7 @@ export class SetSchedulesAddOnService extends BaseService {
       case "quota-increase": {
         const user = await this._replica.user.findFirst({
           where: { id: userId },
+          select: { email: true, name: true, displayName: true },
         });
 
         if (!user) {
@@ -89,7 +90,7 @@ export class SetSchedulesAddOnService extends BaseService {
         );
 
         if (error) {
-          return { success: false, error: error.message };
+          return { success: false, error: "Failed to send the quota request. Please try again." };
         }
 
         return { success: true };

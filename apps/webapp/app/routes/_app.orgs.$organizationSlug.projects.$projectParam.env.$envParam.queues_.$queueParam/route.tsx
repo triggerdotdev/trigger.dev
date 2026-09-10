@@ -1,4 +1,4 @@
-import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { QueueItem } from "@trigger.dev/core/v3/schemas";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -59,6 +59,9 @@ import type {
   ConcurrencyKeysResponse,
 } from "~/routes/resources.queues.concurrency-keys";
 import { canAccessQueueMetricsUi } from "~/v3/canAccessQueueMetricsUi.server";
+import { rbac } from "~/services/rbac.server";
+import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
+import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { requireUserId } from "~/services/session.server";
 import { docsPath, EnvironmentParamSchema, v3RunsPath } from "~/utils/pathBuilder";
 import { formatNumberCompact } from "~/utils/numberFormatter";
@@ -119,6 +122,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   if (!environment)
     throw new Response(undefined, { status: 404, statusText: "Environment not found" });
 
+  const auth = await rbac.authenticateSession(request, {
+    userId,
+    organizationId: project.organizationId,
+    projectId: project.id,
+  });
+  const canWriteTasks = auth.ok && auth.ability.can("write", { type: "tasks" });
+
   const retrieve = await new QueueRetrievePresenter().call({ environment, queueInput: queueParam });
   if (!retrieve.success) {
     throw new Response(undefined, { status: 404, statusText: "Queue not found" });
@@ -159,6 +169,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     backPath: url.pathname.replace(/\/[^/]+$/, ""),
     defaultPeriod: clampQueueMetricsPeriod(queueMetricsPeriodFromRequest(request), maxPeriodDays),
     maxPeriodDays,
+    canWriteTasks,
     ids: {
       organizationId: environment.organizationId,
       projectId: environment.projectId,
@@ -167,43 +178,54 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   });
 };
 
-export const action = async ({ request, params }: ActionFunctionArgs) => {
-  const userId = await requireUserId(request);
-  const { organizationSlug, projectParam, envParam, queueParam } = ParamsSchema.parse(params);
+export const action = dashboardAction(
+  {
+    params: ParamsSchema,
+    context: (params) => resolveProjectAuthScope(params.organizationSlug, params.projectParam),
+    authorization: {
+      action: "write",
+      resource: { type: "tasks" },
+      message: "With your current role, you can't manage queues.",
+    },
+  },
+  async ({ request, params, user }) => {
+    const userId = user.id;
+    const { organizationSlug, projectParam, envParam, queueParam } = ParamsSchema.parse(params);
 
-  const url = new URL(request.url);
-  const redirectPath = `/orgs/${organizationSlug}/projects/${projectParam}/env/${envParam}/queues/${queueParam}${url.search}`;
+    const url = new URL(request.url);
+    const redirectPath = `/orgs/${organizationSlug}/projects/${projectParam}/env/${envParam}/queues/${queueParam}${url.search}`;
 
-  if (request.method.toLowerCase() !== "post") {
-    return redirectWithErrorMessage(redirectPath, request, "Wrong method");
+    if (request.method.toLowerCase() !== "post") {
+      return redirectWithErrorMessage(redirectPath, request, "Wrong method");
+    }
+
+    const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+    if (!project) throw new Response(undefined, { status: 404, statusText: "Project not found" });
+
+    const environment = await findEnvironmentBySlug(project.id, envParam, userId);
+    if (!environment)
+      throw new Response(undefined, { status: 404, statusText: "Environment not found" });
+
+    if (environment.archivedAt) {
+      return redirectWithErrorMessage(redirectPath, request, "This branch is archived");
+    }
+
+    const formData = await request.formData();
+
+    // Pause/resume/override actions are shared with the Queues list route; here we redirect back to
+    // the detail page so the user stays put.
+    const result = await handleQueueMutationAction({
+      request,
+      environment,
+      userId,
+      formData,
+      redirectPath,
+    });
+    if (result) return result;
+
+    return redirectWithErrorMessage(redirectPath, request, "Something went wrong");
   }
-
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
-  if (!project) throw new Response(undefined, { status: 404, statusText: "Project not found" });
-
-  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
-  if (!environment)
-    throw new Response(undefined, { status: 404, statusText: "Environment not found" });
-
-  if (environment.archivedAt) {
-    return redirectWithErrorMessage(redirectPath, request, "This branch is archived");
-  }
-
-  const formData = await request.formData();
-
-  // Pause/resume/override actions are shared with the Queues list route; here we redirect back to
-  // the detail page so the user stays put.
-  const result = await handleQueueMutationAction({
-    request,
-    environment,
-    userId,
-    formData,
-    redirectPath,
-  });
-  if (result) return result;
-
-  return redirectWithErrorMessage(redirectPath, request, "Something went wrong");
-};
+);
 
 const CK_LIVE_LIMIT = 50;
 
@@ -247,6 +269,7 @@ export default function Page() {
     ids,
     defaultPeriod,
     maxPeriodDays,
+    canWriteTasks,
   } = useTypedLoaderData<typeof loader>();
 
   const { value, replace } = useSearchParams();
@@ -354,11 +377,13 @@ export default function Page() {
               queue={queue}
               environmentConcurrencyLimit={environmentConcurrencyLimit}
               trigger="button"
+              disabled={!canWriteTasks}
             />
             <QueuePauseResumeButton
               queue={{ id: queue.id, name: queue.name, paused: queue.paused }}
               variant="secondary/small"
               withQueueName
+              disabled={!canWriteTasks}
             />
           </div>
         </MetricsLayout.Filters>

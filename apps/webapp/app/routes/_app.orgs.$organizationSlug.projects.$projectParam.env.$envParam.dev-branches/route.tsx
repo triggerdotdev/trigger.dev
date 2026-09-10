@@ -1,7 +1,6 @@
 import { CheckIcon, PlusIcon } from "@heroicons/react/20/solid";
 import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { useSearchParams } from "@remix-run/react";
-import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useCallback } from "react";
 import { SearchInput } from "~/components/primitives/SearchInput";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -37,7 +36,8 @@ import { useProject } from "~/hooks/useProject";
 
 import { BranchesPresenter } from "~/presenters/v3/BranchesPresenter.server";
 import { logger } from "~/services/logger.server";
-import { requireUserId } from "~/services/session.server";
+import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
+import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { cn } from "~/utils/cn";
 import { branchesDevPath, docsPath, ProjectParamSchema } from "~/utils/pathBuilder";
 import { ArchiveButton } from "../resources.branches.archive";
@@ -52,39 +52,49 @@ import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta("Dev branches");
 
-export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
-  const { projectParam } = ProjectParamSchema.parse(params);
+export const loader = dashboardLoader(
+  {
+    params: ProjectParamSchema,
+    context: (params) => resolveProjectAuthScope(params.organizationSlug, params.projectParam),
+  },
+  async ({ request, params, user, ability }) => {
+    const userId = user.id;
+    const { projectParam } = params;
 
-  const searchParams = new URL(request.url).searchParams;
-  const parsedSearchParams = BranchesOptions.safeParse(Object.fromEntries(searchParams));
-  const options = parsedSearchParams.success ? parsedSearchParams.data : {};
+    const searchParams = new URL(request.url).searchParams;
+    const parsedSearchParams = BranchesOptions.safeParse(Object.fromEntries(searchParams));
+    const options = parsedSearchParams.success ? parsedSearchParams.data : {};
 
-  try {
-    const presenter = new BranchesPresenter();
-    const result = await presenter.call({
-      userId,
-      projectSlug: projectParam,
-      env: "development",
-      ...options,
-    });
+    try {
+      const presenter = new BranchesPresenter();
+      const result = await presenter.call({
+        userId,
+        projectSlug: projectParam,
+        env: "development",
+        ...options,
+      });
 
-    return typedjson(result);
-  } catch (error) {
-    logger.error("Error loading dev branches page", { error });
-    throw new Response(undefined, {
-      status: 400,
-      statusText: "Something went wrong, if this problem persists please contact support.",
-    });
+      return typedjson({
+        ...result,
+        canArchiveBranches: ability.can("write", { type: "deployments", envType: "DEVELOPMENT" }),
+      });
+    } catch (error) {
+      logger.error("Error loading dev branches page", { error });
+      throw new Response(undefined, {
+        status: 400,
+        statusText: "Something went wrong, if this problem persists please contact support.",
+      });
+    }
   }
-};
+);
 
 export const handle: Handle = {
   agentPageContext: (data) => branchesAgentPageContext(data),
 };
 
 export default function Page() {
-  const { branches, limits, currentPage, totalPages } = useTypedLoaderData<typeof loader>();
+  const { branches, limits, currentPage, totalPages, canArchiveBranches } =
+    useTypedLoaderData<typeof loader>();
   useAutoRevalidate({ interval: 5000 });
 
   const organization = useOrganization();
@@ -239,6 +249,7 @@ export default function Page() {
                                 {!branch.archivedAt ? (
                                   <ArchiveButton
                                     environment={branch}
+                                    canArchive={canArchiveBranches}
                                     // The root dev env (no parent) is the default
                                     // branch and can't be archived — matches the
                                     // guard in ArchiveBranchService.

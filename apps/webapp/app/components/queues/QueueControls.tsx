@@ -34,6 +34,7 @@ export function QueuePauseResumeButton({
   showTooltip = true,
   iconOnly = false,
   withQueueName = false,
+  disabled = false,
 }: {
   /** The "id" here is a friendlyId */
   queue: { id: string; name: string; paused: boolean };
@@ -45,12 +46,15 @@ export function QueuePauseResumeButton({
   iconOnly?: boolean;
   /** Render the full "Pause/Resume {name} queue" label instead of the short "Pause"/"Resume". */
   withQueueName?: boolean;
+  disabled?: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
 
   const label = queue.paused
     ? `Resumes the "${queue.name}" queue so its runs can be dequeued again.`
     : `Pauses all runs from being dequeued in the "${queue.name}" queue. Any executing runs will continue to run.`;
+
+  const tooltip = disabled ? "You don't have permission to manage queues" : label;
 
   const trigger = showTooltip ? (
     <div>
@@ -80,6 +84,7 @@ export function QueuePauseResumeButton({
                   fullWidth={fullWidth}
                   textAlignLeft={fullWidth}
                   aria-label={label}
+                  disabled={disabled}
                 >
                   {iconOnly
                     ? undefined
@@ -95,7 +100,7 @@ export function QueuePauseResumeButton({
             </div>
           </TooltipTrigger>
           <TooltipContent side="right" className={"text-xs"}>
-            {label}
+            {tooltip}
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
@@ -105,7 +110,14 @@ export function QueuePauseResumeButton({
       <PopoverMenuItem
         icon={queue.paused ? PlayIcon : PauseIcon}
         leadingIconClassName={queue.paused ? "text-success" : "text-warning"}
-        title={queue.paused ? "Resume..." : "Pause..."}
+        title={
+          disabled
+            ? "You don't have permission to manage queues"
+            : queue.paused
+              ? "Resume..."
+              : "Pause..."
+        }
+        disabled={disabled}
       />
     </DialogTrigger>
   );
@@ -158,6 +170,7 @@ export function QueueOverrideConcurrencyButton({
   queue,
   environmentConcurrencyLimit,
   trigger,
+  disabled = false,
 }: {
   queue: QueueItem & { concurrencyLimitOverridePercent: number | null };
   environmentConcurrencyLimit: number;
@@ -165,6 +178,7 @@ export function QueueOverrideConcurrencyButton({
    * "button" is a standalone labeled button; "icon" is an icon-only button with the label in a
    * hover tooltip, for compact placements like the detail-page live blocks. */
   trigger?: "menu-item" | "button" | "icon";
+  disabled?: boolean;
 }) {
   const navigation = useNavigation();
   const [isOpen, setIsOpen] = useState(false);
@@ -208,7 +222,9 @@ export function QueueOverrideConcurrencyButton({
   const limitOverCap = Number.isFinite(limitNumber) && limitNumber > environmentConcurrencyLimit;
 
   const submitDisabled =
-    isLoading || (mode === "percent" ? !percentValid : !concurrencyLimit || limitOverCap);
+    disabled ||
+    isLoading ||
+    (mode === "percent" ? !percentValid : !concurrencyLimit || limitOverCap);
 
   const iconLabel = isOverridden ? "Edit override" : "Override limit";
 
@@ -226,12 +242,13 @@ export function QueueOverrideConcurrencyButton({
                     LeadingIcon={AdjustmentsHorizontalIcon}
                     leadingIconClassName="text-text-dimmed"
                     aria-label={iconLabel}
+                    disabled={disabled}
                   />
                 </DialogTrigger>
               </div>
             </TooltipTrigger>
             <TooltipContent side="right" className="text-xs">
-              {iconLabel}
+              {disabled ? "You don't have permission to manage queues" : iconLabel}
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -249,6 +266,7 @@ export function QueueOverrideConcurrencyButton({
                     aria-label={
                       isOverridden ? "Edit concurrency override" : "Override concurrency limit"
                     }
+                    disabled={disabled}
                   >
                     {isOverridden ? "Edit override" : "Override limit"}
                   </Button>
@@ -256,8 +274,9 @@ export function QueueOverrideConcurrencyButton({
               </div>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="max-w-[230px] text-xs">
-              Give this queue its own concurrency limit instead of the environment default. Set it
-              as a number or a percentage of the environment limit.
+              {disabled
+                ? "You don't have permission to manage queues"
+                : "Give this queue its own concurrency limit instead of the environment default. Set it as a number or a percentage of the environment limit."}
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -265,7 +284,14 @@ export function QueueOverrideConcurrencyButton({
         <DialogTrigger asChild>
           <PopoverMenuItem
             icon={AdjustmentsHorizontalIcon}
-            title={isOverridden ? "Edit override…" : "Override limit…"}
+            title={
+              disabled
+                ? "You don't have permission to manage queues"
+                : isOverridden
+                  ? "Edit override…"
+                  : "Override limit…"
+            }
+            disabled={disabled}
           />
         </DialogTrigger>
       )}
@@ -382,7 +408,7 @@ export function QueueOverrideConcurrencyButton({
                       type="submit"
                       name="action"
                       value="queue-remove-override"
-                      disabled={isLoading}
+                      disabled={disabled || isLoading}
                       variant="danger/medium"
                     >
                       Remove override

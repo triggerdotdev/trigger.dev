@@ -276,10 +276,7 @@ export default function Page() {
                             {region.staticIPs === null ? (
                               <LinkButton
                                 variant="secondary/small"
-                                to={v3BillingPath(
-                                  organization,
-                                  "Upgrade your plan to unlock static IPs"
-                                )}
+                                to={v3BillingPath(organization, "staticIps")}
                                 LeadingIcon={ArrowUpCircleIcon}
                                 leadingIconClassName="text-indigo-500"
                               >

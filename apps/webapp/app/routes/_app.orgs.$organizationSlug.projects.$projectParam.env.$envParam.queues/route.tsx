@@ -8,7 +8,7 @@ import {
 } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, useNavigation } from "@remix-run/react";
-import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { QueuesIcon } from "~/assets/icons/QueuesIcon";
@@ -79,6 +79,9 @@ import {
   type MetricResourceTimeRange,
 } from "~/hooks/useMetricResourceQuery";
 import { logger } from "~/services/logger.server";
+import { rbac } from "~/services/rbac.server";
+import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
+import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { ENVIRONMENT_PAUSE_SOURCE_BILLING_LIMIT } from "~/utils/environmentPauseSource";
@@ -167,6 +170,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       statusText: "Environment not found",
     });
   }
+
+  const auth = await rbac.authenticateSession(request, {
+    userId,
+    organizationId: project.organizationId,
+    projectId: project.id,
+  });
+  const canWriteTasks = auth.ok && auth.ability.can("write", { type: "tasks" });
 
   // Per-org gate for the metrics UI. When off, this org gets the classic Queues page and
   // no metrics query fires.
@@ -267,6 +277,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       queueMetricsUiEnabled,
       defaultPeriod,
       maxPeriodDays,
+      canWriteTasks,
     });
   } catch (error) {
     console.error(error);
@@ -277,78 +288,89 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 };
 
-export const action = async ({ request, params }: ActionFunctionArgs) => {
-  const userId = await requireUserId(request);
-  if (request.method.toLowerCase() !== "post") {
-    return redirectWithErrorMessage(
-      `/orgs/${params.organizationSlug}/projects/${params.projectParam}/env/${params.envParam}/queues`,
+export const action = dashboardAction(
+  {
+    params: EnvironmentParamSchema,
+    context: (params) => resolveProjectAuthScope(params.organizationSlug, params.projectParam),
+    authorization: {
+      action: "write",
+      resource: { type: "tasks" },
+      message: "With your current role, you can't manage queues.",
+    },
+  },
+  async ({ request, params, user }) => {
+    const userId = user.id;
+    if (request.method.toLowerCase() !== "post") {
+      return redirectWithErrorMessage(
+        `/orgs/${params.organizationSlug}/projects/${params.projectParam}/env/${params.envParam}/queues`,
+        request,
+        "Wrong method"
+      );
+    }
+
+    const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
+
+    const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+    if (!project) {
+      throw new Response(undefined, {
+        status: 404,
+        statusText: "Project not found",
+      });
+    }
+
+    const environment = await findEnvironmentBySlug(project.id, envParam, userId);
+    if (!environment) {
+      throw new Response(undefined, {
+        status: 404,
+        statusText: "Environment not found",
+      });
+    }
+
+    const formData = await request.formData();
+    const action = formData.get("action");
+
+    const url = new URL(request.url);
+    const redirectPath = `/orgs/${organizationSlug}/projects/${projectParam}/env/${envParam}/queues${url.search}`;
+
+    if (environment.archivedAt) {
+      return redirectWithErrorMessage(redirectPath, request, "This branch is archived");
+    }
+
+    // Per-queue actions (pause/resume/override/remove-override) are shared with the queue detail
+    // route, so they live in a helper that both routes call.
+    const queueMutation = await handleQueueMutationAction({
       request,
-      "Wrong method"
-    );
-  }
-
-  const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
-
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
-  if (!project) {
-    throw new Response(undefined, {
-      status: 404,
-      statusText: "Project not found",
+      environment,
+      userId,
+      formData,
+      redirectPath,
     });
-  }
-
-  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
-  if (!environment) {
-    throw new Response(undefined, {
-      status: 404,
-      statusText: "Environment not found",
-    });
-  }
-
-  const formData = await request.formData();
-  const action = formData.get("action");
-
-  const url = new URL(request.url);
-  const redirectPath = `/orgs/${organizationSlug}/projects/${projectParam}/env/${envParam}/queues${url.search}`;
-
-  if (environment.archivedAt) {
-    return redirectWithErrorMessage(redirectPath, request, "This branch is archived");
-  }
-
-  // Per-queue actions (pause/resume/override/remove-override) are shared with the queue detail
-  // route, so they live in a helper that both routes call.
-  const queueMutation = await handleQueueMutationAction({
-    request,
-    environment,
-    userId,
-    formData,
-    redirectPath,
-  });
-  if (queueMutation) {
-    return queueMutation;
-  }
-
-  switch (action) {
-    case "environment-pause": {
-      const pauseService = new PauseEnvironmentService();
-      const result = await pauseService.call(environment, "paused");
-      if (!result.success) {
-        return redirectWithErrorMessage(redirectPath, request, result.error);
-      }
-      return redirectWithSuccessMessage(redirectPath, request, "Environment paused");
+    if (queueMutation) {
+      return queueMutation;
     }
-    case "environment-resume": {
-      const resumeService = new PauseEnvironmentService();
-      const result = await resumeService.call(environment, "resumed");
-      if (!result.success) {
-        return redirectWithErrorMessage(redirectPath, request, result.error);
+
+    switch (action) {
+      case "environment-pause": {
+        const pauseService = new PauseEnvironmentService();
+        const result = await pauseService.call(environment, "paused");
+        if (!result.success) {
+          return redirectWithErrorMessage(redirectPath, request, result.error);
+        }
+        return redirectWithSuccessMessage(redirectPath, request, "Environment paused");
       }
-      return redirectWithSuccessMessage(redirectPath, request, "Environment resumed");
+      case "environment-resume": {
+        const resumeService = new PauseEnvironmentService();
+        const result = await resumeService.call(environment, "resumed");
+        if (!result.success) {
+          return redirectWithErrorMessage(redirectPath, request, result.error);
+        }
+        return redirectWithSuccessMessage(redirectPath, request, "Environment resumed");
+      }
+      default:
+        return redirectWithErrorMessage(redirectPath, request, "Something went wrong");
     }
-    default:
-      return redirectWithErrorMessage(redirectPath, request, "Something went wrong");
   }
-};
+);
 
 // Derives the environment concurrency status ("limit" | "burst" | "within") and the matching
 // text color from the current running count vs. the env limit and burst factor. Shared by both
@@ -390,6 +412,7 @@ function QueuesWithMetricsView() {
     allocation,
     defaultPeriod,
     maxPeriodDays,
+    canWriteTasks,
   } = useTypedLoaderData<typeof loader>();
 
   const metricsByQueue = metrics?.byQueue ?? {};
@@ -508,7 +531,7 @@ function QueuesWithMetricsView() {
           <div className="flex items-center gap-1.5">
             {environment.runsEnabled &&
             env.pauseSource !== ENVIRONMENT_PAUSE_SOURCE_BILLING_LIMIT ? (
-              <EnvironmentPauseResumeButton env={env} />
+              <EnvironmentPauseResumeButton env={env} disabled={!canWriteTasks} />
             ) : null}
           </div>
         </MetricsLayout.Filters>
@@ -613,7 +636,7 @@ function QueuesWithMetricsView() {
                   </LinkButton>
                 ) : (
                   <LinkButton
-                    to={v3BillingPath(organization, "Upgrade your plan for more concurrency")}
+                    to={v3BillingPath(organization, "concurrency")}
                     variant="secondary/small"
                     LeadingIcon={ArrowUpCircleIcon}
                     leadingIconClassName="text-indigo-500"
@@ -955,8 +978,16 @@ function QueuesWithMetricsView() {
                       </TableCell>
                       <TableCellMenu
                         isSticky
-                        visibleButtons={queue.paused && <QueuePauseResumeButton queue={queue} />}
-                        hiddenButtons={!queue.paused && <QueuePauseResumeButton queue={queue} />}
+                        visibleButtons={
+                          queue.paused && (
+                            <QueuePauseResumeButton queue={queue} disabled={!canWriteTasks} />
+                          )
+                        }
+                        hiddenButtons={
+                          !queue.paused && (
+                            <QueuePauseResumeButton queue={queue} disabled={!canWriteTasks} />
+                          )
+                        }
                         popoverContent={
                           <>
                             {queue.paused ? (
@@ -965,6 +996,7 @@ function QueuesWithMetricsView() {
                                 variant="minimal/small"
                                 fullWidth
                                 showTooltip={false}
+                                disabled={!canWriteTasks}
                               />
                             ) : (
                               <QueuePauseResumeButton
@@ -972,6 +1004,7 @@ function QueuesWithMetricsView() {
                                 variant="minimal/small"
                                 fullWidth
                                 showTooltip={false}
+                                disabled={!canWriteTasks}
                               />
                             )}
 
@@ -1010,6 +1043,7 @@ function QueuesWithMetricsView() {
                             <QueueOverrideConcurrencyButton
                               queue={queue}
                               environmentConcurrencyLimit={environment.concurrencyLimit}
+                              disabled={!canWriteTasks}
                             />
                           </>
                         }
@@ -1038,8 +1072,10 @@ function QueuesWithMetricsView() {
 
 function EnvironmentPauseResumeButton({
   env,
+  disabled,
 }: {
   env: { type: RuntimeEnvironmentType; paused: boolean };
+  disabled: boolean;
 }) {
   const navigation = useNavigation();
   const [isOpen, setIsOpen] = useState(false);
@@ -1073,6 +1109,7 @@ function EnvironmentPauseResumeButton({
                         ? "border-success/60 text-success [&_span]:text-success hover:border-success"
                         : "border-warning/60 text-warning [&_span]:text-warning hover:border-warning"
                     }
+                    disabled={disabled}
                     aria-label={
                       env.paused
                         ? `Resumes ${environmentFullTitle(env)} so its runs can be dequeued again.`
@@ -1087,9 +1124,11 @@ function EnvironmentPauseResumeButton({
               </div>
             </TooltipTrigger>
             <TooltipContent className={"text-xs"}>
-              {env.paused
-                ? `Resumes ${environmentFullTitle(env)} so its runs can be dequeued again.`
-                : `Pauses all runs from being dequeued in ${environmentFullTitle(env)}. Any executing runs will continue to run.`}
+              {disabled
+                ? "You don't have permission to manage queues"
+                : env.paused
+                  ? `Resumes ${environmentFullTitle(env)} so its runs can be dequeued again.`
+                  : `Pauses all runs from being dequeued in ${environmentFullTitle(env)}. Any executing runs will continue to run.`}
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -1114,7 +1153,7 @@ function EnvironmentPauseResumeButton({
               confirmButton={
                 <Button
                   type="submit"
-                  disabled={isLoading}
+                  disabled={disabled || isLoading}
                   variant={env.paused ? "primary/medium" : "danger/medium"}
                   LeadingIcon={
                     isLoading ? <Spinner color="white" /> : env.paused ? PlayIcon : PauseIcon
@@ -1626,7 +1665,7 @@ function formatOverridePercent(percent: number): string {
 // Classic Queues page, restored verbatim from before the Queue Metrics feature. Rendered
 // when queueMetricsUiEnabled is off so a gated org sees exactly the pre-metrics UI.
 function ClassicQueuesView() {
-  const { environment, queues, pagination, hasFilters, autoReloadPollIntervalMs } =
+  const { environment, queues, pagination, hasFilters, autoReloadPollIntervalMs, canWriteTasks } =
     useTypedLoaderData<typeof loader>();
 
   const organization = useOrganization();
@@ -1667,7 +1706,7 @@ function ClassicQueuesView() {
                 <div className="flex items-start gap-1">
                   {environment.runsEnabled &&
                   env.pauseSource !== ENVIRONMENT_PAUSE_SOURCE_BILLING_LIMIT ? (
-                    <EnvironmentPauseResumeButton env={env} />
+                    <EnvironmentPauseResumeButton env={env} disabled={!canWriteTasks} />
                   ) : null}
                   <LinkButton
                     variant="secondary/small"
@@ -1753,7 +1792,7 @@ function ClassicQueuesView() {
                     </LinkButton>
                   ) : (
                     <LinkButton
-                      to={v3BillingPath(organization, "Upgrade your plan for more concurrency")}
+                      to={v3BillingPath(organization, "concurrency")}
                       variant="secondary/small"
                       LeadingIcon={ArrowUpCircleIcon}
                       leadingIconClassName="text-indigo-500"
@@ -1924,8 +1963,16 @@ function ClassicQueuesView() {
                         </TableCell>
                         <TableCellMenu
                           isSticky
-                          visibleButtons={queue.paused && <QueuePauseResumeButton queue={queue} />}
-                          hiddenButtons={!queue.paused && <QueuePauseResumeButton queue={queue} />}
+                          visibleButtons={
+                            queue.paused && (
+                              <QueuePauseResumeButton queue={queue} disabled={!canWriteTasks} />
+                            )
+                          }
+                          hiddenButtons={
+                            !queue.paused && (
+                              <QueuePauseResumeButton queue={queue} disabled={!canWriteTasks} />
+                            )
+                          }
                           popoverContent={
                             <>
                               {queue.paused ? (
@@ -1934,6 +1981,7 @@ function ClassicQueuesView() {
                                   variant="minimal/small"
                                   fullWidth
                                   showTooltip={false}
+                                  disabled={!canWriteTasks}
                                 />
                               ) : (
                                 <QueuePauseResumeButton
@@ -1941,6 +1989,7 @@ function ClassicQueuesView() {
                                   variant="minimal/small"
                                   fullWidth
                                   showTooltip={false}
+                                  disabled={!canWriteTasks}
                                 />
                               )}
 
@@ -1979,6 +2028,7 @@ function ClassicQueuesView() {
                               <QueueOverrideConcurrencyButton
                                 queue={queue}
                                 environmentConcurrencyLimit={environment.concurrencyLimit}
+                                disabled={!canWriteTasks}
                               />
                             </>
                           }

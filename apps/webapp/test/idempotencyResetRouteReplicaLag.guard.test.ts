@@ -8,7 +8,8 @@
 // module seams that inject the store / assert the outcome are mocked (dependency injection at the
 // module boundary, not reimplementation — the store classes and findRun/findRunOnPrimary are real):
 // runStore (the RoutingRunStore built here), db (the live legacy container the tenant is seeded on),
-// session (a fixed userId), and resetIdempotencyKey (a recording stub of the reached service).
+// dashboard auth (a fixed authorized user), and resetIdempotencyKey (a recording stub of the reached
+// service).
 
 import type * as RemixNode from "@remix-run/node";
 import { heteroRunOpsPostgresTest, laggingReplica } from "@internal/testcontainers";
@@ -29,7 +30,22 @@ const h = vi.hoisted(() => ({
 }));
 
 vi.mock("~/services/session.server", () => ({
+  getUserId: vi.fn(async () => h.userId),
   requireUserId: vi.fn(async () => h.userId),
+}));
+
+vi.mock("~/env.server", () => ({
+  env: { ADMIN_DASHBOARD_ENABLED: false },
+}));
+
+vi.mock("~/services/rbac.server", () => ({
+  rbac: {
+    authenticateSession: vi.fn(async () => ({
+      ok: true,
+      user: { id: h.userId },
+      ability: { can: () => true, canSuper: () => false },
+    })),
+  },
 }));
 
 vi.mock("~/v3/runStore.server", () => ({
@@ -39,6 +55,9 @@ vi.mock("~/v3/runStore.server", () => ({
 }));
 
 vi.mock("~/db.server", () => ({
+  get $replica() {
+    return h.prisma;
+  },
   get prisma() {
     return h.prisma;
   },

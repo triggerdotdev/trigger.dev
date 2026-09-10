@@ -89,6 +89,7 @@ import {
   type TaskDetail,
 } from "~/presenters/v3/TaskDetailPresenter.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
+import { rbac } from "~/services/rbac.server";
 import { requireUser } from "~/services/session.server";
 import {
   docsPath,
@@ -139,6 +140,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const environment = await findEnvironmentBySlug(project.id, envParam, userId);
   if (!environment) throw new Response("Environment not found", { status: 404 });
+
+  const auth = await rbac.authenticateSession(request, {
+    userId,
+    organizationId: project.organizationId,
+  });
+  const canManageBilling = auth.ok && auth.ability.can("manage", { type: "billing" });
 
   const url = new URL(request.url);
   const period = url.searchParams.get("period") ?? undefined;
@@ -242,11 +249,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     scheduleList,
     runList,
     queueMetrics,
+    canManageBilling,
   });
 };
 
 export default function Page() {
-  const { task, activity, scheduleList, runList, queueMetrics } =
+  const { task, activity, scheduleList, runList, queueMetrics, canManageBilling } =
     useTypedLoaderData<typeof loader>();
   const zoomToTimeFilter = useZoomToTimeFilter();
   const organization = useOrganization();
@@ -344,6 +352,7 @@ export default function Page() {
                     limits={limits}
                     canUpgrade={canUpgrade}
                     canPurchaseSchedules={scheduleList?.canPurchaseSchedules ?? false}
+                    canManageBilling={canManageBilling}
                     extraSchedules={scheduleList?.extraSchedules ?? 0}
                     maxScheduleQuota={scheduleList?.maxScheduleQuota ?? 0}
                     planScheduleLimit={scheduleList?.planScheduleLimit ?? 0}
@@ -420,6 +429,7 @@ export default function Page() {
                   requiresUpgrade={requiresUpgrade}
                   canUpgrade={canUpgrade}
                   canPurchaseSchedules={scheduleList.canPurchaseSchedules}
+                  canManageBilling={canManageBilling}
                   extraSchedules={scheduleList.extraSchedules}
                   maxScheduleQuota={scheduleList.maxScheduleQuota}
                   planScheduleLimit={scheduleList.planScheduleLimit}
@@ -480,6 +490,7 @@ function CreateScheduleButton({
   limits,
   canUpgrade,
   canPurchaseSchedules,
+  canManageBilling,
   extraSchedules,
   maxScheduleQuota,
   planScheduleLimit,
@@ -491,6 +502,7 @@ function CreateScheduleButton({
   limits: { used: number; limit: number } | undefined;
   canUpgrade: boolean;
   canPurchaseSchedules: boolean;
+  canManageBilling: boolean;
   extraSchedules: number;
   maxScheduleQuota: number;
   planScheduleLimit: number;
@@ -523,6 +535,7 @@ function CreateScheduleButton({
             <ScheduleLimitActions
               actionPath={addOnPath}
               canPurchaseSchedules={canPurchaseSchedules}
+              canManageBilling={canManageBilling}
               schedulePricing={schedulePricing}
               extraSchedules={extraSchedules}
               limits={limits}

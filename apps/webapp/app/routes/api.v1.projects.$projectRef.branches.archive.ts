@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { authenticateRequestWithScopedApiKey } from "~/services/apiAuth.server";
 import { ArchiveBranchService } from "~/services/archiveBranch.server";
+import { authorizePatEnvironmentAccess } from "~/services/environmentVariableApiAccess.server";
 import { logger } from "~/services/logger.server";
 import { toBranchableEnvironmentType } from "~/utils/branchableEnvironment";
 
@@ -105,6 +106,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
     select: {
       id: true,
       archivedAt: true,
+      type: true,
+      organizationId: true,
+      projectId: true,
     },
     where: {
       organization: organizationFilter,
@@ -144,6 +148,19 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   if (!environment) {
     return json({ error: "Branch already archived" }, { status: 400 });
+  }
+
+  if (authenticationResult.type !== "apiKey") {
+    const denied = await authorizePatEnvironmentAccess({
+      request,
+      authType: authenticationResult.type,
+      organizationId: environment.organizationId,
+      projectId: environment.projectId,
+      envType: environment.type,
+      resource: "deployments",
+      action: "write",
+    });
+    if (denied) return denied;
   }
 
   let orgFilter:

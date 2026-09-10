@@ -1,15 +1,37 @@
-import { type ActionFunction } from "@remix-run/node";
 import { prisma } from "~/db.server";
 import { jsonWithErrorMessage, jsonWithSuccessMessage } from "~/models/message.server";
 import { logger } from "~/services/logger.server";
-import { requireUserId } from "~/services/session.server";
+import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
+import {
+  dashboardAction,
+  type DashboardActionHandlerArgs,
+} from "~/services/routeBuilders/dashboardBuilder";
 import { v3RunParamsSchema } from "~/utils/pathBuilder";
 import { runStore } from "~/v3/runStore.server";
 import { ResetIdempotencyKeyService } from "~/v3/services/resetIdempotencyKey.server";
 
-export const action: ActionFunction = async ({ request, params }) => {
-  const userId = await requireUserId(request);
-  const { projectParam, organizationSlug, envParam, runParam } = v3RunParamsSchema.parse(params);
+type ProjectAuthScope = Awaited<ReturnType<typeof resolveProjectAuthScope>>;
+
+export const action = dashboardAction(
+  {
+    params: v3RunParamsSchema,
+    context: (params) => resolveProjectAuthScope(params.organizationSlug, params.projectParam),
+    authorization: {
+      action: "write",
+      resource: { type: "runs" },
+      message: "With your current role, you can't reset idempotency keys.",
+    },
+  },
+  resetIdempotencyKeyAction
+);
+
+async function resetIdempotencyKeyAction({
+  request,
+  params,
+  user,
+}: DashboardActionHandlerArgs<typeof v3RunParamsSchema, undefined, ProjectAuthScope>) {
+  const userId = user.id;
+  const { projectParam, organizationSlug, envParam, runParam } = params;
 
   try {
     const resetSelect = {
@@ -96,4 +118,4 @@ export const action: ActionFunction = async ({ request, params }) => {
       );
     }
   }
-};
+}

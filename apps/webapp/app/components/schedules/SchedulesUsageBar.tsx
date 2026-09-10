@@ -12,6 +12,7 @@ type Props = {
   /** True when the plan would let them upgrade (vs being already on the highest plan). */
   canUpgrade: boolean;
   canPurchaseSchedules: boolean;
+  canManageBilling: boolean;
   extraSchedules: number;
   maxScheduleQuota: number;
   planScheduleLimit: number;
@@ -23,6 +24,7 @@ export function SchedulesUsageBar({
   requiresUpgrade,
   canUpgrade,
   canPurchaseSchedules,
+  canManageBilling,
   extraSchedules,
   maxScheduleQuota,
   planScheduleLimit,
@@ -79,6 +81,7 @@ export function SchedulesUsageBar({
           <ScheduleLimitActions
             actionPath={actionPath}
             canPurchaseSchedules={canPurchaseSchedules}
+            canManageBilling={canManageBilling}
             schedulePricing={schedulePricing}
             extraSchedules={extraSchedules}
             limits={limits}

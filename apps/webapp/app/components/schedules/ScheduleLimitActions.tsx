@@ -9,6 +9,7 @@ import { PurchaseSchedulesModal, type SchedulePricing } from "./PurchaseSchedule
 type Props = {
   actionPath: string;
   canPurchaseSchedules: boolean;
+  canManageBilling: boolean;
   schedulePricing: SchedulePricing | null;
   extraSchedules: number;
   limits: { used: number; limit: number };
@@ -22,6 +23,7 @@ type Props = {
 export function ScheduleLimitActions({
   actionPath,
   canPurchaseSchedules,
+  canManageBilling,
   schedulePricing,
   extraSchedules,
   limits,
@@ -51,6 +53,7 @@ export function ScheduleLimitActions({
         usedSchedules={limits.used}
         maxQuota={maxScheduleQuota}
         planScheduleLimit={planScheduleLimit}
+        canManageBilling={canManageBilling}
         triggerButton={
           variant === "dialog" ? <Button variant="primary/small">Purchase more…</Button> : undefined
         }

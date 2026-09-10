@@ -108,7 +108,9 @@ import {
   type RunQueueWaiting,
 } from "~/presenters/v3/RunQueueMetricsPresenter.server";
 import { type Span, SpanPresenter, type SpanRun } from "~/presenters/v3/SpanPresenter.server";
+import { findProjectBySlug } from "~/models/project.server";
 import { logger } from "~/services/logger.server";
+import { rbac } from "~/services/rbac.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { formatCurrencyAccurate } from "~/utils/numberFormatter";
@@ -137,6 +139,16 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { projectParam, organizationSlug, envParam, runParam, spanParam } =
     v3SpanParamsSchema.parse(params);
+
+  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+  if (!project) throw new Response("Project not found", { status: 404 });
+
+  const auth = await rbac.authenticateSession(request, {
+    userId,
+    organizationId: project.organizationId,
+    projectId: project.id,
+  });
+  const canWriteRuns = auth.ok && auth.ability.can("write", { type: "runs" });
 
   const url = new URL(request.url);
   const linkedRunId = url.searchParams.get("linkedRunId") ?? undefined;
@@ -182,6 +194,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
         type: "run" as const,
         run: result.run,
         queueMetrics,
+        canWriteRuns,
         loadedAt: Date.now(),
       });
     }
@@ -278,6 +291,7 @@ export function SpanView({
           run={fetcher.data.run}
           queueMetrics={fetcher.data.queueMetrics}
           loadedAt={fetcher.data.loadedAt}
+          canWriteRuns={fetcher.data.canWriteRuns}
           runParam={runParam}
           spanId={spanId}
           closePanel={closePanel}
@@ -404,6 +418,7 @@ function RunBody({
   run,
   queueMetrics,
   loadedAt,
+  canWriteRuns,
   runParam,
   spanId,
   closePanel,
@@ -411,6 +426,7 @@ function RunBody({
   run: SpanRun;
   queueMetrics: RunQueueMetrics | null;
   loadedAt: number;
+  canWriteRuns: boolean;
   runParam: string;
   spanId: string;
   closePanel?: () => void;
@@ -786,7 +802,12 @@ function RunBody({
                             type="submit"
                             variant="minimal/small"
                             LeadingIcon={ArrowPathIcon}
-                            disabled={resetFetcher.state === "submitting"}
+                            disabled={!canWriteRuns || resetFetcher.state === "submitting"}
+                            tooltip={
+                              canWriteRuns
+                                ? undefined
+                                : "You don't have permission to reset idempotency keys"
+                            }
                           >
                             {resetFetcher.state === "submitting" ? "Resetting..." : "Reset"}
                           </Button>

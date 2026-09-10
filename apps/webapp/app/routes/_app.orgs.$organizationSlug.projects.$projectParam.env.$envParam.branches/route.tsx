@@ -4,7 +4,7 @@ import { ArrowUpCircleIcon, CheckIcon, EnvelopeIcon, PlusIcon } from "@heroicons
 import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { useFetcher, useSearchParams } from "@remix-run/react";
-import { type ActionFunctionArgs, json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core/v3";
 import { useCallback, useEffect, useState } from "react";
 import { SearchInput } from "~/components/primitives/SearchInput";
@@ -63,6 +63,8 @@ import { BranchesPresenter } from "~/presenters/v3/BranchesPresenter.server";
 import { logger } from "~/services/logger.server";
 import { getCurrentPlan, getSelfServePurchaseBlockReason } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
+import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
+import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { cn } from "~/utils/cn";
 import {
   branchesPath,
@@ -96,32 +98,41 @@ const PurchaseSchema = z.discriminatedUnion("action", [
   }),
 ]);
 
-export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
-  const { projectParam } = ProjectParamSchema.parse(params);
+export const loader = dashboardLoader(
+  {
+    params: ProjectParamSchema,
+    context: (params) => resolveProjectAuthScope(params.organizationSlug, params.projectParam),
+  },
+  async ({ request, params, user, ability }) => {
+    const userId = user.id;
+    const { projectParam } = params;
 
-  const searchParams = new URL(request.url).searchParams;
-  const parsedSearchParams = BranchesOptions.safeParse(Object.fromEntries(searchParams));
-  const options = parsedSearchParams.success ? parsedSearchParams.data : {};
+    const searchParams = new URL(request.url).searchParams;
+    const parsedSearchParams = BranchesOptions.safeParse(Object.fromEntries(searchParams));
+    const options = parsedSearchParams.success ? parsedSearchParams.data : {};
 
-  try {
-    const presenter = new BranchesPresenter();
-    const result = await presenter.call({
-      userId,
-      projectSlug: projectParam,
-      env: "preview",
-      ...options,
-    });
+    try {
+      const presenter = new BranchesPresenter();
+      const result = await presenter.call({
+        userId,
+        projectSlug: projectParam,
+        env: "preview",
+        ...options,
+      });
 
-    return typedjson(result);
-  } catch (error) {
-    logger.error("Error loading preview branches page", { error });
-    throw new Response(undefined, {
-      status: 400,
-      statusText: "Something went wrong, if this problem persists please contact support.",
-    });
+      return typedjson({
+        ...result,
+        canArchiveBranches: ability.can("write", { type: "deployments", envType: "PREVIEW" }),
+      });
+    } catch (error) {
+      logger.error("Error loading preview branches page", { error });
+      throw new Response(undefined, {
+        status: 400,
+        statusText: "Something went wrong, if this problem persists please contact support.",
+      });
+    }
   }
-};
+);
 
 export async function action({ request, params }: ActionFunctionArgs) {
   const userId = await requireUserId(request);
@@ -206,6 +217,7 @@ export default function Page() {
     totalPages,
     hasBranches,
     canPurchaseBranches,
+    canArchiveBranches,
     extraBranches,
     branchPricing,
     maxBranchQuota,
@@ -401,7 +413,10 @@ export default function Page() {
                                       />
                                     )}
                                     {!branch.archivedAt ? (
-                                      <ArchiveButton environment={branch} />
+                                      <ArchiveButton
+                                        environment={branch}
+                                        canArchive={canArchiveBranches}
+                                      />
                                     ) : null}
                                   </>
                                 ) : null

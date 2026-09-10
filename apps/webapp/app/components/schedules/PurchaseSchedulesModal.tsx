@@ -34,6 +34,7 @@ type Props = {
   usedSchedules: number;
   maxQuota: number;
   planScheduleLimit: number;
+  canManageBilling: boolean;
   triggerButton?: ReactNode;
 };
 
@@ -44,6 +45,7 @@ export function PurchaseSchedulesModal({
   usedSchedules,
   maxQuota,
   planScheduleLimit,
+  canManageBilling,
   triggerButton,
 }: Props) {
   const showSelfServe = useShowSelfServe();
@@ -256,7 +258,10 @@ export function PurchaseSchedulesModal({
                   <Button
                     variant="danger/medium"
                     type="submit"
-                    disabled={isLoading || state === "need_to_delete"}
+                    disabled={!canManageBilling || isLoading || state === "need_to_delete"}
+                    tooltip={
+                      canManageBilling ? undefined : "You don't have permission to manage billing"
+                    }
                     LeadingIcon={isLoading ? SpinnerWhite : undefined}
                   >
                     <span className="tabular-nums">{`Remove ${formatNumber(
@@ -270,7 +275,10 @@ export function PurchaseSchedulesModal({
                   <Button
                     variant="primary/medium"
                     type="submit"
-                    disabled={isLoading || state === "no_change"}
+                    disabled={!canManageBilling || isLoading || state === "no_change"}
+                    tooltip={
+                      canManageBilling ? undefined : "You don't have permission to manage billing"
+                    }
                     LeadingIcon={isLoading ? SpinnerWhite : undefined}
                   >
                     <span className="tabular-nums">{`Purchase ${formatNumber(

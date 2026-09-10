@@ -4,6 +4,7 @@ import { type TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import type { Organization } from "~/models/organization.server";
 import type { Project } from "~/models/project.server";
 import { RUNS_BULK_INSPECTOR_OPEN_VALUE } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs._index/shouldRevalidateRunsList";
+import type { BillingMessageKey } from "./billingMessages";
 import { objectToSearchParams } from "./searchParams";
 import { type WaitpointSearchParams } from "~/components/runs/v3/WaitpointTokenFilters";
 export type OrgForPath = Pick<Organization, "slug">;
@@ -830,7 +831,7 @@ export function regionsPath(
   return `${v3EnvironmentPath(organization, project, environment)}/regions`;
 }
 
-export function v3BillingPath(organization: OrgForPath, message?: string) {
+export function v3BillingPath(organization: OrgForPath, message?: BillingMessageKey) {
   return `${organizationPath(organization)}/settings/billing${
     message ? `?message=${encodeURIComponent(message)}` : ""
   }`;

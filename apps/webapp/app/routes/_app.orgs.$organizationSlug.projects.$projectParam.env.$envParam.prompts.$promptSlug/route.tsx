@@ -2,7 +2,7 @@ import * as Ariakit from "@ariakit/react";
 import { ArrowPathIcon, ChevronUpDownIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { useFetcher } from "@remix-run/react";
-import { json, type LoaderFunctionArgs, redirect } from "@remix-run/server-runtime";
+import { json, redirect } from "@remix-run/server-runtime";
 
 import { AnimatePresence, motion } from "framer-motion";
 import { ClipboardCheckIcon, ClipboardIcon, GitBranchPlusIcon } from "lucide-react";
@@ -62,17 +62,18 @@ import { useInterval } from "~/hooks/useInterval";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
-import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { type GenerationRow, PromptPresenter } from "~/presenters/v3/PromptPresenter.server";
 import { SpanView } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.spans.$spanParam/route";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
+import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
-import { requireUserId } from "~/services/session.server";
-import { rbac } from "~/services/rbac.server";
-import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
-import { checkPermissions } from "~/services/routeBuilders/permissions.server";
+import {
+  dashboardAction,
+  dashboardLoader,
+  type DashboardLoaderHandlerArgs,
+} from "~/services/routeBuilders/dashboardBuilder";
 import { PromptService } from "~/v3/services/promptService.server";
 
 import { z } from "zod";
@@ -92,6 +93,8 @@ import { pageMeta } from "~/utils/pageTitle";
 const ParamSchema = EnvironmentParamSchema.extend({
   promptSlug: z.string(),
 });
+
+type ProjectAuthScope = Awaited<ReturnType<typeof resolveProjectAuthScope>>;
 
 export const handle: Handle = {
   agentPageContext: (data) => promptsAgentPageContext(data),
@@ -133,10 +136,7 @@ const ActionSchema = z.discriminatedUnion("intent", [
 export const action = dashboardAction(
   {
     params: ParamSchema,
-    context: async (params) => {
-      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
-      return organizationId ? { organizationId } : {};
-    },
+    context: (params) => resolveProjectAuthScope(params.organizationSlug, params.projectParam),
   },
   async ({ request, params, user, ability, context }) => {
     const { organizationSlug, projectParam, envParam, promptSlug } = params;
@@ -237,9 +237,27 @@ export const action = dashboardAction(
 
 // ─── Loader ──────────────────────────────────────────────
 
-export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
-  const { organizationSlug, projectParam, envParam, promptSlug } = ParamSchema.parse(params);
+export const loader = dashboardLoader(
+  {
+    params: ParamSchema,
+    context: (params) => resolveProjectAuthScope(params.organizationSlug, params.projectParam),
+    authorization: {
+      action: "read",
+      resource: { type: "prompts" },
+      message: "With your current role, you can't view prompts.",
+    },
+  },
+  promptLoader
+);
+
+async function promptLoader({
+  request,
+  params,
+  user,
+  ability,
+}: DashboardLoaderHandlerArgs<typeof ParamSchema, undefined, ProjectAuthScope>) {
+  const userId = user.id;
+  const { organizationSlug, projectParam, envParam, promptSlug } = params;
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) throw new Response("Project not found", { status: 404 });
@@ -337,18 +355,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const possibleOperations = opsErr ? [] : opsRows.map((r) => r.val);
   const possibleProviders = provsErr ? [] : provsRows.map((r) => r.val);
 
-  // Display flags for the promote / override controls — the action enforces
-  // update:prompts and write:prompts independently. Permissive in OSS.
-  const promptAuth = await rbac.authenticateSession(request, {
-    userId,
-    organizationId: project.organizationId,
-  });
-  const promptPermissions = promptAuth.ok
-    ? checkPermissions(promptAuth.ability, {
-        canWritePrompts: { action: "write", resource: { type: "prompts" } },
-        canPromote: { action: "update", resource: { type: "prompts" } },
-      })
-    : { canWritePrompts: true, canPromote: true };
+  const promptPermissions = {
+    canWritePrompts: ability.can("write", { type: "prompts" }),
+    canPromote: ability.can("update", { type: "prompts" }),
+  };
 
   return typedjson({
     resizable: {
@@ -404,7 +414,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     possibleProviders,
     ...promptPermissions,
   });
-};
+}
 
 // ─── Helpers ─────────────────────────────────────────────
 

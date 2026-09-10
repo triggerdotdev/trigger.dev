@@ -8,7 +8,7 @@ import {
   TrashIcon,
 } from "@heroicons/react/20/solid";
 import { Form, useActionData, useNavigation, useSubmit } from "@remix-run/react";
-import { json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { json } from "@remix-run/server-runtime";
 import { useEffect, useRef, useState } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -49,8 +49,12 @@ import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { clearCurrentProject } from "~/services/dashboardPreferences.server";
 import { DeleteOrganizationService } from "~/services/deleteOrganization.server";
 import { logger } from "~/services/logger.server";
-import { requireUser, requireUserId } from "~/services/session.server";
-import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
+import { requireUser } from "~/services/session.server";
+import {
+  dashboardAction,
+  dashboardLoader,
+  type DashboardLoaderHandlerArgs,
+} from "~/services/routeBuilders/dashboardBuilder";
 import { cn } from "~/utils/cn";
 import { extractDomain, faviconUrl as buildFaviconUrl } from "~/utils/favicon";
 import { OrganizationParamsSchema, organizationSettingsPath, rootPath } from "~/utils/pathBuilder";
@@ -58,9 +62,26 @@ import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta("Organization settings");
 
-export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
-  const { organizationSlug } = OrganizationParamsSchema.parse(params);
+type OrganizationAuthScope = { organizationId?: string };
+
+export const loader = dashboardLoader(
+  {
+    params: OrganizationParamsSchema,
+    context: async (params) => {
+      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
+      return organizationId ? { organizationId } : {};
+    },
+  },
+  organizationSettingsLoader
+);
+
+async function organizationSettingsLoader({
+  params,
+  user,
+  ability,
+}: DashboardLoaderHandlerArgs<typeof OrganizationParamsSchema, undefined, OrganizationAuthScope>) {
+  const userId = user.id;
+  const { organizationSlug } = params;
 
   const organization = await prisma.organization.findFirst({
     where: { slug: organizationSlug, members: { some: { userId } }, deletedAt: null },
@@ -86,6 +107,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       ? parsedAvatar.lastIconHex
       : defaultAvatarHex;
 
+  const canManageOrganization = ability.can("manage", { type: "organization" });
+
   return typedjson({
     organization: {
       ...organization,
@@ -93,8 +116,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       companyUrl: typeof onboardingData.companyUrl === "string" ? onboardingData.companyUrl : "",
       lastIconHex,
     },
+    canManageOrganization,
   });
-};
+}
 
 export function createSchema(
   constraints: {
@@ -230,6 +254,14 @@ export const action = dashboardAction(
           }
         }
         case "avatar": {
+          if (!ability.can("manage", { type: "organization" })) {
+            throw await redirectWithErrorMessage(
+              organizationSettingsPath({ slug: organizationSlug }),
+              request,
+              "You don't have permission to edit this organization's logo"
+            );
+          }
+
           const orgWhere = {
             slug: organizationSlug,
             members: { some: { userId: user.id } },
@@ -302,7 +334,7 @@ export const action = dashboardAction(
 );
 
 export default function Page() {
-  const { organization } = useTypedLoaderData<typeof loader>();
+  const { organization, canManageOrganization } = useTypedLoaderData<typeof loader>();
   const lastSubmission = useActionData();
   const navigation = useNavigation();
 
@@ -357,7 +389,7 @@ export default function Page() {
           </div>
           <div className="flex flex-col gap-6">
             <div>
-              <LogoForm organization={organization} />
+              <LogoForm organization={organization} canManage={canManageOrganization} />
             </div>
 
             <div>
@@ -380,7 +412,12 @@ export default function Page() {
                       <Button
                         type="submit"
                         variant={"secondary/small"}
-                        disabled={isRenameLoading}
+                        disabled={!canManageOrganization || isRenameLoading}
+                        tooltip={
+                          canManageOrganization
+                            ? undefined
+                            : "You don't have permission to rename this organization"
+                        }
                         LeadingIcon={isRenameLoading ? SpinnerWhite : undefined}
                       >
                         Rename organization
@@ -424,7 +461,12 @@ export default function Page() {
                         variant={"danger/small"}
                         LeadingIcon={isDeleteLoading ? SpinnerWhite : TrashIcon}
                         leadingIconClassName="text-white"
-                        disabled={isDeleteLoading}
+                        disabled={!canManageOrganization || isDeleteLoading}
+                        tooltip={
+                          canManageOrganization
+                            ? undefined
+                            : "You don't have permission to delete this organization"
+                        }
                       >
                         Delete organization
                       </Button>
@@ -442,8 +484,10 @@ export default function Page() {
 
 function LogoForm({
   organization,
+  canManage,
 }: {
   organization: { avatar: AvatarT; title: string; companyUrl: string; lastIconHex: string };
+  canManage: boolean;
 }) {
   const navigation = useNavigation();
 
@@ -469,145 +513,159 @@ function LogoForm({
   useEffect(() => {
     if (faviconPreview === prevFaviconRef.current) return;
     prevFaviconRef.current = faviconPreview;
-    if (mode === "logo" && logoFormRef.current) {
+    if (canManage && mode === "logo" && logoFormRef.current) {
       submit(logoFormRef.current);
     }
-  }, [faviconPreview, mode, submit]);
+  }, [canManage, faviconPreview, mode, submit]);
 
   const showFavicon = faviconPreview && !faviconError;
 
   return (
-    <Fieldset>
-      <InputGroup fullWidth>
-        <Label>Logo</Label>
-        <div className="flex flex-col gap-3">
-          {/* Row 1: Logo from URL */}
-          <Form ref={logoFormRef} method="post" className="flex items-center gap-3">
-            <input type="hidden" name="action" value="avatar" />
-            <input type="hidden" name="type" value="image" />
-            <input type="hidden" name="url" value={companyUrl} />
-            <button type="submit" className="flex shrink-0 items-center gap-3">
-              <RadioDot active={mode === "logo"} />
-            </button>
-            <div className="flex flex-1 items-center gap-1.5">
+    <div
+      title={canManage ? undefined : "You don't have permission to edit this organization's logo"}
+    >
+      <Fieldset className={canManage ? undefined : "opacity-60"}>
+        <InputGroup fullWidth>
+          <Label>Logo</Label>
+          <div className="flex flex-col gap-3">
+            {/* Row 1: Logo from URL */}
+            <Form ref={logoFormRef} method="post" className="flex items-center gap-3">
+              <input type="hidden" name="action" value="avatar" />
+              <input type="hidden" name="type" value="image" />
+              <input type="hidden" name="url" value={companyUrl} />
               <button
                 type="submit"
-                className={cn(
-                  iconTileClass,
-                  mode === "logo"
-                    ? "border-indigo-500"
-                    : "border-grid-dimmed hover:border-border-bright"
-                )}
+                className="flex shrink-0 items-center gap-3"
+                disabled={!canManage}
               >
-                {showFavicon ? (
-                  <img
-                    src={faviconPreview}
-                    alt=""
-                    width={28}
-                    height={28}
-                    className="rounded-sm"
-                    onError={() => setFaviconError(true)}
-                    onLoad={() => setFaviconError(false)}
-                  />
-                ) : (
-                  <GlobeLinesIcon className="size-6 text-indigo-500" />
-                )}
+                <RadioDot active={mode === "logo"} />
               </button>
-              <Input
-                type="text"
-                value={companyUrl}
-                onChange={(e) => {
-                  setCompanyUrl(e.target.value);
-                  setFaviconError(false);
-                }}
-                onFocus={() => {
-                  if (mode !== "logo" && logoFormRef.current) {
-                    submit(logoFormRef.current);
-                  }
-                }}
-                placeholder="Enter your company URL to generate a logo"
-                variant="medium"
-                containerClassName="flex-1"
-              />
-            </div>
-          </Form>
-
-          {/* Row 2: Icon picker */}
-          <div className="flex items-center gap-3">
-            <Form method="post" className="shrink-0">
-              <input type="hidden" name="action" value="avatar" />
-              <input type="hidden" name="type" value="letters" />
-              <input type="hidden" name="hex" value={hex} />
-              <button type="submit">
-                <RadioDot active={mode === "icon"} />
-              </button>
+              <div className="flex flex-1 items-center gap-1.5">
+                <button
+                  type="submit"
+                  disabled={!canManage}
+                  className={cn(
+                    iconTileClass,
+                    mode === "logo"
+                      ? "border-indigo-500"
+                      : "border-grid-dimmed hover:border-border-bright"
+                  )}
+                >
+                  {showFavicon ? (
+                    <img
+                      src={faviconPreview}
+                      alt=""
+                      width={28}
+                      height={28}
+                      className="rounded-sm"
+                      onError={() => setFaviconError(true)}
+                      onLoad={() => setFaviconError(false)}
+                    />
+                  ) : (
+                    <GlobeLinesIcon className="size-6 text-indigo-500" />
+                  )}
+                </button>
+                <Input
+                  type="text"
+                  value={companyUrl}
+                  onChange={(e) => {
+                    setCompanyUrl(e.target.value);
+                    setFaviconError(false);
+                  }}
+                  disabled={!canManage}
+                  onFocus={() => {
+                    if (canManage && mode !== "logo" && logoFormRef.current) {
+                      submit(logoFormRef.current);
+                    }
+                  }}
+                  placeholder="Enter your company URL to generate a logo"
+                  variant="medium"
+                  containerClassName="flex-1"
+                />
+              </div>
             </Form>
-            <div className="flex flex-wrap items-center gap-1.5">
-              {/* Letters */}
-              <Form method="post">
+
+            {/* Row 2: Icon picker */}
+            <div className="flex items-center gap-3">
+              <Form method="post" className="shrink-0">
                 <input type="hidden" name="action" value="avatar" />
                 <input type="hidden" name="type" value="letters" />
                 <input type="hidden" name="hex" value={hex} />
-                <button
-                  type="submit"
-                  className={cn(
-                    iconTileClass,
-                    avatar.type !== "letters" && "border-grid-dimmed hover:border-border-bright"
-                  )}
-                  style={{
-                    borderColor: avatar.type === "letters" ? hex : undefined,
-                  }}
-                >
-                  <Avatar
-                    avatar={{ type: "letters", hex }}
-                    size={2.5}
-                    includePadding
-                    orgName={organization.title}
-                  />
+                <button type="submit" disabled={!canManage}>
+                  <RadioDot active={mode === "icon"} />
                 </button>
               </Form>
-              {/* Icons */}
-              {Object.entries(avatarIcons).map(([name]) => (
-                <Form key={name} method="post">
+              <div className="flex flex-wrap items-center gap-1.5">
+                {/* Letters */}
+                <Form method="post">
                   <input type="hidden" name="action" value="avatar" />
-                  <input type="hidden" name="type" value="icon" />
-                  <input type="hidden" name="name" value={name} />
+                  <input type="hidden" name="type" value="letters" />
                   <input type="hidden" name="hex" value={hex} />
                   <button
                     type="submit"
+                    disabled={!canManage}
                     className={cn(
                       iconTileClass,
-                      !(avatar.type === "icon" && avatar.name === name) &&
-                        "border-grid-dimmed hover:border-border-bright"
+                      avatar.type !== "letters" && "border-grid-dimmed hover:border-border-bright"
                     )}
                     style={{
-                      borderColor: avatar.type === "icon" && avatar.name === name ? hex : undefined,
+                      borderColor: avatar.type === "letters" ? hex : undefined,
                     }}
                   >
                     <Avatar
-                      avatar={{ type: "icon", name, hex }}
+                      avatar={{ type: "letters", hex }}
                       size={2.5}
                       includePadding
                       orgName={organization.title}
                     />
                   </button>
                 </Form>
-              ))}
-              {/* Color picker */}
-              <HexPopover avatar={avatar} hex={hex} />
+                {/* Icons */}
+                {Object.entries(avatarIcons).map(([name]) => (
+                  <Form key={name} method="post">
+                    <input type="hidden" name="action" value="avatar" />
+                    <input type="hidden" name="type" value="icon" />
+                    <input type="hidden" name="name" value={name} />
+                    <input type="hidden" name="hex" value={hex} />
+                    <button
+                      type="submit"
+                      disabled={!canManage}
+                      className={cn(
+                        iconTileClass,
+                        !(avatar.type === "icon" && avatar.name === name) &&
+                          "border-grid-dimmed hover:border-border-bright"
+                      )}
+                      style={{
+                        borderColor:
+                          avatar.type === "icon" && avatar.name === name ? hex : undefined,
+                      }}
+                    >
+                      <Avatar
+                        avatar={{ type: "icon", name, hex }}
+                        size={2.5}
+                        includePadding
+                        orgName={organization.title}
+                      />
+                    </button>
+                  </Form>
+                ))}
+                {/* Color picker */}
+                <HexPopover avatar={avatar} hex={hex} disabled={!canManage} />
+              </div>
             </div>
           </div>
-        </div>
-      </InputGroup>
-    </Fieldset>
+        </InputGroup>
+      </Fieldset>
+    </div>
   );
 }
 
-function HexPopover({ avatar, hex }: { avatar: Avatar; hex: string }) {
+function HexPopover({ avatar, hex, disabled }: { avatar: Avatar; hex: string; disabled: boolean }) {
   return (
     <Popover>
       <PopoverTrigger
         aria-label="Choose custom avatar color"
+        disabled={disabled}
         className={cn(iconTileClass, "border-grid-dimmed hover:border-border-bright")}
       >
         <img src={colorWheelIcon} alt="" className="m-0 block size-[30px] p-0" />
@@ -631,6 +689,7 @@ function HexPopover({ avatar, hex }: { avatar: Avatar; hex: string }) {
               name="hex"
               value={color.hex}
               type="submit"
+              disabled={disabled}
               variant="small-menu-item"
               LeadingIcon={
                 <div

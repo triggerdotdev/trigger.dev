@@ -20,6 +20,7 @@ import {
   v3StripePortalPath,
 } from "~/utils/pathBuilder";
 import { PricingPlans } from "../resources.orgs.$organizationSlug.select-plan";
+import { billingMessageFromKey } from "~/utils/billingMessages";
 import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta("Billing");
@@ -71,9 +72,8 @@ export const loader = dashboardLoader(
       (periodEnd.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
     );
 
-    // Extract 'message' from search params
     const url = new URL(request.url);
-    const message = url.searchParams.get("message");
+    const message = billingMessageFromKey(url.searchParams.get("message"));
 
     if (!showSelfServe) {
       return typedjson({

@@ -1,10 +1,14 @@
 import { parseWithZod } from "@conform-to/zod/v4";
-import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import { json } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { getCurrentPlan, getSelfServePurchaseBlockReason } from "~/services/platform.v3.server";
-import { requireUserId } from "~/services/session.server";
+import {
+  dashboardAction,
+  type DashboardActionHandlerArgs,
+} from "~/services/routeBuilders/dashboardBuilder";
+import { isPaidAddOnPurchase } from "~/utils/paidAddOnPermissions";
 import { SetSchedulesAddOnService } from "~/v3/services/setSchedulesAddOn.server";
 
 export const PurchaseSchema = z.discriminatedUnion("action", [
@@ -19,10 +23,35 @@ export const PurchaseSchema = z.discriminatedUnion("action", [
 ]);
 
 const ParamsSchema = z.object({ organizationSlug: z.string() });
+type OrganizationAuthScope = { organizationId?: string };
 
-export async function action({ request, params }: ActionFunctionArgs) {
-  const userId = await requireUserId(request);
-  const { organizationSlug } = ParamsSchema.parse(params);
+export const action = dashboardAction(
+  {
+    params: ParamsSchema,
+    context: async (params) => {
+      const organization = await prisma.organization.findFirst({
+        where: { slug: params.organizationSlug, deletedAt: null },
+        select: { id: true },
+      });
+      return organization ? { organizationId: organization.id } : {};
+    },
+  },
+  schedulesAddOnAction
+);
+
+async function schedulesAddOnAction({
+  request,
+  params,
+  user,
+  ability,
+  context,
+}: DashboardActionHandlerArgs<typeof ParamsSchema, undefined, OrganizationAuthScope>) {
+  const userId = user.id;
+  const { organizationSlug } = params;
+
+  if (!context.organizationId) {
+    return json({ error: "Organization not found" }, { status: 404 });
+  }
 
   const organization = await prisma.organization.findFirst({
     where: { slug: organizationSlug, members: { some: { userId } } },
@@ -30,6 +59,22 @@ export async function action({ request, params }: ActionFunctionArgs) {
   });
   if (!organization) {
     return json({ error: "Organization not found" }, { status: 404 });
+  }
+
+  const formData = await request.formData();
+  const submission = parseWithZod(formData, { schema: PurchaseSchema });
+
+  if (submission.status !== "success") {
+    return json(submission.reply());
+  }
+
+  if (isPaidAddOnPurchase(submission.value.action) && !ability.can("manage", { type: "billing" })) {
+    return json(
+      submission.reply({
+        fieldErrors: { amount: ["You don't have permission to manage billing."] },
+      }),
+      { status: 403 }
+    );
   }
 
   const currentPlan = await getCurrentPlan(organization.id);
@@ -46,13 +91,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
     });
   }
 
-  const formData = await request.formData();
-  const submission = parseWithZod(formData, { schema: PurchaseSchema });
-
-  if (submission.status !== "success") {
-    return json(submission.reply());
-  }
-
   const service = new SetSchedulesAddOnService();
   const [error, result] = await tryCatch(
     service.call({
@@ -66,7 +104,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   if (error) {
     return json(
       submission.reply({
-        fieldErrors: { amount: [error instanceof Error ? error.message : "Unknown error"] },
+        fieldErrors: { amount: ["Unable to update schedules. Please try again."] },
       })
     );
   }

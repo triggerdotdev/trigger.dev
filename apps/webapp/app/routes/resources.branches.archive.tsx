@@ -10,8 +10,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { $replica } from "~/db.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { ArchiveBranchService } from "~/services/archiveBranch.server";
+import { rbac } from "~/services/rbac.server";
 import { requireUserId } from "~/services/session.server";
 import { sanitizeRedirectPath } from "~/utils";
 
@@ -37,6 +39,30 @@ export async function action({ request }: ActionFunctionArgs) {
 
   const redirectPath = sanitizeRedirectPath(submission.value.redirectPath);
 
+  const environment = await $replica.runtimeEnvironment.findFirst({
+    where: {
+      id: submission.value.environmentId,
+      organization: { members: { some: { userId } } },
+    },
+    select: { type: true, organizationId: true, projectId: true },
+  });
+  if (!environment) {
+    return redirectWithErrorMessage(redirectPath, request, "Branch not found");
+  }
+
+  const auth = await rbac.authenticateSession(request, {
+    userId,
+    organizationId: environment.organizationId,
+    projectId: environment.projectId,
+  });
+  if (!auth.ok || !auth.ability.can("write", { type: "deployments", envType: environment.type })) {
+    return redirectWithErrorMessage(
+      redirectPath,
+      request,
+      "You don't have permission to archive this branch."
+    );
+  }
+
   const archiveBranchService = new ArchiveBranchService();
 
   const result = await archiveBranchService.call(
@@ -59,9 +85,11 @@ export async function action({ request }: ActionFunctionArgs) {
 
 export function ArchiveButton({
   environment,
+  canArchive,
   disabled,
 }: {
   environment: { id: string; branchName: string };
+  canArchive: boolean;
   disabled?: boolean;
 }) {
   const lastSubmission = useActionData<typeof action>();
@@ -86,7 +114,8 @@ export function ArchiveButton({
           fullWidth
           textAlignLeft
           className="w-full px-1.5 py-[0.9rem]"
-          disabled={disabled}
+          disabled={disabled || !canArchive}
+          tooltip={canArchive ? undefined : "You don't have permission to archive this branch."}
         >
           Archive branch
         </Button>

@@ -184,10 +184,7 @@ export function EnvironmentSelector({
             <div className="p-1">
               <PopoverMenuItem
                 key="staging"
-                to={v3BillingPath(
-                  organization,
-                  "Upgrade to unlock a Staging environment for your projects."
-                )}
+                to={v3BillingPath(organization, "stagingEnvironment")}
                 title={
                   <div className="flex w-full items-center justify-between">
                     <EnvironmentCombo
@@ -202,10 +199,7 @@ export function EnvironmentSelector({
               />
               <PopoverMenuItem
                 key="preview"
-                to={v3BillingPath(
-                  organization,
-                  "Upgrade to unlock Preview environments for your projects."
-                )}
+                to={v3BillingPath(organization, "previewEnvironments")}
                 title={
                   <div className="flex w-full items-center justify-between">
                     <EnvironmentCombo
