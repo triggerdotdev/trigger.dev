@@ -8,16 +8,17 @@ import type { AuthUser } from "./authUser";
 import { logger } from "./logger.server";
 import { ssoController } from "./sso.server";
 
-// Dedicated Redis client for the single-flight throttle. Reuses the
-// shared REDIS_* connection (same wiring the other simple shared-state
-// services use).
+// Dedicated Redis client for the single-flight throttle. Uses the shared
+// cache connection (CACHE_REDIS_*), the same instance the other
+// request-path caches and rate limiters use.
 const redis = singleton("ssoRevalidationRedis", () =>
   createRedisClient("trigger:ssoRevalidation", {
-    host: env.REDIS_HOST,
-    port: env.REDIS_PORT,
-    username: env.REDIS_USERNAME,
-    password: env.REDIS_PASSWORD,
-    tlsDisabled: env.REDIS_TLS_DISABLED === "true",
+    host: env.CACHE_REDIS_HOST,
+    port: env.CACHE_REDIS_PORT,
+    username: env.CACHE_REDIS_USERNAME,
+    password: env.CACHE_REDIS_PASSWORD,
+    tlsDisabled: env.CACHE_REDIS_TLS_DISABLED === "true",
+    clusterMode: env.CACHE_REDIS_CLUSTER_MODE_ENABLED === "1",
   })
 );
 
@@ -62,11 +63,28 @@ export async function revalidateSsoSession(
 
   // Single-flight: acquire the window. Only the request that sets the
   // key (NX) proceeds to the actual check; everyone else this window
-  // treats the session as valid.
-  const [setError, acquired] = await tryCatch(redis.set(key, "1", "EX", interval, "NX"));
-  if (setError) {
-    // Redis unavailable → fail-open, don't block the request.
-    logger.warn("SSO revalidation: redis SET NX failed; skipping", { error: setError });
+  // treats the session as valid. The SET is time-bounded so a slow Redis
+  // round-trip fails open instead of blocking the request on the hot path.
+  let setTimer: ReturnType<typeof setTimeout> | undefined;
+  const [setError, acquired] = await tryCatch(
+    Promise.race([
+      redis.set(key, "1", "EX", interval, "NX"),
+      new Promise<typeof REVALIDATION_TIMEOUT>((resolve) => {
+        setTimer = setTimeout(
+          () => resolve(REVALIDATION_TIMEOUT),
+          env.SSO_SESSION_REVALIDATION_TIMEOUT_MS
+        );
+      }),
+    ])
+  );
+  if (setTimer) clearTimeout(setTimer);
+  if (setError || acquired === REVALIDATION_TIMEOUT) {
+    // Redis slow or unavailable → fail open, don't block the request. The key
+    // (if the timed-out SET still lands) just expires on its own.
+    logger.error("SSO revalidation: throttle SET slow/failed; skipping", {
+      error: setError,
+      timedOut: acquired === REVALIDATION_TIMEOUT,
+    });
     return;
   }
   if (acquired !== "OK") return;
