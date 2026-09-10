@@ -690,9 +690,11 @@ export function registerRunEngineEventBusHandlers() {
         .emit("run:notify", { version: "1", run: { friendlyId: runFriendlyId } });
 
       //send the notification to connected dev workers
-      socketIo.devWorkerNamespace
-        .to(room)
-        .emit("run:notify", { version: "1", run: { friendlyId: runFriendlyId } });
+      if (snapshot.environmentType === "DEVELOPMENT") {
+        socketIo.devWorkerNamespace
+          .to(room)
+          .emit("run:notify", { version: "1", run: { friendlyId: runFriendlyId } });
+      }
 
       if (!env.RUN_ENGINE_DEBUG_WORKER_NOTIFICATIONS) {
         return;

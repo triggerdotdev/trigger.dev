@@ -393,6 +393,7 @@ describe("RunEngine Waitpoints", () => {
         assertNonNullable(event);
         const notificationEvent = event as EventBusEventArgs<"workerNotification">[0];
         expect(notificationEvent.run.id).toBe(run.id);
+        expect(notificationEvent.snapshot.environmentType).toBe("PRODUCTION");
 
         const executionData2 = await engine.getRunExecutionData({ runId: run.id });
         expect(executionData2?.snapshot.executionStatus).toBe("EXECUTING");
