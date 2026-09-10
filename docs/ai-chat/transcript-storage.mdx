@@ -219,11 +219,13 @@ A few things to get right:
 
 ## Migrating from hydrateMessages
 
-`hydrateMessages` keeps working with a one-time deprecation warning. Crash recovery runs for it, but the runtime does not write to your store on its behalf. To move:
+`hydrateMessages` keeps working with a one-time deprecation warning. Crash recovery runs for it, but the runtime does not write to your store on its behalf. The move, in short:
 
-1. Implement `TranscriptStorage` over your existing tables. Your `hydrateMessages` body becomes `loadContext`; the writes you did in hooks become `save`.
+1. Implement `TranscriptStorage` over your existing tables. The writes you did in hooks become `save`; the read your hook did becomes `load`. Add `loadContext` only if your database decides what the model sees each turn.
 2. Set `storage` on the agent and remove `hydrateMessages`. Setting both is an error.
-3. Run `runTranscriptStorageTests` against your implementation.
+3. Delete the recovery, compaction and cursor code the runtime now owns, and run `runTranscriptStorageTests` against your implementation.
+
+The [migration guide](/ai-chat/migrating-from-hydrate-messages) walks through each step with code, and lists what to delete from each hook.
 
 ## See also
 

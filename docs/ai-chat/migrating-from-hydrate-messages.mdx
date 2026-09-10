@@ -1,0 +1,277 @@
+---
+title: "Migrate from hydrateMessages to transcript storage"
+sidebarTitle: "Migrating from hydrateMessages"
+description: "Move a chat.agent that persists its own history through hydrateMessages onto a TranscriptStorage: map your tables, implement load and save, decide whether you need loadContext, and delete the recovery and compaction code you no longer own."
+---
+
+Learn how to replace a `hydrateMessages` hook with a `storage` on the same tables, so the runtime writes the conversation for you and your app stops re-deriving what the runtime already knows.
+
+`hydrateMessages` keeps working with a one-time deprecation warning, so you can migrate one agent at a time. Setting both `hydrateMessages` and `storage` on one agent is a startup error, which makes the switch a swap rather than an overlap.
+
+## What changes hands
+
+With `hydrateMessages`, your hook was the source of truth for history and the runtime wrote nothing. Every fact about the conversation that the runtime knew, your app had to re-derive from its own rows. A [transcript storage](/ai-chat/transcript-storage) inverts that: the runtime owns the transcript and calls your storage at the durable boundaries.
+
+| Concern | With `hydrateMessages` | With `storage` |
+| --- | --- | --- |
+| Reading history | Your hook, on every turn and action | `load`, once when a run boots |
+| Writing the user's message and the answer | Your `onTurnStart` / `onTurnComplete` code | `save` receives them as `put` changes |
+| A message sent mid-answer (steering) | You wrote it, and placed it before the answer | Arrives in the same changeset, in order |
+| Undo, edit, regenerate | Row writes paired with each `chat.history` call | Arrive as `truncateAfter` and `put` changes |
+| Partial answer after a crash | Your partial rows and a recovery flag | A `put` with `final: false`; you report it back in `nonFinalIds` |
+| Tool call the dead run never answered | Your repair pass | Cleaned up by the runtime before the save |
+| Compaction summary | Your summary column and watermark, invalidated on every rollback path | An opaque `state` blob you store and return; the runtime discards it when a rollback crosses it |
+| Resume cursors | Your `lastEventId` write, in the same transaction as the answer | `cursors` on the changeset; write them in the same transaction |
+| Deciding what the model sees | The array your hook returned | The transcript, or `loadContext` if your database decides |
+
+## Before you start
+
+- Your message table needs three things per row: the message id, the `UIMessage` itself, and a column to order by. If you stored messages as `ModelMessage`s, convert your existing rows first; a storage holds `UIMessage`s only.
+- Add somewhere to keep an opaque JSON blob per chat (the runtime's `state`) and two opaque string cursors per chat.
+- If you have a `final`, `status` or `partial` flag already, keep it. If not, add one; it is how a cut-short answer stays marked across a continuation.
+
+<Steps>
+  <Step title="Implement load">
+    `load` returns the conversation in order, the `state` blob, the cursors, and the ids of any rows you stored as partial. Scope the read by `clientData` where your backend enforces tenancy.
+
+    ```ts lib/transcript-storage.ts
+    import type { TranscriptStorage } from "@trigger.dev/sdk/ai";
+    import { db } from "@/lib/db";
+
+    type Scope = { userId: string };
+
+    export const transcriptStorage: TranscriptStorage<Scope> = {
+      async load({ chatId, clientData }, opts) {
+        const chat = await db.chat.findUnique({
+          where: { id: chatId },
+          include: { session: true },
+        });
+        if (chat && chat.userId !== clientData.userId) {
+          throw new Error("This conversation could not be loaded.");
+        }
+        if (!chat) return { messages: [], state: null };
+
+        const rows = await db.message.findMany({
+          where: { chatId },
+          orderBy: { position: "asc" },
+        });
+
+        return {
+          messages: rows.map((row) => row.message),
+          state: chat.transcriptState,
+          cursors: {
+            lastOutEventId: chat.session?.lastEventId ?? undefined,
+            lastInEventId: chat.session?.lastInEventId ?? undefined,
+          },
+          nonFinalIds: rows.filter((row) => row.status === "partial").map((row) => row.id),
+        };
+      },
+
+      async save(ctx, changeset) {
+        // next step
+      },
+    };
+    ```
+
+    With `opts.limit`, return the most recent messages and a `nextCursor` (the id of the oldest returned message) when earlier ones exist; `opts.before` pages backwards from that id. The runtime never passes them, but the [history read](/ai-chat/transcript-storage#reading-the-transcript) your frontend uses does.
+  </Step>
+
+  <Step title="Implement save">
+    Apply the changeset's `changes` to your rows and write the `cursors`, in one transaction. The cursor tells a reconnecting client what it has already seen; a cursor that lands ahead of the rows it accounts for makes that client skip chunks stored nowhere.
+
+    ```ts lib/transcript-storage.ts
+    async save({ chatId, clientData }, changeset) {
+      await db.$transaction(async (tx) => {
+        const chat = await tx.chat.findUnique({ where: { id: chatId } });
+        if (chat && chat.userId !== clientData.userId) {
+          throw new Error("This conversation could not be saved.");
+        }
+        if (!chat) await tx.chat.create({ data: { id: chatId, userId: clientData.userId } });
+
+        let next = (await lastPosition(tx, chatId)) + 1;
+
+        for (const change of changeset.changes) {
+          switch (change.op) {
+            case "put": {
+              const status = change.final === false ? "partial" : "complete";
+              const existing = await tx.message.findUnique({
+                where: { chatId_id: { chatId, id: change.message.id } },
+              });
+              if (existing) {
+                await tx.message.update({
+                  where: { chatId_id: { chatId, id: change.message.id } },
+                  data: { message: change.message, status },
+                });
+              } else {
+                await tx.message.create({
+                  data: { chatId, id: change.message.id, position: next++, message: change.message, status },
+                });
+              }
+              break;
+            }
+            case "remove":
+              await tx.message.deleteMany({ where: { chatId, id: change.id } });
+              break;
+            case "truncateAfter": {
+              const anchor = await tx.message.findUnique({
+                where: { chatId_id: { chatId, id: change.afterId } },
+              });
+              if (anchor) {
+                await tx.message.deleteMany({ where: { chatId, position: { gt: anchor.position } } });
+                next = anchor.position + 1;
+              }
+              break;
+            }
+            case "state":
+              await tx.chat.update({ where: { id: chatId }, data: { transcriptState: change.value } });
+              break;
+          }
+        }
+
+        if (changeset.cursors) {
+          await tx.chatSession.upsert({
+            where: { chatId },
+            create: { chatId, ...cursorColumns(changeset.cursors) },
+            update: cursorColumns(changeset.cursors),
+          });
+        }
+      });
+    }
+    ```
+
+    Three rules keep the rows in the runtime's order:
+
+    - Assign a position only when a row is first inserted, in the order the `put`s arrive. Within one changeset that is conversation order, so a steer sent mid-answer lands before the answer it shaped.
+    - Leave the position alone on a `put` for a known id. A tool approval, a settled partial and a compaction all replace a message in place.
+    - Do not order by a write timestamp. A replaced message would jump to the end, and a steer written after the answer would sort after it.
+
+    If you keep the whole conversation as one document instead of rows, ignore `changes` and write `changeset.transcript` as-is. Pick one of the two and stay with it.
+  </Step>
+
+  <Step title="Decide whether you need loadContext">
+    Most `hydrateMessages` hooks did two jobs: they persisted the incoming message and they returned the history. `save` and `load` cover both, so most agents need nothing more.
+
+    Add `loadContext` only when your database decides what the model sees each turn: a branching conversation where only the active branch is context, or a trust boundary where the browser's history is not to be believed. The runtime calls it on every turn and action with the incoming messages and the transcript it had, and uses what you return as the conversation. `save` keeps receiving every change and crash recovery keeps running.
+
+    ```ts lib/transcript-storage.ts
+    loadContext: async ({ chatId, clientData }, { incomingMessages }) => {
+      const branch = await db.activeBranch(chatId, clientData.userId);
+      return [...branch, ...incomingMessages];
+    },
+    ```
+
+    Do not port the body of your `hydrateMessages` hook into `loadContext` wholesale. The writes in it belong in `save`, and the recovery and compaction logic in it is gone.
+  </Step>
+
+  <Step title="Swap the option">
+    Set `storage`, remove `hydrateMessages`, and let the agent boot. It throws on start if both are still present.
+
+    ```ts trigger/chat.ts
+    export const myChat = chat.agent({
+      id: "my-chat",
+      storage: transcriptStorage,
+      clientDataSchema: z.object({ userId: z.string() }),
+      run: async ({ messages, signal, streamText }) =>
+        streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal }),
+    });
+    ```
+  </Step>
+
+  <Step title="Delete what the runtime now owns">
+    Work through your hooks and remove every write that duplicates a change the storage receives:
+
+    - Message writes in `onTurnStart` and `onTurnComplete`, including the steering messages you filed from `newUIMessages` or `pendingMessages.onReceived`.
+    - The `lastEventId` write in `onTurnComplete`. The cursor now arrives on the changeset.
+    - Row writes paired with `chat.history` calls in `onAction`. An undo is a `truncateAfter`, an edit is a `put` and a `truncateAfter`. To answer after an edit, return `chat.turn()`; returning a model response from `onAction` is no longer supported.
+    - Per-step partial writes in `onStepFinish`, and any run-state or "still streaming" flag. A crash is recovered from the durable session stream, and a partial that survives reaches `save` with `final: false`.
+    - Dangling tool-call repair. The runtime cleans a partial before it saves it.
+    - Your compaction summary column, its watermark, and the invalidation you ran on every rollback path. The summary travels in `state`, and the runtime discards it when a rollback crosses the point it covers.
+    - Any filter that dropped an empty assistant message. A turn that fails before the model writes anything is not handed to `save`.
+
+    Keep `onTurnStart` for the session token if your frontend hydrates from your own table, and keep `onTurnComplete` for side work such as naming the conversation.
+  </Step>
+
+  <Step title="Update the history read on your frontend">
+    Your page most likely reads history from your tables directly. That keeps working. To use the same read the runtime uses, and to seed the live subscription's cursor so a reload does not replay what it just loaded, wrap the storage in a server action and load it with the hook:
+
+    <CodeGroup>
+    ```ts app/actions.ts
+    "use server";
+    import { chat } from "@trigger.dev/sdk/ai";
+    import { transcriptStorage } from "@/lib/transcript-storage";
+
+    const load = chat.createLoadTranscriptAction(transcriptStorage);
+
+    export async function loadTranscript(params: { chatId: string; limit?: number; before?: string }) {
+      const userId = await getUserId();
+      await assertOwnsChat(userId, params.chatId);
+      return load({ ...params, clientData: { userId } });
+    }
+    ```
+
+    ```tsx app/c/[chatId]/ChatPage.tsx
+    "use client";
+    import { useLoadTranscript, useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
+    import { loadTranscript } from "@/app/actions";
+
+    export function ChatPage({ chatId }: { chatId: string }) {
+      const transport = useTriggerChatTransport({ task: "my-chat", accessToken, startSession });
+      const { messages, isLoading, nextCursor } = useLoadTranscript(chatId, loadTranscript, {
+        transport,
+        limit: 50,
+      });
+      if (isLoading) return <Spinner />;
+      return <Chat chatId={chatId} initialMessages={messages} transport={transport} olderPage={nextCursor} />;
+    }
+    ```
+    </CodeGroup>
+
+    <Warning>
+      The action receives `chatId` from the browser. Authorize it there, before calling the storage. The storage's own `clientData` check is a backstop, not the boundary.
+    </Warning>
+  </Step>
+
+  <Step title="Run the conformance suite">
+    Point `runTranscriptStorageTests` at your storage. It checks appends and in-place replacement, idempotent `remove` and `truncateAfter`, `state` round-trips, cursors, replaying the same changeset twice, paging, and chat isolation, against whatever database you give it.
+
+    ```ts lib/transcript-storage.test.ts
+    import { runTranscriptStorageTests } from "@trigger.dev/sdk/ai/test";
+    import { describe, expect, it } from "vitest";
+    import { transcriptStorage } from "./transcript-storage";
+
+    runTranscriptStorageTests(() => transcriptStorage, {
+      api: { describe, it, expect },
+      clientData: { userId: "user_test" },
+    });
+    ```
+
+    `memoryTranscriptStorage()` is the reference implementation. Use it in your agent tests to see exactly which changes the runtime hands a storage for a given turn.
+  </Step>
+</Steps>
+
+## Behaviour that changes
+
+A few things your users and your tests will notice after the swap:
+
+- **Actions are edits.** `onAction` mutates `chat.history` and returns nothing, or returns `chat.turn()` to have a full turn answer the edited history. The regenerated answer is saved and remembered like any other. See [Actions](/ai-chat/actions#answering-after-an-action).
+- **`onRecoveryBoot` is informational.** It fires when a run boots after a crash and finds a half-written answer on the session stream. The runtime already reconciled the transcript; use the hook to tell the user, not to write rows.
+- **A failed turn keeps its partial, marked.** An answer cut short by an error or a stop reaches `save` with `final: false`. Report those ids back from `load` in `nonFinalIds` and the runtime keeps them marked until the message is replaced.
+- **Compaction survives a reboot without your help.** The summary is in `state`. A fresh worker starts from it instead of re-reading and re-summarising the conversation.
+- **Your rows do not have to be byte-identical.** Store messages in whatever shape your database prefers. The runtime does not depend on an exact JSON round-trip.
+
+## Checklist
+
+- [ ] `load` returns messages in conversation order, plus `state`, `cursors` and `nonFinalIds`
+- [ ] `save` applies all four change kinds and writes the cursors in the same transaction
+- [ ] Positions are assigned on first insert only, never by timestamp
+- [ ] `hydrateMessages` removed; `storage` set; the agent boots
+- [ ] Message, cursor, partial, repair and compaction writes deleted from hooks
+- [ ] `onAction` returns `chat.turn()` where it used to stream an answer
+- [ ] `runTranscriptStorageTests` passes against the real database
+
+## See also
+
+- [Transcript storage](/ai-chat/transcript-storage): the full contract and what `save` receives
+- [Actions](/ai-chat/actions): what undo, edit and regenerate become in the changeset
+- [Lifecycle hooks](/ai-chat/lifecycle-hooks#hydratemessages): the deprecated hook's reference entry
+- [Database persistence](/ai-chat/patterns/database-persistence): the hook-based pattern this replaces
