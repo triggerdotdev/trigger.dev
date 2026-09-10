@@ -12,10 +12,57 @@ export function normalizeObjectStoreLogicalKeyPathname(logicalKey: string): stri
   return url.pathname;
 }
 
+/**
+ * One ranged read: the requested bytes, plus the object's total size so a
+ * caller that fetched a suffix knows where its window sits in the object.
+ */
+export type ObjectRange = {
+  bytes: Uint8Array;
+  totalSize: number;
+  /** The object's stored media type, so a caller can branch on its format. */
+  contentType: string | undefined;
+  /**
+   * The version this range came from. A caller stitching several ranges into
+   * one answer passes it back as `ifMatch` so a rewrite between requests fails
+   * the later read instead of mixing two versions of the object.
+   */
+  etag: string | undefined;
+};
+
 interface IObjectStoreClient {
   putObject(key: string, body: ReadableStream | string, contentType: string): Promise<string>;
   getObject(key: string): Promise<string>;
+  getObjectRange(
+    key: string,
+    range: { suffixLength: number } | { start: number; end: number },
+    opts?: { ifMatch?: string }
+  ): Promise<ObjectRange>;
   presign(key: string, method: "PUT" | "GET", expiresIn: number): Promise<string>;
+}
+
+/**
+ * The object was rewritten between two ranged reads of the same answer, so the
+ * offsets a caller planned no longer describe the bytes it would get.
+ */
+export class ObjectVersionChangedError extends Error {
+  constructor(key: string) {
+    super(`Object changed while reading ranges: ${key}`);
+    this.name = "ObjectVersionChangedError";
+  }
+}
+
+/** `Range` header value for a byte range or a suffix. */
+function rangeHeader(range: { suffixLength: number } | { start: number; end: number }): string {
+  return "suffixLength" in range
+    ? `bytes=-${range.suffixLength}`
+    : `bytes=${range.start}-${range.end - 1}`;
+}
+
+/** Total object size from a `Content-Range: bytes X-Y/TOTAL` response header. */
+function totalSizeFromContentRange(header: string | null, fallback: number): number {
+  const total = header?.split("/")[1];
+  const parsed = total ? Number(total) : Number.NaN;
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
 type Aws4FetchConfig = {
@@ -69,6 +116,32 @@ class Aws4FetchClient implements IObjectStoreClient {
       throw new Error(`Failed to download from object store: ${response.statusText}`);
     }
     return response.text();
+  }
+
+  async getObjectRange(
+    key: string,
+    range: { suffixLength: number } | { start: number; end: number },
+    opts?: { ifMatch?: string }
+  ): Promise<ObjectRange> {
+    const response = await this.awsClient.fetch(this.buildUrl(key), {
+      headers: {
+        range: rangeHeader(range),
+        ...(opts?.ifMatch ? { "if-match": opts.ifMatch } : {}),
+      },
+    });
+    if (response.status === 412) {
+      throw new ObjectVersionChangedError(key);
+    }
+    if (!response.ok) {
+      throw new Error(`Failed to download range from object store: ${response.statusText}`);
+    }
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    return {
+      bytes,
+      totalSize: totalSizeFromContentRange(response.headers.get("content-range"), bytes.byteLength),
+      contentType: response.headers.get("content-type") ?? undefined,
+      etag: response.headers.get("etag") ?? undefined,
+    };
   }
 
   async presign(key: string, method: "PUT" | "GET", expiresIn: number): Promise<string> {
@@ -146,6 +219,40 @@ class AwsSdkClient implements IObjectStoreClient {
     return response.Body.transformToString();
   }
 
+  async getObjectRange(
+    key: string,
+    range: { suffixLength: number } | { start: number; end: number },
+    opts?: { ifMatch?: string }
+  ): Promise<ObjectRange> {
+    const s3Key = this.toS3ObjectKey(key);
+    let response;
+    try {
+      response = await this.s3Client.send(
+        new GetObjectCommand({
+          Bucket: this.config.bucket,
+          Key: s3Key,
+          Range: rangeHeader(range),
+          ...(opts?.ifMatch ? { IfMatch: opts.ifMatch } : {}),
+        })
+      );
+    } catch (error) {
+      if ((error as { name?: string }).name === "PreconditionFailed") {
+        throw new ObjectVersionChangedError(key);
+      }
+      throw error;
+    }
+    if (!response.Body) {
+      throw new Error(`Empty response body from object store for key: ${key}`);
+    }
+    const bytes = await response.Body.transformToByteArray();
+    return {
+      bytes,
+      totalSize: totalSizeFromContentRange(response.ContentRange ?? null, bytes.byteLength),
+      contentType: response.ContentType ?? undefined,
+      etag: response.ETag ?? undefined,
+    };
+  }
+
   async presign(key: string, method: "PUT" | "GET", expiresIn: number): Promise<string> {
     const s3Key = this.toS3ObjectKey(key);
     const command =
@@ -210,6 +317,14 @@ export class ObjectStoreClient implements IObjectStoreClient {
 
   getObject(key: string): Promise<string> {
     return this.impl.getObject(key);
+  }
+
+  getObjectRange(
+    key: string,
+    range: { suffixLength: number } | { start: number; end: number },
+    opts?: { ifMatch?: string }
+  ): Promise<ObjectRange> {
+    return this.impl.getObjectRange(key, range, opts);
   }
 
   presign(key: string, method: "PUT" | "GET", expiresIn: number): Promise<string> {

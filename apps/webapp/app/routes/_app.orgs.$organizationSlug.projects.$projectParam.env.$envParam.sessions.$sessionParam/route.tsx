@@ -266,7 +266,7 @@ function ConversationPane({ session, channels }: { session: LoadedSession; chann
         <>
           <ConversationUtilityBar isRaw={isRaw} onChangeView={setView} {...utilityBarProps} />
           <div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
-            <AgentView agentView={session.agentView} />
+            <AgentView key={session.agentView.sessionId} agentView={session.agentView} />
           </div>
         </>
       )}

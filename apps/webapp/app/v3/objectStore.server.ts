@@ -9,6 +9,7 @@ import { singleton } from "~/utils/singleton";
 import {
   normalizeObjectStoreLogicalKeyPathname,
   ObjectStoreClient,
+  type ObjectRange,
   type ObjectStoreClientConfig,
 } from "./objectStoreClient.server";
 
@@ -264,6 +265,31 @@ export async function uploadPacketToObjectStore(
 
   // Return canonical storage URI (path only in the key; protocol prefix applied here)
   return formatStorageUri(safePath, protocol);
+}
+
+/**
+ * One ranged read of a stored packet, for a caller that needs a byte window
+ * rather than the whole object.
+ */
+export async function downloadObjectRangeFromObjectStore(
+  packet: IOPacket,
+  location: { projectRef: string; envSlug: string },
+  range: { suffixLength: number } | { start: number; end: number },
+  opts?: { ifMatch?: string }
+): Promise<ObjectRange> {
+  if (packet.dataType !== "application/store" || !packet.data) {
+    throw new Error("Ranged reads require a stored packet");
+  }
+
+  const { protocol, path } = parseStorageUri(packet.data);
+  const key = buildPacketObjectStoreKey(location.projectRef, location.envSlug, path);
+  const client = getObjectStoreClient(protocol);
+
+  if (!client) {
+    throw new Error(`Object store is not configured for protocol: ${protocol || "default"}`);
+  }
+
+  return client.getObjectRange(key, range, opts);
 }
 
 export async function downloadPacketFromObjectStore(

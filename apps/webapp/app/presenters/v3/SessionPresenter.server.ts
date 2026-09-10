@@ -2,11 +2,12 @@ import { type Span } from "@opentelemetry/api";
 import { type PrismaClientOrTransaction, boundedIn } from "@trigger.dev/database";
 import { env } from "~/env.server";
 import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
-import { chatSnapshotStorageKey } from "~/services/realtime/chatSnapshot.server";
+import {
+  DASHBOARD_TRANSCRIPT_PAGE,
+  readSessionTranscriptSeed,
+} from "~/services/realtime/transcriptSeed.server";
 import { resolveSessionByIdOrExternalId } from "~/services/realtime/sessions.server";
 import { LEGACY_PLAYGROUND_TAG } from "~/services/sessionsRepository/sessionsRepository.server";
-import { logger } from "~/services/logger.server";
-import { generatePresignedUrl } from "~/v3/objectStore.server";
 import { runStore } from "~/v3/runStore.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { startActiveSpan } from "~/v3/tracer.server";
@@ -114,46 +115,22 @@ export class SessionPresenter {
     // unused — kept here to match the existing `AgentViewAuth` shape.
     const addressingKey = session.externalId ?? session.friendlyId;
 
-    // Presign a GET URL for the agent's S3 snapshot blob. The browser
-    // fetches it directly, parses + validates, and seeds the
-    // TriggerChatTransport with the full history + lastEventId before
-    // opening the SSE. Presign succeeds regardless of whether the blob
-    // exists; the frontend handles 404 gracefully.
+    // Read the head of the transcript here rather than handing the browser a
+    // presigned URL for the whole blob. The client seeds from these messages
+    // and resumes the SSE from the snapshot's cursor.
     //
-    // Snapshots are only written when no `hydrateMessages` hook is
-    // registered — sessions that use `hydrateMessages` will 404 here
-    // and the dashboard falls back to seq=0 SSE (which, post-trim,
-    // shows only the most recent turn — accepted, those customers
-    // have their own DB-backed dashboards).
-    // Resolve the snapshot key via the SAME helper the SDK write + boot read
-    // use (`chatSnapshotStorageKey`), so the dashboard GET hits the exact
-    // object (and object store) the snapshot was written to. Recomputing a
-    // bare key here was the bug: an unqualified key reads the base store while
-    // the write applied OBJECT_STORE_DEFAULT_PROTOCOL, so they could diverge.
-    let snapshotPresignedUrl: string | undefined;
-    try {
-      const signed = await startActiveSpan("SessionPresenter.presignSnapshot", async () =>
-        generatePresignedUrl(
-          projectExternalRef,
-          environmentSlug,
-          chatSnapshotStorageKey(session),
-          "GET"
-        )
-      );
-      if (signed.success) {
-        snapshotPresignedUrl = signed.url;
-      } else {
-        logger.warn("SessionPresenter: snapshot presign failed", {
-          sessionId: session.id,
-          error: signed.error,
-        });
-      }
-    } catch (error) {
-      logger.warn("SessionPresenter: snapshot presign threw", {
-        sessionId: session.id,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
+    // Snapshots are only written when no `hydrateMessages` hook is registered —
+    // sessions that use `hydrateMessages` have no object to read and fall back
+    // to seq=0 SSE (which, post-trim, shows only the most recent turn —
+    // accepted, those customers have their own DB-backed dashboards).
+    const transcriptSeed = await startActiveSpan("SessionPresenter.readTranscript", () =>
+      readSessionTranscriptSeed({
+        session,
+        projectRef: projectExternalRef,
+        envSlug: environmentSlug,
+        limit: DASHBOARD_TRANSCRIPT_PAGE,
+      })
+    );
 
     return {
       id: session.id,
@@ -194,7 +171,7 @@ export class SessionPresenter {
         apiOrigin: env.API_ORIGIN || env.LOGIN_ORIGIN,
         sessionId: addressingKey,
         initialMessages: [],
-        snapshotPresignedUrl,
+        transcriptSeed,
       },
     };
   }

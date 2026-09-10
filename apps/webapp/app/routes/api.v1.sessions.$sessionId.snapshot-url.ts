@@ -71,6 +71,7 @@ const route = createActionApiRoute(
 export const loader = createLoaderApiRoute(
   {
     ...routeConfig,
+    allowJWT: false,
     authorization: {
       action: "read",
       resource: (session, params) => sessionResource(params.sessionId, session),

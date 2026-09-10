@@ -33,8 +33,13 @@ describe("pageTranscriptEntries", () => {
     expect(last.nextCursor).toBeUndefined();
   });
 
-  it("ignores an unknown `before` id", () => {
-    expect(pageTranscriptEntries(entries, { before: "zz" }).entries).toHaveLength(5);
+  it("yields an empty page for a `before` id the transcript no longer holds", () => {
+    // The stored transcript drops history once a conversation has compacted, so
+    // a client can hold a cursor that is gone. This used to return the newest
+    // entries, which renders recent messages as though they were older ones.
+    const page = pageTranscriptEntries(entries, { before: "zz" });
+    expect(page.entries).toEqual([]);
+    expect(page.nextCursor).toBeUndefined();
   });
 
   it("treats a zero limit as no limit rather than an empty page", () => {

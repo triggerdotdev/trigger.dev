@@ -271,12 +271,21 @@ export function diffTranscript(
 }
 
 /**
- * The built-in storage: the whole transcript as one versioned blob in the
- * platform's object store, the same blob the Sessions dashboard renders.
+ * Roughly how many messages the snapshot keeps once a conversation has
+ * compacted. Raising it costs bytes on every save; lowering it shortens how far
+ * back a conversation can be rendered from the platform's own store.
+ */
+const SNAPSHOT_KEEP_MESSAGES = 100;
+
+/**
+ * The built-in storage: the transcript in the platform's object store, read by
+ * the Sessions dashboard and the transcript API.
  *
- * Stateless. Every changeset carries the whole transcript as it stands after
- * the changes, so `save` serialises that and rewrites the blob: one PUT per
- * turn, no read and nothing kept in memory between saves.
+ * One object per conversation, rewritten each turn, holding the transcript plus
+ * the runtime state. Once a conversation has been compacted, it keeps roughly
+ * the last hundred messages rather than all of them, so the object stops
+ * growing with the conversation. An app that needs the full history keeps its
+ * own transcript storage.
  */
 export function snapshotTranscriptStorage(): TranscriptStorage<unknown> {
   return {
@@ -303,11 +312,20 @@ export function snapshotTranscriptStorage(): TranscriptStorage<unknown> {
     },
 
     async save(ctx, changeset) {
+      const entries = trimTranscriptForSnapshot(
+        changeset.transcript.entries,
+        changeset.transcript.state,
+        { keep: SNAPSHOT_KEEP_MESSAGES }
+      );
+
       await writeChatSnapshot(ctx.chatId, {
         version: 2,
         savedAt: Date.now(),
-        messages: changeset.transcript.entries,
-        state: changeset.transcript.state,
+        messages: entries,
+        state: normalizeRuntimeStateForWindow(
+          changeset.transcript.state,
+          entries.map((entry) => entry.id)
+        ),
         lastOutEventId: changeset.cursors?.lastOutEventId,
         lastInEventId: changeset.cursors?.lastInEventId,
       });
@@ -320,6 +338,10 @@ export function snapshotTranscriptStorage(): TranscriptStorage<unknown> {
  * `limit`/`before` from an app server holding a secret key. `undefined` when
  * the call is not possible from here (a run's public token cannot use the
  * endpoint), so the caller falls back to reading the whole blob.
+ *
+ * Carries no runtime `state`: the endpoint serves the transcript only, so a
+ * paged result always reports `state: null`. The model lane is restored from
+ * the whole-blob read instead, which is reachable only with private auth.
  */
 async function readTranscriptPage<TUIMessage extends UIMessage>(
   chatId: string,
@@ -329,7 +351,7 @@ async function readTranscriptPage<TUIMessage extends UIMessage>(
     const page = await apiClientManager.clientOrThrow().getSessionTranscript(chatId, opts);
     return {
       messages: page.messages as TUIMessage[],
-      state: page.state ?? null,
+      state: null,
       cursors: page.cursors,
       nextCursor: page.nextCursor,
     };
@@ -420,6 +442,85 @@ export type TranscriptRuntimeState = {
   /** `chat.inject` messages queued but not yet drained into a turn when the save happened. */
   queued?: ModelMessage[];
 };
+
+/**
+ * The slice of a transcript worth storing, which is the last `keep` messages
+ * once a conversation has compacted, and all of it before that.
+ *
+ * Expressed relative to the compaction watermark rather than as a plain tail,
+ * because everything after the watermark is live context that the next boot
+ * converts and must never be dropped. The runtime stamps the watermark at the
+ * newest message on each compacted save, so in practice the two coincide and
+ * this keeps the last `keep`; the watermark-relative form is what keeps it
+ * correct if a watermark ever lands earlier in the transcript.
+ *
+ * Without a watermark nothing is dropped: every entry is still context.
+ *
+ * This is what stops the object rewritten each turn from growing with the
+ * conversation. An app that needs the whole history keeps its own transcript
+ * storage.
+ */
+export function trimTranscriptForSnapshot<TEntry extends { id: string }>(
+  entries: TEntry[],
+  state: unknown,
+  opts: { keep: number }
+): TEntry[] {
+  const throughId = parseTranscriptRuntimeState(state)?.compaction?.throughId;
+  if (throughId === undefined || throughId === "") return entries;
+
+  const idx = entries.findIndex((entry) => entry.id === throughId);
+  if (idx === -1) return entries;
+
+  // Keep the watermark entry itself, so a restored lane can still find it.
+  const start = Math.max(0, idx + 1 - Math.max(1, opts.keep));
+  return start === 0 ? entries : entries.slice(start);
+}
+
+/**
+ * Rewrite runtime state so it still describes the transcript window being
+ * persisted.
+ *
+ * A compaction watermark that has moved out of the window becomes `""`, which
+ * is how a restored lane says "the compacted messages cover everything before
+ * this window". Left as-is, the watermark would name an entry the window does
+ * not contain, and restoring the lane would discard the compacted messages and
+ * re-convert the window from scratch — an agent that has silently forgotten the
+ * conversation. Injections anchored outside the window go too: the span they
+ * belonged to is already inside the compacted lane.
+ */
+export function normalizeRuntimeStateForWindow(
+  state: unknown,
+  windowIds: Iterable<string>
+): unknown {
+  const runtimeState = parseTranscriptRuntimeState(state);
+  if (!runtimeState) return state;
+
+  const ids = new Set(windowIds);
+  const compaction = runtimeState.compaction;
+  const watermarkOutside =
+    compaction !== undefined && compaction.throughId !== "" && !ids.has(compaction.throughId);
+
+  const injections = runtimeState.injections?.filter(
+    (injection) => injection.afterId === "" || ids.has(injection.afterId)
+  );
+
+  if (!watermarkOutside && injections?.length === runtimeState.injections?.length) {
+    return state;
+  }
+
+  return {
+    ...runtimeState,
+    ...(compaction
+      ? {
+          compaction: {
+            modelMessages: compaction.modelMessages,
+            throughId: watermarkOutside ? "" : compaction.throughId,
+          },
+        }
+      : {}),
+    ...(injections ? { injections } : {}),
+  };
+}
 
 export function parseTranscriptRuntimeState(value: unknown): TranscriptRuntimeState | undefined {
   if (!value || typeof value !== "object") return undefined;

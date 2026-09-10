@@ -1052,7 +1052,6 @@ export const CreateUploadPayloadUrlResponseBody = z.object({
 /** One page of a `chat.agent` session transcript, from `GET /api/v1/sessions/{id}/transcript`. */
 export const SessionTranscriptResponseBody = z.object({
   messages: z.array(z.unknown()),
-  state: z.unknown().nullable(),
   cursors: z
     .object({
       lastOutEventId: z.string().optional(),

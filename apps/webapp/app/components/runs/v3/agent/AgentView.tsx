@@ -1,11 +1,12 @@
 import type { UIMessage } from "@ai-sdk/react";
 import { SSEStreamSubscription } from "@trigger.dev/core/v3";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Button } from "~/components/primitives/Buttons";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Spinner } from "~/components/primitives/Spinner";
 import { AgentMessageView } from "~/components/runs/v3/agent/AgentMessageView";
-import { seedFromTranscriptSnapshot } from "~/components/runs/v3/agent/transcriptSnapshotSeed";
 import { useAutoScrollToBottom } from "~/hooks/useAutoScrollToBottom";
+import type { TranscriptSeed } from "~/services/realtime/transcriptSeed.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -29,14 +30,13 @@ export type AgentViewAuth = {
    */
   initialMessages: UIMessage[];
   /**
-   * Presigned GET URL for the session's chat-snapshot S3 blob (written
-   * by the agent after each turn-complete; see `ChatSnapshotV1`).
-   * Optional — sessions that registered a `hydrateMessages` hook skip
-   * snapshot writes and the URL fetch will 404. In that case the
-   * dashboard falls back to seq=0 SSE (which, post-trim, shows only the
-   * most recent turn). Generated server-side by `SessionPresenter`.
+   * The most recent messages of the session's saved transcript, read
+   * server-side by `SessionPresenter`, with the stream cursor to resume just
+   * past them. Absent for sessions that registered a `hydrateMessages` hook and
+   * so save no transcript; the dashboard then falls back to seq=0 SSE (which,
+   * post-trim, shows only the most recent turn).
    */
-  snapshotPresignedUrl?: string;
+  transcriptSeed?: TranscriptSeed;
 };
 
 /**
@@ -84,14 +84,14 @@ export function AgentView({ agentView }: { agentView: AgentViewAuth }) {
   const project = useProject();
   const environment = useEnvironment();
 
-  const messages = useAgentSessionMessages({
+  const { messages, hasEarlier, isLoadingEarlier, loadEarlier } = useAgentSessionMessages({
     sessionId: agentView.sessionId,
     apiOrigin: agentView.apiOrigin,
     orgSlug: organization.slug,
     projectSlug: project.slug,
     envSlug: environment.slug,
     initialMessages: agentView.initialMessages,
-    snapshotPresignedUrl: agentView.snapshotPresignedUrl,
+    transcriptSeed: agentView.transcriptSeed,
   });
 
   // Sticky-bottom auto-scroll: walks up to find the inspector's scroll
@@ -112,7 +112,16 @@ export function AgentView({ agentView }: { agentView: AgentViewAuth }) {
           </div>
         </div>
       ) : (
-        <AgentMessageView messages={messages} />
+        <>
+          {hasEarlier ? (
+            <div className="flex justify-center pb-2">
+              <Button variant="minimal/small" onClick={loadEarlier} disabled={isLoadingEarlier}>
+                {isLoadingEarlier ? "Loading…" : "Load earlier messages"}
+              </Button>
+            </div>
+          ) : null}
+          <AgentMessageView messages={messages} />
+        </>
       )}
     </div>
   );
@@ -234,7 +243,7 @@ function useAgentSessionMessages({
   projectSlug,
   envSlug,
   initialMessages,
-  snapshotPresignedUrl,
+  transcriptSeed,
 }: {
   sessionId: string;
   apiOrigin: string;
@@ -242,27 +251,38 @@ function useAgentSessionMessages({
   projectSlug: string;
   envSlug: string;
   initialMessages: UIMessage[];
-  snapshotPresignedUrl?: string;
-}): UIMessage[] {
+  transcriptSeed?: TranscriptSeed;
+}): {
+  messages: UIMessage[];
+  hasEarlier: boolean;
+  isLoadingEarlier: boolean;
+  loadEarlier: () => void;
+} {
   // Seed with the user messages from the run's task payload.
   const seedMessages = useMemo(
     () => initialMessages.filter((m) => m.role === "user"),
     [initialMessages]
   );
 
-  // The snapshot URL is re-signed by the loader on every navigation
-  // (tab switches in the inspector pane re-run the session loader),
-  // which would otherwise re-trigger the subscription effect below
-  // and replay post-snapshot `.out` chunks on top of the messages we
-  // already accumulated — duplicating any assistant content that
-  // lives past `snapshot.lastOutEventId` (e.g., a canceled run whose
-  // turn never completed). Hold the URL behind a ref and keep it
-  // out of the effect's deps so the effect runs exactly once per
-  // mount.
-  const snapshotUrlRef = useRef(snapshotPresignedUrl);
+  // The seed is re-read by the loader on every navigation (tab switches in the
+  // inspector pane re-run the session loader), which would otherwise re-trigger
+  // the subscription effect below and replay post-snapshot `.out` chunks on top
+  // of the messages we already accumulated — duplicating any assistant content
+  // that lives past `lastOutEventId` (e.g., a canceled run whose turn never
+  // completed). Hold it behind a ref and keep it out of the effect's deps so
+  // the effect runs exactly once per mount.
+  const transcriptSeedRef = useRef(transcriptSeed);
   useEffect(() => {
-    snapshotUrlRef.current = snapshotPresignedUrl;
-  }, [snapshotPresignedUrl]);
+    transcriptSeedRef.current = transcriptSeed;
+  }, [transcriptSeed]);
+
+  // Cursor for history older than the seeded page. The dashboard seeds the
+  // most recent page server-side; earlier pages are fetched on demand so a long
+  // conversation is not rendered truncated.
+  const [earlierCursor, setEarlierCursor] = useState<string | undefined>(
+    transcriptSeed?.nextCursor
+  );
+  const [isLoadingEarlier, setIsLoadingEarlier] = useState(false);
 
   // `pendingRef` is the authoritative, eagerly-updated message state:
   // chunks mutate this synchronously as they arrive. A throttled flush
@@ -386,28 +406,17 @@ function useAgentSessionMessages({
      * have a snapshot (e.g. `hydrateMessages` customers, or sessions that
      * have never completed a turn).
      */
-    const loadSnapshot = async (): Promise<string | undefined> => {
-      const url = snapshotUrlRef.current;
-      if (!url) return undefined;
-      try {
-        const resp = await fetch(url, { signal: abort.signal });
-        if (!resp.ok) return undefined;
-        const json = (await resp.json()) as unknown;
-        const seed = seedFromTranscriptSnapshot(json);
-        if (!seed) return undefined;
-        for (const { id, message, timestamp } of seed.messages) {
-          // The snapshot's seed wins over the task-payload seed for any
-          // overlapping ids (the snapshot represents the agent's
-          // canonical accumulator, post-turn).
-          pendingRef.current.set(id, message);
-          timestampsRef.current.set(id, timestamp);
-        }
-        scheduleFlush.current();
-        return seed.lastOutEventId;
-      } catch {
-        // 404 / network / parse / abort — fall back to seq=0 SSE
-        return undefined;
+    const loadSnapshot = (): string | undefined => {
+      const seed = transcriptSeedRef.current;
+      if (!seed) return undefined;
+      for (const { id, message, timestamp } of seed.messages) {
+        // The transcript wins over the task-payload seed for any overlapping
+        // ids: it is the agent's canonical accumulator, post-turn.
+        pendingRef.current.set(id, message);
+        timestampsRef.current.set(id, timestamp);
       }
+      if (seed.messages.length > 0) scheduleFlush.current();
+      return seed.lastOutEventId;
     };
 
     const outputSubOptions = (lastEventId: string | undefined) =>
@@ -449,7 +458,7 @@ function useAgentSessionMessages({
         // at seq=0 — which, post-trim, contains roughly one turn of
         // records (acceptable fallback for `hydrateMessages` sessions
         // and fresh sessions).
-        const snapshotLastEventId = await loadSnapshot();
+        const snapshotLastEventId = loadSnapshot();
         if (abort.signal.aborted) return;
 
         const sub = new SSEStreamSubscription(outputUrl, outputSubOptions(snapshotLastEventId));
@@ -656,7 +665,39 @@ function useAgentSessionMessages({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, apiOrigin, orgSlug, projectSlug, envSlug]);
 
-  return useMemo(() => {
+  const loadEarlier = useCallback(() => {
+    if (earlierCursor === undefined || isLoadingEarlier) return;
+    setIsLoadingEarlier(true);
+
+    const origin = typeof window !== "undefined" ? window.location.origin : apiOrigin;
+    const url =
+      `${origin}/resources/orgs/${orgSlug}/projects/${projectSlug}/env/${envSlug}` +
+      `/sessions/${encodeURIComponent(sessionId)}/transcript?before=${encodeURIComponent(
+        earlierCursor
+      )}`;
+
+    fetch(url)
+      .then((resp) => (resp.ok ? resp.json() : Promise.reject(new Error(String(resp.status)))))
+      .then((raw) => {
+        const body = raw as { messages?: TranscriptSeed["messages"]; nextCursor?: string };
+        for (const { id, message, timestamp } of body.messages ?? []) {
+          // Earlier history never overwrites a message already on screen: what
+          // is here came from the stream or a newer page and is at least as
+          // current.
+          if (pendingRef.current.has(id)) continue;
+          pendingRef.current.set(id, message);
+          timestampsRef.current.set(id, timestamp);
+        }
+        setEarlierCursor(body.nextCursor);
+        scheduleFlush.current();
+      })
+      .catch(() => {
+        // Leave the cursor in place so the control stays available to retry.
+      })
+      .finally(() => setIsLoadingEarlier(false));
+  }, [earlierCursor, isLoadingEarlier, apiOrigin, orgSlug, projectSlug, envSlug, sessionId]);
+
+  const sorted = useMemo(() => {
     const timestamps = timestampsRef.current;
     const arr = Array.from(messagesById.values());
 
@@ -670,6 +711,13 @@ function useAgentSessionMessages({
     });
     return arr;
   }, [messagesById]);
+
+  return {
+    messages: sorted,
+    hasEarlier: earlierCursor !== undefined,
+    isLoadingEarlier,
+    loadEarlier,
+  };
 }
 
 // ---------------------------------------------------------------------------

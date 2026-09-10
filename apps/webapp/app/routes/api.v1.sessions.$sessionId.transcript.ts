@@ -1,10 +1,11 @@
 import { json } from "@remix-run/server-runtime";
-import { pageTranscriptEntries, parseTranscriptSnapshot } from "@trigger.dev/core/v3";
+import { pageTranscriptEntries, parseTranscriptBlob } from "@trigger.dev/core/v3";
 import { z } from "zod/v4";
 import { $replica } from "~/db.server";
 import { chatSnapshotStorageKey } from "~/services/realtime/chatSnapshot.server";
 import { resolveSessionByIdOrExternalId } from "~/services/realtime/sessions.server";
 import { anyResource, createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import { readTranscriptPageRanged } from "~/services/realtime/transcriptPage.server";
 import { downloadPacketFromObjectStore } from "~/v3/objectStore.server";
 import { logger } from "~/services/logger.server";
 
@@ -56,13 +57,38 @@ export const loader = createLoaderApiRoute(
       return json({ error: "Session not found" }, { status: 404 });
     }
 
-    let body: unknown;
+    const storageKey = chatSnapshotStorageKey(session);
+    const location = {
+      projectRef: authentication.environment.project.externalRef,
+      envSlug: authentication.environment.slug,
+    };
+
+    try {
+      const paged = await readTranscriptPageRanged(storageKey, location, searchParams);
+      if (paged !== "unsupported") {
+        return json({
+          messages: paged.messages,
+          state: null,
+          cursors: paged.cursors,
+          nextCursor: paged.nextCursor,
+        });
+      }
+    } catch (error) {
+      if (!isObjectNotFound(error)) {
+        logger.warn("transcript endpoint: ranged read failed, falling back to full read", {
+          sessionId: session.friendlyId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    let body: string | undefined;
     try {
       const packet = await downloadPacketFromObjectStore(
-        { dataType: "application/store", data: chatSnapshotStorageKey(session) },
+        { dataType: "application/store", data: storageKey },
         authentication.environment
       );
-      body = typeof packet.data === "string" ? JSON.parse(packet.data) : undefined;
+      body = typeof packet.data === "string" ? packet.data : undefined;
     } catch (error) {
       // A missing blob is a valid empty transcript (a session that has not
       // saved yet). Any other read failure must NOT look like an empty chat:
@@ -78,19 +104,21 @@ export const loader = createLoaderApiRoute(
       return json({ error: "Failed to read transcript" }, { status: 502 });
     }
 
-    const snapshot = parseTranscriptSnapshot(body);
+    const snapshot = body === undefined ? undefined : parseTranscriptBlob(body);
     if (!snapshot) {
       return json({ messages: [], state: null });
     }
 
+    const cursors = {
+      lastOutEventId: snapshot.lastOutEventId,
+      lastInEventId: snapshot.lastInEventId,
+    };
+
     const page = pageTranscriptEntries(snapshot.messages, searchParams);
     return json({
       messages: page.entries.map((entry) => entry.message),
-      state: snapshot.state,
-      cursors: {
-        lastOutEventId: snapshot.lastOutEventId,
-        lastInEventId: snapshot.lastInEventId,
-      },
+      state: null,
+      cursors,
       nextCursor: page.nextCursor,
     });
   }

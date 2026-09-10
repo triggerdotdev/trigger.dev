@@ -169,9 +169,15 @@ export function ChatPage({ chatId }: { chatId: string }) {
 The action receives `chatId` from the browser, so authorize it before returning: check that the signed-in user owns this chat. `defaultStorage` loads purely by `chatId` and does no tenant check of its own, so an exported action with no authorization lets any authenticated user read any chat's transcript. A custom storage can enforce tenancy inside `load` using `clientData`, but the server action is still the place to reject a `chatId` the caller may not read.
 </Warning>
 
-`limit` returns the most recent messages and a `nextCursor`; pass it as `before` for the page before that one. With the default storage, a paged read is served by the platform, so a long conversation is not downloaded in full to render its last fifty messages. When you pass `transport` and it already knows the session, the hook seeds its resume cursor from the transcript, so the live subscription opens just past the persisted history instead of replaying it.
+`limit` returns the most recent messages and a `nextCursor`; pass it as `before` for the page before that one. With the default storage, a paged read is served by the platform, so a long conversation is not downloaded in full to render its last fifty messages. A paged read returns the transcript only: `state` is always `null`, because the model lane is not part of what a page renders, and the platform reads just the bytes holding that page rather than the whole conversation. The runtime reads the state separately when it restores context at boot. When you pass `transport` and it already knows the session, the hook seeds its resume cursor from the transcript, so the live subscription opens just past the persisted history instead of replaying it.
 
 Swap `defaultStorage` for your own storage and nothing else about the read changes.
+
+<Warning>
+The saved format changed in this release, and an older SDK cannot read it. Rolling a deployment back to a version from before this release means its runs will not find a readable transcript for conversations already saved by the newer one, and will continue from the live stream tail instead, so earlier history is lost for those conversations. Roll forward rather than back, or keep your own transcript storage.
+</Warning>
+
+The default storage is deliberately basic about long conversations. Once compaction has run, it keeps roughly the last hundred messages and drops the rest, so what it rewrites on each save stops growing. A conversation that never compacts is kept whole. If your app renders history further back than that, give the agent your own storage and keep the messages yourself.
 
 ## Owning the model's context
 

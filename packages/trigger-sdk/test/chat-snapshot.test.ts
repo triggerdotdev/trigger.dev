@@ -5,7 +5,11 @@
 import "../src/v3/test/index.js";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { apiClientManager } from "@trigger.dev/core/v3";
+import {
+  apiClientManager,
+  parseTranscriptBlob,
+  TRANSCRIPT_BLOB_CONTENT_TYPE,
+} from "@trigger.dev/core/v3";
 import type { TranscriptSnapshotV2 } from "@trigger.dev/core/v3";
 import {
   __readChatSnapshotProductionPathForTests as readChatSnapshot,
@@ -227,7 +231,7 @@ describe("chat snapshot helpers", () => {
   });
 
   describe("writeChatSnapshot", () => {
-    it("PUTs the snapshot JSON to the presigned URL", async () => {
+    it("PUTs the line-based snapshot blob to the presigned URL", async () => {
       const { createChatSnapshotUploadUrl } = stubApiClient({});
       const fetchSpy = stubFetch(async () => new Response(null, { status: 200 }));
 
@@ -240,11 +244,14 @@ describe("chat snapshot helpers", () => {
       expect(url).toBe("https://example.invalid/put");
       expect((init as RequestInit).method).toBe("PUT");
       expect((init as RequestInit).headers).toMatchObject({
-        "content-type": "application/json",
+        "content-type": TRANSCRIPT_BLOB_CONTENT_TYPE,
       });
-      // Body is the JSON-stringified snapshot — round-trip to confirm.
-      const sentBody = JSON.parse((init as RequestInit).body as string);
-      expect(sentBody).toEqual(snapshot);
+
+      // One line per entry, an index footer, and a fixed trailer — round-trip
+      // through the reader to confirm it is the same conversation.
+      const sentBody = (init as RequestInit).body as string;
+      expect(sentBody.startsWith('{"v":2')).toBe(true);
+      expect(parseTranscriptBlob(sentBody)).toEqual(snapshot);
     });
 
     it("returns without throwing on a non-OK PUT response (warns)", async () => {

@@ -71,6 +71,8 @@ export type {
   StartedRedisContainer,
 };
 
+export { MinIOContainer };
+
 type Use<T> = (value: T) => Promise<void>;
 
 export const network = async ({ task }: TestContext, use: Use<StartedNetwork>) => {

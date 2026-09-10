@@ -1,7 +1,10 @@
 import {
   apiClientManager,
   logger,
+  parseTranscriptBlob,
   parseTranscriptSnapshot,
+  serializeTranscriptSnapshot,
+  TRANSCRIPT_BLOB_CONTENT_TYPE,
   type TranscriptSnapshotV2,
 } from "@trigger.dev/core/v3";
 import type { UIMessage } from "ai";
@@ -88,20 +91,19 @@ export async function readChatSnapshot<TUIMessage extends UIMessage>(
     });
     return undefined;
   }
-  let parsed: unknown;
+  let body: string;
   try {
-    parsed = await response.json();
+    body = await response.text();
   } catch (error) {
-    logger.warn("chat.agent: snapshot JSON parse failed; continuing without snapshot", {
+    logger.warn("chat.agent: snapshot read failed; continuing without snapshot", {
       error: error instanceof Error ? error.message : String(error),
       sessionId,
     });
     return undefined;
   }
-  const snapshot = parseTranscriptSnapshot<TUIMessage>(parsed);
+  const snapshot = parseTranscriptBlob<TUIMessage>(body);
   if (!snapshot) {
     logger.warn("chat.agent: snapshot version/shape mismatch; ignoring", {
-      version: (parsed as { version?: unknown } | null)?.version,
       sessionId,
     });
     return undefined;
@@ -143,8 +145,8 @@ export async function writeChatSnapshot<TUIMessage extends UIMessage>(
   try {
     response = await fetch(presignedUrl, {
       method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(snapshot),
+      headers: { "content-type": TRANSCRIPT_BLOB_CONTENT_TYPE },
+      body: serializeTranscriptSnapshot(snapshot),
     });
   } catch (error) {
     logger.warn("chat.agent: snapshot upload failed; next run will replay further", {
