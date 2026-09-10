@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { authenticateApiKeyWithScope } from "~/services/apiAuth.server";
+import { environmentVariablesForApiKeyResponse } from "~/v3/environmentVariables/environmentVariablesForApiKeyResponse.server";
 import { resolveVariablesForEnvironment } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 
 const ParamsSchema = z.object({
@@ -65,9 +66,6 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   );
 
   return json({
-    variables: variables.reduce((acc: Record<string, string>, variable) => {
-      acc[variable.key] = variable.value;
-      return acc;
-    }, {}),
+    variables: environmentVariablesForApiKeyResponse(variables, authenticationResult.apiKey),
   });
 }

@@ -5,12 +5,12 @@ import tsconfigPaths from "vite-tsconfig-paths";
 export default defineConfig({
   test: {
     sequence: { sequencer: DurationShardingSequencer },
-    // Webapp tests live under test/**; the run-ops migration family
-    // colocates its *.server.test.ts next to source under app/v3/runOpsMigration/.
+    // Webapp tests live under test/**; selected test families colocate next to source.
     // The run-store seam test colocates next to its source at app/v3/runStore.server.test.ts.
     // Pure unit tests for runEngine concerns colocate next to their source file.
     include: [
       "test/**/*.test.ts",
+      "app/v3/environmentVariables/**/*.test.ts",
       "app/v3/runOpsMigration/**/*.test.ts",
       "app/v3/runStore.server.test.ts",
       "app/v3/validateMinimumCronInterval.test.ts",
