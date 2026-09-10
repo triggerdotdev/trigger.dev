@@ -176,6 +176,43 @@ describe.skipIf(!process.env.K8S_INTEGRATION_TESTS)("FailedPodHandler Integratio
     }
   }, 30000);
 
+  it("should ignore operator-owned pods", async () => {
+    const handler = new FailedPodHandler({ namespace, k8s, register });
+
+    try {
+      // Operator-owned pods carry app=task-run as well, so only the runner
+      // label separates them. This handler deletes the pod that carries the
+      // termination reason, so processing one loses that reason too.
+      const podNames = await createTestPods({
+        k8sApi: k8s,
+        namespace,
+        count: 1,
+        shouldFail: true,
+        labels: { app: "task-run", "compute.trigger.dev/runner": "runner-abc123" },
+      });
+
+      await waitForPodsPhase({
+        k8sApi: k8s,
+        namespace,
+        podNames,
+        phase: "Failed",
+      });
+
+      await handler.start();
+
+      await setTimeout(5000);
+
+      const exists = await podExists({ k8sApi: k8s, namespace, podName: podNames[0]! });
+      expect(exists).toBe(true);
+
+      const metrics = handler.getMetrics();
+      const processedPods = await metrics.processedPodsTotal.get();
+      expect(processedPods.values).toHaveLength(0);
+    } finally {
+      await handler.stop();
+    }
+  }, 30000);
+
   it("should not process pods that are being deleted", async () => {
     const handler = new FailedPodHandler({ namespace, k8s, register });
 

@@ -6,6 +6,11 @@ import type { K8sApi } from "../clients/kubernetes.js";
 import { createK8sApi } from "../clients/kubernetes.js";
 import { register } from "../metrics.js";
 
+// Operator-owned pods carry app=task-run too, since the network policy selects
+// on it, so they have to be excluded by their own label instead. Unconditional:
+// a rolling update runs this against pods the next version created.
+const RUN_POD_SELECTOR = "app=task-run,!compute.trigger.dev/runner";
+
 export type PodCleanerOptions = {
   namespace: string;
   k8s?: K8sApi;
@@ -72,7 +77,7 @@ export class PodCleaner {
       try {
         const result = await this.k8s.core.deleteCollectionNamespacedPod({
           namespace: this.namespace,
-          labelSelector: "app=task-run",
+          labelSelector: RUN_POD_SELECTOR,
           fieldSelector: "status.phase=Succeeded",
           limit: this.batchSize,
           _continue: continuationToken,

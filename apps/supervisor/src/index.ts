@@ -14,6 +14,7 @@ import {
   type ResourceMonitor,
 } from "./resourceMonitor.js";
 import { KubernetesWorkloadManager } from "./workloadManager/kubernetes.js";
+import { RunCrdWorkloadManager } from "./workloadManager/runCrd.js";
 import { DockerWorkloadManager } from "./workloadManager/docker.js";
 import { ComputeWorkloadManager } from "./workloadManager/compute.js";
 import {
@@ -80,7 +81,7 @@ class ManagedSupervisor {
   private readonly metricsServer?: HttpServer;
   private readonly workloadServer: WorkloadServer;
   private readonly workloadManager: WorkloadManager;
-  private readonly workloadManagerBackend: "compute" | "kubernetes" | "docker";
+  private readonly workloadManagerBackend: "compute" | "kubernetes" | "run-crd" | "docker";
   private readonly computeManager?: ComputeWorkloadManager;
   private readonly logger = new SimpleStructuredLogger("managed-supervisor");
   private readonly resourceMonitor: ResourceMonitor;
@@ -189,6 +190,12 @@ class ManagedSupervisor {
       this.computeManager = computeManager;
       this.workloadManager = computeManager;
       this.workloadManagerBackend = "compute";
+    } else if (this.isKubernetes && env.KUBERNETES_RUN_CRD_ENABLED) {
+      this.workloadManager = new RunCrdWorkloadManager({
+        ...workloadManagerOptions,
+        namespace: env.KUBERNETES_NAMESPACE,
+      });
+      this.workloadManagerBackend = "run-crd";
     } else if (this.isKubernetes) {
       this.workloadManager = new KubernetesWorkloadManager(workloadManagerOptions);
       this.workloadManagerBackend = "kubernetes";
@@ -197,7 +204,8 @@ class ManagedSupervisor {
       this.workloadManagerBackend = "docker";
     }
 
-    if (this.isKubernetes) {
+    // Not run-crd: the operator owns those pods and fails a Runner without one.
+    if (this.isKubernetes && this.workloadManagerBackend !== "run-crd") {
       if (env.POD_CLEANER_ENABLED) {
         this.logger.log("🧹 Pod cleaner enabled", {
           namespace: env.KUBERNETES_NAMESPACE,
@@ -227,6 +235,8 @@ class ManagedSupervisor {
       } else {
         this.logger.warn("Failed pod handler disabled");
       }
+    } else if (this.isKubernetes) {
+      this.logger.log("🧹 Pod cleaner and failed pod handler disabled, the operator owns run pods");
     }
 
     if (env.TRIGGER_DEQUEUE_INTERVAL_MS > env.TRIGGER_DEQUEUE_IDLE_INTERVAL_MS) {

@@ -179,6 +179,10 @@ export const Env = z
 
     // Kubernetes settings
     KUBERNETES_FORCE_ENABLED: BoolEnv.default(false),
+    // Create a Runner and let the operator build the pod, instead of building
+    // the pod here. The two are mutually exclusive by construction: whichever
+    // one runs is the only thing that creates a workload for a cold start.
+    KUBERNETES_RUN_CRD_ENABLED: BoolEnv.default(false),
     KUBERNETES_NAMESPACE: z.string().default("default"),
     KUBERNETES_WORKER_NODETYPE_LABEL: NodeLabelValue.default("v4-worker"),
     KUBERNETES_IMAGE_PULL_SECRETS: z.string().optional(), // csv

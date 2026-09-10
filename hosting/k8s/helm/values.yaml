@@ -302,6 +302,11 @@ supervisor:
       orgPlacementOverrides: {}
       ephemeralStorageSizeLimit: "" # Default: 10Gi
       ephemeralStorageSizeRequest: "" # Default: 2Gi´
+      # Create a Runner and let an operator build the run pod, instead of the
+      # supervisor building it. Needs the Runner CRD and its operator installed:
+      # the create 404s without them. Also grants the two writes the backend
+      # needs, a Secret for the deployment token and the Runner itself.
+      runCrdEnabled: false
     podCleaner:
       enabled: true
       batchSize: 100

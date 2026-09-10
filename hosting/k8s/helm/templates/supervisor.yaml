@@ -25,6 +25,16 @@ rules:
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["create", "delete", "deletecollection", "get", "list", "watch"]
+{{- if .Values.supervisor.config.kubernetes.runCrdEnabled }}
+  - apiGroups: [""]
+    resources: ["secrets"]
+    # delete is for taking back a Secret whose Runner create was rejected, which
+    # is guarded by that object's uid. Still no get: nothing here reads a token.
+    verbs: ["create", "delete", "patch"]
+  - apiGroups: ["compute.trigger.dev"]
+    resources: ["runners"]
+    verbs: ["create"]
+{{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -168,6 +178,13 @@ spec:
               value: {{ default .Release.Namespace .Values.supervisor.config.kubernetes.namespace | quote }}
             - name: KUBERNETES_FORCE_ENABLED
               value: {{ .Values.supervisor.config.kubernetes.forceEnabled | quote }}
+            - name: KUBERNETES_RUN_CRD_ENABLED
+              value: {{ .Values.supervisor.config.kubernetes.runCrdEnabled | quote }}
+            {{- range .Values.supervisor.extraEnvVars }}
+            {{- if eq .name "KUBERNETES_RUN_CRD_ENABLED" }}
+            {{- fail "Set supervisor.config.kubernetes.runCrdEnabled rather than overriding KUBERNETES_RUN_CRD_ENABLED through extraEnvVars. extraEnvVars is rendered last, so the override would win and enable the backend while the Role still lacks the two writes it needs, giving a 403 on every cold start." }}
+            {{- end }}
+            {{- end }}
             - name: KUBERNETES_WORKER_NODETYPE_LABEL
               value: {{ .Values.supervisor.config.kubernetes.workerNodetypeLabel | quote }}
             {{- with .Values.supervisor.config.kubernetes.runnerTolerations }}

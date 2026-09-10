@@ -7,6 +7,12 @@ import type { K8sApi } from "../clients/kubernetes.js";
 import { createK8sApi } from "../clients/kubernetes.js";
 import { register } from "../metrics.js";
 
+// Operator-owned pods carry app=task-run too, since the network policy selects
+// on it, so they have to be excluded by their own label instead. Unconditional:
+// a rolling update runs this against pods the next version created. One
+// constant because the list and the watch must select the same set.
+const RUN_POD_SELECTOR = "app=task-run,!compute.trigger.dev/runner";
+
 type PodStatus = "Pending" | "Running" | "Succeeded" | "Failed" | "Unknown" | "GracefulShutdown";
 
 export type FailedPodHandlerOptions = {
@@ -54,10 +60,10 @@ export class FailedPodHandler {
       () =>
         this.k8s.core.listNamespacedPod({
           namespace: this.namespace,
-          labelSelector: "app=task-run",
+          labelSelector: RUN_POD_SELECTOR,
           fieldSelector: "status.phase=Failed",
         }),
-      "app=task-run",
+      RUN_POD_SELECTOR,
       "status.phase=Failed"
     );
 

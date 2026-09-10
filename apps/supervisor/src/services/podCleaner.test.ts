@@ -232,6 +232,42 @@ describe.skipIf(!process.env.K8S_INTEGRATION_TESTS)("PodCleaner Integration Test
     }
   }, 30000);
 
+  it("should not delete operator-owned pods", async () => {
+    const podCleaner = new PodCleaner({ namespace, k8s, register });
+
+    try {
+      // Operator-owned pods carry app=task-run as well, so only the runner
+      // label separates them. Deleting one fails the run it was serving.
+      const podNames = await createTestPods({
+        k8sApi: k8s,
+        namespace,
+        count: 1,
+        labels: { app: "task-run", "compute.trigger.dev/runner": "runner-abc123" },
+        namePrefix: "operator-owned-pod",
+      });
+
+      if (!podNames[0]) {
+        throw new Error("Failed to create test pod");
+      }
+      const podName = podNames[0];
+
+      await waitForPodPhase({
+        k8sApi: k8s,
+        namespace,
+        podName,
+        phase: "Succeeded",
+      });
+
+      await podCleaner.start();
+
+      await setTimeout(5000);
+
+      expect(await podExists({ k8sApi: k8s, namespace, podName })).toBe(true);
+    } finally {
+      await podCleaner.stop();
+    }
+  }, 30000);
+
   it("should not delete pods that are still running", async () => {
     const podCleaner = new PodCleaner({ namespace, k8s, register });
 

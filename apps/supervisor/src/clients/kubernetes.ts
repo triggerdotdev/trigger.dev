@@ -23,6 +23,9 @@ export function createK8sApi() {
     core: kubeConfig.makeApiClient(k8s.CoreV1Api),
     batch: kubeConfig.makeApiClient(k8s.BatchV1Api),
     apps: kubeConfig.makeApiClient(k8s.AppsV1Api),
+    custom: kubeConfig.makeApiClient(k8s.CustomObjectsApi),
+    // Patching needs a content type the generated clients do not offer.
+    objects: k8s.KubernetesObjectApi.makeApiClient(kubeConfig),
     makeInformer,
   };
 
