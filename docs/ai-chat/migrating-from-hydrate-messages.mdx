@@ -10,7 +10,7 @@ Learn how to replace a `hydrateMessages` hook with a `storage` on the same table
 
 ## What changes hands
 
-With `hydrateMessages`, your hook was the source of truth for history and the runtime wrote nothing. Every fact about the conversation that the runtime knew, your app had to re-derive from its own rows. A [transcript storage](/ai-chat/transcript-storage) inverts that: the runtime owns the transcript and calls your storage at the durable boundaries.
+With `hydrateMessages`, your hook was the source of truth and the runtime wrote nothing, so your app re-derived from its own rows everything the runtime already knew. A [transcript storage](/ai-chat/transcript-storage) inverts that: the runtime owns the transcript and calls your storage at the durable boundaries.
 
 | Concern | With `hydrateMessages` | With `storage` |
 | --- | --- | --- |
@@ -95,7 +95,7 @@ With `hydrateMessages`, your hook was the source of truth for history and the ru
     };
     ```
 
-    The runtime calls `load` with no options and wants the whole conversation. The [history read](/ai-chat/transcript-storage#reading-the-transcript) your frontend uses passes `limit`, and later `before`, so the example fetches one row more than the page to learn whether earlier messages exist and returns the oldest included id as `nextCursor`.
+    The runtime calls `load` with no options and wants the whole conversation. Your frontend's [history read](/ai-chat/transcript-storage#reading-the-transcript) passes `limit` (and later `before`), so the example fetches one extra row to tell whether earlier messages exist and returns the oldest included id as `nextCursor`.
   </Step>
 
   <Step title="Implement save">
@@ -277,8 +277,8 @@ A few things your users and your tests will notice after the swap:
 
 - **Actions are edits.** `onAction` mutates `chat.history` and returns nothing, or returns `chat.turn()` to have a full turn answer the edited history. The regenerated answer is saved and remembered like any other. See [Actions](/ai-chat/actions#answering-after-an-action).
 - **`onRecoveryBoot` is informational.** It fires when a run boots after a crash and finds a half-written answer on the session stream. The runtime already reconciled the transcript; use the hook to tell the user, not to write rows.
-- **A failed turn keeps its partial, marked.** An answer cut short by an error or a stop reaches `save` with `final: false`. Report those ids back from `load` in `nonFinalIds` and the runtime keeps them marked until the message is replaced.
-- **Compaction survives a reboot without your help.** The summary is in `state`. A fresh worker starts from it instead of re-reading and re-summarising the conversation.
+- **A failed turn keeps its partial, marked.** An answer cut short reaches `save` with `final: false`; report those ids back from `load` in `nonFinalIds`.
+- **Compaction survives a reboot without your help.** The summary travels in `state`.
 - **Your rows do not have to be byte-identical.** Store messages in whatever shape your database prefers. The runtime does not depend on an exact JSON round-trip.
 
 ## Checklist
