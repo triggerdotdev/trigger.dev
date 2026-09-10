@@ -2871,6 +2871,7 @@ model GithubAppInstallation {
   permissions         Json?
   repositorySelection GithubRepositorySelection
   installedBy         String?
+  installedByUserId   String?
 
   organization   Organization @relation(fields: [organizationId], references: [id])
   organizationId String

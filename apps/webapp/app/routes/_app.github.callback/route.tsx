@@ -15,19 +15,32 @@ import { sanitizeRedirectPath } from "~/utils";
 const QuerySchema = z.discriminatedUnion("setup_action", [
   z.object({
     setup_action: z.literal("install"),
-    installation_id: z.coerce.number(),
-    state: z.string(),
+    installation_id: z.coerce.number().int().positive().safe(),
+    state: z.string().min(1),
+    code: z.string().min(1),
   }),
   z.object({
     setup_action: z.literal("update"),
-    installation_id: z.coerce.number(),
-    state: z.string(),
+    installation_id: z.coerce.number().int().positive().safe(),
+    state: z.string().min(1),
   }),
   z.object({
     setup_action: z.literal("request"),
-    state: z.string(),
+    state: z.string().min(1),
   }),
 ]);
+
+function loggableError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return { name: "Unknown error" };
+  }
+
+  return {
+    name: error.name,
+    message: error.message,
+    status: "status" in error ? error.status : undefined,
+  };
+}
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
@@ -38,7 +51,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   if (!result.success) {
     logger.warn("GitHub App callback with invalid params", {
-      queryParams,
+      setupAction: url.searchParams.get("setup_action"),
+      parameterNames: [...url.searchParams.keys()],
     });
     return redirectWithErrorMessage("/", request, "Failed to install GitHub app");
   }
@@ -49,7 +63,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   if (!sessionResult.valid) {
     logger.error("GitHub App callback with invalid session", {
-      callbackData,
+      setupAction: callbackData.setup_action,
+      installationId:
+        callbackData.setup_action === "request" ? undefined : callbackData.installation_id,
       error: sessionResult.error,
     });
 
@@ -90,12 +106,19 @@ export async function loader({ request }: LoaderFunctionArgs) {
   switch (callbackData.setup_action) {
     case "install": {
       const [error] = await tryCatch(
-        linkGitHubAppInstallation(callbackData.installation_id, organizationId)
+        linkGitHubAppInstallation({
+          installationId: callbackData.installation_id,
+          organizationId,
+          installedByUserId: user.id,
+          oauthCode: callbackData.code,
+        })
       );
 
       if (error) {
         logger.error("Failed to link GitHub App installation", {
-          error,
+          installationId: callbackData.installation_id,
+          organizationId,
+          error: loggableError(error),
         });
         return consumingSession(
           await redirectWithErrorMessage(redirectTo, request, "Failed to install GitHub app")
@@ -114,7 +137,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
       if (error) {
         logger.error("Failed to update GitHub App installation", {
-          error,
+          installationId: callbackData.installation_id,
+          organizationId,
+          error: loggableError(error),
         });
         return consumingSession(
           await redirectWithErrorMessage(redirectTo, request, "Failed to update GitHub App")
@@ -129,9 +154,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     case "request": {
       // This happens when a non-admin user requests installation
       // The installation_id won't be available until an admin approves
-      logger.info("GitHub App installation requested, awaiting approval", {
-        callbackData,
-      });
+      logger.info("GitHub App installation requested, awaiting approval");
 
       return redirectWithSuccessMessage(redirectTo, request, "GitHub App installation requested");
     }

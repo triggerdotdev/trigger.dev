@@ -51,18 +51,32 @@ const GithubAppEnvSchema = z.preprocess(
     }
     return obj;
   },
-  z.discriminatedUnion("GITHUB_APP_ENABLED", [
-    z.object({
-      GITHUB_APP_ENABLED: z.literal("1"),
-      GITHUB_APP_ID: z.string(),
-      GITHUB_APP_PRIVATE_KEY: z.string(),
-      GITHUB_APP_WEBHOOK_SECRET: z.string(),
-      GITHUB_APP_SLUG: z.string(),
-    }),
-    z.object({
-      GITHUB_APP_ENABLED: z.literal("0"),
-    }),
-  ])
+  z
+    .discriminatedUnion("GITHUB_APP_ENABLED", [
+      z.object({
+        GITHUB_APP_ENABLED: z.literal("1"),
+        GITHUB_APP_ID: z.string(),
+        GITHUB_APP_PRIVATE_KEY: z.string(),
+        GITHUB_APP_WEBHOOK_SECRET: z.string(),
+        GITHUB_APP_SLUG: z.string(),
+        GITHUB_APP_CLIENT_ID: z.string().min(1).optional(),
+        GITHUB_APP_CLIENT_SECRET: z.string().min(1).optional(),
+      }),
+      z.object({
+        GITHUB_APP_ENABLED: z.literal("0"),
+      }),
+    ])
+    .superRefine((value, ctx) => {
+      if (
+        value.GITHUB_APP_ENABLED === "1" &&
+        Boolean(value.GITHUB_APP_CLIENT_ID) !== Boolean(value.GITHUB_APP_CLIENT_SECRET)
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "GITHUB_APP_CLIENT_ID and GITHUB_APP_CLIENT_SECRET must be configured together",
+        });
+      }
+    })
 );
 
 // eventually we can make all S2 env vars required once the S2 OSS version is out

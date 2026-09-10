@@ -81,4 +81,38 @@ describe("webapp environment secrets", () => {
 
     await expect(import("../app/env.server")).rejects.toThrow("SESSION_SECRET");
   });
+
+  it("requires GitHub App OAuth credentials to be configured together", async () => {
+    process.env = {
+      ...requiredEnv,
+      GITHUB_APP_ENABLED: "1",
+      GITHUB_APP_ID: "123",
+      GITHUB_APP_PRIVATE_KEY: "private-key",
+      GITHUB_APP_WEBHOOK_SECRET: "webhook-secret",
+      GITHUB_APP_SLUG: "test-app",
+      GITHUB_APP_CLIENT_ID: "client-id",
+    };
+
+    await expect(import("../app/env.server")).rejects.toThrow(
+      "GITHUB_APP_CLIENT_ID and GITHUB_APP_CLIENT_SECRET must be configured together"
+    );
+  });
+
+  it("accepts a complete GitHub App OAuth configuration", async () => {
+    process.env = {
+      ...requiredEnv,
+      GITHUB_APP_ENABLED: "1",
+      GITHUB_APP_ID: "123",
+      GITHUB_APP_PRIVATE_KEY: "private-key",
+      GITHUB_APP_WEBHOOK_SECRET: "webhook-secret",
+      GITHUB_APP_SLUG: "test-app",
+      GITHUB_APP_CLIENT_ID: "client-id",
+      GITHUB_APP_CLIENT_SECRET: "client-secret",
+    };
+
+    const { env } = await import("../app/env.server");
+
+    expect(env.GITHUB_APP_CLIENT_ID).toBe("client-id");
+    expect(env.GITHUB_APP_CLIENT_SECRET).toBe("client-secret");
+  });
 });
