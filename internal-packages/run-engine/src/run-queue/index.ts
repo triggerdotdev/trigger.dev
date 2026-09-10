@@ -1130,6 +1130,7 @@ export class RunQueue {
     incrementAttemptCount = true,
     resetAttemptCount = false,
     skipDequeueProcessing = false,
+    snapshotRoute,
   }: {
     orgId: string;
     messageId: string;
@@ -1142,6 +1143,12 @@ export class RunQueue {
      */
     resetAttemptCount?: boolean;
     skipDequeueProcessing?: boolean;
+    /**
+     * The run's versioned storage route to stamp onto the requeued message so the next consumer
+     * honors durable residency. Written during the existing nack (no extra Redis round trip).
+     * Omit to preserve the message's current route.
+     */
+    snapshotRoute?: unknown;
   }) {
     return this.#trace(
       "nackMessage",
@@ -1166,6 +1173,10 @@ export class RunQueue {
           [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
           [SemanticAttributes.WORKER_QUEUE]: this.#getWorkerQueueFromMessage(message),
         });
+
+        if (snapshotRoute !== undefined) {
+          message.snapshotRoute = snapshotRoute;
+        }
 
         if (resetAttemptCount) {
           message.attempt = 0;
@@ -4072,6 +4083,17 @@ for i, member in ipairs(expiredMembers) do
 
       local messageKey = keyPrefix .. "{org:" .. orgFromQueue .. "}:message:" .. runId
 
+      -- Read the message's versioned snapshotRoute BEFORE deleting it, so the TTL worker resolves each
+      -- run's residency from the route the birth stamped (no per-run durable lookup on the worker side).
+      local snapshotRoute = nil
+      local rawMessage = redis.call('GET', messageKey)
+      if rawMessage then
+        local ok, decoded = pcall(cjson.decode, rawMessage)
+        if ok and type(decoded) == 'table' and decoded.snapshotRoute ~= nil then
+          snapshotRoute = decoded.snapshotRoute
+        end
+      end
+
       -- Delete message key
       redis.call('DEL', messageKey)
 
@@ -4115,7 +4137,7 @@ for i, member in ipairs(expiredMembers) do
       -- Enqueue to TTL worker (runId is natural dedup key)
       local serializedItem = cjson.encode({
         job = "expireTtlRun",
-        item = { runId = runId, orgId = orgId, queueKey = rawQueueKey },
+        item = { runId = runId, orgId = orgId, queueKey = rawQueueKey, snapshotRoute = snapshotRoute },
         visibilityTimeoutMs = visibilityTimeoutMs,
         attempt = 0
       })
@@ -4183,6 +4205,17 @@ for i, member in ipairs(expiredMembers) do
 
       local messageKey = keyPrefix .. "{org:" .. orgFromQueue .. "}:message:" .. runId
 
+      -- Read the message's versioned snapshotRoute BEFORE deleting it, so the TTL worker resolves each
+      -- run's residency from the route the birth stamped (no per-run durable lookup on the worker side).
+      local snapshotRoute = nil
+      local rawMessage = redis.call('GET', messageKey)
+      if rawMessage then
+        local ok, decoded = pcall(cjson.decode, rawMessage)
+        if ok and type(decoded) == 'table' and decoded.snapshotRoute ~= nil then
+          snapshotRoute = decoded.snapshotRoute
+        end
+      end
+
       redis.call('DEL', messageKey)
 
       -- ZREM from queue; if successful AND this is a CK variant, DECR lengthCounter.
@@ -4228,7 +4261,7 @@ for i, member in ipairs(expiredMembers) do
 
       local serializedItem = cjson.encode({
         job = "expireTtlRun",
-        item = { runId = runId, orgId = orgId, queueKey = rawQueueKey },
+        item = { runId = runId, orgId = orgId, queueKey = rawQueueKey, snapshotRoute = snapshotRoute },
         visibilityTimeoutMs = visibilityTimeoutMs,
         attempt = 0
       })

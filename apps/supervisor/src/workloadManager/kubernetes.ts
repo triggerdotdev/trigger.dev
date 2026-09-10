@@ -215,6 +215,14 @@ export class KubernetesWorkloadManager implements WorkloadManager {
                     name: "TRIGGER_SNAPSHOT_ID",
                     value: opts.snapshotFriendlyId,
                   },
+                  ...(opts.snapshotRoute
+                    ? [
+                        {
+                          name: "TRIGGER_SNAPSHOT_ROUTE",
+                          value: JSON.stringify(opts.snapshotRoute),
+                        },
+                      ]
+                    : []),
                   {
                     name: "TRIGGER_SUPERVISOR_API_PROTOCOL",
                     value: this.opts.workloadApiProtocol,

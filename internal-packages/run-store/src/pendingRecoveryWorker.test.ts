@@ -504,6 +504,10 @@ describe("PendingRecoveryWorker", () => {
           RECOVERY_CONSUMER_GROUP
         )) as unknown[];
         expect(pending[0]).toBe(0);
+
+        // The stream entry is also DELETED (not just ACKed): a quarantine leaves no stream entry behind,
+        // so a run that keeps getting quarantined cannot grow the recovery stream without bound.
+        expect(await raw.xlen(pendingStreamKey(partition))).toBe(0);
       } finally {
         await raw.quit();
         await h.store.quit();

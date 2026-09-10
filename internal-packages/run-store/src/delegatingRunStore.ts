@@ -483,8 +483,12 @@ export class DelegatingRunStore implements RunStore {
     return this.delegate.createExecutionSnapshot(input, tx);
   }
 
-  readSnapshotRoute(runId: string, organizationId: string): Promise<SnapshotRoute | undefined> {
-    return this.delegate.readSnapshotRoute(runId, organizationId);
+  readSnapshotRoute(
+    runId: string,
+    organizationId: string,
+    options?: { forceDurable?: boolean; knownToExist?: boolean }
+  ): Promise<SnapshotRoute | undefined> {
+    return this.delegate.readSnapshotRoute(runId, organizationId, options);
   }
 
   findSnapshotCompletedWaitpointIds(

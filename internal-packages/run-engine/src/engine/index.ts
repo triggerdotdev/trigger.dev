@@ -86,7 +86,13 @@ import { RaceSimulationSystem } from "./systems/raceSimulationSystem.js";
 import { RunAttemptSystem } from "./systems/runAttemptSystem.js";
 import { NoopPendingVersionRunIdLookup } from "./services/pendingVersionLookup.js";
 import type { SystemResources } from "./systems/systems.js";
-import { type RunStore, PostgresRunStore } from "@internal/run-store";
+import {
+  type RunStore,
+  type SnapshotRoute,
+  type SnapshotRouteWire,
+  parseSnapshotRoute,
+  PostgresRunStore,
+} from "@internal/run-store";
 import {
   type ControlPlaneResolver,
   PassthroughControlPlaneResolver,
@@ -103,6 +109,12 @@ import type {
 import { createTtlWorkerCatalog } from "./ttlWorkerCatalog.js";
 import { workerCatalog } from "./workerCatalog.js";
 import pMap from "p-map";
+import {
+  createShutdownGate,
+  engineShutdownPhases,
+  executeShutdownPhases,
+  type RunEngineShutdownFailure,
+} from "./shutdown.js";
 
 export class RunEngine {
   private runLockRedis: Redis;
@@ -119,11 +131,15 @@ export class RunEngine {
   private batchQueue: BatchQueue;
   private batchQueueConsumersEnabled: boolean;
   private workerQueueObserverAbortController?: AbortController;
-  private quitPromise?: Promise<void>;
+  // The ONE shutdown execution, shared by every `quit()` caller, default or strict.
+  private quitGate?: (options?: { rejectOnFailure?: boolean }) => Promise<void>;
 
   prisma: PrismaClient;
   readOnlyPrisma: PrismaReplicaClient;
   runStore: RunStore;
+  // The shared resources object every system reads `runStore` from LIVE. Retained so a caller can swap
+  // the run store into the engine once after boot (setRunStore) without reconstructing the engine.
+  #resources!: SystemResources;
   controlPlaneResolver: ControlPlaneResolver;
   runQueue: RunQueue;
   eventBus: EventBus = new EventEmitter<EventBusEvents>();
@@ -252,7 +268,9 @@ export class RunEngine {
         ...options.worker.redis,
         keyPrefix: `${options.worker.redis.keyPrefix}worker:`,
       },
-      catalog: workerCatalog,
+      catalog: {
+        ...workerCatalog,
+      },
       concurrency: options.worker,
       pollIntervalMs: options.worker.pollIntervalMs,
       immediatePollIntervalMs: options.worker.immediatePollIntervalMs,
@@ -284,6 +302,8 @@ export class RunEngine {
             runId: payload.runId,
             completedAt: payload.completedAt,
             reason: payload.reason,
+            // Validate the carried route leniently; an unrecognized/absent one falls back to durable resolution.
+            snapshotRoute: parseSnapshotRoute(payload.snapshotRoute),
           });
         },
         queueRunsPendingVersion: async ({ payload }) => {
@@ -307,6 +327,7 @@ export class RunEngine {
         continueRunIfUnblocked: async ({ payload }) => {
           await this.waitpointSystem.continueRunIfUnblocked({
             runId: payload.runId,
+            snapshotRoute: parseSnapshotRoute(payload.snapshotRoute),
           });
         },
         ensureRunFinalized: async ({ payload }) => {
@@ -382,6 +403,7 @@ export class RunEngine {
       pendingVersionRunIdLookup:
         options.pendingVersionRunIdLookup ?? new NoopPendingVersionRunIdLookup(),
     };
+    this.#resources = resources;
 
     this.executionSnapshotSystem = new ExecutionSnapshotSystem({
       resources,
@@ -458,7 +480,9 @@ export class RunEngine {
       logger: new Logger("RunEngineTtlWorker", options.logLevel ?? "info"),
       jobs: {
         expireTtlRun: async (items) => {
-          await this.ttlSystem.expireRunsBatch(items.map((i) => i.payload.runId));
+          await this.ttlSystem.expireRunsBatch(
+            items.map((i) => ({ runId: i.payload.runId, snapshotRoute: i.payload.snapshotRoute }))
+          );
         },
       },
     });
@@ -538,6 +562,18 @@ export class RunEngine {
     });
 
     this.#startWorkerQueueObserver();
+  }
+
+  /**
+   * Swap the run store used by the engine and all its systems, ONCE, after boot. The engine and its
+   * systems are constructed at module load before the deployment's snapshot-store machinery decision can
+   * be made from a loaded flag snapshot; this points them at the decorated store afterwards. Systems read
+   * `runStore` from the shared resources object live, so mutating it here reaches every system in place,
+   * with no engine reconstruction. Not for use on a request path.
+   */
+  setRunStore(store: RunStore): void {
+    this.runStore = store;
+    this.#resources.runStore = store;
   }
 
   /**
@@ -992,6 +1028,9 @@ export class RunEngine {
         // App-level replacement for the dropped TaskRun env/project Cascade FKs.
         await this.controlPlaneResolver.assertEnvExists(environment.id);
 
+        // The birth residency route, decided once inside createRun and stamped on the initial enqueue.
+        let birthRoute: SnapshotRoute | undefined;
+
         try {
           // Forward the bare caller tx so the routing store picks the owning DB by id.
           taskRun = await this.runStore.createRun(
@@ -1106,6 +1145,10 @@ export class RunEngine {
                       anchorRunId: taskRunId,
                     })
                   : undefined,
+              // Capture the birth residency route so the initial enqueue below stamps it (no lookup).
+              onBirthResidency: (route) => {
+                birthRoute = route;
+              },
             },
             tx
           );
@@ -1268,6 +1311,7 @@ export class RunEngine {
               includeTtl: true,
               anchorEligibilityAtQueuePosition: true,
               enableFastPath,
+              route: birthRoute,
             });
           } catch (enqueueError) {
             this.logger.error("engine.trigger(): failed to enqueue run", {
@@ -1598,6 +1642,7 @@ export class RunEngine {
     runnerId,
     isWarmStart,
     environmentId,
+    snapshotRoute,
     tx,
   }: {
     runId: string;
@@ -1606,6 +1651,8 @@ export class RunEngine {
     runnerId?: string;
     isWarmStart?: boolean;
     environmentId?: string;
+    // Carried from the DequeuedMessage via the worker's start-attempt request; see RunAttemptSystem.
+    snapshotRoute?: SnapshotRouteWire;
     tx?: PrismaClientOrTransaction;
   }): Promise<StartRunAttemptResult> {
     return this.runAttemptSystem.startRunAttempt({
@@ -1615,6 +1662,7 @@ export class RunEngine {
       runnerId,
       isWarmStart,
       environmentId,
+      snapshotRoute,
       tx,
     });
   }
@@ -1627,6 +1675,7 @@ export class RunEngine {
     workerId,
     runnerId,
     environmentId,
+    snapshotRoute,
   }: {
     runId: string;
     snapshotId: string;
@@ -1634,6 +1683,8 @@ export class RunEngine {
     workerId?: string;
     runnerId?: string;
     environmentId?: string;
+    // Carried from the DequeuedMessage via the worker's complete request; see RunAttemptSystem.
+    snapshotRoute?: SnapshotRouteWire;
   }): Promise<CompleteRunAttemptResult> {
     return this.runAttemptSystem.completeRunAttempt({
       runId,
@@ -1642,6 +1693,7 @@ export class RunEngine {
       workerId,
       runnerId,
       environmentId,
+      snapshotRoute,
     });
   }
 
@@ -1659,6 +1711,7 @@ export class RunEngine {
     reason,
     finalizeRun,
     bulkActionId,
+    snapshotRoute,
     tx,
   }: {
     runId: string;
@@ -1668,6 +1721,7 @@ export class RunEngine {
     reason?: string;
     finalizeRun?: boolean;
     bulkActionId?: string;
+    snapshotRoute?: SnapshotRouteWire;
     tx?: PrismaClientOrTransaction;
   }): Promise<ExecutionResult & { alreadyFinished: boolean }> {
     return this.runAttemptSystem.cancelRun({
@@ -1678,6 +1732,7 @@ export class RunEngine {
       reason,
       finalizeRun,
       bulkActionId,
+      snapshotRoute,
       tx,
     });
   }
@@ -2095,6 +2150,7 @@ export class RunEngine {
     batch,
     workerId,
     runnerId,
+    snapshotRoute,
     tx,
   }: {
     runId: string;
@@ -2106,6 +2162,8 @@ export class RunEngine {
     batch?: { id: string; index?: number };
     workerId?: string;
     runnerId?: string;
+    // Carried from the executing run's route so the suspend transition honors durable residency.
+    snapshotRoute?: SnapshotRouteWire;
     tx?: PrismaClientOrTransaction;
   }): Promise<TaskRunExecutionSnapshot> {
     return this.waitpointSystem.blockRunWithWaitpoint({
@@ -2118,6 +2176,7 @@ export class RunEngine {
       batch,
       workerId,
       runnerId,
+      snapshotRoute,
       tx,
     });
   }
@@ -2187,6 +2246,7 @@ export class RunEngine {
     checkpoint,
     workerId,
     runnerId,
+    snapshotRoute,
     tx,
   }: {
     runId: string;
@@ -2194,6 +2254,8 @@ export class RunEngine {
     checkpoint: CheckpointInput;
     workerId?: string;
     runnerId?: string;
+    // Carried from the DequeuedMessage via the worker's suspend request; see CheckpointSystem.
+    snapshotRoute?: SnapshotRouteWire;
     tx?: PrismaClientOrTransaction;
   }): Promise<CreateCheckpointResult> {
     return this.checkpointSystem.createCheckpoint({
@@ -2202,6 +2264,7 @@ export class RunEngine {
       checkpoint,
       workerId,
       runnerId,
+      snapshotRoute,
       tx,
     });
   }
@@ -2215,6 +2278,7 @@ export class RunEngine {
     workerId,
     runnerId,
     environmentId,
+    snapshotRoute,
     tx,
   }: {
     runId: string;
@@ -2222,6 +2286,8 @@ export class RunEngine {
     workerId?: string;
     runnerId?: string;
     environmentId?: string;
+    // Carried from the restore DequeuedMessage; see CheckpointSystem.
+    snapshotRoute?: SnapshotRouteWire;
     tx?: PrismaClientOrTransaction;
   }): Promise<ExecutionResult> {
     return this.checkpointSystem.continueRunExecution({
@@ -2230,6 +2296,7 @@ export class RunEngine {
       workerId,
       runnerId,
       environmentId,
+      snapshotRoute,
       tx,
     });
   }
@@ -2425,55 +2492,43 @@ export class RunEngine {
     }
   }
 
-  quit(): Promise<void> {
-    this.quitPromise ??= this.#quit();
-    return this.quitPromise;
+  /**
+   * Shuts the engine down once. Every operation is attempted regardless of the others' outcomes.
+   *
+   * By default this resolves after all attempts even if some failed (the long-standing best-effort
+   * contract). With `rejectOnFailure`, it rejects with an `AggregateError` naming every failed
+   * operation, so a caller that owns a resource the engine writes to (a snapshot store client, say)
+   * can refuse to tear that resource down while a component may still be using it.
+   */
+  quit(options?: { rejectOnFailure?: boolean }): Promise<void> {
+    this.quitGate ??= createShutdownGate(() => this.#quit());
+    return this.quitGate(options);
   }
 
-  async #quit(): Promise<void> {
+  async #quit(): Promise<RunEngineShutdownFailure[]> {
     this.workerQueueObserverAbortController?.abort();
 
-    // Stop resources that actively process work before closing support resources they may use.
-    const processingResults = await Promise.allSettled([
-      this.runQueue.quit(),
-      this.worker.stop(),
-      this.ttlWorker.stop(),
-      this.batchQueue.close(),
-    ]);
-    this.#logShutdownFailures(
-      ["runQueue.quit", "worker.stop", "ttlWorker.stop", "batchQueue.close"],
-      processingResults
+    const failures = await executeShutdownPhases(
+      engineShutdownPhases({
+        runQueueQuit: () => this.runQueue.quit(),
+        workerStop: () => this.worker.stop(),
+        ttlWorkerStop: () => this.ttlWorker.stop(),
+        batchQueueClose: () => this.batchQueue.close(),
+        runLockQuit: () => this.runLock.quit(),
+        debounceSystemQuit: () => this.debounceSystem.quit(),
+        // RunLocker/Redlock owns this client and normally closes it. Do not send a second QUIT, but
+        // force-disconnect if Redlock failed to leave the connection in its terminal state.
+        runLockRedisDisconnect: async () => {
+          if (this.runLockRedis.status === "end") return;
+          this.runLockRedis.disconnect();
+        },
+      }),
+      ({ operation, error }) => {
+        this.logger.error("RunEngine shutdown operation failed", { operation, error });
+      }
     );
 
-    const supportResults = await Promise.allSettled([
-      this.runLock.quit(),
-      this.debounceSystem.quit(),
-    ]);
-    this.#logShutdownFailures(["runLock.quit", "debounceSystem.quit"], supportResults);
-
-    // RunLocker/Redlock owns this client and normally closes it. Do not send a second QUIT,
-    // but force-disconnect if Redlock failed to leave the connection in its terminal state.
-    if (this.runLockRedis.status !== "end") {
-      try {
-        this.runLockRedis.disconnect();
-      } catch (error) {
-        this.logger.error("RunEngine shutdown operation failed", {
-          operation: "runLockRedis.disconnect",
-          error,
-        });
-      }
-    }
-  }
-
-  #logShutdownFailures(operations: string[], results: PromiseSettledResult<unknown>[]): void {
-    results.forEach((result, index) => {
-      if (result.status === "rejected") {
-        this.logger.error("RunEngine shutdown operation failed", {
-          operation: operations[index],
-          error: result.reason,
-        });
-      }
-    });
+    return failures;
   }
 
   async repairEnvironment(environment: AuthenticatedEnvironment, dryRun: boolean) {
@@ -2517,6 +2572,23 @@ export class RunEngine {
       repairs,
       dryRun,
     };
+  }
+
+  /**
+   * The append-failure compensator. Shares the stall watchdog's job id AND its availableAt, so the
+   * two cannot enqueue two repairs for one run and neither can win a race that changes the delay.
+   */
+  async enqueueSnapshotRepair(payload: {
+    runId: string;
+    snapshotId: string;
+    executionStatus: string;
+  }): Promise<boolean> {
+    return this.worker.enqueueOnce({
+      id: `repair-in-progress-run:${payload.runId}`,
+      job: "repairSnapshot",
+      payload,
+      availableAt: new Date(Date.now() + this.repairSnapshotTimeoutMs),
+    });
   }
 
   async #repairRun(runId: string, dryRun: boolean) {
@@ -2964,6 +3036,8 @@ export class RunEngine {
     executionStatus: string;
   }) {
     return await this.runLock.lock("handleRepairSnapshot", [runId], async () => {
+      // No snapshot mirror in off-only mode, so the repair heals only the queue below. The M1+
+      // rebuild reintroduces a mirror-repair step here.
       const latestSnapshot = await getLatestExecutionSnapshot(this.prisma, runId, this.runStore);
 
       if (latestSnapshot.id !== snapshotId) {
@@ -2980,7 +3054,6 @@ export class RunEngine {
         return;
       }
 
-      // Okay, so this means we haven't transitioned to a new status yes, so we need to do something
       switch (latestSnapshot.executionStatus) {
         case "EXECUTING":
         case "EXECUTING_WITH_WAITPOINTS":
@@ -2989,7 +3062,8 @@ export class RunEngine {
         case "QUEUED_EXECUTING":
         case "RUN_CREATED":
         case "DELAYED": {
-          // Do nothing;
+          // The mirror repair above is the whole repair for these: the run is live and the queue
+          // needs no correction.
           return;
         }
         case "QUEUED": {

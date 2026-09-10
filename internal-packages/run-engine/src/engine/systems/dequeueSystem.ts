@@ -1,4 +1,6 @@
 import { startSpan } from "@internal/tracing";
+import { parseSnapshotRoute, toWireRoute } from "@internal/run-store";
+import type { SnapshotRouteWire } from "@internal/run-store";
 import { assertExhaustive, tryCatch } from "@trigger.dev/core";
 import type { DequeuedMessage } from "@trigger.dev/core/v3";
 import { RetryOptions, RunAnnotations } from "@trigger.dev/core/v3";
@@ -160,6 +162,13 @@ export class DequeueSystem {
 
         const orgId = message.message.orgId;
         const runId = message.messageId;
+        // The run's storage route, stamped at enqueue from its birth residency. Passed to every
+        // transition this dequeue writes so a poll-lagging consumer honors its true residency.
+        // A message from an OLD producer (no route) or a malformed one parses to undefined; the route
+        // is then recovered durably once, inside the lock, before any write. Declared out here so the
+        // catch path below can carry whatever was classified.
+        const carriedSnapshotRoute = parseSnapshotRoute(message.message.snapshotRoute);
+        let effectiveSnapshotRoute = carriedSnapshotRoute;
         const queueWaitMs =
           typeof message.message.eligibleAtMs === "number"
             ? Math.max(0, Date.now() - message.message.eligibleAtMs)
@@ -193,6 +202,39 @@ export class DequeueSystem {
             [runId],
             async () => {
               const snapshot = await getLatestExecutionSnapshot(prisma, runId, this.$.runStore);
+
+              // Compatibility tail ONLY. A carried route is used as-is, with no extra read. A message
+              // with no route (an older producer during a rolling deploy) or a malformed one would
+              // otherwise be read as "never enrolled": on a consumer whose dial is undefined the write
+              // would divert an enrolled redis-primary run to Postgres and strand its MemoryDB head.
+              // Resolve the durable route ONCE. An unarmed store answers undefined without any read; a
+              // CONFIRMED-absent residency is a genuine postgres/pre-cutover run; anything unresolvable
+              // throws, and we fail closed below rather than guess.
+              if (effectiveSnapshotRoute === undefined) {
+                const [routeError, recoveredRoute] = await tryCatch(
+                  this.$.runStore.readSnapshotRoute(runId, snapshot.organizationId, {
+                    forceDurable: true,
+                  })
+                );
+
+                if (routeError) {
+                  this.$.logger.error(
+                    "RunEngine.dequeueFromWorkerQueue(): durable route unresolved for a route-less message, nacking without consuming its budget",
+                    { runId, orgId, error: routeError }
+                  );
+                  // Residency was never classified, so NOTHING may be written. Requeue the original
+                  // message and leave its dequeue/DLQ budget untouched so it retries once MemoryDB is
+                  // back, instead of dead-lettering a healthy run.
+                  await this.$.runQueue.nackMessage({
+                    orgId,
+                    messageId: runId,
+                    resetAttemptCount: true,
+                  });
+                  return;
+                }
+
+                effectiveSnapshotRoute = recoveredRoute ? toWireRoute(recoveredRoute) : undefined;
+              }
 
               if (!isDequeueableExecutionStatus(snapshot.executionStatus)) {
                 // If it's pending executing it will be picked up by the stalled system if there's an issue
@@ -230,6 +272,7 @@ export class DequeueSystem {
                   error: `Tried to dequeue a run that is not in a valid state to be dequeued.`,
                   workerId,
                   runnerId,
+                  snapshotRoute: effectiveSnapshotRoute,
                 });
 
                 //todo is there a way to recover this, so the run can be retried?
@@ -242,6 +285,7 @@ export class DequeueSystem {
                     code: "TASK_DEQUEUED_INVALID_STATE",
                     message: `Task was in the ${snapshot.executionStatus} state when it was dequeued for execution.`,
                   },
+                  snapshotRoute: effectiveSnapshotRoute,
                   tx: prisma,
                 });
 
@@ -335,6 +379,7 @@ export class DequeueSystem {
                       id: waitpoint.id,
                       index: waitpoint.index,
                     })),
+                    snapshotRoute: effectiveSnapshotRoute,
                   }
                 );
 
@@ -414,6 +459,7 @@ export class DequeueSystem {
                       runId,
                       reason: result.message,
                       statusReason: result.code,
+                      snapshotRoute: effectiveSnapshotRoute,
                       tx: prisma,
                     });
                     return;
@@ -428,8 +474,13 @@ export class DequeueSystem {
                       }
                     );
 
-                    //worker mismatch so put it back in the queue
-                    await this.$.runQueue.nackMessage({ orgId, messageId: runId });
+                    //worker mismatch so put it back in the queue. Stamp the effective route so a
+                    //route-less old message is healed and the next consumer honors residency.
+                    await this.$.runQueue.nackMessage({
+                      orgId,
+                      messageId: runId,
+                      snapshotRoute: effectiveSnapshotRoute,
+                    });
 
                     return;
                   }
@@ -453,6 +504,7 @@ export class DequeueSystem {
                     runId,
                     reason: "No deployment or deployment image reference found for deployed run",
                     statusReason: "NO_DEPLOYMENT",
+                    snapshotRoute: effectiveSnapshotRoute,
                     tx: prisma,
                   });
 
@@ -542,6 +594,7 @@ export class DequeueSystem {
                       .map((w) => w.id),
                     workerId,
                     runnerId,
+                    snapshotRoute: effectiveSnapshotRoute,
                   },
                 },
                 prisma
@@ -659,6 +712,9 @@ export class DequeueSystem {
                 version: "1" as const,
                 dequeuedAt: new Date(),
                 workerQueueLength: message.workerQueueLength,
+                // Carry the run's route to the worker so its separate start-attempt request honors
+                // durable residency even on a poll-lagging pod.
+                snapshotRoute: effectiveSnapshotRoute,
                 snapshot: {
                   id: snapshotId,
                   friendlyId: SnapshotId.toFriendlyId(snapshotId),
@@ -759,7 +815,11 @@ export class DequeueSystem {
                 findError,
               }
             );
-            await this.$.runQueue.nackMessage({ orgId, messageId: runId });
+            await this.$.runQueue.nackMessage({
+              orgId,
+              messageId: runId,
+              snapshotRoute: effectiveSnapshotRoute,
+            });
 
             return;
           }
@@ -775,6 +835,7 @@ export class DequeueSystem {
               code: "TASK_RUN_DEQUEUED_MAX_RETRIES",
               message: `We tried to dequeue the run the maximum number of times but it wouldn't start executing`,
             },
+            snapshotRoute: effectiveSnapshotRoute,
             tx: prisma,
           });
 
@@ -801,6 +862,7 @@ export class DequeueSystem {
     runnerId,
     reason,
     statusReason,
+    snapshotRoute,
     tx,
   }: {
     orgId: string;
@@ -809,6 +871,8 @@ export class DequeueSystem {
     workerId?: string;
     runnerId?: string;
     reason?: string;
+    // The run's route (parsed at dequeue) so the RUN_CREATED park snapshot honors durable residency.
+    snapshotRoute?: SnapshotRouteWire;
     tx?: PrismaClientOrTransaction;
   }) {
     const prisma = tx ?? this.$.prisma;
@@ -873,6 +937,7 @@ export class DequeueSystem {
         organizationId: env.organizationId,
         workerId,
         runnerId,
+        snapshotRoute,
       });
 
       //we ack because when it's deployed it will be requeued

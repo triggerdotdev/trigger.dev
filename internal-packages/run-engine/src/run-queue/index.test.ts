@@ -71,6 +71,62 @@ const messageDev: InputPayload = {
 
 describe("RunQueue", () => {
   redisTest(
+    "snapshotRoute round-trips through enqueue+dequeue; a message without it parses fine (mixed version)",
+    async ({ redisContainer }) => {
+      const queue = new RunQueue({
+        ...testOptions,
+        queueSelectionStrategy: new FairQueueSelectionStrategy({
+          redis: {
+            keyPrefix: "runqueue:test:",
+            host: redisContainer.getHost(),
+            port: redisContainer.getPort(),
+          },
+          keys: testOptions.keys,
+        }),
+        redis: {
+          keyPrefix: "runqueue:test:",
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+        },
+      });
+
+      try {
+        const snapshotRoute = { version: 1, residency: "mirrored", organizationId: "o1234" };
+
+        // WITH a route: it survives serialize and is carried opaquely to the consumer.
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: { ...messageDev, snapshotRoute },
+          workerQueue: authenticatedEnvDev.id,
+        });
+        await setTimeout(1000);
+        const withRoute = await queue.dequeueMessageFromWorkerQueue(
+          "test_12345",
+          authenticatedEnvDev.id
+        );
+        assertNonNullable(withRoute);
+        expect(withRoute.message.snapshotRoute).toEqual(snapshotRoute);
+
+        // WITHOUT a route (an old producer / postgres run): the field is simply absent.
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: messageDev,
+          workerQueue: authenticatedEnvDev.id,
+        });
+        await setTimeout(1000);
+        const noRoute = await queue.dequeueMessageFromWorkerQueue(
+          "test_12345",
+          authenticatedEnvDev.id
+        );
+        assertNonNullable(noRoute);
+        expect(noRoute.message.snapshotRoute).toBeUndefined();
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
+  redisTest(
     "Enqueue/Dequeue a message in env (DEV run, no concurrency key)",
     async ({ redisContainer }) => {
       const queue = new RunQueue({

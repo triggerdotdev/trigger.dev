@@ -3,6 +3,7 @@ import type {
   MachinePreset,
   PlacementTag,
   RunAnnotations,
+  SnapshotRouteWire,
 } from "@trigger.dev/core/v3";
 
 export interface WorkloadManagerOptions {
@@ -50,6 +51,8 @@ export interface WorkloadManagerCreateOptions {
   runFriendlyId: string;
   snapshotId: string;
   snapshotFriendlyId: string;
+  // The run's storage route, materialized as the TRIGGER_SNAPSHOT_ROUTE env var for a cold start.
+  snapshotRoute?: SnapshotRouteWire;
   // Trace context for OTel span emission (W3C format: { traceparent: "00-...", tracestate?: "..." })
   traceContext?: Record<string, unknown>;
   annotations?: RunAnnotations;

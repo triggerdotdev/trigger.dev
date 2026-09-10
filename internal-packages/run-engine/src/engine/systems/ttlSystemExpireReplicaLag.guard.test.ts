@@ -133,7 +133,7 @@ describe("TtlSystem.expireRunsBatch — read-your-writes under replica lag", () 
 
         // Drive the REAL engine method. Its findRuns read is handed the writer (this.$.prisma) and
         // finds the run rather than hitting the lagging replica.
-        const result = await engine.ttlSystem.expireRunsBatch([runId]);
+        const result = await engine.ttlSystem.expireRunsBatch([{ runId }]);
 
         // The run is expired and nothing is skipped.
         expect(result.expired).toEqual([runId]);

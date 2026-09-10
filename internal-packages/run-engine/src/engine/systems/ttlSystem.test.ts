@@ -380,8 +380,9 @@ describe("TtlSystem store routing", () => {
         store.calls.findRuns = 0;
         store.calls.expireRunsBatch = 0;
 
-        const runIds = runs.map((r) => r.id);
-        const result = await engine.ttlSystem.expireRunsBatch(runIds);
+        // Postgres-resident runs carry no route, so the batch takes the efficient bulk SQL path.
+        const items = runs.map((r) => ({ runId: r.id }));
+        const result = await engine.ttlSystem.expireRunsBatch(items);
 
         expect(store.calls.findRuns).toBeGreaterThanOrEqual(1);
         expect(store.calls.expireRunsBatch).toBeGreaterThanOrEqual(1);

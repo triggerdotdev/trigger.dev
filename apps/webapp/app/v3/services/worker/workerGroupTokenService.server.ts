@@ -10,6 +10,7 @@ import type {
   DequeuedMessage,
   ExecutionResult,
   MachinePreset,
+  SnapshotRouteWire,
   StartRunAttemptResult,
   TaskRunExecutionResult,
 } from "@trigger.dev/core/v3";
@@ -511,12 +512,15 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     isWarmStart,
     runnerId,
     environmentId,
+    snapshotRoute,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
     isWarmStart?: boolean;
     runnerId?: string;
     environmentId?: string;
+    // Carried back from the DequeuedMessage on the worker's start request; honors durable residency.
+    snapshotRoute?: SnapshotRouteWire;
   }): Promise<
     StartRunAttemptResult & {
       envVars: Record<string, string>;
@@ -535,6 +539,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       workerId: this.workerInstanceId,
       runnerId,
       environmentId,
+      snapshotRoute,
     });
 
     const defaultMachinePreset = machinePresetFromName(defaultMachine);
@@ -575,12 +580,15 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     completion,
     runnerId,
     environmentId,
+    snapshotRoute,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
     completion: TaskRunExecutionResult;
     runnerId?: string;
     environmentId?: string;
+    // Carried back from the DequeuedMessage on the worker's complete request; honors durable residency.
+    snapshotRoute?: SnapshotRouteWire;
   }): Promise<CompleteRunAttemptResult> {
     await this.assertCreatedAtGate({
       runId: fromFriendlyId(runFriendlyId),
@@ -595,6 +603,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       workerId: this.workerInstanceId,
       runnerId,
       environmentId,
+      snapshotRoute,
     });
   }
 
@@ -618,11 +627,14 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     snapshotFriendlyId,
     checkpoint,
     runnerId,
+    snapshotRoute,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
     checkpoint: CheckpointInput;
     runnerId?: string;
+    // Carried back from the DequeuedMessage on the worker's suspend request; honors durable residency.
+    snapshotRoute?: SnapshotRouteWire;
   }) {
     return await this._engine.createCheckpoint({
       runId: fromFriendlyId(runFriendlyId),
@@ -630,6 +642,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       checkpoint,
       workerId: this.workerInstanceId,
       runnerId,
+      snapshotRoute,
     });
   }
 
@@ -638,11 +651,14 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     snapshotFriendlyId,
     runnerId,
     environmentId,
+    snapshotRoute,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
     runnerId?: string;
     environmentId?: string;
+    // Carried from the worker's continue (checkpoint-restore) request query params; honors durable residency.
+    snapshotRoute?: SnapshotRouteWire;
   }) {
     await this.assertCreatedAtGate({
       runId: fromFriendlyId(runFriendlyId),
@@ -656,6 +672,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       workerId: this.workerInstanceId,
       runnerId,
       environmentId,
+      snapshotRoute,
     });
   }
 

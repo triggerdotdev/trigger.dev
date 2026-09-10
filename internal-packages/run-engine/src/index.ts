@@ -1,4 +1,18 @@
 export { RunEngine } from "./engine/index.js";
+// The engine's shutdown executor and its strict/best-effort gate. Exported so a caller that owns a
+// resource the engine writes to can compose the same drain semantics instead of restating them.
+export {
+  createShutdownGate,
+  engineShutdownPhases,
+  executeShutdownPhases,
+  shutdownAggregateError,
+} from "./engine/shutdown.js";
+export type {
+  EngineShutdownStops,
+  RunEngineShutdownFailure,
+  ShutdownAggregateError,
+  ShutdownOperation,
+} from "./engine/shutdown.js";
 export {
   RunDuplicateIdempotencyKeyError,
   RunOneTimeUseTokenError,
@@ -99,3 +113,5 @@ export {
   FANOUT_PARTITION_COUNT,
   WaitpointKeyTagError,
 } from "./engine/waitpointCoordinator/keys.js";
+export { createCompletedWaitpointResolver } from "./engine/systems/completedWaitpointResolver.js";
+export { enhanceExecutionSnapshotWithWaitpoints } from "./engine/systems/executionSnapshotSystem.js";

@@ -514,10 +514,28 @@ export class RedisSnapshotStore {
   }
 
   /**
-   * Whether a prepared-but-unfinalized unit exists for this run. The residency resolver uses it to
-   * surface `pendingBirth` (a birth prepared but not yet finalized) distinctly from a clean miss.
-   * Reads the MemoryDB PRIMARY; the prep key is removed on finalize/abort, so its presence is exactly
-   * "a unit is pending".
+   * The run's pending-protocol state in ONE primary round trip: whether a prepared-but-unfinalized
+   * unit exists (surfaces `pendingBirth`, distinct from a clean miss) AND whether a durable quarantine
+   * record exists (an unresolvable unit was moved aside). Folding both into one read means residency
+   * resolution gains quarantine-awareness without an extra hot-path round trip. The prep key is removed
+   * on finalize/abort/quarantine, so its presence is exactly "a unit is pending"; the quarantine key
+   * never expires, so its presence is exactly "this run failed closed and must not resolve to Postgres".
+   */
+  async readPendingState(runId: string): Promise<{ prepared: boolean; quarantined: boolean }> {
+    return this.#timed("readPendingState", async () => {
+      const reply = (await this.redis.readPendingState(
+        preparedUnitKey(runId),
+        quarantineKey(runId)
+      )) as [number, number];
+      return { prepared: reply[0] === 1, quarantined: reply[1] === 1 };
+    });
+  }
+
+  /**
+   * Whether a prepared-but-unfinalized unit exists for this run. The prep key is removed on
+   * finalize/abort/quarantine, so its presence is exactly "a unit is pending". Reads the MemoryDB
+   * PRIMARY. Residency resolution uses {@link readPendingState} instead, which folds in the quarantine
+   * check; this remains for callers that only need prepared-presence.
    */
   async hasPreparedUnit(runId: string): Promise<boolean> {
     return this.#timed("hasPreparedUnit", async () => {
@@ -538,23 +556,31 @@ export class RedisSnapshotStore {
   }
 
   /**
-   * Persist an unresolvable prepared unit to its durable quarantine key BEFORE the caller ACKs the
-   * pending stream entry, so a quarantined unit is recoverable/inspectable by an operator (log + ACK
-   * alone would lose it). No TTL: the record outlives every run-state key. Idempotent per run.
+   * Atomically MOVE an unresolvable prepared unit aside: in one script, write the durable no-TTL
+   * quarantine record (unit + reason + timestamp, plus the raw malformed value when the unit could not
+   * be parsed) AND remove the prepared-unit key — but ONLY when the prep key's token still matches this
+   * unit's `transitionToken`. A newer prepare (necessarily a different token, since prepare admits one
+   * pending unit per run) is NEVER clobbered: its live unit survives while the old raw is still recorded
+   * for the operator. The pending STREAM entry is left for the sweeper to clear later. Returns whether
+   * the prepared unit was removed. Runs BEFORE the caller ACKs, so a crash cannot lose the record.
    */
-  async quarantinePreparedUnit(unit: PreparedPgUnit, reason: string, raw?: string): Promise<void> {
-    await this.#timed("quarantinePreparedUnit", async () => {
-      await this.redis.hset(
+  async quarantinePreparedUnit(
+    unit: PreparedPgUnit,
+    reason: string,
+    raw?: string
+  ): Promise<{ moved: boolean }> {
+    return this.#timed("quarantinePreparedUnit", async () => {
+      const moved = (await this.redis.quarantinePreparedUnit(
         quarantineKey(unit.runId),
-        "unit",
+        preparedUnitKey(unit.runId),
         JSON.stringify(unit),
-        "reason",
         reason,
-        "quarantinedAt",
         new Date().toISOString(),
-        // The RAW malformed value, preserved verbatim for inspection when the unit could not be parsed.
-        ...(raw !== undefined ? (["raw", raw] as const) : ([] as const))
-      );
+        unit.transitionToken,
+        raw !== undefined ? "1" : "0",
+        raw ?? ""
+      )) as number;
+      return { moved: moved === 1 };
     });
   }
 
@@ -1321,6 +1347,12 @@ export class RedisSnapshotStore {
       local function keyspaceAlive()
         return redis.call('EXISTS', eKey) == 1 and redis.call('EXISTS', seqKey) == 1
       end
+      -- A keyspace a forkGuard (or the repair path) marked gapped: its head disagrees with Postgres and
+      -- there is no head-rebuild repair, so every read must refuse it. Same seq key keyspaceAlive already
+      -- reads, so this adds no round trip. Reads then fall back per residency in the decorator.
+      local function gapped()
+        return redis.call('HGET', seqKey, 'g') == '1'
+      end
       local function orderFor(pointer)
         if not pointer then return '' end
         local cs = string.match(pointer, '^(%d+):')
@@ -1583,6 +1615,10 @@ export class RedisSnapshotStore {
         if firstGuarded then
           local actual = redis.call('GET', curKey) or ''
           if actual ~= firstExpectedCur then
+            -- The guard runs BEFORE the Postgres commit, and the rejected transaction rolls back. With
+            -- two concurrent transitions one commits and the loser is rejected, leaving the winner's
+            -- Redis head valid, so the fork must NOT mark the keyspace gapped: doing so would strand a
+            -- valid head. Only the actual gap-producing paths (a lost/holed append) mark gaps.
             return { 'forkGuard', 'head', actual }
           end
         end
@@ -1668,6 +1704,48 @@ export class RedisSnapshotStore {
       `,
     });
 
+    // The atomic quarantine MOVE: write the durable no-TTL record, then remove the prepared unit ONLY
+    // when its token still matches this unit's. A newer prepare (different token) is never clobbered.
+    // The pending stream entry is intentionally left for the sweeper, not XDEL'd here.
+    this.redis.defineCommand("quarantinePreparedUnit", {
+      numberOfKeys: 2,
+      lua: `
+        local quarantineKey = KEYS[1]
+        local prepKey = KEYS[2]
+        -- Check the token BEFORE writing anything. A DIFFERENT token means a NEWER replacement holds the
+        -- slot (the old unit was already resolved): writing the run-wide quarantine marker would POISON
+        -- that live newer unit, since readPendingState treats any quarantine hash as fail-closed and every
+        -- residency lookup would then fail forever. Decline entirely. A MATCHING token (the same unit) or
+        -- a MISSING token (a corrupt unit with no parseable token) is the unit we are resolving, with no
+        -- live replacement to poison, so it is recorded for the operator.
+        local tok = redis.call('HGET', prepKey, 'token')
+        if tok and tok ~= ARGV[4] then
+          return 0
+        end
+        redis.call('HSET', quarantineKey, 'unit', ARGV[1], 'reason', ARGV[2], 'quarantinedAt', ARGV[3])
+        if ARGV[5] == '1' then
+          redis.call('HSET', quarantineKey, 'raw', ARGV[6])
+        end
+        -- Remove the prepared unit only on a real atomic move (matching token). A corrupt no-token unit
+        -- keeps its key for the operator to inspect; its run stays fail-closed via the quarantine marker.
+        if tok then
+          redis.call('DEL', prepKey)
+          return 1
+        end
+        return 0
+      `,
+    });
+
+    // The combined pending-protocol read: prepared-unit presence AND quarantine-record presence in one
+    // round trip (both keys share the run's partition slot). Residency resolution reads it to fail closed
+    // on a quarantined run without an extra hot-path call.
+    this.redis.defineCommand("readPendingState", {
+      numberOfKeys: 2,
+      lua: `
+        return { redis.call('EXISTS', KEYS[1]), redis.call('EXISTS', KEYS[2]) }
+      `,
+    });
+
     this.redis.defineCommand("dropSnapshotRun", {
       numberOfKeys: 4,
       lua: `
@@ -1699,7 +1777,7 @@ export class RedisSnapshotStore {
       numberOfKeys: 4,
       lua: `
         ${PRELUDE}
-        if not keyspaceAlive() then return nil end
+        if not keyspaceAlive() or gapped() then return nil end
         local id = ARGV[1]
         local vals = redis.call('HMGET', eKey, id, id .. '#s', id .. '#c')
         if not vals[1] then return nil end
@@ -1712,7 +1790,7 @@ export class RedisSnapshotStore {
       numberOfKeys: 4,
       lua: `
         ${PRELUDE}
-        if not keyspaceAlive() then return nil end
+        if not keyspaceAlive() or gapped() then return nil end
         local cur = redis.call('GET', curKey)
         if not cur then return nil end
         local vals = redis.call('HMGET', eKey, cur, cur .. '#s', cur .. '#c')
@@ -1728,7 +1806,7 @@ export class RedisSnapshotStore {
         local id = ARGV[1]
         -- Not present, which is what sends the caller to Postgres. An empty id set from an
         -- incomplete keyspace would read as authoritative.
-        if not keyspaceAlive() then return { '0', '' } end
+        if not keyspaceAlive() or gapped() then return { '0', '' } end
         if redis.call('HEXISTS', eKey, id) == 0 then
           return { '0', '' }
         end
@@ -1744,7 +1822,7 @@ export class RedisSnapshotStore {
         local id = ARGV[1]
         -- Not present, which fails a redis-primary read closed: an empty set from an incomplete
         -- keyspace would otherwise read as authoritative.
-        if not keyspaceAlive() then return { '0', '', '', '0', '' } end
+        if not keyspaceAlive() or gapped() then return { '0', '', '', '0', '' } end
         if redis.call('HEXISTS', eKey, id) == 0 then
           return { '0', '', '', '0', '' }
         end
@@ -2031,5 +2109,21 @@ declare module "@internal/redis" {
       token: string,
       callback?: Callback<string[]>
     ): Result<string[], Context>;
+    quarantinePreparedUnit(
+      quarantineKey: string,
+      prepKey: string,
+      unitJson: string,
+      reason: string,
+      quarantinedAt: string,
+      expectedToken: string,
+      hasRaw: string,
+      rawValue: string,
+      callback?: Callback<number>
+    ): Result<number, Context>;
+    readPendingState(
+      prepKey: string,
+      quarantineKey: string,
+      callback?: Callback<[number, number]>
+    ): Result<[number, number], Context>;
   }
 }

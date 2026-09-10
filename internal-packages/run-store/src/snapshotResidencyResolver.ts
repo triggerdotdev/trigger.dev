@@ -13,8 +13,12 @@ export interface SnapshotResidencyReads {
   readBirthResidency(runId: string): Promise<string | undefined>;
   /** Run-state presence + versioned-namespace check: absent | known | unknown (unknown fails closed). */
   readStateVersion(runId: string): Promise<StateVersionRead>;
-  /** Whether a prepared-but-unfinalized unit exists for the run (surfaces pendingBirth). */
-  hasPreparedUnit(runId: string): Promise<boolean>;
+  /**
+   * Pending-protocol state in one round trip: `prepared` (a prepared-but-unfinalized unit exists,
+   * surfacing pendingBirth) and `quarantined` (an unresolvable unit was moved aside, so the run fails
+   * closed and must never resolve to Postgres).
+   */
+  readPendingState(runId: string): Promise<{ prepared: boolean; quarantined: boolean }>;
 }
 
 /**
@@ -67,7 +71,10 @@ export class SnapshotResidencyResolver {
     this.cache = new LRUCache<string, CacheableResolution>({ max: options.max ?? DEFAULT_MAX });
   }
 
-  async resolve(runId: string): Promise<SnapshotResidencyResolution> {
+  async resolve(
+    runId: string,
+    options?: { knownToExist?: boolean }
+  ): Promise<SnapshotResidencyResolution> {
     const cached = this.cache.get(runId);
     if (cached) return cached;
 
@@ -80,7 +87,7 @@ export class SnapshotResidencyResolver {
     }
 
     if (result.kind === "absent") {
-      return this.#resolveAbsent(runId, result);
+      return this.#resolveAbsent(runId, result, options?.knownToExist ?? false);
     }
 
     // pendingBirth, expired, and error re-resolve on every call: none is cached.
@@ -90,17 +97,25 @@ export class SnapshotResidencyResolver {
   // Cache postgres residency ONLY after both, in order: the TaskRun row EXISTS, then a SUBSEQUENT
   // primary re-read is STILL absent. Never cache absence for a nonexistent run (its Redis birth may
   // be about to prepare). A failure to confirm existence leaves the result uncached.
+  //
+  // `knownToExist` is set only by a caller whose PRIMARY query already returned this TaskRun row (a TTL
+  // batch's findRuns): the row is known to exist, so the per-run existence probe is skipped rather than
+  // repeated as a redundant Postgres query. It makes no claim that the run was locked or read inside a
+  // transaction. Ordinary callers pass it false and keep the full birth-race existence guard.
   async #resolveAbsent(
     runId: string,
-    first: { kind: "absent" }
+    first: { kind: "absent" },
+    knownToExist: boolean
   ): Promise<SnapshotResidencyResolution> {
-    let exists: boolean;
-    try {
-      exists = await this.taskRunExists(runId);
-    } catch {
-      return first;
+    if (!knownToExist) {
+      let exists: boolean;
+      try {
+        exists = await this.taskRunExists(runId);
+      } catch {
+        return first;
+      }
+      if (!exists) return first;
     }
-    if (!exists) return first;
 
     const recheck = await this.#resolveDurable(runId);
     if (recheck.kind === "absent") {
@@ -151,14 +166,17 @@ export class SnapshotResidencyResolver {
       return { kind: "error" };
     }
 
-    // No committed run-state. A prepared-but-unfinalized birth is pendingBirth, distinct from a miss.
-    let prepared: boolean;
+    // No committed run-state. Read the pending-protocol state once. A quarantined run failed closed
+    // durably: it must NEVER resolve to absent/Postgres, so it is an error exactly like an unreadable
+    // key. A prepared-but-unfinalized birth is pendingBirth, distinct from a miss.
+    let pending: { prepared: boolean; quarantined: boolean };
     try {
-      prepared = await this.store.hasPreparedUnit(runId);
+      pending = await this.store.readPendingState(runId);
     } catch {
       return { kind: "error" };
     }
-    if (prepared) return { kind: "pendingBirth" };
+    if (pending.quarantined) return { kind: "error" };
+    if (pending.prepared) return { kind: "pendingBirth" };
 
     // Genuine miss: distinguish by the residency marker.
     if (res === undefined) return { kind: "absent" }; // clean miss -> postgres resident

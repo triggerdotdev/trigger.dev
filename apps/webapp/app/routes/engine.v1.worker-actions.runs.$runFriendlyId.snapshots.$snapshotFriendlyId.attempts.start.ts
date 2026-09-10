@@ -28,6 +28,7 @@ export const action = createActionWorkerApiRoute(
       isWarmStart: body.isWarmStart,
       runnerId,
       environmentId,
+      snapshotRoute: body.snapshotRoute,
     });
 
     return json(runExecutionData);

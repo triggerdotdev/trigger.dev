@@ -1,4 +1,5 @@
 import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/isomorphic";
+import { parseSnapshotRoute, toWireRoute, type SnapshotRouteWire } from "@internal/run-store";
 import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
 import type { PrismaClientOrTransaction, TaskRunStatus } from "@trigger.dev/database";
 import { isExecuting } from "../statuses.js";
@@ -41,7 +42,18 @@ export class TtlSystem {
     });
   }
 
-  async expireRun({ runId, tx }: { runId: string; tx?: PrismaClientOrTransaction }) {
+  async expireRun({
+    runId,
+    tx,
+    route,
+  }: {
+    runId: string;
+    tx?: PrismaClientOrTransaction;
+    // The run's already-resolved wire route, threaded from the TTL Lua via the batch path so the
+    // terminal snapshot lands in the run's true store with no per-run durable lookup. Omitted by the
+    // standalone scheduled-expiry job, which resolves the route durably (forceDurable) below.
+    route?: SnapshotRouteWire;
+  }) {
     const prisma = tx ?? this.$.prisma;
     await this.$.runLock.lock("expireRun", [runId], async () => {
       const snapshot = await getLatestExecutionSnapshot(prisma, runId, this.$.runStore);
@@ -85,6 +97,24 @@ export class TtlSystem {
 
       await this.#scheduleFinalizationGuard(runId);
 
+      // Prefer the route the caller already resolved (threaded from the TTL Lua's per-message
+      // snapshotRoute). Only the standalone scheduled-expiry path arrives with no route: it runs on any
+      // pod, so it resolves the residency durably (forceDurable) rather than take the never-enrolled
+      // Postgres shortcut a poll-lagging pod would otherwise pick. Fails closed if it cannot confirm.
+      let expireRouteWire: SnapshotRouteWire | undefined;
+      if (route !== undefined) {
+        expireRouteWire = route;
+      } else {
+        const expireRoute = await this.$.runStore.readSnapshotRoute(
+          runId,
+          snapshot.organizationId,
+          {
+            forceDurable: true,
+          }
+        );
+        expireRouteWire = expireRoute ? toWireRoute(expireRoute) : undefined;
+      }
+
       const updatedRun = await this.$.runStore.expireRun(
         runId,
         {
@@ -100,6 +130,7 @@ export class TtlSystem {
             environmentType: snapshot.environmentType,
             projectId: snapshot.projectId,
             organizationId: snapshot.organizationId,
+            snapshotRoute: expireRouteWire,
           },
         },
         {
@@ -169,17 +200,19 @@ export class TtlSystem {
    * - Does NOT call acknowledgeMessage (the Lua script already removed from queue)
    * - Batches database operations where possible
    */
-  async expireRunsBatch(runIds: string[]): Promise<{
+  async expireRunsBatch(items: Array<{ runId: string; snapshotRoute?: unknown }>): Promise<{
     expired: string[];
     skipped: { runId: string; reason: string }[];
   }> {
     return startSpan(this.$.tracer, "TtlSystem.expireRunsBatch", async (span) => {
-      span.setAttribute("runCount", runIds.length);
+      span.setAttribute("runCount", items.length);
 
-      if (runIds.length === 0) {
+      if (items.length === 0) {
         return { expired: [], skipped: [] };
       }
 
+      const runIds = items.map((i) => i.runId);
+      const routeByRunId = new Map(items.map((i) => [i.runId, i.snapshotRoute]));
       const expired: string[] = [];
       const skipped: { runId: string; reason: string }[] = [];
 
@@ -236,16 +269,121 @@ export class TtlSystem {
         return { expired, skipped };
       }
 
-      // Update all runs in a single SQL call (status, dates, and error JSON)
       const now = new Date();
-      const runIdsToExpire = runsToExpire.map((r) => r.id);
 
       const error: TaskRunError = {
         type: "STRING_ERROR",
         raw: "Run expired because the TTL was reached",
       };
 
-      await pMap(runsToExpire, (run) => this.#scheduleFinalizationGuard(run.id), {
+      // Classify each run by the route the TTL Lua copied from its queue message. A VALID carried route
+      // is the fast path: the run is resident and its MemoryDB head advances through the per-run snapshot
+      // protocol, with NO durable lookup. But an ABSENT or MALFORMED route must NOT be assumed Postgres:
+      // a mixed-version rollout can enqueue an enrolled run without stamping the route, and a future route
+      // version parses as absent here. Treating either as Postgres-only would flip a redis-primary run to
+      // EXPIRED in Postgres while its Redis head stays QUEUED (a strand), so those runs alone resolve their
+      // residency durably (forceDurable) — a bounded lookup for the transition-period tail, not per run in
+      // steady state. Only a CONFIRMED never-enrolled run (durable resolve returns undefined) takes the
+      // efficient bulk SQL path; a durable resolution that cannot be confirmed fails closed (skipped).
+      const postgresOnlyRuns: typeof runsToExpire = [];
+      const residentRuns: Array<{ run: (typeof runsToExpire)[number]; route: SnapshotRouteWire }> =
+        [];
+      // Transient failures (durable residency unresolved, or a resident expiry that threw) for runs the
+      // TTL Lua ALREADY removed from the normal queue. These must NOT be reported as a benign skip: the
+      // batch worker would ACK the item and orphan the run (pending forever, no queue entry, no retry).
+      // We finish processing the batch, then THROW so the redis-worker retries it (already-expired runs
+      // re-expire idempotently). Distinct from a legitimate skip (not_found / wrong status), which needs
+      // no retry because the run is no longer PENDING.
+      const retriableFailures: string[] = [];
+      await pMap(
+        runsToExpire,
+        async (run) => {
+          const rawRoute = routeByRunId.get(run.id);
+          const carried =
+            rawRoute !== undefined && rawRoute !== null ? parseSnapshotRoute(rawRoute) : undefined;
+          // A valid carried route is the fast path, but only when it belongs to THIS run's org. A route
+          // whose organizationId does not match the run we are expiring cannot be trusted to describe its
+          // residency (a mis-stamped or crossed message), so it is treated as malformed and resolved
+          // durably rather than acted on.
+          const carriedMatchesOrg = carried && carried.organizationId === run.organizationId;
+          if (carried && carriedMatchesOrg) {
+            // An explicit postgres route keeps the efficient bulk SQL path — no per-run resident write.
+            // Only a Redis-backed residency (mirrored / redis-primary) advances a resident head.
+            if (carried.residency === "postgres") {
+              postgresOnlyRuns.push(run);
+            } else {
+              residentRuns.push({ run, route: carried });
+            }
+            return;
+          }
+          if (!run.organizationId) {
+            postgresOnlyRuns.push(run);
+            return;
+          }
+          try {
+            // Absent or malformed route: resolve the durable residency for THIS route-less tail. The
+            // primary findRuns query that produced this batch already returned each TaskRun row, so
+            // `knownToExist` skips the resolver's per-run existence probe — repeating it here would be a
+            // redundant Postgres query. Ordinary (non-batch) resolution keeps the full birth-race guard.
+            const resolved = await this.$.runStore.readSnapshotRoute(run.id, run.organizationId, {
+              forceDurable: true,
+              knownToExist: true,
+            });
+            if (resolved) {
+              // Never assume Postgres from an unresolved/absent route: a resolved redis-primary or mirrored
+              // residency advances its resident head; only a CONFIRMED postgres residency takes bulk SQL.
+              if (resolved.residency === "postgres") {
+                postgresOnlyRuns.push(run);
+              } else {
+                residentRuns.push({ run, route: toWireRoute(resolved) });
+              }
+            } else {
+              postgresOnlyRuns.push(run);
+            }
+          } catch (e) {
+            this.$.logger.error("Failed to resolve residency for route-less TTL batch run", {
+              runId: run.id,
+              error: e,
+            });
+            skipped.push({ runId: run.id, reason: "route_unresolved" });
+            retriableFailures.push(run.id);
+          }
+        },
+        { concurrency: 10 }
+      );
+
+      // Resident runs go through the per-run snapshot transaction (same path as expireRun) so their
+      // head advances in the run's true store, carrying the KNOWN route so expireRun does no durable
+      // lookup. Bounded concurrency keeps a large resident batch from degrading into serial work.
+      await pMap(
+        residentRuns,
+        async ({ run, route }) => {
+          try {
+            await this.expireRun({ runId: run.id, route });
+            expired.push(run.id);
+          } catch (e) {
+            this.$.logger.error("Failed to expire resident run in TTL batch", {
+              runId: run.id,
+              error: e,
+            });
+            skipped.push({ runId: run.id, reason: "resident_expire_failed" });
+            retriableFailures.push(run.id);
+          }
+        },
+        { concurrency: 5, stopOnError: false }
+      );
+
+      if (postgresOnlyRuns.length === 0) {
+        span.setAttribute("expiredCount", expired.length);
+        span.setAttribute("skippedCount", skipped.length);
+        this.#throwIfRetriable(retriableFailures);
+        return { expired, skipped };
+      }
+
+      // Postgres-only runs keep the efficient bulk SQL path.
+      const runIdsToExpire = postgresOnlyRuns.map((r) => r.id);
+
+      await pMap(postgresOnlyRuns, (run) => this.#scheduleFinalizationGuard(run.id), {
         concurrency: 10,
       });
 
@@ -253,7 +391,7 @@ export class TtlSystem {
 
       // Process each run: enqueue waitpoint completion jobs and emit events
       await pMap(
-        runsToExpire,
+        postgresOnlyRuns,
         async (run) => {
           try {
             // Enqueue a finishWaitpoint worker job for resilient waitpoint completion
@@ -315,7 +453,19 @@ export class TtlSystem {
       span.setAttribute("expiredCount", expired.length);
       span.setAttribute("skippedCount", skipped.length);
 
+      this.#throwIfRetriable(retriableFailures);
       return { expired, skipped };
     });
+  }
+
+  // A resident expiry or durable-residency resolution that failed for a run the TTL Lua already removed
+  // from the queue must fail the batch so the redis-worker retries it, rather than ACK-ing and orphaning
+  // the run. Thrown only after the rest of the batch is processed, so progress is never blocked; the
+  // already-expired runs re-expire idempotently on the retry.
+  #throwIfRetriable(retriableFailures: string[]): void {
+    if (retriableFailures.length === 0) return;
+    throw new Error(
+      `TTL batch left ${retriableFailures.length} dequeued run(s) unexpired (transient); retrying to avoid orphaning: ${retriableFailures.join(", ")}`
+    );
   }
 }

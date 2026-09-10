@@ -88,7 +88,7 @@ describe("the gaps marker", () => {
   });
 
   redisTest(
-    "leaves point reads alone, because the repair converges the head",
+    "refuses point reads on a gapped keyspace: there is no head-rebuild repair to converge it",
     async ({ redisOptions }) => {
       const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: COMPLETED_TTL_MS });
       try {
@@ -96,13 +96,11 @@ describe("the gaps marker", () => {
         await seed(store, runId, 5);
         await store.markGaps(runId);
 
-        // The head is the engine's hot read and the repair guarantees it. Refusing it would send every
-        // transition of a once-forked run to Postgres for the rest of its life.
-        const head = await store.getLatest(runId);
-        expect(head?.entry.id).toBe("snap_4");
-
-        const byId = await store.getById(runId, "snap_2");
-        expect(byId?.entry.id).toBe("snap_2");
+        // A gapped head disagrees with Postgres and no repair converges it, so point reads refuse it
+        // rather than serve it as authoritative. The decorator then falls back to Postgres for a
+        // mirrored run and fails closed for a redis-primary one.
+        expect(await store.getLatest(runId)).toBeNull();
+        expect(await store.getById(runId, "snap_2")).toBeNull();
       } finally {
         await store.quit();
       }
@@ -206,8 +204,9 @@ describe("the gaps marker", () => {
         expect(await store.hasGaps(runId)).toBe(true);
         expect((await store.getSinceCreatedAt(runId, at(1))).kind).toBe("miss");
 
-        // The head still moves: refusing the transition would have frozen it.
-        expect((await store.getLatest(runId))?.entry.id).toBe("snap_after_loss");
+        // The transition still WROTE (refusing it would have frozen the head), but a gapped keyspace is
+        // refused by point reads too, not just the window: no head-rebuild repair converges it.
+        expect(await store.getLatest(runId)).toBeNull();
       } finally {
         await Promise.all([store.quit(), probe.quit().catch(() => {})]);
       }

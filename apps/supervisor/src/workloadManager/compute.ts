@@ -157,6 +157,7 @@ export class ComputeWorkloadManager implements WorkloadManager {
       TRIGGER_DEPLOYMENT_VERSION: opts.deploymentVersion,
       TRIGGER_RUN_ID: opts.runFriendlyId,
       TRIGGER_SNAPSHOT_ID: opts.snapshotFriendlyId,
+      ...(opts.snapshotRoute ? { TRIGGER_SNAPSHOT_ROUTE: JSON.stringify(opts.snapshotRoute) } : {}),
       TRIGGER_SUPERVISOR_API_PROTOCOL: this.opts.workloadApiProtocol,
       TRIGGER_SUPERVISOR_API_PORT: String(this.opts.workloadApiPort),
       TRIGGER_SUPERVISOR_API_DOMAIN: this.opts.workloadApiDomain ?? "",

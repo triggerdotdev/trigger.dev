@@ -89,7 +89,10 @@ export class PendingRecoveryWorker {
     for (const entry of [...reclaimed.entries, ...fresh]) {
       const outcome = await this.resolveEntry(entry);
       if (outcome.kind !== "retry") {
-        await this.deps.pendingIndex.ack(partition, entry.id);
+        // Atomically ACK + delete the settled entry in one op, so a crash can never leave it
+        // ACKed-but-undeleted (a leaked stream member) or deleted-but-still-pending. `retry` outcomes
+        // are left untouched so they redeliver.
+        await this.deps.pendingIndex.settle(partition, entry.id);
       }
       outcomes.push(outcome);
     }

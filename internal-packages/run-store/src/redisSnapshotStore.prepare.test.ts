@@ -70,6 +70,31 @@ async function bornRun(store: RedisSnapshotStore, runId: string, headId = "s0"):
 }
 
 describe("prepare", () => {
+  redisTest(
+    "a head fork during prepare is rejected without gapping the keyspace, leaving the committed head readable",
+    async ({ redisOptions }) => {
+      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+      try {
+        const runId = "run_prepare_fork";
+        await bornRun(store, runId, "s0"); // committed head s0
+
+        const result = await store.prepare(
+          unit(runId, [staged(runId, "s1", { expectedCur: "s_stale" })])
+        );
+        expect(result.outcome).toBe("forkGuard");
+
+        // The guard runs before any Postgres commit and the rejected transaction rolls back, so the
+        // fork must NOT gap the keyspace: no prepared unit is staged, no gap is marked, and the
+        // previously committed head stays readable.
+        expect(await store.hasPreparedUnit(runId)).toBe(false);
+        expect(await store.hasGaps(runId)).toBe(false);
+        expect((await store.getLatest(runId))?.entry.id).toBe("s0");
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
   redisTest("stages a hidden unit and a pending-index entry", async ({ redisOptions }) => {
     const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
     const raw = createRedisClient(redisOptions);

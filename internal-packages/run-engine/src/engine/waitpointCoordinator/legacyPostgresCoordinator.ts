@@ -25,7 +25,10 @@ import type {
 } from "./types.js";
 
 export type LegacyPostgresWaitpointCoordinatorOptions = {
-  runStore: RunStore;
+  // A getter, not a value: the engine swaps its run store (setRunStore) once after boot, so this
+  // coordinator must resolve the CURRENT store on every call — reading a value captured at construction
+  // would keep every waitpoint operation on the pre-swap, undecorated store.
+  runStore: () => RunStore;
   prisma: PrismaClient;
   logger: Logger;
 };
@@ -37,12 +40,16 @@ export type LegacyPostgresWaitpointCoordinatorOptions = {
  * That makes "this owns waitpoint state only" structural rather than a convention.
  */
 export class LegacyPostgresWaitpointCoordinator implements WaitpointCoordinator {
-  private readonly runStore: RunStore;
+  readonly #getRunStore: () => RunStore;
+  // The CURRENT run store, resolved live on every access so a post-boot setRunStore swap is honored.
+  private get runStore(): RunStore {
+    return this.#getRunStore();
+  }
   private readonly prisma: PrismaClient;
   private readonly logger: Logger;
 
   constructor(options: LegacyPostgresWaitpointCoordinatorOptions) {
-    this.runStore = options.runStore;
+    this.#getRunStore = options.runStore;
     this.prisma = options.prisma;
     this.logger = options.logger;
   }

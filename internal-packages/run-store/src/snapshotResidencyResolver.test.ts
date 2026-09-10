@@ -79,9 +79,9 @@ class CountingReads implements SnapshotResidencyReads {
     this.birthResidency++;
     return this.inner.readBirthResidency(runId);
   }
-  hasPreparedUnit(runId: string): Promise<boolean> {
+  readPendingState(runId: string): Promise<{ prepared: boolean; quarantined: boolean }> {
     this.preparedUnit++;
-    return this.inner.hasPreparedUnit(runId);
+    return this.inner.readPendingState(runId);
   }
   get total(): number {
     return this.stateVersion + this.birthResidency + this.preparedUnit;
@@ -185,7 +185,7 @@ describe("SnapshotResidencyResolver durable resolution", () => {
           throw new Error("memorydb down");
         },
         readBirthResidency: (runId) => store.readBirthResidency(runId),
-        hasPreparedUnit: (runId) => store.hasPreparedUnit(runId),
+        readPendingState: (runId) => store.readPendingState(runId),
       };
       const resolver = new SnapshotResidencyResolver({
         store: failing,
@@ -305,7 +305,7 @@ describe("SnapshotResidencyResolver caching", () => {
           throw new Error("memorydb down");
         },
         readBirthResidency: (runId) => store.readBirthResidency(runId),
-        hasPreparedUnit: (runId) => store.hasPreparedUnit(runId),
+        readPendingState: (runId) => store.readPendingState(runId),
       };
       const resolver = new SnapshotResidencyResolver({
         store: failing,
@@ -331,6 +331,39 @@ describe("SnapshotResidencyResolver caching", () => {
         await store.finalize(runId, "birth");
         // pendingBirth was not cached, so the retry sees the finalized birth.
         expect(await resolver.resolve(runId)).toEqual({ kind: "committed", residency: "mirrored" });
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "knownToExist skips the per-run existence probe (the batch already proved the run exists)",
+    async ({ redisOptions }) => {
+      // A route-less TTL batch resolves residency for runs it has ALREADY selected + locked, so the
+      // TaskRun row is known to exist. The resolver must NOT repeat the per-run Postgres existence query
+      // for those. We inject a counting existence fn (a fault injector over the real store: if the query
+      // runs, the counter moves) and assert a knownToExist resolve of an absent run never touches it,
+      // while an ordinary resolve does. Reverting the knownToExist guard turns the first assertion RED.
+      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+      try {
+        let probeCalls = 0;
+        const countingExists = async () => {
+          probeCalls++;
+          return true;
+        };
+        const resolver = new SnapshotResidencyResolver({ store, taskRunExists: countingExists });
+
+        // Absent run resolved as "known to exist": still absent (postgres-resident), but no existence probe.
+        expect(await resolver.resolve("run_known_exists", { knownToExist: true })).toEqual({
+          kind: "absent",
+        });
+        expect(probeCalls).toBe(0);
+
+        // A DIFFERENT absent run resolved the ordinary way DOES run the probe — proving the seam is the
+        // only reason the probe was skipped above, not that the probe is dead.
+        expect(await resolver.resolve("run_ordinary_absent")).toEqual({ kind: "absent" });
+        expect(probeCalls).toBe(1);
       } finally {
         await store.quit();
       }

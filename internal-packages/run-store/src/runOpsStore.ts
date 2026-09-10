@@ -1346,9 +1346,10 @@ export class RoutingRunStore implements RunStore {
   // The route lives on the run's owning store (its decorated leaf), so read it there by run id.
   async readSnapshotRoute(
     runId: string,
-    organizationId: string
+    organizationId: string,
+    options?: { forceDurable?: boolean; knownToExist?: boolean }
   ): Promise<SnapshotRoute | undefined> {
-    return this.#routeOrNew(runId).readSnapshotRoute(runId, organizationId);
+    return this.#routeOrNew(runId).readSnapshotRoute(runId, organizationId, options);
   }
 
   // The CompletedWaitpoint join co-locates with the snapshot, which co-locates with its run. When the

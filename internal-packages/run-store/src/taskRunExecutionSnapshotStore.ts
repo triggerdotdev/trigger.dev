@@ -38,6 +38,7 @@ import type {
   RunStore,
   TaskRunWithWaitpoint,
 } from "./types.js";
+import { deriveDistinctIds, deriveOrder } from "./redisSnapshotStore.js";
 import type {
   AppendCyclePayload,
   CompletedWaitpointRecord,
@@ -260,6 +261,10 @@ type CaptureDeps = {
   ) => Promise<AppendCyclePayload | undefined>;
 };
 
+function arraysEqual(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
 /**
  * The transaction-bound decorated store the owning transaction runs through (T6.1). It writes each
  * snapshot to Postgres via the tx-bound delegate and COLLECTS the ordered staged entry; the surrounding
@@ -305,7 +310,12 @@ class CapturingTxStore extends DelegatingRunStore {
     const organizationId = this.deps.organizationId ?? params.snapshot.organizationId;
     this.#assertBoundRun(runId);
     const residency = await this.#residencyFor(organizationId, "birth");
-    if (residency === "postgres") return super.createRun(params, this.deps.tx);
+    if (residency === "postgres") {
+      // Unreachable for a real birth: the outer createRun shortcuts a postgres birth (and fires
+      // onBirthResidency) before entering runInTransaction, so this tx-bound store only ever sees an
+      // enrolled residency. Kept as a defensive delegate for the postgres branch.
+      return super.createRun(params, this.deps.tx);
+    }
     this.deps.assertHalted(residency, runId);
     const snapshot = this.deps.applyRedisControl(this.deps.mint(params.snapshot), residency);
     const result = await super.createRun({ ...params, snapshot }, this.deps.tx);
@@ -378,11 +388,28 @@ class CapturingTxStore extends DelegatingRunStore {
     const snapshot = this.deps.applyRedisControl({ ...data.snapshot, createdAt }, residency);
     const result = await super.lockRunToWorker(runId, { ...data, snapshot }, this.deps.tx);
     const entry = entryFromLock({ id: snapshot.id, runId, createdAt }, snapshot);
+    // A resume-lock carries the PRECEDING completed-waitpoint cycle: the lock snapshot re-propagates
+    // the waitpoints the head resolved, with no new records. Rebuild the refs EXACTLY: every indexed
+    // ORDER occurrence in position (preserving duplicates, e.g. [A,B,A]), then each DISTINCT unindexed
+    // id absent from the order. A per-id map would collapse repeated indices and drop the true order.
+    // Forward-carry the head's cycle through the SAME buildCycle seam createExecutionSnapshot uses; no
+    // records resolver and no Postgres read (Postgres holds no join rows for a redis-primary run).
+    const inOrder = new Set(snapshot.completedWaitpointOrder);
+    const seenUnindexed = new Set<string>();
+    const completedWaitpoints: { id: string; index?: number }[] =
+      snapshot.completedWaitpointOrder.map((id, index) => ({ id, index }));
+    for (const id of snapshot.completedWaitpointIds) {
+      if (inOrder.has(id) || seenUnindexed.has(id)) continue;
+      seenUnindexed.add(id);
+      completedWaitpoints.push({ id });
+    }
+    const cycle = await this.deps.buildCycle(completedWaitpoints, undefined, residency);
     this.deps.collect({
       entry: {
         entry,
         kind: "transition",
         isTerminal: isTerminalEntry(entry),
+        cycle,
         ...(snapshot.previousSnapshotId !== undefined && {
           expectedCur: snapshot.previousSnapshotId,
         }),
@@ -657,7 +684,13 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     const runId = params.data.id;
     const organizationId = this.#organizationId ?? params.snapshot.organizationId;
     if ((await this.#writeResidency(runId, organizationId, "birth")) === "postgres") {
-      return super.createRun(params, tx);
+      // A postgres-resident birth writes only to Postgres (no runInTransaction/MemoryDB), but while the
+      // decorator is active it still surfaces its FIXED route so the initial enqueue carries an explicit
+      // `postgres` route — the TTL fast path then classifies it as postgres (bulk SQL) with no durable
+      // lookup. The undecorated base store has no such callback, so the unarmed path is unchanged.
+      const result = await super.createRun(params, tx);
+      params.onBirthResidency?.({ runId, organizationId, residency: "postgres" });
+      return result;
     }
     this.#assertOwnsCommit(tx);
     return this.runInTransaction(runId, (store) => store.createRun(params));
@@ -1054,24 +1087,33 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
   // unit after resolution means the owning transaction is in progress: fail closed (retriable) rather
   // than serve the stale pre-pending head. A MemoryDB read error is never a miss: fail closed too.
   async #resolvePendingBeforeRead(runId: string): Promise<void> {
-    let pending: boolean;
+    let pending: { prepared: boolean; quarantined: boolean };
     try {
-      pending = await this.#store.hasPreparedUnit(runId);
+      pending = await this.#store.readPendingState(runId);
     } catch (error) {
-      throw new SnapshotReadUnavailableError(runId, "hasPreparedUnit failed", { cause: error });
+      throw new SnapshotReadUnavailableError(runId, "readPendingState failed", { cause: error });
     }
-    if (!pending) return;
+    // A quarantined run failed closed durably: never serve its head, even if nothing is pending.
+    if (pending.quarantined) {
+      throw new SnapshotReadUnavailableError(runId, "run is quarantined");
+    }
+    if (!pending.prepared) return;
     if (!this.#resolvePending) {
       throw new SnapshotReadUnavailableError(runId, "pending unit and no recovery resolver");
     }
     await this.#resolvePending(runId);
-    let stillPending: boolean;
+    let after: { prepared: boolean; quarantined: boolean };
     try {
-      stillPending = await this.#store.hasPreparedUnit(runId);
+      after = await this.#store.readPendingState(runId);
     } catch (error) {
-      throw new SnapshotReadUnavailableError(runId, "hasPreparedUnit failed", { cause: error });
+      throw new SnapshotReadUnavailableError(runId, "readPendingState failed", { cause: error });
     }
-    if (stillPending) {
+    // Resolution ended in quarantine (an unresolvable redis-primary unit) or the unit is still pending
+    // (owning transaction in progress): both fail closed rather than serve the stale pre-pending head.
+    if (after.quarantined) {
+      throw new SnapshotReadUnavailableError(runId, "run is quarantined");
+    }
+    if (after.prepared) {
       throw new SnapshotReadUnavailableError(runId, "pending unit unresolved");
     }
   }
@@ -1463,19 +1505,93 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
       this.#metrics?.recordWrite("failed");
       throw error;
     }
-    // Only an applied write counts as "written": a finalized unit, or an idempotent noop (a lost-reply
-    // repeat of an already-applied finalize). A stale token or a baseMissing (the delayed-finalize
-    // fail-closed outcome) applied nothing, so the transaction must FAIL CLOSED rather than let its
-    // caller advance off a write that was never published.
-    if (finalizeResult.outcome === "finalized" || finalizeResult.outcome === "noop") {
+    // A finalized unit is the ONLY unconditional success: its entries were applied now. No read on this
+    // hot path. Every other outcome must not report success unless read-back PROVES the unit was already
+    // applied — a transaction that published nothing to MemoryDB must not let its caller advance.
+    if (finalizeResult.outcome === "finalized") {
       this.#metrics?.recordWrite("written");
       return result;
+    }
+    // baseMissing: the delayed finalize found the base gone (an aged-out redis-primary base). It applied
+    // nothing and must NOT reconstruct the base; fail closed and RETRIABLE, leaving the pending unit for
+    // the recovery worker to resolve. A redis-primary run has no Postgres snapshot fallback.
+    if (finalizeResult.outcome === "baseMissing") {
+      this.#metrics?.recordWrite("failed");
+      throw new SnapshotWriteUnavailableError(
+        boundRunId,
+        "finalize found an expired base; the recovery worker owns the pending unit"
+      );
+    }
+    // stale (a newer token superseded our finalize) or noop (a lost-reply repeat): success ONLY when
+    // read-back proves every staged entry is already the committed state, including its completed-
+    // waitpoint cycle. Otherwise the write is unproven and fails closed. This read is exceptional-path
+    // only; it never runs on the normal finalized success above.
+    if (finalizeResult.outcome === "stale" || finalizeResult.outcome === "noop") {
+      if (await this.#stagedEntriesAlreadyApplied(boundRunId, collected)) {
+        this.#metrics?.recordWrite("written");
+        return result;
+      }
+      this.#metrics?.recordWrite("failed");
+      throw new SnapshotWriteUnavailableError(
+        boundRunId,
+        `finalize ${finalizeResult.outcome} but the staged entries are not applied`
+      );
     }
     this.#metrics?.recordWrite("failed");
     throw new SnapshotWriteUnavailableError(
       boundRunId,
-      `finalize applied nothing (${finalizeResult.outcome})`
+      `finalize returned an unexpected outcome: ${finalizeResult.outcome}`
     );
+  }
+
+  // Exceptional-path proof for a stale/noop finalize: every staged entry must ALREADY be the committed
+  // state (an already-applied finalize — a lost-reply repeat, or a superseding token that subsumes our
+  // entries), byte-for-byte, with any completed-waitpoint cycle it carried reproduced exactly. This is
+  // NOT a presence check: the SAME snapshot id carrying DIFFERENT contents (a genuine conflict) must
+  // fail closed, so the stored raw is compared to the exact raw we staged, never just `!== null`. A
+  // missing entry, a mismatched raw, a gapped/refused keyspace, a MemoryDB read error, or a cycle that
+  // does not reproduce leaves the write unproven. No base is reconstructed; this only reads.
+  async #stagedEntriesAlreadyApplied(runId: string, collected: CollectedEntry[]): Promise<boolean> {
+    for (const c of collected) {
+      const id = c.entry.entry.id;
+      let read: SnapshotRead | null;
+      try {
+        read = await this.#store.getById(runId, id);
+      } catch {
+        return false;
+      }
+      if (read === null) return false;
+      // The stored raw the append/finalize wrote is `JSON.stringify(entry)` (redisSnapshotStore.
+      // #stageEntry); compare against the same serialization of the entry we staged. Any field
+      // difference under a reused id is a conflict and fails closed here.
+      if (read.raw !== JSON.stringify(c.entry.entry)) return false;
+      if (c.entry.cycle && !(await this.#stagedCycleReproduces(runId, id, c.entry.cycle))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // Exact cycle reproduction for the stale/noop proof. Both a `new` cycle and a `carryForward` cycle now
+  // carry their complete refs AND records, so the proof is the same for both: the reproduced cycle must
+  // be present, non-dangling, and match the staged order, distinct ids and records byte-for-byte. Mere
+  // presence is NOT proof — mismatched cycle contents (a superseding cycle under a reused id) fail closed.
+  async #stagedCycleReproduces(
+    runId: string,
+    snapshotId: string,
+    cycle: AppendCyclePayload
+  ): Promise<boolean> {
+    let cw;
+    try {
+      cw = await this.#store.getSnapshotCompletedWaitpoints(runId, snapshotId);
+    } catch {
+      return false;
+    }
+    if (!cw.present || cw.danglingCycle) return false;
+    const refs = cycle.completedWaitpoints ?? [];
+    if (!arraysEqual(cw.order, deriveOrder(refs))) return false;
+    if (!arraysEqual([...cw.distinctIds].sort(), [...deriveDistinctIds(refs)].sort())) return false;
+    return JSON.stringify(cw.records) === JSON.stringify(cycle.records ?? []);
   }
 
   // Forces xid8 assignment and returns it; the subsequent writes in this transaction inherit it, and
@@ -1556,20 +1672,41 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
 
   // The versioned storage route for a run, resolved from its durable BIRTH residency, to stamp on a
   // queue message so a poll-lagging consumer honors the run's true residency. A never-enrolled org is
-  // inert (undefined, no MemoryDB read); a pre-cutover / postgres run carries no route either. Never
-  // throws: an unresolvable residency at enqueue is left to the consumer's on-demand resolver.
+  // inert (undefined, no MemoryDB read). This durable resolve is the fallback for a route-less run — a
+  // legacy/mixed-version or pre-cutover message that carried no route; a run born under the live
+  // decorator already carries its explicit route (postgres included) from onBirthResidency and never
+  // needs it. Never throws at enqueue: an unresolvable residency is left to the consumer's resolver.
+  //
+  // `forceDurable` is for the scheduled/background transitions (delayed and version-parked promotion)
+  // that mint a NEW snapshot off a durable head, not the hot enqueue path. Those jobs run on any pod,
+  // so a poll-lagging pod whose dial reads `undefined` would otherwise get no route and strand the
+  // promotion on the never-enrolled Postgres shortcut. With `forceDurable` the dial gate is skipped and
+  // the run's true residency is resolved from MemoryDB (a background-job read); a genuinely
+  // never-enrolled run still resolves `absent` and returns undefined, so the shortcut still applies.
+  // `knownToExist` is passed by a caller whose PRIMARY query already returned the TaskRun row (a TTL
+  // batch's findRuns): it tells the resolver to skip its own per-run existence probe, not re-query.
   override async readSnapshotRoute(
     runId: string,
-    organizationId: string
+    organizationId: string,
+    options?: { forceDurable?: boolean; knownToExist?: boolean }
   ): Promise<SnapshotRoute | undefined> {
-    if (this.#resolveDial(organizationId) === undefined) return undefined;
-    let res = await this.#residencyResolver.resolve(runId);
+    if (!options?.forceDurable && this.#resolveDial(organizationId) === undefined) return undefined;
+    const knownToExist = options?.knownToExist ?? false;
+    let res = await this.#residencyResolver.resolve(runId, { knownToExist });
     if (res.kind === "pendingBirth") {
       if (this.#resolvePending) await this.#resolvePending(runId);
-      res = await this.#residencyResolver.resolve(runId);
+      res = await this.#residencyResolver.resolve(runId, { knownToExist });
     }
     if (res.kind === "committed") {
       return { runId, organizationId, residency: res.residency };
+    }
+    // The scheduled/background transition path (forceDurable) must not silently fall to the Postgres
+    // shortcut on a poll-lagging pod when durable state cannot be confirmed. Only a CONFIRMED absent
+    // residency (a genuinely never-enrolled / postgres-resident run) returns undefined; an error, an
+    // expired redis-primary marker, or a still-pending birth fails closed (retriable) so the caller
+    // never strands an enrolled run's terminal write into a Postgres row reads no longer consult.
+    if (options?.forceDurable && res.kind !== "absent") {
+      throw new SnapshotWriteUnavailableError(runId, `durable route unresolved (${res.kind})`);
     }
     return undefined;
   }
@@ -1600,11 +1737,38 @@ export class TaskRunExecutionSnapshotStore extends DelegatingRunStore {
     if (records && records.length > 0) {
       return { kind: "new", completedWaitpoints, records };
     }
-    // Refs WITHOUT records is a forward-carry (dequeue/checkpoint re-propagating a prior snapshot's
-    // waitpoints): point at the committed head's cycle, whose records already reproduce the Postgres
-    // read; carry the refs so the store can mint-from-refs if that cycle is gone.
+    // Refs WITHOUT a resolver is a forward-carry (dequeue/checkpoint re-propagating a prior snapshot's
+    // completed waitpoints). Fetch and VALIDATE the head's COMPLETE cycle here, inside the owning
+    // transaction, and carry its full records forward: the carried payload must be able to re-mint the
+    // cycle EXACTLY if the head cycle is gone by finalize. If the head cycle is missing, dangling, or
+    // cannot reproduce the carried refs and every distinct id's record, we THROW so the Postgres
+    // transaction rolls back rather than advancing the head with a cycle that has ids but no records.
     const head = await this.#store.getLatest(runId);
-    return { kind: "carryForward", cycleSeq: head?.cycle?.cycleSeq ?? 0, completedWaitpoints };
+    if (!head?.cycle) {
+      throw new SnapshotWriteUnavailableError(runId, "forward-carry found no head cycle to carry");
+    }
+    const headCycle = await this.#store.getSnapshotCompletedWaitpoints(runId, head.id);
+    const order = deriveOrder(completedWaitpoints);
+    const distinctIds = deriveDistinctIds(completedWaitpoints);
+    const everyIdHasRecord = distinctIds.every((id) => headCycle.records.some((r) => r.id === id));
+    if (
+      !headCycle.present ||
+      headCycle.danglingCycle ||
+      !arraysEqual(headCycle.order, order) ||
+      !arraysEqual([...headCycle.distinctIds].sort(), [...distinctIds].sort()) ||
+      !everyIdHasRecord
+    ) {
+      throw new SnapshotWriteUnavailableError(
+        runId,
+        "forward-carry cannot reproduce the complete completed-waitpoint cycle"
+      );
+    }
+    return {
+      kind: "carryForward",
+      cycleSeq: head.cycle.cycleSeq,
+      completedWaitpoints,
+      records: headCycle.records,
+    };
   }
 
   // The prepare protocol must own its own commit boundary, so a mirrored write can never run inside an

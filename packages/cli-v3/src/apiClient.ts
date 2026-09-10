@@ -58,6 +58,7 @@ import type {
   WorkloadDebugLogRequestBody,
   WorkloadHeartbeatRequestBody,
   WorkloadRunAttemptCompleteRequestBody,
+  WorkloadRunAttemptStartRequestBody,
 } from "@trigger.dev/core/v3/workers";
 import {
   WorkloadHeartbeatResponseBody,
@@ -988,7 +989,8 @@ export class CliApiClient {
 
   private async devStartRunAttempt(
     runId: string,
-    snapshotId: string
+    snapshotId: string,
+    body?: WorkloadRunAttemptStartRequestBody
   ): Promise<ApiResult<WorkloadRunAttemptStartResponseBody>> {
     return wrapZodFetch(
       WorkloadRunAttemptStartResponseBody,
@@ -1000,8 +1002,8 @@ export class CliApiClient {
           Accept: "application/json",
           ...this.getBranchHeader(),
         },
-        //no body at the moment, but we'll probably add things soon
-        body: JSON.stringify({}),
+        // Carries snapshotRoute (and isWarmStart) so the dev run's start honors durable residency.
+        body: JSON.stringify(body ?? {}),
       }
     );
   }

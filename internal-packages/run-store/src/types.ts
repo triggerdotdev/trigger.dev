@@ -237,9 +237,10 @@ export type CreateRunInput = {
   snapshot: CreateRunSnapshotInput;
   associatedWaitpoint?: RunAssociatedWaitpointInput;
   /**
-   * Called once, at an ENROLLED birth only, with the run's decided SnapshotRoute, so the trigger path can
-   * stamp it on the initial queue message WITHOUT a durable-state lookup. Never called for a never-enrolled
-   * (postgres) run. The base store ignores it.
+   * Called once at birth while the snapshot decorator is active, with the run's decided fixed SnapshotRoute
+   * — for EVERY residency, postgres included — so the trigger path stamps it on the initial queue message
+   * WITHOUT a durable-state lookup. A postgres birth therefore surfaces an explicit `{ residency: "postgres" }`
+   * route (used by the TTL fast path). The undecorated base store has no decorator and never calls it.
    */
   onBirthResidency?: (route: SnapshotRoute) => void;
 };
@@ -840,7 +841,15 @@ export interface RunStore {
   // The run's versioned storage route, from its durable BIRTH residency, to stamp on a queue message
   // so a poll-lagging consumer honors the run's true residency. Undefined for a never-enrolled /
   // pre-cutover run (no route, no cost). A store with no snapshot decorator returns undefined.
-  readSnapshotRoute(runId: string, organizationId: string): Promise<SnapshotRoute | undefined>;
+  // `forceDurable` is for scheduled/background promotions (delayed, version-parked): they resolve the
+  // route from durable state even on a pod whose dial reads undefined, not via the hot-path gate.
+  // `knownToExist` is for a caller whose primary query already returned this TaskRun row (a TTL batch's
+  // findRuns): it skips the resolver's per-run existence probe rather than issue a redundant query.
+  readSnapshotRoute(
+    runId: string,
+    organizationId: string,
+    options?: { forceDurable?: boolean; knownToExist?: boolean }
+  ): Promise<SnapshotRoute | undefined>;
 
   // Implicit-join group
   /** `runId` (when known) routes to the run's store — the snapshot + its join co-locate with the run;

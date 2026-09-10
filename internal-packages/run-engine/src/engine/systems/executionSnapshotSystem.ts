@@ -11,9 +11,11 @@ import type {
   Waitpoint,
 } from "@trigger.dev/database";
 import type {
+  CompletedWaitpointRecord,
   LatestExecutionSnapshotRead,
   RunStore,
   SnapshotReadWaitpoint,
+  SnapshotRouteWire,
 } from "@internal/run-store";
 import { ExecutionSnapshotNotFoundError, ServiceValidationError } from "../errors.js";
 import type { HeartbeatTimeouts } from "../types.js";
@@ -452,7 +454,9 @@ export class ExecutionSnapshotSystem {
       workerId,
       runnerId,
       completedWaitpoints,
+      resolveCompletedWaitpointRecords,
       error,
+      snapshotRoute,
     }: {
       /**
        * Caller-supplied TRANSITION id: minted once per logical transition (e.g. so a publish guard can
@@ -479,7 +483,14 @@ export class ExecutionSnapshotSystem {
         id: string;
         index?: number;
       }[];
+      // Lazily resolves the full completed-waitpoint records for a redis-primary snapshot to reproduce
+      // the Postgres join. A THUNK so the fetch is deferred to the store's cycle-building path and never
+      // runs on a postgres-resident resume; supplied at the unblock site, undefined on mirrored/postgres.
+      resolveCompletedWaitpointRecords?: () => Promise<CompletedWaitpointRecord[]>;
       error?: string;
+      // The run's versioned storage route, from the dequeued queue message, so a poll-lagging
+      // consumer's transition honors the run's true residency. Undefined on paths with no route.
+      snapshotRoute?: SnapshotRouteWire;
     },
     // When set (inside runStore.runInTransaction), the snapshot write goes through the owning store
     // with `prisma` = that store's own tx, so it shares ONE transaction with the sibling write (e.g.
@@ -509,7 +520,9 @@ export class ExecutionSnapshotSystem {
         workerId,
         runnerId,
         completedWaitpoints,
+        resolveCompletedWaitpointRecords,
         error,
+        snapshotRoute,
       },
       prisma
     );

@@ -1296,7 +1296,7 @@ describe("RunEngine ttl", () => {
       });
 
       // Try to expire the run via batch
-      const result = await engine.ttlSystem.expireRunsBatch([run.id]);
+      const result = await engine.ttlSystem.expireRunsBatch([{ runId: run.id }]);
 
       // Should be skipped because it's locked
       expect(result.expired.length).toBe(0);
@@ -1385,7 +1385,7 @@ describe("RunEngine ttl", () => {
         });
 
         // Try to expire the run via batch
-        const result = await engine.ttlSystem.expireRunsBatch([run.id]);
+        const result = await engine.ttlSystem.expireRunsBatch([{ runId: run.id }]);
 
         // Should be skipped because it's not PENDING
         expect(result.expired.length).toBe(0);
@@ -1440,7 +1440,7 @@ describe("RunEngine ttl", () => {
 
     try {
       // Try to expire a non-existent run
-      const result = await engine.ttlSystem.expireRunsBatch(["non_existent_run_id"]);
+      const result = await engine.ttlSystem.expireRunsBatch([{ runId: "non_existent_run_id" }]);
 
       // Should be skipped as not found
       expect(result.expired.length).toBe(0);

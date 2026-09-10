@@ -1207,10 +1207,12 @@ describe("expectedCur compare-and-set", () => {
       });
       expect(r).toEqual({ outcome: "forked", actualCur: "s2" });
 
-      // Nothing was written: no entry, cur is still s2 (not overwritten by s3, and not cleared),
-      // and the seq counter did not move.
+      // Nothing was written: no s3 entry, and the seq counter did not move (the next append takes seq 3,
+      // proving cur was still s2). The fork marked the keyspace gapped, so point reads now refuse the
+      // head rather than serve one no repair will converge.
       expect(await store.getById("run_1", "s3")).toBeNull();
-      expect((await store.getLatest("run_1"))?.id).toBe("s2");
+      expect(await store.hasGaps("run_1")).toBe(true);
+      expect(await store.getLatest("run_1")).toBeNull();
       const next = await store.append({
         entry: entry({ id: "s4" }),
         kind: "transition",

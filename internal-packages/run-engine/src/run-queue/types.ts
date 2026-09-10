@@ -19,6 +19,10 @@ export const InputPayload = z.object({
   attempt: z.number(),
   /** TTL expiration timestamp (unix ms). If set, run will be expired when this time is reached. */
   ttlExpiresAt: z.number().optional(),
+  // The run's versioned snapshot storage route (a `SnapshotRouteWire`), stamped from its birth
+  // residency so a poll-lagging consumer honors its true residency. Opaque (`z.unknown`) so it
+  // survives serialize while an old consumer strips it — mixed-version safe. Validated at consumption.
+  snapshotRoute: z.unknown().optional(),
 });
 export type InputPayload = z.infer<typeof InputPayload>;
 

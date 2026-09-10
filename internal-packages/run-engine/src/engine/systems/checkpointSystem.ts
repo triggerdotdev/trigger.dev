@@ -4,6 +4,8 @@ import type {
   ExecutionResult,
 } from "@trigger.dev/core/v3";
 import { CheckpointId } from "@trigger.dev/core/v3/isomorphic";
+import { toWireRoute } from "@internal/run-store";
+import type { SnapshotRouteWire } from "@internal/run-store";
 import type { PrismaClientOrTransaction } from "@trigger.dev/database";
 import { sendNotificationToWorker } from "../eventBus.js";
 import { isCheckpointable, isPendingExecuting } from "../statuses.js";
@@ -43,6 +45,7 @@ export class CheckpointSystem {
     checkpoint,
     workerId,
     runnerId,
+    snapshotRoute,
     tx,
   }: {
     runId: string;
@@ -50,6 +53,9 @@ export class CheckpointSystem {
     checkpoint: CheckpointInput;
     workerId?: string;
     runnerId?: string;
+    // Carried from the worker's suspend request so the SUSPENDED transition honors durable residency
+    // on a poll-lagging pod. Undefined for a never-enrolled run.
+    snapshotRoute?: SnapshotRouteWire;
     tx?: PrismaClientOrTransaction;
   }): Promise<CreateCheckpointResult> {
     const prisma = tx ?? this.$.prisma;
@@ -121,6 +127,19 @@ export class CheckpointSystem {
           ok: false as const,
           error: `Status ${snapshot.executionStatus} is not checkpointable`,
         };
+      }
+
+      // The route the SUSPENDED (or re-QUEUED) transition honors. The supervisor's suspend flow may not
+      // thread the route through every hop, so prefer the carried route and otherwise resolve the run's
+      // durable residency ONCE (forceDurable) rather than let a poll-lagging / undefined-dial pod take
+      // the never-enrolled Postgres shortcut and freeze a redis-primary run's head. Fails closed. Placed
+      // after the discard early-exits so a discarded checkpoint does no durable read.
+      let effectiveRoute = snapshotRoute;
+      if (effectiveRoute === undefined) {
+        const resolved = await this.$.runStore.readSnapshotRoute(runId, snapshot.organizationId, {
+          forceDurable: true,
+        });
+        effectiveRoute = resolved ? toWireRoute(resolved) : undefined;
       }
 
       // Get the run (run-ops scalars only) and update the status; the control-plane env is
@@ -214,6 +233,7 @@ export class CheckpointSystem {
             index: waitpoint.index,
           })),
           checkpointId: taskRunCheckpoint.id,
+          snapshotRoute: effectiveRoute,
         });
 
         this.$.logger.debug("Releasing concurrency for run because it was checkpointed", {
@@ -255,6 +275,7 @@ export class CheckpointSystem {
           checkpointId: taskRunCheckpoint.id,
           workerId,
           runnerId,
+          snapshotRoute: effectiveRoute,
         });
 
         this.$.logger.debug("Releasing concurrency for run because it was checkpointed", {
@@ -287,6 +308,7 @@ export class CheckpointSystem {
     workerId,
     runnerId,
     environmentId,
+    snapshotRoute,
     tx,
   }: {
     runId: string;
@@ -294,6 +316,9 @@ export class CheckpointSystem {
     workerId?: string;
     runnerId?: string;
     environmentId?: string;
+    // Carried from the restore DequeuedMessage so the resume transition honors durable residency on
+    // a poll-lagging pod. Undefined for a never-enrolled run.
+    snapshotRoute?: SnapshotRouteWire;
     tx?: PrismaClientOrTransaction;
   }): Promise<ExecutionResult> {
     const prisma = tx ?? this.$.prisma;
@@ -394,6 +419,7 @@ export class CheckpointSystem {
         completedWaitpoints: snapshot.completedWaitpoints,
         workerId,
         runnerId,
+        snapshotRoute,
       });
 
       // Let worker know about the new snapshot so it can continue the run

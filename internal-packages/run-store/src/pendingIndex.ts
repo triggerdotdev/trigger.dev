@@ -135,9 +135,24 @@ export class PendingIndex {
     return { cursor: nextCursor, entries: rows.map(([id, flat]) => toEntry(id, flat)) };
   }
 
-  /** Idempotently acknowledge one entry, removing it from the recovery group's pending list. */
-  async ack(partition: number, id: string): Promise<void> {
-    await this.redis.xack(pendingStreamKey(partition), RECOVERY_CONSUMER_GROUP, id);
+  /**
+   * Atomically settle one resolved entry: XACK it out of the recovery group's pending list AND XDEL it
+   * from the stream, in a single Lua op (both target the same partition stream, so one key / one slot).
+   * A separate ack() then remove() could crash between the two, leaving the entry ACKed-but-undeleted
+   * (a leaked stream member) or, on a redelivery, deleted-but-still-pending. The single op leaves only
+   * the fully-settled or fully-unsettled state. Idempotent: a repeat call (lost reply, redelivery)
+   * XACKs/XDELs nothing and is a no-op, so re-settling is always safe. finalize/abort still XDEL their
+   * own entries inside their Lua; this settles the rest (notably a quarantine, which leaves its entry
+   * behind) so the recovery stream stays bounded with no separate sweeper.
+   */
+  async settle(partition: number, id: string): Promise<void> {
+    await this.redis.eval(
+      "redis.call('XACK', KEYS[1], ARGV[1], ARGV[2]); redis.call('XDEL', KEYS[1], ARGV[2]); return 1",
+      1,
+      pendingStreamKey(partition),
+      RECOVERY_CONSUMER_GROUP,
+      id
+    );
   }
 }
 

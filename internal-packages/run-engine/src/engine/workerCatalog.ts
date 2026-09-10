@@ -35,6 +35,10 @@ export const workerCatalog = {
       runId: z.string(),
       completedAt: z.coerce.date(),
       reason: z.string().optional(),
+      // The run's versioned storage route, resolved and stamped at schedule time so the cancel
+      // consumer honors durable residency without its own lookup. Lenient (unknown): an unrecognized
+      // version is dropped at consumption rather than failing the whole job. Absent = never-enrolled.
+      snapshotRoute: z.unknown().optional(),
     }),
     visibilityTimeoutMs: 30_000,
   },
@@ -74,6 +78,8 @@ export const workerCatalog = {
   continueRunIfUnblocked: {
     schema: z.object({
       runId: z.string(),
+      // See cancelRun.snapshotRoute — carries the route to the resume transition.
+      snapshotRoute: z.unknown().optional(),
     }),
     visibilityTimeoutMs: 30_000,
   },

@@ -9,6 +9,7 @@ import {
   WorkerApiRunAttemptStartResponseBody,
   WorkerApiRunLatestSnapshotResponseBody,
   WorkerApiContinueRunExecutionRequestBody,
+  WorkerApiContinueRunExecutionQueryParams,
   WorkerApiDebugLogBody,
   WorkerApiRunSnapshotsSinceResponseBody,
 } from "../supervisor/schemas.js";
@@ -33,6 +34,11 @@ export type WorkloadSuspendRunResponseBody = z.infer<typeof WorkloadSuspendRunRe
 export const WorkloadContinueRunExecutionResponseBody = WorkerApiContinueRunExecutionRequestBody;
 export type WorkloadContinueRunExecutionResponseBody = z.infer<
   typeof WorkloadContinueRunExecutionResponseBody
+>;
+
+export const WorkloadContinueRunExecutionQueryParams = WorkerApiContinueRunExecutionQueryParams;
+export type WorkloadContinueRunExecutionQueryParams = z.infer<
+  typeof WorkloadContinueRunExecutionQueryParams
 >;
 
 export const WorkloadRunAttemptCompleteRequestBody = WorkerApiRunAttemptCompleteRequestBody;

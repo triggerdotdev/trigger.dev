@@ -1,4 +1,6 @@
 import type { UnkeyCache } from "@internal/cache";
+import type { SnapshotRouteWire } from "@internal/run-store";
+import { toWireRoute } from "@internal/run-store";
 import {
   createCache,
   createLRUMemoryStore,
@@ -323,6 +325,7 @@ export class RunAttemptSystem {
     runnerId,
     isWarmStart,
     environmentId,
+    snapshotRoute,
     tx,
   }: {
     runId: string;
@@ -331,6 +334,9 @@ export class RunAttemptSystem {
     runnerId?: string;
     isWarmStart?: boolean;
     environmentId?: string;
+    // The run's route, carried from the dequeue result via the start-attempt request, so this
+    // attempt's EXECUTING snapshot honors durable residency even when this pod's dial is poll-lagging.
+    snapshotRoute?: SnapshotRouteWire;
     tx?: PrismaClientOrTransaction;
   }): Promise<StartRunAttemptResult> {
     const prisma = tx ?? this.$.prisma;
@@ -418,6 +424,8 @@ export class RunAttemptSystem {
                   message: "Max attempts reached.",
                 },
               },
+              // carry the route we already hold so the terminal transition stays resident
+              snapshotRoute,
               tx: prisma,
             });
             throw new ServiceValidationError("Max attempts reached", 400);
@@ -502,6 +510,7 @@ export class RunAttemptSystem {
                   completedWaitpoints: latestSnapshot.completedWaitpoints,
                   workerId,
                   runnerId,
+                  snapshotRoute,
                 },
                 store
               );
@@ -666,6 +675,24 @@ export class RunAttemptSystem {
     );
   }
 
+  // Central residency fallback shared by every terminal/cancel transition. Prefer the route the caller
+  // carried (from the DequeuedMessage via the worker's request); when it is absent — a route-less dev
+  // completion, or any caller on a poll-lagging / undefined-dial pod — resolve the run's durable
+  // residency ONCE (forceDurable) so the transition still lands in the run's true store instead of
+  // taking the never-enrolled Postgres shortcut. Fails closed (throws) when residency cannot be
+  // confirmed. Callers place this AFTER their no-op early exits so a no-op does no durable read.
+  async #effectiveRoute(
+    runId: string,
+    organizationId: string,
+    route: SnapshotRouteWire | undefined
+  ): Promise<SnapshotRouteWire | undefined> {
+    if (route !== undefined) return route;
+    const resolved = await this.$.runStore.readSnapshotRoute(runId, organizationId, {
+      forceDurable: true,
+    });
+    return resolved ? toWireRoute(resolved) : undefined;
+  }
+
   public async completeRunAttempt({
     runId,
     snapshotId,
@@ -673,6 +700,7 @@ export class RunAttemptSystem {
     workerId,
     runnerId,
     environmentId,
+    snapshotRoute,
   }: {
     runId: string;
     snapshotId: string;
@@ -680,6 +708,9 @@ export class RunAttemptSystem {
     workerId?: string;
     runnerId?: string;
     environmentId?: string;
+    // Carried from the DequeuedMessage via the worker's complete request, so the completion (and any
+    // retry/requeue) transition honors durable residency even on a poll-lagging pod.
+    snapshotRoute?: SnapshotRouteWire;
   }): Promise<CompleteRunAttemptResult> {
     await this.#notifyMetadataUpdated(runId, completion);
 
@@ -693,6 +724,7 @@ export class RunAttemptSystem {
           workerId,
           runnerId,
           environmentId,
+          snapshotRoute,
         });
       }
       case false: {
@@ -704,6 +736,7 @@ export class RunAttemptSystem {
           workerId,
           runnerId,
           environmentId,
+          snapshotRoute,
         });
       }
     }
@@ -717,6 +750,7 @@ export class RunAttemptSystem {
     workerId,
     runnerId,
     environmentId,
+    snapshotRoute,
   }: {
     runId: string;
     snapshotId: string;
@@ -725,6 +759,7 @@ export class RunAttemptSystem {
     workerId?: string;
     runnerId?: string;
     environmentId?: string;
+    snapshotRoute?: SnapshotRouteWire;
   }): Promise<CompleteRunAttemptResult> {
     const prisma = tx ?? this.$.prisma;
 
@@ -750,6 +785,13 @@ export class RunAttemptSystem {
 
           span.setAttribute("completionStatus", completion.ok);
           span.setAttribute("runId", runId);
+
+          // Resolve the route the terminal snapshot honors (carried, else durable). See #effectiveRoute.
+          const effectiveRoute = await this.#effectiveRoute(
+            runId,
+            latestSnapshot.organizationId,
+            snapshotRoute
+          );
 
           const completedAt = new Date();
 
@@ -800,6 +842,7 @@ export class RunAttemptSystem {
                 organizationId: latestSnapshot.organizationId,
                 workerId,
                 runnerId,
+                snapshotRoute: effectiveRoute,
               },
             },
             {
@@ -911,6 +954,7 @@ export class RunAttemptSystem {
     completion,
     forceRequeue,
     environmentId,
+    snapshotRoute,
     tx,
   }: {
     runId: string;
@@ -920,6 +964,9 @@ export class RunAttemptSystem {
     completion: TaskRunFailedExecutionResult;
     forceRequeue?: boolean;
     environmentId?: string;
+    // Carried from the worker's complete request (or a dequeue-failure caller) so the retry/requeue
+    // or terminal transition honors durable residency on a poll-lagging pod.
+    snapshotRoute?: SnapshotRouteWire;
     tx: PrismaClientOrTransaction;
   }): Promise<CompleteRunAttemptResult> {
     const prisma = this.$.prisma;
@@ -945,6 +992,14 @@ export class RunAttemptSystem {
           }
 
           span.setAttribute("completionStatus", completion.ok);
+
+          // The route every transition this failure path writes (retry, requeue, fail, cancel) honors.
+          // Carried, else resolved durably; see #effectiveRoute. Resolved after the no-op exit above.
+          const effectiveRoute = await this.#effectiveRoute(
+            runId,
+            latestSnapshot.organizationId,
+            snapshotRoute
+          );
 
           //remove waitpoints blocking the run
           const deletedCount = await this.waitpointSystem.clearBlockingWaitpoints({ runId, tx });
@@ -1016,6 +1071,7 @@ export class RunAttemptSystem {
                 reason: retryResult.reason,
                 finalizeRun: true,
                 attemptDurationMs: completion.usage?.durationMs,
+                snapshotRoute: effectiveRoute,
                 tx: prisma,
               });
               return {
@@ -1035,6 +1091,7 @@ export class RunAttemptSystem {
                 workerId,
                 runnerId,
                 attemptDurationMs: completion.usage?.durationMs,
+                snapshotRoute: effectiveRoute,
               });
             }
             case "retry": {
@@ -1156,6 +1213,7 @@ export class RunAttemptSystem {
                     code: "TASK_RUN_DEQUEUED_MAX_RETRIES",
                     message: `We tried to dequeue the run the maximum number of times but it wouldn't start executing`,
                   },
+                  snapshotRoute: effectiveRoute,
                   tx: prisma,
                 });
 
@@ -1185,6 +1243,7 @@ export class RunAttemptSystem {
                   organizationId: latestSnapshot.organizationId,
                   workerId,
                   runnerId,
+                  snapshotRoute: effectiveRoute,
                 }
               );
 
@@ -1212,10 +1271,14 @@ export class RunAttemptSystem {
   public async systemFailure({
     runId,
     error,
+    snapshotRoute,
     tx,
   }: {
     runId: string;
     error: TaskRunInternalError;
+    // Carried from the caller so the terminal/requeue transition honors durable residency on a
+    // poll-lagging pod. Undefined for a never-enrolled run.
+    snapshotRoute?: SnapshotRouteWire;
     tx?: PrismaClientOrTransaction;
   }): Promise<CompleteRunAttemptResult> {
     const prisma = tx ?? this.$.prisma;
@@ -1249,6 +1312,7 @@ export class RunAttemptSystem {
             id: runId,
             error,
           },
+          snapshotRoute,
           tx: prisma,
         });
 
@@ -1275,6 +1339,7 @@ export class RunAttemptSystem {
     completedWaitpoints,
     batchId,
     resetQueueAttempts = false,
+    snapshotRoute,
     tx,
   }: {
     run: { id: string };
@@ -1295,6 +1360,9 @@ export class RunAttemptSystem {
       index?: number;
     }[];
     batchId?: string;
+    // The run's route, so the QUEUED snapshot this requeue writes honors durable residency on a
+    // poll-lagging pod. The nacked message keeps its own wire route for the next consumer.
+    snapshotRoute?: SnapshotRouteWire;
     /**
      * Pass when the worker reported the attempt's failure itself (an ordinary task retry), so the
      * queue's redelivery budget is reset rather than consumed. Engine-detected stalls and dequeue
@@ -1305,18 +1373,21 @@ export class RunAttemptSystem {
     const prisma = tx ?? this.$.prisma;
 
     return await this.$.runLock.lock("tryNackAndRequeue", [run.id], async () => {
-      //we nack the message, this allows another worker to pick up the run
+      //we nack the message, this allows another worker to pick up the run.
+      //stamp the run's route onto the nacked message so the next consumer honors durable residency.
       const gotRequeued = await this.$.runQueue.nackMessage({
         orgId,
         messageId: run.id,
         retryAt: timestamp,
         resetAttemptCount: resetQueueAttempts,
+        snapshotRoute,
       });
 
       if (!gotRequeued) {
         const result = await this.systemFailure({
           runId: run.id,
           error,
+          snapshotRoute,
           tx: prisma,
         });
         return { wasRequeued: false, ...result };
@@ -1349,6 +1420,7 @@ export class RunAttemptSystem {
         checkpointId,
         completedWaitpoints,
         batchId,
+        snapshotRoute,
       });
 
       return {
@@ -1386,6 +1458,7 @@ export class RunAttemptSystem {
     finalizeRun,
     bulkActionId,
     attemptDurationMs,
+    snapshotRoute,
     tx,
   }: {
     runId: string;
@@ -1396,6 +1469,9 @@ export class RunAttemptSystem {
     finalizeRun?: boolean;
     bulkActionId?: string;
     attemptDurationMs?: number;
+    // Carried on the `cancelRun` queued payload (resolved at schedule time) so this cancellation's
+    // transition honors durable residency on a poll-lagging pod. Undefined for a never-enrolled run.
+    snapshotRoute?: SnapshotRouteWire;
     tx?: PrismaClientOrTransaction;
   }): Promise<ExecutionResult & { alreadyFinished: boolean }> {
     const prisma = tx ?? this.$.prisma;
@@ -1428,6 +1504,20 @@ export class RunAttemptSystem {
             ...executionResultFromSnapshot(latestSnapshot),
           };
         }
+
+        // Central residency fallback for cancellation. Every transition below (PENDING_CANCEL or the
+        // terminal FINISHED) must honor the run's durable residency, but callers reach cancelRun from
+        // many places (CancelTaskRunService, the finalization mollifier, the bulk/child paths) and not
+        // all carry a route. Prefer the caller's carried route; otherwise resolve the run's residency
+        // ONCE via forceDurable so a poll-lagging / undefined-dial pod still writes to the run's true
+        // store instead of the never-enrolled Postgres shortcut. Placed AFTER the no-transition early
+        // exits (already FINISHED, PENDING_CANCEL without finalize) so a no-op cancel does no durable
+        // read; fails closed (throws) when durable residency cannot be confirmed.
+        const effectiveRoute = await this.#effectiveRoute(
+          runId,
+          latestSnapshot.organizationId,
+          snapshotRoute
+        );
 
         //set the run to cancelled immediately
         const error: TaskRunError = {
@@ -1542,6 +1632,7 @@ export class RunAttemptSystem {
               organizationId: latestSnapshot.organizationId,
               workerId,
               runnerId,
+              snapshotRoute: effectiveRoute,
             });
 
             //the worker needs to be notified so it can kill the run and complete the attempt
@@ -1572,6 +1663,7 @@ export class RunAttemptSystem {
           organizationId: latestSnapshot.organizationId,
           workerId,
           runnerId,
+          snapshotRoute: effectiveRoute,
         });
 
         // Complete the waitpoint if it exists (runs without waiting parents have no waitpoint)
@@ -1614,10 +1706,23 @@ export class RunAttemptSystem {
         //which will recursively cancel all children if they need to be
         if (run.childRuns.length > 0) {
           for (const childRun of run.childRuns) {
+            // Resolve the CHILD's own route (each run's residency is decided at its own birth) and
+            // stamp it on the queued payload. forceDurable so a poll-lagging pod resolves the child's
+            // true residency (fails closed) instead of reading undefined from its own dial.
+            const childRoute = await this.$.runStore.readSnapshotRoute(
+              childRun.id,
+              latestSnapshot.organizationId,
+              { forceDurable: true }
+            );
             await this.$.worker.enqueue({
               id: `cancelRun:${childRun.id}`,
               job: "cancelRun",
-              payload: { runId: childRun.id, completedAt: run.completedAt ?? new Date(), reason },
+              payload: {
+                runId: childRun.id,
+                completedAt: run.completedAt ?? new Date(),
+                reason,
+                snapshotRoute: childRoute ? toWireRoute(childRoute) : undefined,
+              },
             });
           }
         }
@@ -1638,6 +1743,7 @@ export class RunAttemptSystem {
     workerId,
     runnerId,
     attemptDurationMs,
+    snapshotRoute,
   }: {
     runId: string;
     latestSnapshot: EnhancedExecutionSnapshot;
@@ -1646,6 +1752,7 @@ export class RunAttemptSystem {
     workerId?: string;
     runnerId?: string;
     attemptDurationMs?: number;
+    snapshotRoute?: SnapshotRouteWire;
   }): Promise<CompleteRunAttemptResult> {
     const prisma = this.$.prisma;
 
@@ -1737,6 +1844,7 @@ export class RunAttemptSystem {
         organizationId: env.organizationId,
         workerId,
         runnerId,
+        snapshotRoute,
       });
 
       await this.$.runQueue.acknowledgeMessage(env.organizationId, runId, {

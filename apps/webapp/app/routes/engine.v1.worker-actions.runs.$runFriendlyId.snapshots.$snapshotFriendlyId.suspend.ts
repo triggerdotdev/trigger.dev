@@ -40,6 +40,7 @@ export const action = createActionWorkerApiRoute(
         snapshotFriendlyId,
         checkpoint: body.checkpoint,
         runnerId,
+        snapshotRoute: body.snapshotRoute,
       });
 
       return json({ ok: true });

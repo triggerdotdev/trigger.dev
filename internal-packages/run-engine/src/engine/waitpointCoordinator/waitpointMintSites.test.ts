@@ -23,7 +23,7 @@ function coordinatorCapturing(captured: Captured) {
   } as unknown as RunStore;
 
   return new LegacyPostgresWaitpointCoordinator({
-    runStore,
+    runStore: () => runStore,
     prisma: {} as unknown as PrismaClient,
     logger: {
       debug: () => {},

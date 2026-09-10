@@ -16,6 +16,7 @@ import {
 import type { WorkloadClientCommonOptions } from "./types.js";
 import { getDefaultWorkloadHeaders } from "./util.js";
 import { wrapZodFetch } from "../../zodfetch.js";
+import type { SnapshotRouteWire } from "../../schemas/runEngine.js";
 
 type WorkloadHttpClientOptions = WorkloadClientCommonOptions;
 
@@ -119,11 +120,15 @@ export class WorkloadHttpClient {
     );
   }
 
-  async continueRunExecution(runId: string, snapshotId: string) {
+  async continueRunExecution(runId: string, snapshotId: string, snapshotRoute?: SnapshotRouteWire) {
+    const query = snapshotRoute
+      ? `?snapshotRoute=${encodeURIComponent(JSON.stringify(snapshotRoute))}`
+      : "";
+
     return this.withConnectionErrorDetection(() =>
       wrapZodFetch(
         WorkloadContinueRunExecutionResponseBody,
-        `${this.apiUrl}/api/v1/workload-actions/runs/${runId}/snapshots/${snapshotId}/continue`,
+        `${this.apiUrl}/api/v1/workload-actions/runs/${runId}/snapshots/${snapshotId}/continue${query}`,
         {
           method: "GET",
           headers: {

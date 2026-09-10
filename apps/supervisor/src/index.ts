@@ -661,6 +661,8 @@ class ManagedSupervisor {
         nextAttemptNumber: message.run.attemptNumber,
         snapshotId: message.snapshot.id,
         snapshotFriendlyId: message.snapshot.friendlyId,
+        // Carry the run's storage route to the cold-start pod so its start request echoes it back.
+        snapshotRoute: message.snapshotRoute,
         placementTags: message.placementTags,
         traceContext: message.run.traceContext,
         annotations: message.run.annotations,

@@ -1,5 +1,7 @@
 import { timeoutError } from "@trigger.dev/core/v3";
 import type { ShardKey } from "@trigger.dev/core/v3/isomorphic";
+import { boundedIn } from "@trigger.dev/database";
+import { type SnapshotRouteWire, toWireRoute } from "@internal/run-store";
 import type {
   PrismaClientOrTransaction,
   TaskRun,
@@ -9,6 +11,7 @@ import type {
 } from "@trigger.dev/database";
 import { assertNever } from "assert-never";
 import { WaitpointCompletionGuardArmedError } from "../errors.js";
+import { buildCompletedWaitpointRecords } from "./completedWaitpointResolver.js";
 import { sendNotificationToWorker } from "../eventBus.js";
 import { isFinalRunStatus } from "../statuses.js";
 import { LegacyPostgresWaitpointCoordinator } from "../waitpointCoordinator/legacyPostgresCoordinator.js";
@@ -58,10 +61,25 @@ export class WaitpointSystem {
     this.completionGuardDelayMs =
       options.completionGuardDelayMs ?? DEFAULT_COMPLETION_GUARD_DELAY_MS;
     this.coordinator = new LegacyPostgresWaitpointCoordinator({
-      runStore: this.$.runStore,
+      // Read the store live from the shared resources object (mutated in place by setRunStore), so a
+      // post-boot store swap reaches the coordinator instead of freezing the construction-time store.
+      runStore: () => this.$.runStore,
       prisma: this.$.prisma,
       logger: this.$.logger,
     });
+  }
+
+  // Resolve the run's residency durably (forceDurable) and convert to a wire route. Used as the
+  // fallback when a waitpoint transition arrives without a carried route. Fails closed (throws) if
+  // residency can't be confirmed; undefined only for a genuinely never-enrolled run.
+  async #resolveRouteWire(
+    runId: string,
+    organizationId: string
+  ): Promise<SnapshotRouteWire | undefined> {
+    const route = await this.$.runStore.readSnapshotRoute(runId, organizationId, {
+      forceDurable: true,
+    });
+    return route ? toWireRoute(route) : undefined;
   }
 
   public async clearBlockingWaitpoints({
@@ -336,6 +354,7 @@ export class WaitpointSystem {
     batch,
     workerId,
     runnerId,
+    snapshotRoute,
     tx,
   }: {
     runId: string;
@@ -347,6 +366,9 @@ export class WaitpointSystem {
     batch?: { id: string; index?: number };
     workerId?: string;
     runnerId?: string;
+    // The run's route, so the suspend transition (and the resume it schedules) honor durable
+    // residency on a poll-lagging pod. Undefined for a never-enrolled run.
+    snapshotRoute?: SnapshotRouteWire;
     tx?: PrismaClientOrTransaction;
   }): Promise<TaskRunExecutionSnapshot> {
     const prisma = tx ?? this.$.prisma;
@@ -356,6 +378,11 @@ export class WaitpointSystem {
     let $waitpoints = typeof waitpoints === "string" ? [waitpoints] : waitpoints;
 
     return await this.$.runLock.lock("blockRunWithWaitpoint", [runId], async () => {
+      // Use the carried route, or resolve the run's residency durably ONCE before writing/registering
+      // the block so the suspend transition and the resume it schedules honor durable residency on a
+      // poll-lagging pod. A supplied route means no extra lookup; undefined = genuinely never-enrolled.
+      const routeWire = snapshotRoute ?? (await this.#resolveRouteWire(runId, organizationId));
+
       let snapshot: TaskRunExecutionSnapshot = await getLatestExecutionSnapshot(
         prisma,
         runId,
@@ -406,6 +433,7 @@ export class WaitpointSystem {
           batchId: batch?.id,
           workerId,
           runnerId,
+          snapshotRoute: routeWire,
         });
 
         // Let the worker know immediately, so it can suspend the run
@@ -433,7 +461,7 @@ export class WaitpointSystem {
           //this will debounce the call
           id: `continueRunIfUnblocked:${runId}`,
           job: "continueRunIfUnblocked",
-          payload: { runId: runId },
+          payload: { runId: runId, snapshotRoute: routeWire },
           //in the near future
           availableAt: new Date(Date.now() + 50),
         });
@@ -538,8 +566,12 @@ export class WaitpointSystem {
 
   public async continueRunIfUnblocked({
     runId,
+    snapshotRoute,
   }: {
     runId: string;
+    // Carried on the `continueRunIfUnblocked` queued payload so the resume transition honors durable
+    // residency on a poll-lagging pod. Undefined when the scheduler had no route (durable fallback).
+    snapshotRoute?: SnapshotRouteWire;
   }): Promise<WaitpointContinuationResult> {
     this.$.logger.debug(`continueRunIfUnblocked: start`, {
       runId,
@@ -595,6 +627,10 @@ export class WaitpointSystem {
       //4. Continue the run whether it's executing or not
       const snapshot = await getLatestExecutionSnapshot(this.$.prisma, runId, this.$.runStore);
 
+      // Residency is resolved INSIDE the two branches that actually write a snapshot
+      // (EXECUTING_WITH_WAITPOINTS, SUSPENDED). Resolving here would make every no-op state depend on
+      // MemoryDB being resolvable, so an unavailable residency would fail and retry these jobs
+      // instead of letting them terminate cleanly. A supplied route still costs no lookup.
       switch (snapshot.executionStatus) {
         case "RUN_CREATED": {
           this.$.logger.info(`continueRunIfUnblocked: run is run created, skipping`, {
@@ -681,6 +717,10 @@ export class WaitpointSystem {
           };
         }
         case "EXECUTING_WITH_WAITPOINTS": {
+          // This branch writes, so resolve residency here (fail-closed) rather than for every no-op.
+          const routeWire =
+            snapshotRoute ?? (await this.#resolveRouteWire(runId, snapshot.organizationId));
+
           const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(
             this.$.prisma,
             {
@@ -703,6 +743,9 @@ export class WaitpointSystem {
                 id: b.waitpoint.id,
                 index: b.batchIndex ?? undefined,
               })),
+              resolveCompletedWaitpointRecords: () =>
+                this.#buildCompletedWaitpointRecords(runId, blockingWaitpoints),
+              snapshotRoute: routeWire,
             }
           );
 
@@ -757,6 +800,11 @@ export class WaitpointSystem {
             );
           }
 
+          // Resolved only after the canceled-skip and missing-checkpoint checks above, so neither
+          // no-transition exit depends on residency being resolvable.
+          const routeWire =
+            snapshotRoute ?? (await this.#resolveRouteWire(runId, snapshot.organizationId));
+
           //put it back in the queue, with the original timestamp (w/ priority)
           //this prioritizes dequeuing waiting runs over new runs
           const newSnapshot = await this.enqueueSystem.enqueueRun({
@@ -771,7 +819,10 @@ export class WaitpointSystem {
               id: b.waitpoint.id,
               index: b.batchIndex ?? undefined,
             })),
+            resolveCompletedWaitpointRecords: () =>
+              this.#buildCompletedWaitpointRecords(runId, blockingWaitpoints),
             checkpointId: snapshot.checkpointId ?? undefined,
+            snapshotRoute: routeWire,
           });
 
           this.$.logger.debug(`continueRunIfUnblocked: run goes to QUEUED`, {
@@ -807,6 +858,22 @@ export class WaitpointSystem {
         waitpoints: blockingWaitpoints.map((w) => w.waitpoint),
       };
     }); // end of runlock
+  }
+
+  // The blocking edges carry only a 4-field waitpoint pick, but a redis-primary snapshot needs the FULL
+  // rows to reproduce the Postgres join. Passed to the snapshot store as a resolver thunk so this fetch
+  // runs ONLY when a redis-primary cycle actually needs it, never on a postgres-resident resume. Routed
+  // by runId with per-id shard fallback so a cross-shard token still resolves.
+  async #buildCompletedWaitpointRecords(
+    runId: string,
+    blockingWaitpoints: { waitpoint: { id: string } }[]
+  ) {
+    const rows = await this.$.runStore.findManyWaitpoints(
+      { where: { id: { in: boundedIn(blockingWaitpoints.map((b) => b.waitpoint.id)) } } },
+      this.$.prisma,
+      runId
+    );
+    return buildCompletedWaitpointRecords(rows);
   }
 
   public buildRunAssociatedWaitpoint({

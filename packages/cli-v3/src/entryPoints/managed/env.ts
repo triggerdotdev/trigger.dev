@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Metadata } from "./overrides.js";
 import { z } from "zod";
 import type { EnvObject } from "std-env";
+import { SnapshotRouteWire } from "@trigger.dev/core/v3";
 
 const DateEnv = z
   .string()
@@ -49,6 +50,9 @@ const Env = z.object({
   // May be overridden
   TRIGGER_RUN_ID: z.string().optional(), // This is set for cold starts and restores
   TRIGGER_SNAPSHOT_ID: z.string().optional(), // This is set for cold starts and restores
+  // JSON-encoded SnapshotRouteWire for an enrolled run, set alongside the ids on a cold start so the
+  // worker echoes the route back on its start request. Absent for a never-enrolled run.
+  TRIGGER_SNAPSHOT_ROUTE: z.string().optional(),
   TRIGGER_SUPERVISOR_API_PROTOCOL: z.enum(["http", "https"]),
   TRIGGER_SUPERVISOR_API_DOMAIN: z.string(),
   TRIGGER_SUPERVISOR_API_PORT: z.coerce.number(),
@@ -150,6 +154,18 @@ export class RunnerEnv {
   }
   get TRIGGER_SNAPSHOT_ID() {
     return this.env.TRIGGER_SNAPSHOT_ID;
+  }
+  // Decode the cold-start route leniently: a malformed or unknown-version value is dropped (undefined)
+  // rather than crashing the runner, exactly like the queue-message parse.
+  get TRIGGER_SNAPSHOT_ROUTE(): SnapshotRouteWire | undefined {
+    const raw = this.env.TRIGGER_SNAPSHOT_ROUTE;
+    if (!raw) return undefined;
+    try {
+      const parsed = SnapshotRouteWire.safeParse(JSON.parse(raw));
+      return parsed.success ? parsed.data : undefined;
+    } catch {
+      return undefined;
+    }
   }
   get TRIGGER_SUCCESS_EXIT_CODE() {
     return this.env.TRIGGER_SUCCESS_EXIT_CODE;
