@@ -185,37 +185,53 @@ compaction: {
 },
 ```
 
-### 5. Actions: mutate state without a turn
+### 5. Actions: edit state, and optionally answer
 
-`actionSchema` validates; `onAction` mutates via `chat.history` (`slice`, `replace`, `rollbackTo`,
-`remove`, `getPendingToolCalls`, `extractNewToolResults`). Actions fire `hydrateMessages` and
-`onAction` only, never `run()` or the turn hooks. Return a `StreamTextResult`, string, or `UIMessage`
-to also emit a model response, built with the `streamText` from `onAction`'s own argument so it
-carries the agent's prompt and tools like any other turn.
+`actionSchema` validates; `onAction` edits via `chat.history` (`slice`, `replace`, `rollbackTo`,
+`remove`, `getPendingToolCalls`, `extractNewToolResults`). An action fires `hydrateMessages` and
+`onAction` only. Return nothing for an edit-only action: no model call, and the turn counter does not
+advance. Return `chat.turn()` to answer after the edit: a turn runs on the edited history with
+everything a turn has (the agent's system prompt and tools, steering, compaction, injected
+instructions, `onTurnStart` and `onTurnComplete`, persistence), and `run()` receives it with
+`trigger: "action-turn"`. `onAction` has no `streamText` argument, and returning a
+`StreamTextResult`, string or `UIMessage` from it throws.
 
-Persistence goes through the agent's transcript storage (`storage` on `chat.agent`; the platform
-snapshot by default). After an action that changed the conversation the runtime hands the storage a
-changeset: an undo is one `truncateAfter`, a regenerate is a `truncateAfter` plus the new answer's
-`put`. With the deprecated `hydrateMessages` your store is the source of truth and the runtime does
-not write, so mirror every mutation yourself: a regenerate is a delete and an insert.
+Persistence splits by model. With transcript storage (`storage` on `chat.agent`; the platform
+snapshot by default), the runtime hands storage a changeset with `reason: "action"` after an action
+that changed the conversation: an undo is one `truncateAfter`, a regenerate is a `truncateAfter`
+followed by the new answer's `put` when the turn completes, and an edit is a `put` for the edited
+id. With the deprecated `hydrateMessages` your store is the source of truth and the runtime does
+not write, so mirror every mutation yourself: a regenerate is a delete and an insert, and the
+answer that follows `chat.turn()` arrives through `onTurnComplete` like any turn's answer.
 
 ```ts
 export const myChat = chat.agent({
   id: "my-chat",
   actionSchema: z.discriminatedUnion("type", [
     z.object({ type: z.literal("undo") }),
+    z.object({ type: z.literal("regenerate") }),
     z.object({ type: z.literal("rollback"), targetMessageId: z.string() }),
   ]),
   onAction: async ({ action }) => {
-    if (action.type === "undo") chat.history.slice(0, -2);
+    if (action.type === "undo") chat.history.slice(0, -2); // edit only
     if (action.type === "rollback") chat.history.rollbackTo(action.targetMessageId);
+    if (action.type === "regenerate") {
+      chat.history.slice(0, -1);
+      return chat.turn(); // answer the edited history
+    }
   },
   run: async ({ messages, signal, streamText }) =>
     streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal }),
 });
 ```
 
-Send from the browser with `transport.sendAction(chatId, { type: "undo" })`, or server-side with
+Send from the browser through `useChat`, so the answer a turn produces renders like any turn:
+`sendMessage(undefined, { body: { action: { type: "regenerate" } } })`, `regenerate({ body: { action } })`,
+or `useChatActions({ sendMessage })` from `@trigger.dev/sdk/chat/react`. For regeneration, use
+`regenerate()` from `useChat` (Vercel AI SDK) which removes the last assistant message before
+streaming the new one; calling `sendMessage` with a regenerate action appends without removal,
+leaving both answers visible. `transport.sendAction(chatId, action)` returns a raw stream the
+caller must read and apply itself. Server-side, use
 `agentChat.sendAction({ type: "rollback", targetMessageId: "msg-3" })`.
 
 ### 6. Fast starts: Head Start
