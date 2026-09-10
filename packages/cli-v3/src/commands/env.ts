@@ -3,7 +3,6 @@ import { tryCatch } from "@trigger.dev/core";
 import chalk from "chalk";
 import Table from "cli-table3";
 import type { Command } from "commander";
-import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { z } from "zod";
 import {
@@ -15,6 +14,7 @@ import {
 import { loadConfig } from "../config.js";
 import { printInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
+import { writePrivateEnvFile } from "../utilities/privateEnvFile.js";
 import { getProjectClient } from "../utilities/session.js";
 import { spinner } from "../utilities/windows.js";
 import { login } from "./login.js";
@@ -385,13 +385,17 @@ async function _envPullCommand(options: z.infer<typeof EnvPullOptions>) {
 
   const outputPath = resolve(process.cwd(), options.output);
 
-  const [error] = await tryCatch(writeFile(outputPath, "", { flag: "wx", mode: 0o600 }));
+  const envContent = userVariables
+    .map(([key, value]) => `${key}=${serializeDotenvValue(value)}`)
+    .join("\n");
 
-  if (error && "code" in error && error.code !== "EEXIST") {
-    throw error;
+  const [createError] = await tryCatch(writePrivateEnvFile(outputPath, envContent + "\n", "wx"));
+
+  if (createError && (!isNodeError(createError) || createError.code !== "EEXIST")) {
+    throw createError;
   }
 
-  if (error && "code" in error && error.code === "EEXIST" && !options.force) {
+  if (createError && !options.force) {
     const shouldOverwrite = await confirm({
       message: `File ${options.output} already exists. Overwrite?`,
       initialValue: false,
@@ -403,14 +407,10 @@ async function _envPullCommand(options: z.infer<typeof EnvPullOptions>) {
     }
   }
 
-  const envContent = userVariables
-    .map(([key, value]) => `${key}=${serializeDotenvValue(value)}`)
-    .join("\n");
-
   $spinner.start(`Writing to ${options.output}`);
-  const [writeError] = await tryCatch(
-    writeFile(outputPath, envContent + "\n", { encoding: "utf-8", mode: 0o600 })
-  );
+  const [writeError] = createError
+    ? await tryCatch(writePrivateEnvFile(outputPath, envContent + "\n", "w"))
+    : [undefined];
 
   if (writeError) {
     $spinner.stop(`Failed to write to ${options.output}`);
@@ -429,6 +429,10 @@ async function _envPullCommand(options: z.infer<typeof EnvPullOptions>) {
 
   const envInfo = branch ? `${env} (${branch})` : env;
   outro(`Project: ${projectRef} | Environment: ${envInfo}`);
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error;
 }
 
 const serializeDotenvValue = (v: unknown): string => {

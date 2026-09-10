@@ -8,8 +8,27 @@ import {
   BUILD_IMAGE,
   DEFAULT_PACKAGES,
   TOOLCHAIN_PACKAGES,
+  formatCommandForDiagnostics,
   generateContainerfile,
 } from "./buildImage.js";
+
+describe("formatCommandForDiagnostics", () => {
+  it("redacts build argument values without changing the executable arguments", () => {
+    const args = ["build", "--build-arg", "PUBLIC=value", "--build-arg", "SECRET=very-secret", "."];
+
+    expect(formatCommandForDiagnostics(args)).toBe(
+      "build --build-arg PUBLIC=[REDACTED] --build-arg SECRET=[REDACTED] ."
+    );
+    expect(args).toEqual([
+      "build",
+      "--build-arg",
+      "PUBLIC=value",
+      "--build-arg",
+      "SECRET=very-secret",
+      ".",
+    ]);
+  });
+});
 
 const images: Array<[BuildRuntime, string, string]> = [
   [

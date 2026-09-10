@@ -35,7 +35,7 @@ export async function createGitMeta(directory: string): Promise<GitMeta | undefi
 
   return {
     source: "local",
-    remoteUrl: remoteUrl ?? undefined,
+    remoteUrl: sanitizeGitRemoteUrl(remoteUrl ?? undefined),
     commitAuthorName: commit.author.name,
     commitMessage: commit.subject,
     commitRef: commit.branch,
@@ -100,6 +100,27 @@ async function getOriginUrl(configPath: string): Promise<string | null> {
     return originUrl;
   }
   return null;
+}
+
+export function sanitizeGitRemoteUrl(remoteUrl: string | undefined): string | undefined {
+  if (remoteUrl === undefined) {
+    return;
+  }
+
+  try {
+    const url = new URL(remoteUrl);
+    if (!url.username && !url.password) {
+      return remoteUrl;
+    }
+
+    url.username = "";
+    url.password = "";
+    return url.href;
+  } catch {
+    return remoteUrl.includes("://") || /^[a-z][a-z\d+.-]*:/i.test(remoteUrl.trim())
+      ? undefined
+      : remoteUrl;
+  }
 }
 
 function errorToString(err: unknown): string {
@@ -170,7 +191,7 @@ async function getGitHubActionsMeta(): Promise<GitMeta> {
   return {
     provider: "github",
     source: "github_actions",
-    remoteUrl,
+    remoteUrl: sanitizeGitRemoteUrl(remoteUrl),
     commitSha,
     commitRef,
     // In CI, the workspace is always clean
@@ -197,7 +218,7 @@ function getGitHubAppMeta(): GitMeta {
   return {
     provider: "github",
     source: "trigger_github_app",
-    remoteUrl: process.env.GITHUB_REPOSITORY_URL,
+    remoteUrl: sanitizeGitRemoteUrl(process.env.GITHUB_REPOSITORY_URL),
     commitSha: process.env.GITHUB_HEAD_COMMIT_SHA,
     commitRef: process.env.GITHUB_REF?.replace(/^refs\/(heads|tags)\//, ""),
     commitMessage: process.env.GITHUB_HEAD_COMMIT_MESSAGE,

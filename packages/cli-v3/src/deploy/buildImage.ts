@@ -245,7 +245,7 @@ async function remoteBuildImage(options: DepotBuildImageOptions): Promise<BuildI
     outputOptions.join(","),
   ].filter(Boolean) as string[];
 
-  logger.debug(`depot ${args.join(" ")}`, { cwd: options.cwd });
+  logger.debug(`depot ${formatCommandForDiagnostics(args)}`, { cwd: options.cwd });
 
   // Step 4: Build and push the image
   const childProcess = depot(args, {
@@ -599,7 +599,7 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
     ".", // The build context
   ].filter(Boolean) as string[];
 
-  logger.debug(`docker ${args.join(" ")}`, { cwd: options.cwd });
+  logger.debug(`docker ${formatCommandForDiagnostics(args)}`, { cwd: options.cwd });
 
   const buildProcess = x("docker", args, {
     nodeOptions: {
@@ -683,6 +683,20 @@ function extractLogs(outputs: string[]) {
   const cleanedOutputs = outputs.map((line) => line.trim()).filter((line) => line !== "");
 
   return cleanedOutputs.map((line) => line.trim()).join("\n");
+}
+
+export function formatCommandForDiagnostics(args: string[]): string {
+  return args
+    .map((arg, index) => {
+      if (args[index - 1] !== "--build-arg") {
+        return arg;
+      }
+
+      const separatorIndex = arg.indexOf("=");
+      const key = separatorIndex === -1 ? arg : arg.slice(0, separatorIndex);
+      return `${key}=[REDACTED]`;
+    })
+    .join(" ");
 }
 
 export type GenerateContainerfileOptions = {

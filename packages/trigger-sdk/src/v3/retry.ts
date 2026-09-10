@@ -512,15 +512,16 @@ const isStatusCodeInRange = (statusCode: number, statusRange: string): boolean =
   return statusCode === parseInt(start, 10);
 };
 
-const createAttributesFromHeaders = (headers: Headers): Attributes => {
+const SAFE_RESPONSE_HEADERS = new Set(["content-length", "content-type", "retry-after"]);
+
+export const createAttributesFromHeaders = (headers: Headers): Attributes => {
   const attributes: Attributes = {};
 
-  const normalizedHeaderKey = (key: string) => {
-    return key.toLowerCase();
-  };
-
   headers.forEach((value, key) => {
-    attributes[`http.response.header.${normalizedHeaderKey(key)}`] = value;
+    const normalizedKey = key.toLowerCase();
+    if (SAFE_RESPONSE_HEADERS.has(normalizedKey)) {
+      attributes[`http.response.header.${normalizedKey}`] = value;
+    }
   });
 
   return attributes;
@@ -557,16 +558,21 @@ const resolveDefaults = <
   return obj[key] as TValue;
 };
 
-const createFetchAttributes = (
+export const createFetchAttributes = (
   input: RequestInfo | URL,
   init?: RetryFetchRequestInit | undefined
 ): Attributes => {
   const url = normalizeUrlFromInput(input);
+  const diagnosticUrl = new URL(url);
+  diagnosticUrl.username = "";
+  diagnosticUrl.password = "";
+  diagnosticUrl.search = "";
+  diagnosticUrl.hash = "";
   const httpMethod = normalizeHttpMethod(input, init);
 
   return {
     [SEMATTRS_HTTP_METHOD]: httpMethod,
-    [SEMATTRS_HTTP_URL]: url.href,
+    [SEMATTRS_HTTP_URL]: diagnosticUrl.href,
     [SEMATTRS_HTTP_HOST]: url.hostname,
     ["server.host"]: url.hostname,
     ["server.port"]: url.port,
@@ -583,7 +589,7 @@ const createFetchAttributes = (
   };
 };
 
-const createFetchResponseAttributes = (response: Response): Attributes => {
+export const createFetchResponseAttributes = (response: Response): Attributes => {
   return {
     [SEMATTRS_HTTP_STATUS_CODE]: response.status,
     "http.status_text": response.statusText,
