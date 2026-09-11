@@ -2875,7 +2875,8 @@ describe("API", () => {
     // multi-key sessions resource. No deep matrix here; one positive
     // test per old superScope per method is enough.
     describe("Realtime IO — /realtime/v1/sessions/:session/:io", () => {
-      const ioPath = (sessionParam: string) => `/realtime/v1/sessions/${sessionParam}/in`;
+      const ioPath = (sessionParam: string, io: "out" | "in" = "out") =>
+        `/realtime/v1/sessions/${sessionParam}/${io}`;
 
       const mintJwt = async (apiKey: string, envId: string, scopes: string[]) =>
         generateJWT({
@@ -2910,12 +2911,67 @@ describe("API", () => {
         expect(res.status).not.toBe(403);
       });
 
+      it("GET .out with read:sessions:<id>:out (direction fold): auth passes", async () => {
+        const server = getTestServer();
+        const seed = await seedTestEnvironment(server.prisma);
+        const session = await seedTestApiSession(server.prisma, seed.environment);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
+          `read:sessions:${session.friendlyId}:out`,
+        ]);
+        const res = await server.webapp.fetch(ioPath(session.friendlyId, "out"), {
+          method: "HEAD",
+          headers: { Authorization: `Bearer ${jwt}` },
+        });
+        expect(res.status).not.toBe(401);
+        expect(res.status).not.toBe(403);
+      });
+
+      it("GET .in with read:sessions:<id>:out: 403 (fold does not cover .in)", async () => {
+        const server = getTestServer();
+        const seed = await seedTestEnvironment(server.prisma);
+        const session = await seedTestApiSession(server.prisma, seed.environment);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
+          `read:sessions:${session.friendlyId}:out`,
+        ]);
+        const res = await server.webapp.fetch(ioPath(session.friendlyId, "in"), {
+          method: "HEAD",
+          headers: { Authorization: `Bearer ${jwt}` },
+        });
+        expect(res.status).toBe(403);
+      });
+
+      it("GET .in with read:sessions:<id> (public JWT): 403 (secret key only)", async () => {
+        const server = getTestServer();
+        const seed = await seedTestEnvironment(server.prisma);
+        const session = await seedTestApiSession(server.prisma, seed.environment);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
+          `read:sessions:${session.friendlyId}`,
+        ]);
+        const res = await server.webapp.fetch(ioPath(session.friendlyId, "in"), {
+          method: "HEAD",
+          headers: { Authorization: `Bearer ${jwt}` },
+        });
+        expect(res.status).toBe(403);
+      });
+
+      it("GET .in with the secret key: auth passes", async () => {
+        const server = getTestServer();
+        const seed = await seedTestEnvironment(server.prisma);
+        const session = await seedTestApiSession(server.prisma, seed.environment);
+        const res = await server.webapp.fetch(ioPath(session.friendlyId, "in"), {
+          method: "HEAD",
+          headers: { Authorization: `Bearer ${seed.apiKey}` },
+        });
+        expect(res.status).not.toBe(401);
+        expect(res.status).not.toBe(403);
+      });
+
       it("PUT with write:sessions (was a superScope): auth passes", async () => {
         const server = getTestServer();
         const seed = await seedTestEnvironment(server.prisma);
         const session = await seedTestApiSession(server.prisma, seed.environment);
         const jwt = await mintJwt(seed.apiKey, seed.environment.id, ["write:sessions"]);
-        const res = await server.webapp.fetch(ioPath(session.friendlyId), {
+        const res = await server.webapp.fetch(ioPath(session.friendlyId, "in"), {
           method: "PUT",
           headers: { Authorization: `Bearer ${jwt}` },
         });

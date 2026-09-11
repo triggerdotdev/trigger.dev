@@ -174,7 +174,9 @@ const { action } = createActionApiRoute(
     try {
       if (body.externalId && !isSafeSessionExternalId(body.externalId)) {
         return json(
-          { error: `externalId cannot contain "${SESSION_CHANNEL_SCOPE_INFIX}"` },
+          {
+            error: `externalId cannot contain "${SESSION_CHANNEL_SCOPE_INFIX}" or end in ":out" or ":in"`,
+          },
           { status: 422 }
         );
       }

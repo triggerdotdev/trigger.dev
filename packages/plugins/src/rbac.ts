@@ -267,13 +267,46 @@ export function scopesWithinAbility(
       return true;
     }
 
-    return !ability.can(parsed.action, {
+    const resource = {
       type: parsed.type ?? "all",
       ...(parsed.id ? { id: parsed.id } : {}),
-    });
+    };
+    if (ability.can(parsed.action, resource)) return false;
+
+    // A session scope narrowed to one channel or direction is contained by the
+    // scope on the key it folds from, so a key holding `read:sessions:{id}` may
+    // mint `read:sessions:{id}:out` (and the channel forms) for that session.
+    return !(
+      parsed.type === "sessions" &&
+      parsed.id !== undefined &&
+      sessionScopeAncestors(parsed.id).some((id) =>
+        ability.can(parsed.action, { type: "sessions", id })
+      )
+    );
   });
 
   return { ok: deniedScopes.length === 0, deniedScopes };
+}
+
+// The ids a folded session scope id is contained by, nearest first. The fold
+// grammar is `{key}[:channels:{name}][:out|:in]`; channel names cannot contain
+// `:` and session externalIds may neither contain `:channels:` nor end in
+// `:out`/`:in`, so unfolding by suffix is unambiguous. Mirrors the webapp's
+// `sessionChannelResources` / `sessionStreamResources` fold.
+function sessionScopeAncestors(id: string): string[] {
+  const ancestors: string[] = [];
+  let current = id;
+  const direction = current.match(/:(?:out|in)$/);
+  if (direction) {
+    current = current.slice(0, -direction[0].length);
+    ancestors.push(current);
+  }
+  const channel = current.match(/:channels:[^:]+$/);
+  if (channel) {
+    current = current.slice(0, -channel[0].length);
+    ancestors.push(current);
+  }
+  return ancestors;
 }
 
 // ── Delegated user-actor token grammar ───────────────────────────────────

@@ -111,25 +111,30 @@ export function dashboardAgentTriggerConfig(): {
   };
 }
 
+// The SDK's start action also mints a `read:sessions` token; it is discarded here so every
+// browser token comes from `mintDashboardAgentToken`.
 export async function startDashboardAgentSession(params: {
   chatId: string;
   clientData?: Record<string, unknown>;
-}): Promise<{ publicAccessToken: string }> {
+}): Promise<void> {
   const config = dashboardAgentConfig();
   if (!config) throw new Error("DASHBOARD_AGENT_SECRET_KEY is not set");
   const startSession = chat.createStartSessionAction(TASK_ID, {
     apiClient: config,
     triggerConfig: dashboardAgentTriggerConfig(),
   });
-  return startSession({ chatId: params.chatId, clientData: params.clientData });
+  await startSession({ chatId: params.chatId, clientData: params.clientData });
 }
 
+// Read is narrowed to the `.out` stream (`read:sessions:{chatId}:out`): `.in` records carry
+// the delegated user token the `in` proxy injects, and the session row carries the trigger
+// config, so the browser gets neither.
 export async function mintDashboardAgentToken(chatId: string): Promise<string> {
   const config = dashboardAgentConfig();
   if (!config) throw new Error("DASHBOARD_AGENT_SECRET_KEY is not set");
   const client = new TriggerClient(config);
   return client.auth.createPublicToken({
-    scopes: { read: { sessions: chatId }, write: { sessions: chatId } },
+    scopes: { read: { sessions: `${chatId}:out` }, write: { sessions: chatId } },
     expirationTime: "1h",
   });
 }

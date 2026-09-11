@@ -74,11 +74,17 @@ type PublicTokenPermissionProperties = {
 
   /**
    * Grant access to specific Sessions (the durable, typed I/O primitive that
-   * outlives a single run). Use the session's friendlyId (e.g. `session_abc`).
+   * outlives a single run). Use the session's friendlyId (e.g. `session_abc`)
+   * or its externalId.
    *
-   * `read:sessions:{id}` lets the bearer read both the `.out` and `.in`
-   * channels and list runs on the session. `write:sessions:{id}` lets the
-   * bearer append to the session's channels and create new runs against it.
+   * `read:sessions:{id}` lets the bearer retrieve the session, list its runs
+   * and subscribe to its `.out` channel and named channels. `write:sessions:{id}`
+   * lets the bearer append to the session's `.in` channels and create new runs
+   * against it. Reading a session's `.in` channel requires a secret key.
+   *
+   * Narrow a grant by appending to the id: `{id}:out` covers only the default
+   * `.out` stream, `{id}:channels:{name}` only one named channel, and
+   * `{id}:channels:{name}:out` only that channel's `.out` stream.
    */
   sessions?: string | string[];
 };

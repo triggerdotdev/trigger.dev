@@ -138,7 +138,7 @@ A side channel's streams are bounded by the same retention as the rest of your r
 
 ## Auth
 
-A side channel is covered by the session's public access token: a token scoped to `read:sessions:{id}` / `write:sessions:{id}` grants every channel of that session. Mint a narrower token scoped to a single channel with `read:sessions:{id}:channels:{name}`. Writing a channel's `.out` requires secret-key auth (only the agent run), so a browser cannot forge frames; `.in` is writable with the session token. See [Realtime auth](/realtime/auth).
+A side channel is covered by the session's public access token: a token scoped to `read:sessions:{id}` / `write:sessions:{id}` grants every channel of that session. Mint a narrower token scoped to a single channel with `read:sessions:{id}:channels:{name}`, or to one direction of it with `read:sessions:{id}:channels:{name}:out`. Writing a channel's `.out` requires secret-key auth (only the agent run), so a browser cannot forge frames; `.in` is writable with the session token. See [Realtime auth](/realtime/auth).
 
 ### Scope tokens to the channel, not the whole session
 

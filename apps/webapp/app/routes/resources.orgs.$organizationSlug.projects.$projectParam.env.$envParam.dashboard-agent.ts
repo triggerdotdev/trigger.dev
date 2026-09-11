@@ -199,7 +199,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     // Null is not an empty transcript: the chat is deleted or another org's, and a 200 would
     // read as a real, empty chat.
     if (messages === null) return json({ error: "Chat not found" }, { status: 404 });
-    return json({ messages, session });
+    // The stored token is the agent run's own (bare `read:sessions` plus run scopes), kept for
+    // the agent's replay. The browser gets a token minted for it, narrowed like every other
+    // dashboard-agent issuance; a failed mint degrades to a non-streaming transcript.
+    let browserSession: typeof session = null;
+    if (session && isDashboardAgentConfigured()) {
+      try {
+        browserSession = { ...session, publicAccessToken: await mintDashboardAgentToken(chatId) };
+      } catch (error) {
+        logger.error("Dashboard agent chat read could not mint a browser token", { chatId, error });
+      }
+    }
+    return json({ messages, session: browserSession });
   }
 
   const chats = await listChats(dashboardAgentDb, {
@@ -638,7 +649,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         // run's `basePayload.metadata` verbatim, so without the pick a client could inject
         // any server-owned field into the agent's first turn (a `repoSnapshot.tarballUrl`
         // is fetched and extracted on the worker).
-        const { publicAccessToken } = await startDashboardAgentSession({
+        await startDashboardAgentSession({
           chatId,
           clientData: {
             ...pickAgentClientMetadata(clientData),
@@ -656,11 +667,21 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             ...dashboardAgentEnvironmentAddress(runtimeEnv),
           },
         });
-        return json({ publicAccessToken });
       } catch (error) {
         logger.error("Failed to start dashboard agent session", { chatId, error });
         return json(
           { error: "The dashboard agent couldn't start. Please try again in a moment." },
+          { status: 500 }
+        );
+      }
+
+      try {
+        return json({ publicAccessToken: await mintDashboardAgentToken(chatId) });
+      } catch (error) {
+        // The session is live and idles out on its own if the client never comes back.
+        logger.error("Dashboard agent chat resumed but its token mint failed", { chatId, error });
+        return json(
+          { error: "The dashboard agent started but couldn't be opened. Try opening it again." },
           { status: 500 }
         );
       }

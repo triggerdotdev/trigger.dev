@@ -66,7 +66,7 @@ async function setupSession() {
     basin: server.s2.basin,
     streamName,
   });
-  return { addressingKey, token, producer, streamName, baseUrl: server.webapp.baseUrl };
+  return { addressingKey, token, apiKey, producer, streamName, baseUrl: server.webapp.baseUrl };
 }
 
 function readableFrom<T>(chunks: T[]): ReadableStream<T> {
@@ -285,7 +285,7 @@ describe("session stream e2e", () => {
   });
 
   it("E11 in/append delivers the record on the .in channel", async () => {
-    const { addressingKey, token, baseUrl } = await setupSession();
+    const { addressingKey, token, apiKey, baseUrl } = await setupSession();
 
     const payload = JSON.stringify({ kind: "message", text: "hello from client" });
     const appended = await appendInput({
@@ -297,10 +297,21 @@ describe("session stream e2e", () => {
     });
     expect(appended.status).toBe(200);
 
-    const { parts } = await collectSessionOut({
+    // `.in` is the agent's to read: a public session token can append to it but not
+    // subscribe, so the read side of this round trip uses the secret key.
+    const denied = await openChannelRaw({
       baseUrl,
       addressingKey,
       token,
+      io: "in",
+      maxMs: 5_000,
+    });
+    expect(denied.status).toBe(403);
+
+    const { parts } = await collectSessionOut({
+      baseUrl,
+      addressingKey,
+      token: apiKey,
       io: "in",
       until: (p) => p.some((x) => x.chunk != null),
       maxMs: 15_000,

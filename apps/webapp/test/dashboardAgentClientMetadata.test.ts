@@ -34,7 +34,7 @@ vi.mock("~/services/dashboardAgent.server", () => ({
   dashboardAgentApiOrigin: () => "https://api.trigger.dev",
   dashboardAgentUserApiOrigin: () => "https://api.trigger.dev",
   isDashboardAgentConfigured: () => true,
-  mintDashboardAgentToken: async () => "pat_public",
+  mintDashboardAgentToken: async () => "pat_minted",
   mintDashboardAgentUserActorToken: async () => "tr_uat_real",
   resolveDashboardAgentRepoSnapshot: async () => null,
   startDashboardAgentSession: mocks.startSession,
@@ -113,6 +113,8 @@ async function startChat(clientData: Record<string, unknown>) {
   } as any);
 
   expect(response.status).toBe(200);
+  // The browser token must come from `mintDashboardAgentToken`, never the SDK's start action.
+  expect(await response.json()).toEqual({ publicAccessToken: "pat_minted" });
   expect(mocks.startSession).toHaveBeenCalledTimes(1);
   return mocks.startSession.mock.calls[0][0].clientData as Record<string, unknown>;
 }
@@ -136,7 +138,7 @@ describe.each([
     );
     vi.stubGlobal("fetch", mocks.fetch);
     mocks.chatExists.mockReset().mockResolvedValue(true);
-    mocks.startSession.mockReset().mockResolvedValue({ publicAccessToken: "pat_public" });
+    mocks.startSession.mockReset().mockResolvedValue(undefined);
   });
 
   it("keeps the whitelisted page context", async () => {
@@ -260,7 +262,7 @@ describe("dashboard agent `in` proxy — client metadata", () => {
 describe("dashboard agent `start` intent — client metadata", () => {
   beforeEach(() => {
     mocks.chatExists.mockReset().mockResolvedValue(true);
-    mocks.startSession.mockReset().mockResolvedValue({ publicAccessToken: "pat_public" });
+    mocks.startSession.mockReset().mockResolvedValue(undefined);
     mocks.findEnvironmentBySlug.mockReset().mockResolvedValue({
       id: "env_real",
       type: "DEVELOPMENT",

@@ -196,12 +196,14 @@ Unlike `TriggerClient` instances (which stay isolated unless you opt in), `auth.
 
 | Scope | Grants |
 | --- | --- |
-| `read:sessions:{id}` | Retrieve the session, list its runs, and subscribe to and drain both its `.in` and `.out` [channels](/management/sessions/channels). |
+| `read:sessions:{id}` | Retrieve the session, list its runs, and subscribe to and drain its `.out` [channel](/management/sessions/channels) (and every named channel). |
+| `read:sessions:{id}:out` | Subscribe to and drain the session's `.out` channel only. The bearer cannot retrieve the session row or read named channels. |
 | `write:sessions:{id}` | Append to the session's `.in` channel, and create runs on the session (including the create call itself). |
 
-Two boundaries follow from the table, and both are enforced server-side:
+Three boundaries follow from the table, and all are enforced server-side:
 
 - **`write:sessions` does not grant `.out` append.** The `.out` channel is the task's to write. Appending to `.out` requires a **secret key**; a public token gets `403`.
+- **No public token grants `.in` read.** The `.in` channel is the task's to read. Subscribing to or draining `.in` requires a **secret key**; a public token gets `403`, whichever session scopes it carries.
 - **Updating or closing a session requires a secret key.** A session public token cannot call `PATCH /api/v1/sessions/{session}` or `POST /api/v1/sessions/{session}/close` — those are admin operations.
 
 Mint a token with `auth.createPublicToken` in your backend:

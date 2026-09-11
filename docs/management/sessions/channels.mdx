@@ -99,12 +99,14 @@ The action you can take depends on your token and the channel:
 
 | Action | Endpoint | Required authorization |
 | --- | --- | --- |
-| Subscribe (SSE) | `GET .../{io}` | `read:sessions:{id}` — works on both `.in` and `.out` |
-| Drain records | `GET .../{io}/records` | `read:sessions:{id}` — works on both `.in` and `.out` |
+| Subscribe to `.out` (SSE) | `GET .../out` | `read:sessions:{id}` or `read:sessions:{id}:out` |
+| Drain `.out` records | `GET .../out/records` | `read:sessions:{id}` or `read:sessions:{id}:out` |
+| Subscribe to `.in` (SSE) | `GET .../in` | Secret key only |
+| Drain `.in` records | `GET .../in/records` | Secret key only |
 | Append to `.in` | `POST .../in/append` | `write:sessions:{id}` |
 | Append to `.out` | `POST .../out/append` | Secret key only |
 
-Reads work in both directions for a `read:sessions` token. Writes split by direction: a `write:sessions` token can append to `.in`, but `.out` is reserved for the task and requires a secret key. See [session scopes](/management/authentication#session-scopes) for how to mint a token.
+Each direction has one side that is the task's alone: `.out` is written by the task and read by clients, `.in` is written by clients and read by the task. A public token can read `.out` and append to `.in`; reading `.in` or appending to `.out` requires a secret key. `read:sessions:{id}:out` narrows a read token to the `.out` stream, so a browser-held token cannot also retrieve the session row or read named channels. See [session scopes](/management/authentication#session-scopes) for how to mint a token.
 
 ## Using the SDK instead
 

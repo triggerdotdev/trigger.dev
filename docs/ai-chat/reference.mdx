@@ -987,9 +987,10 @@ Tokens minted for `TriggerChatTransport` and `AgentChat` are session-scoped — 
 | Scope | Grants |
 | --- | --- |
 | `read:sessions:<chatId>` | Subscribe to `.out`, HEAD probe the stream, retrieve the session row |
+| `read:sessions:<chatId>:out` | Subscribe to `.out` and HEAD probe the stream only. Use this when the browser needs nothing but the response stream. |
 | `write:sessions:<chatId>` | Append to `.in`, close the session, end-and-continue, update metadata |
 
-Tokens are produced by `auth.createPublicToken({ scopes: { read: { sessions: chatId }, write: { sessions: chatId } } })` (used by the customer's `accessToken` server action) or returned automatically from `chat.createStartSessionAction` / `POST /api/v1/sessions`. Either form authorizes both URL forms (`/sessions/{chatId}/...` and `/sessions/session_*/...`) on every read and write route.
+Reading `.in` requires a secret key, so no browser token can replay what clients sent. Tokens are produced by `auth.createPublicToken({ scopes: { read: { sessions: chatId }, write: { sessions: chatId } } })` (used by the customer's `accessToken` server action) or returned automatically from `chat.createStartSessionAction` / `POST /api/v1/sessions`. Either form authorizes both URL forms (`/sessions/{chatId}/...` and `/sessions/session_*/...`) on every read and write route.
 
 ## Related
 

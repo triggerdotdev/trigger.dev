@@ -146,6 +146,41 @@ describe("scopesWithinAbility", () => {
     });
   });
 
+  it("lets a session scope mint its narrower direction and channel folds", () => {
+    const ability = buildJwtAbility(["read:sessions:chat_abc"]);
+    expect(scopesWithinAbility(["read:sessions:chat_abc:out"], ability).ok).toBe(true);
+    expect(scopesWithinAbility(["read:sessions:chat_abc:channels:tools"], ability).ok).toBe(true);
+    expect(scopesWithinAbility(["read:sessions:chat_abc:channels:tools:out"], ability).ok).toBe(
+      true
+    );
+
+    const channel = buildJwtAbility(["read:sessions:chat_abc:channels:tools"]);
+    expect(scopesWithinAbility(["read:sessions:chat_abc:channels:tools:out"], channel).ok).toBe(
+      true
+    );
+    // The fold only narrows: a channel scope does not contain the session or another channel.
+    expect(scopesWithinAbility(["read:sessions:chat_abc"], channel).ok).toBe(false);
+    expect(scopesWithinAbility(["read:sessions:chat_abc:out"], channel).ok).toBe(false);
+    expect(scopesWithinAbility(["read:sessions:chat_abc:channels:other:out"], channel).ok).toBe(
+      false
+    );
+  });
+
+  it("denies a folded session scope for another session or action", () => {
+    const ability = buildJwtAbility(["read:sessions:chat_abc"]);
+    expect(scopesWithinAbility(["read:sessions:chat_other:out"], ability).ok).toBe(false);
+    expect(
+      scopesWithinAbility(
+        ["read:sessions:chat_abc:out"],
+        buildJwtAbility(["write:sessions:chat_abc"])
+      ).ok
+    ).toBe(false);
+    // Colons inside other resource ids are not a fold.
+    expect(
+      scopesWithinAbility(["read:tags:env:staging"], buildJwtAbility(["read:tags:env"])).ok
+    ).toBe(false);
+  });
+
   it("allows arbitrary valid scopes for a permissive ability", () => {
     expect(scopesWithinAbility(["read:runs", "admin"], permissiveAbility)).toEqual({
       ok: true,

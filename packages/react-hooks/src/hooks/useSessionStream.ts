@@ -130,10 +130,9 @@ export type UseSessionStreamOptions<TRecord> = UseApiClientOptions & {
  *
  * @example
  * ```tsx
- * // Read the input channel, resuming from a persisted cursor
+ * // Resume from a persisted cursor
  * const { records, lastEventId, stop } = useSessionStream<MyRecord>(sessionId, {
  *   accessToken: publicAccessToken,
- *   io: "in",
  *   lastEventId: persistedCursor,
  *   onControl: (event) => {
  *     if (event.subtype === "turn-complete") {

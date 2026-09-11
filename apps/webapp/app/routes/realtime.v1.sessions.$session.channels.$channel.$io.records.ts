@@ -47,7 +47,7 @@ export const loader = createLoaderApiRoute(
           ids.add(row.friendlyId);
           if (row.externalId) ids.add(row.externalId);
         }
-        return anyResource(sessionChannelResources(params.channel, ids));
+        return anyResource(sessionChannelResources(params.channel, ids, params.io));
       },
     },
   },
