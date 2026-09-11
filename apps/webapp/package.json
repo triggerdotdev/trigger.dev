@@ -196,7 +196,7 @@
     "recharts": "^2.15.2",
     "regression": "^2.0.1",
     "remix-auth": "^3.6.0",
-    "remix-auth-email-link": "2.0.2",
+    "remix-auth-email-link": "2.1.1",
     "remix-auth-github": "^1.6.0",
     "remix-auth-google": "^2.0.0",
     "remix-typedjson": "0.3.1",
