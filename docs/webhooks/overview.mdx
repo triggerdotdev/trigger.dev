@@ -64,6 +64,9 @@ export const onStripeEvent = webhook({
 A few things build on the basic model:
 
 - **[Filters](/webhooks/filters)** gate which deliveries run. A non-matching delivery is recorded but never triggers a run.
+- **[Session routing](/webhooks/session-routing)** sends deliveries that share a key to one durable session (per customer, installation, or issue) instead of a fresh run each time.
+- **[Channels](/webhooks/channels)** turn a webhook into a chat frontend: inbound messages become agent turns, and the agent's reply posts back to the surface.
+- **[Human-in-the-loop](/webhooks/human-in-the-loop)** adds approvals and interactive controls over a channel, like Slack approve and deny buttons.
 
 <CardGroup cols={2}>
   <Card title="Sources and verification" icon="shield-check" href="/webhooks/sources">
@@ -77,6 +80,15 @@ A few things build on the basic model:
   </Card>
   <Card title="Filters" icon="filter" href="/webhooks/filters">
     Route only the deliveries you care about.
+  </Card>
+  <Card title="Session routing" icon="arrows-to-dot" href="/webhooks/session-routing">
+    Route deliveries to a durable per-key session.
+  </Card>
+  <Card title="Channels" icon="comments" href="/webhooks/channels">
+    Turn a webhook into a chat frontend for an agent.
+  </Card>
+  <Card title="Human-in-the-loop" icon="user-check" href="/webhooks/human-in-the-loop">
+    Approvals and interactive controls over a channel.
   </Card>
   <Card title="Scheduled tasks" icon="clock" href="/tasks/scheduled">
     The other declarative task trigger.

@@ -4,7 +4,7 @@ description: "Gate which verified webhook deliveries run, with a type-safe filte
 sidebarTitle: "Filters"
 ---
 
-By default every verified delivery runs your `onEvent`. A **filter** is a server-side predicate that decides whether a delivery is routed at all. A delivery that does not match is still received and recorded, it just does not run anything.
+By default every verified delivery runs your `onEvent` (or routes to a [session](/webhooks/session-routing)). A **filter** is a server-side predicate that decides whether a delivery is routed at all. A delivery that does not match is still received and recorded, it just does not run anything.
 
 Filtering happens at the endpoint, before any run is triggered, so a filtered-out event costs you nothing.
 
@@ -48,6 +48,8 @@ A path reads from one of three namespaces:
 - `event.*`: the verified, parsed request body, for example `event.data.object.amount`.
 - `header.*`: an inbound request header, matched case-insensitively, for example `header.x-github-event`.
 - `webhook.*`: endpoint metadata (`webhook.source`, `webhook.id`, `webhook.deliveryId`, and for per-tenant endpoints `webhook.externalRef` / `webhook.tenantId`).
+
+The [session routing](/webhooks/session-routing) key template addresses this same parsed body, but spells it `{body.*}` rather than `event.*`.
 
 ### Operators
 
@@ -93,3 +95,7 @@ export const onGithub = webhook({
   onEvent: async ({ event }) => {},
 });
 ```
+
+## Filtering a session route
+
+A `filter` works the same way on [`chat.event`](/webhooks/session-routing): a non-matching delivery is recorded `FILTERED` and never reaches the session.

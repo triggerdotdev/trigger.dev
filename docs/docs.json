@@ -159,7 +159,10 @@
               "webhooks/sources",
               "webhooks/connect",
               "webhooks/deliveries",
-              "webhooks/filters"
+              "webhooks/filters",
+              "webhooks/session-routing",
+              "webhooks/channels",
+              "webhooks/human-in-the-loop"
             ]
           },
           {

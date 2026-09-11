@@ -5,6 +5,8 @@ import type {
   AnyWebhookSource,
   WebhookRunPayload,
   ValidateWebhookFilter,
+  ChatEvent,
+  ValidatedWebhookKey,
   WebhookVerifierConfig,
   StripeWebhookEvent,
   GitHubWebhookEvent,
@@ -260,6 +262,67 @@ export function webhook<
   });
 
   return task;
+}
+
+// ── chat.event(): declarative descriptor an agent claims via chat.agent({ events }). No handler. ──
+// Carries the verifier (source), a validated string `key`, and a `type` discriminant. The `key`
+// validates against the event/webhook/header namespaces and mirrors the stored {body.x} wire template.
+export function chatEvent<
+  TSource extends AnyWebhookSource,
+  const TId extends string = string,
+  const TKey extends string = string,
+  const TType extends string = TId,
+  const TFilter extends string = string,
+>(options: {
+  id: TId;
+  source: TSource;
+  key: ValidatedWebhookKey<InferWebhookEvent<TSource>, TKey>;
+  /** The `action.type` the handler reads. Optional; defaults to `id`. */
+  type?: TType;
+  /** Optional server-side filter (same type-safe DSL as `webhook()`); a non-match is recorded FILTERED and not routed. */
+  filter?: TFilter & ValidateWebhookFilter<InferWebhookEvent<TSource>, TFilter>;
+}): ChatEvent<TType, InferWebhookEvent<TSource>> {
+  const { id, source, key, type, filter } = options;
+  const keyTemplate = normalizeKeyString(key as string);
+
+  // Record the descriptor as declared so the indexer can flag it if no agent ever claims it.
+  resourceCatalog.registerDeclaredSessionWebhook(id);
+
+  return {
+    id,
+    type: type ?? id,
+    key: keyTemplate,
+    source: source.provider,
+    verifierArtifact: source.verifier,
+    secretProvisioning: source.secretProvisioning,
+    filter,
+  } as ChatEvent<TType, InferWebhookEvent<TSource>>;
+}
+
+// Public chat-event types (descriptor, the shared action union, and the key namespaces).
+export type {
+  ChatEvent,
+  AnyChatEvent,
+  ChatEventAction,
+  ChatEventActions,
+  WebhookKeyMeta,
+} from "@trigger.dev/core/v3";
+
+// Brace placeholders without a recognized namespace default to the event body. webhook./header./body.
+// pass through unchanged.
+export function normalizeKeyString(key: string): string {
+  const namespaceAlternative = (alternative: string): string => {
+    const trimmed = alternative.trim();
+    return trimmed.startsWith("webhook.") ||
+      trimmed.startsWith("header.") ||
+      trimmed.startsWith("body.")
+      ? trimmed
+      : `body.${trimmed}`;
+  };
+  return key.replace(
+    /\{([^{}]+)\}/g,
+    (_match, path: string) => `{${path.split("||").map(namespaceAlternative).join(" || ")}}`
+  );
 }
 
 // P2 seam (TYPE only):

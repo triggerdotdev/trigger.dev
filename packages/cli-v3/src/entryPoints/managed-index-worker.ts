@@ -198,6 +198,7 @@ await sendMessageInCatalog(
       prompts: convertPromptSchemasToJsonSchemas(resourceCatalog.listPromptManifests()),
       skills: resourceCatalog.listSkillManifests(),
       webhooks: resourceCatalog.listWebhookManifests(),
+      unclaimedSessionWebhooks: resourceCatalog.listUnclaimedSessionWebhooks(),
       queues: resourceCatalog.listQueueManifests(),
       configPath: buildManifest.configPath,
       runtime: buildManifest.runtime,
