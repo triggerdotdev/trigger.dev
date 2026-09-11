@@ -2015,6 +2015,18 @@ const EnvironmentSchema = z
     RUN_REPLICATION_FLUSH_BATCH_SIZE: z.coerce.number().int().default(100),
     RUN_REPLICATION_MAX_POISON_STRIPS_PER_BATCH: z.coerce.number().int().default(1),
     RUN_REPLICATION_LEADER_LOCK_TIMEOUT_MS: z.coerce.number().int().default(30_000),
+
+    // Replication self-heals in-process: a lost stream or leader lock is retried
+    // with backoff. These bound that. 0 (the default) retries forever, which is
+    // right without a supervisor; set a budget where something can restart the
+    // process (k8s, ECS, systemd) so an unrecoverable stream gets a clean slate
+    // instead of retrying against a slot that is never coming back.
+    RUN_REPLICATION_MAX_RESUBSCRIBE_ATTEMPTS: z.coerce.number().int().min(0).default(0),
+    // Grace period before exiting, so the final logs can flush.
+    RUN_REPLICATION_EXIT_DELAY_MS: z.coerce.number().int().min(0).default(5_000),
+    // Capped at 255: POSIX masks the code to `code & 0xff`, so anything larger
+    // could silently become 0 and read as a clean exit to a supervisor.
+    RUN_REPLICATION_EXIT_CODE: z.coerce.number().int().min(0).max(255).default(1),
     RUN_REPLICATION_LEADER_LOCK_EXTEND_INTERVAL_MS: z.coerce.number().int().default(10_000),
     RUN_REPLICATION_ACK_INTERVAL_SECONDS: z.coerce.number().int().default(10),
     RUN_REPLICATION_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
@@ -2093,6 +2105,18 @@ const EnvironmentSchema = z
     SESSION_REPLICATION_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
     SESSION_REPLICATION_FLUSH_BATCH_SIZE: z.coerce.number().int().default(100),
     SESSION_REPLICATION_LEADER_LOCK_TIMEOUT_MS: z.coerce.number().int().default(30_000),
+
+    // Replication self-heals in-process: a lost stream or leader lock is retried
+    // with backoff. These bound that. 0 (the default) retries forever, which is
+    // right without a supervisor; set a budget where something can restart the
+    // process (k8s, ECS, systemd) so an unrecoverable stream gets a clean slate
+    // instead of retrying against a slot that is never coming back.
+    SESSION_REPLICATION_MAX_RESUBSCRIBE_ATTEMPTS: z.coerce.number().int().min(0).default(0),
+    // Grace period before exiting, so the final logs can flush.
+    SESSION_REPLICATION_EXIT_DELAY_MS: z.coerce.number().int().min(0).default(5_000),
+    // Capped at 255: POSIX masks the code to `code & 0xff`, so anything larger
+    // could silently become 0 and read as a clean exit to a supervisor.
+    SESSION_REPLICATION_EXIT_CODE: z.coerce.number().int().min(0).max(255).default(1),
     SESSION_REPLICATION_LEADER_LOCK_EXTEND_INTERVAL_MS: z.coerce.number().int().default(10_000),
     SESSION_REPLICATION_LEADER_LOCK_ADDITIONAL_TIME_MS: z.coerce.number().int().default(10_000),
     SESSION_REPLICATION_LEADER_LOCK_RETRY_INTERVAL_MS: z.coerce.number().int().default(500),

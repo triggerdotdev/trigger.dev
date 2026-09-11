@@ -4,7 +4,7 @@ import { Logger } from "@trigger.dev/core/logger";
 import { tryCatch } from "@trigger.dev/core/utils";
 import EventEmitter from "node:events";
 import { type ClientConfig, type Connection, Client } from "pg";
-import Redlock, { type Lock } from "redlock";
+import Redlock, { Lock } from "redlock";
 import { LogicalReplicationClientError, PublicationMisconfiguredError } from "./errors.js";
 import {
   type PgoutputMessage,
@@ -84,6 +84,14 @@ export interface LogicalReplicationClientOptions {
   resubscribeMaxDelayMs?: number;
 
   /**
+   * Give up after this many consecutive failed resubscribe attempts and emit
+   * `unrecoverable` instead of scheduling another. 0 (the default) retries
+   * forever. The client never exits the process itself — the host decides what
+   * an unrecoverable stream means for it.
+   */
+  maxResubscribeAttempts?: number;
+
+  /**
    * The interval in seconds to automatically acknowledge the last LSN if no ack has been sent (default: 10)
    */
   ackIntervalSeconds?: number;
@@ -98,6 +106,12 @@ export interface LogicalReplicationClientOptions {
 
 export type LogicalReplicationClientEvents = {
   leaderElection: [boolean];
+  /**
+   * Self-healing has been exhausted: the stream is down and the client has
+   * stopped retrying. Emitted at most once per run of attempts, and only when
+   * `maxResubscribeAttempts` is set.
+   */
+  unrecoverable: [{ reason: string; attempts: number }];
   error: [Error];
   data: [{ lsn: string; log: PgoutputMessage; parseDuration: bigint }];
   start: [];
@@ -121,6 +135,15 @@ export class LogicalReplicationClient {
   private leaderLockAcquireAdditionalTimeMs: number;
   private leaderLockRetryIntervalMs: number;
   private leaderLockHeartbeatTimer: NodeJS.Timeout | null = null;
+  // True while a recovery is talking to Redis. A slow Redis lets the next
+  // heartbeat tick fire before the previous recovery finished; without this the
+  // recoveries stack up and each one announces its own verdict.
+  private leaderLockRecovering: boolean = false;
+  // When the lock we last *confirmed with Redis* expires. Until that moment
+  // passes no other client can take the key, whatever our local Lock object
+  // believes, so this is the only safe basis for continuing to stream while
+  // Redis is unreachable.
+  private leaderLockConfirmedUntil: number = 0;
   private ackIntervalSeconds: number;
   private lastAckTimestamp: number = 0;
   private ackIntervalTimer: NodeJS.Timeout | null = null;
@@ -131,6 +154,16 @@ export class LogicalReplicationClient {
   private resubscribeMaxDelayMs: number;
   private resubscribeTimer: NodeJS.Timeout | null = null;
   private resubscribeAttempts: number = 0;
+  private maxResubscribeAttempts: number;
+  // Latches once the budget is spent. Several failure paths can each call
+  // #scheduleResubscribe for one failed attempt, and `unrecoverable` is a
+  // terminal report: it must be announced once, not once per caller.
+  private resubscribeGaveUp: boolean = false;
+  // Counts only failures that mean recovery is not working. Losing a leader
+  // election is the normal state of every follower, so it must not consume the
+  // give-up budget: otherwise a healthy follower exhausts it while the leader
+  // replicates happily, and the host restarts a working process.
+  private recoveryFailures: number = 0;
   private _intentionalStop: boolean = false;
   private subscribeEpoch: number = 0;
 
@@ -158,6 +191,7 @@ export class LogicalReplicationClient {
     this.resubscribeOnFailure = options.resubscribeOnFailure ?? false;
     this.resubscribeMinDelayMs = options.resubscribeMinDelayMs ?? 1000;
     this.resubscribeMaxDelayMs = options.resubscribeMaxDelayMs ?? 30000;
+    this.maxResubscribeAttempts = options.maxResubscribeAttempts ?? 0;
 
     this.redis = createRedisClient(
       {
@@ -296,11 +330,40 @@ export class LogicalReplicationClient {
     if (!this.resubscribeOnFailure || this._intentionalStop) return;
     if (this.resubscribeTimer) return;
 
+    // Self-healing has a budget. Past it the stream is not coming back on its
+    // own (a dropped slot, a publication that no longer exists, credentials
+    // that no longer work), and retrying forever just hides that. Hand the
+    // decision to the host, which may have a supervisor that can give us a
+    // clean process.
+    // A follower that keeps losing elections is healthy, not stuck.
+    const isElectionContention = reason === "leader-election-failed";
+
+    if (
+      !isElectionContention &&
+      this.maxResubscribeAttempts > 0 &&
+      this.recoveryFailures >= this.maxResubscribeAttempts
+    ) {
+      if (this.resubscribeGaveUp) return;
+      this.resubscribeGaveUp = true;
+
+      this.logger.error("Replication resubscribe gave up", {
+        name: this.options.name,
+        slotName: this.options.slotName,
+        publicationName: this.options.publicationName,
+        reason,
+        attempts: this.recoveryFailures,
+        maxResubscribeAttempts: this.maxResubscribeAttempts,
+      });
+      this.events.emit("unrecoverable", { reason, attempts: this.recoveryFailures });
+      return;
+    }
+
     const delay = Math.min(
       this.resubscribeMinDelayMs * 2 ** this.resubscribeAttempts,
       this.resubscribeMaxDelayMs
     );
     this.resubscribeAttempts += 1;
+    if (!isElectionContention) this.recoveryFailures += 1;
 
     const payload = {
       name: this.options.name,
@@ -496,6 +559,8 @@ export class LogicalReplicationClient {
         }
         this._isStopped = false;
         this.resubscribeAttempts = 0;
+        this.recoveryFailures = 0;
+        this.resubscribeGaveUp = false;
         this.events.emit("start");
       });
 
@@ -917,6 +982,7 @@ export class LogicalReplicationClient {
           [`logical-replication-client:${this.options.slotName}`],
           this.leaderLockTimeoutMs
         );
+        this.leaderLockConfirmedUntil = this.leaderLock.expiration;
 
         this.logger.debug("Acquired leader lock", {
           name: this.options.name,
@@ -969,6 +1035,7 @@ export class LogicalReplicationClient {
 
     const [releaseError] = await tryCatch(this.leaderLock.release());
     this.leaderLock = null;
+    this.leaderLockConfirmedUntil = 0;
 
     if (releaseError) {
       this.logger.error("Failed to release leader lock", {
@@ -984,10 +1051,26 @@ export class LogicalReplicationClient {
     }
     if (!this.leaderLock) return;
     this.leaderLockHeartbeatTimer = setInterval(async () => {
-      if (!this.leaderLock) return;
+      // Capture the lock this tick is extending. A rejection can arrive long
+      // after the fact, and the handler has to know which lock it belongs to.
+      const lock = this.leaderLock;
+      const epoch = this.subscribeEpoch;
+      if (!lock) return;
       if (this._isStopped) return;
       try {
-        this.leaderLock = await this.leaderLock.extend(this.leaderLockTimeoutMs);
+        const extended = await lock.extend(this.leaderLockTimeoutMs);
+
+        // The extend can land after a recovery or a fresh subscribe already
+        // replaced this lock. Adopting it then would point leadership back at a
+        // lock nothing is tracking, and the next tick would read the current
+        // key as another holder and step down. Never release it here: it may be
+        // the very key the current lock holds.
+        if (this.leaderLock !== lock || this._isStopped || this.subscribeEpoch !== epoch) {
+          return;
+        }
+
+        this.leaderLock = extended;
+        this.leaderLockConfirmedUntil = extended.expiration;
         this.logger.debug("Extended leader lock", {
           name: this.options.name,
           slotName: this.options.slotName,
@@ -996,18 +1079,173 @@ export class LogicalReplicationClient {
           lockExtendIntervalMs: this.leaderLockExtendIntervalMs,
         });
       } catch (err) {
-        this.logger.error("Failed to extend leader lock", {
-          name: this.options.name,
-          slotName: this.options.slotName,
-          publicationName: this.options.publicationName,
-          error: err,
-          lockTimeoutMs: this.leaderLockTimeoutMs,
-          lockExtendIntervalMs: this.leaderLockExtendIntervalMs,
-        });
-        // Optionally emit an error or handle loss of leadership
-        this.events.emit("error", err instanceof Error ? err : new Error(String(err)));
+        await this.#onLeaderLockExtendFailed(lock, err);
       }
     }, this.leaderLockExtendIntervalMs);
+  }
+
+  /**
+   * Redlock never repairs a Lock whose extend failed. While the object's local
+   * `expiration` is still ahead each tick just retries the extend; once it
+   * passes (a Redis outage longer than the TTL, a pod reschedule) every tick
+   * throws "Cannot extend an already-expired lock." locally, without asking
+   * Redis again. The previous handler logged that and re-armed, so a client
+   * that had silently lost leadership held the slot open and logged the same
+   * pair of errors every interval until the process was restarted.
+   *
+   * Decide what to do from what Redis actually holds, not from the state of a
+   * Lock object we already know is stale.
+   */
+  async #onLeaderLockExtendFailed(lock: Lock, err: unknown): Promise<void> {
+    if (this._isStopped || this._intentionalStop) return;
+    // This rejection belongs to a lock we have since replaced (an earlier
+    // recovery got there first) or dropped (a teardown). It says nothing about
+    // the lock we hold now, and acting on it would announce a second step-down.
+    if (this.leaderLock !== lock) return;
+    if (this.leaderLockRecovering) return;
+
+    this.leaderLockRecovering = true;
+
+    try {
+      await this.#recoverLeaderLock(lock, err);
+    } catch (recoveryError) {
+      // The heartbeat is a bare interval callback, so a throw here would become
+      // an unhandled rejection. Next tick tries again.
+      this.logger.error("Leader lock recovery failed", {
+        name: this.options.name,
+        slotName: this.options.slotName,
+        publicationName: this.options.publicationName,
+        error: recoveryError,
+        extendError: err,
+      });
+    } finally {
+      this.leaderLockRecovering = false;
+    }
+  }
+
+  /**
+   * Resolve a failed extend against Redis, cheapest case first:
+   *
+   *  1. Nobody holds the key (it expired, or Redis lost it): take it again and
+   *     carry on as leader.
+   *  2. The key is still ours (the extend landed but its reply was lost, or the
+   *     local and server expiries disagree): rebuild the Lock around the live
+   *     key and extend that.
+   *  3. Redis gave no usable answer but the lock we last confirmed has not
+   *     expired: nobody else can take the key inside that window, so keep
+   *     streaming and retry next tick. This is what carries a short Redis
+   *     restart without interrupting replication.
+   *  4. Otherwise leadership is genuinely gone: announce it once, stop
+   *     streaming, and contend for the slot again through the normal
+   *     resubscribe path.
+   */
+  async #recoverLeaderLock(staleLock: Lock, err: unknown): Promise<void> {
+    const resource = `logical-replication-client:${this.options.slotName}`;
+    // A concurrent subscribe() would re-elect and own leadership itself; if one
+    // runs while we await Redis, this recovery's verdict is out of date.
+    const epoch = this.subscribeEpoch;
+    const context = {
+      name: this.options.name,
+      slotName: this.options.slotName,
+      publicationName: this.options.publicationName,
+      lockTimeoutMs: this.leaderLockTimeoutMs,
+      lockExtendIntervalMs: this.leaderLockExtendIntervalMs,
+    };
+
+    // 1. Free key -> take it again.
+    const [acquireError, acquired] = await tryCatch(
+      this.redlock.acquire([resource], this.leaderLockTimeoutMs)
+    );
+
+    let recovered: Lock | null = acquired;
+    let holder: string | null = null;
+    let holderError: unknown;
+    let reclaimError: unknown;
+
+    // 2. Key still carries our value -> rebuild and extend it. The placeholder
+    //    expiration only clears Redlock's local already-expired check; the
+    //    extend script still verifies the value against Redis before it writes.
+    if (!recovered) {
+      const read = await tryCatch(this.redis.get(resource));
+      holderError = read[0];
+      holder = read[1];
+
+      if (holder !== null && holder === staleLock.value) {
+        const live = new Lock(
+          this.redlock,
+          staleLock.resources,
+          staleLock.value,
+          staleLock.attempts,
+          Date.now() + this.leaderLockTimeoutMs
+        );
+        const reclaim = await tryCatch(live.extend(this.leaderLockTimeoutMs));
+        reclaimError = reclaim[0];
+        recovered = reclaim[1];
+      }
+    }
+
+    // stop()/shutdown() or a fresh subscribe() landed while we were talking to
+    // Redis. Whoever did that owns the teardown and the leadership now: there
+    // is nothing for us to announce, but don't strand a lock nothing
+    // heartbeats.
+    if (this._isStopped || this._intentionalStop || this.subscribeEpoch !== epoch) {
+      if (recovered) {
+        await tryCatch(recovered.release());
+      }
+      return;
+    }
+
+    if (recovered) {
+      this.leaderLock = recovered;
+      this.leaderLockConfirmedUntil = recovered.expiration;
+      this.logger.warn("Leader lock extend failed, recovered without losing leadership", {
+        ...context,
+        error: err,
+        how: acquireError ? "reclaimed" : "reacquired",
+      });
+      return;
+    }
+
+    // 3. No usable answer, but our confirmed window still shields the key.
+    //    A failed read leaves `holder` null, which lands here rather than on a
+    //    step-down: the window, not the read, is what makes this safe.
+    const heldByOther = holder !== null && holder !== staleLock.value;
+    const confirmedForMs = this.leaderLockConfirmedUntil - Date.now();
+
+    if (!heldByOther && confirmedForMs > 0) {
+      this.logger.warn("Leader lock extend failed, still inside the confirmed lock window", {
+        ...context,
+        error: err,
+        acquireError,
+        holderError,
+        reclaimError,
+        confirmedForMs,
+      });
+      return;
+    }
+
+    // 4. Leadership is gone. The lock is dead either way, so drop the reference
+    //    before tearing down: #releaseLeaderLock would only throw on it.
+    this.leaderLock = null;
+    this.leaderLockConfirmedUntil = 0;
+
+    this.logger.error("Leader lock lost", {
+      ...context,
+      error: err,
+      acquireError,
+      holderError,
+      reclaimError,
+      holder: holder ?? undefined,
+      willResubscribe: this.resubscribeOnFailure,
+    });
+
+    this.events.emit("error", err instanceof Error ? err : new Error(String(err)));
+    this.events.emit("leaderElection", false);
+
+    // A client that is not the leader must not keep streaming the slot.
+    // #cleanupAttempt also clears this heartbeat.
+    await this.#cleanupAttempt();
+    this.#scheduleResubscribe("leader-lock-lost");
   }
 
   #startAckInterval() {

@@ -54,6 +54,13 @@ export type SessionsReplicationServiceOptions = {
   leaderLockExtendIntervalMs?: number;
   leaderLockAcquireAdditionalTimeMs?: number;
   leaderLockRetryIntervalMs?: number;
+  /** 0 (default) retries a broken stream forever; above that the client gives up. */
+  maxResubscribeAttempts?: number;
+  /**
+   * Self-healing has been exhausted. Injected rather than exiting here, so the
+   * service stays free of process control and testable.
+   */
+  onUnrecoverable?: (info: { reason: string; attempts: number }) => void;
   ackIntervalSeconds?: number;
   acknowledgeTimeoutMs?: number;
   logger?: Logger;
@@ -188,6 +195,7 @@ export class SessionsReplicationService {
       redisOptions: options.redisOptions,
       autoAcknowledge: false,
       resubscribeOnFailure: true,
+      maxResubscribeAttempts: options.maxResubscribeAttempts,
       publicationActions: ["insert", "update", "delete"],
       logger: options.logger ?? new Logger("LogicalReplicationClient", options.logLevel ?? "info"),
       leaderLockTimeoutMs: options.leaderLockTimeoutMs ?? 30_000,
@@ -249,6 +257,14 @@ export class SessionsReplicationService {
 
     this._replicationClient.events.on("leaderElection", (isLeader) => {
       this.logger.info("Leader election", { isLeader });
+    });
+
+    this._replicationClient.events.on("unrecoverable", ({ reason, attempts }) => {
+      this.logger.error("Replication client gave up; sessions replication is down", {
+        reason,
+        attempts,
+      });
+      options.onUnrecoverable?.({ reason, attempts });
     });
 
     // Initialize retry configuration

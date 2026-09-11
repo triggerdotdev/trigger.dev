@@ -122,6 +122,13 @@ export type RunsReplicationServiceOptions = {
    * count it on.
    */
   onSourceError?: (info: { sourceId: string; error: unknown }) => void;
+  /** 0 (default) retries a broken stream forever; above that the client gives up. */
+  maxResubscribeAttempts?: number;
+  /**
+   * Self-healing for a source has been exhausted. Injected rather than exiting
+   * here, so the service stays free of process control and testable.
+   */
+  onUnrecoverable?: (info: { sourceId: string; reason: string; attempts: number }) => void;
 };
 
 type PostgresTaskRun = TaskRun & { masterQueue: string };
@@ -367,6 +374,7 @@ export class RunsReplicationService {
         redisOptions: options.redisOptions,
         autoAcknowledge: false,
         resubscribeOnFailure: true,
+        maxResubscribeAttempts: options.maxResubscribeAttempts,
         publicationActions: ["insert", "update", "delete"],
         logger:
           options.logger ?? new Logger("LogicalReplicationClient", options.logLevel ?? "info"),
@@ -489,6 +497,15 @@ export class RunsReplicationService {
 
     client.events.on("leaderElection", (isLeader) => {
       this.logger.info("Leader election", { sourceId: source.id, isLeader });
+    });
+
+    client.events.on("unrecoverable", ({ reason, attempts }) => {
+      this.logger.error("Replication client gave up; source is down", {
+        sourceId: source.id,
+        reason,
+        attempts,
+      });
+      this.options.onUnrecoverable?.({ sourceId: source.id, reason, attempts });
     });
   }
 

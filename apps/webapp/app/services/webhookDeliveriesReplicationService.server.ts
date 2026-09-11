@@ -198,6 +198,13 @@ export class WebhookDeliveriesReplicationService {
       publishViaPartitionRoot: options.publishViaPartitionRoot,
       redisOptions: options.redisOptions,
       autoAcknowledge: false,
+      // Without this, losing the leader lock stops this client for good: it
+      // tears the stream down (a non-leader must not hold the slot open) and
+      // has nothing to re-contend with. The runs and sessions services already
+      // enable it. Note that every teardown path below must then call the
+      // client's shutdown(), not stop(): only shutdown() latches the intentional
+      // stop that keeps a pending resubscribe from reviving the stream.
+      resubscribeOnFailure: true,
       publicationActions: ["insert", "update", "delete"],
       logger: options.logger ?? new Logger("LogicalReplicationClient", options.logLevel ?? "info"),
       leaderLockTimeoutMs: options.leaderLockTimeoutMs ?? 30_000,
@@ -276,7 +283,7 @@ export class WebhookDeliveriesReplicationService {
 
     if (!this._currentTransaction) {
       this.logger.info("No transaction to commit, shutting down immediately");
-      await this._replicationClient.stop();
+      await this._replicationClient.shutdown();
       this._isSubscribed = false;
       this._isShutDownComplete = true;
       return;
@@ -305,7 +312,7 @@ export class WebhookDeliveriesReplicationService {
   async stop() {
     this.logger.info("Stopping replication client");
 
-    await this._replicationClient.stop();
+    await this._replicationClient.shutdown();
 
     if (this._acknowledgeInterval) {
       clearInterval(this._acknowledgeInterval);
@@ -441,7 +448,7 @@ export class WebhookDeliveriesReplicationService {
     if (this._isShutDownComplete) return;
 
     if (this._isShuttingDown) {
-      this._replicationClient.stop().finally(() => {
+      this._replicationClient.shutdown().finally(() => {
         this._isSubscribed = false;
         this._isShutDownComplete = true;
       });

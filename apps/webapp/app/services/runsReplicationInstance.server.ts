@@ -10,6 +10,7 @@ import {
   setRunsReplicationGlobal,
 } from "./runsReplicationGlobal.server";
 import { runsReplicationSourceMetrics } from "./runsReplicationMetrics.server";
+import { scheduleReplicationExit } from "./replicationUnrecoverableExit.server";
 import {
   RunsReplicationService,
   type RunsReplicationSource,
@@ -253,6 +254,22 @@ function initializeRunsReplicationInstance() {
     // A source whose publication carries no usable table logs every 30s and replicates nothing.
     // Boot cannot see it (the source IS configured), so the counter is the alarmable signal.
     onSourceError: runsReplicationSourceMetrics.recordSourceError,
+    maxResubscribeAttempts: env.RUN_REPLICATION_MAX_RESUBSCRIBE_ATTEMPTS,
+    onUnrecoverable: ({
+      sourceId,
+      reason,
+      attempts,
+    }: {
+      sourceId: string;
+      reason: string;
+      attempts: number;
+    }) =>
+      scheduleReplicationExit({
+        label: "Runs replication",
+        delayMs: env.RUN_REPLICATION_EXIT_DELAY_MS,
+        exitCode: env.RUN_REPLICATION_EXIT_CODE,
+        details: { sourceId, reason, attempts },
+      }),
   };
 
   // Construct the SINGLE legacy source synchronously (the split gate has not resolved

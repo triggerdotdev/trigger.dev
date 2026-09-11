@@ -3,6 +3,7 @@ import { env } from "~/env.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { singleton } from "~/utils/singleton";
 import { meter, provider } from "~/v3/tracer.server";
+import { scheduleReplicationExit } from "./replicationUnrecoverableExit.server";
 import { SessionsReplicationService } from "./sessionsReplicationService.server";
 import { signalsEmitter } from "./signals.server";
 
@@ -45,6 +46,14 @@ function initializeSessionsReplicationInstance() {
     leaderLockExtendIntervalMs: env.SESSION_REPLICATION_LEADER_LOCK_EXTEND_INTERVAL_MS,
     leaderLockAcquireAdditionalTimeMs: env.SESSION_REPLICATION_LEADER_LOCK_ADDITIONAL_TIME_MS,
     leaderLockRetryIntervalMs: env.SESSION_REPLICATION_LEADER_LOCK_RETRY_INTERVAL_MS,
+    maxResubscribeAttempts: env.SESSION_REPLICATION_MAX_RESUBSCRIBE_ATTEMPTS,
+    onUnrecoverable: ({ reason, attempts }) =>
+      scheduleReplicationExit({
+        label: "Sessions replication",
+        delayMs: env.SESSION_REPLICATION_EXIT_DELAY_MS,
+        exitCode: env.SESSION_REPLICATION_EXIT_CODE,
+        details: { reason, attempts },
+      }),
     ackIntervalSeconds: env.SESSION_REPLICATION_ACK_INTERVAL_SECONDS,
     logLevel: env.SESSION_REPLICATION_LOG_LEVEL,
     waitForAsyncInsert: env.SESSION_REPLICATION_WAIT_FOR_ASYNC_INSERT === "1",
