@@ -215,6 +215,12 @@ export type BatchQueueOptions = {
    */
   defaultConcurrency?: number;
   /**
+   * How long a claimed item stays invisible before the reclaim loop takes it back.
+   * The item is heartbeated for as long as its callback runs, so this only bites when
+   * a consumer stops making progress. Defaults to 60s.
+   */
+  visibilityTimeoutMs?: number;
+  /**
    * Optional global rate limiter to limit processing across all consumers.
    * When configured, limits the max items/second processed globally.
    * Rate limiting happens at the worker queue consumer level (1 token per item).
