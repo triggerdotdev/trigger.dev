@@ -116,6 +116,7 @@
                   "ai-chat/background-injection",
                   "ai-chat/actions",
                   "ai-chat/transcript-storage",
+                  "ai-chat/migrating-from-hydrate-messages",
                   "ai-chat/error-handling"
                 ]
               },
