@@ -37,6 +37,7 @@ export class SupervisorHttpClient {
   private readonly instanceName: string;
   private readonly defaultHeaders: Record<string, string>;
   private readonly sendRunDebugLogs: boolean;
+  private readonly resolveResponseSchema: SupervisorClientCommonOptions["resolveResponseSchema"];
   private readonly onHttpRequestComplete?: (metric: SupervisorHttpRequestMetric) => void;
 
   private readonly logger = new SimpleStructuredLogger("supervisor-http-client");
@@ -47,6 +48,7 @@ export class SupervisorHttpClient {
     this.instanceName = opts.instanceName;
     this.defaultHeaders = getDefaultWorkerHeaders(opts);
     this.sendRunDebugLogs = opts.sendRunDebugLogs ?? false;
+    this.resolveResponseSchema = opts.resolveResponseSchema;
     this.onHttpRequestComplete = opts.onHttpRequestComplete;
 
     if (!this.apiUrl) {
@@ -70,7 +72,12 @@ export class SupervisorHttpClient {
     options?: ZodFetchOptions<inferZodSchemaOutput<T>>
   ): Promise<ApiResult<inferZodSchemaOutput<T>>> {
     const start = performance.now();
-    const result = await wrapZodFetch(schema, url, requestInit, options);
+    const result = await wrapZodFetch(
+      this.resolveResponseSchema?.(schema) ?? schema,
+      url,
+      requestInit,
+      options
+    );
 
     if (this.onHttpRequestComplete) {
       const durationMs = performance.now() - start;

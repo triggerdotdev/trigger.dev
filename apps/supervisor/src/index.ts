@@ -23,6 +23,7 @@ import {
   isKubernetesEnvironment,
 } from "@trigger.dev/core/v3/serverOnly";
 import { createK8sApi, createPodCountFetcher } from "./clients/kubernetes.js";
+import { resolveResponseSchema } from "./clients/responseSchemas.js";
 import { collectDefaultMetrics, Counter, Gauge, Histogram } from "prom-client";
 import { register } from "./metrics.js";
 import { PodCleaner } from "./services/podCleaner.js";
@@ -324,6 +325,7 @@ class ManagedSupervisor {
     const workerToken = getWorkerToken();
 
     this.workerSession = new SupervisorSession({
+      resolveResponseSchema,
       workerToken,
       apiUrl: env.TRIGGER_API_URL,
       instanceName: env.TRIGGER_WORKER_INSTANCE_NAME,

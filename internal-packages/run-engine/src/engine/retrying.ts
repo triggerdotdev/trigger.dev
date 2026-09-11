@@ -10,8 +10,11 @@ import {
 } from "@trigger.dev/core/v3";
 import type { PrismaClientOrTransaction } from "@trigger.dev/database";
 import type { RunStore } from "@internal/run-store";
+import { z } from "zod";
 import { MAX_TASK_RUN_ATTEMPTS } from "./consts.js";
 import { ServiceValidationError } from "./errors.js";
+
+const NullishRetryOptions = z.compile(RetryOptions.nullish());
 
 type Params = {
   runId: string;
@@ -140,7 +143,7 @@ export async function retryOutcomeFromCompletion(
       return { outcome: "fail_run", sanitizedError };
     }
 
-    const parsedRetryConfig = RetryOptions.nullish().safeParse(retryConfig);
+    const parsedRetryConfig = NullishRetryOptions.safeParse(retryConfig);
 
     if (!parsedRetryConfig.success) {
       return { outcome: "fail_run", sanitizedError };
@@ -216,7 +219,7 @@ async function retryOOMOnMachine(
     }
 
     const retryConfig = run.lockedRetryConfig;
-    const parsedRetryConfig = RetryOptions.nullish().safeParse(retryConfig);
+    const parsedRetryConfig = NullishRetryOptions.safeParse(retryConfig);
 
     if (!parsedRetryConfig.success) {
       return;

@@ -8,6 +8,10 @@ import { logger } from "~/services/logger.server";
 import { createLoaderWorkerApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { clientSafeErrorMessage, isInfrastructureError } from "~/utils/prismaErrors";
 
+const ContinueSnapshotRoute = z.compile(
+  WorkerApiContinueRunExecutionQueryParams.shape.snapshotRoute
+);
+
 export const loader = createLoaderWorkerApiRoute(
   {
     params: z.object({
@@ -31,9 +35,7 @@ export const loader = createLoaderWorkerApiRoute(
     let snapshotRoute: SnapshotRouteWire | undefined;
     if (rawSnapshotRoute) {
       try {
-        const parsed = WorkerApiContinueRunExecutionQueryParams.shape.snapshotRoute.safeParse(
-          JSON.parse(rawSnapshotRoute)
-        );
+        const parsed = ContinueSnapshotRoute.safeParse(JSON.parse(rawSnapshotRoute));
         if (parsed.success) {
           snapshotRoute = parsed.data;
         } else {

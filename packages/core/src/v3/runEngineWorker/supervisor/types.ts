@@ -1,4 +1,5 @@
 import type { MachineResources } from "../../schemas/runEngine.js";
+import type { AnyZodSchema } from "../../types/schemas.js";
 
 export type SupervisorHttpRequestMetric = {
   name: string;
@@ -15,6 +16,7 @@ export type SupervisorClientCommonOptions = {
   deploymentId?: string;
   managedWorkerSecret?: string;
   sendRunDebugLogs?: boolean;
+  resolveResponseSchema?: <T extends AnyZodSchema>(schema: T) => T;
   onHttpRequestComplete?: (metric: SupervisorHttpRequestMetric) => void;
 };
 

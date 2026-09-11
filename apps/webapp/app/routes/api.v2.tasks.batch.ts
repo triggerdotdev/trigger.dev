@@ -1,4 +1,5 @@
 import { json } from "@remix-run/server-runtime";
+import { z } from "zod";
 import type { BatchTriggerTaskV3Response } from "@trigger.dev/core/v3";
 import { BatchTriggerTaskV3RequestBody, generateJWT } from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
@@ -28,7 +29,7 @@ const { action, loader } = createActionApiRoute(
     headers: HeadersSchema.extend({
       "batch-processing-strategy": BatchProcessingStrategy.nullish(),
     }),
-    body: BatchTriggerTaskV3RequestBody,
+    body: z.compile(BatchTriggerTaskV3RequestBody),
     allowJWT: true,
     maxContentLength: env.BATCH_TASK_PAYLOAD_MAXIMUM_SIZE,
     authorization: {

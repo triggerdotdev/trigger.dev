@@ -2,11 +2,12 @@ import type { TypedResponse } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import type { WorkerApiConnectResponseBody } from "@trigger.dev/core/v3/workers";
 import { WorkerApiConnectRequestBody } from "@trigger.dev/core/v3/workers";
+import { z } from "zod";
 import { createActionWorkerApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
 export const action = createActionWorkerApiRoute(
   {
-    body: WorkerApiConnectRequestBody,
+    body: z.compile(WorkerApiConnectRequestBody),
   },
   async ({ authenticatedWorker, body }): Promise<TypedResponse<WorkerApiConnectResponseBody>> => {
     await authenticatedWorker.connect(body.metadata);

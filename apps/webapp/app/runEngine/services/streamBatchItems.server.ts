@@ -5,12 +5,15 @@ import {
 import { BatchId } from "@trigger.dev/core/v3/isomorphic";
 import type { BatchItem, RunEngine } from "@internal/run-engine";
 import pMap from "p-map";
+import { z } from "zod";
 import type { BatchTaskRunStatus } from "@trigger.dev/database";
 import { prisma, type PrismaClientOrTransaction } from "~/db.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { ServiceValidationError, WithRunEngine } from "../../v3/services/baseService.server";
 import { BatchPayloadProcessor } from "../concerns/batchPayloads.server";
+
+const CompiledBatchItemNDJSONSchema = z.compile(BatchItemNDJSONSchema);
 
 /**
  * Phase 2 retry idempotency check.
@@ -419,7 +422,7 @@ export class StreamBatchItemsService extends WithRunEngine {
     }
 
     // Parse and validate the item
-    const parseResult = BatchItemNDJSONSchema.safeParse(rawItem);
+    const parseResult = CompiledBatchItemNDJSONSchema.safeParse(rawItem);
     if (!parseResult.success) {
       const rawIndex = (rawItem as { index?: unknown } | null)?.index;
       const where = typeof rawIndex === "number" ? `index ${rawIndex}` : "unknown index";

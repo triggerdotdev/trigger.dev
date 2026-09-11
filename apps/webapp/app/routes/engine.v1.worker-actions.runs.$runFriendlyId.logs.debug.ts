@@ -10,7 +10,7 @@ export const action = createActionWorkerApiRoute(
     params: z.object({
       runFriendlyId: z.string(),
     }),
-    body: WorkerApiDebugLogBody,
+    body: z.compile(WorkerApiDebugLogBody),
   },
   async ({ body, params }): Promise<Response> => {
     const { runFriendlyId } = params;

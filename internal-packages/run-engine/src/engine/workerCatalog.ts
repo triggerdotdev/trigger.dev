@@ -138,3 +138,7 @@ export const workerCatalog = {
     visibilityTimeoutMs: 30_000,
   },
 };
+
+for (const job of Object.values(workerCatalog)) {
+  job.schema = z.compile(job.schema);
+}

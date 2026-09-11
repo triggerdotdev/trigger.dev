@@ -12,6 +12,7 @@ import type {
   PrismaClientOrTransaction,
   RuntimeEnvironmentType,
 } from "@trigger.dev/database";
+import { z } from "zod";
 import type { BillingCache } from "../billingCache.js";
 import type {
   ResolvedTaskQueue,
@@ -28,6 +29,8 @@ import type { ExecutionSnapshotSystem } from "./executionSnapshotSystem.js";
 import { getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
 import type { RunAttemptSystem } from "./runAttemptSystem.js";
 import type { SystemResources } from "./systems.js";
+
+const NullableRetryOptions = z.compile(RetryOptions.nullable());
 
 export type DequeueSystemOptions = {
   resources: SystemResources;
@@ -535,7 +538,7 @@ export class DequeueSystem {
                   }
                 );
 
-                const parsedConfig = RetryOptions.nullable().safeParse(retryConfig);
+                const parsedConfig = NullableRetryOptions.safeParse(retryConfig);
 
                 if (!parsedConfig.success) {
                   this.$.logger.error("RunEngine.dequeueFromWorkerQueue(): Invalid retry config", {

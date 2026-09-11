@@ -66,10 +66,16 @@ const checkpointCancelRequests = new Counter({
   registers: [register],
 });
 
-const WorkloadActionParams = z.object({
-  runFriendlyId: z.string(),
-  snapshotFriendlyId: z.string(),
-});
+const WorkloadActionParams = z.compile(
+  z.object({
+    runFriendlyId: z.string(),
+    snapshotFriendlyId: z.string(),
+  })
+);
+const WorkloadDebugParams = z.compile(WorkloadActionParams.pick({ runFriendlyId: true }));
+const CompiledWorkloadRunAttemptStartRequestBody = z.compile(WorkloadRunAttemptStartRequestBody);
+const CompiledWorkloadHeartbeatRequestBody = z.compile(WorkloadHeartbeatRequestBody);
+const CompiledWorkloadDebugLogRequestBody = z.compile(WorkloadDebugLogRequestBody);
 
 // Workloads bundled into customer task images before CLI v4.4.4 use a strict
 // zod enum for checkpoint type that only allows DOCKER and KUBERNETES. The
@@ -385,7 +391,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         "POST",
         {
           paramsSchema: WorkloadActionParams,
-          bodySchema: WorkloadRunAttemptStartRequestBody,
+          bodySchema: CompiledWorkloadRunAttemptStartRequestBody,
           handler: async (ctx) =>
             this.wideRoute(
               ctx,
@@ -490,7 +496,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         "POST",
         {
           paramsSchema: WorkloadActionParams,
-          bodySchema: WorkloadHeartbeatRequestBody,
+          bodySchema: CompiledWorkloadHeartbeatRequestBody,
           handler: async (ctx) =>
             this.wideRoute(
               ctx,
@@ -724,8 +730,8 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
 
     if (env.SEND_RUN_DEBUG_LOGS) {
       httpServer.route("/api/v1/workload-actions/runs/:runFriendlyId/logs/debug", "POST", {
-        paramsSchema: WorkloadActionParams.pick({ runFriendlyId: true }),
-        bodySchema: WorkloadDebugLogRequestBody,
+        paramsSchema: WorkloadDebugParams,
+        bodySchema: CompiledWorkloadDebugLogRequestBody,
         handler: async (ctx) =>
           this.wideRoute(
             ctx,

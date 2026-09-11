@@ -38,7 +38,9 @@ export const OutputPayloadV2 = InputPayload.extend({
 });
 export type OutputPayloadV2 = z.infer<typeof OutputPayloadV2>;
 
-export const OutputPayload = z.discriminatedUnion("version", [OutputPayloadV1, OutputPayloadV2]);
+export const OutputPayload = z.compile(
+  z.discriminatedUnion("version", [OutputPayloadV1, OutputPayloadV2])
+);
 
 export type OutputPayload = z.infer<typeof OutputPayload>;
 

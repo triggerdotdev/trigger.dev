@@ -12,7 +12,7 @@ export const action = createActionWorkerApiRoute(
       runFriendlyId: z.string(),
       snapshotFriendlyId: z.string(),
     }),
-    body: WorkerApiSuspendRunRequestBody,
+    body: z.compile(WorkerApiSuspendRunRequestBody),
   },
   async ({
     authenticatedWorker,

@@ -7,7 +7,7 @@ import { createActionWorkerApiRoute } from "~/services/routeBuilders/apiBuilder.
 
 export const action = createActionWorkerApiRoute(
   {
-    body: WorkerApiRunAttemptStartRequestBody,
+    body: z.compile(WorkerApiRunAttemptStartRequestBody),
     params: z.object({
       runFriendlyId: z.string(),
       snapshotFriendlyId: z.string(),
