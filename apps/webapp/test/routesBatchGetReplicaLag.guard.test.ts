@@ -114,6 +114,8 @@ import { action as actionCreateBatch } from "~/routes/api.v3.batches";
 // A cuid (25 chars after the `batch_` prefix) classifies LEGACY, so the batch is owned by the legacy
 // (control-plane) store; the client-less reads then land on the LEGACY leg.
 const CUID_25 = "c".repeat(25);
+// Must be a v4 UUID or the route ignores the header.
+const REQUEST_IDEMPOTENCY_KEY = "b3f1e9c2-5d7a-4a1b-9c8e-2f6d4a7b1c30";
 
 let seq = 0;
 
@@ -339,7 +341,7 @@ describe("routes-batch-get callers under a lagging replica", () => {
             "content-type": "application/json",
             "content-length": String(Buffer.byteLength(body)),
             authorization: `Bearer ${seed.environment.apiKey}`,
-            "x-trigger-request-idempotency-key": "req_idem_tb",
+            "x-trigger-request-idempotency-key": REQUEST_IDEMPOTENCY_KEY,
           },
           body,
         }),

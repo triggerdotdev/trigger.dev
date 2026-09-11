@@ -20,7 +20,7 @@ import {
   handleRequestIdempotency,
   saveRequestIdempotency,
 } from "~/utils/requestIdempotency.server";
-import { scopeRequestIdempotencyKey } from "~/utils/requestIdempotencyKey";
+import { scopeRequestIdempotencyHeader } from "~/utils/requestIdempotencyKey";
 import { canWriteParentRun } from "~/utils/parentRunAuthorization.server";
 import { sanitizeTriggerSource } from "~/utils/triggerSource";
 import { runStore } from "~/v3/runStore.server";
@@ -89,7 +89,7 @@ const { action, loader } = createActionApiRoute(
       return json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const scopedIdempotencyKey = scopeRequestIdempotencyKey(requestIdempotencyKey, [
+    const scopedIdempotencyKey = scopeRequestIdempotencyHeader(requestIdempotencyKey, [
       authentication.environment.id,
       params.taskId,
     ]);

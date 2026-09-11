@@ -12,7 +12,7 @@ import {
   handleRequestIdempotency,
   saveRequestIdempotency,
 } from "~/utils/requestIdempotency.server";
-import { scopeRequestIdempotencyKey } from "~/utils/requestIdempotencyKey";
+import { scopeRequestIdempotencyHeader } from "~/utils/requestIdempotencyKey";
 import { canWriteParentRun } from "~/utils/parentRunAuthorization.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { BatchProcessingStrategy } from "~/v3/services/batchTriggerV3.server";
@@ -100,7 +100,7 @@ const { action, loader } = createActionApiRoute(
       requestIdempotencyKey,
     });
 
-    const scopedIdempotencyKey = scopeRequestIdempotencyKey(requestIdempotencyKey, [
+    const scopedIdempotencyKey = scopeRequestIdempotencyHeader(requestIdempotencyKey, [
       authentication.environment.id,
       ...Array.from(new Set(body.items.map((item) => item.task))).sort(),
     ]);
