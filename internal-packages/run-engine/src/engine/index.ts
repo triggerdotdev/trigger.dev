@@ -2776,6 +2776,7 @@ export class RunEngine {
         runId,
         snapshotId: latestSnapshot.id,
         executionStatus: latestSnapshot.executionStatus,
+        environmentType: latestSnapshot.environmentType,
       });
 
       switch (latestSnapshot.executionStatus) {
