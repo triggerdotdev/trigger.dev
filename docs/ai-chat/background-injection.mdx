@@ -179,8 +179,61 @@ export const myChat = chat.agent({
 `chat.defer()` can be called from anywhere during a turn: hooks, `run()`, or nested helpers. All deferred promises are collected and awaited together before `onTurnComplete`.
 
 <Warning>
-**Don't use `chat.defer()` for the message-history write in `onTurnStart`.** That write must land *before* the model starts streaming, otherwise a mid-stream page refresh will read `[]` from your DB and lose the user's message from the rendered conversation. See [Database persistence: `onTurnStart`](/ai-chat/patterns/database-persistence#onturnstart). Reserve `chat.defer` for writes whose timing has no resume implication.
+**Don't use `chat.defer()` for the message-history write in `onTurnStart`.** `chat.defer` only promises the work finished before `onTurnComplete`, which is long after the answer started streaming. A page refresh in between reads `[]` from your DB and loses the user's message from the rendered conversation. Use [`chat.deferBeforeOutput()`](#chat-deferbeforeoutput) for that write instead, and reserve `chat.defer` for writes whose timing has no resume implication.
 </Warning>
+
+## `chat.deferBeforeOutput`
+
+`chat.deferBeforeOutput()` is `chat.defer()` for work the next page load has to see. The work starts immediately and the hook does not await it, so it runs alongside the model and costs no time to first token. The difference is that the output stream waits for it: no part of the answer is written to the session until it settles.
+
+That ordering is the point. A reader that can see the answer can also see whatever the work persisted, so a refresh mid-answer never renders a reply to a question that is missing.
+
+```ts
+export const myChat = chat.agent({
+  id: "my-chat",
+  onTurnStart: async ({ chatId, uiMessages }) => {
+    // The next page load has to see this, so the answer waits for it.
+    chat.deferBeforeOutput(
+      db.chat.update({ where: { id: chatId }, data: { messages: uiMessages } })
+    );
+  },
+  run: async ({ messages, signal, streamText }) => {
+    return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
+  },
+});
+```
+
+Use it for the conversation write, a message insert, or anything else the frontend reads back on reload. Keep analytics, audit logs and search-index updates on `chat.defer`.
+
+<Warning>
+**This is not a consistency barrier for the turn.** It orders the write against what the frontend can see, and nothing else. The work is still in flight while the model runs, so a tool, a `prepareStep`, or another service reading the same row during the turn can still see the state as it was before the write.
+
+If the turn's own code reads the write back, `await` it instead:
+
+```ts
+onTurnStart: async ({ chatId, uiMessages }) => {
+  // A tool later in this turn reads this row, so the turn has to wait for it.
+  await db.chat.update({ where: { id: chatId }, data: { messages: uiMessages } });
+},
+```
+
+That costs time to first token, which is the price of the stronger guarantee. `chat.deferBeforeOutput` is for writes whose only reader is the next page load.
+</Warning>
+
+A registered promise that rejects, or that runs longer than the internal timeout, lets the answer through rather than stalling the conversation. It is a best-effort ordering guarantee, not a lock.
+
+| | `chat.defer()` | `chat.deferBeforeOutput()` |
+|---|---|---|
+| **Awaited by the hook** | No | No |
+| **Costs time to first token** | No | No |
+| **Answer waits for it** | No | Yes |
+| **Settled by** | Before `onTurnComplete` | Before the first chunk reaches the session |
+| **Read back by tools in the same turn** | No | No |
+| **Use for** | Analytics, audit logs, index writes | Conversation and message writes the frontend reads back |
+
+<Note>
+  If your agent persists through a [transcript storage](/ai-chat/transcript-storage), the runtime already does this for the incoming message on your behalf. `chat.deferBeforeOutput` is for writes your app owns on top of that.
+</Note>
 
 ## How it differs from pending messages
 

@@ -61,6 +61,10 @@ const putIds = (changes: TranscriptChange[]) =>
 const stateOf = (changes: TranscriptChange[]) =>
   changes.find((c) => c.op === "state")?.value as TranscriptRuntimeState | null | undefined;
 
+/** The saves that record a finished turn or action, excluding the turn-start write. */
+const completed = () => storage.changesets.filter((c) => c.changeset.reason !== "turn-start");
+const turnStarts = () => storage.changesets.filter((c) => c.changeset.reason === "turn-start");
+
 let storage: MemoryTranscriptStorage;
 
 beforeEach(() => {
@@ -83,21 +87,28 @@ describe("chat.agent transcript changesets", () => {
     const harness = mockChatAgent(agent, { chatId: "changeset-turn" });
     try {
       await harness.sendMessage(userMessage("hello", "u1"));
-      await waitFor(() => storage.changesets.length === 1, "first save");
+      await waitFor(() => completed().length === 1, "first save");
 
-      const { ctx, changeset } = storage.changesets[0]!;
+      const started = turnStarts()[0]!;
+      expect(started.changeset.reason).toBe("turn-start");
+      expect(putIds(started.changeset.changes)).toEqual(["u1"]);
+
+      const { ctx, changeset } = completed()[0]!;
       expect(ctx.chatId).toBe("changeset-turn");
       expect(ctx.trigger).toBe("submit-message");
       expect(ctx.turn).toBe(0);
       expect(changeset.reason).toBe("turn-complete");
-      expect(ops(changeset.changes)).toEqual(["put", "put"]);
-      expect(putIds(changeset.changes)[0]).toBe("u1");
+      expect(ops(changeset.changes)).toEqual(["put"]);
+      expect(changeset.transcript.entries.map((e) => e.message.role)).toEqual([
+        "user",
+        "assistant",
+      ]);
       expect(changeset.cursors?.lastOutEventId).toBeDefined();
 
       await harness.sendMessage(userMessage("again", "u2"));
-      await waitFor(() => storage.changesets.length === 2, "second save");
-      expect(ops(storage.changesets[1]!.changeset.changes)).toEqual(["put", "put"]);
-      expect(putIds(storage.changesets[1]!.changeset.changes)[0]).toBe("u2");
+      await waitFor(() => completed().length === 2, "second save");
+      expect(putIds(turnStarts()[1]!.changeset.changes)).toEqual(["u2"]);
+      expect(ops(completed()[1]!.changeset.changes)).toEqual(["put"]);
       expect(storage.transcript("changeset-turn")!.entries.map((e) => e.message.role)).toEqual([
         "user",
         "assistant",
@@ -141,13 +152,16 @@ describe("chat.agent transcript changesets", () => {
         "first delta"
       );
       await harness.sendStop();
-      await waitFor(() => storage.changesets.length === 1, "stopped turn save");
+      await waitFor(() => completed().length === 1, "stopped turn save");
 
-      const puts = storage.changesets[0]!.changeset.changes.filter((c) => c.op === "put");
-      expect(puts).toHaveLength(2);
-      expect(puts[0]).toMatchObject({ op: "put", message: { id: "u1" } });
-      expect(puts[0]).not.toHaveProperty("final");
-      expect(puts[1]).toMatchObject({ op: "put", message: { role: "assistant" }, final: false });
+      const startPuts = turnStarts()[0]!.changeset.changes.filter((c) => c.op === "put");
+      expect(startPuts).toHaveLength(1);
+      expect(startPuts[0]).toMatchObject({ op: "put", message: { id: "u1" } });
+      expect(startPuts[0]).not.toHaveProperty("final");
+
+      const puts = completed()[0]!.changeset.changes.filter((c) => c.op === "put");
+      expect(puts).toHaveLength(1);
+      expect(puts[0]).toMatchObject({ op: "put", message: { role: "assistant" }, final: false });
       expect(storage.transcript(chatId)!.entries.map((e) => e.final)).toEqual([true, false]);
     } finally {
       await harness.close();
@@ -208,10 +222,10 @@ describe("chat.agent transcript changesets", () => {
     const first = mockChatAgent(makeAgent(), { chatId });
     try {
       await first.sendMessage(userMessage("look it up", "u1"));
-      await waitFor(() => storage.changesets.length === 1, "turn save");
+      await waitFor(() => completed().length === 1, "turn save");
 
       expect(promptText(stepPrompts[0])).toContain("[note] drained at the step boundary");
-      const state = stateOf(storage.changesets[0]!.changeset.changes);
+      const state = stateOf(completed()[0]!.changeset.changes);
       expect(state?.injections).toHaveLength(1);
       expect(state!.injections![0]!.afterId).toBe("u1");
     } finally {
@@ -253,8 +267,8 @@ describe("chat.agent transcript changesets", () => {
     const first = mockChatAgent(makeAgent(firstPrompts), { chatId });
     try {
       await first.sendMessage(userMessage("one", "u1"));
-      await waitFor(() => storage.changesets.length === 1, "turn save");
-      const state = stateOf(storage.changesets[0]!.changeset.changes);
+      await waitFor(() => completed().length === 1, "turn save");
+      const state = stateOf(completed()[0]!.changeset.changes);
       expect(state?.queued).toHaveLength(1);
       expect(state?.injections).toBeUndefined();
     } finally {
@@ -269,9 +283,9 @@ describe("chat.agent transcript changesets", () => {
     });
     try {
       await second.sendMessage(userMessage("two", "u2"));
-      await waitFor(() => storage.changesets.length === 2, "continuation save");
+      await waitFor(() => completed().length === 2, "continuation save");
       expect(promptText(secondPrompts[0])).toContain("[note] queued at exit");
-      const state = stateOf(storage.changesets[1]!.changeset.changes);
+      const state = stateOf(completed()[1]!.changeset.changes);
       expect(state?.queued).toBeUndefined();
       expect(state?.injections).toHaveLength(1);
     } finally {
@@ -332,10 +346,14 @@ describe("chat.agent transcript changesets", () => {
     };
     try {
       await harness.sendMessage(userMessage("summarise every project", "u1"));
-      await waitFor(() => storage.changesets.length === 1, "save");
+      await waitFor(() => completed().length === 1, "save");
 
-      const ids = putIds(storage.changesets[0]!.changeset.changes);
+      const ids = [
+        ...putIds(turnStarts()[0]!.changeset.changes),
+        ...putIds(completed()[0]!.changeset.changes),
+      ];
       expect(ids).toContain("steer-1");
+      expect(ids.indexOf("u1")).toBe(0);
       expect(ids.indexOf("steer-1")).toBeGreaterThan(ids.indexOf("u1"));
       expect(storage.transcript("changeset-steer")!.entries.map((e) => e.id)).toEqual(ids);
     } finally {
@@ -364,22 +382,20 @@ describe("chat.agent transcript changesets", () => {
     const first = mockChatAgent(makeAgent(firstPrompts), { chatId });
     try {
       await first.sendMessage(userMessage("the early message", "u1"));
-      await waitFor(() => storage.changesets.length === 1, "turn 1 save");
+      await waitFor(() => completed().length === 1, "turn 1 save");
       expect(compactions).toBe(1);
 
-      const state = stateOf(storage.changesets[0]!.changeset.changes);
+      const state = stateOf(completed()[0]!.changeset.changes);
       expect(state?.compaction).toBeDefined();
-      expect(state!.compaction!.throughId).toBe(
-        putIds(storage.changesets[0]!.changeset.changes).at(-1)
-      );
+      expect(state!.compaction!.throughId).toBe(putIds(completed()[0]!.changeset.changes).at(-1));
       expect(JSON.stringify(state!.compaction!.modelMessages)).toContain("SUMMARY-OF-EVERYTHING");
       expect(JSON.stringify(state!.compaction!.modelMessages)).not.toContain("the early message");
 
       await first.sendMessage(userMessage("a follow-up", "u2"));
-      await waitFor(() => storage.changesets.length === 2, "turn 2 save");
+      await waitFor(() => completed().length === 2, "turn 2 save");
       expect(promptText(firstPrompts[1])).toContain("SUMMARY-OF-EVERYTHING");
       expect(promptText(firstPrompts[1])).not.toContain("the early message");
-      expect(stateOf(storage.changesets[1]!.changeset.changes)?.compaction).toBeDefined();
+      expect(stateOf(completed()[1]!.changeset.changes)?.compaction).toBeDefined();
     } finally {
       await first.close();
     }
@@ -432,13 +448,13 @@ describe("chat.agent transcript changesets", () => {
     try {
       await harness.sendMessage(userMessage("one", "u1"));
       await harness.sendMessage(userMessage("two", "u2"));
-      await waitFor(() => storage.changesets.length === 2, "two turns");
-      expect(stateOf(storage.changesets[1]!.changeset.changes)?.compaction).toBeDefined();
+      await waitFor(() => completed().length === 2, "two turns");
+      expect(stateOf(completed()[1]!.changeset.changes)?.compaction).toBeDefined();
 
       await harness.sendAction({ type: "undo" });
-      await waitFor(() => storage.changesets.length === 3, "action save");
+      await waitFor(() => completed().length === 3, "action save");
 
-      const { ctx, changeset } = storage.changesets[2]!;
+      const { ctx, changeset } = completed()[2]!;
       expect(ctx.trigger).toBe("action");
       expect(changeset.reason).toBe("action");
       expect(ops(changeset.changes)).toEqual(["truncateAfter", "state"]);
@@ -469,14 +485,14 @@ describe("chat.agent transcript changesets", () => {
     try {
       await first.sendMessage(userMessage("one", "u1"));
       await first.sendMessage(userMessage("two", "u2"));
-      await waitFor(() => storage.changesets.length === 2, "two turns");
+      await waitFor(() => completed().length === 2, "two turns");
 
       expect(promptText(firstPrompts[1])).toContain("[note] inventory is low");
-      const state = stateOf(storage.changesets[1]!.changeset.changes);
+      const state = stateOf(completed()[1]!.changeset.changes);
       expect(state?.injections).toHaveLength(1);
       expect(state!.injections![0]!.afterId).toBe("u2");
       expect(state?.queued).toBeUndefined();
-      const queuedAtTurn0 = stateOf(storage.changesets[0]!.changeset.changes);
+      const queuedAtTurn0 = stateOf(completed()[0]!.changeset.changes);
       expect(queuedAtTurn0?.queued).toHaveLength(1);
       expect(queuedAtTurn0?.injections).toBeUndefined();
     } finally {
@@ -521,8 +537,8 @@ describe("chat.agent transcript changesets", () => {
     const harness = mockChatAgent(agent, { chatId });
     try {
       await harness.sendMessage(userMessage("hello", "u1"));
-      await waitFor(() => storage.changesets.length === 1, "turn save");
-      expect(putIds(storage.changesets[0]!.changeset.changes)).toEqual(["u1"]);
+      await waitFor(() => completed().length === 1, "turn save");
+      expect(putIds(turnStarts()[0]!.changeset.changes)).toEqual(["u1"]);
       expect(storage.transcript(chatId)!.entries.map((e) => e.id)).toEqual(["u1"]);
     } finally {
       await harness.close();
@@ -548,7 +564,7 @@ describe("chat.agent transcript changesets", () => {
     const harness = mockChatAgent(agent, { chatId });
     try {
       await harness.sendMessage(userMessage("hello", "u1"));
-      await waitFor(() => storage.changesets.length === 1, "turn save");
+      await waitFor(() => completed().length === 1, "turn save");
       const entries = storage.transcript(chatId)!.entries;
       expect(entries.map((e) => e.message.role)).toEqual(["user", "assistant"]);
       const assistant = entries.find((e) => e.message.role === "assistant");
@@ -574,7 +590,7 @@ describe("chat.agent transcript changesets", () => {
     const harness = mockChatAgent(agent, { chatId });
     try {
       await harness.sendMessage(userMessage("hello", "u1"));
-      await waitFor(() => storage.changesets.length === 1, "turn save");
+      await waitFor(() => completed().length === 1, "turn save");
       expect(storage.transcript(chatId)!.entries.map((e) => e.message.role)).toEqual(["user"]);
     } finally {
       await harness.close();

@@ -26,6 +26,7 @@ export type TranscriptChange =
   | { op: "state"; value: unknown | null };
 
 export type TranscriptChangeReason =
+  | "turn-start"
   | "turn-complete"
   | "turn-error"
   | "action"

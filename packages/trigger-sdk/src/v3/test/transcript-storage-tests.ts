@@ -3,6 +3,7 @@ import {
   emptyTranscriptState,
   reduceTranscriptChanges,
   type TranscriptChange,
+  type TranscriptChangeReason,
   type TranscriptCursors,
   type TranscriptState,
   type TranscriptStorage,
@@ -88,7 +89,7 @@ export function runTranscriptStorageTests<TClientData = unknown>(
     storage: TranscriptStorage<TClientData>,
     context: TranscriptStorageContext<TClientData>,
     changeset: {
-      reason: "turn-complete" | "turn-error" | "action";
+      reason: TranscriptChangeReason;
       changes: TranscriptChange[];
       cursors?: TranscriptCursors;
     }

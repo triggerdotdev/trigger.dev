@@ -56,24 +56,34 @@ If you skip preload, do the equivalent in **`onChatStart`** when **`preloaded`**
 
 ### `onTurnStart`
 
-- **`await`** persist **`uiMessages`** (full accumulated history including the new user turn) **before** the hook returns — `chat.agent` does not begin streaming until `onTurnStart` resolves, so this is what bounds "user message is durable before the stream".
+- Persist **`uiMessages`** (full accumulated history including the new user turn). Two ways, and which one you want depends on who reads the write:
+  - **Nothing in the turn reads it back** (the usual case: the row exists for the next page load). Use [**`chat.deferBeforeOutput()`**](/ai-chat/background-injection#chat-deferbeforeoutput). The write runs alongside the model, so it adds nothing to time to first token, and no part of the answer reaches the frontend until it lands. That bounds "user message is durable before anything can render the answer".
+  - **A tool, a `prepareStep`, or another service reads it back during the turn.** **`await`** it. `chat.deferBeforeOutput` orders the write against the frontend, not against the model, so the turn's own code can still see pre-write state. Awaiting costs time to first token and is the only thing that bounds "durable before the model starts".
 
 <Warning>
-**Don't use [`chat.defer()`](/ai-chat/background-injection#chat-defer-standalone) for the message write here.** `chat.defer` is fire-and-forget — the hook resolves before the write lands and the stream starts immediately. If the user refreshes mid-stream, the next page load reads `[]` from your DB, the resumed SSE stream pushes the assistant into an empty array, and the user's message disappears from the rendered conversation forever.
+**Don't use [`chat.defer()`](/ai-chat/background-injection#chat-defer-standalone) for the message write here.** `chat.defer` is fire-and-forget: the hook resolves, the stream starts immediately, and the write is only guaranteed before `onTurnComplete`. If the user refreshes in between, the next page load reads `[]` from your DB, the resumed SSE stream pushes the assistant into an empty array, and the user's message disappears from the rendered conversation.
 
 ```ts
-// ❌ Bad — non-blocking write, mid-stream refresh drops the user message.
+// ❌ Bad: the answer can stream before the write lands.
 onTurnStart: async ({ chatId, uiMessages }) => {
   chat.defer(db.chat.update({ where: { id: chatId }, data: { messages: uiMessages } }));
 },
 
-// ✅ Good — awaited, durable before the model starts.
+// ✅ Good: runs alongside the model, and the answer waits for it.
+onTurnStart: async ({ chatId, uiMessages }) => {
+  chat.deferBeforeOutput(
+    db.chat.update({ where: { id: chatId }, data: { messages: uiMessages } })
+  );
+},
+
+// ✅ Required when a tool or prepareStep in this turn reads the row back.
+// Slower: awaiting blocks the model call itself.
 onTurnStart: async ({ chatId, uiMessages }) => {
   await db.chat.update({ where: { id: chatId }, data: { messages: uiMessages } });
 },
 ```
 
-`chat.defer` is for writes whose timing doesn't matter for resume — analytics, audit logs, search-index updates, etc. Anything the next page load reads needs to land before the stream begins.
+`chat.defer` is for writes whose timing doesn't matter for resume: analytics, audit logs, search-index updates. Anything the next page load reads belongs on `chat.deferBeforeOutput`.
 </Warning>
 
 ### `onTurnComplete`
@@ -152,8 +162,9 @@ chat.agent({
   },
 
   onTurnStart: async ({ chatId, uiMessages }) => {
-    // Awaited, not chat.defer — see the warning in `onTurnStart` above.
-    await saveConversationMessages(chatId, uiMessages);
+    // Held before output, not chat.defer. See the warning in `onTurnStart` above.
+    // Nothing in this turn reads the row back; await it if yours does.
+    chat.deferBeforeOutput(saveConversationMessages(chatId, uiMessages));
   },
 
   onTurnComplete: async ({ chatId, uiMessages, chatAccessToken, lastEventId }) => {

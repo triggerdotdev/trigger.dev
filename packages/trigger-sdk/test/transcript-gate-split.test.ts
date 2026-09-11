@@ -134,7 +134,10 @@ describe("the persistence gate split", () => {
     const harness = mockChatAgent(agent, { chatId: "gate-split-load-context" });
     try {
       await harness.sendMessage(userMessage("first", "u1"));
-      await waitFor(() => storage.changesets.length === 1, "save");
+      await waitFor(
+        () => storage.changesets.some((c) => c.changeset.reason === "turn-complete"),
+        "save"
+      );
 
       expect(contextCalls).toHaveLength(1);
       expect(contextCalls[0]!.trigger).toBe("submit-message");
@@ -142,8 +145,8 @@ describe("the persistence gate split", () => {
       expect(prompt).toContain("only what the app chose");
       expect(prompt).toContain('"first"');
 
-      const ids = storage.changesets[0]!.changeset.changes.flatMap((c) =>
-        c.op === "put" ? [c.message.id] : []
+      const ids = storage.changesets.flatMap((save) =>
+        save.changeset.changes.flatMap((c) => (c.op === "put" ? [c.message.id] : []))
       );
       expect(ids).toEqual(["ctx-u1", "u1", expect.any(String)]);
     } finally {

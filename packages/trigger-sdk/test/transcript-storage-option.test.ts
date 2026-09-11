@@ -53,7 +53,10 @@ describe("chat.agent({ storage })", () => {
     try {
       await harness.sendMessage(userMessage("hello", "u1"));
       await harness.sendMessage(userMessage("again", "u2"));
-      await waitFor(() => storage.changesets.length === 2, "two saves");
+      await waitFor(
+        () => storage.changesets.filter((c) => c.changeset.reason === "turn-complete").length === 2,
+        "two turns saved"
+      );
 
       expect(harness.getSnapshot()).toBeUndefined();
 

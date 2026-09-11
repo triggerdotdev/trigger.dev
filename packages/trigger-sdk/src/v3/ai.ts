@@ -40,6 +40,7 @@ import {
   SESSION_CLOSED_REASON_HEADER,
   tryCatch,
   type StreamWriteResult,
+  type WriterStreamOptions,
   type RouterCheckpoint,
   type SessionRouteTable,
   type SessionStreamRecord,
@@ -1089,6 +1090,161 @@ function createChatAccessToken<TTask extends AnyTask>(
  * the session's `.out`, not a per-run stream. Run-scoped `target`
  * options on `.pipe()` are honoured as no-ops; the session is the target.
  */
+/**
+ * Gates `session.out` writes on the current turn's turn-start transcript
+ * save, so nothing that renders an answer can reach a subscriber before the
+ * message being answered is durable. Set once per turn; writes outside a
+ * turn see no gate and proceed immediately.
+ * @internal
+ */
+type ChatOutGate = {
+  /** Registered work not yet settled. Drained as it settles. */
+  pending: Set<Promise<unknown>>;
+  /** Latched once the gate has failed open, so a turn pays the timeout at most once. */
+  open: boolean;
+  /**
+   * Resolves when the gate fails open. Every waiter races it, so the first
+   * timeout releases the callers already asleep on their own deadlines rather
+   * than only the one that happened to time out.
+   */
+  opened: Promise<void>;
+  failOpen: () => void;
+};
+
+function createChatOutGate(): ChatOutGate {
+  let resolveOpened!: () => void;
+  const opened = new Promise<void>((resolve) => {
+    resolveOpened = resolve;
+  });
+  const gate: ChatOutGate = {
+    pending: new Set(),
+    open: false,
+    opened,
+    failOpen() {
+      if (gate.open) return;
+      gate.open = true;
+      resolveOpened();
+    },
+  };
+  return gate;
+}
+
+const chatOutGateKey = locals.create<ChatOutGate>("chat.outGate");
+
+/**
+ * How long a write waits on the gate before giving up. A storage that hangs
+ * degrades to an ungated write rather than stalling the conversation.
+ * @internal
+ */
+const CHAT_OUT_GATE_TIMEOUT_MS = 10_000;
+
+async function awaitChatOutGate(): Promise<void> {
+  const gate = locals.get(chatOutGateKey);
+  if (!gate || gate.open) return;
+  const deadline = Date.now() + CHAT_OUT_GATE_TIMEOUT_MS;
+  while (gate.pending.size > 0) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      gate.failOpen();
+      return;
+    }
+    const waitingOn = [...gate.pending];
+    let timedOut = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        Promise.allSettled(waitingOn),
+        gate.opened,
+        new Promise<void>((resolve) => {
+          timer = setTimeout(() => {
+            timedOut = true;
+            resolve();
+          }, remaining);
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    if (gate.open) return;
+    if (timedOut) {
+      gate.failOpen();
+      return;
+    }
+    for (const settled of waitingOn) gate.pending.delete(settled);
+  }
+}
+
+/**
+ * Register work that must land before anything from this turn reaches the
+ * frontend.
+ *
+ * Like {@link chatDefer} the work starts immediately and is never awaited by
+ * the hook that registered it, so it runs alongside the model and costs no
+ * time to first token. Unlike `chat.defer`, the output stream waits for it:
+ * no chunk of the answer is written to the session until it settles. That
+ * makes it the right home for a write the next page load has to see (a
+ * conversation row, a message insert), because a reader that can see the
+ * answer can also see what the write persisted.
+ *
+ * Reach for `chat.defer` instead when the timing does not matter for a
+ * reload: analytics, audit logs, search-index updates.
+ *
+ * This is not a consistency barrier for the turn. The work is still in flight
+ * while the model runs, so a tool, a `prepareStep`, or anything else executing
+ * during the turn can still read the state as it was before the write. It
+ * orders the write against what the frontend can see, nothing more. When the
+ * turn's own code has to read the write back, `await` it instead and accept
+ * the cost.
+ *
+ * A write registered here that fails, or outlasts the internal timeout, lets
+ * the stream through rather than stalling the conversation.
+ *
+ * @example
+ * ```ts
+ * onTurnStart: async ({ chatId, uiMessages }) => {
+ *   chat.deferBeforeOutput(
+ *     db.chat.update({ where: { id: chatId }, data: { messages: uiMessages } })
+ *   );
+ * },
+ * ```
+ */
+function chatDeferBeforeOutput(promiseOrFn: Promise<unknown> | (() => Promise<unknown>)): void {
+  const gate = locals.get(chatOutGateKey);
+  const work = typeof promiseOrFn === "function" ? promiseOrFn() : promiseOrFn;
+  if (!gate || gate.open) return;
+  gate.pending.add(work);
+}
+
+function gateWriterOptions<T>(options: WriterStreamOptions<T>): WriterStreamOptions<T> {
+  return {
+    ...options,
+    execute: async (api) => {
+      await awaitChatOutGate();
+      return await options.execute(api);
+    },
+  };
+}
+
+function gateOutStream<T>(value: AsyncIterable<T> | ReadableStream<T>): AsyncIterable<T> {
+  return (async function* () {
+    await awaitChatOutGate();
+    if (isReadableStream(value)) {
+      const reader = (value as ReadableStream<T>).getReader();
+      try {
+        while (true) {
+          const { done, value: chunk } = await reader.read();
+          if (done) break;
+          yield chunk as T;
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    } else {
+      yield* value as AsyncIterable<T>;
+    }
+  })();
+}
+
 const chatStream: RealtimeDefinedStream<UIMessageChunk> = {
   // Stable opaque label for the run-scoped `RealtimeDefinedStream` shape.
   // `chatStream` is backed by the Session's `.out` channel — this id is
@@ -1099,7 +1255,7 @@ const chatStream: RealtimeDefinedStream<UIMessageChunk> = {
   pipe(value, options) {
     const { target: _target, ...sessionOptions } = (options ?? {}) as PipeStreamOptions;
     return getChatSession().out.pipe<UIMessageChunk>(
-      value,
+      gateOutStream(value),
       sessionOptions as SessionPipeStreamOptions
     );
   },
@@ -1113,10 +1269,11 @@ const chatStream: RealtimeDefinedStream<UIMessageChunk> = {
   },
   async append(value, options) {
     const { target: _target, ...sessionOptions } = (options ?? {}) as AppendStreamOptions;
+    await awaitChatOutGate();
     return getChatSession().out.append(value, sessionOptions as SessionPipeStreamOptions);
   },
   writer(options) {
-    return getChatSession().out.writer<UIMessageChunk>(options);
+    return getChatSession().out.writer<UIMessageChunk>(gateWriterOptions(options));
   },
 };
 
@@ -1199,9 +1356,13 @@ function createLazyChatWriter(): { writer: ChatWriter; flush: () => Promise<void
   let mergeImpl: ((stream: ReadableStream<UIMessageChunk>) => void) | null = null;
   let waitPromise: (() => Promise<unknown>) | null = null;
   let resolveExecute: (() => void) | null = null;
+  let started = false;
+  const bufferedParts: UIMessageChunk[] = [];
+  const bufferedStreams: ReadableStream<UIMessageChunk>[] = [];
 
   function ensureInitialized() {
-    if (writeImpl) return;
+    if (started) return;
+    started = true;
 
     const executePromise = new Promise<void>((resolve) => {
       resolveExecute = resolve;
@@ -1213,7 +1374,9 @@ function createLazyChatWriter(): { writer: ChatWriter; flush: () => Promise<void
       execute: ({ write, merge }) => {
         writeImpl = write;
         mergeImpl = merge;
-        return executePromise; // Keep execute alive until flush()
+        for (const part of bufferedParts.splice(0)) write(part);
+        for (const stream of bufferedStreams.splice(0)) merge(stream);
+        return executePromise;
       },
     });
     waitPromise = waitUntilComplete;
@@ -1224,11 +1387,13 @@ function createLazyChatWriter(): { writer: ChatWriter; flush: () => Promise<void
       write(part: UIMessageChunk) {
         ensureInitialized();
         queueResponsePart(part);
-        writeImpl!(part);
+        if (writeImpl) writeImpl(part);
+        else bufferedParts.push(part);
       },
       merge(stream: ReadableStream<UIMessageChunk>) {
         ensureInitialized();
-        mergeImpl!(stream);
+        if (mergeImpl) mergeImpl(stream);
+        else bufferedStreams.push(stream);
       },
     },
     async flush() {
@@ -7130,6 +7295,18 @@ function chatAgent<
        */
       let lastSnapshotOutEventId: string | undefined;
 
+      /**
+       * The `lastInEventId` the most recent snapshot carried.
+       *
+       * A turn-start save happens after the incoming message has been handed to
+       * the turn loop, so the router's live resume floor has already advanced
+       * past it. Persisting that floor before the turn runs would let the next
+       * boot resume past a message this run never answered, which is exactly
+       * what a deferred or recovered message depends on. Turn-start carries
+       * this instead.
+       */
+      let lastSnapshotInEventId: string | undefined;
+
       const storageTrigger = (trigger: string): TranscriptStorageContext["trigger"] =>
         trigger === "regenerate-message"
           ? "regenerate-message"
@@ -7145,7 +7322,8 @@ function chatAgent<
        */
       /** The runtime's opaque state as of the last save; carried on every changeset's transcript. */
       let transcriptState: unknown | null = null;
-      const saveTranscript = async (opts: {
+      let transcriptSaveChain: Promise<void> = Promise.resolve();
+      const runSaveTranscript = async (opts: {
         reason: TranscriptChangeReason;
         messages: TUIMessage[];
         turn: number;
@@ -7153,6 +7331,8 @@ function chatAgent<
         clientData: unknown;
         lastOutEventId: string | undefined;
         nonFinalIds?: ReadonlySet<string>;
+        skipIfUnchanged?: boolean;
+        carryInCursor?: boolean;
       }) => {
         const { changes, shadow } = diffTranscript(transcriptShadow, opts.messages, {
           nonFinalIds: opts.nonFinalIds,
@@ -7178,8 +7358,14 @@ function chatAgent<
         if (runtimeState !== null || persistedStateSet) {
           changes.push({ op: "state", value: runtimeState } satisfies TranscriptChange);
         }
+        if (opts.skipIfUnchanged && changes.length === 0) return;
         transcriptState = runtimeState;
-        const inCursor = chatInputRouter().resumeFloor();
+        const liveInCursor = chatInputRouter().resumeFloor();
+        const inCursor = opts.carryInCursor
+          ? lastSnapshotInEventId
+          : liveInCursor !== undefined
+            ? String(liveInCursor)
+            : undefined;
         await transcriptStorage.save(
           {
             chatId: payload.chatId,
@@ -7202,12 +7388,32 @@ function chatAgent<
             },
             cursors: {
               lastOutEventId: opts.lastOutEventId,
-              lastInEventId: inCursor !== undefined ? String(inCursor) : undefined,
+              lastInEventId: inCursor,
             },
           }
         );
         transcriptShadow = shadow;
+        lastSnapshotInEventId = inCursor;
         persistedStateSet = runtimeState !== null;
+      };
+
+      /**
+       * Serialise every save onto one chain. `runSaveTranscript` derives its
+       * changeset from `transcriptShadow` and only advances it once the write
+       * lands, so two overlapping saves would diff against stale state. The
+       * message list is copied on the way in because the accumulator keeps
+       * mutating while a queued save waits its turn. A rejection is handed to
+       * the caller but never poisons the chain.
+       */
+      const saveTranscript = (opts: Parameters<typeof runSaveTranscript>[0]): Promise<void> => {
+        const queued = { ...opts, messages: [...opts.messages] };
+        const run = () => runSaveTranscript(queued);
+        const next = transcriptSaveChain.then(run, run);
+        transcriptSaveChain = next.then(
+          () => undefined,
+          () => undefined
+        );
+        return next;
       };
 
       /**
@@ -7345,6 +7551,7 @@ function chatAgent<
             // turn (chain self-bootstraps from turn 2), so this is purely an
             // optimization to keep continuation runs bounded from the first turn.
             lastSnapshotOutEventId = bootSnapshot?.lastOutEventId;
+            lastSnapshotInEventId = bootSnapshot?.lastInEventId;
 
             if (bootSnapshot?.lastOutEventId !== undefined) {
               const seeded = Number.parseInt(bootSnapshot.lastOutEventId, 10);
@@ -8212,6 +8419,7 @@ function chatAgent<
                 // (errors are caught by the outer try/catch which writes an error chunk)
                 locals.set(chatPipeCountKey, 0);
                 locals.set(chatDeferKey, new Set());
+                locals.set(chatOutGateKey, createChatOutGate());
                 locals.set(chatCompactionStateKey, undefined);
                 locals.set(chatSteeringQueueKey, []);
                 locals.set(chatPendingBackgroundKey, []);
@@ -8756,6 +8964,29 @@ function chatAgent<
                 // A no-op turn skips this block, and with it `followSessionPin`:
                 // there is nothing to answer, so nothing to hand over.
                 if ((!isAction || actionTurn) && !isNoOpTurn) {
+                  if (!hydrateMessages) {
+                    chatDeferBeforeOutput(
+                      saveTranscript({
+                        reason: "turn-start",
+                        messages: accumulatedUIMessages,
+                        turn,
+                        trigger: storageTrigger(currentWirePayload.trigger),
+                        clientData,
+                        lastOutEventId: lastSnapshotOutEventId,
+                        skipIfUnchanged: true,
+                        carryInCursor: true,
+                      }).catch((error) => {
+                        logger.warn(
+                          "chat.agent: turn-start transcript write failed; a reload mid-answer may not show the message being answered",
+                          {
+                            error: error instanceof Error ? error.message : String(error),
+                            sessionId: sessionIdForSnapshot,
+                          }
+                        );
+                      })
+                    );
+                  }
+
                   // Mint a scoped public access token once per turn, reused for
                   // onChatStart, onTurnStart, onTurnComplete, and the turn-complete chunk.
                   const currentRunId = ctx.run.id;
@@ -13258,6 +13489,7 @@ export const chat = {
   cleanupAbortedParts,
   /** Register background work that runs in parallel with streaming. See {@link chatDefer}. */
   defer: chatDefer,
+  deferBeforeOutput: chatDeferBeforeOutput,
   /** Queue model messages for injection at the next `prepareStep` boundary. See {@link injectBackgroundContext}. */
   inject: injectBackgroundContext,
   /** Typed chat output stream for writing custom chunks or piping from subtasks. */
