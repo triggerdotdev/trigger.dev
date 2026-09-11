@@ -1,0 +1,35 @@
+---
+title: "Connecting a provider"
+description: "Point a provider at the webhook URL and set the signing secret."
+sidebarTitle: "Connecting a provider"
+---
+
+When you deploy (or run `dev`), each webhook task gets an **endpoint** with a unique, unguessable webhook URL. Open the webhook in the dashboard, go to **Endpoints**, and open the endpoint to find its **Connect** panel.
+
+<Steps>
+  <Step title="Copy the webhook URL">
+    Copy it from the endpoint's Connect panel. On Trigger.dev Cloud it looks like
+    `https://webhooks.trigger.dev/webhooks/v1/ingest/<id>`. A self-hosted instance serves it from that
+    instance's own base URL. This is what you give the provider as its webhook destination.
+  </Step>
+  <Step title="Set the signing secret">
+    A webhook can't accept deliveries until its signing secret is set. Until then every request is
+    rejected. There are two flows, and the Connect panel shows the right one for the provider:
+
+    - **The provider generates the secret** (Stripe, Svix): copy it from the provider and paste it
+      into **Set secret**.
+    - **You choose the secret** (GitHub, or a service you control): click **Generate secret** and
+      Trigger.dev mints a strong secret and shows it once. Paste that into the provider's webhook config.
+  </Step>
+  <Step title="Point the provider at the webhook URL">
+    Add the webhook URL as the destination in your provider's dashboard. The Connect panel
+    shows the exact signature scheme (header, algorithm, signing string) the provider should use.
+  </Step>
+</Steps>
+
+<Warning>
+  The signing secret is stored encrypted and is never shown again after it's set. To rotate it,
+  use **Rotate secret** (or **Regenerate**) and update the provider with the new value.
+</Warning>
+
+Once a provider is sending events, watch them arrive on the [Deliveries](/webhooks/deliveries) page, which also explains what an [endpoint](/webhooks/deliveries#endpoints) is.

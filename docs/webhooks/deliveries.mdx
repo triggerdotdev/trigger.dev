@@ -1,0 +1,48 @@
+---
+title: "Deliveries and endpoints"
+description: "Observe inbound webhook requests, the runs they trigger, and their payloads in the dashboard."
+sidebarTitle: "Deliveries & endpoints"
+---
+
+The dashboard surfaces two concepts under the **Webhooks** section.
+
+## Deliveries
+
+A delivery is a single inbound request that passed verification. The **Deliveries** page lists every
+delivery across all your webhooks (much like the Runs page), and you can filter by webhook, status,
+delivery id, or run id.
+
+Open a delivery to see:
+
+- Its **status** and the **run** it triggered (linked).
+- The verified **event payload** and the inbound **request headers**, on separate tabs.
+- The external delivery id, idempotency key, and timestamps.
+
+<Note>
+  Duplicate deliveries are deduplicated automatically. The idempotency key is the provider's event id
+  (e.g. the Stripe event id, or GitHub's `X-GitHub-Delivery`), so a provider retry of the same event
+  resolves to the original delivery and won't trigger a second run.
+</Note>
+
+## Endpoints
+
+An endpoint is the connection instance for a webhook: its webhook URL, signing-secret state,
+verification scheme, and delivery history. Each webhook's **Endpoints** tab lists its endpoints (a
+declared webhook has one), and opening an endpoint shows its [Connect panel](/webhooks/connect) and
+its scoped deliveries.
+
+## What happens to a request
+
+<Steps>
+  <Step title="Verify">
+    The signature, timestamp, and idempotency key are checked. A failure returns `400` and records
+    nothing.
+  </Step>
+  <Step title="Record">
+    A verified request becomes a delivery, with its parsed event and headers stored.
+  </Step>
+  <Step title="Route">
+    The delivery is routed to your webhook task, which runs and calls `onEvent`. The delivery's status
+    reflects that run's outcome.
+  </Step>
+</Steps>

@@ -153,6 +153,16 @@
             ]
           },
           {
+            "group": "Webhooks",
+            "pages": [
+              "webhooks/overview",
+              "webhooks/sources",
+              "webhooks/connect",
+              "webhooks/deliveries",
+              "webhooks/filters"
+            ]
+          },
+          {
             "group": "Configuration",
             "pages": [
               "config/config-file",

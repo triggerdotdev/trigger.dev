@@ -391,6 +391,7 @@ class DevSupervisor implements WorkerRuntime {
         cliPackageVersion: manifest.cliPackageVersion,
         tasks: backgroundWorker.manifest.tasks,
         prompts: backgroundWorker.manifest.prompts,
+        webhooks: backgroundWorker.manifest.webhooks,
         queues: backgroundWorker.manifest.queues,
         contentHash: manifest.contentHash,
         sourceFiles,
