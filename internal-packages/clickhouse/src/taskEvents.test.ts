@@ -39,12 +39,17 @@ function readAttributesText(ch: ClickHouse) {
   return ch.reader.query({
     name: "read-task-event-attributes",
     query: `SELECT attributes_text,
+      toJSONString(attributes) AS attributes_json,
       toUInt8(inserted_at > toDateTime64('2020-01-01 00:00:00', 3)) AS has_inserted_at
     FROM trigger_dev.task_events_v2
     WHERE environment_id = {environmentId: String}
       AND span_id = {spanId: String}`,
     params: z.object({ environmentId: z.string(), spanId: z.string() }),
-    schema: z.object({ attributes_text: z.string(), has_inserted_at: z.number() }),
+    schema: z.object({
+      attributes_text: z.string(),
+      attributes_json: z.string(),
+      has_inserted_at: z.number(),
+    }),
   });
 }
 
@@ -88,6 +93,8 @@ describe("task events v2", () => {
       expect(rows).toEqual([
         {
           attributes_text: '{"z":1,"a":"hello","nested":{"enabled":true}}',
+          // The JSON column is no longer written; only the text is stored.
+          attributes_json: "{}",
           has_inserted_at: 1,
         },
       ]);
@@ -139,7 +146,13 @@ describe("task events v2", () => {
         spanId,
       });
       expect(readError).toBeNull();
-      expect(rows).toEqual([{ attributes_text: '{"a":"hello","z":1}', has_inserted_at: 1 }]);
+      expect(rows).toEqual([
+        {
+          attributes_text: '{"a":"hello","z":1}',
+          attributes_json: '{"a":"hello","z":1}',
+          has_inserted_at: 1,
+        },
+      ]);
     }
   );
 

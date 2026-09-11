@@ -22,9 +22,9 @@ function startTime(baseMs: number, offsetMs: number): string {
   return `${ns.substring(0, 10)}.${ns.substring(10)}`;
 }
 
-describe("ClickhouseEventRepository JSON parse recovery", () => {
+describe("ClickhouseEventRepository attribute serialization", () => {
   clickhouseTest(
-    "lands the good events and skips the poison event when one event has ClickHouse-unparseable attributes",
+    "lands deeply nested attributes without invoking row isolation",
     async ({ clickhouseContainer }) => {
       const clickhouse = new ClickHouse({
         url: clickhouseContainer.getConnectionUrl(),
@@ -69,18 +69,13 @@ describe("ClickhouseEventRepository JSON parse recovery", () => {
         };
       }
 
-      const goodSpanIds: string[] = [];
-      let poisonSpanId = "";
+      const spanIds: string[] = [];
+      const deeplyNestedSpanId = "span_recovery_000002";
       const rows: TaskEventV2Input[] = [];
       for (let i = 0; i < 5; i++) {
-        const isPoison = i === 2;
-        const row = makeRow(i, isPoison ? deeplyNested(1500) : { ok: true, i });
+        const row = makeRow(i, i === 2 ? deeplyNested(1500) : { ok: true, i });
         rows.push(row);
-        if (isPoison) {
-          poisonSpanId = row.span_id;
-        } else {
-          goodSpanIds.push(row.span_id);
-        }
+        spanIds.push(row.span_id);
       }
 
       try {
@@ -99,7 +94,7 @@ describe("ClickhouseEventRepository JSON parse recovery", () => {
             const [queryError, resultRows] = await queryEvents({ env_id: environmentId });
             expect(queryError).toBeNull();
             const byId = new Map((resultRows ?? []).map((r) => [r.span_id, r]));
-            for (const id of goodSpanIds) {
+            for (const id of spanIds) {
               expect(byId.has(id)).toBe(true);
             }
             return byId;
@@ -107,15 +102,14 @@ describe("ClickhouseEventRepository JSON parse recovery", () => {
           { timeout: 30_000, interval: 250 }
         );
 
-        for (const id of goodSpanIds) {
+        for (const id of spanIds.filter((id) => id !== deeplyNestedSpanId)) {
           expect(rowsById.get(id)!.attributes_json).toContain('"ok":true');
         }
-
-        expect(rowsById.has(poisonSpanId)).toBe(false);
+        expect(rowsById.get(deeplyNestedSpanId)!.attributes_json).toContain('"leaf":1');
 
         expect(repository.permanentlyDroppedBatches).toBe(0);
-        expect(repository.rowIsolationRecoveries).toBeGreaterThanOrEqual(1);
-        expect(repository.permanentlyDroppedRows).toBeGreaterThanOrEqual(1);
+        expect(repository.rowIsolationRecoveries).toBe(0);
+        expect(repository.permanentlyDroppedRows).toBe(0);
       } finally {
         await (repository as any)._flushScheduler?.shutdown?.();
       }

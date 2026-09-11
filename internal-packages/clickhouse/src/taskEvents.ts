@@ -194,7 +194,6 @@ const TASK_EVENT_V2_INSERT_COLUMNS = [
   "message",
   "kind",
   "status",
-  "attributes",
   "attributes_text",
   "metadata",
   "expires_at",
@@ -226,7 +225,7 @@ export const TaskEventV2Input = z.object({
 
 export type TaskEventV2Input = z.input<typeof TaskEventV2Input>;
 
-type TaskEventV2Row = TaskEventV2Input & {
+type TaskEventV2Row = Omit<TaskEventV2Input, "attributes"> & {
   attributes_text: string;
 };
 
@@ -242,9 +241,11 @@ export function serializeTaskEventAttributes(attributes: unknown): string {
 }
 
 function toTaskEventV2Row(event: TaskEventV2Input): TaskEventV2Row {
+  const { attributes, ...row } = event;
+
   return {
-    ...event,
-    attributes_text: serializeTaskEventAttributes(event.attributes),
+    ...row,
+    attributes_text: serializeTaskEventAttributes(attributes),
   };
 }
 
