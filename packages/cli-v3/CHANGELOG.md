@@ -1,5 +1,24 @@
 # trigger.dev
 
+## 4.6.0
+
+### Minor Changes
+
+- Trigger.dev now uses Zod 4 by default. Projects using Zod 3.25.56 or later 3.x releases remain supported. ([#4039](https://github.com/triggerdotdev/trigger.dev/pull/4039))
+
+  Zod remains a runtime dependency of packages that execute schemas, so existing and new installations continue to receive it automatically. The matching peer dependency range allows package managers to reuse either a compatible Zod 3 or Zod 4 installation from your project.
+
+### Patch Changes
+
+- Rename the dev error link to "Ask Trigger about this error" ([`f999516a0`](https://github.com/triggerdotdev/trigger.dev/commit/f999516a0d8ae2f3a19c76e11aae935e60c81d2c))
+- When the build log stream cannot be opened or disconnects during a build server deploy, the CLI now explains that the deployment itself is unaffected and exits immediately with a non-zero code, since it can no longer confirm the outcome. Previously a disconnect printed the raw stream error and left the process hanging. ([#4887](https://github.com/triggerdotdev/trigger.dev/pull/4887))
+- Build logs no longer include docker's registry login output, most notably the credential-storage warning on failed builds. ([#4909](https://github.com/triggerdotdev/trigger.dev/pull/4909))
+- Reduce sensitive values in CLI and SDK diagnostics, secure files created by `trigger env pull`, and remove credentials from collected Git remote metadata. ([`ff05824c1`](https://github.com/triggerdotdev/trigger.dev/commit/ff05824c1bdf1c2276d202ed84328c948cc290a3))
+- Updated dependencies:
+  - `@trigger.dev/core@4.6.0`
+  - `@trigger.dev/build@4.6.0`
+  - `@trigger.dev/schema-to-json@4.6.0`
+
 ## 4.5.16
 
 ### Patch Changes
