@@ -34,8 +34,10 @@ import { generateFriendlyId } from "../friendlyIdentifiers";
 import { engine } from "../runEngine.server";
 import {
   removeQueueConcurrencyLimits,
+  removeQueueTotalConcurrencyLimits,
   updateEnvConcurrencyLimits,
   updateQueueConcurrencyLimits,
+  updateQueueTotalConcurrencyLimits,
 } from "../runQueue.server";
 import { resolveScheduleWindow } from "@internal/schedule-engine";
 import { scheduleEngine } from "../scheduleEngine.server";
@@ -424,6 +426,7 @@ async function createWorkerTask(
         {
           name: task.queue?.name ?? `task/${task.id}`,
           concurrencyLimit: task.queue?.concurrencyLimit,
+          totalConcurrencyLimit: task.queue?.totalConcurrencyLimit,
         },
         task.id,
         task.queue?.name ? "NAMED" : "VIRTUAL",
@@ -571,6 +574,7 @@ async function createWorkerQueue(
   const taskQueue = await upsertWorkerQueueRecord(
     queueName,
     baseConcurrencyLimit ?? null,
+    queue.totalConcurrencyLimit ?? null,
     orderableName,
     queueType,
     worker,
@@ -578,6 +582,21 @@ async function createWorkerQueue(
   );
 
   const newConcurrencyLimit = taskQueue.concurrencyLimit;
+
+  /**
+   * The total limit key is separate from the per-queue limit key that pause zeroes,
+   * so it is safe to sync it regardless of the paused state. The engine clamps it
+   * to the environment limit at read time, so the raw declared value is stored.
+   */
+  if (typeof taskQueue.totalConcurrencyLimit === "number") {
+    await updateQueueTotalConcurrencyLimits(
+      environment,
+      taskQueue.name,
+      taskQueue.totalConcurrencyLimit
+    );
+  } else {
+    await removeQueueTotalConcurrencyLimits(environment, taskQueue.name);
+  }
 
   if (!taskQueue.paused) {
     if (typeof newConcurrencyLimit === "number") {
@@ -617,6 +636,7 @@ async function createWorkerQueue(
 async function upsertWorkerQueueRecord(
   queueName: string,
   concurrencyLimit: number | null,
+  totalConcurrencyLimit: number | null,
   orderableName: string,
   queueType: TaskQueueType,
   worker: BackgroundWorker,
@@ -643,6 +663,7 @@ async function upsertWorkerQueueRecord(
           name: queueName,
           orderableName,
           concurrencyLimit,
+          totalConcurrencyLimit,
           runtimeEnvironmentId: worker.runtimeEnvironmentId,
           projectId: worker.projectId,
           type: queueType,
@@ -667,6 +688,7 @@ async function upsertWorkerQueueRecord(
           // If overridden, keep current limit and update base; otherwise update limit normally
           concurrencyLimit: hasOverride ? undefined : concurrencyLimit,
           concurrencyLimitBase: hasOverride ? concurrencyLimit : undefined,
+          totalConcurrencyLimit,
         },
       });
     }
@@ -678,6 +700,7 @@ async function upsertWorkerQueueRecord(
       return await upsertWorkerQueueRecord(
         queueName,
         concurrencyLimit,
+        totalConcurrencyLimit,
         orderableName,
         queueType,
         worker,
