@@ -102,7 +102,7 @@ jobs:
               redis:7.2 \
               testcontainers/ryuk:0.14.0 \
               ghcr.io/s2-streamstore/s2:0.40.0@sha256:b26249e2ede0949755f5af8028185dc2bcfc3aa2db21eb9610543d144eb6ee9d \
-              minio/minio:latest
+              quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
             do
               pull "$image" &
               pids+=("$!")

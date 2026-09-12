@@ -16,7 +16,9 @@ export class MinIOContainer extends GenericContainer {
   private secretAccessKey = "minioadmin";
   private region = "us-east-1";
 
-  constructor(image = "minio/minio:latest") {
+  constructor(
+    image = "quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e"
+  ) {
     super(image);
     this.withExposedPorts(MINIO_PORT);
     this.withCommand(["server", "/data"]);

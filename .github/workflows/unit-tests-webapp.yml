@@ -109,7 +109,7 @@ jobs:
               redis:7.2 \
               testcontainers/ryuk:0.14.0 \
               electricsql/electric:1.2.4@sha256:20da3d0b0e74926c5623392db67fd56698b9e374c4aeb6cb5cadeb8fea171c36 \
-              minio/minio:latest
+              quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
             do
               pull "$image" &
               pids+=("$!")
