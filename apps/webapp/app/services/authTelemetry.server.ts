@@ -11,6 +11,7 @@ import type {
 import { authFeatureControls } from "~/services/authFeatureControls.server";
 import { rbac } from "~/services/rbac.server";
 import { singleton } from "~/utils/singleton";
+import type { ReplicaRetryOutcome } from "~/services/replicaLagRetry.server";
 
 type ApiAuthResult = "success" | "invalid" | "forbidden" | "disabled" | "error";
 
@@ -22,6 +23,10 @@ const telemetry = singleton("apiAuthTelemetry", () => {
   const duration = meter.createHistogram("api_auth.duration_ms", {
     description: "Environment bearer authentication duration",
     unit: "ms",
+  });
+  const branchReplicaMiss = meter.createCounter("api_auth.branch_env_replica_miss", {
+    description:
+      "Branch environment lookups that missed the read replica, by recovery outcome (or not_found)",
   });
 
   meter
@@ -35,8 +40,12 @@ const telemetry = singleton("apiAuthTelemetry", () => {
       });
     });
 
-  return { attempts, duration };
+  return { attempts, duration, branchReplicaMiss };
 });
+
+export function observeBranchEnvironmentReplicaMiss(outcome: ReplicaRetryOutcome) {
+  telemetry.branchReplicaMiss.add(1, { outcome });
+}
 
 export async function authenticateBearerWithTelemetry(
   request: Request,

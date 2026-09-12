@@ -6,6 +6,9 @@ import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.
 import { logger } from "~/services/logger.server";
 import { getUsername } from "~/utils/username";
 import { hashApiKey } from "~/utils/apiKeys";
+import { findWithReplicaRetry } from "~/services/replicaLagRetry.server";
+import { observeBranchEnvironmentReplicaMiss } from "~/services/authTelemetry.server";
+import { isReadReplicaClient } from "@internal/run-store";
 import { BuildRuntime } from "@trigger.dev/core/v3";
 import { isAdditionalApiKey } from "@trigger.dev/core/v3/apiKeys";
 import { isDefaultDevBranch, sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
@@ -109,6 +112,22 @@ export type ApiKeyEnvironmentResolution =
  * scopes explicitly grant full access; restricted keys fail closed here
  * (`reason: "restricted"`, so callers can explain the rejection).
  */
+// A just-created branch env can be missing from the replica when its first deploy authenticates.
+function findBranchChildWithReplicaRetry(
+  tx: PrismaClientOrTransaction,
+  parentEnvironmentId: string,
+  branchName: string
+) {
+  const where = { parentEnvironmentId, branchName, archivedAt: null };
+  return findWithReplicaRetry({
+    replicaFind: () => tx.runtimeEnvironment.findFirst({ where }),
+    primaryFind: () => prisma.runtimeEnvironment.findFirst({ where }),
+    hasDedicatedReplica: isReadReplicaClient(tx),
+    retryDelayMs: { min: 50, max: 200 },
+    onOutcome: observeBranchEnvironmentReplicaMiss,
+  });
+}
+
 async function resolveEnvironmentByApiKey(
   apiKey: string,
   branchName: string | undefined,
@@ -227,7 +246,9 @@ async function resolveEnvironmentByApiKey(
       return { ok: false, reason: "not-found" };
     }
 
-    const childEnvironment = environment.childEnvironments.at(0);
+    const childEnvironment =
+      environment.childEnvironments.at(0) ??
+      (await findBranchChildWithReplicaRetry(tx, environment.id, branch));
 
     if (childEnvironment) {
       return {
@@ -248,7 +269,9 @@ async function resolveEnvironmentByApiKey(
 
   // If there is a named DEV branch (other than default), return it
   if (environment.type === "DEVELOPMENT" && branch !== undefined && !isDefaultDevBranch(branch)) {
-    const childEnvironment = environment.childEnvironments.at(0);
+    const childEnvironment =
+      environment.childEnvironments.at(0) ??
+      (await findBranchChildWithReplicaRetry(tx, environment.id, branch));
 
     if (childEnvironment) {
       return {
