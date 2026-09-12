@@ -1,5 +1,62 @@
 # internal-platform
 
+## 4.6.0
+
+### Minor Changes
+
+- `chat.agent` persists a conversation through a `TranscriptStorage`: an adapter with `load` and `save` that the runtime drives after every turn, failed turn and history-changing action. The platform snapshot stays the default; bring your own to write the conversation to your database as it happens. Each save carries both the changes since the last one (so a row store writes only what changed, and an undo is one `truncateAfter`) and the whole transcript as it now stands (so a document store writes it as-is with no state of its own). ([#4896](https://github.com/triggerdotdev/trigger.dev/pull/4896))
+
+  ```ts
+  chat.agent({
+    id: "my-chat",
+    storage: myTranscriptStorage,
+    run: async ({ messages, signal, streamText }) =>
+      streamText({ model, messages, abortSignal: signal }),
+  });
+  ```
+
+  `chat.createLoadTranscriptAction(storage)` and `useLoadTranscript` read the conversation back the same way for every storage, and `runTranscriptStorageTests` from `@trigger.dev/sdk/ai/test` checks an implementation against the contract.
+
+  Compaction summaries and `chat.inject` context now survive a continuation run, and crash recovery runs for every agent, including one that owns its own context. `hydrateMessages` is deprecated in favour of `loadContext` on a storage. The snapshot format is now version 2, which older SDK versions cannot read.
+
+- Trigger.dev now uses Zod 4 by default. Projects using Zod 3.25.56 or later 3.x releases remain supported. ([#4039](https://github.com/triggerdotdev/trigger.dev/pull/4039))
+
+  Zod remains a runtime dependency of packages that execute schemas, so existing and new installations continue to receive it automatically. The matching peer dependency range allows package managers to reuse either a compatible Zod 3 or Zod 4 installation from your project.
+
+### Patch Changes
+
+- `chat.agent`: a run that recovers a session with more than one in-flight user message no longer drops the unanswered ones if it restarts mid-recovery. Recovered messages now hold the resume cursor until each has been answered, so a restart re-answers the rest instead of resuming past them. Previously the cursor could advance past messages that were only held in memory, so a crash before they were dispatched lost them. ([#4907](https://github.com/triggerdotdev/trigger.dev/pull/4907))
+- End a chat conversation from inside the agent with `chat.close({ reason })`. The session row is closed, further sends are refused with HTTP 409, and the run exits without scheduling a continuation, so a budget cap, a completed goal, or a signed-out user can stop the conversation rather than only the current run. ([`0a23814a0`](https://github.com/triggerdotdev/trigger.dev/commit/0a23814a0896205da227520bd417bd490a017379))
+
+  ```ts
+  chat.agent({
+    id: "budgeted-agent",
+    run: async ({ messages, signal }) =>
+      streamText({ model: openai("gpt-4o"), messages, abortSignal: signal }),
+    onBeforeTurnComplete: async ({ chatId }) => {
+      if (await overBudget(chatId)) {
+        chat.close({ reason: "Monthly budget reached" });
+      }
+    },
+  });
+  ```
+
+  The current turn still streams in full. Decide the close before the turn ends (`run()`, `prepareStep`, `onBeforeTurnComplete`) so the closed state rides out on that turn's final record and the user sees it as soon as the answer finishes. `TriggerChatTransport` picks the close up from the response stream or from a refused send, exposes it as `transport.sessionStatus(chatId)` plus `transport.sessionClosedReason(chatId)`, and stops sending and reconnecting. Closing a session from outside with `sessions.close()` now also reaches a live run, so an idle or suspended agent exits on its next wake instead of waiting out its idle timeout. Writes to a closed session's named side channels are refused with the same 409.
+
+- Reading a page of a chat agent's conversation no longer downloads the whole conversation. The saved transcript now carries an index, so asking for the most recent messages fetches only those messages, and history loads in roughly constant time however long the chat gets. ([`b7e86f2af`](https://github.com/triggerdotdev/trigger.dev/commit/b7e86f2afe1b1b4e38f1f2f00222eb172e2d0ee3))
+
+  A paged read also returns only the conversation itself. The model-side context an agent keeps, its compacted history and any injected context, is no longer included, so it cannot reach a browser through a load-transcript server action.
+
+  The built-in storage is deliberately basic about long conversations: once an agent has compacted, it keeps roughly the last hundred messages and drops the rest, so what it rewrites each turn stops growing. A conversation that never compacts is kept whole. If your app renders history further back than that, give the agent your own transcript storage.
+
+  The saved format has changed and an older SDK cannot read it, so a deployment rolled back to an earlier version will not find a readable transcript for conversations the newer version already saved, and those conversations continue from the live stream tail instead. Roll forward rather than back, or keep your own transcript storage.
+
+- Adds the `GetDeploymentArtifactUrlResponseBody` schema for the deployment artifact download URL endpoint. ([`1a5ad1e5f`](https://github.com/triggerdotdev/trigger.dev/commit/1a5ad1e5fbc54efbc1c61077ed966477e94a9849))
+- Deployments now return the `--external-id` they were deployed under as `externalId`, and a run can read its own from `ctx.deployment.externalId`. Also fixes the deployments list failing when one deployment had no git metadata. ([`879e8975b`](https://github.com/triggerdotdev/trigger.dev/commit/879e8975b13605fd7607c87bd906e640fca90755))
+- Add an optional `appliedSchedulePolicy` field to the schedule API response. It is present only when a non-overridable plan policy applies a minimum window to a schedule (e.g. a free-plan schedule's minimum run interval); the configured `window` continues to be returned separately and unchanged. ([`2991bb48a`](https://github.com/triggerdotdev/trigger.dev/commit/2991bb48a284f8b0c140b7a3890f1e4ee73e224d))
+- A failed write to a realtime or chat session stream no longer crashes the process running it, and a dropped chat session output write is now logged instead of swallowed. ([`fb25c0149`](https://github.com/triggerdotdev/trigger.dev/commit/fb25c0149c6c734f942f6f41210b197ed4b1f736))
+- Triggering a task whose id cannot be represented in a URL (for example an id containing an unpaired surrogate) now fails with a clear error naming the task id, instead of a cryptic URI error. ([`ad821eaea`](https://github.com/triggerdotdev/trigger.dev/commit/ad821eaead317bfe60e6d4ca10c00b6fdcbbc5fd))
+
 ## 4.5.16
 
 ### Patch Changes

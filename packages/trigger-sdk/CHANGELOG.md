@@ -1,5 +1,127 @@
 # @trigger.dev/sdk
 
+## 4.6.0
+
+### Minor Changes
+
+- Actions can now become turns. `onAction` edits history with `chat.history`; to answer after the edit, return `chat.turn()` and a turn runs on the edited history with everything a turn has: the agent's system prompt and tools, steering, compaction, injected instructions, `onTurnStart` and `onTurnComplete`, and persistence. A regenerate is `chat.history.slice(0, -1); return chat.turn();`. ([#4816](https://github.com/triggerdotdev/trigger.dev/pull/4816))
+
+  ```ts
+  onAction: async ({ action }) => {
+    if (action.type === "regenerate") {
+      chat.history.slice(0, -1);
+      return chat.turn();
+    }
+    if (action.type === "undo") chat.history.slice(0, -2); // edit only
+  },
+  ```
+
+  Returning a `StreamTextResult`, `string` or `UIMessage` from `onAction` is no longer supported and now fails with an error pointing to `chat.turn()`. A response produced that way skipped every turn guarantee, and its delivery to the browser was unreliable: the frontend never read the stream `transport.sendAction` returned, so a regenerate that appeared to work on the server did not render.
+
+  History edits made by an action are still persisted as before: platform-managed snapshots are written after the edit, and apps with their own store mirror the edit themselves.
+
+- End a chat conversation from inside the agent with `chat.close({ reason })`. The session row is closed, further sends are refused with HTTP 409, and the run exits without scheduling a continuation, so a budget cap, a completed goal, or a signed-out user can stop the conversation rather than only the current run. ([`0a23814a0`](https://github.com/triggerdotdev/trigger.dev/commit/0a23814a0896205da227520bd417bd490a017379))
+
+  ```ts
+  chat.agent({
+    id: "budgeted-agent",
+    run: async ({ messages, signal }) =>
+      streamText({ model: openai("gpt-4o"), messages, abortSignal: signal }),
+    onBeforeTurnComplete: async ({ chatId }) => {
+      if (await overBudget(chatId)) {
+        chat.close({ reason: "Monthly budget reached" });
+      }
+    },
+  });
+  ```
+
+  The current turn still streams in full. Decide the close before the turn ends (`run()`, `prepareStep`, `onBeforeTurnComplete`) so the closed state rides out on that turn's final record and the user sees it as soon as the answer finishes. `TriggerChatTransport` picks the close up from the response stream or from a refused send, exposes it as `transport.sessionStatus(chatId)` plus `transport.sessionClosedReason(chatId)`, and stops sending and reconnecting. Closing a session from outside with `sessions.close()` now also reaches a live run, so an idle or suspended agent exits on its next wake instead of waiting out its idle timeout. Writes to a closed session's named side channels are refused with the same 409.
+
+- `run()` now receives a `streamText` with your agent's managed options already applied, so they cannot be lost by leaving out the spread: ([#4884](https://github.com/triggerdotdev/trigger.dev/pull/4884))
+
+  ```ts
+  run: async ({ messages, signal, streamText }) =>
+    streamText({ model, messages, abortSignal: signal });
+  ```
+
+  Spreading `chat.toStreamTextOptions()` still works and is equivalent. The difference is what happens when your options collide with the managed ones. Passing `tools` after the spread replaces the skill tools, and passing your own `prepareStep` replaces the managed one, which silently switches off steering, compaction and injected context. The managed `streamText` merges tools and composes `prepareStep` instead, so neither can be turned off by accident.
+
+  `system` can be set at the call site, on `chat.agent({ system })`, or through `chat.prompt.set()`, but only in one of them: setting it in two places throws, because no single shape merges two system values across every supported AI SDK version, and dropping one silently is the failure this seam exists to prevent. Injected instructions append to whichever one is in play.
+
+  `chat.agent()` also takes `registry`, `cacheControl` and `systemProviderOptions` now, so a managed prompt's model and its cache breakpoint no longer have to be passed at the call site. `chat.toStreamTextOptions()` applies them as well, so spreading it into the `streamText` imported from `ai` stays equivalent to the one `run()` receives.
+
+  `chat.headStart` and `chat.startHeadStart` hand their `run` the same thing, carrying the options the handover protocol depends on. There it matters more: re-setting `messages`, `prompt`, `stopWhen` or `abortSignal` after a spread breaks the handover rather than degrading a feature, and nothing caught it. On the managed one those four keys are a type error; `tools` is yours to pass.
+
+- `chat.agent` persists a conversation through a `TranscriptStorage`: an adapter with `load` and `save` that the runtime drives after every turn, failed turn and history-changing action. The platform snapshot stays the default; bring your own to write the conversation to your database as it happens. Each save carries both the changes since the last one (so a row store writes only what changed, and an undo is one `truncateAfter`) and the whole transcript as it now stands (so a document store writes it as-is with no state of its own). ([#4896](https://github.com/triggerdotdev/trigger.dev/pull/4896))
+
+  ```ts
+  chat.agent({
+    id: "my-chat",
+    storage: myTranscriptStorage,
+    run: async ({ messages, signal, streamText }) =>
+      streamText({ model, messages, abortSignal: signal }),
+  });
+  ```
+
+  `chat.createLoadTranscriptAction(storage)` and `useLoadTranscript` read the conversation back the same way for every storage, and `runTranscriptStorageTests` from `@trigger.dev/sdk/ai/test` checks an implementation against the contract.
+
+  Compaction summaries and `chat.inject` context now survive a continuation run, and crash recovery runs for every agent, including one that owns its own context. `hydrateMessages` is deprecated in favour of `loadContext` on a storage. The snapshot format is now version 2, which older SDK versions cannot read.
+
+- Actions are sent through `useChat` so a turn that follows one renders like any turn. `TriggerChatTransport` recognises `body.action` on a `useChat` request and sends it as an action, so `sendMessage(undefined, { body: { action } })` or `regenerate({ body: { action } })` sends the action and `useChat` owns the response: it streams into the message list, `status` and `error` behave as for a message, and `stop` works. `useChatActions({ sendMessage })` in `@trigger.dev/sdk/chat/react` is a two-line convenience over that. ([#4816](https://github.com/triggerdotdev/trigger.dev/pull/4816))
+
+  ```tsx
+  const { sendMessage } = useChat({ id: chatId, transport });
+  const { sendAction } = useChatActions({ sendMessage });
+  sendAction({ type: "regenerate" });
+  ```
+
+  Previously the frontend docs said `useChat` consumed the stream `transport.sendAction` returns; it never did, so an action's answer was never rendered by an app following them. `transport.sendAction` still returns a stream that callers outside `useChat` must read, and now accepts `{ abortSignal, metadata }`, with per-action metadata merged over the transport's `clientData`.
+
+- Trigger.dev now uses Zod 4 by default. Projects using Zod 3.25.56 or later 3.x releases remain supported. ([#4039](https://github.com/triggerdotdev/trigger.dev/pull/4039))
+
+  Zod remains a runtime dependency of packages that execute schemas, so existing and new installations continue to receive it automatically. The matching peer dependency range allows package managers to reuse either a compatible Zod 3 or Zod 4 installation from your project.
+
+### Patch Changes
+
+- Chat sessions can now be pinned to a deployment, so a conversation keeps talking to the agent version its release shipped with, and follows the pin on its own when your app redeploys. Opt out with `triggerConfig: { externalDeploymentId: null }` or `versionSkew: "hold"`. Also fixes `AgentChat` ignoring `maxDuration`, `region` and `lockToVersion`, and a restored `AgentChat` session never picking up a new deployment id. ([`1133ad45e`](https://github.com/triggerdotdev/trigger.dev/commit/1133ad45e7c1edbc2ff053678e37146c155521ef))
+- `chat.agent`: after a Head Start turn whose handed-over tool call was followed by more tool steps, the next turn no longer fails with `tool_use ids must be unique`. The runtime kept the warm step's pending tool call in the model context alongside the completed response that already contained it. ([`8b72e6c06`](https://github.com/triggerdotdev/trigger.dev/commit/8b72e6c0616b1570d57f35b5e2a736791ad3c6f0))
+- `chat.agent`: a continuation boot no longer re-dispatches the message that resumed it, and a turn with no new user message no longer calls the model. Previously a resumed run could answer the same message twice, and the second attempt failed against providers that reject a trailing assistant message, overwriting an answer that had already completed. ([`35e57e785`](https://github.com/triggerdotdev/trigger.dev/commit/35e57e785c6c80ee22329c597287ff88a3486e4e))
+- `chat.agent`: a run that recovers a session with more than one in-flight user message no longer drops the unanswered ones if it restarts mid-recovery. Recovered messages now hold the resume cursor until each has been answered, so a restart re-answers the rest instead of resuming past them. Previously the cursor could advance past messages that were only held in memory, so a crash before they were dispatched lost them. ([#4907](https://github.com/triggerdotdev/trigger.dev/pull/4907))
+- Reading a page of a chat agent's conversation no longer downloads the whole conversation. The saved transcript now carries an index, so asking for the most recent messages fetches only those messages, and history loads in roughly constant time however long the chat gets. ([`b7e86f2af`](https://github.com/triggerdotdev/trigger.dev/commit/b7e86f2afe1b1b4e38f1f2f00222eb172e2d0ee3))
+
+  A paged read also returns only the conversation itself. The model-side context an agent keeps, its compacted history and any injected context, is no longer included, so it cannot reach a browser through a load-transcript server action.
+
+  The built-in storage is deliberately basic about long conversations: once an agent has compacted, it keeps roughly the last hundred messages and drops the rest, so what it rewrites each turn stops growing. A conversation that never compacts is kept whole. If your app renders history further back than that, give the agent your own transcript storage.
+
+  The saved format has changed and an older SDK cannot read it, so a deployment rolled back to an earlier version will not find a readable transcript for conversations the newer version already saved, and those conversations continue from the live stream tail instead. Roll forward rather than back, or keep your own transcript storage.
+
+- `useTriggerChatTransport` now picks up changes to `accessToken`, `startSession` and `fetch` on re-render, so a chat that stays mounted while the surrounding page changes no longer keeps sending to the endpoint captured on first render. ([`9ae9c1ae4`](https://github.com/triggerdotdev/trigger.dev/commit/9ae9c1ae43a91e21afcc6e2c97c4b63b9b0bff71))
+- Steering messages are now kept in the conversation when you drive turns yourself with `chat.createSession()` or `chat.MessageAccumulator`. Previously a message that arrived mid-answer shaped that answer and then existed nowhere: it was missing from `turn.uiMessages`, so an app persisting from there never stored it, missing from `turn.messages`, so every later turn answered as though it had never been sent, and it was not queued as its own turn either. It now lands in both, the same way it does on `chat.agent`. ([#4816](https://github.com/triggerdotdev/trigger.dev/pull/4816))
+- Injected system context is merged into a single instruction block, so it works on every supported AI SDK version. Note that a cached system prompt gives up its cache entry for as long as an injection is live, since the cached prefix has changed. ([#4816](https://github.com/triggerdotdev/trigger.dev/pull/4816))
+- `chat.inject()` with `role: "system"` now works. It previously put the system message into the conversation, which AI SDK 7 rejects for every provider: the next turn died with a generic "An error occurred." and persisted an empty assistant message, so the agent looked like it had stopped answering. System-role context is now appended to the model's instructions, which is also the only way to inject context the agent treats as trusted. ([#4816](https://github.com/triggerdotdev/trigger.dev/pull/4816))
+
+  Two things to know. Instructions are delivered by `chat.toStreamTextOptions()`, so a `run()` that calls `streamText` without spreading it does not receive a system-role injection. The conversational lane has no such requirement. And an injection applies to the next turn only, rather than repeating on every turn that follows it. Every inference call in that turn sees it, so a `run()` that builds options more than once gets the same instructions each time. An instruction injected after an action has run, and before the next message, reaches that next turn rather than the one after it.
+
+- A failed write to a realtime or chat session stream no longer crashes the process running it, and a dropped chat session output write is now logged instead of swallowed. ([`fb25c0149`](https://github.com/triggerdotdev/trigger.dev/commit/fb25c0149c6c734f942f6f41210b197ed4b1f736))
+- Undo, edit and regenerate now survive a run ending. History rolled back from `onAction` was only kept in the running worker's memory, so the rollback held while that worker stayed warm and then reverted on the next continuation. The undone messages came back, minutes later, with no error. This also holds when the turn before the action failed: the rollback used to be written against the cursor from before that turn, so a continuation could replay output the failed turn had already superseded. ([#4816](https://github.com/triggerdotdev/trigger.dev/pull/4816))
+- Reduce sensitive values in CLI and SDK diagnostics, secure files created by `trigger env pull`, and remove credentials from collected Git remote metadata. ([`ff05824c1`](https://github.com/triggerdotdev/trigger.dev/commit/ff05824c1bdf1c2276d202ed84328c948cc290a3))
+- Server-side `AgentChat` streams now reconnect when the connection drops mid-turn instead of ending with a truncated reply, and a turn that still cannot be resumed ends with an error rather than a silent truncation. ([`8bf27a629`](https://github.com/triggerdotdev/trigger.dev/commit/8bf27a62937b5858f4963d65a9d7802982f1724e))
+- Session public tokens can now be narrowed to one stream: `read: { sessions: "chat_123:out" }` grants read access to that session's `.out` channel only, without access to the session record or its other channels. ([`33cf5701b`](https://github.com/triggerdotdev/trigger.dev/commit/33cf5701b4536012d45e365761c4a36067ea5f1d))
+- Fixes storage of large trigger payloads for task ids containing a slash, which could fail the trigger with an "Invalid packet storage path" error. It affected ids that started or ended with a slash, contained two slashes in a row, or contained a `.` or `..` path component. The storage path is now built from a generated id rather than from the task id, so no task id can produce an unusable one, and payloads that are already stored are still read from where they were written. ([`ed37e19c9`](https://github.com/triggerdotdev/trigger.dev/commit/ed37e19c9f70495ba2a067245f8a4a83aaace2c3))
+- Steering messages injected mid-answer are now part of the conversation, both for your hooks and for the model on later turns. Previously they reached the model for the answer they steered and reached the browser, but nothing else: `onTurnComplete` never saw them, so an app storing its own transcript lost the instruction the answer was shaped by, and it vanished from the conversation on reload. The model also forgot the instruction from the next turn onwards, answering as though the message had never been sent, while the chat UI still showed it. This holds when the steered turn fails part-way, and when `pendingMessages.prepare` reshapes the message: later turns now see the same form the steered turn did, not the original message. ([#4816](https://github.com/triggerdotdev/trigger.dev/pull/4816))
+
+  Approving a tool call no longer undoes compaction. A tool-approval continuation used to rebuild the model's context from the full conversation, so a chat that had been summarised to fit the context window was sent the whole transcript again on the next call, and could go over the limit it had just been compacted to avoid.
+
+  If you worked around this by saving steering messages as they arrive, in `pendingMessages.onReceived` for example, that write now duplicates the one you get from `newUIMessages`. Drop it, or skip messages you have already stored.
+
+- Reloading a chat while the agent is still answering now shows the message being answered. Previously the incoming message was only persisted once the turn finished, so a refresh mid-answer showed the reply arriving with no question above it. ([`986811008`](https://github.com/triggerdotdev/trigger.dev/commit/9868110089cb08817801bc4e1026dd6c781be1be))
+
+  Adds `chat.deferBeforeOutput()` for app-owned writes that the next page load has to see. Like `chat.defer()` the work is not awaited by the hook that registers it, so it runs alongside the model and costs no time to first token, but the answer is held until it lands. Use it for the conversation or message write you previously had to `await` in `onTurnStart`, as long as nothing else in the turn reads that write back: it orders the write against what the frontend can see, not against the model, so a tool that reads the same row still needs an awaited write.
+
+- chat.agent transcript fixes: a turn that errors before the model produces any content no longer stores an empty assistant message, an error thrown without a message now shows a generic error instead of a blank one, and a custom transcript storage no longer needs to preserve exact message JSON for a compaction to survive a continuation. ([#4910](https://github.com/triggerdotdev/trigger.dev/pull/4910))
+- Updated dependencies:
+  - `@trigger.dev/core@4.6.0`
+
 ## 4.5.16
 
 ### Patch Changes
