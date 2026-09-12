@@ -2049,6 +2049,222 @@ describe("MollifierBuffer.mutateSnapshot", () => {
   );
 
   redisTest(
+    "remove_tags removes the named tags and preserves the order of the survivors",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
+      try {
+        await buffer.accept({
+          runId: "r_rm1",
+          envId: "env_m",
+          orgId: "org_1",
+          payload: serialiseSnapshot({ tags: ["z", "a", "m", "b", "c"] }),
+        });
+
+        const result = await buffer.mutateSnapshot("r_rm1", {
+          type: "remove_tags",
+          tags: ["a", "b"],
+        });
+        expect(result).toBe("applied_to_snapshot");
+
+        const entry = await buffer.getEntry("r_rm1");
+        const payload = JSON.parse(entry!.payload) as { tags: string[] };
+        expect(payload.tags).toEqual(["z", "m", "c"]);
+      } finally {
+        await buffer.close();
+      }
+    }
+  );
+
+  redisTest(
+    "remove_tags is an applied no-op for tags the snapshot doesn't carry",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
+      try {
+        await buffer.accept({
+          runId: "r_rm2",
+          envId: "env_m",
+          orgId: "org_1",
+          payload: serialiseSnapshot({ tags: ["a", "b"] }),
+        });
+
+        // Idempotent: unknown tags don't reject, they just change nothing.
+        const result = await buffer.mutateSnapshot("r_rm2", {
+          type: "remove_tags",
+          tags: ["nope"],
+        });
+        expect(result).toBe("applied_to_snapshot");
+
+        const entry = await buffer.getEntry("r_rm2");
+        const payload = JSON.parse(entry!.payload) as { tags: string[] };
+        expect(payload.tags).toEqual(["a", "b"]);
+      } finally {
+        await buffer.close();
+      }
+    }
+  );
+
+  redisTest(
+    "remove_tags on a snapshot with no tags field is an applied no-op",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
+      try {
+        await buffer.accept({
+          runId: "r_rm3",
+          envId: "env_m",
+          orgId: "org_1",
+          payload: serialiseSnapshot({ taskId: "t" }),
+        });
+
+        const result = await buffer.mutateSnapshot("r_rm3", {
+          type: "remove_tags",
+          tags: ["a"],
+        });
+        expect(result).toBe("applied_to_snapshot");
+
+        const entry = await buffer.getEntry("r_rm3");
+        const payload = JSON.parse(entry!.payload) as { taskId: string; tags?: unknown };
+        expect(payload.taskId).toBe("t");
+        expect(payload.tags).toBeUndefined();
+      } finally {
+        await buffer.close();
+      }
+    }
+  );
+
+  redisTest(
+    "remove_tags removing the LAST tag never writes a JSON object for tags",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
+      try {
+        await buffer.accept({
+          runId: "r_rm4",
+          envId: "env_m",
+          orgId: "org_1",
+          payload: serialiseSnapshot({ taskId: "t", tags: ["only"] }),
+        });
+
+        const result = await buffer.mutateSnapshot("r_rm4", {
+          type: "remove_tags",
+          tags: ["only"],
+        });
+        expect(result).toBe("applied_to_snapshot");
+
+        const entry = await buffer.getEntry("r_rm4");
+
+        // The hazard this guards: cjson encodes an EMPTY Lua table as `{}` (a JSON
+        // object), not `[]`. Readers do `Array.isArray(tags)` / spread the value, so a
+        // `{"tags":{}}` payload would either silently drop the field or throw. The Lua
+        // drops the field entirely instead.
+        expect(entry!.payload).not.toContain('"tags":{}');
+
+        const payload = JSON.parse(entry!.payload) as { taskId: string; tags?: unknown };
+        expect(payload.taskId).toBe("t");
+        // Either absent or a real array — never an object.
+        expect(payload.tags === undefined || Array.isArray(payload.tags)).toBe(true);
+        // And in both shapes a reader normalises it to the empty list.
+        expect(payload.tags ?? []).toEqual([]);
+      } finally {
+        await buffer.close();
+      }
+    }
+  );
+
+  redisTest(
+    "remove_tags then append_tags rebuilds a dense array after the list was emptied",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
+      try {
+        await buffer.accept({
+          runId: "r_rm5",
+          envId: "env_m",
+          orgId: "org_1",
+          payload: serialiseSnapshot({ tags: ["a", "b"] }),
+        });
+
+        expect(
+          await buffer.mutateSnapshot("r_rm5", { type: "remove_tags", tags: ["a", "b"] })
+        ).toBe("applied_to_snapshot");
+
+        expect(await buffer.mutateSnapshot("r_rm5", { type: "append_tags", tags: ["c"] })).toBe(
+          "applied_to_snapshot"
+        );
+
+        const entry = await buffer.getEntry("r_rm5");
+        const payload = JSON.parse(entry!.payload) as { tags: string[] };
+        expect(payload.tags).toEqual(["c"]);
+      } finally {
+        await buffer.close();
+      }
+    }
+  );
+
+  redisTest(
+    "remove_tags returns not_found when no entry exists for the runId",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
+      try {
+        const result = await buffer.mutateSnapshot("nope_rm", {
+          type: "remove_tags",
+          tags: ["x"],
+        });
+        // Critically NOT 'busy' — an unhandled patch type falls into the terminal
+        // else branch, which the API turns into a 2s stall then a 503.
+        expect(result).toBe("not_found");
+      } finally {
+        await buffer.close();
+      }
+    }
+  );
+
+  redisTest(
     "set_metadata replaces metadata + metadataType (last-write-wins)",
     { timeout: 20_000 },
     async ({ redisContainer }) => {
