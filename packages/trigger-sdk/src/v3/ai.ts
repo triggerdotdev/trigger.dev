@@ -5359,6 +5359,12 @@ async function replaceModelRun(
 ): Promise<boolean> {
   const oldRun = await toModelMessages([stripProviderMetadata(oldUi)]);
   const newRun = await toModelMessages([stripProviderMetadata(newUi)]);
+  // A message that converts to nothing (a pending tool call with no output yet,
+  // which `ignoreIncompleteToolCalls` drops) locates no run in the lane. Matching
+  // an empty slice would splice the new run in without removing what the message
+  // actually contributed, such as a spliced head-start partial, and the lane would
+  // then carry the same tool call twice.
+  if (oldRun.length === 0) return false;
   const end = lane.length - tailAfter;
   const start = end - oldRun.length;
   if (start < 0 || end > lane.length) return false;
