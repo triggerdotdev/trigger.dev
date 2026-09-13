@@ -96,7 +96,13 @@ export async function stringifyIO(value: any): Promise<IOPacket> {
 
     return { data, dataType: "application/super+json" };
   } catch {
-    return { data: value, dataType: "application/json" };
+    try {
+      const data = JSON.stringify(value, makeSafeReplacer());
+
+      return { data, dataType: "application/json" };
+    } catch {
+      return { data: String(value), dataType: "text/plain" };
+    }
   }
 }
 
