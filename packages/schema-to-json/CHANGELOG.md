@@ -1,5 +1,18 @@
 # @trigger.dev/schema-to-json
 
+## 4.6.0
+
+### Minor Changes
+
+- Trigger.dev now uses Zod 4 by default. Projects using Zod 3.25.56 or later 3.x releases remain supported. ([#4039](https://github.com/triggerdotdev/trigger.dev/pull/4039))
+
+  Zod remains a runtime dependency of packages that execute schemas, so existing and new installations continue to receive it automatically. The matching peer dependency range allows package managers to reuse either a compatible Zod 3 or Zod 4 installation from your project.
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.6.0`
+
 ## 4.5.16
 
 ### Patch Changes
