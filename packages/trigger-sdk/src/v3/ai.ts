@@ -81,6 +81,7 @@ import {
   createTranscriptShadow,
   defaultStorage,
   diffTranscript,
+  fingerprintMessage,
   parseTranscriptRuntimeState,
   restoreModelLane,
   type TranscriptChange,
@@ -1137,6 +1138,24 @@ const chatOutGateKey = locals.create<ChatOutGate>("chat.outGate");
  * @internal
  */
 const CHAT_OUT_GATE_TIMEOUT_MS = 10_000;
+
+/**
+ * The ids to save non-final after a failed turn: the stream's partial answer,
+ * but only while the message under its id is still that partial by content.
+ * `onTurnComplete` may hand back a cloned history (same content, new objects),
+ * which keeps it partial, or replace it in place, which finishes it.
+ * @internal
+ */
+function partialStillUnfinished(
+  partial: UIMessage | undefined,
+  fingerprint: string | undefined,
+  messages: readonly UIMessage[]
+): Set<string> | undefined {
+  if (!partial || fingerprint === undefined) return undefined;
+  const current = messages.find((message) => message.id === partial.id);
+  if (!current || fingerprintMessage(current) !== fingerprint) return undefined;
+  return new Set([partial.id]);
+}
 
 async function awaitChatOutGate(): Promise<void> {
   const gate = locals.get(chatOutGateKey);
@@ -10098,6 +10117,11 @@ function chatAgent<
               }
             }
             const includePartial = partialResponse != null && !responseCommitted;
+            // What the stream left behind, by content. After `onTurnComplete` the
+            // partial is still unfinished only if the message under its id is
+            // byte-for-byte this: a clone keeps it partial, an edit finishes it.
+            const partialFingerprint =
+              includePartial && partialResponse ? fingerprintMessage(partialResponse) : undefined;
             let erroredUIMessagesWithPartial: TUIMessage[] = !includePartial
               ? erroredUIMessages
               : partialIdx === -1
@@ -10188,6 +10212,12 @@ function chatAgent<
               }
             }
 
+            // An earlier hook that set the history and then threw (which is one way
+            // to get here) left its abandoned edit pending. Discard it before the
+            // failed turn continues, so neither the error-path `onTurnComplete`
+            // below nor the next turn's history reads mistake it for a real edit.
+            locals.set(chatOverrideMessagesKey, undefined);
+
             if (onTurnComplete) {
               try {
                 await tracer.startActiveSpan(
@@ -10218,6 +10248,24 @@ function chatAgent<
                       error: turnError,
                       lastEventId: errorTurnCompleteResult?.lastEventId,
                     });
+
+                    // The hook may edit the history here too (a failure record, a
+                    // card the turn left open). Honour it the way the success path
+                    // does, so the edit reaches the accumulator and the save below.
+                    const errorTurnOverride = locals.get(chatOverrideMessagesKey);
+                    if (errorTurnOverride) {
+                      locals.set(chatOverrideMessagesKey, undefined);
+                      // Convert first: a rejected conversion (a tool's `toModelOutput`
+                      // can throw) must leave every lane on the history it had.
+                      const overrideUIMessages = [...errorTurnOverride] as TUIMessage[];
+                      const overrideModelMessages = await toModelMessages(errorTurnOverride);
+                      erroredUIMessagesWithPartial = overrideUIMessages;
+                      accumulatedUIMessages = overrideUIMessages;
+                      accumulatedMessages = overrideModelMessages;
+                      laneCompacted = false;
+                      laneInjections = [];
+                      locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+                    }
                   },
                   {
                     attributes: {
@@ -10232,6 +10280,7 @@ function chatAgent<
               } catch {
                 // A throwing onTurnComplete on the error path must not crash
                 // the run — keep the conversation alive for the next message.
+                locals.set(chatOverrideMessagesKey, undefined);
               }
             }
 
@@ -10250,8 +10299,14 @@ function chatAgent<
                   trigger: storageTrigger(currentWirePayload.trigger),
                   clientData: turnClientData,
                   lastOutEventId: lastSnapshotOutEventId,
-                  nonFinalIds:
-                    includePartial && partialResponse ? new Set([partialResponse.id]) : undefined,
+                  // The partial is non-final only while the message under its id is
+                  // still what the stream left behind. A hook that replaced it (a
+                  // closed card, a finished body) produced a final message.
+                  nonFinalIds: partialStillUnfinished(
+                    partialResponse,
+                    partialFingerprint,
+                    erroredUIMessagesWithPartial
+                  ),
                 });
               } catch (error) {
                 logger.warn("chat.agent: error-path snapshot write failed", {

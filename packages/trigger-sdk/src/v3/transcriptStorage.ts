@@ -191,7 +191,10 @@ export type TranscriptShadow = {
   nonFinal: Set<string>;
 };
 
-function fingerprintMessage(message: UIMessage): string {
+/**
+ * The content identity the transcript shadow compares messages by. @internal
+ */
+export function fingerprintMessage(message: UIMessage): string {
   return JSON.stringify(message);
 }
 
