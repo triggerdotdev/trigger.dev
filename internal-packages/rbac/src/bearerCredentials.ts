@@ -9,6 +9,7 @@ import {
   type BearerAuthResult,
 } from "@trigger.dev/plugins";
 import { createHash } from "node:crypto";
+import { setTimeout as sleep } from "node:timers/promises";
 import { buildJwtAbility, permissiveAbility } from "./ability.js";
 
 export type BearerCredentialClients = {
@@ -77,6 +78,27 @@ export class BearerCredentialResolver {
   ) {
     this.prisma = clients.primary;
     this.replica = clients.replica;
+  }
+
+  // A just-created branch env can be missing from the replica when its first deploy
+  // authenticates. Retry the replica once with jitter, then let the primary decide.
+  private async findBranchChildWithRetry(
+    parentEnvironmentId: string,
+    branchName: string
+  ): Promise<EnvironmentWithBranches["childEnvironments"][number] | null> {
+    if (this.replica === this.prisma) {
+      return null;
+    }
+
+    const where = { parentEnvironmentId, branchName, archivedAt: null };
+
+    await sleep(50 + Math.random() * 150);
+    const retried = await this.replica.runtimeEnvironment.findFirst({ where });
+    if (retried) {
+      return retried;
+    }
+
+    return this.prisma.runtimeEnvironment.findFirst({ where });
   }
 
   async authenticate(
@@ -272,7 +294,18 @@ export class BearerCredentialResolver {
       };
     }
 
-    const [branchError, resolvedEnvironment] = resolveBranch(env, branchName, allowPreviewParent);
+    let branchResolution = resolveBranch(env, branchName, allowPreviewParent);
+    if (branchResolution[0] === "No matching branch env" && branchName !== null) {
+      const child = await this.findBranchChildWithRetry(env.id, branchName);
+      if (child) {
+        branchResolution = resolveBranch(
+          { ...env, childEnvironments: [child] },
+          branchName,
+          allowPreviewParent
+        );
+      }
+    }
+    const [branchError, resolvedEnvironment] = branchResolution;
     if (branchError !== null) {
       return {
         ok: false,
@@ -324,11 +357,18 @@ export class BearerCredentialResolver {
       return { ok: false, status: 401, error: "Invalid API key", resolution };
     }
 
-    const [branchError, resolvedEnvironment] = resolveBranch(
-      match.runtimeEnvironment,
-      branchName,
-      allowPreviewParent
-    );
+    let branchResolution = resolveBranch(match.runtimeEnvironment, branchName, allowPreviewParent);
+    if (branchResolution[0] === "No matching branch env" && branchName !== null) {
+      const child = await this.findBranchChildWithRetry(match.runtimeEnvironment.id, branchName);
+      if (child) {
+        branchResolution = resolveBranch(
+          { ...match.runtimeEnvironment, childEnvironments: [child] },
+          branchName,
+          allowPreviewParent
+        );
+      }
+    }
+    const [branchError, resolvedEnvironment] = branchResolution;
     if (branchError !== null) {
       return {
         ok: false,

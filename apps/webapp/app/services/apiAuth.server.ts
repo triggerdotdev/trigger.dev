@@ -2,7 +2,7 @@ import { json } from "@remix-run/server-runtime";
 import { SignJWT } from "jose";
 import { z } from "zod";
 
-import { $replica } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { findProjectByRef } from "~/models/project.server";
 import {
@@ -36,11 +36,15 @@ import {
 } from "./organizationAccessToken.server";
 import { isPublicJWT, validatePublicJwtKey } from "./realtime/jwtAuth.server";
 import { isDefaultDevBranch, sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
+import type { Prisma } from "@trigger.dev/database";
 import {
   authenticateAuthorizeBearerWithTelemetry,
   authenticateBearerWithTelemetry,
+  observeBranchEnvironmentReplicaMiss,
   observeLegacyBearerAuthentication,
 } from "~/services/authTelemetry.server";
+import { findWithReplicaRetry } from "~/services/replicaLagRetry.server";
+import { isReadReplicaClient } from "@internal/run-store";
 
 const ClaimsSchema = z.object({
   scopes: z.array(z.string()).optional(),
@@ -663,6 +667,21 @@ export async function authenticatedEnvironmentForAuthentication(
   return environment;
 }
 
+const BRANCH_ENV_REPLICA_RETRY_DELAY_MS = { min: 50, max: 200 };
+
+// A just-created branch env can be missing from the replica when its first deploy authenticates.
+function findBranchEnvironment(where: Prisma.RuntimeEnvironmentWhereInput) {
+  return findWithReplicaRetry({
+    replicaFind: () =>
+      $replica.runtimeEnvironment.findFirst({ where, include: authIncludeWithParent }),
+    primaryFind: () =>
+      prisma.runtimeEnvironment.findFirst({ where, include: authIncludeWithParent }),
+    hasDedicatedReplica: isReadReplicaClient($replica),
+    retryDelayMs: BRANCH_ENV_REPLICA_RETRY_DELAY_MS,
+    onOutcome: observeBranchEnvironmentReplicaMiss,
+  });
+}
+
 async function resolveEnvironmentForAuthentication(
   auth: AuthenticationResult,
   projectRef: string,
@@ -752,21 +771,18 @@ async function resolveEnvironmentForAuthentication(
         return toAuthenticated(environment);
       }
 
-      const environment = await $replica.runtimeEnvironment.findFirst({
-        where: {
-          projectId: project.id,
-          type: slug === "dev" ? "DEVELOPMENT" : "PREVIEW",
-          branchName: resolvedBranch,
-          ...(slug === "dev"
-            ? {
-                orgMember: {
-                  userId: user.id,
-                },
-              }
-            : {}),
-          archivedAt: null,
-        },
-        include: authIncludeWithParent,
+      const environment = await findBranchEnvironment({
+        projectId: project.id,
+        type: slug === "dev" ? "DEVELOPMENT" : "PREVIEW",
+        branchName: resolvedBranch,
+        ...(slug === "dev"
+          ? {
+              orgMember: {
+                userId: user.id,
+              },
+            }
+          : {}),
+        archivedAt: null,
       });
 
       if (!environment) {
@@ -823,15 +839,12 @@ async function resolveEnvironmentForAuthentication(
         return toAuthenticated(environment);
       }
 
-      const environment = await $replica.runtimeEnvironment.findFirst({
-        where: {
-          projectId: project.id,
-          // No Development branches for OAT
-          type: "PREVIEW",
-          branchName: resolvedBranch,
-          archivedAt: null,
-        },
-        include: authIncludeWithParent,
+      const environment = await findBranchEnvironment({
+        projectId: project.id,
+        // No Development branches for OAT
+        type: "PREVIEW",
+        branchName: resolvedBranch,
+        archivedAt: null,
       });
 
       if (!environment) {
