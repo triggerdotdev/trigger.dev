@@ -13,6 +13,8 @@ import {
   rootEnvironmentWhere,
   toBranchableEnvironmentType,
 } from "~/utils/branchableEnvironment";
+import { devPresence } from "~/presenters/v3/DevPresence.server";
+import { ArchiveBranchService } from "./archiveBranch.server";
 import { logger } from "./logger.server";
 import { getCurrentPlan, getLimit } from "./platform.v3.server";
 import { type z } from "zod";
@@ -24,6 +26,12 @@ import {
 } from "~/v3/services/billingLimit/getInitialEnvPauseStateForBillingLimit.server";
 
 type CreateBranchOptions = z.infer<typeof CreateBranchOptions>;
+type OrgFilter =
+  | { type: "userMembership"; userId: string }
+  | { type: "orgId"; organizationId: string };
+
+const DEV_BRANCH_STALE_AFTER_MS = 60 * 60 * 1000;
+const DEV_BRANCH_AUTO_ARCHIVE_LIMIT = 3;
 
 export class UpsertBranchService {
   #prismaClient: PrismaClient;
@@ -37,9 +45,7 @@ export class UpsertBranchService {
     // Currently authorization checks are spread across the controller/route layer and the service layer. Often we check in multiple places for org/project membership.
     // Ideally we would take care of both the authentication and authorization checks in the controllers and routes.
     // That would unify how we handle authorization and org/project membership checks. Also it would make the service layer queries simpler.
-    orgFilter:
-      | { type: "userMembership"; userId: string }
-      | { type: "orgId"; organizationId: string },
+    orgFilter: OrgFilter,
     { projectId, env, branchName, git }: CreateBranchOptions
   ) {
     const parentEnvType = toBranchableEnvironmentType(env);
@@ -120,7 +126,7 @@ export class UpsertBranchService {
         };
       }
 
-      const limits = await checkBranchLimit({
+      let limits = await checkBranchLimit({
         prisma: this.#prismaClient,
         organizationId: parentEnvironment.organization.id,
         projectId: parentEnvironment.project.id,
@@ -128,6 +134,26 @@ export class UpsertBranchService {
         userId,
         newBranchName: sanitizedBranchName,
       });
+      const autoArchivedBranches = limits.isAtLimit
+        ? await autoArchiveStaleDevBranches({
+            prisma: this.#prismaClient,
+            orgFilter,
+            parentEnvironment,
+            userId,
+            limit: limits.limit,
+          })
+        : [];
+
+      if (autoArchivedBranches.length > 0) {
+        limits = await checkBranchLimit({
+          prisma: this.#prismaClient,
+          organizationId: parentEnvironment.organization.id,
+          projectId: parentEnvironment.project.id,
+          type: parentEnvType,
+          userId,
+          newBranchName: sanitizedBranchName,
+        });
+      }
 
       if (limits.isAtLimit) {
         // DEVELOPMENT has no upgrade path, so only PREVIEW mentions upgrading.
@@ -223,6 +249,7 @@ export class UpsertBranchService {
         branch,
         organization: parentEnvironment.organization,
         project: parentEnvironment.project,
+        autoArchivedBranches,
       };
     } catch (e) {
       logger.error("CreateBranchService error", { error: e });
@@ -231,6 +258,84 @@ export class UpsertBranchService {
         error: e instanceof Error ? e.message : "Failed to create branch",
       };
     }
+  }
+}
+
+async function autoArchiveStaleDevBranches({
+  prisma,
+  orgFilter,
+  parentEnvironment,
+  userId,
+  limit,
+}: {
+  prisma: PrismaClient;
+  orgFilter: OrgFilter;
+  parentEnvironment: {
+    id: string;
+    type: string;
+    orgMemberId: string | null;
+    project: { id: string };
+  };
+  userId?: string;
+  limit: number;
+}) {
+  if (parentEnvironment.type !== "DEVELOPMENT" || !userId) return [];
+
+  try {
+    const branches = await prisma.runtimeEnvironment.findMany({
+      where: {
+        parentEnvironmentId: parentEnvironment.id,
+        archivedAt: null,
+      },
+      select: { id: true, branchName: true, createdAt: true },
+    });
+    const recentBranches = await devPresence.getRecentBranchIds(
+      userId,
+      parentEnvironment.project.id
+    );
+    const connectedBranches = await devPresence.isConnectedMany(
+      branches.map((branch) => branch.id)
+    );
+    const staleBefore = Date.now() - DEV_BRANCH_STALE_AFTER_MS;
+    const candidates = branches
+      .filter((branch) => {
+        if (connectedBranches.get(branch.id)) return false;
+        const lastActivity = recentBranches.get(branch.id)?.getTime() ?? branch.createdAt.getTime();
+        return lastActivity <= staleBefore;
+      })
+      .sort((a, b) => {
+        const aActivity = recentBranches.get(a.id)?.getTime() ?? a.createdAt.getTime();
+        const bActivity = recentBranches.get(b.id)?.getTime() ?? b.createdAt.getTime();
+        return aActivity - bActivity;
+      })
+      .slice(0, DEV_BRANCH_AUTO_ARCHIVE_LIMIT);
+
+    const used = await prisma.runtimeEnvironment.count({
+      where: {
+        projectId: parentEnvironment.project.id,
+        orgMemberId: parentEnvironment.orgMemberId,
+        type: "DEVELOPMENT",
+        archivedAt: null,
+      },
+    });
+    if (used < limit) return [];
+
+    const archiveService = new ArchiveBranchService(prisma);
+    const results = await Promise.all(
+      candidates.map((candidate) => archiveService.call(orgFilter, { environmentId: candidate.id }))
+    );
+
+    return results.flatMap((result) =>
+      result.success && result.branch.branchName
+        ? [{ id: result.branch.id, branchName: result.branch.branchName }]
+        : []
+    );
+  } catch (error) {
+    logger.warn("Failed to auto-archive stale development branches", {
+      projectId: parentEnvironment.project.id,
+      error,
+    });
+    return [];
   }
 }
 

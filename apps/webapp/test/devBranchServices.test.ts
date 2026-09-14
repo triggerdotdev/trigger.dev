@@ -10,6 +10,17 @@ import {
   uniqueId,
 } from "./fixtures/environmentVariablesFixtures";
 
+const devPresence = vi.hoisted(() => ({
+  getRecentBranchIds: vi.fn(),
+  isConnectedMany: vi.fn(),
+}));
+
+vi.mock("~/presenters/v3/DevPresence.server", () => ({ devPresence }));
+vi.mock("~/services/platform.v3.server", () => ({
+  getCurrentPlan: vi.fn().mockResolvedValue(null),
+  getLimit: vi.fn().mockResolvedValue(5),
+}));
+
 vi.setConfig({ testTimeout: 60_000 });
 
 async function createDevRoot(
@@ -136,6 +147,48 @@ describe("UpsertBranchService — DEVELOPMENT parent", () => {
     expect(firstRetry.alreadyExisted).toBe(true);
     expect(firstRetry.branch.id).toBe(firstResult.branch.id);
   });
+
+  postgresTest(
+    "archives up to three stale branches when creating at the limit",
+    async ({ prisma }) => {
+      const { organization, project, user, orgMember } =
+        await createTestOrgProjectWithMember(prisma);
+      const devRoot = await createDevRoot(prisma, project.id, organization.id, orgMember.id);
+      const service = new UpsertBranchService(prisma);
+      const orgFilter = { type: "userMembership" as const, userId: user.id };
+
+      for (const branchName of ["old-1", "old-2", "old-3", "old-4"]) {
+        expect(
+          (
+            await service.call(orgFilter, {
+              projectId: project.id,
+              env: "development",
+              branchName,
+            })
+          ).success
+        ).toBe(true);
+      }
+
+      await prisma.runtimeEnvironment.updateMany({
+        where: { parentEnvironmentId: devRoot.id },
+        data: { createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000) },
+      });
+      devPresence.getRecentBranchIds.mockResolvedValue(new Map());
+      devPresence.isConnectedMany.mockImplementation(
+        async (ids: string[]) => new Map(ids.map((id) => [id, false]))
+      );
+
+      const result = await service.call(orgFilter, {
+        projectId: project.id,
+        env: "development",
+        branchName: "new-branch",
+      });
+
+      expect(result.success).toBe(true);
+      if (!result.success) return;
+      expect(result.autoArchivedBranches).toHaveLength(3);
+    }
+  );
 
   postgresTest(
     "rejects an invalid branch name without touching the database",

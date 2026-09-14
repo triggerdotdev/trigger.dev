@@ -751,6 +751,14 @@ export type UpsertBranchRequestBody = z.infer<typeof UpsertBranchRequestBody>;
 
 export const UpsertBranchResponseBody = z.object({
   id: z.string(),
+  autoArchivedBranches: z
+    .array(
+      z.object({
+        id: z.string(),
+        branchName: z.string(),
+      })
+    )
+    .optional(),
 });
 
 export type UpsertBranchResponseBody = z.infer<typeof UpsertBranchResponseBody>;

@@ -312,6 +312,13 @@ async function startDev(options: StartDevOptions) {
         logger.error(`Failed to use branch "${branch}": ${upsertResult.error}`);
         process.exit(1);
       }
+
+      if (upsertResult.data.autoArchivedBranches?.length) {
+        const archivedNames = upsertResult.data.autoArchivedBranches
+          .map((archivedBranch) => `"${archivedBranch.branchName}"`)
+          .join(", ");
+        log.warn(`Archived inactive dev branches to make room: ${archivedNames}`);
+      }
     }
 
     // eslint-disable-next-line no-inner-declarations

@@ -163,7 +163,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: result.error }, { status: 400 });
   }
 
-  return json({ id: result.branch.id });
+  return json({
+    id: result.branch.id,
+    autoArchivedBranches: result.autoArchivedBranches,
+  });
 }
 
 export async function loader({ request, params }: LoaderFunctionArgs) {

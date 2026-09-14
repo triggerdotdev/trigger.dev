@@ -88,7 +88,7 @@ export class ArchiveBranchService {
       const shortcode = slug;
 
       const updatedBranch = await this.#prismaClient.runtimeEnvironment.update({
-        where: { id: environmentId },
+        where: { id: environmentId, archivedAt: null },
         data: { archivedAt: new Date(), slug, shortcode },
       });
 
