@@ -1,4 +1,10 @@
-ARG NODE_IMAGE=node:24.18.0-bookworm-slim@sha256:39a4259b6f744868a8228742ad45aa3026f97302e5eec2fa4a38b30ca0a66e12
+ARG NODE_IMAGE=node:24.18.0-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d
+# OS security patches come from apt, not from the node image, and the node image
+# rarely changes. Without a changing input the upgrade layers below stay cached
+# for months and ship known-fixed CVEs. Every workflow that publishes this image
+# sets this to the build timestamp so those layers rebuild on each publish. A
+# local `docker build` or compose build leaves it unset and caches as usual.
+ARG APT_REFRESH=unset
 
 FROM golang:1.26-alpine AS goose_builder
 RUN go install github.com/pressly/goose/v3/cmd/goose@v3.27.1
@@ -13,7 +19,8 @@ RUN find . -name "node_modules" -type d -prune -exec rm -rf '{}' +
 
 # Base strategy to have layer caching
 FROM ${NODE_IMAGE} AS base
-RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends openssl dumb-init && rm -rf /var/lib/apt/lists/*
+ARG APT_REFRESH
+RUN echo "apt refresh ${APT_REFRESH}" && apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends openssl dumb-init && rm -rf /var/lib/apt/lists/*
 WORKDIR /triggerdotdev
 COPY --chown=node:node .gitignore .gitignore
 COPY --from=pruner --chown=node:node /triggerdotdev/out/json/ .
@@ -45,7 +52,8 @@ RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm install
 ## Builder (builds the webapp)
 FROM base AS builder
 # This is needed for the sentry-cli binary while building the webapp
-RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends openssl dumb-init ca-certificates && rm -rf /var/lib/apt/lists/*
+ARG APT_REFRESH
+RUN echo "apt refresh ${APT_REFRESH}" && apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends openssl dumb-init ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /triggerdotdev
 # Corepack is used to install pnpm with the exact version from packageManager
 RUN corepack enable && corepack prepare pnpm@10.33.2 --activate
@@ -79,7 +87,8 @@ RUN --mount=type=secret,id=sentry_auth_token \
 
 # Runner
 FROM ${NODE_IMAGE} AS runner
-RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends openssl netcat-openbsd ca-certificates && rm -rf /var/lib/apt/lists/*
+ARG APT_REFRESH
+RUN echo "apt refresh ${APT_REFRESH}" && apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends openssl netcat-openbsd ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /triggerdotdev
 ENV NODE_ENV=production
 

@@ -131,6 +131,7 @@ jobs:
             BUILD_GIT_REF_NAME=${{ steps.set_build_info.outputs.BUILD_GIT_REF_NAME }}
             BUILD_TIMESTAMP_SECONDS=${{ steps.set_build_info.outputs.BUILD_TIMESTAMP_SECONDS }}
             BUILD_TIMESTAMP_RFC3339=${{ steps.set_build_info.outputs.BUILD_TIMESTAMP_RFC3339 }}
+            APT_REFRESH=${{ steps.set_build_info.outputs.BUILD_TIMESTAMP_RFC3339 }}
             SENTRY_RELEASE=${{ steps.set_build_info.outputs.BUILD_GIT_SHA }}
             SENTRY_ORG=triggerdev
             SENTRY_PROJECT=trigger-cloud
