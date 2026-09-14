@@ -3,6 +3,7 @@ import {
   errorGroupPrompt,
   failedRunPrompt,
   isFailedRunStatus,
+  isInProgressRunStatus,
   queueBacklogPrompt,
   waitingRunPrompt,
 } from "./investigate-prompts";
@@ -23,6 +24,29 @@ describe("isFailedRunStatus", () => {
   it("is false for everything else", () => {
     for (const status of ["PENDING", "EXECUTING", "COMPLETED_SUCCESSFULLY", "CANCELED", "PAUSED"]) {
       expect(isFailedRunStatus(status)).toBe(false);
+    }
+  });
+});
+
+describe("isInProgressRunStatus", () => {
+  it("is true for statuses actively executing or between attempts", () => {
+    for (const status of ["EXECUTING", "DEQUEUED", "RETRYING_AFTER_FAILURE", "WAITING_TO_RESUME"]) {
+      expect(isInProgressRunStatus(status)).toBe(true);
+    }
+  });
+
+  it("is false for queued/pending, failed, and final statuses", () => {
+    for (const status of [
+      "PENDING",
+      "DELAYED",
+      "PENDING_VERSION",
+      "WAITING_FOR_DEPLOY",
+      "PAUSED",
+      "CRASHED",
+      "COMPLETED_SUCCESSFULLY",
+      "CANCELED",
+    ]) {
+      expect(isInProgressRunStatus(status)).toBe(false);
     }
   });
 });

@@ -555,7 +555,8 @@ export function DashboardAgentPanel({
     claimChatSlot();
     setLoading(false);
     setActive(null);
-  }, [claimChatSlot]);
+    forgetLastChat(storageKey);
+  }, [claimChatSlot, storageKey]);
 
   // Released only by a read that proves capacity: an unknown quota keeps the block.
   // Only a poll newer than the latest refusal (`quota.pollIsFresh`) may lift it — see

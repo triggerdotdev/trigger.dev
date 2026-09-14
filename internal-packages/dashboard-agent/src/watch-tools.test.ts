@@ -29,6 +29,8 @@ function fakeReads(opts: { runScope?: ReadScope; scoped?: Record<string, ReadSco
     scopesForSourceRead: () => [],
     scopeForRun: (_runId: string) => opts.runScope,
     scopesForScopedRead: (kind: ScopedReadKind, id: string) => scoped[`${kind}:${id}`] ?? [],
+    identitiesRead: () => [],
+    timelineForRun: () => undefined,
   } satisfies SourceReadLookup;
 }
 

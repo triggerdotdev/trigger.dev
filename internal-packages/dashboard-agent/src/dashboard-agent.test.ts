@@ -2016,9 +2016,9 @@ describe("buildDashboardAgentTools", () => {
       await call("run_query", { query: "select 1" });
 
       expect(fetchStub.exchanges()).toBe(1);
-      // Six data reads, all carrying the one exchanged token.
+      // Seven data reads — get_run_trace also reads the run — all on the one token.
       const reads = fetchStub.requests.filter((r) => !r.url.endsWith("/jwt"));
-      expect(reads).toHaveLength(6);
+      expect(reads).toHaveLength(7);
       expect(reads.every((r) => r.token === "Bearer jwt_1")).toBe(true);
 
       // Concurrent calls share the one in-flight exchange too.

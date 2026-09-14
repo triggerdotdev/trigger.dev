@@ -7,11 +7,16 @@
 const ONE_MINUTE = 60 * 1000;
 const ONE_DAY = 24 * 60 * 60 * 1000;
 
-type ActivityPoint = { bucket: number };
+type ActivityPoint = Record<string, unknown>;
 
-export function buildActivityTimeAxis(data: ActivityPoint[]) {
-  const range = data.length >= 2 ? data[data.length - 1].bucket - data[0].bucket : 0;
-  const bucketMs = data.length >= 2 ? data[1].bucket - data[0].bucket : 0;
+/**
+ * `rangeMs` overrides the data-derived span, for a chart whose axis is wider than its data.
+ * `xKey` is the point's timestamp field, for data that keys it as something other than `bucket`.
+ */
+export function buildActivityTimeAxis(data: ActivityPoint[], rangeMs?: number, xKey = "bucket") {
+  const at = (index: number) => data[index]?.[xKey] as number;
+  const range = rangeMs ?? (data.length >= 2 ? at(data.length - 1) - at(0) : 0);
+  const bucketMs = data.length >= 2 ? at(1) - at(0) : 0;
 
   // ≤ 1 day range → clock time, otherwise date.
   const showTime = range <= ONE_DAY;
@@ -37,8 +42,8 @@ export function buildActivityTimeAxis(data: ActivityPoint[]) {
     });
   };
 
-  const tooltipLabelFormatter = (_label: string, payload: { payload?: { bucket?: number } }[]) => {
-    const ts = payload?.[0]?.payload?.bucket;
+  const tooltipLabelFormatter = (_label: string, payload: { payload?: ActivityPoint }[]) => {
+    const ts = payload?.[0]?.payload?.[xKey];
     if (typeof ts !== "number" || !Number.isFinite(ts)) return _label;
     const date = new Date(ts);
     return isSubDayBucket

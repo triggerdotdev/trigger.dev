@@ -42,7 +42,7 @@ export function ViewBlocks({
         const key = blockKey(block, index);
         switch (block.type) {
           case "diagnosis":
-            return <RunDiagnosisCard key={key} block={block} />;
+            return <RunDiagnosisCard key={key} block={block} resolveUri={resolveUri} />;
           case "chart":
             return <AgentChart key={key} block={block} onIntent={onIntent} />;
           case "actions":

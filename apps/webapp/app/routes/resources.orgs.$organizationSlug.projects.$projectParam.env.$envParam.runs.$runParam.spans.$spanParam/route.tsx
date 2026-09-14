@@ -39,6 +39,8 @@ import { runWatchRecommendation } from "~/components/dashboard-agent/watch-recom
 import {
   failedRunPrompt,
   isFailedRunStatus,
+  isInProgressRunStatus,
+  runningRunPrompt,
   waitingRunPrompt,
 } from "~/components/dashboard-agent/investigate-prompts";
 import { Callout } from "~/components/primitives/Callout";
@@ -1198,6 +1200,16 @@ function RunBody({
                 <WatchButton spec={runWatchRecommendation(run.friendlyId)} className="self-start" />
               )}
               <RunTimeline run={run} />
+
+              {/* Offer Investigate for runs that are actively in progress. Failed runs get
+                  their own prompt below, and waiting/queued runs already have one in
+                  WaitingInQueueBlock. */}
+              {isInProgressRunStatus(run.status) ? (
+                <InvestigateButton
+                  prompt={runningRunPrompt(run.friendlyId)}
+                  className="self-start"
+                />
+              ) : null}
 
               {run.error && (
                 <div className="flex flex-col gap-2">

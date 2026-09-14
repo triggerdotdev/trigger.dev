@@ -1,10 +1,10 @@
 // All transcript spacing lives here. Consumers compose these micro-layouts and
 // write no spacing classes of their own; `chat-layout.test.ts` enforces that.
 import type { Ref } from "react";
-import { createContext, Suspense, useContext } from "react";
-import { StreamdownRenderer } from "~/components/code/StreamdownRenderer";
+import { createContext, useContext } from "react";
 import { TextShimmer } from "~/components/primitives/TextShimmer";
 import { cn } from "~/utils/cn";
+import { AgentText } from "./AgentText";
 import type { ResolvedUri } from "./ReportView";
 
 const TRANSCRIPT_INSET_X = "px-4";
@@ -98,11 +98,11 @@ export function ChatText({
     );
   }
   return (
-    <div className="streamdown-container min-w-0 font-sans text-sm font-normal text-text-dimmed wrap-anywhere">
-      <Suspense fallback={<span className="whitespace-pre-wrap">{text}</span>}>
-        <StreamdownRenderer resolveTriggerUri={resolveUri}>{text}</StreamdownRenderer>
-      </Suspense>
-    </div>
+    <AgentText
+      text={text}
+      className="font-sans text-sm font-normal text-text-dimmed"
+      resolveUri={resolveUri}
+    />
   );
 }
 

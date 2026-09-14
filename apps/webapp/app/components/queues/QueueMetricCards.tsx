@@ -1,11 +1,8 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { buildActivityTimeAxis } from "~/components/primitives/charts/activityTimeAxis";
-import {
-  Chart,
-  type ChartConfig,
-  type ChartState,
-} from "~/components/primitives/charts/ChartCompound";
+import { useState, type ReactNode } from "react";
+import { type ChartState } from "~/components/primitives/charts/ChartCompound";
 import { ChartCard } from "~/components/primitives/charts/ChartCard";
+import { ChartCardLegend } from "~/components/primitives/charts/ChartCardLegend";
+import { MetricChart, toNumber, toTimestampMs } from "~/components/primitives/charts/MetricChart";
 import {
   useMetricResourceQuery,
   type MetricResourceTimeRange,
@@ -65,15 +62,7 @@ export function useQueueMetric(
   });
 }
 
-export function toNumber(value: number | string | null | undefined): number {
-  const n = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(n) ? n : 0;
-}
-
-export function clickhouseTimeToMs(value: unknown): number {
-  const s = String(value).replace(" ", "T");
-  return Date.parse(s.endsWith("Z") ? s : `${s}Z`);
-}
+export { toNumber, toTimestampMs as clickhouseTimeToMs };
 
 export function formatWaitMs(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)}ms`;
@@ -155,95 +144,21 @@ export function QueueMetricChart({
     minBucketSeconds,
   });
 
-  const data = useMemo(() => {
-    const points = rows
-      .map((r) => {
-        const point: { bucket: number } & Record<string, number | null> = {
-          bucket: clickhouseTimeToMs(r.t),
-        };
-        const hasSamples = sampleCountColumn ? toNumber(r[sampleCountColumn]) > 0 : true;
-        for (const s of series) point[s.key] = hasSamples ? toNumber(r[s.key]) : null;
-        return point;
-      })
-      .filter((p) => Number.isFinite(p.bucket));
-
-    // Back-fill leading zeros for config gauges (see `carryBackfill`): find the first positive
-    // value and carry it back over the earlier buckets so the line doesn't start at a false 0.
-    if (carryBackfill?.length) {
-      for (const key of carryBackfill) {
-        const first = points.findIndex((p) => toNumber(p[key]) > 0);
-        if (first > 0) {
-          const value = points[first]![key]!;
-          for (let i = 0; i < first; i++) points[i]![key] = value;
-        }
-      }
-    }
-    return points;
-  }, [rows, series, carryBackfill, sampleCountColumn]);
-
-  const chartConfig = useMemo(() => {
-    const cfg: ChartConfig = {};
-    for (const s of series) cfg[s.key] = { label: s.label, color: s.color };
-    return cfg;
-  }, [series]);
-
-  const { tickFormatter, tooltipLabelFormatter } = useMemo(
-    () => buildActivityTimeAxis(data),
-    [data]
-  );
-
-  // Resolve the threshold value: a constant, or the max of another series (e.g. the limit line,
-  // which is effectively constant). A gradient split then colours the target series only above it.
-  // `valueFromSeries` targets integer-count series (concurrency limit), so split half a unit below
-  // the limit — that way the line renders warning *at or above* the limit (saturated), matching
-  // "turns yellow at the limit", rather than only when it strictly exceeds it.
-  const resolvedThresholdStroke = useMemo(() => {
-    if (!thresholdStroke) return undefined;
-    let value = thresholdStroke.value;
-    if (value == null && thresholdStroke.valueFromSeries) {
-      let max = -Infinity;
-      for (const p of data) {
-        const v = Number(p[thresholdStroke.valueFromSeries]);
-        if (Number.isFinite(v) && v > max) max = v;
-      }
-      value = max > 0 ? max - 0.5 : undefined;
-    }
-    if (value == null || !Number.isFinite(value)) return undefined;
-    return { value, aboveColor: thresholdStroke.aboveColor, series: thresholdStroke.series };
-  }, [thresholdStroke, data]);
-
   const state: ChartState = showLoading ? "loading" : failed ? "invalid" : undefined;
 
-  // Report data presence so a wrapping card can hide its legend when the chart settles on the
-  // "no activity" state. Only report once loaded, so the legend stays put while loading.
-  const hasPlottedData = useMemo(
-    () => data.some((point) => series.some((s) => point[s.key] != null)),
-    [data, series]
-  );
-
-  useEffect(() => {
-    if (!showLoading) onHasDataChange?.(!failed && hasPlottedData);
-  }, [showLoading, failed, hasPlottedData, onHasDataChange]);
-
   return (
-    <Chart.Root
-      config={chartConfig}
-      data={data}
-      dataKey="bucket"
-      series={series.map((s) => s.key)}
+    <MetricChart
+      rows={rows}
+      series={series}
+      kind="line"
       state={state}
-      fillContainer
-    >
-      <Chart.Line
-        lineType="monotone"
-        xAxisProps={{ tickFormatter }}
-        yAxisProps={valueFormat ? { tickFormatter: (v: number) => valueFormat(v) } : undefined}
-        tooltipLabelFormatter={tooltipLabelFormatter}
-        tooltipValueFormatter={valueFormat}
-        warningOverlay={warningOverlay}
-        thresholdStroke={resolvedThresholdStroke}
-      />
-    </Chart.Root>
+      valueFormat={valueFormat}
+      warningOverlay={warningOverlay}
+      carryBackfill={carryBackfill}
+      thresholdStroke={thresholdStroke}
+      onHasDataChange={onHasDataChange}
+      sampleCountColumn={sampleCountColumn}
+    />
   );
 }
 
@@ -282,31 +197,15 @@ export function QueueMetricChartCard({
               ) : null}
               {titleAccessory}
             </span>
-            {/* Inline legend below the title (swatch + label per series), matching the list-page
-                charts — instead of the Chart.Root legend with per-series totals. */}
             {chart.showLegend &&
             hasData &&
             (chart.series.length > 0 || (extraLegend?.length ?? 0) > 0) ? (
-              <span className="flex flex-wrap items-center gap-2">
-                {chart.series.map((s) => (
-                  <span
-                    key={s.key}
-                    className="flex items-center gap-1 text-xs font-normal text-text-dimmed"
-                  >
-                    <span className="size-2.5 rounded-[2px]" style={{ backgroundColor: s.color }} />
-                    {s.label}
-                  </span>
-                ))}
-                {extraLegend?.map((e) => (
-                  <span
-                    key={e.label}
-                    className="flex items-center gap-1 text-xs font-normal text-text-dimmed"
-                  >
-                    <span className="size-2.5 rounded-[2px]" style={{ backgroundColor: e.color }} />
-                    {e.label}
-                  </span>
-                ))}
-              </span>
+              <ChartCardLegend
+                entries={[
+                  ...chart.series.map((s) => ({ key: s.key, color: s.color, label: s.label })),
+                  ...(extraLegend ?? []),
+                ]}
+              />
             ) : null}
           </span>
         }

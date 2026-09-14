@@ -50,6 +50,17 @@ const variants = {
     menuButtonDivider: "group-hover/table-row:border-grid-bright",
     rowSelected: "bg-background-hover group-hover/table-row:bg-background-hover",
   },
+  "dimmed/no-hover": {
+    header: "bg-background-dimmed",
+    headerCell: "px-3 py-2.5 pb-3 text-sm",
+    cell: "",
+    cellSize: "px-3 py-3",
+    cellText: "text-xs",
+    stickyCell: "",
+    menuButton: "bg-background-dimmed",
+    menuButtonDivider: "",
+    rowSelected: "bg-background-hover",
+  },
   "compact/mono": {
     header: "bg-background-dimmed",
     headerCell: "px-2 py-1.5 text-sm",

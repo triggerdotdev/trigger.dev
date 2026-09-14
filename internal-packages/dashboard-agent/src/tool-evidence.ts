@@ -29,7 +29,11 @@ function scopedIdentity(
 }
 
 /** The inverse of `scopedIdentity`'s kind+id mapping: builds the parsed URI for a scoped kind. */
-function scopedParsedUri(kind: ScopedReadKind, scope: ReadScope, id: string): ParsedTriggerUri {
+export function scopedParsedUri(
+  kind: ScopedReadKind,
+  scope: ReadScope,
+  id: string
+): ParsedTriggerUri {
   switch (kind) {
     case "error":
       return { ...scope, kind: "error", fingerprint: id };
@@ -248,5 +252,15 @@ export function canonicalizeInvestigationState(
     errors.push(...cited.errors);
     return { ...hypothesis, evidence: cited.evidence };
   });
-  return { state: { ...state, evidence: own.evidence, hypotheses }, errors };
+  // The timeline is the tool's, never the model's restatement of it.
+  const timeline = state.runId ? reads.timelineForRun(state.runId) : undefined;
+  return {
+    state: {
+      ...state,
+      evidence: own.evidence,
+      hypotheses,
+      ...(timeline ? { timeline } : {}),
+    },
+    errors,
+  };
 }

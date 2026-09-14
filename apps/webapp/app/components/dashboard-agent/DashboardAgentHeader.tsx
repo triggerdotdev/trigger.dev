@@ -167,6 +167,16 @@ export function ModeToggle({
               exit={{ opacity: 0, width: 0, x: 8 }}
               transition={{ duration: 0.15 }}
               className="overflow-hidden"
+              // Selecting on pointerdown, ahead of the outside-pointerdown listener that
+              // starts the collapse, keeps a fast click from landing after the option
+              // has already begun unmounting.
+              onPointerDown={(event) => {
+                // Left button only: right/middle-click must open a context menu or
+                // paste, not select a mode.
+                if (event.button !== 0) return;
+                onModeChange(option);
+                setExpanded(false);
+              }}
             >
               <Button
                 ref={(el) => {
@@ -177,9 +187,13 @@ export function ModeToggle({
                 className="aspect-square h-6 p-1"
                 aria-label={label}
                 tooltip={label}
-                onClick={() => {
-                  onModeChange(option);
-                  setExpanded(false);
+                onClick={(event) => {
+                  // Keyboard activation (Enter/Space) fires `click` with no preceding
+                  // pointerdown, so it still needs to select here.
+                  if (event.detail === 0) {
+                    onModeChange(option);
+                    setExpanded(false);
+                  }
                 }}
                 LeadingIcon={<Icon className="size-4 text-text-dimmed" />}
               />

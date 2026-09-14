@@ -1,6 +1,4 @@
 import type { DiagnosisBlock } from "@internal/dashboard-agent";
-import { QueryResultsChart } from "~/components/code/QueryResultsChart";
-import { AGENT_CHART_PLOT_CLASS } from "~/components/dashboard-agent/AgentChart";
 import { ConfidenceBadge } from "~/components/dashboard-agent/agent-badges";
 import {
   AgentCard,
@@ -11,6 +9,9 @@ import {
 import { DemoChartCard, demoFixtures } from "~/components/dashboard-agent/demo";
 import { RunDiagnosisCard } from "~/components/dashboard-agent/RunDiagnosisCard";
 import { ViewBlocks } from "~/components/dashboard-agent/view-catalog";
+import { ChartCard } from "~/components/primitives/charts/ChartCard";
+import { MetricChart } from "~/components/primitives/charts/MetricChart";
+import { seriesFromRows } from "~/components/primitives/charts/seriesFromRows";
 import {
   fullDiagnosis,
   lowConfidenceDiagnosis,
@@ -45,20 +46,21 @@ const badgeMatrixBlocks: DiagnosisBlock[] = DIAGNOSIS_CATEGORIES.map((category, 
 }));
 
 function EmptyChartCard() {
+  const { series } = seriesFromRows([], {
+    xAxisColumn: demoFixtures.demoChart.config.xAxisColumn ?? "",
+    yAxisColumns: demoFixtures.demoChart.config.yAxisColumns,
+    groupByColumn: demoFixtures.demoChart.config.groupByColumn ?? undefined,
+    aggregation: demoFixtures.demoChart.config.aggregation,
+  });
   return (
-    <AgentCard>
-      <AgentCardHeader className="text-xs font-medium text-text-dimmed">
-        {demoFixtures.demoChart.title}
-      </AgentCardHeader>
-      <div className={AGENT_CHART_PLOT_CLASS}>
-        <QueryResultsChart
-          rows={[]}
-          columns={demoFixtures.demoChart.columns}
-          config={demoFixtures.demoChart.config}
-          timeRange={demoFixtures.demoChart.timeRange}
-        />
+    <ChartCard
+      title={demoFixtures.demoChart.title ?? undefined}
+      className="border-border-bright bg-background-dimmed"
+    >
+      <div className="h-64">
+        <MetricChart rows={[]} series={series} kind={demoFixtures.demoChart.config.chartType} />
       </div>
-    </AgentCard>
+    </ChartCard>
   );
 }
 

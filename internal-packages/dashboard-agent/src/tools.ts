@@ -43,7 +43,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
 
   const apiTools: ToolSet = {
     ...buildApiTools({ ctx, client, renderInvestigations, reads: ledger }),
-    ...buildNavigationTools(ctx),
+    ...buildNavigationTools({ ctx, environmentIdFor: client.environmentIdFor }),
     // Alerts exist only to report a watch firing, so they come and go with the watch tool.
     ...(ctx.watchEnabled
       ? { ...buildWatchTools({ ctx, reads: ledger }), ...buildAlertTools({ ctx, client }) }

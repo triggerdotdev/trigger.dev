@@ -153,7 +153,7 @@ function getFriendlyNameForEvent(event: string, properties?: Record<string, any>
   }
 }
 
-function getAdminOnlyForEvent(event: string): boolean {
+export function getAdminOnlyForEvent(event: string): boolean {
   switch (event) {
     case "dequeue": {
       return false;

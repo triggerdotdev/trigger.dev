@@ -4,12 +4,47 @@ import {
   type ParsedTriggerUri,
 } from "@internal/dashboard-agent-contracts";
 import { tool, type ToolSet } from "ai";
+import { resolveTarget, type TargetInput } from "./tool-api";
+import type { EnvTarget } from "./tool-api-client";
 import { getCurrentPageSchema, navigateToSchema } from "./tool-schemas";
 import type { DashboardAgentToolContext } from "./tool-context";
 
-/** Where the user is, and where the agent can send them. No fetch, no auth. */
-export function buildNavigationTools(ctx: DashboardAgentToolContext): ToolSet {
+/** Where the user is, and where the agent can send them. */
+export function buildNavigationTools(args: {
+  ctx: DashboardAgentToolContext;
+  environmentIdFor: (target: EnvTarget) => Promise<string | undefined>;
+}): ToolSet {
+  const { ctx, environmentIdFor } = args;
   const { projectRef } = ctx;
+
+  const NO_SCOPE = {
+    error:
+      "No current project and environment for this turn, so there's nowhere to navigate to. Tell the user what to look at instead.",
+  };
+
+  /**
+   * The conversation's own scope needs no exchange; a named target is minted from that
+   * environment's JWT, so an unknown or unauthorised one fails closed.
+   */
+  async function navigationScope(
+    target: TargetInput
+  ): Promise<{ projectRef: string; environmentId: string } | { error: string }> {
+    if (
+      target.project === undefined &&
+      target.environment === undefined &&
+      target.branch === undefined
+    ) {
+      if (!projectRef || !ctx.environmentId) return NO_SCOPE;
+      return { projectRef, environmentId: ctx.environmentId };
+    }
+    const resolved = await resolveTarget(target, ctx, "navigate to");
+    if (!resolved.ok) return { error: resolved.error };
+    const environmentId =
+      (resolved.conversationScope ? ctx.environmentId : undefined) ??
+      (await environmentIdFor(resolved.target));
+    if (!environmentId) return { error: "Couldn't reach that environment to navigate to." };
+    return { projectRef: resolved.target.projectRef, environmentId };
+  }
 
   return {
     // Context tools: no fetch, no auth.
@@ -37,14 +72,9 @@ export function buildNavigationTools(ctx: DashboardAgentToolContext): ToolSet {
 
     navigate_to: tool({
       ...navigateToSchema,
-      execute: async ({ destination }) => {
-        if (!projectRef || !ctx.environmentId) {
-          return {
-            error:
-              "No current project and environment for this turn, so there's nowhere to navigate to. Tell the user what to look at instead.",
-          };
-        }
-        const scope = { projectRef, environmentId: ctx.environmentId };
+      execute: async ({ destination, ...target }) => {
+        const scope = await navigationScope(target);
+        if ("error" in scope) return scope;
 
         let parsed: ParsedTriggerUri;
         switch (destination.kind) {

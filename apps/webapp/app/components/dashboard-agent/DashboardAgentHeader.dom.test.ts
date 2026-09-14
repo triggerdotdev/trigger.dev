@@ -113,6 +113,63 @@ describe("ModeToggle", () => {
     expect(changes).toEqual([]);
   });
 
+  it("selects an option even when pointerdown and click land in the same tick", () => {
+    const changes: Mode[] = [];
+    const el = renderToggle("floating", (next) => changes.push(next));
+    expandToggle(el);
+
+    const option = radios(el).find((radio) => radio.getAttribute("aria-label") === "Fullscreen")!;
+    act(() => {
+      option.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+      option.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
+    });
+
+    expect(changes).toEqual(["fullscreen"]);
+    expect(isExpanded(el)).toBe(false);
+  });
+
+  it("ignores a right-click on an option", () => {
+    const changes: Mode[] = [];
+    const el = renderToggle("floating", (next) => changes.push(next));
+    expandToggle(el);
+
+    const option = radios(el).find((radio) => radio.getAttribute("aria-label") === "Fullscreen")!;
+    act(() => {
+      option.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 2 }));
+    });
+
+    expect(changes).toEqual([]);
+    expect(isExpanded(el)).toBe(true);
+  });
+
+  it("ignores a middle-click on an option", () => {
+    const changes: Mode[] = [];
+    const el = renderToggle("floating", (next) => changes.push(next));
+    expandToggle(el);
+
+    const option = radios(el).find((radio) => radio.getAttribute("aria-label") === "Fullscreen")!;
+    act(() => {
+      option.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 1 }));
+    });
+
+    expect(changes).toEqual([]);
+    expect(isExpanded(el)).toBe(true);
+  });
+
+  it("still collapses on an outside pointerdown", () => {
+    const changes: Mode[] = [];
+    const el = renderToggle("floating", (next) => changes.push(next));
+    expandToggle(el);
+    expect(isExpanded(el)).toBe(true);
+
+    act(() => {
+      document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    });
+
+    expect(isExpanded(el)).toBe(false);
+    expect(changes).toEqual([]);
+  });
+
   it("collapses when mode changes externally", () => {
     container = document.createElement("div");
     document.body.appendChild(container);

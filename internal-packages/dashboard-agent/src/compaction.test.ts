@@ -220,6 +220,23 @@ describe("the state a summary may not swallow", () => {
     ).toContain("inv_tool");
   });
 
+  // The emitted title holds inline links to whatever the turn read. Pinning them would
+  // put URIs in the prompt and teach the model to hand a stale one back.
+  it("pins the card's title as plain prose, with its links stripped", () => {
+    const linked =
+      "[task/orders](trigger://proj_1/env_1/queue/task%2Forders) is backing up for" +
+      " [run_abc123](trigger://proj_1/env_1/run/run_abc123)";
+    const messages = [
+      investigationMessage({ id: "inv_linked", title: linked, outcome: "in_progress" }),
+    ];
+    expect(collectDurableState(messages).investigations[0]!.title).toBe(
+      "task/orders is backing up for run_abc123"
+    );
+    const note = describeDurableState(messages)!;
+    expect(note).not.toContain("trigger://");
+    expect(note).not.toMatch(/\]\(/);
+  });
+
   it("pins a card a host view wrote, too", () => {
     const state = collectDurableState([
       hostInvestigationMessage({ id: "inv_host", title: "host card", outcome: "in_progress" }),

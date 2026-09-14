@@ -6,12 +6,18 @@ import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  AGENT_PANEL_DEFAULT_WIDTH,
+  AGENT_PANEL_MAX_WIDTH,
+  AGENT_PANEL_MIN_WIDTH,
+  clampAgentPanelWidth,
   FLOATING_HEIGHT,
   FLOATING_MARGIN,
   FLOATING_MIN_SIZE,
   FLOATING_WIDTH,
   FloatingAgentWindow,
   initialFloatingRect,
+  readAgentPanelWidth,
+  writeAgentPanelWidth,
   type DashboardAgentMode,
   type FloatingDragProps,
 } from "./panel-layout";
@@ -514,5 +520,46 @@ describe("FloatingAgentWindow's drag-then-click filter", () => {
     await clickOn(view.historyEl());
 
     expect(view.clicks).toEqual(["history"]);
+  });
+});
+
+// The docked width is persisted here rather than in the panel machine, so a mode toggle
+// restores it without going anywhere near collapse state.
+describe("docked width persistence", () => {
+  it("round-trips a dragged width", () => {
+    writeAgentPanelWidth(512);
+    expect(readAgentPanelWidth()).toBe(512);
+  });
+
+  it("clamps to the panel's constraints and falls back on junk", () => {
+    expect(clampAgentPanelWidth(10)).toBe(AGENT_PANEL_DEFAULT_WIDTH);
+    expect(clampAgentPanelWidth(9000)).toBe(AGENT_PANEL_MAX_WIDTH);
+    expect(clampAgentPanelWidth(0)).toBe(AGENT_PANEL_DEFAULT_WIDTH);
+    expect(clampAgentPanelWidth(Number.NaN)).toBe(AGENT_PANEL_DEFAULT_WIDTH);
+    window.localStorage.setItem("tdev:dashboard-agent:panel-width", "not-a-number");
+    expect(readAgentPanelWidth()).toBe(AGENT_PANEL_DEFAULT_WIDTH);
+  });
+
+  it("uses the default on the first dock, with nothing stored yet", () => {
+    window.localStorage.removeItem("tdev:dashboard-agent:panel-width");
+    expect(readAgentPanelWidth()).toBe(AGENT_PANEL_DEFAULT_WIDTH);
+    expect(AGENT_PANEL_DEFAULT_WIDTH).toBeGreaterThan(AGENT_PANEL_MIN_WIDTH);
+  });
+
+  it("treats a sub-min measurement as no saved width rather than the min", () => {
+    expect(clampAgentPanelWidth(1)).toBe(AGENT_PANEL_DEFAULT_WIDTH);
+    expect(clampAgentPanelWidth(AGENT_PANEL_MIN_WIDTH - 1)).toBe(AGENT_PANEL_DEFAULT_WIDTH);
+    expect(clampAgentPanelWidth(AGENT_PANEL_MIN_WIDTH)).toBe(AGENT_PANEL_MIN_WIDTH);
+    writeAgentPanelWidth(1);
+    expect(readAgentPanelWidth()).toBe(AGENT_PANEL_DEFAULT_WIDTH);
+    writeAgentPanelWidth(499);
+    expect(readAgentPanelWidth()).toBe(499);
+  });
+
+  it("never reports a zero width, whatever is stored", () => {
+    window.localStorage.setItem("tdev:dashboard-agent:panel-width", "0");
+    expect(readAgentPanelWidth()).toBe(AGENT_PANEL_DEFAULT_WIDTH);
+    writeAgentPanelWidth(0);
+    expect(readAgentPanelWidth()).toBe(AGENT_PANEL_DEFAULT_WIDTH);
   });
 });

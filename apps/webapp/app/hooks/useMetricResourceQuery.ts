@@ -3,8 +3,11 @@ import { useInterval } from "./useInterval";
 
 export type MetricResourceRow = Record<string, number | string | null>;
 
+/** The query's actual bucketed window (ISO), so a caller can size an axis without its own clock. */
+export type MetricResourceRange = { from: string; to: string };
+
 type MetricResourceResponse =
-  | { success: true; data: { rows: MetricResourceRow[] } }
+  | { success: true; data: { rows: MetricResourceRow[]; timeRange: MetricResourceRange } }
   | { success: false; error: string };
 
 export type MetricResourceTimeRange = {
@@ -48,19 +51,29 @@ export type MetricResourceQueryOptions = {
   /** Floor for the query's bucket width, for series too sparse to read at the range's width. */
   minBucketSeconds?: number;
   refreshIntervalMs?: number;
+  /** Refetch when the tab regains focus/visibility. Defaults to true. */
+  refetchOnFocus?: boolean;
+  /**
+   * Set when the caller wrote `query` themselves (e.g. the dashboard agent's generated charts),
+   * so a ClickHouse rejection is logged as a warning instead of alerting on-call. See
+   * `queryService.server.ts`'s `userAuthoredQuery`.
+   */
+  userAuthoredQuery?: boolean;
 };
 
-// Module-level cache of the last successful rows per query signature. Lets a remounted chart
+type CachedMetricResponse = { rows: MetricResourceRow[]; timeRange: MetricResourceRange | null };
+
+// Module-level cache of the last successful response per query signature. Lets a remounted chart
 // (switching tabs, or navigating back to the queues list) paint its previous data immediately
 // instead of flashing a loading skeleton every time, while it revalidates in the background.
 // Bounded so it can't grow without limit over a long session.
-const responseCache = new Map<string, MetricResourceRow[]>();
+const responseCache = new Map<string, CachedMetricResponse>();
 const RESPONSE_CACHE_MAX = 200;
 
-function cacheSet(key: string, rows: MetricResourceRow[]) {
+function cacheSet(key: string, response: CachedMetricResponse) {
   // Re-insert so the key becomes the most-recently-used (Map preserves insertion order).
   responseCache.delete(key);
-  responseCache.set(key, rows);
+  responseCache.set(key, response);
   if (responseCache.size > RESPONSE_CACHE_MAX) {
     const oldest = responseCache.keys().next().value;
     if (oldest !== undefined) responseCache.delete(oldest);
@@ -89,6 +102,8 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
     fillGaps,
     minBucketSeconds,
     refreshIntervalMs = 60_000,
+    refetchOnFocus = true,
+    userAuthoredQuery,
   } = opts;
   const { period, from, to } = opts.timeRange;
   const queuesKey = opts.queues && opts.queues.length > 0 ? opts.queues.join(",") : undefined;
@@ -122,12 +137,15 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
   );
 
   const [rows, setRows] = useState<MetricResourceRow[] | null>(
-    () => responseCache.get(cacheKey) ?? null
+    () => responseCache.get(cacheKey)?.rows ?? null
   );
   const [isLoading, setIsLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [responseReceivedAt, setResponseReceivedAt] = useState<number | null>(null);
   const [lastSuccessfulResponseAt, setLastSuccessfulResponseAt] = useState<number | null>(null);
+  const [timeRange, setTimeRange] = useState<MetricResourceRange | null>(
+    () => responseCache.get(cacheKey)?.timeRange ?? null
+  );
   const abortRef = useRef<AbortController | null>(null);
   const loadedKeyRef = useRef<string | null>(null);
 
@@ -139,6 +157,7 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
       setFailed(false);
       setResponseReceivedAt(null);
       setLastSuccessfulResponseAt(null);
+      setTimeRange(null);
       setIsLoading(false);
       return;
     }
@@ -151,10 +170,12 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
     // Interval and on-focus refreshes reuse the same signature, so they keep what's on screen.
     if (loadedKeyRef.current !== cacheKey) {
       loadedKeyRef.current = cacheKey;
-      setRows(responseCache.get(cacheKey) ?? null);
+      const cached = responseCache.get(cacheKey);
+      setRows(cached?.rows ?? null);
       setFailed(false);
       setResponseReceivedAt(null);
       setLastSuccessfulResponseAt(null);
+      setTimeRange(cached?.timeRange ?? null);
     }
     setIsLoading(true);
     fetch("/resources/metric", {
@@ -172,6 +193,7 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
         environmentId,
         ...(minBucketSeconds !== undefined ? { minBucketSeconds } : {}),
         ...(queuesKey !== undefined ? { queues: queuesKey.split(",") } : {}),
+        ...(userAuthoredQuery !== undefined ? { userAuthoredQuery } : {}),
       }),
       signal: controller.signal,
     })
@@ -179,12 +201,13 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
       .then((data) => {
         if (controller.signal.aborted) return;
         if (data.success) {
-          cacheSet(cacheKey, data.data.rows);
+          cacheSet(cacheKey, { rows: data.data.rows, timeRange: data.data.timeRange });
           const receivedAt = Date.now();
           setRows(data.data.rows);
           setFailed(false);
           setResponseReceivedAt(receivedAt);
           setLastSuccessfulResponseAt(receivedAt);
+          setTimeRange(data.data.timeRange);
         } else {
           setFailed(true);
           setResponseReceivedAt(null);
@@ -211,6 +234,7 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
     projectId,
     environmentId,
     queuesKey,
+    userAuthoredQuery,
   ]);
 
   useEffect(() => {
@@ -222,7 +246,7 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
   useInterval({
     interval: refreshIntervalMs,
     onLoad: false,
-    onFocus: true,
+    onFocus: refetchOnFocus,
     callback: load,
   });
 
@@ -233,5 +257,6 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
     failed,
     responseReceivedAt,
     lastSuccessfulResponseAt,
+    timeRange,
   };
 }

@@ -12,10 +12,10 @@ import { ChartBlankState } from "../primitives/charts/ChartBlankState";
 import { Callout } from "../primitives/Callout";
 import type { AggregationType, ChartConfiguration } from "../metrics/QueryWidget";
 import { aggregateValues } from "../primitives/charts/aggregation";
+import { MAX_SERIES } from "~/components/primitives/charts/seriesFromRows";
 import { getRunStatusChartColor } from "~/components/runs/v3/TaskRunStatus";
 import { getSeriesColor } from "./chartColors";
 
-const MAX_SERIES = 50;
 const MAX_SVG_ELEMENT_BUDGET = 6_000;
 const MIN_DATA_POINTS = 100;
 const MAX_DATA_POINTS = 500;
@@ -65,6 +65,8 @@ interface QueryResultsChartProps {
   /** When true, constrains legend to max 50% height with scrolling */
   legendScrollable?: boolean;
   isLoading?: boolean;
+  /** Overrides the y-value format inferred from the first y column's metadata. */
+  valueFormat?: ColumnFormatType;
 }
 
 interface TransformedData {
@@ -805,6 +807,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
   onViewAllLegendItems,
   isLoading = false,
   legendScrollable = false,
+  valueFormat,
 }: QueryResultsChartProps) {
   const {
     xAxisColumn,
@@ -911,10 +914,11 @@ export const QueryResultsChart = memo(function QueryResultsChart({
 
   // Resolve the Y-axis column format for formatting
   const yAxisFormat = useMemo(() => {
+    if (valueFormat) return valueFormat;
     if (yAxisColumns.length === 0) return undefined;
     const col = columns.find((c) => c.name === yAxisColumns[0]);
     return (col?.format ?? col?.customRenderType) as ColumnFormatType | undefined;
-  }, [yAxisColumns, columns]);
+  }, [valueFormat, yAxisColumns, columns]);
 
   // Create dynamic Y-axis formatter based on data range and format
   const yAxisFormatter = useMemo(
@@ -1243,7 +1247,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
 /**
  * Creates a Y-axis value formatter based on the data range and optional format hint
  */
-function createYAxisFormatter(
+export function createYAxisFormatter(
   data: Record<string, unknown>[],
   series: string[],
   format?: ColumnFormatType

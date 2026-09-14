@@ -170,6 +170,13 @@ describe("StreamdownRenderer (rendered markdown)", () => {
     expect(html).toContain('target="_blank"');
     expect(html).toContain('rel="noopener noreferrer"');
   });
+
+  it("wraps a rendered table in a scrollable div and drops the hast node prop", async () => {
+    const html = await render(["| a | b |", "| --- | --- |", "| 1 | 2 |"].join("\n"));
+
+    expect(html).toMatch(/<div class="overflow-x-auto"><table/);
+    expect(html).not.toMatch(/<table[^>]*node=/);
+  });
 });
 
 // No jsdom in this repo — stand in for the browser globals `createStaleAssetRecovery` touches.

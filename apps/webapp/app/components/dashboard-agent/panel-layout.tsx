@@ -54,6 +54,41 @@ const CLEARED_FLOATING_STYLE: CSSProperties = {
   height: undefined,
 };
 
+// The docked width is ours to keep: the panel is sized by constraints, not by the
+// library's collapse state, so nothing else remembers it across a mode switch.
+export const AGENT_PANEL_MIN_WIDTH = 320;
+export const AGENT_PANEL_MAX_WIDTH = 720;
+export const AGENT_PANEL_DEFAULT_WIDTH = 380;
+const AGENT_PANEL_WIDTH_KEY = "tdev:dashboard-agent:panel-width";
+
+export function clampAgentPanelWidth(width: number | undefined): number {
+  // Anything under the panel's own min never came from a docked drag — an undocked panel
+  // measures ~0 — so it means "no saved width" rather than "as narrow as allowed".
+  if (!width || !Number.isFinite(width) || width < AGENT_PANEL_MIN_WIDTH) {
+    return AGENT_PANEL_DEFAULT_WIDTH;
+  }
+  return Math.min(AGENT_PANEL_MAX_WIDTH, Math.round(width));
+}
+
+export function readAgentPanelWidth(): number {
+  if (typeof window === "undefined") return AGENT_PANEL_DEFAULT_WIDTH;
+  try {
+    const stored = window.localStorage.getItem(AGENT_PANEL_WIDTH_KEY);
+    return clampAgentPanelWidth(stored ? Number.parseFloat(stored) : undefined);
+  } catch {
+    return AGENT_PANEL_DEFAULT_WIDTH;
+  }
+}
+
+export function writeAgentPanelWidth(width: number | undefined) {
+  if (typeof window === "undefined" || !width || width < AGENT_PANEL_MIN_WIDTH) return;
+  try {
+    window.localStorage.setItem(AGENT_PANEL_WIDTH_KEY, String(clampAgentPanelWidth(width)));
+  } catch {
+    /* ignore */
+  }
+}
+
 export function initialFloatingRect() {
   if (typeof window === "undefined") {
     return { x: 0, y: 0, w: FLOATING_WIDTH, h: FLOATING_HEIGHT };

@@ -247,6 +247,7 @@
     "@types/slug": "^5.0.3",
     "@types/supertest": "^6.0.2",
     "@types/ws": "^8.5.3",
+    "@window-splitter/state": "1.1.3",
     "autoevals": "^0.0.130",
     "engine.io": "^6.6.7",
     "esbuild": "^0.15.10",

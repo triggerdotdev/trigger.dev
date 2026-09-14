@@ -86,7 +86,7 @@ const ENV_BOUND_TOOLS: Array<[string, Record<string, unknown>, string]> = [
   ["list_tasks", {}, "/api/v1/projects/proj_otherotherotherother/prod/workers/current"],
   ["list_runs", {}, "/api/v1/runs?page%5Bsize%5D=10"],
   ["get_run", { runId: "run_1" }, "/api/v3/runs/run_1"],
-  ["get_run_trace", { runId: "run_1" }, "/api/v1/runs/run_1/trace"],
+  ["get_run_trace", { runId: "run_1" }, "/api/v1/dashboard-agent/runs/run_1/trace"],
   ["list_errors", {}, "/api/v1/errors?page%5Bsize%5D=20"],
   ["get_error", { errorId: "error_1" }, "/api/v1/errors/error_1"],
   ["get_query_schema", {}, "/api/v1/query/schema"],
@@ -816,5 +816,95 @@ describe("a source read from a sibling project", () => {
 
     expect(ledger.wasReadThisTurn(PATH, DEFAULT_SNAPSHOT.sha)).toBe(true);
     expect(ledger.scopesForSourceRead(PATH, DEFAULT_SNAPSHOT.sha)).toEqual([]);
+  });
+});
+
+/**
+ * Switching project or environment IS navigating, so the URI is minted from the target's
+ * own env JWT: that exchange is the access check, exactly as it is for a read.
+ */
+describe("navigate_to aimed at another environment", () => {
+  const OTHER_ENV = "env_other_prod";
+  const HERE_ENV = "env_here";
+  const BRANCH_ENV = "env_here_branch";
+
+  const navigate = (input: any) => {
+    const tools = buildDashboardAgentTools({
+      userActorToken: "uat",
+      apiOrigin: ORIGIN,
+      environmentId: HERE_ENV,
+      ...CONVERSATION,
+    });
+    return (tools.navigate_to as any).execute(input, {} as any) as Promise<Record<string, any>>;
+  };
+
+  // A branch row is its own environment, so the exchange that carried the branch header
+  // is the one that names it.
+  const exchangedEnvironmentId = (url: string) => {
+    if (url.includes(OTHER_REF)) return OTHER_ENV;
+    return calls[calls.length - 1].branch ? BRANCH_ENV : HERE_ENV;
+  };
+
+  beforeEach(() => {
+    fetchStub = stubFetch((url) =>
+      url.endsWith("/jwt")
+        ? Response.json({ token: "jwt", environmentId: exchangedEnvironmentId(url) })
+        : undefined
+    );
+    vi.stubGlobal("fetch", fetchStub);
+  });
+
+  it("takes the user to the project and environment it was given", async () => {
+    const result = await navigate({ ...OTHER, destination: { kind: "runs" } });
+
+    expect(result.intent).toEqual({
+      kind: "navigate",
+      target: `trigger://${OTHER_REF}/${OTHER_ENV}/runs`,
+    });
+    expect(calls.map((call) => call.url)).toContain(
+      `${ORIGIN}/api/v1/projects/${OTHER_REF}/prod/jwt`
+    );
+  });
+
+  it("stays in the conversation's own environment when no target is named", async () => {
+    const result = await navigate({ destination: { kind: "run", runId: "run_1" } });
+
+    expect(result.intent).toEqual({
+      kind: "navigate",
+      target: `trigger://${CONVERSATION.projectRef}/${HERE_ENV}/run/run_1`,
+    });
+    expect(fetchStub).not.toHaveBeenCalled();
+  });
+
+  it("refuses a target the exchange won't authorize, and emits no uri", async () => {
+    fetchStub = stubFetch((url) =>
+      url.endsWith("/jwt") ? new Response("nope", { status: 403 }) : undefined
+    );
+    vi.stubGlobal("fetch", fetchStub);
+
+    const result = await navigate({ ...OTHER, destination: { kind: "run", runId: "run_1" } });
+
+    expect(result.intent).toBeUndefined();
+    expect(result.error).toContain("navigate to");
+  });
+
+  it("refuses an unknown project, and emits no uri", async () => {
+    const result = await navigate({ project: "no-such-project", destination: { kind: "runs" } });
+
+    expect(result.intent).toBeUndefined();
+    expect(result.error).toContain('No project "no-such-project" in this organization');
+  });
+
+  // Same project and environment name, another branch: still not the conversation's own scope.
+  it("mints the branch's own environment for a branch-only target", async () => {
+    const result = await navigate({ branch: "feat/other", destination: { kind: "runs" } });
+
+    expect(result.intent).toEqual({
+      kind: "navigate",
+      target: `trigger://${CONVERSATION.projectRef}/${BRANCH_ENV}/runs`,
+    });
+    const exchange = calls.find((call) => call.url.endsWith("/jwt"))!;
+    expect(exchange.url).toBe(`${ORIGIN}/api/v1/projects/${CONVERSATION.projectRef}/dev/jwt`);
+    expect(exchange.branch).toBe("feat/other");
   });
 });

@@ -23,15 +23,31 @@ describe("DashboardAgent.tsx keeps one tree shape across display modes", () => {
     expect(source).toContain("FloatingAgentWindow");
   });
 
-  it('gates the right-column sizing on mode === "rightPanel", not a branch around FloatingAgentWindow', () => {
-    expect(source).toContain('collapsed={mode !== "rightPanel"}');
+  it("saves the docked width on drag end, never on a size report", () => {
+    expect(source).toContain("onDragEnd={onAgentHandleDragEnd}");
+    expect(source).toContain("createDockedWidthController");
+    // Persistence goes through the controller, which blocks it until a dock has applied
+    // its own width; writing straight from a size report is the bug it exists for.
+    expect(source).not.toMatch(/writeAgentPanelWidth\(pixel/);
+  });
+
+  it("renders a constant default width, so the server and the client agree", () => {
+    expect(source).toContain('default={docked ? `${AGENT_PANEL_DEFAULT_WIDTH}px` : "0px"}');
+    expect(source).not.toMatch(/default=\{[^}]*readAgentPanelWidth/);
+  });
+
+  it("gates the right-column sizing on constraints, never the library's collapse state", () => {
+    expect(source).toContain('min={docked ? `${AGENT_PANEL_MIN_WIDTH}px` : "0px"}');
+    expect(source).toContain('max={docked ? `${AGENT_PANEL_MAX_WIDTH}px` : "0px"}');
+    expect(source).not.toMatch(/collapsed=\{/);
+    expect(source).not.toContain("collapsedSize");
   });
 
   it("keeps ResizableHandle always mounted — a conditional handle shifts sibling keys and remounts the chat", () => {
     const occurrences = source.match(/<ResizableHandle\b/g) ?? [];
     expect(occurrences).toHaveLength(1);
-    expect(source).not.toMatch(/mode === "rightPanel" &&\s*<ResizableHandle/);
-    expect(source).toContain('size={mode === "rightPanel" ? "3px" : "0px"}');
+    expect(source).not.toMatch(/docked &&\s*<ResizableHandle/);
+    expect(source).toContain('size={docked ? "3px" : "0px"}');
   });
 
   it("unclips the degenerate panel with Tailwind v4's trailing-bang important modifier", () => {

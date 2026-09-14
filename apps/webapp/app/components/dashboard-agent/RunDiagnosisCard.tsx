@@ -5,6 +5,8 @@ import { TextLink } from "~/components/primitives/TextLink";
 import { toSafeUrl } from "~/components/runs/v3/agent/AgentMessageView";
 import { CategoryBadge, ConfidenceBadge, EVIDENCE_ROW_CLASS } from "./agent-badges";
 import { AgentCard, AgentCardBody, AgentCardHeader } from "./agent-card";
+import { AgentText } from "./AgentText";
+import type { ResolvedUri } from "./ReportView";
 import { useOptionalEnvironment } from "~/hooks/useEnvironment";
 import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { useOptionalProject } from "~/hooks/useProject";
@@ -152,7 +154,13 @@ function DiagnosisActions({ actions }: { actions: NonNullable<DiagnosisBlock["ac
   );
 }
 
-export function RunDiagnosisCard({ block }: { block: DiagnosisBlock }) {
+export function RunDiagnosisCard({
+  block,
+  resolveUri,
+}: {
+  block: DiagnosisBlock;
+  resolveUri?: (uri: string) => ResolvedUri | null;
+}) {
   const evidence = block.evidence ?? [];
   const nextSteps = block.nextSteps ?? [];
   const actions = block.actions ?? [];
@@ -176,10 +184,18 @@ export function RunDiagnosisCard({ block }: { block: DiagnosisBlock }) {
       </AgentCardHeader>
 
       <AgentCardBody density="roomy">
-        <p className="text-sm text-text-bright">{block.summary}</p>
+        <AgentText
+          text={block.summary}
+          className="text-sm text-text-bright"
+          resolveUri={resolveUri}
+        />
 
         <Section title="Likely cause">
-          <p className="text-sm text-text-dimmed">{block.likelyCause}</p>
+          <AgentText
+            text={block.likelyCause}
+            className="text-sm text-text-dimmed"
+            resolveUri={resolveUri}
+          />
         </Section>
 
         {evidence.length > 0 ? (
@@ -191,7 +207,11 @@ export function RunDiagnosisCard({ block }: { block: DiagnosisBlock }) {
                     {EVIDENCE_LABELS[item.type] ?? item.type}
                   </CategoryBadge>
                   <div className="min-w-0 space-y-1 text-xs">
-                    <p className="text-text-bright">{item.detail}</p>
+                    <AgentText
+                      text={item.detail}
+                      className="text-text-bright"
+                      resolveUri={resolveUri}
+                    />
                     {item.reference ? (
                       <div className="break-all">
                         <EvidenceReference reference={item.reference} />
@@ -206,7 +226,11 @@ export function RunDiagnosisCard({ block }: { block: DiagnosisBlock }) {
 
         {block.impact ? (
           <Section title="Impact">
-            <p className="text-sm text-text-dimmed">{block.impact}</p>
+            <AgentText
+              text={block.impact}
+              className="text-sm text-text-dimmed"
+              resolveUri={resolveUri}
+            />
           </Section>
         ) : null}
 
@@ -214,8 +238,12 @@ export function RunDiagnosisCard({ block }: { block: DiagnosisBlock }) {
           <Section title="Next steps">
             <ol className="list-decimal space-y-2 pl-5">
               {nextSteps.map((step, i) => (
-                <li key={i} className="text-sm text-text-dimmed">
-                  {step}
+                <li key={i}>
+                  <AgentText
+                    text={step}
+                    className="text-sm text-text-dimmed"
+                    resolveUri={resolveUri}
+                  />
                 </li>
               ))}
             </ol>

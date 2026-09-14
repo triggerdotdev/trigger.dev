@@ -98,7 +98,7 @@ export const listRunsSchema = tool({
 
 export const getRunSchema = tool({
   description:
-    "Get the status, timing, cost, and error details for a single run in the current environment, by its run id (run_...).",
+    "Get the status, timing, cost, and error details for a single run in the current environment, by its run id (run_...). For a pure lookup ('which task is this', 'when did it start') this is the answer; for a why/how question about the run it's step 1 of an investigation, not the answer.",
   inputSchema: z.object({
     ...targetFields,
     runId: z.string().describe("The run id, e.g. run_abc123."),
@@ -107,7 +107,7 @@ export const getRunSchema = tool({
 
 export const getRunTraceSchema = tool({
   description:
-    "Get a run's execution trace: the timeline of spans (tasks, waits, attempts) with durations and error flags. Use this to explain why a run failed, retried, or was slow.",
+    'Get a run\'s execution trace: the timeline of spans (tasks, waits, attempts) with durations and error flags. Reading this does not itself answer why a run failed, retried, or was slow — that\'s an investigation, gathering evidence for the card, not a substitute for it. The `spans` are evidence for you to reason over, not a table to paste back — the user-facing view of a trace is the investigation card\'s timeline. Read the `durations` summary before reasoning about how long anything took: the `kind: "run"` span is wall clock, the `kind: "attempt"` spans are execution only.',
   inputSchema: z.object({
     ...targetFields,
     runId: z.string().describe("The run id, e.g. run_abc123."),
@@ -155,7 +155,7 @@ export const getErrorSchema = tool({
 
 export const getQuerySchemaSchema = tool({
   description:
-    "Discover the analytics tables and columns you can query with TRQL. Call with no table to list the available tables (runs, metrics, llm_metrics, llm_models) and what each holds; call with a table name to get that table's columns, types, descriptions, and time column. Use this before writing a run_query.",
+    "Discover the analytics tables and columns you can query with TRQL. Call with no table to list the available tables (runs, metrics, llm_metrics, llm_models) and what each holds; call with a table name to get that table's columns, types, descriptions, and time column. Use this before writing a run_query. The queue tables (queue_metrics, queue_metrics_by_key) are queryable but may be missing from the listing — their columns are in the Queue charts guideline, so don't take their absence here as 'no queue data'.",
   inputSchema: z.object({
     ...targetFields,
     table: z
@@ -169,13 +169,13 @@ export const getQuerySchemaSchema = tool({
 
 export const runQuerySchema = tool({
   description:
-    "Run a read-only TRQL query against the current environment's analytics data and return the result rows. TRQL is a SQL-style language over ClickHouse: bucket time with toStartOfHour/toStartOfDay on the table's time column for time series, and use countIf/sumIf to produce one numeric column per series. Always call get_query_schema first — column names are snake_case and the runs time column is triggered_at (not created_at); camelCase columns do not exist. Results are capped, so keep queries aggregated. To chart the result, follow with a render_view chart block.",
+    "Run a read-only TRQL query against the current environment's analytics data and return the result rows. TRQL is a SQL-style language over ClickHouse: bucket a time series with timeBucket() AS t and GROUP BY t ORDER BY t, which sizes the bucket from `period`, and use countIf/sumIf to produce one numeric column per series. Always call get_query_schema first — column names are snake_case and the runs time column is triggered_at (not created_at); camelCase columns do not exist. Results are capped, so keep queries aggregated. To chart the result, follow with a render_view chart block.",
   inputSchema: z.object({
     ...targetFields,
     query: z
       .string()
       .describe(
-        "The TRQL query. A read-only SELECT over runs / metrics / llm_metrics / llm_models."
+        "The TRQL query. A read-only SELECT over runs / metrics / llm_metrics / llm_models / queue_metrics / queue_metrics_by_key."
       ),
     period: z
       .string()
@@ -304,8 +304,9 @@ export const getCurrentPageSchema = tool({
 
 export const navigateToSchema = tool({
   description:
-    "Take the user to a place in the dashboard. Use this whenever they ask to be shown something ('show me…', 'take me to…', 'open…'), instead of describing where to click. Pick the destination kind and give its identity; for the runs list you can also apply filters, which is how you show 'failed runs of task X in the last day'.",
+    "Take the user to a place in the dashboard. Use this whenever they ask to be shown something ('show me…', 'take me to…', 'open…'), instead of describing where to click. Pick the destination kind and give its identity; for the runs list you can also apply filters, which is how you show 'failed runs of task X in the last day'. The destination can be in any project or environment in this organization; name it when the user does.",
   inputSchema: z.object({
+    ...targetFields,
     destination: z
       .discriminatedUnion("kind", [
         z.object({
@@ -521,6 +522,84 @@ export const dashboardAgentCodeToolSchemas = {
 // runtime. A dashboard prompt override only affects the agent run, not the warm step.
 export const DASHBOARD_AGENT_MODEL = "claude-sonnet-4-6";
 
+/**
+ * The queue detail page's nine charts, as TRQL the agent can render straight into a chart
+ * block. The prompt section below is generated from this list, so the queries the model
+ * reads are exactly the ones `queue-chart-templates.test.ts` compiles.
+ */
+export const QUEUE_TEMPLATE_PLACEHOLDER = "<queue>";
+export const KEY_LIST_PLACEHOLDER = "<top keys>";
+
+const waitQuantile = (index: number, alias: string) =>
+  `round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[${index}]) AS ${alias}`;
+
+const FROM_QUEUE = `FROM queue_metrics WHERE queue = '${QUEUE_TEMPLATE_PLACEHOLDER}' GROUP BY t ORDER BY t`;
+
+const byKey = (expr: string, alias: string) => ({
+  rankQuery: `SELECT concurrency_key, ${expr} AS peak FROM queue_metrics_by_key WHERE queue = '${QUEUE_TEMPLATE_PLACEHOLDER}' GROUP BY concurrency_key ORDER BY peak DESC LIMIT 8`,
+  query: `SELECT timeBucket() AS t, concurrency_key, ${expr} AS ${alias} FROM queue_metrics_by_key WHERE queue = '${QUEUE_TEMPLATE_PLACEHOLDER}' AND concurrency_key IN (${KEY_LIST_PLACEHOLDER}) GROUP BY t, concurrency_key ORDER BY t`,
+});
+
+export type QueueChartTemplate = {
+  title: string;
+  /** Chart-block settings the model must copy, appended after the title. */
+  note?: string;
+  /** Run first: its `concurrency_key` values are the IN list `query` needs. */
+  rankQuery?: string;
+  query: string;
+};
+
+export const QUEUE_CHART_TEMPLATES: QueueChartTemplate[] = [
+  {
+    title: "Concurrency",
+    note: "fillGaps true",
+    query: `SELECT timeBucket() AS t, max(max_running) AS running, max(max_limit) AS limit ${FROM_QUEUE}`,
+  },
+  {
+    title: "Queue depth",
+    note: "fillGaps true",
+    query: `SELECT timeBucket() AS t, max(max_queued) AS queued ${FROM_QUEUE}`,
+  },
+  {
+    title: "Throughput",
+    query: `SELECT timeBucket() AS t, deltaSumTimestampMerge(enqueue_delta) AS enqueued, deltaSumTimestampMerge(started_delta) AS started ${FROM_QUEUE}`,
+  },
+  {
+    title: "Scheduling delay",
+    note: 'valueFormat "duration_ms"',
+    query: `SELECT timeBucket() AS t, ${waitQuantile(1, "p50")}, ${waitQuantile(3, "p95")}, ${waitQuantile(4, "p99")} ${FROM_QUEUE}`,
+  },
+  {
+    title: "Throttled",
+    query: `SELECT timeBucket() AS t, sum(throttled_count) AS throttled ${FROM_QUEUE}`,
+  },
+  {
+    title: "Keys with backlog",
+    note: "fillGaps true",
+    query: `SELECT timeBucket() AS t, max(max_ck_backlogged) AS keys ${FROM_QUEUE}`,
+  },
+  {
+    title: "Worst key wait",
+    note: 'fillGaps true, valueFormat "duration_ms"',
+    query: `SELECT timeBucket() AS t, max(max_ck_wait_ms) AS wait ${FROM_QUEUE}`,
+  },
+  {
+    title: "Waiting runs by key",
+    note: "groupByColumn concurrency_key",
+    ...byKey("max(max_queued)", "waiting"),
+  },
+  {
+    title: "Throughput by key",
+    note: "groupByColumn concurrency_key",
+    ...byKey("deltaSumTimestampMerge(started_delta)", "started"),
+  },
+];
+
+const QUEUE_CHART_RECIPE = QUEUE_CHART_TEMPLATES.map((t, i) => {
+  const head = `  ${i + 1}. ${t.title}${t.note ? `, ${t.note}` : ""} —`;
+  return t.rankQuery ? `${head} first ${t.rankQuery}, then ${t.query}` : `${head} ${t.query}`;
+}).join("\n");
+
 export const DASHBOARD_AGENT_SYSTEM_PROMPT = `You are the Trigger.dev dashboard agent, an assistant embedded in the Trigger.dev web dashboard.
 
 Trigger.dev is a platform for writing and running reliable background tasks and AI agents in TypeScript. Users reach you from inside their dashboard while looking at runs, tasks, schedules, queues, deployments, and logs.
@@ -531,10 +610,10 @@ You have read-only tools that act as the user against their own account:
 - list_tasks: the tasks deployed in the current environment.
 - list_runs: recent runs in the current environment, filterable by status, task, time period, or error group.
 - get_run: status, timing, cost, and error details for a run by its run id.
-- get_run_trace: a run's execution timeline (spans, durations, errors) for explaining why it failed, retried, or was slow.
+- get_run_trace: a run's execution timeline (spans, durations, errors) — evidence for an investigation into why it failed, retried, or was slow, not itself the answer.
 - list_errors: distinct errors in the current environment grouped by fingerprint, with occurrence counts and status (unresolved/resolved/ignored).
 - get_error: full detail for one error group by its error id, including affected versions and who resolved or ignored it.
-- get_query_schema: discover the analytics tables and columns you can query with TRQL (runs, metrics, llm_metrics, llm_models).
+- get_query_schema: discover the analytics tables and columns you can query with TRQL (runs, metrics, llm_metrics, llm_models, queue_metrics, queue_metrics_by_key).
 - run_query: run a read-only TRQL query (SQL-style over ClickHouse) against the current environment's analytics data.
 - ask_support: ask the Trigger.dev support assistant about how Trigger.dev works (docs, concepts, features, configuration, how-tos).
 - render_view: render a structured view in the panel from the block catalog. The catalog has the "diagnosis" block (a failure card for a single run), the "chart" block (a line/bar chart of run_query results), the "actions" block (a row of 1-3 buttons offering next steps — a watch intent opens the watch card pre-filled, an ask intent sends the labelled question as the user's next message), and the "investigation" block (a live card for a hypothesis-driven investigation).
@@ -599,12 +678,13 @@ Product questions:
 - When the answer sends the user to a specific URL — the contact page, the status page, a docs page — write it as a markdown link, never as bare text they have to retype.
 
 Diagnosing why a run failed:
-- When the user asks why a specific run failed (or to investigate a run or error), gather evidence before answering: get_run for the status and error, get_run_trace for the failing span and timeline, and get_error / list_errors to see whether it's a recurring pattern and how widespread it is.
+- When the user asks why a specific run failed with a known error — unless they ask to investigate, which is always an investigation card — gather evidence before answering: get_run for the status and error, get_run_trace for the failing span and timeline, and get_error / list_errors to see whether it's a recurring pattern and how widespread it is. Retry, stuck, slow/duration, or "what happened" questions are not this — see Investigations. If the cause isn't yet known or the error is unclear, that's an investigation too.
 - Then call render_view with a single "diagnosis" block holding your findings: a short summary, the failure category, the likely root cause in specific terms, your confidence, the concrete evidence (cite real run ids, error ids, span messages, and versions), the impact, the next steps, and any action buttons. This renders the failure card, so keep any accompanying message to a one-line lead-in rather than repeating the card.
 - Be honest about confidence. If the evidence is thin or ambiguous, mark it low and say what's missing rather than overstating a guess.
 
 Investigations:
 - Any question that needs diagnosis rather than a lookup — "investigate this", "why is this failing?", "what's causing it?", "what's going on with prod?" — is an investigation, and an investigation is answered on an investigation card. Never in prose alone, and never with a diagnosis block (that one is for a single run you were asked about by id). One question, one investigation — and an investigation is not finished until you have called render_view twice.
+- This applies to a single named run too: "why did it take 18 minutes", "why is run_x so slow", "why is it stuck/waiting", "why did it retry", "what happened to this run", "what is it doing", "show me the trace/timeline of run X", "what happened step by step", "walk me through this run" are all investigations, not lookups — get_run and get_run_trace gather the evidence, they don't answer the question. A trace/timeline/step-by-step request renders on the investigation card's own timeline, never a spans table. If the message also asks a pure identifying question ("what is run_x") alongside the why, fold that fact into the card's evidence rather than answering it separately in prose. A question that is ONLY identification — which task, when it started, its payload — stays a plain lookup answered in prose, no card.
 - Run it in five steps, in this order:
   1. Gather. One round of independent reads, issued together.
   2. Pose two hypotheses — three only if the evidence really demands it.
@@ -613,6 +693,7 @@ Investigations:
   5. Render the verdict, immediately after that round — prose is never a substitute, and a card still reading in_progress when the turn ends leaves the user watching a spinner: render_view again, same investigationId, outcome concluded or inconclusive. This is your VERY NEXT call — before any other tool and before you write a word — and it is always the last tool call of the turn. If you find yourself about to call something that isn't a read of evidence, render the verdict instead. Then close with one short line of prose, and let the outcome decide what it says. concluded: name the cause concretely, in the user's own terms — the limit that's saturated, the file:line that broke. inconclusive: say what is NOT established and what to check first — no "the culprit is", no cause presented as found, and no fix, not even a fast one or a hedged one. "Here's what I found" is not an answer, and don't restate the card. The close is ONE sentence, never a list: if you're writing bullets after the verdict card, you are retyping the card's remediation or checkNext — everything list-shaped belongs on the card and only there.
 - That is FOUR tool phases and there is no fifth: gather, open the card, one test round, verdict. You cannot count how many steps you have left and the ceiling is hard — a turn that hits it renders nothing and answers nothing — so anything outside those four phases is a step you cannot afford. Never call get_current_page, list_projects, or list_environments inside an investigation: your tools are already scoped and the card needs none of it.
 - You do not need every hypothesis settled to conclude. One hypothesis with a mechanism behind it IS the conclusion: leave the others as testing or invalidated with what you found, and render the verdict. Chasing the last unsettled hypothesis — for call sites, a type definition, a payload you can't see — is how a turn ends with no verdict at all.
+- When you investigate a run that is still executing or has been running for minutes, copy get_run_trace's timeline onto the investigation's own timeline verbatim — the user wants to see where the time has gone and what it is doing right now, not a prose table. Once the card carries a timeline, the reply doesn't restate its phases as a table or list — the card is the timeline, so close with at most one or two sentences of conclusion.
 - Never state a cause, a fix, or a dead end in prose while the card says in_progress or doesn't exist yet. The verdict lands on the card first.
 - Never open a second investigation for one question: pass investigationId back on every later render, including on follow-up turns about the same investigation.
 - Report state only. The card's id and revision come from the tool result — never write, guess, or reuse one from memory.
@@ -622,12 +703,21 @@ Investigations:
 - The two endings are exclusive, on the card AND in your prose. concluded = what happened + how to fix it, with remediation as concrete, minimal prose (cite file:line@sha only when you actually read that source). inconclusive = what you know + what to check next, and never a fix: an inconclusive card whose prose recommends a remedy is the same error as putting remediation on the card. checkNext items are things to look at, measure, or find out — the upstream's status page, whether retries succeed, which payloads the failures share. "Add retries", "raise the timeout", "add a guard" are changes, not checks: they belong to a concluded card and nowhere else.
 
 Answering with data and charts:
-- For questions about metrics, trends, counts, rates, costs, or "over time" / "by task" style aggregations, query the analytics data. First call get_query_schema (no table to list the tables, then a table name for its columns), then write a TRQL query. TRQL is SQL-style over ClickHouse: bucket time with toStartOfHour/toStartOfDay on the table's time column, produce one numeric column per series with countIf/sumIf, always include a time filter, and keep the result aggregated to a few dozen points.
-- To chart the answer, call render_view with a "chart" block containing the TRQL query itself plus chartType (line for trends over time, bar for categories), xAxisColumn, yAxisColumns, and groupByColumn when you split a single value column into series. The panel runs the query and renders it, so you don't have to run_query first just to chart — render_view runs the query to check it and fails with the error if it's broken, so read that message and render again. Column names are snake_case and the runs time column is triggered_at (not created_at); when unsure of a column, check get_query_schema before charting.
+- A tabular answer — a list of projects, environments, runs, or any rows-and-columns comparison, but never a run's trace or spans — goes as a GitHub-flavoured markdown table in the reply text, which the panel renders as its own table card (copy, fullscreen); render_view has no table block and is for charts and cards only, so never refuse a table or claim you cannot show one.
+- For questions about metrics, trends, counts, rates, costs, or "over time" / "by task" style aggregations, query the analytics data. First call get_query_schema (no table to list the tables, then a table name for its columns), then write a TRQL query. TRQL is SQL-style over ClickHouse: bucket a time series with timeBucket() AS t and GROUP BY t ORDER BY t, produce one numeric column per series with countIf/sumIf, always include a time filter, and keep the result aggregated to a few dozen points.
+- To chart the answer, call render_view with a "chart" block containing the TRQL query itself plus chartType (line for trends over time, bar for categories), xAxisColumn, yAxisColumns, and groupByColumn when you split a single value column into series. The panel runs the query and renders it, so you don't have to run_query first just to chart — render_view runs the query to check it and fails with the error if it's broken, so read that message and render again. Column names are snake_case and the runs time column is triggered_at (not created_at); when unsure of a column, check get_query_schema before charting. A time-series chart buckets with timeBucket() AS t — never hand-roll toStartOfHour/toStartOfDay — with GROUP BY t ORDER BY t; timeBucket() picks the bucket size and zero-fills gaps for the block's period, so the window comes from period, not a WHERE on time.
 - Use run_query when you want to state specific numbers in prose, or to sanity-check a query before charting. If it returns an error, read the message and fix the query.
 - A chart never answers alone. A superlative or ranking question — "which tasks fail most", "what's slowest", "which queue is busiest" — is answered IN PROSE, naming the winner and its number ("send-order-receipt — 3 of the 4 failures"); the chart illustrates that answer, it is not the answer. Run the query with run_query when you need the number to say it.
 - On a ranking or failures chart, give the top item buttons through the chart block's "actions": an ask action phrasing the user's own follow-up ("Investigate the send-order-receipt failures — why are they failing?"), plus a navigate action to the page that shows it (its filtered runs list, its error, its queue) when you hold a canonical trigger:// target for it. Two or three, never more.
-- Those buttons are not an offer to do the work: they sit next to a finished answer, and they never license "want me to drill into the top offender?" — asking to look is still banned.`;
+- Those buttons are not an offer to do the work: they sit next to a finished answer, and they never license "want me to drill into the top offender?" — asking to look is still banned.
+
+Queue charts (the queue page's own charts, as chart blocks):
+- queue_metrics is per-queue; queue_metrics_by_key breaks the same queue down per concurrency_key. Time column bucket_start on both, both already scoped to this environment. Pin the queue with WHERE queue = '<queue>' (double any quote in the name) and bucket with timeBucket() AS t, which sizes itself from the period.
+- Aggregate by column kind or the numbers are wrong: gauges (max_running, max_queued, max_limit, max_ck_backlogged, max_ck_wait_ms) with max(); throttled_count and wait_ms_count with sum(); the counter deltas (enqueue_delta, started_delta, ack_delta) ONLY with deltaSumTimestampMerge(<col>), never sum(); wait latency ONLY with quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[i], where i is 1 p50, 2 p90, 3 p95, 4 p99. Never FINAL.
+- The nine charts, all chartType line with xAxisColumn t. Copy the query verbatim and substitute the queue name:
+${QUEUE_CHART_RECIPE}
+- The last two are two calls: run_query the ranking first, then chart the keys it returned as a quoted IN list. Charting queue_metrics_by_key without that IN list silently loses the newest buckets to the row cap.
+- Charts 6-9 only mean something for a queue that shards on concurrencyKey: when max_ck_backlogged is flat zero the queue has no keys, so say that rather than rendering an empty per-key chart.`;
 
 // Appended to the system prompt only for turns where watches are enabled: without the
 // watch tool the agent must not offer to tell the user later.

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   VIEW_BLOCK_VERSION,
+  chartBlockBodySchema,
   investigationBlockSchema,
   investigationStateSchema,
+  investigationTimelineSchema,
   isRevisableBlock,
   legacyViewBlockSchema,
   parseStoredViewBlock,
@@ -229,6 +231,54 @@ describe("chart actions", () => {
         actions: [{ label: "Runs", intent: { kind: "navigate", target: "/runs?status=FAILED" } }],
       }).success
     ).toBe(true);
+  });
+});
+
+describe("chart query description", () => {
+  const description = chartBlockBodySchema.shape.query.description ?? "";
+
+  // Only a timeBucket() query gets its bucket size from `period` and its gaps filled
+  // (tsql printer), so the schema must not offer toStartOfHour/toStartOfDay as an option.
+  it("requires timeBucket() for a time series", () => {
+    expect(description).toContain("timeBucket() AS t");
+    expect(description).toContain("GROUP BY t ORDER BY t");
+    expect(description).toContain("never hand-roll toStartOfHour/toStartOfDay");
+  });
+
+  it("says gap fill is already on for a time series", () => {
+    const fillGaps = chartBlockBodySchema.shape.fillGaps.description ?? "";
+    expect(fillGaps).toContain("Already on for a timeBucket() query");
+    expect(fillGaps).not.toContain("Default false");
+  });
+});
+
+describe("chart valueFormat", () => {
+  it("accepts a duration format and survives the envelope", () => {
+    const parsed = viewBlockInputSchema.parse({ ...legacyChart, valueFormat: "duration_ms" });
+    expect(parsed.type === "chart" && parsed.valueFormat).toBe("duration_ms");
+    expect(
+      viewBlockSchema.safeParse({ ...legacyChart, ...envelope, valueFormat: "percent" }).success
+    ).toBe(true);
+    expect(parseStoredViewBlock({ ...legacyChart, valueFormat: "bytes" }).type).toBe("chart");
+  });
+
+  it("accepts fillGaps for a gauge series", () => {
+    const parsed = viewBlockInputSchema.parse({ ...legacyChart, fillGaps: true });
+    expect(parsed.type === "chart" && parsed.fillGaps).toBe(true);
+    expect(parseStoredViewBlock({ ...legacyChart, fillGaps: true }).type).toBe("chart");
+  });
+
+  it("still parses a chart stored before valueFormat and fillGaps existed", () => {
+    const parsed = viewBlockInputSchema.parse(legacyChart);
+    expect(parsed.type === "chart" && parsed.valueFormat).toBeUndefined();
+    expect(parsed.type === "chart" && parsed.fillGaps).toBeUndefined();
+    expect(legacyViewBlockSchema.safeParse(legacyChart).success).toBe(true);
+  });
+
+  it("rejects a format the chart can't render", () => {
+    expect(
+      viewBlockInputSchema.safeParse({ ...legacyChart, valueFormat: "duration_ns" }).success
+    ).toBe(false);
   });
 });
 
@@ -483,6 +533,73 @@ describe("investigation block", () => {
         evidence: [{ kind: "run", uri: "run_abc123", label: "a run" }],
       }).success
     ).toBe(false);
+  });
+
+  it("carries an optional timeline, and stored cards without one still parse", () => {
+    const timeline = {
+      startedAt: "2025-01-01T00:00:00.000Z",
+      elapsedMs: 190_000,
+      asOf: "2025-01-01T00:03:10.000Z",
+      phases: [
+        { label: "Queued", startOffsetMs: 0, durationMs: 4_000, status: "done" },
+        { label: "fetch invoices", startOffsetMs: 4_000, status: "ongoing", spanId: "span_1" },
+      ],
+    };
+    const withTimeline = investigationBlockSchema.parse({
+      ...investigationBlock,
+      investigation: { ...concludedInvestigation, timeline },
+    });
+    expect(withTimeline.investigation.timeline).toEqual(timeline);
+    expect(
+      viewBlockInputSchema.safeParse({
+        ...investigationBody,
+        investigation: { ...concludedInvestigation, timeline },
+      }).success
+    ).toBe(true);
+
+    // Transcripts stored before the field existed carry no timeline at all.
+    expect(parseStoredViewBlock(investigationBody)).not.toHaveProperty("investigation.timeline");
+    expect(investigationStateSchema.parse(concludedInvestigation).timeline).toBeUndefined();
+
+    // A negative offset is a clock reading, not a measurement.
+    expect(
+      viewBlockInputSchema.safeParse({
+        ...investigationBody,
+        investigation: {
+          ...concludedInvestigation,
+          timeline: {
+            ...timeline,
+            phases: [{ label: "Queued", startOffsetMs: -1, status: "done" }],
+          },
+        },
+      }).success
+    ).toBe(false);
+  });
+
+  it("demands real ISO instants for the timeline's own stamps", () => {
+    const timeline = {
+      startedAt: "2025-01-01T00:00:00.000Z",
+      elapsedMs: 190_000,
+      asOf: "2025-01-01T00:03:10.000Z",
+      phases: [{ label: "Queued", startOffsetMs: 0, durationMs: 4_000, status: "done" }],
+      truncated: true,
+    };
+    // What `derivePhases` actually emits: `new Date(ms).toISOString()`.
+    expect(investigationTimelineSchema.parse(timeline)).toEqual(timeline);
+    expect(
+      investigationTimelineSchema.safeParse({
+        ...timeline,
+        startedAt: new Date(0).toISOString(),
+        asOf: new Date(1_700_000_000_123).toISOString(),
+      }).success
+    ).toBe(true);
+
+    for (const bad of ["2025-01-01", "yesterday", "01/01/2025 00:00", ""]) {
+      expect(investigationTimelineSchema.safeParse({ ...timeline, asOf: bad }).success).toBe(false);
+      expect(investigationTimelineSchema.safeParse({ ...timeline, startedAt: bad }).success).toBe(
+        false
+      );
+    }
   });
 
   it("is the one progressive block: revisions share an id and climb", () => {

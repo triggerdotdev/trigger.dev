@@ -737,11 +737,12 @@
   & table {
     @apply my-2 border-collapse;
     width: auto;
-    max-width: 100%;
   }
   & th,
   & td {
     @apply border border-grid-bright px-2 py-1 text-left;
+    overflow-wrap: normal;
+    word-break: normal;
   }
   & th {
     @apply font-semibold whitespace-nowrap;
@@ -752,6 +753,16 @@
   & [data-streamdown="code-block-body"] {
     @apply text-xs leading-relaxed scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600;
   }
+}
+
+/* The agent table is font-mono text-xs throughout; streamdown's own inline code sets
+   text-sm directly, so it needs an override. Not nested under .streamdown-container - the
+   fullscreen table's dialog portals to document.body, outside that container, so an ancestor
+   requirement silently stops matching there. data-agent-table alone scopes it, present on
+   both the compact and fullscreen wrapper. Flat and same-height as surrounding text (py-0,
+   leading-5, baseline-aligned) so a row with a code chip does not grow taller than plain text. */
+[data-agent-table] code:not(pre code) {
+  @apply px-1 py-0 text-xs leading-5 align-baseline;
 }
 
 /* The stored 0-100 is a position within the active theme's own range, mapped

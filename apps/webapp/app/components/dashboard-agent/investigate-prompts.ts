@@ -11,8 +11,25 @@ export function isFailedRunStatus(status: string): boolean {
   return FAILED_RUN_STATUSES.has(status);
 }
 
+// Runs actively executing (or between execution attempts), as opposed to still queued/pending
+// or already finished — the queued/pending case gets its own waiting-block prompt instead.
+const IN_PROGRESS_RUN_STATUSES = new Set([
+  "EXECUTING",
+  "DEQUEUED",
+  "RETRYING_AFTER_FAILURE",
+  "WAITING_TO_RESUME",
+]);
+
+export function isInProgressRunStatus(status: string): boolean {
+  return IN_PROGRESS_RUN_STATUSES.has(status);
+}
+
 export function failedRunPrompt(runFriendlyId: string): string {
   return `Investigate run ${runFriendlyId} — why did it fail?`;
+}
+
+export function runningRunPrompt(runFriendlyId: string): string {
+  return `Investigate run ${runFriendlyId} — what has it been doing so far, and is it healthy?`;
 }
 
 export function waitingRunPrompt(runFriendlyId: string, queueName?: string): string {

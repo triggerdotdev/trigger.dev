@@ -36,6 +36,7 @@ import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Switch } from "~/components/primitives/Switch";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { useToast } from "~/components/primitives/Toast";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import {
@@ -795,47 +796,34 @@ const CHAT_OPEN_MODE_OPTIONS: {
 ];
 
 /** The mode Ask Trigger opens in; in-chat mode switches stay transient and don't change this. */
-function ChatOpenModePicker() {
-  const user = useUser();
-  const fetcher = useFetcher<{ success: boolean; error?: string }>();
-  const toast = useToast();
-  const stored = user.dashboardPreferences.chatOpenMode ?? "floating";
-
-  const submit = useCallback(
-    (chatOpenMode: ChatOpenMode) => {
-      fetcher.submit(
-        { chatOpenMode },
-        { method: "POST", action: "/resources/preferences/chat-open-mode" }
-      );
-    },
-    // `useFetcher` is a fresh object each render; only `submit` is used and it is stable.
-    // oxlint-disable-next-line react-hooks/exhaustive-deps
-    [fetcher.submit]
-  );
-  const onError = useCallback((message: string) => toast.error(message), [toast]);
-
-  const { desired, pick } = useChatOpenModePicker({
-    stored,
-    fetcherState: fetcher.state,
-    fetcherData: fetcher.data,
-    submit,
-    onError,
-  });
-
+function ChatOpenModePicker({
+  value,
+  onChange,
+}: {
+  value: ChatOpenMode;
+  onChange: (mode: ChatOpenMode) => void;
+}) {
   return (
     <SegmentedControl
       name="chat-open-mode"
       variant="secondary/small"
-      value={desired}
+      value={value}
       options={CHAT_OPEN_MODE_OPTIONS.map(({ mode, label, Icon }) => ({
         value: mode,
         label: (
-          <span className="flex items-center justify-center" aria-label={label} title={label}>
-            <Icon className="size-4" />
-          </span>
+          <SimpleTooltip
+            asChild
+            button={
+              <span className="flex h-full w-full items-center justify-center" aria-label={label}>
+                <Icon className="size-4" />
+              </span>
+            }
+            content={label}
+            side="top"
+          />
         ),
       }))}
-      onChange={(value) => pick(value as ChatOpenMode)}
+      onChange={(value) => onChange(value as ChatOpenMode)}
     />
   );
 }
@@ -843,6 +831,7 @@ function ChatOpenModePicker() {
 export default function Page() {
   const user = useUser();
   const { showThemeSwitcher, sidebarContext } = useLoaderData<typeof loader>();
+  const toast = useToast();
   const themeFetcher = useFetcher<ProfileUpdateResult>();
   const contrastFetcher = useFetcher();
   const iconContrastFetcher = useFetcher();
@@ -857,6 +846,28 @@ export default function Page() {
     typeof pendingUnderlineLinks === "string"
       ? pendingUnderlineLinks === "true"
       : normalizeUnderlineLinks(user.dashboardPreferences.underlineLinks);
+  const chatOpenModeFetcher = useFetcher<{ success: boolean; error?: string }>();
+  const chatOpenModeSubmit = useCallback(
+    (chatOpenMode: ChatOpenMode) => {
+      chatOpenModeFetcher.submit(
+        { chatOpenMode },
+        { method: "POST", action: "/resources/preferences/chat-open-mode" }
+      );
+    },
+    // `useFetcher` is a fresh object each render; only `submit` is used and it is stable.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+    [chatOpenModeFetcher.submit]
+  );
+  const { desired: desiredChatOpenMode, pick: pickChatOpenMode } = useChatOpenModePicker({
+    stored: user.dashboardPreferences.chatOpenMode ?? "floating",
+    fetcherState: chatOpenModeFetcher.state,
+    fetcherData: chatOpenModeFetcher.data,
+    submit: chatOpenModeSubmit,
+    onError: useCallback((message: string) => toast.error(message), [toast]),
+  });
+  const currentChatModeLabel =
+    CHAT_OPEN_MODE_OPTIONS.find((option) => option.mode === desiredChatOpenMode)?.label ??
+    CHAT_OPEN_MODE_OPTIONS[0].label;
   const pendingTheme = themeFetcher.formData?.get("theme");
   const pendingContrast = contrastFetcher.formData?.get("contrast");
   const contrast =
@@ -1163,10 +1174,12 @@ export default function Page() {
             <div className="flex w-full items-center justify-between gap-4">
               <div className={cn("flex-1", SETTINGS_ROW_TITLE_GAP)}>
                 <Label>Ask Trigger chat</Label>
-                <SettingsRowDescription>Choose where the chat opens</SettingsRowDescription>
+                <SettingsRowDescription>
+                  Set the default position the chat opens in. Currently: {currentChatModeLabel}
+                </SettingsRowDescription>
               </div>
               <div className="flex flex-none items-center">
-                <ChatOpenModePicker />
+                <ChatOpenModePicker value={desiredChatOpenMode} onChange={pickChatOpenMode} />
               </div>
             </div>
           </div>

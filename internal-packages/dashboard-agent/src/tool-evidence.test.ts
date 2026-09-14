@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { curateTrace } from "./tool-curation";
+import { curateTrace, derivePhases } from "./tool-curation";
 import { canonicalizeInvestigationState } from "./tool-evidence";
 import type { ReadScope, ScopedReadKind } from "./tool-source-ledger";
 
@@ -26,6 +26,8 @@ function fakeReads(opts: ReadOpts = {}) {
     scopeForRun: (_runId: string) => opts.runScope,
     scopesForScopedRead: (kind: ScopedReadKind, id: string) => scoped[`${kind}:${id}`] ?? [],
     scopesForSourceRead: (path: string, sha: string) => sourceScoped[`${path}:${sha}`] ?? [],
+    identitiesRead: () => [],
+    timelineForRun: () => undefined,
   };
 }
 
@@ -188,5 +190,108 @@ describe("canonicalizeInvestigationState — cross-target evidence", () => {
     expect(state.evidence).toEqual([]);
     expect(errors).toHaveLength(1);
     expect(errors[0]).toContain(message);
+  });
+});
+
+describe("canonicalizeInvestigationState — timeline", () => {
+  const CREATED = "2025-01-01T00:00:00.000Z";
+  const TRACE = {
+    trace: {
+      rootSpan: {
+        id: "span_root",
+        data: { message: "send-receipt", startTime: CREATED, duration: 5_000_000_000 },
+        children: [
+          {
+            id: "span_attempt_1",
+            data: { message: "Attempt 1", startTime: CREATED, duration: 5_000_000_000 },
+            children: [
+              {
+                id: "span_boot",
+                data: {
+                  message: "Run() → onBoot",
+                  startTime: CREATED,
+                  duration: 2_000_000_000,
+                },
+              },
+            ],
+          },
+        ],
+      },
+    },
+  };
+
+  const TRUNCATED_TRACE = { trace: { ...TRACE.trace, isTruncated: true } };
+
+  const MODEL_TIMELINE = {
+    startedAt: CREATED,
+    elapsedMs: 5_000,
+    asOf: CREATED,
+    phases: [{ label: "Executing", startOffsetMs: 0, durationMs: 5_000, status: "done" as const }],
+    truncated: false,
+  };
+
+  function card(runId: string | undefined, timeline: unknown) {
+    return {
+      outcome: "in_progress",
+      severity: "low",
+      confidence: "low",
+      runId,
+      title: "t",
+      headline: "h",
+      evidence: [],
+      hypotheses: [],
+      timeline,
+    } as any;
+  }
+
+  const TOOL_TIMELINE = derivePhases(TRACE, { createdAt: CREATED })!;
+  const TRUNCATED_TOOL_TIMELINE = derivePhases(TRUNCATED_TRACE, { createdAt: CREATED })!;
+
+  /** The lookup after a get_run_trace on `runId` recorded its timeline. */
+  function readsWithTrace(runId?: string, timeline = TOOL_TIMELINE) {
+    return {
+      ...fakeReads(),
+      timelineForRun: (id: string) => (id === runId ? timeline : undefined),
+    };
+  }
+
+  it("replaces the model's timeline with the one get_run_trace computed", () => {
+    const { state } = canonicalizeInvestigationState(
+      card("run_1", MODEL_TIMELINE),
+      CONVERSATION,
+      readsWithTrace("run_1")
+    );
+    expect(state.timeline).toEqual(TOOL_TIMELINE);
+    // Replaced, not merged: the model's own `truncated` doesn't survive.
+    expect(state.timeline && "truncated" in state.timeline).toBe(false);
+    expect(state.timeline?.phases.map((phase) => phase.label)).toEqual(["Run() → onBoot"]);
+  });
+
+  it("carries the tool's truncation over the model's silence about it", () => {
+    const { state } = canonicalizeInvestigationState(
+      card("run_1", { ...MODEL_TIMELINE, truncated: undefined }),
+      CONVERSATION,
+      readsWithTrace("run_1", TRUNCATED_TOOL_TIMELINE)
+    );
+    expect(state.timeline).toEqual(TRUNCATED_TOOL_TIMELINE);
+    expect(state.timeline?.truncated).toBe(true);
+  });
+
+  it("keeps the model's timeline when no trace was read", () => {
+    const { state } = canonicalizeInvestigationState(
+      card("run_1", MODEL_TIMELINE),
+      CONVERSATION,
+      readsWithTrace()
+    );
+    expect(state.timeline).toEqual(MODEL_TIMELINE);
+  });
+
+  it("doesn't apply another run's trace timeline", () => {
+    const { state } = canonicalizeInvestigationState(
+      card("run_2", MODEL_TIMELINE),
+      CONVERSATION,
+      readsWithTrace("run_1")
+    );
+    expect(state.timeline).toEqual(MODEL_TIMELINE);
   });
 });

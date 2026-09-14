@@ -27,6 +27,15 @@ const SYNC_LINE_COLOR = "var(--color-text-faint)";
 // centered last x-axis label from clipping; bottom gives angled labels room.
 export const CHART_MARGIN = { top: 5, right: 20, bottom: 5, left: 5 } as const;
 
+// Bars are read against the axis baseline, so zero stays in the domain — an "auto" bound pins the
+// baseline to the lowest value and draws a single or flat series as zero-height bars. Negative
+// values keep their side of the axis, with the same headroom as the positive side.
+const BAR_HEADROOM = 1.15;
+export const BAR_Y_AXIS_DOMAIN: [(dataMin: number) => number, (dataMax: number) => number] = [
+  (dataMin: number) => (dataMin < 0 ? dataMin * BAR_HEADROOM : 0),
+  (dataMax: number) => Math.max(0, dataMax) * BAR_HEADROOM,
+];
+
 /** While drag-to-zooming, show the selected From/To range instead of hovered values. */
 function ZoomRangeTooltip({ active, from, to }: { active?: boolean; from: string; to: string }) {
   if (!active) return null;
@@ -254,7 +263,7 @@ export function ChartBarRenderer({
           style: { fontVariantNumeric: "tabular-nums" },
         }}
         tickFormatter={yAxisTickFormatter}
-        domain={["auto", (dataMax: number) => dataMax * 1.15]}
+        domain={BAR_Y_AXIS_DOMAIN}
         {...yAxisPropsProp}
       />
       {/* When legend is shown below the chart, render tooltip with cursor only (no content popup).

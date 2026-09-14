@@ -136,7 +136,7 @@ export const chartBlockBodySchema = z.object({
   query: z
     .string()
     .describe(
-      "A read-only TRQL SELECT whose result columns map onto the axes below. The panel runs this query and renders the result, so write it the same way you would for run_query (toStartOfHour/toStartOfDay buckets, countIf/sumIf per series)."
+      "A read-only TRQL SELECT whose result columns map onto the axes below. The panel runs this query and renders the result. A time series buckets with timeBucket() AS t and ends with GROUP BY t ORDER BY t — never hand-roll toStartOfHour/toStartOfDay: only a timeBucket() query takes its bucket size from `period` and gets its empty buckets filled, so a hand-rolled bucket draws a series full of holes. Use countIf/sumIf for one numeric column per series."
     ),
   period: z
     .string()
@@ -172,6 +172,20 @@ export const chartBlockBodySchema = z.object({
     .enum(["sum", "avg", "count", "min", "max"])
     .optional()
     .describe("How to combine values that share an x point. Default sum."),
+  /** Optional forever: charts stored before `fillGaps` existed must keep parsing. */
+  fillGaps: z
+    .boolean()
+    .optional()
+    .describe(
+      "Emit a row for every empty time bucket instead of leaving a hole: counters zero-fill, gauges carry the last value forward. Already on for a timeBucket() query, which is what a time series wants — pass false only to see the raw buckets."
+    ),
+  /** Optional forever: charts stored before `valueFormat` existed must keep parsing. */
+  valueFormat: z
+    .enum(["number", "duration_ms", "percent", "bytes"])
+    .optional()
+    .describe(
+      "How to format the y values. Default number. Use duration_ms for millisecond durations (wait/scheduling delay, run duration) so ticks read as '1.5s' instead of '1500'."
+    ),
   /** Optional forever: charts stored before `actions` existed must keep parsing. */
   actions: z
     .array(chartActionSchema)
@@ -407,6 +421,26 @@ export const investigationCaveatSchema = z.object({
   message: z.string(),
 });
 
+/** `durationMs` absent means the phase is still open. */
+export const timelinePhaseSchema = z.object({
+  label: z.string(),
+  startOffsetMs: z.number().int().min(0),
+  durationMs: z.number().int().min(0).optional(),
+  status: z.enum(["ongoing", "done", "error"]),
+  detail: z.string().optional(),
+  spanId: z.string().optional(),
+});
+
+/** `startedAt` and `asOf` are ISO, set by the producer. The renderer has no clock. */
+export const investigationTimelineSchema = z.object({
+  startedAt: z.string().datetime(),
+  elapsedMs: z.number().int().min(0),
+  asOf: z.string().datetime(),
+  phases: z.array(timelinePhaseSchema).max(20).default([]),
+  /** Spans were dropped, so the phases are not the whole story. */
+  truncated: z.boolean().optional(),
+});
+
 const investigationStateSchemaWith = <H extends z.ZodTypeAny, E extends z.ZodTypeAny>(
   hypothesis: H,
   evidence: E
@@ -458,6 +492,9 @@ const investigationStateSchemaWith = <H extends z.ZodTypeAny, E extends z.ZodTyp
       caveat: investigationCaveatSchema
         .optional()
         .describe("A hedge that qualifies the whole card."),
+      timeline: investigationTimelineSchema
+        .optional()
+        .describe("Where the time went, replaced with get_run_trace's own timeline."),
       startedAt: z.string().optional(),
       updatedAt: z.string().optional(),
     })
@@ -597,6 +634,8 @@ export type InvestigationOutcome = z.infer<typeof investigationOutcomeSchema>;
 export type InvestigationSeverity = z.infer<typeof investigationSeveritySchema>;
 export type HypothesisVerdict = z.infer<typeof hypothesisVerdictSchema>;
 export type InvestigationCaveat = z.infer<typeof investigationCaveatSchema>;
+export type InvestigationTimeline = z.infer<typeof investigationTimelineSchema>;
+export type TimelinePhase = z.infer<typeof timelinePhaseSchema>;
 export type InvestigationAction = z.infer<typeof investigationActionSchema>;
 export type InvestigationActionKind = z.infer<typeof investigationActionKindSchema>;
 export type InvestigationCapabilities = z.infer<typeof investigationCapabilitiesSchema>;

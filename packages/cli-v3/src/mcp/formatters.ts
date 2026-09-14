@@ -236,7 +236,7 @@ function formatSpan(
 
   // Format span header
   const statusIndicator = getStatusIndicator(span.data);
-  // Trace durations are nanoseconds from ClickHouse
+  // The trace API reports span durations in nanoseconds
   const duration = formatDuration(span.data.duration / 1_000_000);
   const startTime = formatDateTime(span.data.startTime);
 

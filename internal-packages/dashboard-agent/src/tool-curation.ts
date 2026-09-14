@@ -8,18 +8,19 @@ import { sliceWellFormed, type QueueGrounding } from "@internal/dashboard-agent-
 // text that reads like instructions. Fence it in a hard-to-spoof delimiter (named to the
 // model in the system prompt) and cap its length so one field can't blow context.
 const MAX_UNTRUSTED_FIELD_CHARS = 4096;
+
+// Neutralize guillemet bytes so the payload can't reproduce a closing token and break
+// out of its own fence — they're effectively absent from real run/error text.
+export function sanitizeUntrusted(text: unknown, maxChars = MAX_UNTRUSTED_FIELD_CHARS): string {
+  const raw = String(text).replaceAll("«", "<").replaceAll("»", ">");
+  return raw.length > maxChars
+    ? `${sliceWellFormed(raw, maxChars)}…[truncated ${raw.length - maxChars} chars]`
+    : raw;
+}
+
 export function fenceUntrusted(label: string, text: unknown): string | undefined {
   if (text === undefined || text === null) return undefined;
-  // Neutralize guillemet bytes so the payload can't reproduce the closing token and
-  // break out of its own fence — they're effectively absent from real run/error text.
-  const raw = String(text).replaceAll("«", "<").replaceAll("»", ">");
-  const capped =
-    raw.length > MAX_UNTRUSTED_FIELD_CHARS
-      ? `${sliceWellFormed(raw, MAX_UNTRUSTED_FIELD_CHARS)}…[truncated ${
-          raw.length - MAX_UNTRUSTED_FIELD_CHARS
-        } chars]`
-      : raw;
-  return `«untrusted:${label}» ${capped} «/untrusted:${label}»`;
+  return `«untrusted:${label}» ${sanitizeUntrusted(text)} «/untrusted:${label}»`;
 }
 
 // Fail closed: with no organization to scope to, nothing is trustworthy to return.
@@ -132,19 +133,68 @@ export function curateRuns(data: unknown) {
 }
 
 const MAX_TRACE_SPANS = 60;
-export function curateTrace(data: unknown) {
+
+// The legacy public trace reports span durations in nanoseconds. Event
+// `properties.duration` is milliseconds.
+const nsToMs = (duration: unknown) =>
+  typeof duration === "number" ? Math.round(duration / 1_000_000) : undefined;
+
+export type TraceSource = "agent" | "legacy";
+
+// The agent trace endpoint already reports `data.durationMs`; only the legacy
+// public endpoint needs the ns-to-ms conversion.
+function spanDurationMs(d: any, source: TraceSource): number | undefined {
+  if (d?.isPartial) return undefined;
+  return source === "agent" ? d?.durationMs : nsToMs(d?.duration);
+}
+
+// Attempt spans are the run span's direct children, titled `Attempt N` by the SDK.
+// Nothing else in the payload marks them: ClickHouse stamps `data.attemptNumber` on every
+// span inside an attempt and Postgres stamps none, so neither identifies the attempt.
+const ATTEMPT_MESSAGE = /^Attempt (\d+)$/;
+function attemptNumberOf(span: any, depth: number): number | undefined {
+  if (depth !== 1) return undefined;
+  const match = ATTEMPT_MESSAGE.exec(String(span.data?.message ?? ""));
+  return match ? Number(match[1]) : undefined;
+}
+
+const RUN_STILL_EXECUTING_NOTE =
+  "The run hasn't finished, so the run span has no duration yet. attemptMs is the latest attempt seen, execution only.";
+const FINISHED_NOTE =
+  "rootSpanMs is wall clock from trigger to finish, including queue time and waits. attemptMs is the latest attempt seen, execution only.";
+
+export function curateTrace(data: unknown, source: TraceSource = "legacy") {
   const root = (data as any)?.trace?.rootSpan;
   const spans: Array<Record<string, unknown>> = [];
+  let dropped = false;
+  let latestAttempt: { number: number; durationMs: number | undefined } | undefined;
   const walk = (span: any, depth: number) => {
-    if (!span || spans.length >= MAX_TRACE_SPANS) return;
+    if (!span) return;
+    if (spans.length >= MAX_TRACE_SPANS) {
+      dropped = true;
+      return;
+    }
     const d = span.data ?? {};
+    const attemptNumber = attemptNumberOf(span, depth);
+    if (attemptNumber !== undefined && (!latestAttempt || attemptNumber >= latestAttempt.number)) {
+      latestAttempt = {
+        number: attemptNumber,
+        durationMs: spanDurationMs(d, source),
+      };
+    }
     // The two flags are emitted only when true; absent means false.
     spans.push({
       id: span.id,
       depth,
+      ...(depth === 0
+        ? { kind: "run" }
+        : attemptNumber !== undefined
+          ? { kind: "attempt", attemptNumber }
+          : {}),
       message: fenceUntrusted("spanMessage", d.message),
       task: d.taskSlug,
-      durationMs: d.duration,
+      // An unfinished span is written with duration 0, which isn't a duration.
+      durationMs: spanDurationMs(d, source),
       level: d.level,
       ...(d.isError ? { isError: true } : {}),
       ...(d.isPartial ? { isPartial: true } : {}),
@@ -152,10 +202,175 @@ export function curateTrace(data: unknown) {
     for (const child of span.children ?? []) walk(child, depth + 1);
   };
   walk(root, 0);
+  // An unfinished span is written with duration 0, and a truncated walk can have cut the
+  // latest attempt off — neither is a duration worth handing the model.
+  const runStillExecuting = root?.data?.isPartial === true;
+  // Either we dropped spans ourselves or the store already capped the trace it handed us.
+  const truncated = dropped || (data as any)?.trace?.isTruncated === true;
+  const attempt = truncated ? undefined : latestAttempt;
   return {
     traceId: (data as any)?.trace?.traceId,
     spans,
-    truncated: spans.length >= MAX_TRACE_SPANS,
+    truncated,
+    ...(spans.length > 0
+      ? {
+          durations: {
+            ...(runStillExecuting ? {} : { rootSpanMs: spanDurationMs(root?.data ?? {}, source) }),
+            ...(typeof attempt?.durationMs === "number"
+              ? { attemptMs: attempt.durationMs, attemptNumber: attempt.number }
+              : {}),
+            note: runStillExecuting ? RUN_STILL_EXECUTING_NOTE : FINISHED_NOTE,
+          },
+        }
+      : {}),
+  };
+}
+
+// The launch events the trace view shows to non-admins. Source of truth is
+// `apps/webapp/app/utils/timelineSpanEvents.ts`, which this package can't import.
+const LAUNCH_EVENT_LABELS: Record<string, string> = {
+  dequeue: "Dequeued",
+  fork: "Launched",
+  import: "Importing task file",
+};
+
+const MAX_TIMELINE_PHASES = 20;
+const MAX_PHASE_LABEL_CHARS = 80;
+
+type TimelinePhase = {
+  label: string;
+  startOffsetMs: number;
+  durationMs?: number;
+  status: "ongoing" | "done" | "error";
+  detail?: string;
+  spanId?: string;
+};
+
+// A hard cap including the ellipsis: the label is stored on the card and rendered, so
+// it gets no "[truncated N chars]" marker.
+function phaseLabel(message: unknown): string {
+  const clean = sanitizeUntrusted(message ?? "Unnamed span");
+  return clean.length > MAX_PHASE_LABEL_CHARS
+    ? `${sliceWellFormed(clean, MAX_PHASE_LABEL_CHARS - 1)}…`
+    : clean;
+}
+
+// The head (queue wait, launch events) always survives the cap. Of the work phases,
+// anything still running does too, then the most recent fill what's left.
+function capWorkPhases(work: TimelinePhase[], budget: number): TimelinePhase[] {
+  if (budget <= 0) return [];
+  if (work.length <= budget) return work;
+  const kept = new Set(work.filter((phase) => phase.status === "ongoing").slice(-budget));
+  for (let i = work.length - 1; i >= 0 && kept.size < budget; i--) kept.add(work[i]!);
+  return work.filter((phase) => kept.has(phase));
+}
+
+// The SDK stamps launch events on the first attempt only, so the head and the work
+// come off different spans on a retried run.
+function attemptSpans(root: any) {
+  let first: { number: number; span: any } | undefined;
+  let latest: { number: number; span: any } | undefined;
+  for (const child of root?.children ?? []) {
+    const number = attemptNumberOf(child, 1);
+    if (number === undefined) continue;
+    if (!first || number < first.number) first = { number, span: child };
+    if (!latest || number >= latest.number) latest = { number, span: child };
+  }
+  return { first: first?.span, latest: latest?.span };
+}
+
+/**
+ * The card's timeline: queue wait, then the attempt's launch events, then its direct
+ * children as the work it did. Stamped here so the renderer never reads its own clock.
+ */
+export function derivePhases(data: unknown, run?: any, source: TraceSource = "legacy") {
+  const root = (data as any)?.trace?.rootSpan;
+  if (!root) return undefined;
+
+  const baseMs = run?.createdAt ? Date.parse(run.createdAt) : Date.parse(root.data?.startTime);
+  if (!Number.isFinite(baseMs)) return undefined;
+
+  const offsetOf = (at: unknown) => {
+    const ms = Date.parse(String(at));
+    return Number.isFinite(ms) ? Math.max(0, Math.round(ms - baseMs)) : undefined;
+  };
+
+  const head: TimelinePhase[] = [];
+  const work: TimelinePhase[] = [];
+
+  const { queueWaitMs, queueWaitReliable } = queueWait(run ?? {});
+  if (queueWaitReliable && queueWaitMs !== null) {
+    // A delayed run only starts waiting at `delayedUntil`, so the phase sits there —
+    // offset plus duration always lands on `startedAt`.
+    head.push({
+      label: "Queued",
+      startOffsetMs: run?.delayedUntil ? (offsetOf(run.delayedUntil) ?? 0) : 0,
+      durationMs: queueWaitMs,
+      status: "done",
+    });
+  }
+
+  const attempt = attemptSpans(root);
+
+  for (const event of attempt.first?.data?.events ?? []) {
+    const name = event?.properties?.event;
+    const label = typeof name === "string" ? LAUNCH_EVENT_LABELS[name] : undefined;
+    const startOffsetMs = offsetOf(event?.time);
+    if (!label || startOffsetMs === undefined) continue;
+    const duration = event?.properties?.duration;
+    head.push({
+      label,
+      startOffsetMs,
+      ...(typeof duration === "number" && duration > 0 ? { durationMs: Math.round(duration) } : {}),
+      status: "done",
+    });
+  }
+
+  for (const child of attempt.latest?.children ?? []) {
+    const d = child?.data ?? {};
+    const startOffsetMs = offsetOf(d.startTime);
+    if (startOffsetMs === undefined) continue;
+    const spanMs = spanDurationMs(d, source);
+    const durationMs = spanMs === undefined ? undefined : Math.max(0, spanMs);
+    work.push({
+      // Never fenced: this label is stored on the card and rendered as-is.
+      label: phaseLabel(d.message),
+      startOffsetMs,
+      ...(durationMs !== undefined ? { durationMs } : {}),
+      status: d.isError ? "error" : d.isPartial ? "ongoing" : "done",
+      ...(d.taskSlug ? { detail: d.taskSlug } : {}),
+      ...(typeof child.id === "string" ? { spanId: child.id } : {}),
+    });
+  }
+
+  if (head.length === 0 && work.length === 0) return undefined;
+  head.sort((a, b) => a.startOffsetMs - b.startOffsetMs);
+  work.sort((a, b) => a.startOffsetMs - b.startOffsetMs);
+  const phases = [
+    ...head.slice(0, MAX_TIMELINE_PHASES),
+    ...capWorkPhases(work, MAX_TIMELINE_PHASES - Math.min(head.length, MAX_TIMELINE_PHASES)),
+  ];
+
+  const asOfMs = Date.now();
+  const finishedMs = run?.finishedAt ? Date.parse(run.finishedAt) : undefined;
+  // Without the run row a finished run has to be measured off its own root span, or
+  // the elapsed time silently becomes "however long ago this run was triggered".
+  const rootStartMs = Date.parse(root.data?.startTime);
+  const rootSpanMs = spanDurationMs(root.data ?? {}, source);
+  const rootEndMs =
+    rootSpanMs !== undefined && Number.isFinite(rootStartMs) ? rootStartMs + rootSpanMs : undefined;
+  const endMs =
+    finishedMs !== undefined && Number.isFinite(finishedMs) ? finishedMs : (rootEndMs ?? asOfMs);
+  return {
+    startedAt: new Date(baseMs).toISOString(),
+    elapsedMs: Math.max(0, Math.round(endMs - baseMs)),
+    asOf: new Date(asOfMs).toISOString(),
+    phases,
+    // A capped trace can be missing the latest attempt entirely, so a timeline off it
+    // must not read as the whole run.
+    ...((data as any)?.trace?.isTruncated || phases.length < head.length + work.length
+      ? { truncated: true }
+      : {}),
   };
 }
 

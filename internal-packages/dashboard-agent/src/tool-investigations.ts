@@ -10,8 +10,9 @@ import {
   type InvestigationState,
   type ViewBlockInput,
 } from "@internal/dashboard-agent-contracts";
+import { linkifyAgentText } from "./linkify-agent-text";
 import { canonicalizeInvestigationState } from "./tool-evidence";
-import type { SourceReadLookup } from "./tool-source-ledger";
+import type { ReadScope, SourceReadLookup } from "./tool-source-ledger";
 
 /**
  * A capability rather than a database import, so this file stays reachable without
@@ -125,6 +126,39 @@ function investigationCapabilities(
   return { version: INVESTIGATION_CAPABILITIES_VERSION, actions };
 }
 
+type Linkify = (text: string) => string;
+
+/** The model's own words on the card. Everything else already carries a typed id — an
+ * evidence URI, a timeline span, an action target. */
+function linkifyInvestigationState(state: InvestigationState, link: Linkify): InvestigationState {
+  return {
+    ...state,
+    title: link(state.title),
+    headline: link(state.headline),
+    ...(state.remediation === undefined ? {} : { remediation: link(state.remediation) }),
+    ...(state.checkNext === undefined ? {} : { checkNext: state.checkNext.map(link) }),
+    hypotheses: state.hypotheses.map((hypothesis) => ({
+      ...hypothesis,
+      statement: link(hypothesis.statement),
+      ...(hypothesis.finding === undefined ? {} : { finding: link(hypothesis.finding) }),
+      evidence: hypothesis.evidence.map((item) => ({ ...item, label: link(item.label) })),
+    })),
+    evidence: state.evidence.map((item) => ({ ...item, label: link(item.label) })),
+  };
+}
+
+function linkifyBlock(block: ViewBlockInput, link: Linkify): ViewBlockInput {
+  if (block.type !== "diagnosis") return block;
+  return {
+    ...block,
+    summary: link(block.summary),
+    likelyCause: link(block.likelyCause),
+    ...(block.impact === undefined ? {} : { impact: link(block.impact) }),
+    nextSteps: block.nextSteps.map(link),
+    evidence: block.evidence.map((item) => ({ ...item, detail: link(item.detail) })),
+  };
+}
+
 type InvestigationRenderResult =
   | { error: string }
   | { blocks: unknown[]; investigationId?: string; revision?: number };
@@ -157,8 +191,16 @@ export function createInvestigationRenderer(
    * back. `continueId` is only a pointer; the turn's own closure wins when set.
    */
   return async function renderInvestigations(blocks: ViewBlockInput[], continueId?: string) {
+    // Unscoped, no URI can be built, so the prose is left as written.
+    const scope: ReadScope | undefined =
+      projectRef && ctx.environmentId
+        ? { projectRef, environmentId: ctx.environmentId }
+        : undefined;
+    const link: Linkify = (text) => (scope ? linkifyAgentText(text, reads, scope) : text);
+
     const investigationBlocks = blocks.filter((block) => block.type === "investigation").length;
-    if (investigationBlocks === 0) return { blocks };
+    if (investigationBlocks === 0)
+      return { blocks: blocks.map((block) => linkifyBlock(block, link)) };
 
     // One id is assigned per call, so a second block in the same view would be written
     // as the next revision of the first: one card carrying two subjects.
@@ -185,7 +227,7 @@ export function createInvestigationRenderer(
 
     for (const block of blocks) {
       if (block.type !== "investigation") {
-        rendered.push(block);
+        rendered.push(linkifyBlock(block, link));
         continue;
       }
 
@@ -213,6 +255,8 @@ export function createInvestigationRenderer(
         };
       }
       const state = canonicalized.state;
+      // Stored linkified so the card reads the same when it is re-rendered between turns.
+      const linked = linkifyInvestigationState(state, link);
 
       // A storage failure's message can carry the full SQL text, which must never reach
       // the transcript.
@@ -222,7 +266,7 @@ export function createInvestigationRenderer(
           id: currentInvestigationId ?? continueId,
           projectRef,
           environmentRef: ctx.environmentId,
-          state,
+          state: linked,
         });
       } catch (error) {
         console.error("investigation upsert failed", error);
@@ -250,7 +294,7 @@ export function createInvestigationRenderer(
 
       const parsed = investigationBlockSchema.safeParse({
         ...block,
-        investigation: state,
+        investigation: linked,
         ...(capabilities ? { capabilities } : {}),
         id: result.id,
         revision: result.revision,

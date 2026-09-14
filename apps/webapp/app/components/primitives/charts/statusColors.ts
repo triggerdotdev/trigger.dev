@@ -17,3 +17,15 @@ const STATUS_COLOR_FALLBACK = "var(--color-text-dimmed)";
 export function statusColor(status: string): string {
   return STATUS_COLOR[status] ?? STATUS_COLOR_FALLBACK;
 }
+
+const STATUS_ORDER = Object.keys(STATUS_COLOR);
+
+/** Position in the canonical status order, or -1 for a value that isn't a known status. */
+export function statusOrderIndex(status: string): number {
+  return STATUS_ORDER.indexOf(status);
+}
+
+/** The mapped colour, or undefined for a value that isn't a known status. */
+export function knownStatusColor(status: string): string | undefined {
+  return STATUS_COLOR[status];
+}

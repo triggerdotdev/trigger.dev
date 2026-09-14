@@ -8,6 +8,7 @@ import {
   resolveDashboardAgentModel,
   sanitizeReplayedToolInputs,
 } from "./agent-runtime";
+import { stripAgentLinks } from "./linkify-agent-text";
 
 /**
  * Bounded context: how a long conversation is summarised, and what may never be
@@ -150,7 +151,9 @@ export function collectDurableState(uiMessages: UIMessage[]): DurableState {
     if (card.state?.outcome !== "in_progress") continue;
     investigations.push({
       id: card.id,
-      title: card.state.title,
+      // The emitted title carries inline links; the note is prose the model reads back,
+      // and a pinned URI would teach it to re-emit a stale one.
+      title: stripAgentLinks(card.state.title),
       outcome: card.state.outcome,
       revision: card.revision,
     });

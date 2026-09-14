@@ -47,12 +47,22 @@ type TriggerUriResolver = (uri: string) => TriggerLinkResolution | null;
 
 const TriggerUriResolverContext = createContext<TriggerUriResolver | undefined>(undefined);
 
-function TriggerAwareAnchor({ href, children }: { href?: string; children?: React.ReactNode }) {
+// Exported so a consumer (e.g. the agent chat) can wrap it with its own link styling
+// without forking the trigger:// resolution logic.
+export function TriggerAwareAnchor({
+  href,
+  children,
+  className,
+}: {
+  href?: string;
+  children?: React.ReactNode;
+  className?: string;
+}) {
   const resolveTriggerUri = useContext(TriggerUriResolverContext);
 
   if (!href || !isTriggerUri(href)) {
     return (
-      <a href={href} target="_blank" rel="noopener noreferrer">
+      <a href={href} target="_blank" rel="noopener noreferrer" className={className}>
         {children}
       </a>
     );
@@ -62,15 +72,30 @@ function TriggerAwareAnchor({ href, children }: { href?: string; children?: Reac
   if (!resolved) return children;
   if (resolved.external) {
     return (
-      <a href={resolved.url} target="_blank" rel="noopener noreferrer">
+      <a href={resolved.url} target="_blank" rel="noopener noreferrer" className={className}>
         {children}
       </a>
     );
   }
-  return <a href={resolved.url}>{children}</a>;
+  return (
+    <a href={resolved.url} className={className}>
+      {children}
+    </a>
+  );
 }
 
-const STREAMDOWN_COMPONENTS = { a: TriggerAwareAnchor };
+function ScrollableTable({
+  node,
+  ...props
+}: React.TableHTMLAttributes<HTMLTableElement> & { node?: unknown }) {
+  return (
+    <div className="overflow-x-auto">
+      <table {...props} />
+    </div>
+  );
+}
+
+const STREAMDOWN_COMPONENTS = { a: TriggerAwareAnchor, table: ScrollableTable };
 
 // Same shape the browser actually throws for a chunk fetch that 404s under asset skew
 // (Vite/Rollup's dynamic-import wrapper, or the module-script equivalent).
@@ -81,11 +106,14 @@ const PlainTextFallback = ({ children }: { children: string }) => (
   <pre className="whitespace-pre-wrap break-words font-sans text-sm">{children}</pre>
 );
 
+type StreamdownComponents = StreamdownModule.StreamdownProps["components"];
+
 type StreamdownRendererModule = {
   default: (props: {
     children: string;
     isAnimating?: boolean;
     resolveTriggerUri?: TriggerUriResolver;
+    components?: StreamdownComponents;
   }) => JSX.Element;
 };
 
@@ -134,11 +162,17 @@ export function loadStreamdownRenderer(
           children,
           isAnimating = false,
           resolveTriggerUri,
+          components,
         }: {
           children: string;
           isAnimating?: boolean;
           resolveTriggerUri?: TriggerUriResolver;
+          components?: StreamdownComponents;
         }) {
+          const mergedComponents = {
+            ...STREAMDOWN_COMPONENTS,
+            ...components,
+          } as StreamdownComponents;
           return (
             <TriggerUriResolverContext.Provider value={resolveTriggerUri}>
               <Streamdown
@@ -148,7 +182,7 @@ export function loadStreamdownRenderer(
                 urlTransform={restrictModelUrls}
                 linkSafety={{ enabled: false }}
                 rehypePlugins={rehypePlugins}
-                components={STREAMDOWN_COMPONENTS}
+                components={mergedComponents}
               >
                 {children}
               </Streamdown>

@@ -13,13 +13,20 @@ import { useProject } from "~/hooks/useProject";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { useUser } from "~/hooks/useUser";
 import { agentDeepLinkParams } from "./ask-ai-channels";
+import { createDockedWidthController, type DockedWidthAction } from "./docked-width";
 import { DashboardAgentPanel } from "./DashboardAgentPanel";
 import { DashboardAgentProvider, TOGGLE_PANEL_SHORTCUT } from "./dashboardAgentLauncher";
 import { useDashboardAgentOpenRequests } from "./dashboardAgentOpenRequest";
+import type { PanelHandle } from "@window-splitter/react";
 import {
+  AGENT_PANEL_DEFAULT_WIDTH,
+  AGENT_PANEL_MAX_WIDTH,
+  AGENT_PANEL_MIN_WIDTH,
   agentHiddenContentClassName,
   FloatingAgentWindow,
+  readAgentPanelWidth,
   useAgentPanelMode,
+  writeAgentPanelWidth,
 } from "./panel-layout";
 import { nextPendingTurnChatId } from "./pending-turn";
 import { nextVisibleChat } from "./unread-counts";
@@ -37,7 +44,12 @@ const TOASTED_WAKES_STORAGE_KEY = "tdev:dashboard-agent:toasted-wakes";
 
 // Superseded by the account preference; a stray value here would otherwise pin the mode
 // forever if this cleanup effect never ran.
-const STALE_MODE_STORAGE_KEYS = ["tdev:dashboard-agent:mode", "tdev:dashboard-agent:fullscreen"];
+const STALE_MODE_STORAGE_KEYS = [
+  "tdev:dashboard-agent:mode",
+  "tdev:dashboard-agent:fullscreen",
+  // The panel group's first autosave key, abandoned with the collapse-driven layout.
+  "dashboard-agent-split",
+];
 
 // Shorter than the poll interval, so a stuck request is dropped before the next tick.
 const UNREAD_REQUEST_TIMEOUT_MS = 30_000;
@@ -130,6 +142,37 @@ export function DashboardAgent({
     open
   );
   const fullscreen = mode === "fullscreen";
+  const docked = mode === "rightPanel";
+
+  // The docked width is ours to restore and to save; the controller owns when either is
+  // allowed, because the panel reports a size before this component's mode effect runs.
+  const agentPanelHandle = useRef<PanelHandle>(null);
+  const dockedWidth = useRef(createDockedWidthController());
+  const runDockedWidthAction = useCallback((action: DockedWidthAction) => {
+    if (action.type === "apply") agentPanelHandle.current?.setSize(`${action.width}px`);
+    if (action.type === "persist") writeAgentPanelWidth(action.width);
+  }, []);
+  // Storage is read in the effect, never in render: a saved width is not what the server rendered.
+  useEffect(() => {
+    const controller = dockedWidth.current;
+    runDockedWidthAction(
+      docked
+        ? controller.dock(readAgentPanelWidth(), agentPanelHandle.current?.getPixelSize())
+        : controller.undock()
+    );
+  }, [docked, runDockedWidthAction]);
+  // Not gated on `docked`: the panel machine can still hold the callback from the render
+  // before the switch, and the controller ignores reports outside a dock anyway.
+  const onAgentPanelResize = useCallback(
+    ({ pixel }: { pixel: number }) => {
+      runDockedWidthAction(dockedWidth.current.resize(pixel));
+    },
+    [runDockedWidthAction]
+  );
+  // One write per drag, rather than one per pointer-move frame.
+  const onAgentHandleDragEnd = useCallback(() => {
+    runDockedWidthAction(dockedWidth.current.dragEnd(agentPanelHandle.current?.getPixelSize()));
+  }, [runDockedWidthAction]);
 
   // Superseded localStorage keys; harmless to skip if storage is unavailable.
   useEffect(() => {
@@ -369,7 +412,7 @@ export function DashboardAgent({
         <div className="relative h-full min-h-0">
           <ResizablePanelGroup
             orientation="horizontal"
-            autosaveId="dashboard-agent-split"
+            autosaveId="dashboard-agent-split-v2"
             className="h-full min-h-0"
           >
             <ResizablePanel id="dashboard-content" min="320px">
@@ -377,21 +420,23 @@ export function DashboardAgent({
             </ResizablePanel>
             <ResizableHandle
               id="dashboard-agent-handle"
-              size={mode === "rightPanel" ? "3px" : "0px"}
-              className={collapsibleHandleClassName(mode === "rightPanel")}
+              onDragEnd={onAgentHandleDragEnd}
+              size={docked ? "3px" : "0px"}
+              className={collapsibleHandleClassName(docked)}
             />
             <ResizablePanel
               id="dashboard-agent-panel"
-              default="380px"
-              min="320px"
-              max="720px"
-              collapsible
-              collapsed={mode !== "rightPanel"}
-              collapsedSize="0px"
+              handle={agentPanelHandle}
+              onResize={onAgentPanelResize}
+              // Sized by its constraints, never by the library's collapse state: a collapse
+              // lives in the panel machine, which drifts from `mode` and stays shut.
+              default={docked ? `${AGENT_PANEL_DEFAULT_WIDTH}px` : "0px"}
+              min={docked ? `${AGENT_PANEL_MIN_WIDTH}px` : "0px"}
+              max={docked ? `${AGENT_PANEL_MAX_WIDTH}px` : "0px"}
               // Non-rightPanel modes render through position:fixed/absolute, which must
               // escape this panel's own clipping box to avoid being cut to its 0px width.
               // Tailwind v4's important modifier is a trailing `!`, not a leading one.
-              className={mode === "rightPanel" ? undefined : "overflow-visible!"}
+              className={docked ? undefined : "overflow-visible!"}
             >
               <FloatingAgentWindow mode={mode} onRequestModeChange={changeMode}>
                 {({ dragHandleProps, dragHandleClassName }) => (

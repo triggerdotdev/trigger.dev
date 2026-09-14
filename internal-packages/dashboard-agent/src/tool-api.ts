@@ -3,6 +3,7 @@ import {
   queueGroundingSchema,
   type QueueGrounding,
 } from "@internal/dashboard-agent-contracts";
+import { logger } from "@trigger.dev/sdk";
 import { tool, type ToolSet } from "ai";
 import {
   askSupportSchema,
@@ -50,11 +51,16 @@ import {
   curateRuns,
   curateTasks,
   curateTrace,
+  derivePhases,
   getReportModelOutput,
   renderViewModelOutput,
+  type TraceSource,
 } from "./tool-curation";
 import { searchTriggerDocs } from "./tool-docs";
 import type { InvestigationRenderer } from "./tool-investigations";
+
+// Guards the legacy-trace-fallback warning so it logs once per process, not per call.
+let warnedLegacyTrace = false;
 
 function noEnvironmentError(action: string): { error: string } {
   return { error: `No current environment is available to ${action}.` };
@@ -546,17 +552,35 @@ export function buildApiTools(args: {
         const resolved = await resolveTarget(input, ctx, "read runs from");
         if (!resolved.ok) return { error: resolved.error };
         const { runId } = input;
-        const result = await envApiGet(
-          `/api/v1/runs/${encodeURIComponent(runId)}/trace`,
-          resolved.target
-        );
+        // The run row comes along for the timeline's queue wait and finish time.
+        const [agentResult, runResult] = await Promise.all([
+          envApiGet(
+            `/api/v1/dashboard-agent/runs/${encodeURIComponent(runId)}/trace`,
+            resolved.target
+          ),
+          envApiGet(`/api/v3/runs/${encodeURIComponent(runId)}`, resolved.target),
+        ]);
+        if (isEnvUnavailable(agentResult))
+          return envUnavailableError(agentResult, "read runs from");
+        // Older self-hosted webapps don't have the agent trace route yet.
+        const useLegacy = !agentResult.ok && isNotFound(agentResult);
+        const result = useLegacy
+          ? await envApiGet(`/api/v1/runs/${encodeURIComponent(runId)}/trace`, resolved.target)
+          : agentResult;
+        if (useLegacy && !warnedLegacyTrace) {
+          warnedLegacyTrace = true;
+          logger.warn("dashboard-agent get_run_trace: falling back to the legacy trace endpoint", {
+            runId,
+          });
+        }
         if (isEnvUnavailable(result)) return envUnavailableError(result, "read runs from");
         if (!result.ok) {
           if (isNotFound(result)) return notFoundIn(resolved, `Run ${runId}`);
           return { error: `Couldn't get the trace for ${runId}${fetchReason(result)}.` };
         }
+        const source: TraceSource = useLegacy ? "legacy" : "agent";
         await noteRead("run", runId, resolved.target);
-        const curated = curateTrace(result.data);
+        const curated = curateTrace(result.data, source);
         const environmentId = await environmentIdFor(resolved.target);
         const spans = environmentId
           ? curated.spans.map((span) =>
@@ -574,7 +598,13 @@ export function buildApiTools(args: {
                 : span
             )
           : curated.spans;
-        return { ...curated, spans };
+        const timeline = derivePhases(
+          result.data,
+          runResult.ok ? runResult.data : undefined,
+          source
+        );
+        if (timeline) reads?.recordRunTimeline(runId, timeline);
+        return { ...curated, spans, source, ...(timeline ? { timeline } : {}) };
       },
     }),
 

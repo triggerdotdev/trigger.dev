@@ -1,3 +1,4 @@
+import type { InvestigationTimeline } from "@internal/dashboard-agent-contracts";
 import { apiGet, type EnvTarget } from "./tool-api-client";
 import type { RepoSnapshot } from "./repo-tools";
 
@@ -22,6 +23,10 @@ export type SourceReadLookup = {
   scopeForRun(runId: string): ReadScope | undefined;
   /** Every scope an error/queue/deployment identity was read from this turn — names aren't globally unique. */
   scopesForScopedRead(kind: ScopedReadKind, id: string): ReadScope[];
+  /** Every identity of a kind read this turn — the only ids prose may be linkified against. */
+  identitiesRead(kind: "run" | ScopedReadKind): string[];
+  /** The timeline `get_run_trace` computed for a run this turn, so a card can't restate it. */
+  timelineForRun(runId: string): InvestigationTimeline | undefined;
 };
 
 export type SourceReadLedger = SourceReadLookup & {
@@ -36,6 +41,8 @@ export type SourceReadLedger = SourceReadLookup & {
   }): Promise<void>;
   /** Records which scope a run's data (and its spans) was read from. */
   recordTraceSpans(runId: string, scope: ReadScope): void;
+  /** Records the timeline a run's trace read computed; a later read wins. */
+  recordRunTimeline(runId: string, timeline: InvestigationTimeline): void;
   /** Records a scope an error/queue/deployment identity was read from, deduped by environment. */
   recordScopedRead(kind: ScopedReadKind, id: string, scope: ReadScope): void;
   /** Records a scope a (path, sha) read was served from, deduped by environment. */
@@ -126,6 +133,16 @@ export function createSourceReadLedger(ctx: SourceLedgerContext): SourceReadLedg
     runScopes.set(runId, scope);
   }
 
+  const runTimelines = new Map<string, InvestigationTimeline>();
+
+  function recordRunTimeline(runId: string, timeline: InvestigationTimeline) {
+    runTimelines.set(runId, timeline);
+  }
+
+  function timelineForRun(runId: string): InvestigationTimeline | undefined {
+    return runTimelines.get(runId);
+  }
+
   function recordScopedRead(kind: ScopedReadKind, id: string, scope: ReadScope) {
     const key = `${kind}:${id}`;
     const scopes = scopedReads.get(key) ?? [];
@@ -141,6 +158,14 @@ export function createSourceReadLedger(ctx: SourceLedgerContext): SourceReadLedg
 
   function scopesForScopedRead(kind: ScopedReadKind, id: string): ReadScope[] {
     return scopedReads.get(`${kind}:${id}`) ?? [];
+  }
+
+  function identitiesRead(kind: "run" | ScopedReadKind): string[] {
+    if (kind === "run") return [...runScopes.keys()];
+    const prefix = `${kind}:`;
+    return [...scopedReads.keys()]
+      .filter((key) => key.startsWith(prefix))
+      .map((key) => key.slice(prefix.length));
   }
 
   function recordSourceRead(path: string, sha: string, scope: ReadScope) {
@@ -181,10 +206,13 @@ export function createSourceReadLedger(ctx: SourceLedgerContext): SourceReadLedg
     shaForReadPath,
     recordRepoRead,
     recordTraceSpans,
+    recordRunTimeline,
+    timelineForRun,
     recordScopedRead,
     recordSourceRead,
     scopeForRun,
     scopesForScopedRead,
     scopesForSourceRead,
+    identitiesRead,
   };
 }

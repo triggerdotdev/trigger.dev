@@ -2,11 +2,21 @@ import { type ReactNode } from "react";
 import { cn } from "~/utils/cn";
 import { Header3 } from "../Headers";
 
-export const Card = ({ children, className }: { children: ReactNode; className?: string }) => {
+export const Card = ({
+  children,
+  className,
+  padded = true,
+}: {
+  children: ReactNode;
+  className?: string;
+  /** Base vertical padding (`pb-1.5 pt-3`). Set false to omit it entirely. */
+  padded?: boolean;
+}) => {
   return (
     <div
       className={cn(
-        "flex flex-col rounded-lg border border-grid-bright bg-background-bright pb-1.5 pt-3",
+        "flex flex-col rounded-lg border border-grid-bright bg-background-bright",
+        padded && "pb-1.5 pt-3",
         className
       )}
     >

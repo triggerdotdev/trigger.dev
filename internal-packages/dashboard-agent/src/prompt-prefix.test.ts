@@ -76,6 +76,51 @@ describe("the head-start and agent prefixes are the same prefix", () => {
   it("caches on the 1-hour breakpoint", () => {
     expect(PROMPT_CACHE_CONTROL).toEqual({ type: "ephemeral", ttl: "1h" });
   });
+
+  it("routes a run's why/duration/stuck questions onto an investigation, not a lookup", () => {
+    expect(DASHBOARD_AGENT_SYSTEM_PROMPT).toContain("why did it take 18 minutes");
+    expect(DASHBOARD_AGENT_SYSTEM_PROMPT).toContain(
+      "get_run and get_run_trace gather the evidence, they don't answer the question"
+    );
+  });
+
+  it("tells the model a tabular answer renders as a table card, never a refusal", () => {
+    expect(DASHBOARD_AGENT_SYSTEM_PROMPT).toContain("never refuse a table");
+  });
+
+  it("tells the model to bucket time-series charts with timeBucket(), not toStartOfHour/Day", () => {
+    expect(DASHBOARD_AGENT_SYSTEM_PROMPT).toContain("never hand-roll toStartOfHour/toStartOfDay");
+    expect(DASHBOARD_AGENT_SYSTEM_PROMPT).not.toContain("bucket time with toStartOf");
+    expect(dashboardAgentToolSchemas.run_query.description).toContain("timeBucket() AS t");
+    expect(dashboardAgentToolSchemas.run_query.description).not.toContain(
+      "bucket time with toStartOf"
+    );
+  });
+
+  it("routes a trace/timeline request onto the investigation card, never a spans table", () => {
+    expect(DASHBOARD_AGENT_SYSTEM_PROMPT).toContain("never a spans table");
+    expect(DASHBOARD_AGENT_SYSTEM_PROMPT).toContain(
+      "the card is the timeline, so close with at most one or two sentences of conclusion"
+    );
+    expect(dashboardAgentToolSchemas.get_run_trace.description).toContain(
+      "not a table to paste back"
+    );
+  });
+
+  // get_query_schema may not list the queue tables, so the prompt is where the model
+  // learns they exist and how to aggregate them.
+  it("carries the queue chart recipe", () => {
+    expect(DASHBOARD_AGENT_SYSTEM_PROMPT).toContain("Queue charts");
+    for (const table of ["queue_metrics", "queue_metrics_by_key"]) {
+      expect(DASHBOARD_AGENT_SYSTEM_PROMPT).toContain(table);
+      expect(dashboardAgentToolSchemas.get_query_schema.description).toContain(table);
+    }
+    expect(DASHBOARD_AGENT_SYSTEM_PROMPT).toContain("WHERE queue = '<queue>'");
+    expect(DASHBOARD_AGENT_SYSTEM_PROMPT).toContain("deltaSumTimestampMerge");
+    expect(DASHBOARD_AGENT_SYSTEM_PROMPT).toContain("concurrency_key");
+    expect(DASHBOARD_AGENT_SYSTEM_PROMPT).toContain('valueFormat "duration_ms"');
+    expect(DASHBOARD_AGENT_SYSTEM_PROMPT).toContain("ORDER BY peak DESC LIMIT 8");
+  });
 });
 
 /**
@@ -85,8 +130,8 @@ describe("the head-start and agent prefixes are the same prefix", () => {
  * drift. The snapshot below is the itemised diff a reviewer reads.
  */
 const PREFIX_BUDGET = {
-  assistant: { chars: 78_000, estimatedTokens: 19_500, tools: 25, promptChars: 28_600 },
-  code: { chars: 84_000, estimatedTokens: 21_000, tools: 29, promptChars: 30_900 },
+  assistant: { chars: 85_200, estimatedTokens: 21_300, tools: 25, promptChars: 33_900 },
+  code: { chars: 92_400, estimatedTokens: 23_100, tools: 29, promptChars: 36_700 },
 } as const;
 
 // Measured with watches on: the biggest prefix a turn can hand the provider.
