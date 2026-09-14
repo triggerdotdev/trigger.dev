@@ -86,19 +86,13 @@ export async function listCurrentProductionProjectRuntimes(scope: Scope) {
 }
 
 export async function organizationHasProjectRuntimeUpdate({
-  organizationSlug,
-  userId,
+  organizationId,
 }: {
-  organizationSlug: string;
-  userId: string;
+  organizationId: string;
 }): Promise<boolean> {
   const project = await prisma.project.findFirst({
     where: {
-      organization: {
-        slug: organizationSlug,
-        deletedAt: null,
-        members: { some: { userId } },
-      },
+      organizationId,
       version: "V3",
       deletedAt: null,
       environments: {

@@ -12,6 +12,7 @@ import { getImpersonationId } from "~/services/impersonation.server";
 import { getCachedUsage, getBillingLimit, getCurrentPlan } from "~/services/platform.v3.server";
 import { rbac } from "~/services/rbac.server";
 import { ssoController } from "~/services/sso.server";
+import { organizationHasProjectRuntimeUpdate } from "~/services/projectRuntimeUpdates.server";
 import { canManageBillingLimits } from "~/services/routeBuilders/permissions.server";
 import { requireUser } from "~/services/session.server";
 import { telemetry } from "~/services/telemetry.server";
@@ -128,6 +129,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     regions,
     isUsingRbacPlugin,
     isUsingSsoPlugin,
+    organizationHasRuntimeUpdate,
   ] = await Promise.all([
     rbac
       .authenticateSession(request, {
@@ -157,10 +159,15 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     // items. Both calls are cheap and cached.
     rbac.isUsingPlugin().catch(() => false),
     ssoController.isUsingPlugin().catch(() => false),
+    organizationHasProjectRuntimeUpdate({ organizationId: organization.id }),
   ]);
   const userCanManageBillingLimits = sessionAuth.ok
     ? canManageBillingLimits(sessionAuth.ability)
     : false;
+  const hasProjectRuntimeUpdate =
+    sessionAuth.ok &&
+    sessionAuth.ability.can("read", { type: "deployments" }) &&
+    organizationHasRuntimeUpdate;
 
   let hasExceededFreeTier = false;
   let usagePercentage = 0;
@@ -218,6 +225,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     },
     widgetLimitPerDashboard,
     canManageBillingLimits: userCanManageBillingLimits,
+    hasProjectRuntimeUpdate,
     isUsingRbacPlugin,
     isUsingSsoPlugin,
   });
