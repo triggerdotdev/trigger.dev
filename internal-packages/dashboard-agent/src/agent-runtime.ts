@@ -1,22 +1,20 @@
 import {
-  appendChatMessageOnce,
   createDashboardAgentDb,
   ensureChat,
-  investigationSettlementMessage,
-  persistMessages,
-  persistTurn,
   setChatTitleIfDefault,
   seedInvestigation,
   settleInvestigationStateAndCloseCard,
+  settleTurnInvestigations,
   upsertInvestigationRevision,
   type ClosedInvestigationCard,
   type DashboardAgentDbClient,
   type PendingInvestigationSettlement,
-  type PersistTurnResult,
   type SeedInvestigationResult,
+  type SettleTurnInvestigationsResult,
   type UpsertInvestigationResult,
 } from "@internal/dashboard-agent-db";
-import { locals, logger } from "@trigger.dev/sdk";
+import type { TranscriptStorage } from "@trigger.dev/sdk/ai";
+import { locals } from "@trigger.dev/sdk";
 import { type LanguageModel, type ModelMessage, type ToolSet, type UIMessage } from "ai";
 import { z } from "zod";
 import {
@@ -29,6 +27,10 @@ import { withCacheBreakpoint } from "./model-provider";
 import { composeSystemPrompt, type DashboardAgentMode } from "./prompt-assembly";
 import { codeSystemPrompt, systemPrompt, watchSystemPrompt } from "./prompts";
 import { buildDashboardAgentTools } from "./tools";
+import {
+  dashboardAgentTranscriptStorage,
+  type DashboardAgentTranscriptClientData,
+} from "./transcript-storage";
 
 /**
  * The agent's runtime: its datastore, the investigation bookkeeping every lane
@@ -64,18 +66,20 @@ export { resolveDashboardAgentModel } from "./model-provider";
 // `locals` and never need a real database.
 export interface DashboardAgentStore {
   ensureChat(args: Parameters<typeof ensureChat>[1]): Promise<unknown>;
-  persistMessages(args: Parameters<typeof persistMessages>[1]): Promise<unknown>;
   /**
-   * Id-deduped single-message append. The wake narration writes through this
-   * rather than `persistMessages`: a wake runs without a client, so the session's
-   * view can miss host-appended blocks and a wholesale write would drop them.
+   * The conversation itself. `chat.agent` drives this: every message, the runtime's
+   * state and the resume cursors reach the rows through it, and the panel reads the
+   * same rows back.
    */
-  appendMessage(args: Parameters<typeof appendChatMessageOnce>[1]): Promise<unknown>;
+  transcript: TranscriptStorage<DashboardAgentTranscriptClientData>;
   /**
-   * The turn's one write. Its `settlements` close the cards the turn left running in
-   * the same transaction as the transcript, and it reports back what it settled.
+   * Close the investigations a turn left running: the terminal revisions and their
+   * closing cards, in one transaction. The transcript is the runtime's to write; the
+   * settlement has to commit with its card, and that is what this is for.
    */
-  persistTurn(args: Parameters<typeof persistTurn>[1]): Promise<PersistTurnResult>;
+  settleTurnInvestigations(
+    args: Parameters<typeof settleTurnInvestigations>[1]
+  ): Promise<SettleTurnInvestigationsResult>;
   setChatTitleIfDefault(args: Parameters<typeof setChatTitleIfDefault>[1]): Promise<unknown>;
   /** Commit one investigation revision. The only write the tool lane performs. */
   upsertInvestigationRevision(
@@ -101,6 +105,16 @@ export interface DashboardAgentStore {
 }
 
 export const dashboardAgentStoreKey = locals.create<DashboardAgentStore>("dashboard-agent.store");
+
+/**
+ * The `storage` handed to `chat.agent`. Resolved per call rather than once at module
+ * load: the store (and in production its connection pool) is established inside the
+ * run, and a test injects its own through `locals`.
+ */
+export const dashboardAgentStorage: TranscriptStorage<DashboardAgentTranscriptClientData> = {
+  load: (scope, opts) => getStore().transcript.load(scope, opts),
+  save: (ctx, changeset) => getStore().transcript.save(ctx, changeset),
+};
 
 /**
  * The investigations this turn left open, keyed by chat id.
@@ -139,9 +153,35 @@ function trackInvestigationOutcome(
 }
 
 /**
+ * Register an investigation an action seeded, so the turn that follows settles it if
+ * the model leaves it running. The tool lane tracks what the model renders; a seeded
+ * row the model never revises would otherwise be a spinner nothing closes.
+ */
+export function trackSeededInvestigation(
+  chatId: string,
+  id: string,
+  params: { projectRef: string; environmentRef: string; state: unknown }
+): void {
+  trackInvestigationOutcome(chatId, id, params);
+}
+
+/**
+ * The action turn in flight, set by `onAction` when it returns `chat.turn()` and read
+ * by the turn's hooks: a wake turn runs without tools (it reports what the check
+ * established and carries no delegated token), a wake the narration plan marks
+ * `haiku` runs on the small model with a bounded budget, and neither kind is judged
+ * by the eval. `onTurnStart` drops a marker the previous turn left behind, so a
+ * settlement that failed on both attempts never taints the next typed turn.
+ */
+export const pendingActionTurnKey = locals.create<{
+  kind: "wake" | "investigate";
+  model?: "haiku";
+}>("dashboard-agent.pendingActionTurn");
+
+/**
  * Whatever this turn left `in_progress`, as the terminal states to close them with.
- * Nothing is written here: the caller hands these to `persistTurn`, which commits the
- * rows and their closing cards in one transaction. Settling the row on its own
+ * Nothing is written here: the caller hands these to `settleTurnInvestigations`, which
+ * commits the rows and their closing cards in one transaction. Settling the row on its own
  * operation is what left terminal rows with an `in_progress` card — a state the stale
  * sweep no longer selects, so nothing ever repaired it.
  *
@@ -163,37 +203,6 @@ export function pendingInvestigationSettlements(chatId: string): PendingInvestig
 /** Called once the settling write has committed, so the next turn starts clean. */
 export function clearOpenInvestigations(chatId: string): void {
   openInvestigations.delete(chatId);
-}
-
-/** A revision a settling write committed, and the card the transcript still needs. */
-export type SettledInvestigationCard = {
-  investigationId: string;
-  revision: number;
-  state: unknown;
-};
-
-/**
- * The settled cards as transcript messages, in the shape the panel's winning-revision
- * logic reads. A card that can't be rendered is logged and dropped rather than
- * appended half-formed.
- */
-export function settlementCardMessages(
-  chatId: string,
-  settled: SettledInvestigationCard[]
-): UIMessage[] {
-  const messages: UIMessage[] = [];
-  for (const card of settled) {
-    const message = investigationSettlementMessage(card);
-    if (!message) {
-      logger.error("A settled investigation's closing card didn't validate", {
-        chatId,
-        investigationId: card.investigationId,
-      });
-      continue;
-    }
-    messages.push(message as UIMessage);
-  }
-  return messages;
 }
 
 export type TranscriptCard = { id: string; revision: number; state: InvestigationState | null };
@@ -249,9 +258,8 @@ export function getStore(): DashboardAgentStore {
   const { db } = getDb();
   return locals.set(dashboardAgentStoreKey, {
     ensureChat: (args) => ensureChat(db, args),
-    persistMessages: (args) => persistMessages(db, args),
-    appendMessage: (args) => appendChatMessageOnce(db, args),
-    persistTurn: (args) => persistTurn(db, args),
+    transcript: dashboardAgentTranscriptStorage(db),
+    settleTurnInvestigations: (args) => settleTurnInvestigations(db, args),
     setChatTitleIfDefault: (args) => setChatTitleIfDefault(db, args),
     upsertInvestigationRevision: (args) => upsertInvestigationRevision(db, args),
     settleInvestigationCard: (args) => settleInvestigationStateAndCloseCard(db, args),

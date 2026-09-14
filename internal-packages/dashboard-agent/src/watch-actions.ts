@@ -1,20 +1,15 @@
-import { chat } from "@trigger.dev/sdk/ai";
+import { chat, type ActionTurn } from "@trigger.dev/sdk/ai";
 import { locals, logger } from "@trigger.dev/sdk";
-import {
-  readUIMessageStream,
-  stepCountIs,
-  streamText,
-  type ModelMessage,
-  type UIMessage,
-  type UIMessageChunk,
-} from "ai";
+import type { UIMessage, UIMessageChunk } from "ai";
 import { z } from "zod";
 import {
   forceSettledInvestigationState,
   formatTriggerUri,
   investigateMessageId,
+  investigateRequestMessageId,
   settledMessageId,
   wakeMessageId,
+  wakeRequestMessageId,
   watchResolutions,
   watchResultNeedsAttention,
   type InvestigationState,
@@ -24,26 +19,23 @@ import {
 } from "@internal/dashboard-agent-contracts";
 import { watchInvestigationId } from "@internal/dashboard-agent-db";
 import {
-  buildTurnTools,
   type clientDataSchema,
   type DashboardAgentStore,
-  dashboardAgentModelKey,
   getStore,
-  getSystemPrompt,
-  modeFor,
-  resolveDashboardAgentModel,
   latestCards,
-  sanitizeReplayedToolInputs,
-  clearOpenInvestigations,
-  withCacheBreakpointOnLast,
+  pendingActionTurnKey,
+  trackSeededInvestigation,
 } from "./agent-runtime";
-import { planWatchNarration, type WatchNarrationPlan } from "./watch-narration";
-import { recordPromptCacheUsage, stepCachePrepareStep } from "./step-cache";
+import { planWatchNarration } from "./watch-narration";
 
 /**
  * The watch lanes: the wake narration and the consented investigation that can
- * follow it. Both arrive as `.in` action records rather than turns, which is why
- * each does its own model call and its own persistence.
+ * follow it. Both arrive as `.in` action records. An action is an edit to the
+ * conversation, so each lane files what it has to say as a request message and
+ * returns `chat.turn()`: the runtime then runs an ordinary turn on it, with the
+ * agent's prompt, tools, hooks and persistence, and the answer is that turn's
+ * response under the id the panel knows the record by. Only a wake whose wording is
+ * fixed by the contracts is streamed directly, with no model and no turn.
  */
 
 /**
@@ -51,12 +43,12 @@ import { recordPromptCacheUsage, stepCachePrepareStep } from "./step-cache";
  *
  * A watch resolves long after the turn that scheduled it, so `watch-tick.ts`
  * appends one record to the chat's `in` stream with `trigger: "action"`. That
- * fires `onAction` only — no `onTurnStart`, `run()` or `onTurnComplete`, and the
- * turn counter doesn't move — which is why the narration below does its own model
- * call and its own persistence.
+ * fires `onAction`, which files the wake as a request and returns `chat.turn()`, so
+ * the narration is a turn's answer.
  *
  * `id` is stable per (watch, outcome) and becomes the narration message's id, so a
- * redelivered wake finds its message in the history and narrates nothing.
+ * redelivered wake finds its message (or its request) in the history and narrates
+ * nothing.
  *
  * `type` keeps the fired/expired encoding as the stable TRANSPORT only. How the
  * watch ended travels in `resolution`, what was seen in `observed`.
@@ -371,24 +363,6 @@ async function openConsentedInvestigation(args: {
   }
 }
 
-/**
- * The narrating model, when there is one.
- *
- * Haiku gets the wake and nothing else: every number the sentence may use is in the
- * facts, and the deterministic headline is handed over as the opening fact so the
- * wording matches every other surface. Sonnet keeps the consented-investigation
- * wake, where the promise and the findings that follow must read as one voice — and
- * only there does the whole conversation come along.
- */
-const HAIKU_WAKE_BRIEF =
-  'You are the Trigger.dev dashboard agent, reporting on a watch the user asked you to keep. Write ONE short message, two sentences at most: the fact as given, then what it means for them and the single most useful next step. Never say the watch "fired" or "expired", never invent a number that isn\'t given, and don\'t recap the conversation — nobody is waiting on a reply.';
-
-/**
- * A hard ceiling on that message, because "two sentences at most" is an instruction and
- * not a budget. Two sentences are well under 100 tokens, so this leaves plenty of room.
- */
-const HAIKU_WAKE_MAX_OUTPUT_TOKENS = 300;
-
 /** The fixed narration, as the panel's stream sees it. Same shape a model would emit. */
 async function* fixedNarrationChunks(
   messageId: string,
@@ -402,110 +376,81 @@ async function* fixedNarrationChunks(
 }
 
 /**
- * Stream the wake and return its final text.
+ * Ask the runtime to save the history again, unchanged.
  *
- * The streamed message must carry the SAME id the persisted copy uses: the panel
- * merges live stream and loaded history by message id, so two ids render it twice.
+ * A wake or investigation is durable on `session.out` the moment it streams, before
+ * the runtime's save lands. If that save failed, the message is in the history the
+ * next boot recovers (so a redelivery finds it and says nothing) while the row the
+ * panel reads is still missing. Handing the same history back through
+ * `chat.history` makes the runtime save after this action; its diff runs against
+ * what was last saved successfully, so the unsaved message is written and a message
+ * that did land is a no-op.
  */
-async function narrateWithPlan(input: {
-  plan: WatchNarrationPlan;
-  action: WatchWakeAction;
-  messageId: string;
-  tenancy: { projectRef?: string; environmentId?: string };
-  args: {
-    clientData: z.infer<typeof clientDataSchema> | undefined;
-    messages: ModelMessage[];
-  };
-}): Promise<string> {
-  const { plan, action, messageId, tenancy, args } = input;
+function repersistHistory(uiMessages: UIMessage[]): void {
+  chat.history.set([...uiMessages]);
+}
 
-  if (plan.model === "none") {
-    await chat.pipe(fixedNarrationChunks(messageId, plan.text));
-    return plan.text;
-  }
+/**
+ * File a request and hand the answer to a turn.
+ *
+ * The request is a user-role message under a stable id the panel hides. The turn that
+ * follows answers it like any question: `run()` with the agent's prompt, the hooks,
+ * compaction and the transcript save. Its response is pinned to `responseId`, the id
+ * the panel knows the record by (`wake:…` renders as a wake banner) and the id a
+ * redelivery dedupes on.
+ */
+function answerWithTurn(args: {
+  uiMessages: UIMessage[];
+  request: UIMessage;
+  responseId: string;
+  kind: "wake" | "investigate";
+  model?: "haiku";
+}): ActionTurn {
+  locals.set(pendingActionTurnKey, { kind: args.kind, model: args.model });
+  chat.setUIMessageStreamOptions({ generateMessageId: () => args.responseId });
+  chat.history.set([...args.uiMessages, args.request]);
+  return chat.turn();
+}
 
-  const resolved = await getSystemPrompt(modeFor(args.clientData), { watchEnabled: true });
-  const wake = wakePrompt(action, tenancy);
-  const result =
-    plan.model === "haiku"
-      ? streamText({
-          model:
-            locals.get(dashboardAgentModelKey) ??
-            resolveDashboardAgentModel("anthropic:claude-haiku-4-5"),
-          system: HAIKU_WAKE_BRIEF,
-          // Bounded on purpose: the wake alone, no conversation and no tools.
-          messages: [
-            {
-              role: "user" as const,
-              content: `${wake}\n\nOpen with this fact, in these words: ${plan.presentation.headline}.`,
-            },
-          ],
-          maxOutputTokens: HAIKU_WAKE_MAX_OUTPUT_TOKENS,
-        })
-      : streamText({
-          model:
-            locals.get(dashboardAgentModelKey) ??
-            resolveDashboardAgentModel(resolved.model ?? "anthropic:claude-sonnet-4-6"),
-          system: resolved.text,
-          // No tools: a wake reports what the check already established, and carries no
-          // delegated token to read with. The breakpoint goes on the last message of the
-          // existing prefix, not on the unique wake, so the wake reads back the same
-          // cached prefix a normal turn would instead of only writing cache.
-          messages: [
-            ...withCacheBreakpointOnLast(sanitizeReplayedToolInputs(args.messages)),
-            { role: "user" as const, content: wake },
-          ],
-          ...resolved.toAISDKTelemetry(),
-        });
-
-  await chat.pipe(result.toUIMessageStream({ generateMessageId: () => messageId }));
-  return (await result.text).trim();
+/**
+ * Answer a request that is already in the history.
+ *
+ * The request is saved before its turn runs, so a run that dies in between leaves
+ * the request without a response. A continuation does not redispatch actions, so
+ * the redelivered action is what resumes it: the history is left as it is and a
+ * turn answers it under the same pinned id.
+ */
+function resumeTurn(args: {
+  responseId: string;
+  kind: "wake" | "investigate";
+  model?: "haiku";
+}): ActionTurn {
+  locals.set(pendingActionTurnKey, { kind: args.kind, model: args.model });
+  chat.setUIMessageStreamOptions({ generateMessageId: () => args.responseId });
+  return chat.turn();
 }
 
 /**
  * Narrate one wake, exactly once.
  *
- * Streams so the panel shows it arriving live, then writes it to both `chat.history`
- * (the transcript the model sees next turn) and the display read-model. Both must
- * happen before `onAction` returns: `chat.history` mutations are only picked up
- * immediately after the hook.
+ * A wake whose wording the contracts fix is streamed as-is, no model and no turn. Every
+ * other wake is filed as a request and answered by a turn, so it gets the agent's
+ * system prompt and the conversation for context, and the runtime persists it.
  */
 async function narrateWatchWake(args: {
   action: WatchWakeAction;
   chatId: string;
   clientData: z.infer<typeof clientDataSchema> | undefined;
   uiMessages: UIMessage[];
-  /** The same history in model form, as the action event supplies it. */
-  messages: ModelMessage[];
-}): Promise<void> {
+}): Promise<ActionTurn | undefined> {
   const { action, chatId, uiMessages } = args;
   const messageId = wakeMessageId(action.id);
-
-  // Dedup on the action id. Durable, because the history it checks is the
-  // snapshot the SDK reseeds on every boot — not per-process state.
-  const narrated = uiMessages.find((message) => message.id === messageId);
-  if (narrated) {
-    logger.info("dashboard-agent watch wake already narrated; repairing the display copy", {
-      chatId,
-      watchId: action.watchId,
-      actionId: action.id,
-    });
-    // The streamed message is durable before the append is, so a retry can find the
-    // wake narrated and the display copy still owed. The append is id-deduped, so
-    // repairing when nothing is broken writes nothing.
-    const userId = args.clientData?.userId;
-    const organizationId = args.clientData?.organizationId;
-    if (userId) {
-      await getStore().appendMessage({ chatId, userId, organizationId, message: narrated });
-    }
-    return;
-  }
-
+  const requestId = wakeRequestMessageId(action.id);
   const tenancy = {
     projectRef: args.clientData?.projectRef,
     environmentId: args.clientData?.environmentId,
   };
-  const plan: WatchNarrationPlan = planWatchNarration({
+  const plan = planWatchNarration({
     kind: action.spec.kind,
     identity: action.identity,
     resolution: wakeResolution(action),
@@ -514,6 +459,33 @@ async function narrateWatchWake(args: {
     subjectLink: wakeSubjectLink(action, tenancy),
     startsInvestigation: wakeStartsInvestigation(action),
   });
+
+  // Dedup on the action id. Durable, because the history it checks is the
+  // transcript the SDK loads from storage on every boot — not per-process state.
+  if (uiMessages.some((message) => message.id === messageId)) {
+    logger.info("dashboard-agent watch wake already narrated", {
+      chatId,
+      watchId: action.watchId,
+      actionId: action.id,
+    });
+    repersistHistory(uiMessages);
+    return undefined;
+  }
+  // The request landed but its turn never answered: the run died in between. This
+  // redelivery is what resumes it.
+  if (uiMessages.some((message) => message.id === requestId)) {
+    logger.info("dashboard-agent watch wake request found unanswered; resuming", {
+      chatId,
+      watchId: action.watchId,
+      actionId: action.id,
+    });
+    return resumeTurn({
+      responseId: messageId,
+      kind: "wake",
+      model: plan.model === "haiku" ? "haiku" : undefined,
+    });
+  }
+
   logger.info("dashboard-agent watch wake narration lane", {
     chatId,
     watchId: action.watchId,
@@ -521,40 +493,41 @@ async function narrateWatchWake(args: {
     model: plan.model,
   });
 
-  const text = await narrateWithPlan({ plan, action, messageId, tenancy, args });
-  // Must throw: an unnarrated wake stays owed, so the retry says it again.
-  if (!text) {
-    throw new Error(`the wake narration for ${action.watchId} produced no text`);
+  if (plan.model === "none") {
+    // The contracts' own sentence: nothing for a model to add. Streamed under the
+    // wake's id and put into the history the runtime saves once this hook returns.
+    await chat.pipe(fixedNarrationChunks(messageId, plan.text));
+    chat.history.set([
+      ...uiMessages,
+      { id: messageId, role: "assistant", parts: [{ type: "text", text: plan.text }] },
+    ]);
+    return undefined;
   }
 
-  const message: UIMessage = {
-    id: messageId,
-    role: "assistant",
-    parts: [{ type: "text", text }],
-  };
-  chat.history.set([...uiMessages, message]);
-  // The display copy is an id-deduped append, never a wholesale write: a wake has
-  // no client to carry the stored transcript, so the session view can miss
-  // host-appended blocks (a card-born chat starts with only those) and
-  // `persistMessages` would drop them.
-  const userId = args.clientData?.userId;
-  const organizationId = args.clientData?.organizationId;
-  if (userId) {
-    await getStore().appendMessage({ chatId, userId, organizationId, message });
-  } else {
-    // A wake always carries its watch's tenancy, so reaching this means the
-    // metadata contract broke. Deliver anyway: losing blocks beats losing the wake.
-    logger.error("dashboard-agent watch wake has no userId; falling back to persistMessages", {
-      chatId,
-    });
-    await getStore().persistMessages({ chatId, messages: [...uiMessages, message] });
-  }
-
-  // Only once the wake is in the transcript, so the investigation can never hold
-  // the wake up.
+  // The consented investigation is opened before the wake is answered, so the
+  // sentence promising it is true by the time it streams. Best effort: an
+  // investigation that couldn't be opened is a lost follow-up, never a lost wake.
   if (wakeStartsInvestigation(action)) {
     await openConsentedInvestigation({ action, chatId, clientData: args.clientData });
   }
+
+  const brief = [
+    wakePrompt(action, tenancy),
+    plan.model === "haiku"
+      ? `Open with this fact, in these words: ${plan.presentation.headline}.`
+      : undefined,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  return answerWithTurn({
+    uiMessages,
+    request: { id: requestId, role: "user", parts: [{ type: "text", text: brief }] },
+    responseId: messageId,
+    kind: "wake",
+    // The plan's small-model wake keeps its bounded budget in the turn.
+    model: plan.model === "haiku" ? "haiku" : undefined,
+  });
 }
 
 /**
@@ -677,22 +650,23 @@ function investigatePrompt(args: {
 /**
  * Conduct the consented investigation, exactly once, as the agent's own message.
  *
- * A real turn in everything but name: same tools, same protocol, same step budget
- * `run()` gives. It is NOT a turn in the SDK's sense, so no `onTurnComplete` fires
- * — the settle guard runs here by hand and the message is appended id-deduped.
+ * The kick files the brief as a request and returns `chat.turn()`, so the findings
+ * are an ordinary turn's answer: the same tools, protocol and step budget any turn
+ * gets, and `onTurnComplete` settles the card if the model leaves it running. The
+ * seeded row is registered as open here so that settle knows about it even when the
+ * model never renders.
  *
- * The wake was delivered long before this, so everything here is best-effort and
- * nothing it does can retry or invalidate the wake.
+ * The wake was delivered long before this, so nothing here can retry or invalidate it.
  */
 async function conductWatchInvestigation(args: {
   action: WatchInvestigateAction;
   chatId: string;
   clientData: z.infer<typeof clientDataSchema> | undefined;
   uiMessages: UIMessage[];
-  messages: ModelMessage[];
-}): Promise<void> {
+}): Promise<ActionTurn | undefined> {
   const { action, chatId, clientData, uiMessages } = args;
   const messageId = investigateMessageId(action.id);
+  const requestId = investigateRequestMessageId(action.id);
   const closingMessageId = settledMessageId(messageId);
   const projectRef = clientData?.projectRef;
   const environmentRef = clientData?.environmentId;
@@ -707,48 +681,51 @@ async function conductWatchInvestigation(args: {
     evidence: [],
   });
 
-  const closeCard = async (investigationId: string, messages: UIMessage[]) => {
-    if (!projectRef || !environmentRef) return;
-    await closeCardInTranscript({
-      store: getStore(),
-      chatId,
-      investigationId,
-      projectRef,
-      environmentRef,
-      messageId: closingMessageId,
-      uiMessages: messages,
-      fallback: seedState,
-    });
-  };
-
   // Dedup on the action id, against the durable transcript — a redelivered kick
   // must not investigate (or answer) twice.
-  const alreadyAnswered = uiMessages.find((message) => message.id === messageId);
-  if (alreadyAnswered) {
-    logger.info("dashboard-agent watch investigation already ran; repairing the display copy", {
+  if (uiMessages.some((message) => message.id === messageId)) {
+    logger.info("dashboard-agent watch investigation already ran", {
       chatId,
       watchId: action.watchId,
       actionId: action.id,
     });
-    // Same window as the wake's: the findings streamed durably before the append, so a
-    // retry can owe only the display copy. Id-deduped, so a repeat writes nothing.
-    const userId = clientData?.userId;
-    if (userId) {
-      await getStore().appendMessage({
-        chatId,
-        userId,
-        organizationId: clientData?.organizationId,
-        message: alreadyAnswered,
-      });
-    }
+    repersistHistory(uiMessages);
     // This watch's card only: any other card still running belongs to the user or to
     // another watch, and closing it would answer a question nobody asked here.
     const cardId = action.investigationId ?? watchInvestigationId(action.watchId);
     const open = latestCards(uiMessages).get(cardId);
     if (open && (open.state === null || open.state.outcome === "in_progress")) {
-      await closeCard(cardId, uiMessages);
+      if (!projectRef || !environmentRef) return undefined;
+      await closeCardInTranscript({
+        store: getStore(),
+        chatId,
+        investigationId: cardId,
+        projectRef,
+        environmentRef,
+        messageId: closingMessageId,
+        uiMessages,
+        fallback: seedState,
+      });
     }
-    return;
+    return undefined;
+  }
+
+  // The brief landed but the turn never answered it: resume it. The seeded row is
+  // registered again so this turn's settle knows about it.
+  if (uiMessages.some((message) => message.id === requestId)) {
+    logger.info("dashboard-agent watch investigation request found unanswered; resuming", {
+      chatId,
+      watchId: action.watchId,
+      actionId: action.id,
+    });
+    if (projectRef && environmentRef) {
+      trackSeededInvestigation(
+        chatId,
+        action.investigationId ?? watchInvestigationId(action.watchId),
+        { projectRef, environmentRef, state: seedState() }
+      );
+    }
+    return resumeTurn({ responseId: messageId, kind: "investigate" });
   }
 
   if (!projectRef || !environmentRef) {
@@ -758,7 +735,7 @@ async function conductWatchInvestigation(args: {
       chatId,
       watchId: action.watchId,
     });
-    return;
+    return undefined;
   }
 
   const investigationId = await resolveInvestigationId({
@@ -772,109 +749,53 @@ async function conductWatchInvestigation(args: {
       chatId,
       watchId: action.watchId,
     });
-    return;
+    return undefined;
   }
 
-  const store = getStore();
-  let answered: UIMessage | undefined;
-  const resolved = await getSystemPrompt(modeFor(clientData), { watchEnabled: true });
-  const tools = buildTurnTools(chatId, clientData && { ...clientData, watchEnabled: true });
-  let step = 0;
-  const result = streamText({
-    model:
-      locals.get(dashboardAgentModelKey) ??
-      resolveDashboardAgentModel(resolved.model ?? "anthropic:claude-sonnet-4-6"),
-    system: resolved.text,
-    tools,
-    // Ten steps of accumulating tool output is exactly what the rolling breakpoint
-    // is for; without it every step re-sends the lot uncached.
-    prepareStep: stepCachePrepareStep(undefined) as never,
-    onStepFinish: (finished) =>
-      recordPromptCacheUsage({
-        source: "watch-investigation",
-        usage: finished.usage,
-        system: resolved.text,
-        tools,
-        step: step++,
-        providerMetadata: finished.providerMetadata,
-      }),
-    messages: [
-      ...withCacheBreakpointOnLast(sanitizeReplayedToolInputs(args.messages)),
-      {
-        role: "user" as const,
-        content: investigatePrompt({
-          action,
-          investigationId,
-          tenancy: { projectRef, environmentId: environmentRef },
-        }),
-      },
-    ],
-    // The same budget a turn gets: four tool phases plus the answer.
-    stopWhen: stepCountIs(10),
-    ...resolved.toAISDKTelemetry(),
+  // Known to the turn's settle from the start: a card the model never revises is
+  // otherwise a spinner nothing stops.
+  trackSeededInvestigation(chatId, investigationId, {
+    projectRef,
+    environmentRef,
+    state: seedState(),
   });
 
-  try {
-    // Tee'd because the findings message has to be persisted whole: the panel
-    // renders the card from the `render_view` tool part, so a text-only copy would
-    // lose it on the next page load. One branch streams to the panel, the other
-    // reduces the same chunks back into a UIMessage.
-    const [toPanel, toTranscript] = result
-      .toUIMessageStream({ generateMessageId: () => messageId })
-      .tee();
-    let response: UIMessage | undefined;
-    const reduced = (async () => {
-      for await (const snapshot of readUIMessageStream({ stream: toTranscript })) {
-        response = snapshot;
-      }
-    })();
-    await chat.pipe(toPanel);
-    await reduced;
-
-    if (response) {
-      const message: UIMessage = { ...response, id: messageId, role: "assistant" };
-      chat.history.set([...uiMessages, message]);
-      answered = message;
-      const userId = clientData?.userId;
-      if (userId) {
-        await store.appendMessage({
-          chatId,
-          userId,
-          organizationId: clientData?.organizationId,
-          message,
-        });
-      } else {
-        logger.error("dashboard-agent watch investigation has no userId; skipping the append", {
-          chatId,
-        });
-      }
-    }
-  } finally {
-    // No `onTurnComplete` on an action, so the guard runs here: a card left at
-    // in_progress is a spinner nothing else will ever stop. `closeCard` is the settle,
-    // so nothing settles the row separately first.
-    await closeCard(investigationId, answered ? [...uiMessages, answered] : uiMessages);
-    // Only once the close committed: a retry needs the tracked entry to still be there.
-    clearOpenInvestigations(chatId);
-  }
+  return answerWithTurn({
+    uiMessages,
+    request: {
+      id: requestId,
+      role: "user",
+      parts: [
+        {
+          type: "text",
+          text: investigatePrompt({
+            action,
+            investigationId,
+            tenancy: { projectRef, environmentId: environmentRef },
+          }),
+        },
+      ],
+    },
+    responseId: messageId,
+    kind: "investigate",
+  });
 }
 
 /**
- * The agent's `onAction` lane, whole: narrate the outcome, then conduct the
- * investigation it opened when the user consented.
+ * The agent's `onAction` lane, whole: narrate the outcome, or conduct the
+ * investigation it opened when the user consented. Returns the turn that answers,
+ * or nothing when the action was an edit only.
  */
 export async function handleWatchAction(args: {
   action: unknown;
   chatId: string;
   clientData: z.infer<typeof clientDataSchema> | undefined;
   uiMessages: UIMessage[];
-  messages: ModelMessage[];
-}): Promise<void> {
-  const { chatId, clientData, uiMessages, messages } = args;
+}): Promise<ActionTurn | undefined> {
+  const { chatId, clientData, uiMessages } = args;
   const typed = args.action as DashboardAgentAction;
   if (typed.type === "watch.investigate") {
-    await conductWatchInvestigation({ action: typed, chatId, clientData, uiMessages, messages });
-    return;
+    return conductWatchInvestigation({ action: typed, chatId, clientData, uiMessages });
   }
-  await narrateWatchWake({ action: typed, chatId, clientData, uiMessages, messages });
+  return narrateWatchWake({ action: typed, chatId, clientData, uiMessages });
 }

@@ -6,6 +6,7 @@ import type {
 import { simulateReadableStream, type UIMessage, type UIMessageChunk } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import { investigationSettlementMessage } from "@internal/dashboard-agent-db";
+import { memoryTranscriptStorage, type MemoryTranscriptStorage } from "@trigger.dev/sdk/ai";
 
 import type {
   DashboardAgentEvalPolicyCheck,
@@ -79,9 +80,7 @@ export function mockModel(
 // Records the persistence the agent performs.
 export type StoreCalls = {
   ensureChat: unknown[];
-  persistMessages: unknown[];
-  appendMessage: unknown[];
-  persistTurn: unknown[];
+  settleTurnInvestigations: unknown[];
   setChatTitleIfDefault: unknown[];
   upsertInvestigationRevision: unknown[];
   settleInvestigationCard: unknown[];
@@ -101,14 +100,17 @@ export type FakeInvestigation = {
 export function fakeStore(options: { investigations?: Map<string, FakeInvestigation> } = {}): {
   store: DashboardAgentStore;
   calls: StoreCalls;
+  /**
+   * The conversation as the runtime saved it, in memory. `transcript(chatId)` is what a
+   * fresh page load would read; `changesets` is every save the runtime handed over.
+   */
+  transcript: MemoryTranscriptStorage;
   /** The rows, so a test can assert which cards a lane touched and which it left alone. */
   investigations: Map<string, FakeInvestigation>;
 } {
   const calls: StoreCalls = {
     ensureChat: [],
-    persistMessages: [],
-    appendMessage: [],
-    persistTurn: [],
+    settleTurnInvestigations: [],
     setChatTitleIfDefault: [],
     upsertInvestigationRevision: [],
     settleInvestigationCard: [],
@@ -128,16 +130,18 @@ export function fakeStore(options: { investigations?: Map<string, FakeInvestigat
     const row = investigations.get(id);
     if (row) row.state = state as FakeInvestigation["state"];
   };
+  const transcript = memoryTranscriptStorage();
   const store: DashboardAgentStore = {
     ensureChat: async (args) => record("ensureChat", args),
-    persistMessages: async (args) => record("persistMessages", args),
-    appendMessage: async (args) => record("appendMessage", args),
-    // Mirrors the real query: the settlements commit with the transcript, and the
-    // closing cards are part of the messages the write stores.
-    persistTurn: async (args) => {
+    transcript,
+    // Mirrors the real query: the settlements commit with their closing cards, written
+    // straight into the transcript rows. The hook then puts the same cards into
+    // `chat.history`, so the runtime's save replaces them in place.
+    settleTurnInvestigations: async (args) => {
+      record("settleTurnInvestigations", args);
       const settled: { id: string; revision: number; state: unknown }[] = [];
       const cards: UIMessage[] = [];
-      for (const pending of args.settlements ?? []) {
+      for (const pending of args.settlements) {
         const result = await store.upsertInvestigationRevision({ ...pending, chatId: args.chatId });
         if (!result.ok) continue;
         const message = investigationSettlementMessage({
@@ -149,13 +153,14 @@ export function fakeStore(options: { investigations?: Map<string, FakeInvestigat
         settled.push({ id: result.id, revision: result.revision, state: pending.state });
         cards.push(message as UIMessage);
       }
-      const stored = args.messages as UIMessage[];
-      const messages = [
-        ...stored,
-        ...cards.filter((card) => !stored.some((message) => message.id === card.id)),
-      ];
-      record("persistTurn", { ...args, messages });
-      return { settled };
+      if (cards.length > 0) {
+        await seedTranscript(store, {
+          chatId: args.chatId,
+          clientData: { userId: "user_settle", organizationId: "org_settle" },
+          messages: cards,
+        });
+      }
+      return { settled, cards: cards as never };
     },
     setChatTitleIfDefault: async (args) => record("setChatTitleIfDefault", args),
     upsertInvestigationRevision: async (args) => {
@@ -209,7 +214,62 @@ export function fakeStore(options: { investigations?: Map<string, FakeInvestigat
       return { ok: true, id: args.id, created: true };
     },
   };
-  return { store, calls, investigations };
+  return { store, calls, transcript, investigations };
+}
+
+/** Every message the runtime saved through the store, as `put` changes, in save order. */
+export function savedPuts(store: DashboardAgentStore): UIMessage[] {
+  const memory = store.transcript as MemoryTranscriptStorage;
+  return memory.changesets.flatMap(({ changeset }) =>
+    changeset.changes.flatMap((change) =>
+      change.op === "put" ? [change.message as UIMessage] : []
+    )
+  );
+}
+
+/** Why the runtime saved, in save order. */
+export function saveReasons(store: DashboardAgentStore): string[] {
+  const memory = store.transcript as MemoryTranscriptStorage;
+  return memory.changesets.map(({ changeset }) => changeset.reason);
+}
+
+/** The transcript a fresh page load would read for `chatId`. */
+export function savedTranscript(store: DashboardAgentStore, chatId: string): UIMessage[] {
+  const memory = store.transcript as MemoryTranscriptStorage;
+  return memory.transcript(chatId)?.entries.map((entry) => entry.message as UIMessage) ?? [];
+}
+
+/**
+ * Prior history for a continuation boot: what an earlier run saved, so the next
+ * run's `load` finds it. Replaces the harness's snapshot seeding, which the agent
+ * bypasses now that it brings its own storage.
+ */
+export async function seedTranscript(
+  store: DashboardAgentStore,
+  args: {
+    chatId: string;
+    clientData: { userId: string; organizationId: string };
+    messages: UIMessage[];
+  }
+): Promise<void> {
+  await store.transcript.save(
+    {
+      chatId: args.chatId,
+      clientData: args.clientData,
+      turn: 0,
+      trigger: "submit-message",
+      runId: "run_seed",
+      ctx: {} as never,
+    },
+    {
+      reason: "turn-complete",
+      changes: args.messages.map((message) => ({ op: "put" as const, message })),
+      transcript: {
+        entries: args.messages.map((message) => ({ id: message.id, final: true, message })),
+        state: null,
+      },
+    }
+  );
 }
 
 // Records the eval enqueues, in place of tasks.trigger.

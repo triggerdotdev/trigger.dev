@@ -1,6 +1,7 @@
 // These hit the real Anthropic API, so they skip unless ANTHROPIC_API_KEY is set. Run
 // them with `pnpm --filter @internal/dashboard-agent run test:evals`.
 // `@trigger.dev/sdk/ai/test` first, so the catalog installs before the agent module.
+import { memoryTranscriptStorage } from "@trigger.dev/sdk/ai";
 import { mockChatAgent } from "@trigger.dev/sdk/ai/test";
 
 import { anthropic } from "@ai-sdk/anthropic";
@@ -38,9 +39,8 @@ const CLIENT_DATA = {
 };
 const NOOP_STORE: DashboardAgentStore = {
   ensureChat: async () => {},
-  persistMessages: async () => {},
-  appendMessage: async () => {},
-  persistTurn: async () => ({ settled: [] }),
+  transcript: memoryTranscriptStorage(),
+  settleTurnInvestigations: async () => ({ settled: [], cards: [] }),
   setChatTitleIfDefault: async () => {},
   upsertInvestigationRevision: async () => ({
     ok: true,

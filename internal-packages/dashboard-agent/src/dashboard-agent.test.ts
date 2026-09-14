@@ -42,10 +42,12 @@ import {
   fakeEvalTrigger,
   fakeStore,
   mockModel,
+  savedTranscript,
+  saveReasons,
   textStep,
   toolCallStep,
-  userMessage,
   type StoreCalls,
+  userMessage,
 } from "./test-support";
 import { getSystemPrompt } from "./agent-runtime";
 import { systemPromptFor } from "./prompt-assembly";
@@ -76,10 +78,11 @@ describe("dashboardAgent (mock harness)", () => {
     expect(collectText(turn.chunks)).toBe("hello from the agent");
 
     expect(calls.ensureChat).toHaveLength(1);
-    expect(calls.persistMessages).toHaveLength(1);
-    // onTurnComplete persists after the turn-complete chunk, so give it a tick.
+    // The runtime writes the conversation through the agent's storage: the question
+    // when the turn starts, the answer once the turn-complete chunk is out.
     await new Promise((r) => setTimeout(r, 30));
-    expect(calls.persistTurn).toHaveLength(1);
+    expect(saveReasons(store)).toEqual(["turn-start", "turn-complete"]);
+    expect(savedTranscript(store, "chat_text").map((m) => m.role)).toEqual(["user", "assistant"]);
   });
 
   // The panel reloads its chat list once, when the turn settles, so the title write
@@ -111,6 +114,15 @@ describe("dashboardAgent (mock harness)", () => {
 
     it("names it on the first exchange", () => {
       expect(isFirstUserExchange([user("u1")])).toBe(true);
+      // No human message at all is not an exchange: a chat a watch created, whose
+      // only user-role messages are requests the agent filed for itself, keeps its name.
+      expect(isFirstUserExchange([])).toBe(false);
+      expect(isFirstUserExchange([user("wake-request:watch:w1:fired"), assistant("a1")])).toBe(
+        false
+      );
+      expect(isFirstUserExchange([user("investigate-request:watch:w1:fired:investigate")])).toBe(
+        false
+      );
     });
 
     it("still names it when the turn was head-started", () => {
@@ -305,15 +317,12 @@ describe("dashboardAgent (mock harness)", () => {
   });
 
   /**
-   * The transcript a fresh page load reads. One write holds all of it: the terminal
-   * settlement goes into the same array `persistTurn` stores.
+   * The transcript a fresh page load reads: what the runtime saved through the agent's
+   * storage, closing cards included, since the hook puts them into the history the
+   * turn-complete save carries.
    */
-  const storedTranscript = (calls: StoreCalls): UIMessage[] => {
-    const last = calls.persistTurn[calls.persistTurn.length - 1] as
-      | { messages: UIMessage[] }
-      | undefined;
-    return [...(last?.messages ?? [])];
-  };
+  const storedTranscript = (store: DashboardAgentStore, chatId: string): UIMessage[] =>
+    savedTranscript(store, chatId);
 
   /** Mirrors the panel's winning-revision logic, over `tool-render_view` output blocks. */
   const winningCards = (messages: UIMessage[]) => {
@@ -348,7 +357,7 @@ describe("dashboardAgent (mock harness)", () => {
   // The settled row is invisible: the panel builds the card from the transcript's own
   // render_view parts, so a turn that ran out of steps left a permanent spinner.
   it("a turn that runs out of steps closes its card IN THE TRANSCRIPT, not only in the row", async () => {
-    const { store, calls } = fakeStore();
+    const { store } = fakeStore();
     harness = mockChatAgent(dashboardAgent, {
       chatId: "chat_transcript_settle",
       clientData: INVESTIGATION_CLIENT_DATA,
@@ -364,7 +373,7 @@ describe("dashboardAgent (mock harness)", () => {
     await harness.sendMessage(userMessage("why is send-order-receipt failing?"));
     await new Promise((r) => setTimeout(r, 30));
 
-    const stored = storedTranscript(calls);
+    const stored = storedTranscript(store, "chat_transcript_settle");
     const settlement = stored.filter((m) => m.id.startsWith("investigation-settlement:"));
     expect(settlement.map((m) => m.id)).toEqual(["investigation-settlement:inv_fake:1"]);
 
@@ -390,24 +399,24 @@ describe("dashboardAgent (mock harness)", () => {
   });
 
   /**
-   * The failure window. Settling the row used to be its own operation, so a transcript
-   * write that failed afterwards left a row that was already terminal and a card that
-   * said `in_progress`. The stale sweep only selects `in_progress` rows, so nothing
-   * could ever repair it. The row and its card must land together or not at all.
+   * The failure window. Settling the row used to be its own operation, so a card write
+   * that failed afterwards left a row that was already terminal and a card that said
+   * `in_progress`. The stale sweep only selects `in_progress` rows, so nothing could
+   * ever repair it. The row and its card must land together or not at all.
    */
-  it("a failed transcript write settles nothing, and the retry closes the card", async () => {
+  it("a failed settle writes nothing, and the retry closes the card", async () => {
     const { store, calls } = fakeStore();
     const attempted: unknown[] = [];
     let failNext = true;
     const flaky: DashboardAgentStore = {
       ...store,
-      persistTurn: async (args) => {
+      settleTurnInvestigations: async (args) => {
         attempted.push(args.settlements);
         if (failNext) {
           failNext = false;
-          throw new Error("the transcript write failed");
+          throw new Error("the settle failed");
         }
-        return store.persistTurn(args);
+        return store.settleTurnInvestigations(args);
       },
     };
 
@@ -426,25 +435,24 @@ describe("dashboardAgent (mock harness)", () => {
     await harness.sendMessage(userMessage("why is send-order-receipt failing?"));
     await new Promise((r) => setTimeout(r, 30));
 
-    // The settlement is handed to the one write that also stores the transcript, and it
-    // is still pending on the retry — the failed attempt committed no row of its own.
+    // The settlement is still pending on the retry — the failed attempt committed no
+    // row of its own.
     expect(attempted).toHaveLength(2);
     expect(attempted[0]).toMatchObject([{ id: "inv_fake", projectRef: "proj_abc" }]);
     expect(attempted[1]).toMatchObject([{ id: "inv_fake", projectRef: "proj_abc" }]);
 
-    // Exactly one settling revision, written by the attempt that stored the transcript:
-    // the model's render, then the settle. Never a settle without its card.
+    // Exactly one settling revision, written by the attempt that succeeded: the model's
+    // render, then the settle. Never a settle without its card.
     expect(calls.upsertInvestigationRevision).toHaveLength(2);
-    expect(calls.persistTurn).toHaveLength(1);
-    expect(calls.appendMessage).toHaveLength(0);
+    expect(calls.settleTurnInvestigations).toHaveLength(1);
 
-    // And the retry's transcript carries the terminal card.
-    const card = winningCards(storedTranscript(calls)).get("inv_fake");
+    // And the transcript the runtime saved carries the terminal card.
+    const card = winningCards(storedTranscript(store, "chat_settle_write_fails")).get("inv_fake");
     expect(card).toMatchObject({ revision: 1, outcome: "inconclusive" });
   });
 
   it("a refresh renders the closed card: the next load's transcript carries it", async () => {
-    const { store, calls } = fakeStore();
+    const { store } = fakeStore();
     harness = mockChatAgent(dashboardAgent, {
       chatId: "chat_transcript_reload",
       clientData: INVESTIGATION_CLIENT_DATA,
@@ -465,14 +473,15 @@ describe("dashboardAgent (mock harness)", () => {
     await new Promise((r) => setTimeout(r, 30));
 
     // What the panel would render on a fresh load, before anyone asks anything else.
-    expect(winningCards(storedTranscript(calls)).get("inv_fake")?.outcome).toBe("inconclusive");
+    expect(
+      winningCards(storedTranscript(store, "chat_transcript_reload")).get("inv_fake")?.outcome
+    ).toBe("inconclusive");
 
-    // And the next turn's wholesale write keeps it: the transcript it starts from is
-    // the one a reload reads.
+    // And the next turn keeps it: the transcript it starts from is the one a reload reads.
     await harness.sendMessage(userMessage("anything else?"));
     await new Promise((r) => setTimeout(r, 30));
 
-    const reloaded = (calls.persistMessages[1] as { messages: UIMessage[] }).messages;
+    const reloaded = storedTranscript(store, "chat_transcript_reload");
     expect(winningCards(reloaded).get("inv_fake")).toMatchObject({
       revision: 1,
       outcome: "inconclusive",
@@ -992,46 +1001,6 @@ describe("a turn that ends in an error", () => {
     harness = undefined;
   });
 
-  /**
-   * A store that keeps the transcript the way the real one does: one row per message id,
-   * kept in the order the ids were first seen, and a repeat updates that message in
-   * place. Lets the test read history back rather than only count calls.
-   */
-  function transcriptStore(): { store: DashboardAgentStore; history: () => UIMessage[] } {
-    const rows = new Map<string, UIMessage>();
-    const record = (incoming: unknown[]) => {
-      for (const message of incoming as UIMessage[]) rows.set(message.id, message);
-    };
-    const store: DashboardAgentStore = {
-      ensureChat: async () => undefined,
-      persistMessages: async (args) => record(args.messages),
-      appendMessage: async (args) => {
-        const message = args.message as UIMessage;
-        if (!rows.has(message.id)) rows.set(message.id, message);
-      },
-      persistTurn: async (args) => {
-        record(args.messages);
-        return { settled: [] };
-      },
-      setChatTitleIfDefault: async () => undefined,
-      upsertInvestigationRevision: async () => ({
-        ok: true,
-        id: "inv_fake",
-        revision: 0,
-        created: true,
-      }),
-      settleInvestigationCard: async (args) => ({
-        ok: true,
-        id: args.id,
-        revision: 1,
-        card: { id: args.messageId, role: "assistant", parts: [] },
-        closed: true,
-      }),
-      seedInvestigation: async (args) => ({ ok: true, id: args.id, created: true }),
-    };
-    return { store, history: () => [...rows.values()] };
-  }
-
   /** A model that fails the turn, the way a provider outage does. */
   function failingModel() {
     return new MockLanguageModelV3({
@@ -1045,7 +1014,8 @@ describe("a turn that ends in an error", () => {
   }
 
   it("records the failure in the transcript, in the user's words", async () => {
-    const { store, history } = transcriptStore();
+    const { store } = fakeStore();
+    const history = () => savedTranscript(store, "chat_turn_error");
     harness = mockChatAgent(dashboardAgent, {
       chatId: "chat_turn_error",
       clientData: CLIENT_DATA,

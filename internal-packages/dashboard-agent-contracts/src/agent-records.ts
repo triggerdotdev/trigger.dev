@@ -1,3 +1,5 @@
+import { WATCH_REQUEST_MESSAGE_ID_PREFIX } from "./watch.js";
+
 /**
  * Message ids for the records the agent appends to a chat outside a user's turn.
  *
@@ -23,6 +25,48 @@ export function investigateMessageId(actionId: string): string {
 
 export function settledMessageId(messageId: string): string {
   return `${messageId}${SETTLED_MESSAGE_ID_SUFFIX}`;
+}
+
+/**
+ * The user-role message a wake or investigation turn answers. A watch action is an
+ * edit to the conversation, and the turn that follows it needs something to answer,
+ * so the action files the wake's facts (or the investigation brief) as a request under
+ * a stable id. It is the agent asking itself, not the user typing, so the panel hides
+ * it and it never counts against the message cap.
+ */
+export const WAKE_REQUEST_MESSAGE_ID_PREFIX = "wake-request:";
+export const INVESTIGATE_REQUEST_MESSAGE_ID_PREFIX = "investigate-request:";
+
+export function wakeRequestMessageId(actionId: string): string {
+  return `${WAKE_REQUEST_MESSAGE_ID_PREFIX}${actionId}`;
+}
+
+export function investigateRequestMessageId(actionId: string): string {
+  return `${INVESTIGATE_REQUEST_MESSAGE_ID_PREFIX}${actionId}`;
+}
+
+const AGENT_REQUEST_ID_PREFIXES = [
+  WATCH_REQUEST_MESSAGE_ID_PREFIX,
+  WAKE_REQUEST_MESSAGE_ID_PREFIX,
+  INVESTIGATE_REQUEST_MESSAGE_ID_PREFIX,
+];
+
+/** The request a wake or investigation turn answers: the agent asking itself. */
+export function isTurnRequestMessageId(id: string | undefined | null): boolean {
+  return (
+    typeof id === "string" &&
+    (id.startsWith(WAKE_REQUEST_MESSAGE_ID_PREFIX) ||
+      id.startsWith(INVESTIGATE_REQUEST_MESSAGE_ID_PREFIX))
+  );
+}
+
+/**
+ * A user-role message the user did not type: a watch consent record, or the request
+ * a wake or investigation turn answers. Hidden by the panel, excluded from the message
+ * cap, and never the exchange that names a chat.
+ */
+export function isAgentRequestMessageId(id: string | undefined | null): boolean {
+  return typeof id === "string" && AGENT_REQUEST_ID_PREFIXES.some((p) => id.startsWith(p));
 }
 
 const TRAILING_RECORD_ID_PREFIXES = [

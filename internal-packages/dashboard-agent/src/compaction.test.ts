@@ -6,7 +6,14 @@ import { afterEach, describe, expect, it } from "vitest";
 import { simulateReadableStream, type ModelMessage, type UIMessage } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import { dashboardAgent, dashboardAgentModelKey, dashboardAgentStoreKey } from "./dashboard-agent";
-import { CLIENT_DATA, fakeStore, textStep, USAGE, userMessage } from "./test-support";
+import {
+  CLIENT_DATA,
+  fakeStore,
+  seedTranscript,
+  textStep,
+  USAGE,
+  userMessage,
+} from "./test-support";
 import {
   buildCompactedModelMessages,
   collectDurableState,
@@ -442,29 +449,29 @@ describe("dashboardAgent compaction (mock harness)", () => {
     harness = undefined;
   });
 
-  /** An oversized prior conversation, replayed from the boot snapshot. */
+  /** An oversized prior conversation, loaded from the agent's storage at boot. */
   const FILLER = "the queue was busy. ".repeat(20_000);
 
-  function runOverBudget(args: {
+  async function runOverBudget(args: {
     chatId: string;
     seeded: UIMessage[];
     prompts: string[];
     summarized?: string[];
   }) {
     const { store } = fakeStore();
+    await seedTranscript(store, {
+      chatId: args.chatId,
+      clientData: CLIENT_DATA,
+      messages: [
+        ...args.seeded,
+        { id: "a0", role: "assistant", parts: [{ type: "text", text: FILLER }] },
+      ],
+    });
     return mockChatAgent(dashboardAgent, {
       chatId: args.chatId,
       clientData: CLIENT_DATA,
-      // The snapshot is only read on a boot that could have prior state.
+      // Storage is only read on a boot that could have prior state.
       continuation: true,
-      snapshot: {
-        version: 1,
-        savedAt: Date.now(),
-        messages: [
-          ...args.seeded,
-          { id: "a0", role: "assistant", parts: [{ type: "text", text: FILLER }] },
-        ],
-      },
       setupLocals: ({ set }) => {
         set(dashboardAgentStoreKey, store);
         set(dashboardAgentModelKey, capturingModel(args.prompts, args.summarized));
@@ -474,7 +481,7 @@ describe("dashboardAgent compaction (mock harness)", () => {
 
   it("shortens an oversized history but keeps the open investigation revisable", async () => {
     const prompts: string[] = [];
-    harness = runOverBudget({
+    harness = await runOverBudget({
       chatId: "chat_compaction_investigation",
       prompts,
       seeded: [
@@ -504,7 +511,7 @@ describe("dashboardAgent compaction (mock harness)", () => {
   it("hands a watch to the summariser instead of pinning it as live", async () => {
     const prompts: string[] = [];
     const summarized: string[] = [];
-    harness = runOverBudget({
+    harness = await runOverBudget({
       chatId: "chat_compaction_watch",
       prompts,
       summarized,

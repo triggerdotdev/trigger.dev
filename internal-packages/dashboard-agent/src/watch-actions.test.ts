@@ -8,10 +8,13 @@ import { simulateReadableStream, type UIMessage } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { isAgentRequestMessageId } from "@internal/dashboard-agent-contracts";
 import { investigationSettlementMessage, watchInvestigationId } from "@internal/dashboard-agent-db";
 
 import {
   dashboardAgent,
+  dashboardAgentEvalPolicyKey,
+  dashboardAgentEvalTriggerKey,
   dashboardAgentModelKey,
   dashboardAgentStoreKey,
   type DashboardAgentStore,
@@ -20,63 +23,50 @@ import {
   CLIENT_DATA,
   collectText,
   executedTool,
+  fakeEvalPolicy,
+  fakeEvalTrigger,
   fakeStore,
   finish,
-  type FakeInvestigation,
   mockModel,
+  savedPuts,
+  savedTranscript,
+  saveReasons,
+  seedTranscript,
   textStep,
   toolCallStep,
+  type FakeInvestigation,
   USAGE,
+  userMessage,
 } from "./test-support";
 
 /**
- * Stands in for `chats` + `chat_messages`, as `appendOneMessage`'s upsert sees them: the
- * insert is scoped to the owning user and — when the caller passes one — the owning
- * organization, and keyed on (chat_id, message_id) with nothing done on conflict. So a
- * repeat is never a second row and a foreign tenancy is no row at all. Row counts are
- * what the History panel reads, which is why these tests assert those, not call counts.
+ * A watch action that returns `chat.turn()` resolves for the caller when the
+ * turn-complete chunk is written, and the runtime saves the turn's answer right after
+ * that. Wait for that save before reading the transcript back. `since` is the number
+ * of saves already made (a seeded transcript is one), so a seed's own turn-complete
+ * save is not mistaken for the turn's.
  */
-function transcriptTable(owner: { userId: string; organizationId: string }) {
-  const rows: { chatId: string; messageId: string }[] = [];
-  const countOf = (chatId: string, messageId: string) =>
-    rows.filter((row) => row.chatId === chatId && row.messageId === messageId).length;
-  return {
-    countOf,
-    insert(args: { chatId: string; userId: string; organizationId?: string; message: UIMessage }) {
-      if (args.userId !== owner.userId) return false;
-      if (args.organizationId !== undefined && args.organizationId !== owner.organizationId) {
-        return false;
-      }
-      if (countOf(args.chatId, args.message.id) > 0) return false;
-      rows.push({ chatId: args.chatId, messageId: args.message.id });
-      return true;
-    },
-  };
+async function turnSaved(store: DashboardAgentStore, since = 0): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  while (saveReasons(store).length <= since || saveReasons(store).at(-1) !== "turn-complete") {
+    if (Date.now() > deadline) {
+      throw new Error(`no turn-complete save; saves were ${saveReasons(store).join(",")}`);
+    }
+    await new Promise((r) => setTimeout(r, 10));
+  }
 }
 
-// A store that writes into `table`, failing the appends `failWhen` selects.
-function appendingStore(
-  table: ReturnType<typeof transcriptTable>,
-  failWhen: (message: UIMessage) => boolean,
-  options?: Parameters<typeof fakeStore>[0]
-) {
-  const { store, calls } = fakeStore(options);
-  const wrapped: DashboardAgentStore = {
-    ...store,
-    appendMessage: async (args) => {
-      await store.appendMessage(args);
-      const message = args.message as UIMessage;
-      if (failWhen(message)) throw new Error("the append lost the connection");
-      return table.insert({ ...args, message });
-    },
-  };
-  return { store: wrapped, calls };
+/** The saved records the panel shows: everything but the requests the turns answered. */
+function recordIds(store: DashboardAgentStore, chatId: string): string[] {
+  return savedTranscript(store, chatId)
+    .map((m) => m.id)
+    .filter((id) => !isAgentRequestMessageId(id));
 }
 
-// Every organization a path's appends were scoped to, in order.
-function scopedTo(...stores: { calls: { appendMessage: unknown[] } }[]) {
-  return stores.flatMap((store) =>
-    store.calls.appendMessage.map((call) => (call as { organizationId?: string }).organizationId)
+/** The settlements a turn's `onTurnComplete` handed to the store, flattened, in order. */
+function settledIds(calls: { settleTurnInvestigations: unknown[] }): string[] {
+  return calls.settleTurnInvestigations.flatMap((call) =>
+    (call as { settlements: { id: string }[] }).settlements.map((s) => s.id)
   );
 }
 
@@ -128,24 +118,22 @@ describe("watch wake narration", () => {
     ) as { messageId?: string } | undefined;
     expect(startChunk?.messageId).toBe("wake:watch:watch_1:fired");
 
-    // An action is not a turn, so no turn persistence ran. The narration lands in the
-    // read-model as an id-deduped append, never a wholesale write: a card-born chat's
-    // transcript holds host blocks the session view can't see.
-    expect(calls.persistTurn).toHaveLength(0);
-    expect(calls.persistMessages).toHaveLength(0);
-    expect(calls.appendMessage).toHaveLength(1);
-    const appended = calls.appendMessage[0] as { userId: string; message: UIMessage };
-    expect(appended.userId).toBe(CLIENT_DATA.userId);
-    expect(appended.message).toMatchObject({ id: "wake:watch:watch_1:fired", role: "assistant" });
-
-    // Same action id again (the watcher retried after appending): nothing is narrated,
-    // and the only write is the id-deduped repair of the same message.
-    const second = await harness.sendAction(WAKE);
-    expect(collectText(second.chunks)).toBe("");
-    expect(calls.appendMessage.map((call) => (call as { message: UIMessage }).message.id)).toEqual([
-      "wake:watch:watch_1:fired",
+    // An action is not a turn, so no turn hooks ran. The narration reaches the rows
+    // through the runtime's save of the history edit, as one appended message and
+    // never a wholesale write: a card-born chat's transcript holds host blocks the
+    // session view can't see.
+    expect(calls.settleTurnInvestigations).toHaveLength(0);
+    expect(saveReasons(store)).toEqual(["action"]);
+    expect(savedPuts(store)).toMatchObject([{ id: "wake:watch:watch_1:fired", role: "assistant" }]);
+    expect(savedTranscript(store, "chat_wake").map((m) => m.id)).toEqual([
       "wake:watch:watch_1:fired",
     ]);
+
+    // Same action id again (the watcher retried): nothing is narrated and nothing is
+    // saved, because the history did not change.
+    const second = await harness.sendAction(WAKE);
+    expect(collectText(second.chunks)).toBe("");
+    expect(savedPuts(store).map((m) => m.id)).toEqual(["wake:watch:watch_1:fired"]);
   });
 
   // Records the prompt it was asked with, so the wake's framing can be asserted.
@@ -168,6 +156,24 @@ describe("watch wake narration", () => {
 
   function wakeText(prompts: unknown[]): string {
     return JSON.stringify(prompts);
+  }
+
+  /** Records what each model call was given: how many tools, and any output cap. */
+  function capturingModel(text: string) {
+    const calls: { tools: number; maxOutputTokens: number | undefined }[] = [];
+    const model = new MockLanguageModelV3({
+      doStream: async (options) => {
+        calls.push({ tools: options.tools?.length ?? 0, maxOutputTokens: options.maxOutputTokens });
+        return { stream: simulateReadableStream({ chunks: textStep(text) }) };
+      },
+      doGenerate: async () => ({
+        content: [{ type: "text", text }],
+        finishReason: { unified: "stop", raw: "stop" },
+        usage: USAGE,
+        warnings: [],
+      }),
+    });
+    return { model, calls };
   }
 
   // A completed window is an answer, never "the watch expired with nothing to say".
@@ -277,6 +283,8 @@ describe("watch wake narration", () => {
     },
     facts: { outcome: "COMPLETED_WITH_ERRORS", durationMs: 4200 },
   };
+  // The narration id the panel knows this wake by.
+  const FAILED_RUN_WAKE_ID = "wake:watch:watch_1:fired";
 
   it("opens the pre-approved investigation on an attention outcome, in the same wake turn", async () => {
     const { store, calls } = fakeStore();
@@ -293,9 +301,11 @@ describe("watch wake narration", () => {
     });
 
     await harness.sendAction({ ...FAILED_RUN_WAKE, investigateOnAttention: true });
+    await turnSaved(store);
 
-    // The wake lands first and says the investigation has started.
-    expect(calls.appendMessage).toHaveLength(1);
+    // The wake is the turn's answer, saved under the id the panel knows it by, and it
+    // says the investigation has started.
+    expect(recordIds(store, "chat_wake_investigate")).toEqual([FAILED_RUN_WAKE_ID]);
     expect(wakeText(prompts)).toContain("ALREADY been started");
 
     // Opened, not concluded: the wake has no token to read with, so the findings come
@@ -337,7 +347,8 @@ describe("watch wake narration", () => {
       investigateOnAttention: true,
     });
 
-    expect(calls.appendMessage).toHaveLength(1);
+    // Good news has fixed wording: streamed as an edit, no turn.
+    expect(recordIds(store, "chat_wake_positive")).toHaveLength(1);
     expect(calls.seedInvestigation).toHaveLength(0);
   });
 
@@ -355,16 +366,88 @@ describe("watch wake narration", () => {
 
     await harness.sendAction(FAILED_RUN_WAKE);
 
-    expect(calls.appendMessage).toHaveLength(1);
+    await turnSaved(store);
+    expect(recordIds(store, "chat_wake_no_consent")).toEqual([FAILED_RUN_WAKE_ID]);
     expect(calls.seedInvestigation).toHaveLength(0);
     expect(wakeText(prompts)).not.toContain("ALREADY been started");
+  });
+
+  /**
+   * The wake that needs attention was a bounded small-model call before it became a
+   * turn; the turn keeps that shape: no tools, a 300-token cap.
+   */
+  it("runs an attention wake on the small model with the bounded budget", async () => {
+    const { store } = fakeStore();
+    const { model, calls } = capturingModel("Run run_abc123 failed after 4.2s.");
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_wake_budget",
+      clientData: CLIENT_DATA,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentModelKey, model);
+      },
+    });
+
+    await harness.sendAction(FAILED_RUN_WAKE);
+    await turnSaved(store);
+
+    expect(calls).toEqual([{ tools: 0, maxOutputTokens: 300 }]);
+  });
+
+  /**
+   * The action marker is cleared when the action turn completes. When that hook fails
+   * on both of the runtime's attempts, the marker survives into the next turn, which
+   * is the user's: it must get its tools back and be judged like any typed turn.
+   */
+  it("a wake whose settlement keeps failing does not taint the next typed turn", async () => {
+    const originalRate = process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE;
+    process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE = "1";
+    try {
+      const { store } = fakeStore();
+      // Down for the wake's turn, on every attempt; back for the typed turn.
+      let settlementDown = true;
+      const failing: DashboardAgentStore = {
+        ...store,
+        settleTurnInvestigations: async (args) => {
+          if (settlementDown) throw new Error("settlement is down");
+          return store.settleTurnInvestigations(args);
+        },
+      };
+      const { trigger, calls: evals } = fakeEvalTrigger();
+      const { model, calls } = capturingModel("answered");
+      harness = mockChatAgent(dashboardAgent, {
+        chatId: "chat_wake_stale_marker",
+        clientData: CLIENT_DATA,
+        setupLocals: ({ set }) => {
+          set(dashboardAgentStoreKey, failing);
+          set(dashboardAgentModelKey, model);
+          set(dashboardAgentEvalTriggerKey, trigger);
+          set(dashboardAgentEvalPolicyKey, fakeEvalPolicy());
+        },
+      });
+
+      await harness.sendAction(FAILED_RUN_WAKE);
+      settlementDown = false;
+      await harness.sendMessage(userMessage("what happened?"));
+      // onTurnComplete enqueues after the turn-complete chunk, so give it a tick.
+      await new Promise((r) => setTimeout(r, 30));
+
+      // The wake ran as a bounded small-model call; the typed turn ran uncapped.
+      expect(calls[0]).toEqual({ tools: 0, maxOutputTokens: 300 });
+      expect(calls[1]?.maxOutputTokens).toBeUndefined();
+      // Only the typed turn is judged: the wake is the agent talking to itself.
+      expect(evals).toHaveLength(1);
+    } finally {
+      if (originalRate === undefined) delete process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE;
+      else process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE = originalRate;
+    }
   });
 
   // Opening the investigation must never delay, retry or invalidate the wake. The
   // watcher has already marked the delivery by the time the agent runs, so the only
   // thing this can break is the turn.
   it("delivers the wake even when opening the investigation fails", async () => {
-    const { store, calls } = fakeStore();
+    const { store } = fakeStore();
     const failing: DashboardAgentStore = {
       ...store,
       seedInvestigation: async () => {
@@ -383,10 +466,11 @@ describe("watch wake narration", () => {
     const wake = await harness.sendAction({ ...FAILED_RUN_WAKE, investigateOnAttention: true });
 
     expect(collectText(wake.chunks)).toBe("Run run_abc123 failed.");
-    expect(calls.appendMessage).toHaveLength(1);
+    await turnSaved(failing);
+    expect(recordIds(failing, "chat_wake_inv_fails")).toEqual([FAILED_RUN_WAKE_ID]);
   });
 
-  it("writes nothing and fails the action when the narration comes back empty", async () => {
+  it("an empty narration still files the request and opens the consented investigation", async () => {
     const { store, calls } = fakeStore();
     harness = mockChatAgent(dashboardAgent, {
       chatId: "chat_wake_empty",
@@ -398,22 +482,21 @@ describe("watch wake narration", () => {
     });
 
     const turn = await harness.sendAction({ ...FAILED_RUN_WAKE, investigateOnAttention: true });
+    await turnSaved(store);
 
-    expect(
-      turn.chunks.some(
-        (chunk) =>
-          (chunk as { type?: string; errorText?: string }).type === "error" &&
-          /produced no text/.test((chunk as { errorText?: string }).errorText ?? "")
-      )
-    ).toBe(true);
+    // The wake is a turn now: an answer with no text is the model's shortfall, not a
+    // failed delivery. The request is in the transcript, and the investigation the
+    // user consented to was opened before the answer was asked for.
     expect(collectText(turn.chunks)).toBe("");
-    expect(calls.appendMessage).toHaveLength(0);
-    expect(calls.persistMessages).toHaveLength(0);
-    expect(calls.seedInvestigation).toHaveLength(0);
+    expect(turn.chunks.some((chunk) => (chunk as { type?: string }).type === "error")).toBe(false);
+    expect(
+      savedTranscript(store, "chat_wake_empty").some((m) => isAgentRequestMessageId(m.id))
+    ).toBe(true);
+    expect(calls.seedInvestigation).toHaveLength(1);
   });
 
   it("a different outcome on the same watch is a different wake", async () => {
-    const { store, calls } = fakeStore();
+    const { store } = fakeStore();
     harness = mockChatAgent(dashboardAgent, {
       chatId: "chat_wake_two",
       clientData: CLIENT_DATA,
@@ -431,101 +514,206 @@ describe("watch wake narration", () => {
       watchId: "watch_2",
       facts: { verified: false, reason: "unverified_at_expiry" },
     });
+    // The expired wake needs attention, so it is a turn's answer; wait for its save.
+    await turnSaved(store);
 
-    expect(calls.appendMessage).toHaveLength(2);
-    expect(calls.appendMessage.map((call) => (call as { message: UIMessage }).message.id)).toEqual([
+    expect(recordIds(store, "chat_wake_two")).toEqual([
       "wake:watch:watch_1:fired",
       "wake:watch:watch_2:expired",
     ]);
   });
 
   /**
-   * The wake is durable on `session.out` the moment it streams, which is before the
-   * display copy is written. So an append that fails leaves the model seeing a message
-   * the History panel doesn't have — and the retry boots with that message already in
-   * its history. Converging on the row is the retry's job.
+   * The request is saved before its turn runs, so a run that dies in between leaves
+   * the request without a wake. A continuation does not redispatch actions; the
+   * redelivered wake is what resumes the turn, under the same id, without filing a
+   * second request.
    */
-  it("appends the display copy on a retry that finds the wake already narrated", async () => {
-    const table = transcriptTable(CLIENT_DATA);
-    const chatId = "chat_wake_retry";
-    const wakeId = "wake:watch:watch_1:fired";
-
-    const failing = appendingStore(table, (message) => message.id === wakeId);
+  it("a redelivered wake answers a request the dead run left unanswered", async () => {
+    const chatId = "chat_wake_resume";
+    const { store, calls } = fakeStore();
+    await seedTranscript(store, {
+      chatId,
+      clientData: WAKE_CLIENT_DATA,
+      messages: [
+        {
+          id: "wake-request:watch:watch_1:fired",
+          role: "user",
+          parts: [{ type: "text", text: "the wake's facts" }],
+        },
+      ],
+    });
+    const { model, prompts } = recordingModel("Run run_abc123 failed after 4.2s.");
     harness = mockChatAgent(dashboardAgent, {
       chatId,
+      clientData: WAKE_CLIENT_DATA,
+      continuation: true,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentModelKey, model);
+      },
+    });
+
+    const seeded = saveReasons(store).length;
+    const turn = await harness.sendAction(FAILED_RUN_WAKE);
+    await turnSaved(store, seeded);
+
+    expect(collectText(turn.chunks)).toBe("Run run_abc123 failed after 4.2s.");
+    expect(prompts).toHaveLength(1);
+    const ids = savedTranscript(store, chatId).map((m) => m.id);
+    expect(ids).toEqual(["wake-request:watch:watch_1:fired", FAILED_RUN_WAKE_ID]);
+    // Nobody typed anything in this chat, so nothing names it.
+    expect(calls.setChatTitleIfDefault).toHaveLength(0);
+  });
+
+  /**
+   * The redelivery is the retry. The wake streamed before the save failed, so the
+   * retry finds it narrated and must not say it again, but the row the panel reads
+   * is still owed: handing the same history back makes the runtime save it.
+   */
+  it("a redelivered wake repairs a row the failed save left missing", async () => {
+    const { store } = fakeStore();
+    let failNext = true;
+    const flaky: DashboardAgentStore = {
+      ...store,
+      transcript: {
+        ...store.transcript,
+        save: async (ctx, changeset) => {
+          if (failNext) {
+            failNext = false;
+            throw new Error("the save lost the connection");
+          }
+          return store.transcript.save(ctx, changeset);
+        },
+      },
+    };
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_wake_redelivered",
       clientData: CLIENT_DATA,
       setupLocals: ({ set }) => {
-        set(dashboardAgentStoreKey, failing.store);
+        set(dashboardAgentStoreKey, flaky);
         set(dashboardAgentModelKey, mockModel([textStep("never asked for")]));
       },
     });
 
     const first = await harness.sendAction(WAKE);
-    // Streamed — so it is on `session.out` and in the next boot's history — while the
-    // row it was supposed to land alongside never arrived.
     expect(collectText(first.chunks)).toContain("queue drained");
-    expect(failing.calls.appendMessage).toHaveLength(1);
-    expect(table.countOf(chatId, wakeId)).toBe(0);
+    expect(savedTranscript(store, "chat_wake_redelivered")).toHaveLength(0);
+
+    // The same action again: nothing narrated, and the row converges.
+    const retry = await harness.sendAction(WAKE);
+    expect(collectText(retry.chunks)).toBe("");
+    expect(savedTranscript(store, "chat_wake_redelivered").map((m) => m.id)).toEqual([
+      "wake:watch:watch_1:fired",
+    ]);
+
+    // A third delivery changes nothing: the runtime's diff has nothing left to write.
+    await harness.sendAction(WAKE);
+    expect(savedTranscript(store, "chat_wake_redelivered").map((m) => m.id)).toEqual([
+      "wake:watch:watch_1:fired",
+    ]);
+  });
+
+  /**
+   * Same repair across a run boundary: the retry boots a new run whose history comes
+   * from storage plus the durable stream, so it finds the wake narrated even though
+   * storage never received it.
+   */
+  it("a redelivered wake on a continuation boot repairs the row from the stream tail", async () => {
+    const chatId = "chat_wake_redelivered_boot";
+    const wakeId = "wake:watch:watch_1:fired";
+    const { store: failing } = fakeStore();
+    const neverSaves: DashboardAgentStore = {
+      ...failing,
+      transcript: {
+        ...failing.transcript,
+        save: async () => {
+          throw new Error("the save lost the connection");
+        },
+      },
+    };
+    harness = mockChatAgent(dashboardAgent, {
+      chatId,
+      clientData: CLIENT_DATA,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, neverSaves);
+        set(dashboardAgentModelKey, mockModel([textStep("never asked for")]));
+      },
+    });
+    const first = await harness.sendAction(WAKE);
+    expect(collectText(first.chunks)).toContain("queue drained");
     const durable = first.chunks;
     await harness.close();
 
-    // The retry is a new run picking up the session, booting its history from the
-    // chunks the failed one left on `session.out`.
-    const repairing = appendingStore(table, () => false);
+    // The retry: a new run, an empty storage, the streamed chunks on `session.out`.
+    const { store } = fakeStore();
     harness = mockChatAgent(dashboardAgent, {
       chatId,
       clientData: CLIENT_DATA,
       continuation: true,
       previousRunId: "run_wake_failed",
       setupLocals: ({ set }) => {
-        set(dashboardAgentStoreKey, repairing.store);
+        set(dashboardAgentStoreKey, store);
         set(dashboardAgentModelKey, mockModel([textStep("never asked for")]));
       },
     });
     harness.seedSessionOutTail(durable);
 
     const retry = await harness.sendAction(WAKE);
-
-    // Nothing narrated twice, and the display copy converged on exactly one row.
     expect(collectText(retry.chunks)).toBe("");
-    expect(table.countOf(chatId, wakeId)).toBe(1);
-
-    // A third delivery repairs nothing, because there is nothing left to repair.
-    await harness.sendAction(WAKE);
-    expect(table.countOf(chatId, wakeId)).toBe(1);
-
-    // Every write on this path is scoped to the organization the append verifies — the
-    // repair included, or the repair would be the one write that skips the check.
-    expect(scopedTo(failing, repairing)).toEqual([
-      CLIENT_DATA.organizationId,
-      CLIENT_DATA.organizationId,
-      CLIENT_DATA.organizationId,
-    ]);
+    const ids = savedTranscript(store, chatId).map((m) => m.id);
+    expect(ids.filter((id) => id === wakeId)).toHaveLength(1);
   });
 
   /**
-   * The chat id comes from the watch record and the tenancy from the session's
-   * `clientData`. If those ever disagree the append has to write nothing, rather than put
-   * a message in another organization's transcript.
+   * The wake is durable on `session.out` the moment it streams, which is before the
+   * save lands. A save that fails is the runtime's to retry: the change folds into the
+   * next changeset, so the History panel converges without the lane doing anything.
    */
-  it("writes nothing when the wake's tenancy doesn't own the chat", async () => {
-    const table = transcriptTable(CLIENT_DATA);
-    const chatId = "chat_wake_other_org";
-    const { store, calls } = appendingStore(table, () => false);
+  it("carries a wake whose save failed into the next save", async () => {
+    const { store } = fakeStore();
+    let failNext = true;
+    const flaky: DashboardAgentStore = {
+      ...store,
+      transcript: {
+        ...store.transcript,
+        save: async (ctx, changeset) => {
+          if (failNext) {
+            failNext = false;
+            throw new Error("the save lost the connection");
+          }
+          return store.transcript.save(ctx, changeset);
+        },
+      },
+    };
     harness = mockChatAgent(dashboardAgent, {
-      chatId,
-      clientData: { ...CLIENT_DATA, organizationId: "org_other" },
+      chatId: "chat_wake_retry",
+      clientData: CLIENT_DATA,
       setupLocals: ({ set }) => {
-        set(dashboardAgentStoreKey, store);
-        set(dashboardAgentModelKey, mockModel([textStep("never asked for")]));
+        set(dashboardAgentStoreKey, flaky);
+        set(dashboardAgentModelKey, mockModel([textStep("first"), textStep("second")]));
       },
     });
 
-    await harness.sendAction(WAKE);
+    // Streamed, so it is on `session.out`, while the row never landed.
+    const first = await harness.sendAction(WAKE);
+    expect(collectText(first.chunks)).toContain("queue drained");
+    expect(savedPuts(store)).toHaveLength(0);
 
-    // Attempted, and refused by the scope the append carries.
-    expect(calls.appendMessage).toHaveLength(1);
-    expect(table.countOf(chatId, "wake:watch:watch_1:fired")).toBe(0);
+    // The next change to the history saves both: the runtime diffs against what was
+    // last saved, and the failed save advanced nothing.
+    await harness.sendAction({
+      ...WAKE,
+      type: "watch.expired",
+      id: "watch:watch_2:expired",
+      watchId: "watch_2",
+      facts: { verified: false, reason: "unverified_at_expiry" },
+    });
+    await turnSaved(store);
+    expect(recordIds(store, "chat_wake_retry")).toEqual([
+      "wake:watch:watch_1:fired",
+      "wake:watch:watch_2:expired",
+    ]);
   });
 });
 
@@ -648,14 +836,17 @@ describe("watch investigation", () => {
     });
 
     const turn = await harness.sendAction(INVESTIGATE);
+    await turnSaved(store);
 
     // A real investigating turn: the model called a tool and it executed.
     expect(executedTool(turn.chunks)).toBe(true);
     expect(collectText(turn.chunks)).toContain("order.total");
 
     // The card the wake opened is the one this revises: no second investigation for
-    // the same news, and no id the model got to choose.
+    // the same news, and no id the model got to choose. The model concluded it, so
+    // the turn had nothing left to settle.
     expect(calls.seedInvestigation).toHaveLength(1);
+    expect(settledIds(calls)).toEqual([]);
     expect(calls.upsertInvestigationRevision).toHaveLength(1);
     const revision = calls.upsertInvestigationRevision[0] as {
       id?: string;
@@ -672,21 +863,18 @@ describe("watch investigation", () => {
     expect(prompt).toContain("pre-approved");
     expect(prompt).toContain("its own message");
 
-    // Findings appended once and whole: the render_view part is what the panel rebuilds
+    // Findings saved once and whole: the render_view part is what the panel rebuilds
     // the card from.
-    expect(calls.appendMessage).toHaveLength(1);
-    const appended = calls.appendMessage[0] as { userId: string; message: UIMessage };
-    expect(appended.userId).toBe(CLIENT_DATA.userId);
-    expect(appended.message.id).toBe("investigate:watch:watch_1:fired:investigate");
-    expect(appended.message.parts.some((part) => part.type === "tool-render_view")).toBe(true);
+    const findings = savedPuts(store).filter(
+      (m) => m.id === "investigate:watch:watch_1:fired:investigate"
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.parts.some((part) => part.type === "tool-render_view")).toBe(true);
 
-    // The same kick again: nothing runs, and the only write is the id-deduped repair of
-    // the findings message.
+    // The same kick again: nothing runs and nothing new is saved.
+    const saved = savedTranscript(store, "chat_investigate").map((m) => m.id);
     await harness.sendAction(INVESTIGATE);
-    expect(calls.appendMessage.map((call) => (call as { message: UIMessage }).message.id)).toEqual([
-      "investigate:watch:watch_1:fired:investigate",
-      "investigate:watch:watch_1:fired:investigate",
-    ]);
+    expect(savedTranscript(store, "chat_investigate").map((m) => m.id)).toEqual(saved);
     expect(calls.upsertInvestigationRevision).toHaveLength(1);
   });
 
@@ -744,15 +932,18 @@ describe("watch investigation", () => {
     });
 
     await harness.sendAction(INVESTIGATE);
+    await turnSaved(store);
 
     // The same id the wake would have used, so a late seed can never make a second card.
+    // The model never rendered, so the turn settles the seeded row itself.
     expect(calls.seedInvestigation).toMatchObject([{ id: SEEDED }]);
-    expect(calls.upsertInvestigationRevision).toHaveLength(0);
-    expect(calls.settleInvestigationCard).toMatchObject([
-      { id: SEEDED, state: { outcome: "inconclusive" } },
+    expect(calls.settleTurnInvestigations).toMatchObject([
+      { settlements: [{ id: SEEDED, state: { outcome: "inconclusive" } }] },
     ]);
     expect(JSON.stringify(prompts)).toContain(SEEDED);
-    expect(calls.appendMessage).toHaveLength(1);
+    expect(recordIds(store, "chat_investigate_seed")).toContain(
+      "investigate:watch:watch_1:fired:investigate"
+    );
   });
 
   /**
@@ -775,18 +966,16 @@ describe("watch investigation", () => {
     });
 
     await harness.sendAction(INVESTIGATE);
+    await turnSaved(store);
 
-    // Only the turn's own render_view revision; the settle is the atomic close below.
-    expect(calls.upsertInvestigationRevision).toHaveLength(1);
-    expect(calls.settleInvestigationCard).toHaveLength(1);
-    const settle = calls.settleInvestigationCard[0] as {
-      id: string;
-      messageId: string;
-      state: { outcome: string };
-    };
-    expect(settle.id).toBe(SEEDED);
-    expect(settle.state.outcome).toBe("inconclusive");
-    expect(settle.messageId).toBe("investigate:watch:watch_1:fired:investigate:settled");
+    // One settle, from the turn's `onTurnComplete`, with the terminal state; the
+    // closing card lands in the same operation.
+    expect(calls.settleTurnInvestigations).toHaveLength(1);
+    expect(settledIds(calls)).toEqual([SEEDED]);
+    const settlement = (
+      calls.settleTurnInvestigations[0] as { settlements: { state: { outcome: string } }[] }
+    ).settlements[0]!;
+    expect(settlement.state.outcome).toBe("inconclusive");
   });
 
   function revisioningStore(options: { failClosingCard?: boolean } = {}) {
@@ -795,23 +984,15 @@ describe("watch investigation", () => {
     let revision = 0;
     const wrapped: DashboardAgentStore = {
       ...store,
-      // The closing write, however the lane makes it: whether it is one atomic call or
-      // a bare append, the transcript half fails here.
-      appendMessage: async (args) => {
-        if (options.failClosingCard && args.message.id.endsWith(":settled")) {
-          throw new Error("the append lost the connection");
-        }
-        return store.appendMessage(args);
-      },
-      // The real query commits the revision and the card together, so a card that
-      // can't be delivered leaves the row exactly as it was.
-      settleInvestigationCard: async (args) => {
+      // The real query commits the revisions and their closing cards together, so a
+      // card that can't be delivered leaves the row exactly as it was.
+      settleTurnInvestigations: async (args) => {
         if (options.failClosingCard) {
-          calls.settleInvestigationCard.push(args);
+          calls.settleTurnInvestigations.push(args);
           throw new Error("the append lost the connection");
         }
-        const result = await store.settleInvestigationCard(args);
-        if (result.ok) closedCards.push(result.card as UIMessage);
+        const result = await store.settleTurnInvestigations(args);
+        closedCards.push(...(result.cards as UIMessage[]));
         return result;
       },
       upsertInvestigationRevision: async (args) => {
@@ -856,38 +1037,76 @@ describe("watch investigation", () => {
     });
 
     await harness.sendAction(INVESTIGATE);
+    await turnSaved(store);
 
-    // The findings message is the only ordinary append; the closing card lands with the
-    // terminal revision, in one operation.
-    expect(calls.appendMessage).toHaveLength(1);
+    // The findings message is the turn's answer; the closing card lands with the
+    // terminal revision, in one operation, and the runtime saves both.
+    const findingsId = "investigate:watch:watch_1:fired:investigate";
+    expect(recordIds(store, "chat_investigate_card")).toContain(findingsId);
     expect(closedCards).toHaveLength(1);
     const closing = closedCards[0]!;
-    expect(closing.id).toBe("investigate:watch:watch_1:fired:investigate:settled");
+    expect(recordIds(store, "chat_investigate_card")).toContain(closing.id);
 
     const [card] = cardsIn(closing);
     expect(card?.id).toBe(SEEDED);
     expect(card?.investigation?.outcome).toBe("inconclusive");
-    const [opened] = cardsIn((calls.appendMessage[0] as { message: UIMessage }).message);
+    const [opened] = cardsIn(savedPuts(store).find((m) => m.id === findingsId)!);
     expect(card!.revision!).toBeGreaterThan(opened!.revision!);
     expect(card?.investigation?.progress).toBeUndefined();
 
     const revisions = calls.upsertInvestigationRevision.length;
+    const saved = savedTranscript(store, "chat_investigate_card").map((m) => m.id);
     await harness.sendAction(INVESTIGATE);
-    expect(calls.appendMessage.map((call) => (call as { message: UIMessage }).message.id)).toEqual([
-      "investigate:watch:watch_1:fired:investigate",
-      "investigate:watch:watch_1:fired:investigate",
-    ]);
+    expect(savedTranscript(store, "chat_investigate_card").map((m) => m.id)).toEqual(saved);
     expect(calls.upsertInvestigationRevision).toHaveLength(revisions);
   });
 
   /**
-   * The failure window this lane used to have: the row settled, the closing append
-   * failed, the error was logged and swallowed, and the action reported success. The
-   * row was then terminal, so the stale sweep no longer selected it and the panel span
-   * forever. Nothing in production calls the action again on its own — only a thrown
-   * error gets it retried.
+   * Same resume for the investigation: the brief landed, the run died, and the
+   * redelivered kick answers it under the same id and settles the card.
    */
-  it("fails the action when the closing card can't be written, instead of reporting success", async () => {
+  it("a redelivered kick answers a brief the dead run left unanswered", async () => {
+    const chatId = "chat_investigate_resume";
+    const { store, calls } = fakeStore();
+    await seedTranscript(store, {
+      chatId,
+      clientData: CLIENT_DATA_WITH_TOKEN,
+      messages: [
+        {
+          id: "investigate-request:watch:watch_1:fired:investigate",
+          role: "user",
+          parts: [{ type: "text", text: "the brief" }],
+        },
+      ],
+    });
+    const { model } = recordingModel([textStep("Couldn't get far — the trace is gone.")]);
+    harness = mockChatAgent(dashboardAgent, {
+      chatId,
+      clientData: CLIENT_DATA_WITH_TOKEN,
+      continuation: true,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentModelKey, model);
+      },
+    });
+
+    const seeded = saveReasons(store).length;
+    await harness.sendAction(INVESTIGATE);
+    await turnSaved(store, seeded);
+
+    const ids = savedTranscript(store, chatId).map((m) => m.id);
+    expect(ids.filter((id) => id.startsWith("investigate-request:"))).toHaveLength(1);
+    expect(ids).toContain("investigate:watch:watch_1:fired:investigate");
+    // The model never rendered, so the turn settled the seeded row it was told about.
+    expect(settledIds(calls)).toEqual([SEEDED]);
+  });
+
+  /**
+   * The settle is the turn's, and it commits the row and its card together. When it
+   * fails, the row stays `in_progress` (nothing made it terminal ahead of the card) and
+   * the redelivered kick, which finds its request already answered, closes it.
+   */
+  it("leaves the row open when the closing write fails, and the redelivered kick closes it", async () => {
     const { store, calls } = revisioningStore({ failClosingCard: true });
     const { model } = recordingModel([
       renderStep(inProgress, SEEDED, "tc_open"),
@@ -902,24 +1121,23 @@ describe("watch investigation", () => {
       },
     });
 
-    const turn = await harness.sendAction(INVESTIGATE);
-
-    expect(
-      turn.chunks.some(
-        (chunk) =>
-          (chunk as { type?: string }).type === "error" &&
-          /lost the connection/.test((chunk as { errorText?: string }).errorText ?? "")
-      )
-    ).toBe(true);
-
-    // The close was attempted as one operation, so no separate settle could have made
-    // the row terminal ahead of the card.
-    expect(calls.settleInvestigationCard).toHaveLength(1);
+    await harness.sendAction(INVESTIGATE);
+    // The settle threw (the runtime's error path retries the hook once, so it may be
+    // attempted twice); no separate settle made the row terminal.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(calls.settleTurnInvestigations.length).toBeGreaterThanOrEqual(1);
     expect(
       calls.upsertInvestigationRevision.filter(
         (call) => (call as { state: { outcome: string } }).state.outcome !== "in_progress"
       )
     ).toEqual([]);
+
+    // The retry: the kick again, finding its request and findings in the history and
+    // the card still open, closes the card on its own.
+    await harness.sendAction(INVESTIGATE);
+    expect(calls.settleInvestigationCard).toMatchObject([
+      { id: SEEDED, state: { outcome: "inconclusive" } },
+    ]);
   });
 
   /** A store whose atomic close refuses rather than throws, with the reason it refuses for. */
@@ -935,17 +1153,40 @@ describe("watch investigation", () => {
     return { store: wrapped, calls };
   }
 
+  /**
+   * A redelivered kick that finds its request answered and the card still open closes
+   * the card itself. Seed that history, then redeliver.
+   */
   async function investigateAgainst(store: DashboardAgentStore, chatId: string) {
-    const { model } = recordingModel([
-      renderStep(inProgress, SEEDED, "tc_open"),
-      textStep("still looking"),
-    ]);
+    await seedTranscript(store, {
+      chatId,
+      clientData: CLIENT_DATA_WITH_TOKEN,
+      messages: [
+        {
+          id: "investigate-request:watch:watch_1:fired:investigate",
+          role: "user",
+          parts: [{ type: "text", text: "brief" }],
+        },
+        investigationSettlementMessage({
+          investigationId: SEEDED,
+          revision: 0,
+          state: inProgress,
+          messageId: `msg_${SEEDED}`,
+        }) as UIMessage,
+        {
+          id: "investigate:watch:watch_1:fired:investigate",
+          role: "assistant",
+          parts: [{ type: "text", text: "still looking" }],
+        },
+      ],
+    });
     harness = mockChatAgent(dashboardAgent, {
       chatId,
       clientData: CLIENT_DATA_WITH_TOKEN,
+      continuation: true,
       setupLocals: ({ set }) => {
         set(dashboardAgentStoreKey, store);
-        set(dashboardAgentModelKey, model);
+        set(dashboardAgentModelKey, mockModel([textStep("should never run")]));
       },
     });
     return harness.sendAction(INVESTIGATE);
@@ -964,7 +1205,7 @@ describe("watch investigation", () => {
    * panel spins until the action is retried, and only a thrown error gets it retried.
    */
   it.each(["not_found", "context_mismatch"] as const)(
-    "fails the action when the close is refused with %s",
+    "fails the redelivered kick when the close is refused with %s",
     async (error) => {
       const { store, calls } = refusingStore(error);
       const turn = await investigateAgainst(store, `chat_investigate_refused_${error}`);
@@ -974,7 +1215,7 @@ describe("watch investigation", () => {
     }
   );
 
-  it("reports success when the close is refused because the chat is gone", async () => {
+  it("reports success on a redelivered kick when the close is refused because the chat is gone", async () => {
     const { store, calls } = refusingStore("chat_missing");
     const turn = await investigateAgainst(store, "chat_investigate_refused_chat_missing");
 
@@ -997,73 +1238,7 @@ describe("watch investigation", () => {
 
     expect(calls.seedInvestigation).toHaveLength(0);
     expect(calls.upsertInvestigationRevision).toHaveLength(0);
-    expect(calls.appendMessage).toHaveLength(0);
-  });
-
-  /**
-   * The same window the wake has: the findings stream to `session.out` before the display
-   * copy is appended, so an append that fails leaves the model holding a message the
-   * History panel lost. The retry finds it already answered and must still land the row.
-   */
-  it("appends the display copy on a retry that finds the investigation already answered", async () => {
-    const table = transcriptTable(CLIENT_DATA);
-    const chatId = "chat_investigate_retry";
-    const findingsId = "investigate:watch:watch_1:fired:investigate";
-    const steps = [
-      renderStep(concluded, SEEDED, "tc_verdict"),
-      textStep("The payload lost order.total."),
-    ];
-
-    const failing = appendingStore(table, (message) => message.id === findingsId);
-    harness = mockChatAgent(dashboardAgent, {
-      chatId,
-      clientData: CLIENT_DATA_WITH_TOKEN,
-      setupLocals: ({ set }) => {
-        set(dashboardAgentStoreKey, failing.store);
-        set(dashboardAgentModelKey, recordingModel(steps).model);
-      },
-    });
-
-    const first = await harness.sendAction(INVESTIGATE);
-    // Streamed whole, card part and all, while the row it belongs to never landed.
-    expect(executedTool(first.chunks)).toBe(true);
-    expect(failing.calls.appendMessage).toHaveLength(1);
-    expect(table.countOf(chatId, findingsId)).toBe(0);
-    const durable = first.chunks;
-    await harness.close();
-
-    // The retry is a new run picking up the session, booting its history from the chunks
-    // the failed one left on `session.out`.
-    const repairing = appendingStore(table, () => false);
-    harness = mockChatAgent(dashboardAgent, {
-      chatId,
-      clientData: CLIENT_DATA_WITH_TOKEN,
-      continuation: true,
-      previousRunId: "run_investigate_failed",
-      setupLocals: ({ set }) => {
-        set(dashboardAgentStoreKey, repairing.store);
-        set(dashboardAgentModelKey, recordingModel(steps).model);
-      },
-    });
-    harness.seedSessionOutTail(durable);
-
-    const retry = await harness.sendAction(INVESTIGATE);
-
-    // Nothing investigated a second time, and the display copy converged on one row.
-    expect(collectText(retry.chunks)).toBe("");
-    expect(table.countOf(chatId, findingsId)).toBe(1);
-
-    // A third delivery repairs nothing, because there is nothing left to repair.
-    await harness.sendAction(INVESTIGATE);
-    expect(table.countOf(chatId, findingsId)).toBe(1);
-
-    // Every write on this path is scoped to the organization the append verifies — the
-    // repair included, or the repair would be the one write that skips the check.
-    expect(scopedTo(failing, repairing)).toEqual([
-      CLIENT_DATA.organizationId,
-      CLIENT_DATA.organizationId,
-      CLIENT_DATA.organizationId,
-    ]);
+    expect(savedPuts(store)).toHaveLength(0);
   });
 
   /**
@@ -1105,8 +1280,9 @@ describe("watch investigation", () => {
     });
 
     await harness.sendAction(INVESTIGATE);
+    await turnSaved(store);
 
-    expect(calls.settleInvestigationCard).toMatchObject([{ id: SEEDED }]);
+    expect(settledIds(calls)).toEqual([SEEDED]);
     expect(investigations.get(SEEDED)?.state.outcome).toBe("inconclusive");
     expect(investigations.get(MANUAL)?.state.outcome).toBe("in_progress");
   });
@@ -1127,25 +1303,26 @@ describe("watch investigation", () => {
         messageId: `msg_${id}`,
       }) as UIMessage;
 
+    // The findings already landed, so this kick is a repair; the user's card is the
+    // first one still open in the transcript the next boot loads from storage.
+    await seedTranscript(store, {
+      chatId,
+      clientData: CLIENT_DATA_WITH_TOKEN,
+      messages: [
+        card(MANUAL, "Why is checkout slow?"),
+        card(SEEDED, "Investigating run_abc123"),
+        {
+          id: "investigate:watch:watch_1:fired:investigate",
+          role: "assistant",
+          parts: [{ type: "text", text: "The payload lost order.total." }],
+        },
+      ],
+    });
+
     harness = mockChatAgent(dashboardAgent, {
       chatId,
       clientData: CLIENT_DATA_WITH_TOKEN,
       continuation: true,
-      // The findings already landed, so this kick is a repair; the user's card is the
-      // first one still open in the transcript.
-      snapshot: {
-        version: 1,
-        savedAt: Date.now(),
-        messages: [
-          card(MANUAL, "Why is checkout slow?"),
-          card(SEEDED, "Investigating run_abc123"),
-          {
-            id: "investigate:watch:watch_1:fired:investigate",
-            role: "assistant",
-            parts: [{ type: "text", text: "The payload lost order.total." }],
-          },
-        ],
-      },
       setupLocals: ({ set }) => {
         set(dashboardAgentStoreKey, store);
         set(dashboardAgentModelKey, mockModel([textStep("should never run")]));
@@ -1179,38 +1356,9 @@ describe("watch investigation", () => {
       watchId: "watch_2",
     });
 
-    expect(calls.settleInvestigationCard.map((call) => (call as { id: string }).id)).toEqual([
-      SEEDED,
-      second,
-    ]);
+    await turnSaved(store);
+    expect(settledIds(calls)).toEqual([SEEDED, second]);
     expect(investigations.get(SEEDED)?.state.outcome).toBe("inconclusive");
     expect(investigations.get(second)?.state.outcome).toBe("inconclusive");
-  });
-
-  // Same tenancy crossing as the wake's: the kick names the chat, the session names the
-  // organization, and a disagreement must not write into another organization's chat.
-  it("writes nothing when the kick's tenancy doesn't own the chat", async () => {
-    const table = transcriptTable(CLIENT_DATA);
-    const chatId = "chat_investigate_other_org";
-    const { store, calls } = appendingStore(table, () => false);
-    harness = mockChatAgent(dashboardAgent, {
-      chatId,
-      clientData: { ...CLIENT_DATA_WITH_TOKEN, organizationId: "org_other" },
-      setupLocals: ({ set }) => {
-        set(dashboardAgentStoreKey, store);
-        set(
-          dashboardAgentModelKey,
-          recordingModel([
-            renderStep(concluded, SEEDED, "tc_verdict"),
-            textStep("The payload lost order.total."),
-          ]).model
-        );
-      },
-    });
-
-    await harness.sendAction(INVESTIGATE);
-
-    expect(calls.appendMessage).toHaveLength(1);
-    expect(table.countOf(chatId, "investigate:watch:watch_1:fired:investigate")).toBe(0);
   });
 });

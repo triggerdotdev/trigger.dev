@@ -1,7 +1,9 @@
 import {
+  INVESTIGATE_REQUEST_MESSAGE_ID_PREFIX,
   investigationBlockSchema,
   toWellFormedDeep,
   VIEW_BLOCK_VERSION,
+  WAKE_REQUEST_MESSAGE_ID_PREFIX,
   WATCH_REQUEST_MESSAGE_ID_PREFIX,
 } from "@internal/dashboard-agent-contracts";
 import { and, desc, eq, inArray, ne, notLike, sql, isNull, type SQL } from "drizzle-orm";
@@ -17,7 +19,6 @@ import {
   investigations,
   watches,
   watchSubmissions,
-  type ChatSession,
   type Investigation,
   type NewChatTurnEval,
   type Watch,
@@ -121,7 +122,11 @@ export async function countUserMessages(
         eq(chats.userId, params.userId),
         isNull(chats.deletedAt),
         eq(chatMessages.role, "user"),
+        // The user-role messages the user did not type: a watch consent record, and
+        // the request a wake or investigation turn answers.
         notLike(chatMessages.messageId, `${WATCH_REQUEST_MESSAGE_ID_PREFIX}%`),
+        notLike(chatMessages.messageId, `${WAKE_REQUEST_MESSAGE_ID_PREFIX}%`),
+        notLike(chatMessages.messageId, `${INVESTIGATE_REQUEST_MESSAGE_ID_PREFIX}%`),
         params.excludeChatId ? ne(chatMessages.chatId, params.excludeChatId) : undefined
       )
     );
@@ -193,30 +198,60 @@ export async function countChatsWithUnreadWork(
   return rows[0]?.count ?? 0;
 }
 
-/** Joins `chats` to scope by owner, because `chat_sessions` has no `userId`. */
+/** What a refreshed client needs to resume a chat's live stream. */
+export type ChatResumeSession = {
+  chatId: string;
+  /** The agent run's own token. The webapp mints the browser its own; this is kept for replay. */
+  publicAccessToken: string | null;
+  /** The `.out` cursor a reconnecting client resumes from. */
+  lastEventId: string | null;
+  runId: string | null;
+  updatedAt: Date;
+};
+
+/**
+ * Scoped by owner through `chats`, because `chat_sessions` has no `userId`.
+ *
+ * The cursor comes from `chats.transcript_cursors`, which the `chat.agent` runtime
+ * writes through the agent's `TranscriptStorage`. Chats last written by an agent build
+ * that persisted through its own hooks have it on `chat_sessions.last_event_id`
+ * instead, so that row is the fallback. Null when neither has been written yet.
+ */
 export async function getSession(
   db: DashboardAgentDb,
   params: { chatId: string; userId: string; organizationId: string }
-): Promise<ChatSession | null> {
+): Promise<ChatResumeSession | null> {
   const rows = await db
     .select({
-      chatId: chatSessions.chatId,
+      chatId: chats.id,
+      cursors: chats.transcriptCursors,
+      chatUpdatedAt: chats.updatedAt,
       publicAccessToken: chatSessions.publicAccessToken,
-      lastEventId: chatSessions.lastEventId,
+      sessionLastEventId: chatSessions.lastEventId,
       runId: chatSessions.runId,
-      updatedAt: chatSessions.updatedAt,
+      sessionUpdatedAt: chatSessions.updatedAt,
     })
-    .from(chatSessions)
-    .innerJoin(chats, eq(chats.id, chatSessions.chatId))
+    .from(chats)
+    .leftJoin(chatSessions, eq(chatSessions.chatId, chats.id))
     .where(
       and(
-        eq(chatSessions.chatId, params.chatId),
+        eq(chats.id, params.chatId),
         eq(chats.userId, params.userId),
-        eq(chats.organizationId, params.organizationId)
+        eq(chats.organizationId, params.organizationId),
+        isNull(chats.deletedAt)
       )
     )
     .limit(1);
-  return rows[0] ?? null;
+  const row = rows[0];
+  if (!row) return null;
+  if (!row.cursors && row.publicAccessToken === null) return null;
+  return {
+    chatId: row.chatId,
+    publicAccessToken: row.publicAccessToken,
+    lastEventId: row.cursors?.lastOutEventId ?? row.sessionLastEventId ?? null,
+    runId: row.runId,
+    updatedAt: row.sessionUpdatedAt ?? row.chatUpdatedAt,
+  };
 }
 
 /** Owner check for chat-scoped actions, before a session row necessarily exists. */
@@ -644,6 +679,57 @@ export type PendingInvestigationSettlement = {
 };
 
 export type PersistTurnResult = { settled: SettledInvestigation[] };
+
+export type SettleTurnInvestigationsResult = {
+  settled: SettledInvestigation[];
+  /** The closing cards, one per settled row, in the order they were written. */
+  cards: InvestigationCardMessage[];
+};
+
+/**
+ * Close the investigations a turn left running: each terminal revision and its closing
+ * card, in one transaction. The card is an id-deduped append, so a retried turn writes
+ * the same transcript rather than a second card.
+ *
+ * The transcript itself is the `chat.agent` runtime's to write, through the agent's
+ * `TranscriptStorage`. Only the settlement lives here, and it has to commit with its
+ * card: a settled row whose closing card didn't land is a terminal row the stale sweep
+ * no longer selects, and the panel renders the spinner forever.
+ */
+export async function settleTurnInvestigations(
+  db: DashboardAgentDb,
+  params: { chatId: string; settlements: PendingInvestigationSettlement[] }
+): Promise<SettleTurnInvestigationsResult> {
+  if (params.settlements.length === 0) return { settled: [], cards: [] };
+  return db.transaction(async (tx) => {
+    const settled: SettledInvestigation[] = [];
+    const cards: InvestigationCardMessage[] = [];
+    for (const pending of params.settlements) {
+      const result = await upsertInvestigationRevision(tx, {
+        id: pending.id,
+        chatId: params.chatId,
+        projectRef: pending.projectRef,
+        environmentRef: pending.environmentRef,
+        state: pending.state,
+      });
+      // A row that no longer belongs to this chat/project/env has nothing to close.
+      if (!result.ok) continue;
+
+      const message = investigationSettlementMessage({
+        investigationId: result.id,
+        revision: result.revision,
+        state: pending.state,
+      });
+      if (!message) {
+        throw new Error(`Investigation ${result.id} settled to a state that isn't renderable`);
+      }
+      await appendChatMessageOnceByChatId(tx, { chatId: params.chatId, message });
+      settled.push({ id: result.id, revision: result.revision, state: pending.state });
+      cards.push(message);
+    }
+    return { settled, cards };
+  });
+}
 
 /**
  * One transaction: the frontend reads `messages` and `lastEventId` in parallel, so a

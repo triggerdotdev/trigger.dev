@@ -1,3 +1,4 @@
+import { toWellFormedDeep } from "@internal/dashboard-agent-contracts";
 import { chatMessages, chats, type DashboardAgentDb } from "@internal/dashboard-agent-db";
 import type { TranscriptStorage } from "@trigger.dev/sdk/ai";
 import { and, asc, desc, eq, gt, inArray, isNull, lt, sql } from "drizzle-orm";
@@ -12,9 +13,10 @@ export type DashboardAgentTranscriptClientData = {
  * The dashboard agent's transcript as a `TranscriptStorage`: one row per
  * message in `chat_messages`, the runtime's state and cursors on the chat row.
  *
- * This is the real-schema conformance target for the storage contract. The
- * agent itself still persists through its hooks; moving it onto `storage` is
- * separate work.
+ * The agent hands this to `chat.agent` as its `storage`, so the runtime writes
+ * the conversation and the panel reads the same rows. Messages are normalised
+ * before they reach jsonb: a lone surrogate in a model's output is a Postgres
+ * error, and one bad message must not lose the turn.
  */
 export function dashboardAgentTranscriptStorage(
   db: DashboardAgentDb
@@ -83,12 +85,27 @@ export function dashboardAgentTranscriptStorage(
             userId: ctx.clientData.userId,
           })
           .onConflictDoNothing();
-        await tx.select({ id: chats.id }).from(chats).where(eq(chats.id, ctx.chatId)).for("update");
+        // Lock the chat row for the writes below, and check it is this tenant's. The
+        // chat id comes from the session and the tenancy from its `clientData`; if they
+        // ever disagree, nothing may land in another org or user's transcript.
+        const locked = await tx
+          .select({ organizationId: chats.organizationId, userId: chats.userId })
+          .from(chats)
+          .where(eq(chats.id, ctx.chatId))
+          .for("update");
+        const owner = locked[0];
+        if (
+          !owner ||
+          owner.organizationId !== ctx.clientData.organizationId ||
+          owner.userId !== ctx.clientData.userId
+        ) {
+          throw new Error(`Chat ${ctx.chatId} does not belong to the tenant saving it`);
+        }
 
         for (const change of changeset.changes) {
           switch (change.op) {
             case "put": {
-              const message = change.message;
+              const message = toWellFormedDeep(change.message);
               const updated = await tx
                 .update(chatMessages)
                 .set({ message, role: message.role })
@@ -135,7 +152,10 @@ export function dashboardAgentTranscriptStorage(
             case "state": {
               await tx
                 .update(chats)
-                .set({ transcriptState: change.value ?? null, updatedAt: sql`now()` })
+                .set({
+                  transcriptState: toWellFormedDeep(change.value) ?? null,
+                  updatedAt: sql`now()`,
+                })
                 .where(eq(chats.id, ctx.chatId));
               break;
             }

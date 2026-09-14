@@ -1,4 +1,4 @@
-import { isWatchRequestMessageId } from "@internal/dashboard-agent-contracts";
+import { isAgentRequestMessageId } from "@internal/dashboard-agent-contracts";
 
 // Counted per user across their chats in the org, not per chat, which "New chat"
 // would reset.
@@ -106,7 +106,7 @@ export const MESSAGE_QUOTA_REACHED_REASON = "You've used your message allowance"
 export function countUserMessages(messages: { role: string; id?: string }[]): number {
   return messages.reduce(
     (total, message) =>
-      message.role === "user" && !isWatchRequestMessageId(message.id) ? total + 1 : total,
+      message.role === "user" && !isAgentRequestMessageId(message.id) ? total + 1 : total,
     0
   );
 }

@@ -1,4 +1,8 @@
-import { isWatchRequestMessageId, sliceWellFormed } from "@internal/dashboard-agent-contracts";
+import {
+  isAgentRequestMessageId,
+  isTurnRequestMessageId,
+  sliceWellFormed,
+} from "@internal/dashboard-agent-contracts";
 import { chat } from "@trigger.dev/sdk/ai";
 import { locals, logger, tasks } from "@trigger.dev/sdk";
 import { generateText, stepCountIs, streamText, type ModelMessage, type UIMessage } from "ai";
@@ -13,12 +17,13 @@ import {
   buildTurnTools,
   clientDataSchema,
   dashboardAgentModelKey,
+  dashboardAgentStorage,
   getStore,
+  pendingActionTurnKey,
   getSystemPrompt,
   modeFor,
   resolveDashboardAgentModel,
   sanitizeReplayedToolInputs,
-  settlementCardMessages,
   clearOpenInvestigations,
   pendingInvestigationSettlements,
   withCacheBreakpointOnLast,
@@ -286,14 +291,17 @@ const pendingTitles = new Map<string, Promise<void>>();
  * Whether this turn is the one that names the chat. Counted in user messages, not in
  * transcript length: a head-started turn arrives with the warm first step already in
  * `uiMessages`, so a length gate would see two messages on the very first exchange and
- * never name the chat at all. A watch's consent record is a user message the user did
- * not type, so it doesn't count as an exchange either.
+ * never name the chat at all. A watch's consent record, and the request a wake or
+ * investigation turn answers, are user messages the user did not type, so they don't
+ * count as an exchange either.
  */
 export function isFirstUserExchange(uiMessages: { role: string; id?: string }[]): boolean {
   const typed = uiMessages.filter(
-    (message) => message.role === "user" && !isWatchRequestMessageId(message.id)
+    (message) => message.role === "user" && !isAgentRequestMessageId(message.id)
   );
-  return typed.length <= 1;
+  // Exactly one: a chat a watch created, whose only user-role messages are requests
+  // the agent filed for itself, has had no exchange yet and keeps its name.
+  return typed.length === 1;
 }
 
 async function generateAndSaveTitle(
@@ -301,7 +309,10 @@ async function generateAndSaveTitle(
   chatId: string,
   uiMessages: UIMessage[]
 ): Promise<void> {
-  const firstUserMessage = uiMessages.find((message) => message.role === "user");
+  // The user's own words, never a request the agent filed for itself.
+  const firstUserMessage = uiMessages.find(
+    (message) => message.role === "user" && !isAgentRequestMessageId(message.id)
+  );
   const userText = firstUserMessage ? extractText(firstUserMessage) : "";
   if (!userText) return;
 
@@ -348,10 +359,18 @@ export function prepareTurnMessages(args: {
   );
 }
 
+/** The output budget of a small-model wake: the headline and a sentence around it. */
+const HAIKU_WAKE_MAX_OUTPUT_TOKENS = 300;
+
 export const dashboardAgent = chat.agent({
   id: "dashboard-agent",
   clientDataSchema,
-  // Actions are not turns — see `narrateWatchWake`.
+  // The conversation lives in the agent's own Postgres, one row per message, and the
+  // runtime writes it: the message being answered before the model runs, the answer
+  // when the turn completes, every `chat.history` edit an action makes, and the
+  // cursors a refreshed panel resumes from. The panel reads the same rows.
+  storage: dashboardAgentStorage,
+  // A watch action files a request and answers it with a turn; see `watch-actions.ts`.
   actionSchema: dashboardAgentActionSchema,
   // Short idle window so suspended runs release their DB pool.
   idleTimeoutInSeconds: 60,
@@ -397,17 +416,23 @@ export const dashboardAgent = chat.agent({
     });
   },
 
-  // Every action is a watch action, handled in `watch-actions.ts`: one message
-  // deduped on the action id, piped inside so it reaches the history and read-model.
-  onAction: async ({ action, chatId, clientData, uiMessages, messages }) =>
-    handleWatchAction({ action, chatId, clientData, uiMessages, messages }),
+  // Every action is a watch action, handled in `watch-actions.ts`. The lane files
+  // the wake or the investigation brief as a request under a stable id and returns
+  // `chat.turn()`, so a full turn answers it; a fixed-wording wake is an edit only.
+  onAction: async ({ action, chatId, clientData, uiMessages }) =>
+    handleWatchAction({ action, chatId, clientData, uiMessages }),
 
   onTurnStart: async ({ chatId, uiMessages, clientData }) => {
     locals.set(turnErroredKey, false);
 
-    // Awaited, never chat.defer: a mid-stream refresh must not read an empty
-    // transcript.
-    await getStore().persistMessages({ chatId, messages: uiMessages });
+    // An action turn answers the request `onAction` just filed, so that request is the
+    // last message. Any other turn is the user's: a marker still set here belongs to an
+    // action turn whose `onTurnComplete` failed on both attempts, and it must not strip
+    // this turn's tools or skip its eval.
+    const last = uiMessages.at(-1);
+    if (!(last?.role === "user" && isTurnRequestMessageId(last.id))) {
+      locals.set(pendingActionTurnKey, undefined);
+    }
 
     // Name the chat on the first exchange, started here so it runs while the model
     // answers. Awaited in `onBeforeTurnComplete`, not here; a failure only costs the
@@ -448,16 +473,16 @@ export const dashboardAgent = chat.agent({
     turn,
     uiMessages,
     newMessages,
-    newUIMessages,
     responseMessage,
     clientData,
-    chatAccessToken,
-    lastEventId,
     runId,
     finishReason,
     error,
   }) => {
     const store = getStore();
+    // Read now, cleared at the end: the runtime retries this hook after a failure,
+    // and the retry must still know it is finishing an action turn.
+    const actionTurn = locals.get(pendingActionTurnKey);
 
     // The run is over, so a card left `in_progress` never settles on its own. The
     // entry survives until the write commits, so a retried `onTurnComplete` settles it.
@@ -470,50 +495,35 @@ export const dashboardAgent = chat.agent({
       error !== undefined || finishReason === "error" || locals.get(turnErroredKey) === true;
     const failure = errored ? turnFailureMessage(turn) : undefined;
 
-    // One database operation for all of it: transcript, session state, and the rows
-    // and closing cards of whatever was left running. Settling a row on a separate
-    // operation is what could leave a terminal row whose card never arrived — and the
-    // stale sweep only selects `in_progress`, so nothing would ever repair it.
-    // Only what this turn produced may be finalised; the rest of the snapshot is history.
-    const produced = [...(newUIMessages ?? []), ...(responseMessage ? [responseMessage] : [])]
-      .map((message) => (message as { id?: unknown }).id)
-      .filter((id): id is string => typeof id === "string");
-
-    const { settled } = await store.persistTurn({
-      chatId,
-      messages: mergeMessagesById(uiMessages, failure ? [failure] : []),
-      finalizeMessageIds: [...produced, ...(failure ? [failure.id] : [])],
-      session: {
-        publicAccessToken: chatAccessToken,
-        lastEventId,
-        runId,
-      },
-      settlements,
-    });
+    // The rows and closing cards of whatever was left running, in one operation. The
+    // row and its card have to commit together: a settled row whose card never arrived
+    // is a terminal row the stale sweep no longer selects, so nothing would repair it.
+    const { cards } = await store.settleTurnInvestigations({ chatId, settlements });
     clearOpenInvestigations(chatId);
 
-    // The row is only half of it — the panel renders the winning revision from the
-    // transcript's own render_view parts and never reads the investigations table.
-    const closingCards = settlementCardMessages(
-      chatId,
-      settled.map((card) => ({
-        investigationId: card.id,
-        revision: card.revision,
-        state: card.state,
-      }))
-    );
+    // The transcript is the runtime's: it saves this turn's answer right after this
+    // hook, and anything put into the accumulator here goes into that same save. The
+    // closing cards were already written by the settle (an id-deduped append), so the
+    // runtime's write of the same ids replaces them in place with the same bytes.
     const terminal = mergeMessagesById(uiMessages, [
-      ...closingCards,
+      ...(cards as UIMessage[]),
       ...(failure ? [failure] : []),
     ]);
     if (terminal.length > uiMessages.length) {
-      // Into the accumulator too, so the next turn's wholesale write keeps them.
       chat.history.set(terminal);
     }
 
     // Score this turn in a separate, idempotency-keyed task so it never blocks or
     // bills the agent run. Best-effort: an enqueue failure must not break the turn.
-    if (clientData?.organizationId && clientData?.userId && responseMessage && shouldEvalTurn()) {
+    // A wake or investigation turn is the agent talking to itself; nobody asked, so
+    // there is no answer to judge.
+    if (
+      !actionTurn &&
+      clientData?.organizationId &&
+      clientData?.userId &&
+      responseMessage &&
+      shouldEvalTurn()
+    ) {
       try {
         const toolActivity = extractToolActivity(newMessages);
         // A turn that read source is never judged at all: judging it either hands the
@@ -560,6 +570,9 @@ export const dashboardAgent = chat.agent({
         logger.error("Failed to enqueue dashboard-agent turn eval", { error });
       }
     }
+
+    // Consumed: the next turn is whatever the user sends.
+    locals.set(pendingActionTurnKey, undefined);
   },
 
   // Summarise the older conversation once it outgrows the budget. UI messages are
@@ -576,15 +589,29 @@ export const dashboardAgent = chat.agent({
   // they are dashboard-editable. toStreamTextOptions() supplies the system text
   // with its cache breakpoint, config, telemetry and prepareStep wiring; the model
   // string is resolved through the registry here so streamText keeps a typed model.
-  run: async ({ messages, signal, tools }) => {
+  run: async ({ messages, signal, tools: turnTools }) => {
     const resolved = chat.prompt();
+    // A wake turn runs without tools: it reports what the check already established
+    // and carries no delegated token to read with. Decided here rather than in the
+    // `tools` hook, which the runtime resolves before `onAction` files the wake.
+    const actionTurn = locals.get(pendingActionTurnKey);
+    const wake = actionTurn?.kind === "wake";
+    const tools = wake ? {} : turnTools;
+    // A wake the plan gave a headline is a sentence or two on the small model, bounded
+    // so a chatty turn cannot run up the bill on something nobody asked.
+    const smallWake = wake && actionTurn.model === "haiku";
     const options = chat.toStreamTextOptions({ tools });
     let step = 0;
     return streamText({
       ...options,
       model:
         locals.get(dashboardAgentModelKey) ??
-        resolveDashboardAgentModel(resolved.model ?? "anthropic:claude-sonnet-4-6"),
+        resolveDashboardAgentModel(
+          smallWake
+            ? "anthropic:claude-haiku-4-5"
+            : (resolved.model ?? "anthropic:claude-sonnet-4-6")
+        ),
+      ...(smallWake ? { maxOutputTokens: HAIKU_WAKE_MAX_OUTPUT_TOKENS } : {}),
       messages,
       abortSignal: signal,
       prepareStep: stepCachePrepareStep(options) as never,
@@ -599,8 +626,9 @@ export const dashboardAgent = chat.agent({
           providerMetadata: finished.providerMetadata,
         }),
       // toStreamTextOptions() defaults to a single step; override so the model can
-      // call a tool and then answer from its result in the same turn.
-      stopWhen: stepCountIs(10),
+      // call a tool and then answer from its result in the same turn. A wake has no
+      // tools, so it has nothing to do with a second step.
+      stopWhen: stepCountIs(wake ? 1 : 10),
     });
   },
 });

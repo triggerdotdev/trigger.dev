@@ -2,7 +2,8 @@ import { useChat } from "@ai-sdk/react";
 import type { UIMessage } from "@ai-sdk/react";
 import type { dashboardAgent } from "@internal/dashboard-agent";
 import {
-  isWatchRequestMessageId,
+  isAgentRequestMessageId,
+  isTurnRequestMessageId,
   type AgentIntent,
   type SuggestedPrompt,
   type WatchSpec,
@@ -438,7 +439,7 @@ export function DashboardAgentChat({
   const retry = useCallback(() => {
     if (atMessageCap) return;
     const action = retryAction(
-      messages.filter((m) => !(m.role === "user" && isWatchRequestMessageId(m.id)))
+      messages.filter((m) => !(m.role === "user" && isAgentRequestMessageId(m.id)))
     );
     retryAgainstAction(action);
   }, [messages, atMessageCap, retryAgainstAction]);
@@ -621,7 +622,10 @@ export function DashboardAgentChat({
         />
       ) : (
         <DashboardAgentMessages
-          messages={messages}
+          // The request a wake or investigation turn answered is the agent asking
+          // itself, not something the user typed: it stays in the transcript for
+          // the runtime and the retry logic, and never renders.
+          messages={messages.filter((m) => !(m.role === "user" && isTurnRequestMessageId(m.id)))}
           activity={activity}
           error={effectiveError}
           onRetry={retry}
