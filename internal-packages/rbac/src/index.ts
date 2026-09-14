@@ -80,9 +80,6 @@ export type RbacCreateOptions = {
   // follows the host's writer/replica topology. The fallback ignores this —
   // it queries through the Prisma clients passed as `RbacPrismaInput`.
   database?: RbacDatabaseConfig;
-  // Synchronous host-owned rollout control. Defaults to enabled for non-webapp
-  // consumers; the webapp passes its cold-safe global flag reader.
-  additionalApiKeyLookupEnabled?: () => boolean;
 };
 
 // Route actions that historically authorised via the legacy checkAuthorization's
@@ -146,8 +143,7 @@ class LazyController implements RoleBaseAccessController {
 
   constructor(prisma: RbacPrismaInput, options?: RbacCreateOptions) {
     this._hostCredentialResolver = new BearerCredentialResolver(
-      "primary" in prisma ? prisma : { primary: prisma, replica: prisma },
-      options?.additionalApiKeyLookupEnabled
+      "primary" in prisma ? prisma : { primary: prisma, replica: prisma }
     );
     this._init = this.load(prisma, options);
     // load() runs eagerly but the result is awaited lazily on first method
@@ -166,7 +162,6 @@ class LazyController implements RoleBaseAccessController {
     if (options?.forceFallback) {
       return new RoleBaseAccessFallback(prisma, {
         userActorSecret: options?.userActorSecret,
-        additionalApiKeyLookupEnabled: options?.additionalApiKeyLookupEnabled,
       }).create();
     }
     const moduleName = "@triggerdotdev/plugins/rbac";
@@ -226,7 +221,6 @@ class LazyController implements RoleBaseAccessController {
 
       return new RoleBaseAccessFallback(prisma, {
         userActorSecret: options?.userActorSecret,
-        additionalApiKeyLookupEnabled: options?.additionalApiKeyLookupEnabled,
       }).create();
     }
   }

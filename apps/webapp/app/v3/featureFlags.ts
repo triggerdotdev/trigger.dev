@@ -44,12 +44,6 @@ export const FEATURE_FLAG = {
   deployBuildPathPreview: "deployBuildPathPreview",
   deployBuildPathStaging: "deployBuildPathStaging",
   deployBuildPathProduction: "deployBuildPathProduction",
-  // Per-organization control for creating additional environment API keys. Defaults on.
-  additionalApiKeysEnabled: "additionalApiKeysEnabled",
-  // System-wide kill switch for issuing additional environment API keys. Defaults on.
-  additionalApiKeyIssuanceEnabled: "additionalApiKeyIssuanceEnabled",
-  // System-wide kill switch for additional (scoped) environment API-key lookup. Defaults on.
-  additionalApiKeyLookupEnabled: "additionalApiKeyLookupEnabled",
   scheduleDefaultWindowEnabled: "scheduleDefaultWindowEnabled",
   freeScheduleMinimumWindowEnabled: "freeScheduleMinimumWindowEnabled",
 } as const;
@@ -165,10 +159,6 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.deployBuildPathPreview]: DeployBuildPath,
   [FEATURE_FLAG.deployBuildPathStaging]: DeployBuildPath,
   [FEATURE_FLAG.deployBuildPathProduction]: DeployBuildPath,
-  // Strict booleans prevent stringified values from silently changing API-key behavior.
-  [FEATURE_FLAG.additionalApiKeysEnabled]: z.boolean(),
-  [FEATURE_FLAG.additionalApiKeyIssuanceEnabled]: z.boolean(),
-  [FEATURE_FLAG.additionalApiKeyLookupEnabled]: z.boolean(),
   [FEATURE_FLAG.scheduleDefaultWindowEnabled]: z.boolean(),
   [FEATURE_FLAG.freeScheduleMinimumWindowEnabled]: z.boolean(),
 };
@@ -198,9 +188,6 @@ export const ORG_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.taskEventRepository,
   FEATURE_FLAG.runOpsMintKindPrev,
   FEATURE_FLAG.runOpsMintKindFlippedAt,
-  // System-wide only — orgs must not be able to override these kill switches.
-  FEATURE_FLAG.additionalApiKeyIssuanceEnabled,
-  FEATURE_FLAG.additionalApiKeyLookupEnabled,
   // The active mint-shard list is deployment-wide; only the pins are per-org.
   FEATURE_FLAG.runOpsMintShardSet,
   FEATURE_FLAG.runOpsMintShardSetPrev,

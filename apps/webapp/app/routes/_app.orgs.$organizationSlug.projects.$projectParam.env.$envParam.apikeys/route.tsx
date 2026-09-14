@@ -64,14 +64,12 @@ import {
   typedJsonWithErrorMessage,
   typedJsonWithSuccessMessage,
 } from "~/models/message.server";
-import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { ApiKeysPresenter } from "~/presenters/v3/ApiKeysPresenter.server";
 import { useFeatures } from "~/hooks/useFeatures";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useShowSelfServe } from "~/hooks/useShowSelfServe";
-import { canIssueAdditionalApiKeys } from "~/services/additionalApiKeyIssuance.server";
 import {
   validateCreateApiKeyPreset,
   type ApiKeyPreset,
@@ -135,15 +133,11 @@ export const loader = dashboardLoader(
   {
     params: EnvironmentParamSchema,
     searchParams: ApiKeySearchParams,
-    context: async (params) => {
-      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
-      return organizationId ? { organizationId } : {};
-    },
   },
-  async ({ params, searchParams, user, ability, context }) => {
+  async ({ params, searchParams, user, ability }) => {
     try {
       const presenter = new ApiKeysPresenter();
-      const [data, additionalApiKeyIssuanceEnabled, isRbacPluginAvailable] = await Promise.all([
+      const [data, isRbacPluginAvailable] = await Promise.all([
         presenter.call({
           userId: user.id,
           organizationSlug: params.organizationSlug,
@@ -151,9 +145,6 @@ export const loader = dashboardLoader(
           environmentSlug: params.envParam,
           showRevoked: searchParams.showRevoked,
         }),
-        context.organizationId
-          ? canIssueAdditionalApiKeys(context.organizationId)
-          : Promise.resolve(false),
         rbac.isUsingPlugin(),
       ]);
 
@@ -176,7 +167,6 @@ export const loader = dashboardLoader(
         apiKeys: canReadApiKeys ? data.apiKeys : [],
         canReadApiKeys,
         canWriteApiKeys,
-        additionalApiKeyIssuanceEnabled,
         isRbacPluginAvailable,
         showRevoked: searchParams.showRevoked ?? false,
         loadedAt: Date.now(),
@@ -194,10 +184,6 @@ export const loader = dashboardLoader(
 export const action = dashboardAction(
   {
     params: EnvironmentParamSchema,
-    context: async (params) => {
-      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
-      return organizationId ? { organizationId } : {};
-    },
     // The environment tier is only known after resolving the route params,
     // so write:apiKeys is enforced in the handler before any mutation.
   },
@@ -241,15 +227,6 @@ export const action = dashboardAction(
     try {
       switch (submission.data.action) {
         case "create": {
-          if (!(await canIssueAdditionalApiKeys(project.organizationId))) {
-            const message = "Creating additional API keys is not enabled.";
-            return typedJsonWithErrorMessage(
-              { ok: false as const, error: message },
-              request,
-              message
-            );
-          }
-
           const presets = await rbac.apiKeyPresets(project.organizationId);
           const preset = validateCreateApiKeyPreset({
             presets,
@@ -321,7 +298,6 @@ export default function Page() {
     apiKeys,
     canReadApiKeys,
     canWriteApiKeys,
-    additionalApiKeyIssuanceEnabled,
     isRbacPluginAvailable,
     showRevoked,
     hasVercelIntegration,
@@ -386,15 +362,13 @@ export default function Page() {
                   />
                 ) : null}
                 <RevokedFilter checked={showRevoked} />
-                {additionalApiKeyIssuanceEnabled ? (
-                  <NewApiKeyDialog
-                    canWrite={canWriteApiKeys}
-                    availableTasks={availableTasks}
-                    presets={presets}
-                    isRbacPluginAvailable={isRbacPluginAvailable}
-                    environment={apiKeyEnvironmentLabel}
-                  />
-                ) : null}
+                <NewApiKeyDialog
+                  canWrite={canWriteApiKeys}
+                  availableTasks={availableTasks}
+                  presets={presets}
+                  isRbacPluginAvailable={isRbacPluginAvailable}
+                  environment={apiKeyEnvironmentLabel}
+                />
               </div>
             </div>
 
