@@ -101,78 +101,14 @@ describe("task events v2", () => {
     }
   );
 
-  clickhouseTest(
-    "computes attributes_text for a writer that omits it",
-    async ({ clickhouseContainer }) => {
-      const ch = new ClickHouse({ url: clickhouseContainer.getConnectionUrl(), name: "test" });
-      const spanId = "span_computed_attributes";
-
-      // An older writer that only sends the JSON column still gets attributes_text
-      // from the DEFAULT expression, so both writer generations can coexist.
-      const insert = ch.writer.insertUnsafe<Record<string, unknown>>({
-        name: "insertTaskEventsV2WithoutAttributesText",
-        table: "trigger_dev.task_events_v2",
-        columns: [
-          "environment_id",
-          "organization_id",
-          "project_id",
-          "task_identifier",
-          "run_id",
-          "start_time",
-          "duration",
-          "trace_id",
-          "span_id",
-          "parent_span_id",
-          "message",
-          "kind",
-          "status",
-          "attributes",
-          "metadata",
-          "expires_at",
-        ],
-        settings: { enable_json_type: 1 },
-      });
-
-      const [insertError] = await insert([
-        {
-          ...baseEvent(spanId),
-          attributes: { z: 1, a: "hello" },
-        },
-      ]);
-      expect(insertError).toBeNull();
-
-      const [readError, rows] = await readAttributesText(ch)({
-        environmentId: "env_attributes_text",
-        spanId,
-      });
-      expect(readError).toBeNull();
-      expect(rows).toEqual([
-        {
-          attributes_text: '{"a":"hello","z":1}',
-          attributes_json: '{"a":"hello","z":1}',
-          has_inserted_at: 1,
-        },
-      ]);
-    }
-  );
-
-  clickhouseTest("attributes_text is a DEFAULT column", async ({ clickhouseContainer }) => {
+  clickhouseTest("attributes_text is a plain stored column", async ({ clickhouseContainer }) => {
     const ch = new ClickHouse({ url: clickhouseContainer.getConnectionUrl(), name: "test" });
 
     const [columnError, columns] = await readColumnKinds(ch)({});
     expect(columnError).toBeNull();
     expect(columns).toEqual([
       { name: "attributes", default_kind: "", default_expression: "" },
-      {
-        name: "attributes_input",
-        default_kind: "EPHEMERAL",
-        default_expression: "defaultValueOfTypeName('JSON')",
-      },
-      {
-        name: "attributes_text",
-        default_kind: "DEFAULT",
-        default_expression: "toJSONString(attributes)",
-      },
+      { name: "attributes_text", default_kind: "", default_expression: "" },
     ]);
   });
 
