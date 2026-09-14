@@ -157,7 +157,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       organizationId: environment.organizationId,
       projectId: environment.projectId,
       envType: environment.type,
-      resource: "deployments",
+      resource: ["branches", "deployments"],
       action: "write",
     });
     if (denied) return denied;

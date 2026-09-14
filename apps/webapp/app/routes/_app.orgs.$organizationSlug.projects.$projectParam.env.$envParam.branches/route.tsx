@@ -122,7 +122,9 @@ export const loader = dashboardLoader(
 
       return typedjson({
         ...result,
-        canArchiveBranches: ability.can("write", { type: "deployments", envType: "PREVIEW" }),
+        canManageBranches:
+          ability.can("write", { type: "branches", envType: "PREVIEW" }) ||
+          ability.can("write", { type: "deployments", envType: "PREVIEW" }),
       });
     } catch (error) {
       logger.error("Error loading preview branches page", { error });
@@ -217,7 +219,7 @@ export default function Page() {
     totalPages,
     hasBranches,
     canPurchaseBranches,
-    canArchiveBranches,
+    canManageBranches,
     extraBranches,
     branchPricing,
     maxBranchQuota,
@@ -301,6 +303,10 @@ export default function Page() {
                   leadingIconClassName="text-white"
                   fullWidth
                   textAlignLeft
+                  disabled={!canManageBranches}
+                  tooltip={
+                    canManageBranches ? undefined : "You don't have permission to create branches."
+                  }
                 >
                   New branch…
                 </Button>
@@ -319,6 +325,7 @@ export default function Page() {
                 limits={limits}
                 canUpgrade={canUpgrade ?? false}
                 showSelfServe={showSelfServe}
+                canCreateBranches={canManageBranches}
               />
             </MainCenteredContainer>
           ) : (
@@ -415,7 +422,7 @@ export default function Page() {
                                     {!branch.archivedAt ? (
                                       <ArchiveButton
                                         environment={branch}
-                                        canArchive={canArchiveBranches}
+                                        canArchive={canManageBranches}
                                       />
                                     ) : null}
                                   </>

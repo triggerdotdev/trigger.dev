@@ -5,6 +5,7 @@ import { useFetcher, useLocation, useSearchParams } from "@remix-run/react";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { useEffect, useState } from "react";
 import { InlineCode } from "~/components/code/InlineCode";
+import { $replica } from "~/db.server";
 import { Button } from "~/components/primitives/Buttons";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { Fieldset } from "~/components/primitives/Fieldset";
@@ -16,9 +17,13 @@ import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
+import { rbac } from "~/services/rbac.server";
 import { requireUserId } from "~/services/session.server";
 import { UpsertBranchService } from "~/services/upsertBranch.server";
-import { type BranchableEnvironmentToken } from "~/utils/branchableEnvironment";
+import {
+  type BranchableEnvironmentToken,
+  toBranchableEnvironmentType,
+} from "~/utils/branchableEnvironment";
 import { CreateBranchFormSchema } from "~/utils/branches";
 import { branchesDevPath, branchesPath } from "~/utils/pathBuilder";
 
@@ -30,6 +35,34 @@ export async function action({ request }: ActionFunctionArgs) {
 
   if (submission.status !== "success") {
     return redirectWithErrorMessage("/", request, "Invalid form data");
+  }
+
+  const project = await $replica.project.findFirst({
+    where: {
+      id: submission.value.projectId,
+      organization: { members: { some: { userId } } },
+    },
+    select: { id: true, organizationId: true },
+  });
+  if (!project) {
+    return json(submission.reply({ formErrors: ["Project not found"] }), { status: 404 });
+  }
+
+  const environmentType = toBranchableEnvironmentType(submission.value.env);
+  const auth = await rbac.authenticateSession(request, {
+    userId,
+    organizationId: project.organizationId,
+    projectId: project.id,
+  });
+  const canCreate =
+    auth.ok &&
+    (auth.ability.can("write", { type: "branches", envType: environmentType }) ||
+      auth.ability.can("write", { type: "deployments", envType: environmentType }));
+  if (!canCreate) {
+    return json(
+      submission.reply({ formErrors: ["You don't have permission to create branches."] }),
+      { status: 403 }
+    );
   }
 
   const upsertBranchService = new UpsertBranchService();

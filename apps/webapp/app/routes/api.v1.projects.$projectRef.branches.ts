@@ -4,9 +4,11 @@ import { DEFAULT_DEV_BRANCH, isDefaultDevBranch } from "@trigger.dev/core/v3/uti
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { authenticateRequestWithScopedApiKey } from "~/services/apiAuth.server";
+import { authorizePatEnvironmentAccess } from "~/services/environmentVariableApiAccess.server";
 import { logger } from "~/services/logger.server";
 import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
 import { UpsertBranchService } from "~/services/upsertBranch.server";
+import { toBranchableEnvironmentType } from "~/utils/branchableEnvironment";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
@@ -48,16 +50,17 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const { projectRef } = parsedParams.data;
 
-  let project: { id: string } | null | undefined;
+  let project: { id: string; organizationId: string } | null | undefined;
   if (authenticationResult.type === "apiKey") {
     project =
       apiKeyEnvironment?.project.externalRef === projectRef
-        ? { id: apiKeyEnvironment.project.id }
+        ? { id: apiKeyEnvironment.project.id, organizationId: apiKeyEnvironment.organizationId }
         : undefined;
   } else {
     project = await prisma.project.findFirst({
       select: {
         id: true,
+        organizationId: true,
       },
       where: {
         externalRef: projectRef,
@@ -119,6 +122,19 @@ export async function action({ request, params }: ActionFunctionArgs) {
       { error: `Cannot create dev branch with name '${DEFAULT_DEV_BRANCH}'.` },
       { status: 400 }
     );
+  }
+
+  if (authenticationResult.type !== "apiKey") {
+    const denied = await authorizePatEnvironmentAccess({
+      request,
+      authType: authenticationResult.type,
+      organizationId: project.organizationId,
+      projectId: project.id,
+      envType: toBranchableEnvironmentType(env),
+      resource: ["branches", "deployments"],
+      action: "write",
+    });
+    if (denied) return denied;
   }
 
   let orgFilter:

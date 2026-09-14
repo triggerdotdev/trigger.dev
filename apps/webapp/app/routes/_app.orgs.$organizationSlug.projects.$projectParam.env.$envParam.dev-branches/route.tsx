@@ -76,7 +76,9 @@ export const loader = dashboardLoader(
 
       return typedjson({
         ...result,
-        canArchiveBranches: ability.can("write", { type: "deployments", envType: "DEVELOPMENT" }),
+        canManageBranches:
+          ability.can("write", { type: "branches", envType: "DEVELOPMENT" }) ||
+          ability.can("write", { type: "deployments", envType: "DEVELOPMENT" }),
       });
     } catch (error) {
       logger.error("Error loading dev branches page", { error });
@@ -93,7 +95,7 @@ export const handle: Handle = {
 };
 
 export default function Page() {
-  const { branches, limits, currentPage, totalPages, canArchiveBranches } =
+  const { branches, limits, currentPage, totalPages, canManageBranches } =
     useTypedLoaderData<typeof loader>();
   useAutoRevalidate({ interval: 5000 });
 
@@ -144,6 +146,10 @@ export default function Page() {
                   leadingIconClassName="text-white"
                   fullWidth
                   textAlignLeft
+                  disabled={!canManageBranches}
+                  tooltip={
+                    canManageBranches ? undefined : "You don't have permission to create branches."
+                  }
                 >
                   New branch…
                 </Button>
@@ -249,7 +255,7 @@ export default function Page() {
                                 {!branch.archivedAt ? (
                                   <ArchiveButton
                                     environment={branch}
-                                    canArchive={canArchiveBranches}
+                                    canArchive={canManageBranches}
                                     // The root dev env (no parent) is the default
                                     // branch and can't be archived — matches the
                                     // guard in ArchiveBranchService.

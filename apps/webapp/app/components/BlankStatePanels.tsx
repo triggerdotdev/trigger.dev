@@ -478,11 +478,13 @@ export function BranchesNoBranches({
   limits,
   canUpgrade,
   showSelfServe,
+  canCreateBranches,
 }: {
   env: BranchableEnvironmentToken;
   limits: { used: number; limit: number };
   canUpgrade: boolean;
   showSelfServe: boolean;
+  canCreateBranches: boolean;
 }) {
   const organization = useOrganization();
 
@@ -534,6 +536,10 @@ export function BranchesNoBranches({
               variant="primary/small"
               LeadingIcon={PlusIcon}
               leadingIconClassName="text-white"
+              disabled={!canCreateBranches}
+              tooltip={
+                canCreateBranches ? undefined : "You don't have permission to create branches."
+              }
             >
               New branch
             </Button>

@@ -55,7 +55,11 @@ export async function action({ request }: ActionFunctionArgs) {
     organizationId: environment.organizationId,
     projectId: environment.projectId,
   });
-  if (!auth.ok || !auth.ability.can("write", { type: "deployments", envType: environment.type })) {
+  const canArchive =
+    auth.ok &&
+    (auth.ability.can("write", { type: "branches", envType: environment.type }) ||
+      auth.ability.can("write", { type: "deployments", envType: environment.type }));
+  if (!canArchive) {
     return redirectWithErrorMessage(
       redirectPath,
       request,

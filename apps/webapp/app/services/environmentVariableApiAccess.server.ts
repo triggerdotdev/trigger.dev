@@ -11,7 +11,7 @@ import {
 } from "~/services/apiAuth.server";
 import { rbac } from "~/services/rbac.server";
 
-type EnvironmentScopedResource = "envvars" | "apiKeys" | "deployments";
+type EnvironmentScopedResource = "envvars" | "apiKeys" | "deployments" | "branches";
 
 type EnvironmentScopedAuthentication =
   | { ok: true; authentication: AuthenticationResult }
@@ -112,11 +112,11 @@ const RESOURCE_LABELS: Record<EnvironmentScopedResource, string> = {
   envvars: "environment variables",
   apiKeys: "API keys",
   deployments: "deployments",
+  branches: "branches",
 };
 
 /**
- * Env-tier RBAC for environment-scoped API routes (env vars, and the endpoints
- * that hand out an environment's secret credentials).
+ * Env-tier RBAC for environment-scoped API routes.
  *
  * Machine credentials (an environment's API key) are authorized by the
  * ability returned by the RBAC bearer controller. A personal
@@ -145,11 +145,13 @@ export async function authorizePatEnvironmentAccess({
   organizationId: string;
   projectId: string;
   envType: RuntimeEnvironmentType;
-  resource: EnvironmentScopedResource;
+  resource: EnvironmentScopedResource | EnvironmentScopedResource[];
   action: "read" | "write";
   // Controller ability for API-key credentials. Absent for PAT/OAT callers.
   ability?: RbacAbility;
 }): Promise<Response | undefined> {
+  const resources = Array.isArray(resource) ? resource : [resource];
+  const resourceLabel = RESOURCE_LABELS[resources[0] ?? "branches"];
   const bearer = request.headers
     .get("Authorization")
     ?.replace(/^Bearer /, "")
@@ -159,12 +161,12 @@ export async function authorizePatEnvironmentAccess({
   // Machine API keys are authorized by their controller ability. Root keys and
   // ungranted additional keys are permissive; granted keys are restricted.
   if (authType === "apiKey") {
-    if (ability?.can(action, { type: resource })) {
+    if (resources.some((candidate) => ability?.can(action, { type: candidate }))) {
       return undefined;
     }
     return json(
       {
-        error: `You don't have permission to access this environment's ${RESOURCE_LABELS[resource]}.`,
+        error: `You don't have permission to access this environment's ${resourceLabel}.`,
       },
       { status: 403 }
     );
@@ -183,10 +185,10 @@ export async function authorizePatEnvironmentAccess({
     return json({ error: userAuth.error }, { status: userAuth.status });
   }
 
-  if (!userAuth.ability.can(action, { type: resource, envType })) {
+  if (!resources.some((candidate) => userAuth.ability.can(action, { type: candidate, envType }))) {
     return json(
       {
-        error: `You don't have permission to access this environment's ${RESOURCE_LABELS[resource]}.`,
+        error: `You don't have permission to access this environment's ${resourceLabel}.`,
       },
       { status: 403 }
     );
