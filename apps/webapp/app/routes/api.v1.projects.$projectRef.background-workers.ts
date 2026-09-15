@@ -4,6 +4,7 @@ import { CreateBackgroundWorkerRequestBody } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { SchedulePlanLimitError } from "~/v3/freeSchedulePolicy.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import {
   CreateBackgroundWorkerService,
@@ -56,6 +57,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
           id: backgroundWorker.friendlyId,
           version: backgroundWorker.version,
           contentHash: backgroundWorker.contentHash,
+          warnings: backgroundWorker.warnings,
         },
         { status: 200 }
       );
@@ -63,9 +65,16 @@ export async function action({ request, params }: ActionFunctionArgs) {
       // Customer-facing validation failures (invalid task config, customer cron
       // expression, etc.). The handler returns 4xx with the message; system
       // handles it gracefully, no alert needed.
+      if (e instanceof SchedulePlanLimitError) {
+        logger.warn("Failed to create background worker", { error: e.message });
+        return json(
+          { error: { code: "schedule_plan_limit", message: e.message } },
+          { status: e.status ?? 422 }
+        );
+      }
       if (e instanceof ServiceValidationError) {
         logger.warn("Failed to create background worker", { error: e.message });
-        return json({ error: e.message }, { status: 400 });
+        return json({ error: e.message }, { status: e.status ?? 400 });
       }
       if (e instanceof CreateDeclarativeScheduleError) {
         logger.warn("Failed to create background worker", { error: e.message });

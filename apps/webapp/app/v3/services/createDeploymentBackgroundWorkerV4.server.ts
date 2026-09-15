@@ -2,7 +2,6 @@ import type { CreateBackgroundWorkerRequestBody } from "@trigger.dev/core/v3";
 import { logger, needsNodeRuntimeUpdate, tryCatch } from "@trigger.dev/core/v3";
 import {
   Prisma,
-  type BackgroundWorker,
   type PrismaClientOrTransaction,
   type WorkerDeployment,
 } from "@trigger.dev/database";
@@ -15,6 +14,7 @@ import {
   createWorkerResources,
   syncDeclarativeSchedules,
   syncDeclarativeWebhooks,
+  type BackgroundWorkerWithWarnings,
 } from "./createBackgroundWorker.server";
 import { findOrCreateBackgroundWorker } from "./createDeploymentBackgroundWorkerV4/findOrCreateBackgroundWorker.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
@@ -40,7 +40,7 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
     environment: AuthenticatedEnvironment,
     deploymentId: string,
     body: CreateBackgroundWorkerRequestBody
-  ): Promise<BackgroundWorker | undefined> {
+  ): Promise<BackgroundWorkerWithWarnings | undefined> {
     return this.traceWithEnv("call", environment, async (span) => {
       span.setAttribute("deploymentId", deploymentId);
 
@@ -93,7 +93,7 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
           where: { id: deployment.workerId },
         });
         if (linkedWorker) {
-          return linkedWorker;
+          return { ...linkedWorker, warnings: [] };
         }
       }
 
@@ -202,7 +202,7 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
         await this._taskMetaCache.populateByWorker(backgroundWorker.id, workerTaskEntries);
       }
 
-      const [schedulesError] = await tryCatch(
+      const [schedulesError, scheduleWarnings] = await tryCatch(
         syncDeclarativeSchedules(body.metadata.tasks, backgroundWorker, environment, this._prisma)
       );
 
@@ -281,7 +281,7 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
             projectId: environment.projectId,
           }
         );
-        return backgroundWorker;
+        return { ...backgroundWorker, warnings: scheduleWarnings ?? [] };
       }
 
       await TimeoutDeploymentService.enqueue(
@@ -321,7 +321,7 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
         });
       }
 
-      return backgroundWorker;
+      return { ...backgroundWorker, warnings: scheduleWarnings ?? [] };
     });
   }
 

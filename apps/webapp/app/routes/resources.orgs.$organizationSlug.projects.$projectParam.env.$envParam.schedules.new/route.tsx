@@ -53,6 +53,8 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { EnvironmentParamSchema, docsPath, v3EnvironmentPath } from "~/utils/pathBuilder";
 import { CronPattern, UpsertSchedule } from "~/v3/schedules";
+import { validateMinimumCronInterval } from "~/v3/validateMinimumCronInterval";
+import { explicitWindowBelowMinimum } from "~/v3/explicitWindowBelowMinimum";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { UpsertTaskScheduleService } from "~/v3/services/upsertTaskSchedule.server";
 import { AIGeneratedCronField } from "../resources.orgs.$organizationSlug.projects.$projectParam.schedules.new.natural-language";
@@ -149,6 +151,7 @@ type CronPatternResult =
   | {
       isValid: false;
       error: string;
+      isPlanLimit?: boolean;
     };
 
 type ScheduleWindowResult =
@@ -165,11 +168,13 @@ export function UpsertScheduleForm({
   possibleTasks,
   possibleEnvironments,
   possibleTimezones,
+  newSchedulePolicy,
   showGenerateField,
   defaultTaskIdentifier,
   onCancel,
   submitFetcher,
-}: EditableScheduleElements & {
+}: Omit<EditableScheduleElements, "newSchedulePolicy"> & {
+  newSchedulePolicy?: EditableScheduleElements["newSchedulePolicy"];
   showGenerateField: boolean;
   /** Pre-fills the Task field on new schedules. Ignored when editing. */
   defaultTaskIdentifier?: string;
@@ -220,9 +225,17 @@ export function UpsertScheduleForm({
     },
   });
 
+  const defaultWindowDurationSeconds = schedule
+    ? schedule.defaultWindowDurationSeconds
+    : newSchedulePolicy?.defaultWindowDurationSeconds;
+  const minimumWindowDurationSeconds = schedule
+    ? schedule.minimumWindowDurationSeconds
+    : newSchedulePolicy?.minimumWindowDurationSeconds;
+
   let cronPatternResult: CronPatternResult | undefined = undefined;
   let scheduleWindowResult: ScheduleWindowResult | undefined = undefined;
   let nextRuns: Date[] | undefined = undefined;
+  let minimumWindowApplied = false;
 
   if (scheduleWindowValue !== "") {
     const result = ScheduleWindow.safeParse(scheduleWindowValue);
@@ -245,10 +258,26 @@ export function UpsertScheduleForm({
           cronPattern,
           isUtc ? { utc: true } : { tz: selectedTimezone }
         );
-        cronPatternResult = {
-          isValid: true,
-          description: cronstrue.toString(cronPattern),
-        };
+        const minimumIntervalResult = minimumWindowDurationSeconds
+          ? validateMinimumCronInterval({
+              cron: cronPattern,
+              timezone: selectedTimezone,
+              minimumMs: minimumWindowDurationSeconds * 1_000,
+            })
+          : undefined;
+        cronPatternResult =
+          minimumIntervalResult?.valid === false
+            ? {
+                isValid: false,
+                error: `Schedules must have at least ${Math.round(
+                  minimumWindowDurationSeconds! / 60
+                )} minutes between runs.`,
+                isPlanLimit: true,
+              }
+            : {
+                isValid: true,
+                description: cronstrue.toString(cronPattern),
+              };
         nextRuns = Array.from({ length: 5 }, (_, i) => {
           const utc = expression.next().toDate();
           return utc;
@@ -260,6 +289,15 @@ export function UpsertScheduleForm({
         };
       }
     }
+  }
+
+  if (scheduleWindowResult?.isValid && minimumWindowDurationSeconds && nextRuns) {
+    minimumWindowApplied = explicitWindowBelowMinimum({
+      explicitWindow: scheduleWindowValue,
+      cron: cronPattern,
+      timezone: isUtc ? null : selectedTimezone,
+      minimumWindowDurationSeconds,
+    });
   }
 
   const mode = schedule ? "edit" : "new";
@@ -354,7 +392,9 @@ export function UpsertScheduleForm({
                 <ValidationMessage
                   isValid={false}
                   validLabel="Valid pattern:"
-                  invalidLabel="Invalid pattern:"
+                  invalidLabel={
+                    cronPatternResult.isPlanLimit ? "Unavailable on Free plan:" : "Invalid pattern:"
+                  }
                   message={cronPatternResult.error}
                 />
               )}
@@ -399,25 +439,23 @@ export function UpsertScheduleForm({
                 onChange={(event) => setScheduleWindowValue(event.target.value)}
               />
               {scheduleWindowResult === undefined ? (
-                schedule?.hasCapturedDefaultWindow ? (
-                  <Hint>
-                    This schedule uses the 60-minute default window. Enter a value to override it,
-                    or <code>0m</code> to use the one-minute minimum.
-                  </Hint>
-                ) : (
-                  <Hint>
-                    Assigns each run a stable time after its CRON time, capped at the next CRON
-                    occurrence. Use minutes, hours, or a percentage of the interval. Every schedule
-                    gets at least a one-minute spread; enter <code>0m</code> for that minimum.
-                  </Hint>
-                )
+                <ScheduleWindowHint
+                  defaultWindowDurationSeconds={defaultWindowDurationSeconds}
+                  minimumWindowDurationSeconds={minimumWindowDurationSeconds}
+                />
               ) : scheduleWindowResult.isValid ? (
                 <ValidationMessage
                   id={scheduleWindow.errorId}
                   isValid={true}
                   validLabel="Valid window:"
                   invalidLabel="Invalid window:"
-                  message="Runs will be assigned a stable time within this window."
+                  message={
+                    minimumWindowApplied
+                      ? `Runs use this window; the Free plan minimum of ${Math.round(
+                          minimumWindowDurationSeconds! / 60
+                        )} minutes will be applied.`
+                      : "Runs will be assigned a stable time within this window."
+                  }
                 />
               ) : (
                 <ValidationMessage
@@ -574,6 +612,57 @@ export function UpsertScheduleForm({
         </div>
       </div>
     </FormComponent>
+  );
+}
+
+function ScheduleWindowHint({
+  defaultWindowDurationSeconds,
+  minimumWindowDurationSeconds,
+}: {
+  defaultWindowDurationSeconds?: number | null;
+  minimumWindowDurationSeconds?: number | null;
+}) {
+  const defaultMinutes = defaultWindowDurationSeconds
+    ? Math.round(defaultWindowDurationSeconds / 60)
+    : undefined;
+  const minimumMinutes = minimumWindowDurationSeconds
+    ? Math.round(minimumWindowDurationSeconds / 60)
+    : undefined;
+
+  if (defaultMinutes && minimumMinutes) {
+    return (
+      <Hint>
+        Leaving this blank applies the {defaultMinutes}-minute default window. Free plan schedules
+        must run at least {minimumMinutes} minutes apart and always use a window of at least{" "}
+        {minimumMinutes} minutes.
+      </Hint>
+    );
+  }
+
+  if (minimumMinutes) {
+    return (
+      <Hint>
+        Free plan schedules must run at least {minimumMinutes} minutes apart and always use at least
+        a {minimumMinutes}-minute window. Smaller values are raised to this minimum.
+      </Hint>
+    );
+  }
+
+  if (defaultMinutes) {
+    return (
+      <Hint>
+        Leaving this blank applies the {defaultMinutes}-minute default window. Enter a value to
+        override it, or <code>0m</code> to use the one-minute minimum.
+      </Hint>
+    );
+  }
+
+  return (
+    <Hint>
+      Assigns each run a stable time after its CRON time, capped at the next CRON occurrence. Use
+      minutes, hours, or a percentage of the interval. Every schedule gets at least a one-minute
+      spread; enter <code>0m</code> for that minimum.
+    </Hint>
   );
 }
 

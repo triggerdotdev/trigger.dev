@@ -28,8 +28,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export default function Page() {
-  const { schedule, possibleTasks, possibleEnvironments, possibleTimezones, showGenerateField } =
-    useTypedLoaderData<typeof loader>();
+  const {
+    schedule,
+    possibleTasks,
+    possibleEnvironments,
+    possibleTimezones,
+    newSchedulePolicy,
+    showGenerateField,
+  } = useTypedLoaderData<typeof loader>();
 
   return (
     <UpsertScheduleForm
@@ -38,6 +44,7 @@ export default function Page() {
       possibleEnvironments={possibleEnvironments}
       showGenerateField={showGenerateField}
       possibleTimezones={possibleTimezones}
+      newSchedulePolicy={newSchedulePolicy}
     />
   );
 }

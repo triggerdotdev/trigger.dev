@@ -30,6 +30,7 @@ import { startDevOutput } from "./devOutput.js";
 import { startWorkerRuntime } from "./devSupervisor.js";
 import { writeJSONFile } from "../utilities/fileSystem.js";
 import { join } from "node:path";
+import { SchedulePlanLimitError } from "./errors.js";
 
 export type DevSessionOptions = {
   name: string | undefined;
@@ -40,7 +41,7 @@ export type DevSessionOptions = {
   rawConfig: ResolvedConfig;
   rawArgs: DevCommandOptions;
   client: CliApiClient;
-  onErr?: (error: Error) => void;
+  onErr?: (error: Error) => void | Promise<void>;
   keepTmpFiles: boolean;
 };
 
@@ -56,6 +57,7 @@ export async function startDevSession({
   client,
   dashboardUrl,
   keepTmpFiles,
+  onErr,
 }: DevSessionOptions): Promise<DevSessionInstance> {
   clearTmpDirs(rawConfig.workingDir, branch);
   const destination = getTmpDir(rawConfig.workingDir, "build", keepTmpFiles, branch);
@@ -144,6 +146,11 @@ export async function startDevSession({
     } catch (error) {
       if (error instanceof Error) {
         eventBus.emit("backgroundWorkerIndexingError", buildManifest, error);
+        if (error instanceof SchedulePlanLimitError) {
+          stopOutput();
+          await runtime.shutdown();
+          await onErr?.(error);
+        }
       } else {
         logger.error("Error updating bundle", { error });
       }

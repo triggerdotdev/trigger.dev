@@ -1,6 +1,7 @@
 import type {
   BackgroundWorkerMetadata,
   BackgroundWorkerSourceFileMetadata,
+  BackgroundWorkerWarning,
   CreateBackgroundWorkerRequestBody,
   FilterAst,
   PromptResource,
@@ -52,10 +53,15 @@ import { clampMaxDuration } from "../utils/maxDuration";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { CheckScheduleService } from "./checkSchedule.server";
 import { CronPattern } from "../schedules";
+import { explicitWindowBelowMinimum } from "../explicitWindowBelowMinimum";
 import { projectPubSub } from "./projectPubSub.server";
 
 import { assertNoDuplicateTaskIds } from "./duplicateTaskIds.server";
 import { stripBackgroundWorkerMetadataForStorage } from "./stripBackgroundWorkerMetadataForStorage.server";
+
+export type BackgroundWorkerWithWarnings = BackgroundWorker & {
+  warnings: BackgroundWorkerWarning[];
+};
 
 export class CreateBackgroundWorkerService extends BaseService {
   private readonly _taskMetaCache: TaskMetadataCache;
@@ -73,7 +79,7 @@ export class CreateBackgroundWorkerService extends BaseService {
     projectRef: string,
     environment: AuthenticatedEnvironment,
     body: CreateBackgroundWorkerRequestBody
-  ): Promise<BackgroundWorker> {
+  ): Promise<BackgroundWorkerWithWarnings> {
     return this.traceWithEnv("call", environment, async (span) => {
       span.setAttribute("projectRef", projectRef);
 
@@ -109,7 +115,7 @@ export class CreateBackgroundWorkerService extends BaseService {
       );
 
       if (latestBackgroundWorker?.contentHash === body.metadata.contentHash) {
-        return latestBackgroundWorker;
+        return { ...latestBackgroundWorker, warnings: [] };
       }
 
       const nextVersion = calculateNextBuildVersion(project.backgroundWorkers[0]?.version);
@@ -195,7 +201,7 @@ export class CreateBackgroundWorkerService extends BaseService {
         throw new ServiceValidationError("Error creating worker resources");
       }
 
-      const [schedulesError] = await tryCatch(
+      const [schedulesError, scheduleWarnings] = await tryCatch(
         syncDeclarativeSchedules(
           body.metadata.tasks,
           backgroundWorker,
@@ -338,7 +344,7 @@ export class CreateBackgroundWorkerService extends BaseService {
         }
       }
 
-      return backgroundWorker;
+      return { ...backgroundWorker, warnings: scheduleWarnings ?? [] };
     });
   }
 }
@@ -854,6 +860,72 @@ function scheduleWindowsEqual(
       : false;
 }
 
+function newDeclarativeSchedulePolicyWarning({
+  taskId,
+  explicitWindow,
+  cron,
+  timezone,
+  defaultWindowDurationSeconds,
+  minimumWindowDurationSeconds,
+}: {
+  taskId: string;
+  explicitWindow: string | undefined;
+  cron: string;
+  timezone?: string | null;
+  defaultWindowDurationSeconds: number | null;
+  minimumWindowDurationSeconds: number | null;
+}): BackgroundWorkerWarning | undefined {
+  const defaultMinutes =
+    defaultWindowDurationSeconds !== null
+      ? Math.round(defaultWindowDurationSeconds / 60)
+      : undefined;
+  const minimumMinutes =
+    minimumWindowDurationSeconds !== null
+      ? Math.round(minimumWindowDurationSeconds / 60)
+      : undefined;
+  const prefix = `Task \`${taskId}\``;
+
+  if (!explicitWindow) {
+    if (defaultMinutes && minimumMinutes) {
+      return {
+        code: "schedule_default_window",
+        message: `${prefix} got the ${defaultMinutes}-minute default cron window.`,
+      };
+    }
+    if (defaultMinutes) {
+      return {
+        code: "schedule_default_window",
+        message: `${prefix} got the ${defaultMinutes}-minute default cron window.`,
+      };
+    }
+    if (minimumMinutes) {
+      return {
+        code: "schedule_minimum_window",
+        message: `${prefix} got the minimum Free plan cron window of ${minimumMinutes} minutes.`,
+      };
+    }
+    return undefined;
+  }
+
+  if (
+    minimumMinutes &&
+    minimumWindowDurationSeconds !== null &&
+    explicitWindowBelowMinimum({
+      explicitWindow,
+      cron,
+      timezone,
+      minimumWindowDurationSeconds,
+    })
+  ) {
+    return {
+      code: "schedule_minimum_window",
+      message: `${prefix} uses the Free plan ${minimumMinutes}-minute minimum window.`,
+    };
+  }
+
+  return undefined;
+}
+
 async function prepareDeclarativeSchedules(
   tasks: TaskResource[],
   environment: AuthenticatedEnvironment,
@@ -921,6 +993,7 @@ async function prepareDeclarativeSchedules(
       : undefined;
 
   const preparedTasks = [];
+  const warnings: BackgroundWorkerWarning[] = [];
   for (const task of tasksWithDeclarativeSchedules) {
     const existingSchedule = existingByTask.get(task.id);
 
@@ -947,6 +1020,20 @@ async function prepareDeclarativeSchedules(
         taskIdentifier: task.id,
       });
     }
+    if (!existingSchedule) {
+      const warning = newDeclarativeSchedulePolicyWarning({
+        taskId: task.id,
+        explicitWindow: task.schedule.window,
+        cron: task.schedule.cron,
+        timezone: task.schedule.timezone,
+        defaultWindowDurationSeconds,
+        minimumWindowDurationSeconds,
+      });
+      if (warning) {
+        warnings.push(warning);
+      }
+    }
+
     preparedTasks.push({
       task,
       existingSchedule,
@@ -954,7 +1041,7 @@ async function prepareDeclarativeSchedules(
     });
   }
 
-  return { existingDeclarativeSchedules, preparedTasks, defaultWindowDurationSeconds };
+  return { existingDeclarativeSchedules, preparedTasks, defaultWindowDurationSeconds, warnings };
 }
 
 export async function syncDeclarativeSchedules(
@@ -965,8 +1052,12 @@ export async function syncDeclarativeSchedules(
   engine: Pick<typeof scheduleEngine, "registerNextTaskScheduleInstance"> = scheduleEngine,
   prepared?: Awaited<ReturnType<typeof prepareDeclarativeSchedules>>
 ) {
-  const { existingDeclarativeSchedules, preparedTasks, defaultWindowDurationSeconds } =
-    prepared ?? (await prepareDeclarativeSchedules(tasks, environment, prisma));
+  const {
+    existingDeclarativeSchedules,
+    preparedTasks,
+    defaultWindowDurationSeconds,
+    warnings = [],
+  } = prepared ?? (await prepareDeclarativeSchedules(tasks, environment, prisma));
 
   //start out by assuming they're all missing
   const missingSchedules = new Set<string>(
@@ -1121,6 +1212,8 @@ export async function syncDeclarativeSchedules(
       },
     });
   }
+
+  return warnings;
 }
 
 export async function createBackgroundFiles(

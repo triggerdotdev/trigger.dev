@@ -66,6 +66,7 @@ import {
   prettyError,
   prettyWarning,
 } from "../utilities/cliOutput.js";
+import { SCHEDULE_PLAN_LIMIT_HEADER } from "../dev/errors.js";
 import { loadDotEnvVars } from "../utilities/dotEnv.js";
 import { isDirectory } from "../utilities/fileSystem.js";
 import { setGithubActionsOutputAndEnvVars } from "../utilities/githubActions.js";
@@ -1093,7 +1094,11 @@ async function failDeploy(
           : undefined;
 
         if (errorData) {
-          prettyError(errorData.message, errorData.stack, errorData.stderr);
+          if (errorData.name === "SchedulePlanLimitError") {
+            prettyError(SCHEDULE_PLAN_LIMIT_HEADER, errorData.message);
+          } else {
+            prettyError(errorData.message, errorData.stack, errorData.stderr);
+          }
 
           if (logs.trim() !== "") {
             const logPath = await saveLogs(deployment.shortCode, logs);

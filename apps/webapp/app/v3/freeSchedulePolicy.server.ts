@@ -17,6 +17,13 @@ export type FreeSchedulePolicyContext = {
   planState: FreeSchedulePlanState;
 };
 
+export class SchedulePlanLimitError extends ServiceValidationError {
+  constructor(message: string) {
+    super(message, 422, "warn");
+    this.name = "SchedulePlanLimitError";
+  }
+}
+
 const meter = metrics.getMeter("trigger.dev/free-schedule-policy");
 const createDecisionCounter = meter.createCounter("free_schedule_policy.create_decisions_total", {
   description: "New-schedule enrollment decisions for the free-plan minimum-window policy",
@@ -66,12 +73,20 @@ async function resolvePlanState(organizationId: string): Promise<FreeSchedulePla
 }
 
 /** A non-null result also requires {@link assertCronMeetsFreeMinimum} before saving. */
+export function previewMinimumWindowForNewSchedule(
+  context: FreeSchedulePolicyContext
+): number | null {
+  return context.flagEnabled && context.planState === "non_paying"
+    ? FREE_SCHEDULE_MINIMUM_WINDOW_SECONDS
+    : null;
+}
+
 export function minimumWindowForNewSchedule(
   context: FreeSchedulePolicyContext,
   scheduleType: "IMPERATIVE" | "DECLARATIVE"
 ): number | null {
-  const shouldRestrict = context.flagEnabled && context.planState === "non_paying";
-  const restricted = shouldRestrict ? FREE_SCHEDULE_MINIMUM_WINDOW_SECONDS : null;
+  const restricted = previewMinimumWindowForNewSchedule(context);
+  const shouldRestrict = restricted !== null;
 
   createDecisionCounter.add(1, {
     decision: shouldRestrict
@@ -137,11 +152,10 @@ export function assertCronMeetsFreeMinimum({
     environment_type: environmentType ?? "unknown",
   });
 
-  const minutes = Math.round(minimumWindowDurationSeconds / 60);
-  const taskPrefix = taskIdentifier ? `Schedule for task \`${taskIdentifier}\`: ` : "";
+  const taskPrefix = taskIdentifier ? `Task \`${taskIdentifier}\`: ` : "";
 
-  throw new ServiceValidationError(
-    `${taskPrefix}Free-plan schedules must have at least ${minutes} minutes between runs. ` +
+  throw new SchedulePlanLimitError(
+    `${taskPrefix}Free plan is limited to hourly schedules or less. ` +
       `Change the cron expression or upgrade before saving this schedule.`
   );
 }

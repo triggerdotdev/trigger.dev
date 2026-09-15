@@ -7,6 +7,12 @@ import { getTimezones } from "~/utils/timezones.server";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { formatScheduleWindow } from "~/v3/scheduleWindow.server";
+import { resolveNewScheduleDefaultWindowSeconds } from "~/v3/scheduleDefaultWindow.server";
+import {
+  previewMinimumWindowForNewSchedule,
+  resolveFreeSchedulePolicyContext,
+  resolveMinimumWindowOnUpdate,
+} from "~/v3/freeSchedulePolicy.server";
 
 type EditScheduleOptions = {
   userId: string;
@@ -35,6 +41,8 @@ export class EditSchedulePresenter {
     const project = await this.#prismaClient.project.findFirstOrThrow({
       select: {
         id: true,
+        organizationId: true,
+        organization: { select: { featureFlags: true } },
         environments: {
           select: {
             id: true,
@@ -102,15 +110,42 @@ export class EditSchedulePresenter {
         };
       });
 
+    const newSchedulePolicy = friendlyId
+      ? undefined
+      : await this.#getNewSchedulePolicy(project.organizationId, project.organization.featureFlags);
+
     return {
       possibleTasks: possibleTasks.map((task) => task.slug).sort(),
       possibleEnvironments,
       possibleTimezones: getTimezones(),
-      schedule: await this.#getExistingSchedule(friendlyId, possibleEnvironments),
+      schedule: await this.#getExistingSchedule(
+        friendlyId,
+        possibleEnvironments,
+        project.organizationId,
+        project.organization.featureFlags
+      ),
+      newSchedulePolicy,
     };
   }
 
-  async #getExistingSchedule(scheduleId: string | undefined, possibleEnvironments: Environment[]) {
+  async #getNewSchedulePolicy(organizationId: string, featureFlags: unknown) {
+    const [defaultWindowDurationSeconds, freeSchedulePolicy] = await Promise.all([
+      resolveNewScheduleDefaultWindowSeconds(this.#prismaClient, organizationId),
+      resolveFreeSchedulePolicyContext({ id: organizationId, featureFlags }),
+    ]);
+
+    return {
+      defaultWindowDurationSeconds,
+      minimumWindowDurationSeconds: previewMinimumWindowForNewSchedule(freeSchedulePolicy),
+    };
+  }
+
+  async #getExistingSchedule(
+    scheduleId: string | undefined,
+    possibleEnvironments: Environment[],
+    organizationId: string,
+    featureFlags: unknown
+  ) {
     if (!scheduleId) {
       return undefined;
     }
@@ -146,15 +181,21 @@ export class EditSchedulePresenter {
       return undefined;
     }
 
+    const minimumWindowDurationSeconds =
+      schedule.minimumWindowDurationSeconds === null
+        ? null
+        : resolveMinimumWindowOnUpdate(
+            await resolveFreeSchedulePolicyContext({ id: organizationId, featureFlags }),
+            schedule.minimumWindowDurationSeconds
+          ).minimumWindowDurationSeconds;
+
     return {
       ...schedule,
+      minimumWindowDurationSeconds,
       cron: schedule.generatorExpression,
       // The form shows only the user-configured value; a blank field lets a captured default
       // surface through the placeholder copy rather than appearing as a typed value.
       window: formatScheduleWindow(schedule),
-      // Whether this schedule carries a captured default, so the form copy can say "clearing
-      // returns to the 60-minute default" only for the new cohort, never for a grandfathered row.
-      hasCapturedDefaultWindow: schedule.defaultWindowDurationSeconds !== null,
       environments: schedule.instances.flatMap((instance) => {
         const environment = possibleEnvironments.find((env) => env.id === instance.environmentId);
         if (!environment) {

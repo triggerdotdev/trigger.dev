@@ -42,6 +42,7 @@ import { getTmpRoot } from "../utilities/tempDirectories.js";
 import { BackgroundWorker } from "./backgroundWorker.js";
 import { TaskRunProcessPool } from "./taskRunProcessPool.js";
 import type { WorkerRuntime } from "./workerRuntime.js";
+import { SchedulePlanLimitError } from "./errors.js";
 
 export type WorkerRuntimeOptions = {
   name: string | undefined;
@@ -408,10 +409,14 @@ class DevSupervisor implements WorkerRuntime {
 
     if (!backgroundWorkerRecord.success) {
       stop();
+      if (backgroundWorkerRecord.errorCode === "schedule_plan_limit") {
+        throw new SchedulePlanLimitError(backgroundWorkerRecord.error);
+      }
       throw new Error(backgroundWorkerRecord.error);
     }
 
     backgroundWorker.serverWorker = backgroundWorkerRecord.data;
+    backgroundWorker.warnings = backgroundWorkerRecord.data.warnings ?? [];
     this.#registerWorker(backgroundWorker);
     this.lastManifest = manifest;
     this.latestWorkerId = backgroundWorker.serverWorker.id;

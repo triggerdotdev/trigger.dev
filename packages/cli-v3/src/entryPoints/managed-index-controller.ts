@@ -131,6 +131,13 @@ async function indexDeployment({
       return;
     }
 
+    const scheduleWarnings = createResponse.data.warnings ?? [];
+    if (scheduleWarnings.length > 0) {
+      console.warn(
+        `Schedule policy applied: ${scheduleWarnings.map((warning) => warning.message).join("; ")}`
+      );
+    }
+
     console.log(
       JSON.stringify({
         message: "Background worker created",

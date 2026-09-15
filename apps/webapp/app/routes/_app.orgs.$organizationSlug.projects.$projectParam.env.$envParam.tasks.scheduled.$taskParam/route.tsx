@@ -627,6 +627,7 @@ function CreateScheduleSheet({
             possibleTasks={data.possibleTasks}
             possibleEnvironments={data.possibleEnvironments}
             possibleTimezones={data.possibleTimezones}
+            newSchedulePolicy={data.newSchedulePolicy}
             showGenerateField={data.showGenerateField}
             defaultTaskIdentifier={defaultTaskIdentifier}
             onCancel={onClose}

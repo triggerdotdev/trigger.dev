@@ -24,6 +24,7 @@ import {
   isLinksSupported,
   prettyError,
   prettyPrintDate,
+  prettyWarning,
 } from "../utilities/cliOutput.js";
 import type { EventBusEventArgs } from "../utilities/eventBus.js";
 import { eventBus } from "../utilities/eventBus.js";
@@ -31,6 +32,7 @@ import { logger } from "../utilities/logger.js";
 import type { Socket } from "socket.io-client";
 import { BundleError } from "../build/bundle.js";
 import { analyzeWorker } from "../utilities/analyze.js";
+import { SCHEDULE_PLAN_LIMIT_HEADER, SchedulePlanLimitError } from "./errors.js";
 
 export type DevOutputOptions = {
   name: string | undefined;
@@ -78,6 +80,13 @@ export function startDevOutput(options: DevOutputOptions) {
     ...[worker]: EventBusEventArgs<"backgroundWorkerInitialized">
   ) => {
     analyzeWorker(worker, options.args.analyze, options.args.disableWarnings);
+
+    if (!options.args.disableWarnings && worker.warnings.length > 0) {
+      prettyWarning(
+        "Schedule policy applied",
+        worker.warnings.map((warning) => warning.message).join("\n")
+      );
+    }
 
     const logParts: string[] = [];
 
@@ -158,6 +167,8 @@ export function startDevOutput(options: DevOutputOptions) {
         project: config.project,
         query: `Duplicate task ids: ${error.collisions.map((c) => c.id).join(", ")}`,
       });
+    } else if (error instanceof SchedulePlanLimitError) {
+      prettyError(SCHEDULE_PLAN_LIMIT_HEADER, error.message);
     } else {
       const errorText = error instanceof Error ? error.message : "Unknown error";
       const stack = error instanceof Error ? error.stack : undefined;

@@ -346,6 +346,12 @@ async function startDev(options: StartDevOptions) {
         dashboardUrl: options.login.dashboardUrl,
         showInteractiveDevSession: true,
         keepTmpFiles: options.keepTmpFiles,
+        onErr: async () => {
+          process.exitCode = 1;
+          await watcher?.stop();
+          removeLockFile?.();
+          process.exit(1);
+        },
       });
     }
 

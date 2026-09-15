@@ -266,7 +266,7 @@ describe("declarative schedule preflight", () => {
 
     for (let attempt = 0; attempt < 2; attempt++) {
       await expect(service.call(project.externalRef, environment, body)).rejects.toThrow(
-        "Free-plan schedules must have at least 60 minutes between runs"
+        "Free plan is limited to hourly schedules or less"
       );
       expect(await prisma.backgroundWorker.count({ where: { projectId: project.id } })).toBe(0);
     }
@@ -287,7 +287,7 @@ describe("declarative schedule preflight", () => {
       },
     });
     await expect(service.call(project.externalRef, environment, body)).rejects.toThrow(
-      "Free-plan schedules must have at least 60 minutes between runs"
+      "Free plan is limited to hourly schedules or less"
     );
   });
 
@@ -550,7 +550,7 @@ describe("syncDeclarativeSchedules default window enrollment", () => {
       const engine = createTestScheduleEngine(prisma, redisOptions);
 
       try {
-        await syncDeclarativeSchedules(
+        const warnings = await syncDeclarativeSchedules(
           declarativeTasks({ cron: "0 * * * *", timezone: "UTC" }),
           noWorker,
           asEnv(prodEnv),
@@ -562,6 +562,44 @@ describe("syncDeclarativeSchedules default window enrollment", () => {
           where: { projectId: project.id, taskIdentifier: "my-task" },
         });
         expect(schedule.defaultWindowDurationSeconds).toBe(3600);
+        expect(warnings).toEqual([
+          {
+            code: "schedule_default_window",
+            message: "Task `my-task` got the 60-minute default cron window.",
+          },
+        ]);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "does not warn when a new declarative schedule already sets an explicit window",
+    async ({ prisma, redisOptions }) => {
+      const { organization, project, prodEnv } = await seedProjectWithEnvs(prisma);
+      await prisma.organization.update({
+        where: { id: organization.id },
+        data: { featureFlags: { scheduleDefaultWindowEnabled: true } },
+      });
+      await seedScheduledTask(prisma, project.id, prodEnv.id);
+      const engine = createTestScheduleEngine(prisma, redisOptions);
+
+      try {
+        const warnings = await syncDeclarativeSchedules(
+          declarativeTasks({ cron: "0 * * * *", timezone: "UTC", window: "2h" }),
+          noWorker,
+          asEnv(prodEnv),
+          prisma,
+          engine
+        );
+
+        const schedule = await prisma.taskSchedule.findFirstOrThrow({
+          where: { projectId: project.id, taskIdentifier: "my-task" },
+        });
+        expect(schedule.windowDurationSeconds).toBe(7200);
+        expect(schedule.defaultWindowDurationSeconds).toBe(3600);
+        expect(warnings).toEqual([]);
       } finally {
         await engine.quit();
       }
@@ -599,7 +637,7 @@ describe("syncDeclarativeSchedules default window enrollment", () => {
 
         // Redeploy with no changes: the captured default is not backfilled again and the
         // pending Redis job is preserved because the resolved window is unchanged.
-        await syncDeclarativeSchedules(
+        const warnings = await syncDeclarativeSchedules(
           declarativeTasks({ cron: "0 * * * *", timezone: "UTC" }),
           noWorker,
           asEnv(prodEnv),
@@ -611,6 +649,7 @@ describe("syncDeclarativeSchedules default window enrollment", () => {
           where: { id: created.id },
         });
         expect(after.defaultWindowDurationSeconds).toBe(3600);
+        expect(warnings).toEqual([]);
         expect(before).toBeDefined();
         expect(await engine.getJob(jobId)).toEqual(before);
       } finally {

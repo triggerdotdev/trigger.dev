@@ -760,6 +760,7 @@ export type ApiResult<TSuccessResult> =
        * transient failures worth retrying from fatal ones.
        */
       statusCode?: number;
+      errorCode?: string | null;
     };
 
 export async function wrapZodFetch<T extends AnyZodSchema>(
@@ -790,6 +791,7 @@ export async function wrapZodFetch<T extends AnyZodSchema>(
         success: false,
         error: error.message,
         statusCode: error.status,
+        errorCode: error.code,
       };
     } else if (error instanceof Error) {
       return {

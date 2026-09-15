@@ -246,10 +246,18 @@ export const CreateBackgroundWorkerRequestBody = z.object({
 
 export type CreateBackgroundWorkerRequestBody = z.infer<typeof CreateBackgroundWorkerRequestBody>;
 
+export const BackgroundWorkerWarning = z.object({
+  code: z.enum(["schedule_default_window", "schedule_minimum_window"]),
+  message: z.string(),
+});
+
+export type BackgroundWorkerWarning = z.infer<typeof BackgroundWorkerWarning>;
+
 export const CreateBackgroundWorkerResponse = z.object({
   id: z.string(),
   version: z.string(),
   contentHash: z.string(),
+  warnings: z.array(BackgroundWorkerWarning).optional(),
 });
 
 export type CreateBackgroundWorkerResponse = z.infer<typeof CreateBackgroundWorkerResponse>;
