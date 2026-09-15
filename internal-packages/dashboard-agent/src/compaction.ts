@@ -28,20 +28,26 @@ import { summaryPrompt } from "./prompts";
  */
 
 /**
- * The static prefix (system prompt + tool schemas) as `prompt-prefix.test.ts`
- * measures it: ~20.9k estimated tokens. Subtracted so the budget below is about the
- * conversation rather than the total.
- */
-export const STATIC_PREFIX_TOKENS = 21_000;
-
-/**
- * How much conversation rides on top of that prefix before we summarise.
+ * How large the model's context may grow before we summarise, as the provider
+ * billed the LAST call of the turn: prefix, conversation and tool results together.
  *
- * 60k keeps a turn's input near 80k — well inside the 200k window even when a
- * 10-step turn's run traces and query rows add tens of thousands more — and it is
- * about where the uncached tail costs more per turn than one summary call does.
+ * Budgeting the whole context rather than "input minus a prefix constant" means no
+ * figure here has to track the model's tokenizer or the prompt's size (Sonnet 5
+ * bills the same prefix ~1.8x what a chars/4 estimate gives). 100k is roughly the
+ * old 60k of conversation on top of the measured ~38k prefix: well inside every
+ * model's window even when a 10-step turn's run traces and query rows add tens of
+ * thousands more, and about where the uncached tail costs more per turn than one
+ * summary call does. `DASHBOARD_AGENT_CONTEXT_TOKEN_BUDGET` overrides it per
+ * deployment.
  */
-export const CONVERSATION_TOKEN_BUDGET = 60_000;
+export const DEFAULT_CONTEXT_TOKEN_BUDGET = 100_000;
+
+export function contextTokenBudget(
+  envValue = process.env.DASHBOARD_AGENT_CONTEXT_TOKEN_BUDGET
+): number {
+  const parsed = Number(envValue?.trim() ?? "");
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : DEFAULT_CONTEXT_TOKEN_BUDGET;
+}
 
 /** Messages kept verbatim after the summary, so the last exchange reads normally. */
 export const COMPACTION_KEPT_TAIL = 8;
@@ -87,19 +93,24 @@ export function estimateConversationTokens(messages: ModelMessage[]): number {
 }
 
 /**
- * Two signals, either of which fires: what the provider billed for input minus the
- * prefix, and our own estimate of the conversation. The estimate is what makes this
- * testable and what covers a call the provider reported no usage for.
+ * Two signals, either of which fires against the same budget: the context the
+ * provider billed on the last call, and our own chars/4 estimate of the conversation.
+ * The estimate leaves out the prefix (it is not in `messages`) and so can only fire
+ * later than the provider would; it covers a call with no reported usage and keeps
+ * the decision testable without a provider. `inputTokens` must be the last step's,
+ * not the turn's sum over steps, which `chat.agent` guarantees for both checks.
  */
-export function shouldCompactConversation(event: {
-  messages: ModelMessage[];
-  inputTokens?: number;
-  totalTokens?: number;
-}): boolean {
+export function shouldCompactConversation(
+  event: {
+    messages: ModelMessage[];
+    inputTokens?: number;
+    totalTokens?: number;
+  },
+  budget = contextTokenBudget()
+): boolean {
   const reported = typeof event.inputTokens === "number" ? event.inputTokens : event.totalTokens;
-  const fromProvider = typeof reported === "number" ? reported - STATIC_PREFIX_TOKENS : 0;
-  const estimated = estimateConversationTokens(event.messages);
-  return Math.max(fromProvider, estimated) > CONVERSATION_TOKEN_BUDGET;
+  if (typeof reported === "number" && reported > budget) return true;
+  return estimateConversationTokens(event.messages) > budget;
 }
 
 /* ------------------------------------------------------------------ *
@@ -304,6 +315,7 @@ export const dashboardAgentCompaction: ChatAgentCompactionOptions = {
         messageCount: event.messages.length,
         estimatedConversationTokens: estimateConversationTokens(event.messages),
         inputTokens: event.inputTokens ?? null,
+        contextTokenBudget: contextTokenBudget(),
       });
     }
     return compact;

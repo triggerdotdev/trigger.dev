@@ -20,13 +20,13 @@ import {
   collectDurableState,
   COMPACTION_KEPT_TAIL,
   COMPACTION_KEPT_TAIL_CHARS,
-  CONVERSATION_TOKEN_BUDGET,
   describeDurableState,
   estimateConversationTokens,
   renderTranscriptForSummary,
   safeTail,
   shouldCompactConversation,
-  STATIC_PREFIX_TOKENS,
+  contextTokenBudget,
+  DEFAULT_CONTEXT_TOKEN_BUDGET,
   withDurableState,
 } from "./compaction";
 
@@ -146,23 +146,44 @@ describe("when the conversation is compacted", () => {
 
   it("compacts on our own estimate, with no usage reported at all", () => {
     // 4 chars ≈ 1 token, so this is comfortably past the budget.
-    const messages = bulk(40, (CONVERSATION_TOKEN_BUDGET * 4) / 20);
-    expect(estimateConversationTokens(messages)).toBeGreaterThan(CONVERSATION_TOKEN_BUDGET);
+    const messages = bulk(40, 12_000);
+    expect(estimateConversationTokens(messages)).toBeGreaterThan(DEFAULT_CONTEXT_TOKEN_BUDGET);
     expect(shouldCompactConversation({ messages })).toBe(true);
   });
 
-  it("compacts on the provider's input count, net of the static prefix", () => {
+  it("compacts on the context the provider billed for the last call", () => {
     const messages = bulk(4, 100);
-    // The prefix alone must never trigger it.
-    expect(shouldCompactConversation({ messages, inputTokens: STATIC_PREFIX_TOKENS + 100 })).toBe(
-      false
-    );
+    const budget = DEFAULT_CONTEXT_TOKEN_BUDGET;
+    expect(shouldCompactConversation({ messages, inputTokens: 39_500 }, budget)).toBe(false);
+    expect(shouldCompactConversation({ messages, inputTokens: budget }, budget)).toBe(false);
+    expect(shouldCompactConversation({ messages, inputTokens: budget + 1 }, budget)).toBe(true);
+  });
+
+  it("takes the context budget from the environment, falling back to the default", () => {
+    expect(contextTokenBudget(undefined)).toBe(DEFAULT_CONTEXT_TOKEN_BUDGET);
+    expect(contextTokenBudget(" 150000 ")).toBe(150_000);
+    expect(contextTokenBudget("0")).toBe(DEFAULT_CONTEXT_TOKEN_BUDGET);
+    expect(contextTokenBudget("lots")).toBe(DEFAULT_CONTEXT_TOKEN_BUDGET);
+    expect(contextTokenBudget("1e5")).toBe(100_000);
+    expect(contextTokenBudget("100k")).toBe(DEFAULT_CONTEXT_TOKEN_BUDGET);
+    expect(contextTokenBudget("1.5")).toBe(DEFAULT_CONTEXT_TOKEN_BUDGET);
+    const messages = bulk(4, 100);
     expect(
-      shouldCompactConversation({
-        messages,
-        inputTokens: STATIC_PREFIX_TOKENS + CONVERSATION_TOKEN_BUDGET + 1,
-      })
+      shouldCompactConversation({ messages, inputTokens: 50_001 }, contextTokenBudget("50000"))
     ).toBe(true);
+  });
+
+  it("lets a raised budget stand when the provider count is below it", () => {
+    const messages = bulk(40, 12_000);
+    expect(estimateConversationTokens(messages)).toBeGreaterThan(DEFAULT_CONTEXT_TOKEN_BUDGET);
+    expect(estimateConversationTokens(messages)).toBeLessThan(150_000);
+    expect(shouldCompactConversation({ messages, inputTokens: 120_000 }, 150_000)).toBe(false);
+    expect(shouldCompactConversation({ messages, inputTokens: 150_001 }, 150_000)).toBe(true);
+  });
+
+  it("does not compact a short conversation on a tool-using turn's summed usage", () => {
+    const messages = bulk(12, 600);
+    expect(shouldCompactConversation({ messages, inputTokens: 39_557 })).toBe(false);
   });
 });
 

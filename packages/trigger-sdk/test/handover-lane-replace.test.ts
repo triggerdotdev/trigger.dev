@@ -9,7 +9,8 @@ import { mockChatAgent } from "../src/v3/test/index.js";
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { simulateReadableStream, streamText, tool, type UIMessage } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
-import { describe, expect, it } from "vitest";
+import { logger } from "@trigger.dev/core/v3";
+import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { chat } from "../src/v3/ai.js";
 
@@ -51,6 +52,7 @@ function toolUseIds(prompt: unknown): string[] {
 for (const withMessageId of [false, true]) {
   describe(`a head-start turn whose handed-over tool call is followed by more steps (messageId=${withMessageId})`, () => {
     it("leaves the next turn one copy of each tool call", { timeout: 30_000 }, async () => {
+      const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
       const prompts: unknown[] = [];
       const steps = [toolStep("tc_2"), textStep("found it"), textStep("second answer")];
       let call = 0;
@@ -118,7 +120,12 @@ for (const withMessageId of [false, true]) {
           "assistant",
           "user",
         ]);
+        const reconverted = warnSpy.mock.calls.filter((args) =>
+          String(args[0]).includes("reconverting the lane")
+        );
+        expect(reconverted).toEqual([]);
       } finally {
+        warnSpy.mockRestore();
         await harness.close();
       }
     });

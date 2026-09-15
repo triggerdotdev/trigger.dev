@@ -2645,6 +2645,16 @@ const chatHandoverPartialKey = locals.create<ModelMessage[]>("chat.handoverParti
  * @internal
  */
 const chatHandoverMessageIdKey = locals.create<string>("chat.handoverMessageId");
+/**
+ * The model messages a turn-0 head-start splice contributed to the model lane,
+ * keyed by the UI message id it was synthesized under. When the agent's response
+ * completes that message under the same id, this is the run to replace: the UI
+ * form alone converts to something else (its pending tool calls drop out, the
+ * approval round was never on it), so it cannot locate the run itself.
+ */
+const chatHandoverSplicedRunKey = locals.create<{ id: string; run: ModelMessage[] } | undefined>(
+  "chat.handoverSplicedRun"
+);
 
 /**
  * Run-scoped slot indicating that the customer's step-1 head-start
@@ -2742,17 +2752,20 @@ function spliceHandoverPartial(
   modelMessages: ModelMessage[],
   uiMessages: UIMessage[],
   signal: { partialAssistantMessage: ModelMessage[]; messageId?: string }
-): void {
+): { id: string; run: ModelMessage[] } | undefined {
   if (!signal.partialAssistantMessage || signal.partialAssistantMessage.length === 0) {
-    return;
+    return undefined;
   }
   // Skip if the hydrated chain already persisted the partial under this id.
   const alreadyInChain =
     signal.messageId !== undefined && uiMessages.some((m) => m.id === signal.messageId);
-  if (alreadyInChain) return;
-  modelMessages.push(...signal.partialAssistantMessage);
+  if (alreadyInChain) return undefined;
+  const run = [...signal.partialAssistantMessage];
+  modelMessages.push(...run);
   const partialUI = synthesizeHandoverUIMessage(signal.partialAssistantMessage, signal.messageId);
-  if (partialUI) uiMessages.push(partialUI);
+  if (!partialUI) return undefined;
+  uiMessages.push(partialUI);
+  return { id: partialUI.id, run };
 }
 
 /**
@@ -3794,14 +3807,24 @@ export type CompactedEvent = {
 export type ShouldCompactEvent = {
   /** The current model messages (full conversation). */
   messages: ModelMessage[];
-  /** Total token count from the triggering step/turn. */
+  /**
+   * Total token count of the triggering model call: the step that just finished
+   * (`"inner"`), or the turn's LAST step (`"outer"`). This is the size of the
+   * context the model held on that call, which is what a compaction decision is
+   * about. It is never the sum over a multi-step turn; see `turnUsage` for that.
+   */
   totalTokens: number | undefined;
-  /** Input token count from the triggering step/turn. */
+  /** Input token count of the triggering model call (see `totalTokens`). */
   inputTokens: number | undefined;
-  /** Output token count from the triggering step/turn. */
+  /** Output token count of the triggering model call (see `totalTokens`). */
   outputTokens: number | undefined;
-  /** Full usage object from the triggering step/turn. */
+  /** Full usage object of the triggering model call (see `totalTokens`). */
   usage?: LanguageModelUsage;
+  /**
+   * The whole turn's usage summed over every step, as the provider billed it.
+   * Only present when `source` is `"outer"`.
+   */
+  turnUsage?: LanguageModelUsage;
   /** Cumulative token usage across all completed turns. Present in chat.agent contexts. */
   totalUsage?: LanguageModelUsage;
   /** The chat session ID (if running inside a chat.agent). */
@@ -5373,9 +5396,10 @@ async function replaceModelRun(
   lane: ModelMessage[],
   oldUi: UIMessage,
   newUi: UIMessage,
-  tailAfter: number
+  tailAfter: number,
+  knownOldRun?: ModelMessage[]
 ): Promise<boolean> {
-  const oldRun = await toModelMessages([stripProviderMetadata(oldUi)]);
+  const oldRun = knownOldRun ?? (await toModelMessages([stripProviderMetadata(oldUi)]));
   const newRun = await toModelMessages([stripProviderMetadata(newUi)]);
   // A message that converts to nothing (a pending tool call with no output yet,
   // which `ignoreIncompleteToolCalls` drops) locates no run in the lane. Matching
@@ -8912,10 +8936,15 @@ function chatAgent<
                     // `UIMessageStreamError: No tool invocation found`.
                     const pendingHandoverPartial = locals.get(chatHandoverPartialKey);
                     if (pendingHandoverPartial && pendingHandoverPartial.length > 0) {
-                      spliceHandoverPartial(accumulatedMessages, accumulatedUIMessages, {
-                        partialAssistantMessage: pendingHandoverPartial,
-                        messageId: locals.get(chatHandoverMessageIdKey),
-                      });
+                      const spliced = spliceHandoverPartial(
+                        accumulatedMessages,
+                        accumulatedUIMessages,
+                        {
+                          partialAssistantMessage: pendingHandoverPartial,
+                          messageId: locals.get(chatHandoverMessageIdKey),
+                        }
+                      );
+                      if (spliced) locals.set(chatHandoverSplicedRunKey, spliced);
                       locals.set(chatHandoverPartialKey, []); // consume once
                       splicedHandoverPartial = true;
                     }
@@ -9304,6 +9333,7 @@ function chatAgent<
                   // never reports final usage), which would block the turn loop
                   // from ever firing onTurnComplete / writeTurnComplete.
                   let turnUsage: LanguageModelUsage | undefined;
+                  let lastStepUsage: LanguageModelUsage | undefined;
                   if (
                     runResult != null &&
                     typeof (runResult as any).totalUsage?.then === "function"
@@ -9311,6 +9341,18 @@ function chatAgent<
                     try {
                       turnUsage = (await Promise.race([
                         (runResult as any).totalUsage,
+                        new Promise<undefined>((r) => setTimeout(() => r(undefined), 2_000)),
+                      ])) as LanguageModelUsage | undefined;
+                    } catch {
+                      /* non-fatal — usage capture failed */
+                    }
+                  }
+                  const lastStepUsagePromise =
+                    runResult != null ? (runResult as any).usage : undefined;
+                  if (typeof lastStepUsagePromise?.then === "function") {
+                    try {
+                      lastStepUsage = (await Promise.race([
+                        lastStepUsagePromise,
                         new Promise<undefined>((r) => setTimeout(() => r(undefined), 2_000)),
                       ])) as LanguageModelUsage | undefined;
                     } catch {
@@ -9491,14 +9533,21 @@ function chatAgent<
                           stripProviderMetadata(capturedResponseMessage),
                         ]);
                         if (existingIdx !== -1) {
+                          const spliced = locals.get(chatHandoverSplicedRunKey);
+                          const splicedRun =
+                            spliced && previousAtIdx && spliced.id === previousAtIdx.id
+                              ? spliced.run
+                              : undefined;
                           const ok =
                             previousAtIdx !== undefined &&
                             (await replaceModelRun(
                               accumulatedMessages,
                               previousAtIdx,
                               capturedResponseMessage,
-                              steerTailThisTurn
+                              steerTailThisTurn,
+                              splicedRun
                             ));
+                          if (splicedRun) locals.set(chatHandoverSplicedRunKey, undefined);
                           if (!ok) {
                             logger.warn(
                               "chat.agent: replaced response not found at the model lane tail; reconverting the lane"
@@ -9561,12 +9610,14 @@ function chatAgent<
                   const innerCompactionState = locals.get(chatCompactionStateKey);
 
                   if (outerCompaction && !innerCompactionState && turnUsage && !wasStopped) {
+                    const contextUsage = lastStepUsage ?? turnUsage;
                     const shouldTrigger = await outerCompaction.shouldCompact({
                       messages: accumulatedMessages,
-                      totalTokens: turnUsage.totalTokens,
-                      inputTokens: turnUsage.inputTokens,
-                      outputTokens: turnUsage.outputTokens,
-                      usage: turnUsage,
+                      totalTokens: contextUsage.totalTokens,
+                      inputTokens: contextUsage.inputTokens,
+                      outputTokens: contextUsage.outputTokens,
+                      usage: contextUsage,
+                      turnUsage,
                       totalUsage: cumulativeUsage,
                       chatId: currentWirePayload.chatId,
                       turn,
@@ -11748,6 +11799,8 @@ class ChatMessageAccumulator {
   modelMessages: ModelMessage[] = [];
   uiMessages: UIMessage[] = [];
   private _compaction?: ChatAgentCompactionOptions;
+  /** The run a spliced head-start partial contributed, until its response replaces it. */
+  private _handoverRun?: { id: string; run: ModelMessage[] };
   private _pendingMessages?: PendingMessagesOptions;
   private _steeringQueue: SteeringQueueEntry[] = [];
 
@@ -11798,7 +11851,7 @@ class ChatMessageAccumulator {
    * `consumeHandover` for the wait+seed+apply convenience.
    */
   applyHandover(signal: { partialAssistantMessage: ModelMessage[]; messageId?: string }): void {
-    spliceHandoverPartial(this.modelMessages, this.uiMessages, signal);
+    this._handoverRun = spliceHandoverPartial(this.modelMessages, this.uiMessages, signal);
   }
 
   /**
@@ -11851,8 +11904,13 @@ class ChatMessageAccumulator {
     if (existingIdx !== -1) {
       const previous = this.uiMessages[existingIdx]!;
       this.uiMessages[existingIdx] = response;
+      const handoverRun =
+        this._handoverRun && this._handoverRun.id === previous.id
+          ? this._handoverRun.run
+          : undefined;
+      if (handoverRun) this._handoverRun = undefined;
       try {
-        if (!(await replaceModelRun(this.modelMessages, previous, response, 0))) {
+        if (!(await replaceModelRun(this.modelMessages, previous, response, 0, handoverRun))) {
           this.modelMessages = await toModelMessages(
             this.uiMessages.map((m) => stripProviderMetadata(m))
           );
@@ -11974,8 +12032,10 @@ class ChatMessageAccumulator {
 
   /**
    * Run outer-loop compaction if needed. Call after adding the response
-   * and capturing usage. Applies `compactModelMessages` and `compactUIMessages`
-   * callbacks if configured.
+   * and capturing usage. Pass the LAST step's usage (`result.usage`), which is
+   * the context the model held on its final call; `result.totalUsage` sums every
+   * step of a tool-using turn and belongs in `context.turnUsage`. Applies
+   * `compactModelMessages` and `compactUIMessages` callbacks if configured.
    *
    * @returns `true` if compaction was performed, `false` otherwise.
    */
@@ -11985,6 +12045,8 @@ class ChatMessageAccumulator {
       chatId?: string;
       turn?: number;
       clientData?: unknown;
+      /** The whole turn summed over its steps (`result.totalUsage`). */
+      turnUsage?: LanguageModelUsage;
       totalUsage?: LanguageModelUsage;
     }
   ): Promise<boolean> {
@@ -11996,6 +12058,7 @@ class ChatMessageAccumulator {
       inputTokens: usage.inputTokens,
       outputTokens: usage.outputTokens,
       usage,
+      turnUsage: context?.turnUsage,
       totalUsage: context?.totalUsage,
       chatId: context?.chatId,
       turn: context?.turn,
@@ -12630,6 +12693,7 @@ function createChatSession<TClientData = unknown>(
               // indefinitely, which would wedge the turn loop (same guard as
               // chat.agent's turn loop).
               let turnUsage: LanguageModelUsage | undefined;
+              let lastStepUsage: LanguageModelUsage | undefined;
               if (typeof (source as any).totalUsage?.then === "function") {
                 try {
                   const usage = (await Promise.race([
@@ -12645,15 +12709,28 @@ function createChatSession<TClientData = unknown>(
                   /* non-fatal */
                 }
               }
+              const lastStepUsagePromise = (source as any).usage;
+              if (typeof lastStepUsagePromise?.then === "function") {
+                try {
+                  lastStepUsage = (await Promise.race([
+                    lastStepUsagePromise,
+                    new Promise<undefined>((r) => setTimeout(() => r(undefined), 2_000)),
+                  ])) as LanguageModelUsage | undefined;
+                } catch {
+                  /* non-fatal */
+                }
+              }
 
               // Outer-loop compaction (same logic as chat.agent)
               if (sessionCompaction && turnUsage && !turnObj.stopped) {
+                const contextUsage = lastStepUsage ?? turnUsage;
                 const shouldTrigger = await sessionCompaction.shouldCompact({
                   messages: accumulator.modelMessages,
-                  totalTokens: turnUsage.totalTokens,
-                  inputTokens: turnUsage.inputTokens,
-                  outputTokens: turnUsage.outputTokens,
-                  usage: turnUsage,
+                  totalTokens: contextUsage.totalTokens,
+                  inputTokens: contextUsage.inputTokens,
+                  outputTokens: contextUsage.outputTokens,
+                  usage: contextUsage,
+                  turnUsage,
                   totalUsage: cumulativeUsage,
                   chatId: currentPayload.chatId,
                   turn,
