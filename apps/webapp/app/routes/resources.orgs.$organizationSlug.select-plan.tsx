@@ -313,6 +313,32 @@ export function PricingPlans({
   );
 }
 
+const LACKING_FEATURES_REASON = "Lacking features I need";
+
+const DOWNGRADE_REASONS = [
+  "The Free plan is all I need",
+  "Subscription or usage costs too expensive",
+  "Bugs or technical issues",
+  "No longer need the service",
+  "Found a better alternative",
+  LACKING_FEATURES_REASON,
+] as const;
+
+/** Unbiased Fisher-Yates on a copy, so the source array is never mutated. */
+function shuffleArray<T>(items: readonly T[]): T[] {
+  const shuffled = [...items];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
+/** A stable id per reason, so ids don't move when the list order does. */
+function reasonId(reason: string) {
+  return `reason-${reason.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+}
+
 export function TierFree({
   plan,
   subscription,
@@ -330,6 +356,8 @@ export function TierFree({
   const isLoading = navigation.formAction === formAction;
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isLackingFeaturesChecked, setIsLackingFeaturesChecked] = useState(false);
+  // Randomised once per mount so list position doesn't bias which reasons get picked.
+  const [shuffledReasons] = useState(() => shuffleArray(DOWNGRADE_REASONS));
 
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
@@ -367,24 +395,17 @@ export function TierFree({
                 <div className="mb-4">
                   <Header2 className="mb-1">Why are you thinking of downgrading?</Header2>
                   <ul className="space-y-1">
-                    {[
-                      "The Free plan is all I need",
-                      "Subscription or usage costs too expensive",
-                      "Bugs or technical issues",
-                      "No longer need the service",
-                      "Found a better alternative",
-                      "Lacking features I need",
-                    ].map((label, index) => (
-                      <li key={index}>
+                    {shuffledReasons.map((label) => (
+                      <li key={label}>
                         <CheckboxWithLabel
-                          id={`reason-${index + 1}`}
+                          id={reasonId(label)}
                           name="reasons"
                           value={label}
                           variant="simple"
                           label={label}
                           labelClassName="text-text-dimmed"
                           onChange={(isChecked: boolean) => {
-                            if (label === "Lacking features I need") {
+                            if (label === LACKING_FEATURES_REASON) {
                               setIsLackingFeaturesChecked(isChecked);
                             }
                           }}
