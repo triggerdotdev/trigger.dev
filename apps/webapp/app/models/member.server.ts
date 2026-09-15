@@ -135,11 +135,25 @@ export async function inviteMembers({
   const existingMembers = await prisma.orgMember.findMany({
     where: {
       organizationId: org.id,
-      user: { email: { in: boundedIn([...uniqueEmails]) } },
+      user: { email: { in: boundedIn([...uniqueEmails]), mode: "insensitive" } },
     },
     select: { user: { select: { email: true } } },
   });
-  const existingMemberEmails = new Set(existingMembers.map((member) => member.user.email));
+  // Compare folded: stored account emails and invite rows can both carry
+  // casing the caller didn't type, and the unique org+email constraint the
+  // P2002 below relies on is itself case-sensitive.
+  const existingMemberEmails = new Set(
+    existingMembers.map((member) => member.user.email.toLowerCase())
+  );
+
+  const pendingInvites = await prisma.orgMemberInvite.findMany({
+    where: {
+      organizationId: org.id,
+      email: { in: boundedIn([...uniqueEmails]), mode: "insensitive" },
+    },
+    select: { email: true },
+  });
+  const pendingInviteEmails = new Set(pendingInvites.map((invite) => invite.email.toLowerCase()));
 
   // Create one invite per unique email and return ONLY the invites actually
   // created by this call. A P2002 means the email is already invited to this org
@@ -153,8 +167,15 @@ export async function inviteMembers({
   const alreadyInvited: string[] = [];
 
   for (const email of uniqueEmails) {
-    if (existingMemberEmails.has(email)) {
+    const folded = email.toLowerCase();
+
+    if (existingMemberEmails.has(folded)) {
       alreadyMembers.push(email);
+      continue;
+    }
+
+    if (pendingInviteEmails.has(folded)) {
+      alreadyInvited.push(email);
       continue;
     }
 

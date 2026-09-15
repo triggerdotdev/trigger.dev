@@ -167,4 +167,74 @@ describe("invite email casing", () => {
       expect(stillThere).not.toBeNull();
     }
   );
+  postgresTest(
+    "inviteMembers does not re-invite a member whose account email differs only by case",
+    { timeout: 60_000 },
+    async ({ prisma }) => {
+      prismaHolder.client = prisma;
+      const { inviteMembers } = await import("../app/models/member.server");
+
+      const suffix = randomHex(8);
+      const owner = await prisma.user.create({
+        data: { email: `owner-${suffix}@example.test`, authenticationMethod: "MAGIC_LINK" },
+      });
+      const member = await prisma.user.create({
+        data: { email: `Member-${suffix}@Example.test`, authenticationMethod: "MAGIC_LINK" },
+      });
+      const organization = await prisma.organization.create({
+        data: {
+          title: `invite-dupe-org-${suffix}`,
+          slug: `invite-dupe-org-${suffix}`,
+          isActivated: true,
+          members: {
+            create: [
+              { userId: owner.id, role: "ADMIN" },
+              { userId: member.id, role: "MEMBER" },
+            ],
+          },
+        },
+      });
+
+      // Both entry points fold the address before it reaches inviteMembers, so
+      // this is what an admin typing the member's own address actually sends.
+      const result = await inviteMembers({
+        slug: organization.slug,
+        emails: [`member-${suffix}@example.test`],
+        userId: owner.id,
+      });
+
+      expect(result.created).toHaveLength(0);
+      expect(result.alreadyMembers).toHaveLength(1);
+    }
+  );
+
+  postgresTest(
+    "inviteMembers does not duplicate a pending invite that differs only by case",
+    { timeout: 60_000 },
+    async ({ prisma }) => {
+      prismaHolder.client = prisma;
+      const { inviteMembers } = await import("../app/models/member.server");
+
+      const { organization, inviter, invitee, accountEmail } = await seedMixedCaseInvite(prisma);
+      void invitee;
+
+      const before = await prisma.orgMemberInvite.count({
+        where: { organizationId: organization.id },
+      });
+
+      const result = await inviteMembers({
+        slug: organization.slug,
+        emails: [accountEmail],
+        userId: inviter.id,
+      });
+
+      expect(result.created).toHaveLength(0);
+      expect(result.alreadyInvited).toHaveLength(1);
+
+      const after = await prisma.orgMemberInvite.count({
+        where: { organizationId: organization.id },
+      });
+      expect(after).toBe(before);
+    }
+  );
 });
