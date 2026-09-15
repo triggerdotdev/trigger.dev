@@ -48,6 +48,7 @@ import {
 import { conditionallyImportAndParsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
 import { withResolvedExternalDeploymentId } from "./externalDeploymentId.js";
 import { tracer } from "./tracer.js";
+import { traceSessionIdle, traceSessionWait } from "./sessionTracing.js";
 
 export type {
   CloseSessionRequestBody,
@@ -539,15 +540,15 @@ export class SessionOutputChannel<TOut = unknown> {
         [SemanticInternalAttributes.ENTITY_ID]: `${this.sessionId}:${this.channel ?? ""}:out`,
         [SemanticInternalAttributes.STYLE_ICON]: "sessions",
         ...(collapsed ? { [SemanticInternalAttributes.COLLAPSED]: true } : {}),
-        ...accessoryAttributes({
-          items: this.channel
-            ? [
+        ...(this.channel
+          ? accessoryAttributes({
+              items: [
                 { text: this.channel, variant: "normal" },
                 { text: "out", variant: "normal" },
-              ]
-            : [{ text: `${this.sessionId}.out`, variant: "normal" }],
-          style: "codepath",
-        }),
+              ],
+              style: "codepath",
+            })
+          : {}),
       },
     });
 
@@ -899,27 +900,34 @@ export class SessionInputChannel<TIn = unknown> {
 
     sessionStreams.disconnectStream(this.sessionId, "in");
 
-    const waitResult = await runtime.waitUntil(response.waitpointId);
+    // Create the waitpoint span only once setup is complete, at the boundary
+    // where runtime.waitUntil pauses usage. Its identity must be present at
+    // span creation so the inspector also works while the run is waiting.
+    const wake = await traceSessionWait(this.sessionId, response.waitpointId, async () => {
+      const waitResult = await runtime.waitUntil(response.waitpointId);
 
-    if (!waitResult.ok) {
-      const parsed =
-        waitResult.output !== undefined
-          ? await conditionallyImportAndParsePacket(
-              {
-                data: waitResult.output,
-                dataType: waitResult.outputType ?? "application/json",
-              },
-              apiClient
-            )
-          : undefined;
-      return {
-        ok: false as const,
-        error: new WaitpointTimeoutError(parsed?.message ?? "Timed out"),
-      };
-    }
+      if (!waitResult.ok) {
+        const parsed =
+          waitResult.output !== undefined
+            ? await conditionallyImportAndParsePacket(
+                {
+                  data: waitResult.output,
+                  dataType: waitResult.outputType ?? "application/json",
+                },
+                apiClient
+              )
+            : undefined;
+        const error = new WaitpointTimeoutError(parsed?.message ?? "Timed out");
+        return { ok: false as const, error };
+      }
+
+      return { ok: true as const, waitpointId: response.waitpointId };
+    });
+
+    if (!wake.ok) return wake;
 
     sessionStreams.reconnectStream(this.sessionId, "in");
-    return { ok: true as const, waitpointId: response.waitpointId };
+    return wake;
   }
 
   wait<T = unknown>(options?: InputStreamWaitOptions): ManualWaitpointPromise<T> {
@@ -938,8 +946,6 @@ export class SessionInputChannel<TIn = unknown> {
               span.setStatus({ code: SpanStatusCode.ERROR });
               return { ok: false as const, error: wake.error };
             }
-
-            span.setAttribute(SemanticInternalAttributes.ENTITY_ID, wake.waitpointId);
 
             const record = await sessionStreams.onceRecord(this.sessionId, "in");
 
@@ -967,14 +973,9 @@ export class SessionInputChannel<TIn = unknown> {
           },
           {
             attributes: {
-              [SemanticInternalAttributes.STYLE_ICON]: "wait",
-              [SemanticInternalAttributes.ENTITY_TYPE]: "waitpoint",
+              [SemanticInternalAttributes.STYLE_ICON]: "sessions",
               session: this.sessionId,
               io: "in",
-              ...accessoryAttributes({
-                items: [{ text: `${this.sessionId}.in`, variant: "normal" }],
-                style: "codepath",
-              }),
             },
           }
         );
@@ -1005,9 +1006,11 @@ export class SessionInputChannel<TIn = unknown> {
       spanName,
       async (span) => {
         if (options.idleTimeoutInSeconds > 0) {
-          const warm = await sessionStreams.once(self.sessionId, "in", {
-            timeoutMs: options.idleTimeoutInSeconds * 1000,
-          });
+          const warm = await traceSessionIdle(self.sessionId, options.idleTimeoutInSeconds, () =>
+            sessionStreams.once(self.sessionId, "in", {
+              timeoutMs: options.idleTimeoutInSeconds * 1000,
+            })
+          );
           if (warm.ok) {
             span.setAttribute("wait.resolved", "idle");
             return { ok: true as const, output: warm.output as T };
@@ -1046,10 +1049,6 @@ export class SessionInputChannel<TIn = unknown> {
           [SemanticInternalAttributes.STYLE_ICON]: "sessions",
           session: self.sessionId,
           io: "in",
-          ...accessoryAttributes({
-            items: [{ text: `${self.sessionId}.in`, variant: "normal" }],
-            style: "codepath",
-          }),
         },
       }
     );

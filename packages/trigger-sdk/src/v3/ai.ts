@@ -65,6 +65,7 @@ import type {
 // Runtime VALUES go through the ESM/CJS shim so the CJS build can `require`
 // ESM-only `ai@7` (see ../imports/ai-runtime.ts).
 import { type Attributes, trace } from "@opentelemetry/api";
+import { traceSessionIdle } from "./sessionTracing.js";
 import {
   tool as aiTool,
   convertToModelMessages,
@@ -1786,7 +1787,9 @@ async function waitOnChatRoute<T>(
     async (span) => {
       const idleMs = (options.idleTimeoutInSeconds ?? 0) * 1000;
       if (idleMs > 0) {
-        const warm = await router.next(route, { timeoutMs: idleMs });
+        const warm = await traceSessionIdle(session.id, idleMs / 1000, () =>
+          router.next(route, { timeoutMs: idleMs })
+        );
         if (warm) {
           span.setAttribute("wait.resolved", "idle");
           return { ok: true as const, output: warm.data as T, record: warm };
@@ -1842,10 +1845,6 @@ async function waitOnChatRoute<T>(
         session: session.id,
         io: "in",
         route,
-        ...accessoryAttributes({
-          items: [{ text: `${session.id}.in:${route}`, variant: "normal" }],
-          style: "codepath",
-        }),
       },
     }
   );
@@ -8116,7 +8115,7 @@ function chatAgent<
           const preloadResult = await messagesInput.waitWithIdleTimeout({
             idleTimeoutInSeconds: effectivePreloadIdleTimeout,
             timeout: effectivePreloadTimeout,
-            spanName: "waiting for first message",
+            spanName: "first message",
             skipSuspend: exitAfterPreloadIdle,
             onSuspend: onChatSuspend
               ? async () => {
@@ -8298,7 +8297,7 @@ function chatAgent<
             const continuationResult = await messagesInput.waitWithIdleTimeout({
               idleTimeoutInSeconds: effectiveIdleTimeout,
               timeout: effectiveTurnTimeout,
-              spanName: "waiting for first message (continuation)",
+              spanName: "first message (continuation)",
               onSuspend: onChatSuspend
                 ? async () => {
                     await tracer.startActiveSpan(
@@ -9948,7 +9947,7 @@ function chatAgent<
                 const next = await messagesInput.waitWithIdleTimeout({
                   idleTimeoutInSeconds: effectiveIdleTimeout,
                   timeout: effectiveTurnTimeout,
-                  spanName: "waiting for next message",
+                  spanName: "next message",
                   onSuspend: onChatSuspend
                     ? async () => {
                         await tracer.startActiveSpan(
@@ -10347,7 +10346,7 @@ function chatAgent<
             const next = await messagesInput.waitWithIdleTimeout({
               idleTimeoutInSeconds: effectiveIdleTimeout,
               timeout: effectiveTurnTimeout,
-              spanName: "waiting for next message (after error)",
+              spanName: "next message (after error)",
             });
 
             if (!next.ok) {
@@ -12356,8 +12355,8 @@ function createChatSession<TClientData = unknown>(
               timeout,
               spanName:
                 currentPayload.trigger === "preload"
-                  ? "waiting for first message"
-                  : "waiting for first message (continuation)",
+                  ? "first message"
+                  : "first message (continuation)",
             });
             if (!result.ok || runSignal.aborted) {
               stop.cleanup();
@@ -12397,7 +12396,7 @@ function createChatSession<TClientData = unknown>(
             const next = await messagesInput.waitWithIdleTimeout({
               idleTimeoutInSeconds,
               timeout,
-              spanName: "waiting for next message",
+              spanName: "next message",
             });
             if (!next.ok || runSignal.aborted) {
               stop.cleanup();
