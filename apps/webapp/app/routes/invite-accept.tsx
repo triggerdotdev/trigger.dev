@@ -34,7 +34,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     );
   }
 
-  if (invite.email !== user.email) {
+  if (invite.email.toLowerCase() !== user.email.toLowerCase()) {
     return redirectWithErrorMessage(
       "/",
       request,

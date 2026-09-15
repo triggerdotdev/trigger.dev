@@ -18,6 +18,8 @@ const ParamsSchema = z.object({
 const InviteRequestBody = z.object({
   emails: z
     .string()
+    .trim()
+    .toLowerCase()
     .email()
     .array()
     .nonempty("At least one email is required")
