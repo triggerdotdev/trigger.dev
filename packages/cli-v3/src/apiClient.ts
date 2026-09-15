@@ -110,6 +110,15 @@ const MarkProjectInitializedResponseBody = z.object({
   initializedAt: z.string().nullable(),
 });
 
+const RenameProjectResponseBody = z.object({
+  id: z.string(),
+  name: z.string(),
+});
+
+const DeleteProjectResponseBody = z.object({
+  id: z.string(),
+});
+
 export class CliApiClient {
   private engineURL: string;
   private source: "cli" | "mcp";
@@ -255,6 +264,29 @@ export class CliApiClient {
       method: "POST",
       headers: this.getHeaders(),
       body: JSON.stringify(body),
+    });
+  }
+
+  async renameProject(projectRef: string, body: { name: string }) {
+    if (!this.accessToken) {
+      throw new Error("renameProject: No access token");
+    }
+
+    return wrapZodFetch(RenameProjectResponseBody, `${this.apiURL}/api/v1/projects/${projectRef}`, {
+      method: "PATCH",
+      headers: this.getHeaders(),
+      body: JSON.stringify(body),
+    });
+  }
+
+  async deleteProject(projectRef: string) {
+    if (!this.accessToken) {
+      throw new Error("deleteProject: No access token");
+    }
+
+    return wrapZodFetch(DeleteProjectResponseBody, `${this.apiURL}/api/v1/projects/${projectRef}`, {
+      method: "DELETE",
+      headers: this.getHeaders(),
     });
   }
 

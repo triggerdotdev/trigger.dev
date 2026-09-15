@@ -245,12 +245,15 @@
                 "pages": [
                   "cli-deploy-commands",
                   "cli-dev-commands",
+                  "cli-env-commands",
                   "cli-init-commands",
                   "cli-list-profiles-commands",
                   "cli-login-commands",
                   "cli-logout-commands",
                   "cli-preview-archive",
+                  "cli-projects-commands",
                   "cli-promote-commands",
+                  "cli-runs-commands",
                   "cli-switch",
                   "cli-update-commands",
                   "cli-whoami-commands"

@@ -1,0 +1,74 @@
+---
+title: "CLI projects commands"
+sidebarTitle: "projects"
+description: "Use these commands to create, inspect, rename and delete your Trigger.dev projects."
+---
+
+import CommonOptions from "/snippets/cli-options-common.mdx";
+
+These commands act on the organizations and projects your account can access, so run
+[`login`](/cli-login-commands) first.
+
+## projects create
+
+Creates a project. You are prompted for the organization and name when the options are omitted.
+
+<CodeGroup>
+
+```bash npm
+npx trigger.dev@latest projects create
+```
+
+```bash pnpm
+pnpm dlx trigger.dev@latest projects create
+```
+
+```bash yarn
+yarn dlx trigger.dev@latest projects create
+```
+
+</CodeGroup>
+
+<ParamField body="Organization" type="--org | -o">
+  The organization slug or ID to create the project in.
+</ParamField>
+
+<ParamField body="Name" type="--name | -n">
+  The name of the new project.
+</ParamField>
+
+## projects get
+
+Prints the name, ref, slug, organization, default runtime and region of a project.
+
+```bash
+npx trigger.dev@latest projects get proj_abc123
+```
+
+## projects rename
+
+Renames a project. The project ref does not change.
+
+```bash
+npx trigger.dev@latest projects rename proj_abc123 "My new name"
+```
+
+## projects delete
+
+Deletes a project and everything in it. You are asked to confirm first.
+
+```bash
+npx trigger.dev@latest projects delete proj_abc123
+```
+
+<ParamField body="Skip confirmation" type="--yes | -y">
+  Delete without the confirmation prompt. Required in non-interactive environments such as CI.
+</ParamField>
+
+## Options
+
+### Common options
+
+These options are available on most commands.
+
+<CommonOptions />

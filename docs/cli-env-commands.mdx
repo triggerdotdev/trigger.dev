@@ -1,0 +1,63 @@
+---
+title: "CLI env set command"
+sidebarTitle: "env set"
+description: "Use the env set command to create or update an environment variable."
+---
+
+import CommonOptions from "/snippets/cli-options-common.mdx";
+import ConfigFileOptions from "/snippets/cli-options-config-file.mdx";
+import ProjectRefOptions from "/snippets/cli-options-project-ref.mdx";
+import BranchOptions from "/snippets/cli-options-branch.mdx";
+
+Sets an environment variable on your project, creating it if it doesn't exist and overwriting the
+value if it does.
+
+<CodeGroup>
+
+```bash npm
+npx trigger.dev@latest env set MY_VAR my-value
+```
+
+```bash pnpm
+pnpm dlx trigger.dev@latest env set MY_VAR my-value
+```
+
+```bash yarn
+yarn dlx trigger.dev@latest env set MY_VAR my-value
+```
+
+</CodeGroup>
+
+## Arguments
+
+```
+npx trigger.dev@latest env set <name> <value>
+```
+
+<ParamField body="Name" type="<name>">
+  The name of the environment variable.
+</ParamField>
+
+<ParamField body="Value" type="<value>">
+  The value to set.
+</ParamField>
+
+## Options
+
+<ParamField body="Secret" type="--secret">
+  Store the value as a secret, so it can't be read back.
+</ParamField>
+
+<ParamField body="Environment" type="--env | -e">
+  The environment to set the variable in: `prod`, `staging` or `preview`. Defaults to `prod`.
+</ParamField>
+
+<ConfigFileOptions />
+<ProjectRefOptions />
+<BranchOptions />
+
+### Common options
+
+These options are available on most commands.
+
+<CommonOptions />
