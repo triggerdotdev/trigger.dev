@@ -1,5 +1,18 @@
 # trigger.dev
 
+## 4.6.1
+
+### Patch Changes
+
+- Show schedule policy warnings during development and deployment, and present Free plan schedule limits without internal stack traces. ([`723fde4a8`](https://github.com/triggerdotdev/trigger.dev/commit/723fde4a86b8b57ba7b037a04a7147c45f5287b8))
+- New CLI commands: `projects create/get/rename`, `runs list/get/replay/cancel`, and `env set` ([`5bcd1a9fa`](https://github.com/triggerdotdev/trigger.dev/commit/5bcd1a9faf79c5b07598c43d0f935506b182b53b))
+- Fix the MCP server failing every `tools/list` call with "Date cannot be represented in JSON Schema" ([`6c90639f2`](https://github.com/triggerdotdev/trigger.dev/commit/6c90639f2f52b1dfdcc119f348aa33cbc015c060))
+- Warn when a deployment uses the deprecated Node.js 21 runtime. Deployment logs now include upgrade guidance, and the account associated with the deployment receives an email notification. ([`053b0b4c6`](https://github.com/triggerdotdev/trigger.dev/commit/053b0b4c62bc4b650b8d4f6aa692bc0ca669567a))
+- Updated dependencies:
+  - `@trigger.dev/core@4.6.1`
+  - `@trigger.dev/build@4.6.1`
+  - `@trigger.dev/schema-to-json@4.6.1`
+
 ## 4.6.0
 
 ### Minor Changes
