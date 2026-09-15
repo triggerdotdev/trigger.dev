@@ -17,6 +17,7 @@ import { logger } from "../utilities/logger.js";
 import { writePrivateEnvFile } from "../utilities/privateEnvFile.js";
 import { getProjectClient } from "../utilities/session.js";
 import { spinner } from "../utilities/windows.js";
+import { buildEnvSetImportBody } from "./envSet.js";
 import { login } from "./login.js";
 
 const EnvListOptions = CommonCommandOptions.extend({
@@ -32,6 +33,18 @@ const EnvGetOptions = CommonCommandOptions.extend({
   projectRef: z.string().optional(),
   name: z.string(),
   raw: z.boolean().default(false),
+  env: z.enum(["prod", "staging", "preview", "production"]).default("prod"),
+  branch: z.string().optional(),
+});
+
+const EnvSetOptions = CommonCommandOptions.extend({
+  config: z.string().optional(),
+  projectRef: z.string().optional(),
+  name: z.string().trim().min(1),
+  value: z
+    .string()
+    .refine((value) => value.trim().length > 0, "Environment variable values cannot be empty"),
+  secret: z.boolean().default(false),
   env: z.enum(["prod", "staging", "preview", "production"]).default("prod"),
   branch: z.string().optional(),
 });
@@ -125,6 +138,29 @@ export function configureEnvCommand(program: Command) {
     });
   });
 
+  commonOptions(
+    envCommand
+      .command("set <name> <value>")
+      .description("Set the value of an environment variable, creating or updating it")
+      .option("-c, --config <config file>", "The name of the config file")
+      .option(
+        "-p, --project-ref <project ref>",
+        "The project ref. Required if there is no config file"
+      )
+      .option(
+        "-e, --env <env>",
+        "The environment to set the variable in (prod, staging, preview)",
+        "prod"
+      )
+      .option("-b, --branch <branch>", "The preview branch when using --env preview")
+      .option("--secret", "Store the value as a secret, so it can't be read back")
+  ).action(async (name, value, options) => {
+    await handleTelemetry(async () => {
+      await printInitialBanner(false, options.profile);
+      await envSetCommand({ ...options, name, value });
+    });
+  });
+
   return envCommand;
 }
 
@@ -150,6 +186,17 @@ async function envGetCommand(options: unknown) {
   );
 }
 
+async function envSetCommand(options: unknown) {
+  return await wrapCommandAction(
+    "envSet",
+    EnvSetOptions,
+    options,
+    async (opts: z.infer<typeof EnvSetOptions>) => {
+      return await _envSetCommand(opts);
+    }
+  );
+}
+
 async function envPullCommand(options: unknown) {
   return await wrapCommandAction(
     "envPull",
@@ -166,6 +213,7 @@ async function resolveProjectEnv(
     | z.infer<typeof EnvListOptions>
     | z.infer<typeof EnvGetOptions>
     | z.infer<typeof EnvPullOptions>
+    | z.infer<typeof EnvSetOptions>
 ) {
   const authorization = await login({
     embedded: true,
@@ -348,6 +396,36 @@ async function _envGetCommand(options: z.infer<typeof EnvGetOptions>) {
   }
 
   log.success(chalk.green(`${options.name}=${value}`));
+
+  const envInfo = branch ? `${env} (${branch})` : env;
+  outro(`Project: ${projectRef} | Environment: ${envInfo}`);
+}
+
+async function _envSetCommand(options: z.infer<typeof EnvSetOptions>) {
+  intro(`Setting environment variable: ${options.name}`);
+
+  const $spinner = spinner();
+
+  const { projectClient, projectRef, env, branch } = await resolveProjectEnv(options);
+
+  $spinner.start(`Setting ${options.name}`);
+
+  // The import endpoint with `override: true` is the only upsert we have — the
+  // create/update endpoints require knowing whether the variable already exists.
+  const result = await projectClient.client.importEnvVars(
+    projectRef,
+    env,
+    buildEnvSetImportBody(options.name, options.value, options.secret)
+  );
+
+  if (!result.success) {
+    $spinner.stop(`Failed to set ${options.name}`);
+    throw new Error(`Failed to set environment variable: ${result.error}`);
+  }
+
+  $spinner.stop(`Set ${options.name}`);
+
+  log.success(chalk.green(`${options.name} is set${options.secret ? " as a secret" : ""}`));
 
   const envInfo = branch ? `${env} (${branch})` : env;
   outro(`Project: ${projectRef} | Environment: ${envInfo}`);

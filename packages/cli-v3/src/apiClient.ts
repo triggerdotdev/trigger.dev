@@ -110,6 +110,11 @@ const MarkProjectInitializedResponseBody = z.object({
   initializedAt: z.string().nullable(),
 });
 
+const RenameProjectResponseBody = z.object({
+  id: z.string(),
+  name: z.string(),
+});
+
 export class CliApiClient {
   private engineURL: string;
   private source: "cli" | "mcp";
@@ -253,6 +258,18 @@ export class CliApiClient {
 
     return wrapZodFetch(GetProjectResponseBody, `${this.apiURL}/api/v1/orgs/${orgParam}/projects`, {
       method: "POST",
+      headers: this.getHeaders(),
+      body: JSON.stringify(body),
+    });
+  }
+
+  async renameProject(projectRef: string, body: { name: string }) {
+    if (!this.accessToken) {
+      throw new Error("renameProject: No access token");
+    }
+
+    return wrapZodFetch(RenameProjectResponseBody, `${this.apiURL}/api/v1/projects/${projectRef}`, {
+      method: "PATCH",
       headers: this.getHeaders(),
       body: JSON.stringify(body),
     });

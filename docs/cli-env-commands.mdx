@@ -1,0 +1,114 @@
+---
+title: "CLI env commands"
+sidebarTitle: "env"
+description: "List, get, set, and pull environment variables for a Trigger.dev project."
+---
+
+import CommonOptions from "/snippets/cli-options-common.mdx";
+import ConfigFileOptions from "/snippets/cli-options-config-file.mdx";
+import ProjectRefOptions from "/snippets/cli-options-project-ref.mdx";
+import BranchOptions from "/snippets/cli-options-branch.mdx";
+
+These commands manage environment variables on a project environment. They default to `prod`. Use `--env staging` or `--env preview` (with `--branch`) for the other environments. There is no `dev` target: local `trigger dev` reads your local `.env`.
+
+<CodeGroup>
+
+```bash npm
+npx trigger.dev@latest env list
+```
+
+```bash pnpm
+pnpm dlx trigger.dev@latest env list
+```
+
+```bash yarn
+yarn dlx trigger.dev@latest env list
+```
+
+</CodeGroup>
+
+## env list
+
+Lists user-set environment variables. `TRIGGER_` system variables are omitted. Values are hidden unless you pass `--show-values`.
+
+```bash
+npx trigger.dev@latest env list
+npx trigger.dev@latest env list --show-values
+```
+
+<ParamField body="Show values" type="--show-values">
+  Print the actual values, including secrets.
+</ParamField>
+
+## env get
+
+Prints one variable. `--raw` prints only the value, with no banner or extra text, so you can capture it in a script.
+
+```bash
+npx trigger.dev@latest env get MY_VAR
+npx trigger.dev@latest env get MY_VAR --raw
+```
+
+<ParamField body="Name" type="<name>">
+  The name of the environment variable.
+</ParamField>
+
+<ParamField body="Raw" type="--raw">
+  Print only the value.
+</ParamField>
+
+## env set
+
+Creates the variable if it does not exist, and overwrites the value if it does. Empty or whitespace-only values are rejected.
+
+Updating an existing secret without `--secret` changes the value and leaves it secret. Pass `--secret` when you first create a secret, or when you want a non-secret variable to become one.
+
+```bash
+npx trigger.dev@latest env set MY_VAR my-value
+npx trigger.dev@latest env set STRIPE_KEY sk_live_abc --secret
+```
+
+<ParamField body="Name" type="<name>">
+  The name of the environment variable.
+</ParamField>
+
+<ParamField body="Value" type="<value>">
+  The value to set. Cannot be empty.
+</ParamField>
+
+<ParamField body="Secret" type="--secret">
+  Store the value as a secret, so it cannot be read back.
+</ParamField>
+
+## env pull
+
+Writes the project's environment variables to a local file. Defaults to `.env.local`. Fails if the file already exists unless you pass `--force`.
+
+```bash
+npx trigger.dev@latest env pull
+npx trigger.dev@latest env pull --output .env.trigger --force
+```
+
+<ParamField body="Output" type="-o, --output <file>">
+  The file to write. Defaults to `.env.local`.
+</ParamField>
+
+<ParamField body="Force" type="--force">
+  Overwrite the output file if it exists.
+</ParamField>
+
+## Options
+
+<ParamField body="Environment" type="--env | -e">
+  The environment to use: `prod`, `staging` or `preview`. Defaults to `prod`.
+</ParamField>
+
+<ConfigFileOptions />
+<ProjectRefOptions />
+<BranchOptions />
+
+### Common options
+
+These options are available on most commands.
+
+<CommonOptions />

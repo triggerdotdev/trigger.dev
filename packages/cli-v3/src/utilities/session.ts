@@ -1,4 +1,4 @@
-import type { GitMeta } from "@trigger.dev/core/v3";
+import { ApiClient, type GitMeta } from "@trigger.dev/core/v3";
 import { CliApiClient } from "../apiClient.js";
 import { readAuthConfigProfile } from "./configFiles.js";
 import { logger } from "./logger.js";
@@ -115,6 +115,21 @@ export async function getProjectClient(options: GetEnvOptions) {
     defaultRuntime: projectEnv.data.defaultRuntime,
     client,
   };
+}
+
+/** A core `ApiClient` scoped to the project environment's secret key, for the environment-keyed APIs (runs, etc). */
+export async function getProjectEnvApiClient(options: GetEnvOptions) {
+  const projectClient = await getProjectClient(options);
+
+  if (!projectClient?.client.accessToken) {
+    return;
+  }
+
+  return new ApiClient(
+    projectClient.client.apiURL,
+    projectClient.client.accessToken,
+    options.branch
+  );
 }
 
 export type UpsertBranchOptions = {
