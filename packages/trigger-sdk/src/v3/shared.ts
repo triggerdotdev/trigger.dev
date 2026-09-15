@@ -92,6 +92,26 @@ import {
 import { resolveTriggerExternalDeploymentId, scopedEnvVar } from "./externalDeploymentId.js";
 import { tracer } from "./tracer.js";
 
+/**
+ * Normalizes the task-level `region` option (a single region or a list) into the
+ * `regions` list carried in the task manifest. Trims, drops empty entries and
+ * de-duplicates. An empty result means "no constraint", so `region: []` can never
+ * mean "nowhere".
+ */
+function normalizeTaskRegions(region: string | string[] | undefined): string[] | undefined {
+  if (region === undefined) {
+    return undefined;
+  }
+
+  const list = (typeof region === "string" ? [region] : region)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+
+  const unique = Array.from(new Set(list));
+
+  return unique.length > 0 ? unique : undefined;
+}
+
 export type {
   AnyRunHandle,
   AnyTask,
@@ -246,6 +266,7 @@ export function createTask<
     queue: params.queue,
     retry: params.retry ? { ...defaultRetryOptions, ...params.retry } : undefined,
     machine: typeof params.machine === "string" ? { preset: params.machine } : params.machine,
+    regions: normalizeTaskRegions(params.region),
     triggerSource: params.triggerSource,
     agentConfig: params.agentConfig,
     maxDuration: params.maxDuration,
@@ -400,6 +421,7 @@ export function createSchemaTask<
     queue: params.queue,
     retry: params.retry ? { ...defaultRetryOptions, ...params.retry } : undefined,
     machine: typeof params.machine === "string" ? { preset: params.machine } : params.machine,
+    regions: normalizeTaskRegions(params.region),
     triggerSource: params.triggerSource,
     agentConfig: params.agentConfig,
     maxDuration: params.maxDuration,

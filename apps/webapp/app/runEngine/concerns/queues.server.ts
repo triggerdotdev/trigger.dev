@@ -9,8 +9,12 @@ import type {
   QueueProperties,
   QueueValidationResult,
   TriggerTaskRequest,
+  WorkerQueueOptions,
 } from "../types";
-import { WorkerGroupService } from "~/v3/services/worker/workerGroupService.server";
+import {
+  RegionNotAllowedForTaskError,
+  WorkerGroupService,
+} from "~/v3/services/worker/workerGroupService.server";
 import type { RunEngine } from "~/v3/runEngine.server";
 import { env } from "~/env.server";
 import { tryCatch } from "@trigger.dev/core/v3";
@@ -95,6 +99,7 @@ export class DefaultQueueManager implements QueueManager {
     let lockedQueueId: string | undefined;
     let taskTtl: string | null | undefined;
     let taskKind: string | undefined;
+    let taskRegions: string[] | undefined;
 
     // Determine queue name based on lockToVersion and provided options
     if (lockedBackgroundWorker) {
@@ -146,6 +151,7 @@ export class DefaultQueueManager implements QueueManager {
           taskTtl = lockedMeta?.ttl ?? undefined;
         }
         taskKind = lockedMeta?.triggerSource;
+        taskRegions = lockedMeta?.regions;
       } else {
         // No queue override - resolve default queue + TTL + triggerSource via cache,
         // falling back to a single BackgroundWorkerTask lookup on miss.
@@ -184,6 +190,7 @@ export class DefaultQueueManager implements QueueManager {
         queueName = lockedMeta.queueName;
         lockedQueueId = lockedMeta.queueId ?? undefined;
         taskKind = lockedMeta.triggerSource;
+        taskRegions = lockedMeta.regions;
       }
     } else {
       // Task is not locked to a specific version, use regular logic
@@ -199,6 +206,7 @@ export class DefaultQueueManager implements QueueManager {
       queueName = taskInfo.queueName;
       taskTtl = taskInfo.taskTtl;
       taskKind = taskInfo.taskKind;
+      taskRegions = taskInfo.taskRegions;
     }
 
     // Sanitize the final determined queue name once
@@ -216,12 +224,16 @@ export class DefaultQueueManager implements QueueManager {
       lockedQueueId,
       taskTtl,
       taskKind,
+      taskRegions,
     };
   }
 
-  private async getTaskQueueInfo(
-    request: TriggerTaskRequest
-  ): Promise<{ queueName: string; taskTtl?: string | null; taskKind?: string | undefined }> {
+  private async getTaskQueueInfo(request: TriggerTaskRequest): Promise<{
+    queueName: string;
+    taskTtl?: string | null;
+    taskKind?: string | undefined;
+    taskRegions?: string[];
+  }> {
     const { taskId, environment, body } = request;
     const { queue } = body.options ?? {};
 
@@ -243,6 +255,7 @@ export class DefaultQueueManager implements QueueManager {
         queueName: overriddenQueueName,
         taskTtl: meta?.ttl ?? undefined,
         taskKind: meta?.triggerSource,
+        taskRegions: meta?.regions,
       };
     }
 
@@ -259,10 +272,20 @@ export class DefaultQueueManager implements QueueManager {
         taskId,
         environmentId: environment.id,
       });
-      return { queueName: defaultQueueName, taskTtl: meta.ttl, taskKind: meta.triggerSource };
+      return {
+        queueName: defaultQueueName,
+        taskTtl: meta.ttl,
+        taskKind: meta.triggerSource,
+        taskRegions: meta.regions,
+      };
     }
 
-    return { queueName: meta.queueName, taskTtl: meta.ttl, taskKind: meta.triggerSource };
+    return {
+      queueName: meta.queueName,
+      taskTtl: meta.ttl,
+      taskKind: meta.triggerSource,
+      taskRegions: meta.regions,
+    };
   }
 
   /**
@@ -320,6 +343,7 @@ export class DefaultQueueManager implements QueueManager {
       triggerSource: row.triggerSource,
       queueId: row.queue?.id ?? null,
       queueName: row.queue?.name ?? "",
+      regions: row.regions,
     };
 
     // Fire-and-forget back-fill — `setByWorker` upserts the single field and
@@ -340,6 +364,7 @@ export class DefaultQueueManager implements QueueManager {
       select: {
         ttl: true,
         triggerSource: true,
+        regions: true,
         queue: { select: { id: true, name: true } },
       },
     });
@@ -378,6 +403,7 @@ export class DefaultQueueManager implements QueueManager {
       select: {
         ttl: true,
         triggerSource: true,
+        regions: true,
         queue: { select: { id: true, name: true } },
       },
     });
@@ -395,6 +421,7 @@ export class DefaultQueueManager implements QueueManager {
       triggerSource: row.triggerSource,
       queueId: row.queue?.id ?? null,
       queueName: row.queue?.name ?? "",
+      regions: row.regions,
     };
 
     // Fire-and-forget back-fill — atomically upserts the slug into both
@@ -438,8 +465,10 @@ export class DefaultQueueManager implements QueueManager {
 
   async getWorkerQueue(
     environment: AuthenticatedEnvironment,
-    regionOverride?: string
+    options?: WorkerQueueOptions
   ): Promise<{ masterQueue: string; enableFastPath: boolean } | undefined> {
+    // Dev runs always dequeue from the environment's own queue, so both the
+    // per-trigger region and the task-level region list are ignored here.
     if (environment.type === "DEVELOPMENT") {
       return { masterQueue: environment.id, enableFastPath: true };
     }
@@ -452,11 +481,19 @@ export class DefaultQueueManager implements QueueManager {
     const [error, workerGroup] = await tryCatch(
       workerGroupService.getDefaultWorkerGroupForProject({
         projectId: environment.projectId,
-        regionOverride,
+        regionOverride: options?.regionOverride,
+        allowedRegions: options?.taskRegions,
+        taskId: options?.taskId,
       })
     );
 
     if (error) {
+      // A per-trigger region outside the task definition's list is a caller
+      // mistake, so surface it as a 400 rather than the generic 422 below.
+      if (error instanceof RegionNotAllowedForTaskError) {
+        throw new ServiceValidationError(error.message, 400);
+      }
+
       // getDefaultWorkerGroupForProject queries the writer DB. A Prisma
       // infrastructure error (e.g. P1001 "Can't reach database server", whose
       // message carries the DB hostname) must NOT be promoted into a

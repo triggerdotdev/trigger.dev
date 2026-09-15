@@ -445,7 +445,7 @@ export class RunEngineTriggerTaskService {
           const parkedOnExternalDeploymentId =
             externalDeploymentResolution?.outcome === "park" ? externalDeploymentId : undefined;
 
-          const { queueName, lockedQueueId, taskTtl, taskKind } =
+          const { queueName, lockedQueueId, taskTtl, taskKind, taskRegions } =
             await this.queueConcern.resolveQueueProperties(
               triggerRequest,
               lockedToBackgroundWorker ?? undefined
@@ -497,10 +497,13 @@ export class RunEngineTriggerTaskService {
 
           const depth = parentRun ? parentRun.depth + 1 : 0;
 
-          const workerQueueResult = await this.queueConcern.getWorkerQueue(
-            environment,
-            body.options?.region
-          );
+          // The task definition's region list (if any) rode in on the cached task
+          // metadata above, so no extra query is needed to enforce it here.
+          const workerQueueResult = await this.queueConcern.getWorkerQueue(environment, {
+            regionOverride: body.options?.region,
+            taskRegions,
+            taskId,
+          });
           const baseWorkerQueue = workerQueueResult?.masterQueue;
           const enableFastPath = workerQueueResult?.enableFastPath ?? false;
 

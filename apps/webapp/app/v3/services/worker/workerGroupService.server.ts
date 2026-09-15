@@ -1,4 +1,4 @@
-import type { WorkerInstanceGroup, WorkloadType } from "@trigger.dev/database";
+import type { Prisma, WorkerInstanceGroup, WorkloadType } from "@trigger.dev/database";
 import { WorkerInstanceGroupType } from "@trigger.dev/database";
 import { WithRunEngine } from "../baseService.server";
 import { isWorkerGroupAllowedForProject } from "./workerGroupAccess";
@@ -7,6 +7,21 @@ import { logger } from "~/services/logger.server";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
 import { makeFlag, makeSetFlag } from "~/v3/featureFlags.server";
 import { isComputeRegionAccessible, resolveComputeAccess } from "~/v3/regionAccess.server";
+
+/**
+ * Thrown when a per-trigger `region` override names a region outside the task
+ * definition's allowlist. Callers map this to a 400 (caller input) error.
+ */
+export class RegionNotAllowedForTaskError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RegionNotAllowedForTaskError";
+  }
+}
+
+type ProjectForRegionResolution = Prisma.ProjectGetPayload<{
+  include: { defaultWorkerGroup: true; organization: { select: { featureFlags: true } } };
+}>;
 
 export class WorkerGroupService extends WithRunEngine {
   private readonly defaultNamePrefix = "worker_group";
@@ -220,12 +235,29 @@ export class WorkerGroupService extends WithRunEngine {
     return workerGroup;
   }
 
+  /**
+   * Resolves the worker group (region) a run should be placed in.
+   *
+   * - `regionOverride` (the per-trigger `region` option) wins, subject to access
+   *   checks. When the task definition lists `allowedRegions`, the override must be
+   *   one of them or a `RegionNotAllowedForTaskError` is thrown.
+   * - Otherwise, with `allowedRegions`: the effective default (project default, else
+   *   global default) when it is in the list, else the first listed region, subject
+   *   to the same access checks as an override.
+   * - Otherwise the effective default.
+   */
   async getDefaultWorkerGroupForProject({
     projectId,
     regionOverride,
+    allowedRegions,
+    taskId,
   }: {
     projectId: string;
     regionOverride?: string;
+    /** Regions the task definition allows. Empty/undefined = unconstrained. */
+    allowedRegions?: string[];
+    /** Task identifier, used only in error messages. */
+    taskId?: string;
   }): Promise<WorkerInstanceGroup | undefined> {
     const project = await this._prisma.project.findFirst({
       where: {
@@ -241,54 +273,38 @@ export class WorkerGroupService extends WithRunEngine {
       throw new Error("Project not found.");
     }
 
+    const allowlist = allowedRegions && allowedRegions.length > 0 ? allowedRegions : undefined;
+
     // If they've specified a region, we need to check they have access to it
     if (regionOverride) {
-      const workerGroup = await this._prisma.workerInstanceGroup.findFirst({
-        where: {
-          masterQueue: regionOverride,
-        },
-      });
-
-      if (!workerGroup) {
-        throw new Error(`The region you specified doesn't exist ("${regionOverride}").`);
-      }
-
-      // The masterQueue-only lookup above can resolve another project's
-      // UNMANAGED group, so reject groups not usable by this project
-      // (see isWorkerGroupAllowedForProject).
-      if (!isWorkerGroupAllowedForProject(workerGroup, project.id)) {
-        throw new Error(`The region you specified isn't available to you ("${regionOverride}").`);
-      }
-
-      // If they're restricted, check they have access
-      if (project.allowedWorkerQueues.length > 0) {
-        if (project.allowedWorkerQueues.includes(workerGroup.masterQueue)) {
-          return workerGroup;
-        }
-
-        throw new Error(
-          `You don't have access to this region ("${regionOverride}"). You can use the following regions: ${project.allowedWorkerQueues.join(
+      if (allowlist && !allowlist.includes(regionOverride)) {
+        throw new RegionNotAllowedForTaskError(
+          `Task "${taskId ?? "unknown"}" can only run in: ${allowlist.join(
             ", "
-          )}.`
+          )}. You specified "${regionOverride}".`
         );
       }
 
-      if (workerGroup.hidden) {
-        throw new Error(`The region you specified isn't available to you ("${regionOverride}").`);
+      return await this.#resolveAccessibleWorkerGroup(project, regionOverride, {
+        source: "override",
+      });
+    }
+
+    if (allowlist) {
+      // Prefer the effective default when the task allows it (no extra query when
+      // the project has an explicit default), otherwise the first region the task
+      // lists, which goes through the same access checks as an override would.
+      const effectiveDefault =
+        project.defaultWorkerGroup ?? (await this.getGlobalDefaultWorkerGroup());
+
+      if (effectiveDefault && allowlist.includes(effectiveDefault.masterQueue)) {
+        return effectiveDefault;
       }
 
-      if (workerGroup.workloadType === "MICROVM") {
-        const hasComputeAccess = await resolveComputeAccess(
-          this._prisma,
-          project.organization.featureFlags
-        );
-
-        if (!isComputeRegionAccessible(workerGroup, hasComputeAccess)) {
-          throw new Error(`The region you specified isn't available to you ("${regionOverride}").`);
-        }
-      }
-
-      return workerGroup;
+      return await this.#resolveAccessibleWorkerGroup(project, allowlist[0], {
+        source: "task",
+        taskId,
+      });
     }
 
     if (project.defaultWorkerGroup) {
@@ -296,6 +312,69 @@ export class WorkerGroupService extends WithRunEngine {
     }
 
     return await this.getGlobalDefaultWorkerGroup();
+  }
+
+  /**
+   * Looks up a worker group by master queue and applies every access check a
+   * per-trigger region override gets: existence, cross-project UNMANAGED groups,
+   * the project's allowed-queue list, hidden groups and MICROVM compute access.
+   */
+  async #resolveAccessibleWorkerGroup(
+    project: ProjectForRegionResolution,
+    masterQueue: string,
+    { source, taskId }: { source: "override" | "task"; taskId?: string }
+  ): Promise<WorkerInstanceGroup> {
+    const label =
+      source === "task"
+        ? `The region configured on task "${taskId ?? "unknown"}"`
+        : "The region you specified";
+
+    const workerGroup = await this._prisma.workerInstanceGroup.findFirst({
+      where: {
+        masterQueue,
+      },
+    });
+
+    if (!workerGroup) {
+      throw new Error(`${label} doesn't exist ("${masterQueue}").`);
+    }
+
+    // The masterQueue-only lookup above can resolve another project's
+    // UNMANAGED group, so reject groups not usable by this project
+    // (see isWorkerGroupAllowedForProject).
+    if (!isWorkerGroupAllowedForProject(workerGroup, project.id)) {
+      throw new Error(`${label} isn't available to you ("${masterQueue}").`);
+    }
+
+    // If they're restricted, check they have access
+    if (project.allowedWorkerQueues.length > 0) {
+      if (project.allowedWorkerQueues.includes(workerGroup.masterQueue)) {
+        return workerGroup;
+      }
+
+      throw new Error(
+        `You don't have access to this region ("${masterQueue}"). You can use the following regions: ${project.allowedWorkerQueues.join(
+          ", "
+        )}.`
+      );
+    }
+
+    if (workerGroup.hidden) {
+      throw new Error(`${label} isn't available to you ("${masterQueue}").`);
+    }
+
+    if (workerGroup.workloadType === "MICROVM") {
+      const hasComputeAccess = await resolveComputeAccess(
+        this._prisma,
+        project.organization.featureFlags
+      );
+
+      if (!isComputeRegionAccessible(workerGroup, hasComputeAccess)) {
+        throw new Error(`${label} isn't available to you ("${masterQueue}").`);
+      }
+    }
+
+    return workerGroup;
   }
 
   async setDefaultWorkerGroupForProject({

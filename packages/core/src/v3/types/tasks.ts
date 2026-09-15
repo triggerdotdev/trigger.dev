@@ -279,6 +279,38 @@ type CommonTaskOptions<
   maxDuration?: number;
 
   /**
+   * Restrict which region(s) runs of this task may execute in. Pass a single region or a list.
+   *
+   * - A `region` passed when triggering must be one of these, otherwise the trigger is rejected.
+   * - If no `region` is passed when triggering, the project's default region is used when it is
+   *   in the list, otherwise the first region in the list.
+   * - Ignored in DEV, so it's fine to set it in your code.
+   *
+   * Region identifiers are shown on the Regions page in the dashboard.
+   *
+   * @example
+   *
+   * ```ts
+   * export const euOnlyTask = task({
+   *   id: "eu-only-task",
+   *   region: "eu-central-1",
+   *   run: async (payload) => {
+   *     //...
+   *   },
+   * });
+   *
+   * export const multiRegionTask = task({
+   *   id: "multi-region-task",
+   *   region: ["eu-central-1", "us-east-1"],
+   *   run: async (payload) => {
+   *     //...
+   *   },
+   * });
+   * ```
+   */
+  region?: string | string[];
+
+  /**
    * Set a default time-to-live for runs of this task. If the run is not executed within this time, it will be removed from the queue and never execute.
    *
    * This can be a string like "1h" (1 hour), "30m" (30 minutes), "1d" (1 day), or a number of seconds.

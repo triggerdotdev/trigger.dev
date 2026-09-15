@@ -46,6 +46,17 @@ export type QueueProperties = {
   lockedQueueId?: string;
   taskTtl?: string | null;
   taskKind?: string;
+  /** Regions the task definition allows (worker group master queues). Empty/undefined = unconstrained. */
+  taskRegions?: string[];
+};
+
+export type WorkerQueueOptions = {
+  /** Per-trigger `region` option. */
+  regionOverride?: string;
+  /** Regions the task definition allows; the resolved region must be one of them. */
+  taskRegions?: string[];
+  /** Task identifier, used only for error messages. */
+  taskId?: string;
 };
 
 export type LockedBackgroundWorker = Pick<
@@ -66,7 +77,7 @@ export interface QueueManager {
   ): Promise<QueueValidationResult>;
   getWorkerQueue(
     env: AuthenticatedEnvironment,
-    regionOverride?: string
+    options?: WorkerQueueOptions
   ): Promise<{ masterQueue: string; enableFastPath: boolean } | undefined>;
 }
 

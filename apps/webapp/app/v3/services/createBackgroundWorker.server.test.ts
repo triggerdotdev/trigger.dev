@@ -214,6 +214,7 @@ describe("worker task creation", () => {
             triggerSource: "STANDARD",
             queueId: queue.id,
             queueName: queue.name,
+            regions: [],
           },
         ],
         [
@@ -223,6 +224,7 @@ describe("worker task creation", () => {
             triggerSource: "STANDARD",
             queueId: queue.id,
             queueName: queue.name,
+            regions: [],
           },
         ],
       ]);
@@ -618,4 +620,138 @@ describe("syncDeclarativeSchedules default window enrollment", () => {
       }
     }
   );
+});
+
+// --- task-level regions ---------------------------------------------------------
+
+async function seedRegionGroup(prisma: PrismaClient, masterQueue: string, hidden = false) {
+  return prisma.workerInstanceGroup.create({
+    data: {
+      name: masterQueue,
+      masterQueue,
+      type: "MANAGED",
+      hidden,
+      token: {
+        create: { tokenHash: `token_${masterQueue}_${Math.random().toString(36).slice(2)}` },
+      },
+    },
+  });
+}
+
+async function seedRegionWorker(
+  prisma: PrismaClient,
+  projectId: string,
+  runtimeEnvironmentId: string
+) {
+  const worker = await prisma.backgroundWorker.create({
+    data: {
+      friendlyId: `worker_regions_${runtimeEnvironmentId}`,
+      contentHash: "regions-content",
+      version: "20260915.1",
+      metadata: {},
+      projectId,
+      runtimeEnvironmentId,
+    },
+  });
+  await prisma.taskQueue.create({
+    data: {
+      friendlyId: `queue_regions_${runtimeEnvironmentId}`,
+      name: "regions-queue",
+      type: "NAMED",
+      version: "V2",
+      paused: true,
+      projectId,
+      runtimeEnvironmentId,
+    },
+  });
+  return worker;
+}
+
+function regionMetadata(tasks: Array<{ id: string; regions?: string[] }>) {
+  return {
+    contentHash: "regions-content",
+    tasks: tasks.map((task) => ({
+      id: task.id,
+      filePath: `src/trigger/${task.id}.ts`,
+      exportName: task.id,
+      queue: { name: "regions-queue" },
+      regions: task.regions,
+    })),
+    queues: [{ name: "regions-queue" }],
+  } as unknown as BackgroundWorkerMetadata;
+}
+
+describe("task-level regions", () => {
+  containerTest(
+    "persists each task's regions and returns them in the cache entries",
+    async ({ prisma }) => {
+      const { project, prodEnv } = await seedProjectWithEnvs(prisma);
+      await seedRegionGroup(prisma, "eu-central-1");
+      const worker = await seedRegionWorker(prisma, project.id, prodEnv.id);
+      const environment = { ...asEnv(prodEnv), project } as AuthenticatedEnvironment;
+
+      const entries = await createWorkerResources(
+        regionMetadata([{ id: "eu-task", regions: ["eu-central-1"] }, { id: "any-task" }]),
+        worker,
+        environment,
+        prisma
+      );
+
+      expect(entries.map((entry) => ({ slug: entry.slug, regions: entry.regions }))).toEqual([
+        { slug: "eu-task", regions: ["eu-central-1"] },
+        { slug: "any-task", regions: [] },
+      ]);
+
+      const rows = await prisma.backgroundWorkerTask.findMany({
+        where: { workerId: worker.id },
+        orderBy: { slug: "asc" },
+        select: { slug: true, regions: true },
+      });
+      expect(rows).toEqual([
+        { slug: "any-task", regions: [] },
+        { slug: "eu-task", regions: ["eu-central-1"] },
+      ]);
+    }
+  );
+
+  containerTest(
+    "rejects a deploy whose tasks name regions the project cannot use, before persisting anything",
+    async ({ prisma }) => {
+      const { project, prodEnv } = await seedProjectWithEnvs(prisma);
+      await seedRegionGroup(prisma, "hidden-1", true);
+      const worker = await seedRegionWorker(prisma, project.id, prodEnv.id);
+      const environment = { ...asEnv(prodEnv), project } as AuthenticatedEnvironment;
+
+      await expect(
+        createWorkerResources(
+          regionMetadata([
+            { id: "task-a", regions: ["nope"] },
+            { id: "task-b", regions: ["nope", "hidden-1"] },
+          ]),
+          worker,
+          environment,
+          prisma
+        )
+      ).rejects.toThrow(
+        'Invalid region(s) in task definitions. "nope" (tasks: task-a, task-b): The region you specified doesn\'t exist ("nope"). "hidden-1" (tasks: task-b): The region you specified isn\'t available to you ("hidden-1").'
+      );
+
+      expect(await prisma.backgroundWorkerTask.count({ where: { workerId: worker.id } })).toBe(0);
+    }
+  );
+
+  containerTest("does not validate regions for dev environments", async ({ prisma }) => {
+    const { project, devEnv } = await seedProjectWithEnvs(prisma);
+    const worker = await seedRegionWorker(prisma, project.id, devEnv.id);
+    const environment = { ...asEnv(devEnv), project } as AuthenticatedEnvironment;
+
+    const entries = await createWorkerResources(
+      regionMetadata([{ id: "eu-task", regions: ["nope"] }]),
+      worker,
+      environment,
+      prisma
+    );
+
+    expect(entries[0]?.regions).toEqual(["nope"]);
+  });
 });

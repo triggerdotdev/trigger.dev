@@ -751,6 +751,9 @@ model BackgroundWorkerTask {
 
   ttl String?
 
+  /// Regions (WorkerInstanceGroup.masterQueue values) this task may run in. Empty = no constraint.
+  regions String[] @default([])
+
   triggerSource TaskTriggerSource @default(STANDARD)
 
   /// Extra task configuration JSON. Shape depends on triggerSource.

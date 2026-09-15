@@ -75,6 +75,7 @@ describe("DefaultQueueManager task metadata cache", () => {
           triggerSource: "AGENT",
           queueId: null,
           queueName: `task/${taskIdentifier}`,
+          regions: [],
         },
       ]);
 
@@ -211,6 +212,7 @@ describe("DefaultQueueManager task metadata cache", () => {
           triggerSource: "AGENT",
           queueId: null,
           queueName: `task/${taskIdentifier}`,
+          regions: [],
         },
       ]);
 
@@ -288,6 +290,7 @@ describe("DefaultQueueManager task metadata cache", () => {
           triggerSource: "AGENT",
           queueId: null,
           queueName: `task/${taskIdentifier}`,
+          regions: [],
         },
       ]);
       await cache.populateByCurrentWorker(environment.id, "dummy-worker-for-env-seed", [
@@ -297,6 +300,7 @@ describe("DefaultQueueManager task metadata cache", () => {
           triggerSource: "SCHEDULED",
           queueId: null,
           queueName: `task/${taskIdentifier}`,
+          regions: [],
         },
       ]);
 

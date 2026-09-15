@@ -8,6 +8,8 @@ export type TaskMetadataEntry = {
   triggerSource: TaskTriggerSource;
   queueId: string | null;
   queueName: string;
+  /** Regions the task may run in (worker group master queues). Empty = no constraint. */
+  regions: string[];
 };
 
 export interface TaskMetadataCache {
@@ -57,6 +59,8 @@ type EncodedEntry = {
   k: TaskTriggerSource;
   q: string | null;
   n: string;
+  /** Regions; omitted when empty so no-region entries stay byte-identical to pre-regions entries. */
+  r?: string[];
 };
 
 function encode(entry: TaskMetadataEntry): string {
@@ -65,6 +69,7 @@ function encode(entry: TaskMetadataEntry): string {
     k: entry.triggerSource,
     q: entry.queueId,
     n: entry.queueName,
+    r: entry.regions.length > 0 ? entry.regions : undefined,
   };
   return JSON.stringify(payload);
 }
@@ -78,6 +83,8 @@ function decode(slug: string, raw: string): TaskMetadataEntry | null {
       triggerSource: parsed.k,
       queueId: parsed.q,
       queueName: parsed.n,
+      // Entries written before regions existed have no `r`; treat as unconstrained.
+      regions: Array.isArray(parsed.r) ? parsed.r : [],
     };
   } catch (error) {
     logger.error("Failed to decode task metadata cache entry", { slug, error });

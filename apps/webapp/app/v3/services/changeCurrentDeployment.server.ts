@@ -119,6 +119,7 @@ export class ChangeCurrentDeploymentService extends BaseService {
           slug: true,
           triggerSource: true,
           ttl: true,
+          regions: true,
           queue: { select: { id: true, name: true } },
         },
       })
@@ -157,6 +158,7 @@ export class ChangeCurrentDeploymentService extends BaseService {
         triggerSource: t.triggerSource,
         queueId: t.queue?.id ?? null,
         queueName: t.queue?.name ?? "",
+        regions: t.regions,
       }));
 
       // Cache calls log+swallow internally.

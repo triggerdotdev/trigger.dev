@@ -26,6 +26,8 @@ export const TaskResource = z.object({
   schedule: ScheduleMetadata.optional(),
   maxDuration: z.number().optional(),
   ttl: z.string().or(z.number().nonnegative().int()).optional(),
+  /** Regions this task may run in. Omitted/empty means no constraint. */
+  regions: z.array(z.string()).optional(),
   // JSONSchema type - using z.unknown() for runtime validation to accept JSONSchema7
   payloadSchema: z.unknown().optional(),
 });

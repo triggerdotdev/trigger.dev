@@ -146,6 +146,42 @@ export const longTask = task({
 
 See our [maxDuration guide](/runs/max-duration) for more information.
 
+### `region` option
+
+You can restrict which region(s) a task is allowed to run in. Pass a single region to pin the task, or a list to allow more than one. Region identifiers are shown on the "Regions" page in the dashboard.
+
+```ts /trigger/eu-only-task.ts
+export const euOnlyTask = task({
+  id: "eu-only-task",
+  region: "eu-central-1",
+  run: async (payload: any, { ctx }) => {
+    //...
+  },
+});
+
+export const multiRegionTask = task({
+  id: "multi-region-task",
+  region: ["eu-central-1", "us-east-1"],
+  run: async (payload: any, { ctx }) => {
+    //...
+  },
+});
+```
+
+How the region for a run is chosen:
+
+- If you pass a [`region` when triggering](/triggering#region), it must be one of the task's regions, otherwise the trigger is rejected.
+- If you don't pass one, the project's default region is used when the task allows it. Otherwise the first region in the list is used.
+- A task with no `region` uses the per-trigger region or the project default, as before.
+
+If a task names a region that doesn't exist or isn't available to your project, the deploy fails with an error naming the task and region.
+
+<Note>
+  The `region` option is ignored in the DEV environment, so it's fine to set it in your code.
+  The region is where your runs are executed. It does not change where the run payload, output,
+  tags, logs, or any other data is stored.
+</Note>
+
 ### `ttl` option
 
 You can set a default time-to-live (TTL) on a task. If a run is not dequeued within this time, it will expire and never execute. This is useful for time-sensitive tasks where stale runs should be discarded.

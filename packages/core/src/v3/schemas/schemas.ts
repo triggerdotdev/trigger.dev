@@ -205,6 +205,8 @@ const taskMetadata = {
   schedule: ScheduleMetadata.optional(),
   maxDuration: z.number().optional(),
   ttl: z.string().or(z.number().nonnegative().int()).optional(),
+  /** Regions this task may run in. Omitted/empty means no constraint. */
+  regions: z.array(z.string()).optional(),
   payloadSchema: z.unknown().optional(),
 };
 

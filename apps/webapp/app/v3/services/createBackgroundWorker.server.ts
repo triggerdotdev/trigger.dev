@@ -56,6 +56,8 @@ import { projectPubSub } from "./projectPubSub.server";
 
 import { assertNoDuplicateTaskIds } from "./duplicateTaskIds.server";
 import { stripBackgroundWorkerMetadataForStorage } from "./stripBackgroundWorkerMetadataForStorage.server";
+import { WorkerGroupService } from "./worker/workerGroupService.server";
+import { isInfrastructureError } from "~/utils/prismaErrors";
 
 export class CreateBackgroundWorkerService extends BaseService {
   private readonly _taskMetaCache: TaskMetadataCache;
@@ -357,6 +359,12 @@ export async function createWorkerResources(
   // an un-deduplicated task list.
   assertNoDuplicateTaskIds(metadata.tasks);
 
+  // Fail fast on a region a task could never run in (unknown, hidden, another
+  // project's, or outside the project's allowlist). Dev ignores regions entirely.
+  if (environment.type !== "DEVELOPMENT") {
+    await assertTaskRegionsAreUsable(metadata.tasks, environment, prisma);
+  }
+
   // Create the queues
   const queues = await createWorkerQueues(metadata, worker, environment, prisma);
 
@@ -376,6 +384,62 @@ export async function createWorkerResources(
   }
 
   return taskEntries;
+}
+
+/**
+ * Validates every distinct region named by the worker's tasks with the same checks a
+ * per-trigger `region` override gets (exists, not another project's UNMANAGED group,
+ * inside the project's allowed queues, not hidden, MICROVM access), so a deploy that
+ * names a region the project cannot use fails here with a clear message instead of
+ * every trigger being rejected later.
+ */
+async function assertTaskRegionsAreUsable(
+  tasks: TaskResource[],
+  environment: AuthenticatedEnvironment,
+  prisma: PrismaClientOrTransaction
+): Promise<void> {
+  const taskIdsByRegion = new Map<string, string[]>();
+
+  for (const task of tasks) {
+    for (const region of task.regions ?? []) {
+      const taskIds = taskIdsByRegion.get(region) ?? [];
+      taskIds.push(task.id);
+      taskIdsByRegion.set(region, taskIds);
+    }
+  }
+
+  if (taskIdsByRegion.size === 0) {
+    return;
+  }
+
+  const workerGroupService = new WorkerGroupService({ prisma });
+  const failures: string[] = [];
+
+  for (const [region, taskIds] of taskIdsByRegion) {
+    const [error] = await tryCatch(
+      workerGroupService.getDefaultWorkerGroupForProject({
+        projectId: environment.projectId,
+        regionOverride: region,
+      })
+    );
+
+    if (!error) {
+      continue;
+    }
+
+    // A DB outage is not a customer config error; let it surface as a 500.
+    if (isInfrastructureError(error)) {
+      throw error;
+    }
+
+    failures.push(`"${region}" (tasks: ${taskIds.join(", ")}): ${error.message}`);
+  }
+
+  if (failures.length > 0) {
+    throw new ServiceValidationError(
+      `Invalid region(s) in task definitions. ${failures.join(" ")}`
+    );
+  }
 }
 
 async function createWorkerTasks(
@@ -465,6 +529,7 @@ async function createWorkerTask(
           fileId: tasksToBackgroundFiles?.get(task.id) ?? null,
           maxDurationInSeconds: task.maxDuration ? clampMaxDuration(task.maxDuration) : null,
           ttl: resolvedTtl,
+          regions: task.regions ?? [],
           queueId: queue.id,
           payloadSchema: task.payloadSchema as any,
         },
@@ -497,6 +562,7 @@ async function createWorkerTask(
       triggerSource: resolvedTriggerSource,
       queueId: queue.id,
       queueName: queue.name,
+      regions: task.regions ?? [],
     };
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {

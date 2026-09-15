@@ -1120,6 +1120,8 @@ await yourTask.trigger(payload, { region: "eu-central-1" });
 
 If you don't specify a region it will use the default for your project. Go to the "Regions" page in the dashboard to see available regions or switch your default. Static IP addresses are also available on the Regions page for paid plans.
 
+If the task definition sets a [`region` option](/tasks/overview#region-option), the region you pass here must be one of the task's regions, otherwise the trigger is rejected. Without a per-trigger region, the project default is used when the task allows it, otherwise the first region the task lists.
+
 The region is where your runs are executed, it does not change where the run payload, output, tags, logs, or are any other data is stored.
 
 ### `machine`
