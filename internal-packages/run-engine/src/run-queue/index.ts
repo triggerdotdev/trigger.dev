@@ -141,14 +141,20 @@ const QUEUE_METRICS_CK_DEQUEUE_GAUGE_LUA = createMetricsGaugeComputeLua({
 });
 
 /** Injected queue-metrics stream emitter; all calls are no-ops when metrics are disabled. */
-// Insertion points the virtual-time variants add to the ck scripts. The flag-off build of
-// each script passes none of them, so there is one copy of the shared Lua rather than two
-// that can drift apart.
-type CkVtimeParts = Partial<Record<string, string>>;
+// Slots the two builds of each ck script fill differently, so the shared Lua is written once
+// rather than copied. Each builder names its own slots: a key that is not one of them is a
+// compile error, because a silently-empty slot is the drift this exists to prevent.
+//
+// Most slots are insertion points the virtual-time build adds to and the flag-off build
+// leaves empty. Two builders are not like that. ckEnqueueLua and ckDequeueLua have slots the
+// FLAG-OFF build fills too, and in ckDequeueLua some slots open Lua blocks that the shared
+// text below them closes, so a slot's block depth is part of its contract and neither build
+// renders valid Lua on its own. Check both renders when editing those, never one.
+type CkParts<K extends string> = Partial<Record<K, string>>;
 
 // Shared by the ck dead-letter command and its virtual-time variant. Called with no parts it
 // renders the flag-off script exactly, so that build stays identical to the one in production.
-const ckDeadLetterLua = (v: CkVtimeParts) => `
+const ckDeadLetterLua = (v: CkParts<"keys" | "args" | "drainPark">) => `
 -- Keys:
 local masterQueueKey = KEYS[1]
 local messageKey = KEYS[2]
@@ -222,7 +228,7 @@ end
 `;
 
 // Shared by the ck ack command and its virtual-time variant.
-const ckAcknowledgeLua = (v: CkVtimeParts) => `
+const ckAcknowledgeLua = (v: CkParts<"keys" | "args" | "drainPark">) => `
 -- Keys:
 local masterQueueKey = KEYS[1]
 local messageKey = KEYS[2]
@@ -303,7 +309,7 @@ end
 `;
 
 // Shared by the ck nack command and its virtual-time variant.
-const ckNackLua = (v: CkVtimeParts) => `
+const ckNackLua = (v: CkParts<"keys" | "args" | "register">) => `
 -- Keys:
 local masterQueueKey = KEYS[1]
 local messageKey = KEYS[2]
@@ -394,7 +400,7 @@ end
 `;
 
 // Shared by the ck enqueue command and its virtual-time variant.
-const ckEnqueueLua = (v: CkVtimeParts) => `
+const ckEnqueueLua = (v: CkParts<"keys" | "args" | "fastPathGauge" | "register">) => `
 local masterQueueKey = KEYS[1]
 local queueKey = KEYS[2]
 local messageKey = KEYS[3]
@@ -451,10 +457,10 @@ if enableFastPath == '1' then
         redis.call('SET', messageKey, messageData)
         redis.call('SADD', queueCurrentConcurrencyKey, messageId)
         redis.call('SADD', envCurrentConcurrencyKey, messageId)
-        redis.call('RPUSH', workerQueueKey, messageKeyValue)${v.fastPathGaugeEarly ?? ""}
+        redis.call('RPUSH', workerQueueKey, messageKeyValue)${v.fastPathGauge ?? ""}
         -- Fast-path skips the CK variant zset entirely; lengthCounter is unchanged.
         -- runningCounter is bumped later by dequeueMessageFromKeyTracked when the
-        -- worker pulls the message from the worker queue.${v.fastPathGaugeLate ?? ""}
+        -- worker pulls the message from the worker queue.
         return __qmret(1)
       end
     end
@@ -511,7 +517,7 @@ end
 redis.call('SREM', queueCurrentConcurrencyKey, messageId)
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
 redis.call('SREM', queueCurrentDequeuedKey, messageId)
-redis.call('SREM', envCurrentDequeuedKey, messageId)${v.expire ?? ""}
+redis.call('SREM', envCurrentDequeuedKey, messageId)
 ${QUEUE_METRICS_CK_ENQUEUE_GAUGE_LUA}
 
 return __qmret(0)
@@ -519,7 +525,7 @@ return __qmret(0)
 
 // Shared by the ck enqueue-with-TTL command and its virtual-time variant. The registration
 // is the same rule as ckEnqueueLua above; it is a slot here rather than a second copy.
-const ckEnqueueWithTtlLua = (v: CkVtimeParts) => `
+const ckEnqueueWithTtlLua = (v: CkParts<"keys" | "args" | "register">) => `
 local masterQueueKey = KEYS[1]
 local queueKey = KEYS[2]
 local messageKey = KEYS[3]
@@ -633,14 +639,14 @@ end
 redis.call('SREM', queueCurrentConcurrencyKey, messageId)
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
 redis.call('SREM', queueCurrentDequeuedKey, messageId)
-redis.call('SREM', envCurrentDequeuedKey, messageId)${v.expire ?? ""}
+redis.call('SREM', envCurrentDequeuedKey, messageId)
 ${QUEUE_METRICS_CK_ENQUEUE_GAUGE_LUA}
 
 return __qmret(0)
       `;
 
 // Shared by the ck TTL sweep and its virtual-time variant.
-const ckExpireTtlLua = (v: CkVtimeParts) => `
+const ckExpireTtlLua = (v: CkParts<"args" | "drain">) => `
 local ttlQueueKey = KEYS[1]
 local keyPrefix = ARGV[1]
 local currentTime = tonumber(ARGV[2])
@@ -760,7 +766,24 @@ return results
 // Shared by the ck dequeue command and its virtual-time variant. This is the pair that
 // diverges most, so it carries the most slots, but the 120-odd shared lines are shared
 // rather than duplicated and a rewrite of the command reaches both builds.
-const ckDequeueLua = (v: CkVtimeParts) => `
+const ckDequeueLua = (
+  v: CkParts<
+    | "keys"
+    | "args"
+    | "candidateScan"
+    | "floorAndEmptyGuard"
+    | "earlyReturn"
+    | "minServableTag"
+    | "attempted"
+    | "serveLoopHead"
+    | "servedTag"
+    | "tagAdvance"
+    | "idlePark"
+    | "gcTagRead"
+    | "readiness"
+    | "passTwo"
+  >
+) => `
 local ckIndexKey = KEYS[1]
 local queueConcurrencyLimitKey = KEYS[2]
 local envConcurrencyLimitKey = KEYS[3]
@@ -4807,7 +4830,7 @@ return __qmret(0)
     this.redis.defineCommand("enqueueMessageCkTracked", {
       numberOfKeys: 15,
       lua: ckEnqueueLua({
-        fastPathGaugeEarly: `
+        fastPathGauge: `
 ${QUEUE_METRICS_CK_ENQUEUE_FASTPATH_GAUGE_LUA}`,
       }),
     });
@@ -4836,7 +4859,7 @@ local stateTtl = ARGV[13]
 -- Arrival stacking (only read when this call registers a brand-new variant)
 local quantum = tonumber(ARGV[14] or '1')
 local arrivalCap = tonumber(ARGV[15] or '4294967296')`,
-        fastPathGaugeLate: `
+        fastPathGauge: `
 ${QUEUE_METRICS_CK_ENQUEUE_FASTPATH_GAUGE_LUA}`,
         register: `
 -- Register this variant in the virtual-time index. NX means an already-advanced tag is
@@ -4880,8 +4903,6 @@ if redis.call('ZADD', ckVtimeKey, 'NX', vfloor, queueName) == 1 then
 end
 redis.call('EXPIRE', ckVtimeKey, stateTtl)
 redis.call('EXPIRE', ckVtimeFloorKey, stateTtl)
-`,
-        expire: `
 `,
       }),
     });
@@ -4937,8 +4958,6 @@ if redis.call('ZADD', ckVtimeKey, 'NX', vfloor, queueName) == 1 then
 end
 redis.call('EXPIRE', ckVtimeKey, stateTtl)
 redis.call('EXPIRE', ckVtimeFloorKey, stateTtl)
-`,
-        expire: `
 `,
       }),
     });
@@ -5407,8 +5426,8 @@ for _, ckQueueName in ipairs(ckQueues) do
     // (lowest-tag) order; pass 2 fills the batch + discovers unregistered variants
     // in the existing age order (work conservation, mixed-deploy safety). Only the
     // :ckVtime / :ckVtimeFloor keys hold virtual times; ckIndex and the master
-    // queue keep their timestamp score domain. The per-candidate serve body is a
-    // verbatim copy of dequeueMessagesFromCkQueueTracked's, with the marked NEW
+    // queue keep their timestamp score domain. The per-candidate serve body has the
+    // same shape as dequeueMessagesFromCkQueueTracked's, with the virtual-time
     // lines added (tag advance on serve, ZREM ckVtime on GC, floor advance from pass 1,
     // and the notReady report that lets pass 1 step over a future-headed variant without
     // spending a window slot on it).
