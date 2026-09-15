@@ -29,15 +29,12 @@ export function RuntimeIcon({
 }: RuntimeIconProps) {
   const parsedRuntime = parseRuntime(runtime);
 
-  // Default to Node.js if no runtime is specified
-  const effectiveRuntime = parsedRuntime || {
-    runtime: "node" as const,
-    originalRuntime: "node",
-    displayName: "Node.js",
-  };
+  if (!parsedRuntime) {
+    return <span className="text-text-dimmed">–</span>;
+  }
 
-  const icon = getIcon(effectiveRuntime.runtime, className);
-  const formattedText = formatRuntimeWithVersion(effectiveRuntime.originalRuntime, runtimeVersion);
+  const icon = getIcon(parsedRuntime.runtime, className);
+  const formattedText = formatRuntimeWithVersion(parsedRuntime.originalRuntime, runtimeVersion);
 
   if (withLabel) {
     return (
@@ -48,11 +45,5 @@ export function RuntimeIcon({
     );
   }
 
-  if (typeof icon === "object" && "type" in icon) {
-    return (
-      <SimpleTooltip button={icon} content={formattedText} side="top" disableHoverableContent />
-    );
-  }
-
-  return icon;
+  return <SimpleTooltip button={icon} content={formattedText} side="top" disableHoverableContent />;
 }

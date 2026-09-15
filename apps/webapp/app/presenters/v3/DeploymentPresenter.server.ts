@@ -147,6 +147,8 @@ export class DeploymentPresenter {
             },
             sdkVersion: true,
             cliVersion: true,
+            runtime: true,
+            runtimeVersion: true,
           },
         },
         triggeredBy: {
@@ -262,8 +264,8 @@ export class DeploymentPresenter {
         deployedBy: deployment.triggeredBy,
         sdkVersion: deployment.worker?.sdkVersion,
         cliVersion: deployment.worker?.cliVersion,
-        runtime: deployment.runtime,
-        runtimeVersion: deployment.runtimeVersion,
+        runtime: deployment.worker?.runtime ?? deployment.runtime,
+        runtimeVersion: deployment.worker?.runtimeVersion ?? deployment.runtimeVersion,
         imageReference: deployment.imageReference,
         imagePlatform: deployment.imagePlatform,
         externalBuildData:

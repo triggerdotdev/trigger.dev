@@ -162,8 +162,8 @@ export class DeploymentListPresenter {
   wd."id",
   wd."shortCode",
   wd."version",
-  wd."runtime",
-  wd."runtimeVersion",
+  COALESCE(bw."runtime", wd."runtime") AS "runtime",
+  COALESCE(bw."runtimeVersion", wd."runtimeVersion") AS "runtimeVersion",
   (SELECT COUNT(*) FROM ${sqlDatabaseSchema}."BackgroundWorkerTask" WHERE "BackgroundWorkerTask"."workerId" = wd."workerId") AS "tasksCount",
   wd."environmentId",
   wd."status",
@@ -181,6 +181,8 @@ FROM
   ${sqlDatabaseSchema}."WorkerDeployment" as wd
 LEFT JOIN
   ${sqlDatabaseSchema}."User" as u ON wd."triggeredById" = u."id"
+LEFT JOIN
+  ${sqlDatabaseSchema}."BackgroundWorker" as bw ON wd."workerId" = bw."id"
 ${vercelJoin}
 WHERE
   wd."projectId" = ${project.id}
