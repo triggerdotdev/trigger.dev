@@ -1,9 +1,14 @@
-import { useLocation } from "@remix-run/react";
+import { DialogClose } from "@radix-ui/react-dialog";
+import { useFetcher, useLocation } from "@remix-run/react";
 import { DateTime } from "~/components/primitives/DateTime";
 import { environmentFullTitle } from "~/components/environments/EnvironmentLabel";
 import { AnimatedOrgBannerBar } from "~/components/billing/AnimatedOrgBannerBar";
 import { OrgBannerKind, selectOrgBanner } from "~/components/billing/selectOrgBanner";
-import { LinkButton } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
+import { FormButtons } from "~/components/primitives/FormButtons";
+import { Paragraph } from "~/components/primitives/Paragraph";
+import { SpinnerWhite } from "~/components/primitives/Spinner";
 import { useEnvironment, useOptionalEnvironment } from "~/hooks/useEnvironment";
 import {
   useOptionalOrganization,
@@ -22,6 +27,10 @@ import {
   v3QueuesPath,
 } from "~/utils/pathBuilder";
 import { ENVIRONMENT_PAUSE_SOURCE_BILLING_LIMIT } from "~/utils/environmentPauseSource";
+
+/** Wire values for the billing-limits route action's "remove the limit" submission. */
+const BILLING_LIMIT_INTENT = "billing-limit";
+const BILLING_LIMIT_MODE_NONE = "none";
 
 function getUpgradeResetDate(): Date {
   const nextMonth = new Date();
@@ -179,15 +188,12 @@ function NoLimitConfiguredBanner() {
       variant="warning"
       action={
         canManageBillingLimits ? (
-          <LinkButton
-            variant="tertiary/small"
-            className="system:border-transparent system:bg-warning system:transition system:group-hover/button:bg-warning system:group-hover/button:brightness-90"
-            to={v3BillingLimitsPath(organization)}
-          >
-            <span className="mx-auto grow self-center truncate text-text-bright system:text-white">
-              Billing limit settings
-            </span>
-          </LinkButton>
+          <div className="flex items-center gap-2">
+            <NoBillingLimitButton />
+            <LinkButton variant="warning/small" to={v3BillingLimitsPath(organization)}>
+              Configure limit…
+            </LinkButton>
+          </div>
         ) : undefined
       }
     >
@@ -195,6 +201,66 @@ function NoLimitConfiguredBanner() {
         ? "Add a billing limit to your account to prevent overspending"
         : "Billing limits are not configured for this organization. Contact an organization administrator to configure them."}
     </AnimatedOrgBannerBar>
+  );
+}
+
+/**
+ * Applies "no billing limit" without leaving the current page, by posting the same intent the
+ * billing limits settings form posts. Confirmed first: this removes the org's only guard against
+ * runaway spend.
+ */
+function NoBillingLimitButton() {
+  const organization = useOrganization();
+  const location = useLocation();
+  const fetcher = useFetcher();
+
+  const isSubmitting = fetcher.state !== "idle";
+
+  const removeBillingLimit = () => {
+    fetcher.submit(
+      {
+        intent: BILLING_LIMIT_INTENT,
+        mode: BILLING_LIMIT_MODE_NONE,
+        returnTo: `${location.pathname}${location.search}`,
+      },
+      { method: "POST", action: v3BillingLimitsPath(organization) }
+    );
+  };
+
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button variant="warning/small">No limit</Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>Continue without a billing limit?</DialogHeader>
+        <div className="flex flex-col gap-3 pt-3">
+          <Paragraph>
+            Without a billing limit, runs will continue even if usage spikes unexpectedly. You may
+            have to pay higher fees before you notice.
+          </Paragraph>
+          <FormButtons
+            confirmButton={
+              <Button
+                type="button"
+                variant="danger/medium"
+                LeadingIcon={isSubmitting ? SpinnerWhite : undefined}
+                disabled={isSubmitting}
+                onClick={removeBillingLimit}
+                shortcut={{ modifiers: ["mod"], key: "enter" }}
+              >
+                {isSubmitting ? "Applying..." : "No limit"}
+              </Button>
+            }
+            cancelButton={
+              <DialogClose asChild>
+                <Button variant="tertiary/medium">Cancel</Button>
+              </DialogClose>
+            }
+          />
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

@@ -58,6 +58,7 @@ import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashb
 import type { BillingLimitResult } from "~/services/billingLimit.schemas";
 import {
   getAlertsResetRequested,
+  getBillingLimitReturnTo,
   getEffectiveLimitCentsAfterLimitSave,
   getResolveSubmitted,
   getSubmittedResumeMode,
@@ -325,6 +326,10 @@ export const action = dashboardAction(
         return json({ formIntent: "billing-limit", submission: submission.reply() });
       }
 
+      // The org banner posts this intent from whatever page the user is on, so honour its
+      // `returnTo` on success instead of dragging them over to the settings page.
+      const returnToPath = getBillingLimitReturnTo(formData, organizationSlug);
+
       const [billingLimitError, billingLimit] = await tryCatch(getBillingLimit(organization.id));
       if (billingLimitError || !billingLimit) {
         return redirectWithErrorMessage(
@@ -425,7 +430,7 @@ export const action = dashboardAction(
           const session = await getSession(request.headers.get("cookie"));
           setSuccessMessage(session, "Billing limit updated");
 
-          return redirect(`${v3BillingLimitsPath({ slug: organizationSlug })}?alertsReset=1`, {
+          return redirect(`${returnToPath}${returnToPath.includes("?") ? "&" : "?"}alertsReset=1`, {
             headers: {
               "Set-Cookie": await commitSession(session),
             },
@@ -436,7 +441,7 @@ export const action = dashboardAction(
       const session = await getSession(request.headers.get("cookie"));
       setSuccessMessage(session, "Billing limit updated");
 
-      return redirect(v3BillingLimitsPath({ slug: organizationSlug }), {
+      return redirect(returnToPath, {
         headers: {
           "Set-Cookie": await commitSession(session),
         },

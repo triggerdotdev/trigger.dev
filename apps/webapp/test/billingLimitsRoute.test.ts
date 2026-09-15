@@ -11,6 +11,7 @@ import { isBillingLimitSettingsFormSubmission } from "~/routes/_app.orgs.$organi
 import { getSuggestedRecoveryLimitDollars } from "~/components/billing/billingLimitFormat";
 import {
   getAlertsResetRequested,
+  getBillingLimitReturnTo,
   getEffectiveLimitCentsAfterLimitSave,
   getResolveSubmitted,
   getSubmittedResumeMode,
@@ -164,6 +165,83 @@ describe("billingLimitsRoute.server", () => {
       expect(getEffectiveLimitCentsAfterLimitSave("none", 5000)).toBe(5000);
     });
   });
+
+  describe("getBillingLimitReturnTo", () => {
+    const SETTINGS_PATH = "/orgs/acme/settings/billing-limits";
+
+    function formDataWithReturnTo(returnTo?: string): FormData {
+      const formData = new FormData();
+      if (returnTo !== undefined) {
+        formData.set("returnTo", returnTo);
+      }
+      return formData;
+    }
+
+    function returnToFor(returnTo?: string): string {
+      return getBillingLimitReturnTo(formDataWithReturnTo(returnTo), "acme");
+    }
+
+    it("returns an app-relative returnTo, including its query string", () => {
+      expect(returnToFor("/orgs/acme/projects/p/env/dev/runs?page=2")).toBe(
+        "/orgs/acme/projects/p/env/dev/runs?page=2"
+      );
+    });
+
+    it("keeps a dashboard page path with a multi-param query string", () => {
+      expect(returnToFor("/orgs/acme/projects/p/env/dev/runs?statuses=FAILED&page=3")).toBe(
+        "/orgs/acme/projects/p/env/dev/runs?statuses=FAILED&page=3"
+      );
+    });
+
+    it("falls back to the settings page when returnTo is missing", () => {
+      expect(returnToFor()).toBe(SETTINGS_PATH);
+    });
+
+    it("rejects protocol-relative URLs", () => {
+      expect(returnToFor("//evil.com")).toBe(SETTINGS_PATH);
+    });
+
+    // WHATWG URL parsing treats a reverse solidus like a solidus in the authority position, so
+    // each of these resolves to a foreign origin even though it opens with a single "/".
+    it("rejects a reverse-solidus authority", () => {
+      expect(returnToFor("/\\evil.com")).toBe(SETTINGS_PATH);
+    });
+
+    it("rejects a doubled reverse-solidus authority", () => {
+      expect(returnToFor("/\\\\evil.com")).toBe(SETTINGS_PATH);
+    });
+
+    it("rejects a mixed solidus/reverse-solidus authority", () => {
+      expect(returnToFor("/\\/evil.com")).toBe(SETTINGS_PATH);
+    });
+
+    it("rejects absolute URLs", () => {
+      expect(returnToFor("https://evil.com/runs")).toBe(SETTINGS_PATH);
+      expect(returnToFor("https://evil.example/runs")).toBe(SETTINGS_PATH);
+    });
+
+    it("rejects resource routes", () => {
+      expect(returnToFor("/resources/preferences/favorites")).toBe(SETTINGS_PATH);
+    });
+
+    it("rejects API routes", () => {
+      expect(returnToFor("/api/v1/tasks/my-task/trigger")).toBe(SETTINGS_PATH);
+    });
+
+    it("rejects app pages outside the org section", () => {
+      expect(returnToFor("/account/security")).toBe(SETTINGS_PATH);
+    });
+
+    it("rejects a bare /orgs path not nested under an organization", () => {
+      expect(returnToFor("/orgs")).toBe(SETTINGS_PATH);
+    });
+
+    it("rejects a non-string returnTo", () => {
+      const formData = new FormData();
+      formData.set("returnTo", new Blob(["/orgs/acme/runs"]), "returnTo.txt");
+      expect(getBillingLimitReturnTo(formData, "acme")).toBe(SETTINGS_PATH);
+    });
+  });
 });
 
 describe("billing-alerts redirect route", () => {
@@ -215,6 +293,16 @@ describe("billing-limits form validation", () => {
       amount: 100,
       cancelInProgressRuns: true,
     });
+  });
+
+  it("accepts the org banner's no-limit field set", () => {
+    const formData = new FormData();
+    formData.set("intent", "billing-limit");
+    formData.set("mode", "none");
+
+    const submission = parseWithZod(formData, { schema: billingLimitFormSchema });
+    expect(submission.status).toBe("success");
+    expect(submission.value?.mode).toBe("none");
   });
 
   it("parses none mode with cancelInProgressRuns from the form", () => {
