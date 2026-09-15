@@ -3,6 +3,7 @@ import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClientOrTransaction, WorkerDeployment } from "@trigger.dev/database";
 import { webhookPrisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
+import { invalidateOrganizationProjectRuntimeUpdateCache } from "~/services/projectRuntimeUpdates.server";
 import { syncTaskIdentifiers } from "~/services/taskIdentifierRegistry.server";
 import {
   type TaskMetadataCache,
@@ -112,6 +113,17 @@ export class ChangeCurrentDeploymentService extends BaseService {
       },
     });
 
+    const [cacheInvalidationError] = await tryCatch(
+      this.#invalidateProjectRuntimeUpdateCache(deployment.environmentId)
+    );
+
+    if (cacheInvalidationError) {
+      logger.error("Failed to invalidate project runtime update cache", {
+        error: cacheInvalidationError,
+        environmentId: deployment.environmentId,
+      });
+    }
+
     const [fetchTasksError, tasks] = await tryCatch(
       this._prisma.backgroundWorkerTask.findMany({
         where: { workerId: deployment.workerId! },
@@ -173,6 +185,17 @@ export class ChangeCurrentDeploymentService extends BaseService {
       logger.error("Error syncing declarative schedules on deployment change", {
         error: scheduleSyncError,
       });
+    }
+  }
+
+  async #invalidateProjectRuntimeUpdateCache(environmentId: string) {
+    const environment = await this._prisma.runtimeEnvironment.findFirst({
+      where: { id: environmentId },
+      select: { organizationId: true },
+    });
+
+    if (environment) {
+      await invalidateOrganizationProjectRuntimeUpdateCache(environment.organizationId);
     }
   }
 

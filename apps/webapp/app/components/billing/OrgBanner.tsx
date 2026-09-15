@@ -10,11 +10,17 @@ import {
   useOrganization,
   useBillingLimit,
   useCanManageBillingLimits,
+  useHasProjectRuntimeUpdate,
 } from "~/hooks/useOrganizations";
 import { useOptionalProject, useProject } from "~/hooks/useProject";
 import { useShowSelfServe } from "~/hooks/useShowSelfServe";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
-import { v3BillingLimitsPath, v3BillingPath, v3QueuesPath } from "~/utils/pathBuilder";
+import {
+  organizationProjectsPath,
+  v3BillingLimitsPath,
+  v3BillingPath,
+  v3QueuesPath,
+} from "~/utils/pathBuilder";
 import { ENVIRONMENT_PAUSE_SOURCE_BILLING_LIMIT } from "~/utils/environmentPauseSource";
 
 function getUpgradeResetDate(): Date {
@@ -30,6 +36,7 @@ export function OrgBanner() {
   const project = useOptionalProject();
   const environment = useOptionalEnvironment();
   const billingLimit = useBillingLimit();
+  const hasProjectRuntimeUpdate = useHasProjectRuntimeUpdate();
   const currentPlan = useCurrentPlan();
   const showSelfServe = useShowSelfServe();
   const location = useLocation();
@@ -48,6 +55,7 @@ export function OrgBanner() {
   const isArchived = !!(organization && project && environment && environment.archivedAt);
 
   const bannerKind = selectOrgBanner({
+    hasProjectRuntimeUpdate,
     billingLimit,
     hasExceededFreeTier: currentPlan?.v3Usage.hasExceededFreeTier === true,
     showEnvironmentWarning: isPaused || isArchived,
@@ -58,6 +66,8 @@ export function OrgBanner() {
   const hideBillingLimitBanner = location.pathname.endsWith("/settings/billing-limits");
 
   switch (bannerKind) {
+    case OrgBannerKind.RuntimeUpdate:
+      return <RuntimeUpdateBanner />;
     case OrgBannerKind.LimitRejected:
       return hideBillingLimitBanner ? null : <LimitRejectedBanner />;
     case OrgBannerKind.LimitGrace:
@@ -75,6 +85,24 @@ export function OrgBanner() {
     default:
       return null;
   }
+}
+
+function RuntimeUpdateBanner() {
+  const organization = useOrganization();
+
+  return (
+    <AnimatedOrgBannerBar
+      show
+      variant="warning"
+      action={
+        <LinkButton variant="tertiary/small" to={organizationProjectsPath(organization)}>
+          See projects and upgrade
+        </LinkButton>
+      }
+    >
+      At least one of your projects uses Node 21: deployments will fail from 5 October.
+    </AnimatedOrgBannerBar>
+  );
 }
 
 function LimitRejectedBanner() {

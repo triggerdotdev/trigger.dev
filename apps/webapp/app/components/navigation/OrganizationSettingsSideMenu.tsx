@@ -12,7 +12,7 @@ import { UserGroupIcon } from "~/assets/icons/UserGroupIcon";
 import { VercelLogo } from "~/components/integrations/VercelLogo";
 import { useFeatureFlags } from "~/hooks/useFeatureFlags";
 import { useFeatures } from "~/hooks/useFeatures";
-import { type MatchedOrganization } from "~/hooks/useOrganizations";
+import { type MatchedOrganization, useHasProjectRuntimeUpdate } from "~/hooks/useOrganizations";
 import { cn } from "~/utils/cn";
 import {
   organizationPath,
@@ -51,18 +51,17 @@ export function OrganizationSettingsSideMenu({
   buildInfo,
   isUsingPlugin,
   isSsoUsingPlugin,
-  hasProjectRuntimeUpdate,
 }: {
   organization: MatchedOrganization;
   buildInfo: BuildInfo;
   isUsingPlugin: boolean;
   isSsoUsingPlugin: boolean;
-  hasProjectRuntimeUpdate: boolean;
 }) {
   const { isManagedCloud } = useFeatures();
   const featureFlags = useFeatureFlags();
   const currentPlan = useCurrentPlan();
   const showSelfServe = useShowSelfServe();
+  const hasProjectRuntimeUpdate = useHasProjectRuntimeUpdate();
   const isAdmin = useHasAdminAccess();
   const showBuildInfo = isAdmin || !isManagedCloud;
 

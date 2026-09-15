@@ -9,9 +9,11 @@ import { useTypedMatchesData } from "~/hooks/useTypedMatchData";
 import { OrganizationsPresenter } from "~/presenters/OrganizationsPresenter.server";
 import { RegionsPresenter, type Region } from "~/presenters/v3/RegionsPresenter.server";
 import { getImpersonationId } from "~/services/impersonation.server";
+import { logger } from "~/services/logger.server";
 import { getCachedUsage, getBillingLimit, getCurrentPlan } from "~/services/platform.v3.server";
 import { rbac } from "~/services/rbac.server";
 import { ssoController } from "~/services/sso.server";
+import { organizationHasProjectRuntimeUpdate } from "~/services/projectRuntimeUpdates.server";
 import { canManageBillingLimits } from "~/services/routeBuilders/permissions.server";
 import { requireUser } from "~/services/session.server";
 import { telemetry } from "~/services/telemetry.server";
@@ -128,6 +130,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     regions,
     isUsingRbacPlugin,
     isUsingSsoPlugin,
+    organizationHasRuntimeUpdate,
   ] = await Promise.all([
     rbac
       .authenticateSession(request, {
@@ -157,10 +160,21 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     // items. Both calls are cheap and cached.
     rbac.isUsingPlugin().catch(() => false),
     ssoController.isUsingPlugin().catch(() => false),
+    organizationHasProjectRuntimeUpdate({ organizationId: organization.id }).catch((error) => {
+      logger.error("Failed to check project runtime updates", {
+        organizationId: organization.id,
+        error,
+      });
+      return false;
+    }),
   ]);
   const userCanManageBillingLimits = sessionAuth.ok
     ? canManageBillingLimits(sessionAuth.ability)
     : false;
+  const hasProjectRuntimeUpdate =
+    sessionAuth.ok &&
+    sessionAuth.ability.can("read", { type: "deployments" }) &&
+    organizationHasRuntimeUpdate;
 
   let hasExceededFreeTier = false;
   let usagePercentage = 0;
@@ -218,6 +232,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     },
     widgetLimitPerDashboard,
     canManageBillingLimits: userCanManageBillingLimits,
+    hasProjectRuntimeUpdate,
     isUsingRbacPlugin,
     isUsingSsoPlugin,
   });

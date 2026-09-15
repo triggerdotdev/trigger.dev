@@ -1,6 +1,40 @@
+import {
+  createCache,
+  createLRUMemoryStore,
+  DefaultStatefulContext,
+  Namespace,
+} from "@internal/cache";
 import { NODE_RUNTIME_UPDATE_MAJOR, nodeMajor } from "@trigger.dev/core/v3";
 import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/isomorphic";
 import { prisma } from "~/db.server";
+import { env } from "~/env.server";
+import { RedisCacheStore } from "~/services/unkey/redisCacheStore.server";
+import { singleton } from "~/utils/singleton";
+
+const projectRuntimeUpdateCache = singleton("projectRuntimeUpdateCache", () => {
+  const context = new DefaultStatefulContext();
+  const memory = createLRUMemoryStore(5000, "project-runtime-updates");
+  const redis = new RedisCacheStore({
+    name: "project-runtime-updates",
+    connection: {
+      keyPrefix: "tr:cache:project-runtime-updates",
+      port: env.CACHE_REDIS_PORT,
+      host: env.CACHE_REDIS_HOST,
+      username: env.CACHE_REDIS_USERNAME,
+      password: env.CACHE_REDIS_PASSWORD,
+      tlsDisabled: env.CACHE_REDIS_TLS_DISABLED === "true",
+      clusterMode: env.CACHE_REDIS_CLUSTER_MODE_ENABLED === "1",
+    },
+  });
+
+  return createCache({
+    hasUpdate: new Namespace<boolean>(context, {
+      stores: [memory, redis],
+      fresh: 60_000 * 5,
+      stale: 60_000 * 10,
+    }),
+  });
+});
 
 /**
  * The scope is required and exactly one of the two applies: without it the `where` below would
@@ -86,50 +120,50 @@ export async function listCurrentProductionProjectRuntimes(scope: Scope) {
 }
 
 export async function organizationHasProjectRuntimeUpdate({
-  organizationSlug,
-  userId,
+  organizationId,
 }: {
-  organizationSlug: string;
-  userId: string;
+  organizationId: string;
 }): Promise<boolean> {
-  const project = await prisma.project.findFirst({
-    where: {
-      organization: {
-        slug: organizationSlug,
-        deletedAt: null,
-        members: { some: { userId } },
-      },
-      version: "V3",
-      deletedAt: null,
-      environments: {
-        some: {
-          type: "PRODUCTION",
-          workerDeploymentPromotions: {
-            some: {
-              label: CURRENT_DEPLOYMENT_LABEL,
-              deployment: {
-                OR: [
-                  {
-                    runtimeVersion: { startsWith: `${NODE_RUNTIME_UPDATE_MAJOR}.` },
-                    OR: [{ runtime: null }, { runtime: { startsWith: "node" } }],
-                  },
-                  {
-                    runtimeVersion: null,
-                    OR: [
-                      { runtime: null },
-                      { runtime: "node" },
-                      { runtime: `node-${NODE_RUNTIME_UPDATE_MAJOR}` },
-                    ],
-                  },
-                ],
-              },
+  const result = await projectRuntimeUpdateCache.hasUpdate.swr(organizationId, async () => {
+    const environment = await prisma.runtimeEnvironment.findFirst({
+      where: {
+        organizationId,
+        type: "PRODUCTION",
+        project: {
+          version: "V3",
+          deletedAt: null,
+        },
+        workerDeploymentPromotions: {
+          some: {
+            label: CURRENT_DEPLOYMENT_LABEL,
+            deployment: {
+              OR: [
+                {
+                  runtimeVersion: { startsWith: `${NODE_RUNTIME_UPDATE_MAJOR}.` },
+                  OR: [{ runtime: null }, { runtime: { startsWith: "node" } }],
+                },
+                {
+                  runtimeVersion: null,
+                  OR: [
+                    { runtime: null },
+                    { runtime: "node" },
+                    { runtime: `node-${NODE_RUNTIME_UPDATE_MAJOR}` },
+                  ],
+                },
+              ],
             },
           },
         },
       },
-    },
-    select: { id: true },
+      select: { id: true },
+    });
+
+    return environment !== null;
   });
 
-  return project !== null;
+  return result.val ?? false;
+}
+
+export async function invalidateOrganizationProjectRuntimeUpdateCache(organizationId: string) {
+  await projectRuntimeUpdateCache.hasUpdate.remove(organizationId);
 }

@@ -2,6 +2,24 @@ import { describe, expect, it } from "vitest";
 import { OrgBannerKind, selectOrgBanner } from "~/components/billing/selectOrgBanner";
 
 describe("selectOrgBanner", () => {
+  it("prioritizes runtime updates over all other banners", () => {
+    expect(
+      selectOrgBanner({
+        hasProjectRuntimeUpdate: true,
+        billingLimit: {
+          isConfigured: true,
+          mode: "plan",
+          cancelInProgressRuns: false,
+          limitState: { status: "rejected", hitAt: "t", graceEndsAt: "t" },
+          effectiveAmountCents: 1000,
+          gracePeriodMs: 86_400_000,
+        },
+        hasExceededFreeTier: true,
+        showEnvironmentWarning: true,
+      })
+    ).toBe(OrgBannerKind.RuntimeUpdate);
+  });
+
   it("prioritizes limit-rejected over grace and no-limit", () => {
     expect(
       selectOrgBanner({
