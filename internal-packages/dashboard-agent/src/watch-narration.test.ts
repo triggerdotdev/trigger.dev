@@ -50,9 +50,11 @@ describe("which model narrates a wake", () => {
   });
 
   it("uses Haiku when the fact has to be turned into what to do", () => {
-    expect(planWatchNarration(STALLED).model).toBe("haiku");
+    expect(planWatchNarration(STALLED).model).toBe("bounded");
     // A window that ran out with the queue still backed up is the same judgement.
-    expect(planWatchNarration({ ...DRAINED, resolution: "window_completed" }).model).toBe("haiku");
+    expect(planWatchNarration({ ...DRAINED, resolution: "window_completed" }).model).toBe(
+      "bounded"
+    );
   });
 
   it("keeps Sonnet for the consented investigation, whatever the outcome", () => {

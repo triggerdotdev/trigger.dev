@@ -1,6 +1,6 @@
 import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
 import { anthropic } from "@ai-sdk/anthropic";
-import { createProviderRegistry } from "ai";
+import { createProviderRegistry, type streamText } from "ai";
 import { PROMPT_CACHE_CONTROL } from "./prompt-prefix";
 
 /**
@@ -15,6 +15,68 @@ import { PROMPT_CACHE_CONTROL } from "./prompt-prefix";
  */
 
 export type DashboardAgentProvider = "anthropic" | "bedrock";
+
+/**
+ * The models each role runs on, as canonical ids (`claude-…`, no provider prefix).
+ * Each has a code default and an env override, read per call so an environment can
+ * change a role without a release: the agent project's env for the run, the webApp's
+ * env for the head-start step. A prompt override in the dashboard still wins for the
+ * main turns, since `run()` reads the resolved prompt's model first. On Bedrock the id
+ * must be in `BEDROCK_MODEL_IDS`, or the resolve throws rather than guessing.
+ */
+export const DEFAULT_DASHBOARD_AGENT_MODEL = "claude-sonnet-5";
+export const DEFAULT_DASHBOARD_AGENT_TITLE_MODEL = "claude-haiku-4-5";
+
+function canonicalId(value: string): string {
+  return value.startsWith("anthropic:") ? value.slice("anthropic:".length) : value;
+}
+
+/**
+ * The env override for a role, or undefined when unset or blank. `value` lets a caller
+ * that validates its env itself (the webapp) hand the read value in instead.
+ */
+function modelOverride(name: string, value = process.env[name]): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? canonicalId(trimmed) : undefined;
+}
+
+/** Main turns, the code and watch prompts, and the head-start step. */
+export function dashboardAgentModel(envValue?: string): string {
+  return modelOverride("DASHBOARD_AGENT_MODEL", envValue) ?? DEFAULT_DASHBOARD_AGENT_MODEL;
+}
+
+/** Compaction summaries. Defaults to the main model. */
+export function dashboardAgentSummaryModel(): string {
+  return modelOverride("DASHBOARD_AGENT_SUMMARY_MODEL") ?? dashboardAgentModel();
+}
+
+/** The turn eval judge. Defaults to the main model. */
+export function dashboardAgentJudgeModel(): string {
+  return modelOverride("DASHBOARD_AGENT_JUDGE_MODEL") ?? dashboardAgentModel();
+}
+
+/** Chat titles: a short call where the small model is enough. */
+export function dashboardAgentTitleModel(): string {
+  return modelOverride("DASHBOARD_AGENT_TITLE_MODEL") ?? DEFAULT_DASHBOARD_AGENT_TITLE_MODEL;
+}
+
+/**
+ * The model a managed prompt's call runs on, as a canonical `"anthropic:<id>"` string.
+ * A prompt version registers the model its code default evaluated to at deploy time, so
+ * `resolved.model` alone would make the env overrides above inert. Precedence: a
+ * dashboard override on the prompt wins (someone chose it deliberately for this
+ * environment), then the role's env var, then the model the prompt version carries,
+ * then the code default.
+ */
+export function promptModel(
+  resolved: { model: string | undefined; labels?: string[] },
+  role: { env: string; fallback: () => string }
+): string {
+  if (resolved.labels?.includes("override") && resolved.model) return resolved.model;
+  const override = modelOverride(role.env);
+  if (override) return `anthropic:${override}`;
+  return resolved.model ?? `anthropic:${role.fallback()}`;
+}
 
 /** Global switch, read per call so it can be set per environment. */
 export function dashboardAgentProvider(): DashboardAgentProvider {
@@ -58,6 +120,7 @@ export const registry = createProviderRegistry({ anthropic, bedrock });
  * models — copy each id exactly rather than deriving it.
  */
 export const BEDROCK_MODEL_IDS: Record<string, string> = {
+  "claude-sonnet-5": "us.anthropic.claude-sonnet-5",
   "claude-sonnet-4-6": "us.anthropic.claude-sonnet-4-6",
   "claude-haiku-4-5": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
 };
@@ -75,6 +138,48 @@ export function resolveDashboardAgentModel(model: string) {
     throw new Error(`No Bedrock model mapping for "${id}"`);
   }
   return registry.languageModel(`bedrock:${bedrockId}` as `bedrock:${string}`);
+}
+
+/**
+ * Each model's documented maximum output, by canonical id. Passed explicitly on the
+ * main turns because the pinned providers do not know Sonnet 5: `@ai-sdk/anthropic`
+ * falls back to `max_tokens: 4096` for an unknown id, and Bedrock applies its own
+ * default when none is sent. With adaptive thinking counted inside the same limit,
+ * 4096 truncates a tool-heavy turn. Keyed by the model a turn actually resolved to,
+ * so a dashboard override to a smaller model gets that model's limit, not Sonnet's.
+ */
+export const MODEL_MAX_OUTPUT_TOKENS: Record<string, number> = {
+  "claude-sonnet-5": 128_000,
+  "claude-opus-5": 128_000,
+  "claude-sonnet-4-6": 128_000,
+  "claude-haiku-4-5": 64_000,
+};
+
+/** The output budget for a canonical `"anthropic:<id>"` or bare id; undefined leaves the provider's default. */
+export function maxOutputTokensFor(model: string): number | undefined {
+  const id = model.startsWith("anthropic:") ? model.slice("anthropic:".length) : model;
+  return MODEL_MAX_OUTPUT_TOKENS[id];
+}
+
+type CallProviderOptions = NonNullable<Parameters<typeof streamText>[0]["providerOptions"]>;
+
+/**
+ * Provider options that keep a bounded call (a summary, a wake) from spending its
+ * `maxOutputTokens` on thinking. Sonnet 5 thinks adaptively by default and the thinking
+ * counts against the same limit.
+ *
+ * Neither pinned provider forwards a `disabled` thinking option: `@ai-sdk/anthropic`
+ * 3.0.84 and `@ai-sdk/amazon-bedrock` 4.0.117 both serialise `thinking` only for
+ * `enabled` and `adaptive`. On Bedrock (test and prod) the raw request field is
+ * reachable through `additionalModelRequestFields`, which the provider spreads into
+ * the request verbatim, so the off switch is real there. The direct Anthropic provider
+ * (local development) has no passthrough for it; `effort: "low"` is the strongest
+ * lever it exposes and only shortens the thinking.
+ */
+export function withoutThinking(): CallProviderOptions {
+  return dashboardAgentProvider() === "anthropic"
+    ? { anthropic: { effort: "low" } }
+    : { bedrock: { additionalModelRequestFields: { thinking: { type: "disabled" } } } };
 }
 
 /**

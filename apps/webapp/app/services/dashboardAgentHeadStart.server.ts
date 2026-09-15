@@ -1,10 +1,11 @@
-import { DASHBOARD_AGENT_MODEL } from "@internal/dashboard-agent/tool-schemas";
 import { systemPromptFor, toolSchemasFor } from "@internal/dashboard-agent/prompt-assembly";
 import {
   describePromptPrefix,
   promptCacheAttributes,
 } from "@internal/dashboard-agent/prompt-prefix";
 import {
+  dashboardAgentModel,
+  maxOutputTokensFor,
   resolveDashboardAgentModel,
   withCacheBreakpoint,
 } from "@internal/dashboard-agent/model-provider";
@@ -109,7 +110,9 @@ export async function startDashboardAgentHeadStart(params: {
     run: async ({ chat: helper }) =>
       streamText({
         ...helper.toStreamTextOptions({ tools }),
-        model: resolveDashboardAgentModel(DASHBOARD_AGENT_MODEL),
+        model: resolveDashboardAgentModel(dashboardAgentModel(env.DASHBOARD_AGENT_MODEL)),
+        // Same ceiling the agent run uses; the pinned provider caps an unknown id at 4096.
+        maxOutputTokens: maxOutputTokensFor(dashboardAgentModel(env.DASHBOARD_AGENT_MODEL)),
         // A structured system message, not a bare string: without provider options
         // the provider neither writes nor reads the cache, so this call paid full price
         // for the prefix and the agent's step 2 then paid for a fresh write. The tool

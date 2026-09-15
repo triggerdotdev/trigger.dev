@@ -20,6 +20,7 @@ import {
   dashboardAgentStorage,
   getStore,
   pendingActionTurnKey,
+  turnModelKey,
   getSystemPrompt,
   modeFor,
   resolveDashboardAgentModel,
@@ -30,7 +31,14 @@ import {
   type DashboardAgentStore,
 } from "./agent-runtime";
 import { titlePrompt } from "./prompts";
-import { withCacheBreakpoint } from "./model-provider";
+import {
+  dashboardAgentModel,
+  dashboardAgentTitleModel,
+  maxOutputTokensFor,
+  promptModel,
+  withCacheBreakpoint,
+  withoutThinking,
+} from "./model-provider";
 import { recordPromptCacheUsage, stepCachePrepareStep } from "./step-cache";
 import { dashboardAgentActionSchema, handleWatchAction } from "./watch-actions";
 import { dashboardAgentCompaction, withDurableState } from "./compaction";
@@ -320,7 +328,12 @@ async function generateAndSaveTitle(
   const { text } = await generateText({
     model:
       locals.get(dashboardAgentModelKey) ??
-      resolveDashboardAgentModel(resolved.model ?? "anthropic:claude-haiku-4-5"),
+      resolveDashboardAgentModel(
+        promptModel(resolved, {
+          env: "DASHBOARD_AGENT_TITLE_MODEL",
+          fallback: dashboardAgentTitleModel,
+        })
+      ),
     system: resolved.text,
     prompt: userText,
     ...resolved.toAISDKTelemetry(),
@@ -359,8 +372,8 @@ export function prepareTurnMessages(args: {
   );
 }
 
-/** The output budget of a small-model wake: the headline and a sentence around it. */
-const HAIKU_WAKE_MAX_OUTPUT_TOKENS = 300;
+/** The output budget of an attention wake: the headline and a sentence around it. */
+const WAKE_MAX_OUTPUT_TOKENS = 300;
 
 export const dashboardAgent = chat.agent({
   id: "dashboard-agent",
@@ -556,7 +569,9 @@ export const dashboardAgent = chat.agent({
               projectRef: clientData.projectRef,
               environment: clientData.environmentName,
               currentPage: clientData.currentPage,
-              model: resolved.model,
+              // The model that answered: an env override or dashboard override can
+              // differ from the one the deployed prompt version names.
+              model: locals.get(turnModelKey) ?? resolved.model,
               promptSlug: resolved.promptId,
               promptVersion: resolved.version,
               userText: userMessage ? extractText(userMessage) : "",
@@ -597,21 +612,28 @@ export const dashboardAgent = chat.agent({
     const actionTurn = locals.get(pendingActionTurnKey);
     const wake = actionTurn?.kind === "wake";
     const tools = wake ? {} : turnTools;
-    // A wake the plan gave a headline is a sentence or two on the small model, bounded
-    // so a chatty turn cannot run up the bill on something nobody asked.
-    const smallWake = wake && actionTurn.model === "haiku";
+    // A wake the plan gave a headline is a sentence or two, bounded so a chatty turn
+    // cannot run up the bill on something nobody asked. Thinking is switched off for
+    // it, so the cap is all answer.
+    const boundedWake = wake && actionTurn.bounded === true;
     const options = chat.toStreamTextOptions({ tools });
+    const modelId = promptModel(resolved, {
+      env: "DASHBOARD_AGENT_MODEL",
+      fallback: dashboardAgentModel,
+    });
+    locals.set(turnModelKey, modelId);
     let step = 0;
     return streamText({
       ...options,
-      model:
-        locals.get(dashboardAgentModelKey) ??
-        resolveDashboardAgentModel(
-          smallWake
-            ? "anthropic:claude-haiku-4-5"
-            : (resolved.model ?? "anthropic:claude-sonnet-4-6")
-        ),
-      ...(smallWake ? { maxOutputTokens: HAIKU_WAKE_MAX_OUTPUT_TOKENS } : {}),
+      model: locals.get(dashboardAgentModelKey) ?? resolveDashboardAgentModel(modelId),
+      // The documented ceiling for the model this turn resolved to; the pinned providers
+      // would otherwise cap an unknown id at 4096, thinking included.
+      ...(maxOutputTokensFor(modelId) !== undefined
+        ? { maxOutputTokens: maxOutputTokensFor(modelId) }
+        : {}),
+      ...(boundedWake
+        ? { maxOutputTokens: WAKE_MAX_OUTPUT_TOKENS, providerOptions: withoutThinking() }
+        : {}),
       messages,
       abortSignal: signal,
       prepareStep: stepCachePrepareStep(options) as never,

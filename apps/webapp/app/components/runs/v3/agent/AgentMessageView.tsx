@@ -132,8 +132,11 @@ export function renderPart(part: UIMessage["parts"][number], i: number) {
     return p.text ? <AssistantResponse key={i} text={p.text} headerLabel="" /> : null;
   }
 
-  // Reasoning — amber-bordered italic block
+  // Reasoning — amber-bordered italic block. Models that think adaptively with the
+  // text omitted (Sonnet 5 and later by default) still emit the part with no text;
+  // an empty block would be a bare amber bar, so those render nothing.
   if (type === "reasoning") {
+    if (!p.text) return null;
     return (
       <div key={i} className="border-l-2 border-amber-500/40 pl-2">
         <ChatBubble>

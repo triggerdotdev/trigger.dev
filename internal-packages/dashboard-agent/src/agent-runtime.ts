@@ -169,13 +169,20 @@ export function trackSeededInvestigation(
  * The action turn in flight, set by `onAction` when it returns `chat.turn()` and read
  * by the turn's hooks: a wake turn runs without tools (it reports what the check
  * established and carries no delegated token), a wake the narration plan marks
- * `haiku` runs on the small model with a bounded budget, and neither kind is judged
+ * `bounded` runs with an output cap, and neither kind is judged
  * by the eval. `onTurnStart` drops a marker the previous turn left behind, so a
  * settlement that failed on both attempts never taints the next typed turn.
  */
+/**
+ * The canonical `"anthropic:<id>"` the current turn's model call resolved to, set in
+ * `run()` and read by `onTurnComplete`, so the eval row records the model that
+ * answered rather than the one the deployed prompt version names.
+ */
+export const turnModelKey = locals.create<string>("dashboard-agent.turnModel");
+
 export const pendingActionTurnKey = locals.create<{
   kind: "wake" | "investigate";
-  model?: "haiku";
+  bounded?: true;
 }>("dashboard-agent.pendingActionTurn");
 
 /**

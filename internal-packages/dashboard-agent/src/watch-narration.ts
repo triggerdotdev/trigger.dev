@@ -24,7 +24,7 @@ export type WatchNarrationPlan =
   /** Said from the contracts' wording. No model call. */
   | { model: "none"; text: string; presentation: WatchPresentation }
   /** One or two sentences from Haiku, given the wake and nothing else. */
-  | { model: "haiku"; presentation: WatchPresentation }
+  | { model: "bounded"; presentation: WatchPresentation }
   /** The consented-investigation wake: the wake and the findings must read as one. */
   | { model: "sonnet" };
 
@@ -95,6 +95,6 @@ export function planWatchNarration(wake: NarratableWake): WatchNarrationPlan {
   if (wake.startsInvestigation) return { model: "sonnet" };
 
   const { text, presentation } = deterministicWakeNarration(wake);
-  if (presentation.category === "attention") return { model: "haiku", presentation };
+  if (presentation.category === "attention") return { model: "bounded", presentation };
   return { model: "none", text, presentation };
 }

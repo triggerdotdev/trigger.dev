@@ -9,6 +9,8 @@ import {
   sanitizeReplayedToolInputs,
 } from "./agent-runtime";
 import { stripAgentLinks } from "./linkify-agent-text";
+import { dashboardAgentSummaryModel, promptModel, withoutThinking } from "./model-provider";
+import { summaryPrompt } from "./prompts";
 
 /**
  * Bounded context: how a long conversation is summarised, and what may never be
@@ -54,25 +56,12 @@ export const COMPACTION_KEPT_TAIL_CHARS = 40_000;
 /** Per message, when the transcript is rendered for the summariser. */
 const SUMMARY_INPUT_MESSAGE_CHARS = 2_000;
 
-/** The summariser: cheap, bounded, and told exactly what it may not drop. */
-const SUMMARY_MODEL = "anthropic:claude-haiku-4-5" as const;
-
 /**
  * A hard ceiling on the summary, because "under 400 words" is an instruction and not a
  * budget. 400 words is ~530 tokens, so this is roughly double what the summary needs.
+ * Thinking is switched off for the call, so none of it goes on hidden reasoning.
  */
 const SUMMARY_MAX_OUTPUT_TOKENS = 1_000;
-
-export const SUMMARY_INSTRUCTION = `You are compacting a support conversation between a user and an agent that reads a Trigger.dev dashboard, so the agent can keep going with a shorter history.
-
-Write a summary in under 400 words, as notes rather than prose. Keep, in this order:
-1. What the user is trying to do, in their own terms, and anything they asked to be remembered.
-2. Facts already established, with the run ids, queue names, task identifiers, error fingerprints and numbers they rest on. Never restate a number you cannot see.
-3. Any investigation that is open: its investigationId, its title and its current outcome.
-4. Any watch the transcript records — what it was set up to watch, and what it said if it reported. Write it as what the transcript recorded, never as what is true now: a watch can expire or be cancelled without saying so here, so never present one as current.
-5. What was asked most recently and what is still unanswered.
-
-Drop tool mechanics, retries, and anything already superseded. Do not add advice, and do not invent anything that is not in the transcript. Everything you write is a record of what the transcript said, not a claim about the present.`;
 
 /** A summary that reads as a summary, and never as the user's next question. */
 function summaryMessage(summary: string, durableState?: string): ModelMessage {
@@ -273,11 +262,28 @@ export function renderTranscriptForSummary(messages: ModelMessage[]): string {
 }
 
 async function summarizeConversation(event: SummarizeEvent): Promise<string> {
+  // The summariser is a managed prompt: its text and model are versioned on the
+  // platform and overridable from the dashboard, like the system prompt.
+  const resolved = await summaryPrompt.resolve({});
+  // Dashboard-managed call settings first; the bounded-call safeguards below stay fixed.
+  const managed = (resolved.config ?? {}) as Partial<
+    Pick<Parameters<typeof generateText>[0], "temperature" | "topP" | "topK" | "stopSequences">
+  >;
   const { text } = await generateText({
-    model: locals.get(dashboardAgentModelKey) ?? resolveDashboardAgentModel(SUMMARY_MODEL),
-    system: SUMMARY_INSTRUCTION,
+    ...managed,
+    model:
+      locals.get(dashboardAgentModelKey) ??
+      resolveDashboardAgentModel(
+        promptModel(resolved, {
+          env: "DASHBOARD_AGENT_SUMMARY_MODEL",
+          fallback: dashboardAgentSummaryModel,
+        })
+      ),
+    system: resolved.text,
     prompt: renderTranscriptForSummary(event.messages),
     maxOutputTokens: SUMMARY_MAX_OUTPUT_TOKENS,
+    providerOptions: withoutThinking(),
+    ...resolved.toAISDKTelemetry(),
   });
   return text.trim();
 }

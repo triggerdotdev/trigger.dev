@@ -263,6 +263,11 @@ const EnvironmentSchema = z
     // uses its own key on the Trigger side. When unset, Head Start is disabled
     // and the first turn falls back to the normal cold-start path.
     ANTHROPIC_API_KEY: z.string().optional(),
+    // The model the dashboard agent's head-start step runs on (canonical `claude-…`
+    // id, default in the agent package). The internal seam reads process.env
+    // directly; this entry documents it webapp-side. The agent run reads its own
+    // DASHBOARD_AGENT_*_MODEL vars from the agent project's environment.
+    DASHBOARD_AGENT_MODEL: z.string().optional(),
     // Selects the dashboard agent's LLM provider (default anthropic). The internal
     // seam reads process.env directly; this entry validates the value webapp-side.
     DASHBOARD_AGENT_MODEL_PROVIDER: z.preprocess(

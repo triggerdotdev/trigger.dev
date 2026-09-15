@@ -16,12 +16,13 @@ import {
   dashboardAgentToolsKey,
   type DashboardAgentStore,
 } from "./dashboard-agent";
+import { dashboardAgentJudgeModel, dashboardAgentModel } from "./model-provider";
 import { dashboardAgentCodeToolSchemas, dashboardAgentToolSchemas } from "./tool-schemas";
 import { showCodeAskPrompt } from "./tools";
 
 const HAS_KEY = Boolean(process.env.ANTHROPIC_API_KEY);
-const AGENT_MODEL = "claude-sonnet-4-6";
-const JUDGE_MODEL = "claude-sonnet-4-6";
+const AGENT_MODEL = dashboardAgentModel();
+const JUDGE_MODEL = dashboardAgentJudgeModel();
 
 const CLIENT_DATA = {
   userId: "user_eval",

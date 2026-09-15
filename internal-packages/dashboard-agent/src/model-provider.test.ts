@@ -4,6 +4,13 @@ import {
   BEDROCK_MODEL_IDS,
   bedrockProviderSettings,
   bedrockRegion,
+  dashboardAgentJudgeModel,
+  dashboardAgentModel,
+  dashboardAgentSummaryModel,
+  dashboardAgentTitleModel,
+  maxOutputTokensFor,
+  promptModel,
+  withoutThinking,
   isLongLivedCacheBreakpoint,
   isStepCacheBreakpoint,
   resolveDashboardAgentModel,
@@ -39,6 +46,97 @@ afterEach(() => {
   }
 });
 
+describe("role models", () => {
+  const ENV_KEYS = [
+    "DASHBOARD_AGENT_MODEL",
+    "DASHBOARD_AGENT_SUMMARY_MODEL",
+    "DASHBOARD_AGENT_JUDGE_MODEL",
+    "DASHBOARD_AGENT_TITLE_MODEL",
+  ];
+  afterEach(() => {
+    for (const key of ENV_KEYS) delete process.env[key];
+  });
+
+  it("defaults the main roles to Sonnet 5 and titles to Haiku 4.5", () => {
+    expect(dashboardAgentModel()).toBe("claude-sonnet-5");
+    expect(dashboardAgentSummaryModel()).toBe("claude-sonnet-5");
+    expect(dashboardAgentJudgeModel()).toBe("claude-sonnet-5");
+    expect(dashboardAgentTitleModel()).toBe("claude-haiku-4-5");
+  });
+
+  it("follows the main model override for summaries and the judge unless they set their own", () => {
+    process.env.DASHBOARD_AGENT_MODEL = "claude-opus-5";
+    expect(dashboardAgentSummaryModel()).toBe("claude-opus-5");
+    expect(dashboardAgentJudgeModel()).toBe("claude-opus-5");
+    process.env.DASHBOARD_AGENT_SUMMARY_MODEL = "claude-haiku-4-5";
+    expect(dashboardAgentSummaryModel()).toBe("claude-haiku-4-5");
+    expect(dashboardAgentTitleModel()).toBe("claude-haiku-4-5");
+  });
+
+  it("accepts the canonical anthropic: prefix and ignores blanks", () => {
+    process.env.DASHBOARD_AGENT_TITLE_MODEL = "anthropic:claude-sonnet-5";
+    expect(dashboardAgentTitleModel()).toBe("claude-sonnet-5");
+    process.env.DASHBOARD_AGENT_MODEL = "   ";
+    expect(dashboardAgentModel()).toBe("claude-sonnet-5");
+  });
+});
+
+describe("promptModel", () => {
+  afterEach(() => {
+    delete process.env.DASHBOARD_AGENT_TITLE_MODEL;
+  });
+  const role = { env: "DASHBOARD_AGENT_TITLE_MODEL", fallback: () => "claude-haiku-4-5" };
+
+  it("uses the model the prompt version carries when nothing overrides it", () => {
+    expect(promptModel({ model: "anthropic:claude-haiku-4-5", labels: ["current"] }, role)).toBe(
+      "anthropic:claude-haiku-4-5"
+    );
+  });
+
+  it("lets the role's env var beat the deployed prompt version", () => {
+    process.env.DASHBOARD_AGENT_TITLE_MODEL = "claude-sonnet-5";
+    expect(promptModel({ model: "anthropic:claude-haiku-4-5", labels: ["current"] }, role)).toBe(
+      "anthropic:claude-sonnet-5"
+    );
+  });
+
+  it("lets a dashboard override beat the env var", () => {
+    process.env.DASHBOARD_AGENT_TITLE_MODEL = "claude-sonnet-5";
+    expect(
+      promptModel({ model: "anthropic:claude-opus-5", labels: ["current", "override"] }, role)
+    ).toBe("anthropic:claude-opus-5");
+  });
+
+  it("falls back to the code default when the prompt carries no model", () => {
+    expect(promptModel({ model: undefined, labels: [] }, role)).toBe("anthropic:claude-haiku-4-5");
+  });
+});
+
+describe("withoutThinking", () => {
+  it("sends the raw disabled thinking field on Bedrock", () => {
+    useBedrock();
+    expect(withoutThinking()).toEqual({
+      bedrock: { additionalModelRequestFields: { thinking: { type: "disabled" } } },
+    });
+  });
+
+  it("falls back to low effort on the direct Anthropic provider", () => {
+    expect(withoutThinking()).toEqual({ anthropic: { effort: "low" } });
+  });
+});
+
+describe("maxOutputTokensFor", () => {
+  it("returns the documented ceiling for the models the agent runs, by canonical or bare id", () => {
+    expect(maxOutputTokensFor("anthropic:claude-sonnet-5")).toBe(128_000);
+    expect(maxOutputTokensFor("claude-sonnet-5")).toBe(128_000);
+    expect(maxOutputTokensFor("anthropic:claude-haiku-4-5")).toBe(64_000);
+  });
+
+  it("leaves an unknown model to the provider's default", () => {
+    expect(maxOutputTokensFor("anthropic:claude-made-up-9-9")).toBeUndefined();
+  });
+});
+
 describe("resolveDashboardAgentModel", () => {
   it("resolves a canonical prompt string against Anthropic by default", () => {
     expect(resolveDashboardAgentModel("anthropic:claude-sonnet-4-6").modelId).toBe(
@@ -48,6 +146,9 @@ describe("resolveDashboardAgentModel", () => {
 
   it("maps the same canonical string to a Bedrock inference profile", () => {
     useBedrock();
+    expect(resolveDashboardAgentModel("anthropic:claude-sonnet-5").modelId).toBe(
+      "us.anthropic.claude-sonnet-5"
+    );
     expect(resolveDashboardAgentModel("anthropic:claude-sonnet-4-6").modelId).toBe(
       "us.anthropic.claude-sonnet-4-6"
     );
@@ -67,6 +168,7 @@ describe("resolveDashboardAgentModel", () => {
   // no shared suffix convention across models, so a well-formed id can still be wrong.
   it("maps every model to its exact documented Bedrock id", () => {
     expect(BEDROCK_MODEL_IDS).toEqual({
+      "claude-sonnet-5": "us.anthropic.claude-sonnet-5",
       "claude-sonnet-4-6": "us.anthropic.claude-sonnet-4-6",
       "claude-haiku-4-5": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
     });

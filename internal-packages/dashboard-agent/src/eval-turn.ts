@@ -5,7 +5,7 @@ import {
 } from "@internal/dashboard-agent-db";
 import { logger, task } from "@trigger.dev/sdk";
 import { EVAL_ERROR_CATEGORIES, redactedEvalOutputErrored } from "./eval-policy";
-import { resolveDashboardAgentModel } from "./model-provider";
+import { resolveDashboardAgentModel, dashboardAgentJudgeModel } from "./model-provider";
 import { generateObject } from "ai";
 import { z } from "zod";
 
@@ -22,8 +22,6 @@ import { z } from "zod";
  * keeps the judge's derived verdict only — never the user's question, the answer, or any
  * tool data verbatim. The comment above `evalTurn` lists exactly what a row holds.
  */
-
-const JUDGE_MODEL = "claude-sonnet-4-6";
 
 // One connection pool per worker process for the eval task (separate from the
 // agent's; eval runs are their own runs and may land on other workers).
@@ -163,8 +161,9 @@ const JUDGE_SYSTEM = [
 export const evalTurn = task({
   id: "dashboard-agent-eval-turn",
   run: async (payload: EvalTurnPayload, { ctx }) => {
+    const judgeModel = dashboardAgentJudgeModel();
     const { object } = await generateObject({
-      model: resolveDashboardAgentModel(`anthropic:${JUDGE_MODEL}`),
+      model: resolveDashboardAgentModel(`anthropic:${judgeModel}`),
       schema: TurnEval,
       system: JUDGE_SYSTEM,
       prompt: [
@@ -194,7 +193,7 @@ export const evalTurn = task({
       promptVersion: payload.promptVersion,
       toolsUsed: payload.toolActivity.map((t) => t.toolName),
       toolError,
-      judgeModel: JUDGE_MODEL,
+      judgeModel,
       scoreGrounded: object.grounded,
       scoreAnswered: object.answered,
       scoreConcise: object.concise,

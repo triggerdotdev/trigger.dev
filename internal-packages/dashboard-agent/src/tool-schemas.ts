@@ -518,10 +518,6 @@ export const dashboardAgentCodeToolSchemas = {
   search_code: searchCodeSchema,
 };
 
-// Defaults live here so the head-start route can read them without importing the SDK
-// runtime. A dashboard prompt override only affects the agent run, not the warm step.
-export const DASHBOARD_AGENT_MODEL = "claude-sonnet-4-6";
-
 /**
  * The queue detail page's nine charts, as TRQL the agent can render straight into a chart
  * block. The prompt section below is generated from this list, so the queries the model

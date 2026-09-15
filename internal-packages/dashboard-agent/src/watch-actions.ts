@@ -404,9 +404,9 @@ function answerWithTurn(args: {
   request: UIMessage;
   responseId: string;
   kind: "wake" | "investigate";
-  model?: "haiku";
+  bounded?: true;
 }): ActionTurn {
-  locals.set(pendingActionTurnKey, { kind: args.kind, model: args.model });
+  locals.set(pendingActionTurnKey, { kind: args.kind, bounded: args.bounded });
   chat.setUIMessageStreamOptions({ generateMessageId: () => args.responseId });
   chat.history.set([...args.uiMessages, args.request]);
   return chat.turn();
@@ -423,9 +423,9 @@ function answerWithTurn(args: {
 function resumeTurn(args: {
   responseId: string;
   kind: "wake" | "investigate";
-  model?: "haiku";
+  bounded?: true;
 }): ActionTurn {
-  locals.set(pendingActionTurnKey, { kind: args.kind, model: args.model });
+  locals.set(pendingActionTurnKey, { kind: args.kind, bounded: args.bounded });
   chat.setUIMessageStreamOptions({ generateMessageId: () => args.responseId });
   return chat.turn();
 }
@@ -482,7 +482,7 @@ async function narrateWatchWake(args: {
     return resumeTurn({
       responseId: messageId,
       kind: "wake",
-      model: plan.model === "haiku" ? "haiku" : undefined,
+      bounded: plan.model === "bounded" ? true : undefined,
     });
   }
 
@@ -513,7 +513,7 @@ async function narrateWatchWake(args: {
 
   const brief = [
     wakePrompt(action, tenancy),
-    plan.model === "haiku"
+    plan.model === "bounded"
       ? `Open with this fact, in these words: ${plan.presentation.headline}.`
       : undefined,
   ]
@@ -525,8 +525,8 @@ async function narrateWatchWake(args: {
     request: { id: requestId, role: "user", parts: [{ type: "text", text: brief }] },
     responseId: messageId,
     kind: "wake",
-    // The plan's small-model wake keeps its bounded budget in the turn.
-    model: plan.model === "haiku" ? "haiku" : undefined,
+    // An attention wake keeps its bounded budget in the turn.
+    bounded: plan.model === "bounded" ? true : undefined,
   });
 }
 

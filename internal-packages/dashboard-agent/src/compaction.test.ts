@@ -1,6 +1,7 @@
 // `@trigger.dev/sdk/ai/test` MUST be imported before the agent module so the
 // resource catalog is installed before `chat.agent({ id })` registers.
 import { mockChatAgent, type MockChatAgentHarness } from "@trigger.dev/sdk/ai/test";
+import { DASHBOARD_AGENT_SUMMARY_PROMPT } from "./prompts";
 
 import { afterEach, describe, expect, it } from "vitest";
 import { simulateReadableStream, type ModelMessage, type UIMessage } from "ai";
@@ -26,7 +27,6 @@ import {
   safeTail,
   shouldCompactConversation,
   STATIC_PREFIX_TOKENS,
-  SUMMARY_INSTRUCTION,
   withDurableState,
 } from "./compaction";
 
@@ -422,7 +422,7 @@ describe("the summariser's input", () => {
  * the watch line asks for a record and never for present state.
  */
 describe("the summary instruction never asks for present state", () => {
-  const watchLine = SUMMARY_INSTRUCTION.split("\n").find((line) => /watch/i.test(line));
+  const watchLine = DASHBOARD_AGENT_SUMMARY_PROMPT.split("\n").find((line) => /watch/i.test(line));
 
   it("has a line about watches at all", () => {
     expect(watchLine).toBeDefined();

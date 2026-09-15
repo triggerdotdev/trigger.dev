@@ -161,10 +161,21 @@ describe("watch wake narration", () => {
 
   /** Records what each model call was given: how many tools, and any output cap. */
   function capturingModel(text: string) {
-    const calls: { tools: number; maxOutputTokens: number | undefined }[] = [];
+    const calls: {
+      tools: number;
+      maxOutputTokens: number | undefined;
+      effort: string | undefined;
+    }[] = [];
     const model = new MockLanguageModelV3({
       doStream: async (options) => {
-        calls.push({ tools: options.tools?.length ?? 0, maxOutputTokens: options.maxOutputTokens });
+        // The harness runs on the direct Anthropic provider, where the bounded-call
+        // safeguard is `effort: "low"` (see withoutThinking).
+        const effort = (options.providerOptions?.anthropic as { effort?: string })?.effort;
+        calls.push({
+          tools: options.tools?.length ?? 0,
+          maxOutputTokens: options.maxOutputTokens,
+          effort,
+        });
         return { stream: simulateReadableStream({ chunks: textStep(text) }) };
       },
       doGenerate: async () => ({
@@ -374,10 +385,11 @@ describe("watch wake narration", () => {
   });
 
   /**
-   * The wake that needs attention was a bounded small-model call before it became a
-   * turn; the turn keeps that shape: no tools, a 300-token cap.
+   * The wake that needs attention was a bounded call before it became a turn; the
+   * turn keeps that shape: no tools, an output cap, and thinking held down so the cap
+   * is answer.
    */
-  it("runs an attention wake on the small model with the bounded budget", async () => {
+  it("runs an attention wake with the bounded budget", async () => {
     const { store } = fakeStore();
     const { model, calls } = capturingModel("Run run_abc123 failed after 4.2s.");
     harness = mockChatAgent(dashboardAgent, {
@@ -392,7 +404,7 @@ describe("watch wake narration", () => {
     await harness.sendAction(FAILED_RUN_WAKE);
     await turnSaved(store);
 
-    expect(calls).toEqual([{ tools: 0, maxOutputTokens: 300 }]);
+    expect(calls).toEqual([{ tools: 0, maxOutputTokens: 300, effort: "low" }]);
   });
 
   /**
@@ -432,9 +444,10 @@ describe("watch wake narration", () => {
       await harness.sendMessage(userMessage("what happened?"));
       await waitForEvals(evals, 1);
 
-      // The wake ran as a bounded small-model call; the typed turn ran uncapped.
-      expect(calls[0]).toEqual({ tools: 0, maxOutputTokens: 300 });
-      expect(calls[1]?.maxOutputTokens).toBeUndefined();
+      // The wake ran bounded; the typed turn ran at the main model's documented ceiling.
+      expect(calls[0]).toEqual({ tools: 0, maxOutputTokens: 300, effort: "low" });
+      expect(calls[1]?.maxOutputTokens).toBe(128_000);
+      expect(calls[1]?.effort).toBeUndefined();
       // Only the typed turn is judged: the wake is the agent talking to itself.
       expect(evals).toHaveLength(1);
     } finally {
