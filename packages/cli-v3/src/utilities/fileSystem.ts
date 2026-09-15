@@ -1,10 +1,10 @@
+import { parseJSONC, parseTOML, stringifyTOML } from "confbox";
 import fsSync from "fs";
+import fsModule from "fs/promises";
 import stringify from "json-stable-stringify";
-import fsModule, { writeFile } from "fs/promises";
 import fs from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import pathModule from "node:path";
-import { parseJSONC, stringifyJSONC, parseTOML, stringifyTOML } from "confbox";
 
 // Creates a file at the given path, if the directory doesn't exist it will be created
 export async function createFile(
@@ -64,7 +64,7 @@ export async function createFileWithStore(
     } catch (linkError) {
       try {
         await fsModule.copyFile(storePath, filePath);
-      } catch (copyError) {
+      } catch (_copyError) {
         throw linkError; // Rethrow original error if copy also fails
       }
     }
@@ -80,7 +80,7 @@ export async function createFileWithStore(
   } catch (linkError) {
     try {
       await fsModule.copyFile(storePath, filePath);
-    } catch (copyError) {
+    } catch (_copyError) {
       throw linkError; // Rethrow original error if copy also fails
     }
   }
@@ -91,7 +91,7 @@ export async function createFileWithStore(
 export function isDirectory(configPath: string) {
   try {
     return fs.statSync(configPath).isDirectory();
-  } catch (error) {
+  } catch (_error) {
     // ignore error
     return false;
   }
@@ -99,20 +99,6 @@ export function isDirectory(configPath: string) {
 
 export async function pathExists(path: string): Promise<boolean> {
   return fsSync.existsSync(path);
-}
-
-export async function someFileExists(directory: string, filenames: string[]): Promise<boolean> {
-  for (let index = 0; index < filenames.length; index++) {
-    const filename = filenames[index];
-    if (!filename) continue;
-
-    const path = pathModule.join(directory, filename);
-    if (await pathExists(path)) {
-      return true;
-    }
-  }
-
-  return false;
 }
 
 export async function removeFile(path: string) {
@@ -191,14 +177,6 @@ export function readJSONFileSync(path: string) {
   return JSON.parse(fileContents);
 }
 
-export function safeDeleteFileSync(path: string) {
-  try {
-    fs.unlinkSync(path);
-  } catch (error) {
-    // ignore error
-  }
-}
-
 // Create a temporary directory within the OS's temp directory
 export async function createTempDir(): Promise<string> {
   // Generate a unique temp directory path
@@ -232,8 +210,4 @@ export async function safeReadJSONCFile(path: string) {
   const fileContents = await readFile(path);
 
   return parseJSONC(fileContents.replace(/\r\n/g, "\n"));
-}
-
-export async function writeJSONCFile(path: string, json: any) {
-  await safeWriteFile(path, stringifyJSONC(json));
 }

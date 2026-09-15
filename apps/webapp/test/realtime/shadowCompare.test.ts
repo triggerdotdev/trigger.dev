@@ -120,7 +120,12 @@ describe("RealtimeShadowComparator serialization", () => {
     expect(out.serializationDiverged).toBe(1);
     expect(out.serializationMatched).toBe(0);
     expect(out.diffs).toEqual([
-      { runId: "run_a", column: "payload", electric: '{"hello":"TAMPERED"}', native: '{"hello":"world"}' },
+      {
+        runId: "run_a",
+        column: "payload",
+        electric: '{"hello":"TAMPERED"}',
+        native: '{"hello":"world"}',
+      },
     ]);
   });
 
@@ -145,7 +150,9 @@ describe("RealtimeShadowComparator serialization", () => {
   it("records skew when the row advanced between emit and refetch", async () => {
     const row = sampleRow();
     // Electric emitted an older version; the refetched row is newer.
-    const value = { ...serializeRunRow(sampleRow({ updatedAt: new Date("2026-06-07T10:00:00.000Z") })) };
+    const value = {
+      ...serializeRunRow(sampleRow({ updatedAt: new Date("2026-06-07T10:00:00.000Z") })),
+    };
     const body = JSON.stringify([insert(value), UP_TO_DATE]);
     const cmp = makeComparator({ run_a: row });
 
@@ -179,10 +186,10 @@ describe("RealtimeShadowComparator membership", () => {
   }
 
   it("matches when Electric's set equals the native resolver's set", async () => {
-    const cmp = makeComparator(
-      { a: sampleRow({ id: "a" }), b: sampleRow({ id: "b" }) },
-      ["a", "b"]
-    );
+    const cmp = makeComparator({ a: sampleRow({ id: "a" }), b: sampleRow({ id: "b" }) }, [
+      "a",
+      "b",
+    ]);
     const out = await cmp.compare({
       feed: "runs",
       electricBody: bodyFor(["a", "b"]),

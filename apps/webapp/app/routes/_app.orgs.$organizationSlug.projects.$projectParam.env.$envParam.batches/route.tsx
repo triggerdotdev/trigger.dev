@@ -1,6 +1,7 @@
 import { ExclamationCircleIcon } from "@heroicons/react/20/solid";
 import { BookOpenIcon } from "@heroicons/react/24/solid";
-import { type MetaFunction, Outlet, useLocation, useNavigation, useParams } from "@remix-run/react";
+import { Outlet, useLocation, useNavigation, useParams } from "@remix-run/react";
+
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDuration } from "@trigger.dev/core/v3/utils/durations";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -49,20 +50,30 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { type BatchList, BatchListPresenter } from "~/presenters/v3/BatchListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import {
+  $replica,
+  runOpsNewReplicaClient,
+  runOpsLegacyReplicaClient,
+  runOpsSplitReadEnabled,
+  type PrismaClientOrTransaction,
+} from "~/db.server";
+import { runOpsNonAliasedShardReplicas } from "~/v3/runOpsMigration/shardHandles.server";
+import {
   docsPath,
   EnvironmentParamSchema,
   v3BatchPath,
   v3BatchRunsPath,
 } from "~/utils/pathBuilder";
 import { throwNotFound } from "~/utils/httpErrors";
+import { batchesAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
+import type { Handle } from "~/utils/handle";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Batches | Trigger.dev`,
-    },
-  ];
+export const handle: Handle = {
+  agentPageContext: (data) => batchesAgentPageContext(data),
 };
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Batches");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -90,7 +101,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   };
   const filters = BatchListFilters.parse(s);
 
-  const presenter = new BatchListPresenter();
+  const presenter = new BatchListPresenter(undefined, undefined, {
+    runOpsNew: runOpsNewReplicaClient,
+    runOpsLegacyReplica: runOpsLegacyReplicaClient,
+    controlPlaneReplica: $replica as unknown as PrismaClientOrTransaction,
+    shardReplicas: runOpsNonAliasedShardReplicas,
+    splitEnabled: runOpsSplitReadEnabled,
+  });
   const list = await presenter.call({
     userId,
     projectId: project.id,
@@ -114,13 +131,15 @@ export default function Page() {
         <PageTitle title="Batches" />
         <PageAccessories>
           <AdminDebugTooltip />
-          <LinkButton
-            variant={"docs/small"}
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("/triggering")}
-          >
-            Batches docs
-          </LinkButton>
+          <WhenAgentUnavailable>
+            <LinkButton
+              variant={"docs/small"}
+              LeadingIcon={BookOpenIcon}
+              to={docsPath("/triggering")}
+            >
+              Batches docs
+            </LinkButton>
+          </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
@@ -201,7 +220,7 @@ function BatchesTable({ batches, hasFilters, filters }: BatchList) {
                     <div className="mb-0.5 flex items-center gap-1.5 whitespace-nowrap">
                       <BatchStatusCombo status={status} />
                     </div>
-                    <Paragraph variant="extra-small" className="!text-wrap text-text-dimmed">
+                    <Paragraph variant="extra-small" className="text-wrap! text-text-dimmed">
                       {descriptionForBatchStatus(status)}
                     </Paragraph>
                   </div>

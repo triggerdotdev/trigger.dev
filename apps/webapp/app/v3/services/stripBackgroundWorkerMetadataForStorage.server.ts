@@ -1,5 +1,5 @@
-import { BackgroundWorkerMetadata } from "@trigger.dev/core/v3";
-import { Prisma } from "@trigger.dev/database";
+import type { BackgroundWorkerMetadata } from "@trigger.dev/core/v3";
+import type { Prisma } from "@trigger.dev/database";
 
 /**
  * Strip BackgroundWorkerMetadata down to the slice that's actually read after

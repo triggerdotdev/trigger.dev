@@ -35,7 +35,7 @@ function parseVersion(versionString = ""): { major: number; minor: number; patch
     @param stream - Optional stream to check for hyperlink support.
     @returns boolean indicating whether hyperlinks are supported.
 */
-export function createSupportsHyperlinks(stream: NodeJS.WriteStream): boolean {
+function createSupportsHyperlinks(stream: NodeJS.WriteStream): boolean {
   const {
     CI,
     CURSOR_TRACE_ID,

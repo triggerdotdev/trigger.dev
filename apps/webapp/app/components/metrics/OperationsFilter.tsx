@@ -31,7 +31,7 @@ function formatOperation(op: string): string {
 }
 
 export function OperationsFilter({ possibleOperations }: OperationsFilterProps) {
-  const { values, replace, del } = useSearchParams();
+  const { values, replace: _replace, del } = useSearchParams();
   const selectedOperations = values("operations");
 
   if (selectedOperations.length === 0 || selectedOperations.every((v) => v === "")) {
@@ -126,7 +126,12 @@ function OperationsDropdown({
         <ComboBox placeholder="Filter by operation..." value={searchValue} />
         <SelectList>
           {filtered.map((op) => (
-            <SelectItem key={op} value={op} className="text-text-bright" icon={<CommandLineIcon className="size-4 text-text-dimmed" />}>
+            <SelectItem
+              key={op}
+              value={op}
+              className="text-text-bright"
+              icon={<CommandLineIcon className="size-4 text-text-dimmed" />}
+            >
               {formatOperation(op)}
             </SelectItem>
           ))}

@@ -9,9 +9,17 @@ import {
   ApiWaitpointListPresenter,
   ApiWaitpointListSearchParams,
 } from "~/presenters/v3/ApiWaitpointListPresenter.server";
-import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import {
+  runOpsNewReplicaClient,
+  runOpsLegacyReplica,
+  runOpsSplitReadEnabled,
+  type PrismaClientOrTransaction,
+} from "~/db.server";
+import { resolveRunIdMintKind } from "~/v3/engineVersion.server";
+import { resolveMintShard } from "~/v3/runOpsMigration/runOpsMintShard.server";
 import { logger } from "~/services/logger.server";
 import { generateHttpCallbackUrl } from "~/services/httpCallback.server";
+import { publicAccessTokenResponseHeaders } from "~/services/publicAccessTokenResponse.server";
 import {
   createActionApiRoute,
   createLoaderApiRoute,
@@ -27,7 +35,11 @@ export const loader = createLoaderApiRoute(
     findResource: async () => 1, // This is a dummy function, we don't need to find a resource
   },
   async ({ searchParams, authentication }) => {
-    const presenter = new ApiWaitpointListPresenter();
+    const presenter = new ApiWaitpointListPresenter(undefined, undefined, {
+      runOpsNew: runOpsNewReplicaClient as unknown as PrismaClientOrTransaction,
+      runOpsLegacyReplica: runOpsLegacyReplica as unknown as PrismaClientOrTransaction,
+      splitEnabled: runOpsSplitReadEnabled,
+    });
     const result = await presenter.call(authentication.environment, searchParams);
 
     return json(result);
@@ -48,6 +60,25 @@ const { action } = createActionApiRoute(
 
       const timeout = await parseDelay(body.timeout);
 
+      // A token (and its tags) has no owning run, so it can't co-locate. Resolve the env mint kind so a
+      // minted-new env creates them on the run-ops DB (NEW) instead of defaulting to the draining LEGACY
+      // DB by their cuid id-shape.
+      const mintKind = await resolveRunIdMintKind({
+        organizationId: authentication.environment.organizationId,
+        id: authentication.environment.id,
+        orgFeatureFlags: authentication.environment.organization.featureFlags,
+      });
+      const residency = mintKind === "runOpsId" ? "NEW" : "LEGACY";
+
+      // No extra query: the org flags are already loaded on the authenticated env.
+      const standaloneShardKey =
+        mintKind === "runOpsId"
+          ? await resolveMintShard({
+              id: authentication.environment.id,
+              orgFeatureFlags: authentication.environment.organization.featureFlags,
+            })
+          : undefined;
+
       //upsert tags
       let tags: { id: string; name: string }[] = [];
       const bodyTags = typeof body.tags === "string" ? [body.tags] : body.tags;
@@ -64,6 +95,8 @@ const { action } = createActionApiRoute(
             tag,
             environmentId: authentication.environment.id,
             projectId: authentication.environment.projectId,
+            residency,
+            shardKey: standaloneShardKey,
           });
           if (tagRecord) {
             tags.push(tagRecord);
@@ -78,13 +111,20 @@ const { action } = createActionApiRoute(
         idempotencyKeyExpiresAt,
         timeout,
         tags: bodyTags,
+        standaloneResidency: residency,
+        standaloneShardKey,
       });
 
-      const $responseHeaders = await responseHeaders(authentication.environment);
+      const waitpointId = WaitpointId.toFriendlyId(result.waitpoint.id);
+      const $responseHeaders = await publicAccessTokenResponseHeaders({
+        environment: authentication.environment,
+        scopes: [`write:waitpoints:${waitpointId}`],
+        expirationTime: "24h",
+      });
 
       return json<CreateWaitpointTokenResponseBody>(
         {
-          id: WaitpointId.toFriendlyId(result.waitpoint.id),
+          id: waitpointId,
           isCached: result.isCached,
           url: generateHttpCallbackUrl(result.waitpoint.id, authentication.environment.apiKey),
         },
@@ -100,18 +140,5 @@ const { action } = createActionApiRoute(
     }
   }
 );
-
-async function responseHeaders(
-  environment: AuthenticatedEnvironment
-): Promise<Record<string, string>> {
-  const claimsHeader = JSON.stringify({
-    sub: environment.id,
-    pub: true,
-  });
-
-  return {
-    "x-trigger-jwt-claims": claimsHeader,
-  };
-}
 
 export { action };

@@ -52,7 +52,7 @@ function extractRawValue(error: unknown): unknown | undefined {
  *
  * Returns the validated data on success, or `undefined` if recovery fails.
  */
-export function recoverFromVercelSdkError<T>(
+function recoverFromVercelSdkError<T>(
   error: unknown,
   schema: z.ZodType<any>,
   options?: { context?: string }
@@ -122,9 +122,7 @@ export function wrapVercelCallWithRecovery<T>(
 export const VercelSchemas = {
   getTeam: z.object({ slug: z.string() }).passthrough(),
 
-  getAuthUser: z
-    .object({ user: z.object({ username: z.string() }).passthrough() })
-    .passthrough(),
+  getAuthUser: z.object({ user: z.object({ username: z.string() }).passthrough() }).passthrough(),
 
   getCustomEnvironments: z
     .object({
@@ -147,11 +145,12 @@ export const VercelSchemas = {
     .union([
       z
         .object({
-          envs: z.array(z.record(z.unknown())),
+          envs: z.array(z.record(z.string(), z.unknown())),
           pagination: z.unknown().optional(),
+          hiddenProductionEnvCount: z.number().optional(),
         })
         .passthrough(),
-      z.array(z.record(z.unknown())),
+      z.array(z.record(z.string(), z.unknown())),
     ])
     .transform((val) => (Array.isArray(val) ? { envs: val } : val)),
 
@@ -161,9 +160,7 @@ export const VercelSchemas = {
     z.array(z.object({ id: z.string(), name: z.string() }).passthrough()),
     z
       .object({
-        projects: z.array(
-          z.object({ id: z.string(), name: z.string() }).passthrough()
-        ),
+        projects: z.array(z.object({ id: z.string(), name: z.string() }).passthrough()),
         pagination: z.unknown().optional(),
       })
       .passthrough(),

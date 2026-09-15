@@ -4,6 +4,18 @@ sidebarTitle: "Atomic deploys"
 description: "Use atomic deploys to coordinate changes to your tasks and your application."
 ---
 
+<Warning>
+  **There's now a simpler way to do this.** [Version skew
+  protection](/deployment/version-skew-protection) solves the same problem without a second
+  deployment, without gating your app's deploy, and without setting `TRIGGER_VERSION` — and it covers
+  staging and preview as well as production. If you use the [Vercel
+  integration](/vercel-integration), its **automatic atomic deployments** setting is now deprecated
+  in favour of skew protection.
+
+  The manual workflows on this page still work, and remain the right answer if you specifically want
+  your application's deployment held back until your tasks have finished building.
+</Warning>
+
 Atomic deploys in Trigger.dev allow you to synchronize the deployment of your application with a specific version of your tasks. This ensures that your application always uses the correct version of its associated tasks, preventing inconsistencies or errors due to version mismatches.
 
 ## How it works

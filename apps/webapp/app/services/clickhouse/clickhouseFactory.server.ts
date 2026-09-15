@@ -1,4 +1,4 @@
-import { ClickHouse } from "@internal/clickhouse";
+import { ClickHouse, type ClickHouseSettings } from "@internal/clickhouse";
 import { createHash } from "crypto";
 import { ClickhouseEventRepository } from "~/v3/eventRepository/clickhouseEventRepository.server";
 import { env } from "~/env.server";
@@ -37,12 +37,39 @@ const defaultLogsClickhouseClient = singleton(
   initializeLogsClickhouseClient
 );
 
+function initializeLogsSearchProjectorClickhouseClient() {
+  const url = new URL(env.LOGS_CLICKHOUSE_URL ?? env.CLICKHOUSE_URL);
+  url.searchParams.delete("secure");
+
+  return new ClickHouse({
+    url: url.toString(),
+    name: "logs-search-projector",
+    keepAlive: {
+      enabled: env.CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
+      idleSocketTtl: env.CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
+    },
+    logLevel: env.CLICKHOUSE_LOG_LEVEL,
+    compression: { request: true },
+    maxOpenConnections: Math.min(env.CLICKHOUSE_MAX_OPEN_CONNECTIONS, 2),
+    requestTimeoutMs: (env.LOGS_SEARCH_PROJECTOR_MAX_EXECUTION_TIME_SECONDS + 30) * 1000,
+  });
+}
+
 function getLogsListClickhouseSettings() {
   return {
     max_memory_usage: env.CLICKHOUSE_LOGS_LIST_MAX_MEMORY_USAGE.toString(),
     max_bytes_before_external_sort:
       env.CLICKHOUSE_LOGS_LIST_MAX_BYTES_BEFORE_EXTERNAL_SORT.toString(),
     max_threads: env.CLICKHOUSE_LOGS_LIST_MAX_THREADS,
+    // Cap per-part read buffers so read-in-order memory stays bounded. These exist everywhere.
+    prefetch_buffer_size: env.CLICKHOUSE_LOGS_LIST_PREFETCH_BUFFER_SIZE.toString(),
+    max_read_buffer_size: env.CLICKHOUSE_LOGS_LIST_MAX_READ_BUFFER_SIZE.toString(),
+    // Object-storage only and newer than the buffers above, so only send it when configured to
+    // avoid UNKNOWN_SETTING failures against older self-hosted ClickHouse that lack it.
+    ...(env.CLICKHOUSE_LOGS_LIST_FILESYSTEM_CACHE_PREFER_BIGGER_BUFFER_SIZE !== undefined && {
+      filesystem_cache_prefer_bigger_buffer_size:
+        env.CLICKHOUSE_LOGS_LIST_FILESYSTEM_CACHE_PREFER_BIGGER_BUFFER_SIZE,
+    }),
     ...(env.CLICKHOUSE_LOGS_LIST_MAX_ROWS_TO_READ && {
       max_rows_to_read: env.CLICKHOUSE_LOGS_LIST_MAX_ROWS_TO_READ.toString(),
     }),
@@ -53,11 +80,7 @@ function getLogsListClickhouseSettings() {
 }
 
 function initializeLogsClickhouseClient() {
-  if (!env.LOGS_CLICKHOUSE_URL) {
-    throw new Error("LOGS_CLICKHOUSE_URL is not set");
-  }
-
-  const url = new URL(env.LOGS_CLICKHOUSE_URL);
+  const url = new URL(env.LOGS_CLICKHOUSE_URL ?? env.CLICKHOUSE_READER_URL ?? env.CLICKHOUSE_URL);
   url.searchParams.delete("secure");
 
   return new ClickHouse({
@@ -182,6 +205,33 @@ function initializeSessionsReplicationClickhouseClient(): ClickHouse {
   });
 }
 
+const defaultWebhookDeliveriesReplicationClickhouseClient = singleton(
+  "webhookDeliveriesReplicationClickhouseClient",
+  initializeWebhookDeliveriesReplicationClickhouseClient
+);
+
+function initializeWebhookDeliveriesReplicationClickhouseClient(): ClickHouse {
+  if (!env.WEBHOOK_DELIVERIES_REPLICATION_CLICKHOUSE_URL) {
+    // Webhook deliveries replication worker gates on this URL; factory may still resolve "webhook_deliveries_replication" for tests.
+    return defaultClickhouseClient;
+  }
+
+  const url = new URL(env.WEBHOOK_DELIVERIES_REPLICATION_CLICKHOUSE_URL);
+  url.searchParams.delete("secure");
+
+  return new ClickHouse({
+    url: url.toString(),
+    name: "webhook-deliveries-replication",
+    keepAlive: {
+      enabled: env.SESSION_REPLICATION_KEEP_ALIVE_ENABLED === "1",
+      idleSocketTtl: env.SESSION_REPLICATION_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
+    },
+    logLevel: env.SESSION_REPLICATION_CLICKHOUSE_LOG_LEVEL,
+    compression: { request: true },
+    maxOpenConnections: env.SESSION_REPLICATION_MAX_OPEN_CONNECTIONS,
+  });
+}
+
 /** Run-engine PendingVersionSystem lookup (`RUN_ENGINE_CLICKHOUSE_URL`);
  *  falls back to the default client if unset. */
 const defaultRunEngineClickhouseClient = singleton(
@@ -242,6 +292,131 @@ function initializeRealtimeClickhouseClient(): ClickHouse {
   });
 }
 
+/**
+ * Server-side query protection for the runs-list read pool. Every setting here is PER-QUERY, so a
+ * pathological query only ever kills itself: a slow one hits `max_execution_time`, a memory-hungry
+ * one hits `max_memory_usage`, a thread-hungry one hits `max_threads`. Per-USER limits
+ * (`max_*_for_user`) are deliberately NOT used: everything connects as `default`, so a per-user cap
+ * would reject whichever query arrives once the shared budget is hit, punishing innocent tenants
+ * for a noisy one. The node itself is protected by the server-level `max_server_memory_usage`.
+ * Safe as client-level settings ONLY because this pool is read-only; on a mixed read+write pool a
+ * client-level `max_execution_time` would also kill slow inserts. `readonly=2` enforces read-only
+ * while still allowing these settings to apply (`readonly=1` rejects them).
+ */
+/**
+ * Client request timeout for the runs-list pool, forced above the server-side `max_execution_time`
+ * so the server cap is what stops a slow query and the client stays connected to receive that
+ * error. If the client timed out first, it would abort while ClickHouse kept executing, which is
+ * the abandoned-query behaviour this pool is trying to prevent.
+ */
+function getRunsListRequestTimeoutMs() {
+  return Math.max(
+    env.RUNS_LIST_CLICKHOUSE_REQUEST_TIMEOUT_MS,
+    (env.RUNS_LIST_CLICKHOUSE_MAX_EXECUTION_TIME + 5) * 1000
+  );
+}
+
+function getRunsListClickhouseSettings(): ClickHouseSettings {
+  const settings: ClickHouseSettings = {
+    max_execution_time: env.RUNS_LIST_CLICKHOUSE_MAX_EXECUTION_TIME,
+    timeout_before_checking_execution_speed: 0,
+    max_threads: env.RUNS_LIST_CLICKHOUSE_MAX_THREADS,
+    max_memory_usage: env.RUNS_LIST_CLICKHOUSE_MAX_MEMORY_USAGE.toString(),
+  };
+
+  if (env.RUNS_LIST_CLICKHOUSE_READONLY !== "0") {
+    settings.readonly = env.RUNS_LIST_CLICKHOUSE_READONLY;
+  }
+
+  return settings;
+}
+
+/** Runs list reads — dashboard + API (`RUNS_LIST_CLICKHOUSE_URL`);
+ *  falls back to the default client if unset. */
+const defaultRunsListClickhouseClient = singleton(
+  "runsListClickhouseClient",
+  initializeRunsListClickhouseClient
+);
+
+function initializeRunsListClickhouseClient(): ClickHouse {
+  if (!env.RUNS_LIST_CLICKHOUSE_URL) {
+    return defaultClickhouseClient;
+  }
+
+  const url = new URL(env.RUNS_LIST_CLICKHOUSE_URL);
+  url.searchParams.delete("secure");
+
+  return new ClickHouse({
+    url: url.toString(),
+    name: "runs-list-clickhouse",
+    keepAlive: {
+      enabled: env.RUNS_LIST_CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
+      idleSocketTtl: env.RUNS_LIST_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
+    },
+    logLevel: env.RUNS_LIST_CLICKHOUSE_LOG_LEVEL,
+    compression: {
+      request: env.RUNS_LIST_CLICKHOUSE_COMPRESSION_REQUEST === "1",
+    },
+    maxOpenConnections: env.RUNS_LIST_CLICKHOUSE_MAX_OPEN_CONNECTIONS,
+    requestTimeoutMs: getRunsListRequestTimeoutMs(),
+    clickhouseSettings: getRunsListClickhouseSettings(),
+  });
+}
+
+/**
+ * Queue metrics (`QUEUE_METRICS_CLICKHOUSE_URL`), a mixed read+write client: the ingestion
+ * consumer inserts through it and every queue-metrics read goes through it. When the URL is
+ * unset it reproduces the previous split exactly, writing to `CLICKHOUSE_URL` and reading from
+ * the query pool, so the dedicated service is opt-in per deployment.
+ */
+const defaultQueueMetricsClickhouseClient = singleton(
+  "queueMetricsClickhouseClient",
+  initializeQueueMetricsClickhouseClient
+);
+
+function initializeQueueMetricsClickhouseClient(): ClickHouse {
+  const dedicated = env.QUEUE_METRICS_CLICKHOUSE_URL;
+
+  const writerUrl = new URL(dedicated ?? env.CLICKHOUSE_URL);
+  writerUrl.searchParams.delete("secure");
+
+  const readerUrl = new URL(
+    env.QUEUE_METRICS_CLICKHOUSE_READER_URL ??
+      dedicated ??
+      env.QUERY_CLICKHOUSE_URL ??
+      env.CLICKHOUSE_URL
+  );
+  readerUrl.searchParams.delete("secure");
+
+  const commonConfig = {
+    keepAlive: {
+      enabled: env.QUEUE_METRICS_CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
+      idleSocketTtl: env.QUEUE_METRICS_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
+    },
+    logLevel: env.QUEUE_METRICS_CLICKHOUSE_LOG_LEVEL,
+    compression: {
+      request: env.QUEUE_METRICS_CLICKHOUSE_COMPRESSION_REQUEST === "1",
+    },
+    maxOpenConnections: env.QUEUE_METRICS_CLICKHOUSE_MAX_OPEN_CONNECTIONS,
+  };
+
+  if (readerUrl.toString() !== writerUrl.toString()) {
+    return new ClickHouse({
+      ...commonConfig,
+      writerName: "queue-metrics-writer",
+      writerUrl: writerUrl.toString(),
+      readerName: "queue-metrics-reader",
+      readerUrl: readerUrl.toString(),
+    });
+  }
+
+  return new ClickHouse({
+    ...commonConfig,
+    name: "queue-metrics-clickhouse",
+    url: writerUrl.toString(),
+  });
+}
+
 /** Task events (`EVENTS_CLICKHOUSE_URL`); not exported — accessed via factory. */
 const defaultEventsClickhouseClient = singleton(
   "eventsClickhouseClient",
@@ -253,12 +428,10 @@ function initializeEventsClickhouseClient(): ClickHouse {
     throw new Error("EVENTS_CLICKHOUSE_URL is not set");
   }
 
-  const url = new URL(env.EVENTS_CLICKHOUSE_URL);
-  url.searchParams.delete("secure");
+  const writerUrl = new URL(env.EVENTS_CLICKHOUSE_URL);
+  writerUrl.searchParams.delete("secure");
 
-  return new ClickHouse({
-    url: url.toString(),
-    name: "task-events",
+  const commonConfig = {
     keepAlive: {
       enabled: env.EVENTS_CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
       idleSocketTtl: env.EVENTS_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
@@ -268,6 +441,28 @@ function initializeEventsClickhouseClient(): ClickHouse {
       request: env.EVENTS_CLICKHOUSE_COMPRESSION_REQUEST === "1",
     },
     maxOpenConnections: env.EVENTS_CLICKHOUSE_MAX_OPEN_CONNECTIONS,
+  };
+
+  // Mixed read+write client: split reads to its own EVENTS_READER_CLICKHOUSE_URL (not the global reader) so inserts can never hit the replica.
+  if (env.EVENTS_READER_CLICKHOUSE_URL) {
+    const readerUrl = new URL(env.EVENTS_READER_CLICKHOUSE_URL);
+    readerUrl.searchParams.delete("secure");
+
+    if (readerUrl.toString() !== writerUrl.toString()) {
+      return new ClickHouse({
+        ...commonConfig,
+        writerName: "task-events-writer",
+        writerUrl: writerUrl.toString(),
+        readerName: "task-events-reader",
+        readerUrl: readerUrl.toString(),
+      });
+    }
+  }
+
+  return new ClickHouse({
+    ...commonConfig,
+    name: "task-events",
+    url: writerUrl.toString(),
   });
 }
 
@@ -285,11 +480,24 @@ export type ClientType =
   | "events"
   | "replication"
   | "sessions_replication"
+  | "webhook_deliveries_replication"
   | "logs"
   | "query"
   | "admin"
   | "engine"
-  | "realtime";
+  | "realtime"
+  | "runsList"
+  | "queueMetrics";
+
+/**
+ * Client types whose data is written to a single shared warehouse by an org-less writer, so their
+ * reads must always resolve to that same shared default client and must ignore any per-org
+ * ClickHouse datastore override (a dedicated CH holds the schema but no rows for these). Add a
+ * client type here to make it globally-routed. `queueMetrics` is written by the org-less ingestion
+ * consumer (`getQueueMetricsClickhouseClient`); the replication/engine writer types are NOT here
+ * because their consumers route writes per-org and so legitimately honor the override on both sides.
+ */
+const SHARED_WAREHOUSE_CLIENT_TYPES = new Set<ClientType>(["queueMetrics"]);
 
 function buildOrgClickhouseClient(url: string, clientType: ClientType): ClickHouse {
   const parsed = new URL(url);
@@ -324,6 +532,9 @@ function buildOrgClickhouseClient(url: string, clientType: ClientType): ClickHou
         maxOpenConnections: env.RUN_REPLICATION_MAX_OPEN_CONNECTIONS,
       });
     case "sessions_replication":
+    // Webhook deliveries replication shares the sessions replication ClickHouse
+    // client config (same infra, both replication writers).
+    case "webhook_deliveries_replication":
       return new ClickHouse({
         url: parsed.toString(),
         name,
@@ -362,6 +573,20 @@ function buildOrgClickhouseClient(url: string, clientType: ClientType): ClickHou
         },
         maxOpenConnections: env.RUN_ENGINE_CLICKHOUSE_MAX_OPEN_CONNECTIONS,
       });
+    case "queueMetrics":
+      return new ClickHouse({
+        url: parsed.toString(),
+        name,
+        keepAlive: {
+          enabled: env.QUEUE_METRICS_CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
+          idleSocketTtl: env.QUEUE_METRICS_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
+        },
+        logLevel: env.QUEUE_METRICS_CLICKHOUSE_LOG_LEVEL,
+        compression: {
+          request: env.QUEUE_METRICS_CLICKHOUSE_COMPRESSION_REQUEST === "1",
+        },
+        maxOpenConnections: env.QUEUE_METRICS_CLICKHOUSE_MAX_OPEN_CONNECTIONS,
+      });
     case "realtime":
       return new ClickHouse({
         url: parsed.toString(),
@@ -375,6 +600,22 @@ function buildOrgClickhouseClient(url: string, clientType: ClientType): ClickHou
           request: env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_COMPRESSION_REQUEST === "1",
         },
         maxOpenConnections: env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_MAX_OPEN_CONNECTIONS,
+      });
+    case "runsList":
+      return new ClickHouse({
+        url: parsed.toString(),
+        name,
+        keepAlive: {
+          enabled: env.RUNS_LIST_CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
+          idleSocketTtl: env.RUNS_LIST_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
+        },
+        logLevel: env.RUNS_LIST_CLICKHOUSE_LOG_LEVEL,
+        compression: {
+          request: env.RUNS_LIST_CLICKHOUSE_COMPRESSION_REQUEST === "1",
+        },
+        maxOpenConnections: env.RUNS_LIST_CLICKHOUSE_MAX_OPEN_CONNECTIONS,
+        requestTimeoutMs: getRunsListRequestTimeoutMs(),
+        clickhouseSettings: getRunsListClickhouseSettings(),
       });
     case "standard":
     case "query":
@@ -424,7 +665,9 @@ export class ClickhouseFactory {
   }
 
   getClickhouseForOrganizationSync(organizationId: string, clientType: ClientType): ClickHouse {
-    const dataStore = this._registry.get(organizationId, "CLICKHOUSE");
+    const dataStore = SHARED_WAREHOUSE_CLIENT_TYPES.has(clientType)
+      ? null
+      : this._registry.get(organizationId, "CLICKHOUSE");
 
     if (!dataStore) {
       switch (clientType) {
@@ -436,6 +679,8 @@ export class ClickhouseFactory {
           return defaultRunsReplicationClickhouseClient;
         case "sessions_replication":
           return defaultSessionsReplicationClickhouseClient;
+        case "webhook_deliveries_replication":
+          return defaultWebhookDeliveriesReplicationClickhouseClient;
         case "logs":
           return defaultLogsClickhouseClient;
         case "query":
@@ -446,6 +691,10 @@ export class ClickhouseFactory {
           return defaultRunEngineClickhouseClient;
         case "realtime":
           return defaultRealtimeClickhouseClient;
+        case "runsList":
+          return defaultRunsListClickhouseClient;
+        case "queueMetrics":
+          return defaultQueueMetricsClickhouseClient;
       }
     }
 
@@ -511,12 +760,16 @@ export function getAdminClickhouse(): ClickHouse {
   return defaultAdminClickhouseClient;
 }
 
-export function getDefaultClickhouseClient(): ClickHouse {
-  return defaultClickhouseClient;
+export function getLogsSearchProjectorClickhouseClient(): ClickHouse {
+  return singleton(
+    "logsSearchProjectorClickhouseClient",
+    initializeLogsSearchProjectorClickhouseClient
+  );
 }
 
-export function getDefaultLogsClickhouseClient(): ClickHouse {
-  return defaultLogsClickhouseClient;
+/** Queue-metrics client for callers with no organization in scope (the ingestion consumer). */
+export function getQueueMetricsClickhouseClient(): ClickHouse {
+  return defaultQueueMetricsClickhouseClient;
 }
 
 // ---------------------------------------------------------------------------

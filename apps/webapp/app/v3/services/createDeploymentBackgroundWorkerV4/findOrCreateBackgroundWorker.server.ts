@@ -69,9 +69,7 @@ export async function findOrCreateBackgroundWorker(
     // P2002 — the CLI's retry will then hit `findFirst` and find the winner's row.
     // Intentionally NOT a ServiceValidationError so the caller doesn't fail-deploy
     // on a transient race.
-    if (
-      isUniqueConstraintError(error, ["projectId", "runtimeEnvironmentId", "version"])
-    ) {
+    if (isUniqueConstraintError(error, ["projectId", "runtimeEnvironmentId", "version"])) {
       throw new Error(
         "Concurrent background worker registration detected for this deployment version; please retry"
       );

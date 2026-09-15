@@ -1,14 +1,20 @@
 const API_NAME = "resource-catalog";
 
-import {
+import type {
   PromptManifest,
   QueueManifest,
   SkillManifest,
   SkillMetadata,
   TaskManifest,
+  WebhookManifest,
+  WebhookMetadata,
   WorkerManifest,
 } from "../schemas/index.js";
-import { PromptMetadataWithFunctions, TaskMetadataWithFunctions, TaskSchema } from "../types/index.js";
+import type {
+  PromptMetadataWithFunctions,
+  TaskMetadataWithFunctions,
+  TaskSchema,
+} from "../types/index.js";
 import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals.js";
 import { type ResourceCatalog } from "./catalog.js";
 import { NoopResourceCatalog } from "./noopResourceCatalog.js";
@@ -114,6 +120,28 @@ export class ResourceCatalogAPI {
 
   public getSkillManifest(id: string): SkillManifest | undefined {
     return this.#getCatalog().getSkillManifest(id);
+  }
+
+  public registerWebhookMetadata(webhook: WebhookMetadata): void {
+    this.#getCatalog().registerWebhookMetadata(webhook);
+  }
+  public listWebhookManifests(): Array<WebhookManifest> {
+    return this.#getCatalog().listWebhookManifests();
+  }
+  public getWebhookManifest(id: string): WebhookManifest | undefined {
+    return this.#getCatalog().getWebhookManifest(id);
+  }
+  public listWebhookIdCollisions(): Array<{ id: string; filePaths: string[] }> {
+    return this.#getCatalog().listWebhookIdCollisions();
+  }
+  public registerDeclaredSessionWebhook(id: string): void {
+    this.#getCatalog().registerDeclaredSessionWebhook(id);
+  }
+  public markSessionWebhookClaimed(id: string): void {
+    this.#getCatalog().markSessionWebhookClaimed(id);
+  }
+  public listUnclaimedSessionWebhooks(): Array<string> {
+    return this.#getCatalog().listUnclaimedSessionWebhooks();
   }
 
   #getCatalog(): ResourceCatalog {

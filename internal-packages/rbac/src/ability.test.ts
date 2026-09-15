@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { permissiveAbility, superAbility, denyAbility, buildFallbackAbility, buildJwtAbility } from "./ability.js";
+import {
+  permissiveAbility,
+  superAbility,
+  denyAbility,
+  buildFallbackAbility,
+  buildJwtAbility,
+  scopesWithinAbility,
+} from "./ability.js";
 
 describe("permissiveAbility", () => {
   it("allows any action on any resource type", () => {
@@ -114,6 +121,78 @@ describe("buildJwtAbility", () => {
   it("denies wrong action with general resource scope", () => {
     const ability = buildJwtAbility(["read:runs"]);
     expect(ability.can("write", { type: "runs" })).toBe(false);
+  });
+});
+
+describe("scopesWithinAbility", () => {
+  it("allows subsets and preserves ids containing colons", () => {
+    const result = scopesWithinAbility(
+      ["read:runs:run_abc", "read:tags:env:staging"],
+      buildJwtAbility(["read:runs", "read:tags:env:staging"])
+    );
+
+    expect(result).toEqual({ ok: true, deniedScopes: [] });
+  });
+
+  it("rejects scopes that broaden or exceed the ability", () => {
+    const result = scopesWithinAbility(
+      ["trigger:tasks:send-email", "trigger:tasks", "read:runs"],
+      buildJwtAbility(["trigger:tasks:send-email"])
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      deniedScopes: ["trigger:tasks", "read:runs"],
+    });
+  });
+
+  it("lets a session scope mint its narrower direction and channel folds", () => {
+    const ability = buildJwtAbility(["read:sessions:chat_abc"]);
+    expect(scopesWithinAbility(["read:sessions:chat_abc:out"], ability).ok).toBe(true);
+    expect(scopesWithinAbility(["read:sessions:chat_abc:channels:tools"], ability).ok).toBe(true);
+    expect(scopesWithinAbility(["read:sessions:chat_abc:channels:tools:out"], ability).ok).toBe(
+      true
+    );
+
+    const channel = buildJwtAbility(["read:sessions:chat_abc:channels:tools"]);
+    expect(scopesWithinAbility(["read:sessions:chat_abc:channels:tools:out"], channel).ok).toBe(
+      true
+    );
+    // The fold only narrows: a channel scope does not contain the session or another channel.
+    expect(scopesWithinAbility(["read:sessions:chat_abc"], channel).ok).toBe(false);
+    expect(scopesWithinAbility(["read:sessions:chat_abc:out"], channel).ok).toBe(false);
+    expect(scopesWithinAbility(["read:sessions:chat_abc:channels:other:out"], channel).ok).toBe(
+      false
+    );
+  });
+
+  it("denies a folded session scope for another session or action", () => {
+    const ability = buildJwtAbility(["read:sessions:chat_abc"]);
+    expect(scopesWithinAbility(["read:sessions:chat_other:out"], ability).ok).toBe(false);
+    expect(
+      scopesWithinAbility(
+        ["read:sessions:chat_abc:out"],
+        buildJwtAbility(["write:sessions:chat_abc"])
+      ).ok
+    ).toBe(false);
+    // Colons inside other resource ids are not a fold.
+    expect(
+      scopesWithinAbility(["read:tags:env:staging"], buildJwtAbility(["read:tags:env"])).ok
+    ).toBe(false);
+  });
+
+  it("allows arbitrary valid scopes for a permissive ability", () => {
+    expect(scopesWithinAbility(["read:runs", "admin"], permissiveAbility)).toEqual({
+      ok: true,
+      deniedScopes: [],
+    });
+  });
+
+  it("rejects malformed scopes for restricted abilities", () => {
+    expect(scopesWithinAbility(["read"], buildJwtAbility(["read:all"]))).toEqual({
+      ok: false,
+      deniedScopes: ["read"],
+    });
   });
 });
 

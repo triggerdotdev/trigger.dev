@@ -1,0 +1,365 @@
+{
+  "_comment": "Accepted unindexed cascade/SetNull FK columns. Each is either a soft-deleted parent (cascade never fires) or an accepted risk. Adding a NEW relation here should be a deliberate choice with a reason in the PR. Prefer adding the index instead.",
+  "violations": [
+    {
+      "key": "control-plane:ApiKey.createdBy",
+      "onDelete": "SetNull",
+      "fkColumns": ["createdByUserId"]
+    },
+    {
+      "key": "control-plane:AuthorizationCode.personalAccessToken",
+      "onDelete": "Cascade",
+      "fkColumns": ["personalAccessTokenId"]
+    },
+    {
+      "key": "control-plane:BackgroundWorker.workerGroup",
+      "onDelete": "SetNull",
+      "fkColumns": ["workerGroupId"]
+    },
+    {
+      "key": "control-plane:BackgroundWorkerTask.file",
+      "onDelete": "Cascade",
+      "fkColumns": ["fileId"]
+    },
+    {
+      "key": "control-plane:BackgroundWorkerTask.queue",
+      "onDelete": "SetNull",
+      "fkColumns": ["queueId"]
+    },
+    {
+      "key": "control-plane:BulkActionGroup.project",
+      "onDelete": "Cascade",
+      "fkColumns": ["projectId"]
+    },
+    {
+      "key": "control-plane:BulkActionGroup.user",
+      "onDelete": "SetNull",
+      "fkColumns": ["userId"]
+    },
+    {
+      "key": "control-plane:BulkActionItem.destinationRun",
+      "onDelete": "Cascade",
+      "fkColumns": ["destinationRunId"]
+    },
+    {
+      "key": "control-plane:BulkActionItem.sourceRun",
+      "onDelete": "Cascade",
+      "fkColumns": ["sourceRunId"]
+    },
+    {
+      "key": "control-plane:Checkpoint.project",
+      "onDelete": "Cascade",
+      "fkColumns": ["projectId"]
+    },
+    {
+      "key": "control-plane:Checkpoint.runtimeEnvironment",
+      "onDelete": "Cascade",
+      "fkColumns": ["runtimeEnvironmentId"]
+    },
+    {
+      "key": "control-plane:CheckpointRestoreEvent.attempt",
+      "onDelete": "Cascade",
+      "fkColumns": ["attemptId"]
+    },
+    {
+      "key": "control-plane:CheckpointRestoreEvent.project",
+      "onDelete": "Cascade",
+      "fkColumns": ["projectId"]
+    },
+    {
+      "key": "control-plane:CheckpointRestoreEvent.runtimeEnvironment",
+      "onDelete": "Cascade",
+      "fkColumns": ["runtimeEnvironmentId"]
+    },
+    {
+      "key": "control-plane:CustomerQuery.environment",
+      "onDelete": "Cascade",
+      "fkColumns": ["environmentId"]
+    },
+    {
+      "key": "control-plane:CustomerQuery.project",
+      "onDelete": "Cascade",
+      "fkColumns": ["projectId"]
+    },
+    {
+      "key": "control-plane:CustomerQuery.user",
+      "onDelete": "SetNull",
+      "fkColumns": ["userId"]
+    },
+    {
+      "key": "control-plane:ErrorGroupState.organization",
+      "onDelete": "Cascade",
+      "fkColumns": ["organizationId"]
+    },
+    {
+      "key": "control-plane:ErrorGroupState.project",
+      "onDelete": "Cascade",
+      "fkColumns": ["projectId"]
+    },
+    {
+      "key": "control-plane:LlmPrice.pricingTier",
+      "onDelete": "Cascade",
+      "fkColumns": ["pricingTierId"]
+    },
+    {
+      "key": "control-plane:MetricsDashboard.organization",
+      "onDelete": "Cascade",
+      "fkColumns": ["organizationId"]
+    },
+    {
+      "key": "control-plane:MetricsDashboard.owner",
+      "onDelete": "SetNull",
+      "fkColumns": ["ownerId"]
+    },
+    {
+      "key": "control-plane:OrganizationIntegration.organization",
+      "onDelete": "Cascade",
+      "fkColumns": ["organizationId"]
+    },
+    {
+      "key": "control-plane:OrganizationIntegration.tokenReference",
+      "onDelete": "Cascade",
+      "fkColumns": ["tokenReferenceId"]
+    },
+    {
+      "key": "control-plane:OrganizationProjectIntegration.organizationIntegration",
+      "onDelete": "Cascade",
+      "fkColumns": ["organizationIntegrationId"]
+    },
+    {
+      "key": "control-plane:OrgMember.user",
+      "onDelete": "Cascade",
+      "fkColumns": ["userId"]
+    },
+    {
+      "key": "control-plane:OrgMemberInvite.inviter",
+      "onDelete": "Cascade",
+      "fkColumns": ["inviterId"]
+    },
+    {
+      "key": "control-plane:PlatformNotification.organization",
+      "onDelete": "Cascade",
+      "fkColumns": ["organizationId"]
+    },
+    {
+      "key": "control-plane:PlatformNotification.project",
+      "onDelete": "Cascade",
+      "fkColumns": ["projectId"]
+    },
+    {
+      "key": "control-plane:PlatformNotification.user",
+      "onDelete": "Cascade",
+      "fkColumns": ["userId"]
+    },
+    {
+      "key": "control-plane:PlatformNotificationInteraction.user",
+      "onDelete": "Cascade",
+      "fkColumns": ["userId"]
+    },
+    {
+      "key": "control-plane:PlaygroundConversation.project",
+      "onDelete": "Cascade",
+      "fkColumns": ["projectId"]
+    },
+    {
+      "key": "control-plane:PlaygroundConversation.run",
+      "onDelete": "SetNull",
+      "fkColumns": ["runId"]
+    },
+    {
+      "key": "control-plane:Project.organization",
+      "onDelete": "Cascade",
+      "fkColumns": ["organizationId"]
+    },
+    {
+      "key": "control-plane:ProjectAlert.environment",
+      "onDelete": "Cascade",
+      "fkColumns": ["environmentId"]
+    },
+    {
+      "key": "control-plane:ProjectAlert.project",
+      "onDelete": "Cascade",
+      "fkColumns": ["projectId"]
+    },
+    {
+      "key": "control-plane:ProjectAlert.workerDeployment",
+      "onDelete": "Cascade",
+      "fkColumns": ["workerDeploymentId"]
+    },
+    {
+      "key": "control-plane:ProjectAlertChannel.integration",
+      "onDelete": "SetNull",
+      "fkColumns": ["integrationId"]
+    },
+    {
+      "key": "control-plane:ProjectAlertStorage.project",
+      "onDelete": "Cascade",
+      "fkColumns": ["projectId"]
+    },
+    {
+      "key": "control-plane:Prompt.organization",
+      "onDelete": "Cascade",
+      "fkColumns": ["organizationId"]
+    },
+    {
+      "key": "control-plane:RuntimeEnvironment.currentSession",
+      "onDelete": "SetNull",
+      "fkColumns": ["currentSessionId"]
+    },
+    {
+      "key": "control-plane:RuntimeEnvironment.orgMember",
+      "onDelete": "SetNull",
+      "fkColumns": ["orgMemberId"]
+    },
+    {
+      "key": "control-plane:RuntimeEnvironmentSession.environment",
+      "onDelete": "Cascade",
+      "fkColumns": ["environmentId"]
+    },
+    {
+      "key": "control-plane:TaskIdentifier.currentWorker",
+      "onDelete": "SetNull",
+      "fkColumns": ["currentWorkerId"]
+    },
+    {
+      "key": "control-plane:TaskIdentifier.project",
+      "onDelete": "Cascade",
+      "fkColumns": ["projectId"]
+    },
+    {
+      "key": "control-plane:TaskQueue.project",
+      "onDelete": "Cascade",
+      "fkColumns": ["projectId"]
+    },
+    {
+      "key": "control-plane:TaskRun.batch",
+      "onDelete": "SetNull",
+      "fkColumns": ["batchId"]
+    },
+    {
+      "key": "control-plane:TaskRun.parentTaskRunAttempt",
+      "onDelete": "SetNull",
+      "fkColumns": ["parentTaskRunAttemptId"]
+    },
+    {
+      "key": "control-plane:TaskRun.project",
+      "onDelete": "Cascade",
+      "fkColumns": ["projectId"]
+    },
+    {
+      "key": "control-plane:TaskRun.rootTaskRun",
+      "onDelete": "SetNull",
+      "fkColumns": ["rootTaskRunId"]
+    },
+    {
+      "key": "control-plane:TaskRunAttempt.backgroundWorker",
+      "onDelete": "Cascade",
+      "fkColumns": ["backgroundWorkerId"]
+    },
+    {
+      "key": "control-plane:TaskRunAttempt.backgroundWorkerTask",
+      "onDelete": "Cascade",
+      "fkColumns": ["backgroundWorkerTaskId"]
+    },
+    {
+      "key": "control-plane:TaskRunAttempt.queue",
+      "onDelete": "Cascade",
+      "fkColumns": ["queueId"]
+    },
+    {
+      "key": "control-plane:TaskRunAttempt.runtimeEnvironment",
+      "onDelete": "Cascade",
+      "fkColumns": ["runtimeEnvironmentId"]
+    },
+    {
+      "key": "control-plane:TaskRunCheckpoint.project",
+      "onDelete": "Cascade",
+      "fkColumns": ["projectId"]
+    },
+    {
+      "key": "control-plane:TaskRunCheckpoint.runtimeEnvironment",
+      "onDelete": "Cascade",
+      "fkColumns": ["runtimeEnvironmentId"]
+    },
+    {
+      "key": "control-plane:TaskRunNumberCounter.environment",
+      "onDelete": "Cascade",
+      "fkColumns": ["environmentId"]
+    },
+    {
+      "key": "control-plane:TaskRunWaitpoint.project",
+      "onDelete": "Cascade",
+      "fkColumns": ["projectId"]
+    },
+    {
+      "key": "control-plane:Waitpoint.project",
+      "onDelete": "Cascade",
+      "fkColumns": ["projectId"]
+    },
+    {
+      "key": "control-plane:WaitpointTag.project",
+      "onDelete": "Cascade",
+      "fkColumns": ["projectId"]
+    },
+    {
+      "key": "control-plane:WorkerDeployment.triggeredBy",
+      "onDelete": "SetNull",
+      "fkColumns": ["triggeredById"]
+    },
+    {
+      "key": "control-plane:WorkerDeploymentPromotion.deployment",
+      "onDelete": "Cascade",
+      "fkColumns": ["deploymentId"]
+    },
+    {
+      "key": "control-plane:WorkerInstance.deployment",
+      "onDelete": "SetNull",
+      "fkColumns": ["deploymentId"]
+    },
+    {
+      "key": "control-plane:WorkerInstance.environment",
+      "onDelete": "Cascade",
+      "fkColumns": ["environmentId"]
+    },
+    {
+      "key": "control-plane:WorkerInstance.organization",
+      "onDelete": "Cascade",
+      "fkColumns": ["organizationId"]
+    },
+    {
+      "key": "control-plane:WorkerInstance.project",
+      "onDelete": "Cascade",
+      "fkColumns": ["projectId"]
+    },
+    {
+      "key": "control-plane:WorkerInstanceGroup.organization",
+      "onDelete": "Cascade",
+      "fkColumns": ["organizationId"]
+    },
+    {
+      "key": "control-plane:WorkerInstanceGroup.project",
+      "onDelete": "Cascade",
+      "fkColumns": ["projectId"]
+    },
+    {
+      "key": "run-ops:CheckpointRestoreEvent.attempt",
+      "onDelete": "Cascade",
+      "fkColumns": ["attemptId"]
+    },
+    {
+      "key": "run-ops:TaskRun.batch",
+      "onDelete": "SetNull",
+      "fkColumns": ["batchId"]
+    },
+    {
+      "key": "run-ops:TaskRun.parentTaskRunAttempt",
+      "onDelete": "SetNull",
+      "fkColumns": ["parentTaskRunAttemptId"]
+    },
+    {
+      "key": "run-ops:TaskRun.rootTaskRun",
+      "onDelete": "SetNull",
+      "fkColumns": ["rootTaskRunId"]
+    }
+  ]
+}

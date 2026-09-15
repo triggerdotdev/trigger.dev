@@ -1,0 +1,63 @@
+import type { ToolSet } from "ai";
+import { buildRepoTools } from "./repo-tools";
+import { buildAlertTools } from "./tool-alerts";
+import { buildApiTools } from "./tool-api";
+import { createApiClient } from "./tool-api-client";
+import { createInvestigationRenderer } from "./tool-investigations";
+import { buildLocateTool } from "./tool-locate";
+import { buildNavigationTools } from "./tool-navigation";
+import { createSourceReadLedger } from "./tool-source-ledger";
+import { buildWatchTools } from "./watch-tools";
+import type { DashboardAgentToolContext } from "./tool-context";
+
+export type { DashboardAgentToolContext } from "./tool-context";
+export { showCodeAskPrompt } from "./tool-investigations";
+
+/**
+ * Assembles the ready adapters into one tool set. The key order below is frozen:
+ * `dashboardAgentToolSchemas` is the canonical order the cached prompt prefix is built
+ * from, and reordering these spreads is a different prefix.
+ */
+
+// Always returns the same tool set, so it stays stable while the SDK replays it over
+// prior history. With no delegated token each tool reports that instead of disappearing.
+export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSet {
+  const client = createApiClient(ctx);
+  const ledger = createSourceReadLedger({
+    origin: client.origin,
+    hasAuth: client.hasAuth,
+    userActorToken: ctx.userActorToken,
+    projectRef: ctx.projectRef,
+    environmentName: ctx.environmentName,
+    environmentBranch: ctx.environmentBranch,
+    repoSnapshot: ctx.repoSnapshot,
+    environmentIdFor: client.environmentIdFor,
+  });
+  const renderInvestigations = createInvestigationRenderer({
+    projectRef: ctx.projectRef,
+    environmentId: ctx.environmentId,
+    investigations: ctx.investigations,
+    watchEnabled: ctx.watchEnabled,
+    reads: ledger,
+  });
+
+  const apiTools: ToolSet = {
+    ...buildApiTools({ ctx, client, renderInvestigations, reads: ledger }),
+    ...buildNavigationTools({ ctx, environmentIdFor: client.environmentIdFor }),
+    // Alerts exist only to report a watch firing, so they come and go with the watch tool.
+    ...(ctx.watchEnabled
+      ? { ...buildWatchTools({ ctx, reads: ledger }), ...buildAlertTools({ ctx, client }) }
+      : {}),
+    ...buildLocateTool({ ctx, client, reads: ledger }),
+  };
+
+  // Code mode: when the project has a connected repo, add the source tools.
+  if (!ctx.repoSnapshot) return apiTools;
+  return {
+    ...apiTools,
+    ...buildRepoTools(ctx.repoSnapshot, ctx, {
+      resolveRunSnapshot: ledger.resolveRunSnapshot,
+      onSourceRead: ledger.recordRepoRead,
+    }),
+  };
+}

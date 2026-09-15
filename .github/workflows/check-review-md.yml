@@ -14,28 +14,31 @@ concurrency:
 
 jobs:
   audit:
+    # Set the ENABLE_CLAUDE_CODE repository variable to 'false' to turn off Claude
+    # jobs; leave it unset (the default) to keep them enabled.
     if: >-
+      vars.ENABLE_CLAUDE_CODE != 'false' &&
       github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    runs-on: warp-ubuntu-latest-x64-2x
     permissions:
       contents: read
       pull-requests: write
       id-token: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
 
       - name: Run Claude Code
         id: claude
-        uses: anthropics/claude-code-action@787c5a0ce96a9a6cfb050ea0c8f4c05f2447c251 # v1.0.133
+        uses: anthropics/claude-code-action@fa2b2666b747000bf42767d1f332065b375e3c8f # v1.0.214
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           use_sticky_comment: true
-          allowed_bots: "devin-ai-integration[bot]"
+          allowed_bots: "devin-ai-integration[bot],claude[bot]"
 
           claude_args: |
             --max-turns 30

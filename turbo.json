@@ -2,32 +2,16 @@
   "$schema": "https://turborepo.org/schema.json",
   "pipeline": {
     "build": {
-      "dependsOn": [
-        "^build"
-      ],
-      "outputs": [
-        "dist/**",
-        "public/build/**",
-        "build/**",
-        "app/styles/tailwind.css",
-        ".cache"
-      ]
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", "public/build/**", "build/**", "app/styles/tailwind.css", ".cache"]
     },
     "webapp#start": {
-      "dependsOn": [
-        "^build"
-      ],
-      "outputs": [
-        "public/build/**"
-      ]
+      "dependsOn": ["^build"],
+      "outputs": ["public/build/**"]
     },
     "start": {
-      "dependsOn": [
-        "^build"
-      ],
-      "outputs": [
-        "public/build/**"
-      ]
+      "dependsOn": ["^build"],
+      "outputs": ["public/build/**"]
     },
     "db:generate": {
       "cache": false
@@ -35,11 +19,12 @@
     "db:migrate:deploy": {
       "cache": false
     },
+    "db:migrate:local": {
+      "cache": false
+    },
     "webapp#db:seed": {
       "cache": false,
-      "dependsOn": [
-        "webapp#build"
-      ]
+      "dependsOn": ["webapp#build"]
     },
     "db:studio": {
       "cache": false
@@ -49,29 +34,21 @@
     },
     "dev": {
       "cache": false,
-      "dependsOn": [
-        "^build"
-      ]
+      "dependsOn": ["^build"]
     },
     "i:dev": {
       "cache": false
     },
     "generate": {
-      "dependsOn": [
-        "^generate"
-      ]
-    },
-    "lint": {
-      "outputs": []
+      "dependsOn": ["^generate"],
+      "cache": false
     },
     "docker:build": {
       "outputs": [],
       "cache": false
     },
     "test": {
-      "dependsOn": [
-        "^build"
-      ],
+      "dependsOn": ["^build"],
       "outputs": []
     },
     "test:dev": {
@@ -79,28 +56,20 @@
       "cache": false
     },
     "test:e2e:dev": {
-      "dependsOn": [
-        "^build"
-      ],
+      "dependsOn": ["^build"],
       "outputs": [],
       "cache": false
     },
     "test:e2e:ci": {
-      "dependsOn": [
-        "^build"
-      ],
+      "dependsOn": ["^build"],
       "outputs": []
     },
     "typecheck": {
-      "dependsOn": [
-        "^build"
-      ],
+      "dependsOn": ["^build"],
       "outputs": []
     },
     "check-exports": {
-      "dependsOn": [
-        "^build"
-      ],
+      "dependsOn": ["^build"],
       "outputs": []
     },
     "clean": {
@@ -114,7 +83,12 @@
     }
   },
   "globalDependencies": [
-    ".env"
+    ".env",
+    ".env.*",
+    "apps/*/.env",
+    "apps/*/.env.*",
+    "internal-packages/*/.env",
+    "internal-packages/*/.env.*"
   ],
   "globalEnv": [
     "NODE_ENV",

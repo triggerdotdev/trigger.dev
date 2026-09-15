@@ -1,6 +1,5 @@
-import { Attributes, Tracer } from "@opentelemetry/api";
+import type { Attributes, Tracer } from "@opentelemetry/api";
 import type {
-  ExceptionEventProperties,
   SpanEvents,
   TaskEventEnvironment,
   TaskEventStyle,
@@ -8,7 +7,6 @@ import type {
 } from "@trigger.dev/core/v3";
 import type {
   Prisma,
-  TaskEvent,
   TaskEventKind,
   TaskEventLevel,
   TaskEventStatus,
@@ -16,7 +14,6 @@ import type {
 } from "@trigger.dev/database";
 import type { MetricsV1Input } from "@internal/clickhouse";
 import type { DetailedTraceEvent, TaskEventStoreTable } from "../taskEventStore.server";
-export type { ExceptionEventProperties };
 
 // ============================================================================
 // Event Creation Types
@@ -123,7 +120,7 @@ export type TraceAttributes = Partial<
   >
 >;
 
-export type SetAttribute<T extends TraceAttributes> = (key: keyof T, value: T[keyof T]) => void;
+type SetAttribute<T extends TraceAttributes> = (key: keyof T, value: T[keyof T]) => void;
 
 export type TraceEventOptions = {
   kind?: CreatableEventKind;
@@ -146,13 +143,6 @@ export type EventBuilder = {
   failWithError: (error: TaskRunError) => void;
 };
 
-export type UpdateEventOptions = {
-  attributes: TraceAttributes;
-  endTime?: Date;
-  immediate?: boolean;
-  events?: SpanEvents;
-};
-
 // ============================================================================
 // Configuration Types
 // ============================================================================
@@ -170,14 +160,6 @@ export type EventRepoConfig = {
   loadSheddingThreshold?: number;
   loadSheddingEnabled?: boolean;
 };
-
-// ============================================================================
-// Query Types
-// ============================================================================
-
-export type QueryOptions = Prisma.TaskEventWhereInput;
-
-export type TaskEventRecord = TaskEvent;
 
 export type QueriedEvent = Prisma.TaskEventGetPayload<{
   select: {
@@ -308,6 +290,8 @@ export type TraceSummary = {
   rootSpan: SpanSummary;
   spans: Array<SpanSummary>;
   overridesBySpanId?: Record<string, SpanOverride>;
+  /** Set when a subtree fetch hit the row cap before collecting all descendants. */
+  isTruncated?: boolean;
 };
 
 export type SpanDetailedSummary = {
@@ -351,6 +335,8 @@ export type StreamedTraceEvent = {
 export type TraceDetailedSummary = {
   traceId: string;
   rootSpan: SpanDetailedSummary;
+  /** Set when a fetch hit the row cap before collecting all spans. */
+  isTruncated?: boolean;
 };
 
 // ============================================================================
@@ -416,10 +402,32 @@ export interface IEventRepository {
     options?: { includeDebugLogs?: boolean }
   ): Promise<TraceSummary | undefined>;
 
+  /** Fetch the anchor span, its ancestors (for override propagation), and all descendants. */
+  getTraceSubtreeSummary(
+    storeTable: TaskEventStoreTable,
+    environmentId: string,
+    traceId: string,
+    anchorSpanId: string,
+    startCreatedAt: Date,
+    endCreatedAt?: Date,
+    options?: { includeDebugLogs?: boolean }
+  ): Promise<TraceSummary | undefined>;
+
   getTraceDetailedSummary(
     storeTable: TaskEventStoreTable,
     environmentId: string,
     traceId: string,
+    startCreatedAt: Date,
+    endCreatedAt?: Date,
+    options?: { includeDebugLogs?: boolean }
+  ): Promise<TraceDetailedSummary | undefined>;
+
+  /** Fetch the anchor span subtree as a detailed hierarchical trace rooted at anchorSpanId. */
+  getTraceDetailedSubtreeSummary(
+    storeTable: TaskEventStoreTable,
+    environmentId: string,
+    traceId: string,
+    anchorSpanId: string,
     startCreatedAt: Date,
     endCreatedAt?: Date,
     options?: { includeDebugLogs?: boolean }

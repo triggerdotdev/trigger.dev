@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { simulateReadableStream, streamText } from "ai";
+import { simulateReadableStream, stepCountIs, streamText } from "ai";
 import type { UIMessageChunk } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
@@ -89,7 +89,7 @@ function makeRequest(body: unknown): Request {
 
 const SESSION_PAT = "tr_session_pat_for_handover";
 
-function createSessionResponse(externalId: string): Response {
+function createSessionResponse(externalId: string, opts?: { pendingVersion?: boolean }): Response {
   return new Response(
     JSON.stringify({
       id: "session_test",
@@ -111,6 +111,7 @@ function createSessionResponse(externalId: string): Response {
       createdAt: new Date(0).toISOString(),
       updatedAt: new Date(0).toISOString(),
       isCached: false,
+      ...(opts?.pendingVersion ? { pendingVersion: true } : {}),
     }),
     {
       status: 200,
@@ -160,6 +161,156 @@ describe("chat.headStart (route handler)", () => {
     vi.restoreAllMocks();
   });
 
+  it("hands run() a streamText that carries the handover options without a spread", async () => {
+    global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+      const urlStr = typeof url === "string" ? url : url.toString();
+      if (urlStr.endsWith("/api/v1/sessions") || urlStr.endsWith("/api/v1/sessions/")) {
+        return createSessionResponse("chat-bound");
+      }
+      if (urlStr.includes("/realtime/v1/sessions/") && urlStr.endsWith("/in/append")) {
+        return appendOkResponse();
+      }
+      throw new Error(`Unexpected URL: ${urlStr}`);
+    });
+
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({ stream: textStream("hi back") }),
+    });
+
+    /** No `...chatHelper.toStreamTextOptions()` anywhere. */
+    const handler = chat.headStart({
+      agentId: "test-agent",
+      run: async ({ streamText: managedStreamText }) => managedStreamText({ model }),
+    });
+
+    const res = await withApiContext(() =>
+      handler(
+        makeRequest({
+          chatId: "chat-bound",
+          trigger: "submit-message",
+          headStartMessages: [{ id: "m1", role: "user", parts: [{ type: "text", text: "hi" }] }],
+        })
+      )
+    );
+
+    expect(res.status).toBe(200);
+
+    /**
+     * The handler returns before stream consumption and `handoverWhenDone`
+     * finish, so poll rather than sleeping: a fixed delay passes locally and
+     * fails on a loaded runner, which is the worst kind of test.
+     */
+    const deadline = Date.now() + 10_000;
+    while (model.doStreamCalls.length === 0 && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    expect(model.doStreamCalls.length).toBeGreaterThan(0);
+
+    /**
+     * The caller passed only `model`, so `messages` reaching the provider is
+     * proof the managed options were applied: without them the prompt would be
+     * empty and `streamText` would have had nothing to send.
+     */
+    const call = model.doStreamCalls.at(-1)!;
+    expect(JSON.stringify(call.prompt)).toContain("hi");
+  });
+
+  it("refuses the handover options at the call site", async () => {
+    global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+      const urlStr = typeof url === "string" ? url : url.toString();
+      if (urlStr.endsWith("/api/v1/sessions") || urlStr.endsWith("/api/v1/sessions/")) {
+        return createSessionResponse("chat-owned");
+      }
+      if (urlStr.includes("/realtime/v1/sessions/") && urlStr.endsWith("/in/append")) {
+        return appendOkResponse();
+      }
+      throw new Error(`Unexpected URL: ${urlStr}`);
+    });
+
+    let thrown: unknown;
+
+    const handler = chat.headStart({
+      agentId: "test-agent",
+      run: async ({ streamText: managedStreamText }) => {
+        const model = new MockLanguageModelV3({
+          doStream: async () => ({ stream: textStream("hi") }),
+        });
+        try {
+          // `stopWhen` is what stops step 1 and hands over. Overriding it after a
+          // spread breaks the protocol silently; here it throws.
+          return managedStreamText({ model, stopWhen: stepCountIs(20) } as never);
+        } catch (error) {
+          thrown = error;
+          return managedStreamText({ model });
+        }
+      },
+    });
+
+    await withApiContext(() =>
+      handler(
+        makeRequest({
+          chatId: "chat-owned",
+          trigger: "submit-message",
+          headStartMessages: [{ id: "m1", role: "user", parts: [{ type: "text", text: "hi" }] }],
+        })
+      )
+    );
+
+    expect((thrown as Error)?.message).toContain("owns `stopWhen`");
+    expect((thrown as Error)?.message).toContain("step 1");
+  });
+
+  it("reports a parked agent run in the response headers", async () => {
+    global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+      const urlStr = typeof url === "string" ? url : url.toString();
+      if (urlStr.endsWith("/api/v1/sessions") || urlStr.endsWith("/api/v1/sessions/")) {
+        return createSessionResponse("chat-parked", { pendingVersion: true });
+      }
+      if (urlStr.includes("/realtime/v1/sessions/") && urlStr.endsWith("/in/append")) {
+        return appendOkResponse();
+      }
+      // Stitched response subscribes to `.out` after handover.
+      if (/\/realtime\/v1\/sessions\/[^/]+\/out$/.test(urlStr)) {
+        return new Response(
+          new ReadableStream({
+            start(c) {
+              c.close();
+            },
+          }),
+          { status: 200, headers: { "content-type": "text/event-stream" } }
+        );
+      }
+      throw new Error(`Unexpected URL: ${urlStr}`);
+    });
+
+    const handler = chat.headStart({
+      agentId: "test-agent",
+      run: async ({ chat: chatHelper }) =>
+        streamText({
+          ...chatHelper.toStreamTextOptions(),
+          model: new MockLanguageModelV3({
+            doStream: async () => ({ stream: textStream("step 1 while parked") }),
+          }),
+        }),
+    });
+
+    const res = await withApiContext(() =>
+      handler(
+        makeRequest({
+          chatId: "chat-parked",
+          trigger: "submit-message",
+          headStartMessages: [{ id: "m1", role: "user", parts: [{ type: "text", text: "hi" }] }],
+        })
+      )
+    );
+
+    // Step 1 still streams from this process even though nothing can answer step 2 yet.
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-Trigger-Chat-Pending-Version")).toBe("1");
+    const chunks = await readSSEBodyToChunks(res);
+    expect(chunks.length).toBeGreaterThan(0);
+  });
+
   it("creates the session with handover-prepare in basePayload and returns the session PAT in headers", async () => {
     const requests: CapturedRequest[] = [];
     global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
@@ -200,9 +351,11 @@ describe("chat.headStart (route handler)", () => {
     expect(res.headers.get("X-Trigger-Chat-Id")).toBe("chat-1");
     expect(res.headers.get("X-Trigger-Chat-Access-Token")).toBe(SESSION_PAT);
     expect(res.headers.get("Content-Type")).toMatch(/text\/event-stream/);
+    // Not parked, so the header is absent rather than "0".
+    expect(res.headers.get("X-Trigger-Chat-Pending-Version")).toBeNull();
 
-    const sessionCreate = requests.find((r) =>
-      r.url.endsWith("/api/v1/sessions") || r.url.endsWith("/api/v1/sessions/")
+    const sessionCreate = requests.find(
+      (r) => r.url.endsWith("/api/v1/sessions") || r.url.endsWith("/api/v1/sessions/")
     );
     expect(sessionCreate).toBeDefined();
     const body = JSON.parse(sessionCreate!.init!.body as string);
@@ -214,6 +367,70 @@ describe("chat.headStart (route handler)", () => {
     expect(body.triggerConfig.basePayload.trigger).toBe("handover-prepare");
     expect(body.triggerConfig.basePayload.chatId).toBe("chat-1");
     expect(body.triggerConfig.basePayload.idleTimeoutInSeconds).toBe(60);
+  });
+
+  it("merges triggerConfig tags and queue into createSession", async () => {
+    const requests: CapturedRequest[] = [];
+    global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
+      const urlStr = typeof url === "string" ? url : url.toString();
+      requests.push({ url: urlStr, init });
+      if (urlStr.endsWith("/api/v1/sessions") || urlStr.endsWith("/api/v1/sessions/")) {
+        return createSessionResponse("chat-1");
+      }
+      if (urlStr.includes("/realtime/v1/sessions/") && urlStr.endsWith("/in/append")) {
+        return appendOkResponse();
+      }
+      if (/\/realtime\/v1\/sessions\/[^/]+\/out$/.test(urlStr)) {
+        return new Response(
+          new ReadableStream({
+            start(c) {
+              c.close();
+            },
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "text/event-stream" },
+          }
+        );
+      }
+      throw new Error(`Unexpected URL: ${urlStr}`);
+    });
+
+    const handler = chat.headStart({
+      agentId: "test-agent",
+      triggerConfig: {
+        tags: ["org:acme", "agentic-run:xyz"],
+        queue: "my-queue",
+      },
+      run: async ({ chat: chatHelper }) => {
+        return streamText({
+          ...chatHelper.toStreamTextOptions(),
+          model: new MockLanguageModelV3({
+            doStream: async () => ({ stream: textStream("hi back") }),
+          }),
+        });
+      },
+    });
+
+    await withApiContext(() =>
+      handler(
+        makeRequest({
+          chatId: "chat-1",
+          trigger: "submit-message",
+          headStartMessages: [{ id: "m1", role: "user", parts: [{ type: "text", text: "hi" }] }],
+        })
+      )
+    );
+
+    const sessionCreate = requests.find(
+      (r) => r.url.endsWith("/api/v1/sessions") || r.url.endsWith("/api/v1/sessions/")
+    );
+    expect(sessionCreate).toBeDefined();
+    const body = JSON.parse(sessionCreate!.init!.body as string);
+    expect(body.triggerConfig.tags).toEqual(["chat:chat-1", "org:acme", "agentic-run:xyz"]);
+    expect(body.triggerConfig.queue).toBe("my-queue");
+    expect(body.triggerConfig.basePayload.trigger).toBe("handover-prepare");
+    expect(body.triggerConfig.basePayload.chatId).toBe("chat-1");
   });
 
   it("dispatches handover with isFinal=true on pure-text finishReason", async () => {
@@ -229,10 +446,17 @@ describe("chat.headStart (route handler)", () => {
       }
       // Stitched response subscribes to `.out` after handover.
       if (/\/realtime\/v1\/sessions\/[^/]+\/out$/.test(urlStr)) {
-        return new Response(new ReadableStream({ start(c) { c.close(); } }), {
-          status: 200,
-          headers: { "content-type": "text/event-stream" },
-        });
+        return new Response(
+          new ReadableStream({
+            start(c) {
+              c.close();
+            },
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "text/event-stream" },
+          }
+        );
       }
       throw new Error(`Unexpected URL: ${urlStr}`);
     });
@@ -271,8 +495,7 @@ describe("chat.headStart (route handler)", () => {
 
     const handoverPost = requests.find(
       (r) =>
-        r.url.includes("/realtime/v1/sessions/chat-final/in/append") &&
-        r.init?.body !== undefined
+        r.url.includes("/realtime/v1/sessions/chat-final/in/append") && r.init?.body !== undefined
     );
     expect(handoverPost).toBeDefined();
     const body = JSON.parse(handoverPost!.init!.body as string);
@@ -305,10 +528,17 @@ describe("chat.headStart (route handler)", () => {
       // closes immediately — this test validates dispatch only, not
       // the agent-side resume.
       if (/\/realtime\/v1\/sessions\/[^/]+\/out$/.test(urlStr)) {
-        return new Response(new ReadableStream({ start(c) { c.close(); } }), {
-          status: 200,
-          headers: { "content-type": "text/event-stream" },
-        });
+        return new Response(
+          new ReadableStream({
+            start(c) {
+              c.close();
+            },
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "text/event-stream" },
+          }
+        );
       }
       throw new Error(`Unexpected URL: ${urlStr}`);
     });
@@ -351,8 +581,7 @@ describe("chat.headStart (route handler)", () => {
 
     const handoverPost = requests.find(
       (r) =>
-        r.url.includes("/realtime/v1/sessions/chat-tool/in/append") &&
-        r.init?.body !== undefined
+        r.url.includes("/realtime/v1/sessions/chat-tool/in/append") && r.init?.body !== undefined
     );
     expect(handoverPost).toBeDefined();
     const body = JSON.parse(handoverPost!.init!.body as string);
@@ -369,9 +598,7 @@ describe("chat.headStart (route handler)", () => {
       (m: { role: string }) => m.role === "assistant"
     );
     expect(assistant).toBeDefined();
-    const toolCallPart = assistant.content.find(
-      (p: { type: string }) => p.type === "tool-call"
-    );
+    const toolCallPart = assistant.content.find((p: { type: string }) => p.type === "tool-call");
     expect(toolCallPart).toBeDefined();
     const approvalRequestPart = assistant.content.find(
       (p: { type: string }) => p.type === "tool-approval-request"
@@ -415,6 +642,185 @@ describe("chat.headStart (route handler)", () => {
         )
       )
     ).rejects.toThrow(/chatId/);
+  });
+});
+
+describe("chat.startHeadStart (detached)", () => {
+  let originalFetch: typeof global.fetch;
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  function wireFetch(requests: CapturedRequest[]) {
+    global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
+      const urlStr = typeof url === "string" ? url : url.toString();
+      requests.push({ url: urlStr, init });
+      if (urlStr.endsWith("/api/v1/sessions") || urlStr.endsWith("/api/v1/sessions/")) {
+        return createSessionResponse("chat-1");
+      }
+      if (urlStr.includes("/realtime/v1/sessions/") && urlStr.endsWith("/in/append")) {
+        return appendOkResponse();
+      }
+      throw new Error(`Unexpected URL: ${urlStr}`);
+    });
+  }
+
+  const userMessages = [
+    { id: "m1", role: "user" as const, parts: [{ type: "text" as const, text: "hi" }] },
+  ];
+
+  it("returns { chatId, completion } (no Response) and creates the session with handover-prepare + headStartMessages", async () => {
+    const requests: CapturedRequest[] = [];
+    wireFetch(requests);
+
+    const result = await withApiContext(() =>
+      chat.startHeadStart({
+        agentId: "test-agent",
+        chatId: "chat-1",
+        messages: userMessages,
+        run: async ({ chat: chatHelper }) =>
+          streamText({
+            ...chatHelper.toStreamTextOptions(),
+            model: new MockLanguageModelV3({
+              doStream: async () => ({ stream: textStream("hi back") }),
+            }),
+          }),
+      })
+    );
+
+    // Shape: a plain object, not a Response.
+    expect(result.chatId).toBe("chat-1");
+    expect(typeof result.completion.then).toBe("function");
+    expect(result).not.toBeInstanceOf(Response);
+
+    await result.completion;
+
+    const sessionCreate = requests.find(
+      (r) => r.url.endsWith("/api/v1/sessions") || r.url.endsWith("/api/v1/sessions/")
+    );
+    expect(sessionCreate).toBeDefined();
+    const body = JSON.parse(sessionCreate!.init!.body as string);
+    expect(body.type).toBe("chat.agent");
+    expect(body.externalId).toBe("chat-1");
+    expect(body.taskIdentifier).toBe("test-agent");
+    expect(body.triggerConfig.basePayload.trigger).toBe("handover-prepare");
+    expect(body.triggerConfig.basePayload.chatId).toBe("chat-1");
+    // Full first-turn history rides on headStartMessages (not /in/append).
+    expect(body.triggerConfig.basePayload.headStartMessages).toHaveLength(1);
+    expect(body.triggerConfig.basePayload.headStartMessages[0].id).toBe("m1");
+  });
+
+  it("dispatches a final handover (isFinal: true) on a pure-text step 1", async () => {
+    const requests: CapturedRequest[] = [];
+    wireFetch(requests);
+
+    const { completion } = await withApiContext(() =>
+      chat.startHeadStart({
+        agentId: "test-agent",
+        chatId: "chat-1",
+        messages: userMessages,
+        run: async ({ chat: chatHelper }) =>
+          streamText({
+            ...chatHelper.toStreamTextOptions(),
+            model: new MockLanguageModelV3({
+              doStream: async () => ({ stream: textStream("the answer") }),
+            }),
+          }),
+      })
+    );
+    await completion;
+
+    const append = requests.find((r) => r.url.endsWith("/in/append"));
+    expect(append).toBeDefined();
+    const appendBody = append!.init!.body as string;
+    expect(appendBody).toContain('"kind":"handover"');
+    expect(appendBody).toContain('"isFinal":true');
+    // A stable assistant messageId is carried across the handover boundary.
+    expect(appendBody).toContain('"messageId":');
+  });
+
+  it("dispatches a non-final handover (isFinal: false) on a tool-call step 1", async () => {
+    const requests: CapturedRequest[] = [];
+    wireFetch(requests);
+
+    const { completion } = await withApiContext(() =>
+      chat.startHeadStart({
+        agentId: "test-agent",
+        chatId: "chat-1",
+        messages: userMessages,
+        run: async ({ chat: chatHelper }) =>
+          streamText({
+            ...chatHelper.toStreamTextOptions(),
+            model: new MockLanguageModelV3({
+              doStream: async () => ({ stream: toolCallStream() }),
+            }),
+          }),
+      })
+    );
+    await completion;
+
+    const append = requests.find((r) => r.url.endsWith("/in/append"));
+    expect(append).toBeDefined();
+    const appendBody = append!.init!.body as string;
+    expect(appendBody).toContain('"kind":"handover"');
+    expect(appendBody).toContain('"isFinal":false');
+  });
+
+  it("merges metadata into the handover-prepare run payload (never to the browser)", async () => {
+    const requests: CapturedRequest[] = [];
+    wireFetch(requests);
+
+    const { completion } = await withApiContext(() =>
+      chat.startHeadStart({
+        agentId: "test-agent",
+        chatId: "chat-1",
+        messages: userMessages,
+        metadata: { userActorToken: "tr_uat_secret", projectRef: "proj_x" },
+        run: async ({ chat: chatHelper }) =>
+          streamText({
+            ...chatHelper.toStreamTextOptions(),
+            model: new MockLanguageModelV3({
+              doStream: async () => ({ stream: textStream("ok") }),
+            }),
+          }),
+      })
+    );
+    await completion;
+
+    const sessionCreate = requests.find(
+      (r) => r.url.endsWith("/api/v1/sessions") || r.url.endsWith("/api/v1/sessions/")
+    );
+    const body = JSON.parse(sessionCreate!.init!.body as string);
+    expect(body.triggerConfig.basePayload.metadata.userActorToken).toBe("tr_uat_secret");
+    expect(body.triggerConfig.basePayload.metadata.projectRef).toBe("proj_x");
+  });
+
+  it("signals handover-skip and rejects completion when the warm step throws", async () => {
+    const requests: CapturedRequest[] = [];
+    wireFetch(requests);
+
+    const { completion } = await withApiContext(() =>
+      chat.startHeadStart({
+        agentId: "test-agent",
+        chatId: "chat-1",
+        messages: userMessages,
+        run: async () => {
+          throw new Error("warm step boom");
+        },
+      })
+    );
+
+    await expect(completion).rejects.toThrow("warm step boom");
+
+    const append = requests.find((r) => r.url.endsWith("/in/append"));
+    expect(append).toBeDefined();
+    expect(append!.init!.body as string).toContain('"kind":"handover-skip"');
   });
 });
 

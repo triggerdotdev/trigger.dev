@@ -13,8 +13,8 @@ are documented below.
 
 ### What it does
 
-Three changes to `matchRoutesImpl` / `compilePath`, all pure memoization of work that
-depends only on the **static** route manifest:
+Four changes to `matchRoutesImpl` / `compilePath`, all derived from work that depends only
+on the **static** route manifest:
 
 1. **Cache flattened + ranked branches per route-tree** (`WeakMap` keyed by the `routes`
    ref). `flattenRoutes()` + `rankRouteBranches()` were recomputed on *every* `matchRoutes`
@@ -23,6 +23,24 @@ depends only on the **static** route manifest:
    was recomputed once per branch.
 3. **Memoize `compilePath` compiled regexes** by `path|caseSensitive|end` (bounded `Map`,
    cap 2000). The matcher RegExp was rebuilt on every `matchPath` call.
+4. **Bucket ranked branches by first static path segment** (`WeakMap` keyed by the branch
+   array). Even with (1)–(3), matching was still a linear scan calling `matchPath` on every
+   branch until one matched — O(route table) per request, now across 521 route files.
+   Branches are indexed by their lowercased leading segment, with one always-considered list
+   for branches whose leading segment is dynamic, splat or optional (and for root/pathless
+   paths). A request walks only its own bucket merged with that list.
+
+   Ordering is preserved exactly: both lists hold indexes into the already rank-sorted
+   branch array and are walked in ascending-index order, so the first match found is the
+   same branch the full scan would have found. Bucketing lowercases on both sides, so
+   case-insensitive matching still resolves and `caseSensitive: true` routes are still
+   rejected by `matchPath` itself. A pathname whose own leading segment can't be bucketed
+   falls back to the full scan.
+
+   Verified equivalent to the unpatched matcher over 20,050 pathnames (literal, dynamic,
+   splat, optional, case variants, basenames, percent-encoded). The semantics it depends on
+   are pinned by `apps/webapp/test/routeMatchingPatch.test.ts`, which asserts matching
+   behaviour rather than the optimisation, so it still passes without the patch.
 
 ### Why
 
@@ -45,6 +63,12 @@ Measured on a single instance, same load, before vs after this patch:
 
 The realtime machinery itself (router/hydrate/serialize/diff) was ~0% — the bottleneck was
 entirely generic Remix request overhead.
+
+Change (4) was added later, from a CPU audit of the engine-facing worker-action routes
+(`apps/webapp/test/bench`). With (1)–(3) already in place, route matching was still 10.4%
+of on-CPU time on that path — the residual linear scan rather than any recompilation.
+Bucketing took route-matching self-time from 3.6s to 1.3s (**−64%**) over a 90s window at
+~300 req/s.
 
 ### Upstream status (why we patch instead of upgrade)
 

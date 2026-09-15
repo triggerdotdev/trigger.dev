@@ -13,8 +13,61 @@ export type {
   BearerAuthResult,
   SessionAuthResult,
   PatAuthResult,
+  UserActorAuthResult,
+  UserActorClaims,
+  RbacPluginConfig,
+  RbacDatabaseConfig,
   SystemRole,
+  ApiKeyPreset,
+  ApiKeyPolicy,
+  PrepareApiKeyPolicyResult,
+  ApiKeyPolicyDescription,
   AuthenticatedEnvironment,
+  RbacScopeAction,
+  RbacScopeResourceType,
+  BearerAuthOptions,
 } from "./rbac.js";
 
-export { buildJwtAbility } from "./rbac.js";
+export {
+  buildJwtAbility,
+  buildScope,
+  FULL_ACCESS_PRESET_ID,
+  scopesGrantFullAccess,
+  scopesWithinAbility,
+} from "./rbac.js";
+export {
+  isUserActorToken,
+  signUserActorToken,
+  verifyUserActorToken,
+  USER_ACTOR_TOKEN_PREFIX,
+} from "./rbac.js";
+
+export type { PluginDatabaseConfig } from "./databaseConfig.js";
+
+export type {
+  SsoPlugin,
+  SsoPluginConfig,
+  SsoController,
+  OrgSsoStatus,
+  SsoRouteDecision,
+  SsoFlow,
+  SsoProfile,
+  SsoConnectionState,
+  SsoDomainState,
+  SsoDomainStatus,
+  SsoResolutionDecision,
+  SsoDecisionError,
+  SsoBeginError,
+  SsoCompleteError,
+  SsoMutationError,
+  SsoPortalError,
+  SsoValidateError,
+  SsoWebhookError,
+  SsoWebhookEvent,
+  DirectoryState,
+  DirectoryGroupMapping,
+  DirectorySyncStatus,
+  DirectorySyncEffect,
+} from "./sso.js";
+
+export { SSO_FLOWS } from "./sso.js";

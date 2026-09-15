@@ -38,9 +38,18 @@ import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstan
 import { requireUser } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
+import { canAccessQueueMetricsUi } from "~/v3/canAccessQueueMetricsUi.server";
 import { QueryScopeSchema } from "~/v3/querySchemas";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { MetricWidget } from "../resources.metric";
+import { dashboardsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta<typeof loader>(({ data }) => [
+  data?.title ?? "Dashboard",
+  "Dashboards",
+]);
 
 const ParamSchema = EnvironmentParamSchema.extend({
   dashboardKey: z.string(),
@@ -49,6 +58,15 @@ const ParamSchema = EnvironmentParamSchema.extend({
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
   const { projectParam, organizationSlug, envParam, dashboardKey } = ParamSchema.parse(params);
+
+  // The built-in "queues" dashboard is part of the metrics UI (unlinked, but reachable by
+  // URL), so gate it per-org like the rest of the Queue Metrics view.
+  if (
+    dashboardKey === "queues" &&
+    !(await canAccessQueueMetricsUi({ request, userId: user.id, organizationSlug }))
+  ) {
+    throw new Response(undefined, { status: 404, statusText: "Not found" });
+  }
 
   const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
   if (!project) {
@@ -77,7 +95,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const filters = dashboard.filters ?? ["tasks", "queues"];
 
-  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(project.organizationId, "standard");
+  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+    project.organizationId,
+    "standard"
+  );
 
   // Load distinct models from ClickHouse if the dashboard has a models filter
   let possibleModels: { model: string; system: string }[] = [];
@@ -124,6 +145,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     possibleOperations,
     possibleProviders,
   });
+};
+
+export const handle: Handle = {
+  agentPageContext: (data) => dashboardsAgentPageContext(data),
 };
 
 export default function Page() {
@@ -205,7 +230,11 @@ export function MetricDashboard({
   /** Which filters to show. Defaults to ["tasks", "queues"]. */
   filters?: BuiltInDashboardFilter[];
   /** Possible tasks for filtering */
-  possibleTasks?: { slug: string; triggerSource: TaskTriggerSource; isInLatestDeployment: boolean }[];
+  possibleTasks?: {
+    slug: string;
+    triggerSource: TaskTriggerSource;
+    isInLatestDeployment: boolean;
+  }[];
   /** Possible models for filtering */
   possibleModels?: ModelOption[];
   /** Possible prompt slugs for filtering */
@@ -317,14 +346,12 @@ export function MetricDashboard({
             </Form>
           )}
         </div>
-        {filterAccessories && (
-          <div className="flex shrink-0 items-center">{filterAccessories}</div>
-        )}
+        {filterAccessories && <div className="flex shrink-0 items-center">{filterAccessories}</div>}
       </div>
       <div
         ref={containerRef}
         className={cn(
-          "overflow-y-auto scrollbar-thin scrollbar-track-charcoal-800 scrollbar-thumb-charcoal-700",
+          "overflow-y-auto scrollbar-thin scrollbar-track-background-bright scrollbar-thumb-background-raised",
           isInteracting && "select-none"
         )}
       >
@@ -371,6 +398,7 @@ export function MetricDashboard({
                     promptSlugs={prompts.length > 0 ? prompts : undefined}
                     operations={operations.length > 0 ? operations : undefined}
                     providers={providers.length > 0 ? providers : undefined}
+                    fillGaps={widget.fillGaps}
                     config={widget.display}
                     organizationId={organization.id}
                     projectId={project.id}
@@ -416,6 +444,7 @@ function useContainerWidth(initialWidth = 1280) {
 
   useEffect(() => {
     measureWidth();
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setMounted(true);
 
     const element = containerRef.current;

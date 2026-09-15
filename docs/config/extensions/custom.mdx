@@ -80,13 +80,26 @@ export default defineConfig({
     extensions: [
       {
         name: "my-extension",
-        externalsForTarget: async (target) => {
+        externalsForTarget: (target) => {
           return ["my-dependency"];
         },
       },
     ],
   },
 });
+```
+
+### installedPackagesForTarget
+
+This tells build diagnostics which packages your extension installs into the deployed image for a given target, so warnings (like the one for packages loaded via `createRequire()`) don't fire for packages that will actually be available at runtime. The bundler ignores this hook, so declaring it never changes the build output. Only implement it if your extension installs packages; extensions without it are assumed to install none.
+
+```ts
+{
+  name: "my-extension",
+  installedPackagesForTarget: (target) => {
+    return target === "deploy" ? ["my-dependency"] : [];
+  },
+}
 ```
 
 ### onBuildStart

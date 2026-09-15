@@ -1,4 +1,5 @@
-import { z } from "zod";
+import { z } from "zod/v4";
+import { discriminatedUnion } from "../../utils/zod.js";
 import { TaskRunExecutionResult } from "../../schemas/common.js";
 import {
   MachineResources,
@@ -9,6 +10,9 @@ import {
   CheckpointInput,
   ExecutionResult,
 } from "../../schemas/runEngine.js";
+// Imported from the leaf, not runEngine.js: this file is loaded mid-runEngine-init via the
+// schemas/index -> messages -> supervisor/schemas cycle, so a runEngine.js import would be in the TDZ.
+import { SnapshotRouteWire, SnapshotRouteWireLenient } from "../../schemas/snapshotRoute.js";
 
 export const WorkerApiHeartbeatRequestBody = z.object({
   cpu: z.object({
@@ -28,10 +32,12 @@ export const WorkerApiHeartbeatResponseBody = z.object({
 });
 export type WorkerApiHeartbeatResponseBody = z.infer<typeof WorkerApiHeartbeatResponseBody>;
 
-export const WorkerApiSuspendRunRequestBody = z.discriminatedUnion("success", [
+export const WorkerApiSuspendRunRequestBody = discriminatedUnion("success", [
   z.object({
     success: z.literal(true),
     checkpoint: CheckpointInput,
+    // See WorkerApiRunAttemptStartRequestBody.snapshotRoute — carries the route to the suspend transition.
+    snapshotRoute: SnapshotRouteWireLenient.optional(),
   }),
   z.object({
     success: z.literal(false),
@@ -50,8 +56,18 @@ export type WorkerApiContinueRunExecutionRequestBody = z.infer<
   typeof WorkerApiContinueRunExecutionRequestBody
 >;
 
+// Query params for the continue (checkpoint-restore) request. It's a GET, so this travels on the
+// URL rather than a JSON body. See WorkerApiRunAttemptStartRequestBody.snapshotRoute — carries the
+// route to the resume transition. Optional for mixed-version compatibility (older workers omit it).
+export const WorkerApiContinueRunExecutionQueryParams = z.object({
+  snapshotRoute: SnapshotRouteWire.optional(),
+});
+export type WorkerApiContinueRunExecutionQueryParams = z.infer<
+  typeof WorkerApiContinueRunExecutionQueryParams
+>;
+
 export const WorkerApiConnectRequestBody = z.object({
-  metadata: z.record(z.any()),
+  metadata: z.record(z.string(), z.any()),
 });
 export type WorkerApiConnectRequestBody = z.infer<typeof WorkerApiConnectRequestBody>;
 
@@ -97,6 +113,10 @@ export type WorkerApiRunHeartbeatResponseBody = z.infer<typeof WorkerApiRunHeart
 
 export const WorkerApiRunAttemptStartRequestBody = z.object({
   isWarmStart: z.boolean().optional(),
+  // The run's storage route, carried back from the DequeuedMessage so this attempt honors durable
+  // residency on a poll-lagging pod. LENIENT: a newer worker's unreadable route becomes absent and
+  // falls back to durable residency rather than failing the request.
+  snapshotRoute: SnapshotRouteWireLenient.optional(),
 });
 export type WorkerApiRunAttemptStartRequestBody = z.infer<
   typeof WorkerApiRunAttemptStartRequestBody
@@ -104,7 +124,7 @@ export type WorkerApiRunAttemptStartRequestBody = z.infer<
 
 export const WorkerApiRunAttemptStartResponseBody = StartRunAttemptResult.and(
   z.object({
-    envVars: z.record(z.string()),
+    envVars: z.record(z.string(), z.string()),
   })
 );
 export type WorkerApiRunAttemptStartResponseBody = z.infer<
@@ -113,6 +133,8 @@ export type WorkerApiRunAttemptStartResponseBody = z.infer<
 
 export const WorkerApiRunAttemptCompleteRequestBody = z.object({
   completion: TaskRunExecutionResult,
+  // See WorkerApiRunAttemptStartRequestBody.snapshotRoute — carries the route to the completion transition.
+  snapshotRoute: SnapshotRouteWireLenient.optional(),
 });
 export type WorkerApiRunAttemptCompleteRequestBody = z.infer<
   typeof WorkerApiRunAttemptCompleteRequestBody
@@ -130,11 +152,6 @@ export const WorkerApiRunLatestSnapshotResponseBody = z.object({
 });
 export type WorkerApiRunLatestSnapshotResponseBody = z.infer<
   typeof WorkerApiRunLatestSnapshotResponseBody
->;
-
-export const WorkerApiDequeueFromVersionResponseBody = DequeuedMessage.array();
-export type WorkerApiDequeueFromVersionResponseBody = z.infer<
-  typeof WorkerApiDequeueFromVersionResponseBody
 >;
 
 export const DebugLogPropertiesValue = z.union([

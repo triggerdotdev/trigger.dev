@@ -152,7 +152,7 @@ async function verifySignature(
 
     // Compare signatures using timing-safe comparison
     return timingSafeEqual(signature, actualSignatureHex);
-  } catch (error) {
+  } catch (_error) {
     throw new WebhookError("Signature verification failed");
   }
 }

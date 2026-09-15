@@ -1,5 +1,5 @@
-import { RetryOptions, TaskRunContext } from "../schemas/index.js";
-import { HandleErrorResult } from "../types/index.js";
+import type { RetryOptions, TaskRunContext } from "../schemas/index.js";
+import type { HandleErrorResult } from "../types/index.js";
 
 export type TaskInitOutput = Record<string, any> | void | undefined;
 
@@ -33,7 +33,7 @@ export type OnStartHookFunction<TPayload, TInitOutput extends TaskInitOutput = T
 
 export type AnyOnStartHookFunction = OnStartHookFunction<unknown, TaskInitOutput>;
 
-export type TaskStartAttemptHookParams<TPayload = unknown> = {
+type TaskStartAttemptHookParams<TPayload = unknown> = {
   ctx: TaskRunContext;
   payload: TPayload;
   task: string;
@@ -142,12 +142,12 @@ export type OnSuccessHookFunction<
 
 export type AnyOnSuccessHookFunction = OnSuccessHookFunction<unknown, unknown, TaskInitOutput>;
 
-export type TaskCompleteSuccessResult<TOutput> = {
+type TaskCompleteSuccessResult<TOutput> = {
   ok: true;
   data: TOutput;
 };
 
-export type TaskCompleteErrorResult = {
+type TaskCompleteErrorResult = {
   ok: false;
   error: unknown;
 };

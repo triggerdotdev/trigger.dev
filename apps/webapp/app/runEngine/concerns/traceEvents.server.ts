@@ -1,8 +1,9 @@
 import { SemanticInternalAttributes } from "@trigger.dev/core/v3/semanticInternalAttributes";
-import { TaskRun } from "@trigger.dev/database";
-import { IEventRepository } from "~/v3/eventRepository/eventRepository.types";
+import type { TaskRun } from "@trigger.dev/database";
+import type { IEventRepository } from "~/v3/eventRepository/eventRepository.types";
 import { getEventRepository } from "~/v3/eventRepository/index.server";
-import { TracedEventSpan, TraceEventConcern, TriggerTaskRequest } from "../types";
+import { runTriggeredAt } from "~/v3/runTimestamps";
+import type { TracedEventSpan, TraceEventConcern, TriggerTaskRequest } from "../types";
 
 export class DefaultTraceEventsConcern implements TraceEventConcern {
   async #getEventRepository(
@@ -22,6 +23,13 @@ export class DefaultTraceEventsConcern implements TraceEventConcern {
     callback: (span: TracedEventSpan, store: string) => Promise<T>
   ): Promise<T> {
     const { repository, store } = await this.#getEventRepository(request, parentStore);
+    const startTime = request.options?.overrideCreatedAt
+      ? runTriggeredAt({
+          createdAt: request.options.overrideCreatedAt,
+          queueTimestamp: request.options.queueTimestamp,
+          scheduleId: request.options.scheduleId,
+        })
+      : undefined;
 
     return await repository.traceEvent(
       request.taskId,
@@ -39,9 +47,7 @@ export class DefaultTraceEventsConcern implements TraceEventConcern {
         },
         incomplete: true,
         immediate: true,
-        startTime: request.options?.overrideCreatedAt
-          ? BigInt(request.options.overrideCreatedAt.getTime()) * BigInt(1000000)
-          : undefined,
+        startTime: startTime ? BigInt(startTime.getTime()) * BigInt(1000000) : undefined,
       },
       async (event, traceContext, traceparent) => {
         return await callback(

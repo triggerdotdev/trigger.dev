@@ -1,23 +1,21 @@
-import { json, TypedResponse } from "@remix-run/server-runtime";
-import { MachinePreset, SemanticInternalAttributes } from "@trigger.dev/core/v3";
-import { RunId, SnapshotId } from "@trigger.dev/core/v3/isomorphic";
-import {
-  WorkerApiRunAttemptStartRequestBody,
-  WorkerApiRunAttemptStartResponseBody,
-} from "@trigger.dev/core/v3/workers";
+import type { TypedResponse } from "@remix-run/server-runtime";
+import { json } from "@remix-run/server-runtime";
+import type { MachinePreset } from "@trigger.dev/core/v3";
+import { SemanticInternalAttributes } from "@trigger.dev/core/v3";
 import type { AuthenticatedEnvironment } from "@trigger.dev/core/v3/auth/environment";
-import { defaultMachine } from "~/services/platform.v3.server";
+import { RunId, SnapshotId } from "@trigger.dev/core/v3/isomorphic";
+import type { WorkerApiRunAttemptStartResponseBody } from "@trigger.dev/core/v3/workers";
+import { WorkerApiRunAttemptStartRequestBody } from "@trigger.dev/core/v3/workers";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import {
-  createActionApiRoute,
-  createActionWorkerApiRoute,
-} from "~/services/routeBuilders/apiBuilder.server";
+import { defaultMachine } from "~/services/platform.v3.server";
+import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { resolveVariablesForEnvironment } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { machinePresetFromName } from "~/v3/machinePresets.server";
 import { engine } from "~/v3/runEngine.server";
+import { runStore } from "~/v3/runStore.server";
 
 const { action } = createActionApiRoute(
   {
@@ -36,12 +34,13 @@ const { action } = createActionApiRoute(
     const { runFriendlyId, snapshotFriendlyId } = params;
 
     try {
-      const run = await prisma.taskRun.findFirst({
-        where: {
+      const run = await runStore.findRun(
+        {
           friendlyId: params.runFriendlyId,
           runtimeEnvironmentId: authentication.environment.id,
         },
-      });
+        prisma
+      );
 
       if (!run) {
         throw new Response("You don't have permissions for this run", { status: 401 });
@@ -50,6 +49,8 @@ const { action } = createActionApiRoute(
       const engineResult = await engine.startRunAttempt({
         runId: RunId.toId(runFriendlyId),
         snapshotId: SnapshotId.toId(snapshotFriendlyId),
+        isWarmStart: body.isWarmStart,
+        snapshotRoute: body.snapshotRoute,
       });
 
       const defaultMachinePreset = machinePresetFromName(defaultMachine);

@@ -1,5 +1,5 @@
 import assertNever from "assert-never";
-import { Filter, FlatTree } from "./TreeView";
+import type { Filter, FlatTree } from "./TreeView";
 import {
   applyFilterToState,
   applyVisibility,

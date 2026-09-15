@@ -61,8 +61,7 @@ async function doEvaluate(spec: DiscoverySpec, projectRoot: string): Promise<boo
   // Check content in matched files
   const hasContentMatch = await checkContentPattern(matchedFiles, spec.contentPattern);
 
-  const result =
-    spec.matchBehavior === "show-if-found" ? hasContentMatch : !hasContentMatch;
+  const result = spec.matchBehavior === "show-if-found" ? hasContentMatch : !hasContentMatch;
 
   logger.debug("Discovery: evaluation complete", {
     matchedFiles,
@@ -74,10 +73,7 @@ async function doEvaluate(spec: DiscoverySpec, projectRoot: string): Promise<boo
   return result;
 }
 
-async function resolveFilePatterns(
-  patterns: string[],
-  projectRoot: string
-): Promise<string[]> {
+async function resolveFilePatterns(patterns: string[], projectRoot: string): Promise<string[]> {
   const matched: string[] = [];
 
   for (const pattern of patterns) {
@@ -120,10 +116,7 @@ async function resolveFilePatterns(
   return matched;
 }
 
-async function checkContentPattern(
-  files: string[],
-  contentPattern: string
-): Promise<boolean> {
+async function checkContentPattern(files: string[], contentPattern: string): Promise<boolean> {
   const useFastPath = !REGEX_METACHARACTERS.test(contentPattern);
 
   // Pre-compile regex once outside the loop to avoid repeated compilation

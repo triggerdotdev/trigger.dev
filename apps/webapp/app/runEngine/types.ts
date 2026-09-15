@@ -3,7 +3,7 @@ import type { IOPacket, TaskRunError, TriggerTaskRequestBody } from "@trigger.de
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import type { ReportUsagePlan } from "@trigger.dev/platform";
 
-export type TriggerTaskServiceOptions = {
+type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
   idempotencyKeyExpiresAt?: Date;
   triggerVersion?: string;
@@ -16,6 +16,8 @@ export type TriggerTaskServiceOptions = {
   runFriendlyId?: string;
   skipChecks?: boolean;
   oneTimeUseToken?: string;
+  scheduleId?: string;
+  queueTimestamp?: Date;
   overrideCreatedAt?: Date;
   planType?: string;
 };
@@ -29,21 +31,15 @@ export type TriggerTaskRequest = {
   options?: TriggerTaskServiceOptions;
 };
 
-export type TriggerTaskResult = {
-  run: TaskRun;
-  isCached: boolean;
-  error?: TaskRunError;
-};
-
 export type QueueValidationResult =
   | {
-    ok: true;
-  }
+      ok: true;
+    }
   | {
-    ok: false;
-    maximumSize: number;
-    queueSize: number;
-  };
+      ok: false;
+      maximumSize: number;
+      queueSize: number;
+    };
 
 export type QueueProperties = {
   queueName: string;
@@ -99,22 +95,22 @@ export interface ParentRunValidationParams {
 
 export type ValidationResult =
   | {
-    ok: true;
-  }
+      ok: true;
+    }
   | {
-    ok: false;
-    error: Error;
-  };
+      ok: false;
+      error: Error;
+    };
 
 export type EntitlementValidationResult =
   | {
-    ok: true;
-    plan?: ReportUsagePlan;
-  }
+      ok: true;
+      plan?: ReportUsagePlan;
+    }
   | {
-    ok: false;
-    error: Error;
-  };
+      ok: false;
+      error: Error;
+    };
 
 export interface TriggerTaskValidator {
   validateTags(params: TagValidationParams): ValidationResult;

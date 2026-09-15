@@ -12,7 +12,7 @@ import * as Property from "~/components/primitives/PropertyTable";
 // view. Decoupled from the .server module so the component stays client-safe.
 // Duration fields are always suffixed strings — the server's DurationSchema
 // rejects anything else, so non-string overrides fall back to the default.
-export type RateLimitConfig =
+type RateLimitConfig =
   | {
       type: "tokenBucket";
       refillRate: number;
@@ -30,7 +30,7 @@ export type EffectiveRateLimit = {
   config: RateLimitConfig;
 };
 
-export type FieldErrors = Record<string, string[] | undefined> | null;
+type FieldErrors = Record<string, string[] | undefined> | null;
 
 // Props shared by every per-domain wrapper (Api / Batch / future ones).
 export type RateLimitWrapperProps = {
@@ -57,25 +57,20 @@ export function RateLimitSection({
   const fieldError = (field: string) =>
     errors && field in errors ? errors[field]?.[0] : undefined;
 
-  const current =
-    effective.config.type === "tokenBucket" ? effective.config : null;
+  const current = effective.config.type === "tokenBucket" ? effective.config : null;
 
   const [isEditing, setIsEditing] = useState(hasFieldErrors);
-  const [refillRate, setRefillRate] = useState(
-    current ? String(current.refillRate) : ""
-  );
-  const [intervalStr, setIntervalStr] = useState(
-    current ? String(current.interval) : ""
-  );
-  const [maxTokens, setMaxTokens] = useState(
-    current ? String(current.maxTokens) : ""
-  );
+  const [refillRate, setRefillRate] = useState(current ? String(current.refillRate) : "");
+  const [intervalStr, setIntervalStr] = useState(current ? String(current.interval) : "");
+  const [maxTokens, setMaxTokens] = useState(current ? String(current.maxTokens) : "");
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     if (hasFieldErrors) setIsEditing(true);
   }, [hasFieldErrors]);
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     if (savedJustNow && !hasFieldErrors) setIsEditing(false);
   }, [savedJustNow, hasFieldErrors]);
 
@@ -101,7 +96,7 @@ export function RateLimitSection({
   };
 
   return (
-    <section className="flex flex-col gap-3 rounded-md border border-charcoal-700 bg-charcoal-800 p-4">
+    <section className="flex flex-col gap-3 rounded-md border border-grid-bright bg-background-bright p-4">
       <div className="flex items-center justify-between">
         <Header2>{title}</Header2>
         {!isEditing && (
@@ -125,9 +120,7 @@ export function RateLimitSection({
 
       <Paragraph variant="small">
         Status:{" "}
-        {effective.source === "override"
-          ? "Custom override active."
-          : "Using system default."}
+        {effective.source === "override" ? "Custom override active." : "Using system default."}
       </Paragraph>
 
       {!isEditing ? (
@@ -138,9 +131,7 @@ export function RateLimitSection({
                 <>
                   <Property.Item>
                     <Property.Label>Sustained rate</Property.Label>
-                    <Property.Value>
-                      {currentDescription.sustained}
-                    </Property.Value>
+                    <Property.Value>{currentDescription.sustained}</Property.Value>
                   </Property.Item>
                   <Property.Item>
                     <Property.Label>Burst allowance</Property.Label>
@@ -149,9 +140,7 @@ export function RateLimitSection({
                 </>
               ) : (
                 <Property.Item>
-                  <Property.Value>
-                    Invalid interval on the stored config.
-                  </Property.Value>
+                  <Property.Value>Invalid interval on the stored config.</Property.Value>
                 </Property.Item>
               )
             ) : (
@@ -166,17 +155,15 @@ export function RateLimitSection({
                 </Property.Item>
                 <Property.Item>
                   <Property.Label>Tokens</Property.Label>
-                  <Property.Value>
-                    {effective.config.tokens.toLocaleString()}
-                  </Property.Value>
+                  <Property.Value>{effective.config.tokens.toLocaleString()}</Property.Value>
                 </Property.Item>
               </>
             )}
           </Property.Table>
           {effective.config.type !== "tokenBucket" && (
             <Paragraph variant="small" className="text-amber-500">
-              This override is a {effective.config.type} limit and can't be
-              edited from this form. Change it in the database directly.
+              This override is a {effective.config.type} limit and can't be edited from this form.
+              Change it in the database directly.
             </Paragraph>
           )}
         </>
@@ -233,10 +220,7 @@ export function RateLimitSection({
               type="submit"
               variant="primary/medium"
               disabled={
-                isSubmitting ||
-                !refillRate.trim() ||
-                !intervalStr.trim() ||
-                !maxTokens.trim()
+                isSubmitting || !refillRate.trim() || !intervalStr.trim() || !maxTokens.trim()
               }
             >
               Save

@@ -1,43 +1,63 @@
-import { type ActionFunction, json } from "@remix-run/node";
 import { prisma } from "~/db.server";
 import { jsonWithErrorMessage, jsonWithSuccessMessage } from "~/models/message.server";
 import { logger } from "~/services/logger.server";
-import { requireUserId } from "~/services/session.server";
-import { ResetIdempotencyKeyService } from "~/v3/services/resetIdempotencyKey.server";
+import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
+import {
+  dashboardAction,
+  type DashboardActionHandlerArgs,
+} from "~/services/routeBuilders/dashboardBuilder";
 import { v3RunParamsSchema } from "~/utils/pathBuilder";
+import { runStore } from "~/v3/runStore.server";
+import { ResetIdempotencyKeyService } from "~/v3/services/resetIdempotencyKey.server";
 
-export const action: ActionFunction = async ({ request, params }) => {
-  const userId = await requireUserId(request);
-  const { projectParam, organizationSlug, envParam, runParam } = v3RunParamsSchema.parse(params);
+type ProjectAuthScope = Awaited<ReturnType<typeof resolveProjectAuthScope>>;
+
+export const action = dashboardAction(
+  {
+    params: v3RunParamsSchema,
+    context: (params) => resolveProjectAuthScope(params.organizationSlug, params.projectParam),
+    authorization: {
+      action: "write",
+      resource: { type: "runs" },
+      message: "With your current role, you can't reset idempotency keys.",
+    },
+  },
+  resetIdempotencyKeyAction
+);
+
+async function resetIdempotencyKeyAction({
+  request,
+  params,
+  user,
+}: DashboardActionHandlerArgs<typeof v3RunParamsSchema, undefined, ProjectAuthScope>) {
+  const userId = user.id;
+  const { projectParam, organizationSlug, envParam, runParam } = params;
 
   try {
-    const taskRun = await prisma.taskRun.findFirst({
-      where: {
-        friendlyId: runParam,
-        project: {
-          slug: projectParam,
-          organization: {
-            slug: organizationSlug,
-            members: {
-              some: {
-                userId,
-              },
-            },
-          },
-        },
-        runtimeEnvironment: {
-          slug: envParam,
-        },
-      },
-      select: {
-        id: true,
-        idempotencyKey: true,
-        taskIdentifier: true,
-        runtimeEnvironmentId: true,
-      },
-    });
+    const resetSelect = {
+      id: true,
+      idempotencyKey: true,
+      taskIdentifier: true,
+      projectId: true,
+      runtimeEnvironmentId: true,
+    };
+    let taskRun = await runStore.findRun({ friendlyId: runParam }, { select: resetSelect });
+    if (!taskRun) {
+      // Read-your-writes: a just-created run may not have replicated. Re-read the owning primary
+      // before 404ing — this null gates the reset mutation below (mirrors cancel/replay).
+      taskRun = await runStore.findRunOnPrimary({ friendlyId: runParam }, { select: resetSelect });
+    }
 
     if (!taskRun) {
+      return jsonWithErrorMessage({}, request, "Run not found");
+    }
+
+    const authorizedProject = await prisma.project.findFirst({
+      where: { id: taskRun.projectId, organization: { members: { some: { userId } } } },
+      select: { id: true },
+    });
+
+    if (!authorizedProject) {
       return jsonWithErrorMessage({}, request, "Run not found");
     }
 
@@ -45,7 +65,7 @@ export const action: ActionFunction = async ({ request, params }) => {
       return jsonWithErrorMessage({}, request, "This run does not have an idempotency key");
     }
 
-    const environment = await prisma.runtimeEnvironment.findUnique({
+    const environment = await prisma.runtimeEnvironment.findFirst({
       where: {
         id: taskRun.runtimeEnvironmentId,
       },
@@ -60,6 +80,14 @@ export const action: ActionFunction = async ({ request, params }) => {
 
     if (!environment) {
       return jsonWithErrorMessage({}, request, "Environment not found");
+    }
+
+    if (
+      environment.slug !== envParam ||
+      environment.project.slug !== projectParam ||
+      environment.project.organization.slug !== organizationSlug
+    ) {
+      return jsonWithErrorMessage({}, request, "Run not found");
     }
 
     const service = new ResetIdempotencyKeyService();
@@ -90,4 +118,4 @@ export const action: ActionFunction = async ({ request, params }) => {
       );
     }
   }
-};
+}

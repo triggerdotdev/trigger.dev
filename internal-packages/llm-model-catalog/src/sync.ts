@@ -71,9 +71,7 @@ export async function syncLlmCatalog(prisma: PrismaClient): Promise<{
           capabilities: catalog?.capabilities ?? existing.capabilities,
           isHidden: catalog?.isHidden ?? existing.isHidden,
           baseModelName:
-            catalog?.baseModelName === undefined
-              ? existing.baseModelName
-              : catalog.baseModelName,
+            catalog?.baseModelName === undefined ? existing.baseModelName : catalog.baseModelName,
           pricingUnit: existing.pricingUnit ?? "tokens",
         },
       });

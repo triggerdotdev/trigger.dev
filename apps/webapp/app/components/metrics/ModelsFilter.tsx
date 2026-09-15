@@ -54,7 +54,7 @@ function modelIcon(system: string, model: string): ReactNode {
 }
 
 export function ModelsFilter({ possibleModels }: ModelsFilterProps) {
-  const { values, replace, del } = useSearchParams();
+  const { values, replace: _replace, del } = useSearchParams();
   const selectedModels = values("models");
 
   if (selectedModels.length === 0 || selectedModels.every((v) => v === "")) {
@@ -148,7 +148,12 @@ function ModelsDropdown({
         <ComboBox placeholder="Filter by model..." value={searchValue} />
         <SelectList>
           {filtered.map((m) => (
-            <SelectItem key={m.model} value={m.model} className="text-text-bright" icon={modelIcon(m.system, m.model)}>
+            <SelectItem
+              key={m.model}
+              value={m.model}
+              className="text-text-bright"
+              icon={modelIcon(m.system, m.model)}
+            >
               {m.model}
             </SelectItem>
           ))}

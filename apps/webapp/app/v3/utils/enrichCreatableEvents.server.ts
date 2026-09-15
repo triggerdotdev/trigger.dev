@@ -45,6 +45,22 @@ function enrichCreatableEvent(event: CreateEventInput): CreateEventInput {
   return event;
 }
 
+/**
+ * OTel GenAI operations that wrap other spans rather than performing inference
+ * themselves. Everything else (`chat`, `generate_content`, `text_completion`,
+ * `embeddings`, and any operation we do not recognise) is treated as billable.
+ * Defaulting to billable keeps an unknown or future operation counted rather
+ * than silently dropping spend.
+ *
+ * @see https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-spans/
+ */
+const AGENT_LEVEL_GEN_AI_OPERATIONS = new Set(["invoke_agent", "create_agent", "execute_tool"]);
+
+function isAgentLevelOperation(props: Record<string, unknown>): boolean {
+  const genAiOperation = props["gen_ai.operation.name"];
+  return typeof genAiOperation === "string" && AGENT_LEVEL_GEN_AI_OPERATIONS.has(genAiOperation);
+}
+
 function enrichLlmMetrics(event: CreateEventInput): void {
   const props = event.properties;
   if (!props) return;
@@ -89,18 +105,15 @@ function enrichLlmMetrics(event: CreateEventInput): void {
     { text: formatTokenCount(totalTokens), icon: "tabler-hash" },
   ];
 
-  // Try cost enrichment if the registry is loaded.
-  // The registry handles prefix stripping (e.g. "mistral/mistral-large-3" → "mistral-large-3")
-  // for gateway/openrouter models automatically in its match() method.
-  let cost: ReturnType<NonNullable<typeof _registry>["calculateCost"]> | null = null;
-  if (_registry?.isLoaded) {
-    cost = _registry.calculateCost(responseModel, usageDetails);
-  }
+  // Provider-reported cost (gateway/openrouter) is the exact per-request bill and already
+  // reflects cache-read discounts and the real per-provider rate, so prefer it and only fall
+  // back to catalog pricing when it is absent. The registry handles prefix stripping (e.g.
+  // "mistral/mistral-large-3" → "mistral-large-3") for gateway/openrouter models in match().
+  const providerCost = extractProviderCost(props);
 
-  // Fallback: extract cost from provider metadata (gateway/openrouter report per-request cost)
-  let providerCost: { totalCost: number; source: string } | null = null;
-  if (!cost) {
-    providerCost = extractProviderCost(props);
+  let cost: ReturnType<NonNullable<typeof _registry>["calculateCost"]> | null = null;
+  if (!providerCost && _registry?.isLoaded) {
+    cost = _registry.calculateCost(responseModel, usageDetails);
   }
 
   if (cost) {
@@ -110,6 +123,8 @@ function enrichLlmMetrics(event: CreateEventInput): void {
       "trigger.llm.input_cost": cost.inputCost,
       "trigger.llm.output_cost": cost.outputCost,
       "trigger.llm.total_cost": cost.totalCost,
+      "trigger.llm.cached_cost": cost.costDetails["input_cached_tokens"] ?? 0,
+      "trigger.llm.cache_creation_cost": cost.costDetails["cache_creation_input_tokens"] ?? 0,
       "trigger.llm.matched_model": cost.matchedModelName,
       "trigger.llm.matched_model_id": cost.matchedModelId,
       "trigger.llm.pricing_tier": cost.pricingTierName,
@@ -139,6 +154,19 @@ function enrichLlmMetrics(event: CreateEventInput): void {
   // Only write llm_metrics when cost data is available
   if (!cost && !providerCost) return;
 
+  // An agent-level span wraps the inference spans that did the work and repeats
+  // their usage, so pricing both sides doubles every aggregate built on this
+  // table. Skip the row for wrappers; the span keeps the `trigger.llm.*`
+  // attributes and the cost pill written above, so the trace view is unchanged.
+  //
+  // The discriminator is the OTel GenAI semantic convention, not the AI SDK's
+  // `ai.operationId`. The vendor id describes the SDK call that produced the
+  // span (`ai.generateText` for both the wrapper and, in some setups, a lone
+  // inference span) while `gen_ai.operation.name` describes what the span IS.
+  // Keying on the vendor id would drop single inference spans that never had a
+  // child, which is real spend.
+  if (isAgentLevelOperation(props)) return;
+
   // Build metadata map from run tags and ai.telemetry.metadata.*
   const metadata: Record<string, string> = {};
 
@@ -161,19 +189,22 @@ function enrichLlmMetrics(event: CreateEventInput): void {
   // v6 emits ai.response.finishReason (plain string); v7 (@ai-sdk/otel) emits
   // gen_ai.response.finish_reasons as a JSON array string (e.g. `["stop"]`).
   const finishReason = readFinishReason(props);
-  const operationId = typeof props["ai.operationId"] === "string"
-    ? props["ai.operationId"]
-    : typeof props["gen_ai.operation.name"] === "string"
-      ? props["gen_ai.operation.name"]
-      : typeof props["operation.name"] === "string"
-        ? props["operation.name"]
-        : "";
-  const msToFirstChunk = typeof props["ai.response.msToFirstChunk"] === "number"
-    ? props["ai.response.msToFirstChunk"]
-    : 0;
-  const avgTokensPerSec = typeof props["ai.response.avgOutputTokensPerSecond"] === "number"
-    ? props["ai.response.avgOutputTokensPerSecond"]
-    : 0;
+  const operationId =
+    typeof props["ai.operationId"] === "string"
+      ? props["ai.operationId"]
+      : typeof props["gen_ai.operation.name"] === "string"
+        ? props["gen_ai.operation.name"]
+        : typeof props["operation.name"] === "string"
+          ? props["operation.name"]
+          : "";
+  const msToFirstChunk =
+    typeof props["ai.response.msToFirstChunk"] === "number"
+      ? props["ai.response.msToFirstChunk"]
+      : 0;
+  const avgTokensPerSec =
+    typeof props["ai.response.avgOutputTokensPerSecond"] === "number"
+      ? props["ai.response.avgOutputTokensPerSecond"]
+      : 0;
   const costSource = cost ? "registry" : providerCost ? providerCost.source : "";
   const providerCostValue = providerCost?.totalCost ?? 0;
 
@@ -185,7 +216,10 @@ function enrichLlmMetrics(event: CreateEventInput): void {
         : typeof props["gen_ai.provider.name"] === "string"
           ? props["gen_ai.provider.name"]
           : "unknown",
-    requestModel: typeof props["gen_ai.request.model"] === "string" ? props["gen_ai.request.model"] : responseModel,
+    requestModel:
+      typeof props["gen_ai.request.model"] === "string"
+        ? props["gen_ai.request.model"]
+        : responseModel,
     responseModel,
     baseResponseModel: modelCatalog[responseModel]?.baseModelName ?? responseModel,
     matchedModelId: cost?.matchedModelId ?? "",
@@ -193,10 +227,12 @@ function enrichLlmMetrics(event: CreateEventInput): void {
     finishReason,
     costSource,
     pricingTierId: cost?.pricingTierId ?? (providerCost ? `provider:${providerCost.source}` : ""),
-    pricingTierName: cost?.pricingTierName ?? (providerCost ? `${providerCost.source} reported` : ""),
+    pricingTierName:
+      cost?.pricingTierName ?? (providerCost ? `${providerCost.source} reported` : ""),
     inputTokens: usageDetails["input"] ?? 0,
     outputTokens: usageDetails["output"] ?? 0,
-    totalTokens: usageDetails["total"] ?? (usageDetails["input"] ?? 0) + (usageDetails["output"] ?? 0),
+    totalTokens:
+      usageDetails["total"] ?? (usageDetails["input"] ?? 0) + (usageDetails["output"] ?? 0),
     usageDetails,
     inputCost: cost?.inputCost ?? 0,
     outputCost: cost?.outputCost ?? 0,
@@ -331,6 +367,11 @@ function extractProviderCost(
 ): { totalCost: number; source: string } | null {
   const rawMeta = props["ai.response.providerMetadata"];
   if (typeof rawMeta !== "string") return null;
+
+  // Cheap guard: providerMetadata can be large for reasoning models (it carries the full
+  // reasoning_details text), and this now runs on every AI span. Skip the JSON parse when
+  // there is no cost field to find.
+  if (!rawMeta.includes('"cost"')) return null;
 
   let meta: Record<string, unknown>;
   try {

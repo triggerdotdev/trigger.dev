@@ -1,8 +1,8 @@
-import { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { GetProjectsResponseBody } from "@trigger.dev/core/v3";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { GetProjectsResponseBody } from "@trigger.dev/core/v3";
 import { toolsMetadata } from "../config.js";
 import { CreateProjectInOrgInput, InitializeProjectInput } from "../schemas.js";
-import { ToolMeta } from "../types.js";
+import type { ToolMeta } from "../types.js";
 import { respondWithError, toolHandler } from "../utils.js";
 import { loadConfig } from "../../config.js";
 import { tryCatch } from "@trigger.dev/core/utils";

@@ -7,18 +7,21 @@ import {
   type SessionItem,
   type SessionStatus,
 } from "@trigger.dev/core/v3";
-import { SessionId } from "@trigger.dev/core/v3/isomorphic";
-import type { Prisma, Session } from "@trigger.dev/database";
+import type { Session } from "@trigger.dev/database";
 import { $replica, prisma, type PrismaClient } from "~/db.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { logger } from "~/services/logger.server";
 import { mintSessionToken } from "~/services/realtime/mintSessionToken.server";
 import {
+  isSafeSessionExternalId,
+  SESSION_CHANNEL_SCOPE_INFIX,
+} from "~/services/realtime/sessionChannels.server";
+import {
   ensureRunForSession,
   type SessionTriggerConfig,
 } from "~/services/realtime/sessionRunManager.server";
-import { chatSnapshotStoragePathForSession } from "~/services/realtime/chatSnapshot.server";
 import {
+  findOrCreateSession,
   serializeSession,
   serializeSessionsWithFriendlyRunIds,
 } from "~/services/realtime/sessions.server";
@@ -27,8 +30,10 @@ import {
   anyResource,
   createActionApiRoute,
   createLoaderApiRoute,
+  everyResource,
 } from "~/services/routeBuilders/apiBuilder.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
+import { runStore } from "~/v3/runStore.server";
 
 function asArray<T>(value: T | T[] | undefined): T[] | undefined {
   if (value === undefined) return undefined;
@@ -47,15 +52,19 @@ export const loader = createLoaderApiRoute(
       //   - Type-level `read:sessions` (the old superScope) matches the
       //     sessions element (collection-level — no id)
       //   - `read:all` / `admin` bypass via the JWT ability's wildcard branches
-      // The taskIdentifier filter accepts a string or an array; expand to
-      // one resource per task id so any per-task-scoped JWT among them
-      // grants access (the array gets OR semantics).
+      // The taskIdentifier filter accepts a string or an array. Broad
+      // sessions/tasks scopes remain alternatives, while ID-scoped keys must
+      // match every requested task so one allowed filter cannot expose others.
       resource: (_, __, searchParams) => {
         const taskFilter = asArray(searchParams["filter[taskIdentifier]"]) ?? [];
-        return anyResource([
-          ...taskFilter.map((id) => ({ type: "tasks" as const, id })),
-          { type: "sessions" as const },
-        ]);
+        if (taskFilter.length === 0) {
+          return anyResource([{ type: "sessions" as const }, { type: "tasks" as const }]);
+        }
+
+        return everyResource(
+          taskFilter.map((id) => ({ type: "tasks" as const, id })),
+          [{ type: "sessions" as const }, { type: "tasks" as const }]
+        );
       },
     },
     findResource: async () => 1,
@@ -157,75 +166,33 @@ const { action } = createActionApiRoute(
       // via the JWT ability's wildcard branches.
       action: "write",
       resource: (_params, _searchParams, _headers, body) =>
-        anyResource([
-          { type: "tasks", id: body.taskIdentifier },
-          { type: "sessions" },
-        ]),
+        anyResource([{ type: "tasks", id: body.taskIdentifier }, { type: "sessions" }]),
     },
     corsStrategy: "all",
   },
   async ({ authentication, body }) => {
     try {
-      const { id, friendlyId } = SessionId.generate();
-
-      // Idempotent on (env, externalId): two concurrent POSTs converge
-      // to the same row. We refresh `triggerConfig` on the cached path
-      // so newly-deployed schema changes (e.g. an updated
-      // `clientDataSchema` on the agent) propagate to subsequent runs
-      // — the next `ensureRunForSession` reads back the latest config.
-      let session: Session;
-      let isCached = false;
-
-      const triggerConfigJson = body.triggerConfig as unknown as Prisma.InputJsonValue;
-
-      if (body.externalId) {
-        session = await prisma.session.upsert({
-          where: {
-            runtimeEnvironmentId_externalId: {
-              runtimeEnvironmentId: authentication.environment.id,
-              externalId: body.externalId,
-            },
+      if (body.externalId && !isSafeSessionExternalId(body.externalId)) {
+        return json(
+          {
+            error: `externalId cannot contain "${SESSION_CHANNEL_SCOPE_INFIX}" or end in ":out" or ":in"`,
           },
-          create: {
-            id,
-            friendlyId,
-            externalId: body.externalId,
-            type: body.type,
-            taskIdentifier: body.taskIdentifier,
-            triggerConfig: triggerConfigJson,
-            tags: body.tags ?? [],
-            metadata: body.metadata as Prisma.InputJsonValue | undefined,
-            expiresAt: body.expiresAt ?? null,
-            projectId: authentication.environment.projectId,
-            runtimeEnvironmentId: authentication.environment.id,
-            environmentType: authentication.environment.type,
-            organizationId: authentication.environment.organizationId,
-            streamBasinName: authentication.environment.organization.streamBasinName,
-            chatSnapshotStoragePath: chatSnapshotStoragePathForSession(friendlyId),
-          },
-          update: { triggerConfig: triggerConfigJson },
-        });
-        isCached = session.id !== id;
-      } else {
-        session = await prisma.session.create({
-          data: {
-            id,
-            friendlyId,
-            type: body.type,
-            taskIdentifier: body.taskIdentifier,
-            triggerConfig: triggerConfigJson,
-            tags: body.tags ?? [],
-            metadata: body.metadata as Prisma.InputJsonValue | undefined,
-            expiresAt: body.expiresAt ?? null,
-            projectId: authentication.environment.projectId,
-            runtimeEnvironmentId: authentication.environment.id,
-            environmentType: authentication.environment.type,
-            organizationId: authentication.environment.organizationId,
-            streamBasinName: authentication.environment.organization.streamBasinName,
-            chatSnapshotStoragePath: chatSnapshotStoragePathForSession(friendlyId),
-          },
-        });
+          { status: 422 }
+        );
       }
+
+      // Idempotent on (env, externalId): two concurrent POSTs converge to the same row, and
+      // `triggerConfig` is refreshed on the cached path so a redeployed config reaches the next run.
+      const { session, isCached } = await findOrCreateSession({
+        environment: authentication.environment,
+        externalId: body.externalId,
+        type: body.type,
+        taskIdentifier: body.taskIdentifier,
+        triggerConfig: body.triggerConfig,
+        tags: body.tags,
+        metadata: body.metadata as Record<string, unknown> | undefined,
+        expiresAt: body.expiresAt,
+      });
 
       // Reject create on a closed session. The upsert path will return
       // an already-closed row when the caller reuses an externalId, and
@@ -264,10 +231,11 @@ const { action } = createActionApiRoute(
       // Read-after-write: the run was just triggered in this request,
       // so go to the writer rather than $replica. Replica lag here
       // would null this out and turn a successful create into a 500.
-      const run = await prisma.taskRun.findFirst({
-        where: { id: ensureResult.runId },
-        select: { friendlyId: true },
-      });
+      const run = await runStore.findRun(
+        { id: ensureResult.runId },
+        { select: { friendlyId: true } },
+        prisma
+      );
       if (!run) {
         throw new Error(`Triggered run ${ensureResult.runId} not found`);
       }
@@ -278,10 +246,7 @@ const { action } = createActionApiRoute(
       // the externalId; otherwise the friendlyId. Mirrors the
       // canonical addressing key used server-side.
       const addressingKey = session.externalId ?? session.friendlyId;
-      const publicAccessToken = await mintSessionToken(
-        authentication.environment,
-        addressingKey
-      );
+      const publicAccessToken = await mintSessionToken(authentication.environment, addressingKey);
 
       const sessionItem: SessionItem = {
         ...serializeSession(session),
@@ -294,6 +259,7 @@ const { action } = createActionApiRoute(
         runId: run.friendlyId,
         publicAccessToken,
         isCached,
+        pendingVersion: ensureResult.pendingVersion,
       };
 
       return json<CreatedSessionResponseBody>(responseBody, {

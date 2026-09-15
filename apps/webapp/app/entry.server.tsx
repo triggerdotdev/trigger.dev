@@ -7,20 +7,20 @@ import { parseAcceptLanguage } from "intl-parse-accept-language";
 import isbot from "isbot";
 import { renderToPipeableStream } from "react-dom/server";
 import { PassThrough } from "stream";
-import * as Worker from "~/services/worker.server";
 import { initMollifierDrainerWorker } from "~/v3/mollifierDrainerWorker.server";
 import { initMollifierStaleSweepWorker } from "~/v3/mollifierStaleSweepWorker.server";
+import { initBillingLimitWorker } from "~/v3/billingLimitWorker.server";
+import { initLogsSearchProjectorWorker } from "~/v3/logsSearchProjectorWorker.server";
+import { initQueueMetricsConsumer, initQueueMetricsEmitter } from "~/v3/queueMetrics.server";
 import { bootstrap } from "./bootstrap";
 import { LocaleContextProvider } from "./components/primitives/LocaleProvider";
-import {
-  OperatingSystemContextProvider,
-  OperatingSystemPlatform,
-} from "./components/primitives/OperatingSystemProvider";
-import { Prisma } from "./db.server";
+import type { OperatingSystemPlatform } from "./components/primitives/OperatingSystemProvider";
+import { OperatingSystemContextProvider } from "./components/primitives/OperatingSystemProvider";
+import { assertRunOpsSplitSentinel, Prisma } from "./db.server";
 import { env } from "./env.server";
-import { eventLoopMonitor } from "./eventLoopMonitor.server";
+import { eventLoopMonitor, eventLoopUtilizationMonitor } from "./eventLoopMonitor.server";
 import { logger } from "./services/logger.server";
-import { resourceMonitor } from "./services/resourceMonitor.server";
+import { buildImgSrcDirective, parseCspImageOrigins, withImgSrc } from "./utils/cspImageOrigins";
 import { singleton } from "./utils/singleton";
 import { remoteBuildsEnabled } from "./v3/remoteImageBuilder.server";
 import {
@@ -41,10 +41,49 @@ import { registerRunChangeNotifierHandlers } from "./services/realtime/runChange
 // to globalThis is an unambiguous side effect the bundler must preserve. See
 // TRI-9864 for the incident write-up.
 import { sessionsReplicationInstance } from "./services/sessionsReplicationInstance.server";
-(globalThis as Record<string, unknown>).__sessionsReplicationInstance =
-  sessionsReplicationInstance;
+(globalThis as Record<string, unknown>).__sessionsReplicationInstance = sessionsReplicationInstance;
+// Touch the webhook deliveries replication singleton at entry so it boots
+// deterministically alongside the sessions replicator. Same `sideEffects: false`
+// tree-shaking constraint applies — assign to globalThis, do NOT use `void`.
+import { webhookDeliveriesReplicationInstance } from "./services/webhookDeliveriesReplicationInstance.server";
+(globalThis as Record<string, unknown>).__webhookDeliveriesReplicationInstance =
+  webhookDeliveriesReplicationInstance;
+// Touch the webhook engine singleton at entry so its redis-worker boots
+// deterministically on webapp startup (the constructor calls worker.start()).
+// Same `sideEffects: false` tree-shaking constraint applies: assign to
+// globalThis, do NOT use `void`.
+import { webhookEngine } from "./v3/webhookEngine.server";
+(globalThis as Record<string, unknown>).__webhookEngine = webhookEngine;
+import { globalFlagsRegistry } from "./v3/globalFlagsRegistry.server";
+(globalThis as Record<string, unknown>).__globalFlagsRegistry = globalFlagsRegistry;
+import { workerRegionRegistry } from "./v3/workerRegions.server";
+(globalThis as Record<string, unknown>).__workerRegionRegistry = workerRegionRegistry;
 
 const ABORT_DELAY = 30000;
+
+/**
+ * Where a document may load images from. The markdown renderer that strips images
+ * ships in the stacked UI PR, so on this branch the policy is the only thing stopping
+ * a model- or customer-authored image from reaching a remote host.
+ *
+ * The hosts we store avatar URLs for, plus whatever `CSP_IMG_SRC_ALLOWLIST` adds
+ * (e.g. a self-hosted SSO avatar host).
+ */
+const IMG_SRC_DIRECTIVE = buildImgSrcDirective(
+  singleton("CspImageOrigins", () => {
+    const { origins, rejected } = parseCspImageOrigins(env.CSP_IMG_SRC_ALLOWLIST, {
+      allowHttp: env.NODE_ENV === "development",
+    });
+
+    for (const entry of rejected) {
+      logger.warn(
+        `⚠️  CSP_IMG_SRC_ALLOWLIST entry "${entry.value}" was ignored: it ${entry.reason}.`
+      );
+    }
+
+    return origins;
+  })
+);
 
 export default function handleRequest(
   request: Request,
@@ -54,10 +93,21 @@ export default function handleRequest(
 ) {
   const url = new URL(request.url);
 
+  // Stale documents reference /build asset hashes that 404 after a deploy —
+  // always revalidate HTML. Route-set headers win.
+  if (!responseHeaders.has("Cache-Control")) {
+    responseHeaders.set("Cache-Control", "no-cache");
+  }
+
   if (url.pathname.startsWith("/login")) {
     responseHeaders.set("X-Frame-Options", "SAMEORIGIN");
     responseHeaders.set("Content-Security-Policy", "frame-ancestors 'self'");
   }
+
+  responseHeaders.set(
+    "Content-Security-Policy",
+    withImgSrc(responseHeaders.get("Content-Security-Policy"), IMG_SRC_DIRECTIVE)
+  );
 
   const acceptLanguage = request.headers.get("accept-language");
   const locales = parseAcceptLanguage(acceptLanguage, {
@@ -225,12 +275,12 @@ export const handleError = wrapHandleErrorWithSentry((error, { request }) => {
   }
 });
 
-Worker.init().catch((error) => {
-  logError(error);
-});
-
 initMollifierDrainerWorker();
 initMollifierStaleSweepWorker();
+initBillingLimitWorker();
+initLogsSearchProjectorWorker();
+initQueueMetricsEmitter();
+initQueueMetricsConsumer();
 
 bootstrap().catch((error) => {
   logError(error);
@@ -238,11 +288,18 @@ bootstrap().catch((error) => {
 
 function logError(error: unknown, request?: Request) {
   console.error(error);
-
-  if (error instanceof Error && error.message.startsWith("There are locked jobs present")) {
-    console.log("⚠️  graphile-worker migration issue detected!");
-  }
 }
+
+// Without a listener Node escalates a rejection into the uncaughtException
+// handler below, which exits the process. Log it (Sentry via Logger.onError)
+// and keep serving. Wrapped in singleton() so Remix's dev-mode CJS reloads
+// don't stack duplicate listeners.
+singleton("UnhandledRejectionHandler", () => {
+  process.on("unhandledRejection", (reason) => {
+    logger.error("unhandledRejection", { error: reason });
+  });
+  return true;
+});
 
 process.on("uncaughtException", (error, origin) => {
   if (
@@ -268,6 +325,17 @@ process.on("uncaughtException", (error, origin) => {
   process.exit(1);
 });
 
+// Boot-time run-ops split interlock. Async, so it runs as a
+// fire-and-forget at startup; a flag-on-but-sentinel-fails misconfig crashes
+// the process loudly before any run-ops routing is wired.
+singleton("AssertRunOpsSplitSentinel", () => {
+  assertRunOpsSplitSentinel().catch((error) => {
+    logger.error("Run-ops split sentinel assertion failed; refusing to start", { error });
+    process.exit(1);
+  });
+  return true;
+});
+
 singleton("RunEngineEventBusHandlers", registerRunEngineEventBusHandlers);
 singleton("SetupBatchQueueCallbacks", setupBatchQueueCallbacks);
 // Attach the realtime run-changed publish delegations to the engine event bus.
@@ -289,9 +357,13 @@ singleton("SentryTenantContextProcessor", () => {
 });
 
 export { apiRateLimiter } from "./services/apiRateLimit.server";
+export { dashboardAgentBodyCap } from "./services/dashboardAgentBodyCap.server";
+export { deploymentRateLimiter } from "./services/deploymentRateLimit.server";
 export { engineRateLimiter } from "./services/engineRateLimit.server";
+export { otlpRateLimiter } from "./services/otlpRateLimit.server";
 export { runWithHttpContext } from "./services/httpAsyncStorage.server";
 export { tenantContextMiddleware } from "./services/tenantContextResolver.server";
+export { webhookIngressIpRateLimiter } from "./services/webhookIngressIpRateLimit.server";
 export { socketIo } from "./v3/handleSocketIo.server";
 export { wss } from "./v3/handleWebsockets.server";
 
@@ -299,12 +371,12 @@ if (env.EVENT_LOOP_MONITOR_ENABLED === "1") {
   eventLoopMonitor.enable();
 }
 
+if (env.EVENT_LOOP_UTILIZATION_MONITOR_ENABLED === "1") {
+  eventLoopUtilizationMonitor.enable();
+}
+
 if (remoteBuildsEnabled()) {
   console.log("🏗️  Remote builds enabled");
 } else {
   console.log("🏗️  Local builds enabled");
-}
-
-if (env.RESOURCE_MONITOR_ENABLED === "1") {
-  resourceMonitor.startMonitoring(1000);
 }

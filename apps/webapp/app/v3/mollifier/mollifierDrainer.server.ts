@@ -41,7 +41,7 @@ function initializeMollifierDrainer(): MollifierDrainer<MollifierSnapshot> {
     // to nothing). Crashing surfaces the misconfig immediately rather
     // than silently leaving entries un-drained.
     throw new MollifierConfigurationError(
-      "MollifierDrainer initialised without a buffer — env vars inconsistent",
+      "MollifierDrainer initialised without a buffer — env vars inconsistent"
     );
   }
 
@@ -65,7 +65,7 @@ function initializeMollifierDrainer(): MollifierDrainer<MollifierSnapshot> {
     env.GRACEFUL_SHUTDOWN_TIMEOUT - shutdownMarginMs
   ) {
     throw new MollifierConfigurationError(
-      `TRIGGER_MOLLIFIER_DRAIN_SHUTDOWN_TIMEOUT_MS (${env.TRIGGER_MOLLIFIER_DRAIN_SHUTDOWN_TIMEOUT_MS}) must be at least ${shutdownMarginMs}ms below GRACEFUL_SHUTDOWN_TIMEOUT (${env.GRACEFUL_SHUTDOWN_TIMEOUT}); otherwise the primary's hard exit shadows the drainer's deadline.`,
+      `TRIGGER_MOLLIFIER_DRAIN_SHUTDOWN_TIMEOUT_MS (${env.TRIGGER_MOLLIFIER_DRAIN_SHUTDOWN_TIMEOUT_MS}) must be at least ${shutdownMarginMs}ms below GRACEFUL_SHUTDOWN_TIMEOUT (${env.GRACEFUL_SHUTDOWN_TIMEOUT}); otherwise the primary's hard exit shadows the drainer's deadline.`
     );
   }
 

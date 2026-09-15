@@ -1,27 +1,29 @@
-import {
-  BellAlertIcon,
-  ChartBarIcon,
-  Cog8ToothIcon,
-  CreditCardIcon,
-  LockClosedIcon,
-  ShieldCheckIcon,
-  UserGroupIcon,
-} from "@heroicons/react/20/solid";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
-import { SlackIcon } from "@trigger.dev/companyicons";
+import { BellIcon } from "~/assets/icons/BellIcon";
+import { ChainLinkIcon } from "~/assets/icons/ChainLinkIcon";
+import { CreditCardIcon } from "~/assets/icons/CreditCardIcon";
+import { FolderOpenIcon } from "~/assets/icons/FolderOpenIcon";
+import { PadlockIcon } from "~/assets/icons/PadlockIcon";
+import { UsageIcon } from "~/assets/icons/UsageIcon";
+import { RolesIcon } from "~/assets/icons/RolesIcon";
+import { SlackIcon } from "~/assets/icons/SlackIcon";
+import { SlidersIcon } from "~/assets/icons/SlidersIcon";
+import { UserGroupIcon } from "~/assets/icons/UserGroupIcon";
 import { VercelLogo } from "~/components/integrations/VercelLogo";
 import { useFeatureFlags } from "~/hooks/useFeatureFlags";
 import { useFeatures } from "~/hooks/useFeatures";
-import { type MatchedOrganization } from "~/hooks/useOrganizations";
+import { type MatchedOrganization, useHasProjectRuntimeUpdate } from "~/hooks/useOrganizations";
 import { cn } from "~/utils/cn";
 import {
+  organizationPath,
+  organizationProjectsPath,
   organizationRolesPath,
   organizationSettingsPath,
   organizationSlackIntegrationPath,
+  organizationSsoPath,
   organizationTeamPath,
   organizationVercelIntegrationPath,
-  rootPath,
-  v3BillingAlertsPath,
+  v3BillingLimitsPath,
   v3BillingPath,
   v3PrivateConnectionsPath,
   v3UsagePath,
@@ -30,11 +32,11 @@ import { LinkButton } from "../primitives/Buttons";
 import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
+import { useShowSelfServe } from "~/hooks/useShowSelfServe";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { Paragraph } from "../primitives/Paragraph";
 import { Badge } from "../primitives/Badge";
 import { useHasAdminAccess } from "~/hooks/useUser";
-import { AskAI } from "../AskAI";
 
 export type BuildInfo = {
   appVersion: string | undefined;
@@ -48,14 +50,18 @@ export function OrganizationSettingsSideMenu({
   organization,
   buildInfo,
   isUsingPlugin,
+  isSsoUsingPlugin,
 }: {
   organization: MatchedOrganization;
   buildInfo: BuildInfo;
   isUsingPlugin: boolean;
+  isSsoUsingPlugin: boolean;
 }) {
   const { isManagedCloud } = useFeatures();
   const featureFlags = useFeatureFlags();
   const currentPlan = useCurrentPlan();
+  const showSelfServe = useShowSelfServe();
+  const hasProjectRuntimeUpdate = useHasProjectRuntimeUpdate();
   const isAdmin = useHasAdminAccess();
   const showBuildInfo = isAdmin || !isManagedCloud;
 
@@ -69,33 +75,41 @@ export function OrganizationSettingsSideMenu({
         <LinkButton
           variant="minimal/medium"
           LeadingIcon={ArrowLeftIcon}
-          to={rootPath()}
+          to={organizationPath(organization)}
           fullWidth
           textAlignLeft
         >
           <span className="text-text-bright">Back to app</span>
         </LinkButton>
       </div>
-      <div className="mb-6 flex grow flex-col gap-4 overflow-y-auto px-1 pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="mb-6 flex grow flex-col gap-4 overflow-y-auto pl-2.5 pr-0 pt-2 scrollbar-gutter-stable scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <div className="flex flex-col">
           <div className="mb-1">
             <SideMenuHeader title="Organization" />
           </div>
+          <SideMenuItem
+            name="Settings"
+            icon={SlidersIcon}
+            activeIconColor="text-text-bright"
+            inactiveIconColor="text-text-dimmed"
+            to={organizationSettingsPath(organization)}
+            data-action="settings"
+          />
           {isManagedCloud && (
             <>
               <SideMenuItem
                 name="Usage"
-                icon={ChartBarIcon}
-                activeIconColor="text-indigo-500"
-                inactiveIconColor="text-indigo-500"
+                icon={UsageIcon}
+                activeIconColor="text-text-bright"
+                inactiveIconColor="text-text-dimmed"
                 to={v3UsagePath(organization)}
                 data-action="usage"
               />
               <SideMenuItem
                 name="Billing"
                 icon={CreditCardIcon}
-                activeIconColor="text-emerald-500"
-                inactiveIconColor="text-emerald-500"
+                activeIconColor="text-text-bright"
+                inactiveIconColor="text-text-dimmed"
                 to={v3BillingPath(organization)}
                 data-action="billing"
                 badge={
@@ -104,52 +118,73 @@ export function OrganizationSettingsSideMenu({
                   ) : undefined
                 }
               />
-              <SideMenuItem
-                name="Billing alerts"
-                icon={BellAlertIcon}
-                activeIconColor="text-rose-500"
-                inactiveIconColor="text-rose-500"
-                to={v3BillingAlertsPath(organization)}
-                data-action="billing-alerts"
-              />
+              {showSelfServe ? (
+                <SideMenuItem
+                  name="Billing limits"
+                  icon={BellIcon}
+                  activeIconColor="text-text-bright"
+                  inactiveIconColor="text-text-dimmed"
+                  to={v3BillingLimitsPath(organization)}
+                  data-action="billing-limits"
+                />
+              ) : null}
             </>
           )}
+          <SideMenuItem
+            name="Projects"
+            icon={FolderOpenIcon}
+            activeIconColor="text-text-bright"
+            inactiveIconColor="text-text-dimmed"
+            to={organizationProjectsPath(organization)}
+            data-action="projects"
+            badge={
+              hasProjectRuntimeUpdate ? (
+                <>
+                  {/* mr-1 lifts the right gap to 12px so it matches the dot's 12px top/bottom inset in the h-8 row */}
+                  <span aria-hidden className="mr-1 size-2 shrink-0 rounded-full bg-warning" />
+                  <span className="sr-only">Runtime update available.</span>
+                </>
+              ) : undefined
+            }
+          />
+          <SideMenuItem
+            name="Team"
+            icon={UserGroupIcon}
+            activeIconColor="text-text-bright"
+            inactiveIconColor="text-text-dimmed"
+            to={organizationTeamPath(organization)}
+            data-action="team"
+          />
           {featureFlags.hasPrivateConnections && (
             <SideMenuItem
               name="Private Connections"
-              icon={LockClosedIcon}
-              activeIconColor="text-purple-500"
-              inactiveIconColor="text-purple-500"
+              icon={ChainLinkIcon}
+              activeIconColor="text-text-bright"
+              inactiveIconColor="text-text-dimmed"
               to={v3PrivateConnectionsPath(organization)}
               data-action="private-connections"
             />
           )}
-          <SideMenuItem
-            name="Team"
-            icon={UserGroupIcon}
-            activeIconColor="text-amber-500"
-            inactiveIconColor="text-amber-500"
-            to={organizationTeamPath(organization)}
-            data-action="team"
-          />
           {isUsingPlugin && (
             <SideMenuItem
               name="Roles"
-              icon={ShieldCheckIcon}
-              activeIconColor="text-sky-500"
-              inactiveIconColor="text-sky-500"
+              icon={RolesIcon}
+              activeIconColor="text-text-bright"
+              inactiveIconColor="text-text-dimmed"
               to={organizationRolesPath(organization)}
               data-action="roles"
             />
           )}
-          <SideMenuItem
-            name="Settings"
-            icon={Cog8ToothIcon}
-            activeIconColor="text-orgSettings"
-            inactiveIconColor="text-orgSettings"
-            to={organizationSettingsPath(organization)}
-            data-action="settings"
-          />
+          {isSsoUsingPlugin && (
+            <SideMenuItem
+              name="SSO & Directory Sync"
+              icon={PadlockIcon}
+              activeIconColor="text-text-bright"
+              inactiveIconColor="text-text-dimmed"
+              to={organizationSsoPath(organization)}
+              data-action="sso"
+            />
+          )}
         </div>
         <div className="flex flex-col">
           <div className="mb-1">
@@ -158,17 +193,18 @@ export function OrganizationSettingsSideMenu({
           <SideMenuItem
             name="Vercel"
             icon={VercelLogo}
-            activeIconColor="text-white"
-            inactiveIconColor="text-white"
-            iconClassName="size-4 ml-0.5"
+            activeIconColor="text-text-bright"
+            inactiveIconColor="text-text-dimmed"
+            iconClassName="size-4 ml-[0.15rem]"
             to={organizationVercelIntegrationPath(organization)}
             data-action="integrations"
           />
           <SideMenuItem
             name="Slack"
             icon={SlackIcon}
-            activeIconColor="text-white"
-            inactiveIconColor="text-white"
+            activeIconColor="text-text-bright"
+            inactiveIconColor="text-text-dimmed"
+            iconClassName="size-4 ml-0.5"
             to={organizationSlackIntegrationPath(organization)}
             data-action="integrations"
           />
@@ -220,7 +256,6 @@ export function OrganizationSettingsSideMenu({
       </div>
       <div className="flex w-full items-center justify-between border-t border-grid-bright p-1">
         <HelpAndFeedback organizationId={organization.id} />
-        <AskAI />
       </div>
     </div>
   );

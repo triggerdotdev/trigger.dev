@@ -1,3 +1,4 @@
+import { forwardRef } from "react";
 import { cn } from "~/utils/cn";
 
 /** This container is used to surround the entire app, it correctly places the nav bar */
@@ -34,20 +35,20 @@ export function PageContainer({
   );
 }
 
-export function PageBody({
-  children,
-  scrollable = true,
-  className,
-}: {
-  children: React.ReactNode;
-  scrollable?: boolean;
-  className?: string;
-}) {
+export const PageBody = forwardRef<
+  HTMLDivElement,
+  {
+    children: React.ReactNode;
+    scrollable?: boolean;
+    className?: string;
+  }
+>(function PageBody({ children, scrollable = true, className }, ref) {
   return (
     <div
+      ref={ref}
       className={cn(
         scrollable
-          ? "overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          ? "overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
           : "overflow-hidden",
         className
       )}
@@ -55,7 +56,7 @@ export function PageBody({
       {children}
     </div>
   );
-}
+});
 
 export function MainCenteredContainer({
   children,
@@ -69,7 +70,7 @@ export function MainCenteredContainer({
   return (
     <div
       className={cn(
-        "h-full w-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+        "h-full w-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control",
         variant === "onboarding" && "flex flex-col p-4 lg:p-0"
       )}
     >
@@ -94,10 +95,10 @@ export function MainHorizontallyCenteredContainer({
   className?: string;
 }) {
   return (
-    <div className="w-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+    <div className="w-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
       <div
         className={cn(
-          "mx-auto mt-6 max-w-lg overflow-y-auto p-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600 md:mt-14",
+          "mx-auto mt-6 max-w-lg overflow-y-auto p-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control md:mt-14",
           className
         )}
       >

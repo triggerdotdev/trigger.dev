@@ -23,7 +23,7 @@ const LOOKBACK_OPTIONS = [
   { label: "30 days", value: 720 },
 ];
 
-const SearchParams = z.object({
+const _SearchParams = z.object({
   lookbackHours: z.coerce.number().optional(),
 });
 
@@ -48,7 +48,7 @@ export const loader = dashboardLoader(
 
 export default function AdminLlmModelsMissingRoute() {
   const { models, lookbackHours, error } = useTypedLoaderData<typeof loader>();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [_searchParams, _setSearchParams] = useSearchParams();
 
   return (
     <main className="flex h-full min-w-0 flex-1 flex-col overflow-y-auto px-4 pb-4">
@@ -108,9 +108,7 @@ export default function AdminLlmModelsMissingRoute() {
                 <Paragraph>All models have pricing data</Paragraph>
               </TableBlankRow>
             ) : (
-              models.map((m) => (
-                <MissingModelRow key={`${m.system}/${m.model}`} model={m} />
-              ))
+              models.map((m) => <MissingModelRow key={`${m.system}/${m.model}`} model={m} />)
             )}
           </TableBody>
         </Table>
@@ -123,7 +121,11 @@ export default function AdminLlmModelsMissingRoute() {
 // Row component with link to detail page
 // ---------------------------------------------------------------------------
 
-function MissingModelRow({ model: m }: { model: { model: string; system: string; count: number } }) {
+function MissingModelRow({
+  model: m,
+}: {
+  model: { model: string; system: string; count: number };
+}) {
   return (
     <TableRow>
       <TableCell>

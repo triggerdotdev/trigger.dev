@@ -1,15 +1,18 @@
-import { z } from "zod";
+import type { AnyZodSchema, inferZodSchemaOutput } from "../types/schemas.js";
 import {
+  type Offset,
   FetchError,
   isChangeMessage,
   isControlMessage,
-  Offset,
   ShapeStream,
   type Message,
   type Row,
   type ShapeStreamInterface,
 } from "@electric-sql/client";
-import { AsyncIterableStream, createAsyncIterableStream } from "../streams/asyncIterableStream.js";
+import {
+  type AsyncIterableStream,
+  createAsyncIterableStream,
+} from "../streams/asyncIterableStream.js";
 import { API_VERSION_HEADER_NAME, API_VERSION } from "./version.js";
 
 export type ZodShapeStreamOptions = {
@@ -19,12 +22,12 @@ export type ZodShapeStreamOptions = {
   onError?: (e: Error) => void;
 };
 
-export type ZodShapeStreamInstance<TShapeSchema extends z.ZodTypeAny> = {
-  stream: AsyncIterableStream<z.output<TShapeSchema>>;
+export type ZodShapeStreamInstance<TShapeSchema extends AnyZodSchema> = {
+  stream: AsyncIterableStream<inferZodSchemaOutput<TShapeSchema>>;
   stop: (delay?: number) => void;
 };
 
-export function zodShapeStream<TShapeSchema extends z.ZodTypeAny>(
+export function zodShapeStream<TShapeSchema extends AnyZodSchema>(
   schema: TShapeSchema,
   url: string,
   options?: ZodShapeStreamOptions
@@ -56,7 +59,7 @@ export function zodShapeStream<TShapeSchema extends z.ZodTypeAny>(
   const readableShape = new ReadableShapeStream(shapeStream);
 
   const stream = readableShape.stream.pipeThrough(
-    new TransformStream<unknown, z.output<TShapeSchema>>({
+    new TransformStream<unknown, inferZodSchemaOutput<TShapeSchema>>({
       async transform(chunk, controller) {
         const result = schema.safeParse(chunk);
 
@@ -70,7 +73,7 @@ export function zodShapeStream<TShapeSchema extends z.ZodTypeAny>(
   );
 
   return {
-    stream: stream as AsyncIterableStream<z.output<TShapeSchema>>,
+    stream: stream as AsyncIterableStream<inferZodSchemaOutput<TShapeSchema>>,
     stop: (delay?: number) => {
       if (delay) {
         setTimeout(() => {
@@ -219,39 +222,5 @@ class ReadableShapeStream<T extends Row<unknown> = Row> {
     }
     this.#isStreamClosed = true;
     this.#unsubscribe?.();
-  }
-}
-
-export class LineTransformStream extends TransformStream<string, string[]> {
-  private buffer = "";
-
-  constructor() {
-    super({
-      transform: (chunk, controller) => {
-        // Append the chunk to the buffer
-        this.buffer += chunk;
-
-        // Split on newlines
-        const lines = this.buffer.split("\n");
-
-        // The last element might be incomplete, hold it back in buffer
-        this.buffer = lines.pop() || "";
-
-        // Filter out empty or whitespace-only lines
-        const fullLines = lines.filter((line) => line.trim().length > 0);
-
-        // If we got any complete lines, emit them as an array
-        if (fullLines.length > 0) {
-          controller.enqueue(fullLines);
-        }
-      },
-      flush: (controller) => {
-        // On stream end, if there's leftover text, emit it as a single-element array
-        const trimmed = this.buffer.trim();
-        if (trimmed.length > 0) {
-          controller.enqueue([trimmed]);
-        }
-      },
-    });
   }
 }

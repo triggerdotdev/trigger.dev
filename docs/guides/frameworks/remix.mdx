@@ -26,11 +26,9 @@ import DeployingYourTask from "/snippets/deplopying-your-task.mdx";
   <CliViewRunStep />
 </Steps>
 
-## Set your secret key locally
+## Create an API key for local development
 
-Set your `TRIGGER_SECRET_KEY` environment variable in your `.env` file. This key is used to authenticate with Trigger.dev, so you can trigger runs from your Remix app. Visit the API Keys page in the dashboard and select the DEV secret key.
-
-![How to find your secret key](/images/api-keys.png)
+Open the API Keys page for your Development environment and create a named key with **Trigger only** access. Set the key as `TRIGGER_SECRET_KEY` in your `.env` file so your Remix app can trigger runs.
 
 For more information on authenticating with Trigger.dev, see the [API keys page](/apikeys).
 
@@ -152,15 +150,11 @@ Push your code to a Git repository and create a new project in the Vercel dashbo
 
 <Step title="Add your Vercel environment variables">
 
-In the Vercel project settings, add your Trigger.dev secret key:
+Open the Trigger.dev API Keys page for the environment your Vercel deployment uses. Create a named key with **Trigger only** access, then add it to the Vercel project settings:
 
 ```bash
-TRIGGER_SECRET_KEY=your-secret-key
+TRIGGER_SECRET_KEY=tr_prod_sk_xxxxxxxxxx
 ```
-
-You can find this key in the Trigger.dev dashboard under API Keys and select the environment key you want to use.
-
-![How to find your secret key](/images/api-keys.png)
 
 </Step>
 

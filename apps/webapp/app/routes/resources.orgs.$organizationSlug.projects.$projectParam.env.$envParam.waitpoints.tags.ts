@@ -4,6 +4,12 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { WaitpointTagListPresenter } from "~/presenters/v3/WaitpointTagListPresenter.server";
 import { requireUserId } from "~/services/session.server";
+import {
+  runOpsNewReplicaClient,
+  runOpsLegacyReplica,
+  runOpsSplitReadEnabled,
+  type PrismaClientOrTransaction,
+} from "~/db.server";
 
 const Params = z.object({
   organizationSlug: z.string(),
@@ -28,7 +34,11 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   const search = new URL(request.url).searchParams;
   const name = search.get("name");
 
-  const presenter = new WaitpointTagListPresenter();
+  const presenter = new WaitpointTagListPresenter(undefined, undefined, {
+    runOpsNew: runOpsNewReplicaClient as unknown as PrismaClientOrTransaction,
+    runOpsLegacyReplica: runOpsLegacyReplica as unknown as PrismaClientOrTransaction,
+    splitEnabled: runOpsSplitReadEnabled,
+  });
   const result = await presenter.call({
     environmentId: environment.id,
     name: name ? decodeURIComponent(name) : undefined,

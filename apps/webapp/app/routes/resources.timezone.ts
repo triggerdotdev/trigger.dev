@@ -4,13 +4,11 @@ import {
   setTimezonePreference,
   uiPreferencesStorage,
 } from "~/services/preferences/uiPreferences.server";
+import { isValidTimeZone } from "~/utils/timezones.server";
 
 const schema = z.object({
   timezone: z.string().min(1).max(100),
 });
-
-// Cache the supported timezones to avoid repeated calls
-const supportedTimezones = new Set(Intl.supportedValuesOf("timeZone"));
 
 export async function action({ request }: ActionFunctionArgs) {
   let data: unknown;
@@ -26,7 +24,7 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({ success: false, error: "Invalid timezone" }, { status: 400 });
   }
 
-  if (!supportedTimezones.has(result.data.timezone)) {
+  if (!isValidTimeZone(result.data.timezone)) {
     return json({ success: false, error: "Invalid timezone" }, { status: 400 });
   }
 

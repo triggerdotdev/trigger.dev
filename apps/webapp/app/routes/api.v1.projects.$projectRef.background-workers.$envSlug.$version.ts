@@ -1,4 +1,5 @@
-import { LoaderFunctionArgs, json } from "@remix-run/server-runtime";
+import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import {
@@ -44,15 +45,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
       },
       include: {
         tasks: true,
-        files: {
-          include: {
-            tasks: {
-              select: {
-                slug: true,
-              },
-            },
-          },
-        },
+        files: true,
       },
     });
 
@@ -60,28 +53,41 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
       return json({ error: "Background worker not found" }, { status: 404 });
     }
 
+    // Group task slugs by fileId from the already-loaded tasks (which are fetched
+    // via the indexed workerId relation) instead of loading files.tasks, which
+    // queries BackgroundWorkerTask by the unindexed fileId column.
+    const taskSlugsByFileId = new Map<string, Set<string>>();
+    for (const task of backgroundWorker.tasks) {
+      if (!task.fileId) {
+        continue;
+      }
+      const slugs = taskSlugsByFileId.get(task.fileId) ?? new Set<string>();
+      slugs.add(task.slug);
+      taskSlugsByFileId.set(task.fileId, slugs);
+    }
+
     return json({
-    id: backgroundWorker.friendlyId,
-    version: backgroundWorker.version,
-    cliVersion: backgroundWorker.cliVersion,
-    sdkVersion: backgroundWorker.sdkVersion,
-    contentHash: backgroundWorker.contentHash,
-    createdAt: backgroundWorker.createdAt,
-    updatedAt: backgroundWorker.updatedAt,
-    tasks: backgroundWorker.tasks.map((task) => ({
-      id: task.slug,
-      exportName: task.exportName ?? "@deprecated",
-      filePath: task.filePath,
-      source: task.triggerSource,
-      retryConfig: task.retryConfig,
-      queueConfig: task.queueConfig,
-    })),
+      id: backgroundWorker.friendlyId,
+      version: backgroundWorker.version,
+      cliVersion: backgroundWorker.cliVersion,
+      sdkVersion: backgroundWorker.sdkVersion,
+      contentHash: backgroundWorker.contentHash,
+      createdAt: backgroundWorker.createdAt,
+      updatedAt: backgroundWorker.updatedAt,
+      tasks: backgroundWorker.tasks.map((task) => ({
+        id: task.slug,
+        exportName: task.exportName ?? "@deprecated",
+        filePath: task.filePath,
+        source: task.triggerSource,
+        retryConfig: task.retryConfig,
+        queueConfig: task.queueConfig,
+      })),
       files: backgroundWorker.files.map((file) => ({
         id: file.friendlyId,
         filePath: file.filePath,
         contentHash: file.contentHash,
         contents: decompressContent(file.contents),
-        tasks: Array.from(new Set(file.tasks.map((task) => task.slug))),
+        tasks: Array.from(taskSlugsByFileId.get(file.id) ?? []),
       })),
     });
   } catch (error) {

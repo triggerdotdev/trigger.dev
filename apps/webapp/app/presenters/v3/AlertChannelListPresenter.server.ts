@@ -1,6 +1,6 @@
 import { logger } from "~/services/logger.server";
 import { BasePresenter } from "./basePresenter.server";
-import { RuntimeEnvironmentType, type ProjectAlertChannel } from "@trigger.dev/database";
+import { type RuntimeEnvironmentType, type ProjectAlertChannel } from "@trigger.dev/database";
 import { decryptSecret } from "~/services/secrets/secretStore.server";
 import { env } from "~/env.server";
 import {
@@ -10,12 +10,9 @@ import {
 } from "~/models/projectAlert.server";
 import { getLimit } from "~/services/platform.v3.server";
 
-export type AlertChannelListPresenterData = Awaited<ReturnType<AlertChannelListPresenter["call"]>>;
+type AlertChannelListPresenterData = Awaited<ReturnType<AlertChannelListPresenter["call"]>>;
 export type AlertChannelListPresenterRecord =
   AlertChannelListPresenterData["alertChannels"][number];
-export type AlertChannelListPresenterAlertProperties = NonNullable<
-  AlertChannelListPresenterRecord["properties"]
->;
 
 export class AlertChannelListPresenter extends BasePresenter {
   public async call(projectId: string, environmentType?: RuntimeEnvironmentType) {

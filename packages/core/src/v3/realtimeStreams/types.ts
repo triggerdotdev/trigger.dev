@@ -1,9 +1,9 @@
-import { AnyZodFetchOptions, ApiRequestOptions } from "../apiClient/core.js";
+import type { AnyZodFetchOptions, ApiRequestOptions } from "../apiClient/core.js";
 import type { InputStreamOncePromise } from "../inputStreams/types.js";
 export { InputStreamOncePromise, InputStreamTimeoutError } from "../inputStreams/types.js";
 export type { InputStreamOnceResult } from "../inputStreams/types.js";
-import { AsyncIterableStream } from "../streams/asyncIterableStream.js";
-import { Prettify } from "../types/utils.js";
+import type { AsyncIterableStream } from "../streams/asyncIterableStream.js";
+import type { Prettify } from "../types/utils.js";
 import type { ManualWaitpointPromise } from "../waitpoints/index.js";
 
 export type RealtimeStreamOperationOptions = {
@@ -125,6 +125,17 @@ export type ReadStreamOptions = {
    * @default 0 (start from beginning)
    */
   startIndex?: number;
+
+  /**
+   * Where a fresh read starts.
+   *
+   * - `"beginning"` (default): replay the full stream history, then live-tail.
+   * - `"latest"`: skip history and start at the current tail — only records
+   *   appended after this read connects are delivered (a last-value / live view).
+   *
+   * Ignored when `startIndex` is set (which pins an absolute start position).
+   */
+  from?: "beginning" | "latest";
 };
 
 /**
@@ -200,7 +211,9 @@ export type RealtimeDefinedInputStream<TData> = {
    * then suspends via `.wait()` if no data arrives. If data arrives during
    * the idle phase the task responds instantly without suspending.
    */
-  waitWithIdleTimeout: (options: InputStreamWaitWithIdleTimeoutOptions) => Promise<{ ok: true; output: TData } | { ok: false; error?: any }>;
+  waitWithIdleTimeout: (
+    options: InputStreamWaitWithIdleTimeoutOptions
+  ) => Promise<{ ok: true; output: TData } | { ok: false; error?: any }>;
   /**
    * Send data to this input stream on a specific run.
    * This is used from outside the task (e.g., from your backend or another task).
@@ -272,9 +285,8 @@ export type InputStreamWaitWithIdleTimeoutOptions = {
   skipSuspend?: boolean;
 };
 
-export type InferInputStreamType<T> = T extends RealtimeDefinedInputStream<infer TData>
-  ? TData
-  : unknown;
+export type InferInputStreamType<T> =
+  T extends RealtimeDefinedInputStream<infer TData> ? TData : unknown;
 
 /**
  * Internal record format for multiplexed input stream data on S2.

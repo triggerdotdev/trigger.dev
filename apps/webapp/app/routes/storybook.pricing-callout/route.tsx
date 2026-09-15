@@ -1,3 +1,4 @@
+import { ComponentNames } from "../storybook/StoryKit";
 import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
@@ -5,6 +6,9 @@ import { Callout } from "~/components/primitives/Callout";
 export default function Story() {
   return (
     <div className="mx-4 flex h-screen flex-col items-center justify-center gap-4">
+      <div className="px-4 pt-4">
+        <ComponentNames names={["Callout.tsx"]} />
+      </div>
       <Callout
         variant={"pricing"}
         cta={

@@ -101,6 +101,7 @@ export class DeploymentPresenter {
         externalBuildData: true,
         projectId: true,
         type: true,
+        externalId: true,
         environment: {
           select: {
             id: true,
@@ -146,6 +147,8 @@ export class DeploymentPresenter {
             },
             sdkVersion: true,
             cliVersion: true,
+            runtime: true,
+            runtimeVersion: true,
           },
         },
         triggeredBy: {
@@ -186,19 +189,18 @@ export class DeploymentPresenter {
       );
 
       if (parsed.success && parsed.data.vercelTeamSlug) {
-        const integrationDeployment =
-          await this.#prismaClient.integrationDeployment.findFirst({
-            where: {
-              deploymentId: deployment.id,
-              integrationName: "vercel",
-            },
-            select: {
-              integrationDeploymentId: true,
-            },
-            orderBy: {
-              createdAt: "desc",
-            },
-          });
+        const integrationDeployment = await this.#prismaClient.integrationDeployment.findFirst({
+          where: {
+            deploymentId: deployment.id,
+            integrationName: "vercel",
+          },
+          select: {
+            integrationDeploymentId: true,
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+        });
 
         if (integrationDeployment) {
           const vercelId = integrationDeployment.integrationDeploymentId;
@@ -217,7 +219,9 @@ export class DeploymentPresenter {
     let eventStream = undefined;
     if (
       env.S2_ENABLED === "1" &&
-      (buildServerMetadata || gitMetadata?.source === "trigger_github_app" || env.S2_DEPLOYMENT_STREAMS_LOCAL === "1")
+      (buildServerMetadata ||
+        gitMetadata?.source === "trigger_github_app" ||
+        env.S2_DEPLOYMENT_STREAMS_LOCAL === "1")
     ) {
       const [error, accessToken] = await tryCatch(this.getS2AccessToken(project.externalRef));
 
@@ -260,8 +264,8 @@ export class DeploymentPresenter {
         deployedBy: deployment.triggeredBy,
         sdkVersion: deployment.worker?.sdkVersion,
         cliVersion: deployment.worker?.cliVersion,
-        runtime: deployment.runtime,
-        runtimeVersion: deployment.runtimeVersion,
+        runtime: deployment.worker?.runtime ?? deployment.runtime,
+        runtimeVersion: deployment.worker?.runtimeVersion ?? deployment.runtimeVersion,
         imageReference: deployment.imageReference,
         imagePlatform: deployment.imagePlatform,
         externalBuildData:
@@ -271,6 +275,7 @@ export class DeploymentPresenter {
         errorData: DeploymentPresenter.prepareErrorData(deployment.errorData),
         isBuilt: !!deployment.builtAt,
         type: deployment.type,
+        externalId: deployment.externalId,
         git: gitMetadata,
         triggeredVia: deployment.triggeredVia,
         vercelDeploymentUrl,
@@ -292,7 +297,7 @@ export class DeploymentPresenter {
 
     const { accessToken } = await s2.accessTokens.issue({
       id: `${projectRef}-${new Date().getTime()}`,
-      expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1 hour
+      expiresAt: new Date(Date.now() + env.S2_DEPLOYMENT_LOGS_TOKEN_VALIDITY_MS),
       scope: {
         ops: ["read"],
         basins: {
@@ -306,7 +311,7 @@ export class DeploymentPresenter {
 
     await s2TokenRedis.setex(
       redisKey,
-      59 * 60, // slightly shorter than the token validity period
+      Math.floor(env.S2_DEPLOYMENT_LOGS_TOKEN_CACHE_TTL_MS / 1000),
       accessToken
     );
 

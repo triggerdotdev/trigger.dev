@@ -1,7 +1,7 @@
 import { MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
 import { logger } from "~/services/logger.server";
 import { getEntitlement } from "~/services/platform.v3.server";
-import { MAX_ATTEMPTS, OutOfEntitlementError } from "~/v3/services/triggerTask.server";
+import { MAX_ATTEMPTS } from "~/v3/services/triggerTask.server";
 import { isFinalRunStatus } from "~/v3/taskStatus";
 import type {
   EntitlementValidationParams,
@@ -12,6 +12,7 @@ import type {
   TriggerTaskValidator,
   ValidationResult,
 } from "../types";
+import { validateProductionEntitlement } from "./validateProductionEntitlement.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
 
 export class DefaultTriggerTaskValidator implements TriggerTaskValidator {
@@ -41,22 +42,7 @@ export class DefaultTriggerTaskValidator implements TriggerTaskValidator {
   async validateEntitlement(
     params: EntitlementValidationParams
   ): Promise<EntitlementValidationResult> {
-    const { environment } = params;
-
-    if (environment.type === "DEVELOPMENT") {
-      return { ok: true };
-    }
-
-    const result = await getEntitlement(environment.organizationId);
-
-    if (result && result.hasAccess === false) {
-      return {
-        ok: false,
-        error: new OutOfEntitlementError(),
-      };
-    }
-
-    return { ok: true, plan: result?.plan };
+    return validateProductionEntitlement(params, getEntitlement);
   }
 
   validateMaxAttempts(params: MaxAttemptsValidationParams): ValidationResult {

@@ -1,7 +1,14 @@
-import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import type { ActionFunctionArgs } from "@remix-run/server-runtime";
+import { json } from "@remix-run/server-runtime";
 import { prisma } from "~/db.server";
+import { env } from "~/env.server";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
-import { makeSetMultipleFlags } from "~/v3/featureFlags.server";
+import {
+  applyGlobalGracedFlips,
+  makeSetMultipleFlags,
+  touchesGracedGroup,
+  withoutDerivedKeys,
+} from "~/v3/featureFlags.server";
 import { validatePartialFeatureFlags } from "~/v3/featureFlags";
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -23,9 +30,16 @@ export async function action({ request }: ActionFunctionArgs) {
       );
     }
 
-    const featureFlags = validationResult.data;
-    const setMultipleFlags = makeSetMultipleFlags(prisma);
-    const updatedFlags = await setMultipleFlags(featureFlags);
+    // Both the strip and the branch derive from the graced-group table, so adding a group needs
+    // no edit here. Naming the keys inline is how a new group ends up writing its stamp straight
+    // from the request body, with no lock.
+    const requestedFlags = withoutDerivedKeys(validationResult.data) as Partial<
+      typeof validationResult.data
+    >;
+
+    const updatedFlags = touchesGracedGroup(requestedFlags)
+      ? await applyGlobalGracedFlips(prisma, requestedFlags, env.RUN_OPS_MINT_FLIP_GRACE_MS)
+      : await makeSetMultipleFlags(prisma)(requestedFlags);
 
     return json({
       success: true,

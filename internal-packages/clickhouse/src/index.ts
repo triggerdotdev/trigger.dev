@@ -1,7 +1,7 @@
 import type { ClickHouseSettings } from "@clickhouse/client";
 export type { ClickHouseSettings };
 import { ClickhouseClient } from "./client/client.js";
-import { ClickhouseReader, ClickhouseWriter } from "./client/types.js";
+import type { ClickhouseReader, ClickhouseWriter } from "./client/types.js";
 import { NoopClient } from "./client/noop.js";
 import {
   insertTaskRunsCompactArrays,
@@ -15,6 +15,7 @@ import {
   getTaskRunsCountQueryBuilder,
   getTaskRunTagsQueryBuilder,
   getPendingVersionIdsQueryBuilder,
+  getTaskRunExistsQueryBuilder,
 } from "./taskRuns.js";
 import {
   getSpanDetailsQueryBuilder,
@@ -30,14 +31,30 @@ import {
   getLogDetailQueryBuilderV2,
   getLogsSearchListQueryBuilder,
 } from "./taskEvents.js";
+import { projectTaskEventsSearchV2Window } from "./taskEventsSearchProjector.js";
 import { insertMetrics } from "./metrics.js";
 import { insertLlmMetrics } from "./llmMetrics.js";
+import {
+  insertQueueMetricsRaw,
+  getQueueListMetricsSummary,
+  getQueueDepthSparklines,
+  getQueueRanking,
+  getQueueRankingNames,
+  getQueueRankingCount,
+  getConcurrencyKeyRanking,
+} from "./queueMetrics.js";
 import {
   getSessionTagsQueryBuilder,
   getSessionsCountQueryBuilder,
   getSessionsQueryBuilder,
   insertSessionsCompactArrays,
 } from "./sessions.js";
+import {
+  getWebhookDeliveriesQueryBuilder,
+  getWebhookDeliveriesCountQueryBuilder,
+  getWebhookDeliveriesGroupedCountQueryBuilder,
+  insertWebhookDeliveriesCompactArrays,
+} from "./webhookDeliveries.js";
 import {
   getGlobalModelMetrics,
   getGlobalModelComparison,
@@ -47,6 +64,7 @@ import {
   getErrorGroups,
   getErrorInstances,
   getErrorGroupsListQueryBuilder,
+  getErrorGroupLocationsQueryBuilder,
   getErrorHourlyOccurrences,
   getErrorOccurrencesListQueryBuilder,
   createErrorOccurrencesQueryBuilder,
@@ -58,16 +76,20 @@ import {
 } from "./errors.js";
 export { msToClickHouseInterval } from "./intervals.js";
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
+import type { Meter } from "@internal/tracing";
 import type { Agent as HttpAgent } from "http";
 import type { Agent as HttpsAgent } from "https";
 
 export type * from "./taskRuns.js";
 export type * from "./taskEvents.js";
+export * from "./taskEventsSearchProjector.js";
 export type * from "./metrics.js";
 export type * from "./llmMetrics.js";
+export type * from "./queueMetrics.js";
 export type * from "./llmModelAggregates.js";
 export type * from "./errors.js";
 export type * from "./sessions.js";
+export type * from "./webhookDeliveries.js";
 export type * from "./client/queryBuilder.js";
 
 // Re-export column constants, indices, and type-safe accessors
@@ -78,9 +100,15 @@ export {
   PAYLOAD_INDEX,
   getTaskRunField,
   getPayloadField,
+  composeTaskRunVersion,
 } from "./taskRuns.js";
 
 export { SESSION_COLUMNS, SESSION_INDEX, getSessionField } from "./sessions.js";
+export {
+  WEBHOOK_DELIVERY_COLUMNS,
+  WEBHOOK_DELIVERY_INDEX,
+  getWebhookDeliveryField,
+} from "./webhookDeliveries.js";
 
 // TSQL query execution
 export {
@@ -97,7 +125,7 @@ export {
 export type { ColumnFormatType, OutputColumnMetadata } from "@internal/tsql";
 
 // Errors
-export { QueryError } from "./client/errors.js";
+export { QueryError, isClickhouseResourceLimitError } from "./client/errors.js";
 
 export type ClickhouseCommonConfig = {
   keepAlive?: {
@@ -107,12 +135,14 @@ export type ClickhouseCommonConfig = {
   httpAgent?: HttpAgent | HttpsAgent;
   clickhouseSettings?: ClickHouseSettings;
   logger?: Logger;
+  meter?: Meter;
   logLevel?: LogLevel;
   compression?: {
     request?: boolean;
     response?: boolean;
   };
   maxOpenConnections?: number;
+  requestTimeoutMs?: number;
 };
 
 export type ClickHouseConfig =
@@ -151,10 +181,12 @@ export class ClickHouse {
         url: config.url,
         clickhouseSettings: config.clickhouseSettings,
         logger: this.logger,
+        meter: config.meter,
         logLevel: config.logLevel,
         keepAlive: config.keepAlive,
         httpAgent: config.httpAgent,
         maxOpenConnections: config.maxOpenConnections,
+        requestTimeoutMs: config.requestTimeoutMs,
         compression: config.compression,
       });
       this.reader = client;
@@ -167,10 +199,12 @@ export class ClickHouse {
         url: config.readerUrl,
         clickhouseSettings: config.clickhouseSettings,
         logger: this.logger,
+        meter: config.meter,
         logLevel: config.logLevel,
         keepAlive: config.keepAlive,
         httpAgent: config.httpAgent,
         maxOpenConnections: config.maxOpenConnections,
+        requestTimeoutMs: config.requestTimeoutMs,
         compression: config.compression,
       });
       this.writer = new ClickhouseClient({
@@ -178,10 +212,12 @@ export class ClickHouse {
         url: config.writerUrl,
         clickhouseSettings: config.clickhouseSettings,
         logger: this.logger,
+        meter: config.meter,
         logLevel: config.logLevel,
         keepAlive: config.keepAlive,
         httpAgent: config.httpAgent,
         maxOpenConnections: config.maxOpenConnections,
+        requestTimeoutMs: config.requestTimeoutMs,
         compression: config.compression,
       });
 
@@ -227,6 +263,7 @@ export class ClickHouse {
       insertPayloadsCompactArrays: insertRawTaskRunPayloadsCompactArrays(this.writer),
       queryBuilder: getTaskRunsQueryBuilder(this.reader),
       countQueryBuilder: getTaskRunsCountQueryBuilder(this.reader),
+      existsQueryBuilder: getTaskRunExistsQueryBuilder(this.reader, { max_execution_time: 10 }),
       tagQueryBuilder: getTaskRunTagsQueryBuilder(this.reader),
       pendingVersionIdsQueryBuilder: getPendingVersionIdsQueryBuilder(this.reader),
       getTaskActivity: getTaskActivityQueryBuilder(this.reader),
@@ -259,6 +296,18 @@ export class ClickHouse {
     };
   }
 
+  get queueMetrics() {
+    return {
+      insertRaw: insertQueueMetricsRaw(this.writer),
+      listSummary: getQueueListMetricsSummary(this.reader),
+      depthSparklines: getQueueDepthSparklines(this.reader),
+      ranking: getQueueRanking(this.reader),
+      rankingNames: getQueueRankingNames(this.reader),
+      rankingCount: getQueueRankingCount(this.reader),
+      concurrencyKeyRanking: getConcurrencyKeyRanking(this.reader),
+    };
+  }
+
   get llmModelAggregates() {
     return {
       globalMetrics: getGlobalModelMetrics(this.reader),
@@ -276,6 +325,15 @@ export class ClickHouse {
     };
   }
 
+  get webhookDeliveries() {
+    return {
+      insertCompactArrays: insertWebhookDeliveriesCompactArrays(this.writer),
+      queryBuilder: getWebhookDeliveriesQueryBuilder(this.reader),
+      countQueryBuilder: getWebhookDeliveriesCountQueryBuilder(this.reader),
+      groupedCountQueryBuilder: getWebhookDeliveriesGroupedCountQueryBuilder(this.reader),
+    };
+  }
+
   get taskEventsV2() {
     return {
       insert: insertTaskEventsV2(this.writer),
@@ -290,6 +348,7 @@ export class ClickHouse {
   get taskEventsSearch() {
     return {
       logsListQueryBuilder: getLogsSearchListQueryBuilder(this.reader),
+      projectV2Window: projectTaskEventsSearchV2Window(this.writer),
     };
   }
 
@@ -300,6 +359,9 @@ export class ClickHouse {
       getHourlyOccurrences: getErrorHourlyOccurrences(this.reader),
       affectedVersionsQueryBuilder: getErrorAffectedVersionsQueryBuilder(this.reader),
       listQueryBuilder: getErrorGroupsListQueryBuilder(this.reader),
+      locationsQueryBuilder: getErrorGroupLocationsQueryBuilder(this.reader, {
+        max_execution_time: 10,
+      }),
       occurrencesListQueryBuilder: getErrorOccurrencesListQueryBuilder(this.reader),
       createOccurrencesQueryBuilder: (intervalExpr: string) =>
         createErrorOccurrencesQueryBuilder(this.reader, intervalExpr),

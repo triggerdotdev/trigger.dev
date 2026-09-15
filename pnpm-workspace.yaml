@@ -5,12 +5,16 @@ packages:
   - "docs"
   - "!packages/cli-v3/e2e/**"
 
+catalog:
+  typescript: 7.0.2
+
 minimumReleaseAge: 4320
 minimumReleaseAgeExclude:
   - "@trigger.dev/platform"
   - "next"
   - "@next/*"
   - "agentcrumbs"
+  - "tsdown"
   - "secure-exec"
   - "@secure-exec/*"
 preferOffline: true

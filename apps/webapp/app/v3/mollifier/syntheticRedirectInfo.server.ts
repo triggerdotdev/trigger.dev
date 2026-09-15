@@ -57,7 +57,7 @@ export async function findBufferedRunRedirectInfo(
     // org membership in the PG query either).
     skipOrgMembershipCheck?: boolean;
   },
-  deps: FindBufferedRunRedirectInfoDeps = {},
+  deps: FindBufferedRunRedirectInfoDeps = {}
 ): Promise<BufferedRunRedirectInfo | null> {
   const buffer = (deps.getBuffer ?? getMollifierBuffer)();
   const prismaClient = deps.prismaClient ?? prisma;

@@ -1,10 +1,11 @@
+import { Prisma } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
 import { BaseService } from "./baseService.server";
 import { commonWorker } from "../commonWorker.server";
 import { PerformDeploymentAlertsService } from "./alerts/performDeploymentAlerts.server";
 import { type PrismaClientOrTransaction } from "~/db.server";
-import { workerQueue } from "~/services/worker.server";
 import { DeploymentService } from "./deployment.server";
+import { recordDeploymentFinished } from "./recordDeploymentFinished.server";
 
 export class TimeoutDeploymentService extends BaseService {
   public async call(id: string, fromStatus: string, errorMessage: string) {
@@ -16,6 +17,9 @@ export class TimeoutDeploymentService extends BaseService {
         environment: {
           include: {
             project: true,
+            organization: {
+              select: { slug: true },
+            },
           },
         },
       },
@@ -37,15 +41,52 @@ export class TimeoutDeploymentService extends BaseService {
       return;
     }
 
-    const timedOutDeployment = await this._prisma.workerDeployment.update({
+    const failedAt = new Date();
+    const errorData = { message: errorMessage, name: "TimeoutError" };
+
+    // Guarded: keeps the fromStatus check atomic with the write
+    const { count: updatedCount } = await this._prisma.workerDeployment.updateMany({
       where: {
         id: deployment.id,
+        status: deployment.status,
       },
       data: {
         status: "TIMED_OUT",
-        failedAt: new Date(),
-        errorData: { message: errorMessage, name: "TimeoutError" },
+        failedAt,
+        errorData,
+        buildEnvVars: Prisma.DbNull,
       },
+    });
+
+    if (updatedCount === 0) {
+      logger.warn("Deployment moved out of the expected state concurrently, skipping timeout", {
+        id: deployment.id,
+        fromStatus,
+      });
+      return;
+    }
+
+    const timedOutDeployment = {
+      ...deployment,
+      status: "TIMED_OUT" as const,
+      failedAt,
+      errorData,
+      buildEnvVars: null,
+    };
+
+    recordDeploymentFinished({
+      status: "TIMED_OUT",
+      deployment: timedOutDeployment,
+      environment: {
+        organizationId: deployment.environment.project.organizationId,
+        organizationSlug: deployment.environment.organization.slug,
+        projectId: deployment.environment.projectId,
+        projectName: deployment.environment.project.name,
+        projectRef: deployment.environment.project.externalRef,
+        environmentId: deployment.environmentId,
+        environmentType: deployment.environment.type,
+      },
+      reason: errorMessage,
     });
 
     const deploymentService = new DeploymentService();
@@ -85,8 +126,6 @@ export class TimeoutDeploymentService extends BaseService {
   }
 
   static async dequeue(deploymentId: string, tx?: PrismaClientOrTransaction) {
-    // For backwards compatibility during transition, we need to dequeue/ack from both workers
-    await workerQueue.dequeue(`timeoutDeployment:${deploymentId}`, { tx });
     await commonWorker.ack(`timeoutDeployment:${deploymentId}`);
   }
 }

@@ -1,12 +1,12 @@
-import {
+import type {
   BuildManifest,
   BuildTarget,
   TaskRunExecution,
   TaskRunExecutionResult,
 } from "@trigger.dev/core/v3";
 import { EventEmitter } from "node:events";
-import { BackgroundWorker } from "../dev/backgroundWorker.js";
-import { Socket } from "socket.io-client";
+import type { BackgroundWorker } from "../dev/backgroundWorker.js";
+import type { Socket } from "socket.io-client";
 
 export type EventBusEvents = {
   rebuildStarted: [BuildTarget];

@@ -1,4 +1,3 @@
-import "dotenv/config";
 import "../sentry.server";
 import * as Sentry from "@sentry/remix";
 

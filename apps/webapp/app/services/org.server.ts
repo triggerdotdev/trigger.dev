@@ -3,7 +3,7 @@ import { requireUserId } from "./session.server";
 
 export async function requireOrganization(request: Request, organizationSlug: string) {
   const userId = await requireUserId(request);
-  
+
   const organization = await prisma.organization.findFirst({
     where: {
       slug: organizationSlug,

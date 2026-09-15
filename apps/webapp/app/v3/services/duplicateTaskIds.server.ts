@@ -11,7 +11,7 @@ type TaskIdResource = {
  * (regular tasks, scheduled tasks, agents, etc.) share a single id namespace,
  * so a schedule and a regular task that use the same id count as a duplicate.
  */
-export function findDuplicateTaskIds(tasks: Array<TaskIdResource>): string[] {
+function findDuplicateTaskIds(tasks: Array<TaskIdResource>): string[] {
   const seen = new Set<string>();
   const duplicates = new Set<string>();
 

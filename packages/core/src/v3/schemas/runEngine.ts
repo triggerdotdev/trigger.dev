@@ -1,6 +1,9 @@
-import { z } from "zod";
-import { Enum, MachinePreset, RuntimeEnvironmentType, TaskRunExecution } from "./common.js";
+import { z } from "zod/v4";
+import { discriminatedUnion } from "../utils/zod.js";
+import type { Enum, RuntimeEnvironmentType } from "./common.js";
+import { MachinePreset, TaskRunExecution } from "./common.js";
 import { EnvironmentType } from "./schemas.js";
+import { SnapshotRouteWire } from "./snapshotRoute.js";
 import type * as DB_TYPES from "@trigger.dev/database";
 
 const anyString = z.custom<string & {}>((v) => typeof v === "string");
@@ -24,6 +27,7 @@ export const RunAnnotations = z.object({
   rootTriggerSource: TriggerSource,
   rootScheduleId: z.string().optional(),
   taskKind: TaskKind.optional(),
+  externalDeploymentId: z.string().optional(),
 });
 
 export type RunAnnotations = z.infer<typeof RunAnnotations>;
@@ -222,7 +226,7 @@ export const RunExecutionData = z.object({
 });
 export type RunExecutionData = z.infer<typeof RunExecutionData>;
 
-export const CreateCheckpointResult = z.discriminatedUnion("ok", [
+export const CreateCheckpointResult = discriminatedUnion("ok", [
   z
     .object({
       ok: z.literal(true),
@@ -259,9 +263,16 @@ export const PlacementTag = z.object({
 export type PlacementTag = z.infer<typeof PlacementTag>;
 
 /** This is sent to a Worker when a run is dequeued (a new run or continuing run) */
+// Defined in the ./snapshotRoute.js leaf and re-exported here (its historical public location) to avoid
+// a module-init cycle with supervisor/schemas.ts. See that file for the rationale. The local import lets
+// this module still use it as a value below (e.g. DequeuedMessage); the export carries both value + type.
+export { SnapshotRouteWire };
+
 export const DequeuedMessage = z.object({
   version: z.literal("1"),
   snapshot: ExecutionSnapshot,
+  // Absent for a never-enrolled (postgres) run and for messages produced before this field existed.
+  snapshotRoute: SnapshotRouteWire.optional(),
   dequeuedAt: z.coerce.date(),
   workerQueueLength: z.number().optional(),
   image: z.string().optional(),
@@ -271,6 +282,8 @@ export const DequeuedMessage = z.object({
     id: z.string(),
     friendlyId: z.string(),
     version: z.string(),
+    // Canonical runtime identifier (e.g. "node", "node-22", "node-24", "bun")
+    runtime: z.string().optional(),
   }),
   deployment: z.object({
     id: z.string().optional(),
@@ -285,7 +298,7 @@ export const DequeuedMessage = z.object({
     machine: MachinePreset,
     attemptNumber: z.number(),
     masterQueue: z.string(),
-    traceContext: z.record(z.unknown()),
+    traceContext: z.record(z.string(), z.unknown()),
     annotations: RunAnnotations.optional(),
   }),
   environment: z.object({

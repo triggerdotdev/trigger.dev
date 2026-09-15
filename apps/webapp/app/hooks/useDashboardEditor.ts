@@ -11,10 +11,7 @@ import type { WidgetData, QueryWidgetConfig } from "~/components/metrics/QueryWi
 // Types
 // ============================================================================
 
-type EditorMode =
-  | null
-  | { type: "add" }
-  | { type: "edit"; widgetId: string; widget: WidgetData };
+type EditorMode = null | { type: "add" } | { type: "edit"; widgetId: string; widget: WidgetData };
 
 type DashboardState = {
   /** The layout items (positions/sizes) */
@@ -136,7 +133,11 @@ function dashboardReducer(state: DashboardState, action: DashboardAction): Dashb
     case "OPEN_EDIT_EDITOR":
       return {
         ...state,
-        editorMode: { type: "edit", widgetId: action.payload.widgetId, widget: action.payload.widget },
+        editorMode: {
+          type: "edit",
+          widgetId: action.payload.widgetId,
+          widget: action.payload.widget,
+        },
       };
 
     case "CLOSE_EDITOR":
@@ -205,14 +206,22 @@ export function useDashboardEditor({
   const layoutDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInitializedRef = useRef(false);
   const currentLayoutJsonRef = useRef<string>(JSON.stringify(initialData.layout));
+  const initialDataRef = useRef(initialData);
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
+  initialDataRef.current = initialData;
 
   // Sync queue to prevent race conditions
   const syncQueueRef = useRef<SyncTask[]>([]);
   const isSyncingRef = useRef(false);
 
   // Reset state when initialData changes (e.g., navigating to different dashboard)
-  const initialDataJson = JSON.stringify({ layout: initialData.layout, widgets: initialData.widgets });
+  const initialDataJson = JSON.stringify({
+    layout: initialData.layout,
+    widgets: initialData.widgets,
+  });
   useEffect(() => {
+    const { layout, widgets } = initialDataRef.current;
+
     // Cancel any pending layout save
     if (layoutDebounceRef.current) {
       clearTimeout(layoutDebounceRef.current);
@@ -225,11 +234,11 @@ export function useDashboardEditor({
     // Reset state to new initial data
     dispatch({
       type: "RESET_STATE",
-      payload: { layout: initialData.layout, widgets: initialData.widgets },
+      payload: { layout, widgets },
     });
 
     // Update refs
-    currentLayoutJsonRef.current = JSON.stringify(initialData.layout);
+    currentLayoutJsonRef.current = JSON.stringify(layout);
     isInitializedRef.current = false;
 
     // Allow saves after a short delay to skip initial mount callbacks
@@ -249,6 +258,7 @@ export function useDashboardEditor({
   // Sync queue processor - ensures only one sync runs at a time
   // -------------------------------------------------------------------------
 
+  /* oxlint-disable react/preserve-manual-memoization -- The recursive callback drains a serialized sync queue. */
   const processNextSync = useCallback(async () => {
     // If already syncing or queue is empty, do nothing
     if (isSyncingRef.current || syncQueueRef.current.length === 0) {
@@ -301,6 +311,7 @@ export function useDashboardEditor({
       processNextSync();
     }
   }, [widgetActionUrl, layoutActionUrl, onSyncError]);
+  /* oxlint-enable react/preserve-manual-memoization */
 
   // -------------------------------------------------------------------------
   // Queue helpers

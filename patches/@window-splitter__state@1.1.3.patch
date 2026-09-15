@@ -1,5 +1,5 @@
 diff --git a/dist/commonjs/index.js b/dist/commonjs/index.js
-index e3bdcf702702392e9a06c981545f659ee7c5970e..d88ae6b2dc5b4cf1970cb693f58a926bd12a8f45 100644
+index e3bdcf702702392e9a06c981545f659ee7c5970e..4e7bd5f4f12599dae0d2708dc64ab42c02256251 100644
 --- a/dist/commonjs/index.js
 +++ b/dist/commonjs/index.js
 @@ -757,30 +757,14 @@ function updateLayout(context, dragEvent) {
@@ -41,7 +41,7 @@ index e3bdcf702702392e9a06c981545f659ee7c5970e..d88ae6b2dc5b4cf1970cb693f58a926b
      panelBefore.currentValue = { type: "pixel", value: panelBeforeNewValue };
      panelAfter.currentValue = { type: "pixel", value: panelAfterNewValue };
      const leftoverSpace = new big_js_1.default(getGroupSize(context)).minus(newItems.reduce((acc, b) => acc.add(isPanelData(b) ? b.currentValue.value : b.size.value), new big_js_1.default(0)));
-@@ -940,7 +924,12 @@ function setCookie(name, jsonData) {
+@@ -940,7 +924,18 @@ function setCookie(name, jsonData) {
  function getDeltaForEvent(context, event) {
      const panel = getPanelWithId(context, event.panelId);
      if (event.type === "expandPanel") {
@@ -50,13 +50,70 @@ index e3bdcf702702392e9a06c981545f659ee7c5970e..d88ae6b2dc5b4cf1970cb693f58a926b
 +        // panel that started life collapsed lands at its configured default
 +        // size rather than getting stuck at `min`.
 +        const defaultPx = panel.default ? getUnitPixelValue(context, panel.default) : undefined;
-+        const target = panel.sizeBeforeCollapse ?? defaultPx ?? getUnitPixelValue(context, panel.min);
++        // A panel collapsed before its first measurement remembers the `-1` sentinel,
++        // so only a stored size above `collapsedSize` is a usable expand target.
++        const storedPx = panel.sizeBeforeCollapse != null &&
++            new big_js_1.default(panel.sizeBeforeCollapse).gt(getUnitPixelValue(context, panel.collapsedSize))
++            ? panel.sizeBeforeCollapse
++            : undefined;
++        const target = storedPx ?? defaultPx ?? getUnitPixelValue(context, panel.min);
 +        return new big_js_1.default(target).minus(panel.currentValue.value);
      }
      const collapsedSize = getUnitPixelValue(context, panel.collapsedSize);
      return panel.currentValue.value.minus(collapsedSize);
+@@ -964,7 +959,9 @@ function animationActor(context, event, send, abortController) {
+             reject(new Error("Operation was canceled"));
+         });
+         if (event.type === "collapsePanel") {
+-            panel.sizeBeforeCollapse = panel.currentValue.value.toNumber();
++            if (panel.currentValue.value.gt(getUnitPixelValue(context, panel.collapsedSize))) {
++                panel.sizeBeforeCollapse = panel.currentValue.value.toNumber();
++            }
+             direction = direction.mul(new big_js_1.default(-1));
+         }
+         const fps = 60;
+@@ -1305,7 +1302,14 @@ function groupMachine(input, onUpdate) {
+                 const withLastKnownSize = context.items.map((i) => {
+                     if (!isPanelData(i))
+                         return i;
+-                    const lastKnownSize = event.childrenSizes[i.id] || i.lastKnownSize;
++                    // A 0 measurement carries no layout information (the panel is between
++                    // layouts), and remembering it silently shrinks the panel on the next commit.
++                    const measured = event.childrenSizes[i.id];
++                    const isEmpty = measured &&
++                        !(context.orientation === "horizontal"
++                            ? measured.width
++                            : measured.height);
++                    const lastKnownSize = (isEmpty ? undefined : measured) || i.lastKnownSize;
+                     return { ...i, lastKnownSize };
+                 });
+                 let totalSize = 0;
+@@ -1404,7 +1408,22 @@ function groupMachine(input, onUpdate) {
+                     }
+                     break;
+                 case "expandPanel":
+-                    if (guards.cannotExpandPanel(event)) {
++                    // A controlled expand before anything is measured has no layout to animate:
++                    // mark the panel open at the unmeasured sentinel, so the first measurement
++                    // sizes it. Uncontrolled expands fall through to the usual guard.
++                    if (event.controlled && getGroupSize(context) <= 0) {
++                        const target = getPanelWithId(context, event.panelId);
++                        if (target.collapsed) {
++                            target.collapsed = false;
++                            target.currentValue = makePixelUnit(-1);
++                            actions.onAutosave();
++                        }
++                        break;
++                    }
++                    // A controlled expand is the consumer's own state, so it is never vetoed: a
++                    // veto leaves the panel collapsed with no retry, since React only sends prop
++                    // transitions. Where no width satisfies every min the group overflows instead.
++                    else if (!event.controlled && guards.cannotExpandPanel(event)) {
+                         break;
+                     }
+                     else if (guards.shouldNotifyCollapseToggle(event)) {
 diff --git a/dist/esm/index.js b/dist/esm/index.js
-index f8fddd70c0f1aaed29f2fb0ca0d8093d8ce66335..d1dae8beb1447afca47b91e796b8279135f50c36 100644
+index f8fddd70c0f1aaed29f2fb0ca0d8093d8ce66335..de8e7a3c111e5fbdabb9a30ae7f6067decc067ce 100644
 --- a/dist/esm/index.js
 +++ b/dist/esm/index.js
 @@ -728,30 +728,14 @@ function updateLayout(context, dragEvent) {
@@ -98,7 +155,7 @@ index f8fddd70c0f1aaed29f2fb0ca0d8093d8ce66335..d1dae8beb1447afca47b91e796b82791
      panelBefore.currentValue = { type: "pixel", value: panelBeforeNewValue };
      panelAfter.currentValue = { type: "pixel", value: panelAfterNewValue };
      const leftoverSpace = new Big(getGroupSize(context)).minus(newItems.reduce((acc, b) => acc.add(isPanelData(b) ? b.currentValue.value : b.size.value), new Big(0)));
-@@ -911,7 +895,12 @@ function setCookie(name, jsonData) {
+@@ -911,7 +895,18 @@ function setCookie(name, jsonData) {
  function getDeltaForEvent(context, event) {
      const panel = getPanelWithId(context, event.panelId);
      if (event.type === "expandPanel") {
@@ -107,8 +164,65 @@ index f8fddd70c0f1aaed29f2fb0ca0d8093d8ce66335..d1dae8beb1447afca47b91e796b82791
 +        // panel that started life collapsed lands at its configured default
 +        // size rather than getting stuck at `min`.
 +        const defaultPx = panel.default ? getUnitPixelValue(context, panel.default) : undefined;
-+        const target = panel.sizeBeforeCollapse ?? defaultPx ?? getUnitPixelValue(context, panel.min);
++        // A panel collapsed before its first measurement remembers the `-1` sentinel,
++        // so only a stored size above `collapsedSize` is a usable expand target.
++        const storedPx = panel.sizeBeforeCollapse != null &&
++            new Big(panel.sizeBeforeCollapse).gt(getUnitPixelValue(context, panel.collapsedSize))
++            ? panel.sizeBeforeCollapse
++            : undefined;
++        const target = storedPx ?? defaultPx ?? getUnitPixelValue(context, panel.min);
 +        return new Big(target).minus(panel.currentValue.value);
      }
      const collapsedSize = getUnitPixelValue(context, panel.collapsedSize);
      return panel.currentValue.value.minus(collapsedSize);
+@@ -935,7 +930,9 @@ function animationActor(context, event, send, abortController) {
+             reject(new Error("Operation was canceled"));
+         });
+         if (event.type === "collapsePanel") {
+-            panel.sizeBeforeCollapse = panel.currentValue.value.toNumber();
++            if (panel.currentValue.value.gt(getUnitPixelValue(context, panel.collapsedSize))) {
++                panel.sizeBeforeCollapse = panel.currentValue.value.toNumber();
++            }
+             direction = direction.mul(new Big(-1));
+         }
+         const fps = 60;
+@@ -1276,7 +1273,14 @@ export function groupMachine(input, onUpdate) {
+                 const withLastKnownSize = context.items.map((i) => {
+                     if (!isPanelData(i))
+                         return i;
+-                    const lastKnownSize = event.childrenSizes[i.id] || i.lastKnownSize;
++                    // A 0 measurement carries no layout information (the panel is between
++                    // layouts), and remembering it silently shrinks the panel on the next commit.
++                    const measured = event.childrenSizes[i.id];
++                    const isEmpty = measured &&
++                        !(context.orientation === "horizontal"
++                            ? measured.width
++                            : measured.height);
++                    const lastKnownSize = (isEmpty ? undefined : measured) || i.lastKnownSize;
+                     return { ...i, lastKnownSize };
+                 });
+                 let totalSize = 0;
+@@ -1375,7 +1379,22 @@ export function groupMachine(input, onUpdate) {
+                     }
+                     break;
+                 case "expandPanel":
+-                    if (guards.cannotExpandPanel(event)) {
++                    // A controlled expand before anything is measured has no layout to animate:
++                    // mark the panel open at the unmeasured sentinel, so the first measurement
++                    // sizes it. Uncontrolled expands fall through to the usual guard.
++                    if (event.controlled && getGroupSize(context) <= 0) {
++                        const target = getPanelWithId(context, event.panelId);
++                        if (target.collapsed) {
++                            target.collapsed = false;
++                            target.currentValue = makePixelUnit(-1);
++                            actions.onAutosave();
++                        }
++                        break;
++                    }
++                    // A controlled expand is the consumer's own state, so it is never vetoed: a
++                    // veto leaves the panel collapsed with no retry, since React only sends prop
++                    // transitions. Where no width satisfies every min the group overflows instead.
++                    else if (!event.controlled && guards.cannotExpandPanel(event)) {
+                         break;
+                     }
+                     else if (guards.shouldNotifyCollapseToggle(event)) {

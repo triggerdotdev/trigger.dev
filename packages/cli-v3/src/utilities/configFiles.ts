@@ -22,13 +22,13 @@ const CliConfigProfileSettings = z.object({
 });
 type CliConfigProfileSettings = z.infer<typeof CliConfigProfileSettings>;
 
-const OldCliConfigFile = z.record(CliConfigProfileSettings);
+const OldCliConfigFile = z.record(z.string(), CliConfigProfileSettings);
 type OldCliConfigFile = z.infer<typeof OldCliConfigFile>;
 
 const CliConfigFile = z.object({
   version: z.literal(2),
   currentProfile: z.string().default(DEFFAULT_PROFILE),
-  profiles: z.record(CliConfigProfileSettings),
+  profiles: z.record(z.string(), CliConfigProfileSettings),
   settings: z
     .object({
       hasSeenMCPInstallPrompt: z.boolean().optional(),
@@ -46,12 +46,6 @@ function getOldAuthConfigFilePath() {
 function getAuthConfigFilePath() {
   return path.join(getGlobalConfigFolderPath(), CONFIG_FILE);
 }
-
-function getAuthConfigFileBackupPath() {
-  // Multiple calls won't overwrite old backups
-  return path.join(getGlobalConfigFolderPath(), `${CONFIG_FILE}.bak-${Date.now()}`);
-}
-
 function getBlankConfig(): CliConfigFile {
   return {
     version: 2,
@@ -201,7 +195,7 @@ export function readAuthConfigFile(): CliConfigFile | null {
   }
 }
 
-export function writeAuthConfigFile(config: CliConfigFile) {
+function writeAuthConfigFile(config: CliConfigFile) {
   const authConfigFilePath = getAuthConfigFilePath();
   mkdirSync(path.dirname(authConfigFilePath), {
     recursive: true,

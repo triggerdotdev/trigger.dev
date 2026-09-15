@@ -19,15 +19,18 @@ import { InputGroup } from "~/components/primitives/InputGroup";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "~/components/primitives/InputOTP";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Spinner } from "~/components/primitives/Spinner";
+import {
+  getSession as getMessageSession,
+  redirectBackWithErrorMessage,
+  redirectWithErrorMessage,
+} from "~/models/message.server";
 import { authenticator } from "~/services/auth.server";
-import { commitSession, getUserSession } from "~/services/sessionStorage.server";
-import { commitAuthenticatedSession } from "~/services/sessionDuration.server";
-import { getSession as getMessageSession } from "~/models/message.server";
+import { checkMfaRateLimit, MfaRateLimitError } from "~/services/mfa/mfaRateLimiterGlobal.server";
 import { MultiFactorAuthenticationService } from "~/services/mfa/multiFactorAuthentication.server";
-import { redirectWithErrorMessage, redirectBackWithErrorMessage } from "~/models/message.server";
-import { ServiceValidationError } from "~/v3/services/baseService.server";
-import { checkMfaRateLimit, MfaRateLimitError } from "~/services/mfa/mfaRateLimiter.server";
 import { trackAndClearReferralSource } from "~/services/referralSource.server";
+import { commitAuthenticatedSession } from "~/services/sessionDuration.server";
+import { commitSession, getUserSession } from "~/services/sessionStorage.server";
+import { ServiceValidationError } from "~/v3/services/baseService.server";
 
 export const meta: MetaFunction = ({ matches }) => {
   const parentMeta = matches
@@ -155,7 +158,11 @@ export async function action({ request }: ActionFunctionArgs) {
 async function completeLogin(request: Request, session: Session, userId: string) {
   // Set the auth key on the same session object to avoid conflicting Set-Cookie headers
   // (both authSession and session share the same __session cookie name)
-  session.set(authenticator.sessionKey, { userId });
+  const pendingSso = session.get("pending-sso") as
+    | { idpOrgId: string; connectionId: string }
+    | undefined;
+  session.set(authenticator.sessionKey, pendingSso ? { userId, sso: pendingSso } : { userId });
+  session.unset("pending-sso");
 
   // Get the redirect URL and clean up pending MFA data
   const redirectTo = session.get("pending-mfa-redirect-to") ?? "/";
@@ -190,6 +197,7 @@ export default function LoginMfaPage() {
   // Reset hideError when a new error appears
   React.useEffect(() => {
     if (rawMfaError) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setHideError(false);
     }
   }, [rawMfaError]);
@@ -245,11 +253,7 @@ export default function LoginMfaPage() {
                   data-action="verify recovery code"
                 >
                   {isLoading ? <Spinner className="mr-2 size-5" color="white" /> : null}
-                  {isLoading ? (
-                    <span className="text-text-bright">Verifying…</span>
-                  ) : (
-                    <span className="text-text-bright">Verify</span>
-                  )}
+                  {isLoading ? <span>Verifying…</span> : <span>Verify</span>}
                 </Button>
                 {typeof mfaError === "string" && <FormError>{mfaError}</FormError>}
               </Fieldset>
@@ -297,11 +301,7 @@ export default function LoginMfaPage() {
                   data-action="verify mfa code"
                 >
                   {isLoading ? <Spinner className="mr-2 size-5" color="white" /> : null}
-                  {isLoading ? (
-                    <span className="text-text-bright">Verifying…</span>
-                  ) : (
-                    <span className="text-text-bright">Verify</span>
-                  )}
+                  {isLoading ? <span>Verifying…</span> : <span>Verify</span>}
                 </Button>
                 {typeof mfaError === "string" && <FormError>{mfaError}</FormError>}
               </Fieldset>

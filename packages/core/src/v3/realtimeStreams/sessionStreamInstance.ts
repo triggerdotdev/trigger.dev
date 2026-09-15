@@ -1,8 +1,8 @@
-import { ApiClient } from "../apiClient/index.js";
-import { AsyncIterableStream } from "../streams/asyncIterableStream.js";
-import { AnyZodFetchOptions } from "../zodfetch.js";
+import type { ApiClient } from "../apiClient/index.js";
+import type { AsyncIterableStream } from "../streams/asyncIterableStream.js";
+import type { AnyZodFetchOptions } from "../zodfetch.js";
 import { StreamsWriterV2 } from "./streamsWriterV2.js";
-import { StreamsWriter, StreamWriteResult } from "./types.js";
+import type { StreamsWriter, StreamWriteResult } from "./types.js";
 
 export type InitializeSessionStreamResponseLike = {
   headers?: Record<string, string>;
@@ -40,6 +40,9 @@ export class SessionStreamInstance<T> implements StreamsWriter {
 
   constructor(private options: SessionStreamInstanceOptions<T>) {
     this.streamPromise = this.initializeWriter();
+    // Same detached-writer guard as `StreamsWriterV2`: the error is still
+    // surfaced by `wait()` / `stream`.
+    this.streamPromise.catch(() => {});
   }
 
   private async initializeWriter(): Promise<StreamsWriterV2<T>> {
@@ -91,6 +94,7 @@ export class SessionStreamInstance<T> implements StreamsWriter {
   }
 
   public get stream(): AsyncIterableStream<T> {
+    // eslint-disable-next-line no-this-alias
     const self = this;
 
     return new ReadableStream<T>({

@@ -10,19 +10,24 @@
     "prisma": "6.14.0"
   },
   "devDependencies": {
-    "@types/decimal.js": "^7.4.3",
-    "rimraf": "6.0.1"
+    "rimraf": "6.0.1",
+    "vitest": "4.1.7"
   },
   "scripts": {
     "clean": "rimraf dist",
-    "generate": "prisma generate",
-    "db:migrate:dev:create": "prisma migrate dev --create-only",
+    "generate": "node ../../scripts/retry-prisma-generate.mjs",
+    "env": "varlock run --inject vars --filter DATABASE_URL,DIRECT_URL --",
+    "env:check": "varlock load --agent --filter DATABASE_URL,DIRECT_URL",
+    "db:migrate:local": "pnpm run env prisma migrate deploy",
+    "db:migrate:dev:create": "pnpm run format:prisma && pnpm run env prisma migrate dev --create-only",
+    "format:prisma": "prisma format",
     "db:migrate:deploy": "prisma migrate deploy",
-    "db:push": "prisma db push",
-    "db:studio": "prisma studio",
-    "db:reset": "prisma migrate reset",
+    "db:push": "pnpm run env prisma db push",
+    "db:studio": "pnpm run env prisma studio",
+    "db:reset": "pnpm run env prisma migrate reset",
     "typecheck": "tsc --noEmit",
-    "build": "pnpm run clean && tsc --noEmit false --outDir dist --declaration",
-    "dev": "tsc --noEmit false --outDir dist --declaration --watch"
+    "build": "pnpm run clean && tsc -p tsconfig.build.json",
+    "dev": "tsc --noEmit false --outDir dist --declaration --watch",
+    "test": "vitest run"
   }
 }

@@ -1,21 +1,29 @@
-import { LinkButton } from "~/components/primitives/Buttons";
-import { Form, useFetcher, useRevalidator, type MetaFunction } from "@remix-run/react";
-import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import {
+  BookOpenIcon,
+  ClipboardDocumentIcon,
+  PlusIcon,
+  TrashIcon,
+} from "@heroicons/react/20/solid";
+import { Form, useRevalidator } from "@remix-run/react";
+import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core/utils";
+import type { PrivateLinkConnectionStatus } from "@trigger.dev/platform";
+import { useMemo, useState } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import {
   MainHorizontallyCenteredContainer,
   PageBody,
   PageContainer,
 } from "~/components/layout/AppLayout";
-import { Badge } from "~/components/primitives/Badge";
+import { LinkButton } from "~/components/primitives/Buttons";
 import { Header2 } from "~/components/primitives/Headers";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { prisma } from "~/db.server";
-import { canAccessPrivateConnections } from "~/v3/canAccessPrivateConnections.server";
+import { useInterval } from "~/hooks/useInterval";
+import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { logger } from "~/services/logger.server";
-import { getPrivateLinks } from "~/services/platform.v3.server";
+import { deletePrivateLink, getPrivateLinks } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
 import {
   docsPath,
@@ -23,24 +31,11 @@ import {
   organizationPath,
   v3PrivateConnectionsPath,
 } from "~/utils/pathBuilder";
+import { canAccessPrivateConnections } from "~/v3/canAccessPrivateConnections.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import type { PrivateLinkConnectionStatus } from "@trigger.dev/platform";
-import { Button } from "~/components/primitives/Buttons";
-import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { deletePrivateLink } from "~/services/platform.v3.server";
-import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
-import {
-  BookOpenIcon,
-  ClipboardDocumentIcon,
-  PlusIcon,
-  TrashIcon,
-} from "@heroicons/react/20/solid";
-import { useMemo, useState } from "react";
-import { useInterval } from "~/hooks/useInterval";
+import { pageMeta } from "~/utils/pageTitle";
 
-export const meta: MetaFunction = () => {
-  return [{ title: `Private Connections | Trigger.dev` }];
-};
+export const meta = pageMeta("Private Connections");
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
@@ -61,7 +56,10 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 
   const [error, connections] = await tryCatch(getPrivateLinks(organization.id));
   if (error) {
-    logger.error("Error loading private link connections", { error, organizationId: organization.id });
+    logger.error("Error loading private link connections", {
+      error,
+      organizationId: organization.id,
+    });
   }
 
   return typedjson({
@@ -115,17 +113,17 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 };
 
 const STATUS_COLORS: Record<PrivateLinkConnectionStatus, string> = {
-  PENDING: "bg-amber-500/20 text-amber-400",
-  PROVISIONING: "bg-blue-500/20 text-blue-400",
-  ACTIVE: "bg-emerald-500/20 text-emerald-400",
-  ERROR: "bg-rose-500/20 text-rose-400",
-  DELETING: "bg-charcoal-500/20 text-charcoal-400",
+  PENDING: "bg-amber-500/10 text-amber-700 dark:text-amber-400 system:text-warning",
+  PROVISIONING: "bg-blue-500/10 text-blue-600 dark:text-blue-400 system:text-blue-500",
+  ACTIVE: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 system:text-emerald-600",
+  ERROR: "bg-rose-500/10 text-rose-600 dark:text-rose-400 system:text-error",
+  DELETING: "bg-charcoal-500/10 text-text-dimmed",
 };
 
 function StatusBadge({ status }: { status: PrivateLinkConnectionStatus }) {
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[status]}`}
+      className={`contrast-chip inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[status]}`}
     >
       {status}
     </span>
@@ -229,15 +227,10 @@ export default function Page() {
             ) : (
               <div className="flex flex-col gap-3">
                 {connections.map((connection) => (
-                  <div
-                    key={connection.id}
-                    className="rounded-lg border border-grid-dimmed p-4"
-                  >
+                  <div key={connection.id} className="rounded-lg border border-grid-dimmed p-4">
                     <div>
                       <div className="mb-1 flex items-center gap-2">
-                        <span className="font-medium text-text-bright">
-                          {connection.name}
-                        </span>
+                        <span className="font-medium text-text-bright">{connection.name}</span>
                         <StatusBadge status={connection.status} />
                         {connection.status !== "DELETING" && (
                           <Form method="POST" className="ml-auto">
@@ -291,14 +284,20 @@ export default function Page() {
                         )}
                         <div className="flex items-center text-xs text-text-dimmed">
                           <span className="w-24 shrink-0">Created:</span>
-                          <span>
-                            {new Date(connection.createdAt).toLocaleDateString()}
-                          </span>
+                          <span>{new Date(connection.createdAt).toLocaleDateString()}</span>
                         </div>
                       </div>
                     </div>
                   </div>
                 ))}
+
+                {canAdd && (
+                  <div className="flex justify-center pt-2">
+                    <LinkButton variant="primary/small" LeadingIcon={PlusIcon} to="new">
+                      Add Connection
+                    </LinkButton>
+                  </div>
+                )}
 
                 {!canAdd && (
                   <Paragraph variant="extra-small" className="text-text-dimmed">

@@ -1,10 +1,11 @@
 import { PostHog } from "posthog-node";
 import { env } from "~/env.server";
-import { MatchedOrganization } from "~/hooks/useOrganizations";
+import type { MatchedOrganization } from "~/hooks/useOrganizations";
 import type { Organization } from "~/models/organization.server";
 import type { Project } from "~/models/project.server";
 import type { User } from "~/models/user.server";
 import { singleton } from "~/utils/singleton";
+import { enqueueAttioUserSync } from "./attio.server";
 import { loopsClient } from "./loops.server";
 
 type Options = {
@@ -21,7 +22,7 @@ class Telemetry {
     }
 
     if (postHogApiKey) {
-      this.#posthogClient = new PostHog(postHogApiKey, { host: "https://eu.posthog.com" });
+      this.#posthogClient = new PostHog(postHogApiKey, { host: env.POSTHOG_HOST });
     } else {
       console.log("No PostHog API key, so analytics won't track");
     }
@@ -46,11 +47,11 @@ class Telemetry {
           createdAt: user.createdAt,
           isNewUser,
         };
-        
+
         if (referralSource) {
           properties.referralSource = referralSource;
         }
-        
+
         this.#posthogClient.identify({
           distinctId: user.id,
           properties,
@@ -73,6 +74,14 @@ class Telemetry {
           userId: user.id,
           email: user.email,
           name: user.name,
+        });
+
+        enqueueAttioUserSync({
+          userId: user.id,
+          email: user.email,
+          referralSource: referralSource ?? user.referralSource,
+          marketingEmails: user.marketingEmails,
+          createdAt: user.createdAt,
         });
       }
     },

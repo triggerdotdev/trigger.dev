@@ -6,18 +6,18 @@ import {
   type Result,
 } from "@internal/redis";
 import { Logger } from "@trigger.dev/core/logger";
+import type { AnyZodSchema, inferZodSchemaOutput } from "@trigger.dev/core/v3";
 import { nanoid } from "nanoid";
-import { z } from "zod";
 
 export interface MessageCatalogSchema {
-  [key: string]: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
+  [key: string]: AnyZodSchema;
 }
 
 export type MessageCatalogKey<TMessageCatalog extends MessageCatalogSchema> = keyof TMessageCatalog;
 export type MessageCatalogValue<
   TMessageCatalog extends MessageCatalogSchema,
   TKey extends MessageCatalogKey<TMessageCatalog>,
-> = z.infer<TMessageCatalog[TKey]>;
+> = inferZodSchemaOutput<TMessageCatalog[TKey]>;
 
 export type AnyMessageCatalog = MessageCatalogSchema;
 export type QueueItem<TMessageCatalog extends MessageCatalogSchema> = {
@@ -217,6 +217,7 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
           continue;
         }
 
+        // zod v4 narrows the generic schema union here; cast to public ZodType (has safeParse in v3 & v4)
         const validatedItem = schema.safeParse(parsedItem.item);
 
         if (!validatedItem.success) {
@@ -236,7 +237,7 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
         dequeuedItems.push({
           id,
           job: parsedItem.job,
-          item: validatedItem.data,
+          item: validatedItem.data as QueueItem<TMessageCatalog>["item"],
           visibilityTimeoutMs,
           attempt: parsedItem.attempt ?? 0,
           timestamp,
@@ -301,6 +302,42 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
         includeFuture,
       });
       throw e;
+    }
+  }
+
+  /**
+   * Age (in ms) of the oldest *overdue* message — the oldest item whose scheduled
+   * time has already passed (score <= now). Returns 0 when the queue is empty or
+   * only holds future/delayed or in-flight (future-scored) items.
+   *
+   * Resolves the candidate against the `items` hash so orphaned `queue` entries
+   * (a member whose payload is missing — the same stale state `dequeueItems`
+   * cleans up) don't report a phantom stall for work that can't be dequeued. The
+   * Lua scans due items oldest-first and returns the first score whose payload
+   * still exists.
+   *
+   * This is the generic stall signal: it stays at 0 while a queue drains healthily
+   * and rises only when due work sits undrained (poison block, dead consumer,
+   * backpressure).
+   */
+  async oldestMessageAge(): Promise<number> {
+    try {
+      const now = Date.now();
+      // -1 sentinel = nothing due, or every due entry is orphaned.
+      const score = Number(await this.redis.getOldestDueScore(`queue`, `items`, now));
+
+      if (!Number.isFinite(score) || score < 0) {
+        return 0;
+      }
+
+      return Math.max(0, now - score);
+    } catch (e) {
+      this.logger.error(`SimpleQueue ${this.name}.oldestMessageAge(): error getting oldest age`, {
+        queue: this.name,
+        error: e,
+      });
+      // Swallow: a transient Redis error must not break observable metric collection.
+      return 0;
     }
   }
 
@@ -481,6 +518,30 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
         end
 
         return dequeued
+      `,
+    });
+
+    this.redis.defineCommand("getOldestDueScore", {
+      numberOfKeys: 2,
+      lua: `
+        local queue = KEYS[1]
+        local items = KEYS[2]
+        local now = tonumber(ARGV[1])
+
+        -- Oldest-first scan of due items, bounded so a long prefix of orphans can't
+        -- make this O(n). Orphans are rare (dequeueItems removes them), so in the
+        -- common case this returns on the first iteration. Read-only: unlike
+        -- dequeueItems we don't ZREM orphans here — a metric probe must not mutate.
+        local result = redis.call('ZRANGEBYSCORE', queue, '-inf', now, 'WITHSCORES', 'LIMIT', 0, 100)
+
+        for i = 1, #result, 2 do
+          local id = result[i]
+          if redis.call('HEXISTS', items, id) == 1 then
+            return result[i + 1]
+          end
+        end
+
+        return -1
       `,
     });
 
@@ -695,5 +756,14 @@ declare module "@internal/redis" {
       id: string,
       callback?: Callback<[string, string, string] | null>
     ): Result<[string, string, string] | null, Context>;
+
+    getOldestDueScore(
+      //keys
+      queue: string,
+      items: string,
+      //args
+      now: number,
+      callback?: Callback<string | number>
+    ): Result<string | number, Context>;
   }
 }

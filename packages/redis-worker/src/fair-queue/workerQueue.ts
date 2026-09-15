@@ -153,9 +153,11 @@ export class WorkerQueueManager {
       if (cleanup && signal) {
         signal.removeEventListener("abort", cleanup);
       }
-      await blockingClient.quit().catch(() => {
-        // Ignore quit errors (may already be disconnected)
-      });
+      if (blockingClient.status !== "end") {
+        await blockingClient.quit().catch(() => {
+          // Ignore quit errors (may already be disconnected)
+        });
+      }
     }
   }
 

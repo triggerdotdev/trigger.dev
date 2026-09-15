@@ -55,10 +55,11 @@
  */
 
 import {
-  ApiClient,
+  type ApiClient,
   SessionStreamInstance,
   TRIGGER_CONTROL_SUBTYPE,
   apiClientManager,
+  type ApiClientConfiguration,
 } from "@trigger.dev/core/v3";
 // Runtime VALUES via the ESM/CJS shim so the CJS build can `require` ESM-only
 // `ai@7` (see ../imports/ai-runtime.ts).
@@ -66,9 +67,20 @@ import {
   convertToModelMessages,
   generateId as generateAssistantMessageId,
   stepCountIs,
+  streamText as aiStreamText,
 } from "../imports/ai-runtime.js";
-import type { FinishReason, ModelMessage, Tool, UIMessage, UIMessageChunk } from "ai";
+import type {
+  streamText as aiStreamTextSignature,
+  FinishReason,
+  ModelMessage,
+  Tool,
+  UIMessage,
+  UIMessageChunk,
+} from "ai";
 import type { ChatInputChunk, ChatTaskWirePayload } from "./ai-shared.js";
+import { chatRunTags } from "./ai-shared.js";
+import { withResolvedExternalDeploymentId } from "./externalDeploymentId.js";
+import type { SessionTriggerConfigInput } from "./sessions.js";
 
 // `StreamTextResult` is defined locally rather than imported from `ai`: its
 // generic arity diverged (v6 `StreamTextResult<TOOLS, OUTPUT>`, v7
@@ -101,6 +113,59 @@ export type HeadStartStreamTextOptions = {
   abortSignal: AbortSignal;
 };
 
+/**
+ * The AI SDK's own `streamText` signature, borrowed rather than restated, so it
+ * resolves to whichever of `ai` v5/v6/v7 the caller installed.
+ */
+type AiStreamTextFn = typeof aiStreamTextSignature;
+
+/**
+ * The same signature minus the options the handover owns.
+ *
+ * Borrowed and narrowed rather than restated: `Omit` removes exactly the four
+ * keys `buildStreamTextOptions` supplies, so passing one is a compile error
+ * before it is a runtime throw. Taking `typeof streamText` unchanged would be
+ * worse than useless here, since it *requires* `messages` — the one key the
+ * caller must not set.
+ */
+type HeadStartStreamTextFn = (
+  options: Omit<Parameters<AiStreamTextFn>[0], "messages" | "prompt" | "stopWhen" | "abortSignal">
+) => ReturnType<AiStreamTextFn>;
+
+/**
+ * The keys `buildStreamTextOptions` owns. Overriding any breaks the handover.
+ *
+ * Kept in step with the `Omit` in `HeadStartStreamTextFn`: a key the type
+ * rejects but this list misses reaches `streamText` anyway, and the caller gets
+ * the AI SDK's own error instead of one that says what to do.
+ */
+const HEAD_START_OWNED_OPTIONS = ["messages", "prompt", "stopWhen", "abortSignal"] as const;
+
+function createBoundHeadStartStreamText(
+  build: (opts?: { tools?: Record<string, Tool> }) => Record<string, unknown>
+): HeadStartStreamTextFn {
+  const bound = (options: Record<string, unknown> = {}) => {
+    const { tools, ...rest } = options as Record<string, any>;
+
+    const owned = HEAD_START_OWNED_OPTIONS.filter((key) => key in rest);
+    if (owned.length > 0) {
+      throw new Error(
+        `chat.headStart: the \`streamText\` passed to run() owns ${owned
+          .map((key) => `\`${key}\``)
+          .join(", ")}, so it cannot be set at the call site. The handover protocol depends on ` +
+          "them: `messages` is the converted wire payload, `stopWhen: stepCountIs(1)` stops after " +
+          "step 1 so the agent run picks up tool execution, and `abortSignal` combines the request " +
+          "lifecycle with the idle timeout. Pass `model`, `system`, `providerOptions` and your own " +
+          "keys instead."
+      );
+    }
+
+    return aiStreamText({ ...build({ tools }), ...rest } as any);
+  };
+
+  return bound as unknown as HeadStartStreamTextFn;
+}
+
 export type HeadStartRunArgs<TTools extends Record<string, Tool>> = {
   /** User messages parsed from the incoming request. */
   messages: UIMessage[];
@@ -108,6 +173,19 @@ export type HeadStartRunArgs<TTools extends Record<string, Tool>> = {
   signal: AbortSignal;
   /** Helper exposing `toStreamTextOptions(...)` and a session escape hatch. */
   chat: HeadStartChatHelper<TTools>;
+  /**
+   * `streamText` with the options the handover protocol depends on already
+   * applied: the converted `messages`, `stopWhen: stepCountIs(1)` and the
+   * combined `abortSignal`, plus the `tools` you pass to it.
+   *
+   * Prefer it over importing `streamText` from `ai`. Spreading
+   * `chat.toStreamTextOptions()` into the imported one is equivalent, but
+   * setting `messages`, `prompt`, `stopWhen` or `abortSignal` after the spread
+   * breaks the handover, and nothing catches that. Passing any of those four
+   * here is a type error, and a throw if you get past the types. `tools` is
+   * yours to supply.
+   */
+  streamText: HeadStartStreamTextFn;
 };
 
 export type HeadStartChatHelper<TTools extends Record<string, Tool>> = {
@@ -127,7 +205,7 @@ export type HeadStartChatHelper<TTools extends Record<string, Tool>> = {
    * this helper just hands back the options the SDK needs to own.
    *
    * The customer COULD override any of these by re-setting them after
-   * the spread, but doing so for `stopWhen` / `messages` /
+   * the spread, but doing so for `stopWhen` / `messages` / `prompt` /
    * `abortSignal` will break the handover protocol. The intent is
    * that customers spread first, then add only their own keys.
    */
@@ -139,13 +217,16 @@ export type HeadStartChatHelper<TTools extends Record<string, Tool>> = {
 export type HeadStartSession = {
   readonly chatId: string;
   /**
+   * The agent run is parked waiting for a deployment carrying the session's external deployment
+   * id. Step 1 still streams from this process; step 2 lands once the deployment does.
+   */
+  readonly pendingVersion: boolean;
+  /**
    * Tees a UIMessage stream into `session.out` for durability/resume,
    * fire-and-forget. Returns a passthrough that the caller can use as
    * the HTTP response body.
    */
-  tee(
-    stream: ReadableStream<UIMessageChunk>
-  ): ReadableStream<UIMessageChunk>;
+  tee(stream: ReadableStream<UIMessageChunk>): ReadableStream<UIMessageChunk>;
   /**
    * Awaits `result.finishReason` and dispatches `handover` (with the
    * partial assistant ModelMessages) or `handover-skip`.
@@ -195,6 +276,54 @@ export type HeadStartHandlerOptions<TTools extends Record<string, Tool>> = {
    * exiting. Defaults to 60.
    */
   idleTimeoutInSeconds?: number;
+  /**
+   * Run options for the auto-triggered `handover-prepare` session run —
+   * tags, queue, machine, etc. Mirrors `chat.createStartSessionAction`.
+   * The `chat:{chatId}` tag is prepended automatically when it fits within
+   * the tag length limit (see `chatRunTags`).
+   */
+  triggerConfig?: Partial<SessionTriggerConfigInput>;
+  /**
+   * API client config (base URL + access token) for creating the session
+   * and triggering the agent run. When set, the handler runs under this
+   * config instead of the ambient `apiClientManager` config — use it when
+   * the agent lives in a different project/env than the warm server's
+   * default (mirrors `chat.createStartSessionAction`'s `apiClient` option).
+   * The customer's LLM provider keys are unaffected; they stay in `run`.
+   */
+  apiClient?: ApiClientConfiguration;
+};
+
+export type StartHeadStartOptions<TTools extends Record<string, Tool>> = {
+  /** The `chat.agent` / `chat.customAgent` / `chat.createSession` id to hand off to. */
+  agentId: string;
+  /** Stable chat id (the session externalId). You own it; reuse it on the destination page. */
+  chatId: string;
+  /** First-turn user history. Becomes the agent run's `headStartMessages`. */
+  messages: UIMessage[];
+  /** Your first-turn implementation — same shape as `chat.headStart`'s `run`. */
+  run: (args: HeadStartRunArgs<TTools>) => Promise<AnyStreamTextResult>;
+  /** Seconds the agent run waits for the handover signal before exiting. Default 60. */
+  idleTimeoutInSeconds?: number;
+  /** Run options for the auto-triggered `handover-prepare` run (tags, queue, machine, …). */
+  triggerConfig?: Partial<SessionTriggerConfigInput>;
+  /** API client config for session creation + trigger when the agent lives in another project/env. */
+  apiClient?: ApiClientConfiguration;
+  /** Metadata merged into the run's wire payload (auth tokens, context, …). Never sent to the browser. */
+  metadata?: Record<string, unknown>;
+};
+
+export type StartHeadStartResult = {
+  /** The chat id you passed in — echoed for convenience. */
+  chatId: string;
+  /** See {@link HeadStartSession.pendingVersion}. */
+  pendingVersion: boolean;
+  /**
+   * Resolves once step 1 has drained to `session.out` and the handover is
+   * dispatched. Hand to `waitUntil` / `after` on serverless; ignore it on a
+   * long-lived server. Rejects if the warm step or the dispatch fails.
+   */
+  completion: Promise<void>;
 };
 
 // ---------------------------------------------------------------------------
@@ -215,11 +344,12 @@ export const chat = {
   headStart<TTools extends Record<string, Tool>>(
     opts: HeadStartHandlerOptions<TTools>
   ): (req: Request) => Promise<Response> {
-    return async (req: Request) => {
+    const handler = async (req: Request): Promise<Response> => {
       const session = await openHandoverSession({
-        req,
+        ...(await parseHandoverRequest(req)),
         agentId: opts.agentId,
         idleTimeoutInSeconds: opts.idleTimeoutInSeconds,
+        triggerConfig: opts.triggerConfig,
       });
 
       const helper: HeadStartChatHelper<TTools> = {
@@ -233,10 +363,118 @@ export const chat = {
         messages: session.uiMessages,
         signal: session.combinedSignal,
         chat: helper,
+        streamText: createBoundHeadStartStreamText(session.buildStreamTextOptions),
       });
 
       return session.handle.handoverResponse(result);
     };
+
+    // Scope session creation + the agent trigger to `apiClient`'s env when
+    // provided, so the agent can live in a different project/env than the warm
+    // server's ambient config. The `run` callback's LLM keys are unaffected.
+    const { apiClient } = opts;
+    if (apiClient) {
+      return async (req: Request) => apiClientManager.runWithConfig(apiClient, () => handler(req));
+    }
+    return handler;
+  },
+
+  /**
+   * Detached head start for backends that create the chat AND trigger the
+   * run in their own endpoint (e.g. a "create chat" API), then navigate the
+   * browser to a separate page that resumes the chat. Unlike
+   * `chat.headStart`, this does NOT return an SSE `Response`: it creates the
+   * session, triggers the `handover-prepare` run, then streams step 1 from
+   * your warm process straight into `session.out` and dispatches the
+   * handover — all as the returned `completion` promise. The destination
+   * page sees the whole turn (step 1 + the agent's step 2+) by resuming
+   * `session.out`; no `headStart` transport option is needed there.
+   *
+   * `createSession` is awaited before this resolves, so the returned
+   * `chatId` is immediately resumable. `completion` resolves once step 1 has
+   * drained and the handover is dispatched — hand it to the platform's
+   * "run after response" primitive (`waitUntil` / Next.js `after`) on
+   * serverless, or ignore it on a long-lived server.
+   *
+   * @example
+   * ```ts
+   * const { chatId, completion } = await chat.startHeadStart({
+   *   agentId: "my-chat",
+   *   chatId,
+   *   messages,
+   *   run: async ({ chat: helper }) =>
+   *     streamText({ ...helper.toStreamTextOptions({ tools }), model, system }),
+   * });
+   * waitUntil(completion); // serverless: keep warm until step 1 + handover finish
+   * return Response.json({ chatId });
+   * ```
+   */
+  async startHeadStart<TTools extends Record<string, Tool>>(
+    opts: StartHeadStartOptions<TTools>
+  ): Promise<StartHeadStartResult> {
+    const open = () =>
+      openHandoverSession({
+        chatId: opts.chatId,
+        uiMessages: opts.messages,
+        wirePayload: {
+          chatId: opts.chatId,
+          trigger: "handover-prepare",
+          headStartMessages: opts.messages,
+          ...(opts.metadata !== undefined ? { metadata: opts.metadata } : {}),
+        } as ChatTaskWirePayload,
+        agentId: opts.agentId,
+        idleTimeoutInSeconds: opts.idleTimeoutInSeconds,
+        triggerConfig: opts.triggerConfig,
+      });
+
+    // Scope session creation + the agent trigger to `apiClient`'s env when
+    // provided (mirrors `chat.headStart`). The client captured inside
+    // `openHandoverSession` is reused for the drain + handover dispatch, so
+    // `completion` needs no further config scoping. LLM keys in `run` are
+    // unaffected.
+    const session = opts.apiClient
+      ? await apiClientManager.runWithConfig(opts.apiClient, open)
+      : await open();
+
+    const helper: HeadStartChatHelper<TTools> = {
+      toStreamTextOptions(spreadOpts) {
+        return session.buildStreamTextOptions(spreadOpts) as any;
+      },
+      session: session.handle,
+    };
+
+    const completion = (async () => {
+      let result: AnyStreamTextResult;
+      try {
+        result = await opts.run({
+          messages: session.uiMessages,
+          signal: session.combinedSignal,
+          chat: helper,
+          streamText: createBoundHeadStartStreamText(session.buildStreamTextOptions),
+        });
+      } catch (err) {
+        // The warm step never produced a result — tell the agent run to exit
+        // clean instead of idle-waiting the full handover timeout.
+        await session.handle.handoverSkip().catch(() => {});
+        throw err;
+      }
+      // Stamp step 1 with the turn's stable messageId so the agent's step 2+
+      // merges into the same assistant message, then drain it to session.out.
+      const stream = result.toUIMessageStream({
+        generateMessageId: () => session.turnMessageId,
+      });
+      session.drainToSessionOut(stream);
+      // Awaits the drain, then dispatches handover / handover-skip. Owns its
+      // own skip-on-error and idle-timer cleanup.
+      await session.handle.handoverWhenDone(result);
+    })();
+
+    // Unhandled-rejection guard: a long-lived server that ignores `completion`
+    // shouldn't crash under `--unhandled-rejections=throw`. Awaiting the
+    // returned promise still surfaces the error.
+    completion.catch(() => {});
+
+    return { chatId: opts.chatId, pendingVersion: session.handle.pendingVersion, completion };
   },
 
   /**
@@ -249,8 +487,17 @@ export const chat = {
     req: Request;
     agentId: string;
     idleTimeoutInSeconds?: number;
+    triggerConfig?: Partial<SessionTriggerConfigInput>;
   }): Promise<HeadStartSession> {
-    return openHandoverSession(opts).then((s) => s.handle);
+    return (async () => {
+      const session = await openHandoverSession({
+        ...(await parseHandoverRequest(opts.req)),
+        agentId: opts.agentId,
+        idleTimeoutInSeconds: opts.idleTimeoutInSeconds,
+        triggerConfig: opts.triggerConfig,
+      });
+      return session.handle;
+    })();
   },
 
   /**
@@ -298,14 +545,29 @@ type InternalSession = {
   combinedSignal: AbortSignal;
   handle: HeadStartSession;
   buildStreamTextOptions(spreadOpts?: { tools?: Record<string, Tool> }): Record<string, unknown>;
+  /** Stable assistant messageId for this turn — stamp the detached drain with it. */
+  turnMessageId: string;
+  /**
+   * Detached counterpart to `tee`: pump a UIMessage stream straight into
+   * `session.out` with no HTTP response branch. Used by `chat.startHeadStart`,
+   * where the browser picks the turn up by resuming `session.out` later.
+   */
+  drainToSessionOut(stream: ReadableStream<UIMessageChunk>): void;
 };
 
-async function openHandoverSession(opts: {
-  req: Request;
-  agentId: string;
-  idleTimeoutInSeconds?: number;
-}): Promise<InternalSession> {
-  const wirePayload = (await opts.req.json()) as ChatTaskWirePayload;
+/**
+ * Parse the AI SDK transport's wire payload out of the route-handler
+ * `Request` for `chat.headStart` / `chat.openSession`. The detached
+ * `chat.startHeadStart` path skips this — it's handed the chatId and
+ * messages directly.
+ */
+async function parseHandoverRequest(req: Request): Promise<{
+  chatId: string;
+  uiMessages: UIMessage[];
+  wirePayload: ChatTaskWirePayload;
+  requestSignal?: AbortSignal;
+}> {
+  const wirePayload = (await req.json()) as ChatTaskWirePayload;
   const chatId = wirePayload.chatId;
   if (!chatId) {
     throw new Error("[chat.handover] request body missing `chatId`");
@@ -313,9 +575,32 @@ async function openHandoverSession(opts: {
   // Slim wire — head-start ships full history via `headStartMessages` (not
   // `message`/`messages`) because the route handler runs on the customer's
   // own HTTP endpoint and isn't subject to the 512 KiB `/in/append` cap.
+  const uiMessages = (wirePayload.headStartMessages ?? []) as UIMessage[];
+  return {
+    chatId,
+    uiMessages,
+    wirePayload,
+    requestSignal: (req as Request & { signal?: AbortSignal }).signal,
+  };
+}
+
+async function openHandoverSession(opts: {
+  chatId: string;
+  uiMessages: UIMessage[];
+  /** Becomes the base wire payload for the `handover-prepare` run. */
+  wirePayload: ChatTaskWirePayload;
+  agentId: string;
+  idleTimeoutInSeconds?: number;
+  triggerConfig?: Partial<SessionTriggerConfigInput>;
+  /** Request-lifecycle signal on the HTTP path; omitted on the detached path. */
+  requestSignal?: AbortSignal;
+}): Promise<InternalSession> {
+  const { chatId, uiMessages, wirePayload } = opts;
+  if (!chatId) {
+    throw new Error("[chat.handover] missing `chatId`");
+  }
   // The full UIMessage[] flows through `wirePayload` into the auto-trigger
   // `basePayload` below, where the agent run boot consumes it on first turn.
-  const uiMessages = (wirePayload.headStartMessages ?? []) as UIMessage[];
   // `convertToModelMessages` is async — resolve once up front so the
   // synchronous `toStreamTextOptions` builder can hand back a fully
   // formed object. AI SDK's `streamText` validates `messages` as a
@@ -323,7 +608,43 @@ async function openHandoverSession(opts: {
   const modelMessages = await convertToModelMessages(uiMessages);
 
   const apiClient = resolveApiClient();
-  const idleTimeoutInSeconds = opts.idleTimeoutInSeconds ?? 60;
+  // Top-level `idleTimeoutInSeconds` wins over the one in `triggerConfig`.
+  const idleTimeoutInSeconds =
+    opts.idleTimeoutInSeconds ?? opts.triggerConfig?.idleTimeoutInSeconds ?? 60;
+
+  // Merge the customer's trigger options. `handover-prepare` and `chatId` in
+  // `basePayload` are ours and can't be overridden; the `chat:{chatId}` tag is
+  // prepended when it fits within the tag length limit (see `chatRunTags`).
+  const tags = chatRunTags(chatId, opts.triggerConfig?.tags);
+
+  const triggerConfig: SessionTriggerConfigInput = {
+    basePayload: {
+      ...(opts.triggerConfig?.basePayload ?? {}),
+      ...wirePayload,
+      chatId,
+      trigger: "handover-prepare",
+      idleTimeoutInSeconds,
+    },
+    ...(opts.triggerConfig?.machine ? { machine: opts.triggerConfig.machine } : {}),
+    ...(opts.triggerConfig?.queue ? { queue: opts.triggerConfig.queue } : {}),
+    tags,
+    ...(opts.triggerConfig?.maxAttempts !== undefined
+      ? { maxAttempts: opts.triggerConfig.maxAttempts }
+      : {}),
+    ...(opts.triggerConfig?.maxDuration !== undefined
+      ? { maxDuration: opts.triggerConfig.maxDuration }
+      : {}),
+    ...(opts.triggerConfig?.region ? { region: opts.triggerConfig.region } : {}),
+    ...(opts.triggerConfig?.lockToVersion
+      ? { lockToVersion: opts.triggerConfig.lockToVersion }
+      : {}),
+    ...(opts.triggerConfig?.ttl !== undefined ? { ttl: opts.triggerConfig.ttl } : {}),
+    // Not truthiness: `null` opts this chat out of pinning and must reach the resolver.
+    ...(opts.triggerConfig?.externalDeploymentId !== undefined
+      ? { externalDeploymentId: opts.triggerConfig.externalDeploymentId }
+      : {}),
+    idleTimeoutInSeconds,
+  };
 
   // Create the session and trigger the chat.agent's `handover-prepare`
   // run atomically. `createSession` is idempotent on `(env, externalId
@@ -338,27 +659,23 @@ async function openHandoverSession(opts: {
   // run to be there to consume it. The added latency (~one round trip
   // to the control plane) is bounded; the agent's compute boot still
   // overlaps with LLM TTFB.
-  const created = await apiClient.createSession({
-    type: "chat.agent",
-    externalId: chatId,
-    taskIdentifier: opts.agentId,
-    triggerConfig: {
-      basePayload: {
-        ...wirePayload,
-        chatId,
-        trigger: "handover-prepare",
-        idleTimeoutInSeconds,
-      },
-      idleTimeoutInSeconds,
-    },
-  });
+  // Bypasses `sessions.start`, so it resolves the pin itself.
+  const created = await apiClient.createSession(
+    withResolvedExternalDeploymentId({
+      type: "chat.agent",
+      externalId: chatId,
+      taskIdentifier: opts.agentId,
+      triggerConfig,
+    })
+  );
   const sessionPublicAccessToken = created.publicAccessToken;
+  const pendingVersion = created.pendingVersion === true;
 
   // Combined abort signal: request lifecycle OR an internal timeout
   // mirroring the agent's idle wait so a hung handler doesn't sit
   // forever.
   const abortController = new AbortController();
-  const requestAbort = (opts.req as Request & { signal?: AbortSignal }).signal;
+  const requestAbort = opts.requestSignal;
   if (requestAbort) {
     if (requestAbort.aborted) abortController.abort();
     else requestAbort.addEventListener("abort", () => abortController.abort(), { once: true });
@@ -368,9 +685,9 @@ async function openHandoverSession(opts: {
     idleTimeoutInSeconds * 1000
   );
 
-  const buildStreamTextOptions = (
-    spreadOpts?: { tools?: Record<string, Tool> }
-  ): Record<string, unknown> => {
+  const buildStreamTextOptions = (spreadOpts?: {
+    tools?: Record<string, Tool>;
+  }): Record<string, unknown> => {
     // The customer spreads this object into their `streamText` call
     // and then adds `model`, `system`, etc. on top. We set the four
     // keys handover correctness depends on:
@@ -412,15 +729,37 @@ async function openHandoverSession(opts: {
     });
     return a;
   };
+  // Detached drain (no HTTP response branch): hand the WHOLE stream to the S2
+  // writer as its source. `StreamsWriterV2` self-pumps the source to S2, so the
+  // stream drains to `session.out` without any reader pulling it. `handoverWhenDone`
+  // awaits `flushSessionWriter()` before dispatching, so step 1 lands in order
+  // ahead of the agent's step 2+.
+  const drainToSessionOut = (stream: ReadableStream<UIMessageChunk>): void => {
+    sessionWriter = new SessionStreamInstance<UIMessageChunk>({
+      apiClient,
+      baseUrl: apiClient.baseUrl,
+      sessionId: chatId,
+      io: "out",
+      source: stream,
+      signal: abortController.signal,
+    });
+  };
   /** Wait for the teed S2 writer to drain. Called before signaling handover. */
   const flushSessionWriter = async (): Promise<void> => {
     if (!sessionWriter) return;
     try {
       await sessionWriter.wait();
-    } catch {
-      // Drop write errors — the customer's response stream is the
-      // source of truth for what the user sees. Durability/resume
-      // best-effort.
+    } catch (error) {
+      // Dropped, not thrown: the customer's response stream is the source of
+      // truth for what the user sees. Logged so the loss is diagnosable.
+      const { message, code, status, origin } = (error ?? {}) as Record<string, unknown>;
+      console.warn("[chat.handover] session.out write failed", {
+        chatId,
+        message,
+        code,
+        status,
+        origin,
+      });
     }
   };
 
@@ -443,9 +782,18 @@ async function openHandoverSession(opts: {
    * `finishReason`). Normal pure-text and tool-call finishes go
    * through `handover()` with the appropriate `isFinal` flag.
    */
+  // Clear the idle timer on every terminal path. The detached failure path
+  // (run() throws -> handoverSkip) otherwise leaves it armed until the idle
+  // timeout elapses, since only handoverWhenDone used to clear it.
+  const cleanup = () => clearTimeout(idleTimer);
+
   const handoverSkip = async () => {
-    const chunk: ChatInputChunk = { kind: "handover-skip" };
-    await apiClient.appendToSessionStream(chatId, "in", JSON.stringify(chunk));
+    try {
+      const chunk: ChatInputChunk = { kind: "handover-skip" };
+      await apiClient.appendToSessionStream(chatId, "in", JSON.stringify(chunk));
+    } finally {
+      cleanup();
+    }
   };
 
   // A stable assistant messageId for this turn. The customer's
@@ -521,7 +869,7 @@ async function openHandoverSession(opts: {
       }
       throw err;
     } finally {
-      clearTimeout(idleTimer);
+      cleanup();
     }
   };
 
@@ -601,9 +949,7 @@ async function openHandoverSession(opts: {
             chatId,
             "out",
             {
-              ...(customerLastEventId != null
-                ? { lastEventId: customerLastEventId }
-                : {}),
+              ...(customerLastEventId != null ? { lastEventId: customerLastEventId } : {}),
               signal: AbortSignal.any([abortController.signal, subscriptionAbort.signal]),
               onPart: (part) => {
                 if (part.id) latestEventId = part.id;
@@ -714,12 +1060,15 @@ async function openHandoverSession(opts: {
         // without going back through the handler.
         "X-Trigger-Chat-Id": chatId,
         "X-Trigger-Chat-Access-Token": sessionPublicAccessToken,
+        // Only sent when parked, so an unpinned chat's headers are unchanged.
+        ...(pendingVersion ? { "X-Trigger-Chat-Pending-Version": "1" } : {}),
       },
     });
   };
 
   const handle: HeadStartSession = {
     chatId,
+    pendingVersion,
     tee,
     handoverWhenDone,
     handoverResponse,
@@ -732,6 +1081,8 @@ async function openHandoverSession(opts: {
     combinedSignal: abortController.signal,
     handle,
     buildStreamTextOptions,
+    turnMessageId,
+    drainToSessionOut,
   };
 }
 
@@ -832,7 +1183,8 @@ function toNodeListener(
         res.setHeader(key, value);
       });
       const setCookies =
-        typeof (webRes.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie === "function"
+        typeof (webRes.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie ===
+        "function"
           ? (webRes.headers as Headers & { getSetCookie: () => string[] }).getSetCookie()
           : [];
       if (setCookies.length > 0) {

@@ -55,34 +55,28 @@ export type PromptHandle<
 export type AnyPromptHandle = PromptHandle<string, any>;
 
 /** Extract the identifier (id literal type) from a PromptHandle */
-export type PromptIdentifier<T extends AnyPromptHandle> = T extends PromptHandle<infer TId, any>
-  ? TId
-  : string;
+export type PromptIdentifier<T extends AnyPromptHandle> =
+  T extends PromptHandle<infer TId, any> ? TId : string;
 
 /** Extract the variables input type from a PromptHandle */
-export type PromptVariables<T extends AnyPromptHandle> = T extends PromptHandle<any, infer TVariables>
-  ? inferSchemaIn<TVariables>
-  : Record<string, unknown>;
+export type PromptVariables<T extends AnyPromptHandle> =
+  T extends PromptHandle<any, infer TVariables>
+    ? inferSchemaIn<TVariables>
+    : Record<string, unknown>;
 
 /**
  * Compile a Mustache-style template by substituting `{{variable}}` placeholders.
  */
-function compileTemplate(
-  template: string,
-  variables: Record<string, unknown>
-): string {
+function compileTemplate(template: string, variables: Record<string, unknown>): string {
   // Handle conditional sections: {{#key}}...{{/key}}
-  let result = template.replace(
-    /\{\{#(\w+)\}\}([\s\S]*?)\{\{\/\1\}\}/g,
-    (_match, key, content) => {
-      const value = variables[key];
-      return value
-        ? content.replace(/\{\{(\w+)\}\}/g, (_m: string, k: string) => {
-            return String(variables[k] ?? "");
-          })
-        : "";
-    }
-  );
+  let result = template.replace(/\{\{#(\w+)\}\}([\s\S]*?)\{\{\/\1\}\}/g, (_match, key, content) => {
+    const value = variables[key];
+    return value
+      ? content.replace(/\{\{(\w+)\}\}/g, (_m: string, k: string) => {
+          return String(variables[k] ?? "");
+        })
+      : "";
+  });
 
   // Handle simple substitutions: {{key}}
   result = result.replace(/\{\{\s*(\w+)\s*\}\}/g, (_match, key) => {
@@ -124,7 +118,14 @@ function resolveLocally(
   variables: Record<string, unknown>
 ): ResolvedPrompt {
   const inputJson = Object.keys(variables).length > 0 ? JSON.stringify(variables) : undefined;
-  const telemetryFn = makeToAISDKTelemetry(options.id, options.id, 0, ["local"], options.model, inputJson);
+  const telemetryFn = makeToAISDKTelemetry(
+    options.id,
+    options.id,
+    0,
+    ["local"],
+    options.model,
+    inputJson
+  );
 
   return {
     promptId: options.id,
@@ -140,12 +141,8 @@ function resolveLocally(
 export function definePrompt<
   TIdentifier extends string,
   TVariables extends TaskSchema | undefined = undefined,
->(
-  options: PromptOptions<TIdentifier, TVariables>
-): PromptHandle<TIdentifier, TVariables> {
-  const parseVariables = options.variables
-    ? getSchemaParseFn(options.variables)
-    : undefined;
+>(options: PromptOptions<TIdentifier, TVariables>): PromptHandle<TIdentifier, TVariables> {
+  const parseVariables = options.variables ? getSchemaParseFn(options.variables) : undefined;
 
   // Register with resource catalog
   const metadata: PromptMetadataWithFunctions = {
@@ -170,9 +167,7 @@ export function definePrompt<
     id: options.id,
     resolve: async (variables, resolveOptions) => {
       // Validate variables if schema provided
-      const validated = parseVariables
-        ? await parseVariables(variables)
-        : variables;
+      const validated = parseVariables ? await parseVariables(variables) : variables;
       const vars = validated as Record<string, unknown>;
 
       const apiClient = apiClientManager.client;

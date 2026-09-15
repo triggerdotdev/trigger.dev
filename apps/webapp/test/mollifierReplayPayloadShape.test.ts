@@ -51,9 +51,7 @@ describe("mollifier replay payload shape", () => {
       payloadType: "application/json",
     };
 
-    const roundTripped = deserialiseMollifierSnapshot(
-      serialiseMollifierSnapshot(triggerInput),
-    );
+    const roundTripped = deserialiseMollifierSnapshot(serialiseMollifierSnapshot(triggerInput));
 
     // This is exactly the call the replay loader makes:
     //   prettyPrintPacket(run.payload, run.payloadType)
@@ -63,7 +61,7 @@ describe("mollifier replay payload shape", () => {
     // JSON.
     const pretty = await prettyPrintPacket(
       roundTripped.payload,
-      roundTripped.payloadType as string,
+      roundTripped.payloadType as string
     );
 
     expect(pretty).toBe(JSON.stringify(original, null, 2));

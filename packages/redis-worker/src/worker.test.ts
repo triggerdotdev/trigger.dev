@@ -2,9 +2,24 @@ import { isolatedRedisTest as redisTest } from "@internal/testcontainers";
 import { Logger } from "@trigger.dev/core/logger";
 import { describe } from "node:test";
 import { expect } from "vitest";
-import { z } from "zod";
+import { z } from "zod/v4";
 import { Worker } from "./worker.js";
-import { createRedisClient } from "@internal/redis";
+import { createRedisClient, type Redis } from "@internal/redis";
+
+async function connectedClientCount(redis: Redis): Promise<number> {
+  const clientsInfo = await redis.info("clients");
+  const match = clientsInfo.match(/^connected_clients:(\d+)$/m);
+
+  if (!match) {
+    throw new Error("Redis INFO clients response did not include connected_clients");
+  }
+
+  return Number(match[1]);
+}
+
+function activeTimeoutCount(): number {
+  return process.getActiveResourcesInfo().filter((resource) => resource === "Timeout").length;
+}
 
 describe("Worker", () => {
   redisTest("Process items that don't throw", { timeout: 30_000 }, async ({ redisContainer }) => {
@@ -391,7 +406,7 @@ describe("Worker", () => {
 
       // Verify queue size after second enqueue
       const size2 = await worker.queue.size({ includeFuture: true });
-      const size2Present = await worker.queue.size({ includeFuture: false });
+      const _size2Present = await worker.queue.size({ includeFuture: false });
       expect(size2).toBe(1); // Should still be 1 as it's the same ID
 
       // Wait for the first job to complete
@@ -400,15 +415,15 @@ describe("Worker", () => {
       }
 
       // Check queue size right after first job completes
-      const size3 = await worker.queue.size({ includeFuture: true });
-      const size3Present = await worker.queue.size({ includeFuture: false });
+      const _size3 = await worker.queue.size({ includeFuture: true });
+      const _size3Present = await worker.queue.size({ includeFuture: false });
 
       // Wait long enough for the second job to become available and potentially run
       await new Promise((resolve) => setTimeout(resolve, 2000));
 
       // Final queue size
-      const size4 = await worker.queue.size({ includeFuture: true });
-      const size4Present = await worker.queue.size({ includeFuture: false });
+      const _size4 = await worker.queue.size({ includeFuture: true });
+      const _size4Present = await worker.queue.size({ includeFuture: false });
 
       // First job should have run
       expect(processedPayloads).toContain("first-attempt");
@@ -546,6 +561,58 @@ describe("Worker", () => {
       expect(finalSizeWithFuture).toBe(0);
 
       await worker.stop();
+    }
+  );
+
+  redisTest(
+    "clears its shutdown deadline and closes Redis connections after a prompt stop",
+    { timeout: 30_000 },
+    async ({ redisContainer }) => {
+      const redisOptions = {
+        host: redisContainer.getHost(),
+        port: redisContainer.getPort(),
+        password: redisContainer.getPassword(),
+      };
+      const observer = createRedisClient(redisOptions);
+      await observer.ping();
+
+      const baselineConnections = await connectedClientCount(observer);
+      const worker = new Worker({
+        name: "shutdown-lifecycle-worker",
+        redisOptions,
+        catalog: {
+          testJob: {
+            schema: z.object({ value: z.number() }),
+            visibilityTimeoutMs: 5000,
+          },
+        },
+        jobs: {
+          testJob: async () => {},
+        },
+        concurrency: { workers: 1, tasksPerWorker: 1 },
+        pollIntervalMs: 10,
+        immediatePollIntervalMs: 10,
+        shutdownTimeoutMs: 30_000,
+        logger: new Logger("shutdown-lifecycle-test", "error"),
+      }).start();
+
+      try {
+        await expect
+          .poll(() => connectedClientCount(observer))
+          .toBeGreaterThan(baselineConnections);
+
+        // Let the worker enter its polling loop so the loop, rather than the deadline, wins shutdown.
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        const baselineTimeouts = activeTimeoutCount();
+        await worker.stop();
+
+        await expect.poll(() => connectedClientCount(observer)).toBe(baselineConnections);
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(activeTimeoutCount()).toBeLessThanOrEqual(baselineTimeouts);
+      } finally {
+        await worker.stop();
+        await observer.quit();
+      }
     }
   );
 

@@ -1,11 +1,10 @@
 // TaskEventStore.ts
-import { Prisma, TaskEvent } from "@trigger.dev/database";
+import type { TaskEvent } from "@trigger.dev/database";
+import { Prisma } from "@trigger.dev/database";
 import type { PrismaClient, PrismaReplicaClient } from "~/db.server";
 import { env } from "~/env.server";
 import { clampToEmergencySpanCap } from "~/v3/eventRepository/emergencySpanCap.server";
-
-export type CommonTaskEvent = Omit<TaskEvent, "id">;
-export type TraceEvent = Pick<
+type TraceEvent = Pick<
   TaskEvent,
   | "spanId"
   | "parentId"
@@ -56,7 +55,10 @@ export function getTaskEventStore(): TaskEventStoreTable {
 }
 
 export class TaskEventStore {
-  constructor(private db: PrismaClient, private readReplica: PrismaReplicaClient) {}
+  constructor(
+    private db: PrismaClient,
+    private readReplica: PrismaReplicaClient
+  ) {}
 
   /**
    * Insert one record.

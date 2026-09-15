@@ -1,6 +1,6 @@
-import { DeserializedJson } from "../../schemas/json.js";
-import { AsyncIterableStream } from "../streams/asyncIterableStream.js";
-import { ApiRequestOptions } from "../zodfetch.js";
+import type { DeserializedJson } from "../../schemas/json.js";
+import type { AsyncIterableStream } from "../streams/asyncIterableStream.js";
+import type { ApiRequestOptions } from "../zodfetch.js";
 import type { RunMetadataManager, RunMetadataUpdater } from "./types.js";
 
 export class NoopRunMetadataManager implements RunMetadataManager {
@@ -47,8 +47,9 @@ export class NoopRunMetadataManager implements RunMetadataManager {
 
   get parent(): RunMetadataUpdater {
     // Store a reference to this object
-    const self = this;
-    
+    // eslint-disable-next-line no-this-alias
+    const _self = this;
+
     // Create a local reference to ensure proper context
     const parentUpdater: RunMetadataUpdater = {
       append: () => parentUpdater,
@@ -65,14 +66,15 @@ export class NoopRunMetadataManager implements RunMetadataManager {
         }),
       update: () => parentUpdater,
     };
-    
+
     return parentUpdater;
   }
 
   get root(): RunMetadataUpdater {
     // Store a reference to this object
-    const self = this;
-    
+    // eslint-disable-next-line no-this-alias
+    const _self = this;
+
     // Create a local reference to ensure proper context
     const rootUpdater: RunMetadataUpdater = {
       append: () => rootUpdater,
@@ -89,7 +91,7 @@ export class NoopRunMetadataManager implements RunMetadataManager {
         }),
       update: () => rootUpdater,
     };
-    
+
     return rootUpdater;
   }
 }

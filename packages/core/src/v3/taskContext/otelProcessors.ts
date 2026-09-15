@@ -1,6 +1,8 @@
-import { Attributes, Context, trace, Tracer } from "@opentelemetry/api";
-import { ExportResult, ExportResultCode } from "@opentelemetry/core";
-import { LogRecordProcessor, SdkLogRecord } from "@opentelemetry/sdk-logs";
+import type { Attributes, Context, Tracer } from "@opentelemetry/api";
+import { trace } from "@opentelemetry/api";
+import type { ExportResult } from "@opentelemetry/core";
+import { ExportResultCode } from "@opentelemetry/core";
+import type { LogRecordProcessor, SdkLogRecord } from "@opentelemetry/sdk-logs";
 import type {
   AggregationOption,
   AggregationTemporality,
@@ -10,7 +12,7 @@ import type {
   ResourceMetrics,
   ScopeMetrics,
 } from "@opentelemetry/sdk-metrics";
-import { Span, SpanProcessor } from "@opentelemetry/sdk-trace-base";
+import type { Span, SpanProcessor } from "@opentelemetry/sdk-trace-base";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 import { taskContext } from "../task-context-api.js";
 import { flattenAttributes } from "../utils/flattenAttributes.js";
@@ -190,8 +192,7 @@ export class TaskContextMetricExporter implements PushMetricExporter {
     }
 
     if (taskContext.conversationId) {
-      contextAttrs[SemanticInternalAttributes.GEN_AI_CONVERSATION_ID] =
-        taskContext.conversationId;
+      contextAttrs[SemanticInternalAttributes.GEN_AI_CONVERSATION_ID] = taskContext.conversationId;
     }
 
     const modified: ResourceMetrics = {
@@ -223,6 +224,37 @@ export class TaskContextMetricExporter implements PushMetricExporter {
   }
 }
 
+function isFiniteDataPointValue(value: unknown): boolean {
+  if (typeof value === "number") {
+    return Number.isFinite(value);
+  }
+
+  if (typeof value === "object" && value !== null) {
+    return (["sum", "min", "max"] as const).every((key) => {
+      const component = (value as Record<string, unknown>)[key];
+      return typeof component !== "number" || Number.isFinite(component);
+    });
+  }
+
+  return true;
+}
+
+function dropNonFiniteDataPoints(metrics: ResourceMetrics): ResourceMetrics {
+  return {
+    ...metrics,
+    scopeMetrics: metrics.scopeMetrics.map((scope) => ({
+      ...scope,
+      metrics: scope.metrics.map(
+        (metric) =>
+          ({
+            ...metric,
+            dataPoints: metric.dataPoints.filter((dp) => isFiniteDataPointValue(dp.value)),
+          }) as MetricData
+      ),
+    })),
+  };
+}
+
 export class BufferingMetricExporter implements PushMetricExporter {
   selectAggregationTemporality?: (instrumentType: InstrumentType) => AggregationTemporality;
   selectAggregation?: (instrumentType: InstrumentType) => AggregationOption;
@@ -244,7 +276,7 @@ export class BufferingMetricExporter implements PushMetricExporter {
   }
 
   export(metrics: ResourceMetrics, resultCallback: (result: ExportResult) => void): void {
-    this._buffer.push(metrics);
+    this._buffer.push(dropNonFiniteDataPoints(metrics));
 
     const now = Date.now();
     if (now - this._lastFlushTime >= this._flushIntervalMs) {
@@ -288,7 +320,10 @@ export class BufferingMetricExporter implements PushMetricExporter {
     const base = batch[0]!;
 
     // Merge all scopeMetrics by scope name, then metrics by descriptor name
-    const scopeMap = new Map<string, { scope: ScopeMetrics["scope"]; metricsMap: Map<string, MetricData> }>();
+    const scopeMap = new Map<
+      string,
+      { scope: ScopeMetrics["scope"]; metricsMap: Map<string, MetricData> }
+    >();
 
     for (const rm of batch) {
       for (const sm of rm.scopeMetrics) {

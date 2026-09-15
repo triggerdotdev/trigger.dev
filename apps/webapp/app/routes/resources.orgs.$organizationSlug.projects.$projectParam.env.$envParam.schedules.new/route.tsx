@@ -1,16 +1,23 @@
-import { conform, useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
+import { getFormProps, getInputProps, getSelectProps, useForm } from "@conform-to/react";
+import { parseWithZod } from "@conform-to/zod/v4";
+import { ScheduleWindow } from "@trigger.dev/core/v3";
 import { CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
-import { Form, useActionData, useLocation, useNavigation } from "@remix-run/react";
-import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import {
+  type FetcherWithComponents,
+  Form,
+  useActionData,
+  useLocation,
+  useNavigation,
+} from "@remix-run/react";
+import type { ActionFunctionArgs } from "@remix-run/server-runtime";
+import { json } from "@remix-run/server-runtime";
 import { parseExpression } from "cron-parser";
 import cronstrue from "cronstrue";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import {
+  EnvironmentCombo,
   environmentTextClassName,
   environmentTitle,
-  EnvironmentCombo,
 } from "~/components/environments/EnvironmentLabel";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
@@ -24,6 +31,7 @@ import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Select, SelectItem } from "~/components/primitives/Select";
+import { Spinner } from "~/components/primitives/Spinner";
 import {
   Table,
   TableBody,
@@ -33,27 +41,23 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { TextLink } from "~/components/primitives/TextLink";
+import { TimezoneList } from "~/components/scheduled/timezones";
 import { prisma } from "~/db.server";
+import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
-import { EditableScheduleElements } from "~/presenters/v3/EditSchedulePresenter.server";
+import type { EditableScheduleElements } from "~/presenters/v3/EditSchedulePresenter.server";
+import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import {
-  EnvironmentParamSchema,
-  ProjectParamSchema,
-  docsPath,
-  v3SchedulesPath,
-} from "~/utils/pathBuilder";
+import { EnvironmentParamSchema, docsPath, v3EnvironmentPath } from "~/utils/pathBuilder";
 import { CronPattern, UpsertSchedule } from "~/v3/schedules";
+import { validateMinimumCronInterval } from "~/v3/validateMinimumCronInterval";
+import { explicitWindowBelowMinimum } from "~/v3/explicitWindowBelowMinimum";
+import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { UpsertTaskScheduleService } from "~/v3/services/upsertTaskSchedule.server";
 import { AIGeneratedCronField } from "../resources.orgs.$organizationSlug.projects.$projectParam.schedules.new.natural-language";
-import { TimezoneList } from "~/components/scheduled/timezones";
-import { logger } from "~/services/logger.server";
-import { Spinner } from "~/components/primitives/Spinner";
-import { cond } from "effect/STM";
-import { useEnvironment } from "~/hooks/useEnvironment";
 
 const cronFormat = `*    *    *    *    *
 ┬    ┬    ┬    ┬    ┬
@@ -69,11 +73,14 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
 
   const formData = await request.formData();
-  const submission = parse(formData, { schema: UpsertSchedule });
+  const submission = parseWithZod(formData, { schema: UpsertSchedule });
 
-  if (!submission.value) {
-    return json(submission);
+  if (submission.status !== "success") {
+    return json(submission.reply());
   }
+
+  // `_format=json` → return JSON instead of redirecting; caller toasts.
+  const wantsJson = formData.get("_format") === "json";
 
   try {
     //first check that the user has access to the project
@@ -98,17 +105,38 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     const createSchedule = new UpsertTaskScheduleService();
     const result = await createSchedule.call(project.id, submission.value);
 
+    const message =
+      submission.value?.friendlyId === result.id ? "Schedule updated" : "Schedule created";
+
+    if (wantsJson) {
+      return json({ ok: true as const, message });
+    }
+
     return redirectWithSuccessMessage(
-      v3SchedulesPath({ slug: organizationSlug }, { slug: projectParam }, { slug: envParam }),
+      v3EnvironmentPath({ slug: organizationSlug }, { slug: projectParam }, { slug: envParam }),
       request,
-      submission.value?.friendlyId === result.id ? "Schedule updated" : "Schedule created"
+      message
     );
   } catch (error: any) {
-    logger.error("Failed to create schedule", error);
+    if (!(error instanceof ServiceValidationError)) {
+      logger.error("Failed to create schedule", error);
+    }
 
-    const errorMessage = `Something went wrong. Please try again.`;
+    const errorMessage =
+      error instanceof ServiceValidationError
+        ? error.message
+        : `Something went wrong. Please try again.`;
+    if (wantsJson) {
+      if (error instanceof ServiceValidationError) {
+        return json(submission.reply({ formErrors: [error.message] }), {
+          status: error.status ?? 422,
+        });
+      }
+
+      return json({ ok: false as const, message: errorMessage }, { status: 500 });
+    }
     return redirectWithErrorMessage(
-      v3SchedulesPath({ slug: organizationSlug }, { slug: projectParam }, { slug: envParam }),
+      v3EnvironmentPath({ slug: organizationSlug }, { slug: projectParam }, { slug: envParam }),
       request,
       errorMessage
     );
@@ -123,6 +151,16 @@ type CronPatternResult =
   | {
       isValid: false;
       error: string;
+      isPlanLimit?: boolean;
+    };
+
+type ScheduleWindowResult =
+  | {
+      isValid: true;
+    }
+  | {
+      isValid: false;
+      error: string;
     };
 
 export function UpsertScheduleForm({
@@ -130,32 +168,81 @@ export function UpsertScheduleForm({
   possibleTasks,
   possibleEnvironments,
   possibleTimezones,
+  newSchedulePolicy,
   showGenerateField,
-}: EditableScheduleElements & { showGenerateField: boolean }) {
-  const lastSubmission = useActionData();
+  defaultTaskIdentifier,
+  onCancel,
+  submitFetcher,
+}: Omit<EditableScheduleElements, "newSchedulePolicy"> & {
+  newSchedulePolicy?: EditableScheduleElements["newSchedulePolicy"];
+  showGenerateField: boolean;
+  /** Pre-fills the Task field on new schedules. Ignored when editing. */
+  defaultTaskIdentifier?: string;
+  /** When set, Cancel calls back instead of navigating. */
+  onCancel?: () => void;
+  /** Submits via this fetcher with `_format=json` so the host can toast/close itself. */
+  submitFetcher?: FetcherWithComponents<unknown>;
+}) {
+  const actionData = useActionData();
+  // Only feed conform-shaped data (`status`) to `useForm` — `{ ok, message }`
+  // envelopes lack it and crash conform.
+  const fetcherSubmission =
+    submitFetcher?.data && typeof submitFetcher.data === "object" && "status" in submitFetcher.data
+      ? submitFetcher.data
+      : undefined;
+  const lastSubmission = submitFetcher ? fetcherSubmission : actionData;
   const [selectedTimezone, setSelectedTimezone] = useState<string>(schedule?.timezone ?? "UTC");
   const isUtc = selectedTimezone === "UTC";
   const [cronPattern, setCronPattern] = useState<string>(schedule?.cron ?? "");
+  const [scheduleWindowValue, setScheduleWindowValue] = useState<string>(schedule?.window ?? "");
   const navigation = useNavigation();
-  const isLoading = navigation.state !== "idle";
+  const isLoading = submitFetcher ? submitFetcher.state !== "idle" : navigation.state !== "idle";
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
   const location = useLocation();
 
-  const [form, { taskIdentifier, cron, timezone, externalId, environments, deduplicationKey }] =
-    useForm({
-      id: "create-schedule",
-      // TODO: type this
-      lastSubmission: lastSubmission as any,
-      shouldRevalidate: "onSubmit",
-      onValidate({ formData }) {
-        return parse(formData, { schema: UpsertSchedule });
-      },
-    });
+  const [
+    form,
+    {
+      taskIdentifier,
+      cron,
+      timezone,
+      window: scheduleWindow,
+      externalId,
+      environments,
+      deduplicationKey,
+    },
+  ] = useForm({
+    // Disambiguate per-schedule so both sheets (create + edit) can
+    // coexist without duplicate DOM ids breaking `htmlFor` / conform.
+    id: schedule?.friendlyId ? `edit-schedule-${schedule.friendlyId}` : "create-schedule",
+    // TODO: type this
+    lastResult: lastSubmission as any,
+    shouldRevalidate: "onSubmit",
+    onValidate({ formData }) {
+      return parseWithZod(formData, { schema: UpsertSchedule });
+    },
+  });
+
+  const defaultWindowDurationSeconds = schedule
+    ? schedule.defaultWindowDurationSeconds
+    : newSchedulePolicy?.defaultWindowDurationSeconds;
+  const minimumWindowDurationSeconds = schedule
+    ? schedule.minimumWindowDurationSeconds
+    : newSchedulePolicy?.minimumWindowDurationSeconds;
 
   let cronPatternResult: CronPatternResult | undefined = undefined;
+  let scheduleWindowResult: ScheduleWindowResult | undefined = undefined;
   let nextRuns: Date[] | undefined = undefined;
+  let minimumWindowApplied = false;
+
+  if (scheduleWindowValue !== "") {
+    const result = ScheduleWindow.safeParse(scheduleWindowValue);
+    scheduleWindowResult = result.success
+      ? { isValid: true }
+      : { isValid: false, error: result.error.issues[0].message };
+  }
 
   if (cronPattern !== "") {
     const result = CronPattern.safeParse(cronPattern);
@@ -163,7 +250,7 @@ export function UpsertScheduleForm({
     if (!result.success) {
       cronPatternResult = {
         isValid: false,
-        error: result.error.errors[0].message,
+        error: result.error.issues[0].message,
       };
     } else {
       try {
@@ -171,10 +258,26 @@ export function UpsertScheduleForm({
           cronPattern,
           isUtc ? { utc: true } : { tz: selectedTimezone }
         );
-        cronPatternResult = {
-          isValid: true,
-          description: cronstrue.toString(cronPattern),
-        };
+        const minimumIntervalResult = minimumWindowDurationSeconds
+          ? validateMinimumCronInterval({
+              cron: cronPattern,
+              timezone: selectedTimezone,
+              minimumMs: minimumWindowDurationSeconds * 1_000,
+            })
+          : undefined;
+        cronPatternResult =
+          minimumIntervalResult?.valid === false
+            ? {
+                isValid: false,
+                error: `Schedules must have at least ${Math.round(
+                  minimumWindowDurationSeconds! / 60
+                )} minutes between runs.`,
+                isPlanLimit: true,
+              }
+            : {
+                isValid: true,
+                description: cronstrue.toString(cronPattern),
+              };
         nextRuns = Array.from({ length: 5 }, (_, i) => {
           const utc = expression.next().toDate();
           return utc;
@@ -188,48 +291,69 @@ export function UpsertScheduleForm({
     }
   }
 
+  if (scheduleWindowResult?.isValid && minimumWindowDurationSeconds && nextRuns) {
+    minimumWindowApplied = explicitWindowBelowMinimum({
+      explicitWindow: scheduleWindowValue,
+      cron: cronPattern,
+      timezone: isUtc ? null : selectedTimezone,
+      minimumWindowDurationSeconds,
+    });
+  }
+
   const mode = schedule ? "edit" : "new";
+  const FormComponent = submitFetcher?.Form ?? Form;
 
   return (
-    <Form
+    <FormComponent
       method="post"
       action={`/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/schedules/new`}
-      {...form.props}
-      className="grid h-full max-h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden bg-background-bright"
+      {...getFormProps(form)}
+      className="grid h-full max-h-full grid-rows-[2.5rem_1fr_auto] overflow-hidden bg-background-bright"
     >
-      <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
-        <Header2 className={cn("whitespace-nowrap")}>
-          {schedule?.friendlyId ? "Edit schedule" : "New schedule"}
+      <div className="mx-3 flex min-w-0 items-center justify-between gap-2 overflow-hidden border-b border-grid-dimmed">
+        <Header2 className="truncate">
+          {schedule?.friendlyId
+            ? "Edit schedule"
+            : defaultTaskIdentifier
+              ? `New schedule for ${defaultTaskIdentifier}`
+              : "New schedule"}
         </Header2>
       </div>
-      <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <div className="p-3">
+          {submitFetcher ? <input type="hidden" name="_format" value="json" /> : null}
           {schedule && <input type="hidden" name="friendlyId" value={schedule.friendlyId} />}
           <Fieldset>
-            <InputGroup>
-              <Label htmlFor={taskIdentifier.id}>Task</Label>
-              <Select
-                {...conform.select(taskIdentifier)}
-                placeholder="Select a task"
-                defaultValue={schedule?.taskIdentifier}
-                heading={"Filter..."}
-                items={possibleTasks}
-                filter={(task, search) => task.toLowerCase().includes(search.toLowerCase())}
-                dropdownIcon
-                variant="tertiary/medium"
-              >
-                {(matches) => (
-                  <>
-                    {matches?.map((task) => (
-                      <SelectItem key={task} value={task}>
-                        {task}
-                      </SelectItem>
-                    ))}
-                  </>
-                )}
-              </Select>
-              <FormError id={taskIdentifier.errorId}>{taskIdentifier.error}</FormError>
-            </InputGroup>
+            {(() => {
+              // Lock the task via hidden input when it's implied (sheet on a task page, or editing).
+              const lockedTaskIdentifier = schedule?.taskIdentifier ?? defaultTaskIdentifier;
+              return lockedTaskIdentifier ? (
+                <input type="hidden" name={taskIdentifier.name} value={lockedTaskIdentifier} />
+              ) : (
+                <InputGroup>
+                  <Label htmlFor={taskIdentifier.id}>Task</Label>
+                  <Select
+                    {...getSelectProps(taskIdentifier)}
+                    placeholder="Select a task"
+                    defaultValue={schedule?.taskIdentifier}
+                    heading={"Filter..."}
+                    items={possibleTasks}
+                    filter={(task, search) => task.toLowerCase().includes(search.toLowerCase())}
+                    dropdownIcon
+                    variant="tertiary/medium"
+                  >
+                    {(matches) =>
+                      matches?.map((task) => (
+                        <SelectItem key={task} value={task}>
+                          {task}
+                        </SelectItem>
+                      ))
+                    }
+                  </Select>
+                  <FormError id={taskIdentifier.errorId}>{taskIdentifier.errors}</FormError>
+                </InputGroup>
+              );
+            })()}
             {showGenerateField && <AIGeneratedCronField onSuccess={setCronPattern} />}
             <InputGroup>
               <Label
@@ -247,7 +371,7 @@ export function UpsertScheduleForm({
                 CRON pattern (UTC)
               </Label>
               <Input
-                {...conform.input(cron, { type: "text" })}
+                {...getInputProps(cron, { type: "text" })}
                 placeholder="? ? ? ? ?"
                 required={true}
                 value={cronPattern}
@@ -258,15 +382,27 @@ export function UpsertScheduleForm({
               {cronPatternResult === undefined ? (
                 <Hint>Enter a CRON pattern or use natural language above.</Hint>
               ) : cronPatternResult.isValid ? (
-                <ValidCronMessage isValid={true} message={`${cronPatternResult.description}.`} />
+                <ValidationMessage
+                  isValid={true}
+                  validLabel="Valid pattern:"
+                  invalidLabel="Invalid pattern:"
+                  message={`${cronPatternResult.description}.`}
+                />
               ) : (
-                <ValidCronMessage isValid={false} message={cronPatternResult.error} />
+                <ValidationMessage
+                  isValid={false}
+                  validLabel="Valid pattern:"
+                  invalidLabel={
+                    cronPatternResult.isPlanLimit ? "Unavailable on Free plan:" : "Invalid pattern:"
+                  }
+                  message={cronPatternResult.error}
+                />
               )}
             </InputGroup>
             <InputGroup>
               <Label htmlFor={timezone.id}>Timezone</Label>
               <Select
-                {...conform.select(timezone)}
+                {...getSelectProps(timezone)}
                 placeholder="Select a timezone"
                 defaultValue={selectedTimezone}
                 value={selectedTimezone}
@@ -286,11 +422,60 @@ export function UpsertScheduleForm({
                   ? "UTC will not change with daylight savings time."
                   : "This will automatically adjust for daylight savings time."}
               </Hint>
-              <FormError id={timezone.errorId}>{timezone.error}</FormError>
+              <FormError id={timezone.errorId}>{timezone.errors}</FormError>
+            </InputGroup>
+            <InputGroup>
+              <Label required={false} htmlFor={scheduleWindow.id}>
+                Window
+              </Label>
+              <Input
+                {...getInputProps(scheduleWindow, { type: "text" })}
+                placeholder="30m or 25%"
+                value={scheduleWindowValue}
+                aria-invalid={scheduleWindowResult?.isValid === false ? true : undefined}
+                aria-describedby={
+                  scheduleWindowResult === undefined ? undefined : scheduleWindow.errorId
+                }
+                onChange={(event) => setScheduleWindowValue(event.target.value)}
+              />
+              {scheduleWindowResult === undefined ? (
+                <ScheduleWindowHint
+                  defaultWindowDurationSeconds={defaultWindowDurationSeconds}
+                  minimumWindowDurationSeconds={minimumWindowDurationSeconds}
+                />
+              ) : scheduleWindowResult.isValid ? (
+                <ValidationMessage
+                  id={scheduleWindow.errorId}
+                  isValid={true}
+                  validLabel="Valid window:"
+                  invalidLabel="Invalid window:"
+                  message={
+                    minimumWindowApplied
+                      ? `Runs use this window; the Free plan minimum of ${Math.round(
+                          minimumWindowDurationSeconds! / 60
+                        )} minutes will be applied.`
+                      : "Runs will be assigned a stable time within this window."
+                  }
+                />
+              ) : (
+                <ValidationMessage
+                  id={scheduleWindow.errorId}
+                  isValid={false}
+                  validLabel="Valid window:"
+                  invalidLabel="Invalid window:"
+                  message={scheduleWindowResult.error}
+                />
+              )}
             </InputGroup>
             {nextRuns !== undefined && (
               <div className="flex flex-col gap-1">
                 <Header3>Next 5 runs</Header3>
+                {scheduleWindowValue !== "" && (
+                  <Hint>
+                    Actual run times will get a fixed offset based on the window, displayed after
+                    creation.
+                  </Hint>
+                )}
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -354,14 +539,14 @@ export function UpsertScheduleForm({
                   connected with the dev CLI.
                 </Hint>
               )}
-              <FormError id={environments.errorId}>{environments.error}</FormError>
+              <FormError id={environments.errorId}>{environments.errors}</FormError>
             </InputGroup>
             <InputGroup>
               <Label required={false} htmlFor={externalId.id}>
                 External ID
               </Label>
               <Input
-                {...conform.input(externalId, { type: "text" })}
+                {...getInputProps(externalId, { type: "text" })}
                 placeholder="Optionally specify your own ID, e.g. user id"
                 defaultValue={schedule?.externalId ?? undefined}
               />
@@ -370,14 +555,14 @@ export function UpsertScheduleForm({
                 run function of your task. This allows you to have per-user CRON tasks.{" "}
                 <TextLink to={docsPath("v3/tasks-scheduled")}>Read the docs.</TextLink>
               </Hint>
-              <FormError id={externalId.errorId}>{externalId.error}</FormError>
+              <FormError id={externalId.errorId}>{externalId.errors}</FormError>
             </InputGroup>
             <InputGroup>
               <Label required={false} htmlFor={deduplicationKey.id}>
                 Deduplication key
               </Label>
               <Input
-                {...conform.input(deduplicationKey, { type: "text" })}
+                {...getInputProps(deduplicationKey, { type: "text" })}
                 disabled={schedule !== undefined}
                 defaultValue={
                   schedule?.userProvidedDeduplicationKey ? schedule?.deduplicationKey : undefined
@@ -393,34 +578,91 @@ export function UpsertScheduleForm({
                 very useful when using the SDK and you don't want to create duplicate schedules for
                 a user.
               </Hint>
-              <FormError id={deduplicationKey.errorId}>{deduplicationKey.error}</FormError>
+              <FormError id={deduplicationKey.errorId}>{deduplicationKey.errors}</FormError>
             </InputGroup>
-            <FormError>{form.error}</FormError>
+            <FormError>{form.errors}</FormError>
           </Fieldset>
         </div>
       </div>
-      <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-2">
+      <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-2 py-2">
         <div className="flex items-center gap-4">
-          <LinkButton
-            to={`${v3SchedulesPath(organization, project, environment)}${location.search}`}
-            variant="secondary/medium"
-          >
-            Cancel
-          </LinkButton>
+          {onCancel ? (
+            <Button variant="secondary/small" onClick={onCancel} type="button">
+              Cancel
+            </Button>
+          ) : (
+            <LinkButton
+              to={`${v3EnvironmentPath(organization, project, environment)}${location.search}`}
+              variant="secondary/small"
+            >
+              Cancel
+            </LinkButton>
+          )}
         </div>
         <div className="flex items-center gap-4">
           <Button
-            variant="primary/medium"
+            variant="primary/small"
             type="submit"
             disabled={isLoading}
-            shortcut={{ key: "enter", modifiers: ["mod"] }}
+            shortcut={{ key: "enter", modifiers: ["mod"], enabledOnInputElements: true }}
             LeadingIcon={isLoading ? Spinner : undefined}
           >
             {buttonText(mode, isLoading)}
           </Button>
         </div>
       </div>
-    </Form>
+    </FormComponent>
+  );
+}
+
+function ScheduleWindowHint({
+  defaultWindowDurationSeconds,
+  minimumWindowDurationSeconds,
+}: {
+  defaultWindowDurationSeconds?: number | null;
+  minimumWindowDurationSeconds?: number | null;
+}) {
+  const defaultMinutes = defaultWindowDurationSeconds
+    ? Math.round(defaultWindowDurationSeconds / 60)
+    : undefined;
+  const minimumMinutes = minimumWindowDurationSeconds
+    ? Math.round(minimumWindowDurationSeconds / 60)
+    : undefined;
+
+  if (defaultMinutes && minimumMinutes) {
+    return (
+      <Hint>
+        Leaving this blank applies the {defaultMinutes}-minute default window. Free plan schedules
+        must run at least {minimumMinutes} minutes apart and always use a window of at least{" "}
+        {minimumMinutes} minutes.
+      </Hint>
+    );
+  }
+
+  if (minimumMinutes) {
+    return (
+      <Hint>
+        Free plan schedules must run at least {minimumMinutes} minutes apart and always use at least
+        a {minimumMinutes}-minute window. Smaller values are raised to this minimum.
+      </Hint>
+    );
+  }
+
+  if (defaultMinutes) {
+    return (
+      <Hint>
+        Leaving this blank applies the {defaultMinutes}-minute default window. Enter a value to
+        override it, or <code>0m</code> to use the one-minute minimum.
+      </Hint>
+    );
+  }
+
+  return (
+    <Hint>
+      Assigns each run a stable time after its CRON time, capped at the next CRON occurrence. Use
+      minutes, hours, or a percentage of the interval. Every schedule gets at least a one-minute
+      spread; enter <code>0m</code> for that minimum.
+    </Hint>
   );
 }
 
@@ -433,9 +675,21 @@ function buttonText(mode: "edit" | "new", isLoading: boolean) {
   }
 }
 
-function ValidCronMessage({ isValid, message }: { isValid: boolean; message: string }) {
+function ValidationMessage({
+  id,
+  isValid,
+  validLabel,
+  invalidLabel,
+  message,
+}: {
+  id?: string;
+  isValid: boolean;
+  validLabel: string;
+  invalidLabel: string;
+  message: string;
+}) {
   return (
-    <Paragraph variant="small">
+    <Paragraph id={id} variant="small">
       <span className="mr-1">
         {isValid ? (
           <CheckIcon className="-mt-0.5 mr-1 inline-block h-4 w-4 text-success" />
@@ -443,7 +697,7 @@ function ValidCronMessage({ isValid, message }: { isValid: boolean; message: str
           <XMarkIcon className="-mt-0.5 mr-1 inline-block h-4 w-4 text-error" />
         )}
         <span className={isValid ? "text-success" : "text-error"}>
-          {isValid ? "Valid pattern:" : "Invalid pattern:"}
+          {isValid ? validLabel : invalidLabel}
         </span>
       </span>
       <span>{message}</span>

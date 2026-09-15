@@ -1,10 +1,12 @@
 import type { UIMessage } from "@ai-sdk/react";
-import { ChatSnapshotV1Schema, SSEStreamSubscription } from "@trigger.dev/core/v3";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { SSEStreamSubscription } from "@trigger.dev/core/v3";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Button } from "~/components/primitives/Buttons";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Spinner } from "~/components/primitives/Spinner";
 import { AgentMessageView } from "~/components/runs/v3/agent/AgentMessageView";
 import { useAutoScrollToBottom } from "~/hooks/useAutoScrollToBottom";
+import type { TranscriptSeed } from "~/services/realtime/transcriptSeed.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -28,14 +30,13 @@ export type AgentViewAuth = {
    */
   initialMessages: UIMessage[];
   /**
-   * Presigned GET URL for the session's chat-snapshot S3 blob (written
-   * by the agent after each turn-complete; see `ChatSnapshotV1`).
-   * Optional — sessions that registered a `hydrateMessages` hook skip
-   * snapshot writes and the URL fetch will 404. In that case the
-   * dashboard falls back to seq=0 SSE (which, post-trim, shows only the
-   * most recent turn). Generated server-side by `SessionPresenter`.
+   * The most recent messages of the session's saved transcript, read
+   * server-side by `SessionPresenter`, with the stream cursor to resume just
+   * past them. Absent for sessions that registered a `hydrateMessages` hook and
+   * so save no transcript; the dashboard then falls back to seq=0 SSE (which,
+   * post-trim, shows only the most recent turn).
    */
-  snapshotPresignedUrl?: string;
+  transcriptSeed?: TranscriptSeed;
 };
 
 /**
@@ -83,14 +84,14 @@ export function AgentView({ agentView }: { agentView: AgentViewAuth }) {
   const project = useProject();
   const environment = useEnvironment();
 
-  const messages = useAgentSessionMessages({
+  const { messages, hasEarlier, isLoadingEarlier, loadEarlier } = useAgentSessionMessages({
     sessionId: agentView.sessionId,
     apiOrigin: agentView.apiOrigin,
     orgSlug: organization.slug,
     projectSlug: project.slug,
     envSlug: environment.slug,
     initialMessages: agentView.initialMessages,
-    snapshotPresignedUrl: agentView.snapshotPresignedUrl,
+    transcriptSeed: agentView.transcriptSeed,
   });
 
   // Sticky-bottom auto-scroll: walks up to find the inspector's scroll
@@ -100,18 +101,27 @@ export function AgentView({ agentView }: { agentView: AgentViewAuth }) {
   const rootRef = useAutoScrollToBottom([messages]);
 
   return (
-    <div ref={rootRef} className="py-3">
+    <div ref={rootRef} className="flex min-h-full flex-col py-3">
       {messages.length === 0 ? (
-        <div className="flex h-full min-h-[12rem] items-center justify-center">
+        <div className="flex flex-1 items-center justify-center">
           <div className="flex flex-col items-center gap-3">
-            <Spinner className="size-5" color="muted" />
+            <Spinner className="size-5" color="blue" />
             <Paragraph variant="small" className="text-text-dimmed">
               Loading conversation…
             </Paragraph>
           </div>
         </div>
       ) : (
-        <AgentMessageView messages={messages} />
+        <>
+          {hasEarlier ? (
+            <div className="flex justify-center pb-2">
+              <Button variant="minimal/small" onClick={loadEarlier} disabled={isLoadingEarlier}>
+                {isLoadingEarlier ? "Loading…" : "Load earlier messages"}
+              </Button>
+            </div>
+          ) : null}
+          <AgentMessageView messages={messages} />
+        </>
       )}
     </div>
   );
@@ -233,7 +243,7 @@ function useAgentSessionMessages({
   projectSlug,
   envSlug,
   initialMessages,
-  snapshotPresignedUrl,
+  transcriptSeed,
 }: {
   sessionId: string;
   apiOrigin: string;
@@ -241,20 +251,43 @@ function useAgentSessionMessages({
   projectSlug: string;
   envSlug: string;
   initialMessages: UIMessage[];
-  snapshotPresignedUrl?: string;
-}): UIMessage[] {
+  transcriptSeed?: TranscriptSeed;
+}): {
+  messages: UIMessage[];
+  hasEarlier: boolean;
+  isLoadingEarlier: boolean;
+  loadEarlier: () => void;
+} {
   // Seed with the user messages from the run's task payload.
   const seedMessages = useMemo(
     () => initialMessages.filter((m) => m.role === "user"),
     [initialMessages]
   );
 
+  // The seed is re-read by the loader on every navigation (tab switches in the
+  // inspector pane re-run the session loader), which would otherwise re-trigger
+  // the subscription effect below and replay post-snapshot `.out` chunks on top
+  // of the messages we already accumulated — duplicating any assistant content
+  // that lives past `lastOutEventId` (e.g., a canceled run whose turn never
+  // completed). Hold it behind a ref and keep it out of the effect's deps so
+  // the effect runs exactly once per mount.
+  const transcriptSeedRef = useRef(transcriptSeed);
+  useEffect(() => {
+    transcriptSeedRef.current = transcriptSeed;
+  }, [transcriptSeed]);
+
+  // Cursor for history older than the seeded page. The dashboard seeds the
+  // most recent page server-side; earlier pages are fetched on demand so a long
+  // conversation is not rendered truncated.
+  const [earlierCursor, setEarlierCursor] = useState<string | undefined>(
+    transcriptSeed?.nextCursor
+  );
+  const [isLoadingEarlier, setIsLoadingEarlier] = useState(false);
+
   // `pendingRef` is the authoritative, eagerly-updated message state:
   // chunks mutate this synchronously as they arrive. A throttled flush
   // copies it into React state so UI updates are capped at ~10x/sec.
-  const pendingRef = useRef<Map<string, UIMessage>>(
-    new Map(seedMessages.map((m) => [m.id, m]))
-  );
+  const pendingRef = useRef<Map<string, UIMessage>>(new Map(seedMessages.map((m) => [m.id, m])));
   const timestampsRef = useRef<Map<string, number>>(
     new Map(seedMessages.map((m) => [m.id, INITIAL_PAYLOAD_TIMESTAMP]))
   );
@@ -282,6 +315,7 @@ function useAgentSessionMessages({
   const lastFlushAtRef = useRef<number>(0);
   const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scheduleFlush = useRef<() => void>(() => {});
+
   scheduleFlush.current = () => {
     if (pendingTimerRef.current !== null) return; // already scheduled
     const now = Date.now();
@@ -308,7 +342,9 @@ function useAgentSessionMessages({
       if (!res) return false;
       for (const [mid, msg] of pendingRef.current) {
         const parts = (msg.parts ?? []) as Array<Record<string, unknown>>;
-        const idx = parts.findIndex((p) => (p as { toolCallId?: string }).toolCallId === toolCallId);
+        const idx = parts.findIndex(
+          (p) => (p as { toolCallId?: string }).toolCallId === toolCallId
+        );
         if (idx < 0) continue;
         const cur = parts[idx]!;
         const terminal =
@@ -323,7 +359,11 @@ function useAgentSessionMessages({
           res.output === undefined &&
           res.errorText === undefined
         ) {
-          return false; // already applied
+          // Already applied. If the part has reached a terminal state, drop
+          // the buffered resolution so the Map doesn't grow unbounded on
+          // long-lived sessions with many tool calls.
+          if (terminal) pendingResolutionsRef.current.delete(toolCallId);
+          return false;
         }
         const next = parts.slice();
         next[idx] = {
@@ -334,6 +374,13 @@ function useAgentSessionMessages({
           state: nextState,
         };
         pendingRef.current.set(mid, { ...msg, parts: next } as UIMessage);
+        // Drop the buffered entry once the part has landed at a terminal
+        // state — no future `.out` chunk will need this resolution.
+        const reachedTerminal =
+          nextState === "output-available" ||
+          nextState === "output-error" ||
+          nextState === "output-denied";
+        if (reachedTerminal) pendingResolutionsRef.current.delete(toolCallId);
         return true;
       }
       return false;
@@ -359,40 +406,17 @@ function useAgentSessionMessages({
      * have a snapshot (e.g. `hydrateMessages` customers, or sessions that
      * have never completed a turn).
      */
-    const loadSnapshot = async (): Promise<string | undefined> => {
-      if (!snapshotPresignedUrl) return undefined;
-      try {
-        const resp = await fetch(snapshotPresignedUrl, { signal: abort.signal });
-        if (!resp.ok) return undefined;
-        const json = (await resp.json()) as unknown;
-        const parsed = ChatSnapshotV1Schema.safeParse(json);
-        if (!parsed.success) return undefined;
-        const snapshot = parsed.data;
-        // Preserve the snapshot's array order in the final render by
-        // giving each message a unique, monotonically increasing
-        // timestamp from `(savedAt - count + index)`. Real chunk
-        // timestamps from the SSE path use S2 arrival ms (positive
-        // numbers in the present), so anything below `savedAt` sorts
-        // before live chunks while preserving snapshot order among
-        // themselves.
-        const count = snapshot.messages.length;
-        snapshot.messages.forEach((raw, i) => {
-          const message = raw as UIMessage;
-          if (!message?.id) return;
-          // The snapshot's seed wins over the task-payload seed for any
-          // overlapping ids (the snapshot represents the agent's
-          // canonical accumulator, post-turn).
-          pendingRef.current.set(message.id, message);
-          if (!timestampsRef.current.has(message.id)) {
-            timestampsRef.current.set(message.id, snapshot.savedAt - count + i);
-          }
-        });
-        scheduleFlush.current();
-        return snapshot.lastOutEventId;
-      } catch {
-        // 404 / network / parse / abort — fall back to seq=0 SSE
-        return undefined;
+    const loadSnapshot = (): string | undefined => {
+      const seed = transcriptSeedRef.current;
+      if (!seed) return undefined;
+      for (const { id, message, timestamp } of seed.messages) {
+        // The transcript wins over the task-payload seed for any overlapping
+        // ids: it is the agent's canonical accumulator, post-turn.
+        pendingRef.current.set(id, message);
+        timestampsRef.current.set(id, timestamp);
       }
+      if (seed.messages.length > 0) scheduleFlush.current();
+      return seed.lastOutEventId;
     };
 
     const outputSubOptions = (lastEventId: string | undefined) =>
@@ -434,7 +458,7 @@ function useAgentSessionMessages({
         // at seq=0 — which, post-trim, contains roughly one turn of
         // records (acceptable fallback for `hydrateMessages` sessions
         // and fresh sessions).
-        const snapshotLastEventId = await loadSnapshot();
+        const snapshotLastEventId = loadSnapshot();
         if (abort.signal.aborted) return;
 
         const sub = new SSEStreamSubscription(outputUrl, outputSubOptions(snapshotLastEventId));
@@ -576,7 +600,11 @@ function useAgentSessionMessages({
 
             // New user turns — merge in (dedupe by id).
             for (const m of candidates) {
-              if (m == null || (m as { role?: string }).role !== "user" || typeof m.id !== "string") {
+              if (
+                m == null ||
+                (m as { role?: string }).role !== "user" ||
+                typeof m.id !== "string"
+              ) {
                 continue;
               }
               if (pendingRef.current.has(m.id)) continue;
@@ -629,11 +657,50 @@ function useAgentSessionMessages({
         pendingTimerRef.current = null;
       }
     };
-  }, [sessionId, apiOrigin, orgSlug, projectSlug, envSlug, snapshotPresignedUrl]);
+    // `snapshotPresignedUrl` is intentionally NOT in this dep list — see
+    // `snapshotUrlRef` above for the reasoning. Including it caused the
+    // subscription to tear down + replay on every inspector tab click,
+    // which appended duplicate parts to any assistant message whose
+    // chunks lived past `snapshot.lastOutEventId`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, apiOrigin, orgSlug, projectSlug, envSlug]);
 
-  return useMemo(() => {
+  const loadEarlier = useCallback(() => {
+    if (earlierCursor === undefined || isLoadingEarlier) return;
+    setIsLoadingEarlier(true);
+
+    const origin = typeof window !== "undefined" ? window.location.origin : apiOrigin;
+    const url =
+      `${origin}/resources/orgs/${orgSlug}/projects/${projectSlug}/env/${envSlug}` +
+      `/sessions/${encodeURIComponent(sessionId)}/transcript?before=${encodeURIComponent(
+        earlierCursor
+      )}`;
+
+    fetch(url)
+      .then((resp) => (resp.ok ? resp.json() : Promise.reject(new Error(String(resp.status)))))
+      .then((raw) => {
+        const body = raw as { messages?: TranscriptSeed["messages"]; nextCursor?: string };
+        for (const { id, message, timestamp } of body.messages ?? []) {
+          // Earlier history never overwrites a message already on screen: what
+          // is here came from the stream or a newer page and is at least as
+          // current.
+          if (pendingRef.current.has(id)) continue;
+          pendingRef.current.set(id, message);
+          timestampsRef.current.set(id, timestamp);
+        }
+        setEarlierCursor(body.nextCursor);
+        scheduleFlush.current();
+      })
+      .catch(() => {
+        // Leave the cursor in place so the control stays available to retry.
+      })
+      .finally(() => setIsLoadingEarlier(false));
+  }, [earlierCursor, isLoadingEarlier, apiOrigin, orgSlug, projectSlug, envSlug, sessionId]);
+
+  const sorted = useMemo(() => {
     const timestamps = timestampsRef.current;
     const arr = Array.from(messagesById.values());
+
     arr.sort((a, b) => {
       const ta = timestamps.get(a.id) ?? 0;
       const tb = timestamps.get(b.id) ?? 0;
@@ -644,6 +711,13 @@ function useAgentSessionMessages({
     });
     return arr;
   }, [messagesById]);
+
+  return {
+    messages: sorted,
+    hasEarlier: earlierCursor !== undefined,
+    isLoadingEarlier,
+    loadEarlier,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -896,10 +970,7 @@ function withNewPart(msg: UIMessage, part: AnyPart): UIMessage {
   } as UIMessage;
 }
 
-function updatePart(
-  msg: UIMessage,
-  updater: (part: AnyPart) => AnyPart | null
-): UIMessage {
+function updatePart(msg: UIMessage, updater: (part: AnyPart) => AnyPart | null): UIMessage {
   const parts = (msg.parts ?? []) as AnyPart[];
   let changed = false;
   const next = parts.map((p) => {

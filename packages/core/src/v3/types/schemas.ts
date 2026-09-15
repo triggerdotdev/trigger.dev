@@ -1,21 +1,41 @@
-export type SchemaZodEsque<TInput, TParsedInput> = {
+type SchemaZodEsque<TInput, TParsedInput> = {
   _input: TInput;
   _output: TParsedInput;
+  parse: (input: unknown) => TParsedInput;
+  parseAsync: (input: unknown) => Promise<TParsedInput>;
+  safeParse: (
+    input: unknown
+  ) => { success: true; data: TParsedInput } | { success: false; error: any };
+};
+
+export type AnyZodSchema = SchemaZodEsque<any, any>;
+export type inferZodSchemaInput<TSchema extends AnyZodSchema> = TSchema["_input"];
+export type inferZodSchemaOutput<TSchema extends AnyZodSchema> = TSchema["_output"];
+
+export type ZodIssueLike = {
+  message: string;
+  path: ReadonlyArray<PropertyKey>;
+};
+
+export type ZodErrorLike = {
+  message: string;
+  issues: ReadonlyArray<ZodIssueLike>;
 };
 
 export function isSchemaZodEsque<TInput, TParsedInput>(
-  schema: Schema
+  schema: unknown
 ): schema is SchemaZodEsque<TInput, TParsedInput> {
   return (
     typeof schema === "object" &&
-    "_def" in schema &&
+    schema !== null &&
+    ("_zod" in schema || "_def" in schema) &&
     "parse" in schema &&
     "parseAsync" in schema &&
     "safeParse" in schema
   );
 }
 
-export type SchemaValibotEsque<TInput, TParsedInput> = {
+type SchemaValibotEsque<TInput, TParsedInput> = {
   schema: {
     _types?: {
       input: TInput;
@@ -30,7 +50,7 @@ export function isSchemaValibotEsque<TInput, TParsedInput>(
   return typeof schema === "object" && "_types" in schema;
 }
 
-export type SchemaArkTypeEsque<TInput, TParsedInput> = {
+type SchemaArkTypeEsque<TInput, TParsedInput> = {
   inferIn: TInput;
   infer: TParsedInput;
 };
@@ -41,52 +61,50 @@ export function isSchemaArkTypeEsque<TInput, TParsedInput>(
   return typeof schema === "object" && "_inferIn" in schema && "_infer" in schema;
 }
 
-export type SchemaMyZodEsque<TInput> = {
+type SchemaMyZodEsque<TInput> = {
   parse: (input: any) => TInput;
 };
 
-export type SchemaSuperstructEsque<TInput> = {
+type SchemaSuperstructEsque<TInput> = {
   create: (input: unknown) => TInput;
 };
 
-export type SchemaCustomValidatorEsque<TInput> = (input: unknown) => Promise<TInput> | TInput;
+type SchemaCustomValidatorEsque<TInput> = (input: unknown) => Promise<TInput> | TInput;
 
-export type SchemaYupEsque<TInput> = {
+type SchemaYupEsque<TInput> = {
   validateSync: (input: unknown) => TInput;
 };
 
-export type SchemaScaleEsque<TInput> = {
+type SchemaScaleEsque<TInput> = {
   assert(value: unknown): asserts value is TInput;
 };
 
-export type SchemaWithoutInput<TInput> =
+type SchemaWithoutInput<TInput> =
   | SchemaCustomValidatorEsque<TInput>
   | SchemaMyZodEsque<TInput>
   | SchemaScaleEsque<TInput>
   | SchemaSuperstructEsque<TInput>
   | SchemaYupEsque<TInput>;
 
-export type SchemaWithInputOutput<TInput, TParsedInput> =
+type SchemaWithInputOutput<TInput, TParsedInput> =
   | SchemaZodEsque<TInput, TParsedInput>
   | SchemaValibotEsque<TInput, TParsedInput>
   | SchemaArkTypeEsque<TInput, TParsedInput>;
 
 export type Schema = SchemaWithInputOutput<any, any> | SchemaWithoutInput<any>;
 
-export type inferSchema<TSchema extends Schema> = TSchema extends SchemaWithInputOutput<
-  infer $TIn,
-  infer $TOut
->
-  ? {
-      in: $TIn;
-      out: $TOut;
-    }
-  : TSchema extends SchemaWithoutInput<infer $InOut>
-  ? {
-      in: $InOut;
-      out: $InOut;
-    }
-  : never;
+type inferSchema<TSchema extends Schema> =
+  TSchema extends SchemaWithInputOutput<infer $TIn, infer $TOut>
+    ? {
+        in: $TIn;
+        out: $TOut;
+      }
+    : TSchema extends SchemaWithoutInput<infer $InOut>
+      ? {
+          in: $InOut;
+          out: $InOut;
+        }
+      : never;
 
 export type inferSchemaIn<
   TSchema extends Schema | undefined,

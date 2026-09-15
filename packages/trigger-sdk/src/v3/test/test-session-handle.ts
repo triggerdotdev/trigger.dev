@@ -4,14 +4,9 @@ import type {
   StreamWriteResult,
   WriterStreamOptions,
 } from "@trigger.dev/core/v3";
-import { ensureReadableStream, ManualWaitpointPromise } from "@trigger.dev/core/v3";
-import {
-  SessionHandle,
-  SessionInputChannel,
-  SessionOutputChannel,
-  SessionPipeStreamOptions,
-  SessionSubscribeOptions,
-} from "../sessions.js";
+import { ensureReadableStream } from "@trigger.dev/core/v3";
+import type { SessionPipeStreamOptions, SessionSubscribeOptions } from "../sessions.js";
+import { SessionHandle, SessionInputChannel, SessionOutputChannel } from "../sessions.js";
 
 /**
  * Stub for `SessionInputChannel.wait` that skips the apiClient round-trip
@@ -27,33 +22,33 @@ import {
  * network call.
  */
 class TestSessionInputChannel extends SessionInputChannel {
-  constructor(sessionId: string, private readonly getAbortSignal: () => AbortSignal | undefined) {
+  constructor(
+    sessionId: string,
+    private readonly getAbortSignal: () => AbortSignal | undefined
+  ) {
     super(sessionId);
   }
 
-  // Override only the `wait` path. `on` / `once` / `peek` / `send`
-  // continue to flow through the real `sessionStreams` global, which
-  // the mock task context installs as a `TestSessionStreamManager`.
-  wait<T = unknown>(): ManualWaitpointPromise<T> {
-    return new ManualWaitpointPromise<T>((resolve: (value: { ok: false; error: Error }) => void) => {
-      const signal = this.getAbortSignal();
-      if (!signal) {
-        // Harness hasn't wired up its run signal yet — nothing to abort
-        // on. Stay pending; the run loop should never reach this state
-        // in practice but we don't want to throw here either.
-        return;
-      }
-      const onAbort = () => {
-        resolve({
-          ok: false,
-          error: new Error("session.in.wait() aborted by test harness"),
-        });
-      };
-      if (signal.aborted) {
-        onAbort();
-        return;
-      }
-      signal.addEventListener("abort", onAbort, { once: true });
+  /**
+   * Override the one step that talks to the network. Everything built on top
+   * of it (`wait`, and the chat facades' route waits) then runs its real
+   * implementation against the in-memory stream manager, so the harness stubs
+   * a boundary instead of reimplementing a composite.
+   */
+  async awaitWake(): Promise<{ ok: true; waitpointId: string } | { ok: false; error: Error }> {
+    const signal = this.getAbortSignal();
+    if (!signal) {
+      return new Promise(() => {});
+    }
+    if (signal.aborted) {
+      return { ok: false, error: new Error("session.in.wait() aborted by test harness") };
+    }
+    return new Promise((resolve) => {
+      signal.addEventListener(
+        "abort",
+        () => resolve({ ok: false, error: new Error("session.in.wait() aborted by test harness") }),
+        { once: true }
+      );
     });
   }
 }
@@ -106,7 +101,7 @@ async function drainInto<T>(
  * Mirrors {@link SessionOutputChannel}'s public shape — `pipe` / `writer`
  * / `append` / `read` — so the agent's existing code paths work unchanged.
  */
-export class TestSessionOutputChannel extends SessionOutputChannel {
+class TestSessionOutputChannel extends SessionOutputChannel {
   constructor(
     sessionId: string,
     private readonly state: TestSessionOutState
@@ -124,32 +119,37 @@ export class TestSessionOutputChannel extends SessionOutputChannel {
   ): PipeStreamResult<T> {
     const state = this.state;
     const readChunks: T[] = [];
+    let pipeError: unknown;
     let resolveDone!: () => void;
     const done = new Promise<void>((resolve) => {
       resolveDone = resolve;
     });
 
     (async () => {
-      const readable = ensureReadableStream(value);
-      const reader = readable.getReader();
+      let reader: ReadableStreamDefaultReader<T> | undefined;
       try {
+        const readable = ensureReadableStream(value);
+        reader = readable.getReader();
         while (true) {
           const { done: d, value: v } = await reader.read();
-          if (d) return;
+          if (d) break;
           readChunks.push(v as T);
           notify(state, v);
         }
+      } catch (err) {
+        // Mirror production: a source-stream error (or a throw from stream
+        // setup) rejects waitUntilComplete instead of being silently
+        // swallowed, so callers (e.g. chat.pipeAndCapture) can observe it.
+        pipeError = err;
       } finally {
         try {
-          reader.releaseLock();
+          reader?.releaseLock();
         } catch {
           // ignore
         }
         resolveDone();
       }
-    })().catch(() => {
-      resolveDone();
-    });
+    })();
 
     const replayStream = new ReadableStream<T>({
       async start(controller) {
@@ -167,6 +167,7 @@ export class TestSessionOutputChannel extends SessionOutputChannel {
       },
       waitUntilComplete: async () => {
         await done;
+        if (pipeError) throw pipeError;
         return emptyResult;
       },
     };
@@ -198,9 +199,7 @@ export class TestSessionOutputChannel extends SessionOutputChannel {
           notify(state, part);
         },
         merge(streamArg) {
-          ongoing.push(
-            drainInto(streamArg, state).catch(() => {})
-          );
+          ongoing.push(drainInto(streamArg, state).catch(() => {}));
         },
       });
 
@@ -260,11 +259,23 @@ export class TestSessionOutputChannel extends SessionOutputChannel {
       for (const [name, value] of extraHeaders) {
         if (name === "public-access-token") {
           synthetic.publicAccessToken = value;
+        } else if (name === "session-in-event-id") {
+          synthetic.sessionInEventId = value;
+        } else if (name === "session-in-consumed-id") {
+          synthetic.sessionInConsumedId = value;
+        } else if (name === "session-closed") {
+          synthetic.sessionClosed = value === "true";
+        } else if (name === "session-closed-reason") {
+          synthetic.reason = value;
         }
       }
     }
     notify(this.state, synthetic);
-    return {};
+    // Project a synthetic monotonic seq_num as the ack's `lastEventId`,
+    // mirroring what S2 returns in production (there it's the control
+    // record's seq_num). Using the running `.out` record count lets
+    // `chat.writeTurnComplete()` surface a real resume cursor in tests.
+    return { lastEventId: String(this.state.chunks.length) };
   }
 
   /**

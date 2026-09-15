@@ -4,12 +4,11 @@ type UseElementVisibilityOptions = {
   onVisibilityChange?: (isVisible: boolean) => void;
 };
 
-export function useElementVisibility({
-  onVisibilityChange,
-}: UseElementVisibilityOptions = {}) {
+export function useElementVisibility({ onVisibilityChange }: UseElementVisibilityOptions = {}) {
   const ref = useRef<HTMLDivElement>(null);
   const isVisibleRef = useRef(false);
   const callbackRef = useRef(onVisibilityChange);
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
   callbackRef.current = onVisibilityChange;
 
   useEffect(() => {

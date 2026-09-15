@@ -1,5 +1,6 @@
 import type {
   ClickHouse,
+  ClickHouseSettings,
   LlmMetricsV1Input,
   MetricsV1Input,
   TaskEventDetailedSummaryV1Result,
@@ -8,26 +9,29 @@ import type {
   TaskEventV1Input,
   TaskEventV2Input,
 } from "@internal/clickhouse";
-import { Attributes, startSpan, trace, Tracer } from "@internal/tracing";
+import type { Attributes, Counter, Meter, Tracer } from "@internal/tracing";
+import { getMeter, startSpan, trace } from "@internal/tracing";
 
 import { createJsonErrorObject } from "@trigger.dev/core/v3/errors";
 import { serializeTraceparent } from "@trigger.dev/core/v3/isomorphic";
-import {
+import type {
   AttemptFailedSpanEvent,
   CancellationSpanEvent,
   ExceptionSpanEvent,
-  isAttemptFailedSpanEvent,
-  isCancellationSpanEvent,
-  isExceptionSpanEvent,
   OtherSpanEvent,
-  PRIMARY_VARIANT,
   SpanEvents,
   TaskEventStyle,
   TaskRunError,
 } from "@trigger.dev/core/v3/schemas";
+import {
+  isAttemptFailedSpanEvent,
+  isCancellationSpanEvent,
+  isExceptionSpanEvent,
+  PRIMARY_VARIANT,
+} from "@trigger.dev/core/v3/schemas";
 import { SemanticInternalAttributes } from "@trigger.dev/core/v3/semanticInternalAttributes";
 import { unflattenAttributes } from "@trigger.dev/core/v3/utils/flattenAttributes";
-import { TaskEventLevel } from "@trigger.dev/database";
+import type { TaskEventLevel } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
 import { DynamicFlushScheduler } from "../dynamicFlushScheduler.server";
 import { tracePubSub } from "../services/tracePubSub.server";
@@ -44,13 +48,7 @@ import {
   getNowInNanoseconds,
   parseEventsField,
   removePrivateProperties,
-  isEmptyObject,
 } from "./common.server";
-import {
-  isClickHouseJsonParseError,
-  parseRowNumberFromError,
-  sanitizeRows,
-} from "./sanitizeRowsOnParseError.server";
 import type {
   CompleteableTaskRun,
   CreateEventInput,
@@ -68,6 +66,11 @@ import type {
   TraceEventOptions,
   TraceSummary,
 } from "./eventRepository.types";
+import {
+  insertWithBadRowSkip,
+  type JsonParseRecoveryOutcome,
+  landedNothing,
+} from "./sanitizeRowsOnParseError.server";
 
 export type ClickhouseEventRepositoryConfig = {
   clickhouse: ClickHouse;
@@ -102,6 +105,8 @@ export type ClickhouseEventRepositoryConfig = {
   otlpMetricsBatchSize?: number;
   otlpMetricsFlushInterval?: number;
   otlpMetricsMaxConcurrency?: number;
+  /** Inject a meter for self-observability; defaults to the global provider. */
+  meter?: Meter;
 };
 
 /**
@@ -117,12 +122,31 @@ export class ClickhouseEventRepository implements IEventRepository {
   private _tracer: Tracer;
   private _version: "v1" | "v2";
   /**
-   * Counts batches that hit a ClickHouse JSON parse failure that survived
-   * one sanitize-retry. These batches are dropped on the floor (the scheduler
-   * is told the flush "succeeded" so its queue counter doesn't leak), and we
-   * track the drop count for observability.
+   * Counts batches where every row was un-ingestable, so nothing landed. Only
+   * incremented when ClickHouse's summary says so exactly (`written_rows === 0`);
+   * expected to stay at zero, since a whole batch of un-ingestable events means
+   * something upstream is broken rather than one bad payload.
    */
   private _permanentlyDroppedBatches = 0;
+  private readonly _droppedBatchesCounter: Counter;
+
+  /**
+   * Counts batches that took the bad-row-skip recovery path: a
+   * `Cannot parse JSON object` failure the sanitizer could not repair, where one
+   * `allow_errors` insert landed the good rows and skipped the un-ingestable
+   * ones. Every such batch lost at least one row, so this is the alertable
+   * signal for these tables.
+   */
+  private _rowIsolationRecoveries = 0;
+  private readonly _rowIsolatedBatchesCounter: Counter;
+
+  /**
+   * Counts rows skipped as un-ingestable. A floor, not an exact count: these
+   * tables carry row-multiplying materialized views, so ClickHouse's insert
+   * summary can't separate skipped base rows from MV rows (see `droppedRowCount`).
+   */
+  private _permanentlyDroppedRows = 0;
+  private readonly _rowsDroppedCounter: Counter;
 
   constructor(config: ClickhouseEventRepositoryConfig) {
     this._clickhouse = config.clickhouse;
@@ -130,7 +154,24 @@ export class ClickhouseEventRepository implements IEventRepository {
     this._tracer = config.tracer ?? trace.getTracer("clickhouseEventRepo", "0.0.1");
     this._version = config.version ?? "v1";
 
+    const meter = config.meter ?? getMeter("ingest-flush");
+    this._droppedBatchesCounter = meter.createCounter("ingest.flush.batches_dropped", {
+      description: "Batches permanently dropped after an unrecoverable ClickHouse JSON parse error",
+      unit: "batches",
+    });
+    this._rowIsolatedBatchesCounter = meter.createCounter("ingest.flush.batches_row_isolated", {
+      description:
+        "Batches recovered by skipping un-ingestable rows (landed the rest) after a ClickHouse JSON parse error; each lost at least one row",
+      unit: "batches",
+    });
+    this._rowsDroppedCounter = meter.createCounter("ingest.flush.rows_dropped", {
+      description:
+        "Rows skipped as un-ingestable, as a lower bound: these tables' materialized views make the exact count underivable from ClickHouse's insert summary",
+      unit: "rows",
+    });
+
     this._flushScheduler = new DynamicFlushScheduler({
+      name: `task_events_${this._version}`,
       batchSize: config.batchSize ?? 1000,
       flushInterval: config.flushInterval ?? 1000,
       callback: this.#flushBatch.bind(this),
@@ -147,6 +188,7 @@ export class ClickhouseEventRepository implements IEventRepository {
     });
 
     this._llmMetricsFlushScheduler = new DynamicFlushScheduler({
+      name: "llm_metrics",
       batchSize: config.llmMetricsBatchSize ?? 5000,
       flushInterval: config.llmMetricsFlushInterval ?? 2000,
       callback: this.#flushLlmMetricsBatch.bind(this),
@@ -158,6 +200,7 @@ export class ClickhouseEventRepository implements IEventRepository {
     });
 
     this._otlpMetricsFlushScheduler = new DynamicFlushScheduler({
+      name: "otlp_metrics",
       batchSize: config.otlpMetricsBatchSize ?? 10000,
       flushInterval: config.otlpMetricsFlushInterval ?? 1000,
       callback: this.#flushOtelMetricsBatch.bind(this),
@@ -175,9 +218,19 @@ export class ClickhouseEventRepository implements IEventRepository {
     return this._config.maximumLiveReloadingSetting ?? 1000;
   }
 
-  /** Exposed for tests and metrics — total batches lost to unrecoverable parse errors. */
+  /** Exposed for tests and metrics — batches where nothing landed even after stripping JSON. */
   get permanentlyDroppedBatches() {
     return this._permanentlyDroppedBatches;
+  }
+
+  /** Exposed for tests and metrics — batches that took the bad-row-skip recovery path. */
+  get rowIsolationRecoveries() {
+    return this._rowIsolationRecoveries;
+  }
+
+  /** Exposed for tests and metrics — rows skipped as un-ingestable (a lower bound). */
+  get permanentlyDroppedRows() {
+    return this._permanentlyDroppedRows;
   }
 
   /**
@@ -248,32 +301,43 @@ export class ClickhouseEventRepository implements IEventRepository {
           ? this._clickhouse.taskEventsV2.insert
           : this._clickhouse.taskEvents.insert;
 
-      const doInsert = async () => {
-        const [insertError, insertResult] = await insertFn(events, {
+      const contextLabel = `task_events_${this._version}`;
+      const rawInsert = async (
+        rows: (TaskEventV1Input | TaskEventV2Input)[],
+        extraSettings?: ClickHouseSettings
+      ) => {
+        const [insertError, insertResult] = await insertFn(rows, {
           params: {
-            clickhouse_settings: this.#getClickhouseInsertSettings(),
+            clickhouse_settings: { ...this.#getClickhouseInsertSettings(), ...extraSettings },
           },
         });
         if (insertError) throw insertError;
         return insertResult;
       };
 
-      const outcome = await this.#insertWithJsonParseRecovery(
-        flushId,
-        events,
-        doInsert,
-        `task_events_${this._version}`
-      );
+      const outcome = await insertWithBadRowSkip({
+        rows: events,
+        contextLabel,
+        logger,
+        logContext: { flushId, version: this._version },
+        insert: (rows) => rawInsert(rows),
+        insertAllowingBadRows: (rows) =>
+          rawInsert(rows, {
+            async_insert: 0,
+            input_format_parallel_parsing: 0,
+            input_format_allow_errors_num: String(rows.length),
+            input_format_allow_errors_ratio: 1,
+          }),
+      });
+      this.#recordRecoveryOutcome(outcome, contextLabel, events.length);
 
-      if (outcome.kind === "dropped") {
-        // Loud log already emitted; nothing landed in ClickHouse — don't publish to Redis.
+      if (landedNothing(outcome, events.length)) {
         return;
       }
 
       logger.debug("ClickhouseEventRepository.flushBatch Inserted batch into clickhouse", {
         events: events.length,
-        insertResult: outcome.insertResult,
-        sanitized: outcome.kind === "sanitized",
+        outcome: outcome.kind,
         version: this._version,
       });
 
@@ -282,127 +346,60 @@ export class ClickhouseEventRepository implements IEventRepository {
   }
 
   async #flushLlmMetricsBatch(flushId: string, rows: LlmMetricsV1Input[]) {
-    const doInsert = async () => {
-      const [insertError, insertResult] = await this._clickhouse.llmMetrics.insert(rows, {
+    const rawInsert = async (batch: LlmMetricsV1Input[], extraSettings?: ClickHouseSettings) => {
+      const [insertError, insertResult] = await this._clickhouse.llmMetrics.insert(batch, {
         params: {
-          clickhouse_settings: this.#getClickhouseInsertSettings(),
+          clickhouse_settings: { ...this.#getClickhouseInsertSettings(), ...extraSettings },
         },
       });
       if (insertError) throw insertError;
       return insertResult;
     };
 
-    const outcome = await this.#insertWithJsonParseRecovery(
-      flushId,
+    const outcome = await insertWithBadRowSkip({
       rows,
-      doInsert,
-      "llm_metrics_v1"
-    );
+      contextLabel: "llm_metrics_v1",
+      logger,
+      logContext: { flushId },
+      insert: (batch) => rawInsert(batch),
+      insertAllowingBadRows: (batch) =>
+        rawInsert(batch, {
+          async_insert: 0,
+          input_format_parallel_parsing: 0,
+          input_format_allow_errors_num: String(batch.length),
+          input_format_allow_errors_ratio: 1,
+        }),
+    });
+    this.#recordRecoveryOutcome(outcome, "llm_metrics_v1", rows.length);
 
-    if (outcome.kind === "dropped") {
+    if (landedNothing(outcome, rows.length)) {
       return;
     }
 
     logger.debug("ClickhouseEventRepository.flushLlmMetricsBatch Inserted LLM metrics batch", {
       rows: rows.length,
-      sanitized: outcome.kind === "sanitized",
+      outcome: outcome.kind,
     });
   }
 
-  /**
-   * Wraps a ClickHouse insert callable with reactive UTF-16 sanitization.
-   *
-   * On a `Cannot parse JSON object` failure:
-   *   1. Sanitize the batch from `max(0, parsedRowN - 1)` onwards (rows
-   *      before the failing one parsed fine — known good).
-   *   2. Retry the insert once with the sanitized batch.
-   *   3. If the retry still fails with the same error class, log loudly,
-   *      increment `permanentlyDroppedBatches`, and return without
-   *      throwing — the scheduler's transient-retry path would just repeat
-   *      the same deterministic failure.
-   *
-   * Non-parse errors propagate unchanged so the scheduler's existing
-   * backoff/retry behaviour still handles transient network or CH issues.
-   */
-  async #insertWithJsonParseRecovery<T extends object>(
-    flushId: string,
-    rows: T[],
-    doInsert: () => Promise<unknown>,
-    contextLabel: string
-  ): Promise<
-    | { kind: "inserted"; insertResult: unknown }
-    | { kind: "sanitized"; insertResult: unknown }
-    | { kind: "dropped" }
-  > {
-    try {
-      return { kind: "inserted", insertResult: await doInsert() };
-    } catch (firstError) {
-      if (!isClickHouseJsonParseError(firstError)) throw firstError;
+  #recordRecoveryOutcome(
+    outcome: JsonParseRecoveryOutcome,
+    contextLabel: string,
+    batchSize: number
+  ) {
+    if (outcome.kind !== "recovered") {
+      return;
+    }
 
-      const firstMessage =
-        typeof firstError === "object" && firstError !== null && "message" in firstError
-          ? String((firstError as { message?: unknown }).message ?? "")
-          : String(firstError);
+    this._rowIsolationRecoveries += 1;
+    this._rowIsolatedBatchesCounter.add(1, { table: contextLabel });
 
-      // Sanitize the whole batch. ClickHouse's `at row N` index is logged
-      // for observability but not used to slice — its semantics under
-      // parallel parsing are not stable enough to safely skip rows.
-      const rowHint = parseRowNumberFromError(firstMessage);
-      const { rowsTouched, fieldsSanitized } = sanitizeRows(rows);
-
-      // Sanitizer found nothing to fix → retrying the exact same batch is
-      // guaranteed to hit the same deterministic parse failure. Skip the
-      // wasted ClickHouse round-trip and drop loudly. Throwing instead would
-      // hand the failure back to the scheduler's 3× transient-retry loop —
-      // exactly the retry storm this wrapper is designed to avoid.
-      if (fieldsSanitized === 0) {
+    if (outcome.rowsDropped > 0) {
+      this._permanentlyDroppedRows += outcome.rowsDropped;
+      this._rowsDroppedCounter.add(outcome.rowsDropped, { table: contextLabel });
+      if (outcome.rowsDroppedExact && outcome.rowsDropped === batchSize) {
         this._permanentlyDroppedBatches += 1;
-        logger.error(
-          "Dropped batch — ClickHouse JSON parse error but sanitizer found nothing to fix",
-          {
-            flushId,
-            contextLabel,
-            batchSize: rows.length,
-            clickhouseRowHint: rowHint,
-            permanentlyDroppedBatches: this._permanentlyDroppedBatches,
-            sampleRow: JSON.stringify(rows[0] ?? null).slice(0, 1024),
-            clickhouseError: firstMessage.split("\n")[0],
-          }
-        );
-        return { kind: "dropped" };
-      }
-
-      logger.warn("Sanitizing batch after ClickHouse JSON parse error", {
-        flushId,
-        contextLabel,
-        batchSize: rows.length,
-        clickhouseRowHint: rowHint,
-        rowsTouched,
-        fieldsSanitized,
-        clickhouseError: firstMessage.split("\n")[0],
-      });
-
-      try {
-        return { kind: "sanitized", insertResult: await doInsert() };
-      } catch (retryError) {
-        if (!isClickHouseJsonParseError(retryError)) throw retryError;
-
-        this._permanentlyDroppedBatches += 1;
-        const retryMessage =
-          typeof retryError === "object" && retryError !== null && "message" in retryError
-            ? String((retryError as { message?: unknown }).message ?? "")
-            : String(retryError);
-        logger.error("Dropped batch after sanitize-retry still hit ClickHouse JSON parse error", {
-          flushId,
-          contextLabel,
-          batchSize: rows.length,
-          permanentlyDroppedBatches: this._permanentlyDroppedBatches,
-          sampleRow: JSON.stringify(rows[0] ?? null).slice(0, 1024),
-          firstError: firstMessage.split("\n")[0],
-          retryError: retryMessage.split("\n")[0],
-        });
-
-        return { kind: "dropped" };
+        this._droppedBatchesCounter.add(1, { table: contextLabel });
       }
     }
   }
@@ -889,7 +886,7 @@ export class ClickhouseEventRepository implements IEventRepository {
 
     const traceId = options.spanParentAsLink
       ? generateTraceId()
-      : propagatedContext?.traceparent?.traceId ?? generateTraceId();
+      : (propagatedContext?.traceparent?.traceId ?? generateTraceId());
     const parentId = options.spanParentAsLink ? undefined : propagatedContext?.traceparent?.spanId;
     const spanId = options.spanIdSeed
       ? generateDeterministicSpanId(traceId, options.spanIdSeed)
@@ -1298,44 +1295,355 @@ export class ClickhouseEventRepository implements IEventRepository {
     endCreatedAt?: Date,
     options?: { includeDebugLogs?: boolean }
   ): Promise<TraceSummary | undefined> {
-    const startCreatedAtWithBuffer = new Date(startCreatedAt.getTime() - 60_000);
-    const endCreatedAtWithBuffer = endCreatedAt
-      ? new Date(endCreatedAt.getTime() + 60_000)
-      : undefined;
+    const limit = this._config.maximumTraceSummaryViewCount;
+    const records = await this.#fetchTraceSummaryRecords({
+      environmentId,
+      traceId,
+      startCreatedAt,
+      endCreatedAt,
+      options,
+      limit,
+    });
 
-    const queryBuilder =
-      this._version === "v2"
-        ? this._clickhouse.taskEventsV2.traceSummaryQueryBuilder()
-        : this._clickhouse.taskEvents.traceSummaryQueryBuilder();
+    if (!records) {
+      return;
+    }
+
+    const summary = this.#buildTraceSummaryFromRecords(records);
+    if (!summary) {
+      return;
+    }
+
+    return {
+      ...summary,
+      isTruncated: limit !== undefined && records.length >= limit,
+    };
+  }
+
+  async getTraceSubtreeSummary(
+    storeTable: TaskEventStoreTable,
+    environmentId: string,
+    traceId: string,
+    anchorSpanId: string,
+    startCreatedAt: Date,
+    endCreatedAt?: Date,
+    options?: { includeDebugLogs?: boolean }
+  ): Promise<TraceSummary | undefined> {
+    const { records, isTruncated, missingAnchor } = await this.#fetchTraceSubtreeRecords({
+      environmentId,
+      traceId,
+      anchorSpanId,
+      startCreatedAt,
+      endCreatedAt,
+      options,
+      limit: this._config.maximumTraceSummaryViewCount,
+    });
+
+    if (missingAnchor) {
+      return;
+    }
+
+    const summary = this.#buildTraceSummaryFromRecords(records, {
+      rootSpanId: anchorSpanId,
+    });
+
+    if (!summary) {
+      return;
+    }
+
+    return {
+      ...summary,
+      isTruncated,
+    };
+  }
+
+  async #fetchTraceSubtreeRecords({
+    environmentId,
+    traceId,
+    anchorSpanId,
+    startCreatedAt,
+    endCreatedAt,
+    options,
+    limit: maxRows,
+  }: {
+    environmentId: string;
+    traceId: string;
+    anchorSpanId: string;
+    startCreatedAt: Date;
+    endCreatedAt?: Date;
+    options?: { includeDebugLogs?: boolean };
+    limit?: number;
+  }): Promise<{
+    records: TaskEventSummaryV1Result[];
+    isTruncated: boolean;
+    missingAnchor: boolean;
+  }> {
+    return this.#collectTraceSubtreeRecords({
+      anchorSpanId,
+      maxRows,
+      // Ancestors are fetched by explicit spanIds and start before the anchor
+      // run's time window, so applying startCreatedAt would wrongly exclude them
+      // (and with it the cancellation/error overrides they propagate downward).
+      fetchAncestor: (batch) =>
+        this.#fetchTraceSummaryRecords({
+          environmentId,
+          traceId,
+          skipTimeWindow: true,
+          options,
+          ...batch,
+        }),
+      fetchDescendant: (batch) =>
+        this.#fetchTraceSummaryRecords({
+          environmentId,
+          traceId,
+          startCreatedAt,
+          endCreatedAt,
+          options,
+          ...batch,
+        }),
+    });
+  }
+
+  async #fetchTraceDetailedSubtreeRecords({
+    environmentId,
+    traceId,
+    anchorSpanId,
+    startCreatedAt,
+    endCreatedAt,
+    options,
+    limit: maxRows,
+  }: {
+    environmentId: string;
+    traceId: string;
+    anchorSpanId: string;
+    startCreatedAt: Date;
+    endCreatedAt?: Date;
+    options?: { includeDebugLogs?: boolean };
+    limit?: number;
+  }): Promise<{
+    records: TaskEventDetailedSummaryV1Result[];
+    isTruncated: boolean;
+    missingAnchor: boolean;
+  }> {
+    return this.#collectTraceSubtreeRecords({
+      anchorSpanId,
+      maxRows,
+      // Ancestors are fetched by explicit spanIds and start before the anchor
+      // run's time window, so applying startCreatedAt would wrongly exclude them
+      // (and with it the cancellation/error overrides they propagate downward).
+      fetchAncestor: (batch) =>
+        this.#fetchTraceDetailedSummaryRecords({
+          environmentId,
+          traceId,
+          skipTimeWindow: true,
+          options,
+          ...batch,
+        }),
+      fetchDescendant: (batch) =>
+        this.#fetchTraceDetailedSummaryRecords({
+          environmentId,
+          traceId,
+          startCreatedAt,
+          endCreatedAt,
+          options,
+          ...batch,
+        }),
+    });
+  }
+
+  async #collectTraceSubtreeRecords<T extends { span_id: string; parent_span_id: string }>({
+    anchorSpanId,
+    maxRows,
+    fetchAncestor,
+    fetchDescendant,
+  }: {
+    anchorSpanId: string;
+    maxRows?: number;
+    fetchAncestor: (batch: { spanIds: string[]; limit?: number }) => Promise<T[] | undefined>;
+    fetchDescendant: (batch: {
+      spanIds?: string[];
+      parentSpanIds?: string[];
+      limit?: number;
+    }) => Promise<T[] | undefined>;
+  }): Promise<{
+    records: T[];
+    isTruncated: boolean;
+    missingAnchor: boolean;
+  }> {
+    const allRecords: T[] = [];
+    const collectedSpanIds = new Set<string>();
+    let isTruncated = false;
+
+    const anchorRecords = await fetchDescendant({
+      spanIds: [anchorSpanId],
+      limit: maxRows,
+    });
+
+    if (!anchorRecords || anchorRecords.length === 0) {
+      return { records: [], isTruncated: false, missingAnchor: true };
+    }
+
+    if (maxRows && anchorRecords.length >= maxRows) {
+      isTruncated = true;
+    }
+
+    allRecords.push(...anchorRecords);
+    collectedSpanIds.add(anchorSpanId);
+
+    let parentSpanId = this.#parentSpanIdFromRecords(anchorRecords, anchorSpanId);
+    while (parentSpanId) {
+      if (collectedSpanIds.has(parentSpanId)) {
+        break;
+      }
+
+      if (maxRows && allRecords.length >= maxRows) {
+        isTruncated = true;
+        break;
+      }
+
+      const parentRecords = await fetchAncestor({
+        spanIds: [parentSpanId],
+        limit: maxRows ? maxRows - allRecords.length : undefined,
+      });
+
+      if (!parentRecords || parentRecords.length === 0) {
+        break;
+      }
+
+      allRecords.push(...parentRecords);
+      collectedSpanIds.add(parentSpanId);
+      parentSpanId = this.#parentSpanIdFromRecords(parentRecords, parentSpanId);
+    }
+
+    // Walk descendants level-by-level rather than fetching everything after the anchor in one
+    // windowed query. parent_span_id isn't in the sort key, so each level rescans roughly the same
+    // granules - but trace depth is small in practice and repeated granule reads stay cached. A
+    // single broad query would pull every span after the anchor (a superset of the subtree) and
+    // make the maxRows cap drop real subtree spans in favour of unrelated ones.
+    let frontier = [anchorSpanId];
+    while (frontier.length > 0) {
+      if (maxRows && allRecords.length >= maxRows) {
+        isTruncated = true;
+        break;
+      }
+
+      const remaining = maxRows ? maxRows - allRecords.length : undefined;
+      const childRecords = await fetchDescendant({
+        parentSpanIds: frontier,
+        limit: remaining,
+      });
+
+      if (!childRecords || childRecords.length === 0) {
+        break;
+      }
+
+      if (remaining !== undefined && childRecords.length >= remaining) {
+        isTruncated = true;
+      }
+
+      allRecords.push(...childRecords);
+
+      const nextFrontier: string[] = [];
+      for (const record of childRecords) {
+        if (!collectedSpanIds.has(record.span_id)) {
+          collectedSpanIds.add(record.span_id);
+          nextFrontier.push(record.span_id);
+        }
+      }
+
+      frontier = nextFrontier;
+    }
+
+    return {
+      records: allRecords,
+      isTruncated,
+      missingAnchor: false,
+    };
+  }
+
+  #parentSpanIdFromRecords(
+    records: Array<{ span_id: string; parent_span_id: string }>,
+    spanId: string
+  ): string | undefined {
+    const parentSpanId = records.find((record) => record.span_id === spanId)?.parent_span_id;
+    return parentSpanId ? parentSpanId : undefined;
+  }
+
+  #createTraceSummaryQueryBuilder() {
+    return this._version === "v2"
+      ? this._clickhouse.taskEventsV2.traceSummaryQueryBuilder()
+      : this._clickhouse.taskEvents.traceSummaryQueryBuilder();
+  }
+
+  async #fetchTraceSummaryRecords({
+    environmentId,
+    traceId,
+    startCreatedAt,
+    endCreatedAt,
+    options,
+    spanIds,
+    parentSpanIds,
+    limit,
+    skipTimeWindow,
+  }: {
+    environmentId: string;
+    traceId: string;
+    startCreatedAt?: Date;
+    endCreatedAt?: Date;
+    options?: { includeDebugLogs?: boolean };
+    spanIds?: string[];
+    parentSpanIds?: string[];
+    limit?: number;
+    skipTimeWindow?: boolean;
+  }): Promise<TaskEventSummaryV1Result[] | undefined> {
+    const queryBuilder = this.#createTraceSummaryQueryBuilder();
 
     queryBuilder.where("environment_id = {environmentId: String}", { environmentId });
     queryBuilder.where("trace_id = {traceId: String}", { traceId });
-    queryBuilder.where("start_time >= {startCreatedAt: String}", {
-      startCreatedAt: convertDateToNanoseconds(startCreatedAtWithBuffer).toString(),
-    });
 
-    if (endCreatedAtWithBuffer) {
-      queryBuilder.where("start_time <= {endCreatedAt: String}", {
-        endCreatedAt: convertDateToNanoseconds(endCreatedAtWithBuffer).toString(),
-      });
-    }
+    if (!skipTimeWindow) {
+      if (!startCreatedAt) {
+        throw new Error("startCreatedAt is required when skipTimeWindow is false");
+      }
 
-    // For v2, add inserted_at filtering for partition pruning
-    if (this._version === "v2") {
-      queryBuilder.where("inserted_at >= {insertedAtStart: DateTime64(3)}", {
-        insertedAtStart: convertDateToClickhouseDateTime(startCreatedAtWithBuffer),
+      const startCreatedAtWithBuffer = new Date(startCreatedAt.getTime() - 60_000);
+      const endCreatedAtWithBuffer = endCreatedAt
+        ? new Date(endCreatedAt.getTime() + 60_000)
+        : undefined;
+
+      queryBuilder.where("start_time >= {startCreatedAt: String}", {
+        startCreatedAt: convertDateToNanoseconds(startCreatedAtWithBuffer).toString(),
       });
-      // No upper bound on inserted_at - we want all events inserted up to now
+
+      if (endCreatedAtWithBuffer) {
+        queryBuilder.where("start_time <= {endCreatedAt: String}", {
+          endCreatedAt: convertDateToNanoseconds(endCreatedAtWithBuffer).toString(),
+        });
+      }
+
+      if (this._version === "v2") {
+        queryBuilder.where("inserted_at >= {insertedAtStart: DateTime64(3)}", {
+          insertedAtStart: convertDateToClickhouseDateTime(startCreatedAtWithBuffer),
+        });
+      }
     }
 
     if (options?.includeDebugLogs === false) {
       queryBuilder.where("kind != {kind: String}", { kind: "DEBUG_EVENT" });
     }
 
+    if (spanIds && spanIds.length > 0) {
+      queryBuilder.where("span_id IN {spanIds: Array(String)}", { spanIds });
+    }
+
+    if (parentSpanIds && parentSpanIds.length > 0) {
+      queryBuilder.where("parent_span_id IN {parentSpanIds: Array(String)}", { parentSpanIds });
+    }
+
     queryBuilder.orderBy("start_time ASC");
 
-    if (this._config.maximumTraceSummaryViewCount) {
-      queryBuilder.limit(this._config.maximumTraceSummaryViewCount);
+    if (limit) {
+      queryBuilder.limit(limit);
     }
 
     const [queryError, records] = await queryBuilder.execute();
@@ -1344,11 +1652,17 @@ export class ClickhouseEventRepository implements IEventRepository {
       throw queryError;
     }
 
-    if (!records) {
+    return records;
+  }
+
+  #buildTraceSummaryFromRecords(
+    records: TaskEventSummaryV1Result[],
+    options?: { rootSpanId?: string }
+  ): TraceSummary | undefined {
+    if (records.length === 0) {
       return;
     }
 
-    // O(n) grouping instead of O(n²) array spreading
     const recordsGroupedBySpanId: Record<string, TaskEventSummaryV1Result[]> = {};
     for (const record of records) {
       if (!recordsGroupedBySpanId[record.span_id]) {
@@ -1358,9 +1672,8 @@ export class ClickhouseEventRepository implements IEventRepository {
     }
 
     const spanSummaries = new Map<string, SpanSummary>();
-    let rootSpanId: string | undefined;
+    let rootSpanId: string | undefined = options?.rootSpanId;
 
-    // Create temporary metadata cache for this query
     const metadataCache = new Map<string, Record<string, unknown>>();
 
     for (const [spanId, spanRecords] of Object.entries(recordsGroupedBySpanId)) {
@@ -1865,48 +2178,78 @@ export class ClickhouseEventRepository implements IEventRepository {
     return result;
   }
 
-  async getTraceDetailedSummary(
-    storeTable: TaskEventStoreTable,
-    environmentId: string,
-    traceId: string,
-    startCreatedAt: Date,
-    endCreatedAt?: Date,
-    options?: { includeDebugLogs?: boolean }
-  ): Promise<TraceDetailedSummary | undefined> {
-    const startCreatedAtWithBuffer = new Date(startCreatedAt.getTime() - 1000);
+  #createTraceDetailedSummaryQueryBuilder() {
+    return this._version === "v2"
+      ? this._clickhouse.taskEventsV2.traceDetailedSummaryQueryBuilder()
+      : this._clickhouse.taskEvents.traceDetailedSummaryQueryBuilder();
+  }
 
-    const queryBuilder =
-      this._version === "v2"
-        ? this._clickhouse.taskEventsV2.traceDetailedSummaryQueryBuilder()
-        : this._clickhouse.taskEvents.traceDetailedSummaryQueryBuilder();
+  async #fetchTraceDetailedSummaryRecords({
+    environmentId,
+    traceId,
+    startCreatedAt,
+    endCreatedAt,
+    options,
+    spanIds,
+    parentSpanIds,
+    limit,
+    skipTimeWindow,
+  }: {
+    environmentId: string;
+    traceId: string;
+    startCreatedAt?: Date;
+    endCreatedAt?: Date;
+    options?: { includeDebugLogs?: boolean };
+    spanIds?: string[];
+    parentSpanIds?: string[];
+    limit?: number;
+    skipTimeWindow?: boolean;
+  }): Promise<TaskEventDetailedSummaryV1Result[] | undefined> {
+    const queryBuilder = this.#createTraceDetailedSummaryQueryBuilder();
 
     queryBuilder.where("environment_id = {environmentId: String}", { environmentId });
     queryBuilder.where("trace_id = {traceId: String}", { traceId });
-    queryBuilder.where("start_time >= {startCreatedAt: String}", {
-      startCreatedAt: convertDateToNanoseconds(startCreatedAtWithBuffer).toString(),
-    });
 
-    if (endCreatedAt) {
-      queryBuilder.where("start_time <= {endCreatedAt: String}", {
-        endCreatedAt: convertDateToNanoseconds(endCreatedAt).toString(),
-      });
-    }
+    if (!skipTimeWindow) {
+      if (!startCreatedAt) {
+        throw new Error("startCreatedAt is required when skipTimeWindow is false");
+      }
 
-    // For v2, add inserted_at filtering for partition pruning
-    if (this._version === "v2") {
-      queryBuilder.where("inserted_at >= {insertedAtStart: DateTime64(3)}", {
-        insertedAtStart: convertDateToClickhouseDateTime(startCreatedAtWithBuffer),
+      const startCreatedAtWithBuffer = new Date(startCreatedAt.getTime() - 1000);
+
+      queryBuilder.where("start_time >= {startCreatedAt: String}", {
+        startCreatedAt: convertDateToNanoseconds(startCreatedAtWithBuffer).toString(),
       });
+
+      if (endCreatedAt) {
+        queryBuilder.where("start_time <= {endCreatedAt: String}", {
+          endCreatedAt: convertDateToNanoseconds(endCreatedAt).toString(),
+        });
+      }
+
+      if (this._version === "v2") {
+        queryBuilder.where("inserted_at >= {insertedAtStart: DateTime64(3)}", {
+          insertedAtStart: convertDateToClickhouseDateTime(startCreatedAtWithBuffer),
+        });
+      }
     }
 
     if (options?.includeDebugLogs === false) {
       queryBuilder.where("kind != {kind: String}", { kind: "DEBUG_EVENT" });
     }
 
+    if (spanIds && spanIds.length > 0) {
+      queryBuilder.where("span_id IN {spanIds: Array(String)}", { spanIds });
+    }
+
+    if (parentSpanIds && parentSpanIds.length > 0) {
+      queryBuilder.where("parent_span_id IN {parentSpanIds: Array(String)}", { parentSpanIds });
+    }
+
     queryBuilder.orderBy("start_time ASC");
 
-    if (this._config.maximumTraceDetailedSummaryViewCount) {
-      queryBuilder.limit(this._config.maximumTraceDetailedSummaryViewCount);
+    if (limit) {
+      queryBuilder.limit(limit);
     }
 
     const [queryError, records] = await queryBuilder.execute();
@@ -1915,11 +2258,18 @@ export class ClickhouseEventRepository implements IEventRepository {
       throw queryError;
     }
 
-    if (!records) {
+    return records;
+  }
+
+  #buildTraceDetailedSummaryFromRecords(
+    traceId: string,
+    records: TaskEventDetailedSummaryV1Result[],
+    rootSpanId?: string
+  ): TraceDetailedSummary | undefined {
+    if (records.length === 0) {
       return;
     }
 
-    // O(n) grouping instead of O(n²) array spreading
     const recordsGroupedBySpanId: Record<string, TaskEventDetailedSummaryV1Result[]> = {};
     for (const record of records) {
       if (!recordsGroupedBySpanId[record.span_id]) {
@@ -1929,9 +2279,8 @@ export class ClickhouseEventRepository implements IEventRepository {
     }
 
     const spanSummaries = new Map<string, SpanDetailedSummary>();
-    let rootSpanId: string | undefined;
+    let resolvedRootSpanId: string | undefined = rootSpanId;
 
-    // Create temporary metadata cache for this query
     const metadataCache = new Map<string, Record<string, unknown>>();
 
     for (const [spanId, spanRecords] of Object.entries(recordsGroupedBySpanId)) {
@@ -1947,12 +2296,12 @@ export class ClickhouseEventRepository implements IEventRepository {
 
       spanSummaries.set(spanId, spanSummary);
 
-      if (!rootSpanId && !spanSummary.parentId) {
-        rootSpanId = spanId;
+      if (!resolvedRootSpanId && !spanSummary.parentId) {
+        resolvedRootSpanId = spanId;
       }
     }
 
-    if (!rootSpanId) {
+    if (!resolvedRootSpanId) {
       return;
     }
 
@@ -1967,7 +2316,6 @@ export class ClickhouseEventRepository implements IEventRepository {
       return finalSpan;
     });
 
-    // Second pass: build parent-child relationships
     for (const finalSpan of finalSpans) {
       if (finalSpan.parentId) {
         const parent = spanDetailedSummaryMap.get(finalSpan.parentId);
@@ -1977,7 +2325,7 @@ export class ClickhouseEventRepository implements IEventRepository {
       }
     }
 
-    const rootSpan = spanDetailedSummaryMap.get(rootSpanId);
+    const rootSpan = spanDetailedSummaryMap.get(resolvedRootSpanId);
 
     if (!rootSpan) {
       return;
@@ -1987,6 +2335,120 @@ export class ClickhouseEventRepository implements IEventRepository {
       traceId,
       rootSpan,
     };
+  }
+
+  async getTraceDetailedSummary(
+    storeTable: TaskEventStoreTable,
+    environmentId: string,
+    traceId: string,
+    startCreatedAt: Date,
+    endCreatedAt?: Date,
+    options?: { includeDebugLogs?: boolean }
+  ): Promise<TraceDetailedSummary | undefined> {
+    const limit = this._config.maximumTraceDetailedSummaryViewCount;
+    const records = await this.#fetchTraceDetailedSummaryRecords({
+      environmentId,
+      traceId,
+      startCreatedAt,
+      endCreatedAt,
+      options,
+      limit,
+    });
+
+    if (!records) {
+      return;
+    }
+
+    const summary = this.#buildTraceDetailedSummaryFromRecords(traceId, records);
+    if (!summary) {
+      return;
+    }
+
+    return {
+      ...summary,
+      isTruncated: limit !== undefined && records.length >= limit,
+    };
+  }
+
+  async getTraceDetailedSubtreeSummary(
+    storeTable: TaskEventStoreTable,
+    environmentId: string,
+    traceId: string,
+    anchorSpanId: string,
+    startCreatedAt: Date,
+    endCreatedAt?: Date,
+    options?: { includeDebugLogs?: boolean }
+  ): Promise<TraceDetailedSummary | undefined> {
+    const limit = this._config.maximumTraceDetailedSummaryViewCount;
+
+    // Try one capped full-trace query first so the common case stays at a single
+    // round-trip; large traces pay an extra fetch before the subtree walk below.
+    const fullRecords = await this.#fetchTraceDetailedSummaryRecords({
+      environmentId,
+      traceId,
+      startCreatedAt,
+      endCreatedAt,
+      options,
+      limit,
+    });
+
+    if (fullRecords && this.#canReRootDetailedRecordsAtAnchor(fullRecords, anchorSpanId)) {
+      const summary = this.#buildTraceDetailedSummaryFromRecords(
+        traceId,
+        fullRecords,
+        anchorSpanId
+      );
+      if (summary) {
+        return {
+          ...summary,
+          isTruncated: limit !== undefined && fullRecords.length >= limit,
+        };
+      }
+    }
+
+    const { records, isTruncated, missingAnchor } = await this.#fetchTraceDetailedSubtreeRecords({
+      environmentId,
+      traceId,
+      anchorSpanId,
+      startCreatedAt,
+      endCreatedAt,
+      options,
+      limit,
+    });
+
+    if (missingAnchor) {
+      return;
+    }
+
+    const summary = this.#buildTraceDetailedSummaryFromRecords(traceId, records, anchorSpanId);
+    if (!summary) {
+      return;
+    }
+
+    return {
+      ...summary,
+      isTruncated,
+    };
+  }
+
+  // Only checks the direct parent — not the full ancestor chain. Safe in practice
+  // because ancestors have earlier start_time and usually land inside the cap
+  // when the anchor does; otherwise we fall back to the subtree walk.
+  #canReRootDetailedRecordsAtAnchor(
+    records: Array<{ span_id: string; parent_span_id: string }>,
+    anchorSpanId: string
+  ): boolean {
+    const anchorRecord = records.find((record) => record.span_id === anchorSpanId);
+    if (!anchorRecord) {
+      return false;
+    }
+
+    const parentSpanId = anchorRecord.parent_span_id;
+    if (!parentSpanId) {
+      return true;
+    }
+
+    return records.some((record) => record.span_id === parentSpanId);
   }
 
   async *streamTraceEvents(
@@ -2286,52 +2748,6 @@ export const convertDateToClickhouseDateTime = (date: Date): string => {
   // 2024-11-06T20:37:00.123Z -> 2024-11-06 21:37:00.123
   return date.toISOString().replace("T", " ").replace("Z", "");
 };
-
-/**
- * Convert a ClickHouse DateTime64 to nanoseconds since epoch (UTC).
- * Accepts:
- *  - "2025-09-23 12:32:46.130262875"
- *  - "2025-09-23T12:32:46.13"
- *  - "2025-09-23 12:32:46Z"
- *  - "2025-09-23 12:32:46.130262875+02:00"
- */
-export function convertClickhouseDateTime64ToNanosecondsEpoch(date: string): bigint {
-  const s = date.trim();
-  const m = CLICKHOUSE_DATETIME_REGEX.exec(s);
-  if (!m) {
-    throw new Error(`Invalid ClickHouse DateTime64 string: "${date}"`);
-  }
-
-  const year = Number(m[1]);
-  const month = Number(m[2]); // 1-12
-  const day = Number(m[3]); // 1-31
-  const hour = Number(m[4]);
-  const minute = Number(m[5]);
-  const second = Number(m[6]);
-  const fraction = m[7] ?? ""; // up to 9 digits
-  const sign = m[8] as "+" | "-" | undefined;
-  const offH = m[9] ? Number(m[9]) : 0;
-  const offM = m[10] ? Number(m[10]) : 0;
-
-  // Convert fractional seconds to exactly 9 digits (nanoseconds within the second).
-  const nsWithinSecond = Number(fraction.padEnd(9, "0")); // 0..999_999_999
-
-  // Split into millisecond part (for Date) and leftover nanoseconds.
-  const msPart = Math.trunc(nsWithinSecond / 1_000_000); // 0..999
-  const leftoverNs = nsWithinSecond - msPart * 1_000_000; // 0..999_999
-
-  // Build milliseconds since epoch in UTC using Date.UTC (avoids local TZ/DST issues).
-  let msEpoch = Date.UTC(year, month - 1, day, hour, minute, second, msPart);
-
-  // If an explicit offset was provided, adjust to true UTC.
-  if (sign) {
-    const offsetMinutesSigned = (sign === "+" ? 1 : -1) * (offH * 60 + offM);
-    msEpoch -= offsetMinutesSigned * 60_000;
-  }
-
-  // Combine ms to ns with leftover.
-  return BigInt(msEpoch) * 1_000_000n + BigInt(leftoverNs);
-}
 
 /**
  * Convert a ClickHouse DateTime64 to a JS Date.

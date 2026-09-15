@@ -34,7 +34,7 @@ This eliminates the need to manually run the `trigger.dev deploy` command or set
 <Step title="Customize build settings (optional)">
   Configure how your project is built:
 
-  - **Trigger config file**: Path to your `trigger.config.ts` file. By default, we look for it in the root of your repository. The path should be relative to the root of your repository and contain the config file name, e.g., `apps/tasks/trigger.config.ts`.
+  - **Trigger config file**: Auto-detected by default — we find your `trigger.config.ts` anywhere in your repository. Set a path relative to the root of your repository to override it, e.g., `apps/tasks/trigger.config.ts`. If your repository contains more than one config file, set the path of the one to use.
   - **Install command**: Auto-detected by default, but you can override it if necessary. The command will be run from the root of your repository.
   - **Pre-build command**: Run any commands before building and deploying your project, e.g., `pnpm run prisma:generate`. The command will be run from the root of your repository.
 </Step>
@@ -71,6 +71,18 @@ The name of the preview branch matches the branch name of the pull request.
 <Note>
   Preview branch deployments require the preview environment to be enabled on your project. Learn more about [preview branches](/deployment/preview-branches).
 </Note>
+
+## Version skew protection
+
+Every deployment the GitHub integration creates is tagged with the commit SHA it was built from. That is the deploy half of [version skew protection](/deployment/version-skew-protection) — you get it for free.
+
+To complete it, give your running application the same value. Unlike the Vercel integration, we have no access to wherever your app is hosted, so this half is yours to set:
+
+```bash
+TRIGGER_EXTERNAL_DEPLOYMENT_ID=<the-commit-sha-this-release-was-built-from>
+```
+
+If your host already exposes the commit SHA at runtime, set `TRIGGER_AUTOMATIC_SKEW_VERSION_PROTECTION=1` instead and the SDK will find it — see the [platform table](/deployment/version-skew-protection#hosting-platforms).
 
 ## Disconnecting a repository
 

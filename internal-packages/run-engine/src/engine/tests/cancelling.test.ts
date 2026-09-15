@@ -3,7 +3,7 @@ import { trace } from "@internal/tracing";
 import { expect } from "vitest";
 import { RunEngine } from "../index.js";
 import { setTimeout } from "timers/promises";
-import { EventBusEventArgs } from "../eventBus.js";
+import type { EventBusEventArgs } from "../eventBus.js";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 
 vi.setConfig({ testTimeout: 60_000 });
@@ -119,7 +119,7 @@ describe("RunEngine cancelling", () => {
         });
 
         //start the child run
-        const childAttempt = await engine.startRunAttempt({
+        const _childAttempt = await engine.startRunAttempt({
           runId: childRun.id,
           snapshotId: dequeuedChild[0].snapshot.id,
         });
@@ -151,7 +151,7 @@ describe("RunEngine cancelling", () => {
         });
 
         // call completeAttempt manually (this will happen from the worker)
-        const completeResult = await engine.completeRunAttempt({
+        const _completeResult = await engine.completeRunAttempt({
           runId: parentRun.id,
           snapshotId: executionData!.snapshot.id,
           completion: {
@@ -217,9 +217,8 @@ describe("RunEngine cancelling", () => {
         expect(childEvent.run.spanId).toBe(childRun.spanId);
 
         //concurrency should have been released
-        const envConcurrencyCompleted = await engine.runQueue.currentConcurrencyOfEnvironment(
-          authenticatedEnvironment
-        );
+        const envConcurrencyCompleted =
+          await engine.runQueue.currentConcurrencyOfEnvironment(authenticatedEnvironment);
         expect(envConcurrencyCompleted).toBe(0);
       } finally {
         await engine.quit();
@@ -313,9 +312,8 @@ describe("RunEngine cancelling", () => {
       expect(parentEvent.run.spanId).toBe(parentRun.spanId);
 
       //concurrency should have been released
-      const envConcurrencyCompleted = await engine.runQueue.currentConcurrencyOfEnvironment(
-        authenticatedEnvironment
-      );
+      const envConcurrencyCompleted =
+        await engine.runQueue.currentConcurrencyOfEnvironment(authenticatedEnvironment);
       expect(envConcurrencyCompleted).toBe(0);
     } finally {
       await engine.quit();
@@ -440,9 +438,8 @@ describe("RunEngine cancelling", () => {
       expect(parentEvent.run.spanId).toBe(parentRun.spanId);
 
       //concurrency should have been released
-      const envConcurrencyCompleted = await engine.runQueue.currentConcurrencyOfEnvironment(
-        authenticatedEnvironment
-      );
+      const envConcurrencyCompleted =
+        await engine.runQueue.currentConcurrencyOfEnvironment(authenticatedEnvironment);
       expect(envConcurrencyCompleted).toBe(0);
     } finally {
       await engine.quit();

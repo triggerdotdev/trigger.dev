@@ -11,20 +11,21 @@ import type { PrismaClientOrTransaction } from "~/db.server";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { parseDuration } from "./duration.server";
 
-export function isPerOrgBasinsEnabled(): boolean {
+function isPerOrgBasinsEnabled(): boolean {
   return env.REALTIME_STREAMS_PER_ORG_BASINS_ENABLED === "true";
 }
 
-export function defaultRetention(): string {
+function defaultRetention(): string {
   return env.REALTIME_STREAMS_BASIN_DEFAULT_RETENTION;
 }
 
 // Org id is a cuid — fixed-length and stable, so the basin name is
 // collision-free without truncation. Slugs are user-editable and would
 // drift.
-export function basinNameForOrg(org: { id: string }): string {
+function basinNameForOrg(org: { id: string }): string {
   const prefix = env.REALTIME_STREAMS_BASIN_NAME_PREFIX;
   const envName = env.REALTIME_STREAMS_BASIN_NAME_ENV;
   return `${prefix}-${envName}-org-${org.id}`;
@@ -42,7 +43,7 @@ type ProvisionResult =
 
 // Idempotent. Treats S2 409 as success (race with another caller, or
 // previous run that crashed after S2 ack but before the column write).
-export async function provisionBasinForOrg(
+async function provisionBasinForOrg(
   org: ProvisionInput,
   prismaClient: PrismaClientOrTransaction = prisma
 ): Promise<ProvisionResult> {
@@ -76,6 +77,9 @@ export async function provisionBasinForOrg(
     data: { streamBasinName: basin },
   });
 
+  // streamBasinName is embedded in every env of the org; drop all its cached env rows.
+  controlPlaneResolver.invalidateOrganization(org.id);
+
   logger.info("[streamBasinProvisioner] provisioned basin for org", {
     orgId: org.id,
     basin,
@@ -85,10 +89,7 @@ export async function provisionBasinForOrg(
   return { kind: "provisioned", basin, retention };
 }
 
-export async function reconfigureBasinForOrg(
-  orgId: string,
-  retention: string
-): Promise<void> {
+async function reconfigureBasinForOrg(orgId: string, retention: string): Promise<void> {
   if (!isPerOrgBasinsEnabled()) return;
 
   const accessToken = env.REALTIME_STREAMS_S2_ACCESS_TOKEN;
@@ -121,10 +122,7 @@ type EnsureResult =
 // Idempotent: provisions if the org has no basin, PATCHes retention if
 // it does. The single entrypoint the cloud billing app drives — both
 // for the live plan-change path and the bulk backfill.
-export async function ensureBasinForOrg(
-  orgId: string,
-  retention: string
-): Promise<EnsureResult> {
+export async function ensureBasinForOrg(orgId: string, retention: string): Promise<EnsureResult> {
   if (!isPerOrgBasinsEnabled()) {
     return { kind: "skipped", reason: "feature-disabled" };
   }
@@ -136,9 +134,7 @@ export async function ensureBasinForOrg(
   if (!org) return { kind: "skipped", reason: "org-not-found" };
 
   if (!org.streamBasinName) {
-    const result = await provisionBasinForOrg(
-      { id: org.id, streamBasinName: null, retention }
-    );
+    const result = await provisionBasinForOrg({ id: org.id, streamBasinName: null, retention });
     if (result.kind === "provisioned") {
       return { kind: "provisioned", basin: result.basin, retention: result.retention };
     }
@@ -166,6 +162,9 @@ export async function deprovisionBasinForOrg(
     data: { streamBasinName: null },
   });
 
+  // streamBasinName is embedded in every env of the org; drop all its cached env rows.
+  controlPlaneResolver.invalidateOrganization(org.id);
+
   logger.info("[streamBasinProvisioner] deprovisioned basin for org", {
     orgId,
     previousBasin: org.streamBasinName,
@@ -186,7 +185,7 @@ type CreateBasinOptions = {
 };
 
 async function s2CreateBasin(name: string, opts: CreateBasinOptions): Promise<void> {
-  const url = `https://aws.s2.dev/v1/basins`;
+  const url = `${env.REALTIME_STREAMS_S2_ACCOUNT_URL}/basins`;
   const body = {
     basin: name,
     config: {
@@ -223,7 +222,7 @@ type ReconfigureBasinOptions = {
 };
 
 async function s2ReconfigureBasin(name: string, opts: ReconfigureBasinOptions): Promise<void> {
-  const url = `https://aws.s2.dev/v1/basins/${encodeURIComponent(name)}`;
+  const url = `${env.REALTIME_STREAMS_S2_ACCOUNT_URL}/basins/${encodeURIComponent(name)}`;
   const body = {
     default_stream_config: {
       retention_policy: { age: parseDuration(opts.retentionPolicy) },
@@ -245,4 +244,3 @@ async function s2ReconfigureBasin(name: string, opts: ReconfigureBasinOptions): 
   const text = await res.text().catch(() => "");
   throw new Error(`S2 reconfigureBasin failed: ${res.status} ${res.statusText} ${text}`);
 }
-

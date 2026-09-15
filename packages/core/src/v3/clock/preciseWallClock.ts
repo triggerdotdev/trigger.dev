@@ -1,7 +1,7 @@
 import { PreciseDate } from "@google-cloud/precise-date";
-import { Clock, ClockTime } from "./clock.js";
+import type { Clock, ClockTime } from "./clock.js";
 
-export type PreciseWallClockOptions = {
+type PreciseWallClockOptions = {
   origin?: ClockTime;
   now?: PreciseDate;
 };

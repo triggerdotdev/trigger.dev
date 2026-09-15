@@ -129,7 +129,7 @@ describe("RunsRepository (part 1/4)", () => {
       });
 
       // Create runs with different task identifiers
-      const taskRun1 = await prisma.taskRun.create({
+      const _taskRun1 = await prisma.taskRun.create({
         data: {
           friendlyId: "run_task1",
           taskIdentifier: "task-1",
@@ -145,7 +145,7 @@ describe("RunsRepository (part 1/4)", () => {
         },
       });
 
-      const taskRun2 = await prisma.taskRun.create({
+      const _taskRun2 = await prisma.taskRun.create({
         data: {
           friendlyId: "run_task2",
           taskIdentifier: "task-2",
@@ -161,7 +161,7 @@ describe("RunsRepository (part 1/4)", () => {
         },
       });
 
-      const taskRun3 = await prisma.taskRun.create({
+      const _taskRun3 = await prisma.taskRun.create({
         data: {
           friendlyId: "run_task3",
           taskIdentifier: "task-3",

@@ -1,7 +1,9 @@
 import { BackgroundWorkerMetadata, tryCatch } from "@trigger.dev/core/v3";
 import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/isomorphic";
-import { PrismaClientOrTransaction, WorkerDeployment } from "@trigger.dev/database";
+import type { PrismaClientOrTransaction, WorkerDeployment } from "@trigger.dev/database";
+import { webhookPrisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
+import { invalidateOrganizationProjectRuntimeUpdateCache } from "~/services/projectRuntimeUpdates.server";
 import { syncTaskIdentifiers } from "~/services/taskIdentifierRegistry.server";
 import {
   type TaskMetadataCache,
@@ -9,8 +11,7 @@ import {
 } from "~/services/taskMetadataCache.server";
 import { taskMetadataCacheInstance } from "~/services/taskMetadataCacheInstance.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
-import { syncDeclarativeSchedules } from "./createBackgroundWorker.server";
-import { ExecuteTasksWaitingForDeployService } from "./executeTasksWaitingForDeploy";
+import { syncDeclarativeSchedules, syncDeclarativeWebhooks } from "./createBackgroundWorker.server";
 import { compareDeploymentVersions } from "../utils/deploymentVersions";
 
 export type ChangeCurrentDeploymentDirection = "promote" | "rollback";
@@ -112,6 +113,17 @@ export class ChangeCurrentDeploymentService extends BaseService {
       },
     });
 
+    const [cacheInvalidationError] = await tryCatch(
+      this.#invalidateProjectRuntimeUpdateCache(deployment.environmentId)
+    );
+
+    if (cacheInvalidationError) {
+      logger.error("Failed to invalidate project runtime update cache", {
+        error: cacheInvalidationError,
+        environmentId: deployment.environmentId,
+      });
+    }
+
     const [fetchTasksError, tasks] = await tryCatch(
       this._prisma.backgroundWorkerTask.findMany({
         where: { workerId: deployment.workerId! },
@@ -174,17 +186,16 @@ export class ChangeCurrentDeploymentService extends BaseService {
         error: scheduleSyncError,
       });
     }
+  }
 
-    // Only V1 engine workers need the WAITING_FOR_DEPLOY drain — V2 runs sit
-    // in PENDING_VERSION and are handled out of band, so enqueuing here for V2
-    // just produces empty scans of the TaskRun status index.
-    const worker = await this._prisma.backgroundWorker.findFirst({
-      where: { id: deployment.workerId },
-      select: { engine: true },
+  async #invalidateProjectRuntimeUpdateCache(environmentId: string) {
+    const environment = await this._prisma.runtimeEnvironment.findFirst({
+      where: { id: environmentId },
+      select: { organizationId: true },
     });
 
-    if (worker?.engine === "V1") {
-      await ExecuteTasksWaitingForDeployService.enqueue(deployment.workerId);
+    if (environment) {
+      await invalidateOrganizationProjectRuntimeUpdateCache(environment.organizationId);
     }
   }
 
@@ -230,5 +241,12 @@ export class ChangeCurrentDeploymentService extends BaseService {
     }
 
     await syncDeclarativeSchedules(parsed.data.tasks, worker, environment, this._prisma);
+    await syncDeclarativeWebhooks(
+      parsed.data.webhooks,
+      worker,
+      environment,
+      this._prisma,
+      webhookPrisma
+    );
   }
 }

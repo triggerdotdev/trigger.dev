@@ -5,7 +5,7 @@ import { z } from "zod";
 // ---------------------------------------------------------------------------
 
 /** V1: single secret-store key that supplies the ClickHouse connection URL. */
-export const ClickhouseDataStoreConfigV1 = z.object({
+const ClickhouseDataStoreConfigV1 = z.object({
   version: z.literal(1),
   data: z.object({
     /** Key into the SecretStore that resolves to a ClickhouseConnection ({url}). */
@@ -13,7 +13,7 @@ export const ClickhouseDataStoreConfigV1 = z.object({
   }),
 });
 
-export type ClickhouseDataStoreConfigV1 = z.infer<typeof ClickhouseDataStoreConfigV1>;
+type ClickhouseDataStoreConfigV1 = z.infer<typeof ClickhouseDataStoreConfigV1>;
 
 /** Discriminated union over version — extend by adding new literals here. */
 export const ClickhouseDataStoreConfig = z.discriminatedUnion("version", [
@@ -30,7 +30,7 @@ export type ClickhouseDataStoreConfig = z.infer<typeof ClickhouseDataStoreConfig
  * Secrets are resolved to URLs at registry load time so the factory never
  * needs to touch the secret store on the hot path.
  */
-export type ParsedClickhouseDataStore = {
+type ParsedClickhouseDataStore = {
   kind: "CLICKHOUSE";
   url: string;
 };

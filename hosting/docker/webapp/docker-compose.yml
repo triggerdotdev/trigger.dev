@@ -9,7 +9,7 @@ x-logging: &logging-config
 
 services:
   webapp:
-    image: ghcr.io/triggerdotdev/trigger.dev:${TRIGGER_IMAGE_TAG:-v4-beta}
+    image: ghcr.io/triggerdotdev/trigger.dev:${TRIGGER_IMAGE_TAG:-latest}
     restart: ${RESTART_POLICY:-unless-stopped}
     logging: *logging-config
     ports:
@@ -18,6 +18,7 @@ services:
       - postgres
       - redis
       - clickhouse
+      - s2
     networks:
       - webapp
       - supervisor
@@ -44,11 +45,22 @@ services:
       LOGIN_ORIGIN: ${LOGIN_ORIGIN:-http://localhost:8030}
       API_ORIGIN: ${API_ORIGIN:-http://localhost:8030}
       ELECTRIC_ORIGIN: http://electric:3000
-      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/main?schema=public&sslmode=disable}
-      DIRECT_URL: ${DIRECT_URL:-postgresql://postgres:postgres@postgres:5432/main?schema=public&sslmode=disable}
+      # Realtime streams v2, backed by the bundled s2-lite service. This powers
+      # AI-agent token streaming and run streams. Point the endpoint at a hosted
+      # S2 (https://s2.dev) instead by overriding these and setting an access token.
+      # To fall back to the Redis-backed v1 streams, set the version to `v1`.
+      REALTIME_STREAMS_DEFAULT_VERSION: ${REALTIME_STREAMS_DEFAULT_VERSION:-v2}
+      REALTIME_STREAMS_S2_BASIN: ${REALTIME_STREAMS_S2_BASIN:-trigger-realtime}
+      REALTIME_STREAMS_S2_ENDPOINT: ${REALTIME_STREAMS_S2_ENDPOINT:-http://s2/v1}
+      REALTIME_STREAMS_S2_SKIP_ACCESS_TOKENS: ${REALTIME_STREAMS_S2_SKIP_ACCESS_TOKENS:-true}
+      REALTIME_STREAMS_S2_ACCESS_TOKEN: ${REALTIME_STREAMS_S2_ACCESS_TOKEN:-}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/main?schema=public&sslmode=disable}
+      DIRECT_URL: ${DIRECT_URL:-postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/main?schema=public&sslmode=disable}
       SESSION_SECRET: ${SESSION_SECRET}
       MAGIC_LINK_SECRET: ${MAGIC_LINK_SECRET}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      PROVIDER_SECRET: ${PROVIDER_SECRET}
+      COORDINATOR_SECRET: ${COORDINATOR_SECRET}
       MANAGED_WORKER_SECRET: ${MANAGED_WORKER_SECRET}
       REDIS_HOST: redis
       REDIS_PORT: 6379
@@ -68,11 +80,11 @@ services:
       TRIGGER_BOOTSTRAP_WORKER_GROUP_NAME: bootstrap
       TRIGGER_BOOTSTRAP_WORKER_TOKEN_PATH: /home/node/shared/worker_token
       # ClickHouse configuration
-      CLICKHOUSE_URL: ${CLICKHOUSE_URL:-http://default:password@clickhouse:8123?secure=false}
+      CLICKHOUSE_URL: ${CLICKHOUSE_URL:-http://${CLICKHOUSE_USER:-default}:${CLICKHOUSE_PASSWORD}@clickhouse:8123?secure=false}
       CLICKHOUSE_LOG_LEVEL: ${CLICKHOUSE_LOG_LEVEL:-info}
       # Run replication
       RUN_REPLICATION_ENABLED: ${RUN_REPLICATION_ENABLED:-1}
-      RUN_REPLICATION_CLICKHOUSE_URL: ${RUN_REPLICATION_CLICKHOUSE_URL:-http://default:password@clickhouse:8123}
+      RUN_REPLICATION_CLICKHOUSE_URL: ${RUN_REPLICATION_CLICKHOUSE_URL:-http://${CLICKHOUSE_USER:-default}:${CLICKHOUSE_PASSWORD}@clickhouse:8123}
       RUN_REPLICATION_LOG_LEVEL: ${RUN_REPLICATION_LOG_LEVEL:-info}
       # Limits
       # TASK_PAYLOAD_OFFLOAD_THRESHOLD: 524288 # 512KB
@@ -99,7 +111,7 @@ services:
       - wal_level=logical
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env - run ./generate-secrets.sh}
       POSTGRES_DB: ${POSTGRES_DB:-postgres}
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres"]
@@ -134,7 +146,7 @@ services:
     networks:
       - webapp
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/main?schema=public&sslmode=disable}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/main?schema=public&sslmode=disable}
       ELECTRIC_INSECURE: true
       ELECTRIC_USAGE_REPORTING: false
     healthcheck:
@@ -145,18 +157,27 @@ services:
       start_period: 10s
 
   clickhouse:
-    image: bitnamilegacy/clickhouse:${CLICKHOUSE_IMAGE_TAG:-latest}
+    image: clickhouse/clickhouse-server:${CLICKHOUSE_IMAGE_TAG:-26.2}
     restart: ${RESTART_POLICY:-unless-stopped}
     logging: *logging-config
     ports:
       - ${CLICKHOUSE_PUBLISH_IP:-127.0.0.1}:9123:8123
       - ${CLICKHOUSE_PUBLISH_IP:-127.0.0.1}:9090:9000
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
     environment:
-      CLICKHOUSE_ADMIN_USER: ${CLICKHOUSE_USER:-default}
-      CLICKHOUSE_ADMIN_PASSWORD: ${CLICKHOUSE_PASSWORD:-password}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?Set CLICKHOUSE_PASSWORD in .env - run ./generate-secrets.sh}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
     volumes:
-      - clickhouse:/bitnami/clickhouse
-      - ../clickhouse/override.xml:/bitnami/clickhouse/etc/config.d/override.xml:ro
+      # The same volume works across upgrades from the previous Bitnami-based
+      # setup: data-paths.xml keeps the on-disk layout compatible.
+      - clickhouse:/var/lib/clickhouse
+      - ../clickhouse/data-paths.xml:/etc/clickhouse-server/config.d/data-paths.xml:ro
+      - ../clickhouse/override.xml:/etc/clickhouse-server/config.d/override.xml:ro
+      - ../clickhouse/users-override.xml:/etc/clickhouse-server/users.d/override.xml:ro
     networks:
       - webapp
     healthcheck:
@@ -171,7 +192,7 @@ services:
           "--user",
           "${CLICKHOUSE_USER:-default}",
           "--password",
-          "${CLICKHOUSE_PASSWORD:-password}",
+          "${CLICKHOUSE_PASSWORD}",
           "--query",
           "SELECT 1",
         ]
@@ -214,8 +235,8 @@ services:
     volumes:
       - minio:/bitnami/minio/data
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-very-safe-password}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-${OBJECT_STORE_ACCESS_KEY_ID:-admin}}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-${OBJECT_STORE_SECRET_ACCESS_KEY:?Set OBJECT_STORE_SECRET_ACCESS_KEY in .env - run ./generate-secrets.sh}}
       MINIO_DEFAULT_BUCKETS: packets
       MINIO_BROWSER: "on"
     healthcheck:
@@ -225,12 +246,62 @@ services:
       retries: 5
       start_period: 10s
 
+  # Generates the s2-lite basin spec from REALTIME_STREAMS_S2_BASIN so the bundled
+  # basin always matches the basin the webapp targets. s2-lite is distroless (no
+  # shell), so a tiny init container writes the spec into a shared volume first.
+  s2-init:
+    image: busybox:${BUSYBOX_IMAGE_TAG:-1.37}
+    restart: "no"
+    logging: *logging-config
+    environment:
+      REALTIME_STREAMS_S2_BASIN: ${REALTIME_STREAMS_S2_BASIN:-trigger-realtime}
+    command:
+      - sh
+      - -c
+      - |
+        cat > /config/s2-spec.json <<JSON
+        {
+          "basins": [
+            {
+              "name": "$$REALTIME_STREAMS_S2_BASIN",
+              "config": { "create_stream_on_append": true, "create_stream_on_read": true }
+            }
+          ]
+        }
+        JSON
+    volumes:
+      - s2-config:/config
+    networks:
+      - webapp
+
+  # s2-lite: the open-source, self-hostable S2 (https://s2.dev) server that backs
+  # realtime streams v2. It's distroless (no shell), so a wget/curl healthcheck
+  # always reports unhealthy even when the API is up — hence no healthcheck.
+  # Runs as root so it can write to the named volume; storage lives in SlateDB
+  # under /data, and the basin is created on startup from the generated spec.
+  s2:
+    image: ${S2_IMAGE:-ghcr.io/s2-streamstore/s2:latest@sha256:d6ded5ca7dd619fa7c946f06e39a98f9c95c6883c8bb884e5eaa129f232c920c}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    logging: *logging-config
+    depends_on:
+      s2-init:
+        condition: service_completed_successfully
+    command: ["lite", "--init-file", "/config/s2-spec.json", "--local-root", "/data"]
+    user: "0:0"
+    volumes:
+      - s2-config:/config
+      - s2:/data
+    networks:
+      - webapp
+
 volumes:
   clickhouse:
   postgres:
   redis:
   shared:
   minio:
+  s2:
+  s2-config:
 
 networks:
   docker-proxy:

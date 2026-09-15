@@ -1,9 +1,11 @@
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { type TaskRun } from "@trigger.dev/database";
+import { type TaskRun, boundedIn } from "@trigger.dev/database";
 import { z } from "zod";
 import { prisma } from "~/db.server";
+import { runStore } from "~/v3/runStore.server";
 import { logger } from "~/services/logger.server";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
+import { getRunsReplicationGlobal } from "~/services/runsReplicationGlobal.server";
 import { runsReplicationInstance } from "~/services/runsReplicationInstance.server";
 import { FINAL_RUN_STATUSES } from "~/v3/taskStatus";
 
@@ -25,22 +27,26 @@ export async function action({ request }: ActionFunctionArgs) {
     const runs: TaskRun[] = [];
     for (let i = 0; i < runIds.length; i += MAX_BATCH_SIZE) {
       const batch = runIds.slice(i, i + MAX_BATCH_SIZE);
-      const batchRuns = await prisma.taskRun.findMany({
-        where: {
-          id: { in: batch },
-          status: {
-            in: FINAL_RUN_STATUSES,
+      const batchRuns = await runStore.findRuns(
+        {
+          where: {
+            id: { in: boundedIn(batch) },
+            status: {
+              in: boundedIn(FINAL_RUN_STATUSES),
+            },
           },
         },
-      });
+        prisma
+      );
       runs.push(...batchRuns);
     }
 
-    if (!runsReplicationInstance) {
+    const service = getRunsReplicationGlobal() ?? runsReplicationInstance;
+    if (!service) {
       throw new Error("Runs replication instance not found");
     }
 
-    await runsReplicationInstance.backfill(
+    await service.backfill(
       runs.map((run) => ({
         ...run,
         masterQueue: run.workerQueue,

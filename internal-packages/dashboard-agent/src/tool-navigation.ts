@@ -1,0 +1,123 @@
+import {
+  agentIntentSchema,
+  formatTriggerUri,
+  type ParsedTriggerUri,
+} from "@internal/dashboard-agent-contracts";
+import { tool, type ToolSet } from "ai";
+import { resolveTarget, type TargetInput } from "./tool-api";
+import type { EnvTarget } from "./tool-api-client";
+import { getCurrentPageSchema, navigateToSchema } from "./tool-schemas";
+import type { DashboardAgentToolContext } from "./tool-context";
+
+/** Where the user is, and where the agent can send them. */
+export function buildNavigationTools(args: {
+  ctx: DashboardAgentToolContext;
+  environmentIdFor: (target: EnvTarget) => Promise<string | undefined>;
+}): ToolSet {
+  const { ctx, environmentIdFor } = args;
+  const { projectRef } = ctx;
+
+  const NO_SCOPE = {
+    error:
+      "No current project and environment for this turn, so there's nowhere to navigate to. Tell the user what to look at instead.",
+  };
+
+  /**
+   * The conversation's own scope needs no exchange; a named target is minted from that
+   * environment's JWT, so an unknown or unauthorised one fails closed.
+   */
+  async function navigationScope(
+    target: TargetInput
+  ): Promise<{ projectRef: string; environmentId: string } | { error: string }> {
+    if (
+      target.project === undefined &&
+      target.environment === undefined &&
+      target.branch === undefined
+    ) {
+      if (!projectRef || !ctx.environmentId) return NO_SCOPE;
+      return { projectRef, environmentId: ctx.environmentId };
+    }
+    const resolved = await resolveTarget(target, ctx, "navigate to");
+    if (!resolved.ok) return { error: resolved.error };
+    const environmentId =
+      (resolved.conversationScope ? ctx.environmentId : undefined) ??
+      (await environmentIdFor(resolved.target));
+    if (!environmentId) return { error: "Couldn't reach that environment to navigate to." };
+    return { projectRef: resolved.target.projectRef, environmentId };
+  }
+
+  return {
+    // Context tools: no fetch, no auth.
+    get_current_page: tool({
+      ...getCurrentPageSchema,
+      execute: async () => {
+        if (ctx.pageContext) {
+          return {
+            page: ctx.pageContext.page,
+            signals: ctx.pageContext.signals,
+            path: ctx.currentPage,
+          };
+        }
+        // Older turns (and unclassified routes) carry only the raw path.
+        if (ctx.currentPage) {
+          return { page: { kind: "other", path: ctx.currentPage }, signals: [] };
+        }
+        return {
+          page: null,
+          signals: [],
+          note: "This turn carried no page context, so ask the user what they're looking at.",
+        };
+      },
+    }),
+
+    navigate_to: tool({
+      ...navigateToSchema,
+      execute: async ({ destination, ...target }) => {
+        const scope = await navigationScope(target);
+        if ("error" in scope) return scope;
+
+        let parsed: ParsedTriggerUri;
+        switch (destination.kind) {
+          case "runs":
+            // Filters ride in the intent, not the URI.
+            parsed = { kind: "runs", ...scope };
+            break;
+          case "run":
+            parsed = { kind: "run", ...scope, runId: destination.runId };
+            break;
+          case "error":
+            // The API's friendly id is accepted; the page keys on the raw one.
+            parsed = {
+              kind: "error",
+              ...scope,
+              fingerprint: destination.fingerprint.replace(/^error_/, ""),
+            };
+            break;
+          case "queue":
+            parsed = { kind: "queue", ...scope, name: destination.name };
+            break;
+          case "deployment":
+            parsed = { kind: "deployment", ...scope, version: destination.version };
+            break;
+        }
+
+        // Re-validated through the intent schema, so a malformed id becomes a tool error
+        // rather than an intent the host must reject.
+        try {
+          const intent = agentIntentSchema.parse({
+            kind: "navigate",
+            target: formatTriggerUri(parsed),
+            ...(destination.kind === "runs" && destination.filters
+              ? { filters: destination.filters }
+              : {}),
+          });
+          return destination.kind === "runs"
+            ? { intent, appliedFilters: destination.filters ?? {} }
+            : { intent };
+        } catch (error) {
+          return { error: `Couldn't build a link for that: ${(error as Error).message}` };
+        }
+      },
+    }),
+  };
+}

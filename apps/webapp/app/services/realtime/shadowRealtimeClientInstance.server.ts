@@ -1,5 +1,6 @@
 import { getMeter } from "@internal/tracing";
 import { $replica } from "~/db.server";
+import { runStore } from "~/v3/runStore.server";
 import { env } from "~/env.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { singleton } from "~/utils/singleton";
@@ -20,7 +21,7 @@ function initializeShadowRealtimeClient(): ShadowRealtimeClient {
   });
 
   const comparator = new RealtimeShadowComparator({
-    runReader: new RunHydrator({ replica: $replica }),
+    runReader: new RunHydrator({ readClient: $replica, runStore }),
     runListResolver: new ClickHouseRunListResolver({
       getClickhouse: (organizationId) =>
         clickhouseFactory.getClickhouseForOrganization(organizationId, "realtime"),
@@ -36,7 +37,11 @@ function initializeShadowRealtimeClient(): ShadowRealtimeClient {
     onOutcome: (outcome) => {
       const { feed } = outcome;
       if (outcome.serializationMatched) {
-        compares.add(outcome.serializationMatched, { feed, kind: "serialization", result: "match" });
+        compares.add(outcome.serializationMatched, {
+          feed,
+          kind: "serialization",
+          result: "match",
+        });
       }
       if (outcome.serializationDiverged) {
         compares.add(outcome.serializationDiverged, {

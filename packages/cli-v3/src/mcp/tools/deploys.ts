@@ -1,14 +1,13 @@
-import { DeployInput, ListDeploysInput } from "../schemas.js";
-import { toolsMetadata } from "../config.js";
-import { ToolMeta } from "../types.js";
-import { respondWithError, toolHandler } from "../utils.js";
-import { McpContext } from "../context.js";
-import { x } from "tinyexec";
-import { getPackageJson, tryResolveTriggerPackageVersion } from "../../commands/update.js";
-import { VERSION } from "../../version.js";
 import { resolveSync as esmResolve } from "mlly";
 import { fileURLToPath } from "node:url";
 import stripAnsi from "strip-ansi";
+import { x } from "tinyexec";
+import { getPackageJson, tryResolveTriggerPackageVersion } from "../../commands/update.js";
+import { VERSION } from "../../version.js";
+import { toolsMetadata } from "../config.js";
+import type { McpContext } from "../context.js";
+import { DeployInput, ListDeploysInput } from "../schemas.js";
+import { respondWithError, toolHandler } from "../utils.js";
 
 export const deployTool = {
   name: toolsMetadata.deploy.name,
@@ -146,11 +145,15 @@ export const listDeploysTool = {
 
     for (const deploy of deploys) {
       const deployedAt = deploy.deployedAt
-        ? new Date(deploy.deployedAt).toISOString().replace("T", " ").replace(/\.\d+Z$/, " UTC")
+        ? new Date(deploy.deployedAt)
+            .toISOString()
+            .replace("T", " ")
+            .replace(/\.\d+Z$/, " UTC")
         : "not deployed";
-      const git = deploy.git && typeof deploy.git === "object" && "commitMessage" in deploy.git
-        ? ` | ${deploy.git.commitMessage}`
-        : "";
+      const git =
+        deploy.git && typeof deploy.git === "object" && "commitMessage" in deploy.git
+          ? ` | ${deploy.git.commitMessage}`
+          : "";
       lines.push(
         `- ${deploy.shortCode} | v${deploy.version} | ${deploy.status} | ${deployedAt}${git}`
       );

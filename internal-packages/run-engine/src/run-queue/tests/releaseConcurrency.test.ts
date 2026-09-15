@@ -4,7 +4,7 @@ import { Logger } from "@trigger.dev/core/logger";
 import { FairQueueSelectionStrategy } from "../fairQueueSelectionStrategy.js";
 import { RunQueue } from "../index.js";
 import { RunQueueFullKeyProducer } from "../keyProducer.js";
-import { InputPayload } from "../types.js";
+import type { InputPayload } from "../types.js";
 import { setTimeout } from "node:timers/promises";
 import { Decimal } from "@trigger.dev/database";
 

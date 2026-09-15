@@ -1,17 +1,19 @@
 import { type LoaderFunctionArgs, redirect } from "@remix-run/server-runtime";
 import { z } from "zod";
+import { aiHelpDocsUrl, aiHelpRedirectUrl } from "~/components/dashboard-agent/ask-ai-channels";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
-import { logger } from "~/services/logger.server";
-import { requireUserId } from "~/services/session.server";
-import { v3EnvironmentPath, v3ProjectPath, v3TestPath } from "~/utils/pathBuilder";
+import { hasAdminDisplayAccess, requireUser } from "~/services/session.server";
+import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
+import { v3EnvironmentPath } from "~/utils/pathBuilder";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
 });
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
-  const userId = await requireUserId(request);
+  const user = await requireUser(request);
+  const userId = user.id;
 
   const validatedParams = ParamsSchema.parse(params);
 
@@ -39,14 +41,31 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   const query = url.searchParams.get("q");
 
   if (!query) {
-    return new Response("No query", { status: 404 });
+    return new Response("No query", { status: 400 });
   }
 
-  const newUrl = new URL(
-    v3EnvironmentPath({ slug: project.organization.slug }, { slug: project.slug }, { slug: "dev" }),
-    env.LOGIN_ORIGIN
-  );
-  newUrl.searchParams.set("aiHelp", query);
+  const showAdminUi = hasAdminDisplayAccess(user);
+  const canOpenAgent = await canAccessDashboardAgent({
+    userId,
+    isAdmin: showAdminUi && user.admin,
+    isImpersonating: showAdminUi && user.isImpersonating,
+    organizationSlug: project.organization.slug,
+    orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
+  });
 
-  return redirect(newUrl.toString());
+  if (!canOpenAgent) {
+    return redirect(aiHelpDocsUrl(query));
+  }
+
+  return redirect(
+    aiHelpRedirectUrl({
+      environmentPath: v3EnvironmentPath(
+        { slug: project.organization.slug },
+        { slug: project.slug },
+        { slug: "dev" }
+      ),
+      origin: env.LOGIN_ORIGIN,
+      query,
+    })
+  );
 }

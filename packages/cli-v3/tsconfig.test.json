@@ -6,6 +6,6 @@
     "isolatedDeclarations": false,
     "composite": true,
     "customConditions": ["@triggerdotdev/source"],
-    "types": ["vitest/globals"]
+    "types": ["vitest/globals", "node"]
   }
 }

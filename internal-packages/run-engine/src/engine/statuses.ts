@@ -1,4 +1,4 @@
-import { TaskRunExecutionStatus, TaskRunStatus } from "@trigger.dev/database";
+import type { TaskRunExecutionStatus, TaskRunStatus } from "@trigger.dev/database";
 
 export function isDequeueableExecutionStatus(status: TaskRunExecutionStatus): boolean {
   const dequeuableExecutionStatuses: TaskRunExecutionStatus[] = ["QUEUED", "QUEUED_EXECUTING"];

@@ -80,23 +80,29 @@ export function DateField({
     },
   });
 
-  //if the passed in value changes, we should update the date
+  const stateValueRef = useRef(state.value);
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
+  stateValueRef.current = state.value;
+
+  // Sync only when the passed value or timezone mode changes. Depending on state.value directly
+  // would reset partially edited segments back to the default after every keystroke.
   useEffect(() => {
-    if (state.value === undefined && defaultValue === undefined) return;
+    const stateValue = stateValueRef.current;
+    if (stateValue === undefined && defaultValue === undefined) return;
 
     const calendarDate = utc
       ? utcDateToCalendarDate(defaultValue)
       : dateToCalendarDate(defaultValue);
-    //unchanged
-    if (state.value?.toDate("utc").getTime() === defaultValue?.getTime()) {
+    // unchanged
+    if (stateValue?.toDate(utc ? "utc" : deviceTimezone).getTime() === defaultValue?.getTime()) {
       return;
     }
 
     setValue(calendarDate);
-  }, [defaultValue]);
+  }, [defaultValue, utc]);
 
   const ref = useRef<null | HTMLDivElement>(null);
-  const { labelProps, fieldProps } = useDateField(
+  const { labelProps: _labelProps, fieldProps } = useDateField(
     {
       label,
     },
@@ -120,7 +126,7 @@ export function DateField({
           {...fieldProps}
           ref={ref}
           className={cn(
-            "flex rounded-sm border bg-charcoal-700 p-0.5 transition focus-within:border-charcoal-600 hover:border-charcoal-600",
+            "flex rounded-sm border bg-background-raised p-0.5 transition focus-within:border-border-bright hover:border-border-bright",
             fieldClassName
           )}
         >
@@ -227,15 +233,15 @@ function DateSegment({ segment, state, variant }: DateSegmentProps) {
         minWidth: minWidthForSegment(segment),
       }}
       className={cn(
-        "group box-content text-center tabular-nums outline-none focus:bg-charcoal-600 focus:text-text-bright",
+        "group box-content text-center tabular-nums outline-hidden focus:bg-surface-control focus:text-text-bright",
         sizeVariant.fieldStyles,
-        !segment.isEditable ? "text-charcoal-500" : "text-text-bright"
+        !segment.isEditable ? "text-text-faint" : "text-text-bright"
       )}
     >
       {/* Always reserve space for the placeholder, to prevent layout shift when editing. */}
       <span
         aria-hidden="true"
-        className="flex h-full items-center justify-center text-center text-charcoal-500 group-focus:text-text-bright"
+        className="flex h-full items-center justify-center text-center text-text-faint group-focus:text-text-bright"
         style={{
           visibility: segment.isPlaceholder ? undefined : "hidden",
           height: segment.isPlaceholder ? undefined : 0,
@@ -275,11 +281,11 @@ function DateSegmentGuide({ segment }: { segment: DateSegment }) {
       style={{
         minWidth: minWidthForSegment(segment),
       }}
-      className={`group box-content rounded-sm px-0.5 text-right text-sm tabular-nums text-rose-500 outline-none ${
-        !segment.isEditable ? "text-charcoal-500" : "text-text-bright"
+      className={`group box-content rounded-sm px-0.5 text-right text-sm tabular-nums outline-hidden ${
+        !segment.isEditable ? "text-text-faint" : "text-text-bright"
       }`}
     >
-      <span className="block text-center italic text-charcoal-500">
+      <span className="block text-center italic text-text-faint">
         {segment.type !== "literal" ? segment.placeholder : segment.text}
       </span>
     </div>

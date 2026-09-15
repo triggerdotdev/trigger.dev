@@ -1,0 +1,19 @@
+// Typechecks completedWaitpointFreeze.test.ts, which tsconfig.build.json otherwise excludes
+// (src/**/*.test.ts) and vitest's esbuild transform never checks. This config has no
+// "@triggerdotdev/source" customCondition, so it resolves @internal/run-store from its built
+// `dist`, not from source -- same as tsconfig.build.json. That means this gate only sees a
+// source change in run-store once run-store has been rebuilt, so it MUST be run through turbo
+// (`pnpm run typecheck --filter @internal/run-engine`), whose `typecheck` task declares
+// `dependsOn: ["^build"]`. Running `tsc -p tsconfig.freeze-test.json` (or `pnpm run typecheck`)
+// directly inside this package, against a stale dist/, passes green while the frozen type has
+// already drifted in source. Do not "fix" this with customConditions: that pulls
+// @trigger.dev/core's source in too, which fails to typecheck here on `lib: ES2020`.
+{
+  "extends": "./tsconfig.build.json",
+  "include": ["src/engine/systems/completedWaitpointFreeze.test.ts"],
+  "exclude": [],
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false
+  }
+}

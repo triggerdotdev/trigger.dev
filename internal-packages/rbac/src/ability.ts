@@ -4,7 +4,7 @@ import type { RbacAbility } from "@trigger.dev/plugins";
 // @trigger.dev/plugins so a public token decodes identically whoever
 // serves the request. Re-exported here so existing importers keep their
 // `./ability.js` import.
-export { buildJwtAbility } from "@trigger.dev/plugins";
+export { buildJwtAbility, scopesWithinAbility } from "@trigger.dev/plugins";
 
 /** Every authenticated non-admin subject: can do anything, cannot do super-user actions. */
 export const permissiveAbility: RbacAbility = {

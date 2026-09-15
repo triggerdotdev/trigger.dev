@@ -3,6 +3,7 @@ import { Worker as RedisWorker } from "@trigger.dev/redis-worker";
 import { z } from "zod";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
+import { getRunsReplicationGlobal } from "~/services/runsReplicationGlobal.server";
 import { runsReplicationInstance } from "~/services/runsReplicationInstance.server";
 // Reference-hold the sessions-replication singleton so module evaluation runs
 // its initializer (creates the ClickHouse client, subscribes to the logical
@@ -14,8 +15,12 @@ import { runsReplicationInstance } from "~/services/runsReplicationInstance.serv
 // initializer never fires. Assignment to globalThis is an observable side
 // effect the bundler must preserve. See TRI-9864.
 import { sessionsReplicationInstance } from "~/services/sessionsReplicationInstance.server";
-(globalThis as Record<string, unknown>).__sessionsReplicationInstance =
-  sessionsReplicationInstance;
+(globalThis as Record<string, unknown>).__sessionsReplicationInstance = sessionsReplicationInstance;
+// Same reference-hold as the sessions replicator above (and the same
+// `void`-tree-shaking caveat) for the webhook deliveries replication singleton.
+import { webhookDeliveriesReplicationInstance } from "~/services/webhookDeliveriesReplicationInstance.server";
+(globalThis as Record<string, unknown>).__webhookDeliveriesReplicationInstance =
+  webhookDeliveriesReplicationInstance;
 import { singleton } from "~/utils/singleton";
 import { tracer } from "../tracer.server";
 import { $replica } from "~/db.server";
@@ -63,14 +68,15 @@ function initializeWorker() {
     logger: new Logger("AdminWorker", env.ADMIN_WORKER_LOG_LEVEL),
     jobs: {
       "admin.backfillRunsToReplication": async ({ payload, id }) => {
-        if (!runsReplicationInstance) {
+        const replicationService = getRunsReplicationGlobal() ?? runsReplicationInstance;
+        if (!replicationService) {
           logger.error("Runs replication instance not found");
           return;
         }
 
         const service = new RunsBackfillerService({
           prisma: $replica,
-          runsReplicationInstance: runsReplicationInstance,
+          runsReplicationInstance: replicationService,
           tracer: tracer,
         });
 

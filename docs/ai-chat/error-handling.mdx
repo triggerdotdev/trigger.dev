@@ -4,10 +4,6 @@ sidebarTitle: "Error handling"
 description: "How errors flow through chat.agent — stream errors, hook errors, run failures — and how to recover."
 ---
 
-import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
-
-<RcBanner />
-
 `chat.agent` errors fall into four layers, each with different recovery semantics. The default behavior is **conversation-preserving**: a thrown error in a hook or `run()` does not kill the chat. The current turn ends with an error chunk, and the agent waits for the user's next message.
 
 ## Error layers at a glance

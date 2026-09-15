@@ -1,11 +1,7 @@
-import { ClickHouse, getTaskRunField, getPayloadField } from "@internal/clickhouse";
+import { ClickHouse, getPayloadField, getTaskRunField } from "@internal/clickhouse";
 import { replicationContainerTest } from "@internal/testcontainers";
-import { Logger } from "@trigger.dev/core/logger";
-import { readFile } from "node:fs/promises";
-import { setTimeout } from "node:timers/promises";
 import { z } from "zod";
 import { RunsReplicationService } from "~/services/runsReplicationService.server";
-import { detectBadJsonStrings } from "~/utils/detectBadJsonStrings";
 import { TestReplicationClickhouseFactory } from "./utils/testReplicationClickhouseFactory";
 
 vi.setConfig({ testTimeout: 60_000 });
@@ -14,7 +10,7 @@ describe("RunsReplicationService (part 6/7)", () => {
   replicationContainerTest(
     "should sort batch inserts according to table schema ordering for optimal performance",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
-      await prisma.$executeRawUnsafe(`ALTER TABLE public.\"TaskRun\" REPLICA IDENTITY FULL;`);
+      await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
 
       const clickhouse = new ClickHouse({
         url: clickhouseContainer.getConnectionUrl(),
@@ -165,10 +161,13 @@ describe("RunsReplicationService (part 6/7)", () => {
         },
       });
 
-      await setTimeout(1000);
-
-      expect(batchFlushedEvents[0]?.taskRunInserts.length).toBeGreaterThan(1);
-      expect(batchFlushedEvents[0]?.payloadInserts.length).toBeGreaterThan(1);
+      await vi.waitFor(
+        () => {
+          expect(batchFlushedEvents[0]?.taskRunInserts.length).toBeGreaterThan(1);
+          expect(batchFlushedEvents[0]?.payloadInserts.length).toBeGreaterThan(1);
+        },
+        { timeout: 30_000, interval: 250 }
+      );
 
       // Verify sorting order: organization_id, project_id, environment_id, created_at, run_id
       for (let i = 1; i < batchFlushedEvents[0]?.taskRunInserts.length; i++) {
@@ -413,9 +412,6 @@ describe("RunsReplicationService (part 6/7)", () => {
         },
       });
 
-      // Wait for replication
-      await setTimeout(1500);
-
       // Query ClickHouse directly to get all columns
       const queryRuns = clickhouse.reader.query({
         name: "exhaustive-replication-test",
@@ -424,10 +420,17 @@ describe("RunsReplicationService (part 6/7)", () => {
         params: z.object({ run_id: z.string() }),
       });
 
-      const [queryError, result] = await queryRuns({ run_id: taskRun.id });
+      const result = await vi.waitFor(
+        async () => {
+          const [queryError, rows] = await queryRuns({ run_id: taskRun.id });
 
-      expect(queryError).toBeNull();
-      expect(result).toHaveLength(1);
+          expect(queryError).toBeNull();
+          expect(rows).toHaveLength(1);
+
+          return rows;
+        },
+        { timeout: 30_000, interval: 250 }
+      );
 
       const clickhouseRun = result![0];
 
@@ -522,10 +525,17 @@ describe("RunsReplicationService (part 6/7)", () => {
         params: z.object({ run_id: z.string() }),
       });
 
-      const [payloadError, payloadResult] = await queryPayloads({ run_id: taskRun.id });
+      const payloadResult = await vi.waitFor(
+        async () => {
+          const [payloadError, payloadRows] = await queryPayloads({ run_id: taskRun.id });
 
-      expect(payloadError).toBeNull();
-      expect(payloadResult).toHaveLength(1);
+          expect(payloadError).toBeNull();
+          expect(payloadRows).toHaveLength(1);
+
+          return payloadRows;
+        },
+        { timeout: 30_000, interval: 250 }
+      );
       expect(payloadResult![0].run_id).toBe(taskRun.id);
       expect(parseClickhouseTimestamp(payloadResult![0].created_at)).toBe(createdAt.getTime());
       expect(payloadResult![0].payload).toEqual({ data: { input: "test-payload" } });

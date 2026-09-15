@@ -10,7 +10,7 @@ import { RunId } from "@trigger.dev/core/v3/isomorphic";
 import type { MollifierBuffer } from "@trigger.dev/redis-worker";
 
 function fakeBuffer(
-  acceptResult: Awaited<ReturnType<MollifierBuffer["accept"]>> = { kind: "accepted" },
+  acceptResult: Awaited<ReturnType<MollifierBuffer["accept"]>> = { kind: "accepted" }
 ): { buffer: MollifierBuffer; accept: ReturnType<typeof vi.fn> } {
   const accept = vi.fn(async () => acceptResult);
   return {

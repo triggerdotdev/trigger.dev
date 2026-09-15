@@ -1,13 +1,8 @@
 import * as Ariakit from "@ariakit/react";
 import { ArrowPathIcon, ChevronUpDownIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { type MetaFunction, useFetcher } from "@remix-run/react";
-import {
-  type ActionFunctionArgs,
-  json,
-  type LoaderFunctionArgs,
-  redirect,
-} from "@remix-run/server-runtime";
+import { useFetcher } from "@remix-run/react";
+import { json, redirect } from "@remix-run/server-runtime";
 
 import { AnimatePresence, motion } from "framer-motion";
 import { ClipboardCheckIcon, ClipboardIcon, GitBranchPlusIcon } from "lucide-react";
@@ -22,6 +17,7 @@ import { ProvidersFilter } from "~/components/metrics/ProvidersFilter";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { PermissionButton } from "~/components/primitives/PermissionButton";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dialog";
 import { Header3 } from "~/components/primitives/Headers";
@@ -71,12 +67,17 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { type GenerationRow, PromptPresenter } from "~/presenters/v3/PromptPresenter.server";
 import { SpanView } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.spans.$spanParam/route";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
+import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
-import { requireUserId } from "~/services/session.server";
+import {
+  dashboardAction,
+  dashboardLoader,
+  type DashboardLoaderHandlerArgs,
+} from "~/services/routeBuilders/dashboardBuilder";
 import { PromptService } from "~/v3/services/promptService.server";
 
 import { z } from "zod";
-import { AIPromptsIcon } from "~/assets/icons/AIPromptsIcon";
+import { AIChatIcon } from "~/assets/icons/AIChatIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { InlineCode } from "~/components/code/InlineCode";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
@@ -85,14 +86,24 @@ import { MetricWidget } from "~/routes/resources.metric";
 import { cn } from "~/utils/cn";
 import { EnvironmentParamSchema, v3PromptsPath, v3RunSpanPath } from "~/utils/pathBuilder";
 import { parsePeriodToMs } from "~/utils/periods";
+import { promptsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+import { pageMeta } from "~/utils/pageTitle";
 
 const ParamSchema = EnvironmentParamSchema.extend({
   promptSlug: z.string(),
 });
 
-export const meta: MetaFunction<typeof loader> = ({ data }) => {
-  return [{ title: `${(data as any)?.prompt.slug ?? "Prompt"} | Trigger.dev` }];
+type ProjectAuthScope = Awaited<ReturnType<typeof resolveProjectAuthScope>>;
+
+export const handle: Handle = {
+  agentPageContext: (data) => promptsAgentPageContext(data),
 };
+
+export const meta = pageMeta<typeof loader>(({ data, params }) => [
+  data?.prompt?.slug ?? params.promptSlug ?? "Prompt",
+  "Prompts",
+]);
 
 // ─── Action ──────────────────────────────────────────────
 
@@ -122,91 +133,131 @@ const ActionSchema = z.discriminatedUnion("intent", [
   }),
 ]);
 
-export async function action({ request, params }: ActionFunctionArgs) {
-  const userId = await requireUserId(request);
-  const { organizationSlug, projectParam, envParam, promptSlug } = ParamSchema.parse(params);
+export const action = dashboardAction(
+  {
+    params: ParamSchema,
+    context: (params) => resolveProjectAuthScope(params.organizationSlug, params.projectParam),
+  },
+  async ({ request, params, user, ability, context }) => {
+    const { organizationSlug, projectParam, envParam, promptSlug } = params;
 
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
-  if (!project) return json({ error: "Project not found" }, { status: 404 });
-
-  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
-  if (!environment) return json({ error: "Environment not found" }, { status: 404 });
-
-  const formData = Object.fromEntries(await request.formData());
-  const parsed = ActionSchema.safeParse(formData);
-  if (!parsed.success) return json({ error: "Invalid action" }, { status: 400 });
-
-  const prompt = await prisma.prompt.findUnique({
-    where: {
-      projectId_runtimeEnvironmentId_slug: {
-        projectId: project.id,
-        runtimeEnvironmentId: environment.id,
-        slug: promptSlug,
-      },
-    },
-  });
-
-  if (!prompt) return json({ error: "Prompt not found" }, { status: 404 });
-
-  const data = parsed.data;
-  const service = new PromptService();
-
-  if (data.intent === "promote") {
-    await service.promoteVersion(prompt.id, data.versionId);
-    return json({ ok: true });
-  }
-
-  const url = new URL(request.url);
-
-  if (data.intent === "saveVersion") {
-    const result = await service.createOverride(prompt.id, {
-      textContent: data.textContent ?? "",
-      model: data.model,
-      commitMessage: data.commitMessage,
-      source: "dashboard",
-      createdBy: userId,
-    });
-    url.searchParams.set("version", String(result.version));
-    return redirect(url.pathname + url.search);
-  }
-
-  if (data.intent === "updateOverride") {
-    await service.updateOverride(prompt.id, {
-      textContent: data.textContent,
-      model: data.model,
-      commitMessage: data.commitMessage,
-    });
-    return json({ ok: true });
-  }
-
-  if (data.intent === "removeOverride") {
-    await service.removeOverride(prompt.id);
-    // Navigate back to current version
-    const currentVersion = await prisma.promptVersion.findFirst({
-      where: { promptId: prompt.id, labels: { has: "current" } },
-      select: { version: true },
-    });
-    if (currentVersion) {
-      url.searchParams.set("version", String(currentVersion.version));
-    } else {
-      url.searchParams.delete("version");
+    // This action checks permissions per intent inline (below) rather than via
+    // a top-level authorization block, so the builder's fail-closed scope guard
+    // doesn't run. Enforce it here: without a resolved org the inline
+    // ability.can checks would evaluate an unscoped ability.
+    if (!context.organizationId) {
+      return json({ error: "Unauthorized" }, { status: 403 });
     }
-    return redirect(url.pathname + url.search);
-  }
 
-  if (data.intent === "reactivateOverride") {
-    await service.reactivateOverride(prompt.id, data.versionId);
-    return json({ ok: true });
-  }
+    const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
+    if (!project) return json({ error: "Project not found" }, { status: 404 });
 
-  return json({ error: "Unknown intent" }, { status: 400 });
-}
+    const environment = await findEnvironmentBySlug(project.id, envParam, user.id);
+    if (!environment) return json({ error: "Environment not found" }, { status: 404 });
+
+    const formData = Object.fromEntries(await request.formData());
+    const parsed = ActionSchema.safeParse(formData);
+    if (!parsed.success) return json({ error: "Invalid action" }, { status: 400 });
+
+    const prompt = await prisma.prompt.findUnique({
+      where: {
+        projectId_runtimeEnvironmentId_slug: {
+          projectId: project.id,
+          runtimeEnvironmentId: environment.id,
+          slug: promptSlug,
+        },
+      },
+    });
+
+    if (!prompt) return json({ error: "Prompt not found" }, { status: 404 });
+
+    const data = parsed.data;
+
+    // Promoting a version to production is `update:prompts`; creating or
+    // editing override versions is `write:prompts`. Check the right one per
+    // intent — a single authorization block can't express both.
+    const requiredAction = data.intent === "promote" ? "update" : "write";
+    if (!ability.can(requiredAction, { type: "prompts" })) {
+      return json({ error: "Unauthorized" }, { status: 403 });
+    }
+
+    const service = new PromptService();
+
+    if (data.intent === "promote") {
+      await service.promoteVersion(prompt.id, data.versionId);
+      return json({ ok: true });
+    }
+
+    const url = new URL(request.url);
+
+    if (data.intent === "saveVersion") {
+      const result = await service.createOverride(prompt.id, {
+        textContent: data.textContent ?? "",
+        model: data.model,
+        commitMessage: data.commitMessage,
+        source: "dashboard",
+        createdBy: user.id,
+      });
+      url.searchParams.set("version", String(result.version));
+      return redirect(url.pathname + url.search);
+    }
+
+    if (data.intent === "updateOverride") {
+      await service.updateOverride(prompt.id, {
+        textContent: data.textContent,
+        model: data.model,
+        commitMessage: data.commitMessage,
+      });
+      return json({ ok: true });
+    }
+
+    if (data.intent === "removeOverride") {
+      await service.removeOverride(prompt.id);
+      // Navigate back to current version
+      const currentVersion = await prisma.promptVersion.findFirst({
+        where: { promptId: prompt.id, labels: { has: "current" } },
+        select: { version: true },
+      });
+      if (currentVersion) {
+        url.searchParams.set("version", String(currentVersion.version));
+      } else {
+        url.searchParams.delete("version");
+      }
+      return redirect(url.pathname + url.search);
+    }
+
+    if (data.intent === "reactivateOverride") {
+      await service.reactivateOverride(prompt.id, data.versionId);
+      return json({ ok: true });
+    }
+
+    return json({ error: "Unknown intent" }, { status: 400 });
+  }
+);
 
 // ─── Loader ──────────────────────────────────────────────
 
-export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
-  const { organizationSlug, projectParam, envParam, promptSlug } = ParamSchema.parse(params);
+export const loader = dashboardLoader(
+  {
+    params: ParamSchema,
+    context: (params) => resolveProjectAuthScope(params.organizationSlug, params.projectParam),
+    authorization: {
+      action: "read",
+      resource: { type: "prompts" },
+      message: "With your current role, you can't view prompts.",
+    },
+  },
+  promptLoader
+);
+
+async function promptLoader({
+  request,
+  params,
+  user,
+  ability,
+}: DashboardLoaderHandlerArgs<typeof ParamSchema, undefined, ProjectAuthScope>) {
+  const userId = user.id;
+  const { organizationSlug, projectParam, envParam, promptSlug } = params;
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) throw new Response("Project not found", { status: 404 });
@@ -242,7 +293,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const startTime = fromTime ? new Date(fromTime) : new Date(Date.now() - periodMs);
   const endTime = toTime ? new Date(toTime) : new Date();
 
-  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(project.organizationId, "standard");
+  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+    project.organizationId,
+    "standard"
+  );
   const presenter = new PromptPresenter(clickhouse);
   let generations: Awaited<ReturnType<typeof presenter.listGenerations>>["generations"] = [];
   let generationsPagination: { next?: string } = {};
@@ -301,6 +355,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const possibleOperations = opsErr ? [] : opsRows.map((r) => r.val);
   const possibleProviders = provsErr ? [] : provsRows.map((r) => r.val);
 
+  const promptPermissions = {
+    canWritePrompts: ability.can("write", { type: "prompts" }),
+    canPromote: ability.can("update", { type: "prompts" }),
+  };
+
   return typedjson({
     resizable: {
       outer: resizableOuter,
@@ -353,8 +412,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     possibleModels,
     possibleOperations,
     possibleProviders,
+    ...promptPermissions,
   });
-};
+}
 
 // ─── Helpers ─────────────────────────────────────────────
 
@@ -437,6 +497,8 @@ export default function PromptDetailPage() {
     possibleModels,
     possibleOperations,
     possibleProviders,
+    canWritePrompts,
+    canPromote,
   } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
@@ -458,12 +520,12 @@ export default function PromptDetailPage() {
   // Selected version from URL or default to current
   const versionParam = searchValue("version");
   const selectedVersion = versionParam
-    ? versions.find((v) => v.version === Number(versionParam)) ?? versions[0]
+    ? (versions.find((v) => v.version === Number(versionParam)) ?? versions[0])
     : overrideVersion
-    ? versions.find((v) => v.id === overrideVersion.id) ?? versions[0]
-    : currentVersion
-    ? versions.find((v) => v.id === currentVersion.id) ?? versions[0]
-    : versions[0];
+      ? (versions.find((v) => v.id === overrideVersion.id) ?? versions[0])
+      : currentVersion
+        ? (versions.find((v) => v.id === currentVersion.id) ?? versions[0])
+        : versions[0];
 
   const content = selectedVersion ? getVersionContent(selectedVersion) : "";
   const isCurrent = selectedVersion?.labels.includes("current") ?? false;
@@ -504,32 +566,39 @@ export default function PromptDetailPage() {
                     selectedVersion.labels.includes("override")
                       ? "bg-amber-400"
                       : isCurrent
-                      ? "bg-green-500"
-                      : "bg-charcoal-550"
+                        ? "bg-green-500"
+                        : "bg-surface-control-hover"
                   )}
                 />
                 <span className="text-xs text-text-dimmed">v{selectedVersion.version}</span>
                 {isCurrent && <Badge variant="extra-small">current</Badge>}
                 {selectedVersion.labels.includes("override") && (
-                  <Badge variant="extra-small" className="border-amber-500/30 text-amber-400">
+                  <Badge
+                    variant="extra-small"
+                    className="border-amber-500/30 text-amber-400 system:border-transparent system:bg-warning system:text-white"
+                  >
                     override
                   </Badge>
                 )}
               </div>
             )}
             {selectedVersion && !isCurrent && selectedVersion.source === "code" && (
-              <Button
+              <PermissionButton
+                hasPermission={canPromote}
+                noPermissionTooltip="You don't have permission to promote prompt versions"
                 variant="secondary/small"
                 onClick={() => handlePromote(selectedVersion.id)}
                 disabled={fetcher.state !== "idle"}
               >
                 Promote to current
-              </Button>
+              </PermissionButton>
             )}
             {selectedVersion &&
               selectedVersion.source !== "code" &&
               !selectedVersion.labels.includes("override") && (
-                <Button
+                <PermissionButton
+                  hasPermission={canWritePrompts}
+                  noPermissionTooltip="You don't have permission to edit prompt overrides"
                   variant="secondary/small"
                   onClick={() =>
                     fetcher.submit(
@@ -540,12 +609,17 @@ export default function PromptDetailPage() {
                   disabled={fetcher.state !== "idle"}
                 >
                   Reactivate as override
-                </Button>
+                </PermissionButton>
               )}
             {!overrideVersion && (
-              <Button variant="secondary/small" onClick={() => setOverrideDialogOpen(true)}>
+              <PermissionButton
+                hasPermission={canWritePrompts}
+                noPermissionTooltip="You don't have permission to edit prompt overrides"
+                variant="secondary/small"
+                onClick={() => setOverrideDialogOpen(true)}
+              >
                 Create override
-              </Button>
+              </PermissionButton>
             )}
           </div>
         </PageAccessories>
@@ -560,26 +634,32 @@ export default function PromptDetailPage() {
               exit={{ opacity: 0, height: 0 }}
               transition={{ duration: 0.2, ease: "easeInOut" }}
             >
-              <span className="py-1.5 text-xs text-amber-300">
+              <span className="py-1.5 text-xs text-amber-300 light:text-amber-800">
                 Override v{overrideVersion.version} is active. API calls resolve to this version
                 instead of the deployed prompt.
               </span>
               <div className="flex items-center gap-2 py-1.5">
-                <Button
+                <PermissionButton
+                  hasPermission={canWritePrompts}
+                  noPermissionTooltip="You don't have permission to edit prompt overrides"
                   variant="tertiary/small"
-                  className="border-amber-300/50 bg-amber-400/10 text-amber-300 group-hover/button:border-amber-400/60 group-hover/button:bg-amber-500/25 group-hover/button:text-amber-200"
+                  className="border-amber-300/50 bg-amber-400/10 text-amber-300 group-hover/button:border-amber-400/60 group-hover/button:bg-amber-500/25 group-hover/button:text-amber-200 system:border-transparent system:bg-warning system:text-white system:transition system:group-hover/button:bg-warning system:group-hover/button:brightness-90 system:group-hover/button:text-white"
                   onClick={() => setOverrideDialogOpen(true)}
                 >
-                  Edit
-                </Button>
-                <Button
+                  <span className="mx-auto grow self-center truncate text-text-bright system:text-white">
+                    Edit
+                  </span>
+                </PermissionButton>
+                <PermissionButton
+                  hasPermission={canWritePrompts}
+                  noPermissionTooltip="You don't have permission to edit prompt overrides"
                   variant="tertiary/small"
-                  className="border-amber-300/50 bg-amber-400/10 text-amber-300 group-hover/button:border-amber-400/60 group-hover/button:bg-amber-500/25 group-hover/button:text-amber-200"
+                  className="border-amber-300/50 bg-amber-400/10 text-amber-300 group-hover/button:border-amber-400/60 group-hover/button:bg-amber-500/25 group-hover/button:text-amber-200 system:border-warning/60 system:bg-transparent system:transition system:group-hover/button:bg-warning/10"
                   onClick={() => fetcher.submit({ intent: "removeOverride" }, { method: "POST" })}
                   disabled={fetcher.state !== "idle"}
                 >
-                  Remove
-                </Button>
+                  <span className="mx-auto grow self-center truncate text-text-bright">Remove</span>
+                </PermissionButton>
               </div>
             </motion.div>
           )}
@@ -698,7 +778,7 @@ export default function PromptDetailPage() {
                     )}
 
                     {contentTab === "metrics" && (
-                      <div className="h-full overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+                      <div className="h-full overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
                         <MetricsTab
                           prompt={prompt}
                           organizationId={organizationId}
@@ -728,7 +808,7 @@ export default function PromptDetailPage() {
           >
             <div className="grid h-full max-h-full grid-rows-[2rem_1fr] overflow-hidden bg-background-bright">
               {/* Tabs */}
-              <div className="overflow-x-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+              <div className="overflow-x-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
                 <TabContainer>
                   <TabButton
                     isActive={tab === "details"}
@@ -760,7 +840,7 @@ export default function PromptDetailPage() {
               {/* Tab content */}
               <div
                 className={cn(
-                  "overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+                  "overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control",
                   tab === "versions" ? "py-0" : "px-3 py-3"
                 )}
               >
@@ -793,7 +873,9 @@ export default function PromptDetailPage() {
         }
         isEditingOverride={!!overrideVersion}
         currentOverrideModel={
-          overrideVersion ? versions.find((v) => v.id === overrideVersion.id)?.model ?? null : null
+          overrideVersion
+            ? (versions.find((v) => v.id === overrideVersion.id)?.model ?? null)
+            : null
         }
         onSave={(textContent, commitMessage, model) => {
           const intent = overrideVersion ? "updateOverride" : "saveVersion";
@@ -837,6 +919,7 @@ function OverrideDialog({
   // Reset when dialog opens
   useEffect(() => {
     if (open) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setEditedContent(content);
       setCommitMessage("");
       setModel(currentOverrideModel ?? prompt.defaultModel ?? "");
@@ -865,7 +948,7 @@ function OverrideDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[85vh] max-h-[85vh] flex-col !gap-0 overflow-hidden pl-0 pr-3 pt-0 md:max-w-4xl lg:max-w-6xl">
+      <DialogContent className="flex h-[85vh] max-h-[85vh] flex-col gap-0! overflow-hidden pl-0 pr-3 pt-0 md:max-w-4xl lg:max-w-6xl">
         <DialogHeader className="px-4 py-2.5">
           {isEditingOverride ? "Edit override" : "Create override"}
         </DialogHeader>
@@ -875,7 +958,11 @@ function OverrideDialog({
           className="-mx-3 w-auto flex-1 border-b border-t border-grid-dimmed"
         >
           {/* Editor */}
-          <ResizablePanel id="override-editor" min="300px" className="bg-[#121317]">
+          <ResizablePanel
+            id="override-editor"
+            min="300px"
+            className="bg-[#121317] light:bg-editor-background"
+          >
             <TextEditor
               className="h-full"
               autoFocus
@@ -889,7 +976,7 @@ function OverrideDialog({
 
           {/* Right panel: properties */}
           <ResizablePanel id="override-sidebar" min="220px" default="280px" max="360px">
-            <div className="h-full overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+            <div className="h-full overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Header3>Override settings</Header3>
@@ -921,7 +1008,7 @@ function OverrideDialog({
                     <div className="space-y-1">
                       {variableFields.map((f) => (
                         <div key={f.name} className="flex items-center gap-1.5 text-xs">
-                          <code className="rounded bg-charcoal-750 px-1 py-0.5 text-text-bright">
+                          <code className="rounded bg-background-hover px-1 py-0.5 text-text-bright">
                             {f.name}
                           </code>
                           <span className="text-text-dimmed">{f.type}</span>
@@ -1108,7 +1195,7 @@ function PreviewTab({
                 {field.enumValues ? (
                   <select
                     autoFocus={index === 0}
-                    className="h-6 w-full rounded border border-charcoal-650 bg-background-bright px-1 text-xs text-text-bright focus:border-indigo-500 focus:outline-none"
+                    className="h-6 w-full rounded border border-border-bright bg-background-bright px-1 text-xs text-text-bright focus:border-indigo-500 focus:outline-hidden"
                     value={testVariables[field.name] ?? ""}
                     onChange={(e) =>
                       setTestVariables((prev) => ({
@@ -1256,6 +1343,7 @@ function GenerationsTab({
   // Append fetched rows when fetcher completes
   useEffect(() => {
     if (fetcher.data && fetcher.state === "idle") {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setGenerations((prev) => {
         const existingIds = new Set(prev.map((g) => g.span_id));
         const newRows = fetcher.data!.generations.filter((g) => !existingIds.has(g.span_id));
@@ -1346,6 +1434,7 @@ function GenerationsTab({
   const [showSpinner, setShowSpinner] = useState(false);
   useEffect(() => {
     if (!isLoadingMore) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setShowSpinner(false);
       return;
     }
@@ -1419,7 +1508,7 @@ function GenerationsTab({
       <div className="flex h-full items-center justify-center">
         <InfoPanel
           title="No generations yet"
-          icon={AIPromptsIcon}
+          icon={AIChatIcon}
           iconClassName="text-aiPrompts"
           panelClassName="max-w-md"
         >
@@ -1445,7 +1534,7 @@ function GenerationsTab({
       <ResizablePanel id="prompt-gen-list" min="200px">
         <div
           ref={listRef}
-          className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
         >
           {newGenerationCount > 0 && (
             <div className="sticky top-0 z-20 flex items-center justify-center gap-2 border-b border-grid-dimmed bg-background-bright px-3 py-1.5">
@@ -1502,7 +1591,10 @@ function GenerationsTab({
                       {gen.operation_id || gen.task_identifier}
                     </TableCell>
                     <TableCell
-                      className={cn("tabular-nums", isSelected ? "text-text-bright" : "text-charcoal-400")}
+                      className={cn(
+                        "tabular-nums",
+                        isSelected ? "text-text-bright" : "text-text-dimmed"
+                      )}
                     >
                       v{gen.prompt_version}
                     </TableCell>
@@ -1534,7 +1626,7 @@ function GenerationsTab({
                           variant="minimal/small"
                           TrailingIcon={RunsIcon}
                           trailingIconClassName="text-text-bright"
-                          className="h-[1.375rem] pl-1.5 pr-2"
+                          className="h-5.5 pl-1.5 pr-2"
                         >
                           <span className="text-[0.6875rem] text-text-bright">View run</span>
                         </LinkButton>
@@ -1626,7 +1718,7 @@ function MetricsTab({
   return (
     <div className="space-y-3">
       {/* Summary big numbers */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-5 gap-3">
         <div className="h-44">
           <MetricWidget
             widgetKey={`prompt-${prompt.slug}-generations`}
@@ -1659,7 +1751,7 @@ function MetricsTab({
           <MetricWidget
             widgetKey={`prompt-${prompt.slug}-cost`}
             title="Avg input cost"
-            query={`SELECT avg(input_cost) AS avg_cost FROM llm_metrics WHERE 1=1`}
+            query={`SELECT avg(input_cost + cached_read_cost + cache_creation_cost) AS avg_cost FROM llm_metrics WHERE 1=1`}
             config={{
               type: "bignumber",
               column: "avg_cost",
@@ -1680,6 +1772,20 @@ function MetricsTab({
               aggregation: "avg",
               abbreviate: false,
               suffix: "ms",
+            }}
+            {...widgetProps}
+          />
+        </div>
+        <div className="h-44">
+          <MetricWidget
+            widgetKey={`prompt-${prompt.slug}-cached-tokens`}
+            title="Cached tokens"
+            query={`SELECT sum(cached_read_tokens) AS cached_tokens FROM llm_metrics WHERE 1=1`}
+            config={{
+              type: "bignumber",
+              column: "cached_tokens",
+              aggregation: "sum",
+              abbreviate: true,
             }}
             {...widgetProps}
           />
@@ -1808,7 +1914,7 @@ function VersionPerformanceSection({
           <MetricWidget
             widgetKey={`prompt-${promptSlug}-perf-input-cost`}
             title="Input cost per 1k tokens (p50 / p95)"
-            query={`SELECT timeBucket(), prettyFormat(quantile(0.5)(input_cost / input_tokens * 1000), 'costInDollars') AS p50, prettyFormat(quantile(0.95)(input_cost / input_tokens * 1000), 'costInDollars') AS p95 FROM llm_metrics WHERE input_tokens > 0 GROUP BY timeBucket ORDER BY timeBucket`}
+            query={`SELECT timeBucket(), prettyFormat(quantile(0.5)((input_cost + cached_read_cost + cache_creation_cost) / input_tokens * 1000), 'costInDollars') AS p50, prettyFormat(quantile(0.95)((input_cost + cached_read_cost + cache_creation_cost) / input_tokens * 1000), 'costInDollars') AS p95 FROM llm_metrics WHERE input_tokens > 0 GROUP BY timeBucket ORDER BY timeBucket`}
             config={{
               type: "chart",
               chartType: "line",
@@ -1858,6 +1964,45 @@ function VersionPerformanceSection({
               sortByColumn: null,
               sortDirection: "asc",
               aggregation: "avg",
+            }}
+            {...widgetProps}
+          />
+        </div>
+        {/* Row 4: Caching */}
+        <div className="h-96">
+          <MetricWidget
+            widgetKey={`prompt-${promptSlug}-perf-cache-hit`}
+            title="Cache hit rate over time"
+            query={`SELECT timeBucket(), round(ifNull(sum(cached_read_tokens) * 100.0 / nullIf(sum(input_tokens), 0), 0), 1) AS cache_hit_pct FROM llm_metrics WHERE 1=1 GROUP BY timeBucket ORDER BY timeBucket`}
+            config={{
+              type: "chart",
+              chartType: "line",
+              xAxisColumn: "timebucket",
+              yAxisColumns: ["cache_hit_pct"],
+              groupByColumn: null,
+              stacked: false,
+              sortByColumn: null,
+              sortDirection: "asc",
+              aggregation: "avg",
+            }}
+            {...widgetProps}
+          />
+        </div>
+        <div className="h-96">
+          <MetricWidget
+            widgetKey={`prompt-${promptSlug}-perf-cached-tokens`}
+            title="Cached tokens over time"
+            query={`SELECT timeBucket(), sum(cached_read_tokens) AS cache_reads, sum(cache_creation_tokens) AS cache_writes FROM llm_metrics WHERE 1=1 GROUP BY timeBucket ORDER BY timeBucket`}
+            config={{
+              type: "chart",
+              chartType: "bar",
+              xAxisColumn: "timebucket",
+              yAxisColumns: ["cache_reads", "cache_writes"],
+              groupByColumn: null,
+              stacked: true,
+              sortByColumn: null,
+              sortDirection: "asc",
+              aggregation: "sum",
             }}
             {...widgetProps}
           />
@@ -1961,12 +2106,16 @@ function VersionsTab({
         const isOverride = v.labels.includes("override");
 
         return (
-          <div
+          <button
+            type="button"
+            aria-pressed={isSelected}
             key={v.id}
             onClick={() => onSelectVersion(v.version)}
             className={cn(
-              "flex cursor-pointer items-center gap-3 px-3 py-3 text-sm transition",
-              isSelected ? "bg-indigo-500/10 hover:bg-indigo-500/[0.07]" : "hover:bg-charcoal-750"
+              "flex w-full cursor-pointer items-center gap-3 px-3 py-3 text-left text-sm transition focus-custom",
+              isSelected
+                ? "bg-indigo-500/10 hover:bg-indigo-500/[0.07]"
+                : "hover:bg-background-hover"
             )}
           >
             <RadioButtonCircle checked={isSelected} />
@@ -1975,12 +2124,15 @@ function VersionsTab({
                 <div
                   className={cn(
                     "size-2 shrink-0 rounded-full",
-                    isOverride ? "bg-amber-400" : isCurrent ? "bg-green-500" : "bg-charcoal-600"
+                    isOverride ? "bg-amber-400" : isCurrent ? "bg-green-500" : "bg-surface-control"
                   )}
                 />
                 <span className="font-medium text-text-bright">v{v.version}</span>
                 {isOverride && (
-                  <Badge variant="extra-small" className="border-amber-500/30 text-amber-400">
+                  <Badge
+                    variant="extra-small"
+                    className="border-amber-500/30 text-amber-400 system:border-transparent system:bg-warning system:text-white"
+                  >
                     override
                   </Badge>
                 )}
@@ -1998,7 +2150,7 @@ function VersionsTab({
               {(v.model || v.commitMessage) && (
                 <div className="flex items-center gap-1.5 truncate text-xs text-text-dimmed">
                   {v.model && <span>{v.model}</span>}
-                  {v.model && v.commitMessage && <span className="text-charcoal-600">/</span>}
+                  {v.model && v.commitMessage && <span className="text-text-dimmed/50">/</span>}
                   {v.commitMessage && <span className="truncate">{v.commitMessage}</span>}
                 </div>
               )}
@@ -2006,7 +2158,7 @@ function VersionsTab({
             <span className="shrink-0 text-xs text-text-dimmed">
               <DateTime date={v.createdAt} />
             </span>
-          </div>
+          </button>
         );
       })}
     </div>
@@ -2028,9 +2180,9 @@ function PromptCopyPopover({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger className="-ml-1.5 flex items-center gap-1 rounded py-1.5 pl-2 pr-1.5 font-mono text-xs text-text-dimmed transition focus-custom hover:bg-charcoal-750 hover:text-text-bright">
+      <PopoverTrigger className="-ml-1.5 flex items-center gap-1 rounded py-1.5 pl-2 pr-1.5 font-mono text-xs text-text-dimmed transition focus-custom hover:bg-background-hover hover:text-text-bright">
         {slug}
-        <ChevronUpDownIcon className="size-4 text-charcoal-500" />
+        <ChevronUpDownIcon className="size-4 text-text-faint" />
       </PopoverTrigger>
       <PopoverContent
         align="start"
@@ -2099,7 +2251,7 @@ function CopyPopoverItem({
             "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition",
             copied
               ? "text-green-500"
-              : "text-text-dimmed hover:bg-charcoal-700 hover:text-text-bright"
+              : "text-text-dimmed hover:bg-background-raised hover:text-text-bright"
           )}
         >
           {copied ? (

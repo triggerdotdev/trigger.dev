@@ -7,7 +7,7 @@ import type {
   QueueWithScore,
 } from "../types.js";
 
-export interface RoundRobinSchedulerConfig {
+interface RoundRobinSchedulerConfig {
   redis: RedisOptions;
   keys: FairQueueKeyProducer;
   /** Maximum queues to fetch from master queue per iteration */
@@ -154,4 +154,3 @@ export class RoundRobinScheduler extends BaseScheduler {
     return [...array.slice(normalizedIndex), ...array.slice(0, normalizedIndex)];
   }
 }
-

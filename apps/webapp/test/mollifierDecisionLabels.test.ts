@@ -27,7 +27,7 @@ describe("decisionLabels", () => {
 
     // Enrolled: org label present.
     expect(
-      decisionLabels("mollify", { enrolled: true, orgId: "org_1", reason: "per_env_rate" }),
+      decisionLabels("mollify", { enrolled: true, orgId: "org_1", reason: "per_env_rate" })
     ).toEqual({
       outcome: "mollify",
       enrolled: "true",
@@ -45,10 +45,10 @@ describe("decisionLabels", () => {
 
   it("includes `reason` only when supplied", () => {
     expect(decisionLabels("pass_through", { enrolled: true, orgId: "org_1" })).not.toHaveProperty(
-      "reason",
+      "reason"
     );
-    expect(
-      decisionLabels("shadow_log", { enrolled: false, reason: "per_env_rate" }),
-    ).toMatchObject({ reason: "per_env_rate" });
+    expect(decisionLabels("shadow_log", { enrolled: false, reason: "per_env_rate" })).toMatchObject(
+      { reason: "per_env_rate" }
+    );
   });
 });

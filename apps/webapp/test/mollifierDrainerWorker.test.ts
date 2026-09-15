@@ -28,7 +28,7 @@ import { initMollifierDrainerWorker } from "~/v3/mollifierDrainerWorker.server";
 describe("initMollifierDrainerWorker error classification", () => {
   it("rethrows MollifierConfigurationError so the process can crash on misconfig", () => {
     const misconfig = new MollifierConfigurationError(
-      "TRIGGER_MOLLIFIER_DRAIN_SHUTDOWN_TIMEOUT_MS must be at least 1000ms below GRACEFUL_SHUTDOWN_TIMEOUT",
+      "TRIGGER_MOLLIFIER_DRAIN_SHUTDOWN_TIMEOUT_MS must be at least 1000ms below GRACEFUL_SHUTDOWN_TIMEOUT"
     );
 
     expect(() =>
@@ -37,7 +37,7 @@ describe("initMollifierDrainerWorker error classification", () => {
         getDrainer: () => {
           throw misconfig;
         },
-      }),
+      })
     ).toThrow(MollifierConfigurationError);
   });
 
@@ -56,7 +56,7 @@ describe("initMollifierDrainerWorker error classification", () => {
         getDrainer: () => {
           throw cousin;
         },
-      }),
+      })
     ).toThrow(cousin);
   });
 
@@ -67,7 +67,7 @@ describe("initMollifierDrainerWorker error classification", () => {
         getDrainer: () => {
           throw new Error("transient redis blip during buffer init");
         },
-      }),
+      })
     ).not.toThrow();
   });
 

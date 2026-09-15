@@ -1,6 +1,7 @@
 import { getMeter } from "@internal/tracing";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
+import { logger } from "../logger.server";
 import { RunChangeNotifier, type ChangeRecordInput } from "./runChangeNotifier.server";
 
 /**
@@ -13,7 +14,8 @@ function initializeRunChangeNotifier(): RunChangeNotifier {
   const clusterMode = env.REALTIME_BACKEND_NATIVE_PUBSUB_REDIS_CLUSTER_MODE_ENABLED === "1";
   // Sharded pub/sub only works against a cluster; classic pub/sub there would
   // broadcast every message to every node, so this is what actually shards load.
-  const shardedPubSub = clusterMode && env.REALTIME_BACKEND_NATIVE_PUBSUB_REDIS_SHARDED_ENABLED === "1";
+  const shardedPubSub =
+    clusterMode && env.REALTIME_BACKEND_NATIVE_PUBSUB_REDIS_SHARDED_ENABLED === "1";
 
   const meter = getMeter("realtime-notifier");
 
@@ -63,23 +65,17 @@ export function getRunChangeNotifier(): RunChangeNotifier {
   return singleton("runChangeNotifier", initializeRunChangeNotifier);
 }
 
-/** Whether the notifier subsystem is enabled for this process. */
-export function isRunChangeNotifierEnabled(): boolean {
-  return nativeBackendEnabled;
-}
-
 /** Fire-and-forget publish of a run-changed record. No-op (and no notifier construction)
  * when disabled, so publish sites can call it unconditionally. */
 export function publishChangeRecord(input: ChangeRecordInput): void {
   if (!nativeBackendEnabled) {
     return;
   }
-  getRunChangeNotifier().publish(input);
-}
-
-export function publishManyChangeRecords(inputs: ChangeRecordInput[]): void {
-  if (!nativeBackendEnabled) {
-    return;
+  // Publish runs on the run-engine event bus / metadata flush loop; lazy init + encoding happen
+  // before the notifier's own try/catch, so guard the whole call — it must never throw at its caller.
+  try {
+    getRunChangeNotifier().publish(input);
+  } catch (error) {
+    logger.error("[runChangeNotifier] publishChangeRecord threw; dropping notification", { error });
   }
-  getRunChangeNotifier().publishMany(inputs);
 }

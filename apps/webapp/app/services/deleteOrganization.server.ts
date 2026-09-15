@@ -1,9 +1,12 @@
 import { DateFormatter } from "@internationalized/date";
-import { PrismaClient } from "@trigger.dev/database";
+import type { PrismaClient } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
 import { DeleteProjectService } from "./deleteProject.server";
 import { getCurrentPlan } from "./platform.v3.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
+import { commonWorker } from "~/v3/commonWorker.server";
+import { logger } from "./logger.server";
 
 export class DeleteOrganizationService {
   #prismaClient: PrismaClient;
@@ -82,5 +85,24 @@ export class DeleteOrganizationService {
         deletedAt: new Date(),
       },
     });
+
+    // runsEnabled + the org's projects (project.deletedAt) changed; drop all cached env rows.
+    controlPlaneResolver.invalidateOrganization(organization.id);
+
+    // Soft-delete the org's dashboard agent chats; retention purges them later. Enqueued,
+    // not inline: the agent store is a separate database in cloud.
+    // Best-effort: a failed enqueue must not fail org deletion (the org is already deleted).
+    try {
+      await commonWorker.enqueue({
+        id: `dashboardAgent.purgeOrganization:${organization.id}`,
+        job: "dashboardAgent.purgeOrganization",
+        payload: { organizationId: organization.id },
+      });
+    } catch (error) {
+      logger.warn("Failed to enqueue dashboard agent purge for deleted organization", {
+        organizationId: organization.id,
+        error,
+      });
+    }
   }
 }

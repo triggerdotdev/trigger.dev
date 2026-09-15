@@ -1,0 +1,158 @@
+---
+title: "Zod"
+description: "Resolve Zod typechecking, test, and deployment errors when upgrading to Trigger.dev v4.6."
+---
+
+**Trigger.dev v4.6 uses Zod 4 by default. Zod 3.25.56 and later 3.x releases remain supported.**
+
+Use this guide if typechecking, tests, or deployment fail after upgrading. The supported project dependency range is `^3.25.56 || ^4.0.0`.
+
+| Your project's Zod dependency | What to do |
+| --- | --- |
+| No direct Zod dependency | No Zod-specific change is needed. Trigger.dev installs a compatible runtime dependency automatically. |
+| Zod below 3.25.56 | Upgrade before using Trigger.dev v4.6. These versions are unsupported. |
+| Zod 3.25.56 or later in the 3.x release line | Keep using your Zod 3 schemas with supported SDK APIs. Review the cross-major caveats below. |
+| Zod 4.x | Supported and the recommended default. |
+
+Passing your own supported Zod 3 schema to [`schemaTask`](/tasks/schemaTask) or `toolTask` remains supported. This does not make Zod 3 and Zod 4 schemas interchangeable when you compose or inspect them yourself.
+
+## Typechecking, tests, or deployment fail after upgrading
+
+An older Zod installation can be missing the entry points, types, or schema behavior that Trigger.dev v4.6 requires.
+
+Expect TypeScript errors when an unsupported version is resolved, particularly with `skipLibCheck: false`. Tests may also fail when they import or execute schemas. Deployment loads your task code, so an incompatible runtime installation causes deployment errors even if your local tooling skips typechecking. A passing local test suite does not establish that an unsupported version is safe to deploy.
+
+Symptoms include missing `zod/v4` or `zod/v4/core` exports, missing Zod types, incompatible generic parameters, and errors while loading tasks. The exact failure depends on the version and dependency tree; not every unsupported version fails at the same stage.
+
+### Check the installed version
+
+Inspect the resolved dependencies in the package that contains your tasks, not only the version range in `package.json`:
+
+<CodeGroup>
+```bash npm
+npm ls zod
+```
+
+```bash pnpm
+pnpm why zod
+```
+
+```bash bun
+bun pm ls --all
+```
+</CodeGroup>
+
+Check the lockfile and any dependency overrides or resolutions as well. An override can keep an old Zod version installed even after you update a direct dependency.
+
+### Update Zod
+
+Choose whether to move your application to Zod 4 or keep its existing Zod 3 schemas:
+
+<Tabs>
+  <Tab title="Move to Zod 4">
+    Install the latest Zod 4 release:
+
+    <CodeGroup>
+    ```bash npm
+    npm install zod@4
+    ```
+
+    ```bash pnpm
+    pnpm add zod@4
+    ```
+
+    ```bash bun
+    bun add zod@4
+    ```
+    </CodeGroup>
+
+    Review [Zod's migration guide](https://zod.dev/v4/changelog) for changes to your own schemas and error handling.
+  </Tab>
+  <Tab title="Stay on Zod 3">
+    Install the latest Zod 3 patch rather than pinning the minimum supported version:
+
+    <CodeGroup>
+    ```bash npm
+    npm install zod@3
+    ```
+
+    ```bash pnpm
+    pnpm add zod@3
+    ```
+
+    ```bash bun
+    bun add zod@3
+    ```
+    </CodeGroup>
+
+    Your existing `import { z } from "zod"` continues to use Zod 3. Trigger.dev's own schemas use the Zod 4 implementation included in the supported Zod 3 package.
+  </Tab>
+</Tabs>
+
+Other dependencies can require a higher minimum than Trigger.dev. For example, an AI SDK dependency may require Zod 3.25.76 or Zod 4. Meet those peer requirements too; do not force a lower version across every dependency.
+
+### Verify the update
+
+- Commit the updated manifest and lockfile, and make sure CI uses them.
+- Recheck the installed Zod versions in your local and deployment environments.
+- Run your project's TypeScript checks and tests, including code that constructs or inspects schemas.
+- Keep the CLI and SDK versions aligned using the [package upgrade guide](/upgrading-packages), then retry deployment.
+
+Do not use `skipLibCheck` or ignored peer-dependency warnings as a compatibility fix. They do not change the runtime package that deployment loads. You do not need to add Zod as a direct dependency if your application does not import it.
+
+## Parsing still fails with a supported Zod 3 version
+
+Supporting a Zod 3 schema as an SDK input is different from nesting a Trigger.dev-exported Zod 4 schema inside a Zod 3 object. Cross-major composition can fail during typechecking or parsing.
+
+For example, this mixes a Zod 3 object with a Zod 4 `RetryOptions` schema:
+
+```ts incompatible-schemas.ts
+import { z } from "zod"; // Project dependency is Zod 3.
+import { RetryOptions } from "@trigger.dev/core/v3";
+
+const schema = z.object({ retry: RetryOptions });
+schema.parse({ retry: {} });
+```
+
+Use Zod 4 for every schema in the composed object. The `zod/v4` entry point is available in both supported Zod 3 packages and Zod 4 packages:
+
+```ts compatible-schemas.ts
+import { z } from "zod/v4";
+import { RetryOptions } from "@trigger.dev/core/v3";
+
+const schema = z.object({ retry: RetryOptions });
+schema.parse({ retry: {} });
+```
+
+Alternatively, keep the Zod 3 and Trigger.dev schemas separate and call each schema's parser independently. You do not need to migrate unrelated application schemas to use this approach.
+
+## An `instanceof` check stops matching
+
+A Zod 4 error is not an instance of the Zod 3 `ZodError` constructor. A constructor check against your project's Zod 3 import can stop matching errors produced by Trigger.dev's schemas:
+
+```ts mismatched-error-check.ts
+import { z } from "zod"; // Project dependency is Zod 3.
+import { RetryOptions } from "@trigger.dev/core/v3";
+
+const result = RetryOptions.safeParse({ maxAttempts: "invalid" });
+
+if (!result.success) {
+  console.log(result.error instanceof z.ZodError); // false
+}
+```
+
+Use the result returned by the schema you called instead of a constructor from another Zod installation:
+
+```ts schema-error-handling.ts
+import { RetryOptions } from "@trigger.dev/core/v3";
+
+const result = RetryOptions.safeParse({ maxAttempts: "invalid" });
+
+if (!result.success) {
+  console.error(result.error.issues);
+}
+```
+
+The same caveat applies to checks such as `schema instanceof z.ZodObject`. Multiple installed copies can also have different constructors, even within the same major version. Prefer parsing and the returned validation result over inspecting classes or private fields such as `_def`.
+
+These examples are not an exhaustive list of cross-major differences. If errors remain after updating, check which Zod implementation creates each schema and which code composes, parses, or inspects it.

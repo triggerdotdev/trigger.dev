@@ -1,11 +1,14 @@
+import { assertExhaustive } from "@trigger.dev/core";
+import { type Prettify, type QueueItem, type RetrieveQueueParam } from "@trigger.dev/core/v3";
+import {
+  type PrismaClientOrTransaction,
+  type TaskQueue,
+  type User,
+  type TaskQueueType,
+} from "@trigger.dev/database";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { engine } from "~/v3/runEngine.server";
 import { BasePresenter } from "./basePresenter.server";
-import { TaskQueue, User, type TaskQueueType } from "@trigger.dev/database";
-import { assertExhaustive } from "@trigger.dev/core";
-import { determineEngineVersion } from "~/v3/engineVersion.server";
-import { type Prettify, type QueueItem, type RetrieveQueueParam } from "@trigger.dev/core/v3";
-import { PrismaClientOrTransaction } from "@trigger.dev/database";
 
 export type FoundQueue = Prettify<
   Omit<TaskQueue, "concurrencyLimitOverriddenBy"> & {
@@ -76,16 +79,6 @@ export class QueueRetrievePresenter extends BasePresenter {
     environment: AuthenticatedEnvironment;
     queueInput: RetrieveQueueParam;
   }) {
-    //check the engine is the correct version
-    const engineVersion = await determineEngineVersion({ environment });
-
-    if (engineVersion === "V1") {
-      return {
-        success: false as const,
-        code: "engine-version",
-      };
-    }
-
     const queue = await getQueue(this._replica, environment, queueInput);
     if (!queue) {
       return {
@@ -102,18 +95,28 @@ export class QueueRetrievePresenter extends BasePresenter {
     // Transform queues to include running and queued counts
     return {
       success: true as const,
-      queue: toQueueItem({
-        friendlyId: queue.friendlyId,
-        name: queue.name,
-        type: queue.type,
-        running: results[1]?.[queue.name] ?? 0,
-        queued: results[0]?.[queue.name] ?? 0,
-        concurrencyLimit: queue.concurrencyLimit ?? null,
-        concurrencyLimitBase: queue.concurrencyLimitBase ?? null,
-        concurrencyLimitOverriddenAt: queue.concurrencyLimitOverriddenAt ?? null,
-        concurrencyLimitOverriddenBy: queue.concurrencyLimitOverriddenBy ?? null,
-        paused: queue.paused,
-      }),
+      queue: {
+        ...toQueueItem({
+          friendlyId: queue.friendlyId,
+          name: queue.name,
+          type: queue.type,
+          running: results[1]?.[queue.name] ?? 0,
+          queued: results[0]?.[queue.name] ?? 0,
+          concurrencyLimit: queue.concurrencyLimit ?? null,
+          concurrencyLimitBase: queue.concurrencyLimitBase ?? null,
+          concurrencyLimitOverriddenAt: queue.concurrencyLimitOverriddenAt ?? null,
+          concurrencyLimitOverriddenBy: queue.concurrencyLimitOverriddenBy ?? null,
+          paused: queue.paused,
+        }),
+        // The percent source-of-truth for percent-based overrides isn't part of the shared
+        // `QueueItem` schema (that's a public contract), so we surface it as an extra field on
+        // the returned queue — mirroring QueueListPresenter. Prisma returns Decimal; the client
+        // only needs a plain number (null for absolute overrides).
+        concurrencyLimitOverridePercent:
+          queue.concurrencyLimitOverridePercent !== null
+            ? Number(queue.concurrencyLimitOverridePercent)
+            : null,
+      },
     };
   }
 }

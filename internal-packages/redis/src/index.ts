@@ -1,7 +1,30 @@
-import { Redis, type RedisOptions } from "ioredis";
+import {
+  Redis,
+  type Cluster,
+  type ClusterNode,
+  type ClusterOptions,
+  type RedisOptions,
+} from "ioredis";
 import { Logger } from "@trigger.dev/core/logger";
 
-export { Redis, type Callback, type RedisOptions, type Result, type RedisCommander } from "ioredis";
+export {
+  Redis,
+  Cluster,
+  type Callback,
+  type RedisOptions,
+  type ClusterNode,
+  type ClusterOptions,
+  type Result,
+  type RedisCommander,
+} from "ioredis";
+
+/**
+ * Either endpoint shape. A component that only issues key-addressed commands works against both, so
+ * it should accept this rather than pin itself to a standalone connection. Commands with no key —
+ * SCAN above all — do NOT fan out across a cluster, so anything that issues one must iterate
+ * `cluster.nodes("master")` itself.
+ */
+export type RedisClient = Redis | Cluster;
 
 /**
  * Reply-error -> reconnect mapping. Without this hook, an ElastiCache
@@ -24,11 +47,7 @@ export { Redis, type Callback, type RedisOptions, type Result, type RedisCommand
  */
 export function defaultReconnectOnError(err: Error): boolean | 1 | 2 {
   const msg = err.message ?? "";
-  if (
-    msg.startsWith("READONLY") ||
-    msg.startsWith("LOADING") ||
-    msg.startsWith("UNBLOCKED")
-  ) {
+  if (msg.startsWith("READONLY") || msg.startsWith("LOADING") || msg.startsWith("UNBLOCKED")) {
     return 2;
   }
   return false;
@@ -67,6 +86,58 @@ export function createRedisClient(
       handlers.onError(error);
     } else {
       logger.error(`Redis client error:`, { error, keyPrefix: options.keyPrefix });
+    }
+  });
+
+  return client;
+}
+
+export type RedisClusterClientOptions = {
+  nodes: ClusterNode[];
+  clusterOptions?: Omit<ClusterOptions, "redisOptions">;
+  redisOptions?: RedisOptions;
+  /**
+   * Fail a command while the cluster is unreachable instead of queueing it. For a caller on a
+   * request path, where a queued command means a hung request rather than a slow one.
+   */
+  failFast?: boolean;
+};
+
+/**
+ * Cluster-mode client. `defaultOptions` go on the INNER per-node options, so a role swap gets the
+ * same reconnect-and-retry treatment a single-node client already gets.
+ */
+export function createRedisClusterClient(
+  options: RedisClusterClientOptions,
+  handlers?: { onError?: (err: Error) => void }
+): Cluster {
+  const client = new Redis.Cluster(options.nodes, {
+    // The offline queue is a CLUSTER-level setting, separate from the per-node one below. While a
+    // cluster cannot refresh its slot cache it queues commands here, so a caller that wants a
+    // failure during an outage rather than a wait has to turn THIS one off. Default stays `true`,
+    // matching ioredis, so only a caller that asks for it changes behaviour.
+    ...(options.failFast && { enableOfflineQueue: false }),
+    ...options.clusterOptions,
+    redisOptions: {
+      ...defaultOptions,
+      ...(options.failFast && { enableOfflineQueue: false }),
+      ...options.redisOptions,
+    },
+  });
+
+  if (process.env.VITEST) {
+    client.on("error", () => {});
+    return client;
+  }
+
+  client.on("error", (error) => {
+    if (handlers?.onError) {
+      handlers.onError(error);
+    } else {
+      logger.error(`Redis cluster client error:`, {
+        error,
+        keyPrefix: options.redisOptions?.keyPrefix,
+      });
     }
   });
 

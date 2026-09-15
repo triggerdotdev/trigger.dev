@@ -27,9 +27,7 @@
     "description": "An early-generation Claude model from Anthropic, offering basic conversational and text completion capabilities. It was quickly superseded by Claude 1.2, 1.3, and the Claude 2 family.",
     "contextWindow": 9000,
     "maxOutputTokens": 8191,
-    "capabilities": [
-      "streaming"
-    ],
+    "capabilities": ["streaming"],
     "releaseDate": "2023-03-14",
     "isHidden": true,
     "supportsStructuredOutput": false,
@@ -44,9 +42,7 @@
     "description": "An early-generation Anthropic model, part of the original Claude 1.x family. It offered improved performance over Claude 1.0 but was quickly superseded by Claude 1.3 and later model families.",
     "contextWindow": 9000,
     "maxOutputTokens": 8191,
-    "capabilities": [
-      "streaming"
-    ],
+    "capabilities": ["streaming"],
     "releaseDate": null,
     "isHidden": true,
     "supportsStructuredOutput": false,
@@ -61,9 +57,7 @@
     "description": "Early-generation Claude model from Anthropic, offering improved performance over Claude 1.0-1.2 in reasoning and instruction-following tasks.",
     "contextWindow": 100000,
     "maxOutputTokens": null,
-    "capabilities": [
-      "streaming"
-    ],
+    "capabilities": ["streaming"],
     "releaseDate": "2023-03-14",
     "isHidden": true,
     "supportsStructuredOutput": false,
@@ -78,9 +72,7 @@
     "description": "Anthropic's second-generation large language model, offering improved performance over Claude 1.x with longer context support. Succeeded by Claude 2.1 and later the Claude 3 family.",
     "contextWindow": 100000,
     "maxOutputTokens": 4096,
-    "capabilities": [
-      "streaming"
-    ],
+    "capabilities": ["streaming"],
     "releaseDate": "2023-07-11",
     "isHidden": true,
     "supportsStructuredOutput": false,
@@ -95,10 +87,7 @@
     "description": "Anthropic's Claude 2.1 model featuring a 200K context window, reduced hallucination rates compared to Claude 2.0, and improved accuracy on long document comprehension.",
     "contextWindow": 200000,
     "maxOutputTokens": 4096,
-    "capabilities": [
-      "streaming",
-      "tool_use"
-    ],
+    "capabilities": ["streaming", "tool_use"],
     "releaseDate": "2023-11-21",
     "isHidden": true,
     "supportsStructuredOutput": false,
@@ -113,12 +102,7 @@
     "description": "Anthropic's fastest and most cost-effective model in the Claude 3.5 family, optimized for speed and efficiency while maintaining strong performance across common tasks.",
     "contextWindow": 200000,
     "maxOutputTokens": 8192,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode"],
     "releaseDate": "2024-10-22",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -133,12 +117,7 @@
     "description": "Anthropic's Claude 3.5 Sonnet is a mid-tier model balancing intelligence and speed, excelling at coding, analysis, and vision tasks while being faster and cheaper than Opus.",
     "contextWindow": 200000,
     "maxOutputTokens": 8192,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode"],
     "releaseDate": "2024-06-20",
     "isHidden": true,
     "supportsStructuredOutput": true,
@@ -153,12 +132,7 @@
     "description": "Anthropic's fastest and most compact Claude 3 model, optimized for speed and cost-efficiency while maintaining strong performance on everyday tasks.",
     "contextWindow": 200000,
     "maxOutputTokens": 4096,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode"],
     "releaseDate": "2024-03-13",
     "isHidden": true,
     "supportsStructuredOutput": false,
@@ -173,12 +147,7 @@
     "description": "Anthropic's most capable model in the Claude 3 family, excelling at complex analysis, nuanced content generation, and advanced reasoning tasks.",
     "contextWindow": 200000,
     "maxOutputTokens": 4096,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode"],
     "releaseDate": "2024-03-04",
     "isHidden": true,
     "supportsStructuredOutput": true,
@@ -193,12 +162,7 @@
     "description": "Mid-tier model in Anthropic's Claude 3 family, balancing performance and speed for a wide range of tasks including analysis, coding, and content generation.",
     "contextWindow": 200000,
     "maxOutputTokens": 4096,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode"],
     "releaseDate": "2024-03-04",
     "isHidden": true,
     "supportsStructuredOutput": true,
@@ -213,12 +177,7 @@
     "description": "Anthropic's fastest and most cost-effective model in the Claude 3.5 family, optimized for speed and efficiency while maintaining strong performance across a wide range of tasks.",
     "contextWindow": 200000,
     "maxOutputTokens": 8192,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode"],
     "releaseDate": "2024-10-29",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -233,12 +192,7 @@
     "description": "Anthropic's mid-tier model offering strong reasoning, coding, and analysis capabilities at a balance of speed and intelligence, positioned between Haiku and Opus in the Claude 3.5 family.",
     "contextWindow": 200000,
     "maxOutputTokens": 8192,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode"],
     "releaseDate": "2024-06-20",
     "isHidden": true,
     "supportsStructuredOutput": true,
@@ -253,12 +207,7 @@
     "description": "Anthropic's mid-tier model offering strong reasoning, coding, and analysis capabilities at a balance of speed and intelligence, positioned between Haiku and Opus in the Claude 3.5 family.",
     "contextWindow": 200000,
     "maxOutputTokens": 8192,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode"],
     "releaseDate": "2024-06-20",
     "isHidden": true,
     "supportsStructuredOutput": true,
@@ -273,13 +222,7 @@
     "description": "Anthropic's Claude 3.7 Sonnet is a hybrid reasoning model that introduced extended thinking capabilities, offering strong performance on coding, math, and complex reasoning tasks.",
     "contextWindow": 200000,
     "maxOutputTokens": 16384,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode",
-      "extended_thinking"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode", "extended_thinking"],
     "releaseDate": "2025-02-24",
     "isHidden": true,
     "supportsStructuredOutput": true,
@@ -294,13 +237,7 @@
     "description": "Anthropic's Claude 3.7 Sonnet is a hybrid reasoning model that introduced extended thinking capabilities, offering strong performance on coding, math, and complex reasoning tasks.",
     "contextWindow": 200000,
     "maxOutputTokens": 16384,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode",
-      "extended_thinking"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode", "extended_thinking"],
     "releaseDate": "2025-02-24",
     "isHidden": true,
     "supportsStructuredOutput": true,
@@ -315,13 +252,7 @@
     "description": "Anthropic's fastest model with near-frontier intelligence, optimized for speed and cost efficiency while supporting extended thinking and vision.",
     "contextWindow": 200000,
     "maxOutputTokens": 64000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode",
-      "extended_thinking"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode", "extended_thinking"],
     "releaseDate": "2025-10-01",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -336,9 +267,7 @@
     "description": "Anthropic's fast and cost-effective model optimized for speed and efficiency, positioned as a lighter alternative to Claude 1.x for tasks requiring lower latency.",
     "contextWindow": 100000,
     "maxOutputTokens": 8191,
-    "capabilities": [
-      "streaming"
-    ],
+    "capabilities": ["streaming"],
     "releaseDate": "2023-03-14",
     "isHidden": true,
     "supportsStructuredOutput": false,
@@ -353,9 +282,7 @@
     "description": "Anthropic's fast and cost-effective model, optimized for speed and efficiency while maintaining strong performance on conversational and text generation tasks.",
     "contextWindow": 100000,
     "maxOutputTokens": 8191,
-    "capabilities": [
-      "streaming"
-    ],
+    "capabilities": ["streaming"],
     "releaseDate": "2023-08-09",
     "isHidden": true,
     "supportsStructuredOutput": false,
@@ -370,13 +297,7 @@
     "description": "Anthropic's hybrid reasoning model with strong software engineering and agentic capabilities, scoring 74.5% on SWE-bench Verified. Supports both rapid responses and step-by-step extended thinking.",
     "contextWindow": 200000,
     "maxOutputTokens": 32000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode",
-      "extended_thinking"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode", "extended_thinking"],
     "releaseDate": "2025-08-05",
     "isHidden": true,
     "supportsStructuredOutput": true,
@@ -391,13 +312,7 @@
     "description": "Anthropic's flagship model from the Claude 4 family, excelling at complex coding tasks, long-running agent workflows, and deep reasoning with extended thinking support.",
     "contextWindow": 200000,
     "maxOutputTokens": 32000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode",
-      "extended_thinking"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode", "extended_thinking"],
     "releaseDate": "2025-05-14",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -412,13 +327,7 @@
     "description": "Anthropic's flagship intelligence model released in November 2025, excelling at complex reasoning, vision, and extended thinking with the best performance in Anthropic's lineup before Opus 4.6.",
     "contextWindow": 200000,
     "maxOutputTokens": 64000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode",
-      "extended_thinking"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode", "extended_thinking"],
     "releaseDate": "2025-11-01",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -433,13 +342,7 @@
     "description": "Anthropic's most intelligent model, optimized for building agents and coding with exceptional reasoning capabilities and extended agentic task horizons.",
     "contextWindow": 1000000,
     "maxOutputTokens": 128000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode",
-      "extended_thinking"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode", "extended_thinking"],
     "releaseDate": "2026-02-05",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -454,13 +357,7 @@
     "description": "Anthropic's balanced Claude 4 model offering strong coding, reasoning, and multilingual performance at moderate cost. Now a legacy model superseded by Claude Sonnet 4.5 and 4.6.",
     "contextWindow": 200000,
     "maxOutputTokens": 64000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode",
-      "extended_thinking"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode", "extended_thinking"],
     "releaseDate": "2025-05-14",
     "isHidden": true,
     "supportsStructuredOutput": true,
@@ -475,13 +372,7 @@
     "description": "Anthropic's high-performance mid-tier model with strong coding, reasoning, and multi-step problem solving capabilities. Successor to Claude Sonnet 4, offering improved benchmarks at the same price point.",
     "contextWindow": 200000,
     "maxOutputTokens": 64000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode",
-      "extended_thinking"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode", "extended_thinking"],
     "releaseDate": "2025-09-29",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -496,13 +387,7 @@
     "description": "Anthropic's best combination of speed and intelligence, excelling at coding, agentic tasks, and computer use, with a 1M token context window and performance rivaling prior Opus-class models.",
     "contextWindow": 1000000,
     "maxOutputTokens": 64000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode",
-      "extended_thinking"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode", "extended_thinking"],
     "releaseDate": "2026-02-17",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -517,13 +402,7 @@
     "description": "Anthropic's balanced Claude 4 model offering strong coding, reasoning, and multilingual performance at moderate cost. Now a legacy model superseded by Claude Sonnet 4.5 and 4.6.",
     "contextWindow": 200000,
     "maxOutputTokens": 64000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode",
-      "extended_thinking"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode", "extended_thinking"],
     "releaseDate": "2025-05-14",
     "isHidden": true,
     "supportsStructuredOutput": true,
@@ -538,11 +417,7 @@
     "description": "Google's first-generation Gemini Pro model, a mid-size multimodal model designed for text generation, reasoning, and chat applications. Succeeded by Gemini 1.5 Pro.",
     "contextWindow": 32760,
     "maxOutputTokens": 8192,
-    "capabilities": [
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["tool_use", "streaming", "json_mode"],
     "releaseDate": "2023-12-13",
     "isHidden": true,
     "supportsStructuredOutput": false,
@@ -557,11 +432,7 @@
     "description": "Google's first-generation Pro model optimized for text generation, reasoning, and multi-turn conversation tasks, part of the original Gemini 1.0 lineup.",
     "contextWindow": 30720,
     "maxOutputTokens": 2048,
-    "capabilities": [
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["tool_use", "streaming", "json_mode"],
     "releaseDate": "2024-02-15",
     "isHidden": true,
     "supportsStructuredOutput": false,
@@ -576,11 +447,7 @@
     "description": "Google's first-generation Gemini Pro model, a mid-size multimodal model designed for text generation, reasoning, and chat applications. Succeeded by Gemini 1.5 Pro.",
     "contextWindow": 32760,
     "maxOutputTokens": 8192,
-    "capabilities": [
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["tool_use", "streaming", "json_mode"],
     "releaseDate": "2023-12-13",
     "isHidden": true,
     "supportsStructuredOutput": false,
@@ -595,13 +462,7 @@
     "description": "Google's mid-size multimodal model with a massive context window, strong at long-document understanding, code generation, and multi-turn conversation.",
     "contextWindow": 2097152,
     "maxOutputTokens": 8192,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode",
-      "audio_input"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode", "audio_input"],
     "releaseDate": "2024-02-15",
     "isHidden": true,
     "supportsStructuredOutput": true,
@@ -662,12 +523,7 @@
     "description": "A lightweight, cost-efficient variant of Gemini 2.0 Flash optimized for low latency and high throughput, supporting multimodal input with text output.",
     "contextWindow": 1048576,
     "maxOutputTokens": 8192,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode"],
     "releaseDate": "2025-02-05",
     "isHidden": true,
     "supportsStructuredOutput": true,
@@ -682,12 +538,7 @@
     "description": "Google's cost-optimized, low-latency model in the Gemini 2.0 family, designed for high-volume tasks like summarization, multimodal processing, and categorization.",
     "contextWindow": 1048576,
     "maxOutputTokens": 8192,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode"],
     "releaseDate": "2025-02-05",
     "isHidden": true,
     "supportsStructuredOutput": true,
@@ -863,11 +714,7 @@
     "description": "Google's first-generation Gemini model for text generation, reasoning, and multi-turn conversation. Superseded by Gemini 1.5 Pro and later models.",
     "contextWindow": 32768,
     "maxOutputTokens": 8192,
-    "capabilities": [
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["tool_use", "streaming", "json_mode"],
     "releaseDate": "2023-12-13",
     "isHidden": true,
     "supportsStructuredOutput": false,
@@ -882,12 +729,7 @@
     "description": "OpenAI's fast and cost-effective model optimized for chat and instruction-following tasks, now superseded by GPT-4o mini.",
     "contextWindow": 16385,
     "maxOutputTokens": 4096,
-    "capabilities": [
-      "tool_use",
-      "streaming",
-      "json_mode",
-      "fine_tunable"
-    ],
+    "capabilities": ["tool_use", "streaming", "json_mode", "fine_tunable"],
     "releaseDate": "2023-03-01",
     "isHidden": true,
     "supportsStructuredOutput": false,
@@ -902,12 +744,7 @@
     "description": "A fast and cost-effective GPT-3.5 Turbo snapshot optimized for chat completions, offering improved accuracy for function calling and reduced instances of incomplete responses.",
     "contextWindow": 16385,
     "maxOutputTokens": 4096,
-    "capabilities": [
-      "tool_use",
-      "streaming",
-      "json_mode",
-      "fine_tunable"
-    ],
+    "capabilities": ["tool_use", "streaming", "json_mode", "fine_tunable"],
     "releaseDate": "2024-01-25",
     "isHidden": true,
     "supportsStructuredOutput": false,
@@ -922,10 +759,7 @@
     "description": "Early snapshot of GPT-3.5 Turbo, OpenAI's first ChatGPT-optimized model for chat completions. Fast and cost-effective for simple tasks but superseded by later revisions.",
     "contextWindow": 4096,
     "maxOutputTokens": 4096,
-    "capabilities": [
-      "streaming",
-      "fine_tunable"
-    ],
+    "capabilities": ["streaming", "fine_tunable"],
     "releaseDate": "2023-03-01",
     "isHidden": true,
     "supportsStructuredOutput": false,
@@ -940,12 +774,7 @@
     "description": "A snapshot of GPT-3.5 Turbo from June 2023, optimized for chat and instruction-following tasks with function calling support.",
     "contextWindow": 4096,
     "maxOutputTokens": 4096,
-    "capabilities": [
-      "tool_use",
-      "streaming",
-      "json_mode",
-      "fine_tunable"
-    ],
+    "capabilities": ["tool_use", "streaming", "json_mode", "fine_tunable"],
     "releaseDate": "2023-06-13",
     "isHidden": true,
     "supportsStructuredOutput": false,
@@ -960,12 +789,7 @@
     "description": "A dated snapshot of GPT-3.5 Turbo released in November 2023, offering improved instruction following, JSON mode, and parallel function calling over previous GPT-3.5 variants.",
     "contextWindow": 16385,
     "maxOutputTokens": 4096,
-    "capabilities": [
-      "tool_use",
-      "streaming",
-      "json_mode",
-      "fine_tunable"
-    ],
+    "capabilities": ["tool_use", "streaming", "json_mode", "fine_tunable"],
     "releaseDate": "2023-11-06",
     "isHidden": true,
     "supportsStructuredOutput": false,
@@ -980,12 +804,7 @@
     "description": "Extended context version of GPT-3.5 Turbo with 16K token context window, offering the same capabilities as the base model but able to process longer inputs.",
     "contextWindow": 16384,
     "maxOutputTokens": 4096,
-    "capabilities": [
-      "streaming",
-      "json_mode",
-      "fine_tunable",
-      "tool_use"
-    ],
+    "capabilities": ["streaming", "json_mode", "fine_tunable", "tool_use"],
     "releaseDate": "2023-06-13",
     "isHidden": true,
     "supportsStructuredOutput": false,
@@ -1000,11 +819,7 @@
     "description": "Extended context window variant of GPT-3.5 Turbo with 16K token context, snapshot from June 2023. Optimized for chat completions with longer document processing.",
     "contextWindow": 16384,
     "maxOutputTokens": 4096,
-    "capabilities": [
-      "streaming",
-      "json_mode",
-      "fine_tunable"
-    ],
+    "capabilities": ["streaming", "json_mode", "fine_tunable"],
     "releaseDate": "2023-06-13",
     "isHidden": true,
     "supportsStructuredOutput": false,
@@ -1019,9 +834,7 @@
     "description": "OpenAI's GPT-3.5 Turbo Instruct is a completions-only model (not chat) optimized for following explicit instructions, replacing the legacy text-davinci-003 model.",
     "contextWindow": 4096,
     "maxOutputTokens": 4096,
-    "capabilities": [
-      "fine_tunable"
-    ],
+    "capabilities": ["fine_tunable"],
     "releaseDate": "2023-09-19",
     "isHidden": true,
     "supportsStructuredOutput": false,
@@ -1036,12 +849,7 @@
     "description": "OpenAI's flagship large language model that preceded GPT-4o, known for strong reasoning and instruction-following capabilities across a wide range of tasks.",
     "contextWindow": 8192,
     "maxOutputTokens": 8192,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode"],
     "releaseDate": "2023-03-14",
     "isHidden": true,
     "supportsStructuredOutput": false,
@@ -1056,11 +864,7 @@
     "description": "An improved GPT-4 Turbo preview model with better task completion, reduced laziness in code generation, and enhanced instruction following.",
     "contextWindow": 128000,
     "maxOutputTokens": 4096,
-    "capabilities": [
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["tool_use", "streaming", "json_mode"],
     "releaseDate": "2024-01-25",
     "isHidden": true,
     "supportsStructuredOutput": false,
@@ -1075,9 +879,7 @@
     "description": "Original GPT-4 snapshot from March 2023, a large multimodal model (text-only at launch) that was one of OpenAI's first GPT-4 releases. Now deprecated and replaced by newer GPT-4 variants.",
     "contextWindow": 8192,
     "maxOutputTokens": 4096,
-    "capabilities": [
-      "streaming"
-    ],
+    "capabilities": ["streaming"],
     "releaseDate": "2023-03-14",
     "isHidden": true,
     "supportsStructuredOutput": false,
@@ -1092,12 +894,7 @@
     "description": "A snapshot of GPT-4 from June 2023, offering strong reasoning and instruction-following capabilities. It was one of the first widely available GPT-4 variants with function calling support.",
     "contextWindow": 8192,
     "maxOutputTokens": 8192,
-    "capabilities": [
-      "tool_use",
-      "streaming",
-      "json_mode",
-      "fine_tunable"
-    ],
+    "capabilities": ["tool_use", "streaming", "json_mode", "fine_tunable"],
     "releaseDate": "2023-06-13",
     "isHidden": true,
     "supportsStructuredOutput": false,
@@ -1112,12 +909,7 @@
     "description": "GPT-4 Turbo preview model with 128K context window, offering improved instruction following and JSON mode support at reduced cost compared to GPT-4.",
     "contextWindow": 128000,
     "maxOutputTokens": 4096,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode"],
     "releaseDate": "2023-11-06",
     "isHidden": true,
     "supportsStructuredOutput": false,
@@ -1132,11 +924,7 @@
     "description": "Extended context window variant of GPT-4 with 32,768 token capacity, offering the same capabilities as GPT-4 but able to process longer documents and conversations.",
     "contextWindow": 32768,
     "maxOutputTokens": 4096,
-    "capabilities": [
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["tool_use", "streaming", "json_mode"],
     "releaseDate": "2023-03-14",
     "isHidden": true,
     "supportsStructuredOutput": false,
@@ -1151,9 +939,7 @@
     "description": "Extended context (32k token) variant of the original GPT-4 launch snapshot from March 2024, offering the same capabilities as gpt-4-0314 but with 4x the context window.",
     "contextWindow": 32768,
     "maxOutputTokens": 4096,
-    "capabilities": [
-      "streaming"
-    ],
+    "capabilities": ["streaming"],
     "releaseDate": "2023-03-14",
     "isHidden": true,
     "supportsStructuredOutput": false,
@@ -1168,11 +954,7 @@
     "description": "Extended context window variant of GPT-4 with 32,768 token context, based on the June 2023 snapshot. Offers the same capabilities as GPT-4 but with 4x the context length.",
     "contextWindow": 32768,
     "maxOutputTokens": 4096,
-    "capabilities": [
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["tool_use", "streaming", "json_mode"],
     "releaseDate": "2023-06-13",
     "isHidden": true,
     "supportsStructuredOutput": false,
@@ -1187,11 +969,7 @@
     "description": "GPT-4 Turbo preview model with 128K context window, JSON mode, and parallel function calling. A preview release in the GPT-4 Turbo series, now deprecated in favor of newer models.",
     "contextWindow": 128000,
     "maxOutputTokens": 4096,
-    "capabilities": [
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["tool_use", "streaming", "json_mode"],
     "releaseDate": "2023-11-06",
     "isHidden": true,
     "supportsStructuredOutput": false,
@@ -1206,12 +984,7 @@
     "description": "OpenAI's optimized GPT-4 variant offering faster inference and lower cost than the original GPT-4, with vision capabilities and a 128K context window.",
     "contextWindow": 128000,
     "maxOutputTokens": 4096,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode"],
     "releaseDate": "2024-04-09",
     "isHidden": false,
     "supportsStructuredOutput": false,
@@ -1226,12 +999,7 @@
     "description": "OpenAI's optimized GPT-4 variant offering faster inference and lower cost than the original GPT-4, with vision capabilities and a 128K context window.",
     "contextWindow": 128000,
     "maxOutputTokens": 4096,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode"],
     "releaseDate": "2024-04-09",
     "isHidden": false,
     "supportsStructuredOutput": false,
@@ -1246,12 +1014,7 @@
     "description": "An early preview of GPT-4 Turbo with a 128K context window, offering improved instruction following and JSON mode support at reduced cost compared to GPT-4.",
     "contextWindow": 128000,
     "maxOutputTokens": 4096,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode"],
     "releaseDate": "2024-01-25",
     "isHidden": true,
     "supportsStructuredOutput": false,
@@ -1266,12 +1029,7 @@
     "description": "OpenAI's GPT-4 Turbo model with vision capabilities, able to analyze and understand images alongside text. It was a preview model later superseded by GPT-4 Turbo (gpt-4-turbo-2024-04-09) and then GPT-4o.",
     "contextWindow": 128000,
     "maxOutputTokens": 4096,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode"],
     "releaseDate": "2023-11-06",
     "isHidden": true,
     "supportsStructuredOutput": false,
@@ -1286,12 +1044,7 @@
     "description": "OpenAI's flagship model optimized for coding, instruction following, and tool calling with a 1M token context window. Excels at structured outputs and long-context tasks.",
     "contextWindow": 1047576,
     "maxOutputTokens": 32768,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode"],
     "releaseDate": "2025-04-14",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -1306,12 +1059,7 @@
     "description": "OpenAI's flagship model optimized for coding, instruction following, and tool calling with a 1M token context window. Excels at structured outputs and long-context tasks.",
     "contextWindow": 1047576,
     "maxOutputTokens": 32768,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode"],
     "releaseDate": "2025-04-14",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -1326,13 +1074,7 @@
     "description": "A compact, cost-efficient model in OpenAI's GPT-4.1 family that matches or exceeds GPT-4o on many benchmarks while offering nearly half the latency and significantly lower cost.",
     "contextWindow": 1000000,
     "maxOutputTokens": 32768,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode",
-      "fine_tunable"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode", "fine_tunable"],
     "releaseDate": "2025-04-14",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -1347,13 +1089,7 @@
     "description": "A compact, cost-efficient model in OpenAI's GPT-4.1 family that matches or exceeds GPT-4o on many benchmarks while offering nearly half the latency and significantly lower cost.",
     "contextWindow": 1000000,
     "maxOutputTokens": 32768,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode",
-      "fine_tunable"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode", "fine_tunable"],
     "releaseDate": "2025-04-14",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -1368,12 +1104,7 @@
     "description": "OpenAI's fastest and most cost-effective model in the GPT-4.1 family, optimized for low-latency tasks like classification, autocompletion, and lightweight agentic workflows with strong instruction-following and tool-calling capabilities.",
     "contextWindow": 1047576,
     "maxOutputTokens": 32768,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode"],
     "releaseDate": "2025-04-14",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -1388,12 +1119,7 @@
     "description": "OpenAI's fastest and most cost-effective model in the GPT-4.1 family, optimized for low-latency tasks like classification, autocompletion, and lightweight agentic workflows with strong instruction-following and tool-calling capabilities.",
     "contextWindow": 1047576,
     "maxOutputTokens": 32768,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode"],
     "releaseDate": "2025-04-14",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -1408,12 +1134,7 @@
     "description": "OpenAI's largest pretrained model before the GPT-5 series, emphasizing broad knowledge, creative writing, and improved emotional intelligence over reasoning-focused models.",
     "contextWindow": 128000,
     "maxOutputTokens": 16384,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode"],
     "releaseDate": "2025-02-27",
     "isHidden": true,
     "supportsStructuredOutput": true,
@@ -1428,12 +1149,7 @@
     "description": "OpenAI's largest pretrained model before the GPT-5 series, emphasizing broad knowledge, creative writing, and improved emotional intelligence over reasoning-focused models.",
     "contextWindow": 128000,
     "maxOutputTokens": 16384,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode"],
     "releaseDate": "2025-02-27",
     "isHidden": true,
     "supportsStructuredOutput": true,
@@ -1540,12 +1256,7 @@
     "description": "GPT-4o variant with native audio input and output capabilities via the Chat Completions API, supporting both text and audio modalities for conversational and voice-based applications.",
     "contextWindow": 128000,
     "maxOutputTokens": 16384,
-    "capabilities": [
-      "audio_input",
-      "audio_output",
-      "tool_use",
-      "streaming"
-    ],
+    "capabilities": ["audio_input", "audio_output", "tool_use", "streaming"],
     "releaseDate": "2024-10-01",
     "isHidden": false,
     "supportsStructuredOutput": false,
@@ -1560,12 +1271,7 @@
     "description": "GPT-4o variant with native audio input and output capabilities via the Chat Completions API, supporting both text and audio modalities for conversational and voice-based applications.",
     "contextWindow": 128000,
     "maxOutputTokens": 16384,
-    "capabilities": [
-      "audio_input",
-      "audio_output",
-      "tool_use",
-      "streaming"
-    ],
+    "capabilities": ["audio_input", "audio_output", "tool_use", "streaming"],
     "releaseDate": "2024-10-01",
     "isHidden": false,
     "supportsStructuredOutput": false,
@@ -1580,13 +1286,7 @@
     "description": "Fast, affordable small model optimized for focused tasks. Positioned as OpenAI's cost-efficient option with strong performance on benchmarks relative to its size.",
     "contextWindow": 128000,
     "maxOutputTokens": 16384,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode",
-      "fine_tunable"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode", "fine_tunable"],
     "releaseDate": "2024-07-18",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -1601,13 +1301,7 @@
     "description": "Fast, affordable small model optimized for focused tasks. Positioned as OpenAI's cost-efficient option with strong performance on benchmarks relative to its size.",
     "contextWindow": 128000,
     "maxOutputTokens": 16384,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode",
-      "fine_tunable"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode", "fine_tunable"],
     "releaseDate": "2024-07-18",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -1622,12 +1316,7 @@
     "description": "OpenAI's real-time multimodal model capable of processing and generating both text and audio over WebRTC or WebSocket, enabling low-latency voice conversations and audio interactions.",
     "contextWindow": 128000,
     "maxOutputTokens": 4096,
-    "capabilities": [
-      "audio_input",
-      "audio_output",
-      "tool_use",
-      "streaming"
-    ],
+    "capabilities": ["audio_input", "audio_output", "tool_use", "streaming"],
     "releaseDate": "2024-10-01",
     "isHidden": false,
     "supportsStructuredOutput": false,
@@ -1642,12 +1331,7 @@
     "description": "OpenAI's real-time multimodal model capable of processing and generating both text and audio over WebRTC or WebSocket, enabling low-latency voice conversations and audio interactions.",
     "contextWindow": 128000,
     "maxOutputTokens": 4096,
-    "capabilities": [
-      "audio_input",
-      "audio_output",
-      "tool_use",
-      "streaming"
-    ],
+    "capabilities": ["audio_input", "audio_output", "tool_use", "streaming"],
     "releaseDate": "2024-10-01",
     "isHidden": false,
     "supportsStructuredOutput": false,
@@ -1706,12 +1390,7 @@
     "description": "Non-reasoning GPT-5 model used in ChatGPT, optimized for conversational tasks. Supports text and image inputs with function calling and structured outputs.",
     "contextWindow": 128000,
     "maxOutputTokens": 16384,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode"],
     "releaseDate": "2025-08-07",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -1726,12 +1405,7 @@
     "description": "A faster, more cost-efficient version of GPT-5 designed for well-defined tasks and precise prompts. Supports reasoning with configurable effort levels and offers reduced latency compared to the full GPT-5 model.",
     "contextWindow": 400000,
     "maxOutputTokens": 128000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode"],
     "releaseDate": "2025-08-07",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -1746,12 +1420,7 @@
     "description": "A faster, more cost-efficient version of GPT-5 designed for well-defined tasks and precise prompts. Supports reasoning with configurable effort levels and offers reduced latency compared to the full GPT-5 model.",
     "contextWindow": 400000,
     "maxOutputTokens": 128000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode"],
     "releaseDate": "2025-08-07",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -1766,12 +1435,7 @@
     "description": "The smallest and fastest variant in the GPT-5 family, optimized for developer tools, rapid interactions, and ultra-low latency environments. Best suited for classification, data extraction, ranking, and sub-agent tasks.",
     "contextWindow": 400000,
     "maxOutputTokens": 128000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode"],
     "releaseDate": "2025-08-07",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -1786,12 +1450,7 @@
     "description": "The smallest and fastest variant in the GPT-5 family, optimized for developer tools, rapid interactions, and ultra-low latency environments. Best suited for classification, data extraction, ranking, and sub-agent tasks.",
     "contextWindow": 400000,
     "maxOutputTokens": 128000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode"],
     "releaseDate": "2025-08-07",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -1806,12 +1465,7 @@
     "description": "OpenAI's enhanced GPT-5 variant optimized for complex tasks requiring step-by-step reasoning, with reduced hallucination and improved code quality compared to the base GPT-5.",
     "contextWindow": 400000,
     "maxOutputTokens": 128000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode"],
     "releaseDate": "2025-10-06",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -1826,12 +1480,7 @@
     "description": "OpenAI's enhanced GPT-5 variant optimized for complex tasks requiring step-by-step reasoning, with reduced hallucination and improved code quality compared to the base GPT-5.",
     "contextWindow": 400000,
     "maxOutputTokens": 128000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode"],
     "releaseDate": "2025-10-06",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -1846,12 +1495,7 @@
     "description": "GPT-5.1 is OpenAI's frontier-grade model in the GPT-5 series, offering adaptive reasoning with configurable effort levels, improved coding and math performance, and a more natural conversational style compared to GPT-5.",
     "contextWindow": 400000,
     "maxOutputTokens": 128000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode"],
     "releaseDate": "2025-11-13",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -1866,12 +1510,7 @@
     "description": "GPT-5.1 is OpenAI's frontier-grade model in the GPT-5 series, offering adaptive reasoning with configurable effort levels, improved coding and math performance, and a more natural conversational style compared to GPT-5.",
     "contextWindow": 400000,
     "maxOutputTokens": 128000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode"],
     "releaseDate": "2025-11-13",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -1886,13 +1525,7 @@
     "description": "OpenAI's flagship multimodal model released December 2025, excelling at long-context reasoning, agentic tool use, software engineering, and professional knowledge work. Available in Instant, Thinking, and Pro variants.",
     "contextWindow": 400000,
     "maxOutputTokens": 128000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode",
-      "extended_thinking"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode", "extended_thinking"],
     "releaseDate": "2025-12-11",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -1907,13 +1540,7 @@
     "description": "OpenAI's flagship multimodal model released December 2025, excelling at long-context reasoning, agentic tool use, software engineering, and professional knowledge work. Available in Instant, Thinking, and Pro variants.",
     "contextWindow": 400000,
     "maxOutputTokens": 128000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode",
-      "extended_thinking"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode", "extended_thinking"],
     "releaseDate": "2025-12-11",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -1928,12 +1555,7 @@
     "description": "OpenAI's previous pro-tier reasoning model optimized for complex professional work requiring step-by-step reasoning, instruction following, and accuracy in high-stakes use cases. Superseded by GPT-5.4 pro.",
     "contextWindow": 400000,
     "maxOutputTokens": 128000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "extended_thinking"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "extended_thinking"],
     "releaseDate": "2025-12-11",
     "isHidden": false,
     "supportsStructuredOutput": false,
@@ -1948,12 +1570,7 @@
     "description": "OpenAI's previous pro-tier reasoning model optimized for complex professional work requiring step-by-step reasoning, instruction following, and accuracy in high-stakes use cases. Superseded by GPT-5.4 pro.",
     "contextWindow": 400000,
     "maxOutputTokens": 128000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "extended_thinking"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "extended_thinking"],
     "releaseDate": "2025-12-11",
     "isHidden": false,
     "supportsStructuredOutput": false,
@@ -1968,13 +1585,7 @@
     "description": "OpenAI's most capable frontier model as of March 2026, featuring state-of-the-art coding, native computer-use capabilities, and a 1M-token context window for professional and agentic workflows.",
     "contextWindow": 1050000,
     "maxOutputTokens": 128000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode",
-      "code_execution"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode", "code_execution"],
     "releaseDate": "2026-03-05",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -1989,13 +1600,7 @@
     "description": "OpenAI's most capable frontier model as of March 2026, featuring state-of-the-art coding, native computer-use capabilities, and a 1M-token context window for professional and agentic workflows.",
     "contextWindow": 1050000,
     "maxOutputTokens": 128000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode",
-      "code_execution"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode", "code_execution"],
     "releaseDate": "2026-03-05",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -2010,13 +1615,7 @@
     "description": "OpenAI's fast and efficient small model from the GPT-5.4 family, designed for high-volume workloads. Approaches GPT-5.4 performance on coding and reasoning while running over 2x faster than GPT-5 mini.",
     "contextWindow": 400000,
     "maxOutputTokens": 128000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode",
-      "extended_thinking"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode", "extended_thinking"],
     "releaseDate": "2026-03-17",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -2031,13 +1630,7 @@
     "description": "OpenAI's fast and efficient small model from the GPT-5.4 family, designed for high-volume workloads. Approaches GPT-5.4 performance on coding and reasoning while running over 2x faster than GPT-5 mini.",
     "contextWindow": 400000,
     "maxOutputTokens": 128000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode",
-      "extended_thinking"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode", "extended_thinking"],
     "releaseDate": "2026-03-17",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -2052,12 +1645,7 @@
     "description": "OpenAI's cheapest GPT-5.4-class model optimized for simple high-volume tasks like classification, data extraction, ranking, and sub-agent delegation in agentic workflows.",
     "contextWindow": 400000,
     "maxOutputTokens": 128000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode"],
     "releaseDate": "2026-03-17",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -2072,12 +1660,7 @@
     "description": "OpenAI's cheapest GPT-5.4-class model optimized for simple high-volume tasks like classification, data extraction, ranking, and sub-agent delegation in agentic workflows.",
     "contextWindow": 400000,
     "maxOutputTokens": 128000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode"],
     "releaseDate": "2026-03-17",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -2092,12 +1675,7 @@
     "description": "OpenAI's highest-capability GPT-5.4 variant, using additional compute for harder problems. Available via Responses API only, designed for complex reasoning, coding, and agentic workflows.",
     "contextWindow": 1050000,
     "maxOutputTokens": 128000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "extended_thinking"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "extended_thinking"],
     "releaseDate": "2026-03-05",
     "isHidden": false,
     "supportsStructuredOutput": false,
@@ -2112,12 +1690,7 @@
     "description": "OpenAI's highest-capability GPT-5.4 variant, using additional compute for harder problems. Available via Responses API only, designed for complex reasoning, coding, and agentic workflows.",
     "contextWindow": 1050000,
     "maxOutputTokens": 128000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "extended_thinking"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "extended_thinking"],
     "releaseDate": "2026-03-05",
     "isHidden": false,
     "supportsStructuredOutput": false,
@@ -2132,12 +1705,7 @@
     "description": "OpenAI's reasoning model designed for complex tasks requiring multi-step logical thinking, excelling at math, science, and coding problems.",
     "contextWindow": 200000,
     "maxOutputTokens": 100000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode"],
     "releaseDate": "2024-12-17",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -2152,12 +1720,7 @@
     "description": "OpenAI's reasoning model designed for complex tasks requiring multi-step logical thinking, excelling at math, science, and coding problems.",
     "contextWindow": 200000,
     "maxOutputTokens": 100000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode"],
     "releaseDate": "2024-12-17",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -2172,10 +1735,7 @@
     "description": "A smaller, faster, and cheaper reasoning model in OpenAI's o1 series, optimized for coding, math, and science tasks requiring multi-step reasoning.",
     "contextWindow": 128000,
     "maxOutputTokens": 65536,
-    "capabilities": [
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["streaming", "json_mode"],
     "releaseDate": "2024-09-12",
     "isHidden": true,
     "supportsStructuredOutput": false,
@@ -2190,10 +1750,7 @@
     "description": "A smaller, faster, and cheaper reasoning model in OpenAI's o1 series, optimized for coding, math, and science tasks requiring multi-step reasoning.",
     "contextWindow": 128000,
     "maxOutputTokens": 65536,
-    "capabilities": [
-      "streaming",
-      "json_mode"
-    ],
+    "capabilities": ["streaming", "json_mode"],
     "releaseDate": "2024-09-12",
     "isHidden": true,
     "supportsStructuredOutput": false,
@@ -2208,9 +1765,7 @@
     "description": "OpenAI's first reasoning model using chain-of-thought to solve complex problems in science, coding, and math. Predecessor to o1 and o3 series.",
     "contextWindow": 128000,
     "maxOutputTokens": 32768,
-    "capabilities": [
-      "streaming"
-    ],
+    "capabilities": ["streaming"],
     "releaseDate": "2024-09-12",
     "isHidden": true,
     "supportsStructuredOutput": false,
@@ -2225,9 +1780,7 @@
     "description": "OpenAI's first reasoning model using chain-of-thought to solve complex problems in science, coding, and math. Predecessor to o1 and o3 series.",
     "contextWindow": 128000,
     "maxOutputTokens": 32768,
-    "capabilities": [
-      "streaming"
-    ],
+    "capabilities": ["streaming"],
     "releaseDate": "2024-09-12",
     "isHidden": true,
     "supportsStructuredOutput": false,
@@ -2242,12 +1795,7 @@
     "description": "A version of OpenAI's o1 reasoning model that uses significantly more compute to deliver better, more consistent answers on complex reasoning tasks in science, coding, and math.",
     "contextWindow": 200000,
     "maxOutputTokens": 100000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "json_mode",
-      "extended_thinking"
-    ],
+    "capabilities": ["vision", "tool_use", "json_mode", "extended_thinking"],
     "releaseDate": "2025-03-19",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -2262,12 +1810,7 @@
     "description": "A version of OpenAI's o1 reasoning model that uses significantly more compute to deliver better, more consistent answers on complex reasoning tasks in science, coding, and math.",
     "contextWindow": 200000,
     "maxOutputTokens": 100000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "json_mode",
-      "extended_thinking"
-    ],
+    "capabilities": ["vision", "tool_use", "json_mode", "extended_thinking"],
     "releaseDate": "2025-03-19",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -2282,13 +1825,7 @@
     "description": "OpenAI's advanced reasoning model designed for complex tasks requiring deep reasoning, excelling at software engineering, mathematics, scientific reasoning, and visual reasoning tasks.",
     "contextWindow": 200000,
     "maxOutputTokens": 100000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode",
-      "extended_thinking"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode", "extended_thinking"],
     "releaseDate": "2025-04-16",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -2303,13 +1840,7 @@
     "description": "OpenAI's advanced reasoning model designed for complex tasks requiring deep reasoning, excelling at software engineering, mathematics, scientific reasoning, and visual reasoning tasks.",
     "contextWindow": 200000,
     "maxOutputTokens": 100000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode",
-      "extended_thinking"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode", "extended_thinking"],
     "releaseDate": "2025-04-16",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -2324,12 +1855,7 @@
     "description": "OpenAI's compact reasoning model optimized for STEM tasks, offering strong performance in math, science, and coding at lower cost than o3.",
     "contextWindow": 200000,
     "maxOutputTokens": 100000,
-    "capabilities": [
-      "tool_use",
-      "streaming",
-      "json_mode",
-      "extended_thinking"
-    ],
+    "capabilities": ["tool_use", "streaming", "json_mode", "extended_thinking"],
     "releaseDate": "2025-01-31",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -2344,12 +1870,7 @@
     "description": "OpenAI's compact reasoning model optimized for STEM tasks, offering strong performance in math, science, and coding at lower cost than o3.",
     "contextWindow": 200000,
     "maxOutputTokens": 100000,
-    "capabilities": [
-      "tool_use",
-      "streaming",
-      "json_mode",
-      "extended_thinking"
-    ],
+    "capabilities": ["tool_use", "streaming", "json_mode", "extended_thinking"],
     "releaseDate": "2025-01-31",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -2364,13 +1885,7 @@
     "description": "OpenAI's most reliable reasoning model, a version of o3 designed to think longer and provide more consistently accurate answers for challenging math, science, and coding problems.",
     "contextWindow": 200000,
     "maxOutputTokens": 100000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode",
-      "extended_thinking"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode", "extended_thinking"],
     "releaseDate": "2025-06-10",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -2385,13 +1900,7 @@
     "description": "OpenAI's most reliable reasoning model, a version of o3 designed to think longer and provide more consistently accurate answers for challenging math, science, and coding problems.",
     "contextWindow": 200000,
     "maxOutputTokens": 100000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode",
-      "extended_thinking"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode", "extended_thinking"],
     "releaseDate": "2025-06-10",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -2406,13 +1915,7 @@
     "description": "OpenAI's small reasoning model optimized for fast, cost-efficient reasoning with strong performance in math, coding, and visual tasks.",
     "contextWindow": 200000,
     "maxOutputTokens": 100000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode",
-      "extended_thinking"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode", "extended_thinking"],
     "releaseDate": "2025-04-16",
     "isHidden": false,
     "supportsStructuredOutput": true,
@@ -2427,13 +1930,7 @@
     "description": "OpenAI's small reasoning model optimized for fast, cost-efficient reasoning with strong performance in math, coding, and visual tasks.",
     "contextWindow": 200000,
     "maxOutputTokens": 100000,
-    "capabilities": [
-      "vision",
-      "tool_use",
-      "streaming",
-      "json_mode",
-      "extended_thinking"
-    ],
+    "capabilities": ["vision", "tool_use", "streaming", "json_mode", "extended_thinking"],
     "releaseDate": "2025-04-16",
     "isHidden": false,
     "supportsStructuredOutput": true,

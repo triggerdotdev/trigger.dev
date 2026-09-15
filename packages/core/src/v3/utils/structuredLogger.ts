@@ -1,3 +1,5 @@
+import { redact } from "../../logger.js";
+
 type StructuredArgs = (Record<string, unknown> | undefined)[];
 
 export interface StructuredLogger {
@@ -19,6 +21,10 @@ export enum LogLevel {
 }
 
 export class SimpleStructuredLogger implements StructuredLogger {
+  // Optional static sink called with the fully-structured log for every emitted line.
+  // Used (e.g.) to fan logs out to a dev-only telnet stream. Must not re-enter the logger.
+  static onLog?: (structuredLog: Record<string, unknown>) => void;
+
   private prettyPrint = ["1", "true"].includes(process.env.PRETTY_LOGS ?? "");
 
   constructor(
@@ -26,8 +32,8 @@ export class SimpleStructuredLogger implements StructuredLogger {
     private level: LogLevel = ["1", "true"].includes(process.env.VERBOSE ?? "")
       ? LogLevel.verbose
       : ["1", "true"].includes(process.env.DEBUG ?? "")
-      ? LogLevel.debug
-      : LogLevel.info,
+        ? LogLevel.debug
+        : LogLevel.info,
     private fields?: Record<string, unknown>
   ) {}
 
@@ -84,14 +90,22 @@ export class SimpleStructuredLogger implements StructuredLogger {
     level: string,
     ...args: StructuredArgs
   ) {
-    const structuredLog = {
+    const structuredLog = redact({
       timestamp: new Date(),
       message,
       $name: this.name,
       $level: level,
       ...this.fields,
       ...(args.length === 1 ? args[0] : args),
-    };
+    }) as Record<string, unknown>;
+
+    if (SimpleStructuredLogger.onLog) {
+      try {
+        SimpleStructuredLogger.onLog(structuredLog);
+      } catch {
+        // A sink must never break logging — and must never re-enter the logger.
+      }
+    }
 
     if (this.prettyPrint) {
       loggerFunction(JSON.stringify(structuredLog, null, 2));

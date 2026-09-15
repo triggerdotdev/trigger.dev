@@ -21,8 +21,8 @@ export function extractAISummarySpanData(
   const aiModel = rec(ai.model);
   const aiResponse = rec(ai.response);
   const aiUsage = rec(ai.usage);
-  const aiSettings = rec(ai.settings);
-  const aiRequest = rec(ai.request);
+  const _aiSettings = rec(ai.settings);
+  const _aiRequest = rec(ai.request);
   const aiTelemetry = rec(ai.telemetry);
   const trigger = rec(properties.trigger);
   const triggerLlm = rec(trigger.llm);
@@ -34,10 +34,8 @@ export function extractAISummarySpanData(
   const operationName = str(ai.operationId) ?? "";
 
   // Token usage
-  const inputTokens =
-    num(aiUsage.inputTokens) ?? num(aiUsage.promptTokens) ?? 0;
-  const outputTokens =
-    num(aiUsage.outputTokens) ?? num(aiUsage.completionTokens) ?? 0;
+  const inputTokens = num(aiUsage.inputTokens) ?? num(aiUsage.promptTokens) ?? 0;
+  const outputTokens = num(aiUsage.outputTokens) ?? num(aiUsage.completionTokens) ?? 0;
   const totalTokens = num(aiUsage.totalTokens) ?? inputTokens + outputTokens;
 
   const tokensPerSecond =
@@ -63,7 +61,9 @@ export function extractAISummarySpanData(
 
   // Parse the prompt JSON to build display items
   const promptJson = str(ai.prompt);
-  const items = promptJson ? parsePromptToDisplayItems(promptJson, str(aiResponse.text)) : undefined;
+  const items = promptJson
+    ? parsePromptToDisplayItems(promptJson, str(aiResponse.text))
+    : undefined;
 
   // Count messages from the parsed prompt
   let messageCount: number | undefined;
@@ -108,6 +108,8 @@ export function extractAISummarySpanData(
     inputCost: num(triggerLlm.input_cost),
     outputCost: num(triggerLlm.output_cost),
     totalCost: num(triggerLlm.total_cost),
+    cachedCost: num(triggerLlm.cached_cost),
+    cacheCreationCost: num(triggerLlm.cache_creation_cost),
     responseText: str(aiResponse.text) || undefined,
     responseObject: str(aiResponse.object) || undefined,
     toolDefinitions: undefined,
@@ -192,4 +194,3 @@ function extractMessageContent(content: unknown): string | undefined {
   }
   return undefined;
 }
-

@@ -1,0 +1,94 @@
+---
+title: "CLI runs commands"
+sidebarTitle: "runs"
+description: "Use these commands to list, inspect, replay and cancel runs from your terminal."
+---
+
+import CommonOptions from "/snippets/cli-options-common.mdx";
+import ConfigFileOptions from "/snippets/cli-options-config-file.mdx";
+import ProjectRefOptions from "/snippets/cli-options-project-ref.mdx";
+import BranchOptions from "/snippets/cli-options-branch.mdx";
+
+## runs list
+
+Lists runs, newest first, in a table of ID, task, status, version, created time and duration.
+
+<CodeGroup>
+
+```bash npm
+npx trigger.dev@latest runs list
+```
+
+```bash pnpm
+pnpm dlx trigger.dev@latest runs list
+```
+
+```bash yarn
+yarn dlx trigger.dev@latest runs list
+```
+
+</CodeGroup>
+
+<ParamField body="Limit" type="--limit">
+  The number of runs to list, up to 100. Defaults to 20.
+</ParamField>
+
+<ParamField body="Status" type="--status">
+  Only show runs with this status, e.g. `FAILED`.
+</ParamField>
+
+<ParamField body="Task" type="--task">
+  Only show runs for this task identifier.
+</ParamField>
+
+<ParamField body="Tag" type="--tag">
+  Only show runs with this tag.
+</ParamField>
+
+<ParamField body="Cursor" type="--cursor">
+  The pagination cursor printed at the end of the previous page.
+</ParamField>
+
+## runs get
+
+Prints the status, version, tags, timings, duration, cost and error of a single run.
+
+```bash
+npx trigger.dev@latest runs get run_abc123
+```
+
+## runs replay
+
+Triggers a new run with the same payload as an existing one, using the latest version of the task.
+
+```bash
+npx trigger.dev@latest runs replay run_abc123
+```
+
+## runs cancel
+
+Cancels a run that has not finished yet. You are asked to confirm first.
+
+```bash
+npx trigger.dev@latest runs cancel run_abc123
+```
+
+<ParamField body="Skip confirmation" type="--yes | -y">
+  Cancel without the confirmation prompt. Required in non-interactive environments such as CI.
+</ParamField>
+
+## Options
+
+<ParamField body="Environment" type="--env | -e">
+  The environment to use: `dev`, `prod`, `staging` or `preview`. Defaults to `prod`.
+</ParamField>
+
+<ConfigFileOptions />
+<ProjectRefOptions />
+<BranchOptions />
+
+### Common options
+
+These options are available on most commands.
+
+<CommonOptions />

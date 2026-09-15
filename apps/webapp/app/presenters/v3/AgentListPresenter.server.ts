@@ -1,29 +1,18 @@
-import {
-  type PrismaClientOrTransaction,
-  type RuntimeEnvironmentType,
-  type TaskTriggerSource,
-} from "@trigger.dev/database";
+import { type PrismaClientOrTransaction, type RuntimeEnvironmentType } from "@trigger.dev/database";
 import { type ClickHouse } from "@internal/clickhouse";
 import { z } from "zod";
 import { $replica } from "~/db.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
+import { backstopPromise } from "~/utils/backstopPromise";
 import { singleton } from "~/utils/singleton";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
-
-export type AgentListItem = {
-  slug: string;
-  filePath: string;
-  createdAt: Date;
-  triggerSource: TaskTriggerSource;
-  config: unknown;
-};
 
 export type AgentActiveState = {
   running: number;
   suspended: number;
 };
 
-export class AgentListPresenter {
+class AgentListPresenter {
   constructor(private readonly _replica: PrismaClientOrTransaction) {}
 
   public async call({
@@ -31,24 +20,31 @@ export class AgentListPresenter {
     projectId,
     environmentId,
     environmentType,
+    currentWorker: preloadedCurrentWorker,
   }: {
     organizationId: string;
     projectId: string;
     environmentId: string;
     environmentType: RuntimeEnvironmentType;
+    /** Optional: pass the pre-resolved current worker to skip the lookup. Used
+     *  by `UnifiedTaskListPresenter` to share one lookup across both presenters. */
+    currentWorker?: Awaited<ReturnType<typeof findCurrentWorkerFromEnvironment>>;
   }) {
     const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
       organizationId,
       "standard"
     );
 
-    const currentWorker = await findCurrentWorkerFromEnvironment(
-      {
-        id: environmentId,
-        type: environmentType,
-      },
-      this._replica
-    );
+    const currentWorker =
+      preloadedCurrentWorker !== undefined
+        ? preloadedCurrentWorker
+        : await findCurrentWorkerFromEnvironment(
+            {
+              id: environmentId,
+              type: environmentType,
+            },
+            this._replica
+          );
 
     if (!currentWorker) {
       return {
@@ -90,11 +86,18 @@ export class AgentListPresenter {
       };
     }
 
-    // All queries are deferred for streaming
-    const activeStates = this.#getActiveStates(clickhouse, environmentId, slugs);
-    const conversationSparklines = this.#getConversationSparklines(clickhouse, environmentId, slugs);
-    const costSparklines = this.#getCostSparklines(clickhouse, environmentId, slugs);
-    const tokenSparklines = this.#getTokenSparklines(clickhouse, environmentId, slugs);
+    // Deferred for streaming, and backstopped: consumers subscribe late or,
+    // for some callers, not at all.
+    const activeStates = backstopPromise(this.#getActiveStates(clickhouse, environmentId, slugs));
+    const conversationSparklines = backstopPromise(
+      this.#getConversationSparklines(clickhouse, environmentId, slugs)
+    );
+    const costSparklines = backstopPromise(
+      this.#getCostSparklines(clickhouse, environmentId, slugs)
+    );
+    const tokenSparklines = backstopPromise(
+      this.#getTokenSparklines(clickhouse, environmentId, slugs)
+    );
 
     return { agents, activeStates, conversationSparklines, costSparklines, tokenSparklines };
   }

@@ -1,5 +1,5 @@
 import { useFetcher } from "@remix-run/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import stableStringify from "json-stable-stringify";
 import {
   Dialog,
@@ -18,6 +18,7 @@ import {
   UNSET_VALUE,
   BooleanControl,
   EnumControl,
+  NumberControl,
   StringControl,
   WorkerGroupControl,
   type WorkerGroup,
@@ -53,6 +54,10 @@ export function FeatureFlagsDialog({
 }: FeatureFlagsDialogProps) {
   const loadFetcher = useFetcher<LoaderData>();
   const saveFetcher = useFetcher<ActionData>();
+  const loadFeatureFlags = loadFetcher.load;
+  const onOpenChangeRef = useRef(onOpenChange);
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
+  onOpenChangeRef.current = onOpenChange;
 
   const [overrides, setOverrides] = useState<Record<string, unknown>>({});
   const [initialOverrides, setInitialOverrides] = useState<Record<string, unknown>>({});
@@ -63,16 +68,18 @@ export function FeatureFlagsDialog({
 
   useEffect(() => {
     if (open && orgId) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setSaveError(null);
       setOverrides({});
       setInitialOverrides({});
-      loadFetcher.load(`/admin/api/v2/orgs/${orgId}/feature-flags`);
+      loadFeatureFlags(`/admin/api/v2/orgs/${orgId}/feature-flags`);
     }
-  }, [open, orgId]);
+  }, [loadFeatureFlags, open, orgId]);
 
   useEffect(() => {
     if (loadFetcher.data) {
       const loaded = loadFetcher.data.orgFlags ?? {};
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setOverrides({ ...loaded });
       setInitialOverrides({ ...loaded });
     }
@@ -80,8 +87,9 @@ export function FeatureFlagsDialog({
 
   useEffect(() => {
     if (saveFetcher.data?.success) {
-      onOpenChange(false);
+      onOpenChangeRef.current(false);
     } else if (saveFetcher.data?.error) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setSaveError(saveFetcher.data.error);
     }
   }, [saveFetcher.data]);
@@ -165,14 +173,14 @@ export function FeatureFlagsDialog({
                   return (
                     <div
                       key={key}
-                      className="flex items-center justify-between rounded-md border border-transparent bg-charcoal-750 px-3 py-2.5"
+                      className="flex items-center justify-between rounded-md border border-transparent bg-background-hover px-3 py-2.5"
                       title="Global-level setting - not editable per org"
                     >
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-sm text-text-dimmed">{key}</div>
-                        <div className="text-xs text-charcoal-400">global: {globalDisplay}</div>
+                        <div className="text-xs text-text-dimmed">global: {globalDisplay}</div>
                       </div>
-                      <LockClosedIcon className="size-4 text-charcoal-500" />
+                      <LockClosedIcon className="size-4 text-text-faint" />
                     </div>
                   );
                 }
@@ -186,7 +194,7 @@ export function FeatureFlagsDialog({
                       "flex items-center justify-between rounded-md border px-3 py-2.5",
                       isOverridden
                         ? "border-indigo-500/20 bg-indigo-500/5"
-                        : "border-transparent bg-charcoal-750"
+                        : "border-transparent bg-background-hover"
                     )}
                   >
                     <div className="min-w-0 flex-1">
@@ -198,7 +206,7 @@ export function FeatureFlagsDialog({
                       >
                         {key}
                       </div>
-                      <div className="text-xs text-charcoal-400">global: {globalDisplay}</div>
+                      <div className="text-xs text-text-dimmed">global: {globalDisplay}</div>
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -242,6 +250,20 @@ export function FeatureFlagsDialog({
                           }}
                           dimmed={!isOverridden}
                         />
+                      ) : control.type === "number" ? (
+                        <NumberControl
+                          value={isOverridden ? (overrides[key] as number) : undefined}
+                          min={control.min}
+                          max={control.max}
+                          onChange={(val) => {
+                            if (val === undefined) {
+                              unsetFlag(key);
+                            } else {
+                              setFlagValue(key, val);
+                            }
+                          }}
+                          dimmed={!isOverridden}
+                        />
                       ) : control.type === "string" ? (
                         <StringControl
                           value={isOverridden ? (overrides[key] as string) : ""}
@@ -268,7 +290,7 @@ export function FeatureFlagsDialog({
             <summary className="cursor-pointer text-xs text-text-dimmed hover:text-text-bright">
               Preview JSON
             </summary>
-            <pre className="mt-1 max-h-40 overflow-auto rounded bg-charcoal-800 p-2 text-xs text-text-dimmed">
+            <pre className="mt-1 max-h-40 overflow-auto rounded bg-background-bright p-2 text-xs text-text-dimmed">
               {jsonPreview}
             </pre>
           </details>

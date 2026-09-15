@@ -24,7 +24,7 @@ type ShapeMessage = {
 
 const COLUMN_BY_NAME = new Map(RUN_ELECTRIC_COLUMNS.map((column) => [column.name, column]));
 
-export type ColumnDiff = {
+type ColumnDiff = {
   runId: string;
   column: string;
   electric: string | null;

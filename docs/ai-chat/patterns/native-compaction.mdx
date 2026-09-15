@@ -1,0 +1,310 @@
+---
+title: "Native compaction & provider fallback"
+sidebarTitle: "Native compaction"
+description: "Persist provider-native compaction (Anthropic context editing, OpenAI stored responses) across chat.agent turns so history is never re-sent, and fall back between providers without losing the conversation."
+---
+
+Providers compact a conversation within a single request. Anthropic's [context editing](https://docs.anthropic.com/en/docs/build-with-claude/context-editing) clears old tool-use blocks server-side, and OpenAI's [stored responses](https://platform.openai.com/docs/guides/conversation-state) keep the thread server-side so you only send the delta. Neither changes what your agent has accumulated, so on its own the next turn re-sends the whole transcript again and the token saving is lost.
+
+This is the gap this page closes. After each turn, mirror what the provider compacted into the agent's stored history with [`chat.history.set()`](/ai-chat/reference#chat-namespace), so the next turn is derived from the already-reduced conversation. And because a native handle is provider-specific, this page also shows how a provider-agnostic [Trigger.dev compaction](/ai-chat/compaction) summary lets you fall back between providers without re-expanding the context.
+
+<Note>
+  The full runnable example is [`triggerdotdev/resilient-chat-example`](https://github.com/triggerdotdev/resilient-chat-example). See `native-persist.ts` for the Anthropic persistence flow and `resilient-chat.ts` for OpenAI stored responses plus provider fallback.
+</Note>
+
+## Two kinds of compaction
+
+They are not competing; they compose. Native compaction is the per-turn optimization, and Trigger.dev compaction is the durable, portable checkpoint.
+
+| | Native (provider) | Trigger.dev `compaction` |
+| --- | --- | --- |
+| Runs | Inside one provider request | Between steps / turns, in your run |
+| Scope | Provider-specific (Anthropic edits, OpenAI stored thread) | Provider-agnostic |
+| Portable across a provider switch | No, the handle is a cache miss on the other provider | Yes, `summarize` returns a plain string |
+| Persisted by default | No, you mirror it in `onTurnComplete` | Yes, replaces model messages and keeps UI messages |
+
+## Persist Anthropic native context editing
+
+Anthropic's `contextManagement` clears old tool-use/tool-result blocks server-side per request, and reports how many it cleared in `providerMetadata.anthropic.contextManagement.appliedEdits` (`clearedToolUses`, `clearedInputTokens`). It does not touch your accumulated history, so on its own the next turn still re-sends everything.
+
+The fix: read the `appliedEdits` counts as they stream in `onStepFinish`, then after the turn mirror that clearing into stored history with `chat.history.set()`. No custom summarizer is involved, since the provider's native editing drives what gets persisted.
+
+```ts /trigger/native-persist.ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { streamText, stepCountIs, tool, type UIMessage } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
+import { z } from "zod";
+
+const fetchRecord = tool({
+  description: "Fetch the full text of a record by its numeric id.",
+  inputSchema: z.object({ id: z.number() }),
+  execute: async ({ id }) => ({ id, text: `RECORD ${id}: ...` }),
+});
+
+// How many tool-uses Anthropic cleared this turn, per chat. Captured in run(),
+// applied in onTurnComplete. An in-memory Map is enough because the run stays
+// alive across turns (idleTimeoutInSeconds).
+const clearedByChat = new Map<string, number>();
+
+const isToolPart = (p: { type?: string }) =>
+  typeof p?.type === "string" && (p.type.startsWith("tool-") || p.type === "dynamic-tool");
+
+// Drop the oldest n tool parts, mirroring what the provider cleared. A tool call
+// and its result live in one part, so pairing stays intact.
+function pruneOldestToolParts(messages: UIMessage[], n: number): UIMessage[] {
+  let toRemove = n;
+  const out: UIMessage[] = [];
+  for (const m of messages) {
+    if (toRemove <= 0 || m.role !== "assistant" || !m.parts) {
+      out.push(m);
+      continue;
+    }
+    const kept = m.parts.filter((p) => {
+      if (toRemove > 0 && isToolPart(p)) {
+        toRemove--;
+        return false;
+      }
+      return true;
+    });
+    if (kept.length > 0) out.push({ ...m, parts: kept });
+  }
+  return out;
+}
+
+export const nativePersist = chat.agent({
+  id: "native-persist",
+  idleTimeoutInSeconds: 120,
+  tools: { fetchRecord },
+  run: async ({ messages, chatId, tools, signal }) => {
+    return streamText({
+      model: anthropic("claude-sonnet-4-5"),
+      messages,
+      tools,
+      abortSignal: signal,
+      stopWhen: stepCountIs(12),
+      providerOptions: {
+        anthropic: {
+          contextManagement: {
+            edits: [
+              {
+                type: "clear_tool_uses_20250919",
+                trigger: { type: "tool_uses", value: 2 },
+                keep: { type: "tool_uses", value: 1 },
+                clearToolInputs: true,
+              },
+            ],
+          },
+        },
+      },
+      onStepFinish: ({ providerMetadata }) => {
+        const cm = providerMetadata?.anthropic?.contextManagement as
+          | { appliedEdits?: Array<{ type?: string; clearedToolUses?: number }> }
+          | undefined;
+        let stepCleared = 0;
+        for (const e of cm?.appliedEdits ?? []) {
+          if (e.type === "clear_tool_uses_20250919") stepCleared += e.clearedToolUses ?? 0;
+        }
+        if (stepCleared > 0) {
+          clearedByChat.set(chatId, (clearedByChat.get(chatId) ?? 0) + stepCleared);
+        }
+      },
+    });
+  },
+  // After the turn, mirror the server-side clearing into stored history.
+  onTurnComplete: async ({ chatId, uiMessages }) => {
+    const cleared = clearedByChat.get(chatId) ?? 0;
+    if (cleared <= 0) return;
+    chat.history.set(pruneOldestToolParts(uiMessages, cleared));
+    clearedByChat.set(chatId, 0);
+  },
+});
+```
+
+Turn 1 sends the user message and accumulates six tool results. Anthropic clears four of them server-side. `onTurnComplete` prunes those four from stored history, so turn 2 re-sends the smaller conversation (one tool result, not six) instead of the full transcript.
+
+<Note>
+  `onTurnComplete` is where persistence happens. Action turns fire `onAction` only, and a `chat.history.set()` inside `run()` is overwritten by the accumulator at turn end. See [Persistence and replay](/ai-chat/patterns/persistence-and-replay#action-turns-no-snapshot-write).
+</Note>
+
+## Persist OpenAI stored responses
+
+OpenAI's `store: true` keeps the thread server-side and returns a `responseId`. Pass that back as `previousResponseId` on the next turn and send only the messages since the last assistant reply; everything before it lives on OpenAI's side.
+
+```ts /trigger/openai-store.ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { streamText, stepCountIs, type ModelMessage } from "ai";
+import { openai } from "@ai-sdk/openai";
+
+// Persist the stored-response handle between turns. Replace with your database.
+const nativeStore = new Map<string, { previousResponseId: string }>();
+
+// When OpenAI already holds the thread, send only what is new since the last
+// assistant reply. Everything before that lives server-side.
+function messagesSinceLastAssistant(messages: ModelMessage[]): ModelMessage[] {
+  let last = -1;
+  for (let i = 0; i < messages.length; i++) {
+    if (messages[i]!.role === "assistant") last = i;
+  }
+  return last === -1 ? messages : messages.slice(last + 1);
+}
+
+export const openaiStore = chat.agent({
+  id: "openai-store",
+  idleTimeoutInSeconds: 120,
+  run: async ({ messages, chatId, signal }) => {
+    const native = nativeStore.get(chatId);
+    const outbound = native ? messagesSinceLastAssistant(messages) : messages;
+
+    const result = streamText({
+      model: openai("gpt-4o"),
+      messages: outbound,
+      abortSignal: signal,
+      stopWhen: stepCountIs(5),
+      providerOptions: {
+        openai: native ? { store: true, previousResponseId: native.previousResponseId } : { store: true },
+      },
+    });
+
+    // Capture the response id off the metadata for the next turn.
+    void result.providerMetadata.then((meta) => {
+      const rid = typeof meta?.openai?.responseId === "string" ? meta.openai.responseId : undefined;
+      if (rid) nativeStore.set(chatId, { previousResponseId: rid });
+    });
+
+    return result;
+  },
+});
+```
+
+Turn 1 stores the thread and sends all three messages. Turn 2 sends only the new user message (`1/3`), because OpenAI already has the rest.
+
+## Fall back between providers without losing history
+
+A native handle is a per-provider cache. An OpenAI `previousResponseId` means nothing to Anthropic, and Anthropic's server-side edits don't exist on OpenAI. So when a provider is down and you fall back to another, the native optimization is a cache miss, and a naive fallback re-sends the entire raw transcript to the new provider.
+
+[Trigger.dev's `compaction`](/ai-chat/compaction) is the portable checkpoint that closes this gap. `summarize` returns a plain string and `compactModelMessages` returns neutral `ModelMessage[]`, so the summary survives any provider switch. Tag each native handle with the provider that produced it. On a switch it's a cache miss, and you rebuild from the summary instead of re-expanding the context.
+
+```ts /trigger/resilient-chat.ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { streamText, generateText, stepCountIs, generateId, type ModelMessage } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
+import { openai } from "@ai-sdk/openai";
+
+type Provider = "anthropic" | "openai";
+const FALLBACK_ORDER: Provider[] = ["anthropic", "openai"];
+
+// Native handle, tagged with the provider that produced it. Replace with your DB.
+type NativeState = { provider: "openai"; previousResponseId: string };
+const nativeStore = new Map<string, NativeState>();
+
+// Provider-agnostic summary: a plain string, portable across any provider.
+async function summarizeConversation(messages: ModelMessage[]): Promise<string> {
+  const { text } = await generateText({
+    model: openai("gpt-4o-mini"),
+    messages: [
+      ...messages,
+      {
+        role: "user",
+        content:
+          "Summarize this conversation so it can continue with ANY model. " +
+          "Preserve decisions made, facts established, open questions, and the user's intent.",
+      },
+    ],
+  });
+  return text;
+}
+
+export const resilientChat = chat.agent({
+  id: "resilient-chat",
+  idleTimeoutInSeconds: 120,
+
+  compaction: {
+    shouldCompact: ({ totalTokens }) => (totalTokens ?? 0) > 80_000,
+    summarize: ({ messages }) => summarizeConversation(messages),
+    compactModelMessages: ({ modelMessages, summary }) => [
+      { role: "user", content: `Summary of the conversation so far:\n\n${summary}` },
+      ...modelMessages.slice(-2),
+    ],
+    compactUIMessages: ({ uiMessages, summary }) => [
+      {
+        id: generateId(),
+        role: "assistant",
+        parts: [{ type: "text", text: `[Conversation summary]\n\n${summary}` }],
+      },
+      ...uiMessages.slice(-2),
+    ],
+  },
+
+  // A Trigger.dev compaction is the reset point: the provider's server-side thread
+  // no longer matches the compacted baseline, so invalidate the native handle.
+  onCompacted: async ({ chatId }) => {
+    if (chatId) nativeStore.delete(chatId);
+  },
+
+  run: async ({ messages, chatId, signal }) => {
+    let lastError: unknown;
+    for (const providerId of FALLBACK_ORDER) {
+      const native = nativeStore.get(chatId);
+      try {
+        if (providerId === "openai") {
+          // On a switch to OpenAI with no matching handle, `messages` is already the
+          // compacted baseline (summary + recent), so raw history is not re-sent.
+          const useHandle = native?.provider === "openai";
+          const result = streamText({
+            model: openai("gpt-4o"),
+            messages,
+            abortSignal: signal,
+            stopWhen: stepCountIs(5),
+            providerOptions: {
+              openai: useHandle
+                ? { store: true, previousResponseId: native!.previousResponseId }
+                : { store: true },
+            },
+          });
+          void result.providerMetadata.then((meta) => {
+            const rid = typeof meta?.openai?.responseId === "string" ? meta.openai.responseId : undefined;
+            if (rid) nativeStore.set(chatId, { provider: "openai", previousResponseId: rid });
+          });
+          return result;
+        }
+
+        return streamText({
+          model: anthropic("claude-sonnet-4-5"),
+          messages,
+          abortSignal: signal,
+          stopWhen: stepCountIs(5),
+          providerOptions: {
+            anthropic: {
+              contextManagement: {
+                edits: [{ type: "clear_tool_uses_20250919", trigger: { type: "input_tokens", value: 80_000 }, keep: { type: "tool_uses", value: 3 } }],
+              },
+            },
+          },
+        });
+      } catch (error) {
+        lastError = error; // Provider failed, try the next one in the order.
+      }
+    }
+    throw lastError;
+  },
+});
+```
+
+When Anthropic is down, the loop falls through to OpenAI. Because `compaction` has already reduced `messages` to a summary plus the last couple of exchanges, the switch sends the portable baseline, not megabytes of raw transcript.
+
+<Warning>
+  Fallback here retries a turn that hasn't started streaming yet. Once a response is streaming to the client, a mid-stream provider failure can't be swapped transparently. Surface the error and let the frontend regenerate the turn. See [Error handling](/ai-chat/error-handling).
+</Warning>
+
+## Production notes
+
+- **Persist the handles.** The `Map`s above (`nativeStore`, `clearedByChat`) work in the example because the run stays alive across turns, but they don't survive a run boundary. Store native handles and summaries in your database keyed by `chatId`, alongside your [message persistence](/ai-chat/patterns/database-persistence).
+- **No cross-provider translation.** Native compaction from one provider never transfers to another. The Trigger.dev `compaction` summary is the only portable baseline across a switch.
+- **Native compaction is opt-in per turn.** It applies only for the provider whose `providerOptions` you set on that turn's `streamText` call.
+
+## See also
+
+- [Compaction](/ai-chat/compaction): the provider-agnostic `compaction` option, `onCompacted`, and manual `chat.compact()`.
+- [Prompt caching](/ai-chat/prompt-caching): the other per-turn token optimization, and how it interacts with a growing history.
+- [Database persistence](/ai-chat/patterns/database-persistence): where to store native handles and summaries for real.
+- [Lifecycle hooks](/ai-chat/lifecycle-hooks): `onTurnComplete` and `onCompacted` in the broader hook taxonomy.

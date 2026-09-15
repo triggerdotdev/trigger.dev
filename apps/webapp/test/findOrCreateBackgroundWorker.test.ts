@@ -1,6 +1,6 @@
 import { containerTest } from "@internal/testcontainers";
-import { CreateBackgroundWorkerRequestBody } from "@trigger.dev/core/v3";
-import { PrismaClient } from "@trigger.dev/database";
+import type { CreateBackgroundWorkerRequestBody } from "@trigger.dev/core/v3";
+import type { PrismaClient } from "@trigger.dev/database";
 import { describe, expect, vi } from "vitest";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { ServiceValidationError } from "~/v3/services/common.server";

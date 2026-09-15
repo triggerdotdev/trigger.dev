@@ -1,12 +1,9 @@
-import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { $replica } from "~/db.server";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { resolveRealtimeStreamClient } from "~/services/realtime/resolveRealtimeStreamClient.server";
-import {
-  anyResource,
-  createLoaderApiRoute,
-} from "~/services/routeBuilders/apiBuilder.server";
+import { anyResource, createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import { runStore } from "~/v3/runStore.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),
@@ -18,11 +15,11 @@ export const loader = createLoaderApiRoute(
     allowJWT: true,
     corsStrategy: "all",
     findResource: async (params, authentication) => {
-      return $replica.taskRun.findFirst({
-        where: {
-          friendlyId: params.runId,
-          runtimeEnvironmentId: authentication.environment.id,
-        },
+      const where = {
+        friendlyId: params.runId,
+        runtimeEnvironmentId: authentication.environment.id,
+      };
+      const args = {
         include: {
           batch: {
             select: {
@@ -30,7 +27,12 @@ export const loader = createLoaderApiRoute(
             },
           },
         },
-      });
+      };
+      // Replica lag can null out a run that already exists on the owning primary. A spurious 404
+      // here permanently fails the client's realtime subscription (the SSE client treats 404 as
+      // "stream gone" — nonRetryableStatuses). Re-read the primary on a replica miss.
+      const run = await runStore.findRun(where, args, $replica);
+      return run ?? runStore.findRunOnPrimary(where, args);
     },
     authorization: {
       action: "read",
@@ -48,7 +50,7 @@ export const loader = createLoaderApiRoute(
     },
   },
   async ({ authentication, request, resource: run, apiVersion }) => {
-    // Pick the Electric proxy or the native backend per org (defaults to Electric); both implement streamRun.
+    // Resolve the native realtime client; it implements streamRun.
     const client = await resolveRealtimeStreamClient(authentication.environment);
 
     return client.streamRun(

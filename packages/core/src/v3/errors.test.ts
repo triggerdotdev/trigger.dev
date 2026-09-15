@@ -12,9 +12,7 @@ describe("DuplicateTaskIdsError", () => {
   });
 
   test("names the id and both files when an id is defined in two files", () => {
-    const error = new DuplicateTaskIdsError([
-      { id: "foo", filePaths: ["src/a.ts", "src/b.ts"] },
-    ]);
+    const error = new DuplicateTaskIdsError([{ id: "foo", filePaths: ["src/a.ts", "src/b.ts"] }]);
 
     expect(error.message).toContain('"foo"');
     expect(error.message).toContain("src/a.ts");

@@ -1,11 +1,8 @@
 import type { UIMessage } from "@ai-sdk/react";
 import { memo } from "react";
-import {
-  AssistantResponse,
-  ChatBubble,
-  ToolUseRow,
-} from "~/components/runs/v3/ai/AIChatMessages";
+import { AssistantResponse, ChatBubble, ToolUseRow } from "~/components/runs/v3/ai/AIChatMessages";
 import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
+import { textLinkClassName } from "~/components/primitives/TextLink";
 
 // ---------------------------------------------------------------------------
 // AgentMessageView — renders an AI SDK UIMessage[] conversation.
@@ -42,11 +39,7 @@ export function AgentMessageView({ messages }: { messages: UIMessage[] }) {
 // Default shallow prop comparison is fine: AI SDK's useChat keeps stable
 // references for messages that haven't changed, so only the last message
 // (the one receiving new chunks) re-renders.
-export const MessageBubble = memo(function MessageBubble({
-  message,
-}: {
-  message: UIMessage;
-}) {
+export const MessageBubble = memo(function MessageBubble({ message }: { message: UIMessage }) {
   if (message.role === "user") {
     const text =
       message.parts
@@ -57,7 +50,7 @@ export const MessageBubble = memo(function MessageBubble({
     return (
       <div className="flex min-w-0 justify-end">
         <div className="max-w-[80%] rounded-lg bg-indigo-600 px-4 py-2.5 text-sm text-white">
-          <div className="whitespace-pre-wrap [overflow-wrap:anywhere]">{text}</div>
+          <div className="whitespace-pre-wrap wrap-anywhere">{text}</div>
         </div>
       </div>
     );
@@ -67,15 +60,47 @@ export const MessageBubble = memo(function MessageBubble({
     const hasContent = message.parts && message.parts.length > 0;
     if (!hasContent) return null;
 
-    return (
-      <div className="space-y-2">
-        {message.parts?.map((part, i) => renderPart(part, i))}
-      </div>
-    );
+    return <div className="space-y-2">{renderAssistantParts(message.parts ?? [])}</div>;
   }
 
   return null;
 });
+
+// Group consecutive data-* parts (rendered as inline DataPartPopover pills)
+// under a single "Tool calls:" label with a flex-wrap row so they have a
+// proper gap between them. Non-data parts pass through to renderPart
+// unchanged.
+function renderAssistantParts(parts: UIMessage["parts"]) {
+  const nodes: React.ReactNode[] = [];
+  let i = 0;
+  while (i < parts.length) {
+    const type = parts[i].type as string;
+    if (type?.startsWith?.("data-") && type !== "data-subagent-run") {
+      const groupStart = i;
+      const group: UIMessage["parts"] = [];
+      while (
+        i < parts.length &&
+        (parts[i].type as string)?.startsWith?.("data-") &&
+        (parts[i].type as string) !== "data-subagent-run"
+      ) {
+        group.push(parts[i]);
+        i++;
+      }
+      nodes.push(
+        <div key={`data-${groupStart}`} className="flex items-center gap-1.5">
+          <span className="text-xs font-medium text-text-dimmed">AI SDK data parts:</span>
+          <div className="flex flex-wrap gap-1.5">
+            {group.map((g, k) => renderPart(g, groupStart + k))}
+          </div>
+        </div>
+      );
+    } else {
+      nodes.push(renderPart(parts[i], i));
+      i++;
+    }
+  }
+  return nodes;
+}
 
 // URLs in `source-url`/`file` parts come from streamed agent/tool data, so an
 // unsafe scheme like `javascript:` would become a clickable XSS payload once it
@@ -107,12 +132,15 @@ export function renderPart(part: UIMessage["parts"][number], i: number) {
     return p.text ? <AssistantResponse key={i} text={p.text} headerLabel="" /> : null;
   }
 
-  // Reasoning — amber-bordered italic block
+  // Reasoning — amber-bordered italic block. Models that think adaptively with the
+  // text omitted (Sonnet 5 and later by default) still emit the part with no text;
+  // an empty block would be a bare amber bar, so those render nothing.
   if (type === "reasoning") {
+    if (!p.text) return null;
     return (
       <div key={i} className="border-l-2 border-amber-500/40 pl-2">
         <ChatBubble>
-          <div className="whitespace-pre-wrap text-xs italic text-amber-200/70">
+          <div className="whitespace-pre-wrap text-xs italic text-amber-700 dark:text-amber-200/70">
             {p.text ?? ""}
           </div>
         </ChatBubble>
@@ -138,8 +166,9 @@ export function renderPart(part: UIMessage["parts"][number], i: number) {
         .pop();
       resultOutput = lastText?.text ?? undefined;
     } else if (p.output != null) {
-      resultOutput =
-        typeof p.output === "string" ? p.output : JSON.stringify(p.output, null, 2);
+      resultOutput = typeof p.output === "string" ? p.output : JSON.stringify(p.output, null, 2);
+    } else if (p.state === "output-error" && p.errorText) {
+      resultOutput = p.errorText;
     }
 
     // Status label for the tool row. AI SDK 7 HITL adds the
@@ -155,7 +184,9 @@ export function renderPart(part: UIMessage["parts"][number], i: number) {
         ? "approved"
         : `denied${p.approval?.reason ? `: ${p.approval.reason}` : ""}`;
     } else if (p.state === "output-error") {
-      resultSummary = `error: ${p.errorText ?? "unknown"}`;
+      const errorText = p.errorText ?? "unknown";
+      resultSummary =
+        errorText.length > 160 ? `error: ${errorText.slice(0, 160)}…` : `error: ${errorText}`;
     }
 
     return (
@@ -192,12 +223,7 @@ export function renderPart(part: UIMessage["parts"][number], i: number) {
     }
     return (
       <div key={i} className="text-xs">
-        <a
-          href={safeUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-indigo-400 underline hover:text-indigo-300"
-        >
+        <a href={safeUrl} target="_blank" rel="noopener noreferrer" className={textLinkClassName()}>
           {label}
         </a>
       </div>
@@ -232,7 +258,7 @@ export function renderPart(part: UIMessage["parts"][number], i: number) {
           key={i}
           src={safeSrc}
           alt={p.filename ?? "file"}
-          className="max-h-64 rounded border border-charcoal-650"
+          className="max-h-64 rounded border border-border-bright"
         />
       );
     }
@@ -247,12 +273,7 @@ export function renderPart(part: UIMessage["parts"][number], i: number) {
     }
     return (
       <div key={i} className="text-xs">
-        <a
-          href={safeUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-indigo-400 underline hover:text-indigo-300"
-        >
+        <a href={safeUrl} target="_blank" rel="noopener noreferrer" className={textLinkClassName()}>
           {p.filename ?? "Download file"}
         </a>
       </div>
@@ -263,9 +284,9 @@ export function renderPart(part: UIMessage["parts"][number], i: number) {
   if (type === "step-start") {
     return (
       <div key={i} className="flex items-center gap-2 py-0.5">
-        <div className="flex-1 border-t border-dashed border-charcoal-650" />
-        <span className="text-[10px] text-charcoal-500">step</span>
-        <div className="flex-1 border-t border-dashed border-charcoal-650" />
+        <div className="flex-1 border-t border-dashed border-border-bright" />
+        <span className="text-[10px] text-text-faint">step</span>
+        <div className="flex-1 border-t border-dashed border-border-bright" />
       </div>
     );
   }
@@ -287,17 +308,17 @@ function DataPartPopover({ name, data }: { name: string; data: unknown }) {
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="inline-flex items-center gap-1 rounded border border-charcoal-650 bg-charcoal-800 px-1.5 py-0.5 font-mono text-[10px] text-text-dimmed transition-colors hover:border-charcoal-500 hover:text-text-bright"
+          className="inline-flex items-center gap-1 rounded border border-border-bright bg-background-bright px-1.5 py-0.5 font-mono text-[10px] text-text-dimmed transition-colors hover:border-border-brightest hover:text-text-bright"
         >
           <span className="text-purple-400">{name}</span>
-          <span className="text-charcoal-500">{"{}"}</span>
+          <span className="text-text-faint">{"{}"}</span>
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-auto max-w-md p-0" align="start" sideOffset={4}>
-        <div className="flex items-center justify-between border-b border-charcoal-650 px-2.5 py-1.5">
+        <div className="flex items-center justify-between border-b border-border-bright px-2.5 py-1.5">
           <span className="text-[10px] font-medium text-text-dimmed">data-{name}</span>
         </div>
-        <div className="max-h-60 overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <div className="max-h-60 overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
           <pre className="p-2.5 text-[11px] leading-relaxed text-text-bright">{formatted}</pre>
         </div>
       </PopoverContent>

@@ -22,21 +22,23 @@ export function SchemaTabContent({
   if (schema) {
     return (
       <div className="space-y-2">
-        <Header3 className="text-text-bright">{title}</Header3>
-        {showDocsLink ? (
-          <Paragraph variant="extra-small" className="text-text-dimmed">
-            {description ?? (
-              <>
-                JSON Schema defined by this task via{" "}
-                <TextLink to={docsPath("tasks/schemaTask")}>schemaTask</TextLink>.
-              </>
-            )}
-          </Paragraph>
-        ) : description ? (
-          <Paragraph variant="extra-small" className="text-text-dimmed">
-            {description}
-          </Paragraph>
-        ) : null}
+        <div className="space-y-0.5">
+          <Header3 className="text-text-bright">{title}</Header3>
+          {showDocsLink ? (
+            <Paragraph variant="extra-small" className="text-text-dimmed">
+              {description ?? (
+                <>
+                  JSON Schema defined by this task via{" "}
+                  <TextLink to={docsPath("tasks/schemaTask")}>schemaTask</TextLink>.
+                </>
+              )}
+            </Paragraph>
+          ) : description ? (
+            <Paragraph variant="extra-small" className="text-text-dimmed">
+              {description}
+            </Paragraph>
+          ) : null}
+        </div>
         <CodeBlock
           code={JSON.stringify(schema, null, 2)}
           language="json"

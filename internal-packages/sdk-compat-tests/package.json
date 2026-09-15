@@ -8,13 +8,11 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
-  "dependencies": {
-    "@trigger.dev/sdk": "workspace:*"
-  },
   "devDependencies": {
+    "@trigger.dev/sdk": "workspace:*",
     "esbuild": "^0.24.0",
     "execa": "^9.3.0",
-    "typescript": "^5.5.0",
+    "typescript": "catalog:",
     "vitest": "4.1.7"
   }
 }

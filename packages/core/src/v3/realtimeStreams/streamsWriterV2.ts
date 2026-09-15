@@ -1,6 +1,6 @@
 import { S2, AppendRecord, BatchTransform } from "@s2-dev/streamstore";
 import { ChatChunkTooLargeError } from "../errors.js";
-import { StreamsWriter, StreamWriteResult } from "./types.js";
+import type { StreamsWriter, StreamWriteResult } from "./types.js";
 import { nanoid } from "nanoid";
 
 // S2 caps a single record at 1 MiB of metered bytes (body + headers + 8 byte
@@ -108,6 +108,10 @@ export class StreamsWriterV2<T = any> implements StreamsWriter {
     this.consumerStream = consumerStream;
 
     this.streamPromise = this.initializeServerStream();
+    // Detached writers (e.g. the head-start drain) call `wait()` long after a
+    // failed append rejects; without this the rejection is unhandled and Node
+    // takes the process down. `wait()` still surfaces the error.
+    this.streamPromise.catch(() => {});
   }
 
   private handleAbort(): void {
@@ -183,10 +187,16 @@ export class StreamsWriterV2<T = any> implements StreamsWriter {
       const lastAcked = session.lastAckedPosition();
 
       if (lastAcked?.end) {
-        this.lastSeqNum = lastAcked.end.seqNum;
-        this.log(
-          `[S2MetadataStream] Written ${this.lastSeqNum} records, ending at seqNum=${this.lastSeqNum}`
-        );
+        /**
+         * S2's ack `end.seqNum` is exclusive: the seq AFTER the last record
+         * written (equal to the tail). Report the last record's own seq
+         * (`end - 1`) as `lastEventId` so a resume subscribe, which reads
+         * from `lastEventId + 1`, lands on the next record instead of
+         * skipping one. Matches the inclusive seq the one-shot control
+         * writer returns.
+         */
+        this.lastSeqNum = lastAcked.end.seqNum - 1;
+        this.log(`[S2MetadataStream] Wrote through seqNum=${this.lastSeqNum}`);
       }
     } catch (error) {
       if (this.aborted) {
@@ -238,7 +248,7 @@ async function* streamToAsyncIterator<T>(stream: ReadableStream<T>): AsyncIterab
 function safeReleaseLock(reader: ReadableStreamDefaultReader<any>) {
   try {
     reader.releaseLock();
-  } catch (error) {}
+  } catch (_error) {}
 }
 
 // chat.agent emits two chunk shapes through this writer:

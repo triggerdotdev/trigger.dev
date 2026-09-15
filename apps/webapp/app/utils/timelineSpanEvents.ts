@@ -1,11 +1,9 @@
-import { SpanEvent } from "@trigger.dev/core/v3";
+import type { SpanEvent } from "@trigger.dev/core/v3";
 import { millisecondsToNanoseconds } from "@trigger.dev/core/v3/utils/durations";
 
-export type TimelineEventState = "complete" | "error" | "inprogress" | "delayed";
+type TimelineLineVariant = "light" | "normal";
 
-export type TimelineLineVariant = "light" | "normal";
-
-export type TimelineEventVariant =
+type TimelineEventVariant =
   | "start-cap"
   | "dot-hollow"
   | "dot-solid"
@@ -155,7 +153,7 @@ function getFriendlyNameForEvent(event: string, properties?: Record<string, any>
   }
 }
 
-function getAdminOnlyForEvent(event: string): boolean {
+export function getAdminOnlyForEvent(event: string): boolean {
   switch (event) {
     case "dequeue": {
       return false;

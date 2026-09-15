@@ -1,11 +1,11 @@
-import { Organization } from "@trigger.dev/database";
 import { z } from "zod";
 import { env } from "~/env.server";
 import {
-  RateLimiterConfig,
   createLimiterFromConfig,
+  RateLimiterConfig,
 } from "~/services/authorizationRateLimitMiddleware.server";
-import { createRedisRateLimitClient, Duration, RateLimiter } from "~/services/rateLimiter.server";
+import type { Duration } from "~/services/rateLimiter.server";
+import { createRedisRateLimitClient, RateLimiter } from "~/services/rateLimiter.server";
 import { singleton } from "~/utils/singleton";
 
 const BatchLimitsConfig = z.object({

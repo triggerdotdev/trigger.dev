@@ -1,5 +1,4 @@
 import { ArrowsRightLeftIcon } from "@heroicons/react/20/solid";
-import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -28,10 +27,15 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { EnvironmentParamSchema, v3ModelsPath } from "~/utils/pathBuilder";
 import { formatModelCost } from "~/utils/modelFormatters";
 import { formatNumberCompact } from "~/utils/numberFormatter";
+import { modelsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 
-export const meta: MetaFunction = () => {
-  return [{ title: "Compare Models | Trigger.dev" }];
+export const handle: Handle = {
+  agentPageContext: (data) => modelsAgentPageContext(data),
 };
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Compare Models");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -55,7 +59,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     return typedjson({ comparison: [] as ModelComparisonItem[], models: responseModels });
   }
 
-  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(project.organizationId, "standard");
+  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+    project.organizationId,
+    "standard"
+  );
   const presenter = new ModelRegistryPresenter(clickhouse);
   const now = new Date();
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -201,9 +208,7 @@ export default function ModelComparePage() {
                       <TableCell key={i} alignment="right">
                         <span
                           className={`tabular-nums ${
-                            row.bestIndex === i
-                              ? "font-medium text-success"
-                              : "text-text-bright"
+                            row.bestIndex === i ? "font-medium text-success" : "text-text-bright"
                           }`}
                         >
                           {value}

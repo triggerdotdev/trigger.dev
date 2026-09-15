@@ -110,6 +110,8 @@ export function extractAISpanData(
     inputCost: num(triggerLlm.input_cost),
     outputCost: num(triggerLlm.output_cost),
     totalCost: num(triggerLlm.total_cost),
+    cachedCost: num(triggerLlm.cached_cost),
+    cacheCreationCost: num(triggerLlm.cache_creation_cost),
     responseText: isV7
       ? extractGenAiAssistantText(gOutput.messages) || undefined
       : str(aiResponse.text) || undefined,
@@ -215,7 +217,7 @@ function parseMessagesToDisplayItems(raw: unknown): DisplayItem[] | undefined {
 
       if (toolCalls.length > 0) {
         // Collect subsequent tool result messages that match these tool calls
-        const toolCallIds = new Set(toolCalls.map((tc) => tc.toolCallId));
+        const _toolCallIds = new Set(toolCalls.map((tc) => tc.toolCallId));
         let j = i + 1;
         while (j < messages.length && messages[j].role === "tool") {
           j++;
@@ -232,9 +234,7 @@ function parseMessagesToDisplayItems(raw: unknown): DisplayItem[] | undefined {
           });
 
           const result = resultMsg
-            ? extractToolResults(resultMsg.content).find(
-              (r) => r.toolCallId === tc.toolCallId
-            )
+            ? extractToolResults(resultMsg.content).find((r) => r.toolCallId === tc.toolCallId)
             : undefined;
 
           return {
@@ -428,9 +428,7 @@ function parseToolDefinitions(raw: unknown): ToolDefinition[] | undefined {
         name,
         description: str(o.description),
         parametersJson:
-          schema && typeof schema === "object"
-            ? JSON.stringify(schema, null, 2)
-            : undefined,
+          schema && typeof schema === "object" ? JSON.stringify(schema, null, 2) : undefined,
       });
     }
     return defs.length > 0 ? defs : undefined;
@@ -682,4 +680,3 @@ function appendGenAiMessages(items: DisplayItem[], messages: GenAiMessage[]): vo
     i++;
   }
 }
-

@@ -3,8 +3,9 @@ import { describe, expect, vi } from "vitest";
 import { RUN_QUEUE_RESUME_PRIORITY_TIMESTAMP_OFFSET } from "../constants.js";
 import { FairQueueSelectionStrategy } from "../fairQueueSelectionStrategy.js";
 import { RunQueueFullKeyProducer } from "../keyProducer.js";
-import { EnvQueues, RunQueueKeyProducer } from "../types.js";
-import { createRedisClient, RedisOptions } from "@internal/redis";
+import type { EnvQueues, RunQueueKeyProducer } from "../types.js";
+import type { RedisOptions } from "@internal/redis";
+import { createRedisClient } from "@internal/redis";
 
 vi.setConfig({ testTimeout: 60_000 }); // 30 seconds timeout
 
@@ -250,7 +251,7 @@ describe("FairDequeuingStrategy", () => {
 
       const startDistribute2 = performance.now();
 
-      const result2 = await strategy.distributeFairQueuesFromParentQueue(
+      const _result2 = await strategy.distributeFairQueuesFromParentQueue(
         "parent-queue",
         "consumer-1"
       );
@@ -264,7 +265,7 @@ describe("FairDequeuingStrategy", () => {
 
       const startDistribute3 = performance.now();
 
-      const result3 = await strategy.distributeFairQueuesFromParentQueue(
+      const _result3 = await strategy.distributeFairQueuesFromParentQueue(
         "parent-queue",
         "consumer-1"
       );
@@ -408,13 +409,13 @@ describe("FairDequeuingStrategy", () => {
       expect(firstPositionStdDevEnvs).toBeLessThan(5); // Allow 5% standard deviation for envs
 
       // Verify that each org and env gets a fair chance at first position
-      for (const [orgId, stats] of Object.entries(orgStats)) {
+      for (const [_orgId, stats] of Object.entries(orgStats)) {
         const firstPositionPercentage = (stats.firstPosition / iterations) * 100;
         expect(firstPositionPercentage).toBeGreaterThan(expectedFirstPositionPercentage * 0.7); // Within 30% of expected
         expect(firstPositionPercentage).toBeLessThan(expectedFirstPositionPercentage * 1.3);
       }
 
-      for (const [envId, stats] of Object.entries(envStats)) {
+      for (const [_envId, stats] of Object.entries(envStats)) {
         const firstPositionPercentage = (stats.firstPosition / iterations) * 100;
         expect(firstPositionPercentage).toBeGreaterThan(expectedEnvFirstPositionPercentage * 0.7); // Within 30% of expected
         expect(firstPositionPercentage).toBeLessThan(expectedEnvFirstPositionPercentage * 1.3);
@@ -1203,6 +1204,90 @@ describe("FairDequeuingStrategy", () => {
     expect(queuesByEnv["env-1"]).toBeDefined();
     expect(queuesByEnv["env-1"].length).toBe(2);
   });
+
+  redisTest(
+    "weighted env shuffle stays uniform across every position for equal-weight envs",
+    async ({ redisOptions: redis }) => {
+      const keyProducer = new RunQueueFullKeyProducer();
+      // Biases must be non-zero so env ordering goes through the weighted shuffle
+      // path rather than the plain shuffle short-circuit.
+      const strategy = new FairQueueSelectionStrategy({
+        redis,
+        keys: keyProducer,
+        defaultEnvConcurrencyLimit: 10,
+        parentQueueLimit: 100,
+        seed: "weighted-shuffle-seed",
+        biases: {
+          concurrencyLimitBias: 0.75,
+          availableCapacityBias: 0.3,
+          queueAgeRandomization: 0,
+        },
+      });
+
+      const now = Date.now();
+
+      // Four envs, each its own org, one queue each. Identical concurrency limit
+      // and current usage means identical weights, so a correct weighted shuffle
+      // should land each env in each position equally often. Insertion order is
+      // alphabetical by org, which is the order the tail-overshoot bug skews by.
+      const envIds = ["env-1", "env-2", "env-3", "env-4"];
+      for (let i = 0; i < envIds.length; i++) {
+        const orgId = `org-${i + 1}`;
+        const projectId = `proj-${i + 1}`;
+        const envId = envIds[i];
+
+        await setupQueue({
+          redis,
+          keyProducer,
+          parentQueue: "parent-queue",
+          score: now - 1000,
+          queueId: `queue-${envId}`,
+          orgId,
+          projectId,
+          envId,
+        });
+
+        await setupConcurrency({
+          redis,
+          keyProducer,
+          env: { envId, projectId, orgId, currentConcurrency: 5, limit: 10 },
+        });
+      }
+
+      const iterations = 2000;
+      // positionCounts[position][envId] = times envId landed in that position
+      const positionCounts: Array<Record<string, number>> = envIds.map(() =>
+        Object.fromEntries(envIds.map((envId) => [envId, 0]))
+      );
+
+      for (let i = 0; i < iterations; i++) {
+        const envResult = await strategy.distributeFairQueuesFromParentQueue(
+          "parent-queue",
+          `consumer-${i % 3}`
+        );
+        const result = flattenResults(envResult);
+        expect(result).toHaveLength(envIds.length);
+
+        result.forEach((queueId, position) => {
+          const envId = keyProducer.envIdFromQueue(queueId);
+          positionCounts[position][envId]++;
+        });
+      }
+
+      // For equal-weight envs the share at every position should be ~1/N. The
+      // tail-overshoot bug leaves position 0 fair but skews later positions hard
+      // (one env far below, the tail env far above). Assert each share stays
+      // within 40% of uniform at every position, which the bug violates.
+      const expectedShare = 100 / envIds.length;
+      for (let position = 0; position < envIds.length; position++) {
+        for (const envId of envIds) {
+          const share = (positionCounts[position][envId] / iterations) * 100;
+          expect(share).toBeGreaterThan(expectedShare * 0.6);
+          expect(share).toBeLessThan(expectedShare * 1.4);
+        }
+      }
+    }
+  );
 });
 
 // Helper function to flatten results for counting

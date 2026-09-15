@@ -217,10 +217,7 @@ export const devServerStatusTool = {
 
       const recentLogs = devLogs.slice(-input.lines).join("\n");
 
-      const content = [
-        `## Dev Server Status: ${devState}`,
-        "",
-      ];
+      const content = [`## Dev Server Status: ${devState}`, ""];
 
       if (devCwd) {
         content.push(`**Directory:** ${devCwd}`);

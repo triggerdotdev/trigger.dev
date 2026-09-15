@@ -103,11 +103,10 @@ services:
       - electric
       - clickhouse
       - redis
-    env_file:
-      - ../.env
     environment:
       DATABASE_URL: postgres://postgres:postgres@db:5432/postgres?schema=public
       DIRECT_URL: postgres://postgres:postgres@db:5432/postgres?schema=public
+      RUN_OPS_DATABASE_URL: !reset null
       CLICKHOUSE_URL: http://default:password@clickhouse:8123
       SESSION_SECRET: secret123
       MAGIC_LINK_SECRET: secret123

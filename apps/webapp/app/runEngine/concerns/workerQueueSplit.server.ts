@@ -33,6 +33,19 @@ export function baseWorkerQueue(workerQueue: string | null | undefined): string 
   return colon === -1 ? workerQueue : workerQueue.slice(0, colon);
 }
 
+/**
+ * User-facing region for read surfaces: the explicit geo region if set, else the
+ * region derived from the worker queue, else undefined. Use everywhere a run's
+ * region is displayed so an empty queue never surfaces as `""` and all surfaces
+ * agree. Not for query keys — those want the raw worker queue, not this fallback.
+ */
+export function regionForDisplay(
+  region: string | null | undefined,
+  workerQueue: string | null | undefined
+): string | undefined {
+  return region || (workerQueue ? baseWorkerQueue(workerQueue) : undefined);
+}
+
 /** `TriggerSource` value used for runs originating from a schedule. */
 const SCHEDULE_TRIGGER_SOURCE = "schedule";
 
@@ -108,4 +121,26 @@ export function workerQueueForClass(
   }
 
   return masterQueue;
+}
+
+export function parseDisabledWorkerQueues(raw: string | undefined): Set<string> {
+  return new Set(
+    (raw ?? "")
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+  );
+}
+
+export function matchesDisabledWorkerQueue(
+  workerQueue: string,
+  disabledWorkerQueues: ReadonlySet<string>
+): boolean {
+  if (disabledWorkerQueues.size === 0) {
+    return false;
+  }
+
+  return (
+    disabledWorkerQueues.has(workerQueue) || disabledWorkerQueues.has(baseWorkerQueue(workerQueue))
+  );
 }

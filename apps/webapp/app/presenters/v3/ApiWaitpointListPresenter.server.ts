@@ -1,6 +1,7 @@
 import { type RuntimeEnvironmentType, WaitpointTokenStatus } from "@trigger.dev/core/v3";
 import { type RunEngineVersion } from "@trigger.dev/database";
 import { z } from "zod";
+import { type PrismaClientOrTransaction } from "~/db.server";
 import { CoercedDate } from "~/utils/zod";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { BasePresenter } from "./basePresenter.server";
@@ -60,6 +61,18 @@ export const ApiWaitpointListSearchParams = z.object({
 type ApiWaitpointListSearchParams = z.infer<typeof ApiWaitpointListSearchParams>;
 
 export class ApiWaitpointListPresenter extends BasePresenter {
+  constructor(
+    prismaClient?: PrismaClientOrTransaction,
+    replicaClient?: PrismaClientOrTransaction,
+    private readonly readRoute?: {
+      runOpsNew?: PrismaClientOrTransaction;
+      runOpsLegacyReplica?: PrismaClientOrTransaction;
+      splitEnabled?: boolean;
+    }
+  ) {
+    super(prismaClient, replicaClient);
+  }
+
   public async call(
     environment: {
       id: string;
@@ -115,7 +128,7 @@ export class ApiWaitpointListPresenter extends BasePresenter {
         options.to = searchParams["filter[createdAt][to]"].getTime();
       }
 
-      const presenter = new WaitpointListPresenter();
+      const presenter = new WaitpointListPresenter(undefined, undefined, this.readRoute);
       const result = await presenter.call(options);
 
       if (!result.success) {

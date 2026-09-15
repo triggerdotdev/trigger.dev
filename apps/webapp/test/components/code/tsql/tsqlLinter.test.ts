@@ -28,9 +28,7 @@ describe("tsqlLinter", () => {
         true
       );
       expect(
-        isValidTSQLQuery(
-          "SELECT * FROM users LEFT JOIN orders ON users.id = orders.user_id"
-        )
+        isValidTSQLQuery("SELECT * FROM users LEFT JOIN orders ON users.id = orders.user_id")
       ).toBe(true);
     });
 
@@ -76,4 +74,3 @@ describe("tsqlLinter", () => {
     });
   });
 });
-

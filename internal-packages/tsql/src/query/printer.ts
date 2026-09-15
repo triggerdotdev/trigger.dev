@@ -2,65 +2,62 @@
 // ClickHouse SQL printer with tenant isolation and schema validation
 
 import {
-  And,
-  Alias,
-  ArithmeticOperation,
+  type Alias,
+  type And,
+  type ArithmeticOperation,
+  type ArrayAccess,
+  type AST,
+  type Array as ASTArray,
+  type BetweenExpr,
+  type Call,
+  type CompareOperation,
+  type Constant,
+  type CTE,
+  type Dict,
+  type Expression,
+  type Field,
+  type JoinConstraint,
+  type JoinExpr,
+  type Lambda,
+  type LimitByExpr,
+  type Not,
+  type Or,
+  type OrderExpr,
+  type Placeholder,
+  type RatioExpr,
+  type SampleExpr,
+  type SelectQuery,
+  type SelectSetQuery,
+  type Tuple,
+  type TupleAccess,
+  type WindowExpr,
+  type WindowFrameExpr,
+  type WindowFunction,
   ArithmeticOperationOp,
-  Array as ASTArray,
-  ArrayAccess,
-  AST,
-  BetweenExpr,
-  Call,
-  CompareOperation,
   CompareOperationOp,
-  Constant,
-  CTE,
-  Dict,
-  Expression,
-  Field,
-  JoinConstraint,
-  JoinExpr,
-  Lambda,
-  LimitByExpr,
-  Not,
-  Or,
-  OrderExpr,
-  Placeholder,
-  RatioExpr,
-  SampleExpr,
-  SelectQuery,
-  SelectSetQuery,
-  Tuple,
-  TupleAccess,
-  WindowExpr,
-  WindowFrameExpr,
-  WindowFunction,
 } from "./ast";
-import { escapeClickHouseIdentifier, escapeTSQLIdentifier, escapeClickHouseString } from "./escape";
 import { ImpossibleASTError, NotImplementedError, QueryError } from "./errors";
+import { escapeClickHouseIdentifier } from "./escape";
 import {
-  TSQL_CLICKHOUSE_FUNCTIONS,
-  TSQL_AGGREGATIONS,
-  TSQL_COMPARISON_MAPPING,
   findTSQLAggregation,
   findTSQLFunction,
+  TSQL_COMPARISON_MAPPING,
   validateFunctionArgs,
 } from "./functions";
-import { PrinterContext, WhereClauseCondition } from "./printer_context";
-import { calculateTimeBucketInterval } from "./time_buckets";
+import type { PrinterContext, WhereClauseCondition } from "./printer_context";
 import {
-  findTable,
-  validateTable,
-  TableSchema,
-  ColumnSchema,
-  getInternalValue,
-  isVirtualColumn,
-  OutputColumnMetadata,
-  ClickHouseType,
-  hasFieldMapping,
-  getInternalValueFromMappingCaseInsensitive,
+  type ClickHouseType,
   type ColumnFormatType,
+  type ColumnSchema,
+  type OutputColumnMetadata,
+  type TableSchema,
+  getInternalValue,
+  getInternalValueFromMappingCaseInsensitive,
+  hasFieldMapping,
+  isVirtualColumn,
+  validateTable,
 } from "./schema";
+import { calculateTimeBucketInterval } from "./time_buckets";
 
 /**
  * Result of printing an AST to ClickHouse SQL
@@ -388,6 +385,8 @@ export class ClickHousePrinter {
       nextJoin = nextJoin.next_join;
     }
 
+    this.validateMergeScopedColumns(node);
+
     // Extract SELECT column aliases BEFORE visiting columns
     // This allows ORDER BY/HAVING to reference aliased columns
     const savedAliases = this.selectAliases;
@@ -430,8 +429,15 @@ export class ClickHousePrinter {
       windowClause = windowDefs.join(", ");
     }
 
+    // PREWHERE runs before enforced tenant conditions in WHERE, so it cannot be
+    // exposed to customer-authored queries.
+    if (node.prewhere) {
+      throw new QueryError("PREWHERE is not supported. Use WHERE instead.", {
+        node: node.prewhere,
+      });
+    }
+
     // Process other clauses
-    const prewhere = node.prewhere ? this.visit(node.prewhere) : null;
     const whereStr = where ? this.visit(where) : null;
 
     // Process GROUP BY with context flags:
@@ -462,6 +468,25 @@ export class ClickHousePrinter {
       this.inProjectionContext = false;
     }
 
+    // Opt-in gap-fill: emit rows for empty time buckets via WITH FILL / INTERPOLATE.
+    // No-op unless enabled, top-level, and the query is fill-eligible.
+    let interpolateClause: string | null = null;
+    let groupedFillWrap: ((inner: string) => string) | null = null;
+    if (this.context.fillGaps && isTopLevelQuery) {
+      const fill = this.buildGapFill(node, orderBy, groupBy);
+      if (fill) {
+        orderBy = fill.orderBy;
+        if (fill.kind === "inline") {
+          interpolateClause = fill.interpolate;
+        } else {
+          // Grouped per-group LOCF: add the `present` sentinel to this (now inner) query
+          // and wrap the rendered SQL in the block-id + carry window layers below.
+          columns.push(fill.presentColumn);
+          groupedFillWrap = fill.wrap;
+        }
+      }
+    }
+
     // Process ARRAY JOIN
     let arrayJoin = "";
     if (node.array_join_op) {
@@ -484,12 +509,13 @@ export class ClickHousePrinter {
       `SELECT${space}${node.distinct ? "DISTINCT " : ""}${columns.join(comma)}`,
       joinedTables.length > 0 ? `FROM${space}${joinedTables.join(space)}` : null,
       arrayJoin || null,
-      prewhere ? `PREWHERE${space}${prewhere}` : null,
       whereStr ? `WHERE${space}${whereStr}` : null,
       groupBy && groupBy.length > 0 ? `GROUP BY${space}${groupBy.join(comma)}` : null,
       having ? `HAVING${space}${having}` : null,
       windowClause ? `WINDOW${space}${windowClause}` : null,
       orderBy && orderBy.length > 0 ? `ORDER BY${space}${orderBy.join(comma)}` : null,
+      // INTERPOLATE must follow the full ORDER BY (including WITH FILL)
+      interpolateClause,
     ];
 
     // Process LIMIT
@@ -552,6 +578,11 @@ export class ClickHousePrinter {
       response = this.pretty ? `(${response.trim()})` : `(${response})`;
     }
 
+    // Grouped per-group gap fill wraps this query in the block-id + carry window layers.
+    if (groupedFillWrap) {
+      response = groupedFillWrap(response);
+    }
+
     // Restore saved contexts (for nested queries)
     this.selectAliases = savedAliases;
     this.queryHasGroupBy = savedQueryHasGroupBy;
@@ -560,6 +591,184 @@ export class ClickHousePrinter {
     this.internalOnlyColumns = savedInternalOnlyColumns;
 
     return response;
+  }
+
+  /**
+   * Build the gap-fill transformation (WITH FILL + optional INTERPOLATE) for a
+   * top-level time-bucketed query. Returns null when the query is not
+   * fill-eligible (correct-by-construction: emit nothing extra rather than risk
+   * wrong values).
+   *
+   * Eligibility: exactly one timeBucket() column in SELECT, and ORDER BY led by
+   * that timeBucket column. Carry (gauge) columns are LOCF'd via INTERPOLATE;
+   * counters zero-fill via WITH FILL's default. Grouped gauge queries are unsafe
+   * (INTERPOLATE bleeds across groups) and are skipped with a warning.
+   */
+  private buildGapFill(
+    node: SelectQuery,
+    orderBy: string[] | null,
+    groupBy: string[] | null
+  ):
+    | { kind: "inline"; orderBy: string[]; interpolate: string | null }
+    | { kind: "wrap"; orderBy: string[]; presentColumn: string; wrap: (inner: string) => string }
+    | null {
+    if (!orderBy || orderBy.length === 0 || !node.select || node.select.length === 0) {
+      return null;
+    }
+
+    const timeRange = this.context.timeRange;
+    if (!timeRange) {
+      return null;
+    }
+
+    // Need a time-constraint table to derive the bucket column + interval.
+    const tableWithConstraint = this.findTimeConstraintTable();
+    if (!tableWithConstraint) {
+      return null;
+    }
+    const { tableSchema, clickhouseColumnName } = tableWithConstraint;
+    const interval = calculateTimeBucketInterval(
+      timeRange.from,
+      timeRange.to,
+      tableSchema.timeBucketThresholds,
+      this.context.minBucketSeconds
+    );
+    const bucketSql = `toStartOfInterval(${escapeClickHouseIdentifier(clickhouseColumnName)}, INTERVAL ${interval.value} ${interval.unit})`;
+
+    // Find exactly one timeBucket() column in SELECT and its output alias.
+    let bucketAlias: string | null = null;
+    let bucketCount = 0;
+    for (const col of node.select) {
+      const inner = (col as Alias).expression_type === "alias" ? (col as Alias).expr : col;
+      if (
+        (inner as Call).expression_type === "call" &&
+        (inner as Call).name.toLowerCase() === "timebucket"
+      ) {
+        bucketCount++;
+        bucketAlias =
+          (col as Alias).expression_type === "alias" ? (col as Alias).alias : "timebucket";
+      }
+    }
+    if (bucketCount !== 1 || !bucketAlias) {
+      return null;
+    }
+
+    // ORDER BY must be led by the timeBucket column (alias or full expression).
+    // Don't fight a user ordering like `ORDER BY count DESC`.
+    const leadTerm = orderBy[0];
+    // Strip a trailing ASC/DESC direction without a regex: an unanchored `\s+` before the
+    // keyword backtracks polynomially across start positions on whitespace runs (CodeQL
+    // js/polynomial-redos). endsWith + slice is linear.
+    const trimmedLead = leadTerm.trim();
+    const upperLead = trimmedLead.toUpperCase();
+    const isDescending = upperLead.endsWith(" DESC");
+    const leadExpr = upperLead.endsWith(" ASC")
+      ? trimmedLead.slice(0, -4).trimEnd()
+      : isDescending
+        ? trimmedLead.slice(0, -5).trimEnd()
+        : trimmedLead;
+    const matchesBucket = (expr: string): boolean =>
+      expr.toLowerCase() === bucketAlias!.toLowerCase() || expr === bucketSql;
+    if (!matchesBucket(leadExpr)) {
+      return null;
+    }
+    // WITH FILL is emitted with ascending bounds and a positive STEP, which is
+    // only valid for an ascending bucket order. A descending order would need
+    // swapped bounds and a negative step (newer ClickHouse only), so skip the
+    // gap-fill rewrite and let the plain descending ORDER BY stand.
+    if (isDescending) {
+      return null;
+    }
+
+    // Group dims = GROUP BY expressions that are NOT the timeBucket column.
+    const groupDims = (groupBy ?? []).filter((g) => !matchesBucket(g.trim()));
+
+    // Classify each SELECT output column. Carry (gauge) columns survive through
+    // aliases + value-preserving aggregates (see analyzeSelectColumn). A bare column
+    // that isn't the bucket is a GROUP BY dimension; everything else is a counter or
+    // derived value that zero-fills.
+    const carryAliases: string[] = [];
+    const dimNames: string[] = [];
+    const orderedOutputs: Array<{ name: string; carry: boolean }> = [];
+    for (const col of node.select) {
+      const { outputName, sourceColumn } = this.analyzeSelectColumn(col);
+      if (!outputName) continue;
+      const carry = sourceColumn?.fillMode === "carry";
+      orderedOutputs.push({ name: outputName, carry });
+      if (carry) carryAliases.push(outputName);
+      const inner = (col as Alias).expression_type === "alias" ? (col as Alias).expr : col;
+      if (!matchesBucket(outputName) && (inner as Field).expression_type === "field") {
+        dimNames.push(outputName);
+      }
+    }
+
+    // Snap FROM/TO to the bucket grid and parameterize the bounds.
+    const fromBound = this.context.addValue(timeRange.from);
+    const toBound = this.context.addValue(timeRange.to);
+    const withFill =
+      `WITH FILL FROM toStartOfInterval(${fromBound}, INTERVAL ${interval.value} ${interval.unit})` +
+      ` TO toStartOfInterval(${toBound}, INTERVAL ${interval.value} ${interval.unit})` +
+      ` STEP INTERVAL ${interval.value} ${interval.unit}`;
+
+    const esc = escapeClickHouseIdentifier;
+
+    // Single series: WITH FILL on the bucket + INTERPOLATE the carry columns (LOCF);
+    // counters omitted from INTERPOLATE so they zero-fill.
+    if (groupDims.length === 0) {
+      const newOrderBy = [...orderBy];
+      newOrderBy[0] = `${leadTerm} ${withFill}`;
+      const interpolate =
+        carryAliases.length > 0
+          ? `INTERPOLATE (${carryAliases.map((a) => `${esc(a)} AS ${esc(a)}`).join(", ")})`
+          : null;
+      return { kind: "inline", orderBy: newOrderBy, interpolate };
+    }
+
+    // Grouped, counters only: per-group zero-fill via WITH FILL ordered by the dims.
+    if (carryAliases.length === 0) {
+      return {
+        kind: "inline",
+        orderBy: [...groupDims, `${leadTerm} ${withFill}`],
+        interpolate: null,
+      };
+    }
+
+    // Grouped + gauge: per-group LOCF. INTERPOLATE bleeds across groups, so densify per
+    // group (WITH FILL + a `present` sentinel that is 0 on filled rows), assign a block id
+    // that increments at each real row, then carry the block's real value via window max.
+    // Only safe when every GROUP BY dim is a plain column we can PARTITION BY.
+    if (dimNames.length !== groupDims.length) {
+      this.context.addWarning(
+        "fill_skipped_grouped_gauge",
+        "fillGaps was skipped: per-group gap fill needs every GROUP BY dimension to be a plain column."
+      );
+      return null;
+    }
+
+    const userOrderBy = [...orderBy];
+    const presentCol = "__tsql_present";
+    const blockCol = "__tsql_block";
+    const partitionDims = dimNames.map(esc).join(", ");
+    const blockExpr =
+      `sum(${esc(presentCol)}) OVER (PARTITION BY ${partitionDims} ORDER BY ${esc(bucketAlias)}` +
+      ` ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS ${esc(blockCol)}`;
+    const finalColumns = orderedOutputs.map(({ name, carry }) =>
+      carry
+        ? `max(if(${esc(presentCol)} = 1, ${esc(name)}, NULL)) OVER (PARTITION BY ${partitionDims}, ${esc(
+            blockCol
+          )}) AS ${esc(name)}`
+        : esc(name)
+    );
+    const finalOrderBy = userOrderBy.length > 0 ? ` ORDER BY ${userOrderBy.join(", ")}` : "";
+    const wrap = (inner: string): string =>
+      `SELECT ${finalColumns.join(", ")} FROM (SELECT *, ${blockExpr} FROM (${inner.trim()}))${finalOrderBy}`;
+
+    return {
+      kind: "wrap",
+      orderBy: [...dimNames.map(esc), `${leadTerm} ${withFill}`],
+      presentColumn: `1 AS ${esc(presentCol)}`,
+      wrap,
+    };
   }
 
   /**
@@ -741,7 +950,9 @@ export class ClickHousePrinter {
       }
 
       // Set format hint from prettyFormat() or auto-populate from customRenderType
-      const sourceWithFormat = sourceColumn as (Partial<ColumnSchema> & { format?: ColumnFormatType }) | null;
+      const sourceWithFormat = sourceColumn as
+        | (Partial<ColumnSchema> & { format?: ColumnFormatType })
+        | null;
       if (sourceWithFormat?.format) {
         metadata.format = sourceWithFormat.format;
       } else if (sourceColumn?.customRenderType) {
@@ -1015,11 +1226,12 @@ export class ClickHousePrinter {
         if ((firstArg as Field).expression_type === "field") {
           const field = firstArg as Field;
           const columnInfo = this.resolveFieldToColumn(field.chain);
-          // Only propagate customRenderType, not the full column schema
-          if (columnInfo.column?.customRenderType) {
+          // Propagate customRenderType and fillMode (gauge-ness), not the full column schema
+          if (columnInfo.column?.customRenderType || columnInfo.column?.fillMode) {
             sourceColumn = {
               type: inferredType,
               customRenderType: columnInfo.column.customRenderType,
+              fillMode: columnInfo.column.fillMode,
             };
           }
         }
@@ -1681,6 +1893,138 @@ export class ClickHousePrinter {
   }
 
   /**
+   * Reject queries that merge a scope-keyed aggregate state column (`mergeGroupKey`)
+   * across values of its key: such merges silently return wrong numbers. Valid shapes
+   * group by the key column or pin it to a single value (in the query's WHERE or via
+   * the enforced clause). Runs per SELECT scope; subqueries validate themselves.
+   */
+  private validateMergeScopedColumns(node: SelectQuery): void {
+    for (const tableSchema of this.tableContexts.values()) {
+      for (const column of Object.values(tableSchema.columns)) {
+        if (!column.mergeGroupKey) continue;
+        const keys = Array.isArray(column.mergeGroupKey)
+          ? column.mergeGroupKey
+          : [column.mergeGroupKey];
+        if (!this.scopeReferencesColumn(node, column.name)) continue;
+        for (const key of keys) {
+          if (this.groupByIncludesColumn(node, key)) continue;
+          if (this.wherePinsColumn(node.where, key)) continue;
+          if (this.enforcedPinsColumn(tableSchema, key)) continue;
+          throw new QueryError(
+            `Merging '${column.name}' across every ${key} returns wrong totals: its aggregate ` +
+              `states are kept per ${key} and only combine correctly within one ${key}. Either ` +
+              `add '${key}' to the GROUP BY and sum the per-${key} results in an outer query, ` +
+              `for example: SELECT sum(v) AS total FROM (SELECT ${key}, ` +
+              `deltaSumTimestampMerge(${column.name}) AS v FROM ${tableSchema.name} ` +
+              `GROUP BY ${key}). Or filter to a single ${key}, for example: ` +
+              `WHERE ${key} = 'my-${key}'. For a time series, bucket both layers: ` +
+              `inner GROUP BY t, ${key} and outer GROUP BY t.`
+          );
+        }
+      }
+    }
+  }
+
+  private scopeReferencesColumn(node: SelectQuery, name: string): boolean {
+    const parts: unknown[] = [
+      node.select,
+      node.prewhere,
+      node.where,
+      node.group_by,
+      node.having,
+      node.order_by,
+    ];
+    return parts.some((part) => this.expressionReferencesColumn(part, name));
+  }
+
+  private expressionReferencesColumn(
+    expr: unknown,
+    name: string,
+    seen = new WeakSet<object>()
+  ): boolean {
+    if (expr === null || typeof expr !== "object") return false;
+    if (seen.has(expr)) return false;
+    seen.add(expr);
+    if (Array.isArray(expr)) {
+      return expr.some((item) => this.expressionReferencesColumn(item, name, seen));
+    }
+    const candidate = expr as { expression_type?: string; chain?: unknown[] };
+    if (
+      candidate.expression_type === "select_query" ||
+      candidate.expression_type === "select_set_query"
+    ) {
+      return false;
+    }
+    if (
+      candidate.expression_type === "field" &&
+      Array.isArray(candidate.chain) &&
+      candidate.chain[candidate.chain.length - 1] === name
+    ) {
+      return true;
+    }
+    return Object.entries(expr).some(
+      ([property, value]) =>
+        property !== "type" &&
+        property !== "parent" &&
+        this.expressionReferencesColumn(value, name, seen)
+    );
+  }
+
+  private groupByIncludesColumn(node: SelectQuery, name: string): boolean {
+    return (node.group_by ?? []).some((expr) => {
+      const field = expr as Field;
+      return (
+        field.expression_type === "field" &&
+        Array.isArray(field.chain) &&
+        field.chain[field.chain.length - 1] === name
+      );
+    });
+  }
+
+  // Pins only count on the top-level AND chain: a pin inside an OR guarantees nothing.
+  private wherePinsColumn(where: Expression | undefined, name: string): boolean {
+    if (!where) return false;
+    if (where.expression_type === "and") {
+      return (where as And).exprs.some((expr) => this.wherePinsColumn(expr, name));
+    }
+    if (where.expression_type !== "compare_operation") return false;
+    const cmp = where as CompareOperation;
+    const isKeyField = (side: Expression) => {
+      const field = side as Field;
+      return (
+        field.expression_type === "field" &&
+        Array.isArray(field.chain) &&
+        field.chain[field.chain.length - 1] === name
+      );
+    };
+    const fieldSide = [cmp.left, cmp.right].find(isKeyField);
+    if (!fieldSide) return false;
+    if (cmp.op === CompareOperationOp.Eq) return true;
+    if (cmp.op === CompareOperationOp.In || cmp.op === CompareOperationOp.GlobalIn) {
+      const other = fieldSide === cmp.left ? cmp.right : cmp.left;
+      if ((other as Constant).expression_type === "constant") return true;
+      const tuple = other as Tuple;
+      return tuple.expression_type === "tuple" && tuple.exprs.length === 1;
+    }
+    return false;
+  }
+
+  private enforcedPinsColumn(tableSchema: TableSchema, key: string): boolean {
+    const names = [key];
+    const clickhouseName = tableSchema.columns[key]?.clickhouseName;
+    if (clickhouseName) names.push(clickhouseName);
+    for (const name of names) {
+      const condition = this.context.enforcedWhereClause[name] as
+        | { op?: string; values?: unknown[] }
+        | undefined;
+      if (!condition) continue;
+      if (condition.op === "eq") return true;
+      if (condition.op === "in" && condition.values?.length === 1) return true;
+    }
+    return false;
+  }
+
+  /**
    * Format a Date as a ClickHouse-compatible DateTime64 string.
    * ClickHouse expects format: 'YYYY-MM-DD HH:MM:SS.mmm' (in UTC)
    */
@@ -1980,28 +2324,10 @@ export class ClickHousePrinter {
       CompareOperationOp.NotILike,
     ];
     const useTextColumn = textColumnOps.includes(node.op);
-    const leftTextColumn = useTextColumn ? this.getTextColumnForExpression(node.left) : null;
+    const leftTextColumn = useTextColumn ? this.printTextColumnReference(node.left) : null;
 
-    // Build the left side, qualifying the text column with table alias if present
-    let left: string;
-    if (leftTextColumn) {
-      // Check if the field is qualified with a table alias (e.g., r.output)
-      // and prepend that alias to the text column to avoid ambiguity in JOINs
-      const fieldNode = node.left as Field;
-      if (fieldNode.expression_type === "field" && fieldNode.chain.length >= 2) {
-        const firstPart = fieldNode.chain[0];
-        if (typeof firstPart === "string" && this.tableContexts.has(firstPart)) {
-          // The field is qualified with a table alias, prepend it to the text column
-          left = this.printIdentifier(firstPart) + "." + this.printIdentifier(leftTextColumn);
-        } else {
-          left = this.printIdentifier(leftTextColumn);
-        }
-      } else {
-        left = this.printIdentifier(leftTextColumn);
-      }
-    } else {
-      left = this.visit(node.left);
-    }
+    // Build the left side, using the (alias-qualified) text column when available
+    const left = leftTextColumn ?? this.visit(node.left);
     const right = this.visit(transformedRight);
 
     switch (node.op) {
@@ -2531,6 +2857,49 @@ export class ClickHousePrinter {
   }
 
   /**
+   * Print a bare JSON field as its String companion (textColumn), keeping the table alias
+   * when qualified (r.output -> r.output_text). Returns null if there is no textColumn.
+   */
+  private printTextColumnReference(expr: Expression): string | null {
+    const textColumn = this.getTextColumnForExpression(expr);
+    if (!textColumn) return null;
+
+    const fieldNode = expr as Field;
+    if (fieldNode.expression_type === "field" && fieldNode.chain.length >= 2) {
+      const firstPart = fieldNode.chain[0];
+      if (typeof firstPart === "string" && this.tableContexts.has(firstPart)) {
+        return this.printIdentifier(firstPart) + "." + this.printIdentifier(textColumn);
+      }
+    }
+    return this.printIdentifier(textColumn);
+  }
+
+  /**
+   * Print a JSON-string function argument, swapping a bare JSON field for its textColumn.
+   * Descends through value-preserving passthrough wrappers (e.g. assumeNotNull(output))
+   * so the swap still applies inside them. Returns null if no textColumn swap applies.
+   */
+  private substituteJsonTextArg(expr: Expression): string | null {
+    const direct = this.printTextColumnReference(expr);
+    if (direct) return direct;
+
+    const call = expr as Call;
+    if (
+      call.expression_type === "call" &&
+      ClickHousePrinter.JSON_PASSTHROUGH_WRAPPERS.has(call.name.toLowerCase()) &&
+      call.args.length > 0
+    ) {
+      const inner = this.substituteJsonTextArg(call.args[0]);
+      if (inner) {
+        const clickhouseName = findTSQLFunction(call.name)?.clickhouseName ?? call.name;
+        const rest = call.args.slice(1).map((arg) => this.visit(arg));
+        return `${clickhouseName}(${[inner, ...rest].join(", ")})`;
+      }
+    }
+    return null;
+  }
+
+  /**
    * Get the dataPrefix for a field chain if the root column has one defined.
    * Returns null if the column doesn't have a dataPrefix or if this isn't a subfield access.
    */
@@ -2983,6 +3352,35 @@ export class ClickHousePrinter {
   ]);
 
   /**
+   * ClickHouse JSON functions whose first argument must be a String containing JSON text.
+   * Passing a native JSON column fails with "should be a string containing JSON, illegal
+   * type: JSON", so we print the column's String companion (textColumn) for that argument.
+   */
+  private static readonly JSON_TEXT_ARG_FUNCTIONS = new Set([
+    "jsonhas",
+    "jsonlength",
+    "jsontype",
+    "jsonextract",
+    "jsonextractuint",
+    "jsonextractint",
+    "jsonextractfloat",
+    "jsonextractbool",
+    "jsonextractstring",
+    "jsonextractraw",
+    "jsonextractarrayraw",
+    "jsonextractkeysandvalues",
+    "jsonextractkeys",
+  ]);
+
+  /**
+   * Value-preserving wrappers a user may put between a JSON column and a JSON function,
+   * e.g. `JSONExtractString(assumeNotNull(output), 'x')`. The text-column swap descends
+   * through these. Functions that transform the value (e.g. toJSONString) are excluded so
+   * their argument keeps reading the native column.
+   */
+  private static readonly JSON_PASSTHROUGH_WRAPPERS = new Set(["assumenotnull"]);
+
+  /**
    * Visit function call arguments, handling date functions that require an interval unit
    * keyword as their first argument. For these functions, the first arg is output as a
    * bare keyword instead of being parameterized or resolved as a column reference.
@@ -2990,15 +3388,19 @@ export class ClickHousePrinter {
   private visitCallArgs(functionName: string, args: Expression[]): string[] {
     const lowerName = functionName.toLowerCase();
 
-    if (
-      ClickHousePrinter.DATE_FUNCTIONS_WITH_INTERVAL_UNIT.has(lowerName) &&
-      args.length > 0
-    ) {
+    if (ClickHousePrinter.DATE_FUNCTIONS_WITH_INTERVAL_UNIT.has(lowerName) && args.length > 0) {
       const firstArg = args[0];
       const intervalUnit = this.extractIntervalUnit(firstArg);
 
       if (intervalUnit) {
         return [intervalUnit, ...args.slice(1).map((arg) => this.visit(arg))];
+      }
+    }
+
+    if (ClickHousePrinter.JSON_TEXT_ARG_FUNCTIONS.has(lowerName) && args.length > 0) {
+      const textColumn = this.substituteJsonTextArg(args[0]);
+      if (textColumn) {
+        return [textColumn, ...args.slice(1).map((arg) => this.visit(arg))];
       }
     }
 
@@ -3070,8 +3472,16 @@ export class ClickHousePrinter {
   }
 
   private visitWindowFunction(node: WindowFunction): string {
+    // Validate the function name against the allowlist and resolve it to its
+    // safe ClickHouse name. Without this, an attacker-controlled name would be
+    // emitted raw into the query (mirrors the validation in visitCall).
+    const funcMeta = findTSQLFunction(node.name) ?? findTSQLAggregation(node.name);
+    if (!funcMeta) {
+      throw new QueryError(`Unknown function: ${node.name}`);
+    }
+
     const args = node.args ? node.args.map((a) => this.visit(a)) : [];
-    const funcCall = `${node.name}(${args.join(", ")})`;
+    const funcCall = `${funcMeta.clickhouseName}(${args.join(", ")})`;
 
     if (node.over_identifier) {
       return `${funcCall} OVER ${this.printIdentifier(node.over_identifier)}`;
@@ -3148,7 +3558,8 @@ export class ClickHousePrinter {
     const interval = calculateTimeBucketInterval(
       timeRange.from,
       timeRange.to,
-      tableSchema.timeBucketThresholds
+      tableSchema.timeBucketThresholds,
+      this.context.minBucketSeconds
     );
 
     // Emit toStartOfInterval(column, INTERVAL N UNIT)

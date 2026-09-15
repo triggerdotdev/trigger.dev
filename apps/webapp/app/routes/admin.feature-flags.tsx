@@ -7,18 +7,17 @@ import { z } from "zod";
 import { LockClosedIcon } from "@heroicons/react/20/solid";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
-import {
-  dashboardAction,
-  dashboardLoader,
-} from "~/services/routeBuilders/dashboardBuilder";
+import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import {
   FEATURE_FLAG,
   GLOBAL_LOCKED_FLAGS,
+  type FeatureFlagKey,
   type FlagControlType,
   getAllFlagControlTypes,
+  lockedFlagsInPayload,
   validatePartialFeatureFlags,
 } from "~/v3/featureFlags";
-import { flags as getGlobalFlags } from "~/v3/featureFlags.server";
+import { flags as getGlobalFlags, replaceGlobalFeatureFlags } from "~/v3/featureFlags.server";
 import { featuresForRequest } from "~/features.server";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
@@ -31,14 +30,22 @@ import {
   DialogFooter,
 } from "~/components/primitives/Dialog";
 import { cn } from "~/utils/cn";
+import { buildFlagChangeList } from "~/components/admin/flagChangeList";
 import {
   UNSET_VALUE,
   BooleanControl,
   EnumControl,
+  NumberControl,
   StringControl,
   WorkerGroupControl,
   type WorkerGroup,
 } from "~/components/admin/FlagControls";
+
+/** What the page posts to the action. See the note on payloadSchema. */
+type SaveFlagsBody = {
+  flags: Record<string, unknown>;
+  unlockLockedFlags: boolean;
+};
 
 export const loader = dashboardLoader(
   { authorization: { requireSuper: true } },
@@ -82,77 +89,55 @@ export const loader = dashboardLoader(
 export const action = dashboardAction(
   { authorization: { requireSuper: true } },
   async ({ request }) => {
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return json({ error: "Invalid JSON body" }, { status: 400 });
-  }
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return json({ error: "Invalid JSON body" }, { status: 400 });
+    }
 
-  const payloadSchema = z.object({ flags: z.record(z.unknown()) });
-  const parsed = payloadSchema.safeParse(body);
-  if (!parsed.success) {
-    return json({ error: "Invalid payload" }, { status: 400 });
-  }
+    // The zod schema leaves unlockLockedFlags optional so a tab opened before this shipped still
+    // saves, defaulting to the safe answer. SaveFlagsBody keeps it required for our own client, so
+    // dropping it from the page is a compile error rather than a silently disabled unlock.
+    const payloadSchema = z.object({
+      flags: z.record(z.string(), z.unknown()),
+      // The page only submits the flags it is managing, so an omitted key is ambiguous for the
+      // locked flags: this says whether the admin unlocked them and is therefore authoritative
+      // over them too.
+      unlockLockedFlags: z.boolean().optional(),
+    });
+    const parsed = payloadSchema.safeParse(body);
+    if (!parsed.success) {
+      return json({ error: "Invalid payload" }, { status: 400 });
+    }
 
-  const { isManagedCloud } = featuresForRequest(request);
+    const { isManagedCloud } = featuresForRequest(request);
 
-  // On managed cloud, reject if payload includes locked flags
-  if (isManagedCloud) {
-    const lockedInPayload = Object.keys(parsed.data.flags).filter((key) =>
-      GLOBAL_LOCKED_FLAGS.includes(key)
-    );
+    const lockedInPayload = lockedFlagsInPayload(Object.keys(parsed.data.flags), isManagedCloud);
     if (lockedInPayload.length > 0) {
       return json(
         { error: `Cannot modify locked flags: ${lockedInPayload.join(", ")}` },
         { status: 400 }
       );
     }
-  }
 
-  const validationResult = validatePartialFeatureFlags(parsed.data.flags);
-  if (!validationResult.success) {
-    return json(
-      { error: "Invalid feature flags", details: validationResult.error.issues },
-      { status: 400 }
-    );
-  }
-
-  const validatedFlags = validationResult.data as Record<string, unknown>;
-  const controlTypes = getAllFlagControlTypes();
-  const catalogKeys = Object.keys(controlTypes);
-
-  const keysToDelete: string[] = [];
-  const upsertOps: ReturnType<typeof prisma.featureFlag.upsert>[] = [];
-
-  for (const key of catalogKeys) {
-    if (key in validatedFlags) {
-      upsertOps.push(
-        prisma.featureFlag.upsert({
-          where: { key },
-          create: { key, value: validatedFlags[key] as any },
-          update: { value: validatedFlags[key] as any },
-        })
+    const validationResult = validatePartialFeatureFlags(parsed.data.flags);
+    if (!validationResult.success) {
+      return json(
+        { error: "Invalid feature flags", details: validationResult.error.issues },
+        { status: 400 }
       );
-    } else {
-      // On cloud, never delete locked flags (they're not in the payload
-      // because the UI doesn't include them). Locally, delete everything
-      // the user didn't include - full control.
-      const isProtected = isManagedCloud && GLOBAL_LOCKED_FLAGS.includes(key);
-      if (!isProtected) {
-        keysToDelete.push(key);
-      }
     }
-  }
 
-  await prisma.$transaction([
-    ...upsertOps,
-    ...(keysToDelete.length > 0
-      ? [prisma.featureFlag.deleteMany({ where: { key: { in: keysToDelete } } })]
-      : []),
-  ]);
+    await replaceGlobalFeatureFlags(prisma, {
+      requestedFlags: validationResult.data as Record<string, unknown>,
+      catalogKeys: Object.keys(getAllFlagControlTypes()) as FeatureFlagKey[],
+      isManagedCloud,
+      unlockLockedFlags: parsed.data.unlockLockedFlags ?? false,
+      graceMs: env.RUN_OPS_MINT_FLIP_GRACE_MS,
+    });
 
-  return json({ success: true });
+    return json({ success: true });
   }
 );
 
@@ -180,16 +165,18 @@ export default function AdminFeatureFlagsRoute() {
     // Only track editable flags in state
     const editable: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(loaded)) {
-      if (!isLocked(key)) {
+      if (unlocked || !GLOBAL_LOCKED_FLAGS.includes(key)) {
         editable[key] = value;
       }
     }
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setValues({ ...editable });
     setInitialValues({ ...editable });
   }, [globalFlags, unlocked]);
 
   useEffect(() => {
     if (saveFetcher.data?.success) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setSaveError(null);
       setConfirmOpen(false);
     } else if (saveFetcher.data?.error) {
@@ -213,7 +200,8 @@ export default function AdminFeatureFlagsRoute() {
   };
 
   const handleSave = () => {
-    saveFetcher.submit(JSON.stringify({ flags: values }), {
+    const body: SaveFlagsBody = { flags: values, unlockLockedFlags: unlocked };
+    saveFetcher.submit(JSON.stringify(body), {
       method: "POST",
       encType: "application/json",
     });
@@ -236,8 +224,8 @@ export default function AdminFeatureFlagsRoute() {
         <Callout variant="warning">
           These are global feature flags that affect every organization on this instance. Changing
           values here is a dangerous operation and should rarely be done - prefer org-level
-          overrides where possible. Org-level overrides take precedence; when a flag isn't set,
-          each consumer uses its own default.
+          overrides where possible. Org-level overrides take precedence; when a flag isn't set, each
+          consumer uses its own default.
         </Callout>
 
         <div className={isManagedCloud ? "cursor-not-allowed" : undefined}>
@@ -282,7 +270,7 @@ export default function AdminFeatureFlagsRoute() {
                   "flex items-center justify-between rounded-md border px-3 py-2.5",
                   isSet
                     ? "border-indigo-500/20 bg-indigo-500/5"
-                    : "border-transparent bg-charcoal-750"
+                    : "border-transparent bg-background-hover"
                 )}
               >
                 <div className="min-w-0 flex-1">
@@ -294,7 +282,7 @@ export default function AdminFeatureFlagsRoute() {
                   >
                     {isWorkerGroup ? "defaultWorkerInstanceGroup" : key}
                   </div>
-                  <div className="text-xs text-charcoal-400">
+                  <div className="text-xs text-text-dimmed">
                     {isSet
                       ? isWorkerGroup
                         ? resolveWorkerGroupDisplay(values[key] as string)
@@ -352,6 +340,22 @@ export default function AdminFeatureFlagsRoute() {
                         />
                       )}
 
+                      {control.type === "number" && (
+                        <NumberControl
+                          value={isSet ? (values[key] as number) : undefined}
+                          min={control.min}
+                          max={control.max}
+                          onChange={(val) => {
+                            if (val === undefined) {
+                              unsetFlag(key);
+                            } else {
+                              setFlagValue(key, val);
+                            }
+                          }}
+                          dimmed={!isSet}
+                        />
+                      )}
+
                       {control.type === "string" && (
                         <StringControl
                           value={isSet ? (values[key] as string) : ""}
@@ -395,11 +399,13 @@ export default function AdminFeatureFlagsRoute() {
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
         initialValues={initialValues}
+        storedValues={allFlags}
         newValues={values}
         controlTypes={typedControlTypes}
         lockedKeys={unlocked ? [] : GLOBAL_LOCKED_FLAGS}
         onConfirm={handleSave}
         isSaving={isSaving}
+        saveError={saveError}
       />
     </main>
   );
@@ -438,20 +444,18 @@ function LockedFlagRow({
     <div
       className={cn(
         "flex items-center justify-between rounded-md border px-3 py-2.5",
-        isSet ? "border-indigo-500/20 bg-indigo-500/5" : "border-transparent bg-charcoal-750"
+        isSet ? "border-indigo-500/20 bg-indigo-500/5" : "border-transparent bg-background-hover"
       )}
       title="Managed via database - not editable from this UI"
     >
       <div className="min-w-0 flex-1">
-        <div
-          className={cn("truncate text-sm", isSet ? "text-text-bright" : "text-text-dimmed")}
-        >
+        <div className={cn("truncate text-sm", isSet ? "text-text-bright" : "text-text-dimmed")}>
           {isWorkerGroup ? "defaultWorkerInstanceGroup" : flagKey}
         </div>
-        <div className="text-xs text-charcoal-400">{displayValue}</div>
+        <div className="text-xs text-text-dimmed">{displayValue}</div>
       </div>
 
-      <LockClosedIcon className="size-4 text-charcoal-500" />
+      <LockClosedIcon className="size-4 text-text-faint" />
     </div>
   );
 }
@@ -462,53 +466,35 @@ function ConfirmDialog({
   open,
   onOpenChange,
   initialValues,
+  storedValues,
   newValues,
   controlTypes,
   lockedKeys,
   onConfirm,
   isSaving,
+  saveError,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initialValues: Record<string, unknown>;
+  storedValues: Record<string, unknown>;
   newValues: Record<string, unknown>;
   controlTypes: Record<string, FlagControlType>;
   lockedKeys: readonly string[];
   onConfirm: () => void;
   isSaving: boolean;
+  saveError: string | null;
 }) {
   const editableKeys = Object.keys(controlTypes)
     .filter((key) => !lockedKeys.includes(key))
     .sort();
 
-  type Change =
-    | { key: string; type: "added"; newVal: string }
-    | { key: string; type: "removed"; oldVal: string }
-    | { key: string; type: "changed"; oldVal: string; newVal: string };
-
-  const changes = editableKeys.flatMap<Change>((key) => {
-    const wasSet = key in initialValues;
-    const isSet = key in newValues;
-    const oldVal = initialValues[key];
-    const newVal = newValues[key];
-
-    if (!wasSet && !isSet) return [];
-    if (wasSet && isSet && stableStringify(oldVal) === stableStringify(newVal)) return [];
-
-    if (!wasSet && isSet) {
-      return [{ key, type: "added" as const, newVal: String(newVal) }];
-    }
-    if (wasSet && !isSet) {
-      return [{ key, type: "removed" as const, oldVal: String(oldVal) }];
-    }
-    return [
-      {
-        key,
-        type: "changed" as const,
-        oldVal: String(oldVal),
-        newVal: String(newVal),
-      },
-    ];
+  const changes = buildFlagChangeList({
+    editableKeys,
+    lockedKeys,
+    initialValues,
+    storedValues,
+    newValues,
   });
 
   return (
@@ -519,18 +505,18 @@ function ConfirmDialog({
           These changes affect all organizations globally. Please review carefully.
         </DialogDescription>
 
-        <div className="flex flex-col gap-2 pb-2">
+        <div className="flex max-h-[50vh] flex-col gap-2 overflow-y-auto pb-2">
           {changes.length === 0 ? (
             <p className="text-sm text-text-dimmed">No changes to apply.</p>
           ) : (
             changes.map((change) => (
               <div
                 key={change.key}
-                className="rounded-md border border-charcoal-600 bg-charcoal-800 px-3 py-2 font-mono text-xs"
+                className="rounded-md border border-border-bright bg-background-bright px-3 py-2 font-mono text-xs"
               >
                 <div className="font-sans text-sm text-text-bright">{change.key}</div>
                 {change.type === "added" && (
-                  <div className="mt-1 text-green-400">+ {change.newVal}</div>
+                  <div className="mt-1 text-green-400 system:text-green-700">+ {change.newVal}</div>
                 )}
                 {change.type === "removed" && (
                   <div className="mt-1 text-red-400">- {change.oldVal} (unset)</div>
@@ -538,13 +524,15 @@ function ConfirmDialog({
                 {change.type === "changed" && (
                   <>
                     <div className="mt-1 text-red-400">- {change.oldVal}</div>
-                    <div className="text-green-400">+ {change.newVal}</div>
+                    <div className="text-green-400 system:text-green-700">+ {change.newVal}</div>
                   </>
                 )}
               </div>
             ))
           )}
         </div>
+
+        {saveError && <Callout variant="error">{saveError}</Callout>}
 
         <DialogFooter>
           <Button variant="tertiary/small" onClick={() => onOpenChange(false)}>

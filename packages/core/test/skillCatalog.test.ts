@@ -69,6 +69,11 @@ describe("StandardResourceCatalog — skills", () => {
     catalog.registerSkillMetadata({ id: "pdf", sourcePath: "./skills/pdf" });
     catalog.registerSkillMetadata({ id: "researcher", sourcePath: "./skills/researcher" });
 
-    expect(catalog.listSkillManifests().map((s) => s.id).sort()).toEqual(["pdf", "researcher"]);
+    expect(
+      catalog
+        .listSkillManifests()
+        .map((s) => s.id)
+        .sort()
+    ).toEqual(["pdf", "researcher"]);
   });
 });

@@ -1,11 +1,13 @@
-import { json, TypedResponse } from "@remix-run/server-runtime";
+import type { TypedResponse } from "@remix-run/server-runtime";
+import { json } from "@remix-run/server-runtime";
 import { RunId } from "@trigger.dev/core/v3/isomorphic";
-import { WorkerApiRunLatestSnapshotResponseBody } from "@trigger.dev/core/v3/workers";
+import type { WorkerApiRunLatestSnapshotResponseBody } from "@trigger.dev/core/v3/workers";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { engine } from "~/v3/runEngine.server";
+import { runStore } from "~/v3/runStore.server";
 
 export const loader = createLoaderApiRoute(
   {
@@ -24,12 +26,13 @@ export const loader = createLoaderApiRoute(
     });
 
     try {
-      const run = await prisma.taskRun.findFirst({
-        where: {
+      const run = await runStore.findRun(
+        {
           friendlyId: params.runFriendlyId,
           runtimeEnvironmentId: authentication.environment.id,
         },
-      });
+        prisma
+      );
 
       if (!run) {
         throw new Response("You don't have permissions for this run", { status: 401 });

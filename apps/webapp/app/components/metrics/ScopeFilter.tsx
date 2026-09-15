@@ -72,7 +72,7 @@ export function ScopeFilter({ shortcut, value, onValueChange }: ScopeFilterProps
           />
         </Ariakit.TooltipAnchor>
         {shortcut && (
-          <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright py-1.5 pl-2.5 pr-2 text-xs text-text-dimmed">
+          <Ariakit.Tooltip className="z-40 cursor-default rounded border border-grid-bright bg-background-bright py-1.5 pl-2.5 pr-2 text-xs text-text-dimmed">
             <div className="flex items-center gap-1.5">
               <span>Change scope</span>
               <ShortcutKey className="size-4 flex-none" shortcut={shortcut} variant="small" />

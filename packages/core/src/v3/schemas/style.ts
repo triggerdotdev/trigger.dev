@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v4";
 
 export const PRIMARY_VARIANT = "primary";
 export const WARM_VARIANT = "warm";

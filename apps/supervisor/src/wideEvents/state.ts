@@ -76,7 +76,7 @@ export type PhaseRecord = {
 };
 
 /** Top-level error summary for a failed operation. */
-export type ErrorInfo = {
+type ErrorInfo = {
   code: string;
   message: string;
   /** Coarse classification - "client" | "upstream" | "internal" | "timeout". */

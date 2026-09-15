@@ -1,4 +1,9 @@
-import { type PrismaClient, type PrismaClientOrTransaction, TaskTriggerSource } from "@trigger.dev/database";
+import {
+  type TaskTriggerSource,
+  type PrismaClient,
+  type PrismaClientOrTransaction,
+  boundedIn,
+} from "@trigger.dev/database";
 import { $replica, prisma } from "~/db.server";
 import { getAllTaskIdentifiers } from "~/models/task.server";
 import { logger } from "./logger.server";
@@ -9,7 +14,10 @@ import {
 } from "./taskIdentifierCache.server";
 
 function toTriggerSource(source: string | undefined): TaskTriggerSource {
-  if (source === "SCHEDULED" || source === "schedule") return "SCHEDULED";
+  const normalized = source?.toUpperCase();
+  if (normalized === "AGENT") return "AGENT";
+  if (normalized === "WEBHOOK") return "WEBHOOK";
+  if (normalized === "SCHEDULED" || normalized === "SCHEDULE") return "SCHEDULED";
   return "STANDARD";
 }
 
@@ -53,7 +61,7 @@ export async function syncTaskIdentifiers(
       db.taskIdentifier.updateMany({
         where: {
           runtimeEnvironmentId: environmentId,
-          slug: { in: taskSlugs },
+          slug: { in: boundedIn(taskSlugs) },
         },
         data: {
           currentTriggerSource: source,
@@ -67,7 +75,7 @@ export async function syncTaskIdentifiers(
     db.taskIdentifier.updateMany({
       where: {
         runtimeEnvironmentId: environmentId,
-        slug: { notIn: slugs },
+        slug: { notIn: boundedIn(slugs) },
         isInLatestDeployment: true,
       },
       data: { isInLatestDeployment: false },
@@ -97,8 +105,7 @@ export async function syncTaskIdentifiers(
 
 function sortEntries(entries: TaskIdentifierEntry[]): TaskIdentifierEntry[] {
   return entries.sort((a, b) => {
-    if (a.isInLatestDeployment !== b.isInLatestDeployment)
-      return a.isInLatestDeployment ? -1 : 1;
+    if (a.isInLatestDeployment !== b.isInLatestDeployment) return a.isInLatestDeployment ? -1 : 1;
     return a.slug.localeCompare(b.slug);
   });
 }

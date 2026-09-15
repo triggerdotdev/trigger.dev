@@ -1,14 +1,5 @@
-import {
-  Component,
-  ComponentPropsWithoutRef,
-  Fragment,
-  ReactNode,
-  createContext,
-  useCallback,
-  useContext,
-  useRef,
-  useState,
-} from "react";
+import type { ComponentPropsWithoutRef, ReactNode } from "react";
+import { Fragment, createContext, useContext, useRef, useState } from "react";
 import { inverseLerp, lerp } from "~/utils/lerp";
 
 interface MousePosition {
@@ -16,30 +7,27 @@ interface MousePosition {
   y: number;
 }
 const MousePositionContext = createContext<MousePosition | undefined>(undefined);
-export function MousePositionProvider({ children }: { children: ReactNode }) {
+function MousePositionProvider({ children }: { children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<MousePosition | undefined>(undefined);
 
-  const handleMouseMove = useCallback(
-    (e: React.MouseEvent) => {
-      if (!ref.current) {
-        setPosition(undefined);
-        return;
-      }
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!ref.current) {
+      setPosition(undefined);
+      return;
+    }
 
-      const { top, left, width, height } = ref.current.getBoundingClientRect();
-      const x = (e.clientX - left) / width;
-      const y = (e.clientY - top) / height;
+    const { top, left, width, height } = ref.current.getBoundingClientRect();
+    const x = (e.clientX - left) / width;
+    const y = (e.clientY - top) / height;
 
-      if (x < 0 || x > 1 || y < 0 || y > 1) {
-        setPosition(undefined);
-        return;
-      }
+    if (x < 0 || x > 1 || y < 0 || y > 1) {
+      setPosition(undefined);
+      return;
+    }
 
-      setPosition({ x, y });
-    },
-    [ref.current]
-  );
+    setPosition({ x, y });
+  };
 
   return (
     <div
@@ -53,7 +41,7 @@ export function MousePositionProvider({ children }: { children: ReactNode }) {
     </div>
   );
 }
-export const useMousePosition = () => {
+const useMousePosition = () => {
   return useContext(MousePositionContext);
 };
 
@@ -68,11 +56,7 @@ function useTimeline() {
 }
 
 type TimelineMousePositionContextState = { x: number; y: number } | undefined;
-const TimelineMousePositionContext = createContext<TimelineMousePositionContextState>(undefined);
-function useTimelineMousePosition() {
-  return useContext(TimelineMousePositionContext);
-}
-
+const _TimelineMousePositionContext = createContext<TimelineMousePositionContextState>(undefined);
 export type RootProps = {
   /** If the timeline doesn't start at zero. Doesn't impact layout but gives you the times back */
   startMs?: number;

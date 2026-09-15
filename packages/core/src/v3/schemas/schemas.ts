@@ -1,5 +1,11 @@
-import { z } from "zod";
-import { RequireKeys } from "../types/index.js";
+import { z } from "zod/v4";
+import { discriminatedUnion } from "../utils/zod.js";
+import type { RequireKeys } from "../types/index.js";
+import {
+  WebhookVerifierArtifact,
+  WebhookRoutingTarget,
+  WebhookSecretProvisioning,
+} from "./webhookConfig.js";
 import {
   MachineConfig,
   MachinePreset,
@@ -7,6 +13,9 @@ import {
   TaskRunExecution,
   V3TaskRunExecution,
 } from "./common.js";
+import { ScheduleWindow } from "./scheduleWindow.js";
+
+export * from "./scheduleWindow.js";
 
 /*
     WARNING: Never import anything from ./messages here. If it's needed in both, put it here instead.
@@ -31,8 +40,8 @@ export type TaskRunExecutionMetrics = z.infer<typeof TaskRunExecutionMetrics>;
 
 export const TaskRunExecutionPayload = z.object({
   execution: TaskRunExecution,
-  traceContext: z.record(z.unknown()),
-  environment: z.record(z.string()).optional(),
+  traceContext: z.record(z.string(), z.unknown()),
+  environment: z.record(z.string(), z.string()).optional(),
   metrics: TaskRunExecutionMetrics.optional(),
 });
 
@@ -56,8 +65,8 @@ export type V3ProdTaskRunExecution = z.infer<typeof V3ProdTaskRunExecution>;
 
 export const V3ProdTaskRunExecutionPayload = z.object({
   execution: V3ProdTaskRunExecution,
-  traceContext: z.record(z.unknown()),
-  environment: z.record(z.string()).optional(),
+  traceContext: z.record(z.string(), z.unknown()),
+  environment: z.record(z.string(), z.string()).optional(),
   metrics: TaskRunExecutionMetrics.optional(),
 });
 
@@ -95,7 +104,7 @@ export const SlidingWindowRateLimit = z.object({
   ]),
 });
 
-export const RateLimitOptions = z.discriminatedUnion("type", [
+export const RateLimitOptions = discriminatedUnion("type", [
   FixedWindowRateLimit,
   SlidingWindowRateLimit,
 ]);
@@ -178,6 +187,7 @@ export const ScheduleMetadata = z.object({
   cron: z.string(),
   timezone: z.string(),
   environments: z.array(EnvironmentType).optional(),
+  window: ScheduleWindow.optional(),
 });
 
 const AgentConfig = z.object({
@@ -231,7 +241,7 @@ const promptMetadata = {
   description: z.string().optional(),
   content: z.string().optional(),
   model: z.string().optional(),
-  config: z.record(z.unknown()).optional(),
+  config: z.record(z.string(), z.unknown()).optional(),
   variableSchema: z.unknown().optional(),
 };
 
@@ -267,6 +277,28 @@ export const SkillManifest = z.object({
   ...taskFileMetadata,
 });
 export type SkillManifest = z.infer<typeof SkillManifest>;
+
+// ── Webhooks ────────────────────────────────────────────────────────────────
+
+const webhookMetadata = {
+  id: z.string(),
+  description: z.string().optional(),
+  source: z.string(),
+  verifierArtifact: WebhookVerifierArtifact,
+  routingTarget: WebhookRoutingTarget,
+  secretProvisioning: WebhookSecretProvisioning.optional(),
+  filter: z.string().optional(), // delivery filter DSL string; compiled to a FilterAst at deploy-sync
+  metadata: z.record(z.string(), z.unknown()).optional(),
+};
+
+export const WebhookMetadata = z.object(webhookMetadata);
+export type WebhookMetadata = z.infer<typeof WebhookMetadata>;
+
+export const WebhookManifest = z.object({
+  ...webhookMetadata,
+  ...taskFileMetadata, // filePath, exportName?, entryPoint
+});
+export type WebhookManifest = z.infer<typeof WebhookManifest>;
 
 export const PostStartCauses = z.enum(["index", "create", "restore"]);
 export type PostStartCauses = z.infer<typeof PostStartCauses>;
@@ -320,8 +352,8 @@ export const TaskRunExecutionLazyAttemptPayload = z.object({
   messageId: z.string(),
   isTest: z.boolean(),
   isReplay: z.boolean().default(false),
-  traceContext: z.record(z.unknown()),
-  environment: z.record(z.string()).optional(),
+  traceContext: z.record(z.string(), z.unknown()),
+  environment: z.record(z.string(), z.string()).optional(),
   metrics: TaskRunExecutionMetrics.optional(),
 });
 

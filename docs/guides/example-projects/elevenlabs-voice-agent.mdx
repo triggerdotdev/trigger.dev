@@ -1,0 +1,249 @@
+---
+title: "ElevenLabs Voice agent"
+sidebarTitle: "ElevenLabs Voice agent"
+description: "Build a spoken-conversation voice assistant on a Trigger.dev chat agent, with streaming speech-to-text and text-to-speech from ElevenLabs, server-side voice activity detection, and Head Start for a fast first reply."
+---
+
+## Overview
+
+This example is a fullstack voice chatbot built on a Trigger.dev [chat agent](/ai-chat/overview): you speak, and it answers out loud. It synthesises the reply in chunks as the model writes it, rather than waiting for the whole answer, and the browser talks straight to Trigger.dev's durable streams.
+
+```text
+mic ──► ElevenLabs Scribe ──► chat.agent ──► ElevenLabs Flash ──► speakers
+        streaming STT         Claude Haiku    streaming TTS
+```
+
+The agent is a single [`chat.agent()`](/ai-chat/overview) task that holds the conversation across turns. Two browser audio streams bracket it: ElevenLabs Scribe turns the microphone into text, and ElevenLabs Flash turns each finished sentence of the reply back into audio. [Head Start](/ai-chat/fast-starts) runs the first turn in the warm Next.js process while the agent boots in parallel, which cuts the latency on the first reply.
+
+**Tech stack:**
+
+- **[Trigger.dev AI chat](/ai-chat/overview)** for the durable conversation loop, streaming and checkpoint/resume between turns
+- **[Head Start](/ai-chat/fast-starts)** to run turn 1 in the web server while the agent run boots — measured ~57% off first-turn time-to-first-token
+- **[AI SDK](https://ai-sdk.dev/)** with Anthropic Claude Haiku for the model, and `useChat` on the frontend
+- **[ElevenLabs Scribe](https://elevenlabs.io/docs/capabilities/speech-to-text)** (realtime speech-to-text) with server-side voice-activity detection for the mic
+- **[ElevenLabs Flash](https://elevenlabs.io/docs/capabilities/text-to-speech)** (streaming text-to-speech) played sample-accurately through the Web Audio API
+- **Next.js** app using [`useTriggerChatTransport`](/ai-chat/frontend) — the browser talks directly to Trigger.dev, no chat API route to maintain
+
+**Features:**
+
+- **Tap the mic once, then talk**: no button per turn — ElevenLabs' voice-activity detection decides when you've finished a sentence and sends it.
+- **Replies spoken as the model writes them**: each sentence is sent for synthesis as soon as it's complete, so playback doesn't wait for the whole answer.
+- **Interrupt** a reply you don't need with a button; the conversation keeps its place.
+- **Multi-turn memory** within a sliding window, so follow-up questions make sense while input tokens (and turn latency) stay flat.
+- **One config file** for the voice, the model, the personality, and the latency trade-offs.
+- **Keys stay on the server**: server actions mint short-lived, session-scoped Trigger.dev tokens and single-use ElevenLabs tokens, so no API key ever reaches the browser.
+
+## GitHub repo
+
+<Card
+  title="View the ElevenLabs Voice agent repo"
+  icon="GitHub"
+  href="https://github.com/triggerdotdev/examples/tree/main/voice-agent-demo"
+>
+  Click here to view the full code for this project in our examples repository on GitHub. You can
+  fork it and use it as a starting point for your own project.
+</Card>
+
+## How it works
+
+### The agent
+
+The agent is a single [`chat.agent()`](/ai-chat/overview) task. Trigger.dev runs the durable conversation loop, so when the user goes quiet the run suspends and checkpoints, and the next thing they say resumes it. A short `idleTimeoutInSeconds` keeps it warm for a couple of minutes first, so a quick spoken follow-up doesn't pay a cold continuation boot. `prepareMessages` keeps only the last few turns each turn, so input tokens and turn latency stay flat however long the conversation runs:
+
+```ts trigger/chat.ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { stepCountIs, streamText } from "ai";
+import { HISTORY_TURNS, MAX_REPLY_TOKENS, SYSTEM_PROMPT } from "../lib/voice-config";
+import { chatModel } from "../lib/model";
+
+export const voiceChat = chat.agent({
+  id: "voice-chat",
+  // Keep the run warm between spoken turns so a quick follow-up doesn't cold-boot.
+  idleTimeoutInSeconds: 120,
+
+  // Keep only the last few turns so input tokens stay flat. Anthropic rejects a
+  // conversation that doesn't start with a user message, so walk the window
+  // forward to the first user message rather than slicing blindly.
+  prepareMessages: ({ messages }) => {
+    const maxMessages = HISTORY_TURNS * 2;
+    if (messages.length <= maxMessages) return messages;
+    const windowed = messages.slice(-maxMessages);
+    const firstUser = windowed.findIndex((m) => m.role === "user");
+    return firstUser > 0 ? windowed.slice(firstUser) : windowed;
+  },
+
+  run: async ({ messages, signal }) => {
+    return streamText({
+      // Spread first: wires up compaction, steering and telemetry.
+      ...chat.toStreamTextOptions(),
+      model: chatModel,
+      system: SYSTEM_PROMPT,
+      maxOutputTokens: MAX_REPLY_TOKENS,
+      messages,
+      abortSignal: signal,
+      stopWhen: stepCountIs(1),
+    });
+  },
+});
+```
+
+<Note>
+  Because the trimmed prefix changes every turn, byte-exact prompt caching can never hit; the
+  sliding window and prompt caching are mutually exclusive. Raise `HISTORY_TURNS` if you need
+  memory more than you need flat latency.
+</Note>
+
+### Head Start for a fast first reply
+
+A fresh agent run takes a moment to boot, which shows up as a slow first reply. That is the worst place for latency in a voice UI. [Head Start](/ai-chat/fast-starts) runs turn 1's model call in the warm Next.js process while the agent run boots in parallel, then hands the conversation to the agent for every turn after. It shares the same model, system prompt and token cap as the agent, so the voice doesn't change character mid-handover:
+
+```ts lib/chat-handler.ts
+import { chat } from "@trigger.dev/sdk/chat-server";
+import { streamText } from "ai";
+import { MAX_REPLY_TOKENS, SYSTEM_PROMPT } from "./voice-config";
+import { chatModel } from "./model";
+
+// Runs turn 1 here while the agent run boots in parallel (~57% off first-turn
+// time-to-first-token). Turns 2+ bypass this route and write straight to the session.
+export const chatHandler = chat.headStart({
+  agentId: "voice-chat",
+  run: async ({ chat: helper }) =>
+    streamText({
+      // Spread pins stopWhen to stepCountIs(1) — don't override it, or this
+      // handler runs steps the agent is supposed to own.
+      ...helper.toStreamTextOptions(),
+      model: chatModel,
+      system: SYSTEM_PROMPT,
+      maxOutputTokens: MAX_REPLY_TOKENS,
+    }),
+});
+```
+
+It's mounted as a single Next.js route (`app/api/chat/route.ts` is just `export const POST = chatHandler`), and the frontend transport points at it with `headStart: "/api/chat"`.
+
+### Streaming voice I/O
+
+Both audio sockets are opened by the browser and bracket the agent. `use-scribe.ts` streams the microphone to ElevenLabs Scribe, whose server-side voice-activity detection decides where your speech ends and commits a transcript, which is what lets you tap the mic once and talk. `use-eleven-tts.ts` takes each finished sentence of the reply and streams it to ElevenLabs Flash, playing the raw PCM through the Web Audio API scheduled sample-accurately, so speaking starts before the whole reply is written.
+
+### Keys stay on the server
+
+The browser talks to Trigger.dev and ElevenLabs directly, so it needs short-lived tokens rather than API keys. Server actions mint them: a session-scoped Trigger.dev token that the transport refreshes on expiry, and 15-minute single-use ElevenLabs tokens for each voice socket. The secret keys stay on the server:
+
+```ts app/actions.ts
+"use server";
+
+import { auth } from "@trigger.dev/sdk";
+import { chat } from "@trigger.dev/sdk/ai";
+import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
+
+// Creates the session + triggers the first run. Idempotent per chatId.
+export const startChatSession = chat.createStartSessionAction("voice-chat");
+
+// The transport calls this to refresh the browser's session-scoped token.
+export async function mintChatAccessToken(chatId: string) {
+  return auth.createPublicToken({
+    scopes: { read: { sessions: chatId }, write: { sessions: chatId } },
+    expirationTime: "1h",
+  });
+}
+
+// Single-use tokens for the browser's two ElevenLabs sockets; the API key stays here.
+export async function mintScribeToken() {
+  const { token } = await elevenlabs().tokens.singleUse.create("realtime_scribe");
+  return token;
+}
+export async function mintTtsToken() {
+  const { token } = await elevenlabs().tokens.singleUse.create("tts_websocket");
+  return token;
+}
+```
+
+The frontend wires the two audio streams to the agent with `useChat` and [`useTriggerChatTransport`](/ai-chat/frontend), pointing the transport at the Head Start route:
+
+```tsx app/components/voice-chat.tsx
+"use client";
+
+import { useChat } from "@ai-sdk/react";
+import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
+import type { voiceChat } from "@/trigger/chat";
+import { mintChatAccessToken, startChatSession } from "@/app/actions";
+
+const transport = useTriggerChatTransport<typeof voiceChat>({
+  task: "voice-chat",
+  accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+  startSession: ({ chatId, clientData }) => startChatSession({ chatId, clientData }),
+  headStart: "/api/chat",
+});
+
+const { messages, sendMessage, status } = useChat({ transport });
+```
+
+<Warning>
+  The server actions in `app/actions.ts` have no caller checks. That's fine on localhost, but before
+  exposing the app to anyone else, add authorization. As written, anyone who can reach the app can
+  mint session and speech tokens and spend against your provider quotas.
+</Warning>
+
+### One config file
+
+Every model id, voice id and tuning constant lives in `lib/voice-config.ts`. The file stays import-light because it's shared with the Head Start route bundle, and Head Start only pays off while that bundle stays small. The knobs that matter most:
+
+| Constant | Default | Effect |
+| --- | --- | --- |
+| `VAD_SILENCE_SECS` | `1` | Seconds of silence that end your turn. Lower feels snappier but cuts you off; higher gives room to pause. |
+| `HISTORY_TURNS` | `3` | Turns kept in context. Keeps latency flat; the cost is shorter memory. |
+| `MAX_REPLY_TOKENS` | `100` | Caps reply length so a turn can't run long. |
+| `TTS_VOICE_ID` | Roger | Any voice on your ElevenLabs account. Also settable via `NEXT_PUBLIC_TTS_VOICE_ID`. |
+
+The `SYSTEM_PROMPT` in the same file keeps replies short (every reply is read aloud, so a long one is seconds of dead air) and formats punctuation and numbers for ElevenLabs Flash, which reads ellipses, dashes and raw figures unpredictably.
+
+### Running it
+
+You'll need accounts on **Trigger.dev**, **Anthropic** and **ElevenLabs**, a Chromium browser for the mic, and four values in `.env.local`:
+
+```bash .env.local
+TRIGGER_SECRET_KEY=tr_dev_xxxxxxxxxxxxxxxxxxxxxxxx
+TRIGGER_PROJECT_REF=proj_xxxxxxxxxxxxxxxxxxxxxxxx
+VOICE_ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxxxxxxxxx
+ELEVENLABS_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+<Note>
+  The Anthropic key is named `VOICE_ANTHROPIC_API_KEY`, not `ANTHROPIC_API_KEY`, because the
+  standard name gets picked up by other tooling that can silently bill against it. The project reads
+  its own prefixed name via `lib/model.ts`.
+</Note>
+
+Run the agent and the app in two terminals, then open [http://localhost:4000](http://localhost:4000), tap the mic, and start talking:
+
+```bash
+pnpm dev:trigger   # the agent
+pnpm dev           # the Next.js app
+```
+
+## Relevant code
+
+- **The agent**: [trigger/chat.ts](https://github.com/triggerdotdev/examples/blob/main/voice-agent-demo/trigger/chat.ts): the `chat.agent()` definition, the sliding-window `prepareMessages`, and the streamed reply
+- **Head Start**: [lib/chat-handler.ts](https://github.com/triggerdotdev/examples/blob/main/voice-agent-demo/lib/chat-handler.ts): turn 1 in the warm web process, sharing the agent's model and prompt
+- **Config**: [lib/voice-config.ts](https://github.com/triggerdotdev/examples/blob/main/voice-agent-demo/lib/voice-config.ts): every model id, voice id, prompt and tuning constant in one place
+- **Server actions**: [app/actions.ts](https://github.com/triggerdotdev/examples/blob/main/voice-agent-demo/app/actions.ts): Trigger.dev session + token minting, and single-use ElevenLabs tokens
+- **Speech-to-text**: [app/lib/use-scribe.ts](https://github.com/triggerdotdev/examples/blob/main/voice-agent-demo/app/lib/use-scribe.ts): microphone to text via ElevenLabs Scribe with server-side VAD
+- **Text-to-speech**: [app/lib/use-eleven-tts.ts](https://github.com/triggerdotdev/examples/blob/main/voice-agent-demo/app/lib/use-eleven-tts.ts): reply text to audio, scheduled through Web Audio
+- **The UI**: [app/components/voice-chat.tsx](https://github.com/triggerdotdev/examples/blob/main/voice-agent-demo/app/components/voice-chat.tsx): wires both audio streams to the agent via `useChat` + the Trigger chat transport
+
+## Learn more
+
+<CardGroup cols={2}>
+  <Card title="AI chat overview" icon="message-bot" href="/ai-chat/overview">
+    How chat agents, sessions, and the turn loop work.
+  </Card>
+  <Card title="Fast starts" icon="bolt" href="/ai-chat/fast-starts">
+    Head Start: run turn 1 in your web server while the agent boots.
+  </Card>
+  <Card title="Frontend" icon="browser" href="/ai-chat/frontend">
+    The chat transport, session tokens, and reconnection.
+  </Card>
+  <Card title="Sessions" icon="clock-rotate-left" href="/ai-chat/sessions">
+    Durable sessions, idle timeouts, and checkpoint/resume between turns.
+  </Card>
+</CardGroup>

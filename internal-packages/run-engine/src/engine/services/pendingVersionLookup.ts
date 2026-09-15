@@ -17,6 +17,7 @@ export type PendingVersionRunIdLookupOptions = {
   environmentId: string;
   taskIdentifiers: string[];
   queues: string[];
+  externalDeploymentId?: string;
   /** Maximum number of ids to return. Implementations must respect this cap. */
   limit: number;
 };

@@ -3,6 +3,7 @@ name: 🤖 PR Checks
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+  merge_group:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -15,20 +16,30 @@ permissions:
 jobs:
   changes:
     name: Detect changes
-    runs-on: ubuntu-latest
+    runs-on: warp-ubuntu-latest-x64-2x
     outputs:
       code: ${{ steps.code_filter.outputs.code }}
       typecheck_self: ${{ steps.filter.outputs.typecheck_self }}
-      webapp: ${{ steps.filter.outputs.webapp }}
+      webapp: ${{ steps.filter.outputs.webapp == 'true' || steps.shared_packages_filter.outputs.shared_packages == 'true' }}
       packages: ${{ steps.filter.outputs.packages }}
-      internal: ${{ steps.filter.outputs.internal }}
+      internal: ${{ steps.filter.outputs.internal == 'true' || steps.shared_packages_filter.outputs.shared_packages == 'true' }}
+      obsmap: ${{ steps.filter.outputs.obsmap }}
       cli: ${{ steps.filter.outputs.cli }}
       sdk: ${{ steps.filter.outputs.sdk }}
     steps:
+      # Merge queue events use Git to compare the synthetic merge commit with
+      # its captured base, while pull request events use the GitHub API.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'merge_group'
+        with:
+          fetch-depth: 20
+          filter: blob:none
+          persist-credentials: false
+
       # `code` uses `every` semantics so the negation patterns actually subtract.
       # With the default `some` quantifier, `**` matches every file and the
       # subsequent `!...` patterns are no-ops (each pattern is OR'd, not AND'd).
-      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: code_filter
         with:
           predicate-quantifier: every
@@ -41,20 +52,22 @@ jobs:
               - '!.github/**'
               - '!**/*.md'
               - '!**/.env.example'
-      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: filter
         with:
           filters: |
             typecheck_self:
               - '.github/workflows/pr_checks.yml'
               - '.github/workflows/typecheck.yml'
+              - '.github/workflows/code-quality.yml'
             webapp:
               - 'apps/webapp/**'
-              - 'packages/**'
               - 'internal-packages/**'
               - '.github/workflows/pr_checks.yml'
               - '.github/workflows/unit-tests-webapp.yml'
               - '.github/workflows/e2e-webapp.yml'
+              - '.github/workflows/runops-guard.yml'
+              - '.github/workflows/fk-cascade-guard.yml'
               - '.configs/**'
               - 'package.json'
               - 'pnpm-lock.yaml'
@@ -71,7 +84,6 @@ jobs:
               - 'turbo.json'
             internal:
               - 'internal-packages/**'
-              - 'packages/**'
               - '.github/workflows/pr_checks.yml'
               - '.github/workflows/unit-tests-internal.yml'
               - '.configs/**'
@@ -79,6 +91,38 @@ jobs:
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
               - 'turbo.json'
+            # The whole webapp app tree, not just its routes, and that is the whole reason this
+            # filter exists. Two tests in @internal/observability-map read it: integration.test.ts
+            # scans the live route tree, and webappSymbols.test.ts walks all of apps/webapp/app and
+            # fails when a guard, sensitive or audit symbol stops resolving. Routes-only was this
+            # filter's own bug: renaming e.g. requireUserId in app/services/session.server.ts
+            # matched `webapp` and nothing else, so no job ran the suite and the break landed on
+            # main, or on the next unrelated internal-packages PR.
+            #
+            # The cost of the wider set, measured over the last 400 commits on main: 31% touch
+            # routes, 52% touch apps/webapp/app, so the job goes from firing on roughly a third of
+            # PRs to roughly a half. It is the cheap one -- a single 4x runner, no containers, no
+            # database, no prisma generate -- which is what makes that affordable.
+            #
+            # observability-map.yml is here because integration.test.ts asserts on its text and no
+            # other filter watches it, so editing the report workflow alone ran nothing at all.
+            #
+            # Deliberately NOT here: this package's own paths, and packages/plugins/src and
+            # internal-packages/rbac/src, the other two trees webappSymbols.test.ts reads.
+            # `internal` above already matches `internal-packages/**` and the shared packages, and
+            # `unit-tests-internal.yml` runs `turbo run test --filter "@internal/*"`, which picks up
+            # @internal/observability-map and runs the same vitest suite. Listing them here as well
+            # ran the suite twice on every PR touching them, which was this filter's own doing.
+            #
+            # Also deliberately NOT here: pr_checks.yml, package.json, pnpm-lock.yaml,
+            # pnpm-workspace.yaml. `internal` already lists all four, so a PR touching only one of
+            # them ran this suite twice for the same reason as above. Editing pr_checks.yml no
+            # longer runs this job live as a result; integration.test.ts still asserts on its text
+            # via the `internal` job.
+            obsmap:
+              - 'apps/webapp/app/**'
+              - '.github/workflows/unit-tests-observability-map.yml'
+              - '.github/workflows/observability-map.yml'
             cli:
               - 'packages/cli-v3/**'
               - 'packages/build/**'
@@ -102,10 +146,36 @@ jobs:
               - 'pnpm-workspace.yaml'
               - 'turbo.json'
 
+      # Only the packages the webapp and internal packages depend on; the rest run their own suites.
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: shared_packages_filter
+        with:
+          predicate-quantifier: every
+          filters: |
+            shared_packages:
+              - 'packages/**'
+              - '!packages/cli-v3/**'
+              - '!packages/react-hooks/**'
+              - '!packages/python/**'
+              - '!packages/rsc/**'
+
+  code-quality:
+    uses: ./.github/workflows/code-quality.yml
+
   typecheck:
     needs: changes
     if: needs.changes.outputs.code == 'true' || needs.changes.outputs.typecheck_self == 'true'
     uses: ./.github/workflows/typecheck.yml
+
+  runops-guard:
+    needs: changes
+    if: needs.changes.outputs.webapp == 'true'
+    uses: ./.github/workflows/runops-guard.yml
+
+  fk-cascade-guard:
+    needs: changes
+    if: needs.changes.outputs.webapp == 'true'
+    uses: ./.github/workflows/fk-cascade-guard.yml
 
   webapp:
     needs: changes
@@ -139,6 +209,11 @@ jobs:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
+  obsmap:
+    needs: changes
+    if: needs.changes.outputs.obsmap == 'true'
+    uses: ./.github/workflows/unit-tests-observability-map.yml
+
   e2e:
     needs: changes
     if: needs.changes.outputs.cli == 'true'
@@ -155,15 +230,19 @@ jobs:
     name: All PR Checks
     needs:
       - changes
+      - code-quality
       - typecheck
+      - runops-guard
+      - fk-cascade-guard
       - webapp
       - e2e-webapp
       - packages
       - internal
+      - obsmap
       - e2e
       - sdk-compat
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: warp-ubuntu-latest-x64-2x
     steps:
       - name: Verify all checks
         run: |

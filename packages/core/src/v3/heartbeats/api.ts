@@ -1,5 +1,5 @@
 import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals.js";
-import { HeartbeatsManager } from "./types.js";
+import type { HeartbeatsManager } from "./types.js";
 
 const API_NAME = "heartbeats";
 

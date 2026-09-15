@@ -20,7 +20,7 @@ interface PromptsFilterProps {
 }
 
 export function PromptsFilter({ possiblePrompts }: PromptsFilterProps) {
-  const { values, replace, del } = useSearchParams();
+  const { values, replace: _replace, del } = useSearchParams();
   const selectedPrompts = values("prompts");
 
   if (selectedPrompts.length === 0 || selectedPrompts.every((v) => v === "")) {
@@ -114,7 +114,12 @@ function PromptsDropdown({
         <ComboBox placeholder="Filter by prompt..." value={searchValue} />
         <SelectList>
           {filtered.map((slug) => (
-            <SelectItem key={slug} value={slug} className="text-text-bright" icon={<DocumentTextIcon className="size-4 text-text-dimmed" />}>
+            <SelectItem
+              key={slug}
+              value={slug}
+              className="text-text-bright"
+              icon={<DocumentTextIcon className="size-4 text-text-dimmed" />}
+            >
               {slug}
             </SelectItem>
           ))}

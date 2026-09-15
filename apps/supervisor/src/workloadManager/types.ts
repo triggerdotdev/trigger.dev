@@ -1,4 +1,10 @@
-import type { EnvironmentType, MachinePreset, PlacementTag, RunAnnotations } from "@trigger.dev/core/v3";
+import type {
+  EnvironmentType,
+  MachinePreset,
+  PlacementTag,
+  RunAnnotations,
+  SnapshotRouteWire,
+} from "@trigger.dev/core/v3";
 
 export interface WorkloadManagerOptions {
   workloadApiProtocol: "http" | "https";
@@ -11,6 +17,8 @@ export interface WorkloadManagerOptions {
   snapshotPollIntervalSeconds?: number;
   additionalEnvVars?: Record<string, string>;
   dockerAutoremove?: boolean;
+  // Whether CRIU checkpoint/restore is enabled for this deployment
+  checkpointsEnabled?: boolean;
 }
 
 export interface WorkloadManager {
@@ -35,10 +43,16 @@ export interface WorkloadManagerCreateOptions {
   projectId: string;
   deploymentFriendlyId: string;
   deploymentVersion: string;
+  // Canonical runtime identifier (e.g. "node", "node-22", "node-24")
+  runtime?: string;
+  // When set, overrides the TRIGGER_DEPLOYMENT_ID value the runner forwards as its identity header.
+  deploymentToken?: string;
   runId: string;
   runFriendlyId: string;
   snapshotId: string;
   snapshotFriendlyId: string;
+  // The run's storage route, materialized as the TRIGGER_SNAPSHOT_ROUTE env var for a cold start.
+  snapshotRoute?: SnapshotRouteWire;
   // Trace context for OTel span emission (W3C format: { traceparent: "00-...", tracestate?: "..." })
   traceContext?: Record<string, unknown>;
   annotations?: RunAnnotations;

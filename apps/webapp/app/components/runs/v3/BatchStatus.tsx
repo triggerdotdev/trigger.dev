@@ -1,8 +1,4 @@
-import {
-  CheckCircleIcon,
-  ExclamationTriangleIcon,
-  XCircleIcon,
-} from "@heroicons/react/20/solid";
+import { CheckCircleIcon, ExclamationTriangleIcon, XCircleIcon } from "@heroicons/react/20/solid";
 import type { BatchTaskRunStatus } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { Spinner } from "~/components/primitives/Spinner";
@@ -45,17 +41,16 @@ export function BatchStatusCombo({
   );
 }
 
-export function BatchStatusLabel({ status }: { status: BatchTaskRunStatus }) {
-  return <span className={batchStatusColor(status)}>{batchStatusTitle(status)}</span>;
+function BatchStatusLabel({ status }: { status: BatchTaskRunStatus }) {
+  // system-mono-label: System themes uncolor the label (see tailwind.css)
+  return (
+    <span className={cn("system-mono-label", batchStatusColor(status))}>
+      {batchStatusTitle(status)}
+    </span>
+  );
 }
 
-export function BatchStatusIcon({
-  status,
-  className,
-}: {
-  status: BatchTaskRunStatus;
-  className: string;
-}) {
+function BatchStatusIcon({ status, className }: { status: BatchTaskRunStatus; className: string }) {
   switch (status) {
     case "PROCESSING":
       return <Spinner className={cn(batchStatusColor(status), className)} />;
@@ -73,7 +68,7 @@ export function BatchStatusIcon({
   }
 }
 
-export function batchStatusColor(status: BatchTaskRunStatus): string {
+function batchStatusColor(status: BatchTaskRunStatus): string {
   switch (status) {
     case "PROCESSING":
       return "text-blue-500";

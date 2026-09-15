@@ -2,6 +2,7 @@ import { containerTest } from "@internal/testcontainers";
 import { parsePacket } from "@trigger.dev/core/v3";
 import { setTimeout } from "timers/promises";
 import { describe } from "vitest";
+import { PostgresRunStore } from "@internal/run-store";
 import { UpdateMetadataService } from "~/services/metadata/updateMetadata.server";
 import { MetadataTooLargeError } from "~/utils/packets";
 
@@ -13,6 +14,7 @@ describe("UpdateMetadataService.call", () => {
     async ({ prisma, redisOptions }) => {
       const service = new UpdateMetadataService({
         prisma,
+        runStore: new PostgresRunStore({ prisma, readOnlyPrisma: prisma }),
         flushIntervalMs: 100,
         flushEnabled: true,
         flushLoggingEnabled: true,
@@ -112,6 +114,7 @@ describe("UpdateMetadataService.call", () => {
     async ({ prisma, redisOptions }) => {
       const service = new UpdateMetadataService({
         prisma,
+        runStore: new PostgresRunStore({ prisma, readOnlyPrisma: prisma }),
         flushIntervalMs: 100,
         flushEnabled: true,
         flushLoggingEnabled: true,
@@ -280,6 +283,7 @@ describe("UpdateMetadataService.call", () => {
     async ({ prisma, redisOptions }) => {
       const service = new UpdateMetadataService({
         prisma,
+        runStore: new PostgresRunStore({ prisma, readOnlyPrisma: prisma }),
         flushIntervalMs: 100,
         flushEnabled: true,
         flushLoggingEnabled: true,
@@ -395,6 +399,7 @@ describe("UpdateMetadataService.call", () => {
     async ({ prisma, redisOptions }) => {
       const service = new UpdateMetadataService({
         prisma,
+        runStore: new PostgresRunStore({ prisma, readOnlyPrisma: prisma }),
         flushIntervalMs: 100,
         flushEnabled: true,
         flushLoggingEnabled: true,
@@ -587,6 +592,7 @@ describe("UpdateMetadataService.call", () => {
     async ({ prisma, redisOptions }) => {
       const service = new UpdateMetadataService({
         prisma,
+        runStore: new PostgresRunStore({ prisma, readOnlyPrisma: prisma }),
         flushIntervalMs: 100,
         flushEnabled: true,
         flushLoggingEnabled: true,
@@ -785,6 +791,7 @@ describe("UpdateMetadataService.call", () => {
 
       const service = new UpdateMetadataService({
         prisma,
+        runStore: new PostgresRunStore({ prisma, readOnlyPrisma: prisma }),
         flushIntervalMs: 100000, // Very long interval so we can control flushing
         flushEnabled: true,
         flushLoggingEnabled: true,
@@ -893,6 +900,7 @@ describe("UpdateMetadataService.call", () => {
 
       const service = new UpdateMetadataService({
         prisma,
+        runStore: new PostgresRunStore({ prisma, readOnlyPrisma: prisma }),
         flushIntervalMs: 100,
         flushEnabled: true,
         flushLoggingEnabled: true,
@@ -1004,6 +1012,7 @@ describe("UpdateMetadataService.call", () => {
     async ({ prisma, redisOptions }) => {
       const service = new UpdateMetadataService({
         prisma,
+        runStore: new PostgresRunStore({ prisma, readOnlyPrisma: prisma }),
         flushIntervalMs: 100000, // Very long interval so we can control flushing
         flushEnabled: true,
         flushLoggingEnabled: true,
@@ -1134,6 +1143,7 @@ describe("UpdateMetadataService.call", () => {
     async ({ prisma, redisOptions }) => {
       const service = new UpdateMetadataService({
         prisma,
+        runStore: new PostgresRunStore({ prisma, readOnlyPrisma: prisma }),
         flushIntervalMs: 100,
         flushEnabled: true,
         flushLoggingEnabled: true,
@@ -1209,6 +1219,7 @@ describe("UpdateMetadataService.call", () => {
     async ({ prisma, redisOptions }) => {
       const service = new UpdateMetadataService({
         prisma,
+        runStore: new PostgresRunStore({ prisma, readOnlyPrisma: prisma }),
         flushIntervalMs: 100,
         flushEnabled: true,
         flushLoggingEnabled: true,

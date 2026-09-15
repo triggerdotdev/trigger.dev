@@ -1,34 +1,21 @@
-import { conform, useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
+import { getFormProps, getInputProps, useForm } from "@conform-to/react";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { EnvelopeIcon, NoSymbolIcon, UserPlusIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import {
-  Form,
-  type MetaFunction,
-  useActionData,
-  useFetcher,
-  useNavigation,
-} from "@remix-run/react";
+import { Form, useActionData, useFetcher, useNavigation } from "@remix-run/react";
 import { json } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core/utils";
-import { useEffect, useRef, useState } from "react";
+import { cloneElement, useEffect, useRef, useState } from "react";
 import { type UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { z } from "zod";
+import { Feedback } from "~/components/Feedback";
 import { UserAvatar } from "~/components/UserProfilePhoto";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
+import { CopyableText } from "~/components/primitives/CopyableText";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import {
-  Alert,
-  AlertCancel,
-  AlertContent,
-  AlertDescription,
-  AlertFooter,
-  AlertHeader,
-  AlertTitle,
-  AlertTrigger,
-} from "~/components/primitives/Alert";
 import { Button, ButtonContent, LinkButton } from "~/components/primitives/Buttons";
+import { PermissionButton } from "~/components/primitives/PermissionButton";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { Fieldset } from "~/components/primitives/Fieldset";
@@ -44,13 +31,18 @@ import * as Property from "~/components/primitives/PropertyTable";
 import { Select, SelectItem, SelectLinkItem } from "~/components/primitives/Select";
 import { SpinnerWhite } from "~/components/primitives/Spinner";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
-import { $replica } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
+import { useShowSelfServe } from "~/hooks/useShowSelfServe";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useUser } from "~/hooks/useUser";
-import { removeTeamMember } from "~/models/member.server";
+import { removeTeamMember } from "~/models/removeTeamMember.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
+import { resolveOrgIdFromSlugForUser } from "~/models/organization.server";
+import { getUserId } from "~/services/session.server";
 import { TeamPresenter } from "~/presenters/TeamPresenter.server";
+import { getCurrentPlan, getSelfServePurchaseBlockReason } from "~/services/platform.v3.server";
 import { rbac } from "~/services/rbac.server";
+import { ssoController } from "~/services/sso.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { cn } from "~/utils/cn";
 import { formatCurrency, formatNumber } from "~/utils/numberFormatter";
@@ -64,37 +56,22 @@ import {
 } from "~/utils/pathBuilder";
 import { SetSeatsAddOnService } from "~/v3/services/setSeatsAddOn.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { pageMeta } from "~/utils/pageTitle";
+import { TextLink } from "~/components/primitives/TextLink";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Team | Trigger.dev`,
-    },
-  ];
-};
+export const meta = pageMeta("Team");
 
 const Params = z.object({
   organizationSlug: z.string(),
 });
 
-// Resolve slug → orgId in the dashboardLoader's context callback so the
-// rbac.authenticateSession call gets a real organizationId. The result
-// is cached for the duration of the request and reused by the handler
-// below (we re-find by slug there to get a typed value — the context
-// only sees the loosely typed return type).
-async function resolveOrgIdFromSlug(slug: string): Promise<string | null> {
-  const org = await $replica.organization.findFirst({
-    where: { slug },
-    select: { id: true },
-  });
-  return org?.id ?? null;
-}
-
 export const loader = dashboardLoader(
   {
     params: Params,
-    context: async (params) => {
-      const orgId = await resolveOrgIdFromSlug(params.organizationSlug);
+    context: async (params, request) => {
+      const userId = await getUserId(request);
+      if (!userId) return {};
+      const orgId = await resolveOrgIdFromSlugForUser(params.organizationSlug, userId);
       return orgId ? { organizationId: orgId } : {};
     },
     authorization: { action: "read", resource: { type: "members" } },
@@ -116,10 +93,18 @@ export const loader = dashboardLoader(
     }
 
     // Pre-compute manage authority server-side so the UI gating matches
-    // the action gating (the action enforces it independently).
+    // the action gating (the action enforces it independently). Seat
+    // purchases are a billing operation, so they gate on manage:billing.
     const canManageMembers = ability.can("manage", { type: "members" });
+    const canManageBilling = ability.can("manage", { type: "billing" });
 
-    return typedjson({ ...result, canManageMembers });
+    // When Directory Sync is the authority (allowManualMembership off + a
+    // directory active), manual invite/remove/leave are disabled. Fail-open to
+    // "allowed" so a plugin hiccup never strands the team page.
+    const policy = await ssoController.getMembershipPolicy(orgId);
+    const manualMembershipAllowed = policy.isOk() ? policy.value.manualMembershipAllowed : true;
+
+    return typedjson({ ...result, canManageMembers, canManageBilling, manualMembershipAllowed });
   }
 );
 
@@ -146,8 +131,10 @@ const SetRoleSchema = z.object({
 export const action = dashboardAction(
   {
     params: Params,
-    context: async (params) => {
-      const orgId = await resolveOrgIdFromSlug(params.organizationSlug);
+    context: async (params, request) => {
+      const userId = await getUserId(request);
+      if (!userId) return {};
+      const orgId = await resolveOrgIdFromSlugForUser(params.organizationSlug, userId);
       return orgId ? { organizationId: orgId } : {};
     },
     // No top-level authorization — different intents have different
@@ -175,9 +162,9 @@ export const action = dashboardAction(
       if (!orgId) {
         return json({ ok: false, error: "Organization not found" } as const, { status: 404 });
       }
-      const submission = parse(formData, { schema: SetRoleSchema });
-      if (!submission.value || submission.intent !== "submit") {
-        return json(submission);
+      const submission = parseWithZod(formData, { schema: SetRoleSchema });
+      if (submission.status !== "success") {
+        return json(submission.reply());
       }
       const result = await rbac.setUserRole({
         userId: submission.value.userId,
@@ -210,10 +197,24 @@ export const action = dashboardAction(
         return json({ ok: false, error: "Organization not found" } as const);
       }
 
-      const submission = parse(formData, { schema: PurchaseSchema });
+      const currentPlan = await getCurrentPlan(orgId);
+      const purchaseBlockReason = getSelfServePurchaseBlockReason(currentPlan);
+      if (purchaseBlockReason === "plan_unavailable") {
+        return json(
+          { ok: false, error: "Unable to verify billing status. Please try again." } as const,
+          { status: 503 }
+        );
+      }
+      if (purchaseBlockReason === "managed_billing") {
+        return json({ ok: false, error: "Contact us to request more seats." } as const, {
+          status: 403,
+        });
+      }
 
-      if (!submission.value || submission.intent !== "submit") {
-        return json(submission);
+      const submission = parseWithZod(formData, { schema: PurchaseSchema });
+
+      if (submission.status !== "success") {
+        return json(submission.reply());
       }
 
       const service = new SetSeatsAddOnService();
@@ -227,45 +228,74 @@ export const action = dashboardAction(
       );
 
       if (error) {
-        submission.error.amount = [error instanceof Error ? error.message : "Unknown error"];
-        return json(submission);
+        return json(
+          submission.reply({
+            fieldErrors: { amount: [error instanceof Error ? error.message : "Unknown error"] },
+          })
+        );
       }
 
       if (!result.success) {
-        submission.error.amount = [result.error];
-        return json(submission);
+        return json(submission.reply({ fieldErrors: { amount: [result.error] } }));
       }
 
       return json({ ok: true } as const);
     }
 
-    const submission = parse(formData, { schema });
+    const submission = parseWithZod(formData, { schema });
 
-    if (!submission.value || submission.intent !== "submit") {
-      return json(submission);
+    if (submission.status !== "success") {
+      return json(submission.reply());
     }
 
-    // Default intent: remove a member or leave the org. Self-leave (the
-    // actor removing their own membership) is always allowed. Removing
-    // another member requires `manage:members` — pre-RBAC the
-    // `removeTeamMember` model fn only verified the actor was a member
-    // of the target org, so any org member could remove any other
-    // member by id; this gate fixes that latent permissions hole.
+    // Default intent: remove a member or leave the org, with the target scoped
+    // to the actor's organization. Self-leave is always allowed; removing
+    // someone else requires manage:members.
+    const orgId = context.organizationId;
+    if (!orgId) {
+      return json({ ok: false, error: "Organization not found" } as const, { status: 404 });
+    }
     const targetMember = await $replica.orgMember.findFirst({
-      where: { id: submission.value.memberId },
+      where: { id: submission.value.memberId, organizationId: orgId },
       select: { userId: true },
     });
-    const isSelfLeave = targetMember?.userId === userId;
+    if (!targetMember) {
+      return json({ ok: false, error: "Member not found" } as const, { status: 404 });
+    }
+    const isSelfLeave = targetMember.userId === userId;
     if (!isSelfLeave && !ability.can("manage", { type: "members" })) {
       return json({ ok: false, error: "Unauthorized" } as const, { status: 403 });
     }
 
-    try {
-      const deletedMember = await removeTeamMember({
-        userId,
-        memberId: submission.value.memberId,
-        slug: organizationSlug,
+    // Directory-managed membership: manual removal + self-leave are disabled
+    // (membership is driven by the directory). Enforced here, not just in the
+    // UI. Fail-open on a plugin error.
+    const removePolicy = await ssoController.getMembershipPolicy(orgId);
+    if (removePolicy.isOk() && !removePolicy.value.manualMembershipAllowed) {
+      return json({ ok: false, error: "Membership is managed by Directory Sync" } as const, {
+        status: 403,
       });
+    }
+
+    try {
+      const deletedMember = await removeTeamMember(
+        {
+          userId,
+          memberId: submission.value.memberId,
+          slug: organizationSlug,
+        },
+        prisma
+      );
+
+      // Sticky removal: record a tombstone so passive SSO-JIT won't re-add
+      // them on next login (best-effort; no-op without the SSO plugin).
+      await ssoController
+        .recordMembershipRemoval({
+          organizationId: orgId,
+          userId: deletedMember.userId,
+          reason: isSelfLeave ? "self_leave" : "manual_removal",
+        })
+        .unwrapOr(undefined);
 
       if (deletedMember.userId === userId) {
         return redirectWithSuccessMessage("/", request, `You left the organization`);
@@ -300,6 +330,8 @@ export default function Page() {
     assignableRoleIds,
     memberRoles,
     canManageMembers,
+    canManageBilling,
+    manualMembershipAllowed,
   } = useTypedLoaderData<typeof loader>();
   // Build a userId → roleId map so the dropdown's defaultValue matches
   // each member's current assignment without re-querying.
@@ -310,6 +342,7 @@ export default function Page() {
   const organization = useOrganization();
 
   const plan = useCurrentPlan();
+  const showSelfServe = useShowSelfServe();
   const requiresUpgrade = limits.used >= limits.limit;
   const usageRatio = limits.limit > 0 ? Math.min(limits.used / limits.limit, 1) : 0;
   const canUpgrade =
@@ -325,7 +358,9 @@ export default function Page() {
             <Property.Table>
               <Property.Item>
                 <Property.Label>Org ID</Property.Label>
-                <Property.Value>{organization.id}</Property.Value>
+                <Property.Value>
+                  <CopyableText value={organization.id} asChild hideTooltip />
+                </Property.Value>
               </Property.Item>
 
               {members.map((member) => (
@@ -342,7 +377,23 @@ export default function Page() {
               ))}
             </Property.Table>
           </AdminDebugTooltip>
-          {!canManageMembers ? (
+          {!manualMembershipAllowed ? (
+            // Directory Sync is the membership authority — manual invites are
+            // disabled. The invite action + acceptInvite enforce this too.
+            <SimpleTooltip
+              button={
+                <ButtonContent
+                  variant="primary/small"
+                  LeadingIcon={UserPlusIcon}
+                  className="cursor-not-allowed opacity-50"
+                >
+                  Invite a team member
+                </ButtonContent>
+              }
+              content="Membership is managed by Directory Sync"
+              disableHoverableContent
+            />
+          ) : !canManageMembers ? (
             // Gate the invite affordance on manage:members. The action
             // route enforces this independently — hiding it here just
             // avoids dead UI for non-managers.
@@ -386,7 +437,7 @@ export default function Page() {
       </NavBar>
       <PageBody scrollable={false}>
         <div className="grid max-h-full min-h-full grid-rows-[1fr_auto]">
-          <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
             <div className="mx-auto max-w-3xl px-4 pb-4 pt-20">
               {invites.length > 0 && (
                 <>
@@ -394,7 +445,7 @@ export default function Page() {
                   <ul className="divide-ui-border mb-6 flex w-full flex-col divide-y border-y">
                     {invites.map((invite) => (
                       <li key={invite.id} className="flex items-center gap-4 py-4">
-                        <div className="rounded-md border border-charcoal-750 bg-charcoal-800 p-1.5">
+                        <div className="rounded-md border border-grid-dimmed bg-background-bright p-1.5">
                           <EnvelopeIcon className="size-7 text-text-dimmed" />
                         </div>
                         <div className="flex flex-col gap-0.5">
@@ -404,8 +455,8 @@ export default function Page() {
                           </Paragraph>
                         </div>
                         <div className="flex grow items-center justify-end gap-x-2">
-                          <ResendButton invite={invite} />
-                          <RevokeButton invite={invite} />
+                          <ResendButton invite={invite} canManageMembers={canManageMembers} />
+                          <RevokeButton invite={invite} canManageMembers={canManageMembers} />
                         </div>
                       </li>
                     ))}
@@ -415,12 +466,9 @@ export default function Page() {
               <div className="mt-4 flex items-baseline justify-between">
                 <Header2>Active team members</Header2>
                 {roles.length > 0 ? (
-                  <a
-                    className="text-xs text-text-link hover:underline"
-                    href={organizationRolesPath(organization)}
-                  >
-                    View all role permissions →
-                  </a>
+                  <TextLink to={organizationRolesPath(organization)} className="text-xs">
+                    View all role permissions
+                  </TextLink>
                 ) : null}
               </div>
               <div className="mb-8 mt-3 grid w-full grid-cols-[1fr_auto_auto] items-center gap-x-2 border-y border-grid-bright">
@@ -433,7 +481,8 @@ export default function Page() {
                       <UserAvatar
                         avatarUrl={member.user.avatarUrl}
                         name={member.user.name}
-                        className="size-10"
+                        className="size-9"
+                        strokeWidth={1.25}
                       />
                       <div className="flex flex-col gap-0.5">
                         <Header3>
@@ -458,6 +507,7 @@ export default function Page() {
                         member={member}
                         memberCount={members.length}
                         canManageMembers={canManageMembers}
+                        manualMembershipAllowed={manualMembershipAllowed}
                       />
                     </div>
                   </div>
@@ -513,11 +563,19 @@ export default function Page() {
                   usedSeats={limits.used}
                   maxQuota={maxSeatQuota}
                   planSeatLimit={planSeatLimit}
+                  canManageBilling={canManageBilling}
                 />
               ) : canUpgrade ? (
-                <LinkButton to={v3BillingPath(organization)} variant="primary/small">
-                  Upgrade
-                </LinkButton>
+                showSelfServe ? (
+                  <LinkButton to={v3BillingPath(organization)} variant="primary/small">
+                    Upgrade
+                  </LinkButton>
+                ) : (
+                  <Feedback
+                    defaultValue="enterprise"
+                    button={<Button variant="secondary/small">Request more</Button>}
+                  />
+                )
               ) : null}
             </div>
           </div>
@@ -532,13 +590,35 @@ function LeaveRemoveButton({
   member,
   memberCount,
   canManageMembers,
+  manualMembershipAllowed,
 }: {
   userId: string;
   member: Member;
   memberCount: number;
   canManageMembers: boolean;
+  manualMembershipAllowed: boolean;
 }) {
   const organization = useOrganization();
+
+  // Directory-managed membership: neither removing others nor leaving is
+  // allowed — the directory drives membership. Enforced server-side too.
+  if (!manualMembershipAllowed) {
+    const isSelf = userId === member.user.id;
+    return (
+      <SimpleTooltip
+        button={
+          <ButtonContent
+            variant={isSelf ? "minimal/small" : "secondary/small"}
+            className="cursor-not-allowed opacity-50"
+          >
+            {isSelf ? "Leave team" : "Remove from team"}
+          </ButtonContent>
+        }
+        disableHoverableContent
+        content="Membership is managed by Directory Sync"
+      />
+    );
+  }
 
   if (userId === member.user.id) {
     if (memberCount === 1) {
@@ -561,8 +641,14 @@ function LeaveRemoveButton({
       <LeaveTeamModal
         member={member}
         buttonText="Leave team"
-        title="Are you sure you want to leave the team?"
-        description={`You will no longer have access to ${organization.title}. To regain access, you will need to be invited again.`}
+        title="Leave team"
+        description={
+          <>
+            Are you sure you want to leave the team? You will no longer have access to{" "}
+            <span className="text-text-bright">{organization.title}</span>. To regain access, you
+            will need to be invited again.
+          </>
+        }
         actionText="Leave team"
       />
     );
@@ -586,8 +672,16 @@ function LeaveRemoveButton({
     <LeaveTeamModal
       member={member}
       buttonText="Remove from team"
-      title={`Are you sure you want to remove ${member.user.name ?? "them"} from the team?`}
-      description={`They will no longer have access to ${organization.title}. To regain access, you will need to invite them again.`}
+      title="Remove team member"
+      description={
+        <>
+          Are you sure you want to remove{" "}
+          <span className="text-text-bright">{member.user.name ?? member.user.email}</span> from the
+          team? They will no longer have access to{" "}
+          <span className="text-text-bright">{organization.title}</span>. To regain access, you will
+          need to invite them again.
+        </>
+      }
       actionText="Remove from team"
     />
   );
@@ -697,44 +791,48 @@ function LeaveTeamModal({
   member: Member;
   buttonText: string;
   title: string;
-  description: string;
+  description: React.ReactNode;
   actionText: string;
 }) {
   const [open, setOpen] = useState(false);
   const lastSubmission = useActionData();
 
-  const [form, { memberId }] = useForm({
+  const [form, _fields] = useForm({
     id: "remove-member",
     // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission as any,
     onValidate({ formData }) {
-      return parse(formData, { schema });
+      return parseWithZod(formData, { schema });
     },
   });
 
   return (
-    <Alert open={open} onOpenChange={(o) => setOpen(o)}>
-      <AlertTrigger asChild>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
         <Button variant="secondary/small">{buttonText}</Button>
-      </AlertTrigger>
-      <AlertContent>
-        <AlertHeader>
-          <AlertTitle>{title}</AlertTitle>
-          <AlertDescription>{description}</AlertDescription>
-        </AlertHeader>
-        <AlertFooter>
-          <AlertCancel asChild>
-            <Button variant="secondary/small">Cancel</Button>
-          </AlertCancel>
-          <Form method="post" {...form.props} onSubmit={() => setOpen(false)}>
-            <input type="hidden" value={member.id} name="memberId" />
-            <Button type="submit" variant="danger/small" form={form.props.id}>
-              {actionText}
-            </Button>
-          </Form>
-        </AlertFooter>
-      </AlertContent>
-    </Alert>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>{title}</DialogHeader>
+        <Form method="post" {...getFormProps(form)} onSubmit={() => setOpen(false)}>
+          <input type="hidden" value={member.id} name="memberId" />
+          <Paragraph variant="small" className="pb-4 pt-2">
+            {description}
+          </Paragraph>
+          <FormButtons
+            confirmButton={
+              <Button type="submit" variant="danger/medium">
+                {actionText}
+              </Button>
+            }
+            cancelButton={
+              <DialogClose asChild>
+                <Button variant="secondary/medium">Cancel</Button>
+              </DialogClose>
+            }
+          />
+        </Form>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -746,7 +844,7 @@ function initialCooldown(updatedAt: Date | string): number {
   return remaining > 0 ? remaining : 0;
 }
 
-function ResendButton({ invite }: { invite: Invite }) {
+function ResendButton({ invite, canManageMembers }: { invite: Invite; canManageMembers: boolean }) {
   const navigation = useNavigation();
   const isSubmitting =
     navigation.state === "submitting" &&
@@ -780,12 +878,17 @@ function ResendButton({ invite }: { invite: Invite }) {
     return () => clearInterval(intervalRef.current);
   }, [cooldownActive]);
 
-  const isDisabled = isSubmitting || cooldown > 0;
+  const isDisabled = isSubmitting || cooldown > 0 || !canManageMembers;
 
   return (
     <Form method="post" action={resendInvitePath()} className="flex">
       <input type="hidden" value={invite.id} name="inviteId" />
-      <Button type="submit" variant="secondary/small" disabled={isDisabled}>
+      <Button
+        type="submit"
+        variant="secondary/small"
+        disabled={isDisabled}
+        tooltip={canManageMembers ? undefined : "You don't have permission to manage team members"}
+      >
         {isSubmitting ? (
           "Sending…"
         ) : cooldown > 0 ? (
@@ -798,7 +901,7 @@ function ResendButton({ invite }: { invite: Invite }) {
   );
 }
 
-function RevokeButton({ invite }: { invite: Invite }) {
+function RevokeButton({ invite, canManageMembers }: { invite: Invite; canManageMembers: boolean }) {
   const organization = useOrganization();
 
   return (
@@ -813,9 +916,12 @@ function RevokeButton({ invite }: { invite: Invite }) {
             LeadingIcon={NoSymbolIcon}
             leadingIconClassName="text-white"
             aria-label="Revoke invite"
+            disabled={!canManageMembers}
           />
         }
-        content="Revoke invite"
+        content={
+          canManageMembers ? "Revoke invite" : "You don't have permission to manage team members"
+        }
         disableHoverableContent
         asChild
       />
@@ -830,6 +936,7 @@ export function PurchaseSeatsModal({
   maxQuota,
   planSeatLimit,
   triggerButton,
+  canManageBilling = true,
 }: {
   seatPricing: {
     stepSize: number;
@@ -840,24 +947,28 @@ export function PurchaseSeatsModal({
   maxQuota: number;
   planSeatLimit: number;
   triggerButton?: React.ReactElement;
+  canManageBilling?: boolean;
 }) {
+  const showSelfServe = useShowSelfServe();
   const fetcher = useFetcher();
   const organization = useOrganization();
   const lastSubmission =
-    fetcher.data && typeof fetcher.data === "object" && "intent" in fetcher.data
+    fetcher.data && typeof fetcher.data === "object" && "status" in fetcher.data
       ? fetcher.data
       : undefined;
-  const [form, { amount }] = useForm({
+  const [form, fields] = useForm({
     id: "purchase-seats",
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission as any,
     onValidate({ formData }) {
-      return parse(formData, { schema: PurchaseSchema });
+      return parseWithZod(formData, { schema: PurchaseSchema });
     },
     shouldRevalidate: "onSubmit",
   });
+  const amount = fields.amount;
 
   const [amountValue, setAmountValue] = useState(extraSeats);
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect, react/no-deriving-state-in-effects -- The authoritative seat count intentionally resets this modal draft.
     setAmountValue(extraSeats);
   }, [extraSeats]);
   const isLoading = fetcher.state !== "idle";
@@ -872,6 +983,7 @@ export function PurchaseSeatsModal({
       "ok" in data &&
       data.ok
     ) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       setOpen(false);
     }
   }, [fetcher.state, fetcher.data]);
@@ -889,18 +1001,46 @@ export function PurchaseSeatsModal({
   const pricePerSeat = seatPricing.centsPerStep / seatPricing.stepSize / 100;
   const title = extraSeats === 0 ? "Purchase extra seats…" : "Add/remove extra seats…";
 
+  if (!showSelfServe) {
+    return (
+      <Feedback
+        defaultValue="enterprise"
+        button={<Button variant="secondary/small">Request more</Button>}
+      />
+    );
+  }
+
+  // Buying seats is a billing action — disable the trigger (and explain why)
+  // when the role can't manage billing. The action enforces it independently.
+  const noBillingTooltip = "You don't have permission to manage billing";
+  const trigger = canManageBilling ? (
+    (triggerButton ?? (
+      <Button variant="primary/small" onClick={() => setOpen(true)}>
+        {title}
+      </Button>
+    ))
+  ) : triggerButton ? (
+    cloneElement(triggerButton, { disabled: true, tooltip: noBillingTooltip })
+  ) : (
+    <PermissionButton
+      variant="primary/small"
+      hasPermission={false}
+      noPermissionTooltip={noBillingTooltip}
+    >
+      {title}
+    </PermissionButton>
+  );
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {triggerButton ?? (
-          <Button variant="primary/small" onClick={() => setOpen(true)}>
-            {title}
-          </Button>
-        )}
-      </DialogTrigger>
+      <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent>
         <DialogHeader>{title}</DialogHeader>
-        <fetcher.Form method="post" action={organizationTeamPath(organization)} {...form.props}>
+        <fetcher.Form
+          method="post"
+          action={organizationTeamPath(organization)}
+          {...getFormProps(form)}
+        >
           <input type="hidden" name="_formType" value="purchase-seats" />
           <div className="flex flex-col gap-4 pt-2">
             <div className="flex flex-col gap-1">
@@ -916,7 +1056,7 @@ export function PurchaseSeatsModal({
                   Total extra seats
                 </Label>
                 <InputNumberStepper
-                  {...conform.input(amount, { type: "number" })}
+                  {...getInputProps(amount, { type: "number", value: false })}
                   step={seatPricing.stepSize}
                   min={0}
                   max={undefined}
@@ -924,10 +1064,8 @@ export function PurchaseSeatsModal({
                   onChange={(e) => setAmountValue(Number(e.target.value))}
                   disabled={isLoading}
                 />
-                <FormError id={amount.errorId}>
-                  {amount.error ?? amount.initialError?.[""]?.[0]}
-                </FormError>
-                <FormError>{form.error}</FormError>
+                <FormError id={amount.errorId}>{amount.errors}</FormError>
+                <FormError>{form.errors}</FormError>
               </InputGroup>
             </Fieldset>
             {state === "need_to_remove_members" ? (
@@ -1014,7 +1152,7 @@ export function PurchaseSeatsModal({
                     type="submit"
                     disabled={isLoading}
                   >
-                    <span className="tabular-nums text-text-bright">{`Send request for ${formatNumber(
+                    <span className="tabular-nums">{`Send request for ${formatNumber(
                       amountValue
                     )}`}</span>
                   </Button>
@@ -1028,7 +1166,7 @@ export function PurchaseSeatsModal({
                     disabled={isLoading || state === "need_to_remove_members"}
                     LeadingIcon={isLoading ? SpinnerWhite : undefined}
                   >
-                    <span className="tabular-nums text-text-bright">{`Remove ${formatNumber(
+                    <span className="tabular-nums">{`Remove ${formatNumber(
                       extraSeats - amountValue
                     )} ${extraSeats - amountValue === 1 ? "seat" : "seats"}`}</span>
                   </Button>
@@ -1042,7 +1180,7 @@ export function PurchaseSeatsModal({
                     disabled={isLoading || state === "no_change"}
                     LeadingIcon={isLoading ? SpinnerWhite : undefined}
                   >
-                    <span className="tabular-nums text-text-bright">{`Purchase ${formatNumber(
+                    <span className="tabular-nums">{`Purchase ${formatNumber(
                       amountValue - extraSeats
                     )} ${amountValue - extraSeats === 1 ? "seat" : "seats"}`}</span>
                   </Button>

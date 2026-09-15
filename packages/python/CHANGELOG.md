@@ -1,5 +1,186 @@
 # @trigger.dev/python
 
+## 4.6.1
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.6.1`
+  - `@trigger.dev/build@4.6.1`
+  - `@trigger.dev/sdk@4.6.1`
+
+## 4.6.0
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/sdk@4.6.0`
+  - `@trigger.dev/core@4.6.0`
+  - `@trigger.dev/build@4.6.0`
+
+## 4.5.16
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/build@4.5.16`
+  - `@trigger.dev/core@4.5.16`
+  - `@trigger.dev/sdk@4.5.16`
+
+## 4.5.15
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/sdk@4.5.15`
+  - `@trigger.dev/core@4.5.15`
+  - `@trigger.dev/build@4.5.15`
+
+## 4.5.14
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.14`
+  - `@trigger.dev/sdk@4.5.14`
+  - `@trigger.dev/build@4.5.14`
+
+## 4.5.13
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/sdk@4.5.13`
+  - `@trigger.dev/core@4.5.13`
+  - `@trigger.dev/build@4.5.13`
+
+## 4.5.12
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.12`
+  - `@trigger.dev/sdk@4.5.12`
+  - `@trigger.dev/build@4.5.12`
+
+## 4.5.11
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.11`
+  - `@trigger.dev/sdk@4.5.11`
+  - `@trigger.dev/build@4.5.11`
+
+## 4.5.10
+
+### Patch Changes
+
+- Refresh package builds for TypeScript 7 compatibility while preserving existing runtime entry points. Projects using `emitDecoratorMetadata()` with TypeScript 7 can install the `@typescript/typescript6` compatibility package alongside it; the package remains optional, so installing the Trigger.dev CLI does not install an additional compiler. ([#4318](https://github.com/triggerdotdev/trigger.dev/pull/4318))
+- Updated dependencies:
+  - `@trigger.dev/sdk@4.5.10`
+  - `@trigger.dev/core@4.5.10`
+  - `@trigger.dev/build@4.5.10`
+
+## 4.5.9
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/sdk@4.5.9`
+  - `@trigger.dev/core@4.5.9`
+  - `@trigger.dev/build@4.5.9`
+
+## 4.5.8
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/sdk@4.5.8`
+  - `@trigger.dev/core@4.5.8`
+  - `@trigger.dev/build@4.5.8`
+
+## 4.5.7
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/sdk@4.5.7`
+  - `@trigger.dev/core@4.5.7`
+  - `@trigger.dev/build@4.5.7`
+
+## 4.5.6
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.6`
+  - `@trigger.dev/build@4.5.6`
+  - `@trigger.dev/sdk@4.5.6`
+
+## 4.5.5
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.5`
+  - `@trigger.dev/build@4.5.5`
+  - `@trigger.dev/sdk@4.5.5`
+
+## 4.5.4
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/sdk@4.5.4`
+  - `@trigger.dev/core@4.5.4`
+  - `@trigger.dev/build@4.5.4`
+
+## 4.5.3
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/sdk@4.5.3`
+  - `@trigger.dev/build@4.5.3`
+  - `@trigger.dev/core@4.5.3`
+
+## 4.5.2
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.2`
+  - `@trigger.dev/sdk@4.5.2`
+  - `@trigger.dev/build@4.5.2`
+
+## 4.5.1
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/build@4.5.1`
+  - `@trigger.dev/core@4.5.1`
+  - `@trigger.dev/sdk@4.5.1`
+
+## 4.5.0
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/sdk@4.5.0`
+  - `@trigger.dev/core@4.5.0`
+  - `@trigger.dev/build@4.5.0`
+
+## 4.5.0-rc.7
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/sdk@4.5.0-rc.7`
+  - `@trigger.dev/core@4.5.0-rc.7`
+  - `@trigger.dev/build@4.5.0-rc.7`
+
 ## 4.5.0-rc.6
 
 ### Patch Changes

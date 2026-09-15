@@ -3,7 +3,9 @@ import { randomBytes } from "node:crypto";
 import { seedTestPAT, seedTestUser } from "./seedTestPAT";
 
 function randomHex(len = 12): string {
-  return randomBytes(Math.ceil(len / 2)).toString("hex").slice(0, len);
+  return randomBytes(Math.ceil(len / 2))
+    .toString("hex")
+    .slice(0, len);
 }
 
 // Composite test fixture: a User, an Organization with that user as a
@@ -33,7 +35,7 @@ export async function seedTestUserProject(
     data: {
       title: `e2e-pat-org-${suffix}`,
       slug: `e2e-pat-org-${suffix}`,
-      v3Enabled: true,
+      isActivated: true,
       members: { create: { userId: user.id, role: "ADMIN" } },
     },
   });

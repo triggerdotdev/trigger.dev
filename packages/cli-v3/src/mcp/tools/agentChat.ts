@@ -1,9 +1,10 @@
 import { z } from "zod";
+import type { ApiClient } from "@trigger.dev/core/v3";
 import {
-  ApiClient,
   controlSubtype,
   SSEStreamSubscription,
   TRIGGER_CONTROL_SUBTYPE,
+  tryCatch,
 } from "@trigger.dev/core/v3";
 import { toolsMetadata } from "../config.js";
 import { CommonProjectsInput } from "../schemas.js";
@@ -64,15 +65,13 @@ function serializeInputChunk(chunk: ChatInputChunk): string {
 const StartAgentChatInput = CommonProjectsInput.extend({
   agentId: z
     .string()
-    .describe(
-      "The agent task ID to chat with. Use get_current_worker to see available agents."
-    ),
+    .describe("The agent task ID to chat with. Use get_current_worker to see available agents."),
   chatId: z
     .string()
     .describe("A unique conversation ID. Reuse to resume a conversation.")
     .optional(),
   clientData: z
-    .record(z.unknown())
+    .record(z.string(), z.unknown())
     .describe("Client data to include with every message (e.g. userId, model).")
     .optional(),
   preload: z
@@ -90,9 +89,7 @@ export const startAgentChatTool = {
     ctx.logger?.log("calling start_agent_chat", { input });
 
     if (ctx.options.devOnly && input.environment !== "dev") {
-      return respondWithError(
-        `This MCP server is only available for the dev environment.`
-      );
+      return respondWithError(`This MCP server is only available for the dev environment.`);
     }
 
     const projectRef = await ctx.getProjectRef({
@@ -103,12 +100,7 @@ export const startAgentChatTool = {
     const apiClient = await ctx.getApiClient({
       projectRef,
       environment: input.environment,
-      scopes: [
-        "write:tasks",
-        "read:runs",
-        "read:sessions",
-        "write:sessions",
-      ],
+      scopes: ["write:tasks", "read:runs", "read:sessions", "write:sessions"],
       branch: input.branch,
     });
 
@@ -210,7 +202,9 @@ export const sendAgentMessageTool = {
 
     const msgId = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const userMessage: ChatMessage = {
-      id: msgId, role: "user", parts: [{ type: "text", text: input.message }],
+      id: msgId,
+      role: "user",
+      parts: [{ type: "text", text: input.message }],
     };
 
     // Track the outgoing user message
@@ -281,7 +275,11 @@ export const sendAgentMessageTool = {
     }
 
     // Subscribe to the response stream and collect the full text
-    const { text, toolCalls, assistantMessage } = await collectAgentResponse(session);
+    const {
+      text: _text,
+      toolCalls: _toolCalls,
+      assistantMessage,
+    } = await collectAgentResponse(session);
 
     // Track the assistant response for continuation payloads
     session.messages.push(assistantMessage);
@@ -311,9 +309,7 @@ export const closeAgentChatTool = {
 
     const session = activeSessions.get(input.chatId);
     if (!session) {
-      return respondWithError(
-        `No active chat with ID "${input.chatId}".`
-      );
+      return respondWithError(`No active chat with ID "${input.chatId}".`);
     }
 
     if (session.runId) {
@@ -422,30 +418,18 @@ async function collectAgentResponse(
       }
 
       if (controlValue === TRIGGER_CONTROL_SUBTYPE.UPGRADE_REQUIRED) {
-        // Agent requested upgrade — trigger continuation. Same session,
-        // new run — reuse sessionId, swap runId. Slim-wire: ship only
-        // the latest user message as the turn-N delta; prior turns
-        // come back via snapshot+replay on the new run's boot.
-        const lastUserMessage = [...session.messages]
-          .reverse()
-          .find((m) => m.role === "user");
-        const previousRunId = session.runId;
-        const result = await session.apiClient.triggerTask(session.agentId, {
-          payload: {
-            message: lastUserMessage,
-            chatId: session.chatId,
-            sessionId: session.sessionId,
-            trigger: "submit-message",
-            metadata: session.clientData,
-            continuation: true,
-            previousRunId,
-          },
-          options: {
-            payloadType: "application/json",
-            tags: [`chat:${session.chatId}`],
-          },
-        });
-        session.runId = result.id;
+        // The agent has already handed over: it created the successor run
+        // server-side before writing this marker, and that run picks the
+        // message up off `session.in`. The marker is informational, so
+        // triggering here would produce a SECOND run answering the same
+        // message on the same session.
+        //
+        // Re-point at the successor so a later `session.in` append that fails
+        // falls back to continuing from the right run. Best-effort: the id is
+        // a replay hint, and the append path is addressed to the session
+        // rather than to a run.
+        const [, upgraded] = await tryCatch(session.apiClient.retrieveSession(session.sessionId));
+        session.runId = upgraded?.currentRunId ?? session.runId;
         // Keep session.lastEventId pointing at the upgrade-required
         // record's seq (set above when the part arrived). The recursive
         // subscribe resumes right after that marker, so we don't replay
@@ -491,9 +475,7 @@ async function collectAgentResponse(
 
         if (chunk.type === "tool-output-available" && typeof chunk.toolCallId === "string") {
           // Update existing tool part with output
-          const toolPart = parts.find(
-            (p) => p.toolCallId === chunk.toolCallId
-          );
+          const toolPart = parts.find((p) => p.toolCallId === chunk.toolCallId);
           if (toolPart) {
             toolPart.state = "output-available";
             toolPart.output = chunk.output;
@@ -516,9 +498,7 @@ async function collectAgentResponse(
 
 // ─── Response formatter ──────────────────────────────────────────
 
-function formatAssistantParts(
-  parts: Array<{ type: string; [key: string]: unknown }>
-): string {
+function formatAssistantParts(parts: Array<{ type: string; [key: string]: unknown }>): string {
   const sections: string[] = [];
 
   for (const part of parts) {

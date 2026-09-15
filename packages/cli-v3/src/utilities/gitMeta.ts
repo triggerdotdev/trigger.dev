@@ -3,7 +3,7 @@ import { join } from "path";
 import ini from "ini";
 import git from "git-last-commit";
 import { x } from "tinyexec";
-import { GitMeta } from "@trigger.dev/core/v3";
+import type { GitMeta } from "@trigger.dev/core/v3";
 
 export async function createGitMeta(directory: string): Promise<GitMeta | undefined> {
   if (isGitHubApp()) {
@@ -35,7 +35,7 @@ export async function createGitMeta(directory: string): Promise<GitMeta | undefi
 
   return {
     source: "local",
-    remoteUrl: remoteUrl ?? undefined,
+    remoteUrl: sanitizeGitRemoteUrl(remoteUrl ?? undefined),
     commitAuthorName: commit.author.name,
     commitMessage: commit.subject,
     commitRef: commit.branch,
@@ -70,6 +70,7 @@ async function isDirty(directory: string): Promise<boolean> {
     // Example output (when dirty):
     //    M ../fs-detectors/src/index.ts
     return result.stdout.trim().length > 0;
+    // eslint-disable-next-line no-useless-catch
   } catch (error) {
     throw error;
   }
@@ -78,7 +79,7 @@ async function isDirty(directory: string): Promise<boolean> {
 async function parseGitConfig(configPath: string) {
   try {
     return ini.parse(await fs.readFile(configPath, "utf8"));
-  } catch (err: unknown) {
+  } catch (_err: unknown) {
     return;
   }
 }
@@ -99,6 +100,27 @@ async function getOriginUrl(configPath: string): Promise<string | null> {
     return originUrl;
   }
   return null;
+}
+
+export function sanitizeGitRemoteUrl(remoteUrl: string | undefined): string | undefined {
+  if (remoteUrl === undefined) {
+    return;
+  }
+
+  try {
+    const url = new URL(remoteUrl);
+    if (!url.username && !url.password) {
+      return remoteUrl;
+    }
+
+    url.username = "";
+    url.password = "";
+    return url.href;
+  } catch {
+    return remoteUrl.includes("://") || /^[a-z][a-z\d+.-]*:/i.test(remoteUrl.trim())
+      ? undefined
+      : remoteUrl;
+  }
 }
 
 function errorToString(err: unknown): string {
@@ -169,7 +191,7 @@ async function getGitHubActionsMeta(): Promise<GitMeta> {
   return {
     provider: "github",
     source: "github_actions",
-    remoteUrl,
+    remoteUrl: sanitizeGitRemoteUrl(remoteUrl),
     commitSha,
     commitRef,
     // In CI, the workspace is always clean
@@ -196,7 +218,7 @@ function getGitHubAppMeta(): GitMeta {
   return {
     provider: "github",
     source: "trigger_github_app",
-    remoteUrl: process.env.GITHUB_REPOSITORY_URL,
+    remoteUrl: sanitizeGitRemoteUrl(process.env.GITHUB_REPOSITORY_URL),
     commitSha: process.env.GITHUB_HEAD_COMMIT_SHA,
     commitRef: process.env.GITHUB_REF?.replace(/^refs\/(heads|tags)\//, ""),
     commitMessage: process.env.GITHUB_HEAD_COMMIT_MESSAGE,
@@ -241,7 +263,7 @@ async function getCommitMessage(
 
     if (!message && prNumber) {
       // If that didn't work, try fetching the PR branch
-      const branchResult = await x(
+      const _branchResult = await x(
         "git",
         ["fetch", "origin", `pull/${prNumber}/head:pr-${prNumber}`],
         {

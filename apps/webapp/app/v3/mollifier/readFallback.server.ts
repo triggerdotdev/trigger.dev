@@ -85,6 +85,7 @@ export type SyntheticRun = {
   runtimeEnvironmentId: string | undefined;
   engine: "V2";
   workerQueue: string | undefined;
+  region: string | undefined;
   queue: string | undefined;
   concurrencyKey: string | undefined;
   machinePreset: string | undefined;
@@ -115,7 +116,9 @@ function asString(value: unknown): string | undefined {
 }
 
 function asStringArray(value: unknown): string[] {
-  return Array.isArray(value) && value.every((v) => typeof v === "string") ? (value as string[]) : [];
+  return Array.isArray(value) && value.every((v) => typeof v === "string")
+    ? (value as string[])
+    : [];
 }
 
 function asDate(value: unknown): Date | undefined {
@@ -136,7 +139,7 @@ function internalRunIdToFriendlyId(internalId: string | undefined): string | und
 
 export async function findRunByIdWithMollifierFallback(
   input: ReadFallbackInput,
-  deps: ReadFallbackDeps = {},
+  deps: ReadFallbackDeps = {}
 ): Promise<SyntheticRun | null> {
   const buffer = (deps.getBuffer ?? getMollifierBuffer)();
   if (!buffer) return null;
@@ -163,7 +166,7 @@ export async function findRunByIdWithMollifierFallback(
     // instead of the customer-supplied key — diverging from how
     // materialised runs render the same field.
     const idempotencyKeyOptionsParsed = IdempotencyKeyOptionsSchema.safeParse(
-      snapshot.idempotencyKeyOptions,
+      snapshot.idempotencyKeyOptions
     );
     const idempotencyKeyOptions = idempotencyKeyOptionsParsed.success
       ? idempotencyKeyOptionsParsed.data
@@ -218,10 +221,10 @@ export async function findRunByIdWithMollifierFallback(
       spanId: asString(snapshot.spanId),
       parentSpanId: asString(snapshot.parentSpanId),
 
-      runtimeEnvironmentId:
-        asString(environment?.id) ?? entry.envId,
+      runtimeEnvironmentId: asString(environment?.id) ?? entry.envId,
       engine: "V2",
       workerQueue: asString(snapshot.workerQueue),
+      region: asString(snapshot.region),
       queue: asString(snapshot.queue),
       concurrencyKey: asString(snapshot.concurrencyKey),
       machinePreset: asString(snapshot.machine),
@@ -247,12 +250,8 @@ export async function findRunByIdWithMollifierFallback(
       // not the friendlyIds the SyntheticRun contract expects. Convert
       // internal → friendly here so consumers don't have to special-case
       // the buffered path.
-      parentTaskRunFriendlyId: internalRunIdToFriendlyId(
-        asString(snapshot.parentTaskRunId)
-      ),
-      rootTaskRunFriendlyId: internalRunIdToFriendlyId(
-        asString(snapshot.rootTaskRunId)
-      ),
+      parentTaskRunFriendlyId: internalRunIdToFriendlyId(asString(snapshot.parentTaskRunId)),
+      rootTaskRunFriendlyId: internalRunIdToFriendlyId(asString(snapshot.rootTaskRunId)),
 
       error: entry.lastError,
     };

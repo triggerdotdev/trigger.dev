@@ -4,10 +4,6 @@ sidebarTitle: "Sessions Upgrade Guide"
 description: "Migrating chat.agent code from the prerelease API to the Sessions-as-run-manager release."
 ---
 
-import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
-
-<RcBanner />
-
 This guide is for customers who tried `chat.agent` during the prerelease period.
 The public surface of `chat.agent({...})`, `useTriggerChatTransport`,
 `AgentChat`, `chat.defer`, and `chat.history` is largely
@@ -302,8 +298,8 @@ and direct API consumers.
   fire at the same lifecycle points.
 - `onAction` is still defined the same way, but its semantics changed
   in the [May 6 prerelease](/ai-chat/changelog) — actions are no longer
-  turns, and `onAction` returning a `StreamTextResult` produces a model
-  response.
+  turns. To answer after an action's edit, return `chat.turn()`; returning
+  a `StreamTextResult` is no longer supported.
 - `chat.customAgent({...})` and the `chat.createSession(payload, ...)`
   helper for building a session loop manually inside a custom agent.
 - `chat.defer` (deferred work) and `chat.history` (imperative history

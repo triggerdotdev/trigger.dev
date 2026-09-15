@@ -448,7 +448,7 @@ paths:
     get:
       operationId: get_run_trace_v1
       summary: Retrieve run trace
-      description: Returns the full OTel trace tree for a run, including all spans and their children.
+      description: Returns the OTel trace subtree for the requested run — the run's span as `rootSpan`, its ancestor chain, and its descendant spans. For child or nested runs in a large trace, this is scoped to that run rather than the trace-wide root.
       responses:
         "200":
           description: Successful request
@@ -464,7 +464,9 @@ paths:
                         type: string
                         description: The OTel trace ID.
                       rootSpan:
-                        $ref: "#/components/schemas/SpanDetailedSummary"
+                        allOf:
+                          - $ref: "#/components/schemas/SpanDetailedSummary"
+                        description: The requested run's span, with nested descendant spans as `children`. Not necessarily the trace-wide root span.
         "401":
           description: Unauthorized request
           content:
@@ -893,6 +895,12 @@ paths:
                           type: object
                           nullable: true
                           description: Error data if the deployment failed
+                        externalId:
+                          type: string
+                          description: >-
+                            The external deployment id this deployment was deployed under
+                            (`--external-id`), used by version skew protection to pin runs.
+                            Absent if the deployment was deployed without one
                   pagination:
                     type: object
                     properties:
@@ -921,7 +929,7 @@ paths:
         - lang: curl
           source: |-
             curl -X GET "https://api.trigger.dev/api/v1/deployments" \
-              -H "Authorization: Bearer tr_dev_1234"
+              -H "Authorization: Bearer tr_dev_sk_1234"
 
   "/api/v1/deployments/{deploymentId}":
     parameters:
@@ -976,6 +984,12 @@ paths:
                   imagePlatform:
                     type: string
                     description: Platform of the deployment image
+                  externalId:
+                    type: string
+                    description: >-
+                      The external deployment id this deployment was deployed under
+                      (`--external-id`), used by version skew protection to pin runs.
+                      Absent if the deployment was deployed without one
                   externalBuildData:
                     type: object
                     nullable: true
@@ -1030,7 +1044,7 @@ paths:
         - lang: curl
           source: |-
             curl -X GET "https://api.trigger.dev/api/v1/deployments/deployment_1234" \
-              -H "Authorization: Bearer tr_dev_1234"
+              -H "Authorization: Bearer tr_dev_sk_1234"
 
   "/api/v1/deployments/latest":
     get:
@@ -1103,7 +1117,7 @@ paths:
         - lang: curl
           source: |-
             curl -X GET "https://api.trigger.dev/api/v1/deployments/latest" \
-              -H "Authorization: Bearer tr_dev_1234"
+              -H "Authorization: Bearer tr_dev_sk_1234"
 
   "/api/v1/deployments/{version}/promote":
     parameters:
@@ -1168,7 +1182,7 @@ paths:
         - lang: curl
           source: |-
             curl -X POST "https://api.trigger.dev/api/v1/deployments/20250228.1/promote" \
-              -H "Authorization: Bearer tr_dev_1234" \
+              -H "Authorization: Bearer tr_dev_sk_1234" \
               -H "Content-Type: application/json"
 
   "/api/v1/query":
@@ -1201,6 +1215,16 @@ paths:
                     description: Error message describing the query error
         "401":
           description: Unauthorized - API key is missing or invalid
+        "429":
+          description: Query service is busy or rate limited - retry shortly
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    description: Error message describing why the query was turned away
         "500":
           description: Internal server error during query execution
       tags:
@@ -1265,7 +1289,7 @@ paths:
           label: cURL - Basic query
           source: |-
             curl -X POST "https://api.trigger.dev/api/v1/query" \
-              -H "Authorization: Bearer tr_dev_1234" \
+              -H "Authorization: Bearer tr_dev_sk_1234" \
               -H "Content-Type: application/json" \
               -d '{
                 "query": "SELECT run_id, status FROM runs LIMIT 10",
@@ -1277,7 +1301,7 @@ paths:
           label: cURL - Aggregation query
           source: |-
             curl -X POST "https://api.trigger.dev/api/v1/query" \
-              -H "Authorization: Bearer tr_dev_1234" \
+              -H "Authorization: Bearer tr_dev_sk_1234" \
               -H "Content-Type: application/json" \
               -d '{
                 "query": "SELECT task_identifier, count() as runs, countIf(status = '\''Failed'\'') as failures FROM runs GROUP BY task_identifier",
@@ -1350,7 +1374,7 @@ paths:
           label: cURL
           source: |-
             curl "https://api.trigger.dev/api/v1/query/schema" \
-              -H "Authorization: Bearer tr_dev_1234"
+              -H "Authorization: Bearer tr_dev_sk_1234"
 
   "/api/v1/query/dashboards":
     get:
@@ -1405,7 +1429,7 @@ paths:
           label: cURL
           source: |-
             curl "https://api.trigger.dev/api/v1/query/dashboards" \
-              -H "Authorization: Bearer tr_dev_1234"
+              -H "Authorization: Bearer tr_dev_sk_1234"
 
   "/api/v1/runs/{runId}/reschedule":
     parameters:
@@ -1696,6 +1720,182 @@ paths:
             for (const run of response.data) {
               console.log(`Run ID: ${run.id}, Status: ${run.status}`);
             }
+
+
+  "/api/v1/bulk-actions":
+    get:
+      operationId: list_bulk_actions_v1
+      summary: List bulk actions
+      description: List bulk actions in the current environment. Bulk actions are returned newest first and can be paginated with cursor pagination.
+      parameters:
+        - $ref: "#/components/parameters/bulkActionsCursorPagination"
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBulkActionsResult"
+        "400":
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized request
+      tags:
+        - bulk-actions
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          label: List bulk actions
+          source: |-
+            import { runs } from "@trigger.dev/sdk";
+
+            let page = await runs.bulk.list({ limit: 20 });
+
+            for (const action of page.data) {
+              console.log(action.id, action.type, action.status);
+            }
+
+    post:
+      operationId: create_bulk_action_v1
+      summary: Create bulk action
+      description: Create an asynchronous bulk action to cancel or replay runs selected by run IDs or filters.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBulkActionRequestBody"
+      responses:
+        "202":
+          description: Bulk action accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateBulkActionResponse"
+        "400":
+          description: Invalid request parameters or body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized request
+        "422":
+          description: Unprocessable entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Too many concurrent bulk replays
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      tags:
+        - bulk-actions
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          label: Replay matching runs
+          source: |-
+            import { runs } from "@trigger.dev/sdk";
+
+            const action = await runs.bulk.replay({
+              filter: {
+                status: "FAILED",
+                taskIdentifier: "sync-customer",
+                period: "24h",
+              },
+              name: "Replay failed customer syncs",
+            });
+
+            console.log(action.id);
+        - lang: typescript
+          label: Cancel selected runs
+          source: |-
+            import { runs } from "@trigger.dev/sdk";
+
+            const action = await runs.bulk.cancel({
+              runIds: ["run_1234", "run_5678"],
+              name: "Cancel selected runs",
+            });
+
+            console.log(action.id);
+
+  "/api/v1/bulk-actions/{bulkActionId}":
+    get:
+      operationId: retrieve_bulk_action_v1
+      summary: Retrieve bulk action
+      description: Retrieve the status and aggregate processing counts for a bulk action.
+      parameters:
+        - $ref: "#/components/parameters/bulkActionId"
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkActionObject"
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Resource not found
+      tags:
+        - bulk-actions
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { runs } from "@trigger.dev/sdk";
+
+            const action = await runs.bulk.retrieve("bulk_1234");
+
+            console.log(action.status, action.counts);
+
+  "/api/v1/bulk-actions/{bulkActionId}/abort":
+    post:
+      operationId: abort_bulk_action_v1
+      summary: Abort bulk action
+      description: Abort a pending bulk action so it stops processing additional runs. Runs already processed by the action are not undone.
+      parameters:
+        - $ref: "#/components/parameters/bulkActionId"
+      responses:
+        "200":
+          description: Bulk action aborted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AbortBulkActionResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Resource not found
+      tags:
+        - bulk-actions
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { runs } from "@trigger.dev/sdk";
+
+            const aborted = await runs.bulk.abort("bulk_1234");
+
+            console.log(aborted.id);
 
   "/api/v1/projects/{projectRef}/runs":
     parameters:
@@ -2231,7 +2431,7 @@ paths:
           source: |-
             curl -X POST "https://api.trigger.dev/api/v1/tasks/my-task/trigger" \
               -H "Content-Type: application/json" \
-              -H "Authorization: Bearer tr_dev_1234" \
+              -H "Authorization: Bearer tr_dev_sk_1234" \
               -d '{
                     "payload": {
                       "message": "Hello, world!"
@@ -2255,7 +2455,7 @@ paths:
             url = "https://api.trigger.dev/api/v1/tasks/my-task/trigger"
             headers = {
                 "Content-Type": "application/json",
-                "Authorization": "Bearer tr_dev_1234"
+                "Authorization": "Bearer tr_dev_sk_1234"
             }
             data = {
                 "payload": {
@@ -2348,7 +2548,7 @@ paths:
           source: |-
             curl -X POST "https://api.trigger.dev/api/v1/tasks/my-task/batch" \
               -H "Content-Type: application/json" \
-              -H "Authorization: Bearer tr_dev_1234" \
+              -H "Authorization: Bearer tr_dev_sk_1234" \
               -d '{
                     "items": [
                       { "payload": { "message": "Hello, world!" } },
@@ -2426,7 +2626,7 @@ paths:
           source: |-
             curl -X POST "https://api.trigger.dev/api/v1/tasks/batch" \
               -H "Content-Type: application/json" \
-              -H "Authorization: Bearer tr_dev_1234" \
+              -H "Authorization: Bearer tr_dev_sk_1234" \
               -d '{
                     "items": [
                       {
@@ -2823,7 +3023,10 @@ paths:
                   type: integer
                   minimum: 0
                   maximum: 100000
-                  description: The new concurrency limit to set for the queue
+                  description: |
+                    The new concurrency limit to set for the queue. It may not exceed your
+                    environment's maximum concurrency limit: a higher value is rejected with a
+                    400, not capped to the maximum.
       responses:
         "200":
           description: Concurrency limit overridden successfully
@@ -2832,7 +3035,9 @@ paths:
               schema:
                 "$ref": "#/components/schemas/QueueObject"
         "400":
-          description: Invalid request parameters
+          description: |
+            Invalid request parameters, or the requested concurrency limit exceeds the
+            environment's maximum concurrency limit.
         "401":
           description: Unauthorized request
         "404":
@@ -3257,6 +3462,448 @@ paths:
               console.log(token.output);
             }
 
+  "/api/v1/sessions":
+    post:
+      operationId: create_session_v1
+      summary: Create a session
+      description: >-
+        Create a Session and trigger its first run in one atomic call. A Session is
+        the durable identity for a bi-directional stream of records (the `.in` and
+        `.out` channels) that survives across the runs processing it.
+
+
+        Idempotent on `externalId` within an environment. Calling create again with
+        an `externalId` that already maps to an open session returns the existing
+        session with `isCached: true` and `201` becomes `200`. Reusing an
+        `externalId` whose session is already closed or expired returns `409`.
+
+
+        Authorize with a secret key, or a public token carrying `write:sessions` for
+        the session you are creating.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/CreateSessionRequestBody"
+      responses:
+        "201":
+          description: Session created and its first run triggered.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/CreatedSessionResponseBody"
+        "200":
+          description: >-
+            An open session already existed for this `externalId`. The existing
+            session is returned with `isCached: true`.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/CreatedSessionResponseBody"
+        "401":
+          description: Unauthorized
+        "409":
+          description: >-
+            An `externalId` was reused, but its session is already closed or expired.
+            Closed and expired sessions cannot be reopened.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+        "422":
+          description: >-
+            Validation failed — for example the request body exceeds 32KB, or
+            `externalId` starts with the reserved `session_` prefix.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorWithDetailsResponse"
+      tags:
+        - sessions
+      security:
+        - secretKey: []
+        - publicAccessToken: []
+      x-codeSamples:
+        - lang: typescript
+          label: Start a session
+          source: |-
+            import { sessions } from "@trigger.dev/sdk";
+
+            const { id, runId, publicAccessToken, isCached } = await sessions.start({
+              type: "chat.agent",
+              externalId: chatId,
+              taskIdentifier: "my-chat",
+              triggerConfig: {
+                basePayload: { chatId },
+                tags: [`chat:${chatId}`],
+              },
+            });
+
+            console.log(id);       // e.g. "session_abc123"
+            console.log(runId);    // the first run, e.g. "run_def456"
+            console.log(isCached); // false on a brand-new session
+
+    get:
+      operationId: list_sessions_v1
+      summary: List sessions
+      description: >-
+        List sessions in the current environment, newest first. Filter by type, tags,
+        task identifier, external id, status, and creation window. Use cursor-based
+        pagination with `page[after]` and `page[before]` to navigate pages.
+
+
+        List rows omit `triggerConfig`; retrieve a single session to read it.
+      parameters:
+        - $ref: "#/components/parameters/sessionsCursorPagination"
+        - $ref: "#/components/parameters/sessionsFilter"
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ListSessionsResult"
+        "400":
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorWithDetailsResponse"
+        "401":
+          description: Unauthorized request
+      tags:
+        - sessions
+      security:
+        - secretKey: []
+        - publicAccessToken: []
+      x-codeSamples:
+        - lang: typescript
+          label: List sessions
+          source: |-
+            import { sessions } from "@trigger.dev/sdk";
+
+            for await (const session of sessions.list({
+              type: "chat.agent",
+              status: "ACTIVE",
+              limit: 50,
+            })) {
+              console.log(session.id, session.externalId, session.createdAt);
+            }
+
+  "/api/v1/sessions/{session}":
+    parameters:
+      - $ref: "#/components/parameters/session"
+    get:
+      operationId: retrieve_session_v1
+      summary: Retrieve a session
+      description: >-
+        Retrieve a single session by its friendly id (`session_…`) or your
+        `externalId`. The response includes `triggerConfig` and the friendly
+        `currentRunId` of the live run, if any.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/SessionObject"
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Session not found
+      tags:
+        - sessions
+      security:
+        - secretKey: []
+        - publicAccessToken: []
+      x-codeSamples:
+        - lang: typescript
+          label: Retrieve a session
+          source: |-
+            import { sessions } from "@trigger.dev/sdk";
+
+            const session = await sessions.retrieve(chatId);
+
+            console.log(session.currentRunId, session.tags, session.closedAt);
+
+    patch:
+      operationId: update_session_v1
+      summary: Update a session
+      description: >-
+        Update a session's `tags` or `metadata`. Pass `metadata: null` to clear it.
+
+
+        Requires a secret key — a session public token cannot update a session.
+        `externalId` is read-only after create: it cannot be changed or cleared.
+        Sending a value different from the current one (including `null` when one is
+        set) returns `422`; sending the same value is accepted as a no-op.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/UpdateSessionRequestBody"
+      responses:
+        "200":
+          description: Session updated successfully
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/SessionObject"
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Session not found
+        "422":
+          description: >-
+            Validation failed — for example an attempt to change `externalId` to a
+            different value, or a body exceeding 32KB.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorWithDetailsResponse"
+      tags:
+        - sessions
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          label: Update a session
+          source: |-
+            import { sessions } from "@trigger.dev/sdk";
+
+            const session = await sessions.update(chatId, {
+              tags: ["priority"],
+              metadata: { lastSeenBy: "support" },
+            });
+
+  "/api/v1/sessions/{session}/close":
+    parameters:
+      - $ref: "#/components/parameters/session"
+    post:
+      operationId: close_session_v1
+      summary: Close a session
+      description: >-
+        Close a session. Closing is terminal and idempotent — closing an
+        already-closed session returns the existing row unchanged. A closed session
+        cannot be reopened, and reusing its `externalId` on create returns `409`.
+
+
+        Requires a secret key — a session public token cannot close a session.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/CloseSessionRequestBody"
+      responses:
+        "200":
+          description: Session closed successfully. Returns the session row.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/SessionObject"
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Session not found
+      tags:
+        - sessions
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          label: Close a session
+          source: |-
+            import { sessions } from "@trigger.dev/sdk";
+
+            await sessions.close(chatId, { reason: "user signed out" });
+
+  "/api/v1/errors":
+    get:
+      operationId: list_errors_v1
+      summary: List errors
+      description: |
+        List error groups in a specific environment. Runs that fail are grouped by a fingerprint derived from the error type, message, and stack trace. Filter by task identifier, version, status, search text, and time range.
+      parameters:
+        - $ref: "#/components/parameters/errorsCursorPagination"
+        - $ref: "#/components/parameters/errorsFilter"
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListErrorsResult"
+        "400":
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorWithDetailsResponse"
+        "401":
+          description: Unauthorized request
+      tags:
+        - errors
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: curl
+          label: List errors
+          source: |-
+            curl -X GET "https://api.trigger.dev/api/v1/errors?filter[status]=unresolved" \
+              -H "Authorization: Bearer $TRIGGER_SECRET_KEY"
+  "/api/v1/errors/{errorId}":
+    parameters:
+      - $ref: "#/components/parameters/errorId"
+    get:
+      operationId: retrieve_error_v1
+      summary: Retrieve an error
+      description: Retrieve detailed information about a single error group, including its lifecycle state and the worker versions it has affected.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorObject"
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Error not found
+      tags:
+        - errors
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: curl
+          label: Retrieve an error
+          source: |-
+            curl -X GET "https://api.trigger.dev/api/v1/errors/error_8f3b2a1c9d4e5f60" \
+              -H "Authorization: Bearer $TRIGGER_SECRET_KEY"
+  "/api/v1/errors/{errorId}/resolve":
+    parameters:
+      - $ref: "#/components/parameters/errorId"
+    post:
+      operationId: resolve_error_v1
+      summary: Resolve an error
+      description: |
+        Mark an error group as resolved. Optionally record the worker version that resolved it. Send a JSON body (use `{}` when you have no fields to set).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                resolvedInVersion:
+                  type: string
+                  description: The worker version the error was resolved in.
+                  example: 20240101.1
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorObject"
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Error not found
+      tags:
+        - errors
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: curl
+          label: Resolve an error
+          source: |-
+            curl -X POST "https://api.trigger.dev/api/v1/errors/error_8f3b2a1c9d4e5f60/resolve" \
+              -H "Authorization: Bearer $TRIGGER_SECRET_KEY" \
+              -H "Content-Type: application/json" \
+              -d '{"resolvedInVersion": "20240101.1"}'
+  "/api/v1/errors/{errorId}/ignore":
+    parameters:
+      - $ref: "#/components/parameters/errorId"
+    post:
+      operationId: ignore_error_v1
+      summary: Ignore an error
+      description: |
+        Mark an error group as ignored. Provide a `duration` to ignore it for a fixed window, and/or thresholds that re-surface the error when exceeded. Send a JSON body (use `{}` to ignore indefinitely).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                duration:
+                  type: integer
+                  description: How long to ignore the error for, in milliseconds.
+                  example: 86400000
+                occurrenceRate:
+                  type: number
+                  description: Re-surface the error if its occurrence rate exceeds this many occurrences per minute.
+                totalOccurrences:
+                  type: integer
+                  description: Re-surface the error once it accrues this many new occurrences after being ignored.
+                reason:
+                  type: string
+                  description: An optional human-readable reason for ignoring the error.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorObject"
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Error not found
+      tags:
+        - errors
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: curl
+          label: Ignore an error
+          source: |-
+            curl -X POST "https://api.trigger.dev/api/v1/errors/error_8f3b2a1c9d4e5f60/ignore" \
+              -H "Authorization: Bearer $TRIGGER_SECRET_KEY" \
+              -H "Content-Type: application/json" \
+              -d '{"duration": 86400000, "reason": "Known flaky dependency"}'
+  "/api/v1/errors/{errorId}/unresolve":
+    parameters:
+      - $ref: "#/components/parameters/errorId"
+    post:
+      operationId: unresolve_error_v1
+      summary: Unresolve an error
+      description: Move a resolved or ignored error group back to unresolved.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorObject"
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Error not found
+      tags:
+        - errors
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: curl
+          label: Unresolve an error
+          source: |-
+            curl -X POST "https://api.trigger.dev/api/v1/errors/error_8f3b2a1c9d4e5f60/unresolve" \
+              -H "Authorization: Bearer $TRIGGER_SECRET_KEY"
+
 components:
   parameters:
     taskIdentifier:
@@ -3265,7 +3912,10 @@ components:
       required: true
       schema:
         type: string
-      description: The id of a task
+      description: |
+        The id of a task. If the id contains characters that are reserved in a URL path, such as a
+        slash (`/`), percent-encode it when building the request path (e.g. `types/zod` becomes
+        `types%2Fzod`).
       example: my-task
     runsFilterWithEnv:
       in: query
@@ -3319,6 +3969,105 @@ components:
           before:
             type: string
             description: The ID of the run to start the page before. This will set the direction of the pagination to backward.
+    sessionsCursorPagination:
+      in: query
+      name: page
+      style: deepObject
+      explode: true
+      description: |
+        Paginate the results. Specify the number of sessions per page, and the ID of the session to start the page after or before.
+
+        For object fields like `page`, use the "form" encoding style. For example, to get the next page, use `page[after]=session_1234`.
+      schema:
+        type: object
+        properties:
+          size:
+            type: integer
+            maximum: 100
+            minimum: 1
+            default: 20
+            description: Number of sessions per page. Maximum is 100.
+          after:
+            type: string
+            description: The ID of the session to start the page after. Sets the pagination direction to forward.
+          before:
+            type: string
+            description: The ID of the session to start the page before. Sets the pagination direction to backward.
+    bulkActionId:
+      in: path
+      name: bulkActionId
+      required: true
+      schema:
+        type: string
+      description: The ID of a bulk action, starts with `bulk_`.
+      example: bulk_1234
+    bulkActionsCursorPagination:
+      in: query
+      name: page
+      style: deepObject
+      explode: true
+      description: |
+        Use this parameter to paginate bulk actions. Pass `page[after]` or `page[before]` using the cursor returned in the previous response.
+      schema:
+        type: object
+        properties:
+          size:
+            type: integer
+            maximum: 100
+            minimum: 1
+            default: 25
+            description: Number of bulk actions per page. Maximum is 100.
+          after:
+            type: string
+            description: The cursor to start the page after.
+          before:
+            type: string
+            description: The cursor to start the page before.
+    errorId:
+      in: path
+      name: errorId
+      required: true
+      schema:
+        type: string
+      description: The ID of an error group, starts with `error_`.
+      example: error_8f3b2a1c9d4e5f60
+    errorsFilter:
+      in: query
+      name: filter
+      style: deepObject
+      explode: true
+      description: |
+        Filter the error groups. Filter by task identifier, version, status, search text, and time range.
+
+        For array fields, provide multiple values as a comma-separated list. For example, to get unresolved and ignored errors, use `filter[status]=unresolved,ignored`.
+
+        For the time range, use `filter[period]` (e.g. `filter[period]=7d`) or `filter[from]` / `filter[to]` with ISO timestamps.
+      schema:
+        $ref: "#/components/schemas/ErrorsFilter"
+    errorsCursorPagination:
+      in: query
+      name: page
+      style: deepObject
+      explode: true
+      description: |
+        Paginate the results. Specify the number of errors per page, and the ID of the error to start the page after or before.
+
+        For object fields like `page`, use the "form" encoding style. For example, to get the next page, use `page[after]=error_1234`.
+      schema:
+        type: object
+        properties:
+          size:
+            type: integer
+            maximum: 100
+            minimum: 1
+            default: 25
+            description: Number of errors per page. Maximum is 100.
+          after:
+            type: string
+            description: The ID of the error to start the page after. Sets the pagination direction to forward.
+          before:
+            type: string
+            description: The ID of the error to start the page before. Sets the pagination direction to backward.
     runId:
       in: path
       name: runId
@@ -3361,21 +4110,44 @@ components:
         type: string
       description: The name of the environment variable.
       example: SLACK_API_KEY
+    session:
+      in: path
+      name: session
+      required: true
+      schema:
+        type: string
+      description: >-
+        The session's friendly ID (`session_…`) or your `externalId`. The server
+        disambiguates by the `session_` prefix.
+      example: session_abc123
+    sessionsFilter:
+      in: query
+      name: filter
+      style: deepObject
+      explode: true
+      description: |
+        Use this parameter to filter the sessions. You can filter by type, tags, task identifier, external id, status, and created at.
+
+        For array fields, you can provide multiple values to filter by using a comma-separated list. For example, to get ACTIVE and CLOSED sessions, you can use `filter[status]=ACTIVE,CLOSED`.
+
+        For object fields, you should use the "form" encoding style. For example, to filter by the period, you can use `filter[createdAt][period]=1d`.
+      schema:
+        $ref: "#/components/schemas/SessionsFilter"
   securitySchemes:
     secretKey:
       type: http
       scheme: bearer
       description: |
-        Use your project-specific Secret API key. Will start with `tr_dev_`, `tr_prod`, `tr_stg`, etc.
+        Use a named environment API key. It starts with `tr_dev_sk_`, `tr_prod_sk_`, `tr_stg_sk_`, etc.
 
-        You can find your Secret API key in the API Keys section of your Trigger.dev project dashboard.
+        Create a named API key in the API Keys section of your Trigger.dev project dashboard. Choose the narrowest access preset that supports your integration.
 
         Our TypeScript SDK will default to using the value of the `TRIGGER_SECRET_KEY` environment variable if it is set. If you are using the SDK in a different environment, you can set the key using the `configure` function.
 
         ```typescript
         import { configure } from "@trigger.dev/sdk";
 
-        configure({ accessToken: "tr_dev_1234" });
+        configure({ accessToken: "tr_dev_sk_1234" });
         ```
 
     personalAccessToken:
@@ -3396,11 +4168,13 @@ components:
       type: http
       scheme: bearer
       description: |
-        A short-lived JWT scoped to a specific waitpoint token. Returned as `publicAccessToken`
-        when you call `wait.createToken()` or `POST /api/v1/waitpoints/tokens`.
+        A short-lived JWT scoped to specific resources, returned as `publicAccessToken` from APIs
+        such as `wait.createToken()` / `POST /api/v1/waitpoints/tokens` and
+        `sessions.start()` / `POST /api/v1/sessions`, or minted directly with `auth.createPublicToken()`.
 
-        This token is safe to embed in frontend clients — it can only complete the specific
-        waitpoint it was issued for and cannot be used for any other API operations.
+        This token is safe to embed in frontend clients — it can only act on the resources its
+        scopes grant (e.g. `read:sessions:{id}`, `write:sessions:{id}`) and cannot be used for any
+        other API operations. For session tokens see the [session scopes](/management/authentication#session-scopes).
 
   schemas:
     RunTag:
@@ -3768,6 +4542,479 @@ components:
           items:
             type: string
           description: The tags that are attached to the run
+        error:
+          type: string
+          description: An error group ID (starts with `error_`). Lists the runs behind that error group.
+          example: error_8f3b2a1c9d4e5f60
+    ErrorsFilter:
+      type: object
+      properties:
+        taskIdentifier:
+          type: array
+          items:
+            type: string
+          description: The identifier of the task the error belongs to
+        version:
+          type: array
+          items:
+            type: string
+          description: The worker version the error occurred in
+        status:
+          type: array
+          items:
+            type: string
+            enum:
+              - unresolved
+              - resolved
+              - ignored
+          description: The lifecycle status of the error group
+        search:
+          type: string
+          description: Free-text search across the error type and message
+        from:
+          type: string
+          format: date-time
+          description: The start of the time range to count occurrences within
+        to:
+          type: string
+          format: date-time
+          description: The end of the time range to count occurrences within
+        period:
+          type: string
+          description: A relative time range to count occurrences within
+          example: 7d
+    ErrorListItem:
+      type: object
+      required:
+        - id
+        - fingerprint
+        - taskIdentifier
+        - errorType
+        - errorMessage
+        - status
+        - count
+        - firstSeen
+        - lastSeen
+      properties:
+        id:
+          type: string
+          description: The unique ID of the error group, prefixed with `error_`
+          example: error_8f3b2a1c9d4e5f60
+        fingerprint:
+          type: string
+          description: The raw fingerprint the error is grouped by
+        taskIdentifier:
+          type: string
+          description: The identifier of the task the error belongs to
+        errorType:
+          type: string
+          description: The error type or name (e.g. `TypeError`)
+        errorMessage:
+          type: string
+          description: The normalized error message
+        status:
+          type: string
+          enum:
+            - unresolved
+            - resolved
+            - ignored
+        count:
+          type: integer
+          description: The number of occurrences within the requested time range
+        firstSeen:
+          type: string
+          format: date-time
+          description: When the error group was first seen (global)
+        lastSeen:
+          type: string
+          format: date-time
+          description: When the error group was last seen (global)
+        resolvedAt:
+          type: string
+          format: date-time
+          nullable: true
+        ignoredUntil:
+          type: string
+          format: date-time
+          nullable: true
+    ListErrorsResult:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            "$ref": "#/components/schemas/ErrorListItem"
+        pagination:
+          type: object
+          properties:
+            next:
+              type: string
+              description: The error ID to start the next page after. Pass it as `page[after]`.
+              example: error_8f3b2a1c9d4e5f60
+            previous:
+              type: string
+              description: The error ID to start the previous page before. Pass it as `page[before]`.
+    ErrorObject:
+      type: object
+      required:
+        - id
+        - fingerprint
+        - taskIdentifier
+        - errorType
+        - errorMessage
+        - status
+        - count
+        - firstSeen
+        - lastSeen
+        - affectedVersions
+      properties:
+        id:
+          type: string
+          description: The unique ID of the error group, prefixed with `error_`
+          example: error_8f3b2a1c9d4e5f60
+        fingerprint:
+          type: string
+          description: The raw fingerprint the error is grouped by
+        taskIdentifier:
+          type: string
+          description: The identifier of the task the error belongs to
+        errorType:
+          type: string
+          description: The error type or name (e.g. `TypeError`)
+        errorMessage:
+          type: string
+          description: The normalized error message
+        count:
+          type: integer
+          description: The total number of occurrences of this error group
+        firstSeen:
+          type: string
+          format: date-time
+        lastSeen:
+          type: string
+          format: date-time
+        affectedVersions:
+          type: array
+          items:
+            type: string
+          description: The most recent worker versions the error has occurred in (up to five)
+        status:
+          type: string
+          enum:
+            - unresolved
+            - resolved
+            - ignored
+        resolvedAt:
+          type: string
+          format: date-time
+          nullable: true
+        resolvedInVersion:
+          type: string
+          nullable: true
+        resolvedBy:
+          type: string
+          nullable: true
+          description: The ID of the user who resolved the error, when attributable
+        ignoredAt:
+          type: string
+          format: date-time
+          nullable: true
+        ignoredUntil:
+          type: string
+          format: date-time
+          nullable: true
+        ignoredReason:
+          type: string
+          nullable: true
+        ignoredByUserId:
+          type: string
+          nullable: true
+        ignoredUntilOccurrenceRate:
+          type: number
+          nullable: true
+        ignoredUntilTotalOccurrences:
+          type: integer
+          nullable: true
+    BulkActionFilter:
+      type: object
+      description: Selects runs using SDK-style run-list filter fields, excluding pagination fields. In HTTP requests these fields are sent as JSON body properties, so time fields are top-level (`from`, `to`, `period`) instead of nested under `createdAt`. Provide at least one property.
+      minProperties: 1
+      properties:
+        status:
+          oneOf:
+            - type: string
+              enum:
+                - PENDING_VERSION
+                - QUEUED
+                - EXECUTING
+                - REATTEMPTING
+                - FROZEN
+                - COMPLETED
+                - CANCELED
+                - FAILED
+                - CRASHED
+                - INTERRUPTED
+                - SYSTEM_FAILURE
+            - type: array
+              items:
+                type: string
+                enum:
+                  - PENDING_VERSION
+                  - QUEUED
+                  - EXECUTING
+                  - REATTEMPTING
+                  - FROZEN
+                  - COMPLETED
+                  - CANCELED
+                  - FAILED
+                  - CRASHED
+                  - INTERRUPTED
+                  - SYSTEM_FAILURE
+        taskIdentifier:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+          description: The identifier of the task that was run.
+        version:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+          description: The worker version that executed the run.
+        from:
+          oneOf:
+            - type: string
+              format: date-time
+            - type: number
+          description: Start of the time range as an ISO date string or Unix timestamp in milliseconds.
+        to:
+          oneOf:
+            - type: string
+              format: date-time
+            - type: number
+          description: End of the time range as an ISO date string or Unix timestamp in milliseconds.
+        period:
+          type: string
+          description: Relative time period to select, such as `24h` or `30d`.
+          example: 24h
+        bulkAction:
+          type: string
+          description: Select runs that were processed by another bulk action.
+          example: bulk_1234
+        tag:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+          description: Select runs with one or more tags.
+        schedule:
+          type: string
+          description: Select runs created by a schedule.
+          example: sched_1234
+        isTest:
+          type: boolean
+          description: Select test or non-test runs.
+        batch:
+          type: string
+          description: Select runs in a batch.
+          example: batch_1234
+        queue:
+          oneOf:
+            - $ref: "#/components/schemas/QueueTypeName"
+            - type: array
+              items:
+                $ref: "#/components/schemas/QueueTypeName"
+        machine:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+          description: Select runs by machine preset.
+        region:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+          description: Select runs by region.
+    QueueTypeName:
+      type: object
+      required:
+        - type
+        - name
+      properties:
+        type:
+          type: string
+          enum:
+            - task
+            - custom
+        name:
+          type: string
+    CreateBulkActionRequestBody:
+      oneOf:
+        - title: Cancel by filter
+          type: object
+          required:
+            - action
+            - filter
+          properties:
+            action:
+              type: string
+              enum:
+                - cancel
+            filter:
+              $ref: "#/components/schemas/BulkActionFilter"
+            name:
+              type: string
+              maxLength: 255
+        - title: Cancel by run IDs
+          type: object
+          required:
+            - action
+            - runIds
+          properties:
+            action:
+              type: string
+              enum:
+                - cancel
+            runIds:
+              type: array
+              minItems: 1
+              maxItems: 500
+              items:
+                type: string
+            name:
+              type: string
+              maxLength: 255
+        - title: Replay by filter
+          type: object
+          required:
+            - action
+            - filter
+          properties:
+            action:
+              type: string
+              enum:
+                - replay
+            filter:
+              $ref: "#/components/schemas/BulkActionFilter"
+            name:
+              type: string
+              maxLength: 255
+            targetRegion:
+              type: string
+              description: Region identifier to replay runs in. When omitted, each replay keeps the original run's region.
+        - title: Replay by run IDs
+          type: object
+          required:
+            - action
+            - runIds
+          properties:
+            action:
+              type: string
+              enum:
+                - replay
+            runIds:
+              type: array
+              minItems: 1
+              maxItems: 500
+              items:
+                type: string
+            name:
+              type: string
+              maxLength: 255
+            targetRegion:
+              type: string
+              description: Region identifier to replay runs in. When omitted, each replay keeps the original run's region.
+    BulkActionObject:
+      type: object
+      required:
+        - id
+        - type
+        - status
+        - counts
+        - createdAt
+      properties:
+        id:
+          type: string
+          description: The bulk action ID, prefixed with `bulk_`.
+          example: bulk_1234
+        name:
+          type: string
+          description: The name provided when the bulk action was created.
+        type:
+          type: string
+          enum:
+            - CANCEL
+            - REPLAY
+        status:
+          type: string
+          enum:
+            - PENDING
+            - COMPLETED
+            - ABORTED
+        counts:
+          type: object
+          required:
+            - total
+            - success
+            - failure
+          properties:
+            total:
+              type: integer
+              description: The number of runs selected when the bulk action was created.
+            success:
+              type: integer
+              description: The number of runs processed successfully.
+            failure:
+              type: integer
+              description: The number of runs that could not be processed.
+        createdAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+    CreateBulkActionResponse:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          example: bulk_1234
+    AbortBulkActionResponse:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          example: bulk_1234
+    ListBulkActionsResult:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/BulkActionObject"
+        pagination:
+          type: object
+          properties:
+            next:
+              type: string
+              description: Pass this cursor as `page[after]` to retrieve the next page.
+            previous:
+              type: string
+              description: Pass this cursor as `page[before]` to retrieve the previous page.
     ListRunsResult:
       type: object
       properties:
@@ -3894,6 +5141,303 @@ components:
           type: number
           example: 491
           description: The duration of compute (so far) in milliseconds. This does not include waits.
+
+    SessionTriggerConfig:
+      type: object
+      description: >-
+        Trigger options applied to every run a session schedules. `basePayload` is the
+        wire payload merged into each run; the remaining fields map onto the standard
+        trigger options.
+      required:
+        - basePayload
+      properties:
+        basePayload:
+          type: object
+          additionalProperties: true
+          description: >-
+            Base payload passed to every run this session triggers. For `chat.agent`
+            this carries `{ chatId, ...clientData }`.
+        machine:
+          type: string
+          description: Machine preset for each run, e.g. `small-1x`.
+          example: small-1x
+        queue:
+          type: string
+          maxLength: 128
+          description: Queue to schedule runs on.
+        tags:
+          type: array
+          maxItems: 5
+          items:
+            type: string
+            maxLength: 128
+          description: Tags applied to every run this session triggers.
+        maxAttempts:
+          type: integer
+          minimum: 1
+          maximum: 10
+          description: Maximum retry attempts per run.
+        maxDuration:
+          type: integer
+          minimum: 1
+          description: Per-run wall-clock cap in seconds.
+        lockToVersion:
+          type: string
+          description: Pin every run to a specific worker version.
+          example: "20240523.1"
+        region:
+          type: string
+          description: Region to schedule runs in.
+        idleTimeoutInSeconds:
+          type: integer
+          minimum: 1
+          maximum: 3600
+          description: Idle timeout surfaced to `chat.agent` via the wire payload.
+    CreateSessionRequestBody:
+      type: object
+      description: >-
+        Body for `POST /api/v1/sessions`. The whole body must be 32KB or smaller.
+      required:
+        - type
+        - taskIdentifier
+        - triggerConfig
+      properties:
+        type:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: >-
+            Free-form discriminator for the session, e.g. `chat.agent`. Not validated
+            against an enum.
+          example: chat.agent
+        taskIdentifier:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: The task this session triggers runs against.
+          example: my-chat
+        triggerConfig:
+          $ref: "#/components/schemas/SessionTriggerConfig"
+        externalId:
+          type: string
+          minLength: 1
+          maxLength: 256
+          description: >-
+            Your stable identity for the session, unique per environment. Cannot start
+            with the reserved `session_` prefix. Reusing an `externalId` makes create
+            idempotent; reusing one whose session is closed or expired returns `409`.
+          example: chat_1234
+        tags:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            maxLength: 128
+          description: Up to 10 tags on the session row, for dashboard filtering.
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Arbitrary JSON metadata.
+        expiresAt:
+          type: string
+          format: date-time
+          description: Absolute expiry timestamp for retention.
+    SessionObject:
+      type: object
+      description: A session row.
+      required:
+        - id
+        - type
+        - taskIdentifier
+        - tags
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          description: The session's friendly ID, prefixed with `session_`.
+          example: session_abc123
+        externalId:
+          type: string
+          nullable: true
+          description: Your stable identity for the session, if one was set.
+          example: chat_1234
+        type:
+          type: string
+          description: The session type discriminator.
+          example: chat.agent
+        taskIdentifier:
+          type: string
+          description: The task this session triggers runs against.
+          example: my-chat
+        triggerConfig:
+          $ref: "#/components/schemas/SessionTriggerConfig"
+        currentRunId:
+          type: string
+          nullable: true
+          description: >-
+            Friendly ID of the live run for this session, if any. Prefixed with `run_`.
+            Omitted on list rows.
+          example: run_def456
+        tags:
+          type: array
+          items:
+            type: string
+          description: Tags on the session row.
+          example: ["chat:1234"]
+        metadata:
+          type: object
+          additionalProperties: true
+          nullable: true
+          description: Arbitrary JSON metadata, or `null` if unset.
+        closedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the session was closed, or `null` if open.
+        closedReason:
+          type: string
+          nullable: true
+          description: The optional reason recorded when the session was closed.
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: The session's retention deadline, or `null` if none.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CreatedSessionResponseBody:
+      allOf:
+        - $ref: "#/components/schemas/SessionObject"
+        - type: object
+          required:
+            - runId
+            - publicAccessToken
+            - isCached
+          properties:
+            runId:
+              type: string
+              description: Friendly ID of the first run triggered alongside the session.
+              example: run_def456
+            publicAccessToken:
+              type: string
+              description: >-
+                Session-scoped public access token carrying `read:sessions:{key}` and
+                `write:sessions:{key}`. Default TTL is 1 hour. Safe to pass to frontend
+                clients.
+            isCached:
+              type: boolean
+              description: >-
+                `true` if an open session already existed for this `externalId`
+                (idempotent upsert), `false` if newly created.
+    UpdateSessionRequestBody:
+      type: object
+      description: >-
+        Body for `PATCH /api/v1/sessions/{session}`. The whole body must be 32KB or
+        smaller. Every field is optional; omitted fields are left unchanged.
+      properties:
+        tags:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            maxLength: 128
+          description: Replaces the tags on the session row.
+        metadata:
+          type: object
+          additionalProperties: true
+          nullable: true
+          description: Replaces the metadata. Pass `null` to clear it.
+        externalId:
+          type: string
+          nullable: true
+          minLength: 1
+          maxLength: 256
+          description: >-
+            Read-only after create: cannot be changed or cleared. Sending a value
+            different from the current one (including `null` when one is set) returns
+            `422`; sending the same value is idempotent.
+    CloseSessionRequestBody:
+      type: object
+      description: Body for `POST /api/v1/sessions/{session}/close`. Up to 1KB.
+      properties:
+        reason:
+          type: string
+          maxLength: 256
+          description: Optional reason recorded on the session row.
+          example: user signed out
+    SessionsFilter:
+      type: object
+      properties:
+        type:
+          type: array
+          items:
+            type: string
+          description: The session type(s) to filter by.
+          example: ["chat.agent"]
+        tags:
+          type: array
+          items:
+            type: string
+          description: The tags to filter by.
+        taskIdentifier:
+          type: array
+          items:
+            type: string
+          description: The task identifier(s) to filter by.
+        externalId:
+          type: string
+          description: Exact match on your `externalId`.
+        status:
+          type: array
+          items:
+            type: string
+            enum:
+              - ACTIVE
+              - CLOSED
+              - EXPIRED
+          description: The lifecycle status(es) to filter by.
+        createdAt:
+          type: object
+          properties:
+            from:
+              type: string
+              format: date-time
+              description: The start date to filter the sessions by.
+            to:
+              type: string
+              format: date-time
+              description: The end date to filter the sessions by.
+            period:
+              type: string
+              description: The period to filter the sessions by.
+              example: 1d
+    ListSessionsResult:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            "$ref": "#/components/schemas/SessionObject"
+        pagination:
+          type: object
+          properties:
+            next:
+              type: string
+              description: >-
+                The session ID to start the next page after. Pass it as the
+                `page[after]` parameter on the next request.
+              example: session_abc123
+            previous:
+              type: string
+              description: >-
+                The session ID to start the previous page before. Pass it as the
+                `page[before]` parameter on the next request.
+              example: session_xyz789
 
     InvalidEnvVarsRequestResponse:
       type: object
@@ -4288,6 +5832,19 @@ components:
           format: date-time
           description: The next time the schedule will run
           example: "2024-04-01T00:00:00Z"
+        appliedSchedulePolicy:
+          type: object
+          description: Present only when a non-overridable plan policy applies a minimum window to this schedule (for example, a free-plan schedule's minimum run interval). The configured `window` is returned separately and unchanged.
+          properties:
+            minimumWindowSeconds:
+              type: number
+              example: 3600
+              description: The minimum window, in seconds, applied on top of the configured window.
+            reason:
+              type: string
+              enum:
+                - free_schedule
+              description: Why the minimum window is applied.
         environments:
           type: array
           items:

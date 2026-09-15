@@ -186,17 +186,17 @@ export class BatchQueue {
       // so we don't need the DLQ - we just need the retry scheduling.
       ...(options.retry
         ? {
-          retry: {
-            strategy: new ExponentialBackoffRetry({
-              maxAttempts: options.retry.maxAttempts,
-              minTimeoutInMs: options.retry.minTimeoutInMs ?? 1_000,
-              maxTimeoutInMs: options.retry.maxTimeoutInMs ?? 30_000,
-              factor: options.retry.factor ?? 2,
-              randomize: options.retry.randomize ?? true,
-            }),
-            deadLetterQueue: false,
-          },
-        }
+            retry: {
+              strategy: new ExponentialBackoffRetry({
+                maxAttempts: options.retry.maxAttempts,
+                minTimeoutInMs: options.retry.minTimeoutInMs ?? 1_000,
+                maxTimeoutInMs: options.retry.maxTimeoutInMs ?? 30_000,
+                factor: options.retry.factor ?? 2,
+                randomize: options.retry.randomize ?? true,
+              }),
+              deadLetterQueue: false,
+            },
+          }
         : {}),
       logger: this.logger,
       tracer: options.tracer,
@@ -887,11 +887,7 @@ export class BatchQueue {
             });
 
             await this.#startSpan("BatchQueue.failMessage", async () => {
-              return this.fairQueue.failMessage(
-                messageId,
-                queueId,
-                new Error(result.error)
-              );
+              return this.fairQueue.failMessage(messageId, queueId, new Error(result.error));
             });
 
             // Don't record failure or check completion - message will be retried

@@ -1,5 +1,6 @@
-import { Callback, Result } from "ioredis";
-import { createRedisClient, RedisClient, RedisWithClusterOptions } from "~/redis.server";
+import type { Callback, Result } from "ioredis";
+import type { RedisClient, RedisWithClusterOptions } from "~/redis.server";
+import { createRedisClient } from "~/redis.server";
 import { logger } from "../logger.server";
 
 export type RealtimeConcurrencyLimiterOptions = {
@@ -27,7 +28,11 @@ export class RealtimeConcurrencyLimiter {
     this.#registerCommands();
   }
 
-  async incrementAndCheck(environmentId: string, requestId: string, limit: number): Promise<boolean> {
+  async incrementAndCheck(
+    environmentId: string,
+    requestId: string,
+    limit: number
+  ): Promise<boolean> {
     const key = this.#getKey(environmentId);
     const now = Date.now();
 

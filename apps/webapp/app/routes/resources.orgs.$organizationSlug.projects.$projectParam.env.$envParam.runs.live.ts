@@ -7,6 +7,8 @@ import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstan
 import { loadProjectEnvironmentFromRequest } from "~/services/loadProjectEnvironmentFromRequest.server";
 import { RunsRepository } from "~/services/runsRepository/runsRepository.server";
 import { runIdsQueryParam } from "~/utils/searchParams";
+import { deriveRunSelect } from "~/components/runs/v3/runColumns";
+import { getRunColumnsForSelect } from "~/presenters/v3/runColumnsFromRequest.server";
 
 const SearchParamsSchema = z.object({
   runIds: runIdsQueryParam,
@@ -23,8 +25,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     Object.fromEntries(url.searchParams)
   );
 
-  const newRunsSince =
-    includeNewRuns && since !== undefined ? since : undefined;
+  const newRunsSince = includeNewRuns && since !== undefined ? since : undefined;
 
   if (runIds.length === 0 && newRunsSince === undefined) {
     return { runs: [] };
@@ -34,9 +35,10 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
     project.organizationId,
-    "standard"
+    "runsList"
   );
   const runsRepository = new RunsRepository({ clickhouse, prisma: $replica });
+  const columns = getRunColumnsForSelect(request);
 
   const [runs, newRunsResult] = await Promise.all([
     runIds.length > 0
@@ -46,6 +48,10 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
             projectId: project.id,
             environmentId: environment.id,
             runId: runIds,
+            runSelect: deriveRunSelect(
+              columns.visibleStandardIds,
+              columns.smartSources.filter((source) => source !== "payload")
+            ),
             page: { size: 100 },
           })
           .then(({ runs: listedRuns }) => listedRuns.map(mapRunToLiveFields))

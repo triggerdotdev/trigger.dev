@@ -1,26 +1,23 @@
 import { ClockIcon } from "@heroicons/react/20/solid";
-import type { SpanEvent } from "@trigger.dev/core/v3";
-import {
-  formatDuration,
-  millisecondsToNanoseconds,
-  nanosecondsToMilliseconds,
-} from "@trigger.dev/core/v3/utils/durations";
-import { Fragment, ReactNode, useState } from "react";
-import { cn } from "~/utils/cn";
-import { DateTime, DateTimeAccurate } from "../primitives/DateTime";
-import { LiveTimer } from "../runs/v3/LiveTimer";
+import { formatDuration, nanosecondsToMilliseconds } from "@trigger.dev/core/v3/utils/durations";
+import type { ReactNode } from "react";
+import { Fragment } from "react";
 import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
+import { cn } from "~/utils/cn";
+import type { TimelineSpanEvent } from "~/utils/timelineSpanEvents";
+import { getHelpTextForEvent } from "~/utils/timelineSpanEvents";
+import { DateTime, DateTimeAccurate } from "../primitives/DateTime";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
-import { getHelpTextForEvent, TimelineSpanEvent } from "~/utils/timelineSpanEvents";
+import { LiveTimer } from "../runs/v3/LiveTimer";
 
 // Types for the RunTimeline component
 export type TimelineEventState = "complete" | "error" | "inprogress" | "delayed";
 
-type TimelineLineVariant = "light" | "normal";
+export type TimelineLineVariant = "light" | "normal";
 
 type TimelineStyle = "normal" | "diminished";
 
-type TimelineEventVariant =
+export type TimelineEventVariant =
   | "start-cap"
   | "dot-hollow"
   | "dot-solid"
@@ -29,7 +26,7 @@ type TimelineEventVariant =
   | "end-cap";
 
 // Timeline item type definitions
-export type TimelineEventDefinition = {
+type TimelineEventDefinition = {
   type: "event";
   id: string;
   title: string;
@@ -41,7 +38,7 @@ export type TimelineEventDefinition = {
   helpText?: string;
 };
 
-export type TimelineLineDefinition = {
+type TimelineLineDefinition = {
   type: "line";
   id: string;
   title: React.ReactNode;
@@ -326,7 +323,7 @@ function buildTimelineItems(run: TimelineSpanRun): TimelineItem[] {
 export type RunTimelineEventProps = {
   title: ReactNode;
   subtitle?: ReactNode;
-  state?: "complete" | "error" | "inprogress";
+  state?: TimelineEventState;
   variant?: TimelineEventVariant;
   helpText?: string;
   style?: TimelineStyle;
@@ -416,7 +413,7 @@ function EventMarker({
     case "start-cap":
       return (
         <>
-          <div className={cn("h-full w-[0.4375rem] border-b", borderClass)} />
+          <div className={cn("h-full w-1.75 border-b", borderClass)} />
           <div className={cn("relative h-full w-px", bgClass)}>
             {state === "inprogress" && (
               <div
@@ -444,9 +441,7 @@ function EventMarker({
               />
             )}
           </div>
-          <div
-            className={cn("size-[0.3125rem] min-h-[0.3125rem] rounded-full border", borderClass)}
-          />
+          <div className={cn("size-1.25 min-h-1.25 rounded-full border", borderClass)} />
           <div className={cn("relative h-full w-px", bgClass)}>
             {state === "inprogress" && (
               <div
@@ -461,10 +456,10 @@ function EventMarker({
         </>
       );
     case "dot-solid":
-      return <div className={cn("size-[0.3125rem] rounded-full", bgClass)} />;
+      return <div className={cn("size-1.25 rounded-full", bgClass)} />;
     case "start-cap-thick":
       return (
-        <div className={cn("relative h-full w-[0.4375rem] rounded-t-[0.125rem]", bgClass)}>
+        <div className={cn("relative h-full w-1.75 rounded-t-xs", bgClass)}>
           {state === "inprogress" && (
             <div
               className="absolute inset-0 h-full w-full animate-tile-scroll-offset opacity-30"
@@ -477,9 +472,9 @@ function EventMarker({
         </div>
       );
     case "end-cap-thick":
-      return <div className={cn("h-full w-[0.4375rem] rounded-b-[0.125rem]", bgClass)} />;
+      return <div className={cn("h-full w-1.75 rounded-b-xs", bgClass)} />;
     default:
-      return <div className={cn("size-[0.3125rem] rounded-full bg-yellow-500")} />;
+      return <div className={cn("size-1.25 rounded-full bg-yellow-500")} />;
   }
 }
 
@@ -488,6 +483,12 @@ export type RunTimelineLineProps = {
   state?: TimelineEventState;
   variant?: TimelineLineVariant;
   style?: TimelineStyle;
+  /**
+   * Round the top of a thick ("normal") line. Needed when the line itself starts the thick bar,
+   * as in the delivery timeline, where nothing above it supplies a `start-cap-thick`. The run
+   * timeline always precedes its thick line with that cap, so it leaves this off.
+   */
+  roundedTop?: boolean;
 };
 
 export function RunTimelineLine({
@@ -495,11 +496,12 @@ export function RunTimelineLine({
   state,
   variant = "normal",
   style = "normal",
+  roundedTop = false,
 }: RunTimelineLineProps) {
   return (
     <div className="grid h-6 grid-cols-[1.125rem_1fr] gap-1 text-xs">
       <div className="flex items-stretch justify-center">
-        <LineMarker state={state} variant={variant} style={style} />
+        <LineMarker state={state} variant={variant} style={style} roundedTop={roundedTop} />
       </div>
       <div className="flex items-center justify-between gap-3">
         <span className="text-text-dimmed">{title}</span>
@@ -512,10 +514,12 @@ function LineMarker({
   state,
   variant,
   style,
+  roundedTop = false,
 }: {
   state?: TimelineEventState;
   variant: TimelineLineVariant;
   style?: TimelineStyle;
+  roundedTop?: boolean;
 }) {
   let containerClass = "bg-text-dimmed";
   switch (state) {
@@ -530,16 +534,14 @@ function LineMarker({
       break;
     case "inprogress":
       containerClass =
-        style === "normal"
-          ? "rounded-b-[0.125rem] bg-pending"
-          : "rounded-b-[0.125rem] bg-text-dimmed";
+        style === "normal" ? "rounded-b-xs bg-pending" : "rounded-b-xs bg-text-dimmed";
       break;
   }
 
   switch (variant) {
     case "normal":
       return (
-        <div className={cn("relative w-[0.4375rem]", containerClass)}>
+        <div className={cn("relative w-1.75", roundedTop && "rounded-t-xs", containerClass)}>
           {state === "inprogress" && (
             <div
               className="absolute inset-0 h-full w-full animate-tile-scroll opacity-30"
@@ -566,7 +568,7 @@ function LineMarker({
         </div>
       );
     default:
-      return <div className="w-px rounded-[0.125rem] bg-text-dimmed" />;
+      return <div className="w-px rounded-xs bg-text-dimmed" />;
   }
 }
 
@@ -578,8 +580,6 @@ export type SpanTimelineProps = {
   events?: TimelineSpanEvent[];
   style?: TimelineStyle;
 };
-
-export type SpanTimelineState = "error" | "pending" | "complete";
 
 export function SpanTimeline({
   startTime,
@@ -594,86 +594,84 @@ export function SpanTimeline({
   const visibleEvents = events ?? [];
 
   return (
-    <>
-      <div className="min-w-fit max-w-80">
-        {visibleEvents.map((event, index) => {
-          // Store previous date to compare
-          const prevDate = index === 0 ? null : visibleEvents[index - 1].timestamp;
+    <div className="min-w-fit max-w-80">
+      {visibleEvents.map((event, index) => {
+        // Store previous date to compare
+        const prevDate = index === 0 ? null : visibleEvents[index - 1].timestamp;
 
-          return (
-            <Fragment key={index}>
-              <RunTimelineEvent
-                title={event.name}
-                subtitle={<DateTimeAccurate date={event.timestamp} previousDate={prevDate} />}
-                variant={event.markerVariant}
-                state={state}
-                helpText={event.helpText}
-                style={style}
-              />
-              <RunTimelineLine
-                title={
-                  index === visibleEvents.length - 1
-                    ? // Last event - calculate duration until span start time
-                      formatDuration(event.timestamp, startTime)
-                    : // Calculate duration until next event
-                      formatDuration(event.timestamp, visibleEvents[index + 1].timestamp)
-                }
-                variant={event.lineVariant}
-                state={state}
-                style={style}
-              />
-            </Fragment>
-          );
-        })}
-        <RunTimelineEvent
-          title="Started"
-          subtitle={
-            <DateTimeAccurate
-              date={startTime}
-              previousDate={
-                visibleEvents.length > 0 ? visibleEvents[visibleEvents.length - 1].timestamp : null
-              }
+        return (
+          <Fragment key={index}>
+            <RunTimelineEvent
+              title={event.name}
+              subtitle={<DateTimeAccurate date={event.timestamp} previousDate={prevDate} />}
+              variant={event.markerVariant}
+              state={state}
+              helpText={event.helpText}
+              style={style}
             />
-          }
-          variant={"start-cap-thick"}
+            <RunTimelineLine
+              title={
+                index === visibleEvents.length - 1
+                  ? // Last event - calculate duration until span start time
+                    formatDuration(event.timestamp, startTime)
+                  : // Calculate duration until next event
+                    formatDuration(event.timestamp, visibleEvents[index + 1].timestamp)
+              }
+              variant={event.lineVariant}
+              state={state}
+              style={style}
+            />
+          </Fragment>
+        );
+      })}
+      <RunTimelineEvent
+        title="Started"
+        subtitle={
+          <DateTimeAccurate
+            date={startTime}
+            previousDate={
+              visibleEvents.length > 0 ? visibleEvents[visibleEvents.length - 1].timestamp : null
+            }
+          />
+        }
+        variant={"start-cap-thick"}
+        state={state}
+        helpText={getHelpTextForEvent("Started")}
+        style={style}
+      />
+      {state === "inprogress" ? (
+        <RunTimelineLine
+          title={<LiveTimer startTime={startTime} />}
           state={state}
-          helpText={getHelpTextForEvent("Started")}
+          variant="normal"
           style={style}
         />
-        {state === "inprogress" ? (
+      ) : (
+        <>
           <RunTimelineLine
-            title={<LiveTimer startTime={startTime} />}
-            state={state}
+            title={formatDuration(
+              startTime,
+              new Date(startTime.getTime() + nanosecondsToMilliseconds(duration))
+            )}
+            state={isError ? "error" : undefined}
             variant="normal"
             style={style}
           />
-        ) : (
-          <>
-            <RunTimelineLine
-              title={formatDuration(
-                startTime,
-                new Date(startTime.getTime() + nanosecondsToMilliseconds(duration))
-              )}
-              state={isError ? "error" : undefined}
-              variant="normal"
-              style={style}
-            />
-            <RunTimelineEvent
-              title="Finished"
-              subtitle={
-                <DateTimeAccurate
-                  date={new Date(startTime.getTime() + nanosecondsToMilliseconds(duration))}
-                  previousDate={startTime}
-                />
-              }
-              state={isError ? "error" : undefined}
-              variant="end-cap-thick"
-              helpText={getHelpTextForEvent("Finished")}
-              style={style}
-            />
-          </>
-        )}
-      </div>
-    </>
+          <RunTimelineEvent
+            title="Finished"
+            subtitle={
+              <DateTimeAccurate
+                date={new Date(startTime.getTime() + nanosecondsToMilliseconds(duration))}
+                previousDate={startTime}
+              />
+            }
+            state={isError ? "error" : undefined}
+            variant="end-cap-thick"
+            helpText={getHelpTextForEvent("Finished")}
+            style={style}
+          />
+        </>
+      )}
+    </div>
   );
 }

@@ -13,14 +13,14 @@
     "@aws-sdk/client-sesv2": "^3.716.0",
     "@react-email/components": "1.0.12",
     "@react-email/render": "^2.0.8",
-    "nodemailer": "^8.0.6",
+    "nodemailer": "^9.0.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "resend": "^3.2.0",
-    "tiny-invariant": "^1.2.0",
-    "zod": "3.25.76"
+    "zod": "4.5.4"
   },
   "devDependencies": {
+    "@react-email/ui": "6.5.0",
     "@types/nodemailer": "^8.0.0",
     "@types/react": "18.2.69",
     "@types/react-dom": "18.2.7",

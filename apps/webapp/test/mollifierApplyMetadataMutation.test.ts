@@ -50,11 +50,13 @@ function makeBufferStub(initialPayload: Record<string, unknown> = {}): BufferStu
   };
 
   const buffer: MollifierBuffer = {
-    getEntry: vi.fn(async (): Promise<BufferEntry> => ({
-      ...entryTemplate,
-      metadataVersion: state.version,
-      payload: JSON.stringify({ ...initialPayload, metadata: JSON.stringify(state.metadata) }),
-    })),
+    getEntry: vi.fn(
+      async (): Promise<BufferEntry> => ({
+        ...entryTemplate,
+        metadataVersion: state.version,
+        payload: JSON.stringify({ ...initialPayload, metadata: JSON.stringify(state.metadata) }),
+      })
+    ),
     casSetMetadata: vi.fn(
       async (input: {
         runId: string;
@@ -75,7 +77,7 @@ function makeBufferStub(initialPayload: Record<string, unknown> = {}): BufferStu
         state.metadata = JSON.parse(input.newMetadata) as Record<string, unknown>;
         state.version += 1;
         return { kind: "applied", newVersion: state.version };
-      },
+      }
     ),
   } as unknown as MollifierBuffer;
 
@@ -119,7 +121,10 @@ describe("applyMetadataMutationToBufferedRun — retry behaviour", () => {
     const { buffer } = makeBufferStub();
     const setStateConflicts = (n: number) => {
       // Re-read state from the closure
-      const state = (buffer as unknown as { __state__?: never; getEntry: () => Promise<BufferEntry> });
+      const state = buffer as unknown as {
+        __state__?: never;
+        getEntry: () => Promise<BufferEntry>;
+      };
       void state;
     };
     void setStateConflicts;
@@ -342,7 +347,7 @@ describe("applyMetadataMutationToBufferedRun — retry behaviour", () => {
         maximumSize: 1024 * 1024,
         body: { operations: [{ type: "increment", key: "counter", value: 1 }] },
         buffer: sharedStub.buffer,
-      }),
+      })
     );
     const results = await Promise.all(calls);
     const applied = results.filter((r) => r.kind === "applied").length;

@@ -36,8 +36,8 @@ const RemoveOverrideInput = PromptSlugInput;
 
 const ReactivateOverrideInput = CommonProjectsInput.extend({
   slug: z.string().describe("The prompt slug"),
-  version: z
-    .coerce.number()
+  version: z.coerce
+    .number()
     .int()
     .positive()
     .describe("The dashboard-sourced version number to reactivate as override"),
@@ -251,9 +251,7 @@ export const updatePromptOverrideTool = {
     });
 
     return {
-      content: [
-        { type: "text" as const, text: `Updated override for "${input.slug}".` },
-      ],
+      content: [{ type: "text" as const, text: `Updated override for "${input.slug}".` }],
     };
   }),
 };
@@ -285,9 +283,7 @@ export const removePromptOverrideTool = {
     await apiClient.removePromptOverride(input.slug);
 
     return {
-      content: [
-        { type: "text" as const, text: `Removed override for "${input.slug}".` },
-      ],
+      content: [{ type: "text" as const, text: `Removed override for "${input.slug}".` }],
     };
   }),
 };

@@ -21,6 +21,8 @@ module.exports.readUIMessageStream = ai.readUIMessageStream;
 // @ts-ignore
 module.exports.stepCountIs = ai.stepCountIs;
 // @ts-ignore
+module.exports.streamText = ai.streamText;
+// @ts-ignore
 module.exports.tool = ai.tool;
 // @ts-ignore
 module.exports.zodSchema = ai.zodSchema;

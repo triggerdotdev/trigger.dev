@@ -52,7 +52,9 @@ export async function longPollingFetch(
     // ReadableStream stays open and undici keeps buffering chunks into memory
     // until the upstream times out (see H1 isolation test — ~44 KB retained
     // per unconsumed-body fetch in RSS).
-    try { await upstream?.body?.cancel(); } catch {}
+    try {
+      await upstream?.body?.cancel();
+    } catch {}
 
     // AbortError is the expected path when downstream disconnects with a
     // propagated signal — treat as a clean client-close, not a server error.

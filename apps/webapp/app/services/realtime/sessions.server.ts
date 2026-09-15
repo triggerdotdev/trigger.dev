@@ -1,7 +1,13 @@
-import type { PrismaClient, Session } from "@trigger.dev/database";
-import type { SessionItem } from "@trigger.dev/core/v3";
+import type { Prisma, PrismaClient, Session } from "@trigger.dev/database";
+import type { SessionItem, SessionTriggerConfig } from "@trigger.dev/core/v3";
+import { SessionId } from "@trigger.dev/core/v3/isomorphic";
+import type { RunStore } from "@internal/run-store";
 import { $replica, prisma } from "~/db.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { chatSnapshotStoragePathForSession } from "~/services/realtime/chatSnapshot.server";
+import { runStore as defaultRunStore } from "~/v3/runStore.server";
 
+import { boundedIn } from "@trigger.dev/database";
 /**
  * Prefix that {@link SessionId.generate} attaches to every Session friendlyId.
  * Used to distinguish friendlyId lookups (`session_abc...`) from externalId
@@ -17,6 +23,9 @@ const SESSION_FRIENDLY_ID_PREFIX = "session_";
  * friendlyIds, anything else is looked up against `externalId` scoped to
  * the caller's environment.
  */
+// CONTROL-PLANE: `Session` lives on the control-plane DB; these reads are NOT
+// routed to run-ops read-through — only the `TaskRun` currentRunId resolves in
+// this file are run-ops read-through routed.
 export async function resolveSessionByIdOrExternalId(
   prisma: Pick<PrismaClient, "session">,
   runtimeEnvironmentId: string,
@@ -58,6 +67,71 @@ export function isSessionFriendlyIdForm(value: string): boolean {
 }
 
 /**
+ * Find-or-create a Session row. Idempotent on `(environment, externalId)`: two concurrent callers
+ * converge to the same row (and `triggerConfig` is refreshed on the cached path so a redeployed
+ * config propagates to the next run). Shared by `POST /api/v1/sessions` and the webhook session
+ * delivery port so the create-field set (org/env scoping, streamBasin, snapshot path) stays in one place.
+ */
+export async function findOrCreateSession(params: {
+  environment: AuthenticatedEnvironment;
+  externalId?: string;
+  type: string;
+  taskIdentifier: string;
+  triggerConfig: SessionTriggerConfig;
+  tags?: string[];
+  metadata?: Record<string, unknown>;
+  expiresAt?: Date | null;
+}): Promise<{ session: Session; isCached: boolean }> {
+  const { id, friendlyId } = SessionId.generate();
+  const env = params.environment;
+  const triggerConfigJson = params.triggerConfig as unknown as Prisma.InputJsonValue;
+
+  const common = {
+    type: params.type,
+    taskIdentifier: params.taskIdentifier,
+    triggerConfig: triggerConfigJson,
+    tags: params.tags ?? [],
+    metadata: params.metadata as Prisma.InputJsonValue | undefined,
+    expiresAt: params.expiresAt ?? null,
+    projectId: env.projectId,
+    runtimeEnvironmentId: env.id,
+    environmentType: env.type,
+    organizationId: env.organizationId,
+    streamBasinName: env.organization.streamBasinName,
+    chatSnapshotStoragePath: chatSnapshotStoragePathForSession(friendlyId),
+  };
+
+  if (params.externalId) {
+    const session = await prisma.session.upsert({
+      where: {
+        runtimeEnvironmentId_externalId: {
+          runtimeEnvironmentId: env.id,
+          externalId: params.externalId,
+        },
+      },
+      create: { id, friendlyId, externalId: params.externalId, ...common },
+      update: { triggerConfig: triggerConfigJson },
+    });
+    return { session, isCached: session.id !== id };
+  }
+
+  const session = await prisma.session.create({ data: { id, friendlyId, ...common } });
+  return { session, isCached: false };
+}
+
+/** Find a session by externalId without creating one (resume-only channel delivery, e.g. startOn). */
+export async function findSessionByExternalId(
+  environment: AuthenticatedEnvironment,
+  externalId: string
+): Promise<Session | null> {
+  return prisma.session.findUnique({
+    where: {
+      runtimeEnvironmentId_externalId: { runtimeEnvironmentId: environment.id, externalId },
+    },
+  });
+}
+
+/**
  * Canonicalise the addressing key used for everything stream-level: the
  * S2 stream path and the run-engine waitpoint cache key. `chat.agent`
  * and the rest of the operational surface always pass `externalId`, but
@@ -74,10 +148,7 @@ export function isSessionFriendlyIdForm(value: string): boolean {
  *     Friendlyid-form callers without a matching row are rejected by
  *     the route handler before this is reached.
  */
-export function canonicalSessionAddressingKey(
-  row: Session | null,
-  paramSession: string
-): string {
+export function canonicalSessionAddressingKey(row: Session | null, paramSession: string): string {
   if (row) {
     return row.externalId ?? row.friendlyId;
   }
@@ -121,20 +192,28 @@ export function serializeSession(session: Session): SessionItem {
  * this so the wire-side `currentRunId` is consistent with the rest of
  * the public API (which only accepts friendlyIds for run lookups).
  *
- * Skips the lookup when `currentRunId` is null. The read goes through
- * `$replica` — a TaskRun's `friendlyId` is immutable so replica lag is
- * harmless, and serializing on the writer would just add hot-path load.
+ * Skips the lookup when `currentRunId` is null.
+ *
+ * Resolves `currentRunId` -> `friendlyId` through `runStore.findRun` so a
+ * run-ops id (NEW-DB) session run resolves from its owning store rather than the
+ * control-plane replica. Mirrors `sessionRunManager.server.ts`.
+ * Tenant-scoped because `Session.currentRunId` is a no-FK pointer.
  */
 export async function serializeSessionWithFriendlyRunId(
-  session: Session
+  session: Session,
+  runStore: RunStore = defaultRunStore
 ): Promise<SessionItem> {
   const base = serializeSession(session);
   if (!session.currentRunId) return base;
 
-  const run = await $replica.taskRun.findFirst({
-    where: { id: session.currentRunId },
-    select: { friendlyId: true },
-  });
+  const run = await runStore.findRun(
+    {
+      id: session.currentRunId,
+      projectId: session.projectId,
+      runtimeEnvironmentId: session.runtimeEnvironmentId,
+    },
+    { select: { friendlyId: true } }
+  );
 
   return {
     ...base,
@@ -151,28 +230,34 @@ export async function serializeSessionWithFriendlyRunId(
  */
 export async function serializeSessionsWithFriendlyRunIds(
   sessions: Session[],
-  scope: { projectId: string; runtimeEnvironmentId: string }
+  scope: { projectId: string; runtimeEnvironmentId: string },
+  runStore: RunStore = defaultRunStore
 ): Promise<SessionItem[]> {
-  const runIds = [...new Set(sessions.map((s) => s.currentRunId).filter((id): id is string => !!id))];
+  const runIds = [
+    ...new Set(sessions.map((s) => s.currentRunId).filter((id): id is string => !!id)),
+  ];
 
-  // `currentRunId` is a plain string pointer (no FK), so scope the lookup to
-  // the caller's tenant — a stale value must not resolve a run in another env.
-  const runs = runIds.length
-    ? await $replica.taskRun.findMany({
-        where: {
-          id: { in: runIds },
-          projectId: scope.projectId,
-          runtimeEnvironmentId: scope.runtimeEnvironmentId,
-        },
-        select: { id: true, friendlyId: true },
-      })
-    : [];
+  // `runStore.findRuns` fans out across both stores under split (NEW + LEGACY
+  // replica merge) and is a plain `$replica` find when split is off. Tenant-
+  // scoped: `Session.currentRunId` is a no-FK pointer, so a stale id must never
+  // resolve a run in another env.
+  const runs =
+    runIds.length > 0
+      ? await runStore.findRuns({
+          where: {
+            id: { in: boundedIn(runIds) },
+            projectId: scope.projectId,
+            runtimeEnvironmentId: scope.runtimeEnvironmentId,
+          },
+          select: { id: true, friendlyId: true },
+        })
+      : [];
   const friendlyIdByRunId = new Map(runs.map((run) => [run.id, run.friendlyId]));
 
   return sessions.map((session) => ({
     ...serializeSession(session),
     currentRunId: session.currentRunId
-      ? friendlyIdByRunId.get(session.currentRunId) ?? null
+      ? (friendlyIdByRunId.get(session.currentRunId) ?? null)
       : null,
   }));
 }

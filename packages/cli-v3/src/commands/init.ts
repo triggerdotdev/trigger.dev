@@ -1,14 +1,11 @@
 import { intro, isCancel, log, multiselect, outro, select, text } from "@clack/prompts";
 import { context, trace } from "@opentelemetry/api";
-import {
-  GetProjectResponseBody,
-  LogLevel,
-  flattenAttributes,
-  tryCatch,
-} from "@trigger.dev/core/v3";
+import type { GetProjectResponseBody, LogLevel } from "@trigger.dev/core/v3";
+import { flattenAttributes, tryCatch } from "@trigger.dev/core/v3";
 import { recordSpanException } from "@trigger.dev/core/v3/workers";
 import chalk from "chalk";
-import { Command, Option as CommandOption } from "commander";
+import type { Command } from "commander";
+import { Option as CommandOption } from "commander";
 import { applyEdits, findNodeAtLocation, getNodeValue, modify, parseTree } from "jsonc-parser";
 import { writeFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
@@ -53,7 +50,7 @@ const InitCommandOptions = CommonCommandOptions.extend({
   overrideConfig: z.boolean().default(false),
   tag: z.string().default(cliVersion),
   skipPackageInstall: z.boolean().default(false),
-  runtime: z.string().default("node"),
+  runtime: z.string().default("node-24"),
   pkgArgs: z.string().optional(),
   gitRef: z.string().default("main"),
   javascript: z.boolean().default(false),
@@ -97,8 +94,8 @@ Examples:
       )
       .option(
         "-r, --runtime <runtime>",
-        "Which runtime to use for the project. Currently only supports node and bun",
-        "node"
+        "Which runtime to use for the project. Supported: node, node-22, node-24, node-26, bun",
+        "node-24"
       )
       .option("--skip-package-install", "Skip installing the @trigger.dev/sdk package")
       .option("--override-config", "Override the existing config file if it exists")
@@ -107,7 +104,10 @@ Examples:
         "Additional arguments to pass to the package manager, accepts CSV for multiple args"
       )
       .option("-y, --yes", "Skip all prompts and use defaults (requires --project-ref)")
-      .option("--no-browser", "Don't automatically open the browser during login; print the URL only")
+      .option(
+        "--no-browser",
+        "Don't automatically open the browser during login; print the URL only"
+      )
   )
     .addOption(
       new CommandOption(
@@ -123,7 +123,7 @@ Examples:
     });
 }
 
-export async function initCommand(dir: string, options: unknown) {
+async function initCommand(dir: string, options: unknown) {
   return await wrapCommandAction("initCommand", InitCommandOptions, options, async (opts) => {
     return await _initCommand(dir, opts);
   });
@@ -237,9 +237,9 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
       if (!isCancel(setupChoice) && setupChoice === "ai") {
         outro(
           installedSkills && installedMcp
-            ? "Your AI tooling is ready. Ask your assistant to set up Trigger.dev; it can use the getting-started skill and the MCP server to add the SDK, config, and your first task."
+            ? "Your AI tooling is ready. Ask your assistant to set up Trigger.dev; it can use the trigger-getting-started skill and the MCP server to add the SDK, config, and your first task."
             : installedSkills
-              ? "Your AI tooling is ready. Ask your assistant to set up Trigger.dev and it will use the getting-started skill to add the SDK, config, and your first task."
+              ? "Your AI tooling is ready. Ask your assistant to set up Trigger.dev and it will use the trigger-getting-started skill to add the SDK, config, and your first task."
               : "The MCP server is installed. Ask your assistant to set up Trigger.dev using the MCP server."
         );
         return;
@@ -291,7 +291,7 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
 
         return;
       }
-    } catch (e) {
+    } catch (_e) {
       // continue
     }
   }
@@ -338,6 +338,15 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
 
   // Ignore .trigger dir
   await gitIgnoreDotTriggerDir(dir, options);
+
+  try {
+    const result = await apiClient.markProjectInitialized(selectedProject.externalRef);
+    if (!result.success) {
+      logger.debug("Failed to mark project as initialized", { error: result.error });
+    }
+  } catch (error) {
+    logger.debug("Failed to mark project as initialized", { error });
+  }
 
   const projectDashboard = cliLink(
     "project dashboard",
@@ -586,7 +595,7 @@ async function addConfigFileToTsConfig(tsconfigPath: string, options: InitComman
   });
 }
 
-export interface InstallPackagesOutputter {
+interface InstallPackagesOutputter {
   startSDK: () => void;
   installedSDK: () => void;
   startBuild: () => void;
@@ -639,7 +648,7 @@ class SilentInstallPackagesOutputter implements InstallPackagesOutputter {
   stoppedWithError() {}
 }
 
-export async function installPackages(
+async function installPackages(
   projectDir: string,
   tag: string,
   outputter: InstallPackagesOutputter = new SilentInstallPackagesOutputter()
@@ -819,7 +828,7 @@ async function tryResolveTsConfig(cwd: string) {
   try {
     const tsconfigPath = await resolveTSConfig(cwd);
     return tsconfigPath;
-  } catch (e) {
+  } catch (_e) {
     return;
   }
 }

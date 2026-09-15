@@ -6,12 +6,13 @@ import {
 } from "@trigger.dev/core/v3";
 import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import { z } from "zod";
-import { $replica } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { processWaitpointCompletionPacket } from "~/runEngine/concerns/waitpointCompletionPacket.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import { unroutableIdResponse } from "~/services/routeBuilders/unroutableId.server";
 import { engine } from "~/v3/runEngine.server";
+import { runStore } from "~/v3/runStore.server";
 
 const { action, loader } = createActionApiRoute(
   {
@@ -33,12 +34,24 @@ const { action, loader } = createActionApiRoute(
 
     try {
       //check permissions
-      const waitpoint = await $replica.waitpoint.findFirst({
+      // The store routes by the waitpointId's residency (id shape) and probes both stores, so a
+      // standalone token and a run-owned co-located waitpoint both resolve off the owning replica.
+      let waitpoint = await runStore.findWaitpoint({
         where: {
           id: waitpointId,
           environmentId: authentication.environment.id,
         },
       });
+
+      if (!waitpoint) {
+        // Read-your-writes: a token completed right after mint may not have replicated yet.
+        waitpoint = await runStore.findWaitpointOnPrimary({
+          where: {
+            id: waitpointId,
+            environmentId: authentication.environment.id,
+          },
+        });
+      }
 
       if (!waitpoint) {
         throw json({ error: "Waitpoint not found" }, { status: 404 });
@@ -57,7 +70,7 @@ const { action, loader } = createActionApiRoute(
         `${WaitpointId.toFriendlyId(waitpointId)}/token`
       );
 
-      const result = await engine.completeWaitpoint({
+      const _result = await engine.completeWaitpoint({
         id: waitpointId,
         output: finalData.data
           ? { type: finalData.dataType, value: finalData.data, isError: false }
@@ -74,6 +87,19 @@ const { action, loader } = createActionApiRoute(
       // Re-throw Response objects (intentional HTTP responses like the 404 above) so the
       // client gets the correct status code instead of a 500, and we don't log them as errors.
       if (error instanceof Response) throw error;
+
+      // A caller-supplied id naming a shard this topology has no store for cannot be routed,
+      // so it is a 404 like an absent token — not the 500 this catch would otherwise answer.
+      const unroutable = unroutableIdResponse(error);
+      if (unroutable) {
+        // Logged so a shard key dropped from an append-only config still alarms, rather than
+        // every live token on it quietly answering "not found".
+        logger.warn("Unroutable waitpoint id on token completion", {
+          waitpointFriendlyId: params.waitpointFriendlyId,
+          error: error instanceof Error ? error.message : error,
+        });
+        throw unroutable;
+      }
 
       logger.error("Failed to complete waitpoint token", {
         error:

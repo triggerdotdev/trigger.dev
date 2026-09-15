@@ -1,7 +1,7 @@
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { ProgressDeploymentRequestBody, tryCatch } from "@trigger.dev/core/v3";
 import { z } from "zod";
-import { authenticateRequest } from "~/services/apiAuth.server";
+import { authenticateApiKeyWithScope } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { DeploymentService } from "~/v3/services/deployment.server";
 
@@ -21,18 +21,17 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
 
   try {
-    const authenticationResult = await authenticateRequest(request, {
-      apiKey: true,
-      organizationAccessToken: false,
-      personalAccessToken: false,
+    const authResult = await authenticateApiKeyWithScope(request, {
+      action: "write",
+      resource: { type: "deployments" },
     });
 
-    if (!authenticationResult || !authenticationResult.result.ok) {
+    if (!authResult.ok) {
       logger.info("Invalid or missing api key", { url: request.url });
-      return json({ error: "Invalid or Missing API key" }, { status: 401 });
+      return json({ error: authResult.error }, { status: authResult.status });
     }
 
-    const { environment: authenticatedEnv } = authenticationResult.result;
+    const { environment: authenticatedEnv } = authResult.authentication;
     const { deploymentId } = parsedParams.data;
 
     const [, rawBody] = await tryCatch(request.json());

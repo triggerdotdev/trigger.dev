@@ -1,11 +1,13 @@
 import { Link, useNavigation } from "@remix-run/react";
 import { type ReactNode } from "react";
-import { useOptionalOrganization } from "~/hooks/useOrganizations";
-import { UpgradePrompt, useShowUpgradePrompt } from "../billing/UpgradePrompt";
+import { QuestionMarkIcon } from "~/assets/icons/QuestionMarkIcon";
+import { OrgBanner } from "../billing/OrgBanner";
 import { BreadcrumbIcon } from "./BreadcrumbIcon";
 import { Header2 } from "./Headers";
 import { LoadingBarDivider } from "./LoadingBarDivider";
-import { EnvironmentBanner } from "../navigation/EnvironmentBanner";
+import { SimpleTooltip } from "./Tooltip";
+import { DashboardAgentLauncher } from "../dashboard-agent/dashboardAgentLauncher";
+import { FavoritePageButton } from "../navigation/FavoritePageButton";
 
 type WithChildren = {
   children: React.ReactNode;
@@ -13,19 +15,19 @@ type WithChildren = {
 };
 
 export function NavBar({ children }: WithChildren) {
-  const organization = useOptionalOrganization();
-  const showUpgradePrompt = useShowUpgradePrompt(organization);
-
   const navigation = useNavigation();
   const isLoading = navigation.state === "loading" || navigation.state === "submitting";
 
   return (
     <div>
       <div className="grid h-10 w-full grid-rows-[auto_1px] bg-background-bright">
-        <div className="flex w-full items-center justify-between pl-3 pr-2">{children}</div>
+        <div className="flex w-full items-center gap-2 pl-3 pr-2">
+          <div className="flex flex-1 items-center justify-between">{children}</div>
+          <DashboardAgentLauncher />
+        </div>
         <LoadingBarDivider isLoading={isLoading} />
       </div>
-      {showUpgradePrompt.shouldShow && organization ? <UpgradePrompt /> : <EnvironmentBanner />}
+      <OrgBanner />
     </div>
   );
 }
@@ -36,16 +38,24 @@ type PageTitleProps = {
     to: string;
     text: string;
   };
+  /**
+   * Renders to the right of the title.
+   * - Pass a string → a question-mark icon with the string as its hover tooltip.
+   * - Pass a ReactNode → rendered verbatim, for custom adornments.
+   */
+  accessory?: ReactNode;
 };
 
-export function PageTitle({ title, backButton }: PageTitleProps) {
+export function PageTitle({ title, backButton, accessory }: PageTitleProps) {
+  const titleText = typeof title === "string" ? title : undefined;
+
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-1.5">
       {backButton && (
         <div className="group -ml-1.5 flex items-center gap-0">
           <Link
             to={backButton.to}
-            className="rounded px-1.5 py-1 text-xs text-text-dimmed transition focus-custom group-hover:bg-charcoal-700 group-hover:text-text-bright"
+            className="rounded px-1.5 py-1 text-xs text-text-dimmed transition focus-custom group-hover:bg-background-raised group-hover:text-text-bright"
           >
             {backButton.text}
           </Link>
@@ -53,6 +63,24 @@ export function PageTitle({ title, backButton }: PageTitleProps) {
         </div>
       )}
       <Header2 className="flex items-center gap-1">{title}</Header2>
+      {accessory !== undefined && (
+        // ml-px optically evens the accessory against the title's tight text edge
+        <span className="ml-px flex items-center">
+          {typeof accessory === "string" ? (
+            <SimpleTooltip
+              button={<QuestionMarkIcon className="size-4 text-text-dimmed" />}
+              content={accessory}
+              className="max-w-xs"
+              disableHoverableContent
+            />
+          ) : (
+            accessory
+          )}
+        </span>
+      )}
+      {/* -ml-1 pulls the star's button box near-flush: its inner padding then provides the
+          visual gap, matching the title-to-accessory spacing while hovered */}
+      <FavoritePageButton pageTitle={titleText} className="-ml-1" />
     </div>
   );
 }

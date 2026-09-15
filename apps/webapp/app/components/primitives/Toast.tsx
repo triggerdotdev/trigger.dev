@@ -1,5 +1,7 @@
 import { EnvelopeIcon, ExclamationCircleIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { CheckCircleIcon } from "@heroicons/react/24/solid";
+import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
+import { useThemeMode } from "~/hooks/useThemeMode";
 import { useSearchParams } from "@remix-run/react";
 import { useEffect, useMemo } from "react";
 import { useTypedLoaderData } from "remix-typedjson";
@@ -16,6 +18,7 @@ const permanentToastDuration = 60 * 60 * 24 * 1000;
 
 export function Toast() {
   const { toastMessage } = useTypedLoaderData<typeof loader>();
+  const mode = useThemeMode();
   useEffect(() => {
     if (!toastMessage) {
       return;
@@ -40,7 +43,9 @@ export function Toast() {
     );
   }, [toastMessage]);
 
-  return <Toaster />;
+  // Sonner stamps its own `data-theme` (default "light") on the toast list and the
+  // app's theme selectors follow it, so an unthemed Toaster forces every toast light.
+  return <Toaster theme={mode} />;
 }
 
 export function useToast() {
@@ -76,20 +81,24 @@ export function ToastUI({
   toastWidth = 356, // Default width, matches what sonner provides by default
   title,
   action,
+  actionNode,
 }: {
-  variant: "error" | "success";
+  variant: "error" | "success" | "agent";
   message: string;
   t: string;
   toastWidth?: string | number;
   title?: string;
   action?: ToastMessageAction;
+  /** Caller-rendered action for client-side toasts. `action` stays the serializable server shape. */
+  actionNode?: React.ReactNode;
 }) {
   return (
     <div
       className={cn(
         "self-end rounded-md border border-grid-bright bg-background-dimmed",
         variant === "success" && "border-success",
-        variant === "error" && "border-error"
+        variant === "error" && "border-error",
+        variant === "agent" && "border-primary/50 dark:bg-secondary"
       )}
       style={{
         width: toastWidth,
@@ -100,6 +109,10 @@ export function ToastUI({
       >
         {variant === "success" ? (
           <CheckCircleIcon className={cn("size-4 min-w-4 text-success", title && "mt-1")} />
+        ) : variant === "agent" ? (
+          <span className={cn("flex size-4 min-w-4 items-center", title && "mt-1")}>
+            <AISparkleIcon className="size-4" />
+          </span>
         ) : (
           <ExclamationCircleIcon className={cn("size-4 min-w-4 text-error", title && "mt-1")} />
         )}
@@ -112,9 +125,14 @@ export function ToastUI({
             {message}
           </Paragraph>
           <Action action={action} toastId={t} className="my-2" />
+          {actionNode}
         </div>
         <button
-          className={cn("-mr-1 ms-auto rounded p-2 text-text-dimmed transition hover:text-text-bright", title && "-mt-1")}
+          type="button"
+          className={cn(
+            "-mr-1 ms-auto rounded p-2 text-text-dimmed transition hover:text-text-bright",
+            title && "-mt-1"
+          )}
           onClick={() => toast.dismiss(t)}
         >
           <XMarkIcon className="size-4" />

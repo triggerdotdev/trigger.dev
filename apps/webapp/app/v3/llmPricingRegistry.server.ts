@@ -1,4 +1,5 @@
 import { ModelPricingRegistry, seedLlmPricing } from "@internal/llm-model-catalog";
+import type { LlmModelWithPricing } from "@internal/llm-model-catalog";
 import { prisma, $replica } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
@@ -6,6 +7,43 @@ import { signalsEmitter } from "~/services/signals.server";
 import { createRedisClient } from "~/redis.server";
 import { singleton } from "~/utils/singleton";
 import { setLlmPricingRegistry } from "./utils/enrichCreatableEvents.server";
+
+type PricingReloadListener = (models: LlmModelWithPricing[]) => void;
+const pricingReloadListeners = new Set<PricingReloadListener>();
+
+// Notify subscribers (e.g. the OTLP worker pool) after each load/reload so they can rebuild
+// their own in-memory copy. No-op until something subscribes.
+function emitPricingReload() {
+  if (!llmPricingRegistry || !llmPricingRegistry.isLoaded || pricingReloadListeners.size === 0) {
+    return;
+  }
+  const models = llmPricingRegistry.toSerializable();
+  for (const listener of pricingReloadListeners) {
+    try {
+      listener(models);
+    } catch (err) {
+      logger.warn("LLM pricing reload listener failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+}
+
+export function subscribeToPricingReload(listener: PricingReloadListener): () => void {
+  pricingReloadListeners.add(listener);
+  if (llmPricingRegistry?.isLoaded) {
+    try {
+      listener(llmPricingRegistry.toSerializable());
+    } catch (err) {
+      logger.warn("LLM pricing reload listener failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  return () => {
+    pricingReloadListeners.delete(listener);
+  };
+}
 
 async function initRegistry(registry: ModelPricingRegistry) {
   if (env.LLM_PRICING_SEED_ON_STARTUP) {
@@ -25,16 +63,21 @@ export const llmPricingRegistry = singleton("llmPricingRegistry", () => {
   // Wire up the registry so enrichCreatableEvents can use it
   setLlmPricingRegistry(registry);
 
-  initRegistry(registry).catch((err) => {
-    console.error("Failed to initialize LLM pricing registry", err);
-  });
+  initRegistry(registry)
+    .then(() => emitPricingReload())
+    .catch((err) => {
+      console.error("Failed to initialize LLM pricing registry", err);
+    });
 
   // Periodic reload (backstop for the pub/sub path below)
   const reloadInterval = env.LLM_PRICING_RELOAD_INTERVAL_MS;
   const interval = setInterval(() => {
-    registry.reload().catch((err) => {
-      console.error("Failed to reload LLM pricing registry", err);
-    });
+    registry
+      .reload()
+      .then(() => emitPricingReload())
+      .catch((err) => {
+        console.error("Failed to reload LLM pricing registry", err);
+      });
   }, reloadInterval);
 
   // Pub/sub reload is opt-in per process (default off). Without it, the
@@ -73,11 +116,14 @@ export const llmPricingRegistry = singleton("llmPricingRegistry", () => {
       if (pendingReloadTimer) return;
       pendingReloadTimer = setTimeout(() => {
         pendingReloadTimer = null;
-        registry.reload().catch((err) => {
-          logger.warn("Failed to reload LLM pricing registry from pub/sub", {
-            error: err instanceof Error ? err.message : String(err),
+        registry
+          .reload()
+          .then(() => emitPricingReload())
+          .catch((err) => {
+            logger.warn("Failed to reload LLM pricing registry from pub/sub", {
+              error: err instanceof Error ? err.message : String(err),
+            });
           });
-        });
       }, debounceMs);
     }
 

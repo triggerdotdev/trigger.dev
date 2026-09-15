@@ -6,10 +6,7 @@ import { prisma } from "~/db.server";
 import { QueryWidgetConfig } from "~/components/metrics/QueryWidget";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import {
-  DashboardLayout,
-  LayoutItem,
-} from "~/presenters/v3/MetricDashboardPresenter.server";
+import { DashboardLayout, LayoutItem } from "~/presenters/v3/MetricDashboardPresenter.server";
 import { getCurrentPlan } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
@@ -145,10 +142,9 @@ async function saveDashboardLayout(
   });
 
   if (result.count === 0) {
-    throw new Response(
-      "Dashboard was modified by another request. Please refresh and try again.",
-      { status: 409 }
-    );
+    throw new Response("Dashboard was modified by another request. Please refresh and try again.", {
+      status: 409,
+    });
   }
 }
 

@@ -48,20 +48,25 @@ export function MachineDefaultIcon({ className }: { className?: string }) {
 
 function MachineIconNoMachine({ className }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg
+      className={cn("text-[#D7D9DD] light:text-charcoal-500", className)}
+      viewBox="0 0 20 20"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
       <path
         d="M16.1875 13C16.6362 13 17 13.3638 17 13.8125V16.1875C17 16.6362 16.6362 17 16.1875 17H6.18945C6.25882 16.9453 6.32663 16.8872 6.39062 16.8232L10.2139 13H16.1875Z"
-        fill="#D7D9DD"
+        fill="currentColor"
         fillOpacity="0.4"
       />
       <path
         d="M4.84961 12H3.8125C3.36377 12 3 11.6362 3 11.1875V8.8125C3 8.36377 3.36377 8 3.8125 8H8.84961L4.84961 12ZM16.1875 8C16.6362 8 17 8.36377 17 8.8125V11.1875C17 11.6362 16.6362 12 16.1875 12H11.2139L15.2139 8H16.1875Z"
-        fill="#D7D9DD"
+        fill="currentColor"
         fillOpacity="0.4"
       />
       <path
         d="M9.85059 7H3.8125C3.36377 7 3 6.63623 3 6.1875V3.8125C3 3.36377 3.36377 3 3.8125 3H13.8506L9.85059 7Z"
-        fill="#D7D9DD"
+        fill="currentColor"
         fillOpacity="0.4"
       />
       <line
@@ -69,7 +74,7 @@ function MachineIconNoMachine({ className }: { className?: string }) {
         y1="16.9998"
         x2="17.0018"
         y2="2.99805"
-        stroke="#D7D9DD"
+        stroke="currentColor"
         strokeOpacity="0.4"
         strokeWidth="2"
         strokeLinecap="round"
@@ -83,17 +88,17 @@ function MachineIconMicro({ className }: { className?: string }) {
     <svg className={className} viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path
         d="M16.1875 13C16.6362 13 17 13.3638 17 13.8125V16.1875C17 16.6362 16.6362 17 16.1875 17H3.8125C3.36377 17 3 16.6362 3 16.1875V13.8125C3 13.3638 3.36377 13 3.8125 13H16.1875ZM5 14C4.44772 14 4 14.4477 4 15C4 15.5523 4.44772 16 5 16C5.55228 16 6 15.5523 6 15C6 14.4477 5.55228 14 5 14Z"
-        fill="#D7D9DD"
+        fill="currentColor"
         fillOpacity="0.4"
       />
       <path
         d="M16.1875 8C16.6362 8 17 8.36377 17 8.8125V11.1875C17 11.6362 16.6362 12 16.1875 12H3.8125C3.36377 12 3 11.6362 3 11.1875V8.8125C3 8.36377 3.36377 8 3.8125 8H16.1875ZM5 9C4.44772 9 4 9.44772 4 10C4 10.5523 4.44772 11 5 11C5.55228 11 6 10.5523 6 10C6 9.44772 5.55228 9 5 9Z"
-        fill="#D7D9DD"
+        fill="currentColor"
         fillOpacity="0.4"
       />
       <path
         d="M16.1875 3C16.6362 3 17 3.36377 17 3.8125V6.1875C17 6.63623 16.6362 7 16.1875 7H3.8125C3.36377 7 3 6.63623 3 6.1875V3.8125C3 3.36377 3.36377 3 3.8125 3H16.1875ZM5 4C4.44772 4 4 4.44772 4 5C4 5.55228 4.44772 6 5 6C5.55228 6 6 5.55228 6 5C6 4.44772 5.55228 4 5 4Z"
-        fill="#D7D9DD"
+        fill="currentColor"
         fillOpacity="0.4"
       />
     </svg>
@@ -109,12 +114,12 @@ function MachineIconSmall1x({ className }: { className?: string }) {
       />
       <path
         d="M16.1875 8C16.6362 8 17 8.36377 17 8.8125V11.1875C17 11.6362 16.6362 12 16.1875 12H3.8125C3.36377 12 3 11.6362 3 11.1875V8.8125C3 8.36377 3.36377 8 3.8125 8H16.1875ZM5 9C4.44772 9 4 9.44772 4 10C4 10.5523 4.44772 11 5 11C5.55228 11 6 10.5523 6 10C6 9.44772 5.55228 9 5 9Z"
-        fill="#D7D9DD"
+        fill="currentColor"
         fillOpacity="0.4"
       />
       <path
         d="M16.1875 3C16.6362 3 17 3.36377 17 3.8125V6.1875C17 6.63623 16.6362 7 16.1875 7H3.8125C3.36377 7 3 6.63623 3 6.1875V3.8125C3 3.36377 3.36377 3 3.8125 3H16.1875ZM5 4C4.44772 4 4 4.44772 4 5C4 5.55228 4.44772 6 5 6C5.55228 6 6 5.55228 6 5C6 4.44772 5.55228 4 5 4Z"
-        fill="#D7D9DD"
+        fill="currentColor"
         fillOpacity="0.4"
       />
     </svg>
@@ -130,12 +135,12 @@ function MachineIconSmall2x({ className }: { className?: string }) {
       />
       <path
         d="M16.1875 8C16.6362 8 17 8.36377 17 8.8125V11.1875C17 11.6362 16.6362 12 16.1875 12H3.8125C3.36377 12 3 11.6362 3 11.1875V8.8125C3 8.36377 3.36377 8 3.8125 8H16.1875ZM5 9C4.44772 9 4 9.44772 4 10C4 10.5523 4.44772 11 5 11C5.55228 11 6 10.5523 6 10C6 9.44772 5.55228 9 5 9Z"
-        fill="#D7D9DD"
+        fill="currentColor"
         fillOpacity="0.4"
       />
       <path
         d="M16.1875 3C16.6362 3 17 3.36377 17 3.8125V6.1875C17 6.63623 16.6362 7 16.1875 7H3.8125C3.36377 7 3 6.63623 3 6.1875V3.8125C3 3.36377 3.36377 3 3.8125 3H16.1875ZM5 4C4.44772 4 4 4.44772 4 5C4 5.55228 4.44772 6 5 6C5.55228 6 6 5.55228 6 5C6 4.44772 5.55228 4 5 4Z"
-        fill="#D7D9DD"
+        fill="currentColor"
         fillOpacity="0.4"
       />
     </svg>
@@ -155,7 +160,7 @@ function MachineIconMedium1x({ className }: { className?: string }) {
       />
       <path
         d="M16.1875 3C16.6362 3 17 3.36377 17 3.8125V6.1875C17 6.63623 16.6362 7 16.1875 7H3.8125C3.36377 7 3 6.63623 3 6.1875V3.8125C3 3.36377 3.36377 3 3.8125 3H16.1875ZM5 4C4.44772 4 4 4.44772 4 5C4 5.55228 4.44772 6 5 6C5.55228 6 6 5.55228 6 5C6 4.44772 5.55228 4 5 4Z"
-        fill="#D7D9DD"
+        fill="currentColor"
         fillOpacity="0.4"
       />
     </svg>
@@ -175,7 +180,7 @@ function MachineIconMedium2x({ className }: { className?: string }) {
       />
       <path
         d="M16.1875 3C16.6362 3 17 3.36377 17 3.8125V6.1875C17 6.63623 16.6362 7 16.1875 7H3.8125C3.36377 7 3 6.63623 3 6.1875V3.8125C3 3.36377 3.36377 3 3.8125 3H16.1875ZM5 4C4.44772 4 4 4.44772 4 5C4 5.55228 4.44772 6 5 6C5.55228 6 6 5.55228 6 5C6 4.44772 5.55228 4 5 4Z"
-        fill="#D7D9DD"
+        fill="currentColor"
         fillOpacity="0.4"
       />
     </svg>

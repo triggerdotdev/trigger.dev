@@ -1,8 +1,9 @@
 import { intro } from "@clack/prompts";
 import { getBranch } from "@trigger.dev/core/v3";
-import { Command } from "commander";
+import type { Command } from "commander";
 import { resolve } from "node:path";
 import { z } from "zod";
+import { CliApiClient } from "../apiClient.js";
 import {
   CommonCommandOptions,
   commonOptions,
@@ -13,12 +14,10 @@ import { loadConfig } from "../config.js";
 import { createGitMeta } from "../utilities/gitMeta.js";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
-import { getProjectClient, LoginResultOk } from "../utilities/session.js";
 import { spinner } from "../utilities/windows.js";
 import { verifyDirectory } from "./deploy.js";
 import { login } from "./login.js";
 import { updateTriggerPackages } from "./update.js";
-import { CliApiClient } from "../apiClient.js";
 
 const PreviewCommandOptions = CommonCommandOptions.extend({
   branch: z.string().optional(),
@@ -59,7 +58,7 @@ export function configurePreviewCommand(program: Command) {
   });
 }
 
-export async function previewArchiveCommand(dir: string, options: unknown) {
+async function previewArchiveCommand(dir: string, options: unknown) {
   return await wrapCommandAction(
     "previewArchiveCommand",
     PreviewCommandOptions,
@@ -129,13 +128,13 @@ async function _previewArchiveCommand(dir: string, options: PreviewCommandOption
 }
 
 export async function archivePreviewBranch(
-  authorization: LoginResultOk,
+  authorization: { auth: { apiUrl: string; accessToken: string } },
   branch: string,
   project: string
 ) {
   const apiClient = new CliApiClient(authorization.auth.apiUrl, authorization.auth.accessToken);
 
-  const result = await apiClient.archiveBranch(project, branch);
+  const result = await apiClient.archiveBranch(project, "preview", branch);
 
   if (result.success) {
     return true;

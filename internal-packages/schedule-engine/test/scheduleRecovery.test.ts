@@ -1,7 +1,7 @@
 import { containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { describe, expect, vi } from "vitest";
-import { TriggerScheduledTaskParams } from "../src/engine/types.js";
+import type { TriggerScheduledTaskParams } from "../src/engine/types.js";
 import { ScheduleEngine } from "../src/index.js";
 
 describe("Schedule Recovery", () => {
@@ -16,6 +16,8 @@ describe("Schedule Recovery", () => {
         prisma,
         redis: redisOptions,
         distributionWindow: { seconds: 10 },
+        schedulePhaseSecret: "test-schedule-phase-secret",
+        cronSpreadFraction: 1,
         worker: {
           concurrency: 1,
           disabled: true, // Disable worker to prevent automatic execution
@@ -118,6 +120,8 @@ describe("Schedule Recovery", () => {
         prisma,
         redis: redisOptions,
         distributionWindow: { seconds: 10 },
+        schedulePhaseSecret: "test-schedule-phase-secret",
+        cronSpreadFraction: 1,
         worker: {
           concurrency: 1,
           disabled: true, // Disable worker to prevent automatic execution
@@ -223,6 +227,8 @@ describe("Schedule Recovery", () => {
         prisma,
         redis: redisOptions,
         distributionWindow: { seconds: 10 },
+        schedulePhaseSecret: "test-schedule-phase-secret",
+        cronSpreadFraction: 1,
         worker: {
           concurrency: 1,
           disabled: true, // Disable worker to prevent automatic execution
@@ -334,6 +340,8 @@ describe("Schedule Recovery", () => {
         prisma,
         redis: redisOptions,
         distributionWindow: { seconds: 10 },
+        schedulePhaseSecret: "test-schedule-phase-secret",
+        cronSpreadFraction: 1,
         worker: {
           concurrency: 1,
           disabled: true, // Disable worker to prevent automatic execution
@@ -404,6 +412,8 @@ describe("Schedule Recovery", () => {
         prisma,
         redis: redisOptions,
         distributionWindow: { seconds: 10 },
+        schedulePhaseSecret: "test-schedule-phase-secret",
+        cronSpreadFraction: 1,
         worker: { concurrency: 1, disabled: true, pollIntervalMs: 1000 },
         tracer: trace.getTracer("test", "0.0.0"),
         onTriggerScheduledTask: async () => ({ success: true }),
@@ -478,7 +488,7 @@ describe("Schedule Recovery", () => {
         // undefined. The Redis worker stores payloads as JSON, so the value
         // is a string when read back here — Zod re-coerces it to Date on
         // dequeue (workerCatalog uses `z.coerce.date()`).
-        const enqueuedLastScheduleTime = (job?.item as { lastScheduleTime?: string })
+        const enqueuedLastScheduleTime = (job!.item as { lastScheduleTime?: string })
           .lastScheduleTime;
         expect(enqueuedLastScheduleTime).toBeDefined();
         const derived = new Date(enqueuedLastScheduleTime!);
@@ -505,6 +515,8 @@ describe("Schedule Recovery", () => {
         prisma,
         redis: redisOptions,
         distributionWindow: { seconds: 10 },
+        schedulePhaseSecret: "test-schedule-phase-secret",
+        cronSpreadFraction: 1,
         worker: { concurrency: 1, disabled: true, pollIntervalMs: 1000 },
         tracer: trace.getTracer("test", "0.0.0"),
         onTriggerScheduledTask: async () => ({ success: true }),
@@ -565,7 +577,8 @@ describe("Schedule Recovery", () => {
 
         const job = await engine.getJob(`scheduled-task-instance:${scheduleInstance.id}`);
         expect(job).not.toBeNull();
-        const enqueuedLastScheduleTime = (job?.item as { lastScheduleTime?: Date }).lastScheduleTime;
+        const enqueuedLastScheduleTime = (job!.item as { lastScheduleTime?: Date })
+          .lastScheduleTime;
         // Brand-new schedule: cron's previous slot predates instance.createdAt,
         // so the function leaves lastScheduleTime undefined — the first fire
         // will report `payload.lastTimestamp: undefined` and customer first-run

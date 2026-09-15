@@ -29,6 +29,7 @@ export const loader = createLoaderApiRoute(
               deployedAt: true,
               git: true,
               errorData: true,
+              externalId: true,
             },
           },
         },
@@ -49,6 +50,7 @@ export const loader = createLoaderApiRoute(
       deployedAt: deployment.deployedAt ?? undefined,
       git: deployment.git ?? undefined,
       error: deployment.errorData ?? undefined,
+      externalId: deployment.externalId ?? undefined,
     });
   }
 );

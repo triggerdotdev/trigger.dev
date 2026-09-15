@@ -1,0 +1,192 @@
+import { type SampleRecord } from "../sampleRecord.js";
+
+/**
+ * Postmark samples. Postmark has no HMAC signature scheme - webhook URLs are secured with HTTP Basic
+ * Auth credentials embedded in the URL, so no `presetId` is set on any sample here. The Delivery, Bounce,
+ * SpamComplaint, and Open event webhooks each carry a real `RecordType` field matching the registry's
+ * `eventTypeSource`. The Inbound webhook is a separate, older feature whose documented payload has no
+ * `RecordType` (or any other discriminant) field at all; its `eventType` below is a synthetic label kept
+ * for picker/grouping purposes, not a value read from the body.
+ */
+export const samples: SampleRecord[] = [
+  {
+    provider: "postmark",
+    providerLabel: "Postmark",
+    eventType: "Delivery",
+    name: "Delivery",
+    description: "A message was successfully delivered to the recipient's mail server.",
+    body: {
+      RecordType: "Delivery",
+      MessageStream: "outbound",
+      MessageID: "883953f4-6105-42a2-a16a-77a8eac79483",
+      Recipient: "jordan@example.com",
+      DeliveredAt: "2026-07-14T16:33:54.907Z",
+      Details:
+        "smtp;250 2.0.0 OK 1752510834 a1-20020a17090a5a0100b002b0c1b1c1a1si1234567pjd.1 - gsmtp",
+      Tag: "welcome-email",
+      ServerID: 23,
+      Metadata: {
+        order_id: "ord_4f9c2b1a",
+      },
+    },
+    docsUrl: "https://postmarkapp.com/developer/webhooks/delivery-webhook",
+    provenance: { kind: "handauthored", snapshotDate: "2026-07" },
+  },
+  {
+    provider: "postmark",
+    providerLabel: "Postmark",
+    eventType: "Bounce",
+    name: "Hard bounce",
+    description: "The recipient's mail server permanently rejected the message (unknown user).",
+    body: {
+      RecordType: "Bounce",
+      MessageStream: "outbound",
+      ID: 42323002,
+      Type: "HardBounce",
+      TypeCode: 1,
+      Name: "Hard bounce",
+      Tag: "welcome-email",
+      MessageID: "883953f4-6105-42a2-a16a-77a8eac79483",
+      Metadata: {
+        order_id: "ord_4f9c2b1a",
+      },
+      ServerID: 23,
+      Description:
+        "The server was unable to deliver your message (ex: unknown user, mailbox not found).",
+      Details: "smtp;550 5.1.1 The email account that you tried to reach does not exist.",
+      Email: "morgan@example.com",
+      From: "notifications@acme.dev",
+      BouncedAt: "2026-07-14T16:41:02.113Z",
+      DumpAvailable: true,
+      Inactive: true,
+      CanActivate: true,
+      Subject: "Welcome to Acme",
+    },
+    docsUrl: "https://postmarkapp.com/developer/webhooks/bounce-webhook",
+    provenance: { kind: "handauthored", snapshotDate: "2026-07" },
+  },
+  {
+    provider: "postmark",
+    providerLabel: "Postmark",
+    eventType: "SpamComplaint",
+    name: "Spam complaint",
+    description: "A recipient marked the message as spam via their mail provider's feedback loop.",
+    body: {
+      RecordType: "SpamComplaint",
+      MessageStream: "outbound",
+      ID: 8675309,
+      Type: "SpamComplaint",
+      TypeCode: 512,
+      Name: "Spam complaint",
+      Tag: "newsletter",
+      MessageID: "7c3e9a52-6f18-4d2b-b9a7-1e5c8f3d2a64",
+      Metadata: {
+        campaign_id: "camp_2026_07",
+      },
+      ServerID: 23,
+      Description: "",
+      Details: "Feedback loop report from recipient's mailbox provider.",
+      Email: "sam@example.com",
+      From: "news@acme.dev",
+      BouncedAt: "2026-07-14T17:02:19.442Z",
+      DumpAvailable: true,
+      Inactive: true,
+      CanActivate: false,
+      Subject: "Your July product update",
+    },
+    docsUrl: "https://postmarkapp.com/developer/webhooks/spam-complaint-webhook",
+    provenance: { kind: "handauthored", snapshotDate: "2026-07" },
+  },
+  {
+    provider: "postmark",
+    providerLabel: "Postmark",
+    eventType: "Open",
+    name: "Email opened",
+    description: "The recipient's mail client rendered the tracking pixel for a sent message.",
+    body: {
+      RecordType: "Open",
+      MessageStream: "outbound",
+      FirstOpen: true,
+      Client: {
+        Name: "Chrome 126.0.0.0",
+        Company: "Google",
+        Family: "Chrome",
+      },
+      OS: {
+        Name: "macOS 14",
+        Company: "Apple Computer, Inc.",
+        Family: "macOS",
+      },
+      Platform: "WebMail",
+      UserAgent:
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+      Geo: {
+        CountryISOCode: "US",
+        Country: "United States",
+        RegionISOCode: "CA",
+        Region: "California",
+        City: "San Francisco",
+        Zip: "94103",
+        Coords: "37.7749,-122.4194",
+        IP: "203.0.113.42",
+      },
+      MessageID: "883953f4-6105-42a2-a16a-77a8eac79483",
+      Metadata: {
+        order_id: "ord_4f9c2b1a",
+      },
+      ReceivedAt: "2026-07-14T16:35:10.221Z",
+      Tag: "welcome-email",
+      Recipient: "jordan@example.com",
+    },
+    docsUrl: "https://postmarkapp.com/developer/webhooks/open-tracking-webhook",
+    provenance: { kind: "handauthored", snapshotDate: "2026-07" },
+  },
+  {
+    provider: "postmark",
+    providerLabel: "Postmark",
+    eventType: "Inbound",
+    name: "Inbound email received",
+    description:
+      "An email sent to a Postmark inbound address was parsed and posted as JSON. Unlike the event webhooks above, this payload has no `RecordType` field.",
+    body: {
+      FromName: "Priya Nair",
+      MessageStream: "inbound",
+      From: "priya@example.com",
+      FromFull: {
+        Email: "priya@example.com",
+        Name: "Priya Nair",
+        MailboxHash: "",
+      },
+      To: '"Acme Support" <a1b2c3d4e5f6@inbound.postmarkapp.com>',
+      ToFull: [
+        {
+          Email: "a1b2c3d4e5f6@inbound.postmarkapp.com",
+          Name: "Acme Support",
+          MailboxHash: "",
+        },
+      ],
+      Cc: "",
+      CcFull: [],
+      Bcc: "",
+      BccFull: [],
+      OriginalRecipient: "a1b2c3d4e5f6@inbound.postmarkapp.com",
+      Subject: "Trouble connecting my webhook endpoint",
+      MessageID: "3b2d1a9e-2f4c-4e51-9a7d-6c8f2e1b4a90",
+      ReplyTo: "priya@example.com",
+      MailboxHash: "",
+      Date: "Tue, 14 Jul 2026 11:20:00 -0400",
+      TextBody: "Hi, our webhook endpoint keeps returning a 401. Can you check the delivery logs?",
+      HtmlBody:
+        "<html><body><p>Hi, our webhook endpoint keeps returning a 401. Can you check the delivery logs?</p></body></html>",
+      StrippedTextReply: "",
+      Tag: "",
+      Headers: [
+        { Name: "X-Spam-Status", Value: "No" },
+        { Name: "X-Spam-Score", Value: "-0.3" },
+      ],
+      Attachments: [],
+    },
+    docsUrl: "https://postmarkapp.com/developer/webhooks/inbound-webhook",
+    provenance: { kind: "handauthored", snapshotDate: "2026-07" },
+  },
+];

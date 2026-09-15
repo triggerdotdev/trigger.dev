@@ -26,10 +26,7 @@ type Token = { type: "text"; value: string } | { type: "styled"; tag: string; va
  * On malformed input (unclosed, mismatched, or nested tags), returns the entire
  * string styled with `fallbackStyle` (or unstyled if no fallback).
  */
-export function applyColorMarkup(
-  text: string,
-  fallbackStyle?: (t: string) => string
-): string {
+export function applyColorMarkup(text: string, fallbackStyle?: (t: string) => string): string {
   const tokens = tokenize(text);
   if (!tokens) {
     // Malformed markup — apply fallback to entire string

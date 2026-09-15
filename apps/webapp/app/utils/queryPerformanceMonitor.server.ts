@@ -1,12 +1,12 @@
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 
-export interface QueryPerformanceConfig {
+interface QueryPerformanceConfig {
   verySlowQueryThreshold?: number; // ms
   maxQueryLogLength: number;
 }
 
-export class QueryPerformanceMonitor {
+class QueryPerformanceMonitor {
   private config: QueryPerformanceConfig;
 
   constructor(config: Partial<QueryPerformanceConfig> = {}) {

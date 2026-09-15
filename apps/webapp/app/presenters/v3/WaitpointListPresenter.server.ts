@@ -1,19 +1,37 @@
 import parse from "parse-duration";
 import {
-  Prisma,
   type RunEngineVersion,
   type RuntimeEnvironmentType,
   type WaitpointStatus,
+  boundedIn,
 } from "@trigger.dev/database";
 import { type Direction } from "~/components/ListPagination";
-import { sqlDatabaseSchema } from "~/db.server";
+import { type PrismaClientOrTransaction } from "~/db.server";
 import { BasePresenter } from "./basePresenter.server";
 import { type WaitpointSearchParams } from "~/components/runs/v3/WaitpointTokenFilters";
 import { determineEngineVersion } from "~/v3/engineVersion.server";
 import { type WaitpointTokenStatus, type WaitpointTokenItem } from "@trigger.dev/core/v3";
 import { generateHttpCallbackUrl } from "~/services/httpCallback.server";
+import { runStore as defaultRunStore } from "~/v3/runStore.server";
 
 const DEFAULT_PAGE_SIZE = 25;
+
+// Row shape returned by the raw MANUAL-waitpoint keyset scan. Named so both the
+// scan closure and the #scanWaitpoints store-selection helper reference one type.
+type WaitpointRow = {
+  id: string;
+  friendlyId: string;
+  status: WaitpointStatus;
+  completedAt: Date | null;
+  completedAfter: Date | null;
+  outputIsError: boolean;
+  idempotencyKey: string;
+  idempotencyKeyExpiresAt: Date | null;
+  inactiveIdempotencyKey: string | null;
+  userProvidedIdempotencyKey: boolean;
+  createdAt: Date;
+  tags: null | string[];
+};
 
 export type WaitpointListOptions = {
   environment: {
@@ -66,6 +84,23 @@ type Result =
     };
 
 export class WaitpointListPresenter extends BasePresenter {
+  // `readRoute` is retained only for caller-signature compatibility (see
+  // ApiWaitpointListPresenter and the waitpoints-tokens route). Run-graph reads now go
+  // through the shared `runStore`, which resolves residency (new vs legacy) itself and
+  // reads the single DB when the split is off — so this hint is no longer consulted here.
+  constructor(
+    prismaClient?: PrismaClientOrTransaction,
+    replicaClient?: PrismaClientOrTransaction,
+    private readonly readRoute?: {
+      runOpsNew?: PrismaClientOrTransaction;
+      runOpsLegacyReplica?: PrismaClientOrTransaction;
+      splitEnabled?: boolean;
+    },
+    private readonly runStore = defaultRunStore
+  ) {
+    super(prismaClient, replicaClient);
+  }
+
   public async call({
     environment,
     id,
@@ -133,91 +168,60 @@ export class WaitpointListPresenter extends BasePresenter {
 
     const periodMs = period ? parse(period) : undefined;
 
-    // Get the waitpoint tokens using raw SQL for better performance
-    const tokens = await this._replica.$queryRaw<
-      {
-        id: string;
-        friendlyId: string;
-        status: WaitpointStatus;
-        completedAt: Date | null;
-        completedAfter: Date | null;
-        outputIsError: boolean;
-        idempotencyKey: string;
-        idempotencyKeyExpiresAt: Date | null;
-        inactiveIdempotencyKey: string | null;
-        userProvidedIdempotencyKey: boolean;
-        createdAt: Date;
-        tags: null | string[];
-      }[]
-    >`
-    SELECT
-      w.id,
-      w."friendlyId",
-      w.status,
-      w."completedAt",
-      w."completedAfter",
-      w."outputIsError",
-      w."idempotencyKey",
-      w."idempotencyKeyExpiresAt",
-      w."inactiveIdempotencyKey",
-      w."userProvidedIdempotencyKey",
-      w."tags",
-      w."createdAt"
-    FROM
-      ${sqlDatabaseSchema}."Waitpoint" w
-    WHERE
-      w."environmentId" = ${environment.id}
-    AND w.type = 'MANUAL'      
-    -- cursor
-      ${
-        cursor
-          ? direction === "forward"
-            ? Prisma.sql`AND w.id < ${cursor}`
-            : Prisma.sql`AND w.id > ${cursor}`
-          : Prisma.empty
-      }
-      -- filters
-      ${id ? Prisma.sql`AND w."friendlyId" = ${id}` : Prisma.empty}
-      ${
-        statusesToFilter && statusesToFilter.length > 0
-          ? Prisma.sql`AND w.status = ANY(ARRAY[${Prisma.join(
-              statusesToFilter
-            )}]::"WaitpointStatus"[])`
-          : Prisma.empty
-      }
-      ${
-        filterOutputIsError !== undefined
-          ? Prisma.sql`AND w."outputIsError" = ${filterOutputIsError}`
-          : Prisma.empty
-      }
-      ${
-        idempotencyKey
-          ? Prisma.sql`AND (w."idempotencyKey" = ${idempotencyKey} OR w."inactiveIdempotencyKey" = ${idempotencyKey})`
-          : Prisma.empty
-      }
-      ${
-        periodMs
-          ? Prisma.sql`AND w."createdAt" >= NOW() - INTERVAL '1 millisecond' * ${periodMs}`
-          : Prisma.empty
-      }
-      ${
-        from
-          ? Prisma.sql`AND w."createdAt" >= ${new Date(from).toISOString()}::timestamp`
-          : Prisma.empty
-      }
-      ${
-        to
-          ? Prisma.sql`AND w."createdAt" <= ${new Date(to).toISOString()}::timestamp`
-          : Prisma.empty
-      }
-      ${
-        tags && tags.length > 0
-          ? Prisma.sql`AND w."tags" && ARRAY[${Prisma.join(tags)}]::text[]`
-          : Prisma.empty
-      }
-    ORDER BY
-      ${direction === "forward" ? Prisma.sql`w.id DESC` : Prisma.sql`w.id ASC`}
-    LIMIT ${pageSize + 1}`;
+    let createdAtGte: Date | undefined;
+    if (periodMs != null) {
+      createdAtGte = new Date(Date.now() - periodMs);
+    }
+    if (from !== undefined) {
+      const fromDate = new Date(from);
+      createdAtGte =
+        createdAtGte === undefined ? fromDate : fromDate > createdAtGte ? fromDate : createdAtGte;
+    }
+    const createdAtLte: Date | undefined = to !== undefined ? new Date(to) : undefined;
+
+    const tokens = await this.#scanWaitpoints(
+      () =>
+        this.runStore.findManyWaitpoints({
+          where: {
+            environmentId: environment.id,
+            type: "MANUAL",
+            ...(cursor ? { id: direction === "forward" ? { lt: cursor } : { gt: cursor } } : {}),
+            ...(id ? { friendlyId: id } : {}),
+            ...(statusesToFilter.length ? { status: { in: boundedIn(statusesToFilter) } } : {}),
+            ...(filterOutputIsError !== undefined ? { outputIsError: filterOutputIsError } : {}),
+            ...(idempotencyKey
+              ? { OR: [{ idempotencyKey }, { inactiveIdempotencyKey: idempotencyKey }] }
+              : {}),
+            ...(createdAtGte !== undefined || createdAtLte !== undefined
+              ? {
+                  createdAt: {
+                    ...(createdAtGte !== undefined ? { gte: createdAtGte } : {}),
+                    ...(createdAtLte !== undefined ? { lte: createdAtLte } : {}),
+                  },
+                }
+              : {}),
+            ...(tags && tags.length > 0 ? { tags: { hasSome: tags } } : {}),
+          },
+          orderBy: { id: direction === "forward" ? "desc" : "asc" },
+          take: pageSize + 1,
+          select: {
+            id: true,
+            friendlyId: true,
+            status: true,
+            completedAt: true,
+            completedAfter: true,
+            outputIsError: true,
+            idempotencyKey: true,
+            idempotencyKeyExpiresAt: true,
+            inactiveIdempotencyKey: true,
+            userProvidedIdempotencyKey: true,
+            tags: true,
+            createdAt: true,
+          },
+        }),
+      pageSize,
+      direction
+    );
 
     const hasMore = tokens.length > pageSize;
 
@@ -249,16 +253,7 @@ export class WaitpointListPresenter extends BasePresenter {
 
     let hasAnyTokens = tokensToReturn.length > 0;
     if (!hasAnyTokens) {
-      const firstToken = await this._replica.waitpoint.findFirst({
-        where: {
-          environmentId: environment.id,
-          type: "MANUAL",
-        },
-      });
-
-      if (firstToken) {
-        hasAnyTokens = true;
-      }
+      hasAnyTokens = await this.#probeAnyToken(environment.id);
     }
 
     return {
@@ -271,7 +266,7 @@ export class WaitpointListPresenter extends BasePresenter {
         timeoutAt: token.completedAfter ?? undefined,
         completedAfter: token.completedAfter ?? undefined,
         idempotencyKey: token.userProvidedIdempotencyKey
-          ? token.inactiveIdempotencyKey ?? token.idempotencyKey
+          ? (token.inactiveIdempotencyKey ?? token.idempotencyKey)
           : undefined,
         idempotencyKeyExpiresAt: token.idempotencyKeyExpiresAt ?? undefined,
         tags: token.tags ? token.tags.sort((a, b) => a.localeCompare(b)) : [],
@@ -296,6 +291,37 @@ export class WaitpointListPresenter extends BasePresenter {
       },
     };
   }
+
+  // `runStore` returns the new+legacy union deduped by id but unsorted/unwindowed, so
+  // re-apply the page's keyset order + over-fetch window to match a single union scan.
+  async #scanWaitpoints(
+    scan: () => Promise<WaitpointRow[]>,
+    pageSize: number,
+    direction: Direction
+  ): Promise<WaitpointRow[]> {
+    const overfetch = pageSize + 1;
+    const rows = await scan();
+    rows.sort((a, b) =>
+      direction === "forward" ? compareIdDesc(a.id, b.id) : compareIdAsc(a.id, b.id)
+    );
+    return rows.slice(0, overfetch);
+  }
+
+  // Empty-state probe across both residencies (runStore fans out); no single runId.
+  async #probeAnyToken(environmentId: string): Promise<boolean> {
+    const found = await this.runStore.findWaitpoint({
+      where: { environmentId, type: "MANUAL" },
+    });
+    return Boolean(found);
+  }
+}
+
+function compareIdAsc(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+function compareIdDesc(a: string, b: string): number {
+  return a < b ? 1 : a > b ? -1 : 0;
 }
 
 export function waitpointStatusToApiStatus(

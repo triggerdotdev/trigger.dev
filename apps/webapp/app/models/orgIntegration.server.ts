@@ -1,5 +1,5 @@
 import { WebClient } from "@slack/web-api";
-import {
+import type {
   IntegrationService,
   Organization,
   OrganizationIntegration,
@@ -9,8 +9,15 @@ import { z } from "zod";
 import { $transaction, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
+import { redirectWithErrorMessage } from "./message.server";
+import { slackSecretLogFields } from "./safeIntegrationLog";
+import { slackAccessResultLogFields } from "./slackOAuthResultLog";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
-import { commitSession, getUserSession } from "~/services/sessionStorage.server";
+import {
+  clearSlackOAuthSessionBinding,
+  consumeSlackOAuthStateForSession,
+  createSlackOAuthStateForSession,
+} from "~/models/slackOAuthState.server";
 import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
 
 const SlackSecretSchema = z.object({
@@ -20,12 +27,10 @@ const SlackSecretSchema = z.object({
   refreshToken: z.string().optional(),
   botScopes: z.array(z.string()).optional(),
   userScopes: z.array(z.string()).optional(),
-  raw: z.record(z.any()).optional(),
+  raw: z.record(z.string(), z.any()).optional(),
 });
 
 type SlackSecret = z.infer<typeof SlackSecretSchema>;
-
-const REDIRECT_AFTER_AUTH_KEY = "redirect-back-after-auth";
 
 export type OrganizationIntegrationForService<TService extends IntegrationService> = Omit<
   AuthenticatableIntegration,
@@ -76,7 +81,7 @@ export class OrgIntegrationRepository {
         return new WebClient(
           options?.forceBotToken
             ? secret.botAccessToken
-            : secret.userAccessToken ?? secret.botAccessToken,
+            : (secret.userAccessToken ?? secret.botAccessToken),
           {
             retryConfig: {
               retries: 2,
@@ -97,7 +102,9 @@ export class OrgIntegrationRepository {
     !!env.ORG_SLACK_INTEGRATION_CLIENT_ID && !!env.ORG_SLACK_INTEGRATION_CLIENT_SECRET;
 
   static isVercelSupported =
-    !!env.VERCEL_INTEGRATION_CLIENT_ID && !!env.VERCEL_INTEGRATION_CLIENT_SECRET && !!env.VERCEL_INTEGRATION_APP_SLUG;
+    !!env.VERCEL_INTEGRATION_CLIENT_ID &&
+    !!env.VERCEL_INTEGRATION_CLIENT_SECRET &&
+    !!env.VERCEL_INTEGRATION_APP_SLUG;
 
   /**
    * Generate the URL to install the Vercel integration.
@@ -134,22 +141,26 @@ export class OrgIntegrationRepository {
 
   static async redirectToAuthService(
     service: IntegrationService,
-    state: string,
+    organizationId: string,
+    userId: string,
     request: Request,
     redirectTo: string
   ) {
-    const session = await getUserSession(request);
-    session.set(REDIRECT_AFTER_AUTH_KEY, redirectTo);
-
-    const authUrl = service === "SLACK" ? this.slackAuthorizationUrl(state) : undefined;
-
-    if (!authUrl) {
+    if (service !== "SLACK") {
       throw new Response("Unsupported service", { status: 400 });
     }
 
+    const { nonce, sessionCookie } = await createSlackOAuthStateForSession(request, {
+      userId,
+      organizationId,
+      service: "slack",
+      redirectTo,
+    });
+
+    const authUrl = this.slackAuthorizationUrl(nonce);
+
     logger.debug("Redirecting to auth service", {
       service,
-      authUrl,
       redirectTo,
     });
 
@@ -157,33 +168,31 @@ export class OrgIntegrationRepository {
       status: 302,
       headers: {
         location: authUrl,
-        "Set-Cookie": await commitSession(session),
+        "Set-Cookie": sessionCookie,
       },
     });
   }
 
-  static async redirectAfterAuth(request: Request) {
-    const session = await getUserSession(request);
+  static async redirectAfterAuth(request: Request, redirectTo: string, errorMessage?: string) {
+    const sessionCookie = await clearSlackOAuthSessionBinding(request);
 
-    logger.debug("Redirecting back after auth", {
-      sessionData: session.data,
-    });
-
-    const redirectTo = session.get(REDIRECT_AFTER_AUTH_KEY);
-
-    if (!redirectTo) {
-      throw new Response("Invalid redirect", { status: 400 });
+    if (errorMessage) {
+      const response = await redirectWithErrorMessage(redirectTo, request, errorMessage);
+      response.headers.append("Set-Cookie", sessionCookie);
+      return response;
     }
-
-    session.unset(REDIRECT_AFTER_AUTH_KEY);
 
     return new Response(null, {
       status: 302,
       headers: {
         location: redirectTo,
-        "Set-Cookie": await commitSession(session),
+        "Set-Cookie": sessionCookie,
       },
     });
+  }
+
+  static async consumeSlackOAuthState(request: Request, state: string, userId: string) {
+    return consumeSlackOAuthStateForSession(request, state, userId);
   }
 
   static async createOrgIntegration(serviceName: string, code: string, org: Organization) {
@@ -203,9 +212,8 @@ export class OrgIntegrationRepository {
         });
 
         if (result.ok) {
-          logger.debug("Received slack access token", {
-            result,
-          });
+          // `result` carries Slack tokens; log only non-secret diagnostics.
+          logger.debug("Received slack access token", slackAccessResultLogFields(result));
 
           if (!result.access_token) {
             throw new Error("Failed to get access token");
@@ -228,9 +236,12 @@ export class OrgIntegrationRepository {
               raw: result,
             };
 
-            logger.debug("Setting secret", {
-              secretValue,
-            });
+            // `secretValue` carries the tokens encrypted below; log only
+            // non-secret fields.
+            logger.debug(
+              "Setting secret",
+              slackSecretLogFields(integrationFriendlyId, secretValue)
+            );
 
             await secretStore.setSecret(integrationFriendlyId, secretValue);
 

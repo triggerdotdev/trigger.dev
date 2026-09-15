@@ -15,7 +15,7 @@ The process to use preview branches looks like this:
 
 1. Create a preview branch
 2. Deploy to the preview branch (1+ times)
-3. Trigger runs using your Preview API key (`TRIGGER_SECRET_KEY`) and the branch name (`TRIGGER_PREVIEW_BRANCH`).
+3. Create a named **Trigger only** API key in the Preview environment, then trigger runs using the key (`TRIGGER_SECRET_KEY`) and branch name (`TRIGGER_PREVIEW_BRANCH`).
 4. Archive the preview branch when the branch is done.
 
 There are two main ways to do this:
@@ -41,12 +41,12 @@ For full details see our [pricing page](https://trigger.dev/pricing).
 
 ## Triggering runs and using the SDK
 
-Before we talk about how to deploy to preview branches, one important thing to understand is that you must set the `TRIGGER_PREVIEW_BRANCH` environment variable as well as the `TRIGGER_SECRET_KEY` environment variable.
+Create a named API key in the Preview environment and set it as `TRIGGER_SECRET_KEY`. Set `TRIGGER_PREVIEW_BRANCH` to select the branch that receives the runs.
 
 When deploying to somewhere that supports `process.env` (like Node.js runtimes) you can just set the environment variables:
 
 ```bash
-TRIGGER_SECRET_KEY="tr_preview_1234567890"
+TRIGGER_SECRET_KEY="tr_preview_sk_1234567890"
 TRIGGER_PREVIEW_BRANCH="your-branch-name"
 ```
 
@@ -57,7 +57,7 @@ import { configure } from "@trigger.dev/sdk";
 import { myTask } from "./trigger/myTasks";
 
 configure({
-  secretKey: "tr_preview_1234567890", // WARNING: Never actually hardcode your secret key like this
+  secretKey: "tr_preview_sk_1234567890", // WARNING: Never actually hardcode your secret key like this
   previewBranch: "your-branch-name",
 });
 

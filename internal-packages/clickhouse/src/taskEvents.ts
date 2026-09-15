@@ -1,6 +1,10 @@
-import { ClickHouseSettings } from "@clickhouse/client";
+import type { ClickHouseSettings } from "@clickhouse/client";
 import { z } from "zod";
-import { ClickhouseReader, ClickhouseWriter } from "./client/types.js";
+import type {
+  ClickhouseInsertFunction,
+  ClickhouseReader,
+  ClickhouseWriter,
+} from "./client/types.js";
 
 export const TaskEventV1Input = z.object({
   environment_id: z.string(),
@@ -31,6 +35,7 @@ export function insertTaskEvents(ch: ClickhouseWriter, settings?: ClickHouseSett
     settings: {
       enable_json_type: 1,
       type_json_skip_duplicated_paths: 1,
+      input_format_json_infer_array_of_dynamic_from_array_of_different_types: 1,
       input_format_json_throw_on_bad_escape_sequence: 0,
       input_format_json_use_string_type_for_ambiguous_paths_in_named_tuples_inference_from_objects: 1,
       ...settings,
@@ -175,6 +180,27 @@ export function getSpanDetailsQueryBuilder(ch: ClickhouseReader, settings?: Clic
 // V2 Table Functions (partitioned by inserted_at instead of start_time)
 // ============================================================================
 
+const TASK_EVENT_V2_INSERT_COLUMNS = [
+  "environment_id",
+  "organization_id",
+  "project_id",
+  "task_identifier",
+  "run_id",
+  "start_time",
+  "duration",
+  "trace_id",
+  "span_id",
+  "parent_span_id",
+  "message",
+  "kind",
+  "status",
+  "attributes_text",
+  "metadata",
+  "expires_at",
+  "machine_id",
+  "inserted_at",
+] satisfies [string, ...string[]];
+
 export const TaskEventV2Input = z.object({
   environment_id: z.string(),
   organization_id: z.string(),
@@ -199,24 +225,56 @@ export const TaskEventV2Input = z.object({
 
 export type TaskEventV2Input = z.input<typeof TaskEventV2Input>;
 
-export function insertTaskEventsV2(ch: ClickhouseWriter, settings?: ClickHouseSettings) {
-  return ch.insertUnsafe<TaskEventV2Input>({
+type TaskEventV2Row = Omit<TaskEventV2Input, "attributes"> & {
+  attributes_text: string;
+};
+
+// attributes_text is serialized by the writer rather than computed by ClickHouse,
+// so the stored text is exactly what was sent and the table does not have to
+// parse and re-encode the attributes on every insert.
+export function serializeTaskEventAttributes(attributes: unknown): string {
+  if (attributes === null || attributes === undefined) {
+    return "{}";
+  }
+
+  return JSON.stringify(attributes) ?? "{}";
+}
+
+function toTaskEventV2Row(event: TaskEventV2Input): TaskEventV2Row {
+  const { attributes, ...row } = event;
+
+  return {
+    ...row,
+    attributes_text: serializeTaskEventAttributes(attributes),
+  };
+}
+
+export function insertTaskEventsV2(
+  ch: ClickhouseWriter,
+  settings?: ClickHouseSettings
+): ClickhouseInsertFunction<TaskEventV2Input> {
+  const insert = ch.insertUnsafe<TaskEventV2Row>({
     name: "insertTaskEventsV2",
     table: "trigger_dev.task_events_v2",
+    columns: TASK_EVENT_V2_INSERT_COLUMNS,
     settings: {
       enable_json_type: 1,
       type_json_skip_duplicated_paths: 1,
+      input_format_json_infer_array_of_dynamic_from_array_of_different_types: 1,
       input_format_json_throw_on_bad_escape_sequence: 0,
       input_format_json_use_string_type_for_ambiguous_paths_in_named_tuples_inference_from_objects: 1,
       ...settings,
     },
   });
+
+  return (events, options) => {
+    const values = Array.isArray(events) ? events.map(toTaskEventV2Row) : toTaskEventV2Row(events);
+
+    return insert(values, options);
+  };
 }
 
-export function getTraceSummaryQueryBuilderV2(
-  ch: ClickhouseReader,
-  settings?: ClickHouseSettings
-) {
+export function getTraceSummaryQueryBuilderV2(ch: ClickhouseReader, settings?: ClickHouseSettings) {
   return ch.queryBuilderFast<TaskEventSummaryV1Result>({
     name: "getTraceEventsV2",
     table: "trigger_dev.task_events_v2",
@@ -258,10 +316,7 @@ export function getTraceDetailedSummaryQueryBuilderV2(
   });
 }
 
-export function getSpanDetailsQueryBuilderV2(
-  ch: ClickhouseReader,
-  settings?: ClickHouseSettings
-) {
+export function getSpanDetailsQueryBuilderV2(ch: ClickhouseReader, settings?: ClickHouseSettings) {
   return ch.queryBuilder({
     name: "getSpanDetailsV2",
     baseQuery:
@@ -283,9 +338,8 @@ export function getTraceEventsForExportQueryBuilderV2(
   });
 }
 
-
 // ============================================================================
-// Search Table Query Builders (for logs page, using task_events_search_v1)
+// Search Table Query Builders (for logs page, using task_events_search_v2)
 // ============================================================================
 
 export const LogsSearchListResult = z.object({
@@ -299,19 +353,20 @@ export const LogsSearchListResult = z.object({
   span_id: z.string(),
   parent_span_id: z.string(),
   message: z.string(),
+  error_message: z.string(),
   kind: z.string(),
   status: z.string(),
   duration: z.number().or(z.string()),
-  attributes_text: z.string(),
   triggered_timestamp: z.string(),
+  projection_fingerprint_string: z.string().optional(),
 });
 
 export type LogsSearchListResult = z.output<typeof LogsSearchListResult>;
 
 export function getLogsSearchListQueryBuilder(ch: ClickhouseReader) {
-  return ch.queryBuilderFast<LogsSearchListResult>({
-    name: "getLogsSearchList",
-    table: "trigger_dev.task_events_search_v1",
+  const createBuilder = ch.queryBuilderFast<LogsSearchListResult>({
+    name: "getLogsSearchListV2",
+    table: "trigger_dev.task_events_search_v2",
     columns: [
       "environment_id",
       "organization_id",
@@ -323,16 +378,22 @@ export function getLogsSearchListQueryBuilder(ch: ClickhouseReader) {
       "span_id",
       "parent_span_id",
       { name: "message", expression: "LEFT(message, 512)" },
+      "error_message",
       "kind",
       "status",
       "duration",
-      "attributes_text",
       "triggered_timestamp",
+      {
+        name: "projection_fingerprint_string",
+        expression: "toString(projection_fingerprint)",
+      },
     ],
     settings: {
       use_query_condition_cache: 1,
     },
   });
+
+  return createBuilder;
 }
 
 // Single log detail query builder (for side panel)
@@ -350,7 +411,7 @@ export const LogDetailV2Result = z.object({
   kind: z.string(),
   status: z.string(),
   duration: z.number().or(z.string()),
-  attributes_text: z.string()
+  attributes_text: z.string(),
 });
 
 export type LogDetailV2Result = z.output<typeof LogDetailV2Result>;

@@ -154,7 +154,7 @@ function serializeValue(value: unknown, column: ElectricColumn): string | null {
 }
 
 /** The merge key the client uses to reassemble a row across insert/update cycles. */
-export function runShapeKey(runId: string): string {
+function runShapeKey(runId: string): string {
   return `"public"."TaskRun"/"${runId}"`;
 }
 
@@ -185,7 +185,9 @@ export function buildElectricSchemaHeader(skipColumns: string[] = []): string {
     if (skip.has(column.name)) {
       continue;
     }
-    schema[column.name] = column.dims ? { type: column.type, dims: column.dims } : { type: column.type };
+    schema[column.name] = column.dims
+      ? { type: column.type, dims: column.dims }
+      : { type: column.type };
   }
 
   return JSON.stringify(schema);

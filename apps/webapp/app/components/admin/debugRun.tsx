@@ -1,21 +1,21 @@
-import { useIsImpersonating } from "~/hooks/useOrganizations";
 import { useHasAdminAccess } from "~/hooks/useUser";
 import { Button } from "../primitives/Buttons";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "../primitives/Dialog";
 import { Cog6ToothIcon } from "@heroicons/react/20/solid";
 import { type loader } from "~/routes/resources.taskruns.$runParam.debug";
-import { UseDataFunctionReturn, useTypedFetcher } from "remix-typedjson";
+import type { UseDataFunctionReturn } from "remix-typedjson";
+import { useTypedFetcher } from "remix-typedjson";
 import { useEffect } from "react";
 import { Spinner } from "../primitives/Spinner";
 import * as Property from "~/components/primitives/PropertyTable";
 import { ClipboardField } from "../primitives/ClipboardField";
-import { MarQSShortKeyProducer } from "~/v3/marqs/marqsKeyProducer";
 
 export function AdminDebugRun({ friendlyId }: { friendlyId: string }) {
+  // `useHasAdminAccess` already folds in impersonation and the "view as user"
+  // toggle, so this one check is enough.
   const hasAdminAccess = useHasAdminAccess();
-  const isImpersonating = useIsImpersonating();
 
-  if (!hasAdminAccess && !isImpersonating) {
+  if (!hasAdminAccess) {
     return null;
   }
 
@@ -31,7 +31,7 @@ export function AdminDebugRun({ friendlyId }: { friendlyId: string }) {
   );
 }
 
-export function DebugRunDialog({ friendlyId }: { friendlyId: string }) {
+function DebugRunDialog({ friendlyId }: { friendlyId: string }) {
   return (
     <DialogContent
       key={`debug`}
@@ -45,10 +45,11 @@ export function DebugRunDialog({ friendlyId }: { friendlyId: string }) {
 function DebugRunContent({ friendlyId }: { friendlyId: string }) {
   const fetcher = useTypedFetcher<typeof loader>();
   const isLoading = fetcher.state === "loading";
+  const load = fetcher.load;
 
   useEffect(() => {
-    fetcher.load(`/resources/taskruns/${friendlyId}/debug`);
-  }, [friendlyId]);
+    load(`/resources/taskruns/${friendlyId}/debug`);
+  }, [friendlyId, load]);
 
   return (
     <>
@@ -68,25 +69,13 @@ function DebugRunContent({ friendlyId }: { friendlyId: string }) {
 
 function DebugRunData(props: UseDataFunctionReturn<typeof loader>) {
   if (props.engine === "V1") {
-    return <DebugRunDataEngineV1 {...props} />;
+    return <DebugRunDataEngineV1 run={props.run} />;
   }
 
   return <DebugRunDataEngineV2 {...props} />;
 }
 
-function DebugRunDataEngineV1({
-  run,
-  queueConcurrencyLimit,
-  queueCurrentConcurrency,
-  envConcurrencyLimit,
-  envCurrentConcurrency,
-  queueReserveConcurrency,
-  envReserveConcurrency,
-}: UseDataFunctionReturn<typeof loader>) {
-  const keys = new MarQSShortKeyProducer("marqs:");
-
-  const withPrefix = (key: string) => `marqs:${key}`;
-
+function DebugRunDataEngineV1({ run }: { run: UseDataFunctionReturn<typeof loader>["run"] }) {
   return (
     <Property.Table>
       <Property.Item>
@@ -96,251 +85,9 @@ function DebugRunDataEngineV1({
         </Property.Value>
       </Property.Item>
       <Property.Item>
-        <Property.Label>Message key</Property.Label>
-        <Property.Value className="flex items-center gap-2">
-          <ClipboardField
-            value={withPrefix(keys.messageKey(run.id))}
-            variant="tertiary/small"
-            iconButton
-          />
-        </Property.Value>
-      </Property.Item>
-      <Property.Item>
-        <Property.Label>GET message</Property.Label>
-        <Property.Value className="flex items-center gap-2">
-          <ClipboardField
-            value={`GET ${withPrefix(keys.messageKey(run.id))}`}
-            variant="tertiary/small"
-            iconButton
-          />
-        </Property.Value>
-      </Property.Item>
-      <Property.Item>
-        <Property.Label>Queue key</Property.Label>
-        <Property.Value className="flex items-center gap-2">
-          <ClipboardField
-            value={withPrefix(
-              keys.queueKey(run.runtimeEnvironment, run.queue, run.concurrencyKey ?? undefined)
-            )}
-            variant="tertiary/small"
-            iconButton
-          />
-        </Property.Value>
-      </Property.Item>
-      <Property.Item>
-        <Property.Label>Get queue set</Property.Label>
-        <Property.Value className="flex items-center gap-2">
-          <ClipboardField
-            value={`ZRANGE ${withPrefix(
-              keys.queueKey(run.runtimeEnvironment, run.queue, run.concurrencyKey ?? undefined)
-            )} 0 -1`}
-            variant="tertiary/small"
-            iconButton
-          />
-        </Property.Value>
-      </Property.Item>
-      <Property.Item>
-        <Property.Label>Queue current concurrency key</Property.Label>
-        <Property.Value className="flex items-center gap-2">
-          <ClipboardField
-            value={withPrefix(
-              keys.queueCurrentConcurrencyKey(
-                run.runtimeEnvironment,
-                run.queue,
-                run.concurrencyKey ?? undefined
-              )
-            )}
-            variant="tertiary/small"
-            iconButton
-          />
-        </Property.Value>
-      </Property.Item>
-
-      <Property.Item>
-        <Property.Label>Get queue current concurrency</Property.Label>
-        <Property.Value className="flex items-center gap-2">
-          <ClipboardField
-            value={`SMEMBERS ${withPrefix(
-              keys.queueCurrentConcurrencyKey(
-                run.runtimeEnvironment,
-                run.queue,
-                run.concurrencyKey ?? undefined
-              )
-            )}`}
-            variant="tertiary/small"
-            iconButton
-          />
-        </Property.Value>
-      </Property.Item>
-      <Property.Item>
-        <Property.Label>Queue current concurrency</Property.Label>
-        <Property.Value className="flex items-center gap-2">
-          <span>{queueCurrentConcurrency ?? "0"}</span>
-        </Property.Value>
-      </Property.Item>
-      <Property.Item>
-        <Property.Label>Queue reserve concurrency key</Property.Label>
-        <Property.Value className="flex items-center gap-2">
-          <ClipboardField
-            value={withPrefix(
-              keys.queueReserveConcurrencyKeyFromQueue(
-                keys.queueKey(run.runtimeEnvironment, run.queue, run.concurrencyKey ?? undefined)
-              )
-            )}
-            variant="tertiary/small"
-            iconButton
-          />
-        </Property.Value>
-      </Property.Item>
-
-      <Property.Item>
-        <Property.Label>Get queue reserve concurrency</Property.Label>
-        <Property.Value className="flex items-center gap-2">
-          <ClipboardField
-            value={`SMEMBERS ${withPrefix(
-              keys.queueReserveConcurrencyKeyFromQueue(
-                keys.queueKey(run.runtimeEnvironment, run.queue, run.concurrencyKey ?? undefined)
-              )
-            )}`}
-            variant="tertiary/small"
-            iconButton
-          />
-        </Property.Value>
-      </Property.Item>
-      <Property.Item>
-        <Property.Label>Queue reserve concurrency</Property.Label>
-        <Property.Value className="flex items-center gap-2">
-          <span>{queueReserveConcurrency ?? "0"}</span>
-        </Property.Value>
-      </Property.Item>
-      <Property.Item>
-        <Property.Label>Queue concurrency limit key</Property.Label>
-        <Property.Value className="flex items-center gap-2">
-          <ClipboardField
-            value={withPrefix(keys.queueConcurrencyLimitKey(run.runtimeEnvironment, run.queue))}
-            variant="tertiary/small"
-            iconButton
-          />
-        </Property.Value>
-      </Property.Item>
-      <Property.Item>
-        <Property.Label>GET queue concurrency limit</Property.Label>
-        <Property.Value className="flex items-center gap-2">
-          <ClipboardField
-            value={`GET ${withPrefix(
-              keys.queueConcurrencyLimitKey(run.runtimeEnvironment, run.queue)
-            )}`}
-            variant="tertiary/small"
-            iconButton
-          />
-        </Property.Value>
-      </Property.Item>
-      <Property.Item>
-        <Property.Label>Queue concurrency limit</Property.Label>
-        <Property.Value className="flex items-center gap-2">
-          <span>{queueConcurrencyLimit ?? "Not set"}</span>
-        </Property.Value>
-      </Property.Item>
-      <Property.Item>
-        <Property.Label>Env current concurrency key</Property.Label>
-        <Property.Value className="flex items-center gap-2">
-          <ClipboardField
-            value={withPrefix(keys.envCurrentConcurrencyKey(run.runtimeEnvironment))}
-            variant="tertiary/small"
-            iconButton
-          />
-        </Property.Value>
-      </Property.Item>
-      <Property.Item>
-        <Property.Label>Get env current concurrency</Property.Label>
-        <Property.Value className="flex items-center gap-2">
-          <ClipboardField
-            value={`SMEMBERS ${withPrefix(keys.envCurrentConcurrencyKey(run.runtimeEnvironment))}`}
-            variant="tertiary/small"
-            iconButton
-          />
-        </Property.Value>
-      </Property.Item>
-      <Property.Item>
-        <Property.Label>Env current concurrency</Property.Label>
-        <Property.Value className="flex items-center gap-2">
-          <span>{envCurrentConcurrency ?? "0"}</span>
-        </Property.Value>
-      </Property.Item>
-      <Property.Item>
-        <Property.Label>Env reserve concurrency key</Property.Label>
-        <Property.Value className="flex items-center gap-2">
-          <ClipboardField
-            value={withPrefix(keys.envReserveConcurrencyKey(run.runtimeEnvironment.id))}
-            variant="tertiary/small"
-            iconButton
-          />
-        </Property.Value>
-      </Property.Item>
-      <Property.Item>
-        <Property.Label>Get env reserve concurrency</Property.Label>
-        <Property.Value className="flex items-center gap-2">
-          <ClipboardField
-            value={`SMEMBERS ${withPrefix(
-              keys.envReserveConcurrencyKey(run.runtimeEnvironment.id)
-            )}`}
-            variant="tertiary/small"
-            iconButton
-          />
-        </Property.Value>
-      </Property.Item>
-      <Property.Item>
-        <Property.Label>Env reserve concurrency</Property.Label>
-        <Property.Value className="flex items-center gap-2">
-          <span>{envReserveConcurrency ?? "0"}</span>
-        </Property.Value>
-      </Property.Item>
-      <Property.Item>
-        <Property.Label>Env concurrency limit key</Property.Label>
-        <Property.Value className="flex items-center gap-2">
-          <ClipboardField
-            value={withPrefix(keys.envConcurrencyLimitKey(run.runtimeEnvironment))}
-            variant="tertiary/small"
-            iconButton
-          />
-        </Property.Value>
-      </Property.Item>
-      <Property.Item>
-        <Property.Label>GET env concurrency limit</Property.Label>
-        <Property.Value className="flex items-center gap-2">
-          <ClipboardField
-            value={`GET ${withPrefix(keys.envConcurrencyLimitKey(run.runtimeEnvironment))}`}
-            variant="tertiary/small"
-            iconButton
-          />
-        </Property.Value>
-      </Property.Item>
-      <Property.Item>
-        <Property.Label>Env concurrency limit</Property.Label>
-        <Property.Value className="flex items-center gap-2">
-          <span>{envConcurrencyLimit ?? "Not set"}</span>
-        </Property.Value>
-      </Property.Item>
-      <Property.Item>
-        <Property.Label>Shared queue key</Property.Label>
-        <Property.Value className="flex items-center gap-2">
-          <ClipboardField
-            value={`GET ${withPrefix(keys.envSharedQueueKey(run.runtimeEnvironment))}`}
-            variant="tertiary/small"
-            iconButton
-          />
-        </Property.Value>
-      </Property.Item>
-      <Property.Item>
-        <Property.Label>Get shared queue set</Property.Label>
-        <Property.Value className="flex items-center gap-2">
-          <ClipboardField
-            value={`ZRANGEBYSCORE ${withPrefix(
-              keys.envSharedQueueKey(run.runtimeEnvironment)
-            )} -inf ${Date.now()} WITHSCORES`}
-            variant="tertiary/small"
-            iconButton
-          />
+        <Property.Label>Engine</Property.Label>
+        <Property.Value>
+          Engine V1 (v3) is retired. Queue debug data is no longer available for V1 runs.
         </Property.Value>
       </Property.Item>
     </Property.Table>
@@ -354,7 +101,7 @@ function DebugRunDataEngineV2({
   envConcurrencyLimit,
   envCurrentConcurrency,
   keys,
-}: UseDataFunctionReturn<typeof loader>) {
+}: Extract<UseDataFunctionReturn<typeof loader>, { engine: "V2" }>) {
   return (
     <Property.Table>
       <Property.Item>
@@ -388,7 +135,7 @@ function DebugRunDataEngineV2({
         </Property.Value>
       </Property.Item>
       {keys.map((key) => (
-        <Property.Item>
+        <Property.Item key={key.key}>
           <Property.Label>{key.label}</Property.Label>
           <Property.Value className="flex items-center gap-2">
             <ClipboardField value={key.key} variant="tertiary/small" iconButton />

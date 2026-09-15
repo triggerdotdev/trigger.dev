@@ -6,12 +6,10 @@ import {
 import { $replica } from "~/db.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import {
-  type AverageDurations,
   ClickHouseEnvironmentMetricsRepository,
   type CurrentRunningStats,
-  type DailyTaskActivity,
-  type EnvironmentMetricsRepository,
 } from "~/services/environmentMetricsRepository.server";
+import { backstopPromise } from "~/utils/backstopPromise";
 import { singleton } from "~/utils/singleton";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
 
@@ -22,9 +20,7 @@ export type TaskListItem = {
   triggerSource: TaskTriggerSource;
 };
 
-export type TaskActivity = DailyTaskActivity[string];
-
-export class TaskListPresenter {
+class TaskListPresenter {
   constructor(private readonly _replica: PrismaClientOrTransaction) {}
 
   public async call({
@@ -32,26 +28,31 @@ export class TaskListPresenter {
     projectId,
     environmentId,
     environmentType,
+    currentWorker: preloadedCurrentWorker,
   }: {
     organizationId: string;
     projectId: string;
     environmentId: string;
     environmentType: RuntimeEnvironmentType;
+    /** Optional: pass the pre-resolved current worker to skip the lookup. Used
+     *  by `UnifiedTaskListPresenter` to share one lookup across both presenters. */
+    currentWorker?: Awaited<ReturnType<typeof findCurrentWorkerFromEnvironment>>;
   }) {
-    const currentWorker = await findCurrentWorkerFromEnvironment(
-      {
-        id: environmentId,
-        type: environmentType,
-      },
-      this._replica
-    );
+    const currentWorker =
+      preloadedCurrentWorker !== undefined
+        ? preloadedCurrentWorker
+        : await findCurrentWorkerFromEnvironment(
+            {
+              id: environmentId,
+              type: environmentType,
+            },
+            this._replica
+          );
 
     if (!currentWorker) {
       return {
         tasks: [],
-        activity: Promise.resolve({} as DailyTaskActivity),
         runningStats: Promise.resolve({} as CurrentRunningStats),
-        durations: Promise.resolve({} as AverageDurations),
       };
     }
 
@@ -75,38 +76,28 @@ export class TaskListPresenter {
     const slugs = tasks.map((t) => t.slug);
 
     // Create org-specific environment metrics repository
-    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(organizationId, "standard");
+    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+      organizationId,
+      "standard"
+    );
     const environmentMetricsRepository = new ClickHouseEnvironmentMetricsRepository({
       clickhouse,
     });
 
-    // IMPORTANT: Don't await these, we want to return the promises
-    // so we can defer the loading of the data
-    const activity = environmentMetricsRepository.getDailyTaskActivity({
-      organizationId,
-      projectId,
-      environmentId,
-      days: 6, // This actually means 7 days, because we want to show the current day too
-      tasks: slugs,
-    });
+    // IMPORTANT: Don't await this, we want to return the promise
+    // so we can defer the loading of the data. Backstopped: the caller
+    // subscribes only after further awaits.
+    const runningStats = backstopPromise(
+      environmentMetricsRepository.getCurrentRunningStats({
+        organizationId,
+        projectId,
+        environmentId,
+        days: 6,
+        tasks: slugs,
+      })
+    );
 
-    const runningStats = environmentMetricsRepository.getCurrentRunningStats({
-      organizationId,
-      projectId,
-      environmentId,
-      days: 6,
-      tasks: slugs,
-    });
-
-    const durations = environmentMetricsRepository.getAverageDurations({
-      organizationId,
-      projectId,
-      environmentId,
-      days: 6,
-      tasks: slugs,
-    });
-
-    return { tasks, activity, runningStats, durations };
+    return { tasks, runningStats };
   }
 }
 

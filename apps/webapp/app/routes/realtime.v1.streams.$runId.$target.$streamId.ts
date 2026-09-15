@@ -6,6 +6,7 @@ import {
   createActionApiRoute,
   createLoaderApiRoute,
 } from "~/services/routeBuilders/apiBuilder.server";
+import { runStore } from "~/v3/runStore.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),
@@ -18,11 +19,11 @@ const { action } = createActionApiRoute(
     params: ParamsSchema,
   },
   async ({ request, params, authentication }) => {
-    const run = await $replica.taskRun.findFirst({
-      where: {
-        friendlyId: params.runId,
-        runtimeEnvironmentId: authentication.environment.id,
-      },
+    const where = {
+      friendlyId: params.runId,
+      runtimeEnvironmentId: authentication.environment.id,
+    };
+    const args = {
       select: {
         id: true,
         friendlyId: true,
@@ -40,7 +41,12 @@ const { action } = createActionApiRoute(
           },
         },
       },
-    });
+    };
+    // Replica lag can null out a live run; a spurious 404 permanently fails the ingest client.
+    // Re-read the owning primary on a replica miss.
+    const run =
+      (await runStore.findRun(where, args, $replica)) ??
+      (await runStore.findRunOnPrimary(where, args));
 
     if (!run) {
       return new Response("Run not found", { status: 404 });
@@ -50,8 +56,8 @@ const { action } = createActionApiRoute(
       params.target === "self"
         ? run
         : params.target === "parent"
-        ? run.parentTaskRun
-        : run.rootTaskRun;
+          ? run.parentTaskRun
+          : run.rootTaskRun;
 
     if (!targetRun?.friendlyId) {
       return new Response("Target not found", { status: 404 });
@@ -62,18 +68,21 @@ const { action } = createActionApiRoute(
 
     if (request.method === "PUT") {
       // This is the "create" endpoint
-      const target = await prisma.taskRun.findFirst({
-        where: {
+      const target = await runStore.findRun(
+        {
           friendlyId: targetId,
           runtimeEnvironmentId: authentication.environment.id,
         },
-        select: {
-          id: true,
-          realtimeStreams: true,
-          realtimeStreamsVersion: true,
-          completedAt: true,
+        {
+          select: {
+            id: true,
+            realtimeStreams: true,
+            realtimeStreamsVersion: true,
+            completedAt: true,
+          },
         },
-      });
+        prisma
+      );
 
       if (!target) {
         return new Response("Run not found", { status: 404 });
@@ -86,12 +95,7 @@ const { action } = createActionApiRoute(
       }
 
       if (!target.realtimeStreams.includes(params.streamId)) {
-        await prisma.taskRun.update({
-          where: { id: target.id },
-          data: {
-            realtimeStreams: { push: params.streamId },
-          },
-        });
+        await runStore.pushRealtimeStream(target.id, params.streamId, prisma);
       }
 
       const realtimeStream = getRealtimeStreamInstance(
@@ -152,11 +156,11 @@ const loader = createLoaderApiRoute(
     allowJWT: false,
     corsStrategy: "none",
     findResource: async (params, authentication) => {
-      return $replica.taskRun.findFirst({
-        where: {
-          friendlyId: params.runId,
-          runtimeEnvironmentId: authentication.environment.id,
-        },
+      const where = {
+        friendlyId: params.runId,
+        runtimeEnvironmentId: authentication.environment.id,
+      };
+      const args = {
         select: {
           id: true,
           friendlyId: true,
@@ -174,7 +178,11 @@ const loader = createLoaderApiRoute(
             },
           },
         },
-      });
+      };
+      // Replica lag can null out a live run; a spurious 404 permanently fails the HEAD probe.
+      // Re-read the owning primary on a replica miss.
+      const run = await runStore.findRun(where, args, $replica);
+      return run ?? runStore.findRunOnPrimary(where, args);
     },
   },
   async ({ request, params, resource: run, authentication }) => {
@@ -186,8 +194,8 @@ const loader = createLoaderApiRoute(
       params.target === "self"
         ? run
         : params.target === "parent"
-        ? run.parentTaskRun
-        : run.rootTaskRun;
+          ? run.parentTaskRun
+          : run.rootTaskRun;
 
     if (!targetRun?.friendlyId) {
       return new Response("Target not found", { status: 404 });
@@ -204,11 +212,9 @@ const loader = createLoaderApiRoute(
     const clientId = request.headers.get("X-Client-Id") || "default";
     const streamVersion = request.headers.get("X-Stream-Version") || "v1";
 
-    const realtimeStream = getRealtimeStreamInstance(
-      authentication.environment,
-      streamVersion,
-      { run: { streamBasinName: targetRun.streamBasinName ?? null } }
-    );
+    const realtimeStream = getRealtimeStreamInstance(authentication.environment, streamVersion, {
+      run: { streamBasinName: targetRun.streamBasinName ?? null },
+    });
 
     const lastChunkIndex = await realtimeStream.getLastChunkIndex(
       targetId,

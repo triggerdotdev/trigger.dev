@@ -20,10 +20,6 @@ export const container = {
   marginBottom: "64px",
 };
 
-export const box = {
-  padding: "0 48px",
-};
-
 export const hr = {
   borderColor: "#272A2E",
   margin: "20px 0",
@@ -32,15 +28,6 @@ export const hr = {
 export const sans = {
   fontFamily:
     '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Ubuntu,sans-serif',
-};
-
-export const paragraph = {
-  color: "#878C99",
-  fontFamily:
-    '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Ubuntu,sans-serif',
-  fontSize: "16px",
-  lineHeight: "24px",
-  textAlign: "left" as const,
 };
 
 export const paragraphLight = {
@@ -81,19 +68,6 @@ export const anchor = {
     "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif",
   fontSize: "16px",
   textDecoration: "underline",
-};
-
-export const button = {
-  backgroundColor: "#826DFF",
-  borderRadius: "5px",
-  color: "#D7D9DD",
-  fontFamily:
-    '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Ubuntu,sans-serif',
-  fontSize: "16px",
-  fontWeight: "bold",
-  textDecoration: "none",
-  textAlign: "center" as const,
-  display: "block",
 };
 
 export const footer = {

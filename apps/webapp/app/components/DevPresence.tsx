@@ -15,6 +15,7 @@ import disconnectedImage from "../assets/images/cli-disconnected.png";
 import { InlineCode } from "./code/InlineCode";
 import { Button } from "./primitives/Buttons";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "./primitives/Dialog";
+import { cn } from "~/utils/cn";
 import { Paragraph } from "./primitives/Paragraph";
 import { TextLink } from "./primitives/TextLink";
 import { PackageManagerProvider, TriggerDevStepV3 } from "./SetupCommands";
@@ -42,7 +43,7 @@ export function DevPresenceProvider({ children, enabled = true }: DevPresencePro
 
   // Only subscribe to event source if enabled is true
   const streamedEvents = useEventSource(
-    `/resources/orgs/${organization.slug}/projects/${project.slug}/dev/presence`,
+    `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/presence`,
     {
       event: "presence",
       disabled: !enabled,
@@ -54,6 +55,7 @@ export function DevPresenceProvider({ children, enabled = true }: DevPresencePro
   useEffect(() => {
     // If disabled or no events
     if (!enabled || streamedEvents === null) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setIsConnected(undefined);
       return;
     }
@@ -79,7 +81,7 @@ export function DevPresenceProvider({ children, enabled = true }: DevPresencePro
   // Calculate isConnected and memoize the context value
   const contextValue = useMemo(() => {
     return { isConnected };
-  }, [isConnected, enabled]);
+  }, [isConnected]);
 
   return <DevPresenceContext.Provider value={contextValue}>{children}</DevPresenceContext.Provider>;
 }
@@ -112,6 +114,7 @@ export function useCrossEngineIsConnected({
 
   useEffect(() => {
     if (project.engine === "V2") {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setCrossEngineIsConnected(isConnected);
       return;
     }
@@ -154,8 +157,8 @@ export function DevPresencePanel({ isConnected }: { isConnected: boolean | undef
         {isConnected === undefined
           ? "Checking connection..."
           : isConnected
-          ? "Your dev server is connected"
-          : "Your dev server is not connected"}
+            ? "Your dev server is connected"
+            : "Your dev server is not connected"}
       </DialogHeader>
       <div className="mt-2 flex flex-col gap-3 px-2">
         <div className="flex flex-col items-center justify-center gap-6 px-6 py-10">
@@ -165,12 +168,15 @@ export function DevPresencePanel({ isConnected }: { isConnected: boolean | undef
             width={282}
             height={45}
           />
-          <Paragraph variant="small" className={isConnected ? "text-success" : "text-error"}>
+          <Paragraph
+            variant="small"
+            className={cn("system-mono-label", isConnected ? "text-success" : "text-error")}
+          >
             {isConnected === undefined
               ? "Checking connection..."
               : isConnected
-              ? "Your local dev server is connected to Trigger.dev"
-              : "Your local dev server is not connected to Trigger.dev"}
+                ? "Your local dev server is connected to Trigger.dev"
+                : "Your local dev server is not connected to Trigger.dev"}
           </Paragraph>
         </div>
         {isConnected ? null : (

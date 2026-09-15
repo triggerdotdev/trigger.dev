@@ -24,11 +24,10 @@
 // through it), even though the replay path itself doesn't read from S3.
 
 import { postgresAndMinioTest } from "@internal/testcontainers";
-import { apiClientManager } from "@trigger.dev/core/v3";
+import { apiClientManager, type TranscriptSnapshotV2 } from "@trigger.dev/core/v3";
 import {
   __readChatSnapshotProductionPathForTests as readChatSnapshot,
   __replaySessionOutTailProductionPathForTests as replaySessionOutTail,
-  type ChatSnapshotV1,
 } from "@trigger.dev/sdk/ai";
 import type { UIMessageChunk } from "ai";
 import { afterEach, describe, expect, vi } from "vitest";
@@ -62,11 +61,7 @@ function textTurn(id: string, text: string): UIMessageChunk[] {
  *     the schema now declares `data: z.unknown()` and consumers use it
  *     without an extra `JSON.parse` step.
  */
-function stubApiClient(opts: {
-  projectRef: string;
-  envSlug: string;
-  sessionOutChunks: unknown[];
-}) {
+function stubApiClient(opts: { projectRef: string; envSlug: string; sessionOutChunks: unknown[] }) {
   const records = opts.sessionOutChunks.map((chunk, i) => ({
     data: chunk,
     id: `evt-${i + 1}`,
@@ -220,7 +215,11 @@ describe("replay after crash (MinIO + SDK helpers)", () => {
         sessionOutChunks: [
           ...textTurn("a-complete", "I finished step 1"),
           // Partial tool turn — no tool-input-end, no finish.
-          { type: "start", messageId: "a-orphan", messageMetadata: { role: "assistant" } } as UIMessageChunk,
+          {
+            type: "start",
+            messageId: "a-orphan",
+            messageMetadata: { role: "assistant" },
+          } as UIMessageChunk,
           { type: "tool-input-start", id: "tc-cut", toolName: "search" } as UIMessageChunk,
           { type: "tool-input-delta", id: "tc-cut", delta: '{"q":"x"}' } as UIMessageChunk,
         ],
@@ -233,9 +232,9 @@ describe("replay after crash (MinIO + SDK helpers)", () => {
       // Orphaned tool-call never surfaces in `input-streaming` state.
       const orphan = replayed.find((m) => m.id === "a-orphan");
       if (orphan) {
-        const stillStreaming = (orphan.parts as Array<{ toolCallId?: string; state?: string }>).find(
-          (p) => p.toolCallId === "tc-cut" && p.state === "input-streaming"
-        );
+        const stillStreaming = (
+          orphan.parts as Array<{ toolCallId?: string; state?: string }>
+        ).find((p) => p.toolCallId === "tc-cut" && p.state === "input-streaming");
         expect(stillStreaming).toBeUndefined();
       }
     }
@@ -265,13 +264,26 @@ describe("replay after crash (MinIO + SDK helpers)", () => {
 
       // Pre-write a snapshot to MinIO via real apiClient stub.
       const sessionId = "sess_merge_round_trip";
-      const snapshot: ChatSnapshotV1 = {
-        version: 1,
+      const snapshot: TranscriptSnapshotV2 = {
+        version: 2,
         savedAt: 1_700_000_000_000,
         messages: [
-          { id: "u-1", role: "user", parts: [{ type: "text", text: "hi" }] },
-          { id: "a-1", role: "assistant", parts: [{ type: "text", text: "stale-assistant" }] },
+          {
+            id: "u-1",
+            final: true,
+            message: { id: "u-1", role: "user", parts: [{ type: "text", text: "hi" }] },
+          },
+          {
+            id: "a-1",
+            final: true,
+            message: {
+              id: "a-1",
+              role: "assistant",
+              parts: [{ type: "text", text: "stale-assistant" }],
+            },
+          },
         ],
+        state: null,
         lastOutEventId: "evt-prev",
       };
 
@@ -282,9 +294,8 @@ describe("replay after crash (MinIO + SDK helpers)", () => {
         envSlug: "dev",
         sessionOutChunks: [],
       });
-      const { __writeChatSnapshotProductionPathForTests: writeSnapshot } = await import(
-        "@trigger.dev/sdk/ai"
-      );
+      const { __writeChatSnapshotProductionPathForTests: writeSnapshot } =
+        await import("@trigger.dev/sdk/ai");
       await writeSnapshot(sessionId, snapshot);
 
       // Restubbing for the boot phase: replay tail carries the fresh

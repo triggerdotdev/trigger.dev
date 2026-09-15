@@ -2,6 +2,7 @@ import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { type Duration } from "~/services/rateLimiter.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { BATCH_RATE_LIMIT_INTENT } from "./BatchRateLimitSection";
 import {
   handleRateLimitAction,
@@ -11,7 +12,7 @@ import {
 } from "./RateLimitSection.server";
 import type { EffectiveRateLimit } from "./RateLimitSection";
 
-export const batchRateLimitDomain: RateLimitDomain = {
+const batchRateLimitDomain: RateLimitDomain = {
   intent: BATCH_RATE_LIMIT_INTENT,
   systemDefault: () => ({
     type: "tokenBucket",
@@ -31,6 +32,8 @@ export const batchRateLimitDomain: RateLimitDomain = {
       where: { id: orgId },
       data: { batchRateLimitConfig: next as any },
     });
+    // batchRateLimitConfig is embedded in every env of the org; drop all its cached env rows.
+    controlPlaneResolver.invalidateOrganization(orgId);
     logger.info("admin.backOffice.batchRateLimit", {
       adminUserId,
       orgId,
@@ -40,9 +43,7 @@ export const batchRateLimitDomain: RateLimitDomain = {
   },
 };
 
-export function resolveEffectiveBatchRateLimit(
-  override: unknown
-): EffectiveRateLimit {
+export function resolveEffectiveBatchRateLimit(override: unknown): EffectiveRateLimit {
   return resolveEffectiveRateLimit(override, batchRateLimitDomain);
 }
 

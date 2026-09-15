@@ -126,13 +126,13 @@ describe("JWT bearer auth — baseline behavior", () => {
 // Exercises the RBAC plugin loader end-to-end. The test server boots
 // with RBAC_FORCE_FALLBACK=1 (see internal-packages/testcontainers/src/webapp.ts),
 // which makes rbac.server.ts use the default fallback regardless of
-// whether a plugin is installed in node_modules. /admin/concurrency
+// whether a plugin is installed in node_modules. /admin/feature-flags
 // uses rbac.authenticateSession internally; an unauthenticated request
 // must flow through LazyController → RoleBaseAccessFallback →
 // redirect("/login").
 describe("RBAC plugin — fallback wiring", () => {
   it("unauthenticated dashboard route redirects to /login via the fallback", async () => {
-    const res = await server.webapp.fetch("/admin/concurrency", { redirect: "manual" });
+    const res = await server.webapp.fetch("/admin/feature-flags", { redirect: "manual" });
     expect(res.status).toBe(302);
     const location = res.headers.get("location") ?? "";
     expect(new URL(location, "http://placeholder").pathname).toBe("/login");
@@ -177,7 +177,6 @@ describe("API bearer auth — action requests", () => {
     });
     expect(res.status).toBe(401);
   });
-
 });
 
 describe("JWT bearer auth — action requests", () => {
@@ -353,7 +352,7 @@ describe("JWT bearer auth — resource-scoped scopes", () => {
 // - multi-key resource callbacks (runs/tags/batch/tasks) — any key match grants access
 // - empty resource callbacks relying on superScopes
 describe("JWT bearer auth — behaviours to preserve through TRI-8719", () => {
-  it("custom action: type-level write:tasks scope satisfies action=\"trigger\" (auth passes)", async () => {
+  it('custom action: type-level write:tasks scope satisfies action="trigger" (auth passes)', async () => {
     const { environment } = await seedTestEnvironment(server.prisma);
     // Current SDK + MCP JWTs for task-trigger use type-level scope, e.g. write:tasks.
     // Legacy checkAuthorization passes via exact superScope match ["write:tasks", "admin"].

@@ -1,20 +1,18 @@
-import { ArrowPathIcon, ArrowTopRightOnSquareIcon } from "@heroicons/react/20/solid";
-import { Link } from "@remix-run/react";
+import { ArrowPathIcon } from "@heroicons/react/20/solid";
 import { useEffect, useRef, useState } from "react";
-import { cn } from "~/utils/cn";
+import { RunsIcon } from "~/assets/icons/RunsIcon";
+import { LogLevelTooltipInfo } from "~/components/LogLevelTooltipInfo";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import type { LogEntry } from "~/presenters/v3/LogsListPresenter.server";
+import { cn } from "~/utils/cn";
 import { highlightSearchText } from "~/utils/logUtils";
 import { v3RunSpanPath } from "~/utils/pathBuilder";
 import { DateTimeAccurate } from "../primitives/DateTime";
 import { Paragraph } from "../primitives/Paragraph";
 import { Spinner } from "../primitives/Spinner";
-import { LogLevel } from "./LogLevel";
-import { TruncatedCopyableValue } from "../primitives/TruncatedCopyableValue";
-import { LogLevelTooltipInfo } from "~/components/LogLevelTooltipInfo";
 import {
   Table,
   TableBlankRow,
@@ -26,7 +24,7 @@ import {
   TableRow,
   type TableVariant,
 } from "../primitives/Table";
-import { RunsIcon } from "~/assets/icons/RunsIcon";
+import { LogLevel } from "./LogLevel";
 
 type LogsTableProps = {
   logs: LogEntry[];
@@ -78,6 +76,7 @@ export function LogsTable({
   // Show load more spinner only after 0.2 seconds of loading time
   useEffect(() => {
     if (!isLoadingMore) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setShowLoadMoreSpinner(false);
       return;
     }
@@ -115,7 +114,7 @@ export function LogsTable({
   }, [hasMore, isLoadingMore, onLoadMore]);
 
   return (
-    <div className="relative h-full overflow-auto border-t scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+    <div className="relative h-full overflow-auto border-t scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
       <Table variant="compact/mono" containerClassName="overflow-visible" showTopBorder={false}>
         <TableHeader className="sticky top-0 z-10">
           <TableRow>
@@ -153,7 +152,7 @@ export function LogsTable({
                   key={log.id}
                   className={cn(
                     "cursor-pointer transition-colors",
-                    isSelected ? "bg-charcoal-750" : "hover:bg-charcoal-850"
+                    isSelected ? "bg-background-hover" : "hover:bg-background-dimmed"
                   )}
                   isSelected={isSelected}
                 >
@@ -189,7 +188,7 @@ export function LogsTable({
                         variant="minimal/small"
                         TrailingIcon={RunsIcon}
                         trailingIconClassName="text-text-bright"
-                        className="h-[1.375rem] pl-1.5 pr-2"
+                        className="h-5.5 pl-1.5 pr-2"
                       >
                         <span className="text-[0.6875rem] text-text-bright">View run</span>
                       </LinkButton>
@@ -222,7 +221,7 @@ export function LogsTable({
 }
 
 function BlankState({ isLoading, onRefresh }: { isLoading?: boolean; onRefresh?: () => void }) {
-  if (isLoading) return <TableBlankRow colSpan={6}></TableBlankRow>;
+  if (isLoading) return <TableBlankRow colSpan={6} />;
 
   const handleRefresh = onRefresh ?? (() => window.location.reload());
 

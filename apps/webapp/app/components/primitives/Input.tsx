@@ -4,67 +4,67 @@ import { cn } from "~/utils/cn";
 import { Icon, type RenderIcon } from "./Icon";
 
 const containerBase =
-  "has-[:focus-visible]:outline-none has-[:focus-visible]:ring-1 has-[:focus-visible]:ring-charcoal-650 has-[:focus-visible]:ring-offset-0 has-[:focus]:border-ring has-[:focus]:outline-none has-[:focus]:ring-1 has-[:focus]:ring-ring has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50 ring-offset-background transition cursor-text";
+  "has-focus-visible:outline-hidden has-focus-visible:ring-1 has-focus-visible:ring-border-bright has-focus-visible:ring-offset-0 has-[:focus]:border-ring has-focus:outline-hidden has-focus:ring-1 has-[:focus]:ring-ring has-disabled:cursor-not-allowed has-disabled:opacity-50 ring-offset-background transition cursor-text";
 
 const inputBase =
-  "h-full w-full text-text-bright bg-transparent file:border-0 file:bg-transparent file:text-base file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-0 disabled:cursor-not-allowed outline-none ring-0 border-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-inner-spin-button]:m-0 [&]:[-moz-appearance:textfield]";
+  "h-full w-full text-text-bright bg-transparent file:border-0 file:bg-transparent file:text-base file:font-medium placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-0 disabled:cursor-not-allowed outline-hidden ring-0 border-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-inner-spin-button]:m-0 [&]:[-moz-appearance:textfield]";
 
 const variants = {
   large: {
     container:
-      "px-1 w-full h-10 rounded-[3px] border border-charcoal-800 bg-charcoal-750 hover:border-charcoal-600 hover:bg-charcoal-650",
+      "px-1 w-full h-10 rounded-[3px] border border-border-bright/50 shadow-xs bg-input-bg hover:bg-background-raised",
     input: "px-2 text-sm",
     iconSize: "size-4 ml-1",
     accessory: "pr-1",
   },
   medium: {
     container:
-      "px-1 h-8 w-full rounded border border-charcoal-800 bg-charcoal-750 hover:border-charcoal-600 hover:bg-charcoal-650",
+      "px-1 h-8 w-full rounded border border-border-bright/50 shadow-xs bg-input-bg hover:bg-background-raised",
     input: "px-1.5 rounded text-sm",
     iconSize: "size-4 ml-0.5",
     accessory: "pr-1",
   },
   small: {
     container:
-      "px-1 h-6 w-full rounded border border-charcoal-800 bg-charcoal-750 hover:border-charcoal-600 hover:bg-charcoal-650",
+      "px-1 h-6 w-full rounded border border-border-bright/50 shadow-xs bg-input-bg hover:bg-background-raised",
     input: "px-1 rounded text-xs",
     iconSize: "size-3 ml-0.5",
     accessory: "pr-0.5",
   },
   tertiary: {
-    container: "px-1 h-6 w-full rounded hover:bg-charcoal-750",
+    container: "px-1 h-6 w-full rounded hover:bg-background-hover",
     input: "px-1 rounded text-xs",
     iconSize: "size-3 ml-0.5",
     accessory: "pr-0.5",
   },
   "secondary-small": {
     container:
-      "px-1 h-6 w-full rounded border border-charcoal-600 hover:border-charcoal-550 bg-grid-dimmed hover:bg-charcoal-650",
+      "px-1 h-6 w-full rounded border border-border-bright/50 shadow-xs bg-input-bg hover:bg-background-raised",
     input: "px-1 rounded text-xs",
     iconSize: "size-3 ml-0.5",
     accessory: "pr-0.5",
   },
   "outline/large": {
-    container: "px-1 h-10 w-full rounded border border-grid-bright hover:border-charcoal-550",
+    container: "px-1 h-10 w-full rounded border border-grid-bright hover:border-border-brighter",
     input: "px-2 rounded text-sm",
     iconSize: "size-4 ml-1",
     accessory: "pr-1",
   },
   "outline/medium": {
-    container: "px-1 h-8 w-full rounded border border-grid-bright hover:border-charcoal-550",
+    container: "px-1 h-8 w-full rounded border border-grid-bright hover:border-border-brighter",
     input: "px-1 rounded text-sm",
     iconSize: "size-4 ml-0.5",
     accessory: "pr-1",
   },
   "outline/small": {
-    container: "px-1 h-6 w-full rounded border border-grid-bright hover:border-charcoal-550",
+    container: "px-1 h-6 w-full rounded border border-grid-bright hover:border-border-brighter",
     input: "px-1 rounded text-xs",
     iconSize: "size-3 ml-0.5",
     accessory: "pr-0.5",
   },
 };
 
-export type InputProps = React.InputHTMLAttributes<HTMLInputElement> & {
+type InputProps = React.InputHTMLAttributes<HTMLInputElement> & {
   variant?: keyof typeof variants;
   icon?: RenderIcon;
   iconClassName?: string;
@@ -95,6 +95,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
     const inputClassName = variants[variant].input;
     const variantIconClassName = variants[variant].iconSize;
 
+    /* oxlint-disable jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- The wrapper only forwards pointer focus to its nested input. */
     return (
       <div
         className={cn(
@@ -125,6 +126,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
     );
   }
 );
+/* oxlint-enable jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */
 Input.displayName = "Input";
 
 export { Input };

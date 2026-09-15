@@ -24,6 +24,7 @@ import { logger } from "~/services/logger.server";
 import { decryptSecret } from "~/services/secrets/secretStore.server";
 import { subtle } from "crypto";
 import { generateErrorGroupWebhookPayload } from "./errorGroupWebhook.server";
+import { safeWebhookFetch } from "./safeWebhookFetch.server";
 
 type ErrorAlertClassification = "new_issue" | "regression" | "unignored";
 
@@ -68,7 +69,11 @@ export class DeliverErrorGroupAlertService {
       return;
     }
 
-    const errorLink = this.#buildErrorLink(channel.project.organization, channel.project, payload.error);
+    const errorLink = this.#buildErrorLink(
+      channel.project.organization,
+      channel.project,
+      payload.error
+    );
 
     try {
       switch (channel.type) {
@@ -86,7 +91,9 @@ export class DeliverErrorGroupAlertService {
       }
     } catch (error) {
       if (error instanceof SkipRetryError) {
-        logger.warn("[DeliverErrorGroupAlert] Skipping retry", { reason: (error as Error).message });
+        logger.warn("[DeliverErrorGroupAlert] Skipping retry", {
+          reason: (error as Error).message,
+        });
         return;
       }
       throw error;
@@ -113,7 +120,11 @@ export class DeliverErrorGroupAlertService {
   }
 
   async #sendEmail(
-    channel: { type: ProjectAlertChannelType; properties: unknown; project: { name: string; organization: { title: string } } },
+    channel: {
+      type: ProjectAlertChannelType;
+      properties: unknown;
+      project: { name: string; organization: { title: string } };
+    },
     payload: ErrorAlertPayload,
     errorLink: string
   ): Promise<void> {
@@ -182,11 +193,7 @@ export class DeliverErrorGroupAlertService {
       return;
     }
 
-    const message = this.#buildErrorGroupSlackMessage(
-      payload,
-      errorLink,
-      channel.project.name
-    );
+    const message = this.#buildErrorGroupSlackMessage(payload, errorLink, channel.project.name);
 
     await this.#postSlackMessage(integration, {
       channel: slackProperties.data.channelId,
@@ -198,7 +205,14 @@ export class DeliverErrorGroupAlertService {
     channel: {
       type: ProjectAlertChannelType;
       properties: unknown;
-      project: { id: string; externalRef: string; slug: string; name: string; organizationId: string; organization: { slug: string; title: string } };
+      project: {
+        id: string;
+        externalRef: string;
+        slug: string;
+        name: string;
+        organizationId: string;
+        organization: { slug: string; title: string };
+      };
     },
     payload: ErrorAlertPayload,
     errorLink: string
@@ -242,7 +256,8 @@ export class DeliverErrorGroupAlertService {
     const signature = await subtle.sign("HMAC", key, hashPayload);
     const signatureHex = Buffer.from(signature).toString("hex");
 
-    const response = await fetch(webhookProperties.data.url, {
+    // Deliver via the SSRF-safe wrapper (see safeWebhookFetch.server.ts).
+    const response = await safeWebhookFetch(webhookProperties.data.url, {
       method: "POST",
       headers: {
         "content-type": "application/json",

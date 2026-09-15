@@ -1,18 +1,4 @@
-import { IncomingMessage, RequestListener } from "node:http";
-
-export const getTextBody = (req: IncomingMessage) =>
-  new Promise<string>((resolve) => {
-    let body = "";
-    req.on("readable", () => {
-      const chunk = req.read();
-      if (chunk) {
-        body += chunk;
-      }
-    });
-    req.on("end", () => {
-      resolve(body);
-    });
-  });
+import type { IncomingMessage, RequestListener } from "node:http";
 
 export async function getJsonBody(req: IncomingMessage): Promise<any> {
   return new Promise((resolve, reject) => {

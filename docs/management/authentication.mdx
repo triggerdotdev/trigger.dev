@@ -4,7 +4,7 @@ sidebarTitle: Authentication
 description: Authenticating with the Trigger.dev management API
 ---
 
-There are two methods of authenticating with the management API: using a secret key associated with a specific environment in a project (`secretKey`), or using a personal access token (`personalAccessToken`). Both methods should only be used in a backend server, as they provide full access to the project.
+There are two methods of authenticating with the management API: using a named API key associated with a specific environment in a project (`secretKey`), or using a personal access token (`personalAccessToken`). Use both methods only on a backend server. An environment API key's access is limited by the preset and task restrictions selected when you create it.
 
 <Note>
   There is a separate authentication strategy when making requests from your frontend application.
@@ -19,7 +19,7 @@ import { configure, runs } from "@trigger.dev/sdk";
 
 // Using secretKey authentication
 configure({
-  secretKey: process.env["TRIGGER_SECRET_KEY"], // starts with tr_dev_, tr_prod_, or tr_preview_
+  secretKey: process.env["TRIGGER_SECRET_KEY"], // starts with tr_dev_sk_, tr_prod_sk_, or tr_preview_sk_
 });
 
 function secretKeyExample() {
@@ -71,9 +71,9 @@ function personalAccessTokenExample() {
 
 </Accordion>
 
-### Secret key
+### Environment API key
 
-Secret key authentication scopes the API access to a specific environment in a project, and works with certain endpoints. You can read our [API Keys guide](/apikeys) for more information.
+Create a named environment API key with the narrowest access preset that supports your integration. Pass it through the `secretKey` option or `TRIGGER_SECRET_KEY` environment variable. Read the [API Keys guide](/apikeys) for available presets and task restrictions.
 
 ### Personal Access Token (PAT)
 
@@ -119,7 +119,7 @@ await envvars.update("proj_1234", "preview", "DATABASE_URL", {
 
   </Tab>
   <Tab title="cURL">
-    To target a specific preview branch, include the `x-trigger-branch` header in your API requests with the branch name as the value:
+    To target a specific preview or development branch, include the `x-trigger-branch` header in your API requests with the branch name as the value:
 
 ```bash
 curl --request PUT \
@@ -137,8 +137,8 @@ curl --request PUT \
 This will set the `DATABASE_URL` environment variable specifically for the `feature-xyz` preview branch.
 
 <Note>
-  The `x-trigger-branch` header is only relevant when working with the `preview` environment (`{env}
-  ` parameter set to `preview`). It has no effect when working with `dev`, `staging`, or `prod`
+  The `x-trigger-branch` header is only relevant when working with the `preview` or `dev` environments (`{env}
+  ` parameter set to `preview` or `development`). It has no effect when working with `staging`, or `prod`
   environments.
 </Note>
 
@@ -189,3 +189,38 @@ Unlike `TriggerClient` instances (which stay isolated unless you opt in), `auth.
   concurrency. If you need concurrent multi-target calls there, use
   [`new TriggerClient({...})`](/management/multiple-clients) instances instead.
 </Note>
+
+## Session scopes
+
+[Sessions](/ai-chat/sessions) are addressed by a session-scoped public access token — a short-lived JWT you mint in your backend and pass to frontend or server-side clients. The token carries one or both of two scopes, each pinned to a session by its friendly ID (`session_…`) or your `externalId`:
+
+| Scope | Grants |
+| --- | --- |
+| `read:sessions:{id}` | Retrieve the session, list its runs, and subscribe to and drain its `.out` [channel](/management/sessions/channels) (and every named channel). |
+| `read:sessions:{id}:out` | Subscribe to and drain the session's `.out` channel only. The bearer cannot retrieve the session row or read named channels. |
+| `write:sessions:{id}` | Append to the session's `.in` channel, and create runs on the session (including the create call itself). |
+
+Three boundaries follow from the table, and all are enforced server-side:
+
+- **`write:sessions` does not grant `.out` append.** The `.out` channel is the task's to write. Appending to `.out` requires a **secret key**; a public token gets `403`.
+- **No public token grants `.in` read.** The `.in` channel is the task's to read. Subscribing to or draining `.in` requires a **secret key**; a public token gets `403`, whichever session scopes it carries.
+- **Updating or closing a session requires a secret key.** A session public token cannot call `PATCH /api/v1/sessions/{session}` or `POST /api/v1/sessions/{session}/close` — those are admin operations.
+
+Mint a token with `auth.createPublicToken` in your backend:
+
+```ts Your backend
+import { auth } from "@trigger.dev/sdk";
+
+const publicToken = await auth.createPublicToken({
+  scopes: {
+    read: { sessions: "session_123" },
+    write: { sessions: "session_123" },
+  },
+});
+```
+
+`sessions` accepts a single ID or an array. The default token TTL is 1 hour. One token authorizes **both** URL forms — pass either your `externalId` or the `session_…` ID in the path.
+
+The `publicAccessToken` returned by [`sessions.start()`](/management/sessions/create) already carries both scopes for the session it created, so you usually don't mint one by hand for the create flow.
+
+For the full channel HTTP surface these scopes authorize, see [Session channels](/management/sessions/channels). For the SDK side, see [Sessions](/ai-chat/sessions). For general public-token usage (expiration formats, trigger tokens, scoping to runs and tasks), see [Realtime authentication](/realtime/auth).

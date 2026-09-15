@@ -2,7 +2,7 @@
 // Adapted for ClickHouse client's {param: Type} syntax
 
 import { getClickHouseType } from "./escape";
-import { SchemaRegistry, FieldMappings } from "./schema";
+import type { SchemaRegistry, FieldMappings } from "./schema";
 
 /**
  * Settings that control query execution behavior
@@ -125,6 +125,15 @@ export class PrinterContext {
    */
   readonly timeRange?: TimeRange;
 
+  /** When true, time-bucketed queries emit rows for empty buckets (opt-in). */
+  readonly fillGaps?: boolean;
+
+  /**
+   * Floor for the `timeBucket()` interval, in seconds. Widens buckets past what the range
+   * would pick, for series whose samples are too sparse to read at that width.
+   */
+  readonly minBucketSeconds?: number;
+
   constructor(
     /** Schema registry containing allowed tables and columns */
     public readonly schema: SchemaRegistry,
@@ -138,13 +147,19 @@ export class PrinterContext {
      */
     enforcedWhereClause: Record<string, WhereClauseCondition> = {},
     /** Time range for timeBucket() interval calculation */
-    timeRange?: TimeRange
+    timeRange?: TimeRange,
+    /** Opt-in gap-fill for time-bucketed queries */
+    fillGaps?: boolean,
+    /** Floor for the timeBucket() interval, in seconds */
+    minBucketSeconds?: number
   ) {
     // Initialize with default settings
     this.settings = { ...DEFAULT_QUERY_SETTINGS, ...settings };
     this.fieldMappings = fieldMappings;
     this.enforcedWhereClause = enforcedWhereClause;
     this.timeRange = timeRange;
+    this.fillGaps = fillGaps;
+    this.minBucketSeconds = minBucketSeconds;
   }
 
   /**
@@ -225,11 +240,14 @@ export class PrinterContext {
       this.settings,
       this.fieldMappings,
       this.enforcedWhereClause,
-      this.timeRange
+      this.timeRange,
+      this.fillGaps,
+      this.minBucketSeconds
     );
     // Share the same values map so parameters are unified
     child.values = this.values;
     // Share the same counter reference via closure
+    // eslint-disable-next-line no-this-alias
     const parentThis = this;
     Object.defineProperty(child, "paramCounter", {
       get() {
@@ -276,6 +294,13 @@ export interface PrinterContextOptions {
    * When provided, `timeBucket()` uses this to determine the appropriate bucket size.
    */
   timeRange?: TimeRange;
+  /** When true, time-bucketed queries emit rows for empty buckets (opt-in). */
+  fillGaps?: boolean;
+  /**
+   * Floor for the `timeBucket()` interval, in seconds. Widens buckets past what the range
+   * would pick, for series whose samples are too sparse to read at that width.
+   */
+  minBucketSeconds?: number;
 }
 
 /**
@@ -287,6 +312,8 @@ export function createPrinterContext(options: PrinterContextOptions): PrinterCon
     options.settings,
     options.fieldMappings,
     options.enforcedWhereClause,
-    options.timeRange
+    options.timeRange,
+    options.fillGaps,
+    options.minBucketSeconds
   );
 }

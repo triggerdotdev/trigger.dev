@@ -1,4 +1,5 @@
-import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import type { ActionFunctionArgs } from "@remix-run/server-runtime";
+import { json } from "@remix-run/server-runtime";
 import pMap from "p-map";
 import { z } from "zod";
 import { $replica, prisma } from "~/db.server";
@@ -6,6 +7,7 @@ import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
 import { determineEngineVersion } from "~/v3/engineVersion.server";
 import { engine } from "~/v3/runEngine.server";
 
+import { boundedIn } from "@trigger.dev/database";
 const ParamsSchema = z.object({
   environmentId: z.string(),
 });
@@ -48,7 +50,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     where: {
       runtimeEnvironmentId: environment.id,
       version: "V2",
-      name: parsedBody.queues.length > 0 ? { in: parsedBody.queues } : undefined,
+      name: parsedBody.queues.length > 0 ? { in: boundedIn(parsedBody.queues) } : undefined,
     },
     select: {
       friendlyId: true,

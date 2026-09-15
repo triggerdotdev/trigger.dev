@@ -1,4 +1,5 @@
 import { clickhouseTest } from "@internal/testcontainers";
+import type { MockInstance } from "vitest";
 import { z } from "zod";
 import { ClickhouseClient } from "./client/client.js";
 import { executeTSQL, createTSQLExecutor, type TableSchema } from "./client/tsql.js";
@@ -949,7 +950,7 @@ describe("TSQL Virtual Column Tests", () => {
 
     const insert = insertTaskRuns(client, { async_insert: 0 });
 
-    const now = Date.now();
+    const _now = Date.now();
 
     await insert([
       createTaskRun({
@@ -1563,52 +1564,277 @@ describe("Field Mapping Tests", () => {
     }
   );
 
+  clickhouseTest("should handle field mapping with IN clause", async ({ clickhouseContainer }) => {
+    const client = new ClickhouseClient({
+      name: "test",
+      url: clickhouseContainer.getConnectionUrl(),
+    });
+
+    const insert = insertTaskRuns(client, { async_insert: 0 });
+
+    // Insert test runs with different projects
+    await insert([
+      createTaskRun({
+        run_id: "run_fm_in1",
+        project_id: "proj_tenant1",
+        status: "COMPLETED_SUCCESSFULLY",
+      }),
+      createTaskRun({
+        run_id: "run_fm_in2",
+        project_id: "proj_other",
+        organization_id: "org_tenant1",
+        status: "PENDING",
+      }),
+    ]);
+
+    // Query using IN clause with external project_ref values
+    const [error, result] = await executeTSQL(client, {
+      name: "test-field-mapping-in",
+      query:
+        "SELECT run_id FROM task_runs WHERE project_ref IN ('my-project-ref', 'other-project')",
+      schema: z.object({ run_id: z.string() }),
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "org_tenant1" },
+      },
+      tableSchema: [fieldMappingSchema],
+      fieldMappings: {
+        project: {
+          proj_tenant1: "my-project-ref",
+          proj_other: "other-project",
+        },
+      },
+    });
+
+    expect(error).toBeNull();
+    expect(result?.rows).toHaveLength(2);
+    expect(result?.rows?.map((r) => r.run_id).sort()).toEqual(["run_fm_in1", "run_fm_in2"]);
+  });
+});
+
+describe("TSQL Error Log Levels", () => {
+  let warnSpy: MockInstance<typeof console.warn>;
+  let errorSpy: MockInstance<typeof console.error>;
+
+  beforeEach(() => {
+    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function logged(spy: MockInstance<typeof console.warn>): string {
+    return spy.mock.calls.map(([line]) => String(line)).join("\n");
+  }
+
+  clickhouseTest("logs an unknown column as a warning", async ({ clickhouseContainer }) => {
+    const client = new ClickhouseClient({
+      name: "test",
+      url: clickhouseContainer.getConnectionUrl(),
+    });
+    const query = "SELECT private_column_marker FROM task_runs";
+
+    const [error] = await executeTSQL(client, {
+      name: "test-unknown-column",
+      query,
+      schema: z.object({ private_column_marker: z.string() }),
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "private_param_marker" },
+      },
+      tableSchema: [taskRunsSchema],
+      userAuthoredQuery: true,
+    });
+
+    expect(error).not.toBeNull();
+    expect(error?.context?.query).toBe(query);
+    expect(logged(warnSpy)).toContain("[TSQL] Invalid query");
+    expect(logged(warnSpy)).not.toContain("private_column_marker");
+    expect(logged(warnSpy)).not.toContain("private_param_marker");
+    expect(logged(errorSpy)).not.toContain("[TSQL] Query error");
+  });
+
+  clickhouseTest("logs a syntax error as a warning", async ({ clickhouseContainer }) => {
+    const client = new ClickhouseClient({
+      name: "test",
+      url: clickhouseContainer.getConnectionUrl(),
+    });
+
+    const [error] = await executeTSQL(client, {
+      name: "test-syntax-error",
+      query: "SELECT FROM WHERE",
+      schema: z.object({ run_id: z.string() }),
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "org_tenant1" },
+      },
+      tableSchema: [taskRunsSchema],
+      userAuthoredQuery: true,
+    });
+
+    expect(error).not.toBeNull();
+    expect(logged(warnSpy)).toContain("[TSQL] Invalid query");
+    expect(logged(errorSpy)).not.toContain("[TSQL] Query error");
+  });
+
   clickhouseTest(
-    "should handle field mapping with IN clause",
+    "logs a query ClickHouse rejects at execution without query contents",
+    async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+      const query = "SELECT toDateTime(tags) AS private_query_marker FROM task_runs";
+
+      const [error] = await executeTSQL(client, {
+        name: "test-execution-error",
+        query,
+        schema: z.object({ private_query_marker: z.string() }),
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "private_param_marker" },
+        },
+        tableSchema: [taskRunsSchema],
+      });
+
+      expect(error).not.toBeNull();
+      expect(error?.context?.query).toBe(query);
+      expect(logged(errorSpy)).toContain("Error querying clickhouse");
+      expect(logged(errorSpy)).toContain('"name":"ClickHouseError"');
+      expect(logged(errorSpy)).toMatch(/"type":"[A-Z_]+"/);
+      expect(logged(errorSpy)).not.toContain("private_query_marker");
+      expect(logged(errorSpy)).not.toContain("private_param_marker");
+    }
+  );
+
+  clickhouseTest(
+    "keeps a compile failure on TRQL we generated at error level",
     async ({ clickhouseContainer }) => {
       const client = new ClickhouseClient({
         name: "test",
         url: clickhouseContainer.getConnectionUrl(),
       });
 
-      const insert = insertTaskRuns(client, { async_insert: 0 });
+      const [error] = await executeTSQL(client, {
+        name: "test-internal-compile-error",
+        query: "SELECT nope FROM task_runs",
+        schema: z.object({ nope: z.string() }),
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_tenant1" },
+        },
+        tableSchema: [taskRunsSchema],
+      });
 
-      // Insert test runs with different projects
-      await insert([
-        createTaskRun({
-          run_id: "run_fm_in1",
-          project_id: "proj_tenant1",
-          status: "COMPLETED_SUCCESSFULLY",
-        }),
-        createTaskRun({
-          run_id: "run_fm_in2",
-          project_id: "proj_other",
-          organization_id: "org_tenant1",
-          status: "PENDING",
-        }),
+      expect(error).not.toBeNull();
+      expect(logged(errorSpy)).toContain("[TSQL] Query error");
+      expect(logged(warnSpy)).not.toContain("[TSQL] Invalid query");
+    }
+  );
+
+  clickhouseTest(
+    "logs invalid caller-written SQL as a warning",
+    async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+
+      const [error] = await executeTSQL(client, {
+        name: "test-user-authored-invalid",
+        query: "SELECT status, sum(is_test) AS n FROM task_runs",
+        schema: z.object({ status: z.string(), n: z.number() }),
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_tenant1" },
+        },
+        tableSchema: [taskRunsSchema],
+        userAuthoredQuery: true,
+      });
+
+      expect(error).not.toBeNull();
+      expect(logged(warnSpy)).toContain("ClickHouse rejected an invalid query");
+      expect(logged(errorSpy)).not.toContain("Error querying clickhouse");
+    }
+  );
+
+  clickhouseTest(
+    "keeps invalid SQL we generated at error level",
+    async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+
+      const [error] = await executeTSQL(client, {
+        name: "test-internal-invalid",
+        query: "SELECT status, sum(is_test) AS n FROM task_runs",
+        schema: z.object({ status: z.string(), n: z.number() }),
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_tenant1" },
+        },
+        tableSchema: [taskRunsSchema],
+      });
+
+      expect(error).not.toBeNull();
+      expect(logged(errorSpy)).toContain("Error querying clickhouse");
+      expect(logged(warnSpy)).not.toContain("ClickHouse rejected an invalid query");
+    }
+  );
+
+  clickhouseTest("logs a ClickHouse limit breach as a warning", async ({ clickhouseContainer }) => {
+    const client = new ClickhouseClient({
+      name: "test",
+      url: clickhouseContainer.getConnectionUrl(),
+    });
+
+    await insertTaskRuns(client, { async_insert: 0 })([
+      createTaskRun({ run_id: "run_limit1" }),
+      createTaskRun({ run_id: "run_limit2" }),
+      createTaskRun({ run_id: "run_limit3" }),
+    ]);
+
+    const [error] = await executeTSQL(client, {
+      name: "test-resource-limit",
+      query: "SELECT run_id FROM task_runs",
+      schema: z.object({ run_id: z.string() }),
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "org_tenant1" },
+      },
+      tableSchema: [taskRunsSchema],
+      userAuthoredQuery: true,
+      clickhouseSettings: { max_rows_to_read: "1" },
+    });
+
+    expect(error).not.toBeNull();
+    expect(logged(warnSpy)).toContain("Query exceeded a ClickHouse limit");
+    expect(logged(errorSpy)).not.toContain("Error querying clickhouse");
+  });
+
+  clickhouseTest(
+    "keeps a limit breach on a query we generated at error level",
+    async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+
+      await insertTaskRuns(client, { async_insert: 0 })([
+        createTaskRun({ run_id: "run_intlimit1" }),
+        createTaskRun({ run_id: "run_intlimit2" }),
+        createTaskRun({ run_id: "run_intlimit3" }),
       ]);
 
-      // Query using IN clause with external project_ref values
-      const [error, result] = await executeTSQL(client, {
-        name: "test-field-mapping-in",
-        query:
-          "SELECT run_id FROM task_runs WHERE project_ref IN ('my-project-ref', 'other-project')",
+      const [error] = await executeTSQL(client, {
+        name: "test-internal-resource-limit",
+        query: "SELECT run_id FROM task_runs",
         schema: z.object({ run_id: z.string() }),
         enforcedWhereClause: {
           organization_id: { op: "eq", value: "org_tenant1" },
         },
-        tableSchema: [fieldMappingSchema],
-        fieldMappings: {
-          project: {
-            proj_tenant1: "my-project-ref",
-            proj_other: "other-project",
-          },
-        },
+        tableSchema: [taskRunsSchema],
+        clickhouseSettings: { max_rows_to_read: "1" },
       });
 
-      expect(error).toBeNull();
-      expect(result?.rows).toHaveLength(2);
-      expect(result?.rows?.map((r) => r.run_id).sort()).toEqual(["run_fm_in1", "run_fm_in2"]);
+      expect(error).not.toBeNull();
+      expect(logged(errorSpy)).toContain("Error querying clickhouse");
+      expect(logged(warnSpy)).not.toContain("Query exceeded a ClickHouse limit");
     }
   );
 });

@@ -7,10 +7,22 @@ import type {
   QueueDescriptor,
 } from "./types.js";
 
+/**
+ * Page size for iterating a concurrency set's members (SSCAN COUNT) and cap on how many
+ * members one sweep script invocation checks, bounding both the snapshot reads and the
+ * time the atomic Lua script can hold up Redis when a set has accumulated many leaked
+ * members.
+ */
+const SWEEP_MEMBER_CHUNK_SIZE = 500;
+
 export interface ConcurrencyManagerOptions {
   redis: RedisOptions;
   keys: FairQueueKeyProducer;
   groups: ConcurrencyGroupConfig[];
+  logger?: {
+    debug: (message: string, context?: Record<string, unknown>) => void;
+    error: (message: string, context?: Record<string, unknown>) => void;
+  };
 }
 
 /**
@@ -26,12 +38,17 @@ export class ConcurrencyManager {
   private keys: FairQueueKeyProducer;
   private groups: ConcurrencyGroupConfig[];
   private groupsByName: Map<string, ConcurrencyGroupConfig>;
+  private logger: NonNullable<ConcurrencyManagerOptions["logger"]>;
 
   constructor(private options: ConcurrencyManagerOptions) {
     this.redis = createRedisClient(options.redis);
     this.keys = options.keys;
     this.groups = options.groups;
     this.groupsByName = new Map(options.groups.map((g) => [g.name, g]));
+    this.logger = options.logger ?? {
+      debug: () => {},
+      error: () => {},
+    };
 
     this.#registerCommands();
   }
@@ -103,7 +120,37 @@ export class ConcurrencyManager {
       pipeline.srem(key, messageId);
     }
 
-    await pipeline.exec();
+    this.#assertPipelineSucceeded(await pipeline.exec(), 1);
+  }
+
+  /**
+   * Throw if any command in a released pipeline failed. ioredis resolves `exec()` even when
+   * individual commands error, so an unchecked pipeline reports success while leaving the
+   * slot held, which strands it permanently once the caller drops the in-flight record.
+   */
+  #assertPipelineSucceeded(
+    results: Array<[Error | null, unknown]> | null,
+    messageCount: number
+  ): void {
+    if (results === null) {
+      throw new Error(
+        `Concurrency release pipeline for ${messageCount} message(s) was discarded without executing`
+      );
+    }
+
+    const errors = results
+      .map(([error]) => error)
+      .filter((error): error is Error => Boolean(error));
+
+    if (errors.length > 0) {
+      throw new Error(
+        `Failed to release ${errors.length} of ${
+          results?.length ?? 0
+        } concurrency slot commands across ${messageCount} message(s): ${errors
+          .map((error) => error.message)
+          .join("; ")}`
+      );
+    }
   }
 
   /**
@@ -127,7 +174,98 @@ export class ConcurrencyManager {
       }
     }
 
-    await pipeline.exec();
+    this.#assertPipelineSucceeded(await pipeline.exec(), messages.length);
+  }
+
+  /**
+   * Remove concurrency set members that no longer correspond to an in-flight message,
+   * healing slots leaked by failed releases. Scans every set of every group and, per
+   * member, atomically removes it unless the message id appears in one of the given
+   * in-flight data hashes. Sound because a message is registered in-flight before its
+   * slot is reserved, so at the moment of the atomic check a member with no in-flight
+   * record can only be a leak; if the message is about to be re-claimed, reserve simply
+   * re-adds the member.
+   *
+   * @param inflightDataKeys - The in-flight data hash keys for every shard. The sweep
+   *   refuses to run when this is empty, since with nowhere to look for running messages
+   *   every member would look orphaned and all concurrency accounting would be erased.
+   * @returns The message ids that were removed, and how many sets were checked
+   */
+  async sweepOrphanedSlots(
+    inflightDataKeys: string[]
+  ): Promise<{ scannedSets: number; removed: string[] }> {
+    if (inflightDataKeys.length === 0) {
+      this.logger.error(
+        "Refusing to sweep concurrency slots without any in-flight data keys: every member would look orphaned and all concurrency accounting would be erased"
+      );
+      return { scannedSets: 0, removed: [] };
+    }
+
+    const keyPrefix = this.options.redis.keyPrefix ?? "";
+    let scannedSets = 0;
+    const removed: string[] = [];
+
+    for (const group of this.groups) {
+      const pattern = `${keyPrefix}${this.keys.concurrencyKey(group.name, "*")}`;
+      let cursor = "0";
+
+      do {
+        const [nextCursor, foundKeys] = await this.redis.scan(
+          cursor,
+          "MATCH",
+          pattern,
+          "COUNT",
+          1000
+        );
+        cursor = nextCursor;
+
+        for (const fullKey of foundKeys) {
+          const key =
+            keyPrefix && fullKey.startsWith(keyPrefix) ? fullKey.slice(keyPrefix.length) : fullKey;
+
+          try {
+            let sawMembers = false;
+            let memberCursor = "0";
+
+            do {
+              const [nextMemberCursor, page] = await this.redis.sscan(
+                key,
+                memberCursor,
+                "COUNT",
+                SWEEP_MEMBER_CHUNK_SIZE
+              );
+              memberCursor = nextMemberCursor;
+
+              if (page.length === 0) {
+                continue;
+              }
+              sawMembers = true;
+
+              for (let i = 0; i < page.length; i += SWEEP_MEMBER_CHUNK_SIZE) {
+                const chunk = page.slice(i, i + SWEEP_MEMBER_CHUNK_SIZE);
+                const removedIds = await this.redis.removeOrphanedConcurrencySlots(
+                  1 + inflightDataKeys.length,
+                  [key, ...inflightDataKeys],
+                  ...chunk
+                );
+                removed.push(...removedIds);
+              }
+            } while (memberCursor !== "0");
+
+            if (sawMembers) {
+              scannedSets++;
+            }
+          } catch (error) {
+            this.logger.error("Failed to sweep concurrency set, skipping it", {
+              key,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+      } while (cursor !== "0");
+    }
+
+    return { scannedSets, removed };
   }
 
   /**
@@ -268,14 +406,20 @@ export class ConcurrencyManager {
 local numGroups = #KEYS
 local messageId = ARGV[1]
 
--- Check all groups first
+-- Check all groups first. A message that is already a member of a group's set passes
+-- that group's check: re-admitting it does not increase concurrency (SADD is a no-op),
+-- and counting its own leftover slot against it would let a message whose earlier
+-- release failed block its own retry forever.
 for i = 1, numGroups do
   local key = KEYS[i]
   local limit = tonumber(ARGV[1 + i])  -- Limits start at ARGV[2]
-  local current = redis.call('SCARD', key)
-  
-  if current >= limit then
-    return 0  -- At capacity
+
+  if redis.call('SISMEMBER', key, messageId) == 0 then
+    local current = redis.call('SCARD', key)
+
+    if current >= limit then
+      return 0  -- At capacity
+    end
   end
 end
 
@@ -286,6 +430,37 @@ for i = 1, numGroups do
 end
 
 return 1
+      `,
+    });
+
+    // Atomic orphan sweep for one concurrency set
+    // KEYS[1]: concurrency set key
+    // KEYS[2..n]: in-flight data hash keys for every shard
+    // ARGV: candidate messageIds (a snapshot of the set's members)
+    this.redis.defineCommand("removeOrphanedConcurrencySlots", {
+      lua: `
+local concurrencyKey = KEYS[1]
+local removedIds = {}
+
+for i = 1, #ARGV do
+  local messageId = ARGV[i]
+  local inflight = false
+
+  for j = 2, #KEYS do
+    if redis.call('HEXISTS', KEYS[j], messageId) == 1 then
+      inflight = true
+      break
+    end
+  end
+
+  if not inflight then
+    if redis.call('SREM', concurrencyKey, messageId) == 1 then
+      table.insert(removedIds, messageId)
+    end
+  end
+end
+
+return removedIds
       `,
     });
   }
@@ -300,5 +475,11 @@ declare module "@internal/redis" {
       messageId: string,
       ...limits: string[]
     ): Promise<number>;
+
+    removeOrphanedConcurrencySlots(
+      numKeys: number,
+      keys: string[],
+      ...messageIds: string[]
+    ): Promise<string[]>;
   }
 }

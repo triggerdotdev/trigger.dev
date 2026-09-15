@@ -1,7 +1,8 @@
-import { WorkerManifest, generateFriendlyId } from "@trigger.dev/core/v3";
+import type { WorkerManifest } from "@trigger.dev/core/v3";
+import { generateFriendlyId } from "@trigger.dev/core/v3";
 import { TaskRunProcess } from "../../executions/taskRunProcess.js";
-import { RunnerEnv } from "./env.js";
-import { RunLogger, SendDebugLogOptions } from "./logger.js";
+import type { RunnerEnv } from "./env.js";
+import type { RunLogger, SendDebugLogOptions } from "./logger.js";
 
 export interface TaskRunProcessProviderOptions {
   workerManifest: WorkerManifest;
@@ -251,11 +252,14 @@ export class TaskRunProcessProvider {
       workerManifest: this.workerManifest,
       env: processEnv,
       serverWorker: {
-        id: this.env.TRIGGER_DEPLOYMENT_ID,
+        // Telemetry-only (becomes OTel worker.id). Prefer the plain friendlyId; fall back to
+        // DEPLOYMENT_ID (which may be an opaque token) only when an older supervisor didn't set it.
+        id: this.env.TRIGGER_DEPLOYMENT_FRIENDLY_ID ?? this.env.TRIGGER_DEPLOYMENT_ID,
         contentHash: this.env.TRIGGER_CONTENT_HASH,
         version: this.env.TRIGGER_DEPLOYMENT_VERSION,
         engine: "V2",
       },
+
       machineResources: {
         cpu: Number(this.env.TRIGGER_MACHINE_CPU),
         memory: Number(this.env.TRIGGER_MACHINE_MEMORY),

@@ -1,0 +1,38 @@
+CREATE TABLE IF NOT EXISTS "trigger_dashboard_agent"."chat_turn_evals" (
+	"chat_id" text NOT NULL,
+	"turn" integer NOT NULL,
+	"organization_id" text NOT NULL,
+	"user_id" text NOT NULL,
+	"agent_run_id" text,
+	"eval_run_id" text,
+	"project_ref" text,
+	"environment" text,
+	"current_page" text,
+	"model" text,
+	"prompt_slug" text,
+	"prompt_version" integer,
+	"tools_used" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"tool_error" boolean DEFAULT false NOT NULL,
+	"judge_model" text,
+	"score_grounded" smallint,
+	"score_answered" smallint,
+	"score_concise" smallint,
+	"passed" boolean,
+	"intent_category" text,
+	"outcome" text,
+	"sentiment" text,
+	"capability_gap" boolean DEFAULT false NOT NULL,
+	"docs_gap" boolean DEFAULT false NOT NULL,
+	"support_opportunity" boolean DEFAULT false NOT NULL,
+	"feature_request" boolean DEFAULT false NOT NULL,
+	"topics" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"signals" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"summary" text,
+	"user_text" text,
+	"judge" jsonb,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "chat_turn_evals_chat_id_turn_pk" PRIMARY KEY("chat_id","turn")
+);
+--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "chat_turn_evals_org_created_idx" ON "trigger_dashboard_agent"."chat_turn_evals" USING btree ("organization_id","created_at" DESC NULLS LAST);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "chat_turn_evals_org_opps_idx" ON "trigger_dashboard_agent"."chat_turn_evals" USING btree ("organization_id","created_at" DESC NULLS LAST) WHERE "trigger_dashboard_agent"."chat_turn_evals"."capability_gap" or "trigger_dashboard_agent"."chat_turn_evals"."docs_gap" or "trigger_dashboard_agent"."chat_turn_evals"."support_opportunity" or "trigger_dashboard_agent"."chat_turn_evals"."feature_request";

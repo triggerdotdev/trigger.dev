@@ -13,9 +13,16 @@ export const InputPayload = z.object({
   queue: z.string(),
   concurrencyKey: z.string().optional(),
   timestamp: z.number(),
+  // Unix ms the run became eligible (delayUntil if set, else triggered-at), pre-priority.
+  // Dequeue scheduling delay = dequeueTime - eligibleAtMs. Optional for old-payload compat.
+  eligibleAtMs: z.number().optional(),
   attempt: z.number(),
   /** TTL expiration timestamp (unix ms). If set, run will be expired when this time is reached. */
   ttlExpiresAt: z.number().optional(),
+  // The run's versioned snapshot storage route (a `SnapshotRouteWire`), stamped from its birth
+  // residency so a poll-lagging consumer honors its true residency. Opaque (`z.unknown`) so it
+  // survives serialize while an old consumer strips it — mixed-version safe. Validated at consumption.
+  snapshotRoute: z.unknown().optional(),
 });
 export type InputPayload = z.infer<typeof InputPayload>;
 
@@ -31,7 +38,9 @@ export const OutputPayloadV2 = InputPayload.extend({
 });
 export type OutputPayloadV2 = z.infer<typeof OutputPayloadV2>;
 
-export const OutputPayload = z.discriminatedUnion("version", [OutputPayloadV1, OutputPayloadV2]);
+export const OutputPayload = z.compile(
+  z.discriminatedUnion("version", [OutputPayloadV1, OutputPayloadV2])
+);
 
 export type OutputPayload = z.infer<typeof OutputPayload>;
 

@@ -4,10 +4,6 @@ sidebarTitle: "Client Protocol"
 description: "The wire protocol for building custom chat transports — how clients communicate with chat agents over Sessions and SSE."
 ---
 
-import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
-
-<RcBanner />
-
 This page documents the protocol that chat clients use to communicate with `chat.agent()` tasks. Use this if you're building a custom transport (e.g., for a Slack bot, CLI tool, or native app) instead of using the built-in `TriggerChatTransport` or `AgentChat`.
 
 <Note>
@@ -58,7 +54,7 @@ A single-shell walk-through of the whole protocol — copy, fill in `BASE_URL` /
 
 ```bash
 BASE_URL="https://api.trigger.dev"   # or your local webapp
-SECRET_KEY="tr_dev_..."              # secret API key for the env
+SECRET_KEY="tr_dev_sk_..."              # secret API key for the env
 TASK_ID="ai-chat"                    # your chat.agent task id
 CHAT_ID=$(uuidgen | tr '[:upper:]' '[:lower:]')
 
@@ -214,6 +210,7 @@ Pick `"preload"` when the UI has rendered but the user hasn't typed (warms the a
 | `triggerConfig.maxAttempts` | `number` | Per-run retry cap (1–10). |
 | `triggerConfig.maxDuration` | `number` | Per-run wall-clock cap, seconds. |
 | `triggerConfig.lockToVersion` | `string` | Pin every run to a specific worker version. |
+| `triggerConfig.externalDeploymentId` | `string \| null` | Pin every run to the deployment carrying this [external deployment id](/deployment/version-skew-protection#chat-sessions). Discovered from the environment when omitted; `null` opts the chat out. |
 | `triggerConfig.region` | `string` | Region preference. |
 | `triggerConfig.idleTimeoutInSeconds` | `number` | Surfaced to the agent through the wire payload (1–3600). |
 
@@ -270,7 +267,7 @@ x-trigger-jwt-claims: {"sub":"...","scopes":["read:runs:run_abc123","write:input
 Re-calling `POST /api/v1/sessions` with the same `(taskIdentifier, externalId)` pair is **idempotent for the lifetime of the session**:
 
 - If the session is still alive: returns the existing row with `isCached: true`, `runId` unchanged, and a **fresh** 60-minute `publicAccessToken`. No duplicate run is triggered. (Idle/exited runs are different — see [Continuations](#continuations).)
-- If the session has been closed (`POST /api/v1/sessions/{id}/close`): returns **HTTP 409**. Closed is one-way; reuse a different `externalId` to start a new conversation.
+- If the session has been closed (`POST /api/v1/sessions/{id}/close`, or `chat.close()` from inside the agent): returns **HTTP 409**. Closed is one-way; reuse a different `externalId` to start a new conversation.
 - Any tags / metadata / expiresAt / triggerConfig fields you send on the cached path are written through to the row, so you can update e.g. `triggerConfig.basePayload.metadata` mid-conversation. The new fields apply to **future** runs (continuations); the currently-live run keeps its original config.
 
 <Warning>
@@ -324,7 +321,7 @@ The output stream uses [S2](https://s2.dev) under the hood and follows the stand
 | Event | Meaning |
 | --- | --- |
 | `batch` | One or more records. The records you actually care about. |
-| `ping` | Keepalive (~every 5s on idle). Body is `{"timestamp": <ms>}`. Ignore it. |
+| `ping` | Keepalive (~every 5s on idle). Body is `{"timestamp": <ms>}`, and on backends that report it a `tail` (same `{seq_num, timestamp}` shape as a batch tail). The tail is what lets you tell you have caught up to the live edge; if you don't need caught-up detection, ignore the ping. |
 | _(no `event:`, just `data: [DONE]`)_ | Stream is closing — server sends this once before EOF. |
 
 A `batch` event in raw SSE format looks like this — note the `data` is a single line of JSON, no embedded newlines (per the SSE spec):
@@ -363,7 +360,7 @@ Decoded `data` payload:
 | `records[].timestamp` | Unix ms when the record was written to S2. |
 | `records[].body` | For data records: a JSON-encoded **string** wrapping `{ data: UIMessageChunk, id: string }`. For control records: an empty string (semantics live in `headers`). For S2 command records: opaque bytes. See [Records on session.out](#records-on-session-out). |
 | `records[].headers` | Optional `[name, value]` pairs. Empty for data records; a `trigger-control` entry for control records; a single empty-name `["", "<op>"]` entry for S2 command records. |
-| `tail.seq_num` | Latest known tail of the S2 stream — useful for detecting how far behind the live edge you are. Skip if you don't need it. |
+| `tail.seq_num` | Latest known tail of the S2 stream, useful for detecting how far behind the live edge you are. Track the **highest `seq_num` you have received**, counting every record in the batch (including the command records you skip, see below), not just the last application-visible one. When `highest received seq_num + 1 === tail.seq_num` you have drained the backlog and are caught up to the live edge. The same `tail` also rides on `ping` events. Skip if you don't need it. |
 | `tail.timestamp` | Timestamp of `tail.seq_num`. |
 
 ### Records on `session.out`
@@ -587,7 +584,7 @@ Signals that the agent's turn is finished — stop reading and wait for user inp
 headers:
   ["trigger-control", "turn-complete"]
   ["public-access-token", "eyJ..."]   // optional, refreshed JWT
-  ["session-in-event-id", "42"]       // optional, agent-internal resume cursor
+  ["session-in-event-id", "42"]       // optional, send-correlation + resume cursor
 body: ""
 ```
 
@@ -595,12 +592,16 @@ body: ""
 | --- | --- |
 | `trigger-control: turn-complete` | Always present on this record. |
 | `public-access-token: <jwt>` (optional) | A refreshed JWT with the same session + run scopes. If present, replace your stored token. |
-| `session-in-event-id: <seq>` (optional) | Internal cursor used by the agent to resume `.in` across worker boots without replaying already-processed user messages. Custom transports should ignore this header — it carries no client-side meaning. |
+| `session-in-event-id: <seq>` (optional) | The agent's committed `.in` cursor for this turn: the seq of the last user record it had consumed when the turn finished. Compare it to the `seq` from your `.in/append` to tell whether this turn-complete is *yours* (see the warning below). Also used internally to resume `.in` across worker boots without replaying processed messages. |
 
 When you receive this record:
 1. Update `publicAccessToken` if one is included on the headers.
 2. Close the stream reader (unless you want to keep it open across turns — see [Resuming a stream](#resuming-a-stream)).
 3. Wait for the next user message before sending on `.in`.
+
+<Warning>
+  **Correlate turn-completes to your send.** A `turn-complete` on `.out` can belong to an *earlier* turn than the message you just sent, for example a concurrent action (an undo) whose completion lands on the stream first. Only treat a `turn-complete` as terminal for your send if its `session-in-event-id` is greater than or equal to the `seq` returned by that send's `.in/append`; skip any lower one and keep reading. Closing on the wrong turn drops your response until the next reload. The built-in `TriggerChatTransport` does this correlation for you.
+</Warning>
 
 ### `upgrade-required` control record
 
@@ -652,6 +653,8 @@ On **reconnect-on-reload** paths (resuming a chat where nothing may be streaming
 
 **Do not send `X-Peek-Settled` on the active-send response-stream path.** The peek would race the newly-triggered turn's first chunk — if the agent hasn't written the new turn's first record yet, the peek sees the prior turn's `turn-complete` and closes the SSE before the response lands on S2. The built-in `TriggerChatTransport.reconnectToStream` sets the header; `sendMessages → subscribeToStream` does not.
 
+If you use `TriggerChatTransport` (or `useChat`, which builds on it), this is handled for you: the reconnect path sends `X-Peek-Settled`, so a settled idle reconnect closes promptly on the server's `wait=0` fast-close instead of waiting out the long poll. Consuming `.out` directly, send the same header on your reconnect reads and treat an `X-Session-Settled: true` response as a terminal close.
+
 ```ts
 // Reconnect path (page reload)
 const response = await fetch(sseUrl, {
@@ -685,13 +688,13 @@ Content-Type: application/json
 
 `{sessionId}` accepts the same friendly-or-external forms as `.out`. The `publicAccessToken` from session-create authorizes both.
 
-The body is a JSON-serialized [`ChatInputChunk`](#chatinputchunk) — a tagged union covering messages, stops, and actions. Send them as raw JSON strings (not wrapped in a `data` field). On success the response is `200 OK` with body `{ "ok": true }`; on failure it's `4xx`/`5xx` with `{ "ok": false, "error": "<message>" }`. Common failures:
+The body is a JSON-serialized [`ChatInputChunk`](#chatinputchunk), a tagged union covering messages, stops, and actions. Send them as raw JSON strings (not wrapped in a `data` field). On success the response is `200 OK` with body `{ "ok": true, "seq": <number> }`, where `seq` is the appended record's `.in` sequence number. Use it to correlate this send to the turn that consumes it (see [`turn-complete` control record](#turn-complete-control-record)). On failure it's `4xx`/`5xx` with `{ "ok": false, "error": "<message>" }`. Common failures:
 
 | Status | When |
 | --- | --- |
 | `401` | Missing or invalid `Authorization` header. |
 | `403` | Token doesn't carry `write:sessions:{externalId}`. |
-| `409` | The session is closed — `{ "ok": false, "error": "Cannot append to a closed session" }`. |
+| `409` | The session is closed: `{ "ok": false, "error": "Cannot append to a closed session", "code": "session_closed", "closedReason": "<reason or null>" }`. Key on `code`, not the message. Terminal: do not retry, and stop reconnecting to `.out`. |
 | `413` | Body exceeds 1 MiB **or** the wrapped record would exceed S2's ~1 MiB per-record metered ceiling. A normal `kind: "message"` payload is a few KB; if you hit this you're shipping more than one message per record or pushing a single tool output that's itself oversized. Carries CORS headers so browser fetches can read the status. |
 | `500` | Transient backend failure on the durable stream. Safe to retry — appends are idempotent on `(externalId, X-Part-Id)` if you set the optional `X-Part-Id` request header (the built-in clients set it from a UUID). |
 
@@ -769,7 +772,7 @@ type ChatTaskWirePayload<TMessage extends UIMessage = UIMessage, TMetadata = unk
 ```
 
 <Note>
-  **`metadata` is the wire envelope for `clientData`.** The agent's `clientData` (typed via `chat.withClientData({ schema })`) is read from this field at run boot. If the agent declares e.g. `{ userId: string, model?: string }`, then every `kind: "message"` payload — and the `triggerConfig.basePayload` you sent at session create — must carry a matching `metadata.userId`. The agent rejects messages whose metadata fails schema validation.
+  **`metadata` is the wire envelope for `clientData`.** The agent's `clientData` (typed via `chat.withClientData({ schema })`) is read from this field at run boot. If the agent declares e.g. `{ userId: string, model?: string }`, then the `triggerConfig.basePayload` you sent at session create and every non-close `kind: "message"` payload must carry a matching `metadata.userId`. Invalid metadata is not passed to agent code. Async reads produce an error chunk followed by `turn-complete`; raw `chat.messages.on()` subscriptions use `onClientDataValidationError` and the task log so they do not end an active response.
 </Note>
 
 ### Sending a message
@@ -830,7 +833,9 @@ Custom actions (undo, rollback, edit) ride on the same `.in` channel using `kind
 }
 ```
 
-Actions wake the agent from suspension (same as messages) and fire the `onAction` hook — they are not turns, so `run()` and turn lifecycle hooks do not fire. If `onAction` returns a `StreamTextResult`, the response is auto-piped to the frontend (but still no `run()` or `onTurnComplete`). The `action` payload is validated against the agent's `actionSchema`. If the agent didn't register an `actionSchema` (or your `action` payload doesn't match it), validation fails the same way `metadata` does — `.in/append` returns `200 OK`, but the run trace shows `chat turn N [ERROR]` and the wire emits a `turn-complete` control record with no other chunks. See [Actions](/ai-chat/actions) for the agent-side schema setup.
+For managed `chat.agent()` tasks, actions wake the agent from suspension (same as messages) and fire the `onAction` hook — they are not turns, so `run()` and turn lifecycle hooks do not fire. If `onAction` returns `chat.turn()`, a turn runs on the edited history and its chunks follow on `.out` like any turn's.
+
+Raw `chat.customAgent()` tasks receive `action` as `unknown` and must validate it in their own loop.
 
 ### Regenerating the last response
 
@@ -951,8 +956,11 @@ You can send messages while the agent is still streaming a response. These are *
 
 The wire format is identical to a normal `kind: "message"` send — same `.in` channel, single `message` field. The difference is timing. What happens depends on the agent's `pendingMessages` configuration:
 
-- **With `pendingMessages.shouldInject`**: the message is injected into the model's context at the next `prepareStep` boundary. The agent sees it and can adjust its behavior mid-response.
+- **With `pendingMessages.shouldInject` returning `true`**: the message is injected into the model's context at the next `prepareStep` boundary. The agent sees it and can adjust its behavior mid-response.
+- **With a `pendingMessages` config that declines it**, either because `shouldInject` returned `false` or because it is absent: the message stays queued on the backend and is answered as the next turn.
 - **Without `pendingMessages` config**: the message queues for the next turn.
+
+In every case the message is answered. A declined message keeps its place in the queue, so it also survives a crash and is picked up by whichever run continues the conversation.
 
 See [Pending Messages](/ai-chat/pending-messages) for how to configure the agent side.
 

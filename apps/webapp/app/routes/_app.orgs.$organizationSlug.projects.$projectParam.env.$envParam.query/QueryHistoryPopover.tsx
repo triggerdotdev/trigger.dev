@@ -105,13 +105,13 @@ export function QueryHistoryPopover({
       </PopoverTrigger>
       <PopoverPrimitive.Content
         className={cn(
-          "z-50 w-[400px] min-w-0 overflow-hidden rounded border border-charcoal-700 bg-background-bright p-0 shadow-md outline-none animate-in data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2"
+          "z-50 w-[400px] min-w-0 overflow-hidden rounded border border-grid-bright bg-background-bright p-0 shadow-md outline-hidden animate-in data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2"
         )}
         align="start"
         sideOffset={6}
         style={{ maxHeight: "var(--radix-popover-content-available-height)" }}
       >
-        <div className="max-h-[40rem] overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <div className="max-h-160 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
           <div className="p-1">
             {history.map((item) => {
               // Format time filter display
@@ -129,7 +129,7 @@ export function QueryHistoryPopover({
                     onQuerySelected(item);
                     setIsOpen(false);
                   }}
-                  className="flex w-full flex-col gap-1 rounded-sm px-2 py-2 outline-none transition-colors focus-custom hover:bg-charcoal-750"
+                  className="flex w-full flex-col gap-1 rounded-sm px-2 py-2 outline-hidden transition-colors focus-custom hover:bg-background-hover"
                 >
                   <div className="flex w-full flex-col items-start">
                     {item.title ? (
@@ -147,7 +147,7 @@ export function QueryHistoryPopover({
                       {item.userName && <span>· {item.userName}</span>}
                     </div>
                   </div>
-                  <div className="w-full border-l-2 border-charcoal-600 pl-2.5">
+                  <div className="w-full border-l-2 border-border-bright pl-2.5">
                     <p className="line-clamp-4 w-full whitespace-pre-wrap text-left font-mono text-xs text-text-dimmed">
                       {highlightSQL(item.query)}
                     </p>

@@ -1,3 +1,4 @@
+import { ComponentNames } from "../storybook/StoryKit";
 import { useState } from "react";
 import { Button } from "~/components/primitives/Buttons";
 import { Header1 } from "~/components/primitives/Headers";
@@ -21,9 +22,23 @@ const shortcuts: ShortcutDefinition[] = [
 export default function Story() {
   return (
     <div className="flex flex-col items-start gap-y-4 p-12">
+      <div className="px-4 pt-4">
+        <ComponentNames names={["ShortcutKey.tsx", "ShortcutsProvider.tsx"]} />
+      </div>
       <div className="flex flex-col gap-y-4">
         <Header1 spacing>Enable/disable</Header1>
         <DisableTester />
+      </div>
+      <div className="flex flex-col gap-2">
+        <Header1>Variants</Header1>
+        <div className="flex flex-wrap items-center gap-4">
+          {(["small", "small/bright", "medium", "medium/bright"] as const).map((variant) => (
+            <span key={variant} className="flex items-center gap-2 text-sm text-text-dimmed">
+              {variant}
+              <ShortcutKey shortcut={{ key: "k", modifiers: ["mod"] }} variant={variant} />
+            </span>
+          ))}
+        </div>
       </div>
       <Collection platform="mac" />
       <Collection platform="windows" />

@@ -3,7 +3,7 @@ import { chalkGreen, chalkError, chalkWarning, chalkTask, chalkPurple } from "./
 import chalk from "chalk";
 import type { Metafile } from "esbuild";
 import CLITable from "cli-table3";
-import { BackgroundWorker } from "../dev/backgroundWorker.js";
+import type { BackgroundWorker } from "../dev/backgroundWorker.js";
 
 export function analyzeWorker(
   worker: BackgroundWorker,
@@ -51,7 +51,7 @@ export function printBundleTree(
   const outputDefinesTaskIds = buildOutputDefinesTaskIdsMap(workerManifest, metafile);
 
   for (const item of data) {
-    const { filePath, taskIds, bundleSize, bundleChildren, timing } = item;
+    const { filePath, taskIds, bundleSize: _bundleSize, bundleChildren, timing } = item;
 
     // Print the root
     const displayPath = getDisplayPath(filePath, preservePath);
@@ -139,7 +139,7 @@ export function printBundleSummaryTable(
   console.log(table.toString());
 }
 
-export function printWarnings(workerManifest: WorkerManifest) {
+function printWarnings(workerManifest: WorkerManifest) {
   if (!workerManifest.timings) {
     return;
   }
@@ -207,8 +207,9 @@ function formatSize(bytes: number): string {
 }
 
 function normalizePath(path: string): string {
-  // Remove .trigger/tmp/build-<hash>/ prefix
-  return path.replace(/(^|\/).trigger\/tmp\/build-[^/]+\//, "");
+  // Remove .trigger/tmp/build-<hash>/ prefix (tmp root may be branch-scoped,
+  // e.g. .trigger/tmp-feature-foo/build-<hash>/)
+  return path.replace(/(^|\/)\.trigger\/tmp(-[^/]+)?\/build-[^/]+\//, "$1");
 }
 
 interface BundleTreeData {

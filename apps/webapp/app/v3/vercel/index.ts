@@ -13,5 +13,3 @@ export function getVercelInstallParams(request: Request) {
 
   return null;
 }
-
-

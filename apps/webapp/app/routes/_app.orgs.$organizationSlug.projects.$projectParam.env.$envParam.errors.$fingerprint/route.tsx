@@ -1,12 +1,8 @@
-import { parse } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { BellAlertIcon } from "@heroicons/react/20/solid";
-import { type MetaFunction, useFetcher, useRevalidator } from "@remix-run/react";
+import { useFetcher, useRevalidator } from "@remix-run/react";
 import { type ActionFunctionArgs, json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import {
-  IconAlarmSnooze as IconAlarmSnoozeBase,
-  IconBugFilled,
-  IconCircleDotted,
-} from "@tabler/icons-react";
+import { IconAlarmSnooze as IconAlarmSnoozeBase, IconCircleDotted } from "@tabler/icons-react";
 import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
 import { isPast } from "date-fns";
 import { AnimatePresence, motion } from "framer-motion";
@@ -23,9 +19,14 @@ import {
 } from "recharts";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { BugIcon } from "~/assets/icons/BugIcon";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { CodeBlock } from "~/components/code/CodeBlock";
+import { InvestigateButton } from "~/components/dashboard-agent/InvestigateButton";
+import { WatchButton } from "~/components/dashboard-agent/WatchButton";
+import { errorWatchRecommendation } from "~/components/dashboard-agent/watch-recommendations";
+import { errorGroupPrompt } from "~/components/dashboard-agent/investigate-prompts";
 import { ErrorStatusBadge } from "~/components/errors/ErrorStatusBadge";
 import {
   CustomIgnoreDialog,
@@ -36,6 +37,7 @@ import { PageBody } from "~/components/layout/AppLayout";
 import { DirectionSchema, ListPagination } from "~/components/ListPagination";
 import { LogsVersionFilter } from "~/components/logs/LogsVersionFilter";
 import { LinkButton } from "~/components/primitives/Buttons";
+import { PermissionLink } from "~/components/primitives/PermissionLink";
 import { Callout } from "~/components/primitives/Callout";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime, RelativeDateTime } from "~/components/primitives/DateTime";
@@ -53,6 +55,7 @@ import { Spinner } from "~/components/primitives/Spinner";
 import { useToast } from "~/components/primitives/Toast";
 import TooltipPortal from "~/components/primitives/TooltipPortal";
 import type { TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
+import { RunsListErrorState } from "~/components/runs/v3/RunsListErrorState";
 import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { $replica } from "~/db.server";
@@ -72,8 +75,12 @@ import {
   type ErrorGroupSummary,
 } from "~/presenters/v3/ErrorGroupPresenter.server";
 import { type NextRunList } from "~/presenters/v3/NextRunListPresenter.server";
+import { getRunColumnsForSelect } from "~/presenters/v3/runColumnsFromRequest.server";
+import { RunsDisplayOptions } from "~/components/runs/v3/RunsDisplayOptions";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { requireUser, requireUserId } from "~/services/session.server";
+import { rbac } from "~/services/rbac.server";
+import { checkPermissions } from "~/services/routeBuilders/permissions.server";
 import { cn } from "~/utils/cn";
 import {
   EnvironmentParamSchema,
@@ -83,14 +90,20 @@ import {
 } from "~/utils/pathBuilder";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { ErrorGroupActions } from "~/v3/services/errorGroupActions.server";
+import { errorAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 
-export const meta: MetaFunction<typeof loader> = ({ data }) => {
-  return [
-    {
-      title: `Error Details | Trigger.dev`,
-    },
-  ];
+export const handle: Handle = {
+  agentPageContext: (data) => errorAgentPageContext(data),
 };
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta(({ params }) => [
+  params.fingerprint ? ErrorId.toFriendlyId(params.fingerprint) : "Error",
+  "Errors",
+]);
+
+const ERROR_CHART_COLORS = ["#6c5ce7", "#ec4899"];
 
 const emptyStringToUndefined = z.preprocess(
   (v) => (v === "" ? undefined : v),
@@ -137,10 +150,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 
   const formData = await request.formData();
-  const submission = parse(formData, { schema: actionSchema });
+  const submission = parseWithZod(formData, { schema: actionSchema });
 
-  if (!submission.value) {
-    return json(submission);
+  if (submission.status !== "success") {
+    return json(submission.reply());
   }
 
   const actions = new ErrorGroupActions();
@@ -242,12 +255,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const directionRaw = url.searchParams.get("direction") ?? undefined;
   const direction = directionRaw ? DirectionSchema.parse(directionRaw) : undefined;
 
-  const [logsClickhouseClient, clickhouseClient] = await Promise.all([
+  const [logsClickhouseClient, clickhouseClient, runsListClickhouseClient] = await Promise.all([
     clickhouseFactory.getClickhouseForOrganization(environment.organizationId, "logs"),
     clickhouseFactory.getClickhouseForOrganization(environment.organizationId, "standard"),
+    clickhouseFactory.getClickhouseForOrganization(environment.organizationId, "runsList"),
   ]);
 
-  const presenter = new ErrorGroupPresenter($replica, logsClickhouseClient, clickhouseClient);
+  const presenter = new ErrorGroupPresenter(
+    $replica,
+    logsClickhouseClient,
+    clickhouseClient,
+    runsListClickhouseClient
+  );
 
   const detailPromise = presenter
     .call(project.organizationId, environment.id, {
@@ -260,6 +279,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       to,
       cursor,
       direction,
+      columns: getRunColumnsForSelect(request),
     })
     .catch((error) => {
       if (error instanceof ServiceValidationError) {
@@ -282,6 +302,19 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     )
     .catch(() => ({ data: [] as ErrorGroupActivity, versions: [] as string[] }));
 
+  // Display flags for the row-menu and bulk-replay controls — the cancel/
+  // replay action routes enforce write:runs independently. Permissive in OSS.
+  const runAuth = await rbac.authenticateSession(request, {
+    userId,
+    organizationId: project.organizationId,
+  });
+  const runPermissions = runAuth.ok
+    ? checkPermissions(runAuth.ability, {
+        canCancelRuns: { action: "write", resource: { type: "runs" } },
+        canReplayRuns: { action: "write", resource: { type: "runs" } },
+      })
+    : { canCancelRuns: true, canReplayRuns: true };
+
   return typeddefer({
     data: detailPromise,
     activity: activityPromise,
@@ -289,17 +322,26 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     projectParam,
     envParam,
     fingerprint,
+    ...runPermissions,
   });
 };
 
 export default function Page() {
-  const { data, activity, organizationSlug, projectParam, envParam, fingerprint } =
-    useTypedLoaderData<typeof loader>();
+  const {
+    data,
+    activity,
+    organizationSlug,
+    projectParam,
+    envParam,
+    fingerprint,
+    canCancelRuns,
+    canReplayRuns,
+  } = useTypedLoaderData<typeof loader>();
 
   const location = useOptimisticLocation();
-  const searchParams = new URLSearchParams(location.search);
 
   const errorsPath = useMemo(() => {
+    const searchParams = new URLSearchParams(location.search);
     const base = v3ErrorsPath(
       { slug: organizationSlug },
       { slug: projectParam },
@@ -317,7 +359,7 @@ export default function Page() {
     }
     const qs = carry.toString();
     return qs ? `${base}?${qs}` : base;
-  }, [organizationSlug, projectParam, envParam, searchParams.toString()]);
+  }, [organizationSlug, projectParam, envParam, location.search]);
 
   const alertsHref = useMemo(() => {
     const params = new URLSearchParams(location.search);
@@ -358,16 +400,7 @@ export default function Page() {
             </div>
           }
         >
-          <TypedAwait
-            resolve={data}
-            errorElement={
-              <div className="flex items-center justify-center px-3 py-12">
-                <Callout variant="error" className="max-w-fit">
-                  Unable to load error details. Please refresh the page or try again in a moment.
-                </Callout>
-              </div>
-            }
-          >
+          <TypedAwait resolve={data} errorElement={<RunsListErrorState />}>
             {(result) => {
               if ("error" in result) {
                 return (
@@ -387,6 +420,8 @@ export default function Page() {
                   projectParam={projectParam}
                   envParam={envParam}
                   fingerprint={fingerprint}
+                  canCancelRuns={canCancelRuns}
+                  canReplayRuns={canReplayRuns}
                 />
               );
             }}
@@ -405,6 +440,8 @@ function ErrorGroupDetail({
   projectParam,
   envParam,
   fingerprint,
+  canCancelRuns,
+  canReplayRuns,
 }: {
   errorGroup: ErrorGroupSummary | undefined;
   runList: NextRunList | undefined;
@@ -413,6 +450,8 @@ function ErrorGroupDetail({
   projectParam: string;
   envParam: string;
   fingerprint: string;
+  canCancelRuns: boolean;
+  canReplayRuns: boolean;
 }) {
   const { value, values } = useSearchParams();
   const organization = useOrganization();
@@ -482,7 +521,9 @@ function ErrorGroupDetail({
                   >
                     View all runs
                   </LinkButton>
-                  <LinkButton
+                  <PermissionLink
+                    hasPermission={canReplayRuns}
+                    noPermissionTooltip="You don't have permission to replay runs"
                     variant="secondary/small"
                     to={v3CreateBulkActionPath(
                       organization,
@@ -495,7 +536,13 @@ function ErrorGroupDetail({
                     LeadingIcon={ListCheckedIcon}
                   >
                     Bulk replay…
-                  </LinkButton>
+                  </PermissionLink>
+                  <RunsDisplayOptions
+                    sampleFilters={{
+                      errorId: ErrorId.toFriendlyId(fingerprint),
+                      rootOnly: "false",
+                    }}
+                  />
                   <ListPagination list={runList} />
                 </div>
               )}
@@ -515,10 +562,12 @@ function ErrorGroupDetail({
                 isLoading={false}
                 variant="dimmed"
                 additionalTableState={{ errorId: ErrorId.toFriendlyId(fingerprint) }}
+                canCancelRuns={canCancelRuns}
+                canReplayRuns={canReplayRuns}
               />
             ) : (
               <div className="flex flex-1 flex-col items-center justify-center gap-3">
-                <IconBugFilled className="size-16 text-charcoal-650" />
+                <BugIcon className="size-16 text-secondary" />
                 <Paragraph className="max-w-32 text-center text-text-dimmed">
                   No runs found for this error.
                 </Paragraph>
@@ -546,10 +595,23 @@ function ErrorDetailSidebar({
 }) {
   return (
     <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
-      <div className="border-b border-grid-dimmed px-3 py-2">
+      <div className="flex items-center justify-between gap-2 border-b border-grid-dimmed px-3 py-2">
         <Header2 className="truncate">Details</Header2>
+        {/* Both buttons self-hide when the agent isn't available. */}
+        <div className="flex shrink-0 items-center gap-1">
+          <InvestigateButton
+            prompt={errorGroupPrompt(
+              ErrorId.toFriendlyId(errorGroup.fingerprint),
+              errorGroup.taskIdentifier
+            )}
+            label="Investigate this error"
+          />
+          <WatchButton
+            spec={errorWatchRecommendation(ErrorId.toFriendlyId(errorGroup.fingerprint))}
+          />
+        </div>
       </div>
-      <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <div className="flex flex-col gap-4">
           <Property.Table>
             {/* Status */}
@@ -557,7 +619,11 @@ function ErrorDetailSidebar({
               <Property.Label>Error status</Property.Label>
               <Property.Value>
                 <div className="flex items-center justify-between">
-                  <ErrorStatusBadge status={errorGroup.state.status} className="w-fit" />
+                  <ErrorStatusBadge
+                    status={errorGroup.state.status}
+                    prominence="bright"
+                    className="w-fit"
+                  />
                   <ErrorStatusDropdown
                     state={errorGroup.state}
                     taskIdentifier={errorGroup.taskIdentifier}
@@ -767,10 +833,10 @@ function ErrorStatusDropdown({
     <>
       <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
         <PopoverArrowTrigger variant="primary" disabled={isSubmitting} className="items-center">
-          <IconCircleDotted className="-ml-1 mr-1 size-3.5 text-text-bright" />
+          <IconCircleDotted className="-ml-1 mr-1 size-3.5 text-white" />
           Mark error as…
         </PopoverArrowTrigger>
-        <PopoverContent className="inline-flex !min-w-0 flex-col p-1" align="end">
+        <PopoverContent className="inline-flex min-w-0! flex-col p-1" align="end">
           <ErrorStatusMenuItems
             status={state.status}
             taskIdentifier={taskIdentifier}
@@ -799,7 +865,6 @@ function ActivityChart({
   activity: ErrorGroupActivity;
   versions: ErrorGroupActivityVersions;
 }) {
-  const ERROR_CHART_COLORS = ["#6c5ce7", "#ec4899"];
   const colors = useMemo(
     () => versions.map((_, i) => ERROR_CHART_COLORS[i % ERROR_CHART_COLORS.length]),
     [versions]
@@ -841,7 +906,7 @@ function ActivityChart({
   return (
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={data} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
-        <CartesianGrid vertical={false} stroke="#272A2E" strokeDasharray="3 3" />
+        <CartesianGrid vertical={false} stroke="var(--color-grid-bright)" strokeDasharray="3 3" />
         <XAxis
           dataKey="__timestamp"
           tickFormatter={xAxisFormatter}
@@ -849,14 +914,14 @@ function ActivityChart({
           height={24}
           axisLine={false}
           tickLine={false}
-          tick={{ fontSize: 11, fill: "#878C99" }}
+          tick={{ fontSize: 11, fill: "var(--color-text-dimmed)" }}
         />
         <YAxis
           width={30}
           tickMargin={4}
           axisLine={false}
           tickLine={false}
-          tick={{ fontSize: 11, fill: "#878C99" }}
+          tick={{ fontSize: 11, fill: "var(--color-text-dimmed)" }}
           domain={["auto", (dataMax: number) => dataMax * 1.15]}
         />
         <Tooltip
@@ -905,7 +970,7 @@ const ActivityTooltip = ({
   return (
     <TooltipPortal active={active}>
       <div className="rounded-sm border border-grid-bright bg-background-dimmed px-3 py-2">
-        <Header3 className="border-b border-b-charcoal-650 pb-2">{formattedDate}</Header3>
+        <Header3 className="border-b border-b-border-bright pb-2">{formattedDate}</Header3>
         <div className="mt-2 flex flex-col gap-1">
           {payload.map((entry, i) => {
             const value = (entry.value as number) ?? 0;
@@ -927,7 +992,7 @@ function ActivityChartBlankState() {
   return (
     <div className="flex min-h-0 flex-1 items-end gap-px rounded-sm">
       {[...Array(42)].map((_, i) => (
-        <div key={i} className="h-full flex-1 bg-charcoal-850" />
+        <div key={i} className="h-full flex-1 bg-background-dimmed" />
       ))}
     </div>
   );

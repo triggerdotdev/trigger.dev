@@ -11,6 +11,12 @@ import { useProject } from "~/hooks/useProject";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { WaitpointPresenter } from "~/presenters/v3/WaitpointPresenter.server";
+import {
+  runOpsNewReplicaClient,
+  runOpsLegacyReplica,
+  runOpsSplitReadEnabled,
+  type PrismaClientOrTransaction,
+} from "~/db.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { EnvironmentParamSchema, v3WaitpointTokensPath } from "~/utils/pathBuilder";
@@ -19,6 +25,14 @@ import { WaitpointDetailTable } from "~/components/runs/v3/WaitpointDetails";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { InfoIconTooltip } from "~/components/primitives/Tooltip";
 import { logger } from "~/services/logger.server";
+import { waitpointsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta(({ params }) => [
+  params.waitpointParam ?? "Waitpoint",
+  "Waitpoint tokens",
+]);
 
 const Params = EnvironmentParamSchema.extend({
   waitpointParam: z.string(),
@@ -45,7 +59,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 
   try {
-    const presenter = new WaitpointPresenter();
+    const presenter = new WaitpointPresenter(undefined, undefined, {
+      newClient: runOpsNewReplicaClient as unknown as PrismaClientOrTransaction,
+      legacyReplica: runOpsLegacyReplica as unknown as PrismaClientOrTransaction,
+      splitEnabled: runOpsSplitReadEnabled,
+    });
     const result = await presenter.call({
       friendlyId: waitpointParam,
       environmentId: environment.id,
@@ -73,6 +91,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       statusText: "Something went wrong, if this problem persists please contact support.",
     });
   }
+};
+
+export const handle: Handle = {
+  agentPageContext: (data) => waitpointsAgentPageContext(data),
 };
 
 export default function Page() {
@@ -104,7 +126,7 @@ export default function Page() {
           className="pl-1"
         />
       </div>
-      <div className="overflow-y-auto pt-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="overflow-y-auto pt-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <div className="px-3">
           <WaitpointDetailTable waitpoint={waitpoint} />
         </div>
@@ -114,6 +136,7 @@ export default function Page() {
             <InfoIconTooltip content="These runs have been blocked by this waitpoint." />
           </div>
           <TaskRunsTable
+            enableSmartColumns={false}
             total={waitpoint.connectedRuns.length}
             hasFilters={false}
             filters={{

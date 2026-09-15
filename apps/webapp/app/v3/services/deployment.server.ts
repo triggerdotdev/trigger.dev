@@ -1,18 +1,28 @@
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { BaseService } from "./baseService.server";
 import { errAsync, fromPromise, okAsync, type ResultAsync } from "neverthrow";
-import { type WorkerDeployment, type Project } from "@trigger.dev/database";
+import { Prisma, type WorkerDeployment, type Project, boundedIn } from "@trigger.dev/database";
 import {
   BuildServerMetadata,
+  DeployBuildPath,
   logger,
   type GitMeta,
   type DeploymentEvent,
+  type RuntimeEnvironmentType,
 } from "@trigger.dev/core/v3";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
+import { recordDeploymentFinished } from "./recordDeploymentFinished.server";
 import { env } from "~/env.server";
 import { createRemoteImageBuild } from "../remoteImageBuilder.server";
 import { FINAL_DEPLOYMENT_STATUSES } from "./failDeployment.server";
-import { enqueueBuild, generateRegistryCredentials } from "~/services/platform.v3.server";
+import {
+  enqueueBuild,
+  generateRegistryCredentials,
+  isBillingConfigured,
+} from "~/services/platform.v3.server";
+import { FEATURE_FLAG, type FeatureFlagKey } from "../featureFlags";
+import { flags } from "../featureFlags.server";
+import { globalFlagsRegistry } from "../globalFlagsRegistry.server";
 import { AppendInput, AppendRecord, S2 } from "@s2-dev/streamstore";
 import { createRedisClient } from "~/redis.server";
 
@@ -26,6 +36,31 @@ const s2TokenRedis = createRedisClient("s2-token-cache", {
   clusterMode: env.CACHE_REDIS_CLUSTER_MODE_ENABLED === "1",
 });
 const s2 = env.S2_ENABLED === "1" ? new S2({ accessToken: env.S2_ACCESS_TOKEN }) : undefined;
+
+const DEPLOY_BUILD_PATH_ENV_FLAG: Partial<Record<RuntimeEnvironmentType, FeatureFlagKey>> = {
+  PREVIEW: FEATURE_FLAG.deployBuildPathPreview,
+  STAGING: FEATURE_FLAG.deployBuildPathStaging,
+  PRODUCTION: FEATURE_FLAG.deployBuildPathProduction,
+};
+
+const DEPLOY_ENV_SLUG_FOR_TYPE: Record<RuntimeEnvironmentType, DeployEnvSlug> = {
+  DEVELOPMENT: "dev",
+  STAGING: "staging",
+  PRODUCTION: "prod",
+  PREVIEW: "preview",
+};
+
+type DeployEnvSlug = "dev" | "staging" | "prod" | "preview";
+
+type DeployBuildPathSource =
+  | "unavailable"
+  | "organization_environment"
+  | "organization"
+  | "global_environment"
+  | "global"
+  | "default";
+
+type DeploySettings = { buildPath: DeployBuildPath; buildPathSource: DeployBuildPathSource };
 
 export class DeploymentService extends BaseService {
   /**
@@ -169,7 +204,7 @@ export class DeploymentService extends BaseService {
         })
       );
 
-    return this.getDeployment(authenticatedEnv.projectId, friendlyId)
+    return this.getDeployment(authenticatedEnv.id, friendlyId)
       .andThen(validateDeployment)
       .andThen((deployment) => {
         if (deployment.status === "PENDING") {
@@ -191,14 +226,12 @@ export class DeploymentService extends BaseService {
    * @param data Cancelation reason.
    */
   public cancelDeployment(
-    authenticatedEnv: Pick<AuthenticatedEnvironment, "projectId">,
+    authenticatedEnv: Pick<AuthenticatedEnvironment, "id">,
     friendlyId: string,
     data?: Partial<Pick<WorkerDeployment, "canceledReason">>
   ) {
-    const validateDeployment = (
-      deployment: Pick<WorkerDeployment, "id" | "status" | "shortCode"> & {
-        environment: { project: { externalRef: string } };
-      }
+    const validateDeployment = <T extends Pick<WorkerDeployment, "id" | "status">>(
+      deployment: T
     ) => {
       if (FINAL_DEPLOYMENT_STATUSES.includes(deployment.status)) {
         logger.warn("Attempted cancelling deployment in a final state", {
@@ -210,23 +243,20 @@ export class DeploymentService extends BaseService {
       return okAsync(deployment);
     };
 
-    const cancelDeployment = (
-      deployment: Pick<WorkerDeployment, "id" | "shortCode"> & {
-        environment: { project: { externalRef: string } };
-      }
-    ) =>
+    const cancelDeployment = <T extends Pick<WorkerDeployment, "id">>(deployment: T) =>
       fromPromise(
         this._prisma.workerDeployment.updateMany({
           where: {
             id: deployment.id,
             status: {
-              notIn: FINAL_DEPLOYMENT_STATUSES, // status could've changed in the meantime, we're not locking the row
+              notIn: boundedIn(FINAL_DEPLOYMENT_STATUSES), // status could've changed in the meantime, we're not locking the row
             },
           },
           data: {
             status: "CANCELED",
             canceledAt: new Date(),
             canceledReason: data?.canceledReason,
+            buildEnvVars: Prisma.DbNull,
           },
         }),
         (error) => ({
@@ -246,10 +276,30 @@ export class DeploymentService extends BaseService {
         cause: error,
       }));
 
-    return this.getDeployment(authenticatedEnv.projectId, friendlyId)
+    return this.getDeployment(authenticatedEnv.id, friendlyId)
       .andThen(validateDeployment)
       .andThen(cancelDeployment)
-      .andThen(({ deployment }) =>
+      .andTee(({ deployment }) =>
+        recordDeploymentFinished({
+          status: "CANCELED",
+          deployment: {
+            ...deployment,
+            status: "CANCELED",
+            canceledAt: new Date(),
+            canceledReason: data?.canceledReason ?? null,
+          },
+          environment: {
+            organizationId: deployment.environment.project.organizationId,
+            organizationSlug: deployment.environment.organization.slug,
+            projectId: deployment.environment.project.id,
+            projectName: deployment.environment.project.name,
+            projectRef: deployment.environment.project.externalRef,
+            environmentId: deployment.environment.id,
+            environmentType: deployment.environment.type,
+          },
+        })
+      )
+      .andTee(({ deployment }) =>
         this.appendToEventLog(deployment.environment.project, deployment, [
           {
             type: "finalized",
@@ -258,15 +308,73 @@ export class DeploymentService extends BaseService {
               message: data?.canceledReason ?? undefined,
             },
           },
-        ])
-          .orElse((error) => {
-            logger.error("Failed to append event to deployment event log", { error });
-            return okAsync(deployment);
-          })
-          .map(() => deployment)
+        ]).orTee((error) => {
+          logger.error("Failed to append event to deployment event log", { error });
+        })
       )
-      .andThen(deleteTimeout)
+      .andThen(({ deployment }) => deleteTimeout(deployment))
       .map(() => undefined);
+  }
+
+  public getDeploySettings(
+    authenticatedEnv: Pick<AuthenticatedEnvironment, "type" | "organization" | "project">,
+    target: { projectRef: string; envSlug: DeployEnvSlug }
+  ) {
+    const validateTarget = (): ResultAsync<undefined, { type: "environment_mismatch" }> => {
+      if (
+        authenticatedEnv.project.externalRef !== target.projectRef ||
+        DEPLOY_ENV_SLUG_FOR_TYPE[authenticatedEnv.type] !== target.envSlug
+      ) {
+        return errAsync({ type: "environment_mismatch" as const });
+      }
+      return okAsync(undefined);
+    };
+
+    const loadGlobalFlags = () =>
+      fromPromise(Promise.resolve(globalFlagsRegistry.current() ?? flags()), (error) => ({
+        type: "failed_to_load_global_flags" as const,
+        cause: error,
+      }));
+
+    const pickBuildPath = (globalFlagSet: Record<string, unknown>): DeploySettings => {
+      const envKey = DEPLOY_BUILD_PATH_ENV_FLAG[authenticatedEnv.type];
+      const orgFlags = authenticatedEnv.organization.featureFlags;
+      const orgFlagSet: Record<string, unknown> =
+        orgFlags && typeof orgFlags === "object" && !Array.isArray(orgFlags)
+          ? (orgFlags as Record<string, unknown>)
+          : {};
+
+      const candidates: Array<
+        [Record<string, unknown>, FeatureFlagKey | undefined, DeployBuildPathSource]
+      > = [
+        [orgFlagSet, envKey, "organization_environment"],
+        [orgFlagSet, FEATURE_FLAG.deployBuildPath, "organization"],
+        [globalFlagSet, envKey, "global_environment"],
+        [globalFlagSet, FEATURE_FLAG.deployBuildPath, "global"],
+      ];
+
+      for (const [flagSet, key, buildPathSource] of candidates) {
+        if (!key) continue;
+        const parsed = DeployBuildPath.safeParse(flagSet[key]);
+        if (parsed.success) {
+          return { buildPath: parsed.data, buildPathSource };
+        }
+      }
+
+      return { buildPath: "depot", buildPathSource: "default" };
+    };
+
+    const resolveBuildPath = (): ResultAsync<
+      DeploySettings,
+      { type: "failed_to_load_global_flags"; cause: unknown }
+    > => {
+      if (!isBillingConfigured()) {
+        return okAsync({ buildPath: "depot" as const, buildPathSource: "unavailable" as const });
+      }
+      return loadGlobalFlags().map(pickBuildPath);
+    };
+
+    return validateTarget().andThen(resolveBuildPath);
   }
 
   /**
@@ -278,7 +386,7 @@ export class DeploymentService extends BaseService {
    * @param friendlyId The friendly deployment ID.
    */
   public generateRegistryCredentials(
-    authenticatedEnv: Pick<AuthenticatedEnvironment, "projectId">,
+    authenticatedEnv: Pick<AuthenticatedEnvironment, "id" | "projectId">,
     friendlyId: string
   ) {
     const validateDeployment = (
@@ -326,7 +434,7 @@ export class DeploymentService extends BaseService {
         });
       });
 
-    return this.getDeployment(authenticatedEnv.projectId, friendlyId)
+    return this.getDeployment(authenticatedEnv.id, friendlyId)
       .andThen(validateDeployment)
       .andThen(getDeploymentRegion)
       .andThen(generateCredentials);
@@ -339,6 +447,7 @@ export class DeploymentService extends BaseService {
     options: {
       skipPromotion?: boolean;
       configFilePath?: string;
+      fromBundle?: boolean;
     }
   ) {
     return fromPromise(
@@ -413,6 +522,8 @@ export class DeploymentService extends BaseService {
       return errAsync({ type: "s2_is_disabled" as const });
     }
     const basinName = env.S2_DEPLOYMENT_LOGS_BASIN_NAME;
+    const tokenValidityMs = env.S2_DEPLOYMENT_LOGS_TOKEN_VALIDITY_MS;
+    const cacheTtlSeconds = Math.floor(env.S2_DEPLOYMENT_LOGS_TOKEN_CACHE_TTL_MS / 1000);
     const redisKey = `${S2_TOKEN_KEY_PREFIX}${project.externalRef}`;
 
     const getTokenFromCache = () =>
@@ -430,7 +541,7 @@ export class DeploymentService extends BaseService {
       fromPromise(
         s2.accessTokens.issue({
           id: `${project.externalRef}-${new Date().getTime()}`,
-          expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1 hour
+          expiresAt: new Date(Date.now() + tokenValidityMs),
           scope: {
             ops: ["read"],
             basins: {
@@ -448,17 +559,10 @@ export class DeploymentService extends BaseService {
       ).map(({ accessToken }) => accessToken);
 
     const cacheToken = (token: string) =>
-      fromPromise(
-        s2TokenRedis.setex(
-          redisKey,
-          59 * 60, // slightly shorter than the token validity period
-          token
-        ),
-        (error) => ({
-          type: "other" as const,
-          cause: error,
-        })
-      );
+      fromPromise(s2TokenRedis.setex(redisKey, cacheTtlSeconds, token), (error) => ({
+        type: "other" as const,
+        cause: error,
+      }));
 
     return getTokenFromCache().orElse(() =>
       issueS2Token().andThen((token) =>
@@ -472,16 +576,33 @@ export class DeploymentService extends BaseService {
     );
   }
 
-  private getDeployment(projectId: string, friendlyId: string) {
+  private getDeployment(environmentId: string, friendlyId: string) {
     return fromPromise(
       this._prisma.workerDeployment.findFirst({
         where: {
           friendlyId,
-          projectId,
+          environmentId,
         },
         select: {
           status: true,
           id: true,
+          friendlyId: true,
+          version: true,
+          type: true,
+          createdAt: true,
+          startedAt: true,
+          installedAt: true,
+          builtAt: true,
+          deployedAt: true,
+          failedAt: true,
+          canceledAt: true,
+          canceledReason: true,
+          errorData: true,
+          runtime: true,
+          runtimeVersion: true,
+          cliVersion: true,
+          triggeredVia: true,
+          commitSHA: true,
           buildServerMetadata: true,
           imageReference: true,
           shortCode: true,
@@ -489,8 +610,14 @@ export class DeploymentService extends BaseService {
             include: {
               project: {
                 select: {
+                  id: true,
+                  name: true,
+                  organizationId: true,
                   externalRef: true,
                 },
+              },
+              organization: {
+                select: { slug: true },
               },
             },
           },

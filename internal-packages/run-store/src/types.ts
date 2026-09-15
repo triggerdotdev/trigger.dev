@@ -1,0 +1,1092 @@
+import type {
+  BatchTaskRun,
+  BatchTaskRunItemStatus,
+  Prisma,
+  PrismaClientOrTransaction,
+  PrismaReplicaClient,
+  TaskRun,
+  TaskRunStatus,
+  TaskRunExecutionStatus,
+  RuntimeEnvironmentType,
+  Waitpoint,
+  WaitpointTag,
+} from "@trigger.dev/database";
+import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
+import type { Residency, ShardKey } from "@trigger.dev/core/v3/isomorphic";
+import type { CompletedWaitpointRecord } from "./redisSnapshotStore.js";
+import type { SnapshotRoute, SnapshotRouteWire } from "./snapshotResidency.js";
+
+/**
+ * Client accepted by the read methods. Reads route through the replica by
+ * default, so callers may pass either the writer/transaction client or the
+ * read replica — both expose the `taskRun.findFirst`/`findMany` surface the
+ * reads use. Write methods stay on `PrismaClientOrTransaction`.
+ */
+export type ReadClient = PrismaClientOrTransaction | PrismaReplicaClient;
+
+export type IdempotencyKeyRunMatch = {
+  id: string;
+  createdAt: Date;
+  friendlyId: string;
+  idempotencyKey: string | null;
+  idempotencyKeyExpiresAt: Date | null;
+};
+
+/**
+ * Per-write Postgres snapshot-row control, set by the snapshot decorator from the run's fixed
+ * residency. `false` suppresses the Postgres snapshot row (a redis-only-born run whose only home is
+ * Redis); absent or `true` writes it (every Postgres-backed run, and the default when no decorator
+ * is wired). The store reads THIS, never the org dial, so residency is a per-run decision.
+ */
+export type SnapshotWriteControl = { writeSnapshotRow?: boolean };
+
+/**
+ * The run's versioned storage route, stamped on the queue message from its BIRTH residency and passed
+ * back on a TRANSITION write, so a poll-lagging consumer honors the run's true residency instead of
+ * mis-routing the transition to Postgres. NEVER set on a birth input; validated at consumption.
+ */
+export type SnapshotRouteControl = { snapshotRoute?: SnapshotRouteWire };
+
+export type CreateRunSnapshotInput = {
+  /** Caller-minted creation instant. Absent, Postgres applies its own default. The decorator sets
+   *  it so a snapshot carries the SAME instant in Postgres and in the Redis store: the field is
+   *  compared directly under dual-write, and the since-window cursor is resolved from one store and
+   *  applied in the other, so two different instants misfilter that window. */
+  createdAt?: Date;
+  id?: string;
+  engine: "V2";
+  executionStatus: TaskRunExecutionStatus;
+  description: string;
+  runStatus: TaskRunStatus;
+  environmentId: string;
+  environmentType: RuntimeEnvironmentType;
+  projectId: string;
+  organizationId: string;
+  workerId?: string;
+  runnerId?: string;
+} & SnapshotWriteControl;
+
+export type CompletionSnapshotInput = {
+  /** Caller-minted creation instant. Absent, Postgres applies its own default. The decorator sets
+   *  it so a snapshot carries the SAME instant in Postgres and in the Redis store: the field is
+   *  compared directly under dual-write, and the since-window cursor is resolved from one store and
+   *  applied in the other, so two different instants misfilter that window. */
+  createdAt?: Date;
+  /** Caller-minted snapshot id. Absent, Prisma's `@default(cuid())` supplies one. The decorator
+   *  sets it so a snapshot carries the same id in Postgres and in the Redis store. */
+  id?: string;
+  executionStatus: "FINISHED";
+  description: string;
+  runStatus: TaskRunStatus;
+  attemptNumber: number | null;
+  environmentId: string;
+  environmentType: RuntimeEnvironmentType;
+  projectId: string;
+  organizationId: string;
+  workerId?: string;
+  runnerId?: string;
+} & SnapshotWriteControl &
+  SnapshotRouteControl;
+
+export type PromotePendingVersionArgs = {
+  status?: Extract<TaskRunStatus, "PENDING" | "DELAYED">;
+  lockedToVersionId?: string;
+  taskVersion?: string;
+  sdkVersion?: string;
+  cliVersion?: string;
+};
+
+export type ExpireSnapshotInput = {
+  /** Caller-minted creation instant. Absent, Postgres applies its own default. The decorator sets
+   *  it so a snapshot carries the SAME instant in Postgres and in the Redis store: the field is
+   *  compared directly under dual-write, and the since-window cursor is resolved from one store and
+   *  applied in the other, so two different instants misfilter that window. */
+  createdAt?: Date;
+  /** Caller-minted snapshot id. Absent, Prisma's `@default(cuid())` supplies one. The decorator
+   *  sets it so a snapshot carries the same id in Postgres and in the Redis store. */
+  id?: string;
+  engine: "V2";
+  executionStatus: "FINISHED";
+  description: string;
+  runStatus: TaskRunStatus;
+  environmentId: string;
+  environmentType: RuntimeEnvironmentType;
+  projectId: string;
+  organizationId: string;
+} & SnapshotWriteControl &
+  SnapshotRouteControl;
+
+export type RescheduleSnapshotInput = {
+  /** Caller-minted creation instant. Absent, Postgres applies its own default. The decorator sets
+   *  it so a snapshot carries the SAME instant in Postgres and in the Redis store: the field is
+   *  compared directly under dual-write, and the since-window cursor is resolved from one store and
+   *  applied in the other, so two different instants misfilter that window. */
+  createdAt?: Date;
+  /** Caller-minted snapshot id. Absent, Prisma's `@default(cuid())` supplies one. The decorator
+   *  sets it so a snapshot carries the same id in Postgres and in the Redis store. */
+  id?: string;
+  environmentId: string;
+  environmentType: RuntimeEnvironmentType;
+  projectId: string;
+  organizationId: string;
+  executionStatus?: TaskRunExecutionStatus;
+  runStatus?: TaskRunStatus;
+  description?: string;
+} & SnapshotWriteControl &
+  SnapshotRouteControl;
+
+export type LockSnapshotInput = {
+  /** Caller-minted creation instant. Absent, Postgres applies its own default. The decorator sets
+   *  it so a snapshot carries the SAME instant in Postgres and in the Redis store: the field is
+   *  compared directly under dual-write, and the since-window cursor is resolved from one store and
+   *  applied in the other, so two different instants misfilter that window. */
+  createdAt?: Date;
+  id: string;
+  previousSnapshotId: string;
+  attemptNumber?: number;
+  environmentId: string;
+  environmentType: RuntimeEnvironmentType;
+  projectId: string;
+  organizationId: string;
+  checkpointId?: string;
+  batchId?: string;
+  completedWaitpointIds: string[];
+  completedWaitpointOrder: string[];
+  workerId?: string;
+  runnerId?: string;
+} & SnapshotWriteControl &
+  SnapshotRouteControl;
+
+export type RunAssociatedWaitpointInput = {
+  id: string;
+  friendlyId: string;
+  type: "RUN";
+  status: "PENDING";
+  idempotencyKey: string;
+  userProvidedIdempotencyKey: boolean;
+  projectId: string;
+  environmentId: string;
+};
+
+// The ~60 trigger columns (the existing Prisma create `data` minus the nested relation creates).
+export type CreateRunData = {
+  id: string;
+  engine: "V2";
+  status: TaskRunStatus;
+  statusReason?: string;
+  friendlyId: string;
+  runtimeEnvironmentId: string;
+  environmentType: RuntimeEnvironmentType;
+  organizationId: string;
+  projectId: string;
+  idempotencyKey?: string;
+  idempotencyKeyExpiresAt?: Date;
+  idempotencyKeyOptions?: Prisma.InputJsonValue;
+  taskIdentifier: string;
+  payload: string;
+  payloadType: string;
+  context?: Prisma.InputJsonValue;
+  traceContext: Prisma.InputJsonValue;
+  traceId: string;
+  spanId: string;
+  parentSpanId?: string;
+  lockedToVersionId?: string;
+  taskVersion?: string;
+  sdkVersion?: string;
+  cliVersion?: string;
+  concurrencyKey?: string;
+  queue: string;
+  lockedQueueId?: string;
+  workerQueue?: string;
+  region?: string | null;
+  isTest: boolean;
+  delayUntil?: Date;
+  queuedAt?: Date;
+  maxAttempts?: number;
+  taskEventStore?: string;
+  priorityMs?: number;
+  queueTimestamp?: Date;
+  ttl?: string;
+  runTags?: string[];
+  oneTimeUseToken?: string;
+  parentTaskRunId?: string;
+  rootTaskRunId?: string;
+  replayedFromTaskRunFriendlyId?: string;
+  batchId?: string;
+  resumeParentOnCompletion?: boolean;
+  depth?: number;
+  metadata?: string;
+  metadataType?: string;
+  seedMetadata?: string;
+  seedMetadataType?: string;
+  maxDurationInSeconds?: number;
+  machinePreset?: string;
+  scheduleId?: string;
+  scheduleInstanceId?: string;
+  createdAt?: Date;
+  bulkActionGroupIds?: string[];
+  planType?: string;
+  realtimeStreamsVersion?: string;
+  streamBasinName?: string | null;
+  debounce?: Prisma.InputJsonValue;
+  annotations?: Prisma.InputJsonValue;
+};
+
+export type CreateRunInput = {
+  data: CreateRunData;
+  snapshot: CreateRunSnapshotInput;
+  associatedWaitpoint?: RunAssociatedWaitpointInput;
+  /**
+   * Called once at birth while the snapshot decorator is active, with the run's decided fixed SnapshotRoute
+   * — for EVERY residency, postgres included — so the trigger path stamps it on the initial queue message
+   * WITHOUT a durable-state lookup. A postgres birth therefore surfaces an explicit `{ residency: "postgres" }`
+   * route (used by the TTL fast path). The undecorated base store has no decorator and never calls it.
+   */
+  onBirthResidency?: (route: SnapshotRoute) => void;
+};
+
+export type CreateCancelledRunInput = {
+  data: CreateRunData & {
+    error: Prisma.InputJsonValue;
+    completedAt: Date;
+    updatedAt: Date;
+    attemptNumber: 0;
+  };
+  snapshot: CreateRunSnapshotInput;
+};
+
+export type CreateFailedRunData = {
+  id: string;
+  engine: "V2";
+  status: "SYSTEM_FAILURE";
+  friendlyId: string;
+  runtimeEnvironmentId: string;
+  environmentType: RuntimeEnvironmentType;
+  organizationId: string;
+  projectId: string;
+  taskIdentifier: string;
+  payload: string;
+  payloadType: string;
+  context: Prisma.InputJsonValue;
+  traceContext: Prisma.InputJsonValue;
+  traceId: string;
+  spanId: string;
+  queue: string;
+  lockedQueueId?: string;
+  isTest: false;
+  completedAt: Date;
+  error: Prisma.InputJsonObject;
+  parentTaskRunId?: string;
+  rootTaskRunId?: string;
+  depth: number;
+  batchId?: string;
+  resumeParentOnCompletion?: boolean;
+  taskEventStore?: string;
+};
+
+export type CreateFailedRunInput = {
+  data: CreateFailedRunData;
+  associatedWaitpoint?: RunAssociatedWaitpointInput;
+};
+
+export type LockRunData = {
+  lockedAt: Date;
+  lockedById: string;
+  lockedToVersionId: string;
+  lockedQueueId: string;
+  lockedRetryConfig?: Prisma.InputJsonValue;
+  startedAt: Date;
+  baseCostInCents: number;
+  machinePreset: string;
+  taskVersion: string;
+  sdkVersion: string | null;
+  cliVersion: string | null;
+  maxDurationInSeconds: number | null | undefined;
+  maxAttempts?: number;
+  snapshot: LockSnapshotInput;
+};
+
+export type RewriteDebouncedRunData = {
+  payload: string;
+  payloadType: string;
+  metadata?: string;
+  metadataType?: string;
+  maxAttempts?: number;
+  maxDurationInSeconds?: number;
+  machinePreset?: string;
+  runTags?: string[];
+};
+
+/**
+ * Input for {@link RunStore.finalizeRun}: the terminal `status` and its `error` are written in ONE
+ * update (a separate later error write races realtime, which shuts the stream on the final status
+ * before the error lands). `bulkActionId` is pushed onto `bulkActionGroupIds`. Every field is
+ * optional so a caller can finalize with any subset (e.g. status-only, or expire with expiredAt).
+ */
+export type FinalizeRunData = {
+  status?: TaskRunStatus;
+  expiredAt?: Date;
+  completedAt?: Date;
+  error?: TaskRunError;
+  bulkActionId?: string;
+};
+
+export type ClearIdempotencyKeyInput =
+  | { byId: { runId: string; idempotencyKey: string }; byPredicate?: never; byFriendlyIds?: never }
+  | {
+      byPredicate: {
+        idempotencyKey: string;
+        taskIdentifier: string;
+        runtimeEnvironmentId: string;
+        // A predicate has no run id to route by, so it fans out to both stores. When the env mints
+        // run-ops ids its matching runs live on NEW, so `residency: "NEW"` routes to NEW only and
+        // avoids a wrong-DB (0-row) write to the draining legacy DB. Omit to fan out (mixed residency).
+        residency?: Residency;
+      };
+      byId?: never;
+      byFriendlyIds?: never;
+    }
+  | { byFriendlyIds: string[]; byId?: never; byPredicate?: never };
+
+export type TaskRunWithWaitpoint = TaskRun & { associatedWaitpoint: Waitpoint | null };
+
+/**
+ * Structured input for {@link RunStore.createExecutionSnapshot}. The store derives the
+ * `completedWaitpoints.connect` / `completedWaitpointOrder` / `isValid` fields from this
+ * input — callers pass the high-level shape, not a raw Prisma `data`/`include`.
+ */
+export type CreateExecutionSnapshotInput = {
+  /** Caller-minted creation instant. Absent, Postgres applies its own default. The decorator sets
+   *  it so a snapshot carries the SAME instant in Postgres and in the Redis store: the field is
+   *  compared directly under dual-write, and the since-window cursor is resolved from one store and
+   *  applied in the other, so two different instants misfilter that window. */
+  createdAt?: Date;
+  /** Caller-minted snapshot id. Absent, Prisma's `@default(cuid())` supplies one. The decorator
+   *  sets it so a snapshot carries the same id in Postgres and in the Redis store. */
+  id?: string;
+  run: { id: string; status: TaskRunStatus; attemptNumber?: number | null };
+  snapshot: {
+    executionStatus: TaskRunExecutionStatus;
+    description: string;
+    metadata?: Prisma.JsonValue;
+  };
+  previousSnapshotId?: string;
+  batchId?: string;
+  environmentId: string;
+  environmentType: RuntimeEnvironmentType;
+  projectId: string;
+  organizationId: string;
+  checkpointId?: string;
+  workerId?: string;
+  runnerId?: string;
+  completedWaitpoints?: { id: string; index?: number }[];
+  /**
+   * Lazily resolves the full completed-waitpoint records for a redis-primary write, which live in the
+   * MemoryDB cycle so a read reproduces the Postgres join. A THUNK, not an array, so the extra Postgres
+   * fetch is deferred to the cycle-building path and never runs on the postgres early-return or a
+   * forward-carry. Ignored by the Postgres delegate; set only on a fresh redis-only completion.
+   */
+  resolveCompletedWaitpointRecords?: () => Promise<CompletedWaitpointRecord[]>;
+  error?: string;
+} & SnapshotWriteControl &
+  SnapshotRouteControl;
+
+// Create payload for `createBatchTaskRun`: scalar `runtimeEnvironmentId` (the FK is
+// dropped for cross-DB residency; env existence is validated app-side at create).
+export type CreateBatchTaskRunData = Prisma.BatchTaskRunUncheckedCreateInput;
+
+/**
+ * Mirror of the webapp's `UnblockRouteKind`. The engine/run-store cannot import the
+ * webapp types, so this union is kept IDENTICAL (members + field names) to
+ * `apps/webapp/app/v3/runOpsMigration/types.ts` so the two cannot drift conceptually.
+ */
+export type WaitpointUnblockRouteKind =
+  | "MANUAL"
+  | "DATETIME"
+  | "RESUME_TOKEN"
+  | "IDEMPOTENCY_REUSE"
+  | "RUN";
+
+/**
+ * Pinning context for {@link RunStore.forWaitpointCompletion}. Mirrors the webapp's
+ * waitpoint-completion pinning input shape.
+ */
+export interface ForWaitpointCompletionContext {
+  routeKind: WaitpointUnblockRouteKind;
+  treeOwnerResidency?: Residency;
+  isCrossTreeIdempotency?: boolean;
+  hasLegacyParent?: boolean;
+}
+
+/**
+ * Co-location hint for the waitpoint write/lookup methods. A DATETIME/MANUAL wait waitpoint's
+ * minted id is always a cuid, so id-shape routing always sends it to LEGACY; when `coLocateWithRunId`
+ * is set the router routes by the OWNING RUN's id instead, landing the waitpoint on the run's DB so
+ * the block edge's local `Waitpoint` join resolves. Single-store implementations ignore it.
+ */
+export interface WaitpointColocationOptions {
+  coLocateWithRunId?: string;
+  /**
+   * Residency for a STANDALONE waitpoint that has no owning run to co-locate with (e.g. a
+   * `wait.createToken()` token created via the env-scoped API). Its minted id is always a cuid, so
+   * id-shape routing would always send it to LEGACY; a standalone token instead reads the env mint
+   * kind and pins here (NEW when the env mints run-ops ids), so a fully-minted-new deployment keeps
+   * its tokens off the draining legacy DB. Ignored when `coLocateWithRunId` (or an owner id) is set —
+   * a co-located waitpoint always inherits its run/batch residency, never the flag.
+   */
+  residency?: Residency;
+}
+
+/**
+ * One completed waitpoint as a SNAPSHOT READ returns it, whichever backend served the read: exactly
+ * the fields run-engine's `enhanceExecutionSnapshotWithWaitpoints` consumes, and nothing more.
+ *
+ * Deliberately UNENHANCED — scalar ids, no `index`, no nested completion objects. Positional
+ * expansion over `completedWaitpointOrder`, `index`, the nested `completedByTaskRun` /
+ * `completedByBatch` objects and their friendly ids all belong to that one enhancement step, so a
+ * Redis-served and a Postgres-served read hand it identical material and cannot diverge.
+ */
+export type SnapshotReadWaitpoint = {
+  id: string;
+  friendlyId: string;
+  type: Waitpoint["type"];
+  completedAt: Date | null;
+  output: string | null;
+  outputType: string;
+  outputIsError: boolean;
+  completedByTaskRunId: string | null;
+  completedByBatchId: string | null;
+  completedAfter: Date | null;
+  /**
+   * The raw triple, not a pre-resolved key: the enhancement step owns the
+   * `userProvidedIdempotencyKey && !inactiveIdempotencyKey` user-visibility rule for every backend.
+   */
+  idempotencyKey: string;
+  userProvidedIdempotencyKey: boolean;
+  inactiveIdempotencyKey: string | null;
+};
+
+// A Postgres waitpoint row IS one of these, so that read path returns its rows unchanged. Drift on
+// either side breaks here rather than at a runtime cast.
+const _pgWaitpointSatisfiesSnapshotRead: (w: Waitpoint) => SnapshotReadWaitpoint = (w) => w;
+void _pgWaitpointSatisfiesSnapshotRead;
+
+/**
+ * What `findLatestExecutionSnapshot` returns. A redis-primary run has no Postgres snapshot row, so
+ * its payload is reproduced from MemoryDB; this type is what keeps that reproduction honest instead
+ * of claiming to be a Prisma relation payload.
+ */
+export type LatestExecutionSnapshotRead = Prisma.TaskRunExecutionSnapshotGetPayload<{
+  include: { checkpoint: true };
+}> & { completedWaitpoints: SnapshotReadWaitpoint[] };
+
+export interface RunStore {
+  /**
+   * Run a co-resident multi-write unit atomically on the store that OWNS `runId`. The callback gets
+   * the owning `RunStore` plus a `tx` opened on THAT store's OWN client; passing `tx` to the inner
+   * writes lands them all in ONE transaction on the owning DB (NEW for a run-ops run, LEGACY for a cuid
+   * run), so a failure between two writes rolls BOTH back. NOT a cross-DB transaction: `tx` is the
+   * owning store's own client (never the control-plane tx), and every write MUST target the same run /
+   * its co-resident subgraph. Callers MUST use the supplied `store` + `tx`, not the outer router
+   * (which would re-route and drop the tx). Single-store impls run `fn(this, tx)` in their own
+   * `$transaction`.
+   */
+  runInTransaction<R>(
+    runId: string | undefined,
+    fn: (store: RunStore, tx: PrismaClientOrTransaction) => Promise<R>
+  ): Promise<R>;
+
+  // Create
+  createRun(params: CreateRunInput, tx?: PrismaClientOrTransaction): Promise<TaskRunWithWaitpoint>;
+  createCancelledRun(
+    params: CreateCancelledRunInput,
+    tx?: PrismaClientOrTransaction
+  ): Promise<TaskRun>;
+  createFailedRun(
+    params: CreateFailedRunInput,
+    tx?: PrismaClientOrTransaction
+  ): Promise<TaskRunWithWaitpoint>;
+
+  // Attempt lifecycle
+  startAttempt<S extends Prisma.TaskRunSelect>(
+    runId: string,
+    data: { attemptNumber: number; executedAt?: Date; isWarmStart: boolean },
+    args: { select: S },
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
+  completeAttemptSuccess<S extends Prisma.TaskRunSelect>(
+    runId: string,
+    data: {
+      completedAt: Date;
+      output?: string;
+      outputType: string;
+      usageDurationMs: number;
+      costInCents: number;
+      snapshot: CompletionSnapshotInput;
+    },
+    args: { select: S },
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
+  recordRetryOutcome<S extends Prisma.TaskRunSelect>(
+    runId: string,
+    data: { machinePreset?: string; usageDurationMs: number; costInCents: number },
+    args: { select: S },
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
+  requeueRun<S extends Prisma.TaskRunSelect>(
+    runId: string,
+    args: { select: S },
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
+  recordBulkActionMembership(
+    runId: string,
+    bulkActionId: string,
+    tx?: PrismaClientOrTransaction
+  ): Promise<void>;
+  cancelRun<S extends Prisma.TaskRunSelect>(
+    runId: string,
+    data: {
+      completedAt?: Date;
+      error: TaskRunError;
+      bulkActionId?: string;
+      usageDurationMs?: number;
+      costInCents?: number;
+    },
+    args: { select: S },
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
+  failRunPermanently<S extends Prisma.TaskRunSelect>(
+    runId: string,
+    data: {
+      status: TaskRunStatus;
+      completedAt: Date;
+      error: TaskRunError;
+      usageDurationMs: number;
+      costInCents: number;
+    },
+    args: { select: S },
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
+
+  // Generic dual-residency finalize: writes the terminal `status` and its `error` in ONE update,
+  // pushing `bulkActionId` onto `bulkActionGroupIds`. Overloads mirror findRun: select / include /
+  // bare full-row.
+  finalizeRun<S extends Prisma.TaskRunSelect>(
+    runId: string,
+    data: FinalizeRunData,
+    args: { select: S },
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
+  finalizeRun<I extends Prisma.TaskRunInclude>(
+    runId: string,
+    data: FinalizeRunData,
+    args: { include: I },
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ include: I }>>;
+  finalizeRun(
+    runId: string,
+    data: FinalizeRunData,
+    tx?: PrismaClientOrTransaction
+  ): Promise<TaskRun>;
+
+  // Expiry
+  expireRun<S extends Prisma.TaskRunSelect>(
+    runId: string,
+    data: {
+      error: TaskRunError;
+      completedAt: Date;
+      expiredAt: Date;
+      snapshot: ExpireSnapshotInput;
+    },
+    args: { select: S },
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
+  expireRunsBatch(
+    runIds: string[],
+    data: { error: TaskRunError; now: Date },
+    tx?: PrismaClientOrTransaction
+  ): Promise<number>;
+
+  // Dequeue / version / checkpoint
+  lockRunToWorker(
+    runId: string,
+    data: LockRunData,
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{}>>;
+  parkPendingVersion<S extends Prisma.TaskRunSelect>(
+    runId: string,
+    data: { statusReason: string },
+    args: { select: S },
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
+  promotePendingVersionRuns(
+    runId: string,
+    args?: PromotePendingVersionArgs,
+    tx?: PrismaClientOrTransaction
+  ): Promise<{ count: number }>;
+  expireParkedRun(
+    runId: string,
+    data: {
+      error: TaskRunError;
+      completedAt: Date;
+      expiredAt: Date;
+      statusReason: string;
+      snapshot: ExpireSnapshotInput;
+    },
+    tx?: PrismaClientOrTransaction
+  ): Promise<{ count: number }>;
+  suspendForCheckpoint<I extends Prisma.TaskRunInclude>(
+    runId: string,
+    args: { include: I },
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ include: I }>>;
+  resumeFromCheckpoint<S extends Prisma.TaskRunSelect>(
+    runId: string,
+    args: { select: S },
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
+
+  // Delayed / debounce
+  rescheduleRun(
+    runId: string,
+    data: { delayUntil: Date; queueTimestamp?: Date; snapshot?: RescheduleSnapshotInput },
+    tx?: PrismaClientOrTransaction
+  ): Promise<TaskRun>;
+  enqueueDelayedRun(
+    runId: string,
+    data: { queuedAt: Date },
+    tx?: PrismaClientOrTransaction
+  ): Promise<TaskRun>;
+  rewriteDebouncedRun(
+    runId: string,
+    data: RewriteDebouncedRunData,
+    tx?: PrismaClientOrTransaction
+  ): Promise<TaskRunWithWaitpoint>;
+
+  // Field touches
+  updateMetadata(
+    runId: string,
+    data: {
+      metadata: string | null;
+      metadataType?: string;
+      metadataVersion: { increment: number };
+      updatedAt: Date;
+    },
+    options: { expectedMetadataVersion?: number },
+    tx?: PrismaClientOrTransaction
+  ): Promise<{ count: number }>;
+  clearIdempotencyKey(
+    params: ClearIdempotencyKeyInput,
+    tx?: PrismaClientOrTransaction
+  ): Promise<{ count: number }>;
+  pushTags(
+    runId: string,
+    tags: string[],
+    where: { runtimeEnvironmentId: string },
+    tx?: PrismaClientOrTransaction
+  ): Promise<{ updatedAt: Date }>;
+  pushRealtimeStream(
+    runId: string,
+    streamId: string,
+    tx?: PrismaClientOrTransaction
+  ): Promise<void>;
+
+  // Read
+
+  // This store's own PRIMARY (writer) handle in read-client form. The routing layer passes it as
+  // the `client` for a routed read when the CALLER supplied one: the caller's client is bound to
+  // the control-plane DB (the wrong database for a NEW-resident row), so read-your-writes is
+  // honored by reading the OWNING store's own primary instead of its replica.
+  readonly primaryReadClient: ReadClient;
+
+  findRun<S extends Prisma.TaskRunSelect>(
+    where: Prisma.TaskRunWhereInput,
+    args: { select: S },
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }> | null>;
+  findRun<I extends Prisma.TaskRunInclude>(
+    where: Prisma.TaskRunWhereInput,
+    args: { include: I },
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunGetPayload<{ include: I }> | null>;
+  findRun(where: Prisma.TaskRunWhereInput, client?: ReadClient): Promise<TaskRun | null>;
+
+  findRunOrThrow<S extends Prisma.TaskRunSelect>(
+    where: Prisma.TaskRunWhereInput,
+    args: { select: S },
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
+  findRunOrThrow<I extends Prisma.TaskRunInclude>(
+    where: Prisma.TaskRunWhereInput,
+    args: { include: I },
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunGetPayload<{ include: I }>>;
+  findRunOrThrow(where: Prisma.TaskRunWhereInput, client?: ReadClient): Promise<TaskRun>;
+
+  // Read-after-write on the OWNING store's primary (writer), never the replica — for re-reading a
+  // run just written in this request, where replica lag would cause a false miss (mirrors
+  // findWaitpointOnPrimary). The routing store dispatches here per owning store so each reads its
+  // own writer, never leaking a control-plane client into another DB.
+  findRunOnPrimary<S extends Prisma.TaskRunSelect>(
+    where: Prisma.TaskRunWhereInput,
+    args: { select: S }
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }> | null>;
+  findRunOnPrimary<I extends Prisma.TaskRunInclude>(
+    where: Prisma.TaskRunWhereInput,
+    args: { include: I }
+  ): Promise<Prisma.TaskRunGetPayload<{ include: I }> | null>;
+  findRunOnPrimary(where: Prisma.TaskRunWhereInput): Promise<TaskRun | null>;
+
+  findRunOrThrowOnPrimary<S extends Prisma.TaskRunSelect>(
+    where: Prisma.TaskRunWhereInput,
+    args: { select: S }
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
+  findRunOrThrowOnPrimary<I extends Prisma.TaskRunInclude>(
+    where: Prisma.TaskRunWhereInput,
+    args: { include: I }
+  ): Promise<Prisma.TaskRunGetPayload<{ include: I }>>;
+  findRunOrThrowOnPrimary(where: Prisma.TaskRunWhereInput): Promise<TaskRun>;
+
+  findRuns<S extends Prisma.TaskRunSelect>(
+    args: {
+      where: Prisma.TaskRunWhereInput;
+      select: S;
+      orderBy?: Prisma.TaskRunOrderByWithRelationInput | Prisma.TaskRunOrderByWithRelationInput[];
+      take?: number;
+      skip?: number;
+      cursor?: Prisma.TaskRunWhereUniqueInput;
+    },
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>[]>;
+  findRuns<I extends Prisma.TaskRunInclude>(
+    args: {
+      where: Prisma.TaskRunWhereInput;
+      include: I;
+      orderBy?: Prisma.TaskRunOrderByWithRelationInput | Prisma.TaskRunOrderByWithRelationInput[];
+      take?: number;
+      skip?: number;
+      cursor?: Prisma.TaskRunWhereUniqueInput;
+    },
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunGetPayload<{ include: I }>[]>;
+  findRuns(
+    args: {
+      where: Prisma.TaskRunWhereInput;
+      orderBy?: Prisma.TaskRunOrderByWithRelationInput | Prisma.TaskRunOrderByWithRelationInput[];
+      take?: number;
+      skip?: number;
+      cursor?: Prisma.TaskRunWhereUniqueInput;
+    },
+    client?: ReadClient
+  ): Promise<TaskRun[]>;
+
+  // Grouped replacement for `Promise.all(ids.map(id => findRun(id)))`: one round trip for the
+  // whole id batch instead of one per id. Returns an id-keyed Map; missing/duplicate ids are
+  // simply absent/collapsed.
+  findRunsByIds<S extends Prisma.TaskRunSelect>(
+    ids: string[],
+    args: { select: S },
+    client?: ReadClient
+  ): Promise<Map<string, Prisma.TaskRunGetPayload<{ select: S }>>>;
+  findRunsByIds<I extends Prisma.TaskRunInclude>(
+    ids: string[],
+    args: { include: I },
+    client?: ReadClient
+  ): Promise<Map<string, Prisma.TaskRunGetPayload<{ include: I }>>>;
+  findRunsByIds(ids: string[], client?: ReadClient): Promise<Map<string, TaskRun>>;
+
+  /**
+   * Point-lookup a set of idempotency keys within one (runtimeEnvironmentId, taskIdentifier).
+   * Each key is matched by full unique-key equality so the planner always does a per-key index
+   * probe and never falls back to scanning the whole (env, task) range and filtering in memory.
+   * Callers chunk large key sets; this resolves one chunk.
+   */
+  findRunsByIdempotencyKeys(
+    args: { runtimeEnvironmentId: string; taskIdentifier: string; idempotencyKeys: string[] },
+    client?: ReadClient
+  ): Promise<IdempotencyKeyRunMatch[]>;
+
+  // --- run-ops persistence ---
+  // Snapshots, waitpoints, implicit M:N joins, dependents, attempts and checkpoints. The
+  // generic model wrappers are thin generics over the Prisma `*Args` types so include/select
+  // payload typing survives at the call site; the snapshot DTO builder and the two raw-SQL
+  // waitpoint methods keep their hand-written shapes.
+
+  // Batch membership
+  createBatchTaskRunItem(
+    data: { batchTaskRunId: string; taskRunId: string; status: BatchTaskRunItemStatus },
+    tx?: PrismaClientOrTransaction
+  ): Promise<void>;
+
+  // Snapshot group
+  findLatestExecutionSnapshot(
+    runId: string,
+    client?: ReadClient,
+    // When set, scopes the read to this environment (tenant boundary); a run in another env reads as
+    // not-found. Omit to read regardless of environment (internal callers).
+    environmentId?: string
+  ): Promise<LatestExecutionSnapshotRead | null>;
+  findExecutionSnapshot<T extends Prisma.TaskRunExecutionSnapshotFindFirstArgs>(
+    args: Prisma.SelectSubset<T, Prisma.TaskRunExecutionSnapshotFindFirstArgs>,
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<T> | null>;
+  findManyExecutionSnapshots<T extends Prisma.TaskRunExecutionSnapshotFindManyArgs>(
+    args: Prisma.SelectSubset<T, Prisma.TaskRunExecutionSnapshotFindManyArgs>,
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<T>[]>;
+  createExecutionSnapshot(
+    input: CreateExecutionSnapshotInput,
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<{ include: { checkpoint: true } }>>;
+  // The run's versioned storage route, from its durable BIRTH residency, to stamp on a queue message
+  // so a poll-lagging consumer honors the run's true residency. Undefined for a never-enrolled /
+  // pre-cutover run (no route, no cost). A store with no snapshot decorator returns undefined.
+  // `forceDurable` is for scheduled/background promotions (delayed, version-parked): they resolve the
+  // route from durable state even on a pod whose dial reads undefined, not via the hot-path gate.
+  // `knownToExist` is for a caller whose primary query already returned this TaskRun row (a TTL batch's
+  // findRuns): it skips the resolver's per-run existence probe rather than issue a redundant query.
+  readSnapshotRoute(
+    runId: string,
+    organizationId: string,
+    options?: { forceDurable?: boolean; knownToExist?: boolean }
+  ): Promise<SnapshotRoute | undefined>;
+
+  // Implicit-join group
+  /** `runId` (when known) routes to the run's store — the snapshot + its join co-locate with the run;
+   * omit it and the router fans out (the cuid snapshot id alone can't say which store holds the join). */
+  findSnapshotCompletedWaitpointIds(
+    snapshotId: string,
+    client?: ReadClient,
+    runId?: string
+  ): Promise<string[]>;
+  /** As above, but reports in the SAME read whether the snapshot is visible on the reader: `present=false`
+   * means this reader lacks the snapshot, so its empty id list is not authoritative (repair from primary). */
+  findSnapshotCompletedWaitpointIdsWithPresence(
+    snapshotId: string,
+    client?: ReadClient,
+    runId?: string
+  ): Promise<{ present: boolean; ids: string[] }>;
+  /** Run ids connected to a waitpoint (WaitpointRunConnection / `_WaitpointRunConnections`), this DB only. */
+  findWaitpointConnectedRunIds(waitpointId: string, client?: ReadClient): Promise<string[]>;
+  /** Snapshot ids that completed a waitpoint (CompletedWaitpoint / `_completedWaitpoints`), this DB only. */
+  findWaitpointCompletedSnapshotIds(waitpointId: string, client?: ReadClient): Promise<string[]>;
+  blockRunWithWaitpointEdges(params: {
+    runId: string;
+    waitpointIds: string[];
+    projectId: string;
+    spanIdToComplete?: string;
+    batchId?: string;
+    batchIndex?: number;
+    tx?: PrismaClientOrTransaction;
+  }): Promise<void>;
+  /** `runId` (when known) routes to the run's store and falls back to the other DB only for ids absent
+   * there (a rare cross-tree token), instead of fanning the count out to both DBs on every call. */
+  countPendingWaitpoints(
+    waitpointIds: string[],
+    client?: ReadClient,
+    runId?: string
+  ): Promise<number>;
+  /** Which of the given ids are PENDING and which exist on this store (any status), so the router can
+   * route by run id and only re-count the ids absent here on the other DB — without undercounting
+   * pending (which would prematurely unblock a run) or double-counting a drain-mirrored id. */
+  countPendingWaitpointsWithPresence(
+    waitpointIds: string[],
+    client?: ReadClient
+  ): Promise<{ pendingIds: string[]; presentIds: string[] }>;
+
+  // Waitpoint group
+  createWaitpoint<T extends Prisma.WaitpointCreateArgs>(
+    args: Prisma.SelectSubset<T, Prisma.WaitpointCreateArgs>,
+    tx?: PrismaClientOrTransaction,
+    opts?: WaitpointColocationOptions
+  ): Promise<Prisma.WaitpointGetPayload<T>>;
+  upsertWaitpoint<T extends Prisma.WaitpointUpsertArgs>(
+    args: Prisma.SelectSubset<T, Prisma.WaitpointUpsertArgs>,
+    tx?: PrismaClientOrTransaction,
+    opts?: WaitpointColocationOptions
+  ): Promise<Prisma.WaitpointGetPayload<T>>;
+  findWaitpoint<T extends Prisma.WaitpointFindFirstArgs>(
+    args: Prisma.SelectSubset<T, Prisma.WaitpointFindFirstArgs>,
+    client?: ReadClient,
+    opts?: WaitpointColocationOptions
+  ): Promise<Prisma.WaitpointGetPayload<T> | null>;
+  // Read-after-write on the owning store's primary (never the replica) — for re-reading a
+  // waitpoint just written on the unblock path, where replica lag would cause a false miss.
+  findWaitpointOnPrimary<T extends Prisma.WaitpointFindFirstArgs>(
+    args: Prisma.SelectSubset<T, Prisma.WaitpointFindFirstArgs>
+  ): Promise<Prisma.WaitpointGetPayload<T> | null>;
+  /** `runId` (when known) routes to the run's store and falls back to the other DB only for the ids
+   * missing there, instead of fanning every token read out to both DBs. */
+  findManyWaitpoints<T extends Prisma.WaitpointFindManyArgs>(
+    args: Prisma.SelectSubset<T, Prisma.WaitpointFindManyArgs>,
+    client?: ReadClient,
+    runId?: string
+  ): Promise<Prisma.WaitpointGetPayload<T>[]>;
+  updateWaitpoint<T extends Prisma.WaitpointUpdateArgs>(
+    args: Prisma.SelectSubset<T, Prisma.WaitpointUpdateArgs>,
+    tx?: PrismaClientOrTransaction,
+    opts?: WaitpointColocationOptions
+  ): Promise<Prisma.WaitpointGetPayload<T>>;
+  updateManyWaitpoints(
+    args: Prisma.WaitpointUpdateManyArgs,
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.BatchPayload>;
+  /**
+   * Replay-safe waitpoint completion: transitions a single waitpoint PENDING -> COMPLETED by stable
+   * id. The status guard and the completed values are constructed inside the implementation, so the
+   * write is always idempotent (a replay matches 0 rows) and safe to retry on a connection blip. This
+   * is the ONLY waitpoint-update path that receives infra retry; `updateManyWaitpoints` does not.
+   *
+   * Takes NO caller transaction on purpose: it is a standalone, always-retried write that runs on its
+   * own writer client. A completion that must be part of a caller-owned transaction uses a different
+   * (non-retried) path.
+   */
+  markWaitpointCompleted(
+    waitpointId: string,
+    completion: {
+      output?: { value?: string; type?: string; isError?: boolean };
+      completedAt?: Date;
+    }
+  ): Promise<Prisma.BatchPayload>;
+
+  /**
+   * Select the run-ops store that OWNS a waitpoint completion, by waitpointId
+   * residency. completeWaitpoint arrives with only (waitpointId, output) — no run
+   * id — so selection is by the waitpoint's own residency, with the documented
+   * pins to legacy. Returns the store HANDLE to apply the completion on.
+   * Single-store implementations return `this`. Throws UnclassifiableRunId on an
+   * ambiguous id in split mode (the engine rethrows it as UnclassifiableWaitpointId).
+   */
+  forWaitpointCompletion(
+    waitpointId: string,
+    context: ForWaitpointCompletionContext
+  ): Promise<RunStore>;
+
+  // TaskRunWaitpoint group
+  findManyTaskRunWaitpoints<T extends Prisma.TaskRunWaitpointFindManyArgs>(
+    args: Prisma.SelectSubset<T, Prisma.TaskRunWaitpointFindManyArgs>,
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunWaitpointGetPayload<T>[]>;
+  deleteManyTaskRunWaitpoints(
+    args: Prisma.TaskRunWaitpointDeleteManyArgs,
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.BatchPayload>;
+
+  // Attempt-model group (TaskRunAttempt, V1-residual)
+  findTaskRunAttempt<T extends Prisma.TaskRunAttemptFindFirstArgs>(
+    args: Prisma.SelectSubset<T, Prisma.TaskRunAttemptFindFirstArgs>,
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunAttemptGetPayload<T> | null>;
+
+  // Checkpoint family. `ownerRunId` is the run whose snapshot references this checkpoint via the
+  // kept `TaskRunExecutionSnapshot.checkpointId` FK — the routing store co-locates the checkpoint
+  // with that run so the snapshot insert can satisfy the FK on the same DB. The checkpoint
+  // row itself carries no runId scalar, so the owning run id must be threaded explicitly.
+  createTaskRunCheckpoint<T extends Prisma.TaskRunCheckpointCreateArgs>(
+    args: Prisma.SelectSubset<T, Prisma.TaskRunCheckpointCreateArgs>,
+    ownerRunId?: string,
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunCheckpointGetPayload<T>>;
+
+  // Residency-aware direct checkpoint read by id. A snapshot served from Redis carries only the
+  // checkpointId; the checkpoint hydrates by reading TaskRunCheckpoint directly, NOT via the snapshot
+  // row, which at redis-only is suppressed. `ownerRunId` routes to the run's co-located store.
+  findTaskRunCheckpointById(
+    checkpointId: string,
+    ownerRunId: string,
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunCheckpointGetPayload<{}> | null>;
+
+  // --- BatchTaskRun (run-ops) ---
+  // Batch row is born on the run-ops store at create. `findBatchTaskRunById`
+  // reads the primary by default (worker reads the just-written row; replica lag).
+  createBatchTaskRun(
+    data: CreateBatchTaskRunData,
+    tx?: PrismaClientOrTransaction
+  ): Promise<BatchTaskRun>;
+  updateBatchTaskRun<S extends Prisma.BatchTaskRunSelect>(
+    args: {
+      where: Prisma.BatchTaskRunWhereUniqueInput;
+      data: Prisma.BatchTaskRunUpdateInput;
+      select: S;
+    },
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.BatchTaskRunGetPayload<{ select: S }>>;
+  findBatchTaskRunById<T extends Prisma.BatchTaskRunInclude = {}>(
+    id: string,
+    args?: { include?: T },
+    client?: ReadClient
+  ): Promise<Prisma.BatchTaskRunGetPayload<{ include: T }> | null>;
+  findBatchTaskRunByFriendlyId<T extends Prisma.BatchTaskRunInclude = {}>(
+    friendlyId: string,
+    environmentId: string,
+    args?: { include?: T },
+    client?: ReadClient
+  ): Promise<Prisma.BatchTaskRunGetPayload<{ include: T }> | null>;
+
+  // --- BatchTaskRun (run-ops) — batch residency additions ---
+  // The idempotency probe is keyed by (environmentId, idempotencyKey) — no classifiable
+  // batch id — so the router fans out NEW→LEGACY (mirrors `findBatchTaskRunByFriendlyId`).
+  findBatchTaskRunByIdempotencyKey<T extends Prisma.BatchTaskRunInclude = {}>(
+    environmentId: string,
+    idempotencyKey: string,
+    args?: { include?: T },
+    client?: ReadClient
+  ): Promise<Prisma.BatchTaskRunGetPayload<{ include: T }> | null>;
+  // updateMany of batch rows: route by `where.id` when scalar, else fan-out + sum counts.
+  updateManyBatchTaskRun(
+    args: Prisma.BatchTaskRunUpdateManyArgs,
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.BatchPayload>;
+  // Count batch items by `batchTaskRunId` (items co-reside with the batch).
+  countBatchTaskRunItems(
+    where: { batchTaskRunId: string; status?: BatchTaskRunItemStatus },
+    client?: ReadClient
+  ): Promise<number>;
+  // updateMany of batch items: route by `where.id`/`where.batchTaskRunId`, else fan-out + sum.
+  updateManyBatchTaskRunItems(
+    args: Prisma.BatchTaskRunItemUpdateManyArgs,
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.BatchPayload>;
+  // An item co-resides with both its batch (batchTaskRunId FK) and its child run (taskRunId FK) on
+  // ONE DB, so a read keyed by either scalar routes to that store; `include` resolves the co-resident
+  // relations locally.
+  findManyBatchTaskRunItems<I extends Prisma.BatchTaskRunItemInclude = {}>(
+    where: { taskRunId?: string; batchTaskRunId?: string },
+    args?: { include?: I },
+    client?: ReadClient
+  ): Promise<Prisma.BatchTaskRunItemGetPayload<{ include: I }>[]>;
+  findBatchTaskRunItem<I extends Prisma.BatchTaskRunItemInclude = {}>(
+    where: { batchTaskRunId: string; taskRunId?: string },
+    args?: { include?: I },
+    client?: ReadClient
+  ): Promise<Prisma.BatchTaskRunItemGetPayload<{ include: I }> | null>;
+
+  // --- WaitpointTag (run-ops) ---
+  // A WaitpointTag has no run/waitpoint FK — a standalone entity keyed by (environmentId, name).
+  // Callers never mint a tag id (defaults to cuid), so the WRITE is always LEGACY-resident today
+  // (single-homed), like standalone waitpoint tokens; the READ still fans out NEW→LEGACY and
+  // de-dupes by id in case tag ids ever become residency-aware.
+  upsertWaitpointTag(
+    data: { environmentId: string; name: string; projectId: string; id?: string },
+    tx?: PrismaClientOrTransaction,
+    // A tag has no owning run to co-locate with; when no minted `id` pins it by id-shape, a
+    // minted-new env's tags read this residency (NEW) so they land with the env's tokens/runs
+    // instead of defaulting to LEGACY. Single-store impls ignore it.
+    residency?: Residency,
+    // A tag has no id to route by, so this is the only way its row follows its environment's
+    // tokens onto a shard. Outranks `residency`.
+    shardKey?: ShardKey
+  ): Promise<WaitpointTag>;
+  findManyWaitpointTags(
+    args: {
+      where: Prisma.WaitpointTagWhereInput;
+      orderBy?:
+        | Prisma.WaitpointTagOrderByWithRelationInput
+        | Prisma.WaitpointTagOrderByWithRelationInput[];
+      take?: number;
+      skip?: number;
+    },
+    client?: ReadClient
+  ): Promise<WaitpointTag[]>;
+}

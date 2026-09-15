@@ -1,0 +1,311 @@
+---
+title: "Ask Trigger chat agent"
+sidebarTitle: "Ask Trigger chat agent"
+description: "Build a chat agent that teaches Trigger.dev by drawing interactive node-graphs, quizzes and cards, using chat.agent(), generative UI with json-render, live docs grounding through an MCP server, and a Next.js frontend."
+---
+
+## Overview
+
+This example is a fullstack [chat agent](/ai-chat/overview) that **teaches you Trigger.dev by drawing**. Instead of returning paragraphs, it composes interactive UI: ask "how does a fan-out with retries work?" and it renders an animated node-graph of the flow; ask it to teach you retries and you get a short explainer, a quiz, and a gotcha callout. Every turn ends with clickable next-step chips, so the learning keeps flowing.
+
+The agent writes a sentence or two, then calls a `renderVisualization` tool with a [json-render](https://json-render.dev) spec that a Next.js chat UI renders live with [React Flow](https://reactflow.dev) and a kit of [shadcn/ui](https://ui.shadcn.com) teaching components. The model supplies *data*, not markup, so every card is a few tokens and always looks right. Every fact it states is grounded on the live docs through a documentation [MCP server](https://modelcontextprotocol.io), so it doesn't invent API surface.
+
+**Tech stack:**
+
+- **[Trigger.dev AI chat](/ai-chat/overview)** for the agent session, turn loop, streaming and resumability
+- **[AI Prompts](/ai/prompts)** for a versioned system prompt with dashboard overrides and per-generation LLM observability
+- **[AI SDK](https://ai-sdk.dev/)** with Anthropic Claude for the model and tool calling, and `useChat` on the frontend
+- **[Model Context Protocol](https://modelcontextprotocol.io)** (default: the hosted [Context7](https://context7.com) docs server) to ground answers on live documentation
+- **[json-render](https://json-render.dev)** with the [`@json-render/shadcn`](https://www.npmjs.com/package/@json-render/shadcn) component library for generative UI
+- **[React Flow](https://reactflow.dev)** with [dagre](https://github.com/dagrejs/dagre) for the signature interactive node-graphs
+- **Next.js** chat app using [`useTriggerChatTransport`](/ai-chat/frontend) — the browser talks directly to Trigger.dev, no API route to maintain
+
+**Features:**
+
+- **Generative UI**: a `renderVisualization` tool takes a json-render spec built from a fixed kit of components: `FlowGraph`, `HeroCard`, `Quiz`, `Callout`, `Compare`, `Steps`, `Glossary`, `StatCard`, `CodeCard`, `DiagramCard`, `PromptCard`. Specs are validated against the component catalog and errors are returned to the model, so it corrects the spec and retries.
+- **One shared catalog**: the same module generates the system-prompt component reference and validates tool calls, so the prompt and the renderer can't drift apart.
+- **Docs grounding via MCP**: docs-server tools are merged into the agent each turn, so it looks up Trigger.dev APIs instead of answering from memory. Swap `DOCS_MCP_URL` to point the demo at any other product's docs MCP.
+- **Untrusted-input quarantine**: retrieved docs are the upstream prompt-injection vector, so each tool's output is wrapped as data-not-instructions and flagged for injection markers before the model ever sees it.
+- **Versioned system prompt**: defined with `prompts.define()`, resolvable per-run and overridable from the dashboard without redeploying. Storing it via `chat.prompt.set()` wires up `experimental_telemetry`, so every model call appears in the run trace with token, cost and latency metrics.
+- **Per-turn model triage**: most turns answer on a fast, low-cost model (Claude Haiku); only genuinely hard teaching turns escalate to a stronger model (Claude Sonnet), so the common case stays cheap and quick.
+- **A learning flywheel**: a `suggestNext` tool ends every turn with 2–4 next-step chips whose labels are sent verbatim as the next message, so the learner never has to invent the next question.
+
+## GitHub repo
+
+<Card
+  title="View the Ask Trigger chat agent repo"
+  icon="GitHub"
+  href="https://github.com/triggerdotdev/examples/tree/main/trigger-chat-agent"
+>
+  Click here to view the full code for this project in our examples repository on GitHub. You can
+  fork it and use it as a starting point for your own project.
+</Card>
+
+## How it works
+
+### The agent
+
+The agent is a single [`chat.agent()`](/ai-chat/overview) call. Trigger.dev handles the chat session, turn loop, streaming and resumability. The system prompt is a versioned [AI Prompt](/ai/prompts): the editable teaching guidance lives in the prompt template, while the json-render component reference is generated from the catalog at run time and injected as a template variable, so it always matches the deployed code. Setting the resolved prompt with `chat.prompt.set()` lets `chat.toStreamTextOptions()` supply the system text, model, config and telemetry:
+
+```ts src/trigger/trigger-chat-agent.ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { anthropic } from "@ai-sdk/anthropic";
+import { createProviderRegistry, stepCountIs, streamText } from "ai";
+import { prompts } from "@trigger.dev/sdk";
+import { catalogPromptSection } from "../lib/catalog";
+
+const registry = createProviderRegistry({ anthropic });
+
+// A versioned AI Prompt: edit the teaching guidance, model or temperature from
+// the dashboard without redeploying. The component reference is generated from
+// the catalog at run time, so the prompt can't drift from the code.
+const systemPrompt = prompts.define({
+  id: "trigger-tutor",
+  model: "anthropic:claude-haiku-4-5",
+  variables: z.object({ componentReference: z.string() }),
+  content: `You are the Trigger.dev tutor... You teach by DRAWING and composing
+on-screen components, never walls of text.
+
+## renderVisualization spec reference
+
+{{componentReference}}`,
+});
+
+export const triggerChatAgent = chat.agent({
+  id: "trigger-chat-agent",
+  idleTimeoutInSeconds: 300,
+  // Public-demo cost guardrail: throttle how many sessions run at once.
+  queue: { concurrencyLimit: 10 },
+
+  // Declaring tools here — not just on streamText — is what lets the SDK
+  // re-convert prior turns' history correctly. The docs MCP tools are merged
+  // in each turn so their calls survive that re-conversion too.
+  tools: async () => {
+    const docsTools = await getDocsTools();
+    return { renderVisualization, suggestNext, ...docsTools };
+  },
+
+  // onTurnStart (not onChatStart) fires on every turn, so the system prompt
+  // survives an idle resume. chat.toStreamTextOptions() picks up the system
+  // text, model, config AND experimental_telemetry from it — the telemetry is
+  // what makes LLM observability (tokens, cost, latency) show up per prompt version.
+  onTurnStart: async () => {
+    chat.prompt.set(await getResolvedPrompt());
+  },
+
+  run: async ({ messages, tools, signal }) => {
+    // Escalate only genuinely hard turns to Sonnet; everything else stays on
+    // the prompt's base model (Haiku). The override goes AFTER the spread so it wins.
+    const escalate = await needsEscalation(messages);
+    return streamText({
+      model: anthropic("claude-haiku-4-5"),
+      ...chat.toStreamTextOptions({ registry, tools }),
+      ...(escalate ? { model: anthropic("claude-sonnet-5") } : {}),
+      messages,
+      stopWhen: stepCountIs(15),
+      abortSignal: signal,
+    });
+  },
+});
+```
+
+<Warning>
+  On AI SDK v5/v6, `experimental_telemetry` comes from the stored prompt via
+  `chat.toStreamTextOptions()` — without `chat.prompt.set()`, model calls don't appear as spans in
+  the run trace.
+</Warning>
+
+### Grounding answers on live docs with MCP
+
+Before stating any fact, the agent looks it up through a documentation MCP server rather than answering from memory. The client and its tool set are created lazily and cached at module scope, so a successful handshake happens once per run process and every later turn reuses the same tools. A failure isn't cached, so the turn degrades gracefully and a later turn retries. The tools are declared on the agent config, so their calls survive Trigger.dev's cross-turn history re-conversion:
+
+```ts src/trigger/trigger-chat-agent.ts
+import { createMCPClient } from "@ai-sdk/mcp";
+
+// Defaults to the hosted Context7 server — point it at another product's docs
+// MCP to fork the demo to a different domain.
+const DOCS_MCP_URL = process.env.DOCS_MCP_URL ?? "https://mcp.context7.com/mcp";
+
+async function loadDocsTools(): Promise<ToolSet> {
+  const client = await createMCPClient({ transport: { type: "http", url: DOCS_MCP_URL } });
+  // Kept open for the life of the run process — the tools close over the client.
+  return quarantineDocsTools(await client.tools());
+}
+```
+
+Retrieved documentation is **untrusted input**: a poisoned page is the upstream prompt-injection vector, so each docs tool's output is quarantined before the model reads it. Overriding `toModelOutput` (not `execute`) is the layer that decides what text the model sees, and it's re-applied on cross-turn history re-conversion so the wrapping persists across turns:
+
+```ts src/trigger/trigger-chat-agent.ts
+import { quarantineDocs, renderToolText } from "../lib/quarantine";
+
+function quarantineDocsTools(tools: ToolSet): ToolSet {
+  const wrapped: ToolSet = {};
+  for (const [name, t] of Object.entries(tools)) {
+    wrapped[name] = {
+      ...t,
+      toModelOutput: ({ output }) => ({
+        type: "text",
+        value: quarantineDocs(renderToolText(output)),
+      }),
+    };
+  }
+  return wrapped;
+}
+```
+
+`quarantineDocs` (in `src/lib/quarantine.ts`) wraps the content in nonce-fenced "untrusted reference material" markers using the standard spotlighting defense, strips any fence markers the page itself contains, and flags common injection phrases so a review of the run trace surfaces them. Even if an injection slips through, `validateSpec` is the second net: the only thing the model can render is a spec built from the fixed component catalog, validated server-side before it reaches the client.
+
+### Generative UI with one shared catalog
+
+A single module defines which components the model may use: layout and text primitives from `@json-render/shadcn`, plus a kit of custom teaching components. Every component is **data-driven**: the model fills fields and the component renders, so there's no model-authored markup to sanitize. The same catalog produces the system-prompt reference and validates tool calls:
+
+```ts src/lib/catalog.ts
+import { defineCatalog } from "@json-render/core";
+
+export const catalog = defineCatalog(schema, {
+  components: {
+    // Layout & text from the stock shadcn catalog
+    Card, Stack, Grid, Heading, Text, Badge,
+    // ...plus custom FlowGraph, HeroCard, StatCard, Quiz, Callout,
+    // Compare, Steps, Glossary, CodeCard, DiagramCard, PromptCard
+  },
+});
+
+// Generates the component reference (props as JSON schema, from the same zod
+// definitions) for the system prompt — so the prompt can't drift from the code.
+export function catalogPromptSection(): string { /* ... */ }
+
+// Validates a spec against the catalog; errors are phrased for the model to
+// correct and retry.
+export function validateSpec(spec: VisualizationSpec) { /* ... */ }
+```
+
+The `renderVisualization` tool accepts a flat json-render spec. Validation failures go back to the model as tool output, and the full spec is read straight off the tool call's `input` by the client, so the return value only needs a short ack:
+
+```ts src/trigger/trigger-chat-agent.ts
+const renderVisualization = tool({
+  description:
+    "Render interactive diagrams and cards for the user instead of describing a concept as plain text...",
+  inputSchema: z.object({
+    spec: z.object({
+      root: z.string(),
+      elements: z.record(z.string(), z.object({
+        type: z.string(),
+        props: z.record(z.string(), z.unknown()),
+        children: z.array(z.string()).optional(),
+      })),
+    }),
+  }),
+  execute: async ({ spec }) => {
+    const result = validateSpec(normalizeSpec(spec));
+    if (!result.ok) {
+      // The model reads these, fixes the spec, and calls the tool again
+      return { ok: false, errors: result.errors };
+    }
+    return { ok: true, note: "Rendered to the user. Add at most a one-sentence takeaway." };
+  },
+});
+```
+
+A second tool, `suggestNext`, is the flywheel: called last on every turn with 2–4 chips (`deeper`, `sideways`, `practice` or `topic`). The client renders each chip as a button, and its label is sent verbatim as the next message when clicked, so the learning keeps flowing without the user having to think up the next question.
+
+### The Next.js chat UI
+
+The frontend uses `useChat` with [`useTriggerChatTransport`](/ai-chat/frontend): the browser subscribes to the session's durable streams directly, authenticated by two small server actions, so there's no API route to maintain. `renderVisualization` tool parts in the message stream render through json-render's `<Renderer>` with the shadcn component registry:
+
+```tsx src/components/chat.tsx
+"use client";
+
+import { useChat } from "@ai-sdk/react";
+import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
+import { mintChatAccessToken, startChatSession } from "@/app/actions";
+
+const transport = useTriggerChatTransport<typeof triggerChatAgent>({
+  task: "trigger-chat-agent",
+  accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+  startSession: ({ chatId, clientData }) => startChatSession({ chatId, clientData }),
+});
+
+const { messages, sendMessage, stop, status } = useChat({ transport });
+// Render text parts as markdown; render tool-renderVisualization parts with
+// json-render's <Renderer spec={...} registry={registry} />
+```
+
+The registry maps every catalog component to its React implementation: the stock `@json-render/shadcn` components plus the custom teaching kit (`src/lib/registry.tsx`). The main visual is `FlowGraph` (`src/components/flow-graph.tsx`): a directed node-graph on React Flow and dagre, styled like the Trigger.dev dashboard, with status dots, dashed retry edges, an animated topological reveal, and an optional timed status sequence that plays a run's state changes live.
+
+Conversations are **device-local**: each has its own URL (`/c/<id>`) and its transcript is saved in the browser (IndexedDB), so a refresh restores the thread and the sidebar lists past chats. There's no server database: Trigger.dev keeps the live conversation with the durable Session, so history never leaves the machine.
+
+### The session server actions
+
+The browser talks to Trigger.dev directly; two server actions start the session and mint session-scoped tokens:
+
+```ts src/app/actions.ts
+"use server";
+
+import { auth } from "@trigger.dev/sdk";
+import { chat } from "@trigger.dev/sdk/ai";
+
+// Creates the Session + triggers the first run, returns the session token.
+// Idempotent on (env, chatId) so concurrent calls converge to the same session.
+export const startChatSession = chat.createStartSessionAction("trigger-chat-agent");
+
+// Mints a fresh session-scoped token; the transport calls this on 401/403.
+export async function mintChatAccessToken(chatId: string) {
+  return auth.createPublicToken({
+    scopes: { read: { sessions: chatId }, write: { sessions: chatId } },
+    expirationTime: "1h",
+  });
+}
+```
+
+<Warning>
+  These session actions are unauthenticated, so anyone with a chat URL can start a session. That's
+  fine for a personal or gated deploy, but for real multi-user use add an ownership check in
+  `mintChatAccessToken` and set an org spend limit in the dashboard (Billing). The agent's
+  `queue.concurrencyLimit` throttles throughput, not total spend.
+</Warning>
+
+### Running it
+
+The example needs `ANTHROPIC_API_KEY` (and optionally `DOCS_MCP_URL`) set in the Trigger.dev dashboard on the [Environment Variables page](/deploy-environment-variables), and `TRIGGER_PROJECT_REF` plus `TRIGGER_SECRET_KEY` in the local `.env` for the Next.js server actions:
+
+```bash .env
+TRIGGER_PROJECT_REF=proj_xxxxxxxxxxxxxxxxxxxxxxxx
+TRIGGER_SECRET_KEY=tr_dev_xxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+Run the agent and the app in two terminals, then open [http://localhost:3000](http://localhost:3000):
+
+```bash
+pnpm dev:trigger   # the agent
+pnpm dev           # the Next.js app
+```
+
+Try asking "How does a fan-out with retries work?" for an interactive FlowGraph, "Teach me retries properly" for an explainer, a quiz and a gotcha callout, or "How does a run survive a redeploy?" to draw the checkpoints. Then follow the next-step chips under each answer to keep going.
+
+## Relevant code
+
+- **Agent + tools**: [src/trigger/trigger-chat-agent.ts](https://github.com/triggerdotdev/examples/blob/main/trigger-chat-agent/src/trigger/trigger-chat-agent.ts): the `chat.agent()` definition, the versioned prompt, the docs-MCP loading and quarantine wrapping, `renderVisualization` and `suggestNext`, and the per-turn model triage
+- **Docs quarantine**: [src/lib/quarantine.ts](https://github.com/triggerdotdev/examples/blob/main/trigger-chat-agent/src/lib/quarantine.ts): spotlighting wrappers, fence-marker stripping, and injection-phrase flagging for untrusted tool output
+- **Shared catalog**: [src/lib/catalog.ts](https://github.com/triggerdotdev/examples/blob/main/trigger-chat-agent/src/lib/catalog.ts): component definitions, prompt-reference generation, and spec validation
+- **Component registry**: [src/lib/registry.tsx](https://github.com/triggerdotdev/examples/blob/main/trigger-chat-agent/src/lib/registry.tsx): maps catalog components to their React implementations
+- **FlowGraph**: [src/components/flow-graph.tsx](https://github.com/triggerdotdev/examples/blob/main/trigger-chat-agent/src/components/flow-graph.tsx): the React Flow + dagre node-graph with the animated status sequence
+- **Chat UI**: [src/components/chat.tsx](https://github.com/triggerdotdev/examples/blob/main/trigger-chat-agent/src/components/chat.tsx): `useChat` + the Trigger chat transport, message parts, and visualization rendering
+- **Server actions**: [src/app/actions.ts](https://github.com/triggerdotdev/examples/blob/main/trigger-chat-agent/src/app/actions.ts): session creation and token minting
+
+## Learn more
+
+<CardGroup cols={2}>
+  <Card title="AI chat overview" icon="message-bot" href="/ai-chat/overview">
+    How chat agents, sessions, and the turn loop work.
+  </Card>
+  <Card title="Frontend" icon="browser" href="/ai-chat/frontend">
+    The chat transport, session tokens, and reconnection.
+  </Card>
+  <Card title="AI Prompts" icon="file-lines" href="/ai/prompts">
+    Versioned prompts with dashboard overrides and generation tracking.
+  </Card>
+  <Card title="Tools" icon="wrench" href="/ai-chat/tools">
+    Declaring tools on your agent and how they persist across turns.
+  </Card>
+</CardGroup>

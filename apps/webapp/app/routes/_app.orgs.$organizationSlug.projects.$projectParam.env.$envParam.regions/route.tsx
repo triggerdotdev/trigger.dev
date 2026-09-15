@@ -7,7 +7,7 @@ import {
   MapPinIcon,
 } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
-import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
 import { useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -16,7 +16,6 @@ import { CloudProviderIcon } from "~/assets/icons/CloudProviderIcon";
 import { FlagIcon } from "~/assets/icons/RegionIcons";
 import { cloudProviderTitle } from "~/components/CloudProvider";
 import { Feedback } from "~/components/Feedback";
-import { V4Title } from "~/components/V4Badge";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
@@ -46,14 +45,18 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import { TextLink } from "~/components/primitives/TextLink";
+import { TextLink, textLinkClassName } from "~/components/primitives/TextLink";
+import { cn } from "~/utils/cn";
+import { InfoIconTooltip } from "~/components/primitives/Tooltip";
 import { useFeatures } from "~/hooks/useFeatures";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useHasAdminAccess } from "~/hooks/useUser";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { type Region, RegionsPresenter } from "~/presenters/v3/RegionsPresenter.server";
-import { requireUser } from "~/services/session.server";
+import { hasAdminDisplayAccess, requireUser } from "~/services/session.server";
+import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import {
   docsPath,
   EnvironmentParamSchema,
@@ -62,6 +65,11 @@ import {
   v3BillingPath,
 } from "~/utils/pathBuilder";
 import { SetDefaultRegionService } from "~/v3/services/setDefaultRegion.server";
+import { sectionAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Regions");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
@@ -72,7 +80,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     presenter.call({
       userId: user.id,
       projectSlug: projectParam,
-      isAdmin: user.admin || user.isImpersonating,
+      isAdmin: hasAdminDisplayAccess(user),
     })
   );
 
@@ -90,47 +98,70 @@ const FormSchema = z.object({
   regionId: z.string(),
 });
 
-export const action = async ({ request, params }: ActionFunctionArgs) => {
-  const user = await requireUser(request);
-  const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
+export const action = dashboardAction(
+  {
+    params: EnvironmentParamSchema,
+    context: async (params) => {
+      const orgId = await resolveOrgIdFromSlug(params.organizationSlug);
+      return orgId ? { organizationId: orgId } : {};
+    },
+  },
+  async ({ user, ability, request, params }) => {
+    const { organizationSlug, projectParam, envParam } = params;
 
-  const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
+    const redirectPath = regionsPath(
+      { slug: organizationSlug },
+      { slug: projectParam },
+      { slug: envParam }
+    );
 
-  const redirectPath = regionsPath(
-    { slug: organizationSlug },
-    { slug: projectParam },
-    { slug: envParam }
-  );
+    if (!ability.can("manage", { type: "project" })) {
+      throw await redirectWithErrorMessage(
+        redirectPath,
+        request,
+        "You don't have permission to change the default region"
+      );
+    }
 
-  if (!project) {
-    throw redirectWithErrorMessage(redirectPath, request, "Project not found");
+    const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
+
+    if (!project) {
+      throw await redirectWithErrorMessage(redirectPath, request, "Project not found");
+    }
+
+    const formData = await request.formData();
+    const parsedFormData = FormSchema.safeParse(Object.fromEntries(formData));
+
+    if (!parsedFormData.success) {
+      throw await redirectWithErrorMessage(redirectPath, request, "No region specified");
+    }
+
+    const service = new SetDefaultRegionService();
+    const [error, result] = await tryCatch(
+      service.call({
+        projectId: project.id,
+        regionId: parsedFormData.data.regionId,
+        // Raw impersonation, not `hasAdminDisplayAccess`: this decides whether a restricted or
+        // hidden region may be set as the default, which is a capability. "View as user" only
+        // changes what is shown.
+        isAdmin: user.admin || user.isImpersonating,
+      })
+    );
+
+    if (error) {
+      return redirectWithErrorMessage(redirectPath, request, error.message);
+    }
+
+    return redirectWithSuccessMessage(redirectPath, request, `Set ${result.name} as default`);
   }
+);
 
-  const formData = await request.formData();
-  const parsedFormData = FormSchema.safeParse(Object.fromEntries(formData));
-
-  if (!parsedFormData.success) {
-    throw redirectWithErrorMessage(redirectPath, request, "No region specified");
-  }
-
-  const service = new SetDefaultRegionService();
-  const [error, result] = await tryCatch(
-    service.call({
-      projectId: project.id,
-      regionId: parsedFormData.data.regionId,
-      isAdmin: user.admin || user.isImpersonating,
-    })
-  );
-
-  if (error) {
-    return redirectWithErrorMessage(redirectPath, request, error.message);
-  }
-
-  return redirectWithSuccessMessage(redirectPath, request, `Set ${result.name} as default`);
+export const handle: Handle = {
+  agentPageContext: () => sectionAgentPageContext("regions"),
 };
 
 export default function Page() {
-  const { regions, isPaying } = useTypedLoaderData<typeof loader>();
+  const { regions, isPaying: _isPaying } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const isAdmin = useHasAdminAccess();
   const { isManagedCloud } = useFeatures();
@@ -138,14 +169,16 @@ export default function Page() {
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title={<V4Title>Regions</V4Title>} />
+        <PageTitle title="Regions" />
         <PageAccessories>
           <AdminDebugTooltip>
             <Property.Table>
               {regions.map((region) => (
                 <Property.Item key={region.id}>
                   <Property.Label>{region.name}</Property.Label>
-                  <Property.Value>{region.id}</Property.Value>
+                  <Property.Value>
+                    <CopyableText value={region.id} asChild hideTooltip />
+                  </Property.Value>
                 </Property.Item>
               ))}
             </Property.Table>
@@ -161,171 +194,179 @@ export default function Page() {
               </div>
             </MainCenteredContainer>
           ) : (
-            <>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHeaderCell>Region</TableHeaderCell>
-                      <TableHeaderCell>Cloud Provider</TableHeaderCell>
-                      <TableHeaderCell>Location</TableHeaderCell>
-                      <TableHeaderCell>Static IPs</TableHeaderCell>
-                      {isAdmin && <TableHeaderCell>Admin</TableHeaderCell>}
-                      <TableHeaderCell
-                        alignment="right"
-                        tooltip={
-                          <div className="max-w-[12rem]">
-                            <Paragraph variant="small">
-                              When you trigger a run it will execute in your default region, unless
-                              you override the region when triggering.
-                            </Paragraph>
-                            <LinkButton
-                              variant="docs/small"
-                              LeadingIcon={BookOpenIcon}
-                              to={docsPath("triggering#region")}
-                              className="mb-1 mt-3"
-                            >
-                              Read docs
-                            </LinkButton>
-                          </div>
-                        }
-                      >
-                        Default region
-                      </TableHeaderCell>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {regions.length === 0 ? (
-                      <TableBlankRow colSpan={5}>
-                        <Paragraph>There are no regions for this project</Paragraph>
-                      </TableBlankRow>
-                    ) : (
-                      regions.map((region) => {
-                        return (
-                          <TableRow key={region.id}>
-                            <TableCell isTabbableCell>
-                              <span className="flex items-center gap-2">
-                                <CopyableText value={region.name} />
-                                {region.workloadType === "MICROVM" && (
-                                  <Badge variant="small">MicroVM</Badge>
-                                )}
-                              </span>
-                            </TableCell>
-                            <TableCell>
-                              {region.cloudProvider ? (
-                                <span className="flex items-center gap-2">
-                                  <CloudProviderIcon
-                                    provider={region.cloudProvider}
-                                    className="size-6"
-                                  />
-                                  {cloudProviderTitle(region.cloudProvider)}
-                                </span>
-                              ) : (
-                                "–"
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHeaderCell>Region</TableHeaderCell>
+                    <TableHeaderCell>Cloud Provider</TableHeaderCell>
+                    <TableHeaderCell>
+                      <span className="flex items-center gap-1">
+                        Location
+                        <InfoIconTooltip
+                          content="Region location is where your runs execute, not where your data is stored."
+                          contentClassName="normal-case tracking-normal"
+                        />
+                      </span>
+                    </TableHeaderCell>
+                    <TableHeaderCell>Static IPs</TableHeaderCell>
+                    {isAdmin && <TableHeaderCell>Admin</TableHeaderCell>}
+                    <TableHeaderCell
+                      alignment="right"
+                      tooltip={
+                        <div className="max-w-48">
+                          <Paragraph variant="small">
+                            When you trigger a run it will execute in your default region, unless
+                            you override the region when triggering.
+                          </Paragraph>
+                          <LinkButton
+                            variant="docs/small"
+                            LeadingIcon={BookOpenIcon}
+                            to={docsPath("triggering#region")}
+                            className="mb-1 mt-3"
+                          >
+                            Read docs
+                          </LinkButton>
+                        </div>
+                      }
+                    >
+                      Default region
+                    </TableHeaderCell>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {regions.length === 0 ? (
+                    <TableBlankRow colSpan={5}>
+                      <Paragraph>There are no regions for this project</Paragraph>
+                    </TableBlankRow>
+                  ) : (
+                    regions.map((region) => {
+                      return (
+                        <TableRow key={region.id}>
+                          <TableCell isTabbableCell>
+                            <span className="flex items-center gap-2">
+                              <CopyableText value={region.name} />
+                              {region.workloadType === "MICROVM" && (
+                                <Badge variant="small">MicroVM</Badge>
                               )}
-                            </TableCell>
-                            <TableCell>
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            {region.cloudProvider ? (
                               <span className="flex items-center gap-2">
-                                {region.location ? (
-                                  <FlagIcon region={region.location} className="size-5" />
-                                ) : null}
-                                {region.description ?? "–"}
-                              </span>
-                            </TableCell>
-                            <TableCell>
-                              {region.staticIPs === null ? (
-                                <LinkButton
-                                  variant="secondary/small"
-                                  to={v3BillingPath(
-                                    organization,
-                                    "Upgrade your plan to unlock static IPs"
-                                  )}
-                                  LeadingIcon={ArrowUpCircleIcon}
-                                  leadingIconClassName="text-indigo-500"
-                                >
-                                  Unlock static IPs
-                                </LinkButton>
-                              ) : region.staticIPs !== undefined ? (
-                                <ClipboardField
-                                  value={region.staticIPs}
-                                  variant={"secondary/small"}
+                                <CloudProviderIcon
+                                  provider={region.cloudProvider}
+                                  className="size-6"
                                 />
-                              ) : (
-                                "Not available"
-                              )}
-                            </TableCell>
-                            {isAdmin && (
-                              <TableCell>{region.isHidden ? "Hidden" : "Visible"}</TableCell>
-                            )}
-                            {region.isDefault ? (
-                              <TableCell alignment="right">
-                                <Badge variant="small" className="inline-grid">
-                                  Default
-                                </Badge>
-                              </TableCell>
+                                {cloudProviderTitle(region.cloudProvider)}
+                              </span>
                             ) : (
-                              <TableCellMenu
-                                className="pl-32"
-                                isSticky
-                                hiddenButtons={
-                                  <SetDefaultDialog regions={regions} newDefaultRegion={region} />
-                                }
-                              />
+                              "–"
                             )}
-                          </TableRow>
-                        );
-                      })
-                    )}
-
-                    <TableRow className="h-[3.125rem]">
-                      <TableCell colSpan={isAdmin ? 5 : 4}>
-                        <Paragraph variant="extra-small">Suggest a new region</Paragraph>
-                      </TableCell>
-                      <TableCellMenu
-                        alignment="right"
-                        isSticky
-                        visibleButtons={
-                          <Feedback
-                            button={
-                              <Button
+                          </TableCell>
+                          <TableCell>
+                            <span className="flex items-center gap-2">
+                              {region.location ? (
+                                <FlagIcon region={region.location} className="size-5" />
+                              ) : null}
+                              {region.description ?? "–"}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            {region.staticIPs === null ? (
+                              <LinkButton
                                 variant="secondary/small"
-                                LeadingIcon={ChatBubbleLeftEllipsisIcon}
+                                to={v3BillingPath(organization, "staticIps")}
+                                LeadingIcon={ArrowUpCircleIcon}
                                 leadingIconClassName="text-indigo-500"
                               >
-                                Suggest a region…
-                              </Button>
-                            }
-                            defaultValue="region"
-                          />
-                        }
-                      />
-                    </TableRow>
-                  </TableBody>
-                </Table>
-                {isManagedCloud && (
-                  <InfoPanel
-                    icon={InformationCircleIcon}
-                    iconClassName="size-4"
-                    variant="minimal"
-                    panelClassName="max-w-full gap-1"
-                  >
-                    <Paragraph variant="extra-small" className="flex items-baseline gap-x-0.5">
-                      Trigger.dev is fully GDPR compliant. Learn more in our{" "}
-                      <TextLink to="https://security.trigger.dev">security portal</TextLink> or{" "}
-                      <Feedback
-                        button={
-                          <span className="cursor-pointer text-xs text-indigo-500 transition hover:text-indigo-400">
-                            get in touch
-                          </span>
-                        }
-                        defaultValue="help"
-                      />
-                      .
-                    </Paragraph>
-                  </InfoPanel>
-                )}
-              </div>
-            </>
+                                Unlock static IPs
+                              </LinkButton>
+                            ) : region.staticIPs !== undefined ? (
+                              <ClipboardField
+                                value={region.staticIPs}
+                                variant={"secondary/small"}
+                              />
+                            ) : (
+                              "Not available"
+                            )}
+                          </TableCell>
+                          {isAdmin && (
+                            <TableCell>{region.isHidden ? "Hidden" : "Visible"}</TableCell>
+                          )}
+                          {region.isDefault ? (
+                            <TableCell alignment="right">
+                              <Badge variant="small" className="inline-grid">
+                                Default
+                              </Badge>
+                            </TableCell>
+                          ) : (
+                            <TableCellMenu
+                              className="pl-32"
+                              isSticky
+                              hiddenButtons={
+                                <SetDefaultDialog regions={regions} newDefaultRegion={region} />
+                              }
+                            />
+                          )}
+                        </TableRow>
+                      );
+                    })
+                  )}
+
+                  <TableRow className="h-12.5">
+                    <TableCell colSpan={isAdmin ? 5 : 4}>
+                      <Paragraph variant="extra-small">Suggest a new region</Paragraph>
+                    </TableCell>
+                    <TableCellMenu
+                      className="suggest-region-cell"
+                      alignment="right"
+                      isSticky
+                      visibleButtons={
+                        <Feedback
+                          button={
+                            <Button
+                              variant="secondary/small"
+                              LeadingIcon={ChatBubbleLeftEllipsisIcon}
+                              leadingIconClassName="text-indigo-500"
+                            >
+                              Suggest a region…
+                            </Button>
+                          }
+                          defaultValue="region"
+                        />
+                      }
+                    />
+                  </TableRow>
+                </TableBody>
+              </Table>
+              {isManagedCloud && (
+                <InfoPanel
+                  icon={InformationCircleIcon}
+                  iconClassName="size-4"
+                  variant="minimal"
+                  panelClassName="max-w-full gap-1"
+                >
+                  <Paragraph variant="extra-small">
+                    Trigger.dev is fully{" "}
+                    <TextLink to="https://security.trigger.dev/gdpr?tab=securityControls&frameworks=gdpr_v1">
+                      GDPR compliant
+                    </TextLink>
+                    . Learn more in our{" "}
+                    <TextLink to="https://security.trigger.dev">security portal</TextLink> or{" "}
+                    <Feedback
+                      button={
+                        <span className={cn(textLinkClassName(), "cursor-pointer text-xs")}>
+                          get in touch
+                        </span>
+                      }
+                      defaultValue="feedback"
+                    />
+                    .
+                  </Paragraph>
+                </InfoPanel>
+              )}
+            </div>
           )}
         </div>
       </PageBody>
@@ -341,6 +382,7 @@ function SetDefaultDialog({
   newDefaultRegion: Region;
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const { isManagedCloud } = useFeatures();
   const currentDefaultRegion = regions.find((r) => r.isDefault);
 
   return (
@@ -362,88 +404,109 @@ function SetDefaultDialog({
         </DialogHeader>
         <DialogDescription asChild>
           <div>
-          <Paragraph>
-            Are you sure you want to set {newDefaultRegion.name} as your new default region?
-          </Paragraph>
+            <Paragraph>
+              Are you sure you want to set {newDefaultRegion.name} as your new default region?
+            </Paragraph>
 
-          <div className="my-4 flex">
-            <div className="flex flex-1 flex-col rounded-md border border-grid-dimmed">
-              <div className="border-b border-grid-dimmed bg-charcoal-800 p-3 font-medium">
-                <Paragraph variant="small/bright">Current default</Paragraph>
+            <div className="my-4 flex">
+              <div className="flex flex-1 flex-col rounded-md border border-grid-dimmed">
+                <div className="border-b border-grid-dimmed bg-background-bright p-3 font-medium">
+                  <Paragraph variant="small/bright">Current default</Paragraph>
+                </div>
+                <div className="border-b border-grid-dimmed p-3">
+                  <Paragraph variant="small">{currentDefaultRegion?.name ?? "–"}</Paragraph>
+                </div>
+                <div className="border-b border-grid-dimmed p-3">
+                  <Paragraph variant="small" className="flex items-center gap-2">
+                    {currentDefaultRegion?.cloudProvider ? (
+                      <>
+                        <CloudProviderIcon
+                          provider={currentDefaultRegion.cloudProvider}
+                          className="size-6"
+                        />
+                        {cloudProviderTitle(currentDefaultRegion.cloudProvider)}
+                      </>
+                    ) : (
+                      "–"
+                    )}
+                  </Paragraph>
+                </div>
+                <div className="p-3">
+                  <Paragraph variant="small" className="flex items-center gap-2">
+                    {currentDefaultRegion?.location ? (
+                      <FlagIcon region={currentDefaultRegion.location} className="size-5" />
+                    ) : null}
+                    {currentDefaultRegion?.description ?? "–"}
+                  </Paragraph>
+                </div>
               </div>
-              <div className="border-b border-grid-dimmed p-3">
-                <Paragraph variant="small">{currentDefaultRegion?.name ?? "–"}</Paragraph>
+
+              {/* Middle column with arrow */}
+              <div className="flex items-center justify-center px-3">
+                <div className="flex size-10 items-center justify-center rounded-full border border-grid-dimmed bg-background-bright p-2">
+                  <ArrowRightIcon className="size-4 text-text-dimmed" />
+                </div>
               </div>
-              <div className="border-b border-grid-dimmed p-3">
-                <Paragraph variant="small" className="flex items-center gap-2">
-                  {currentDefaultRegion?.cloudProvider ? (
-                    <>
-                      <CloudProviderIcon
-                        provider={currentDefaultRegion.cloudProvider}
-                        className="size-6"
-                      />
-                      {cloudProviderTitle(currentDefaultRegion.cloudProvider)}
-                    </>
-                  ) : (
-                    "–"
-                  )}
-                </Paragraph>
-              </div>
-              <div className="p-3">
-                <Paragraph variant="small" className="flex items-center gap-2">
-                  {currentDefaultRegion?.location ? (
-                    <FlagIcon region={currentDefaultRegion.location} className="size-5" />
-                  ) : null}
-                  {currentDefaultRegion?.description ?? "–"}
-                </Paragraph>
+
+              {/* Right column */}
+              <div className="flex flex-1 flex-col rounded-md border border-grid-dimmed">
+                <div className="border-b border-grid-dimmed bg-background-bright p-3 font-medium">
+                  <Paragraph variant="small/bright">New default</Paragraph>
+                </div>
+                <div className="border-b border-grid-dimmed p-3">
+                  <Paragraph variant="small">{newDefaultRegion.name}</Paragraph>
+                </div>
+                <div className="border-b border-grid-dimmed p-3">
+                  <Paragraph variant="small" className="flex items-center gap-2">
+                    {newDefaultRegion.cloudProvider ? (
+                      <>
+                        <CloudProviderIcon
+                          provider={newDefaultRegion.cloudProvider}
+                          className="size-6"
+                        />
+                        {cloudProviderTitle(newDefaultRegion.cloudProvider)}
+                      </>
+                    ) : (
+                      "–"
+                    )}
+                  </Paragraph>
+                </div>
+                <div className="p-3">
+                  <Paragraph variant="small" className="flex items-center gap-2">
+                    {newDefaultRegion.location ? (
+                      <FlagIcon region={newDefaultRegion.location} className="size-5" />
+                    ) : null}
+                    {newDefaultRegion.description ?? "–"}
+                  </Paragraph>
+                </div>
               </div>
             </div>
 
-            {/* Middle column with arrow */}
-            <div className="flex items-center justify-center px-3">
-              <div className="flex size-10 items-center justify-center rounded-full border border-grid-dimmed bg-charcoal-800 p-2">
-                <ArrowRightIcon className="size-4 text-text-dimmed" />
-              </div>
-            </div>
+            <Paragraph>
+              Runs triggered from now on will execute in "{newDefaultRegion.name}", unless you{" "}
+              <TextLink to={docsPath("triggering#region")}>override when triggering</TextLink>.
+            </Paragraph>
 
-            {/* Right column */}
-            <div className="flex flex-1 flex-col rounded-md border border-grid-dimmed">
-              <div className="border-b border-grid-dimmed bg-charcoal-800 p-3 font-medium">
-                <Paragraph variant="small/bright">New default</Paragraph>
-              </div>
-              <div className="border-b border-grid-dimmed p-3">
-                <Paragraph variant="small">{newDefaultRegion.name}</Paragraph>
-              </div>
-              <div className="border-b border-grid-dimmed p-3">
-                <Paragraph variant="small" className="flex items-center gap-2">
-                  {newDefaultRegion.cloudProvider ? (
-                    <>
-                      <CloudProviderIcon
-                        provider={newDefaultRegion.cloudProvider}
-                        className="size-6"
-                      />
-                      {cloudProviderTitle(newDefaultRegion.cloudProvider)}
-                    </>
-                  ) : (
-                    "–"
-                  )}
-                </Paragraph>
-              </div>
-              <div className="p-3">
-                <Paragraph variant="small" className="flex items-center gap-2">
-                  {newDefaultRegion.location ? (
-                    <FlagIcon region={newDefaultRegion.location} className="size-5" />
-                  ) : null}
-                  {newDefaultRegion.description ?? "–"}
-                </Paragraph>
-              </div>
-            </div>
-          </div>
-
-          <Paragraph>
-            Runs triggered from now on will execute in "{newDefaultRegion.name}", unless you{" "}
-            <TextLink to={docsPath("triggering#region")}>override when triggering</TextLink>.
-          </Paragraph>
+            <InfoPanel
+              icon={InformationCircleIcon}
+              iconClassName="size-4"
+              variant="minimal"
+              panelClassName="mt-4 max-w-full gap-1 border-t border-grid-dimmed pt-4 pb-0 pl-0"
+            >
+              <Paragraph variant="extra-small">
+                Region is where your runs execute, not where your data is stored.
+                {isManagedCloud ? (
+                  <>
+                    {" "}
+                    Trigger.dev is fully{" "}
+                    <TextLink to="https://security.trigger.dev/gdpr?tab=securityControls&frameworks=gdpr_v1">
+                      GDPR compliant
+                    </TextLink>
+                    .
+                  </>
+                ) : null}
+              </Paragraph>
+            </InfoPanel>
           </div>
         </DialogDescription>
         <DialogFooter>

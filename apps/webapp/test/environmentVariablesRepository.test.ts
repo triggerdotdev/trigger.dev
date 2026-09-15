@@ -11,9 +11,7 @@ vi.mock("~/db.server", () => ({
     fnOrOptions?: ((tx: unknown) => Promise<unknown>) | unknown
   ) => {
     const fn =
-      typeof nameOrFn === "string"
-        ? (fnOrOptions as (tx: unknown) => Promise<unknown>)
-        : nameOrFn;
+      typeof nameOrFn === "string" ? (fnOrOptions as (tx: unknown) => Promise<unknown>) : nameOrFn;
 
     return prismaClient.$transaction(fn);
   },
@@ -58,46 +56,49 @@ describe("EnvironmentVariablesRepository.getVariableValuesForKeys", () => {
     expect(result.has(`${environment.id}:DOES_NOT_EXIST`)).toBe(false);
   });
 
-  postgresTest("returns requested values with correct map keys and decrypted values", async ({ prisma }) => {
-    const { user, organization, project } = await createTestOrgProjectWithMember(prisma);
-    const environment = await createRuntimeEnvironment(prisma, {
-      projectId: project.id,
-      organizationId: organization.id,
-      type: "PRODUCTION",
-    });
+  postgresTest(
+    "returns requested values with correct map keys and decrypted values",
+    async ({ prisma }) => {
+      const { user, organization, project } = await createTestOrgProjectWithMember(prisma);
+      const environment = await createRuntimeEnvironment(prisma, {
+        projectId: project.id,
+        organizationId: organization.id,
+        type: "PRODUCTION",
+      });
 
-    const repository = new EnvironmentVariablesRepository(prisma, prisma);
+      const repository = new EnvironmentVariablesRepository(prisma, prisma);
 
-    await createEnvironmentVariable(repository, project.id, {
-      environmentId: environment.id,
-      key: "VAR_A",
-      value: "value-a",
-      userId: user.id,
-    });
-    await createEnvironmentVariable(repository, project.id, {
-      environmentId: environment.id,
-      key: "VAR_B",
-      value: "value-b",
-      userId: user.id,
-    });
-    await createEnvironmentVariable(repository, project.id, {
-      environmentId: environment.id,
-      key: "VAR_C",
-      value: "value-c",
-      userId: user.id,
-    });
+      await createEnvironmentVariable(repository, project.id, {
+        environmentId: environment.id,
+        key: "VAR_A",
+        value: "value-a",
+        userId: user.id,
+      });
+      await createEnvironmentVariable(repository, project.id, {
+        environmentId: environment.id,
+        key: "VAR_B",
+        value: "value-b",
+        userId: user.id,
+      });
+      await createEnvironmentVariable(repository, project.id, {
+        environmentId: environment.id,
+        key: "VAR_C",
+        value: "value-c",
+        userId: user.id,
+      });
 
-    const result = await repository.getVariableValuesForKeys(project.id, [
-      { environmentId: environment.id, key: "VAR_A" },
-      { environmentId: environment.id, key: "VAR_C" },
-    ]);
+      const result = await repository.getVariableValuesForKeys(project.id, [
+        { environmentId: environment.id, key: "VAR_A" },
+        { environmentId: environment.id, key: "VAR_C" },
+      ]);
 
-    expect(result).toBeInstanceOf(Map);
-    expect(result.size).toBe(2);
-    expect(result.get(`${environment.id}:VAR_A`)).toBe("value-a");
-    expect(result.get(`${environment.id}:VAR_C`)).toBe("value-c");
-    expect(result.has(`${environment.id}:VAR_B`)).toBe(false);
-  });
+      expect(result).toBeInstanceOf(Map);
+      expect(result.size).toBe(2);
+      expect(result.get(`${environment.id}:VAR_A`)).toBe("value-a");
+      expect(result.get(`${environment.id}:VAR_C`)).toBe("value-c");
+      expect(result.has(`${environment.id}:VAR_B`)).toBe(false);
+    }
+  );
 
   postgresTest("deduplicates duplicate environmentId and key requests", async ({ prisma }) => {
     const { user, organization, project } = await createTestOrgProjectWithMember(prisma);
@@ -117,7 +118,11 @@ describe("EnvironmentVariablesRepository.getVariableValuesForKeys", () => {
     });
 
     const request = { environmentId: environment.id, key: "DEDUP_KEY" };
-    const result = await repository.getVariableValuesForKeys(project.id, [request, request, request]);
+    const result = await repository.getVariableValuesForKeys(project.id, [
+      request,
+      request,
+      request,
+    ]);
 
     expect(result.size).toBe(1);
     expect(result.get(`${environment.id}:DEDUP_KEY`)).toBe("dedup-value");
@@ -175,4 +180,80 @@ describe("EnvironmentVariablesRepository.getVariableValuesForKeys", () => {
 
     expect(crossProjectRequest.size).toBe(0);
   });
+
+  postgresTest(
+    "create() rejects a mix of in-project and foreign environmentIds without writing foreign values",
+    async ({ prisma }) => {
+      const {
+        user,
+        organization,
+        project: projectA,
+      } = await createTestOrgProjectWithMember(prisma);
+
+      const projectB = await prisma.project.create({
+        data: {
+          name: "Project B",
+          slug: `proj-b-${Date.now()}`,
+          organizationId: organization.id,
+          externalRef: `ext-b-${Date.now()}`,
+        },
+      });
+
+      const envA = await createRuntimeEnvironment(prisma, {
+        projectId: projectA.id,
+        organizationId: organization.id,
+        type: "PRODUCTION",
+      });
+      const envB = await createRuntimeEnvironment(prisma, {
+        projectId: projectB.id,
+        organizationId: organization.id,
+        type: "PRODUCTION",
+      });
+
+      const repository = new EnvironmentVariablesRepository(prisma, prisma);
+
+      // Caller scoped to projectA supplies a mixed array: an in-project env
+      // (envA) plus a foreign one (envB). The whole request must be refused.
+      const result = await repository.create(projectA.id, {
+        override: true,
+        environmentIds: [envA.id, envB.id],
+        variables: [{ key: "CROSS_TENANT", value: "x" }],
+        isSecret: false,
+        lastUpdatedBy: { type: "user", userId: user.id },
+      });
+
+      expect(result.success).toBe(false);
+
+      // No value row may have been written against the foreign environment.
+      const foreignValues = await prisma.environmentVariableValue.findMany({
+        where: { environmentId: envB.id },
+      });
+      expect(foreignValues).toHaveLength(0);
+    }
+  );
+
+  postgresTest(
+    "create() still succeeds for an all-in-project environmentIds array",
+    async ({ prisma }) => {
+      const { user, organization, project } = await createTestOrgProjectWithMember(prisma);
+
+      const environment = await createRuntimeEnvironment(prisma, {
+        projectId: project.id,
+        organizationId: organization.id,
+        type: "PRODUCTION",
+      });
+
+      const repository = new EnvironmentVariablesRepository(prisma, prisma);
+
+      const result = await repository.create(project.id, {
+        override: true,
+        environmentIds: [environment.id],
+        variables: [{ key: "OK_KEY", value: "v" }],
+        isSecret: false,
+        lastUpdatedBy: { type: "user", userId: user.id },
+      });
+
+      expect(result.success).toBe(true);
+    }
+  );
 });

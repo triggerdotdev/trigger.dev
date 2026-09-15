@@ -1,5 +1,6 @@
-import { UsageManager } from "../usage/types.js";
-import { TaskRunExceededMaxDuration, TimeoutManager } from "./types.js";
+import type { UsageManager } from "../usage/types.js";
+import type { TimeoutManager } from "./types.js";
+import { TaskRunExceededMaxDuration } from "./types.js";
 
 export class UsageTimeoutManager implements TimeoutManager {
   private _abortController: AbortController;

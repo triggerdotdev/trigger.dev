@@ -33,18 +33,12 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
 
     if (!authenticationResult) {
-      return apiCors(
-        request,
-        json({ error: "Invalid or Missing Access Token" }, { status: 401 })
-      );
+      return apiCors(request, json({ error: "Invalid or Missing Access Token" }, { status: 401 }));
     }
 
     const parsedParams = ParamsSchema.safeParse(params);
     if (!parsedParams.success) {
-      return apiCors(
-        request,
-        json({ error: "Invalid parameters" }, { status: 400 })
-      );
+      return apiCors(request, json({ error: "Invalid parameters" }, { status: 400 }));
     }
 
     const { organizationSlug, projectParam } = parsedParams.data;
@@ -93,17 +87,11 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
         projectParam,
       });
 
-      return apiCors(
-        request,
-        json({ error: "Internal server error" }, { status: 500 })
-      );
+      return apiCors(request, json({ error: "Internal server error" }, { status: 500 }));
     }
 
     if (result.value.type === "not_found") {
-      return apiCors(
-        request,
-        json({ error: "Project not found" }, { status: 404 })
-      );
+      return apiCors(request, json({ error: "Project not found" }, { status: 404 }));
     }
 
     const { project, integration } = result.value;
@@ -150,4 +138,3 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     return apiCors(request, json({ error: "Internal Server Error" }, { status: 500 }));
   }
 }
-

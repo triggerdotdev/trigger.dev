@@ -28,9 +28,7 @@ describe("tsqlLinter", () => {
         true
       );
       expect(
-        isValidTSQLQuery(
-          "SELECT * FROM users LEFT JOIN orders ON users.id = orders.user_id"
-        )
+        isValidTSQLQuery("SELECT * FROM users LEFT JOIN orders ON users.id = orders.user_id")
       ).toBe(true);
     });
 
@@ -70,10 +68,10 @@ describe("tsqlLinter", () => {
       expect(error).toContain("line");
     });
 
-    it("should handle missing FROM clause", () => {
-      const error = getTSQLError("SELECT * WHERE id = 1");
-      expect(error).not.toBeNull();
+    it("should accept a query without a FROM clause", () => {
+      // FROM is optional in the grammar (ClickHouse allows e.g. `SELECT 1`),
+      // so a FROM-less SELECT is syntactically valid.
+      expect(getTSQLError("SELECT * WHERE id = 1")).toBeNull();
     });
   });
 });
-

@@ -2,6 +2,8 @@ import { useState } from "react";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import type { AISpanData, ToolDefinition } from "./types";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { textLinkClassName } from "~/components/primitives/TextLink";
+import { cn } from "~/utils/cn";
 
 export function AIToolsInventory({ aiData }: { aiData: AISpanData }) {
   const defs = aiData.toolDefinitions ?? [];
@@ -33,7 +35,7 @@ function ToolDefRow({ def, wasCalled }: { def: ToolDefinition; wasCalled: boolea
       <div className="flex items-center gap-2">
         <div
           className={`size-1.5 shrink-0 rounded-full ${
-            wasCalled ? "bg-success" : "bg-charcoal-600"
+            wasCalled ? "bg-success" : "bg-surface-control"
           }`}
         />
         <code className="font-mono text-xs text-text-bright">{def.name}</code>
@@ -47,8 +49,9 @@ function ToolDefRow({ def, wasCalled }: { def: ToolDefinition; wasCalled: boolea
       {def.parametersJson && (
         <div className="pl-3.5">
           <button
+            type="button"
             onClick={() => setShowSchema(!showSchema)}
-            className="text-[10px] text-text-link hover:underline"
+            className={cn(textLinkClassName(), "text-[10px]")}
           >
             {showSchema ? "Hide schema" : "Show schema"}
           </button>

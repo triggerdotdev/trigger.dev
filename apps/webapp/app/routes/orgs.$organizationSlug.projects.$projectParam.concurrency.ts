@@ -16,10 +16,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     },
     include: {
       environments: {
+        where: { archivedAt: null },
         select: {
           id: true,
           type: true,
           slug: true,
+          parentEnvironmentId: true,
           orgMember: {
             select: {
               userId: true,

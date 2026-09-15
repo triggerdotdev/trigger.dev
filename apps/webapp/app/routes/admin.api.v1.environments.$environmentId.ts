@@ -1,9 +1,12 @@
-import { ActionFunctionArgs, json, LoaderFunctionArgs } from "@remix-run/server-runtime";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { engine } from "~/v3/runEngine.server";
 import { updateEnvConcurrencyLimits } from "~/v3/runQueue.server";
+import { concurrencySystem } from "~/v3/services/concurrencySystemInstance.server";
 
 const ParamsSchema = z.object({
   environmentId: z.string(),
@@ -43,6 +46,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
   });
 
   await updateEnvConcurrencyLimits(environment);
+
+  // Percent-based queue overrides follow the environment limit automatically.
+  await concurrencySystem.queues.recalculatePercentLimits(environment);
+
+  // Org max-concurrency changed too, which is embedded in every env of the org; invalidating
+  // the org drops the env/authEnv rows for all of them (including this env).
+  controlPlaneResolver.invalidateOrganization(environment.organizationId);
 
   return json({ success: true });
 }

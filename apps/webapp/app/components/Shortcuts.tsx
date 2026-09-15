@@ -1,35 +1,28 @@
-import { Keyboard } from "lucide-react";
+import { KeyboardIcon } from "~/assets/icons/KeyboardIcon";
 import { useState } from "react";
+import { ASK_AGENT_LABEL } from "~/components/dashboard-agent/agent-identity";
+import { type AiShortcutRow, aiShortcutRows } from "~/components/dashboard-agent/ai-entry-points";
+import { useDashboardAgentAvailable } from "~/components/dashboard-agent/dashboardAgentOpenRequest";
+import { NEW_CHAT_SHORTCUT } from "~/components/dashboard-agent/DashboardAgentHeader";
+import { TOGGLE_PANEL_SHORTCUT } from "~/components/dashboard-agent/dashboardAgentLauncher";
+import { COLUMNS_SHORTCUT } from "~/components/runs/v3/RunsDisplayOptions";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
-import { Button } from "./primitives/Buttons";
 import { Header3 } from "./primitives/Headers";
+import { SideMenuItemButton } from "./navigation/SideMenuItem";
 import { Paragraph } from "./primitives/Paragraph";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger
-} from "./primitives/SheetV3";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "./primitives/SheetV3";
 import { ShortcutKey } from "./primitives/ShortcutKey";
 
 export function Shortcuts() {
   return (
     <Sheet>
       <SheetTrigger asChild>
-        <Button
-          variant="small-menu-item"
-          LeadingIcon={Keyboard}
-          leadingIconClassName="text-blue-500"
+        <SideMenuItemButton
+          icon={KeyboardIcon}
+          name="Shortcuts"
           data-action="shortcuts"
-          fullWidth
-          textAlignLeft
-          shortcut={{ modifiers: ["shift"], key: "?", enabled: false }}
-          className="gap-x-0 pl-1.5"
-          iconSpacing="gap-x-1.5"
-        >
-          Shortcuts
-        </Button>
+          trailing={<ShortcutKey shortcut={{ modifiers: ["shift"], key: "?" }} variant="medium" />}
+        />
       </SheetTrigger>
       <ShortcutContent />
     </Sheet>
@@ -54,12 +47,16 @@ export function ShortcutsAutoOpen() {
 }
 
 function ShortcutContent() {
+  const agent = useDashboardAgentAvailable();
+  const rows = aiShortcutRows({ agent });
+  const shows = (row: AiShortcutRow) => rows.includes(row);
+
   return (
     <SheetContent>
       <SheetHeader>
         <SheetTitle>
           <div className="flex items-center gap-x-2">
-            <Keyboard className="size-5 text-indigo-500" />
+            <KeyboardIcon className="size-5 text-text-bright" />
             <span className="font-sans text-base font-medium text-text-bright">
               Keyboard shortcuts
             </span>
@@ -75,16 +72,28 @@ function ShortcutContent() {
               <ShortcutKey shortcut={{ modifiers: ["mod"] }} variant="medium/bright" />
               <ShortcutKey shortcut={{ key: "enter" }} variant="medium/bright" />
             </Shortcut>
-            <Shortcut name="Ask AI">
-              <ShortcutKey shortcut={{ modifiers: ["mod"] }} variant="medium/bright" />
-              <ShortcutKey shortcut={{ key: "i" }} variant="medium/bright" />
-            </Shortcut>
+            {shows("agent-toggle") && (
+              <Shortcut name={ASK_AGENT_LABEL}>
+                <ShortcutKey
+                  shortcut={{ modifiers: TOGGLE_PANEL_SHORTCUT.modifiers }}
+                  variant="medium/bright"
+                />
+                <ShortcutKey
+                  shortcut={{ key: TOGGLE_PANEL_SHORTCUT.key }}
+                  variant="medium/bright"
+                />
+              </Shortcut>
+            )}
             <Shortcut name="Filter">
               <ShortcutKey shortcut={{ key: "f" }} variant="medium/bright" />
             </Shortcut>
             <Shortcut name="Toggle side menu">
-              <ShortcutKey shortcut={{ modifiers: ["mod"]}} variant="medium/bright" />
+              <ShortcutKey shortcut={{ modifiers: ["mod"] }} variant="medium/bright" />
               <ShortcutKey shortcut={{ key: "b" }} variant="medium/bright" />
+            </Shortcut>
+            <Shortcut name="Favorite this page">
+              <ShortcutKey shortcut={{ modifiers: ["alt"] }} variant="medium/bright" />
+              <ShortcutKey shortcut={{ key: "f" }} variant="medium/bright" />
             </Shortcut>
             <Shortcut name="Select filter">
               <ShortcutKey shortcut={{ key: "1" }} variant="medium/bright" />
@@ -103,8 +112,28 @@ function ShortcutContent() {
               <ShortcutKey shortcut={{ key: "h" }} variant="medium/bright" />
             </Shortcut>
           </div>
+          {shows("agent-new-chat") && (
+            <div className="space-y-3">
+              <Header3>Chat</Header3>
+              <Shortcut name="New chat">
+                <ShortcutKey
+                  shortcut={{ modifiers: NEW_CHAT_SHORTCUT.modifiers }}
+                  variant="medium/bright"
+                />
+                <ShortcutKey shortcut={{ key: NEW_CHAT_SHORTCUT.key }} variant="medium/bright" />
+              </Shortcut>
+              {shows("agent-close-chat") && (
+                <Shortcut name="Close chat">
+                  <ShortcutKey shortcut={{ key: "esc" }} variant="medium/bright" />
+                </Shortcut>
+              )}
+            </div>
+          )}
           <div className="space-y-3">
             <Header3>Runs page</Header3>
+            <Shortcut name="Customize columns">
+              <ShortcutKey shortcut={COLUMNS_SHORTCUT} variant="medium/bright" />
+            </Shortcut>
             <Shortcut name="Bulk action: Cancel runs">
               <ShortcutKey shortcut={{ key: "c" }} variant="medium/bright" />
             </Shortcut>

@@ -1,3 +1,4 @@
+import { ComponentNames } from "../storybook/StoryKit";
 import { useState } from "react";
 import { TSQLEditor } from "~/components/code/TSQLEditor";
 import { column, type TableSchema } from "@internal/tsql";
@@ -150,6 +151,9 @@ export default function Story() {
 
   return (
     <div className="flex flex-col gap-y-8 p-8">
+      <div className="px-4 pt-4">
+        <ComponentNames names={["TSQLEditor.tsx"]} />
+      </div>
       <div>
         <h1 className="mb-2 text-2xl font-bold text-text-bright">TSQL Editor</h1>
         <p className="text-text-dimmed">
@@ -164,9 +168,10 @@ export default function Story() {
         <div className="flex flex-wrap gap-2">
           {exampleQueries.map((example) => (
             <button
+              type="button"
               key={example.name}
               onClick={() => setQuery(example.query)}
-              className="rounded bg-charcoal-700 px-3 py-1.5 text-sm text-text-dimmed transition hover:bg-charcoal-600 hover:text-text-bright"
+              className="rounded bg-background-raised px-3 py-1.5 text-sm text-text-dimmed transition hover:bg-surface-control hover:text-text-bright"
             >
               {example.name}
             </button>
@@ -286,7 +291,7 @@ export default function Story() {
           {exampleSchema.map((table) => (
             <div
               key={table.name}
-              className="rounded-lg border border-grid-dimmed bg-charcoal-800 p-4"
+              className="rounded-lg border border-grid-dimmed bg-background-bright p-4"
             >
               <h3 className="mb-1 font-mono text-sm font-semibold text-text-bright">
                 {table.name}
@@ -299,7 +304,7 @@ export default function Story() {
                       <code className={col.expression ? "text-purple-400" : "text-blue-400"}>
                         {name}
                       </code>
-                      <span className="text-charcoal-400">{col.type}</span>
+                      <span className="text-text-dimmed">{col.type}</span>
                       {col.expression && (
                         <span className="rounded bg-purple-500/20 px-1 text-[10px] text-purple-300">
                           virtual

@@ -1,4 +1,5 @@
-import { z } from "zod";
+import { z } from "zod/v4";
+import { discriminatedUnion } from "../utils/zod.js";
 import { RunStatus } from "./api.js";
 import { RuntimeEnvironmentTypeSchema, TaskRunError } from "./common.js";
 
@@ -257,7 +258,7 @@ const commonProperties = {
 };
 
 /** Represents all possible webhook types */
-export const Webhook = z.discriminatedUnion("type", [
+export const Webhook = discriminatedUnion("type", [
   /** Run failed alert webhook */
   z.object({
     ...commonProperties,
@@ -289,3 +290,8 @@ export type RunFailedWebhook = Extract<Webhook, { type: "alert.run.failed" }>;
 export type DeploymentSuccessWebhook = Extract<Webhook, { type: "alert.deployment.success" }>;
 export type DeploymentFailedWebhook = Extract<Webhook, { type: "alert.deployment.failed" }>;
 export type ErrorWebhook = Extract<Webhook, { type: "alert.error" }>;
+
+// The ingress webhook verification schemas live in ./webhookConfig.ts (a leaf module),
+// re-exported via schemas/index.ts. They are deliberately NOT here: this file imports
+// api.js (RunStatus) for the alert union, and resources.ts (imported by api.ts) needs
+// those config schemas, so keeping them here would create a module-init cycle.

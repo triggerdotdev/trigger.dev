@@ -45,7 +45,8 @@
  *     "redis://writeonly.example.com:6379"
  */
 
-import { PrismaClient, TaskRunExecutionStatus } from "@trigger.dev/database";
+import type { TaskRunExecutionStatus } from "@trigger.dev/database";
+import { PrismaClient } from "@trigger.dev/database";
 import { createRedisClient } from "@internal/redis";
 
 interface StuckRun {
@@ -71,18 +72,20 @@ async function main() {
   const [environmentId, postgresUrl, redisReadUrl, redisWriteUrl] = process.argv.slice(2);
 
   if (!environmentId || !postgresUrl || !redisReadUrl) {
-    console.error("Usage: tsx scripts/recover-stuck-runs.ts <environmentId> <postgresUrl> <redisReadUrl> [redisWriteUrl]");
+    console.error(
+      "Usage: tsx scripts/recover-stuck-runs.ts <environmentId> <postgresUrl> <redisReadUrl> [redisWriteUrl]"
+    );
     console.error("");
     console.error("Dry-run mode when no redisWriteUrl is provided (read-only).");
     console.error("Execute mode when redisWriteUrl is provided (makes actual changes).");
     console.error("");
     console.error("Example (dry-run):");
-    console.error('  tsx scripts/recover-stuck-runs.ts env_1234567890 \\');
+    console.error("  tsx scripts/recover-stuck-runs.ts env_1234567890 \\");
     console.error('    "postgresql://user:pass@localhost:5432/triggerdev" \\');
     console.error('    "redis://readonly.example.com:6379"');
     console.error("");
     console.error("Example (execute):");
-    console.error('  tsx scripts/recover-stuck-runs.ts env_1234567890 \\');
+    console.error("  tsx scripts/recover-stuck-runs.ts env_1234567890 \\");
     console.error('    "postgresql://user:pass@localhost:5432/triggerdev" \\');
     console.error('    "redis://readonly.example.com:6379" \\');
     console.error('    "redis://writeonly.example.com:6379"');
@@ -139,7 +142,7 @@ async function main() {
         ? {
             tls: {
               // If connecting via localhost tunnel to a remote Redis, disable cert verification
-              rejectUnauthorized: redisReadUrlObj.hostname === "localhost" ? false : true,
+              rejectUnauthorized: redisReadUrlObj.hostname !== "localhost",
             },
           }
         : {}),
@@ -162,7 +165,7 @@ async function main() {
           ? {
               tls: {
                 // If connecting via localhost tunnel to a remote Redis, disable cert verification
-                rejectUnauthorized: redisWriteUrlObj.hostname === "localhost" ? false : true,
+                rejectUnauthorized: redisWriteUrlObj.hostname !== "localhost",
               },
             }
           : {}),
@@ -187,7 +190,9 @@ async function main() {
 
       console.log(`📊 Found ${runIds.length} runs in currentConcurrency set`);
 
-      // Query database for latest snapshots and queue info of these runs
+      // Query database for latest snapshots and queue info of these runs.
+      // NOTE: raw join of TaskRunExecutionSnapshot to TaskRun, the one TaskRun read not behind
+      // RunStore (a join, not a by-id read, in an ops script). Revisit at table cutover.
       const runInfo = await prisma.$queryRaw<
         Array<{
           runId: string;
@@ -259,7 +264,9 @@ async function main() {
       }
 
       // Prepare recovery operations
-      console.log(`\n⚡ ${executeMode ? "Executing" : "Planning"} recovery for ${stuckRuns.length} stuck runs`);
+      console.log(
+        `\n⚡ ${executeMode ? "Executing" : "Planning"} recovery for ${stuckRuns.length} stuck runs`
+      );
       console.log(`This will:`);
       console.log(`  1. Add each run back to its specific queue sorted set`);
       console.log(`  2. Remove each run from the queue-specific currentConcurrency set`);

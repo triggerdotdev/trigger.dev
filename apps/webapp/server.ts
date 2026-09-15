@@ -1,17 +1,18 @@
 import "./sentry.server";
 
 import { createRequestHandler } from "@remix-run/express";
-import { broadcastDevReady, logDevReady } from "@remix-run/server-runtime";
 import compression from "compression";
 import type { Server as EngineServer } from "engine.io";
-import express from "express";
+import express, { type RequestHandler } from "express";
 import morgan from "morgan";
 import { nanoid } from "nanoid";
 import path from "path";
+import { pathToFileURL } from "node:url";
 import type { Server as IoServer } from "socket.io";
-import { WebSocketServer } from "ws";
-import { RateLimitMiddleware } from "~/services/apiRateLimit.server";
+import type { WebSocketServer } from "ws";
+import type { RateLimitMiddleware } from "~/services/apiRateLimit.server";
 import { type RunWithHttpContextFunction } from "~/services/httpAsyncStorage.server";
+import { sanitizeHttpUrl } from "./app/utils/sanitizeHttpUrl";
 import cluster from "node:cluster";
 import os from "node:os";
 
@@ -37,6 +38,7 @@ function installPrimarySignalHandlers() {
 
   const forward = (signal: NodeJS.Signals) => {
     for (const id in cluster.workers) {
+      if (!Object.hasOwn(cluster.workers, id)) continue;
       const w = cluster.workers[id];
       if (w?.process?.pid) {
         try {
@@ -74,6 +76,12 @@ function installPrimarySignalHandlers() {
   });
 }
 
+// Bundled to CJS (esbuild rewrites import() to require); vite and the Remix
+// server bundle are ESM, so load them via a real dynamic import.
+const dynamicImport = new Function("specifier", "return import(specifier)") as (
+  specifier: string
+) => Promise<any>;
+
 if (ENABLE_CLUSTER && cluster.isPrimary) {
   process.title = `node webapp-server primary`;
   console.log(`[cluster] Primary ${process.pid} is starting with ${WORKERS} workers`);
@@ -92,6 +100,13 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
 
   installPrimarySignalHandlers();
 } else {
+  startServer().catch((error) => {
+    console.error("Failed to start server:", error);
+    process.exit(1);
+  });
+}
+
+async function startServer() {
   const app = express();
 
   if (process.env.DISABLE_COMPRESSION !== "1") {
@@ -101,19 +116,40 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
   // http://expressjs.com/en/advanced/best-practice-security.html#at-a-minimum-disable-x-powered-by-header
   app.disable("x-powered-by");
 
-  // Remix fingerprints its assets so we can cache forever.
-  app.use("/build", express.static("public/build", { immutable: true, maxAge: "1y" }));
+  const MODE = process.env.NODE_ENV;
 
-  // Everything else (like favicon.ico) is cached for an hour. You may want to be
-  // more aggressive with this caching.
-  app.use(express.static("public", { maxAge: "1h" }));
+  // In development, Vite serves assets (and handles HMR) via middleware.
+  // Only NODE_ENV=development boots Vite — scripts that run the built server
+  // without NODE_ENV (start:local, dev:worker) must serve the build.
+  const viteDevServer =
+    MODE === "development"
+      ? await dynamicImport("vite").then((vite) =>
+          vite.createServer({ server: { middlewareMode: true } })
+        )
+      : undefined;
+
+  if (viteDevServer) {
+    app.use(viteDevServer.middlewares);
+  } else {
+    // Vite fingerprints its assets so we can cache forever.
+    app.use("/assets", express.static("build/client/assets", { immutable: true, maxAge: "1y" }));
+    // Stale clients can request an old hashed asset; hard-404 instead of falling
+    // through to Remix and answering a .js request with HTML.
+    app.use("/assets", (_req, res) => {
+      res.status(404).end();
+    });
+    // Everything else (like favicon.ico) is cached for an hour. You may want to be
+    // more aggressive with this caching.
+    app.use(express.static("build/client", { maxAge: "1h" }));
+  }
 
   // On high-volume machine-ingest services (e.g. otel) the per-request access
   // log dominates log volume. HTTP_ACCESS_LOG_DISABLED suppresses successful
   // (2xx) access logs; non-2xx responses are always logged so errors stay visible.
   const suppressSuccessfulAccessLogs = process.env.HTTP_ACCESS_LOG_DISABLED === "1";
+  morgan.token("url-redacted", (req: any) => sanitizeHttpUrl(req.originalUrl ?? req.url ?? ""));
   app.use(
-    morgan("tiny", {
+    morgan(":method :url-redacted :status :res[content-length] - :response-time ms", {
       skip: (_req, res) =>
         suppressSuccessfulAccessLogs && res.statusCode >= 200 && res.statusCode < 300,
     })
@@ -123,20 +159,41 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
     ? `node webapp-worker-${cluster.isWorker ? cluster.worker?.id : "solo"}`
     : "node webapp-server";
 
-  const MODE = process.env.NODE_ENV;
-  const BUILD_DIR = path.join(process.cwd(), "build");
-  const build = require(BUILD_DIR);
+  const loadBuild = () => {
+    if (viteDevServer) {
+      return viteDevServer.ssrLoadModule("virtual:remix/server-build");
+    }
+    return dynamicImport(
+      pathToFileURL(path.join(process.cwd(), "build", "server", "index.mjs")).href
+    );
+  };
+
+  // Boots the entry.server singletons (socket.io, wss, rate limiters).
+  const build = await loadBuild();
 
   const port = process.env.REMIX_APP_PORT || process.env.PORT || 3000;
 
   if (process.env.HTTP_SERVER_DISABLED !== "true") {
+    // Back-compat shim: a previously-deployed client build polls this endpoint after a
+    // /build asset 404 and reloads once it reports a newer build id, letting those older
+    // tabs recover in a single reload. Temporary — safe to remove once older clients have
+    // churned out. Deliberately does NOT set an X-Build-Id response header.
+    app.get("/build-version", (_req, res) => {
+      res.set("Cache-Control", "no-store");
+      res.json({ version: build.assets.version });
+    });
+
     const socketIo: { io: IoServer } | undefined = build.entry.module.socketIo;
     const wss: WebSocketServer | undefined = build.entry.module.wss;
     const apiRateLimiter: RateLimitMiddleware = build.entry.module.apiRateLimiter;
+    const deploymentRateLimiter: RateLimitMiddleware = build.entry.module.deploymentRateLimiter;
     const engineRateLimiter: RateLimitMiddleware = build.entry.module.engineRateLimiter;
+    const otlpRateLimiter: RequestHandler = build.entry.module.otlpRateLimiter;
     const runWithHttpContext: RunWithHttpContextFunction = build.entry.module.runWithHttpContext;
-    const tenantContextMiddleware: import("express").RequestHandler =
-      build.entry.module.tenantContextMiddleware;
+    const tenantContextMiddleware: RequestHandler = build.entry.module.tenantContextMiddleware;
+    const dashboardAgentBodyCap: RequestHandler = build.entry.module.dashboardAgentBodyCap;
+    const webhookIngressIpRateLimiter: RequestHandler =
+      build.entry.module.webhookIngressIpRateLimiter;
 
     app.use((req, res, next) => {
       // helpful headers:
@@ -147,8 +204,9 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
         res.set("X-Robots-Tag", "noindex, nofollow");
       }
 
-      // /clean-urls/ -> /clean-urls
-      if (req.path.endsWith("/") && req.path.length > 1) {
+      // /clean-urls/ -> /clean-urls. Skip /ph: PostHog ingest endpoints end in
+      // a slash, and a 301 would drop sendBeacon POSTs.
+      if (req.path.endsWith("/") && req.path.length > 1 && !req.path.startsWith("/ph/")) {
         const query = req.url.slice(req.path.length);
         const safepath = req.path.slice(0, -1).replace(/\/+/g, "/");
         res.redirect(301, safepath + query);
@@ -164,7 +222,13 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
       res.on("close", () => abortController.abort());
 
       runWithHttpContext(
-        { requestId, path: req.url, host: req.hostname, method: req.method, abortController },
+        {
+          requestId,
+          path: sanitizeHttpUrl(req.url),
+          host: req.hostname,
+          method: req.method,
+          abortController,
+        },
         next
       );
     });
@@ -184,15 +248,22 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
       }
 
       app.use(apiRateLimiter);
+      app.use(deploymentRateLimiter);
       app.use(engineRateLimiter);
+      app.use(otlpRateLimiter);
+      app.use(webhookIngressIpRateLimiter);
 
       app.use(tenantContextMiddleware);
+
+      // Before the Remix handler: the agent's chat body is refused while it streams, so a
+      // route never buffers one that was already too large.
+      app.use(dashboardAgentBodyCap);
 
       app.all(
         "*",
         // @ts-ignore
         createRequestHandler({
-          build,
+          build: viteDevServer ? loadBuild : build,
           mode: MODE,
         })
       );
@@ -205,7 +276,7 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
         "/healthcheck",
         // @ts-ignore
         createRequestHandler({
-          build,
+          build: viteDevServer ? loadBuild : build,
           mode: MODE,
         })
       );
@@ -217,12 +288,6 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
           ENABLE_CLUSTER && cluster.isWorker ? ` [worker ${cluster.worker?.id}/${process.pid}]` : ""
         }`
       );
-
-      if (MODE === "development") {
-        broadcastDevReady(build)
-          .then(() => logDevReady(build))
-          .catch(console.error);
-      }
     });
 
     server.keepAliveTimeout = HTTP_KEEPALIVE_TIMEOUT_MS;
@@ -244,6 +309,8 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
           console.log("Express server closed gracefully.");
         }
       });
+      // Dev-only: release Vite's file watchers and HMR websocket
+      viteDevServer?.close();
     }
 
     process.on("SIGTERM", closeServer);
@@ -266,7 +333,7 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
         console.log(`Socket.io client connected, upgrading their connection...`);
 
         // https://github.com/socketio/socket.io/issues/4693
-        (socketIo?.io.engine as EngineServer).handleUpgrade(req, socket, head);
+        (socketIo!.io.engine as EngineServer).handleUpgrade(req, socket, head);
         return;
       }
 
@@ -289,7 +356,6 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
       });
     });
   } else {
-    require(BUILD_DIR);
     console.log(`✅ app ready (skipping http server)`);
   }
 }

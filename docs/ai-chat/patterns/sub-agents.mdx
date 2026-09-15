@@ -4,10 +4,6 @@ sidebarTitle: "Sub-Agents"
 description: "Delegate work to durable sub-agents from within a parent agent's tool calls, with streaming preliminary results."
 ---
 
-import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
-
-<RcBanner />
-
 Sub-agents let a parent agent delegate work to other agents running as durable Trigger.dev tasks. The sub-agent's response streams back through the parent as preliminary tool results, so the frontend sees the sub-agent working inside the parent's tool call card.
 
 This builds on the AI SDK's [async generator tool pattern](https://ai-sdk.dev/docs/agents/subagents) and Trigger.dev's [AgentChat](/ai-chat/server-chat) for server-side agent interaction.

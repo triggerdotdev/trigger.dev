@@ -1,10 +1,11 @@
-import { CreateBackgroundWorkerRequestBody, logger, tryCatch } from "@trigger.dev/core/v3";
-import type {
-  BackgroundWorker,
-  PrismaClientOrTransaction,
-  WorkerDeployment,
+import type { CreateBackgroundWorkerRequestBody } from "@trigger.dev/core/v3";
+import { logger, needsNodeRuntimeUpdate, tryCatch } from "@trigger.dev/core/v3";
+import {
+  Prisma,
+  type PrismaClientOrTransaction,
+  type WorkerDeployment,
 } from "@trigger.dev/database";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { type TaskMetadataCache } from "~/services/taskMetadataCache.server";
 import { taskMetadataCacheInstance } from "~/services/taskMetadataCacheInstance.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
@@ -12,10 +13,16 @@ import {
   createBackgroundFiles,
   createWorkerResources,
   syncDeclarativeSchedules,
+  syncDeclarativeWebhooks,
+  type BackgroundWorkerWithWarnings,
 } from "./createBackgroundWorker.server";
 import { findOrCreateBackgroundWorker } from "./createDeploymentBackgroundWorkerV4/findOrCreateBackgroundWorker.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
+import { recordDeploymentFinished } from "./recordDeploymentFinished.server";
 import { env } from "~/env.server";
+import { webhookPrisma } from "~/db.server";
+import { scheduleNodeRuntimeDeprecationEmail } from "./nodeRuntimeDeprecationEmail.server";
+import { DeploymentService } from "./deployment.server";
 
 export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
   private readonly _taskMetaCache: TaskMetadataCache;
@@ -33,7 +40,7 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
     environment: AuthenticatedEnvironment,
     deploymentId: string,
     body: CreateBackgroundWorkerRequestBody
-  ): Promise<BackgroundWorker | undefined> {
+  ): Promise<BackgroundWorkerWithWarnings | undefined> {
     return this.traceWithEnv("call", environment, async (span) => {
       span.setAttribute("deploymentId", deploymentId);
 
@@ -49,6 +56,7 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
       const deployment = await this._prisma.workerDeployment.findFirst({
         where: {
           friendlyId: deploymentId,
+          environmentId: environment.id,
         },
       });
 
@@ -85,7 +93,7 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
           where: { id: deployment.workerId },
         });
         if (linkedWorker) {
-          return linkedWorker;
+          return { ...linkedWorker, warnings: [] };
         }
       }
 
@@ -111,7 +119,7 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
         if (findOrCreateError instanceof ServiceValidationError) {
           // `#failBackgroundWorkerDeployment` already throws its argument; the
           // outer `throw` covers the non-SVE branch.
-          await this.#failBackgroundWorkerDeployment(deployment, findOrCreateError);
+          await this.#failBackgroundWorkerDeployment(deployment, findOrCreateError, environment);
         }
         throw findOrCreateError;
       }
@@ -144,7 +152,7 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
 
         const serviceError = new ServiceValidationError("Error creating background worker files");
 
-        await this.#failBackgroundWorkerDeployment(deployment, serviceError);
+        await this.#failBackgroundWorkerDeployment(deployment, serviceError, environment);
 
         throw serviceError;
       }
@@ -167,7 +175,7 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
             error: resourcesError.message,
           });
 
-          await this.#failBackgroundWorkerDeployment(deployment, resourcesError);
+          await this.#failBackgroundWorkerDeployment(deployment, resourcesError, environment);
           throw resourcesError;
         }
 
@@ -179,7 +187,7 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
           "Error creating background worker resources"
         );
 
-        await this.#failBackgroundWorkerDeployment(deployment, serviceError);
+        await this.#failBackgroundWorkerDeployment(deployment, serviceError, environment);
 
         throw serviceError;
       }
@@ -194,7 +202,7 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
         await this._taskMetaCache.populateByWorker(backgroundWorker.id, workerTaskEntries);
       }
 
-      const [schedulesError] = await tryCatch(
+      const [schedulesError, scheduleWarnings] = await tryCatch(
         syncDeclarativeSchedules(body.metadata.tasks, backgroundWorker, environment, this._prisma)
       );
 
@@ -206,7 +214,7 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
             error: schedulesError.message,
           });
 
-          await this.#failBackgroundWorkerDeployment(deployment, schedulesError);
+          await this.#failBackgroundWorkerDeployment(deployment, schedulesError, environment);
           throw schedulesError;
         }
 
@@ -220,7 +228,30 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
 
         const serviceError = new ServiceValidationError("Error syncing declarative schedules");
 
-        await this.#failBackgroundWorkerDeployment(deployment, serviceError);
+        await this.#failBackgroundWorkerDeployment(deployment, serviceError, environment);
+
+        throw serviceError;
+      }
+
+      const [webhooksError] = await tryCatch(
+        syncDeclarativeWebhooks(
+          body.metadata.webhooks,
+          backgroundWorker,
+          environment,
+          this._prisma,
+          webhookPrisma
+        )
+      );
+
+      if (webhooksError) {
+        logger.error("Error syncing declarative webhooks", { error: webhooksError });
+
+        const serviceError =
+          webhooksError instanceof ServiceValidationError
+            ? webhooksError
+            : new ServiceValidationError("Error syncing declarative webhooks");
+
+        await this.#failBackgroundWorkerDeployment(deployment, serviceError, environment);
 
         throw serviceError;
       }
@@ -250,7 +281,7 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
             projectId: environment.projectId,
           }
         );
-        return backgroundWorker;
+        return { ...backgroundWorker, warnings: scheduleWarnings ?? [] };
       }
 
       await TimeoutDeploymentService.enqueue(
@@ -260,11 +291,51 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
         new Date(Date.now() + env.DEPLOY_TIMEOUT_MS)
       );
 
-      return backgroundWorker;
+      if (needsNodeRuntimeUpdate(body.metadata.runtime, body.metadata.runtimeVersion)) {
+        await new DeploymentService(this._prisma, this._replica)
+          .appendToEventLog(environment.project, deployment, [
+            {
+              type: "log",
+              data: {
+                level: "warn",
+                message:
+                  'This deployment uses Node.js 21, which is deprecated. Set runtime: "node-24" in trigger.config.ts and deploy again.',
+              },
+            },
+          ])
+          .orTee((error) => {
+            logger.error("Failed to append Node.js runtime deprecation warning", {
+              error,
+              deploymentId: deployment.id,
+              environmentId: environment.id,
+              projectId: environment.projectId,
+            });
+          });
+
+        await scheduleNodeRuntimeDeprecationEmail({
+          prisma: this._prisma,
+          deployment,
+          environment,
+          runtime: body.metadata.runtime,
+          runtimeVersion: body.metadata.runtimeVersion,
+        });
+      }
+
+      return { ...backgroundWorker, warnings: scheduleWarnings ?? [] };
     });
   }
 
-  async #failBackgroundWorkerDeployment(deployment: WorkerDeployment, error: Error) {
+  async #failBackgroundWorkerDeployment(
+    deployment: WorkerDeployment,
+    error: Error,
+    environment: AuthenticatedEnvironment
+  ) {
+    const failedAt = new Date();
+    const errorData = {
+      name: error.name,
+      message: error.message,
+    };
+
     // Guarded BUILDING → FAILED transition, symmetric with the BUILDING → DEPLOYING
     // transition in `call()`. With idempotent retries, two attempts can run side-by-side;
     // without the predicate, one attempt's failure could downgrade the deployment after
@@ -276,11 +347,9 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
       },
       data: {
         status: "FAILED",
-        failedAt: new Date(),
-        errorData: {
-          name: error.name,
-          message: error.message,
-        },
+        failedAt,
+        errorData,
+        buildEnvVars: Prisma.DbNull,
       },
     });
 
@@ -297,6 +366,21 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
       // sibling attempt may have just enqueued it as part of a successful
       // BUILDING → DEPLOYING transition.
       await TimeoutDeploymentService.dequeue(deployment.id, this._prisma);
+
+      recordDeploymentFinished({
+        status: "FAILED",
+        deployment: { ...deployment, status: "FAILED", failedAt, errorData },
+        environment: {
+          organizationId: environment.organizationId,
+          organizationSlug: environment.organization.slug,
+          projectId: environment.projectId,
+          projectName: environment.project.name,
+          projectRef: environment.project.externalRef,
+          environmentId: environment.id,
+          environmentType: environment.type,
+        },
+        reason: error.message,
+      });
     }
 
     throw error;

@@ -1,21 +1,22 @@
-import { EmailError, MailMessage, MailTransport, PlainTextMailMessage } from "./index";
+import type { MailMessage, MailTransport, PlainTextMailMessage } from "./index";
+import { EmailError } from "./index";
 import { Resend } from "resend";
 
 export type ResendMailTransportOptions = {
-  type: 'resend',
+  type: "resend";
   config: {
-    apiKey?: string
-  }
-}
+    apiKey?: string;
+  };
+};
 
 export class ResendMailTransport implements MailTransport {
   #client: Resend;
 
   constructor(options: ResendMailTransportOptions) {
-    this.#client = new Resend(options.config.apiKey)
+    this.#client = new Resend(options.config.apiKey);
   }
 
-  async send({to, from, replyTo, subject, react}: MailMessage): Promise<void> {
+  async send({ to, from, replyTo, subject, react }: MailMessage): Promise<void> {
     const result = await this.#client.emails.send({
       from: from,
       to,
@@ -32,7 +33,7 @@ export class ResendMailTransport implements MailTransport {
     }
   }
 
-  async sendPlainText({to, from, replyTo, subject, text}: PlainTextMailMessage): Promise<void> {
+  async sendPlainText({ to, from, replyTo, subject, text }: PlainTextMailMessage): Promise<void> {
     const result = await this.#client.emails.send({
       from: from,
       to,

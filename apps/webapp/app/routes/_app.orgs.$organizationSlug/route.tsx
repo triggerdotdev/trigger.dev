@@ -9,11 +9,17 @@ import { useTypedMatchesData } from "~/hooks/useTypedMatchData";
 import { OrganizationsPresenter } from "~/presenters/OrganizationsPresenter.server";
 import { RegionsPresenter, type Region } from "~/presenters/v3/RegionsPresenter.server";
 import { getImpersonationId } from "~/services/impersonation.server";
-import { getCachedUsage, getCurrentPlan } from "~/services/platform.v3.server";
+import { logger } from "~/services/logger.server";
+import { getCachedUsage, getBillingLimit, getCurrentPlan } from "~/services/platform.v3.server";
+import { rbac } from "~/services/rbac.server";
+import { ssoController } from "~/services/sso.server";
+import { organizationHasProjectRuntimeUpdate } from "~/services/projectRuntimeUpdates.server";
+import { canManageBillingLimits } from "~/services/routeBuilders/permissions.server";
 import { requireUser } from "~/services/session.server";
 import { telemetry } from "~/services/telemetry.server";
 import { organizationPath } from "~/utils/pathBuilder";
 import { isEnvironmentPauseResumeFormSubmission } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues/route";
+import { isBillingLimitSettingsFormSubmission } from "../_app.orgs.$organizationSlug.settings.billing-limits/billingLimitsRevalidation";
 
 const ParamsSchema = z.object({
   organizationSlug: z.string(),
@@ -28,6 +34,26 @@ export function useCurrentPlan(matches?: UIMatch[]) {
   });
 
   return data?.currentPlan;
+}
+
+/** Whether the optional RBAC plugin is installed (gates the Roles UI). */
+export function useIsUsingRbacPlugin(matches?: UIMatch[]) {
+  const data = useTypedMatchesData<typeof loader>({
+    id: "routes/_app.orgs.$organizationSlug",
+    matches,
+  });
+
+  return data?.isUsingRbacPlugin ?? false;
+}
+
+/** Whether the optional SSO plugin is installed (gates the SSO UI). */
+export function useIsUsingSsoPlugin(matches?: UIMatch[]) {
+  const data = useTypedMatchesData<typeof loader>({
+    id: "routes/_app.orgs.$organizationSlug",
+    matches,
+  });
+
+  return data?.isUsingSsoPlugin ?? false;
 }
 
 export const shouldRevalidate: ShouldRevalidateFunction = (params) => {
@@ -50,6 +76,10 @@ export const shouldRevalidate: ShouldRevalidateFunction = (params) => {
 
   // Invalidate if the environment has been paused or resumed
   if (isEnvironmentPauseResumeFormSubmission(params.formMethod, params.formData)) {
+    return true;
+  }
+
+  if (isBillingLimitSettingsFormSubmission(params.formMethod, params.formData)) {
     return true;
   }
 
@@ -85,16 +115,32 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   // Using the 1st day of next month means we get the usage for the current month
   // and the cache key for getCachedUsage is stable over the month
   const firstDayOfNextMonth = new Date();
-  firstDayOfNextMonth.setUTCMonth(firstDayOfNextMonth.getUTCMonth() + 1);
   firstDayOfNextMonth.setUTCDate(1);
   firstDayOfNextMonth.setUTCHours(0, 0, 0, 0);
+  firstDayOfNextMonth.setUTCMonth(firstDayOfNextMonth.getUTCMonth() + 1);
 
-  const shouldLoadRegions =
-    !!projectParam && !!environment && environment.type !== "DEVELOPMENT";
+  const shouldLoadRegions = !!projectParam && !!environment && environment.type !== "DEVELOPMENT";
 
-  const [plan, usage, customDashboards, regions] = await Promise.all([
+  const [
+    sessionAuth,
+    plan,
+    usage,
+    billingLimit,
+    customDashboards,
+    regions,
+    isUsingRbacPlugin,
+    isUsingSsoPlugin,
+    organizationHasRuntimeUpdate,
+  ] = await Promise.all([
+    rbac
+      .authenticateSession(request, {
+        userId: user.id,
+        organizationId: organization.id,
+      })
+      .catch(() => ({ ok: false as const, reason: "unauthorized" as const })),
     getCurrentPlan(organization.id),
     getCachedUsage(organization.id, { from: firstDayOfMonth, to: firstDayOfNextMonth }),
+    getBillingLimit(organization.id),
     prisma.metricsDashboard.findMany({
       where: { organizationId: organization.id },
       select: {
@@ -110,7 +156,25 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
           .then(({ regions }) => regions)
           .catch(() => [] as Region[])
       : Promise.resolve([] as Region[]),
+    // Resolve which optional plugins (RBAC, SSO) are installed so the side menu can gate their
+    // items. Both calls are cheap and cached.
+    rbac.isUsingPlugin().catch(() => false),
+    ssoController.isUsingPlugin().catch(() => false),
+    organizationHasProjectRuntimeUpdate({ organizationId: organization.id }).catch((error) => {
+      logger.error("Failed to check project runtime updates", {
+        organizationId: organization.id,
+        error,
+      });
+      return false;
+    }),
   ]);
+  const userCanManageBillingLimits = sessionAuth.ok
+    ? canManageBillingLimits(sessionAuth.ability)
+    : false;
+  const hasProjectRuntimeUpdate =
+    sessionAuth.ok &&
+    sessionAuth.ability.can("read", { type: "deployments" }) &&
+    organizationHasRuntimeUpdate;
 
   let hasExceededFreeTier = false;
   let usagePercentage = 0;
@@ -124,14 +188,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const dashboardLimit =
     typeof metricDashboardsLimitValue === "number"
       ? metricDashboardsLimitValue
-      : metricDashboardsLimitValue?.number ?? 3;
+      : (metricDashboardsLimitValue?.number ?? 3);
 
   // Derive widget-per-dashboard limit from plan, fallback to 16
   const metricWidgetsLimitValue = plan?.v3Subscription?.plan?.limits?.metricWidgetsPerDashboard;
   const widgetLimitPerDashboard =
     typeof metricWidgetsLimitValue === "number"
       ? metricWidgetsLimitValue
-      : metricWidgetsLimitValue?.number ?? 16;
+      : (metricWidgetsLimitValue?.number ?? 16);
 
   // Compute widget counts per dashboard from layout JSON
   const customDashboardsWithWidgetCount = customDashboards.map((d) => {
@@ -160,12 +224,17 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     regions,
     isImpersonating: !!impersonationId,
     currentPlan: { ...plan, v3Usage: { ...usage, hasExceededFreeTier, usagePercentage } },
+    billingLimit,
     customDashboards: customDashboardsWithWidgetCount,
     dashboardLimits: {
       used: customDashboards.length,
       limit: dashboardLimit,
     },
     widgetLimitPerDashboard,
+    canManageBillingLimits: userCanManageBillingLimits,
+    hasProjectRuntimeUpdate,
+    isUsingRbacPlugin,
+    isUsingSsoPlugin,
   });
 };
 

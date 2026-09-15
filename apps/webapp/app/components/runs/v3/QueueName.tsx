@@ -1,4 +1,4 @@
-import { TaskIconSmall } from "~/assets/icons/TaskIcon";
+import { TasksIcon } from "~/assets/icons/TasksIcon";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { cn } from "~/utils/cn";
 import { RectangleStackIcon } from "@heroicons/react/20/solid";
@@ -19,9 +19,7 @@ export function QueueName({
       {type === "task" ? (
         <SimpleTooltip
           button={
-            <TaskIconSmall
-              className={cn("size-[1.125rem] text-blue-500", paused && "opacity-50")}
-            />
+            <TasksIcon className={cn("size-[1.125rem] text-blue-500", paused && "opacity-50")} />
           }
           content={`This queue was automatically created from your "${name}" task`}
         />

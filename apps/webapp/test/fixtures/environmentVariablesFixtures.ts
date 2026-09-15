@@ -1,5 +1,5 @@
 import type { PrismaClient, RuntimeEnvironmentType } from "@trigger.dev/database";
-import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
+import type { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 
 let idCounter = 0;
 
@@ -61,6 +61,8 @@ export async function createRuntimeEnvironment(
     organizationId: string;
     type: RuntimeEnvironmentType;
     orgMemberId?: string | null;
+    apiKey?: string;
+    rootApiKeyHiddenAt?: Date | null;
     slug?: string;
   }
 ) {
@@ -72,7 +74,8 @@ export async function createRuntimeEnvironment(
       projectId: options.projectId,
       organizationId: options.organizationId,
       orgMemberId: options.orgMemberId ?? null,
-      apiKey: uniqueId("api"),
+      rootApiKeyHiddenAt: options.rootApiKeyHiddenAt ?? null,
+      apiKey: options.apiKey ?? uniqueId("api"),
       pkApiKey: uniqueId("pk"),
       shortcode: uniqueId("sc"),
     },

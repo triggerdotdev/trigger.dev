@@ -1,4 +1,5 @@
 import { type ClickHouse } from "@internal/clickhouse";
+import { type RunStore } from "@internal/run-store";
 import { type Tracer } from "@internal/tracing";
 import { type Logger, type LogLevel } from "@trigger.dev/core/logger";
 import { MachinePresetName } from "@trigger.dev/core/v3";
@@ -7,9 +8,37 @@ import { type Prisma, TaskRunStatus } from "@trigger.dev/database";
 import parseDuration from "parse-duration";
 import { z } from "zod";
 import { timeFilters } from "~/components/runs/v3/SharedFilters";
-import { type PrismaClient, type PrismaClientOrTransaction } from "~/db.server";
+import { type PrismaClientOrTransaction } from "~/db.server";
+import { runStore as defaultRunStore } from "~/v3/runStore.server";
 import { startActiveSpan } from "~/v3/tracer.server";
 import { ClickHouseRunsRepository } from "./clickhouseRunsRepository.server";
+
+/**
+ * User-facing message when a runs-list query exceeds a ClickHouse resource limit. It tells the
+ * caller how to recover (a narrower time range restores partition pruning), and is safe to show
+ * on the dashboard and return from the public API.
+ */
+const RUNS_LIST_QUERY_TOO_EXPENSIVE_MESSAGE =
+  "This query was too expensive to run over the selected time range. Narrow the time window (a shorter period, or a smaller createdAt from/to range) and try again.";
+
+/**
+ * Thrown when a runs-list ClickHouse query hits a server-side resource limit (execution time or
+ * memory). It is the caller's query being too broad, not a service fault, so it carries a 4xx
+ * status and a recovery message rather than surfacing as a 500.
+ */
+export class RunsListQueryError extends Error {
+  public readonly name = "RunsListQueryError";
+  public readonly status = 422;
+  constructor(
+    message: string = RUNS_LIST_QUERY_TOO_EXPENSIVE_MESSAGE,
+    options?: { cause?: unknown }
+  ) {
+    super(message);
+    if (options?.cause !== undefined) {
+      this.cause = options.cause;
+    }
+  }
+}
 
 export type RunsRepositoryOptions = {
   clickhouse: ClickHouse;
@@ -17,6 +46,20 @@ export type RunsRepositoryOptions = {
   logger?: Logger;
   logLevel?: LogLevel;
   tracer?: Tracer;
+
+  // Injectable run-ops store; defaults to the `~/v3/runStore.server` singleton
+  // (passthrough). The list-hydrate fan-out below does not depend on the store
+  // routing mixed-residency id sets — it applies the read-through fan-out itself.
+  runStore?: RunStore;
+
+  // Run-ops read-through wiring for the list hydrate. Omitted => passthrough.
+  readThrough?: {
+    // `legacyReplica` is a READ REPLICA handle only — there is no legacy-primary field.
+    newClient?: PrismaClientOrTransaction;
+    legacyReplica?: PrismaClientOrTransaction;
+    // Resolved boot constant; when false the split branch is never entered.
+    splitEnabled?: boolean;
+  };
 };
 
 const RunStatus = z.enum(Object.values(TaskRunStatus) as [TaskRunStatus, ...TaskRunStatus[]]);
@@ -103,16 +146,37 @@ export type ListedRun = Prisma.TaskRunGetPayload<{
     depth: true;
     rootTaskRunId: true;
     batchId: true;
-    metadata: true;
-    metadataType: true;
     machinePreset: true;
     queue: true;
     workerQueue: true;
+    region: true;
     annotations: true;
   };
-}>;
+}> & {
+  /**
+   * Source blobs hydrated only when a smart column references them (see
+   * `runSelect`). Absent from the default list select; metadata is display-only
+   * on the list, payload/output can be large.
+   */
+  payload?: string;
+  payloadType?: string;
+  output?: string | null;
+  outputType?: string;
+  metadata?: string | null;
+  metadataType?: string;
+};
 
-export type ListRunsOptions = RunListInputOptions & Pagination;
+export type ListRunsOptions = RunListInputOptions &
+  Pagination & {
+    /**
+     * Overrides the default list `select`. The runs list derives this from the
+     * visible columns so only the fields a shown column needs are hydrated (in
+     * particular payload/output are omitted unless a smart column asks). Must
+     * include `id` for hydration keying; behaviour-critical fields are enforced
+     * by the caller's `deriveRunSelect`.
+     */
+    runSelect?: Prisma.TaskRunSelect;
+  };
 
 export type TagListOptions = {
   organizationId: string;
@@ -129,7 +193,7 @@ export type TagList = {
   tags: string[];
 };
 
-export type CursorPagination = {
+type CursorPagination = {
   nextCursor: string | null;
   previousCursor: string | null;
 };
@@ -159,6 +223,12 @@ export interface IRunsRepository {
   }>;
   countRuns(options: RunListInputOptions): Promise<number>;
   listTags(options: TagListOptions): Promise<TagList>;
+  runExistsInEnvironment(options: {
+    organizationId: string;
+    projectId: string;
+    environmentId: string;
+    createdAtLowerBoundMs?: number;
+  }): Promise<boolean>;
 }
 
 export class RunsRepository implements IRunsRepository {
@@ -170,6 +240,26 @@ export class RunsRepository implements IRunsRepository {
 
   get name() {
     return "runsRepository";
+  }
+
+  async runExistsInEnvironment(options: {
+    organizationId: string;
+    projectId: string;
+    environmentId: string;
+    createdAtLowerBoundMs?: number;
+  }): Promise<boolean> {
+    return startActiveSpan(
+      "runsRepository.runExistsInEnvironment",
+      async () => this.clickHouseRunsRepository.runExistsInEnvironment(options),
+      {
+        attributes: {
+          "repository.name": "clickhouse",
+          organizationId: options.organizationId,
+          projectId: options.projectId,
+          environmentId: options.environmentId,
+        },
+      }
+    );
   }
 
   async listRunIds(options: ListRunsOptions): Promise<RunIdsPage> {
@@ -194,6 +284,7 @@ export class RunsRepository implements IRunsRepository {
       {
         attributes: {
           "repository.name": "clickhouse",
+          "readThrough.split": Boolean(this.options.readThrough?.splitEnabled),
           organizationId: options.organizationId,
           projectId: options.projectId,
           environmentId: options.environmentId,
@@ -215,6 +306,7 @@ export class RunsRepository implements IRunsRepository {
       {
         attributes: {
           "repository.name": "clickhouse",
+          "readThrough.split": Boolean(this.options.readThrough?.splitEnabled),
           organizationId: options.organizationId,
           projectId: options.projectId,
           environmentId: options.environmentId,
@@ -260,7 +352,8 @@ export function parseRunListInputOptions(data: any): RunListInputOptions {
 
 export async function convertRunListInputOptionsToFilterRunsOptions(
   options: RunListInputOptions,
-  prisma: RunsRepositoryOptions["prisma"]
+  prisma: RunsRepositoryOptions["prisma"],
+  store: RunStore = defaultRunStore
 ): Promise<FilterRunsOptions> {
   const convertedOptions: FilterRunsOptions = {
     ...options,
@@ -273,26 +366,22 @@ export async function convertRunListInputOptionsToFilterRunsOptions(
     from: options.from,
     to: options.to,
   });
-  convertedOptions.period = time.period ? parseDuration(time.period) ?? undefined : undefined;
+  convertedOptions.period = time.period ? (parseDuration(time.period) ?? undefined) : undefined;
 
-  // Batch friendlyId to id
+  // Cross-DB resolution: BatchTaskRun is a RUN-OPS table. A run-ops batch resident on the
+  // dedicated run-ops DB must resolve via the store's NEW->LEGACY probe — a single control-plane
+  // client would miss it and leave the friendlyId in the ClickHouse `batch_id` filter, matching
+  // nothing. Split off / self-host: the store is a passthrough over the one client.
   if (options.batchId && options.batchId.startsWith("batch_")) {
-    const batch = await prisma.batchTaskRun.findFirst({
-      select: {
-        id: true,
-      },
-      where: {
-        friendlyId: options.batchId,
-        runtimeEnvironmentId: options.environmentId,
-      },
-    });
+    const batch = await store.findBatchTaskRunByFriendlyId(options.batchId, options.environmentId);
 
     if (batch) {
       convertedOptions.batchId = batch.id;
     }
   }
 
-  // ScheduleId can be a friendlyId
+  // ScheduleId can be a friendlyId. TaskSchedule is a CONTROL-PLANE table, so this stays on
+  // the passed `prisma` (the control-plane client) in both single-DB and split modes.
   if (options.scheduleId && options.scheduleId.startsWith("sched_")) {
     const schedule = await prisma.taskSchedule.findFirst({
       select: {

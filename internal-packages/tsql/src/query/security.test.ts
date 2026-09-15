@@ -154,7 +154,7 @@ describe("Cross-Tenant Security", () => {
     });
 
     it("should not allow accessing other tenant's data via explicit condition", () => {
-      const { sql, params } = compile(
+      const { sql: _sql, params } = compile(
         "SELECT * FROM task_runs WHERE organization_id = 'org_other_tenant'"
       );
 
@@ -188,6 +188,30 @@ describe("Cross-Tenant Security", () => {
       expect(Object.values(params)).toContain("org_tenant1");
       const orgIdMatches = sql.match(/organization_id/g) || [];
       expect(orgIdMatches.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  describe("PREWHERE", () => {
+    it.each([
+      ["top-level query", "SELECT count(*) FROM task_runs PREWHERE toUInt8(task_identifier) = 1"],
+      [
+        "case and whitespace variant",
+        "SELECT count(*) FROM task_runs\nPrEwHeRe\n  toUInt8(task_identifier) = 1",
+      ],
+      [
+        "nested query",
+        `SELECT id FROM task_runs WHERE id IN (
+          SELECT run_id FROM task_events PREWHERE event_type = 'completed'
+        )`,
+      ],
+      [
+        "set query",
+        `SELECT id FROM task_runs
+         UNION ALL
+         SELECT id FROM task_runs PREWHERE status = 'completed'`,
+      ],
+    ])("should reject PREWHERE in a %s", (_, query) => {
+      expect(() => compile(query)).toThrowError("PREWHERE is not supported. Use WHERE instead.");
     });
   });
 
@@ -230,28 +254,36 @@ describe("SQL Injection Prevention", () => {
     });
 
     it("should handle quote escape attempts", () => {
-      const { sql, params } = compile("SELECT * FROM task_runs WHERE status = 'test''injection'");
+      const { sql: _sql, params } = compile(
+        "SELECT * FROM task_runs WHERE status = 'test''injection'"
+      );
 
       // Should be safely parameterized
       expect(Object.values(params).some((v) => typeof v === "string")).toBe(true);
     });
 
     it("should handle backslash escape attempts", () => {
-      const { sql, params } = compile("SELECT * FROM task_runs WHERE status = 'test\\'injection'");
+      const { sql, params: _params } = compile(
+        "SELECT * FROM task_runs WHERE status = 'test\\'injection'"
+      );
 
       // Should be safely parameterized
       expect(sql).not.toContain("injection'");
     });
 
     it("should handle unicode characters in strings", () => {
-      const { sql, params } = compile("SELECT * FROM task_runs WHERE status = 'test™injection'");
+      const { sql: _sql, params } = compile(
+        "SELECT * FROM task_runs WHERE status = 'test™injection'"
+      );
 
       // Should be safely parameterized
       expect(Object.values(params).some((v) => typeof v === "string")).toBe(true);
     });
 
     it("should handle null byte injection", () => {
-      const { sql, params } = compile("SELECT * FROM task_runs WHERE status = 'test\\0injection'");
+      const { sql: _sql, params } = compile(
+        "SELECT * FROM task_runs WHERE status = 'test\\0injection'"
+      );
 
       expect(Object.values(params).some((v) => typeof v === "string")).toBe(true);
     });
@@ -510,7 +542,7 @@ describe("Optional Tenant Filters", () => {
 
   describe("Cross-tenant security with optional filters", () => {
     it("should still prevent cross-org access with org-only filter", () => {
-      const { sql, params } = compile(
+      const { sql: _sql, params } = compile(
         "SELECT * FROM task_runs WHERE organization_id = 'org_other'",
         {
           enforcedWhereClause: {
@@ -614,11 +646,11 @@ describe("Multi-join Tenant Guard Qualification", () => {
     // The guards should be table-qualified to prevent binding to the wrong table
     // Look for pattern like: r.organization_id and e.organization_id (with table alias prefix)
     // The exact format in ClickHouse SQL is just "alias.column" after resolution
-    
+
     // Count qualified organization_id references (should have table prefixes)
     // In the WHERE clause, we should see both r.organization_id and e.organization_id
     const whereClause = sql.substring(sql.indexOf("WHERE"));
-    
+
     // Both tables should have their own qualified tenant guards
     // The pattern should be: table_alias.organization_id for each table
     expect(whereClause).toMatch(/\br\b[^,]*organization_id/);
@@ -633,7 +665,7 @@ describe("Multi-join Tenant Guard Qualification", () => {
     `);
 
     const whereClause = sql.substring(sql.indexOf("WHERE"));
-    
+
     // Both tables should have qualified guards
     expect(whereClause).toMatch(/\br\b[^,]*organization_id/);
     expect(whereClause).toMatch(/\be\b[^,]*organization_id/);
@@ -648,7 +680,7 @@ describe("Multi-join Tenant Guard Qualification", () => {
     `);
 
     const whereClause = sql.substring(sql.indexOf("WHERE"));
-    
+
     // All three table aliases should have qualified guards
     expect(whereClause).toMatch(/\br\b[^,]*organization_id/);
     expect(whereClause).toMatch(/\be1\b[^,]*organization_id/);
@@ -667,13 +699,13 @@ describe("Multi-join Tenant Guard Qualification", () => {
     // This ensures each table gets its own guard, not shared/ambiguous references
     const orgIdPattern = /(\w+)\.organization_id/g;
     const matches = [...sql.matchAll(orgIdPattern)];
-    const tableAliases = matches.map(m => m[1]);
-    
+    const tableAliases = matches.map((m) => m[1]);
+
     // Should have at least 2 different table aliases for organization_id
     // (one for task_runs alias 'r' and one for task_events alias 'e')
     expect(tableAliases).toContain("r");
     expect(tableAliases).toContain("e");
-    
+
     // Both should use the same tenant value (parameterized)
     expect(Object.values(params)).toContain("org_tenant1");
   });

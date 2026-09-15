@@ -26,7 +26,10 @@ import type { DecisionOutcome, DecisionReason } from "~/v3/mollifier/mollifierTe
 type Spies = {
   evaluatorCalls: number;
   logShadowCalls: Array<{ inputs: GateInputs; decision: Extract<TripDecision, { divert: true }> }>;
-  logMollifiedCalls: Array<{ inputs: GateInputs; decision: Extract<TripDecision, { divert: true }> }>;
+  logMollifiedCalls: Array<{
+    inputs: GateInputs;
+    decision: Extract<TripDecision, { divert: true }>;
+  }>;
   recordDecisionCalls: Array<{
     outcome: DecisionOutcome;
     reason?: DecisionReason;
@@ -118,26 +121,250 @@ type Row = {
 // each row exercises so reviewers can map row → code at a glance.
 const cascade: Row[] = [
   // enabled=F → kill-switch wins; evaluator+flag never consulted (rows 1-8)
-  { id: 1, enabled: false, shadow: false, flag: false, divert: false, expected: { action: "pass_through", evaluatorCalls: 0, logShadowCalls: 0, logMollifiedCalls: 0, recordedOutcome: "pass_through", expectedReason: undefined } },
-  { id: 2, enabled: false, shadow: false, flag: false, divert: true,  expected: { action: "pass_through", evaluatorCalls: 0, logShadowCalls: 0, logMollifiedCalls: 0, recordedOutcome: "pass_through", expectedReason: undefined } },
-  { id: 3, enabled: false, shadow: false, flag: true,  divert: false, expected: { action: "pass_through", evaluatorCalls: 0, logShadowCalls: 0, logMollifiedCalls: 0, recordedOutcome: "pass_through", expectedReason: undefined } },
-  { id: 4, enabled: false, shadow: false, flag: true,  divert: true,  expected: { action: "pass_through", evaluatorCalls: 0, logShadowCalls: 0, logMollifiedCalls: 0, recordedOutcome: "pass_through", expectedReason: undefined } },
-  { id: 5, enabled: false, shadow: true,  flag: false, divert: false, expected: { action: "pass_through", evaluatorCalls: 0, logShadowCalls: 0, logMollifiedCalls: 0, recordedOutcome: "pass_through", expectedReason: undefined } },
-  { id: 6, enabled: false, shadow: true,  flag: false, divert: true,  expected: { action: "pass_through", evaluatorCalls: 0, logShadowCalls: 0, logMollifiedCalls: 0, recordedOutcome: "pass_through", expectedReason: undefined } },
-  { id: 7, enabled: false, shadow: true,  flag: true,  divert: false, expected: { action: "pass_through", evaluatorCalls: 0, logShadowCalls: 0, logMollifiedCalls: 0, recordedOutcome: "pass_through", expectedReason: undefined } },
-  { id: 8, enabled: false, shadow: true,  flag: true,  divert: true,  expected: { action: "pass_through", evaluatorCalls: 0, logShadowCalls: 0, logMollifiedCalls: 0, recordedOutcome: "pass_through", expectedReason: undefined } },
+  {
+    id: 1,
+    enabled: false,
+    shadow: false,
+    flag: false,
+    divert: false,
+    expected: {
+      action: "pass_through",
+      evaluatorCalls: 0,
+      logShadowCalls: 0,
+      logMollifiedCalls: 0,
+      recordedOutcome: "pass_through",
+      expectedReason: undefined,
+    },
+  },
+  {
+    id: 2,
+    enabled: false,
+    shadow: false,
+    flag: false,
+    divert: true,
+    expected: {
+      action: "pass_through",
+      evaluatorCalls: 0,
+      logShadowCalls: 0,
+      logMollifiedCalls: 0,
+      recordedOutcome: "pass_through",
+      expectedReason: undefined,
+    },
+  },
+  {
+    id: 3,
+    enabled: false,
+    shadow: false,
+    flag: true,
+    divert: false,
+    expected: {
+      action: "pass_through",
+      evaluatorCalls: 0,
+      logShadowCalls: 0,
+      logMollifiedCalls: 0,
+      recordedOutcome: "pass_through",
+      expectedReason: undefined,
+    },
+  },
+  {
+    id: 4,
+    enabled: false,
+    shadow: false,
+    flag: true,
+    divert: true,
+    expected: {
+      action: "pass_through",
+      evaluatorCalls: 0,
+      logShadowCalls: 0,
+      logMollifiedCalls: 0,
+      recordedOutcome: "pass_through",
+      expectedReason: undefined,
+    },
+  },
+  {
+    id: 5,
+    enabled: false,
+    shadow: true,
+    flag: false,
+    divert: false,
+    expected: {
+      action: "pass_through",
+      evaluatorCalls: 0,
+      logShadowCalls: 0,
+      logMollifiedCalls: 0,
+      recordedOutcome: "pass_through",
+      expectedReason: undefined,
+    },
+  },
+  {
+    id: 6,
+    enabled: false,
+    shadow: true,
+    flag: false,
+    divert: true,
+    expected: {
+      action: "pass_through",
+      evaluatorCalls: 0,
+      logShadowCalls: 0,
+      logMollifiedCalls: 0,
+      recordedOutcome: "pass_through",
+      expectedReason: undefined,
+    },
+  },
+  {
+    id: 7,
+    enabled: false,
+    shadow: true,
+    flag: true,
+    divert: false,
+    expected: {
+      action: "pass_through",
+      evaluatorCalls: 0,
+      logShadowCalls: 0,
+      logMollifiedCalls: 0,
+      recordedOutcome: "pass_through",
+      expectedReason: undefined,
+    },
+  },
+  {
+    id: 8,
+    enabled: false,
+    shadow: true,
+    flag: true,
+    divert: true,
+    expected: {
+      action: "pass_through",
+      evaluatorCalls: 0,
+      logShadowCalls: 0,
+      logMollifiedCalls: 0,
+      recordedOutcome: "pass_through",
+      expectedReason: undefined,
+    },
+  },
   // enabled=T, flag=F, shadow=F → both opt-ins off; evaluator never called (rows 9-10)
-  { id: 9, enabled: true,  shadow: false, flag: false, divert: false, expected: { action: "pass_through", evaluatorCalls: 0, logShadowCalls: 0, logMollifiedCalls: 0, recordedOutcome: "pass_through", expectedReason: undefined } },
-  { id: 10, enabled: true, shadow: false, flag: false, divert: true,  expected: { action: "pass_through", evaluatorCalls: 0, logShadowCalls: 0, logMollifiedCalls: 0, recordedOutcome: "pass_through", expectedReason: undefined } },
+  {
+    id: 9,
+    enabled: true,
+    shadow: false,
+    flag: false,
+    divert: false,
+    expected: {
+      action: "pass_through",
+      evaluatorCalls: 0,
+      logShadowCalls: 0,
+      logMollifiedCalls: 0,
+      recordedOutcome: "pass_through",
+      expectedReason: undefined,
+    },
+  },
+  {
+    id: 10,
+    enabled: true,
+    shadow: false,
+    flag: false,
+    divert: true,
+    expected: {
+      action: "pass_through",
+      evaluatorCalls: 0,
+      logShadowCalls: 0,
+      logMollifiedCalls: 0,
+      recordedOutcome: "pass_through",
+      expectedReason: undefined,
+    },
+  },
   // enabled=T, flag=F, shadow=T → shadow path; divert routes outcome (rows 11-12)
-  { id: 11, enabled: true, shadow: true,  flag: false, divert: false, expected: { action: "pass_through", evaluatorCalls: 1, logShadowCalls: 0, logMollifiedCalls: 0, recordedOutcome: "pass_through", expectedReason: undefined } },
-  { id: 12, enabled: true, shadow: true,  flag: false, divert: true,  expected: { action: "shadow_log",   evaluatorCalls: 1, logShadowCalls: 1, logMollifiedCalls: 0, recordedOutcome: "shadow_log",   expectedReason: "per_env_rate" } },
+  {
+    id: 11,
+    enabled: true,
+    shadow: true,
+    flag: false,
+    divert: false,
+    expected: {
+      action: "pass_through",
+      evaluatorCalls: 1,
+      logShadowCalls: 0,
+      logMollifiedCalls: 0,
+      recordedOutcome: "pass_through",
+      expectedReason: undefined,
+    },
+  },
+  {
+    id: 12,
+    enabled: true,
+    shadow: true,
+    flag: false,
+    divert: true,
+    expected: {
+      action: "shadow_log",
+      evaluatorCalls: 1,
+      logShadowCalls: 1,
+      logMollifiedCalls: 0,
+      recordedOutcome: "shadow_log",
+      expectedReason: "per_env_rate",
+    },
+  },
   // enabled=T, flag=T, shadow=F → mollify path (rows 13-14)
-  { id: 13, enabled: true, shadow: false, flag: true,  divert: false, expected: { action: "pass_through", evaluatorCalls: 1, logShadowCalls: 0, logMollifiedCalls: 0, recordedOutcome: "pass_through", expectedReason: undefined } },
-  { id: 14, enabled: true, shadow: false, flag: true,  divert: true,  expected: { action: "mollify",      evaluatorCalls: 1, logShadowCalls: 0, logMollifiedCalls: 1, recordedOutcome: "mollify",      expectedReason: "per_env_rate" } },
+  {
+    id: 13,
+    enabled: true,
+    shadow: false,
+    flag: true,
+    divert: false,
+    expected: {
+      action: "pass_through",
+      evaluatorCalls: 1,
+      logShadowCalls: 0,
+      logMollifiedCalls: 0,
+      recordedOutcome: "pass_through",
+      expectedReason: undefined,
+    },
+  },
+  {
+    id: 14,
+    enabled: true,
+    shadow: false,
+    flag: true,
+    divert: true,
+    expected: {
+      action: "mollify",
+      evaluatorCalls: 1,
+      logShadowCalls: 0,
+      logMollifiedCalls: 1,
+      recordedOutcome: "mollify",
+      expectedReason: "per_env_rate",
+    },
+  },
   // enabled=T, flag=T, shadow=T → flag wins over shadow (rows 15-16)
-  { id: 15, enabled: true, shadow: true,  flag: true,  divert: false, expected: { action: "pass_through", evaluatorCalls: 1, logShadowCalls: 0, logMollifiedCalls: 0, recordedOutcome: "pass_through", expectedReason: undefined } },
-  { id: 16, enabled: true, shadow: true,  flag: true,  divert: true,  expected: { action: "mollify",      evaluatorCalls: 1, logShadowCalls: 0, logMollifiedCalls: 1, recordedOutcome: "mollify",      expectedReason: "per_env_rate" } },
+  {
+    id: 15,
+    enabled: true,
+    shadow: true,
+    flag: true,
+    divert: false,
+    expected: {
+      action: "pass_through",
+      evaluatorCalls: 1,
+      logShadowCalls: 0,
+      logMollifiedCalls: 0,
+      recordedOutcome: "pass_through",
+      expectedReason: undefined,
+    },
+  },
+  {
+    id: 16,
+    enabled: true,
+    shadow: true,
+    flag: true,
+    divert: true,
+    expected: {
+      action: "mollify",
+      evaluatorCalls: 1,
+      logShadowCalls: 0,
+      logMollifiedCalls: 1,
+      recordedOutcome: "mollify",
+      expectedReason: "per_env_rate",
+    },
+  },
 ];
 
 describe("evaluateGate cascade — exhaustive truth table", () => {
@@ -168,7 +395,7 @@ describe("evaluateGate cascade — exhaustive truth table", () => {
       // mollifierDecisionLabels.test.ts).
       expect(spies.recordDecisionCalls[0].enrolled).toBe(row.flag);
       expect(spies.recordDecisionCalls[0].orgId).toBe(inputs.orgId);
-    },
+    }
   );
 
   it("divert log carries the full decision (envId, orgId, taskId, reason, count, threshold, windowMs, holdMs)", async () => {
@@ -345,9 +572,10 @@ describe("evaluateGate — fail open on resolveOrgFlag error", () => {
 });
 
 describe("evaluateGate — per-org isolation via Organization.featureFlags", () => {
-  function makeIsolationDeps(
-    resolveOrgFlag: GateDependencies["resolveOrgFlag"],
-  ): { deps: Partial<GateDependencies>; spies: Spies } {
+  function makeIsolationDeps(resolveOrgFlag: GateDependencies["resolveOrgFlag"]): {
+    deps: Partial<GateDependencies>;
+    spies: Spies;
+  } {
     const spies: Spies = {
       evaluatorCalls: 0,
       logShadowCalls: [],
@@ -486,10 +714,7 @@ describe("evaluateGate — debounce / OTU / triggerAndWait bypasses", () => {
       flag: true,
       decision: trippedDecision,
     });
-    const outcome = await evaluateGate(
-      { ...inputs, options: { debounce: { key: "k" } } },
-      deps,
-    );
+    const outcome = await evaluateGate({ ...inputs, options: { debounce: { key: "k" } } }, deps);
     expect(outcome).toEqual({ action: "pass_through" });
     expect(spies.evaluatorCalls).toBe(0);
   });
@@ -503,7 +728,7 @@ describe("evaluateGate — debounce / OTU / triggerAndWait bypasses", () => {
     });
     const outcome = await evaluateGate(
       { ...inputs, options: { oneTimeUseToken: "jwt-otu" } },
-      deps,
+      deps
     );
     expect(outcome).toEqual({ action: "pass_through" });
     expect(spies.evaluatorCalls).toBe(0);
@@ -521,7 +746,7 @@ describe("evaluateGate — debounce / OTU / triggerAndWait bypasses", () => {
         ...inputs,
         options: { parentTaskRunId: "run_parent", resumeParentOnCompletion: true },
       },
-      deps,
+      deps
     );
     expect(outcome).toEqual({ action: "pass_through" });
     expect(spies.evaluatorCalls).toBe(0);
@@ -536,7 +761,7 @@ describe("evaluateGate — debounce / OTU / triggerAndWait bypasses", () => {
     });
     const outcome = await evaluateGate(
       { ...inputs, options: { parentTaskRunId: "run_parent" } },
-      deps,
+      deps
     );
     expect(outcome.action).toBe("mollify");
     expect(spies.evaluatorCalls).toBe(1);

@@ -185,6 +185,46 @@ function applyLayerToManifest(layer: BuildLayer, manifest: BuildManifest): Build
     }
   }
 
+  if (layer.deploy?.secretEnv) {
+    $manifest.deploy.env ??= {};
+    $manifest.deploy.sync ??= {};
+    $manifest.deploy.sync.secretEnv ??= {};
+
+    for (const [key, value] of Object.entries(layer.deploy.secretEnv)) {
+      if (!value) {
+        continue;
+      }
+
+      if (layer.deploy.override || $manifest.deploy.env[key] === undefined) {
+        const existingValue = $manifest.deploy.env[key];
+
+        if (existingValue !== value) {
+          $manifest.deploy.sync.secretEnv[key] = value;
+        }
+      }
+    }
+  }
+
+  if (layer.deploy?.secretParentEnv) {
+    $manifest.deploy.env ??= {};
+    $manifest.deploy.sync ??= {};
+    $manifest.deploy.sync.secretParentEnv ??= {};
+
+    for (const [key, value] of Object.entries(layer.deploy.secretParentEnv)) {
+      if (!value) {
+        continue;
+      }
+
+      if (layer.deploy.override || $manifest.deploy.env[key] === undefined) {
+        const existingValue = $manifest.deploy.env[key];
+
+        if (existingValue !== value) {
+          $manifest.deploy.sync.secretParentEnv[key] = value;
+        }
+      }
+    }
+  }
+
   if (layer.dependencies) {
     const externals = $manifest.externals ?? [];
 

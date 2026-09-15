@@ -56,27 +56,25 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ ok: false, error: "Request body too large" }, { status: 413 });
   }
 
-  const session = await resolveSessionByIdOrExternalId(
-    $replica,
-    environment.id,
-    sessionParam
-  );
+  const session = await resolveSessionByIdOrExternalId($replica, environment.id, sessionParam);
   if (!session) {
     return json({ ok: false, error: "Session not found" }, { status: 404 });
   }
 
   if (session.closedAt) {
     return json(
-      { ok: false, error: "Cannot append to a closed session" },
-      { status: 400 }
+      {
+        ok: false,
+        error: "Cannot append to a closed session",
+        code: "session_closed",
+        closedReason: session.closedReason,
+      },
+      { status: 409 }
     );
   }
 
   if (session.expiresAt && session.expiresAt.getTime() < Date.now()) {
-    return json(
-      { ok: false, error: "Cannot append to an expired session" },
-      { status: 400 }
-    );
+    return json({ ok: false, error: "Cannot append to an expired session" }, { status: 400 });
   }
 
   const realtimeStream = getRealtimeStreamInstance(environment, "v2", { session });
@@ -111,16 +109,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const part = await request.text();
   const partId = request.headers.get("X-Part-Id") ?? nanoid(7);
 
-  const [appendError] = await tryCatch(
+  const [appendError, appendSeq] = await tryCatch(
     realtimeStream.appendPartToSessionStream(part, partId, addressingKey, io)
   );
 
   if (appendError) {
     if (appendError instanceof ServiceValidationError) {
-      return json(
-        { ok: false, error: appendError.message },
-        { status: appendError.status ?? 422 }
-      );
+      return json({ ok: false, error: appendError.message }, { status: appendError.status ?? 422 });
     }
     return json({ ok: false, error: appendError.message }, { status: 500 });
   }
@@ -161,5 +156,5 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
   }
 
-  return json({ ok: true }, { status: 200 });
+  return json({ ok: true, seq: appendSeq ?? undefined }, { status: 200 });
 }

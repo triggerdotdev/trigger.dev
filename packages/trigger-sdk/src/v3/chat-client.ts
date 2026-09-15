@@ -16,7 +16,7 @@
  * ```
  */
 
-import type { SessionTriggerConfig, Task } from "@trigger.dev/core/v3";
+import type { Task } from "@trigger.dev/core/v3";
 import type { ModelMessage, UIMessage, UIMessageChunk } from "ai";
 // `readUIMessageStream` is a runtime value — via the ESM/CJS shim so the CJS
 // build can `require` ESM-only `ai@7` (see ../imports/ai-runtime.ts).
@@ -28,8 +28,13 @@ import {
   TRIGGER_CONTROL_SUBTYPE,
 } from "@trigger.dev/core/v3";
 import type { ChatInputChunk, ChatTaskWirePayload } from "./ai-shared.js";
-import { slimSubmitMessageForWire } from "./ai-shared.js";
-import { sessions } from "./sessions.js";
+import {
+  chatRunTags,
+  MAX_EOF_RESUBSCRIBES,
+  slimSubmitMessageForWire,
+  waitBeforeEofResubscribe,
+} from "./ai-shared.js";
+import { sessions, type SessionTriggerConfigInput } from "./sessions.js";
 
 // ─── Type inference ────────────────────────────────────────────────
 
@@ -43,9 +48,7 @@ export type InferChatClientData<T> =
 
 /** Extract the UIMessage type from a chat agent task. */
 export type InferChatUIMessage<T> =
-  T extends Task<any, ChatTaskWirePayload<infer TUIMessage, any>, any>
-    ? TUIMessage
-    : UIMessage;
+  T extends Task<any, ChatTaskWirePayload<infer TUIMessage, any>, any> ? TUIMessage : UIMessage;
 
 // ─── Types ─────────────────────────────────────────────────────────
 
@@ -60,16 +63,16 @@ export type ChatSession = {
  * `AgentChat`. Same shape as the type on `TriggerChatTransport` — these
  * mirror so customers can share a single resolver between the two clients.
  */
-export type AgentChatEndpoint = "in" | "out";
+type AgentChatEndpoint = "in" | "out";
 
-export type AgentChatEndpointContext = {
+type AgentChatEndpointContext = {
   endpoint: AgentChatEndpoint;
   chatId: string;
 };
 
-export type AgentChatBaseURLResolver = (ctx: AgentChatEndpointContext) => string;
+type AgentChatBaseURLResolver = (ctx: AgentChatEndpointContext) => string;
 
-export type AgentChatFetchOverride = (
+type AgentChatFetchOverride = (
   url: string,
   init: RequestInit,
   ctx: AgentChatEndpointContext
@@ -100,17 +103,14 @@ export type AgentChatOptions<TAgent = unknown> = {
    * Called when a turn completes. Persist `lastEventId` for stream
    * resumption across requests.
    */
-  onTurnComplete?: (event: {
-    chatId: string;
-    lastEventId?: string;
-  }) => void | Promise<void>;
+  onTurnComplete?: (event: { chatId: string; lastEventId?: string }) => void | Promise<void>;
   /** SSE timeout in seconds. @default 120 */
   streamTimeoutSeconds?: number;
   /**
    * Default trigger config used when starting a new session for this
    * chat. Folded into `sessions.start({...triggerConfig})` body.
    */
-  triggerConfig?: SessionTriggerConfig;
+  triggerConfig?: SessionTriggerConfigInput;
   /**
    * Override the Trigger.dev API base URL for the chat's `.in/append` and
    * `.out` SSE endpoints. String form applies to both; pass a function to
@@ -282,6 +282,16 @@ type SessionState = {
   skipToTurnComplete?: boolean;
   /** True after the session has been started (sessions.start). */
   started: boolean;
+  /**
+   * True once THIS instance has written the session's `triggerConfig`.
+   *
+   * Separate from {@link started} because a restored session is already
+   * started, by an earlier request, under whatever config that release
+   * resolved. Only `sessions.start` refreshes the stored config, so without a
+   * flag of its own a persisted conversation keeps the deployment pin it was
+   * created with for the rest of its life.
+   */
+  pinRefreshed: boolean;
 };
 
 // ─── AgentChat ─────────────────────────────────────────────────────
@@ -311,13 +321,21 @@ export class AgentChat<TAgent = unknown> {
   private readonly chatId: string;
   private readonly streamTimeoutSeconds: number;
   private readonly clientData: Record<string, unknown> | undefined;
-  private readonly triggerConfigDefault: SessionTriggerConfig | undefined;
+  private readonly triggerConfigDefault: SessionTriggerConfigInput | undefined;
   private readonly onTriggered: AgentChatOptions["onTriggered"];
   private readonly onTurnComplete: AgentChatOptions["onTurnComplete"];
   private readonly baseURLResolver: AgentChatBaseURLResolver;
   private readonly fetchOverride: AgentChatFetchOverride | undefined;
 
   private state: SessionState;
+  /**
+   * Which subscription armed `skipToTurnComplete`, so only that stream ends at
+   * the gated boundary. A later stream reads the same boundary as stale history
+   * and keeps reading to its own turn. Deliberately not in `state`: a stop does
+   * not outlive the process that issued it.
+   */
+  private streamSeq = 0;
+  private stoppedStreamId: number | undefined;
 
   constructor(options: AgentChatOptions<TAgent>) {
     this.taskId = options.agent;
@@ -328,9 +346,10 @@ export class AgentChat<TAgent = unknown> {
     this.onTriggered = options.onTriggered;
     this.onTurnComplete = options.onTurnComplete;
     const baseURLOption = options.baseURL;
-    this.baseURLResolver = typeof baseURLOption === "function"
-      ? baseURLOption
-      : () => baseURLOption ?? apiClientManager.baseURL ?? "https://api.trigger.dev";
+    this.baseURLResolver =
+      typeof baseURLOption === "function"
+        ? baseURLOption
+        : () => baseURLOption ?? apiClientManager.baseURL ?? "https://api.trigger.dev";
     this.fetchOverride = options.fetch;
 
     // Hydration: a non-empty `session` means the caller knows the
@@ -340,6 +359,7 @@ export class AgentChat<TAgent = unknown> {
     this.state = {
       lastEventId: options.session?.lastEventId,
       started: hydrated,
+      pinRefreshed: !hydrated,
     };
   }
 
@@ -372,10 +392,7 @@ export class AgentChat<TAgent = unknown> {
    * const text = await stream.text();
    * ```
    */
-  async sendMessage(
-    text: string,
-    options?: { abortSignal?: AbortSignal }
-  ): Promise<ChatStream> {
+  async sendMessage(text: string, options?: { abortSignal?: AbortSignal }): Promise<ChatStream> {
     const msgId = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const message: UIMessage = {
       id: msgId,
@@ -389,12 +406,14 @@ export class AgentChat<TAgent = unknown> {
 
   /** Send raw UIMessage-like objects. Use `sendMessage()` for simple text. */
   async sendRaw(
-    messages: UIMessage[] | Array<{
-      id: string;
-      role: string;
-      parts?: unknown[];
-      [key: string]: unknown;
-    }>,
+    messages:
+      | UIMessage[]
+      | Array<{
+          id: string;
+          role: string;
+          parts?: unknown[];
+          [key: string]: unknown;
+        }>,
     options?: {
       trigger?: "submit-message" | "regenerate-message";
       abortSignal?: AbortSignal;
@@ -416,9 +435,7 @@ export class AgentChat<TAgent = unknown> {
     // payload — reasoning blobs, text, and tool `input` come from the
     // agent's authoritative chain. `regenerate-message` omits `message`.
     if (triggerType === "submit-message" && messages.length === 0) {
-      throw new Error(
-        "AgentChat.sendRaw: 'submit-message' trigger requires at least one message"
-      );
+      throw new Error("AgentChat.sendRaw: 'submit-message' trigger requires at least one message");
     }
     const lastIfSubmit =
       triggerType === "submit-message"
@@ -433,7 +450,7 @@ export class AgentChat<TAgent = unknown> {
 
     await this.appendInputChunk(serializeInputChunk({ kind: "message", payload }));
 
-    return this.subscribeToSessionStream(options?.abortSignal);
+    return this.subscribeToSessionStream(options?.abortSignal, { resumeAfterEof: true });
   }
 
   /** Send a steering message during an active stream. */
@@ -464,6 +481,7 @@ export class AgentChat<TAgent = unknown> {
     if (!this.state.started) return;
 
     this.state.skipToTurnComplete = true;
+    this.stoppedStreamId = this.streamSeq;
     await this.appendInputChunk(serializeInputChunk({ kind: "stop" })).catch(() => {});
   }
 
@@ -542,10 +560,7 @@ export class AgentChat<TAgent = unknown> {
    * }
    * ```
    */
-  async sendAction(
-    action: unknown,
-    options?: { abortSignal?: AbortSignal }
-  ): Promise<ChatStream> {
+  async sendAction(action: unknown, options?: { abortSignal?: AbortSignal }): Promise<ChatStream> {
     await this.ensureStarted();
 
     const payload: ChatTaskWirePayload = {
@@ -561,7 +576,9 @@ export class AgentChat<TAgent = unknown> {
       throw new Error("Failed to send action. The session may have ended.");
     }
 
-    const rawStream = this.subscribeToSessionStream(options?.abortSignal);
+    const rawStream = this.subscribeToSessionStream(options?.abortSignal, {
+      resumeAfterEof: true,
+    });
     return new ChatStream(rawStream);
   }
 
@@ -586,12 +603,26 @@ export class AgentChat<TAgent = unknown> {
     }
   }
 
-  /** Reconnect to the response stream (e.g. after a disconnect). */
-  async reconnect(
-    abortSignal?: AbortSignal
-  ): Promise<ReadableStream<UIMessageChunk> | null> {
+  /**
+   * Reconnect to the response stream to resume an already-established session
+   * after a disconnect. Requests the caught-up settle probe (`X-Peek-Settled`)
+   * so a resumed stream already at a turn-complete tail closes promptly instead
+   * of holding the full SSE window, mirroring the browser transport's
+   * `reconnectToStream`.
+   *
+   * Do not call this immediately after `sendMessage()` to read a fresh turn: the
+   * settle probe can race the newly-triggered turn's first record, see the prior
+   * turn's `turn-complete` tail, and hand back an empty stream (unlike the
+   * browser transport, there is no auto-resubscribe). `sendMessage()` already
+   * returns the turn's stream; use `reconnect()` only to resume an idle or
+   * mid-turn stream.
+   */
+  async reconnect(abortSignal?: AbortSignal): Promise<ReadableStream<UIMessageChunk> | null> {
     if (!this.state.started) return null;
-    return this.subscribeToSessionStream(abortSignal, { sendStopOnAbort: false });
+    return this.subscribeToSessionStream(abortSignal, {
+      sendStopOnAbort: false,
+      peekSettled: true,
+    });
   }
 
   // ─── Private ───────────────────────────────────────────────────
@@ -620,6 +651,11 @@ export class AgentChat<TAgent = unknown> {
       // already committed, so a retried POST can't duplicate the record.
       "X-Part-Id": crypto.randomUUID(),
     };
+    // Preview-env sessions are branch-scoped, so the realtime in/out calls must
+    // carry the branch the session was created on. sessions.start sends it via
+    // the API client; these raw fetches have to set it themselves.
+    const branch = apiClientManager.branchName;
+    if (branch) headers["x-trigger-branch"] = branch;
     const response = await this.doFetch(ctx, url, { method: "POST", headers, body });
     if (!response.ok) {
       const text = await response.text().catch(() => "");
@@ -642,9 +678,12 @@ export class AgentChat<TAgent = unknown> {
    * same session.
    */
   private async ensureStarted(options?: { idleTimeoutInSeconds?: number }): Promise<void> {
-    if (this.state.started) return;
+    if (this.state.started && this.state.pinRefreshed) return;
 
-    const triggerConfig: SessionTriggerConfig = {
+    const idleTimeoutInSeconds =
+      options?.idleTimeoutInSeconds ?? this.triggerConfigDefault?.idleTimeoutInSeconds;
+
+    const triggerConfig: SessionTriggerConfigInput = {
       basePayload: {
         // `trigger: "preload"` mirrors the browser-mediated
         // `chat.createStartSessionAction` shape so the agent runtime fires
@@ -657,26 +696,27 @@ export class AgentChat<TAgent = unknown> {
         chatId: this.chatId,
         ...(this.clientData ? { metadata: this.clientData } : {}),
       },
-      ...(this.triggerConfigDefault?.machine
-        ? { machine: this.triggerConfigDefault.machine }
-        : {}),
-      ...(this.triggerConfigDefault?.queue
-        ? { queue: this.triggerConfigDefault.queue }
-        : {}),
-      ...(this.triggerConfigDefault?.tags
-        ? { tags: this.triggerConfigDefault.tags }
-        : {}),
+      ...(this.triggerConfigDefault?.machine ? { machine: this.triggerConfigDefault.machine } : {}),
+      ...(this.triggerConfigDefault?.queue ? { queue: this.triggerConfigDefault.queue } : {}),
+      tags: chatRunTags(this.chatId, this.triggerConfigDefault?.tags),
       ...(this.triggerConfigDefault?.maxAttempts !== undefined
         ? { maxAttempts: this.triggerConfigDefault.maxAttempts }
         : {}),
-      ...(options?.idleTimeoutInSeconds !== undefined ||
-      this.triggerConfigDefault?.idleTimeoutInSeconds !== undefined
-        ? {
-            idleTimeoutInSeconds:
-              options?.idleTimeoutInSeconds ??
-              this.triggerConfigDefault?.idleTimeoutInSeconds!,
-          }
+      ...(this.triggerConfigDefault?.maxDuration !== undefined
+        ? { maxDuration: this.triggerConfigDefault.maxDuration }
         : {}),
+      ...(this.triggerConfigDefault?.region ? { region: this.triggerConfigDefault.region } : {}),
+      ...(this.triggerConfigDefault?.lockToVersion
+        ? { lockToVersion: this.triggerConfigDefault.lockToVersion }
+        : {}),
+      ...(this.triggerConfigDefault?.ttl !== undefined
+        ? { ttl: this.triggerConfigDefault.ttl }
+        : {}),
+      // Not truthiness: `null` opts out and must reach the resolver in `sessions.start`.
+      ...(this.triggerConfigDefault?.externalDeploymentId !== undefined
+        ? { externalDeploymentId: this.triggerConfigDefault.externalDeploymentId }
+        : {}),
+      ...(idleTimeoutInSeconds !== undefined ? { idleTimeoutInSeconds } : {}),
     };
 
     const created = await sessions.start({
@@ -686,25 +726,40 @@ export class AgentChat<TAgent = unknown> {
       triggerConfig,
     });
 
+    const wasInitialStart = !this.state.started;
     this.state.started = true;
-    await this.onTriggered?.({
-      runId: created.runId,
-      chatId: this.chatId,
-    });
+    this.state.pinRefreshed = true;
+
+    // `onTriggered` is documented as the initial start, so a restored session
+    // refreshing its config does not fire it: the caller handed us that
+    // session, and a hook that writes a row would write it again on every
+    // request that rehydrates the conversation.
+    if (wasInitialStart) {
+      await this.onTriggered?.({
+        runId: created.runId,
+        chatId: this.chatId,
+      });
+    }
   }
 
   private subscribeToSessionStream(
     abortSignal: AbortSignal | undefined,
-    options?: { sendStopOnAbort?: boolean }
+    options?: { sendStopOnAbort?: boolean; peekSettled?: boolean; resumeAfterEof?: boolean }
   ): ReadableStream<UIMessageChunk> {
     const state = this.state;
+    const streamId = ++this.streamSeq;
+    // A stop was outstanding when I subscribed and it isn't mine: my window
+    // replays the stopped turn's tail, so I drop records up to and including
+    // its boundary. Captured per subscription — the stopped stream is still
+    // live and may consume the shared seed before I reach that record.
+    let skipStaleBoundary = state.skipToTurnComplete === true && this.stoppedStreamId !== streamId;
     const accessToken = apiClientManager.accessToken ?? "";
     const onTurnComplete = this.onTurnComplete;
     const chatId = this.chatId;
     const sseCtx: AgentChatEndpointContext = { endpoint: "out", chatId };
     const fetchOverride = this.fetchOverride;
     const sseFetchClient: typeof fetch | undefined = fetchOverride
-      ? ((input, init) => {
+      ? (((input, init) => {
           if (typeof input === "string") {
             return fetchOverride(input, init ?? {}, sseCtx);
           }
@@ -723,7 +778,7 @@ export class AgentChat<TAgent = unknown> {
             },
             sseCtx
           );
-        }) as typeof fetch
+        }) as typeof fetch)
       : undefined;
 
     const internalAbort = new AbortController();
@@ -731,136 +786,221 @@ export class AgentChat<TAgent = unknown> {
       ? AbortSignal.any([abortSignal, internalAbort.signal])
       : internalAbort.signal;
 
-    if (abortSignal) {
-      abortSignal.addEventListener(
-        "abort",
-        () => {
-          if (options?.sendStopOnAbort !== false) {
-            state.skipToTurnComplete = true;
-            this.appendInputChunk(serializeInputChunk({ kind: "stop" })).catch(() => {});
-          }
-          internalAbort.abort();
-        },
-        { once: true }
-      );
-    }
+    // Detached once the stream ends (see the `finally` below): a caller reusing
+    // one signal across turns would otherwise stack listeners, and a late abort
+    // would post a stop that gates the next turn.
+    const onExternalAbort = () => {
+      if (options?.sendStopOnAbort !== false) {
+        state.skipToTurnComplete = true;
+        this.stoppedStreamId = streamId;
+        this.appendInputChunk(serializeInputChunk({ kind: "stop" })).catch(() => {});
+      }
+      internalAbort.abort();
+    };
+    abortSignal?.addEventListener("abort", onExternalAbort, { once: true });
 
     const streamUrl = `${this.resolveBaseURL("out")}/realtime/v1/sessions/${encodeURIComponent(chatId)}/out`;
 
     return new ReadableStream<UIMessageChunk>({
       start: async (controller) => {
-        try {
-          const subscription = new SSEStreamSubscription(streamUrl, {
+        let eofResubscribes = 0;
+        let sawLiveTurn = false;
+        const closeController = () => {
+          try {
+            controller.close();
+          } catch {
+            // Controller may already be closed
+          }
+        };
+        const openSubscription = () =>
+          new SSEStreamSubscription(streamUrl, {
             headers: {
               Authorization: `Bearer ${accessToken}`,
+              // Preview-env sessions are branch-scoped (see appendInputChunk).
+              ...(apiClientManager.branchName
+                ? { "x-trigger-branch": apiClientManager.branchName }
+                : {}),
+              ...(options?.peekSettled ? { "X-Peek-Settled": "1" } : {}),
             },
             signal: combinedSignal,
             timeoutInSeconds: this.streamTimeoutSeconds,
             lastEventId: state.lastEventId,
             fetchClient: sseFetchClient,
           });
-          const sseStream = await subscription.subscribe();
-          const reader = sseStream.getReader();
 
-          try {
-            while (true) {
-              const next = await reader.read();
-              if (next.done) {
-                controller.close();
-                return;
-              }
+        try {
+          while (true) {
+            const subscription = openSubscription();
+            const sseStream = await subscription.subscribe();
+            const reader = sseStream.getReader();
 
-              if (combinedSignal.aborted) {
-                internalAbort.abort();
-                await reader.cancel();
-                controller.close();
-                return;
-              }
+            try {
+              while (true) {
+                const next = await reader.read();
+                if (next.done) {
+                  break;
+                }
 
-              const value = next.value;
+                if (combinedSignal.aborted) {
+                  internalAbort.abort();
+                  await reader.cancel();
+                  closeController();
+                  return;
+                }
 
-              if (value.id) state.lastEventId = value.id;
+                const value = next.value;
 
-              // Trigger control records (turn-complete, upgrade-required)
-              // route by header — see `client-protocol.mdx`. Their bodies
-              // are empty; everything substantive is on `value.headers`.
-              //
-              // Cross-version bridge: an old agent SDK still writing
-              // turn-complete / upgrade-required as `chunk.type` data
-              // records would otherwise stall this loop. Fall back to
-              // the legacy chunk-type form when no header is present
-              // so the deploy-skew window between an `AgentChat`
-              // consumer and a not-yet-redeployed agent doesn't hang.
-              let controlValue = controlSubtype(value.headers);
-              if (!controlValue && value.chunk && typeof value.chunk === "object") {
-                const chunk = value.chunk as { type?: unknown };
-                if (chunk.type === "trigger:turn-complete") {
-                  controlValue = TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE;
-                } else if (chunk.type === "trigger:upgrade-required") {
-                  controlValue = TRIGGER_CONTROL_SUBTYPE.UPGRADE_REQUIRED;
-                } else if (typeof chunk.type === "string" && chunk.type.startsWith("trigger:")) {
-                  // Future / unknown `trigger:*` legacy control type —
-                  // drop so it doesn't leak as a UIMessageChunk.
+                if (value.id) state.lastEventId = value.id;
+                // Any record re-earns the resubscribe budget: a clean EOF is
+                // the normal end of every long-poll window, so a long turn
+                // spanning many windows must not exhaust it.
+                eofResubscribes = 0;
+
+                // Trigger control records (turn-complete, upgrade-required)
+                // route by header — see `client-protocol.mdx`. Their bodies
+                // are empty; everything substantive is on `value.headers`.
+                //
+                // Cross-version bridge: an old agent SDK still writing
+                // turn-complete / upgrade-required as `chunk.type` data
+                // records would otherwise stall this loop. Fall back to
+                // the legacy chunk-type form when no header is present
+                // so the deploy-skew window between an `AgentChat`
+                // consumer and a not-yet-redeployed agent doesn't hang.
+                let controlValue = controlSubtype(value.headers);
+                if (!controlValue && value.chunk && typeof value.chunk === "object") {
+                  const chunk = value.chunk as { type?: unknown };
+                  if (chunk.type === "trigger:turn-complete") {
+                    controlValue = TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE;
+                  } else if (chunk.type === "trigger:upgrade-required") {
+                    controlValue = TRIGGER_CONTROL_SUBTYPE.UPGRADE_REQUIRED;
+                  } else if (typeof chunk.type === "string" && chunk.type.startsWith("trigger:")) {
+                    // Future / unknown `trigger:*` legacy control type —
+                    // drop so it doesn't leak as a UIMessageChunk.
+                    continue;
+                  }
+                }
+
+                // Stale tail of a turn someone else stopped: swallow it and
+                // keep reading to my own turn.
+                if (skipStaleBoundary) {
+                  if (controlValue === TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) {
+                    skipStaleBoundary = false;
+                    state.skipToTurnComplete = false;
+                  }
                   continue;
                 }
-              }
 
-              if (state.skipToTurnComplete) {
+                // I am the stopped stream, so this turn is over at its
+                // boundary: close rather than resume into windows it will
+                // never fill. Keyed on the id alone, so it holds however far
+                // the follow-up subscription has got.
+                if (this.stoppedStreamId === streamId) {
+                  if (controlValue === TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) {
+                    state.skipToTurnComplete = false;
+                    this.stoppedStreamId = undefined;
+                    internalAbort.abort();
+                    closeController();
+                    return;
+                  }
+                  continue;
+                }
+
+                // Both handover markers mean the turn carries on in a
+                // successor run, so they count as a live turn: its chunks
+                // may only arrive in a later window.
+                if (controlValue === TRIGGER_CONTROL_SUBTYPE.UPGRADE_REQUIRED) {
+                  // Server has already triggered the new run via
+                  // `end-and-continue`; v2's chunks arrive on the same
+                  // S2 stream. Filter the marker for cleanliness and
+                  // keep reading.
+                  sawLiveTurn = true;
+                  continue;
+                }
+
+                if (controlValue === TRIGGER_CONTROL_SUBTYPE.PENDING_VERSION) {
+                  sawLiveTurn = true;
+                  continue;
+                }
+
+                // A standalone session-closed record is written after
+                // turn-complete, so only a reconnect ever reads it. The
+                // conversation is over: end the stream, no stop, no error.
+                if (controlValue === TRIGGER_CONTROL_SUBTYPE.SESSION_CLOSED) {
+                  internalAbort.abort();
+                  closeController();
+                  return;
+                }
+
                 if (controlValue === TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) {
-                  state.skipToTurnComplete = false;
+                  // Customer's callback may be async (e.g. persisting
+                  // lastEventId to a DB). Wrap so a rejected Promise
+                  // doesn't surface as an unhandled rejection — that
+                  // would crash Node under `--unhandled-rejections=throw`.
+                  Promise.resolve(
+                    onTurnComplete?.({
+                      chatId,
+                      lastEventId: state.lastEventId,
+                    })
+                  ).catch(() => {});
+                  internalAbort.abort();
+                  closeController();
+                  return;
                 }
-                continue;
-              }
 
-              if (controlValue === TRIGGER_CONTROL_SUBTYPE.UPGRADE_REQUIRED) {
-                // Server has already triggered the new run via
-                // `end-and-continue`; v2's chunks arrive on the same
-                // S2 stream. Filter the marker for cleanliness and
-                // keep reading.
-                continue;
+                // Data record — `value.chunk` is the parsed UIMessageChunk
+                // (the SSE parser does the JSON envelope unwrap). Drop
+                // empty/malformed payloads defensively.
+                if (value.chunk == null) continue;
+                // Parts and the handover markers above are the only evidence of
+                // a live turn. Unknown control records stay neutral: they are no
+                // reason for a reconnect to pin another long-poll window.
+                sawLiveTurn = true;
+                controller.enqueue(value.chunk as UIMessageChunk);
               }
-
-              if (controlValue === TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) {
-                // Customer's callback may be async (e.g. persisting
-                // lastEventId to a DB). Wrap so a rejected Promise
-                // doesn't surface as an unhandled rejection — that
-                // would crash Node under `--unhandled-rejections=throw`.
-                Promise.resolve(
-                  onTurnComplete?.({
-                    chatId,
-                    lastEventId: state.lastEventId,
-                  })
-                ).catch(() => {});
-                internalAbort.abort();
-                try {
-                  controller.close();
-                } catch {
-                  // Controller may already be closed
-                }
-                return;
-              }
-
-              // Data record — `value.chunk` is the parsed UIMessageChunk
-              // (the SSE parser does the JSON envelope unwrap). Drop
-              // empty/malformed payloads defensively.
-              if (value.chunk == null) continue;
-              controller.enqueue(value.chunk as UIMessageChunk);
+            } catch (readError) {
+              reader.releaseLock();
+              throw readError;
             }
-          } catch (readError) {
             reader.releaseLock();
-            throw readError;
+
+            // The body ended without a turn-complete. A turn is in flight
+            // either by construction (the send paths) or because records have
+            // already flowed on this stream — so unless the server says the
+            // session settled we lost the window mid-turn, and resubscribing
+            // from the last event id beats truncating the turn. A `reconnect()`
+            // that never saw a record can't tell a live turn from a dead
+            // session, so it closes rather than pin another long-poll window.
+            const turnInFlight = options?.resumeAfterEof || sawLiveTurn;
+            if (!turnInFlight || subscription.sessionSettled || combinedSignal.aborted) {
+              closeController();
+              return;
+            }
+            if (eofResubscribes >= MAX_EOF_RESUBSCRIBES) {
+              throw new Error(
+                "Chat stream ended before the turn completed (reconnect budget exhausted)."
+              );
+            }
+            eofResubscribes++;
+            await waitBeforeEofResubscribe(eofResubscribes, combinedSignal);
+            if (combinedSignal.aborted) {
+              closeController();
+              return;
+            }
           }
         } catch (error) {
           if (error instanceof Error && error.name === "AbortError") {
-            try {
-              controller.close();
-            } catch {
-              // Controller may already be closed
-            }
+            closeController();
             return;
           }
           controller.error(error);
+        } finally {
+          abortSignal?.removeEventListener("abort", onExternalAbort);
         }
+      },
+      // A consumer that stops reading must also stop the resubscribe loop —
+      // otherwise it keeps reopening a subscription nobody is draining.
+      cancel: () => {
+        internalAbort.abort();
       },
     });
   }

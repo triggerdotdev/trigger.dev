@@ -3,8 +3,9 @@ import { Ratelimit } from "@upstash/ratelimit";
 import { tryCatch } from "@trigger.dev/core";
 import { DevDisconnectRequestBody } from "@trigger.dev/core/v3";
 import { BulkActionId, RunId } from "@trigger.dev/core/v3/isomorphic";
-import { BulkActionNotificationType, BulkActionType } from "@trigger.dev/database";
+import { BulkActionNotificationType, BulkActionType, boundedIn } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
+import { runStore } from "~/v3/runStore.server";
 import { logger } from "~/services/logger.server";
 import { RateLimiter } from "~/services/rateLimiter.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
@@ -38,7 +39,10 @@ const { action } = createActionApiRoute(
     // Only allow dev environments — this endpoint uses finalizeRun which
     // skips PENDING_CANCEL and immediately finalizes executing runs.
     if (authentication.environment.type !== "DEVELOPMENT") {
-      return json({ error: "This endpoint is only available for dev environments" }, { status: 403 });
+      return json(
+        { error: "This endpoint is only available for dev environments" },
+        { status: 403 }
+      );
     }
 
     const environmentId = authentication.environment.id;
@@ -47,7 +51,10 @@ const { action } = createActionApiRoute(
     const rateLimitResult = await disconnectRateLimiter.limit(environmentId);
     if (!rateLimitResult.success) {
       return json(
-        { error: "Rate limit exceeded", retryAfter: Math.ceil((rateLimitResult.reset - Date.now()) / 1000) },
+        {
+          error: "Rate limit exceeded",
+          retryAfter: Math.ceil((rateLimitResult.reset - Date.now()) / 1000),
+        },
         { status: 429 }
       );
     }
@@ -93,27 +100,27 @@ const { action } = createActionApiRoute(
   }
 );
 
-async function cancelRunsInline(
-  runFriendlyIds: string[],
-  environmentId: string
-): Promise<number> {
+async function cancelRunsInline(runFriendlyIds: string[], environmentId: string): Promise<number> {
   const runIds = runFriendlyIds.map((fid) => RunId.toId(fid));
 
-  const runs = await prisma.taskRun.findMany({
-    where: {
-      id: { in: runIds },
-      runtimeEnvironmentId: environmentId,
+  const runs = await runStore.findRuns(
+    {
+      where: {
+        id: { in: boundedIn(runIds) },
+        runtimeEnvironmentId: environmentId,
+      },
+      select: {
+        id: true,
+        engine: true,
+        friendlyId: true,
+        status: true,
+        createdAt: true,
+        completedAt: true,
+        taskEventStore: true,
+      },
     },
-    select: {
-      id: true,
-      engine: true,
-      friendlyId: true,
-      status: true,
-      createdAt: true,
-      completedAt: true,
-      taskEventStore: true,
-    },
-  });
+    prisma
+  );
 
   let cancelled = 0;
   const cancelService = new CancelTaskRunService(prisma);

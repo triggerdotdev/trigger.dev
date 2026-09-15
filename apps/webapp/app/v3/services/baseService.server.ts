@@ -1,8 +1,13 @@
-import { Span, SpanKind } from "@opentelemetry/api";
-import { $replica, PrismaClientOrTransaction, prisma } from "~/db.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import type { Span } from "@opentelemetry/api";
+import { SpanKind } from "@opentelemetry/api";
+import type { RunStore } from "@internal/run-store";
+import type { PrismaClientOrTransaction } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { attributesFromAuthenticatedEnv, tracer } from "../tracer.server";
-import { engine, RunEngine } from "../runEngine.server";
+import type { RunEngine } from "../runEngine.server";
+import { engine } from "../runEngine.server";
+import { runStore as defaultRunStore } from "../runStore.server";
 import { ServiceValidationError } from "./common.server";
 
 export { ServiceValidationError };
@@ -10,7 +15,8 @@ export { ServiceValidationError };
 export abstract class BaseService {
   constructor(
     protected readonly _prisma: PrismaClientOrTransaction = prisma,
-    protected readonly _replica: PrismaClientOrTransaction = $replica
+    protected readonly _replica: PrismaClientOrTransaction = $replica,
+    protected readonly runStore: RunStore = defaultRunStore
   ) {}
 
   protected async traceWithEnv<T>(

@@ -1,5 +1,198 @@
 # @trigger.dev/react-hooks
 
+## 4.6.1
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.6.1`
+
+## 4.6.0
+
+### Minor Changes
+
+- Trigger.dev now uses Zod 4 by default. Projects using Zod 3.25.56 or later 3.x releases remain supported. ([#4039](https://github.com/triggerdotdev/trigger.dev/pull/4039))
+
+  Zod remains a runtime dependency of packages that execute schemas, so existing and new installations continue to receive it automatically. The matching peer dependency range allows package managers to reuse either a compatible Zod 3 or Zod 4 installation from your project.
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.6.0`
+
+## 4.5.16
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.16`
+
+## 4.5.15
+
+### Patch Changes
+
+- Named side channels on a Session: durable, two-way realtime streams that outlive a single run and are shared across runs. Open a channel with `sessions.open(id).channel(name)` (or `chat.channel(name)` inside a `chat.agent`) to get an `.in`/`.out` pair addressed by name rather than the reserved default pair. Writing a side channel's `.in` does not wake or trigger a run, so a channel can carry out-of-band data (a stream of frames, a control signal) that many clients read while the agent produces it. ([#4815](https://github.com/triggerdotdev/trigger.dev/pull/4815))
+
+  ```ts
+  // Inside a chat.agent: stream frames on a named channel, wakes nothing
+  const frames = chat.channel("screenshots");
+  await frames.out.append(frame);
+  frames.in.on((control) => {
+    /* client control, no suspend */
+  });
+  ```
+
+  Declare channel record types once with `sessions.defineChannel(...)` and infer them on both the producer and the consumer, including `useSessionStreamChannel` in React. Channels get a default retention that keeps them bounded, overridable per channel.
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.15`
+
+## 4.5.14
+
+### Patch Changes
+
+- Realtime stream subscriptions can now refresh an expired access token and reconnect, via a new optional `refreshAccessToken` option on the client configuration and the React hooks. ([#4811](https://github.com/triggerdotdev/trigger.dev/pull/4811))
+- Subscribe to a realtime stream from its latest record instead of replaying the whole history. Pass `from: "latest"` to `useRealtimeStream`, `streams.read()`, or `fetchStream` to start at the current tail (the latest record, then live updates) instead of replaying (a live "last value" view), and `maxParts` to keep the accumulated `parts` array bounded. A reconnect or remount resumes from the last record it saw, so no records are missed and none are replayed. `from: "latest"` needs a server that supports it; older servers safely fall back to a full replay. ([#4811](https://github.com/triggerdotdev/trigger.dev/pull/4811))
+
+  `useRealtimeStream` also gains a `lastEventId` option and returns the `lastEventId` of the last part seen, so you can persist the cursor (for example across a page reload) and resume exactly where you left off. An `onParts` callback delivers each throttled batch of parts with their event ids.
+
+  ```tsx
+  const { parts, lastEventId } = useRealtimeStream<Frame>(runId, "frames", {
+    from: "latest", // skip history, start at the current tail
+    maxParts: 1, // keep only the most recent frame
+    lastEventId: savedCursor, // resume from a persisted cursor
+    onParts: (batch) => save(batch.at(-1)?.id), // track the cursor
+    accessToken,
+  });
+  ```
+
+- Added a `useSessionStream` React hook for reading a session's output or input channel in realtime. It accumulates records with automatic resume from the last record you received, and supports `from: "latest"` (start at the current tail, only new records after you connect), `maxRecords` (keep a bounded number of records in memory), a `lastEventId` resume cursor, and an `onRecords` callback that delivers each throttled batch of records with their event ids. ([#4811](https://github.com/triggerdotdev/trigger.dev/pull/4811))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.14`
+
+## 4.5.13
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.13`
+
+## 4.5.12
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.12`
+
+## 4.5.11
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.11`
+
+## 4.5.10
+
+### Patch Changes
+
+- `debounce` now works when you pass an array of items to `batchTrigger` or `batchTriggerAndWait`, and when you trigger from `useTaskTrigger`. Previously the option was accepted by the types and dropped before the request was sent, so every trigger created its own run instead of collapsing onto the debounce key. ([#4520](https://github.com/triggerdotdev/trigger.dev/pull/4520))
+
+  ```ts
+  await myTask.batchTrigger([
+    {
+      payload: { id: "a" },
+      options: { debounce: { key: "same-key", delay: "30s" } },
+    },
+    {
+      payload: { id: "b" },
+      options: { debounce: { key: "same-key", delay: "30s" } },
+    },
+  ]);
+  ```
+
+  The streaming (async iterable) forms of the batch calls were already forwarding `debounce` correctly.
+
+- Refresh package builds for TypeScript 7 compatibility while preserving existing runtime entry points. Projects using `emitDecoratorMetadata()` with TypeScript 7 can install the `@typescript/typescript6` compatibility package alongside it; the package remains optional, so installing the Trigger.dev CLI does not install an additional compiler. ([#4318](https://github.com/triggerdotdev/trigger.dev/pull/4318))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.10`
+
+## 4.5.9
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.9`
+
+## 4.5.8
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.8`
+
+## 4.5.7
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.7`
+
+## 4.5.6
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.6`
+
+## 4.5.5
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.5`
+
+## 4.5.4
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.4`
+
+## 4.5.3
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.3`
+
+## 4.5.2
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.2`
+
+## 4.5.1
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.1`
+
+## 4.5.0
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.0`
+
+## 4.5.0-rc.7
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.0-rc.7`
+
 ## 4.5.0-rc.6
 
 ### Patch Changes
@@ -597,7 +790,6 @@
 ### Minor Changes
 
 - Improved Batch Triggering: ([#1502](https://github.com/triggerdotdev/trigger.dev/pull/1502))
-
   - The new Batch Trigger endpoint is now asynchronous and supports up to 500 runs per request.
   - The new endpoint also supports triggering multiple different tasks in a single batch request (support in the SDK coming soon).
   - The existing `batchTrigger` method now supports the new endpoint, and shouldn't require any changes to your code.
@@ -611,14 +803,19 @@
   });
   // Works for individual items as well:
   await myTask.batchTrigger([
-    { payload: { foo: "bar" }, options: { idempotencyKey: "my-key", idempotencyKeyTTL: "60s" } },
+    {
+      payload: { foo: "bar" },
+      options: { idempotencyKey: "my-key", idempotencyKeyTTL: "60s" },
+    },
   ]);
   // And `trigger`:
-  await myTask.trigger({ foo: "bar" }, { idempotencyKey: "my-key", idempotencyKeyTTL: "60s" });
+  await myTask.trigger(
+    { foo: "bar" },
+    { idempotencyKey: "my-key", idempotencyKeyTTL: "60s" },
+  );
   ```
 
   ### Breaking Changes
-
   - We've removed the `idempotencyKey` option from `triggerAndWait` and `batchTriggerAndWait`, because it can lead to permanently frozen runs in deployed tasks. We're working on upgrading our entire system to support idempotency keys on these methods, and we'll re-add the option once that's complete.
 
 ### Patch Changes

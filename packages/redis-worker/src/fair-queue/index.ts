@@ -1,22 +1,22 @@
-import { createRedisClient, type Redis, type RedisOptions } from "@internal/redis";
+import { createRedisClient, type Redis } from "@internal/redis";
 import { SpanKind, type Span } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
+import type { AnyZodSchema, inferZodSchemaOutput } from "@trigger.dev/core/v3";
 import { nanoid } from "nanoid";
-import { setInterval } from "node:timers/promises";
-import { type z } from "zod";
+import { setInterval, setTimeout as delay } from "node:timers/promises";
+import { type z } from "zod/v4";
+import { isAbortError } from "../utils.js";
 import { ConcurrencyManager } from "./concurrency.js";
 import { MasterQueue } from "./masterQueue.js";
-import { TenantDispatch } from "./tenantDispatch.js";
-import { type RetryStrategy, ExponentialBackoffRetry } from "./retry.js";
-import { isAbortError } from "../utils.js";
+import { type RetryStrategy } from "./retry.js";
 import {
-  FairQueueTelemetry,
-  FairQueueAttributes,
-  MessagingAttributes,
   BatchedSpanManager,
+  FairQueueAttributes,
+  FairQueueTelemetry,
+  MessagingAttributes,
 } from "./telemetry.js";
+import { TenantDispatch } from "./tenantDispatch.js";
 import type {
-  ConcurrencyGroupConfig,
   DeadLetterMessage,
   DispatchSchedulerContext,
   EnqueueBatchOptions,
@@ -26,6 +26,7 @@ import type {
   FairScheduler,
   QueueCooloffState,
   QueueDescriptor,
+  ReclaimedMessageInfo,
   SchedulerContext,
   StoredMessage,
   TenantQueues,
@@ -34,17 +35,17 @@ import { VisibilityManager } from "./visibility.js";
 import { WorkerQueueManager } from "./workerQueue.js";
 
 // Re-export all types and components
-export * from "./types.js";
+export * from "./concurrency.js";
 export * from "./keyProducer.js";
 export * from "./masterQueue.js";
-export * from "./concurrency.js";
-export * from "./visibility.js";
-export * from "./workerQueue.js";
+export * from "./retry.js";
 export * from "./scheduler.js";
 export * from "./schedulers/index.js";
-export * from "./retry.js";
 export * from "./telemetry.js";
 export * from "./tenantDispatch.js";
+export * from "./types.js";
+export * from "./visibility.js";
+export * from "./workerQueue.js";
 
 /**
  * FairQueue is the main orchestrator for fair queue message routing.
@@ -64,7 +65,7 @@ export * from "./tenantDispatch.js";
  *
  * @typeParam TPayloadSchema - Zod schema for message payload validation
  */
-export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
+export class FairQueue<TPayloadSchema extends AnyZodSchema = z.ZodUnknown> {
   private redis: Redis;
   private keys: FairQueueKeyProducer;
   private scheduler: FairScheduler;
@@ -86,7 +87,10 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   private visibilityTimeoutMs: number;
   private heartbeatIntervalMs: number;
   private reclaimIntervalMs: number;
-  private workerQueueResolver: (message: StoredMessage<z.infer<TPayloadSchema>>) => string;
+  private reconcileIntervalMs: number;
+  private workerQueueResolver: (
+    message: StoredMessage<inferZodSchemaOutput<TPayloadSchema>>
+  ) => string;
   private batchClaimSize: number;
 
   // Cooloff state
@@ -110,6 +114,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   private abortController: AbortController;
   private masterQueueConsumerLoops: Promise<void>[] = [];
   private reclaimLoop?: Promise<void>;
+  private reconcileLoop?: Promise<void>;
 
   // Queue descriptor cache for message processing
   private queueDescriptorCache = new Map<string, QueueDescriptor>();
@@ -139,6 +144,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     this.visibilityTimeoutMs = options.visibilityTimeoutMs ?? 30_000;
     this.heartbeatIntervalMs = options.heartbeatIntervalMs ?? this.visibilityTimeoutMs / 3;
     this.reclaimIntervalMs = options.reclaimIntervalMs ?? 5_000;
+    this.reconcileIntervalMs = options.reconcileIntervalMs ?? 60_000;
 
     // Worker queue resolver (required)
     this.workerQueueResolver = options.workerQueue.resolveWorkerQueue;
@@ -192,12 +198,15 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       shardCount: this.shardCount,
     });
 
-
     if (options.concurrencyGroups && options.concurrencyGroups.length > 0) {
       this.concurrencyManager = new ConcurrencyManager({
         redis: options.redis,
         keys: options.keys,
         groups: options.concurrencyGroups,
+        logger: {
+          debug: (msg, ctx) => this.logger.debug(msg, ctx),
+          error: (msg, ctx) => this.logger.error(msg, ctx),
+        },
       });
     }
 
@@ -266,7 +275,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   /**
    * Enqueue a single message to a queue.
    */
-  async enqueue(options: EnqueueOptions<z.infer<TPayloadSchema>>): Promise<string> {
+  async enqueue(options: EnqueueOptions<inferZodSchemaOutput<TPayloadSchema>>): Promise<string> {
     return this.telemetry.trace(
       "enqueue",
       async (span) => {
@@ -295,7 +304,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
         this.queueDescriptorCache.set(options.queueId, descriptor);
 
         // Build stored message
-        const storedMessage: StoredMessage<z.infer<TPayloadSchema>> = {
+        const storedMessage: StoredMessage<inferZodSchemaOutput<TPayloadSchema>> = {
           id: messageId,
           queueId: options.queueId,
           tenantId: options.tenantId,
@@ -358,7 +367,9 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   /**
    * Enqueue multiple messages to a queue.
    */
-  async enqueueBatch(options: EnqueueBatchOptions<z.infer<TPayloadSchema>>): Promise<string[]> {
+  async enqueueBatch(
+    options: EnqueueBatchOptions<inferZodSchemaOutput<TPayloadSchema>>
+  ): Promise<string[]> {
     return this.telemetry.trace(
       "enqueueBatch",
       async (span) => {
@@ -394,7 +405,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
             }
           }
 
-          const storedMessage: StoredMessage<z.infer<TPayloadSchema>> = {
+          const storedMessage: StoredMessage<inferZodSchemaOutput<TPayloadSchema>> = {
             id: messageId,
             queueId: options.queueId,
             tenantId: options.tenantId,
@@ -465,7 +476,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   async getDeadLetterMessages(
     tenantId: string,
     limit: number = 100
-  ): Promise<DeadLetterMessage<z.infer<TPayloadSchema>>[]> {
+  ): Promise<DeadLetterMessage<inferZodSchemaOutput<TPayloadSchema>>[]> {
     if (!this.deadLetterQueueEnabled) {
       return [];
     }
@@ -476,7 +487,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     // Get message IDs with scores (deadLetteredAt timestamps)
     const results = await this.redis.zrange(dlqKey, 0, limit - 1, "WITHSCORES");
 
-    const messages: DeadLetterMessage<z.infer<TPayloadSchema>>[] = [];
+    const messages: DeadLetterMessage<inferZodSchemaOutput<TPayloadSchema>>[] = [];
 
     for (let i = 0; i < results.length; i += 2) {
       const messageId = results[i];
@@ -487,7 +498,9 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       if (!dataJson) continue;
 
       try {
-        const data = JSON.parse(dataJson) as DeadLetterMessage<z.infer<TPayloadSchema>>;
+        const data = JSON.parse(dataJson) as DeadLetterMessage<
+          inferZodSchemaOutput<TPayloadSchema>
+        >;
         data.deadLetteredAt = parseFloat(deadLetteredAtStr);
         messages.push(data);
       } catch {
@@ -518,7 +531,9 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           return false;
         }
 
-        const dlqMessage = JSON.parse(dataJson) as DeadLetterMessage<z.infer<TPayloadSchema>>;
+        const dlqMessage = JSON.parse(dataJson) as DeadLetterMessage<
+          inferZodSchemaOutput<TPayloadSchema>
+        >;
 
         // Re-enqueue with reset attempt count
         await this.enqueue({
@@ -659,6 +674,10 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     // Start reclaim loop for handling timed-out messages
     this.reclaimLoop = this.#runReclaimLoop();
 
+    if (this.concurrencyManager && this.reconcileIntervalMs > 0) {
+      this.reconcileLoop = this.#runReconcileLoop();
+    }
+
     this.logger.info("FairQueue started", {
       consumerCount: this.consumerCount,
       shardCount: this.shardCount,
@@ -677,10 +696,15 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     this.isRunning = false;
     this.abortController.abort();
 
-    await Promise.allSettled([...this.masterQueueConsumerLoops, this.reclaimLoop]);
+    await Promise.allSettled([
+      ...this.masterQueueConsumerLoops,
+      this.reclaimLoop,
+      this.reconcileLoop,
+    ]);
 
     this.masterQueueConsumerLoops = [];
     this.reclaimLoop = undefined;
+    this.reconcileLoop = undefined;
 
     this.logger.info("FairQueue stopped");
   }
@@ -1126,7 +1150,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
 
     // Claim batch of messages with visibility timeout
     const claimedMessages = await this.visibilityManager.claimBatch<
-      StoredMessage<z.infer<TPayloadSchema>>
+      StoredMessage<inferZodSchemaOutput<TPayloadSchema>>
     >(queueId, queueKey, queueItemsKey, loopId, maxClaimCount, this.visibilityTimeoutMs);
 
     if (claimedMessages.length === 0) {
@@ -1196,7 +1220,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   async getMessageData(
     messageId: string,
     queueId: string
-  ): Promise<StoredMessage<z.infer<TPayloadSchema>> | null> {
+  ): Promise<StoredMessage<inferZodSchemaOutput<TPayloadSchema>> | null> {
     const shardId = this.masterQueue.getShardForQueue(queueId);
     const inflightDataKey = this.keys.inflightDataKey(shardId);
     const dataJson = await this.redis.hget(inflightDataKey, messageId);
@@ -1206,7 +1230,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     }
 
     try {
-      return JSON.parse(dataJson) as StoredMessage<z.infer<TPayloadSchema>>;
+      return JSON.parse(dataJson) as StoredMessage<inferZodSchemaOutput<TPayloadSchema>>;
     } catch {
       this.logger.error("Failed to parse message data", { messageId, queueId });
       return null;
@@ -1238,7 +1262,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
 
     // Get stored message for concurrency release
     const dataJson = await this.redis.hget(inflightDataKey, messageId);
-    let storedMessage: StoredMessage<z.infer<TPayloadSchema>> | null = null;
+    let storedMessage: StoredMessage<inferZodSchemaOutput<TPayloadSchema>> | null = null;
     if (dataJson) {
       try {
         storedMessage = JSON.parse(dataJson);
@@ -1247,27 +1271,19 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       }
     }
 
-    const descriptor: QueueDescriptor = storedMessage
-      ? this.queueDescriptorCache.get(queueId) ?? {
-          id: queueId,
-          tenantId: storedMessage.tenantId,
-          metadata: storedMessage.metadata ?? {},
-        }
-      : { id: queueId, tenantId: this.keys.extractTenantId(queueId), metadata: {} };
+    const descriptor: QueueDescriptor = this.queueDescriptorCache.get(queueId) ?? {
+      id: queueId,
+      tenantId: storedMessage?.tenantId ?? this.keys.extractTenantId(queueId),
+      metadata: storedMessage?.metadata ?? {},
+    };
+
+    await this.#releaseConcurrencySafely(descriptor, messageId, "completeMessage");
 
     // Complete in visibility manager
     await this.visibilityManager.complete(messageId, queueId);
 
-    // Release concurrency
-    if (this.concurrencyManager && storedMessage) {
-      await this.concurrencyManager.release(descriptor, messageId);
-    }
-
     // Update both old and new indexes, clean up caches if queue is empty
-    const { queueEmpty } = await this.#updateAllIndexesAfterDequeue(
-      queueId,
-      descriptor.tenantId
-    );
+    const { queueEmpty } = await this.#updateAllIndexesAfterDequeue(queueId, descriptor.tenantId);
     if (queueEmpty) {
       this.queueDescriptorCache.delete(queueId);
       this.queueCooloffStates.delete(queueId);
@@ -1296,7 +1312,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
 
     // Get stored message for concurrency release
     const dataJson = await this.redis.hget(inflightDataKey, messageId);
-    let storedMessage: StoredMessage<z.infer<TPayloadSchema>> | null = null;
+    let storedMessage: StoredMessage<inferZodSchemaOutput<TPayloadSchema>> | null = null;
     if (dataJson) {
       try {
         storedMessage = JSON.parse(dataJson);
@@ -1305,13 +1321,14 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       }
     }
 
-    const descriptor: QueueDescriptor = storedMessage
-      ? this.queueDescriptorCache.get(queueId) ?? {
-          id: queueId,
-          tenantId: storedMessage.tenantId,
-          metadata: storedMessage.metadata ?? {},
-        }
-      : { id: queueId, tenantId: this.keys.extractTenantId(queueId), metadata: {} };
+    const descriptor: QueueDescriptor = this.queueDescriptorCache.get(queueId) ?? {
+      id: queueId,
+      tenantId: storedMessage?.tenantId ?? this.keys.extractTenantId(queueId),
+      metadata: storedMessage?.metadata ?? {},
+    };
+
+    // Release concurrency
+    await this.#releaseConcurrencySafely(descriptor, messageId, "releaseMessage");
 
     // Release back to queue (visibility manager updates dispatch indexes atomically)
     // Dispatch shard is tenant-based, not queue-based
@@ -1329,15 +1346,60 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       Date.now() // Put at back of queue
     );
 
-    // Release concurrency
-    if (this.concurrencyManager && storedMessage) {
-      await this.concurrencyManager.release(descriptor, messageId);
-    }
-
     this.logger.debug("Message released", {
       messageId,
       queueId,
     });
+  }
+
+  /**
+   * Release a message's concurrency slots without letting a failure escape. Release is
+   * best-effort cleanup: the primary state transition (complete, retry, DLQ, requeue)
+   * must proceed even when the slot cannot be freed, because aborting the transition
+   * re-delivers or strands the message, while a leaked slot is recoverable — reserve()
+   * re-admits a message that already holds its own slot, and the reconcile loop removes
+   * members that are no longer in flight.
+   */
+  async #releaseConcurrencySafely(
+    descriptor: QueueDescriptor,
+    messageId: string,
+    context: string
+  ): Promise<void> {
+    if (!this.concurrencyManager) {
+      return;
+    }
+
+    try {
+      await this.concurrencyManager.release(descriptor, messageId);
+    } catch (error) {
+      this.logger.error("Failed to release concurrency slot, leaving it for the reconciler", {
+        context,
+        messageId,
+        queueId: descriptor.id,
+        tenantId: descriptor.tenantId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * Release a concurrency slot for a message we can no longer describe, deriving the
+   * group from the queue id alone. Used on paths that bail out before the stored
+   * message is available, where the slot would otherwise be held with nothing left
+   * to reclaim it.
+   */
+  async #releaseOrphanedConcurrency(messageId: string, queueId: string): Promise<void> {
+    if (!this.concurrencyManager) {
+      return;
+    }
+
+    const descriptor: QueueDescriptor = this.queueDescriptorCache.get(queueId) ?? {
+      id: queueId,
+      tenantId: this.keys.extractTenantId(queueId),
+      metadata: {},
+    };
+
+    await this.#releaseConcurrencySafely(descriptor, messageId, "failMessage:missing-record");
   }
 
   /**
@@ -1358,10 +1420,11 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     const dataJson = await this.redis.hget(inflightDataKey, messageId);
     if (!dataJson) {
       this.logger.error("Cannot fail message: not found in in-flight data", { messageId, queueId });
+      await this.#releaseOrphanedConcurrency(messageId, queueId);
       return;
     }
 
-    let storedMessage: StoredMessage<z.infer<TPayloadSchema>>;
+    let storedMessage: StoredMessage<inferZodSchemaOutput<TPayloadSchema>>;
     try {
       storedMessage = JSON.parse(dataJson);
     } catch {
@@ -1369,6 +1432,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
         messageId,
         queueId,
       });
+      await this.#releaseOrphanedConcurrency(messageId, queueId);
       return;
     }
 
@@ -1395,7 +1459,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   // ============================================================================
 
   async #handleMessageFailure(
-    storedMessage: StoredMessage<z.infer<TPayloadSchema>>,
+    storedMessage: StoredMessage<inferZodSchemaOutput<TPayloadSchema>>,
     queueId: string,
     queueKey: string,
     queueItemsKey: string,
@@ -1416,6 +1480,8 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           attempt: storedMessage.attempt + 1,
         };
 
+        await this.#releaseConcurrencySafely(descriptor, storedMessage.id, "retry");
+
         // Release with delay, passing the updated message data so the Lua script
         // atomically writes the incremented attempt count when re-queuing.
         const tenantQueueIndexKey = this.keys.tenantQueueIndexKey(descriptor.tenantId);
@@ -1432,11 +1498,6 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
           JSON.stringify(updatedMessage)
         );
 
-        // Release concurrency
-        if (this.concurrencyManager) {
-          await this.concurrencyManager.release(descriptor, storedMessage.id);
-        }
-
         this.telemetry.recordRetry();
 
         this.logger.debug("Message scheduled for retry", {
@@ -1450,17 +1511,15 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       }
     }
 
+    // Release concurrency
+    await this.#releaseConcurrencySafely(descriptor, storedMessage.id, "deadLetter");
+
     // Move to DLQ
     await this.#moveToDeadLetterQueue(storedMessage, error?.message);
-
-    // Release concurrency
-    if (this.concurrencyManager) {
-      await this.concurrencyManager.release(descriptor, storedMessage.id);
-    }
   }
 
   async #moveToDeadLetterQueue(
-    storedMessage: StoredMessage<z.infer<TPayloadSchema>>,
+    storedMessage: StoredMessage<inferZodSchemaOutput<TPayloadSchema>>,
     errorMessage?: string
   ): Promise<void> {
     if (!this.deadLetterQueueEnabled) {
@@ -1471,9 +1530,9 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
 
     const dlqKey = this.keys.deadLetterQueueKey(storedMessage.tenantId);
     const dlqDataKey = this.keys.deadLetterQueueDataKey(storedMessage.tenantId);
-    const shardId = this.masterQueue.getShardForQueue(storedMessage.queueId);
+    const _shardId = this.masterQueue.getShardForQueue(storedMessage.queueId);
 
-    const dlqMessage: DeadLetterMessage<z.infer<TPayloadSchema>> = {
+    const dlqMessage: DeadLetterMessage<inferZodSchemaOutput<TPayloadSchema>> = {
       id: storedMessage.id,
       queueId: storedMessage.queueId,
       tenantId: storedMessage.tenantId,
@@ -1530,55 +1589,129 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     }
   }
 
+  /**
+   * Free every timed-out message's concurrency slot in one pipeline before the batch is
+   * requeued. A failed release never blocks the requeue: holding the message in-flight
+   * would stall it behind a persistent release failure, while the leaked slot self-heals
+   * when the message is re-admitted (reserve is idempotent for a message that already
+   * holds its own slot) or via the reconcile loop.
+   */
+  async #releaseReclaimedConcurrency(messages: ReclaimedMessageInfo[]): Promise<void> {
+    if (!this.concurrencyManager || messages.length === 0) {
+      return;
+    }
+
+    const descriptorFor = (message: ReclaimedMessageInfo): QueueDescriptor => ({
+      id: message.queueId,
+      tenantId: message.tenantId,
+      metadata: message.metadata ?? {},
+    });
+
+    try {
+      await this.concurrencyManager.releaseBatch(
+        messages.map((message) => ({ queue: descriptorFor(message), messageId: message.messageId }))
+      );
+      return;
+    } catch (error) {
+      this.logger.error("Batch concurrency release failed, retrying message by message", {
+        count: messages.length,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    for (const message of messages) {
+      await this.#releaseConcurrencySafely(descriptorFor(message), message.messageId, "reclaim");
+    }
+  }
+
   async #reclaimTimedOutMessages(): Promise<void> {
     let totalReclaimed = 0;
 
     for (let shardId = 0; shardId < this.shardCount; shardId++) {
-      const reclaimedMessages = await this.visibilityManager.reclaimTimedOut(shardId, (queueId) => {
-        const tenantId = this.keys.extractTenantId(queueId);
-        const dispatchShardId = this.tenantDispatch.getShardForTenant(tenantId);
-        return {
-          queueKey: this.keys.queueKey(queueId),
-          queueItemsKey: this.keys.queueItemsKey(queueId),
-          tenantQueueIndexKey: this.keys.tenantQueueIndexKey(tenantId),
-          dispatchKey: this.keys.dispatchKey(dispatchShardId),
-          tenantId,
-        };
-      });
+      try {
+        const reclaimedMessages = await this.visibilityManager.reclaimTimedOut(
+          shardId,
+          (queueId) => {
+            const tenantId = this.keys.extractTenantId(queueId);
+            const dispatchShardId = this.tenantDispatch.getShardForTenant(tenantId);
+            return {
+              queueKey: this.keys.queueKey(queueId),
+              queueItemsKey: this.keys.queueItemsKey(queueId),
+              tenantQueueIndexKey: this.keys.tenantQueueIndexKey(tenantId),
+              dispatchKey: this.keys.dispatchKey(dispatchShardId),
+              tenantId,
+            };
+          },
+          this.#releaseReclaimedConcurrency.bind(this)
+        );
 
-      if (reclaimedMessages.length > 0) {
-        // Release concurrency for all reclaimed messages in a single batch
-        // This is critical: when a message times out, its concurrency slot must be freed
-        // so the message can be processed again when it's re-claimed from the queue
-        if (this.concurrencyManager) {
-          try {
-            await this.concurrencyManager.releaseBatch(
-              reclaimedMessages.map((msg) => ({
-                queue: {
-                  id: msg.queueId,
-                  tenantId: msg.tenantId,
-                  metadata: msg.metadata ?? {},
-                },
-                messageId: msg.messageId,
-              }))
-            );
-          } catch (error) {
-            this.logger.error("Failed to release concurrency for reclaimed messages", {
-              count: reclaimedMessages.length,
-              error: error instanceof Error ? error.message : String(error),
-            });
-          }
-        }
-
-        // Dispatch indexes are updated atomically by the releaseMessage Lua script
-        // inside reclaimTimedOut, so no separate index update needed here.
+        totalReclaimed += reclaimedMessages.length;
+      } catch (error) {
+        this.logger.error("Failed to reclaim shard, leaving messages in-flight for the next tick", {
+          shardId,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
-
-      totalReclaimed += reclaimedMessages.length;
     }
 
     if (totalReclaimed > 0) {
       this.logger.info("Reclaimed timed-out messages", { count: totalReclaimed });
+    }
+  }
+
+  /**
+   * The initial delay is jittered so instances sharing a Redis do not all sweep at once.
+   */
+  async #runReconcileLoop(): Promise<void> {
+    try {
+      await delay(Math.random() * this.reconcileIntervalMs, null, {
+        signal: this.abortController.signal,
+      });
+
+      for await (const _ of setInterval(this.reconcileIntervalMs, null, {
+        signal: this.abortController.signal,
+      })) {
+        try {
+          await this.#reconcileConcurrency();
+        } catch (error) {
+          this.logger.error("Concurrency reconcile loop error", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+    } catch (error) {
+      if (isAbortError(error)) {
+        this.logger.debug("Concurrency reconcile loop aborted");
+        return;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Heal orphaned concurrency slots: remove any concurrency set member whose message is
+   * not registered in-flight on any shard. This is the recovery path for slots leaked by
+   * failed releases, which otherwise count against a tenant's limit forever and can
+   * wedge every queue the tenant owns.
+   */
+  async #reconcileConcurrency(): Promise<void> {
+    if (!this.concurrencyManager) {
+      return;
+    }
+
+    const inflightDataKeys = Array.from({ length: this.shardCount }, (_, shardId) =>
+      this.keys.inflightDataKey(shardId)
+    );
+
+    const { scannedSets, removed } =
+      await this.concurrencyManager.sweepOrphanedSlots(inflightDataKeys);
+
+    if (removed.length > 0) {
+      this.logger.info("Reconciled orphaned concurrency slots", {
+        count: removed.length,
+        scannedSets,
+        messageIds: removed.slice(0, 50),
+      });
     }
   }
 
@@ -1599,42 +1732,6 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     }
 
     return false;
-  }
-
-  #incrementCooloff(queueId: string): void {
-    // Safety check: if the cache is too large, just clear it
-    if (this.queueCooloffStates.size >= this.maxCooloffStatesSize) {
-      this.logger.warn("Cooloff states cache hit size cap, clearing all entries", {
-        size: this.queueCooloffStates.size,
-        cap: this.maxCooloffStatesSize,
-      });
-      this.queueCooloffStates.clear();
-    }
-
-    const state = this.queueCooloffStates.get(queueId) ?? {
-      tag: "normal" as const,
-      consecutiveFailures: 0,
-    };
-
-    if (state.tag === "normal") {
-      const newFailures = state.consecutiveFailures + 1;
-      if (newFailures >= this.cooloffThreshold) {
-        this.queueCooloffStates.set(queueId, {
-          tag: "cooloff",
-          expiresAt: Date.now() + this.cooloffPeriodMs,
-        });
-        this.logger.debug("Queue entered cooloff", {
-          queueId,
-          cooloffPeriodMs: this.cooloffPeriodMs,
-          consecutiveFailures: newFailures,
-        });
-      } else {
-        this.queueCooloffStates.set(queueId, {
-          tag: "normal",
-          consecutiveFailures: newFailures,
-        });
-      }
-    }
   }
 
   #resetCooloff(queueId: string): void {

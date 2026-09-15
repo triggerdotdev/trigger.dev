@@ -1,11 +1,12 @@
 import {
   ApiDeploymentListParams,
   MachinePresetName,
+  ReportPeriodSchema,
   RunStatus,
 } from "@trigger.dev/core/v3/schemas";
 import { z } from "zod";
 
-export const ProjectRefSchema = z
+const ProjectRefSchema = z
   .string()
   .describe(
     "The trigger.dev project ref, starts with proj_. We will attempt to automatically detect the project ref if running inside a directory that includes a trigger.config.ts file, or if you pass the --project-ref option to the MCP server."
@@ -54,7 +55,9 @@ export const CommonProjectsInput = z.object({
     .default("dev"),
   branch: z
     .string()
-    .describe("The branch to get tasks for, only used for preview environments")
+    .describe(
+      "The branch to get tasks for, only used for preview environments and branchable development environments"
+    )
     .optional(),
 });
 
@@ -84,7 +87,7 @@ export const TriggerTaskInput = CommonProjectsInput.extend({
         .optional(),
       delay: z
         .string()
-        .or(z.coerce.date())
+        .or(z.iso.datetime())
         .describe("The delay before the task run is executed")
         .optional(),
       idempotencyKey: z.string().describe("The idempotency key to use for the task run").optional(),
@@ -97,6 +100,12 @@ export const TriggerTaskInput = CommonProjectsInput.extend({
       maxDuration: z
         .number()
         .describe("The maximum duration in seconds of the task run")
+        .optional(),
+      region: z
+        .string()
+        .describe(
+          "The region to run the task in, overriding the default region set for the project. Available regions are listed on the Regions page in the dashboard, and this has no effect in the dev environment"
+        )
         .optional(),
       tags: z
         .array(z.string())
@@ -193,7 +202,7 @@ export const ListRunsInput = CommonProjectsInput.extend({
 
 export type ListRunsInput = z.output<typeof ListRunsInput>;
 
-export const CommonDeployInput = CommonProjectsInput.omit({
+const CommonDeployInput = CommonProjectsInput.omit({
   environment: true,
 }).extend({
   environment: z
@@ -202,7 +211,7 @@ export const CommonDeployInput = CommonProjectsInput.omit({
     .default("prod"),
 });
 
-export type CommonDeployInput = z.output<typeof CommonDeployInput>;
+type CommonDeployInput = z.output<typeof CommonDeployInput>;
 
 export const DeployInput = CommonDeployInput.extend({
   skipPromotion: z
@@ -240,17 +249,9 @@ export const QueryInput = CommonProjectsInput.extend({
   period: z
     .string()
     .optional()
-    .describe(
-      "Time period shorthand, e.g. '1h', '7d', '30d'. Mutually exclusive with from/to."
-    ),
-  from: z
-    .string()
-    .optional()
-    .describe("Start of time range (ISO 8601). Must be paired with 'to'."),
-  to: z
-    .string()
-    .optional()
-    .describe("End of time range (ISO 8601). Must be paired with 'from'."),
+    .describe("Time period shorthand, e.g. '1h', '7d', '30d'. Mutually exclusive with from/to."),
+  from: z.string().optional().describe("Start of time range (ISO 8601). Must be paired with 'to'."),
+  to: z.string().optional().describe("End of time range (ISO 8601). Must be paired with 'from'."),
 });
 
 export type QueryInput = z.output<typeof QueryInput>;
@@ -263,9 +264,7 @@ export const QuerySchemaInput = CommonProjectsInput.pick({
 }).extend({
   table: z
     .string()
-    .describe(
-      "The table name to get the schema for (e.g. 'runs', 'metrics', 'llm_metrics')."
-    ),
+    .describe("The table name to get the schema for (e.g. 'runs', 'metrics', 'llm_metrics')."),
 });
 
 export type QuerySchemaInput = z.output<typeof QuerySchemaInput>;
@@ -278,6 +277,37 @@ export const ListDashboardsInput = CommonProjectsInput.pick({
 });
 
 export type ListDashboardsInput = z.output<typeof ListDashboardsInput>;
+
+// Re-exported from core so the CLI, the API clients and the route share one period grammar. The
+// route stays the authoritative boundary.
+export { ReportPeriodSchema };
+
+// `environment` inherits CommonProjectsInput's `.default("dev")` — intentional: the MCP server
+// is dev-centric (often `--dev-only`), so an unspecified env reports on dev. The `trigger report`
+// CLI defaults to prod instead (a manual prod check). Agents should pass `environment` explicitly.
+export const GetReportInput = CommonProjectsInput.pick({
+  projectRef: true,
+  configPath: true,
+  environment: true,
+  branch: true,
+}).extend({
+  key: z
+    .enum(["health"])
+    .describe(
+      "The report to render. 'health' answers 'is work flowing, and is a problem my code or the platform?' with an interpreted verdict (flow / execution / liveness)."
+    ),
+  period: ReportPeriodSchema.optional().describe(
+    "Time period shorthand for the live window, e.g. '1h' (default), '24h', '7d'. Minutes (m) to weeks (w), max 90d. Seconds are not supported — reports bucket by whole minutes."
+  ),
+  color: z
+    .boolean()
+    .optional()
+    .describe(
+      "Return the report as ANSI-coloured text instead of markdown. Only renders in hosts that display ANSI in tool output."
+    ),
+});
+
+export type GetReportInput = z.output<typeof GetReportInput>;
 
 export const RunDashboardQueryInput = CommonProjectsInput.extend({
   dashboardKey: z
@@ -294,14 +324,8 @@ export const RunDashboardQueryInput = CommonProjectsInput.extend({
     .string()
     .optional()
     .describe("Time period shorthand, e.g. '1h', '7d', '30d'. Defaults to 1d."),
-  from: z
-    .string()
-    .optional()
-    .describe("Start of time range (ISO 8601). Must be paired with 'to'."),
-  to: z
-    .string()
-    .optional()
-    .describe("End of time range (ISO 8601). Must be paired with 'from'."),
+  from: z.string().optional().describe("Start of time range (ISO 8601). Must be paired with 'to'."),
+  to: z.string().optional().describe("End of time range (ISO 8601). Must be paired with 'from'."),
   scope: z
     .enum(["environment", "project", "organization"])
     .default("environment")

@@ -1,9 +1,11 @@
-import { type PrismaClientOrTransaction } from "@trigger.dev/database";
+import { EnvironmentPauseSource, type PrismaClientOrTransaction } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
+import { getManualPauseEnvironmentResult } from "~/v3/services/billingLimit/manualPauseEnvironmentGuard.server";
 import { updateEnvConcurrencyLimits } from "../runQueue.server";
 import { WithRunEngine } from "./baseService.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 
 export type PauseStatus = "paused" | "resumed";
 
@@ -40,32 +42,101 @@ export class PauseEnvironmentService extends WithRunEngine {
         throw new Error("Organization not found");
       }
 
+      const previousPauseState = await this._prisma.runtimeEnvironment.findFirst({
+        where: { id: environment.id },
+        select: {
+          paused: true,
+          pauseSource: true,
+        },
+      });
+
+      const manualPauseGuard = getManualPauseEnvironmentResult(
+        action,
+        previousPauseState?.pauseSource
+      );
+      if (!manualPauseGuard.proceed) {
+        if (manualPauseGuard.success) {
+          return {
+            success: true,
+            state: manualPauseGuard.state,
+          };
+        }
+        // Expected, user-actionable guard result, not an error: return it as a failure
+        // result so it doesn't reach Sentry via the catch below.
+        return {
+          success: false,
+          error: manualPauseGuard.error,
+        };
+      }
+
       if (!org.runsEnabled && action === "resumed") {
         throw new Error(
           "Runs are disabled for this organization. Your free plan has probably been exceeded. If not please contact support."
         );
       }
 
-      await this._prisma.runtimeEnvironment.update({
-        where: {
-          id: environment.id,
-        },
-        data: {
-          paused: action === "paused",
-        },
-      });
+      if (action === "resumed") {
+        const resumed = await this._prisma.runtimeEnvironment.updateMany({
+          where: {
+            id: environment.id,
+            // NOT on a nullable field excludes NULL rows in Prisma, which made
+            // user-paused envs (pauseSource null) unresumable.
+            OR: [
+              { pauseSource: null },
+              { NOT: { pauseSource: EnvironmentPauseSource.BILLING_LIMIT } },
+            ],
+          },
+          data: {
+            paused: false,
+            pauseSource: null,
+          },
+        });
 
-      if (action === "paused") {
-        logger.debug("PauseEnvironmentService: pausing environment", {
-          environmentId: environment.id,
-        });
-        await updateEnvConcurrencyLimits(environment, 0);
+        if (resumed.count === 0) {
+          // Raced into the paused state after the guard read above: expected,
+          // return as a failure result rather than throwing to Sentry.
+          return {
+            success: false,
+            error:
+              "This environment is paused because your organization reached its billing limit. Resolve the limit on the billing limits settings page to resume.",
+          };
+        }
       } else {
-        logger.debug("PauseEnvironmentService: resuming environment", {
-          environmentId: environment.id,
+        await this._prisma.runtimeEnvironment.update({
+          where: { id: environment.id },
+          data: { paused: true },
         });
-        await updateEnvConcurrencyLimits(environment);
       }
+
+      try {
+        if (action === "paused") {
+          logger.debug("PauseEnvironmentService: pausing environment", {
+            environmentId: environment.id,
+          });
+          await updateEnvConcurrencyLimits(environment, 0);
+        } else {
+          logger.debug("PauseEnvironmentService: resuming environment", {
+            environmentId: environment.id,
+          });
+          // `environment` was read before the update above, so its `paused` is stale. The helper
+          // resolves the current state itself - hand it the client that wrote the resume.
+          await updateEnvConcurrencyLimits(environment, undefined, this._prisma);
+        }
+      } catch (error) {
+        await this._prisma.runtimeEnvironment.update({
+          where: { id: environment.id },
+          data: {
+            paused: previousPauseState?.paused ?? action === "resumed",
+            pauseSource: previousPauseState?.pauseSource ?? null,
+          },
+        });
+        // Rollback still wrote the env row; drop any cached copy before rethrowing.
+        controlPlaneResolver.invalidateEnvironment(environment.id);
+        throw error;
+      }
+
+      // The env's `paused` state changed in the control-plane; drop any cached copy.
+      controlPlaneResolver.invalidateEnvironment(environment.id);
 
       return {
         success: true,

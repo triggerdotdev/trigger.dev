@@ -1,7 +1,7 @@
-import { BellAlertIcon } from "@heroicons/react/20/solid";
 import { useFetcher } from "@remix-run/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import simplur from "simplur";
+import { NotificationIcon } from "~/assets/icons/NotificationIcon";
 import { Button } from "~/components/primitives/Buttons";
 import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
@@ -42,60 +42,70 @@ export function NotificationPanel({
     notifications: Notification[];
   };
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
-  const dismissFetcher = useFetcher();
+  const { submit: submitDismiss } = useFetcher();
   const seenIdsRef = useRef<Set<string>>(new Set());
-  const seenFetcher = useFetcher();
+  const { submit: submitSeen } = useFetcher();
   const clickedIdsRef = useRef<Set<string>>(new Set());
-  const clickFetcher = useFetcher();
+  const { submit: submitClick } = useFetcher();
 
   const visibleNotifications = notifications.filter((n) => !dismissedIds.has(n.id));
   const notification = visibleNotifications[0] ?? null;
+  const notificationId = notification?.id;
 
-  const handleDismiss = useCallback((id: string) => {
-    setDismissedIds((prev) => new Set(prev).add(id));
+  const handleDismiss = useCallback(
+    (id: string) => {
+      setDismissedIds((prev) => new Set(prev).add(id));
 
-    dismissFetcher.submit(
-      {},
-      {
-        method: "POST",
-        action: `/resources/platform-notifications/${id}/dismiss`,
-      }
-    );
-  }, []);
+      submitDismiss(
+        {},
+        {
+          method: "POST",
+          action: `/resources/platform-notifications/${id}/dismiss`,
+        }
+      );
+    },
+    [submitDismiss]
+  );
 
-  const fireClickBeacon = useCallback((id: string) => {
-    if (clickedIdsRef.current.has(id)) return;
-    clickedIdsRef.current.add(id);
+  const fireClickBeacon = useCallback(
+    (id: string) => {
+      if (clickedIdsRef.current.has(id)) return;
+      clickedIdsRef.current.add(id);
 
-    clickFetcher.submit(
-      {},
-      {
-        method: "POST",
-        action: `/resources/platform-notifications/${id}/clicked`,
-      }
-    );
-  }, []);
+      submitClick(
+        {},
+        {
+          method: "POST",
+          action: `/resources/platform-notifications/${id}/clicked`,
+        }
+      );
+    },
+    [submitClick]
+  );
 
   // Fire seen beacon
-  const fireSeenBeacon = useCallback((n: Notification) => {
-    if (seenIdsRef.current.has(n.id)) return;
-    seenIdsRef.current.add(n.id);
+  const fireSeenBeacon = useCallback(
+    (id: string) => {
+      if (seenIdsRef.current.has(id)) return;
+      seenIdsRef.current.add(id);
 
-    seenFetcher.submit(
-      {},
-      {
-        method: "POST",
-        action: `/resources/platform-notifications/${n.id}/seen`,
-      }
-    );
-  }, []);
+      submitSeen(
+        {},
+        {
+          method: "POST",
+          action: `/resources/platform-notifications/${id}/seen`,
+        }
+      );
+    },
+    [submitSeen]
+  );
 
   // Beacon current notification on mount
   useEffect(() => {
-    if (notification && !hasIncident) {
-      fireSeenBeacon(notification);
+    if (notificationId && !hasIncident) {
+      fireSeenBeacon(notificationId);
     }
-  }, [notification?.id, hasIncident]);
+  }, [notificationId, hasIncident, fireSeenBeacon]);
 
   if (!notification) {
     return null;
@@ -121,23 +131,17 @@ export function NotificationPanel({
 
   return (
     <Popover>
-      <div className={isCollapsed ? "p-1" : "p-2"}>
+      <div className={isCollapsed ? "p-1" : "p-2 pt-0"}>
         {isCollapsed ? (
           <SimpleTooltip
             asChild
             button={
               <div className="relative">
                 <PopoverTrigger asChild>
-                  <Button variant="small-menu-item" className="h-8 w-[2.1875rem] justify-center">
-                    <BellAlertIcon className="size-5" />
+                  <Button variant="small-menu-item" className="h-8 w-8.75 justify-center">
+                    <NotificationIcon className="size-5 text-success" />
                   </Button>
                 </PopoverTrigger>
-                <span
-                  className="pointer-events-none absolute -top-[0.2rem] right-0 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[0.625rem] font-medium text-text-bright"
-                  style={{ backgroundColor: "#6366f1" }}
-                >
-                  {visibleNotifications.length}
-                </span>
               </div>
             }
             content={simplur`${visibleNotifications.length} notification[|s]`}
@@ -149,7 +153,7 @@ export function NotificationPanel({
           card
         )}
       </div>
-      <PopoverContent side="right" sideOffset={8} align="end" className="w-56 !min-w-0 p-0">
+      <PopoverContent side="right" sideOffset={8} align="end" className="w-56 min-w-0! p-0">
         {card}
       </PopoverContent>
     </Popover>

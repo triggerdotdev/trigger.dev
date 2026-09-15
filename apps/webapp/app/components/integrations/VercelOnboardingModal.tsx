@@ -4,11 +4,7 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
 } from "@heroicons/react/20/solid";
-import {
-  useFetcher,
-  useNavigation,
-  useSearchParams,
-} from "@remix-run/react";
+import { useFetcher, useSearchParams } from "@remix-run/react";
 import { useTypedFetcher } from "remix-typedjson";
 import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dialog";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -17,10 +13,11 @@ import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
 import { Header3 } from "~/components/primitives/Headers";
 import { Hint } from "~/components/primitives/Hint";
+import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Select, SelectItem } from "~/components/primitives/Select";
-import { SpinnerWhite } from "~/components/primitives/Spinner";
+import { Spinner, SpinnerWhite } from "~/components/primitives/Spinner";
 import { Switch } from "~/components/primitives/Switch";
 import {
   Tooltip,
@@ -31,22 +28,23 @@ import {
 import { VercelLogo } from "~/components/integrations/VercelLogo";
 import { BuildSettingsFields } from "~/components/integrations/VercelBuildSettings";
 import { OctoKitty } from "~/components/GitHubLoginButton";
-import {
-  ConnectGitHubRepoModal,
-} from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.github";
+import { ConnectGitHubRepoModal } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.github";
 import {
   type SyncEnvVarsMapping,
   type EnvSlug,
   ALL_ENV_SLUGS,
   shouldSyncEnvVarForAnyEnvironment,
-  getAvailableEnvSlugs,
   getAvailableEnvSlugsForBuildSettings,
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
 import { type VercelCustomEnvironment } from "~/models/vercelIntegration.server";
 import { type VercelOnboardingData } from "~/presenters/v3/VercelSettingsPresenter.server";
-import { vercelAppInstallPath, v3ProjectSettingsIntegrationsPath, githubAppInstallPath, vercelResourcePath } from "~/utils/pathBuilder";
+import {
+  v3ProjectSettingsIntegrationsPath,
+  githubAppInstallPath,
+  vercelResourcePath,
+} from "~/utils/pathBuilder";
 import type { loader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { usePostHogTracking } from "~/hooks/usePostHog";
 import { TextLink } from "../primitives/TextLink";
 
@@ -73,14 +71,11 @@ function formatVercelTargets(targets: string[]): string {
     staging: "Staging",
   };
 
-  return targets
-    .map((t) => targetLabels[t.toLowerCase()] || t)
-    .join(", ");
+  return targets.map((t) => targetLabels[t.toLowerCase()] || t).join(", ");
 }
 
 type OnboardingState =
   | "idle"
-  | "installing"
   | "loading-projects"
   | "project-selection"
   | "loading-env-mapping"
@@ -101,6 +96,7 @@ export function VercelOnboardingModal({
   hasStagingEnvironment,
   hasPreviewEnvironment,
   hasOrgIntegration,
+  onboardingDataUnavailable = false,
   nextUrl,
   onDataReload,
   vercelManageAccessUrl,
@@ -114,23 +110,27 @@ export function VercelOnboardingModal({
   hasStagingEnvironment: boolean;
   hasPreviewEnvironment: boolean;
   hasOrgIntegration: boolean;
+  onboardingDataUnavailable?: boolean;
   nextUrl?: string;
   onDataReload?: (vercelStagingEnvironment?: string) => void;
   vercelManageAccessUrl?: string;
 }) {
   const { capture, startSessionRecording } = usePostHogTracking();
-  const navigation = useNavigation();
   const fetcher = useTypedFetcher<typeof loader>();
   const envMappingFetcher = useFetcher();
   const completeOnboardingFetcher = useFetcher();
-  const { Form: CompleteOnboardingForm } = completeOnboardingFetcher;
   const [searchParams] = useSearchParams();
   const origin = searchParams.get("origin");
   const fromMarketplaceContext = origin === "marketplace";
 
-  const availableProjects = onboardingData?.availableProjects || [];
-  const hasProjectSelected = onboardingData?.hasProjectSelected ?? false;
-  const customEnvironments = onboardingData?.customEnvironments || [];
+  const availableProjects = useMemo(
+    () => onboardingData?.availableProjects ?? [],
+    [onboardingData?.availableProjects]
+  );
+  const customEnvironments = useMemo(
+    () => onboardingData?.customEnvironments ?? [],
+    [onboardingData?.customEnvironments]
+  );
   const envVars = onboardingData?.environmentVariables || [];
   const existingVars = onboardingData?.existingVariables || {};
   const hasCustomEnvs = customEnvironments.length > 0 && hasStagingEnvironment;
@@ -153,7 +153,8 @@ export function VercelOnboardingModal({
     }
     // For marketplace origin, skip env-mapping step and go directly to env-var-sync
     if (!fromMarketplaceContext) {
-      const customEnvs = (onboardingData?.customEnvironments?.length ?? 0) > 0 && hasStagingEnvironment;
+      const customEnvs =
+        (onboardingData?.customEnvironments?.length ?? 0) > 0 && hasStagingEnvironment;
       if (customEnvs) {
         return "env-mapping";
       }
@@ -178,6 +179,7 @@ export function VercelOnboardingModal({
       hasSyncedStagingRef.current = false;
       hasSyncedPreviewRef.current = false;
     } else if (isOpen && state === "idle") {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setState(computeInitialState());
     }
     prevIsOpenRef.current = isOpen;
@@ -218,14 +220,14 @@ export function VercelOnboardingModal({
     environmentId: string;
     displayName: string;
   } | null>(null);
-  const availableEnvSlugsForOnboarding = getAvailableEnvSlugs(hasStagingEnvironment, hasPreviewEnvironment);
-  const availableEnvSlugsForOnboardingBuildSettings = getAvailableEnvSlugsForBuildSettings(hasStagingEnvironment, hasPreviewEnvironment);
+  const availableEnvSlugsForOnboardingBuildSettings = getAvailableEnvSlugsForBuildSettings(
+    hasStagingEnvironment,
+    hasPreviewEnvironment
+  );
   const [pullEnvVarsBeforeBuild, setPullEnvVarsBeforeBuild] = useState<EnvSlug[]>(
     () => availableEnvSlugsForOnboardingBuildSettings
   );
-  const [atomicBuilds, setAtomicBuilds] = useState<EnvSlug[]>(
-    () => ["prod"]
-  );
+  const [atomicBuilds, setAtomicBuilds] = useState<EnvSlug[]>([]);
   const [discoverEnvVars, setDiscoverEnvVars] = useState<EnvSlug[]>(
     () => availableEnvSlugsForOnboardingBuildSettings
   );
@@ -253,6 +255,7 @@ export function VercelOnboardingModal({
   // Strip "stg" from build settings when the staging environment mapping is cleared
   useEffect(() => {
     if (!vercelStagingEnvironment) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setPullEnvVarsBeforeBuild((prev) => prev.filter((s) => s !== "stg"));
       setDiscoverEnvVars((prev) => prev.filter((s) => s !== "stg"));
     }
@@ -309,11 +312,18 @@ export function VercelOnboardingModal({
         }, 100);
       }
     }
-  }, [isOpen, fromMarketplaceContext, nextUrl, isOnboardingComplete, isGitHubConnectedForOnboarding]);
+  }, [
+    isOpen,
+    fromMarketplaceContext,
+    nextUrl,
+    isOnboardingComplete,
+    isGitHubConnectedForOnboarding,
+  ]);
 
   useEffect(() => {
     if (!isOpen) {
       hasTriggeredMarketplaceRedirectRef.current = false;
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setIsRedirecting(false);
     }
   }, [isOpen]);
@@ -336,7 +346,6 @@ export function VercelOnboardingModal({
     }
 
     switch (state) {
-
       case "loading-projects":
         loadingStateRef.current = state;
         if (onDataReload) {
@@ -358,7 +367,6 @@ export function VercelOnboardingModal({
         }
         break;
 
-      case "installing":
       case "project-selection":
       case "env-mapping":
       case "env-var-sync":
@@ -371,22 +379,39 @@ export function VercelOnboardingModal({
   }, [isOpen, state, onboardingData?.authInvalid, vercelStagingEnvironment, onDataReload, onClose]);
 
   useEffect(() => {
-    if (!onboardingData?.authInvalid && state === "loading-projects" && onboardingData?.availableProjects !== undefined) {
+    if (
+      !onboardingData?.authInvalid &&
+      state === "loading-projects" &&
+      onboardingData?.availableProjects !== undefined
+    ) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setState("project-selection");
     }
   }, [state, onboardingData?.availableProjects, onboardingData?.authInvalid]);
 
   useEffect(() => {
-    if (!onboardingData?.authInvalid && state === "loading-env-vars" && onboardingData?.environmentVariables) {
+    if (
+      !onboardingData?.authInvalid &&
+      state === "loading-env-vars" &&
+      onboardingData?.environmentVariables
+    ) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setState("env-var-sync");
     }
   }, [state, onboardingData?.environmentVariables, onboardingData?.authInvalid]);
 
   useEffect(() => {
-    if (state === "project-selection" && fetcher.data && "success" in fetcher.data && fetcher.data.success && fetcher.state === "idle") {
+    if (
+      state === "project-selection" &&
+      fetcher.data &&
+      "success" in fetcher.data &&
+      fetcher.data.success &&
+      fetcher.state === "idle"
+    ) {
       trackOnboarding("vercel onboarding project selected", {
         vercel_project_name: selectedVercelProject?.name,
       });
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setState("loading-env-mapping");
       if (onDataReload) {
         onDataReload();
@@ -394,13 +419,22 @@ export function VercelOnboardingModal({
     } else if (fetcher.data && "error" in fetcher.data && typeof fetcher.data.error === "string") {
       setProjectSelectionError(fetcher.data.error);
     }
-  }, [state, fetcher.data, fetcher.state, onDataReload, trackOnboarding, selectedVercelProject?.name]);
+  }, [
+    state,
+    fetcher.data,
+    fetcher.state,
+    onDataReload,
+    trackOnboarding,
+    selectedVercelProject?.name,
+  ]);
 
   // For marketplace origin, skip env-mapping step
   useEffect(() => {
     if (state === "loading-env-mapping" && onboardingData) {
-      const hasCustomEnvs = (onboardingData.customEnvironments?.length ?? 0) > 0 && hasStagingEnvironment;
+      const hasCustomEnvs =
+        (onboardingData.customEnvironments?.length ?? 0) > 0 && hasStagingEnvironment;
       if (hasCustomEnvs && !fromMarketplaceContext) {
+        // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
         setState("env-mapping");
       } else {
         setState("loading-env-vars");
@@ -410,14 +444,11 @@ export function VercelOnboardingModal({
 
   const secretEnvVars = envVars.filter((v) => v.isSecret);
   const syncableEnvVars = envVars.filter((v) => !v.isSecret);
-  const enabledEnvVars = syncableEnvVars.filter(
-    (v) => shouldSyncEnvVarForAnyEnvironment(syncEnvVarsMapping, v.key)
+  const enabledEnvVars = syncableEnvVars.filter((v) =>
+    shouldSyncEnvVarForAnyEnvironment(syncEnvVarsMapping, v.key)
   );
 
   const overlappingEnvVarsCount = enabledEnvVars.filter((v) => existingVars[v.key]).length;
-
-  const isSubmitting =
-    navigation.state === "submitting" || navigation.state === "loading";
 
   const actionUrl = vercelResourcePath(organizationSlug, projectSlug, environmentSlug);
 
@@ -529,7 +560,6 @@ export function VercelOnboardingModal({
       method: "post",
       action: actionUrl,
     });
-
   }, [vercelStagingEnvironment, envMappingFetcher, actionUrl, trackOnboarding]);
 
   const handleBuildSettingsNext = useCallback(() => {
@@ -541,7 +571,10 @@ export function VercelOnboardingModal({
 
     const formData = new FormData();
     formData.append("action", "complete-onboarding");
-    formData.append("vercelStagingEnvironment", vercelStagingEnvironment ? JSON.stringify(vercelStagingEnvironment) : "");
+    formData.append(
+      "vercelStagingEnvironment",
+      vercelStagingEnvironment ? JSON.stringify(vercelStagingEnvironment) : ""
+    );
     formData.append("pullEnvVarsBeforeBuild", JSON.stringify(pullEnvVarsBeforeBuild));
     formData.append("atomicBuilds", JSON.stringify(atomicBuilds));
     formData.append("discoverEnvVars", JSON.stringify(discoverEnvVars));
@@ -572,30 +605,46 @@ export function VercelOnboardingModal({
         github_app_installed: gitHubAppInstallations.length > 0,
       });
     }
-  }, [vercelStagingEnvironment, pullEnvVarsBeforeBuild, atomicBuilds, discoverEnvVars, syncEnvVarsMapping, nextUrl, fromMarketplaceContext, isGitHubConnectedForOnboarding, completeOnboardingFetcher, actionUrl, trackOnboarding, capture, organizationSlug, projectSlug, gitHubAppInstallations.length]);
-
-  const handleFinishOnboarding = useCallback((e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const form = e.currentTarget;
-    const formData = new FormData(form);
-    completeOnboardingFetcher.submit(formData, {
-      method: "post",
-      action: actionUrl,
-    });
-  }, [completeOnboardingFetcher, actionUrl]);
+  }, [
+    vercelStagingEnvironment,
+    pullEnvVarsBeforeBuild,
+    atomicBuilds,
+    discoverEnvVars,
+    syncEnvVarsMapping,
+    nextUrl,
+    fromMarketplaceContext,
+    isGitHubConnectedForOnboarding,
+    completeOnboardingFetcher,
+    actionUrl,
+    trackOnboarding,
+    capture,
+    organizationSlug,
+    projectSlug,
+    gitHubAppInstallations.length,
+  ]);
 
   useEffect(() => {
-    if (completeOnboardingFetcher.data && typeof completeOnboardingFetcher.data === "object" && "success" in completeOnboardingFetcher.data && completeOnboardingFetcher.data.success && completeOnboardingFetcher.state === "idle") {
+    if (
+      completeOnboardingFetcher.data &&
+      typeof completeOnboardingFetcher.data === "object" &&
+      "success" in completeOnboardingFetcher.data &&
+      completeOnboardingFetcher.data.success &&
+      completeOnboardingFetcher.state === "idle"
+    ) {
       if (state === "github-connection") {
         return;
       }
-      if ("redirectTo" in completeOnboardingFetcher.data && typeof completeOnboardingFetcher.data.redirectTo === "string") {
+      if (
+        "redirectTo" in completeOnboardingFetcher.data &&
+        typeof completeOnboardingFetcher.data.redirectTo === "string"
+      ) {
         const validRedirect = safeRedirectUrl(completeOnboardingFetcher.data.redirectTo);
         if (validRedirect) {
           window.location.href = validRedirect;
         }
         return;
       }
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setState("completed");
     }
   }, [completeOnboardingFetcher.data, completeOnboardingFetcher.state, state]);
@@ -610,6 +659,7 @@ export function VercelOnboardingModal({
           return;
         }
       }
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setState("completed");
     }
   }, [state, isGitHubConnectedForOnboarding, fromMarketplaceContext, nextUrl, trackOnboarding]);
@@ -625,14 +675,14 @@ export function VercelOnboardingModal({
   }, [state, onClose, trackOnboarding, isGitHubConnectedForOnboarding]);
 
   useEffect(() => {
-    if (state === "installing") {
-      const installUrl = vercelAppInstallPath(organizationSlug, projectSlug);
-      window.location.href = installUrl;
-    }
-  }, [state, organizationSlug, projectSlug]);
-
-  useEffect(() => {
-    if (envMappingFetcher.data && typeof envMappingFetcher.data === "object" && "success" in envMappingFetcher.data && envMappingFetcher.data.success && envMappingFetcher.state === "idle") {
+    if (
+      envMappingFetcher.data &&
+      typeof envMappingFetcher.data === "object" &&
+      "success" in envMappingFetcher.data &&
+      envMappingFetcher.data.success &&
+      envMappingFetcher.state === "idle"
+    ) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setState("loading-env-vars");
     }
   }, [envMappingFetcher.data, envMappingFetcher.state]);
@@ -644,18 +694,18 @@ export function VercelOnboardingModal({
       if (customEnvironments.length === 1) {
         selectedEnv = customEnvironments[0];
       } else {
-        const stagingEnv = customEnvironments.find(
-          (env) => env.slug.toLowerCase() === "staging"
-        );
+        const stagingEnv = customEnvironments.find((env) => env.slug.toLowerCase() === "staging");
         selectedEnv = stagingEnv ?? customEnvironments[0];
       }
 
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setVercelStagingEnvironment({ environmentId: selectedEnv.id, displayName: selectedEnv.slug });
     }
   }, [state, customEnvironments, vercelStagingEnvironment]);
 
   useEffect(() => {
     if (state === "project-selection" && availableProjects.length > 0 && !selectedVercelProject) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setSelectedVercelProject(availableProjects[0]);
     }
   }, [state, availableProjects, selectedVercelProject]);
@@ -668,19 +718,19 @@ export function VercelOnboardingModal({
     state === "loading-projects" ||
     state === "loading-env-mapping" ||
     state === "loading-env-vars" ||
-    state === "installing" ||
     (state === "idle" && !onboardingData);
 
   if (isLoadingState) {
     return (
-      <Dialog open={isOpen} onOpenChange={(open) => {
-        if (!open && !fromMarketplaceContext) {
-          if (state as string !== "completed") {
+      <Dialog
+        open={isOpen}
+        onOpenChange={(open) => {
+          if (!open && !fromMarketplaceContext) {
             trackOnboarding("vercel onboarding abandoned");
+            onClose();
           }
-          onClose();
-        }
-      }}>
+        }}
+      >
         <DialogContent className="max-w-lg" onInteractOutside={(e) => e.preventDefault()}>
           <DialogHeader>
             <div className="flex items-center gap-2">
@@ -688,9 +738,30 @@ export function VercelOnboardingModal({
               <span>Set up Vercel Integration</span>
             </div>
           </DialogHeader>
-          <div className="flex items-center justify-center py-8">
-            <SpinnerWhite className="size-6" />
-          </div>
+          {onboardingDataUnavailable ? (
+            <div className="flex flex-col items-start gap-3 py-4">
+              <Paragraph variant="small">
+                We couldn't load your Vercel projects. The integration may have been removed or lost
+                access to this organization on Vercel.
+              </Paragraph>
+              <div className="flex items-center gap-2">
+                {onDataReload && (
+                  <Button variant="secondary/small" onClick={() => onDataReload()}>
+                    Try again
+                  </Button>
+                )}
+                {vercelManageAccessUrl && (
+                  <LinkButton to={vercelManageAccessUrl} target="_blank" variant="tertiary/small">
+                    Manage access on Vercel
+                  </LinkButton>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center py-8">
+              <Spinner color="blue" className="size-6" />
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     );
@@ -704,18 +775,23 @@ export function VercelOnboardingModal({
 
   const disabledEnvSlugsForBuildSettings =
     hasStagingEnvironment && !vercelStagingEnvironment
-      ? ({ stg: "Map a custom Vercel environment to Staging to enable this" } as Partial<Record<EnvSlug, string>>)
+      ? ({ stg: "Map a custom Vercel environment to Staging to enable this" } as Partial<
+          Record<EnvSlug, string>
+        >)
       : undefined;
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => {
-      if (!open && !fromMarketplaceContext) {
-        if (state !== "completed") {
-          trackOnboarding("vercel onboarding abandoned");
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open && !fromMarketplaceContext) {
+          if (state !== "completed") {
+            trackOnboarding("vercel onboarding abandoned");
+          }
+          onClose();
         }
-        onClose();
-      }
-    }}>
+      }}
+    >
       <DialogContent className="max-w-lg" onInteractOutside={(e) => e.preventDefault()}>
         <DialogHeader>
           <div className="flex items-center gap-2">
@@ -727,10 +803,8 @@ export function VercelOnboardingModal({
         <div className="mt-4">
           {showProjectSelection && (
             <div className="flex flex-col gap-4">
-              <Header3>Select Vercel Project</Header3>
-              <Paragraph className="text-sm">
-                Choose which Vercel project to connect with this Trigger.dev project.
-                Your API keys will be automatically synced to Vercel.
+              <Paragraph>
+                Choose the Vercel project to pair with this Trigger.dev project.
               </Paragraph>
 
               {availableProjects.length === 0 ? (
@@ -738,39 +812,41 @@ export function VercelOnboardingModal({
                   No Vercel projects found. Please create a project in Vercel first.
                 </Callout>
               ) : (
-                <Select
-                  disabled={availableProjects.length === 1}
-                  value={selectedVercelProject?.id || ""}
-                  setValue={(value) => {
-                    if (!Array.isArray(value)) {
-                      const project = availableProjects.find((p) => p.id === value);
-                      setSelectedVercelProject(project || null);
-                      setProjectSelectionError(null);
-                    }
-                  }}
-                  items={availableProjects}
-                  filter={availableProjects.length > 5 ? { keys: ["name"] } : undefined}
-                  variant="tertiary/medium"
-                  placeholder="Select a Vercel project"
-                  dropdownIcon
-                  text={selectedVercelProject?.name || "Select a project"}
-                >
-                  {availableProjects.map((project) => (
-                    <SelectItem key={project.id} value={project.id}>
-                      {project.name}
-                    </SelectItem>
-                  ))}
-                </Select>
+                <InputGroup fullWidth>
+                  <Select
+                    disabled={availableProjects.length === 1}
+                    value={selectedVercelProject?.id || ""}
+                    setValue={(value) => {
+                      if (!Array.isArray(value)) {
+                        const project = availableProjects.find((p) => p.id === value);
+                        setSelectedVercelProject(project || null);
+                        setProjectSelectionError(null);
+                      }
+                    }}
+                    items={availableProjects}
+                    filter={availableProjects.length > 5 ? { keys: ["name"] } : undefined}
+                    variant="secondary/medium"
+                    placeholder="Select a Vercel project"
+                    dropdownIcon
+                    text={selectedVercelProject?.name || "Select a project"}
+                  >
+                    {availableProjects.map((project) => (
+                      <SelectItem key={project.id} value={project.id}>
+                        {project.name}
+                      </SelectItem>
+                    ))}
+                  </Select>
+                  <Hint>
+                    Your{" "}
+                    <code className="rounded bg-background-raised px-1 py-0.5 text-xs text-text-bright">
+                      TRIGGER_SECRET_KEY
+                    </code>{" "}
+                    is synced to Vercel for each environment once connected.
+                  </Hint>
+                </InputGroup>
               )}
 
-              {projectSelectionError && (
-                <FormError>{projectSelectionError}</FormError>
-              )}
-
-              <Hint>
-                Once connected, your <code className="text-xs rounded bg-charcoal-700 px-1 py-0.5 text-text-bright">TRIGGER_SECRET_KEY</code> will be
-                automatically synced to Vercel for each environment.
-              </Hint>
+              {projectSelectionError && <FormError>{projectSelectionError}</FormError>}
 
               <FormButtons
                 confirmButton={
@@ -795,10 +871,7 @@ export function VercelOnboardingModal({
                   </div>
                 }
                 cancelButton={
-                  <Button
-                    variant="tertiary/medium"
-                    onClick={handleSkipOnboarding}
-                  >
+                  <Button variant="secondary/medium" onClick={handleSkipOnboarding}>
                     Cancel
                   </Button>
                 }
@@ -811,11 +884,13 @@ export function VercelOnboardingModal({
               <Header3>Map Vercel Environment to Staging</Header3>
               <Paragraph className="text-sm">
                 Select which custom Vercel environment should map to Trigger.dev's Staging
-                environment. Production and Preview environments are mapped automatically.
-                If you skip this step, the{" "}
-                <code className="rounded bg-charcoal-700 px-1 py-0.5 text-text-bright">TRIGGER_SECRET_KEY</code>{" "}
-                will not be installed for the staging environment in Vercel. You can configure this later in
-                project settings.
+                environment. Production and Preview environments are mapped automatically. If you
+                skip this step, the{" "}
+                <code className="rounded bg-background-raised px-1 py-0.5 text-text-bright">
+                  TRIGGER_SECRET_KEY
+                </code>{" "}
+                will not be installed for the staging environment in Vercel. You can configure this
+                later in project settings.
               </Paragraph>
 
               <Select
@@ -842,23 +917,17 @@ export function VercelOnboardingModal({
               </Select>
 
               <Paragraph className="text-xs text-text-dimmed">
-                Make sure the staging branch in your Vercel project's Git settings matches the staging branch
-                configured in your GitHub integration.
+                Make sure the staging branch in your Vercel project's Git settings matches the
+                staging branch configured in your GitHub integration.
               </Paragraph>
 
               <div className="flex items-center justify-between gap-2">
-                <Button
-                  variant="tertiary/medium"
-                  onClick={handleSkipOnboarding}
-                >
+                <Button variant="tertiary/medium" onClick={handleSkipOnboarding}>
                   Cancel
                 </Button>
                 <div className="flex items-center gap-2">
                   {!fromMarketplaceContext && (
-                    <Button
-                      variant="tertiary/medium"
-                      onClick={handleSkipEnvMapping}
-                    >
+                    <Button variant="tertiary/medium" onClick={handleSkipEnvMapping}>
                       Skip
                     </Button>
                   )}
@@ -880,11 +949,21 @@ export function VercelOnboardingModal({
               <div className="flex flex-col gap-1">
                 <Header3>Pull Environment Variables</Header3>
                 <Paragraph className="text-sm">
-                Choose which environment variables to import from Vercel. This runs as a one time pull to prefill your project with the variables it needs. You’ll be able to pull again later, or enable automatic syncing before each build if you prefer.
-                If you are using Supabase or Neon branching, <TextLink href="https://trigger.dev/docs/vercel-integration#supabase-and-neon-database-branching" target="_blank" rel="noopener noreferrer">read the docs</TextLink> for the recommended setup.
+                  Choose which environment variables to import from Vercel. This runs as a one time
+                  pull to prefill your project with the variables it needs. You’ll be able to pull
+                  again later, or enable automatic syncing before each build if you prefer. If you
+                  are using Supabase or Neon branching,{" "}
+                  <TextLink
+                    href="https://trigger.dev/docs/vercel-integration#supabase-and-neon-database-branching"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    read the docs
+                  </TextLink>{" "}
+                  for the recommended setup.
                 </Paragraph>
               </div>
-              <div className="flex items-center justify-between rounded border bg-charcoal-800 p-3">
+              <div className="flex items-center justify-between rounded border bg-background-bright p-3">
                 <div>
                   <Label>Pull all environment variables now</Label>
                   <Hint>Select all variables to pull from Vercel.</Hint>
@@ -948,10 +1027,11 @@ export function VercelOnboardingModal({
                           </div>
                           <Switch
                             variant="small"
-                            checked={shouldSyncEnvVarForAnyEnvironment(syncEnvVarsMapping, envVar.key)}
-                            onCheckedChange={(checked) =>
-                              handleToggleEnvVar(envVar.key, checked)
-                            }
+                            checked={shouldSyncEnvVarForAnyEnvironment(
+                              syncEnvVarsMapping,
+                              envVar.key
+                            )}
+                            onCheckedChange={(checked) => handleToggleEnvVar(envVar.key, checked)}
                           />
                         </div>
                       ))}
@@ -968,7 +1048,8 @@ export function VercelOnboardingModal({
                     onClick={() => setExpandedSecretEnvVars(!expandedSecretEnvVars)}
                   >
                     <span className="text-sm text-text-dimmed">
-                      {secretEnvVars.length} secret {secretEnvVars.length === 1 ? "variable" : "variables"} (cannot be pulled)
+                      {secretEnvVars.length} secret{" "}
+                      {secretEnvVars.length === 1 ? "variable" : "variables"} (cannot be pulled)
                     </span>
                     {expandedSecretEnvVars ? (
                       <ChevronUpIcon className="size-4" />
@@ -1029,18 +1110,27 @@ export function VercelOnboardingModal({
                         setState("build-settings");
                       }
                     }}
-                    disabled={fromMarketplaceContext && (completeOnboardingFetcher.state !== "idle" || isRedirecting)}
-                    LeadingIcon={fromMarketplaceContext && (completeOnboardingFetcher.state !== "idle" || isRedirecting) ? SpinnerWhite : undefined}
+                    disabled={
+                      fromMarketplaceContext &&
+                      (completeOnboardingFetcher.state !== "idle" || isRedirecting)
+                    }
+                    LeadingIcon={
+                      fromMarketplaceContext &&
+                      (completeOnboardingFetcher.state !== "idle" || isRedirecting)
+                        ? SpinnerWhite
+                        : undefined
+                    }
                   >
-                    {fromMarketplaceContext ? (isGitHubConnectedForOnboarding ? "Finish" : "Next") : "Next"}
+                    {fromMarketplaceContext
+                      ? isGitHubConnectedForOnboarding
+                        ? "Finish"
+                        : "Next"
+                      : "Next"}
                   </Button>
                 }
                 cancelButton={
                   hasCustomEnvs && !fromMarketplaceContext ? (
-                    <Button
-                      variant="tertiary/medium"
-                      onClick={() => setState("env-mapping")}
-                    >
+                    <Button variant="tertiary/medium" onClick={() => setState("env-mapping")}>
                       Back
                     </Button>
                   ) : (
@@ -1061,7 +1151,7 @@ export function VercelOnboardingModal({
             <div className="flex flex-col gap-4">
               <Header3>Build Settings</Header3>
               <Paragraph className="text-sm">
-                Configure how environment variables are pulled during builds and atomic deployments.
+                Configure how environment variables are pulled during builds.
               </Paragraph>
 
               <BuildSettingsFields
@@ -1073,6 +1163,7 @@ export function VercelOnboardingModal({
                 atomicBuilds={atomicBuilds}
                 onAtomicBuildsChange={setAtomicBuilds}
                 disabledEnvSlugs={disabledEnvSlugsForBuildSettings}
+                showAtomicDeployments={false}
               />
 
               <FormButtons
@@ -1081,16 +1172,17 @@ export function VercelOnboardingModal({
                     variant="primary/medium"
                     onClick={handleBuildSettingsNext}
                     disabled={completeOnboardingFetcher.state !== "idle" || isRedirecting}
-                    LeadingIcon={completeOnboardingFetcher.state !== "idle" || isRedirecting ? SpinnerWhite : undefined}
+                    LeadingIcon={
+                      completeOnboardingFetcher.state !== "idle" || isRedirecting
+                        ? SpinnerWhite
+                        : undefined
+                    }
                   >
                     {isGitHubConnectedForOnboarding ? "Finish" : "Next"}
                   </Button>
                 }
                 cancelButton={
-                  <Button
-                    variant="tertiary/medium"
-                    onClick={() => setState("env-var-sync")}
-                  >
+                  <Button variant="tertiary/medium" onClick={() => setState("env-var-sync")}>
                     Back
                   </Button>
                 }
@@ -1102,14 +1194,14 @@ export function VercelOnboardingModal({
             <div className="flex flex-col gap-4">
               <Header3>Connect GitHub Repository</Header3>
               <Paragraph className="text-sm">
-                To fully integrate with Vercel, Trigger.dev needs access to your source code.
-                This allows automatic deployments and build synchronization.
+                To fully integrate with Vercel, Trigger.dev needs access to your source code. This
+                allows automatic deployments and build synchronization.
               </Paragraph>
 
               <Callout variant="info">
                 <p className="text-xs">
-                  Connecting your GitHub repository enables Trigger.dev to read your source code
-                  and automatically create deployments when you push changes to Vercel.
+                  Connecting your GitHub repository enables Trigger.dev to read your source code and
+                  automatically create deployments when you push changes to Vercel.
                 </p>
               </Callout>
 
@@ -1139,7 +1231,9 @@ export function VercelOnboardingModal({
                       )}
                       variant="secondary/medium"
                       LeadingIcon={OctoKitty}
-                      onClick={() => trackOnboarding("vercel onboarding github app install clicked")}
+                      onClick={() =>
+                        trackOnboarding("vercel onboarding github app install clicked")
+                      }
                     >
                       Install GitHub app
                     </LinkButton>

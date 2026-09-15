@@ -4,9 +4,8 @@ import { LinkButton } from "~/components/primitives/Buttons";
 import { Tabs } from "~/components/primitives/Tabs";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 
-export const loader = dashboardLoader(
-  { authorization: { requireSuper: true } },
-  async ({ user }) => typedjson({ user })
+export const loader = dashboardLoader({ authorization: { requireSuper: true } }, async ({ user }) =>
+  typedjson({ user })
 );
 
 export default function Page() {
@@ -15,7 +14,7 @@ export default function Page() {
   const searchSuffix = search ? `?search=${encodeURIComponent(search)}` : "";
 
   return (
-    <div className="h-full w-full">
+    <div className="flex h-full w-full flex-col">
       <div className="flex items-center justify-between p-4">
         <Tabs
           tabs={[
@@ -28,16 +27,16 @@ export default function Page() {
               to: `/admin/orgs${searchSuffix}`,
             },
             {
-              label: "Concurrency",
-              to: "/admin/concurrency",
-            },
-            {
               label: "LLM Models",
               to: "/admin/llm-models",
             },
             {
               label: "Global Feature Flags",
               to: "/admin/feature-flags",
+            },
+            {
+              label: "Queue Metrics",
+              to: "/admin/queue-metrics",
             },
             {
               label: "Notifications",
@@ -59,7 +58,11 @@ export default function Page() {
           Back to me
         </LinkButton>
       </div>
-      <Outlet />
+      {/* min-h-0 lets the page's own scroll container bound itself to the
+          space below the tabs instead of overflowing past the viewport. */}
+      <div className="min-h-0 flex-1">
+        <Outlet />
+      </div>
     </div>
   );
 }

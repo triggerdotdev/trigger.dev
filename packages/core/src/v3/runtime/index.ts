@@ -1,6 +1,6 @@
 const API_NAME = "runtime";
 
-import {
+import type {
   BatchTaskRunExecutionResult,
   TaskRunContext,
   TaskRunExecutionResult,

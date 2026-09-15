@@ -4,15 +4,11 @@ sidebarTitle: "API Reference"
 description: "Complete API reference for the AI Agents SDK — backend options, events, frontend transport, and hooks."
 ---
 
-import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
-
-<RcBanner />
-
 ## Compatibility
 
 | Dependency | Supported | Notes |
 |---|---|---|
-| `@trigger.dev/sdk` | `>=4.5.0-rc.0` | The chat agent surface lives in this SDK release. Install with `@trigger.dev/sdk@rc`. |
+| `@trigger.dev/sdk` | `>=4.5.0` | The chat agent surface lives in this SDK release. Install with `@trigger.dev/sdk@latest`. |
 | `ai` (Vercel AI SDK) | `^5.0.0 \|\| ^6.0.0 \|\| >=7.0.0-canary <8` | Declared as a peer. v6 is what we develop against day to day; v5 and v7 work too (v7 is in canary/beta upstream). Your installed `ai` major drives the chat surface's types. |
 | `@ai-sdk/otel` | `1.x` (v7 only) | Optional. AI SDK 7 moved model-call span emission out of `ai` core into this adapter. Install it alongside `ai@7` and the SDK auto-registers it, so your model calls show up as spans in the run trace. Not needed on v5/v6, where `ai` core emits spans. See [AI SDK 7 telemetry](#ai-sdk-7-telemetry) below. |
 | `@ai-sdk/react` | matches your `ai` major | Pulled in by `useChat`. The transport works with whichever React hook ships in the same major as your `ai` version. |
@@ -48,14 +44,19 @@ Options for `chat.agent()`.
 | `onPreload`                   | `(event: PreloadEvent) => Promise<void> \| void`            | —                              | Fires on preloaded runs before the first message                                                    |
 | `onChatStart`                 | `(event: ChatStartEvent) => Promise<void> \| void`          | —                              | Fires once per chat, on the very first user message. Does NOT fire on continuation runs or OOM-retries — see [onChatStart](/ai-chat/lifecycle-hooks#onchatstart). |
 | `onValidateMessages`          | `(event: ValidateMessagesEvent) => UIMessage[] \| Promise<UIMessage[]>` | —                | Validate/transform UIMessages before model conversion. See [onValidateMessages](/ai-chat/lifecycle-hooks#onvalidatemessages) |
-| `hydrateMessages`             | `(event: HydrateMessagesEvent) => UIMessage[] \| Promise<UIMessage[]>` | —                 | Load message history from backend, replacing the linear accumulator. See [hydrateMessages](/ai-chat/lifecycle-hooks#hydratemessages) |
+| `storage`                     | `TranscriptStorage`                                         | `defaultStorage`               | Where the conversation is persisted and read back. The platform snapshot by default; bring your own to write each change to your database. See [Transcript storage](/ai-chat/transcript-storage) |
+| `hydrateMessages`             | `(event: HydrateMessagesEvent) => UIMessage[] \| Promise<UIMessage[]>` | —                 | **Deprecated.** Load message history from backend, replacing the linear accumulator. Use `loadContext` on a `storage` instead; cannot be combined with `storage`. See [hydrateMessages](/ai-chat/lifecycle-hooks#hydratemessages) |
 | `actionSchema`                | `TaskSchema`                                                | —                              | Schema for validating custom actions sent via `transport.sendAction()`. See [Actions](/ai-chat/actions) |
-| `onAction`                    | `(event: ActionEvent) => Promise<unknown> \| unknown`       | —                              | Handle custom actions. Actions are not turns — only `hydrateMessages` + `onAction` fire. Return a `StreamTextResult` (or `string` / `UIMessage`) for a model response; return `void` for side-effect-only. See [Actions](/ai-chat/actions) |
+| `onAction`                    | `(event: ActionEvent) => Promise<void \| ActionTurn> \| void \| ActionTurn` | —                              | Handle custom actions. Actions are state edits: only `hydrateMessages` (or a storage's `loadContext`) + `onAction` fire. Return `chat.turn()` to run a turn on the edited history, or nothing for an edit only. See [Actions](/ai-chat/actions) |
 | `onTurnStart`                 | `(event: TurnStartEvent) => Promise<void> \| void`          | —                              | Fires every turn before `run()`                                                                     |
 | `onBeforeTurnComplete`        | `(event: BeforeTurnCompleteEvent) => Promise<void> \| void` | —                              | Fires after response but before stream closes. Includes `writer`.                                   |
 | `onTurnComplete`              | `(event: TurnCompleteEvent) => Promise<void> \| void`       | —                              | Fires after each turn completes (stream closed)                                                     |
 | `onCompacted`                 | `(event: CompactedEvent) => Promise<void> \| void`          | —                              | Fires when compaction occurs. Includes `writer`. See [Compaction](/ai-chat/compaction)              |
 | `compaction`                  | `ChatAgentCompactionOptions`                                | —                              | Automatic context compaction. See [Compaction](/ai-chat/compaction)                                 |
+| `registry`                    | `{ languageModel(id: string): unknown }`                    | —                              | A provider registry, so the managed `streamText` can resolve a model set through `chat.prompt.set()` |
+| `system`                      | `string \| SystemModelMessage`                              | —                              | The agent's system prompt. Injected instructions append to it. Set it here, at the `streamText` call site, or through `chat.prompt.set()`, but only in one of them |
+| `cacheControl`                | `SystemCacheControl`                                        | —                              | Mark the system prompt for provider-side caching. See [Prompt caching](/ai-chat/prompt-caching) |
+| `systemProviderOptions`       | `ProviderMetadata`                                          | —                              | Raw provider options for the system block. Takes precedence over `cacheControl` |
 | `pendingMessages`             | `PendingMessagesOptions`                                    | —                              | Mid-execution message injection. See [Pending Messages](/ai-chat/pending-messages)                  |
 | `prepareMessages`             | `(event: PrepareMessagesEvent) => ModelMessage[]`           | —                              | Transform model messages before use (cache breaks, context injection, etc.)                         |
 | `tools`                       | `ToolSet \| ((event: ResolveToolsEvent) => ToolSet \| Promise<ToolSet>)` | —                 | Tools for this agent. Threads each tool's `toModelOutput` through cross-turn history re-conversion, and hands the resolved set back on the run payload. Static set or per-turn function. See [Tools](/ai-chat/tools). |
@@ -102,9 +103,10 @@ The payload passed to the `run` function.
 | `ctx`          | `TaskRunContext`                           | Full task run context — same as `task` `run`’s `{ ctx }`             |
 | `messages`     | `ModelMessage[]`                           | Model-ready messages — pass directly to `streamText`                 |
 | `tools`        | `ToolSet`                                  | Resolved tools declared on the agent config (empty object when none). Pass straight to `streamText`. See [Tools](/ai-chat/tools). |
+| `streamText`   | `typeof streamText`                        | The AI SDK's `streamText` with this agent's managed options already applied: the prompt, skill tools, telemetry, and the `prepareStep` that delivers steering, compaction and injected context. Prefer it over importing `streamText` from `ai`. See [The managed streamText](/ai-chat/backend#the-managed-streamtext). |
 | `chatId`       | `string`                                   | Your conversation ID (the session's `externalId`)                    |
 | `sessionId`    | `string`                                   | Friendly ID of the backing Session (`session_*`). Use with `sessions.open()` for advanced cases. Always set — every chat.agent run is bound to a Session. |
-| `trigger`      | `"submit-message" \| "regenerate-message"` | What triggered the request                                           |
+| `trigger`      | `"submit-message" \| "regenerate-message" \| "action-turn"` | What triggered the request; `"action-turn"` is a turn requested by `chat.turn()` |
 | `messageId`    | `string \| undefined`                      | Message ID (for regenerate)                                          |
 | `clientData`   | Typed by `clientDataSchema`                | Custom data from the frontend (typed when schema is provided)        |
 | `continuation` | `boolean`                                  | Whether this run is continuing an existing chat (previous run ended) |
@@ -217,9 +219,38 @@ Passed to the `tools` function form on `chat.agent`, once per turn, to resolve t
 | `continuation` | `boolean`                   | Whether this run is continuing an existing chat   |
 | `clientData`   | Typed by `clientDataSchema` | Custom data from the frontend                     |
 
+## TranscriptStorage
+
+The persistence adapter set through `chat.agent({ storage })`. See [Transcript storage](/ai-chat/transcript-storage). All types below are exported from `@trigger.dev/sdk/ai`.
+
+| Member | Signature | Description |
+| --- | --- | --- |
+| `load` | `(scope: TranscriptScope, opts?: TranscriptLoadOptions) => Promise<TranscriptLoadResult>` | The conversation, in order. Called once at a continuation boot and by `chat.createLoadTranscriptAction` for rendering. |
+| `save` | `(ctx: TranscriptStorageContext, changeset: TranscriptChangeset) => Promise<void>` | Apply the changes since the last save. Called after every turn, failed turn and history-changing action. |
+| `loadContext?` | `(scope: TranscriptScope, event: LoadContextEvent) => Promise<UIMessage[]>` | Optional. When present, the storage owns the model's context: called on every turn and action in place of the runtime's transcript. Same event shape as `HydrateMessagesEvent`. |
+
+| Type | Shape |
+| --- | --- |
+| `TranscriptScope<TClientData>` | `{ chatId: string; clientData: TClientData }` |
+| `TranscriptStorageContext<TClientData>` | `TranscriptScope` plus `{ turn: number; trigger: "submit-message" \| "regenerate-message" \| "action"; runId: string; ctx: TaskRunContext }` |
+| `TranscriptChange` | `{ op: "put"; message: UIMessage; final?: boolean }` \| `{ op: "remove"; id: string }` \| `{ op: "truncateAfter"; afterId: string }` \| `{ op: "state"; value: unknown \| null }` |
+| `TranscriptChangeset` | `{ reason: "turn-complete" \| "turn-error" \| "action" \| "compaction" \| "recovery"; changes: TranscriptChange[]; transcript: TranscriptState; cursors?: TranscriptCursors }` |
+| `TranscriptState` | `{ entries: Array<{ id: string; final: boolean; message: UIMessage }>; state: unknown \| null }`: the whole conversation after the changeset's changes, for stores that write one document |
+| `TranscriptCursors` | `{ lastOutEventId?: string; lastInEventId?: string }` |
+| `TranscriptLoadOptions` | `{ limit?: number; before?: string }` |
+| `TranscriptLoadResult` | `{ messages: UIMessage[]; state: unknown \| null; cursors?: TranscriptCursors; nextCursor?: string }` |
+
+| Export | Description |
+| --- | --- |
+| `defaultStorage` | The platform snapshot storage the agent uses when `storage` is not set. Equal to `snapshotTranscriptStorage()`. |
+| `snapshotTranscriptStorage()` | Factory for the platform snapshot storage. |
+| `memoryTranscriptStorage()` | An in-process storage that also records every changeset it receives. The reference implementation. |
+| `reduceTranscriptChanges(state, changes)` | Pure reducer that applies changes to `{ entries, state }`. Useful for building a storage over a document store. |
+| `runTranscriptStorageTests(makeStorage, options?)` | From `@trigger.dev/sdk/ai/test`. The conformance suite for a storage implementation. Pass `{ api: { describe, it, expect } }` when test globals are off, and `clientData` when your storage scopes by it. |
+
 ## HydrateMessagesEvent
 
-Passed to the `hydrateMessages` callback. See [hydrateMessages](/ai-chat/lifecycle-hooks#hydratemessages).
+Passed to the `hydrateMessages` callback. See [hydrateMessages](/ai-chat/lifecycle-hooks#hydratemessages). `hydrateMessages` is deprecated; `LoadContextEvent`, passed to a storage's `loadContext`, has the same shape.
 
 | Field              | Type                                                  | Description                                               |
 | ------------------ | ----------------------------------------------------- | --------------------------------------------------------- |
@@ -368,8 +399,8 @@ Passed to `compactUIMessages` and `compactModelMessages` callbacks.
 | Field           | Type                 | Description                                          |
 | --------------- | -------------------- | ---------------------------------------------------- |
 | `summary`       | `string`             | The generated summary text                           |
-| `uiMessages`    | `UIMessage[]`        | Current UI messages (full conversation)              |
-| `modelMessages` | `ModelMessage[]`     | Current model messages (full conversation)           |
+| `uiMessages`    | `UIMessage[]`        | Current UI messages (the transcript)                 |
+| `modelMessages` | `ModelMessage[]`     | Current model messages (the lane the model is sent; after a compaction this is the summary plus what followed it, not the whole transcript) |
 | `chatId`        | `string`             | Chat session ID                                      |
 | `turn`          | `number`             | Current turn (0-indexed)                             |
 | `clientData`    | `unknown`            | Custom data from the frontend                        |
@@ -400,7 +431,7 @@ Options for the `pendingMessages` field. See [Pending Messages](/ai-chat/pending
 
 | Option         | Type                                                                              | Required | Description                                                                               |
 | -------------- | --------------------------------------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------- |
-| `shouldInject` | `(event: PendingMessagesBatchEvent) => boolean \| Promise<boolean>`               | No       | Decide whether to inject the batch between tool-call steps. If absent, no injection.      |
+| `shouldInject` | `(event: PendingMessagesBatchEvent) => boolean \| Promise<boolean>`               | No       | Decide whether to inject the batch between tool-call steps. If absent, nothing is injected and the messages are answered as the next turn. Only consulted when `chat.toStreamTextOptions()` (or `prepareStep`) reaches `streamText`; without that nothing is injected and every mid-turn message becomes the next turn. |
 | `prepare`      | `(event: PendingMessagesBatchEvent) => ModelMessage[] \| Promise<ModelMessage[]>` | No       | Transform the batch before injection. Default: convert each via `convertToModelMessages`. |
 | `onReceived`   | `(event: PendingMessageReceivedEvent) => void \| Promise<void>`                   | No       | Called when a message arrives during streaming (per-message).                             |
 | `onInjected`   | `(event: PendingMessagesInjectedEvent) => void \| Promise<void>`                  | No       | Called after a batch is injected via prepareStep.                                         |
@@ -475,14 +506,28 @@ Each turn yielded by `chat.createSession()`.
 | `continuation`      | `boolean`                         | Whether this is a continuation run                         |
 | `previousTurnUsage` | `LanguageModelUsage \| undefined` | Token usage from the previous turn (undefined on turn 0)   |
 | `totalUsage`        | `LanguageModelUsage`              | Cumulative token usage across all completed turns          |
+| `handover`          | `{ isFinal: boolean } \| null`    | The [`chat.headStart`](/ai-chat/fast-starts#handover-with-custom-agents) handover for this turn (turn 0 only); `null` otherwise |
 
 | Method                   | Returns                           | Description                                                                                            |
 | ------------------------ | --------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `complete(source)`       | `Promise<UIMessage \| undefined>` | Pipe, capture, accumulate, cleanup, and signal turn-complete                                           |
+| `complete(source?)`      | `Promise<UIMessage \| undefined>` | Pipe, capture, accumulate, cleanup, and signal turn-complete. Call with no source on a final head-start handover (`handover.isFinal`), where the warm partial is already the response |
 | `done()`                 | `Promise<void>`                   | Signal turn-complete (when you've piped manually)                                                      |
 | `addResponse(response)`  | `Promise<void>`                   | Add response to accumulator manually                                                                   |
 | `setMessages(uiMessages)`| `Promise<void>`                   | Replace the accumulated messages (continuation seeding, compaction)                                    |
 | `prepareStep()`          | `function \| undefined`           | `prepareStep` callback wiring compaction + injection — pass to `streamText` when not using `chat.toStreamTextOptions()` |
+
+## HeadStartHandlerOptions
+
+Options for [`chat.headStart()`](/ai-chat/fast-starts#head-start), the warm-server first-turn handler (`@trigger.dev/sdk/chat-server`).
+
+| Option                 | Type                                                    | Default     | Description                                                                                          |
+| ---------------------- | ------------------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------- |
+| `agentId`              | `string`                                                | required    | The `chat.agent` / `chat.customAgent` id to hand off to                                              |
+| `run`                  | `(args: HeadStartRunArgs) => Promise<StreamTextResult>` | required    | First-turn callback. Call `streamText` and spread `chat.toStreamTextOptions({ tools })`              |
+| `idleTimeoutInSeconds` | `number`                                                | `60`        | How long the agent waits for the handover signal                                                     |
+| `triggerConfig`        | `Partial<SessionTriggerConfig>`                         | `undefined` | Run options (tags, queue, machine, maxAttempts, maxDuration, region, lockToVersion, externalDeploymentId) for the auto-triggered handover-prepare run. The `chat:{chatId}` tag is prepended automatically and counts toward the 10-tag limit |
+
+`chat.headStart(options)` returns the handler `(req: Request) => Promise<Response>`. The `run` callback receives `HeadStartRunArgs`: `{ messages: UIMessage[], signal: AbortSignal, chat: HeadStartChatHelper }`, where the helper exposes `chat.toStreamTextOptions({ tools })` and a `chat.session` escape hatch (whose `pendingVersion` says whether the agent run is parked waiting for its deployment). See [Head Start](/ai-chat/fast-starts#head-start) for the full guide.
 
 ## chat namespace
 
@@ -493,13 +538,17 @@ All methods available on the `chat` object from `@trigger.dev/sdk/ai`.
 | `chat.agent(options)`                       | Create a chat agent                                                                                                          |
 | `chat.createSession(payload, options)`      | Create an async iterator for chat turns                                                                                      |
 | `chat.pipe(source, options?)`               | Pipe a stream to the frontend (from anywhere inside a task)                                                                  |
-| `chat.pipeAndCapture(source, options?)`     | Pipe and capture the response `UIMessage`                                                                                    |
-| `chat.writeTurnComplete(options?)`          | Signal the frontend that the current turn is complete                                                                        |
+| `chat.pipeAndCapture(source, options?)`     | Pipe and capture the response; returns `{ message, status, error }`                                                         |
+| `chat.writeTurnComplete(options?)`          | Signal turn complete; returns `{ lastEventId, sessionInEventId }` resume cursors. `sessionInEventId` is a lower bound, not the sequence of the record the turn answered |
 | `chat.createStopSignal()`                   | Create a managed stop signal wired to the stop input stream                                                                  |
-| `chat.messages`                             | Input stream for incoming messages — use `.waitWithIdleTimeout()`                                                            |
+| `chat.messages`                             | Incoming message mailbox; supports non-consuming `.peek()` / `.hasPending()`, single-record `.next()`, `.on()`, and suspend-aware `.waitWithIdleTimeout()` |
 | `chat.local<T>({ id })`                     | Create a per-run typed local (see [`chat.local`](/ai-chat/chat-local))                             |
 | `chat.createStartSessionAction(taskId, options?)` | Returns a server action that creates a chat Session + triggers the first run + returns a session-scoped PAT. Idempotent on `(env, externalId)`.   |
+| `chat.createLoadTranscriptAction(storage, options?)` | Returns a server action that reads a conversation from a transcript storage (`{ chatId, clientData?, limit?, before? }` → `TranscriptLoadResult`). Pair with `useLoadTranscript`. Performs no application authorization: authorize `chatId` for the signed-in user in your own code. See [Transcript storage](/ai-chat/transcript-storage#reading-the-transcript) |
+| `chat.waitForHandover(options)`             | Wait for a [`chat.headStart`](/ai-chat/fast-starts#handover-with-custom-agents) handover signal in a custom loop. Returns the signal or `null`. `chat.MessageAccumulator` wraps this as `consumeHandover()` / `applyHandover()` |
 | `chat.requestUpgrade()`                     | End the current run after this turn so the next message starts on the latest agent version. Server-orchestrated handoff.    |
+| `chat.close({ reason })`                    | End the conversation permanently: close the session row, write a terminal `session-closed` record, and exit without a continuation. Decide it before the turn ends (`onBeforeTurnComplete`, not `onTurnComplete`) so the client sees the closed state on that turn. |
+| `chat.endAndContinue()`                     | In a hand-rolled custom agent, hand off the Session to a fresh continuation run. Call between turns after detaching input listeners, then return immediately. The promise rejects if the handoff fails. |
 | `chat.setTurnTimeout(duration)`             | Override turn timeout at runtime (e.g. `"2h"`)                                                                               |
 | `chat.setTurnTimeoutInSeconds(seconds)`     | Override turn timeout at runtime (in seconds)                                                                                |
 | `chat.setIdleTimeoutInSeconds(seconds)`     | Override idle timeout at runtime                                                                                             |
@@ -535,15 +584,30 @@ Use this when you need [`InferChatUIMessage`](#inferchatuimessage) / typed `data
 
 ## `chat.withClientData`
 
-Returns a [`ChatBuilder`](/ai-chat/types#chatbuilder) with a fixed client data schema. All hooks and `run` get typed `clientData` without passing `clientDataSchema` in `.agent()` options.
+Returns a [`ChatBuilder`](/ai-chat/types#chatbuilder) with a fixed client data schema. Managed-agent hooks and `run` get typed `clientData` without passing `clientDataSchema` in `.agent()` options. Custom agents parse `payload.metadata` on the initial payload and later input frames before passing it to user code.
 
 ```ts
-chat.withClientData<TSchema>({ schema: TSchema }): ChatBuilder<UIMessage, TSchema>;
+chat.withClientData<TSchema extends TaskSchema>(config: {
+  schema: TSchema;
+  reportErrorAt?: "turn-end" | "arrival";
+  onValidationError?: (event: {
+    error: unknown;
+    payload: ChatTaskWirePayload;
+  }) => Promise<void> | void;
+}): ChatBuilder<UIMessage, TSchema>;
 ```
 
-| Parameter | Type         | Description                                        |
-| --------- | ------------ | -------------------------------------------------- |
-| `schema`  | `TaskSchema` | Zod, ArkType, Valibot, or any supported schema lib |
+| Parameter           | Type                        | Default      | Description                                                                                                              |
+| ------------------- | --------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `schema`            | `TaskSchema`                | required     | Zod, ArkType, Valibot, or any supported schema lib                                                                       |
+| `reportErrorAt`     | `"turn-end" \| "arrival"`   | `"turn-end"` | When the client-visible `Invalid client data` error is written for a steering frame that failed validation mid-turn       |
+| `onValidationError` | `(event) => void`           | —            | Called when an input fails validation. Composes with the task-level `onClientDataValidationError` rather than replacing it |
+
+`reportErrorAt` governs only the stream-visible error, and only for frames arriving on the steering subscription created by `chat.createSession({ pendingMessages })`. `"turn-end"` holds it until the turn closes, so a bad send cannot truncate an answer the user is already reading; `"arrival"` writes it as soon as validation fails, ending the response in progress. `onValidationError` and the task log fire on arrival in both modes, and the frame is never delivered as a turn either way. A raw `chat.messages.on()` subscription has no turn boundary to defer to, so it always reports through the callback and the task log without writing to the stream.
+
+For `chat.customAgent()`, invalid client data is skipped. Async reads emit an error chunk followed by `turn-complete`. A `chat.messages.on()` subscription uses the task's `onClientDataValidationError` callback and task log instead, so an active response is not ended early. Without a schema, metadata is passed through unchanged.
+
+Passing options directly to `chat.customAgent()` instead of through the builder uses the flat equivalents: `clientDataSchema`, `clientDataReportErrorAt`, and `onClientDataValidationError`.
 
 Full guide: [Typed client data](/ai-chat/types#typed-client-data-with-chatwithclientdata).
 
@@ -619,9 +683,30 @@ Options for the frontend transport constructor and `useTriggerChatTransport` hoo
 | `clientData`           | Typed by `clientDataSchema`                                          | —                           | Default client data merged into per-turn `metadata` and threaded through `startSession`'s params (so the first run's `payload.metadata` matches per-turn `metadata`). Live-updated when the option value changes. |
 | `sessions`             | `Record<string, ChatSession>`                                        | —                           | Restore sessions from storage. See [ChatSession](#chatsession).             |
 | `onSessionChange`      | `(chatId, session \| null) => void`                                  | —                           | Fires when session state changes. `session` is the full `ChatSession` or `null` when the run ends. |
+| `onEvent`              | `(event: ChatTransportEvent) => void`                                | —                           | Observability callback for transport lifecycle events (send outcomes, stream connects, first chunk, turn completion). See [Transport events](#transport-events). Exceptions thrown by the callback are swallowed. |
 | `multiTab`             | `boolean`                                                            | `false`                     | Enable multi-tab claim coordination via `BroadcastChannel`. See [Frontend → multi-tab](/ai-chat/frontend#multi-tab-coordination). |
 | `watch`                | `boolean`                                                            | `false`                     | Read-only watcher mode — keep the SSE subscription open across `trigger:turn-complete` so a viewer sees turns 2, 3, … through one long-lived stream. |
 | `headStart`            | `string`                                                             | —                           | URL of a [`chat.headStart`](/ai-chat/fast-starts#head-start) route handler. When set, the FIRST message of a brand-new chat POSTs to this URL so step 1's LLM call runs in your warm process while the agent run boots in parallel. Subsequent turns bypass it. |
+
+### Transport events
+
+The `onEvent` callback receives a `ChatTransportEvent` (exported from `@trigger.dev/sdk/chat` and `@trigger.dev/sdk/chat/react`) for each lifecycle moment the transport observes. All events carry `chatId` and `timestamp`.
+
+| Event | Extra fields | Fires when |
+| --- | --- | --- |
+| `message-sent` | `messageId?`, `source`, `durationMs`, `partId?`, `bodyBytes?` | A send was durably acknowledged — a 2xx from the session input stream append (or the `headStart` POST), after any internal token-refresh retries. This means the message is durably written to the stream the agent consumes from, not merely "request accepted". `partId` is the append's idempotency key, also stored on the server-side record. |
+| `message-send-failed` | `messageId?`, `source`, `error`, `status?`, `durationMs`, `partId?`, `bodyBytes?` | A send definitively failed after internal retries. Fires in addition to `useChat`'s `onError`. |
+| `run-pending-version` | `source` | The chat's run is parked waiting for the deployment carrying its external deployment id ([version skew protection](/deployment/version-skew-protection#chat-sessions)). Everything already sent is durable and answered once the deployment lands. `source` is `"start"` (learned while starting the session), `"send"` (from a message append, re-emitted on every send while parked) `"head-start"` (from the `headStart` POST, where step 1 still streams from your server and only step 2 waits) or `"upgrade"` (an automatic version handover whose successor is parked on a deployment that has not landed). |
+| `stream-connected` | `resumed`, `lastEventId?`, `messageId?` | The SSE subscription to the session's output stream started delivering. `resumed: true` when reconnecting from a stored cursor (page reload) rather than following a fresh send. `lastEventId` is the cursor it connected from. |
+| `first-chunk` | `chunkType?`, `lastEventId?`, `messageId?`, `sinceSendMs?` | The first response chunk of a turn arrived. `sinceSendMs` is the delta from the last turn-producing send — time to first token without any bookkeeping. |
+| `turn-completed` | `lastEventId?`, `sessionInEventId?`, `messageId?`, `sinceSendMs?` | The agent's turn-complete control record arrived — the "finished answering" signal. `sinceSendMs` is the full turn latency; `sessionInEventId` is the cursor the agent can safely resume its input stream from. Treat it as a lower bound: it is held back behind any message still waiting to be handled, so it can be below the sequence of the record this turn answered. Do not use it to decide whether a turn boundary belongs to your own send. |
+| `stream-error` | `error`, `status?` | The output stream failed unrecoverably. |
+
+`source` identifies the send path: `"submit-message"`, `"regenerate-message"`, `"steer"` (`sendPendingMessage`), `"action"` (`sendAction`), `"stop"` (`stopGeneration`), or `"head-start"`.
+
+`messageId` on the response-side events is client-side attribution: the id from the most recent turn-producing send (`submit-message`, `regenerate-message`, or `head-start`) on that chat.
+
+See [Monitoring message delivery](/ai-chat/frontend#monitoring-message-delivery) for the metrics and watchdog patterns these enable.
 
 ### `accessToken` callback
 
@@ -747,13 +832,13 @@ See [Stop generation](/ai-chat/frontend#stop-generation) for full details.
 
 ### transport.sendAction()
 
-Send a custom action to the agent. Actions wake the agent from suspension and fire `onAction`. They are not turns — `run()` and turn lifecycle hooks do not fire. If `onAction` returns a `StreamTextResult`, the response is auto-piped to the frontend.
+Send a custom action to the agent, outside `useChat`. Actions wake the agent from suspension and fire `onAction`. An action that returns `chat.turn()` is followed by a turn; its answer arrives on the returned stream, which the caller must read. From a `useChat` app, send actions as requests instead (`sendMessage(undefined, { body: { action } })` or the `useChatActions` hook) so `useChat` renders the answer.
 
 ```ts
 transport.sendAction(chatId: string, action: unknown): Promise<ReadableStream<UIMessageChunk>>
 ```
 
-The action payload is validated against the agent's `actionSchema` on the backend.
+For managed `chat.agent()` tasks, the action payload is validated against the agent's `actionSchema` on the backend. Raw `chat.customAgent()` tasks receive it as `unknown` and must validate it themselves.
 
 ```tsx
 // Undo button
@@ -822,6 +907,26 @@ Second argument to `chat.createStartSessionAction(taskId, options?)`. Controls h
 | `baseURL`        | `string \| (ctx: { endpoint: "sessions" \| "auth"; chatId: string }) => string`      | `apiClientManager.baseURL`    | API base URL. `endpoint` is `"sessions"` for `POST /api/v1/sessions` or `"auth"` for `POST /api/v1/auth/jwt/claims` (only fires when `tokenTTL` is set). |
 | `fetch`          | `(url: string, init: RequestInit, ctx: { endpoint: "sessions" \| "auth"; chatId: string }) => Promise<Response>` | —                             | Per-request fetch override. Use to route session-create through a trusted edge proxy so `basePayload.metadata` is rewritten before reaching `api.trigger.dev`. |
 
+## createLoadTranscriptAction options
+
+Second argument to `chat.createLoadTranscriptAction(storage, options?)`.
+
+| Option      | Type                     | Default                    | Description                                                                 |
+| ----------- | ------------------------ | -------------------------- | --------------------------------------------------------------------------- |
+| `limit`     | `number`                 | —                          | Page size when the caller passes none. Returns the most recent messages and a `nextCursor`. |
+| `apiClient` | `ApiClientConfiguration` | `apiClientManager` config  | Scope the read to a specific API client (secret key, base URL). The default storage reads through it. |
+
+## useLoadTranscript
+
+`useLoadTranscript(chatId, load, options?)` from `@trigger.dev/sdk/chat/react`. Loads a conversation through a `chat.createLoadTranscriptAction` action, for rendering before the chat connects. Re-runs when `chatId` changes.
+
+| Option      | Type                   | Description                                                                                  |
+| ----------- | ---------------------- | -------------------------------------------------------------------------------------------- |
+| `transport` | `TriggerChatTransport` | Seed the transport's resume cursor for this chat from the transcript, once it knows the session. |
+| `limit`     | `number`               | Page size passed to the action.                                                              |
+
+Returns `{ messages, isLoading, error, nextCursor }`. `nextCursor` is the id to pass as `before` to the action for the page before this one.
+
 ## useMultiTabChat
 
 React hook for multi-tab message coordination. Import from `@trigger.dev/sdk/chat/react`.
@@ -882,9 +987,10 @@ Tokens minted for `TriggerChatTransport` and `AgentChat` are session-scoped — 
 | Scope | Grants |
 | --- | --- |
 | `read:sessions:<chatId>` | Subscribe to `.out`, HEAD probe the stream, retrieve the session row |
+| `read:sessions:<chatId>:out` | Subscribe to `.out` and HEAD probe the stream only. Use this when the browser needs nothing but the response stream. |
 | `write:sessions:<chatId>` | Append to `.in`, close the session, end-and-continue, update metadata |
 
-Tokens are produced by `auth.createPublicToken({ scopes: { read: { sessions: chatId }, write: { sessions: chatId } } })` (used by the customer's `accessToken` server action) or returned automatically from `chat.createStartSessionAction` / `POST /api/v1/sessions`. Either form authorizes both URL forms (`/sessions/{chatId}/...` and `/sessions/session_*/...`) on every read and write route.
+Reading `.in` requires a secret key, so no browser token can replay what clients sent. Tokens are produced by `auth.createPublicToken({ scopes: { read: { sessions: chatId }, write: { sessions: chatId } } })` (used by the customer's `accessToken` server action) or returned automatically from `chat.createStartSessionAction` / `POST /api/v1/sessions`. Either form authorizes both URL forms (`/sessions/{chatId}/...` and `/sessions/session_*/...`) on every read and write route.
 
 ## Related
 

@@ -1,33 +1,31 @@
-import { z } from "zod";
 import { type ClickHouse, type WhereCondition } from "@internal/clickhouse";
 import { type PrismaClientOrTransaction } from "@trigger.dev/database";
+import { z } from "zod";
 import { EVENT_STORE_TYPES, getConfiguredEventRepository } from "~/v3/eventRepository/index.server";
 
-import parseDuration from "parse-duration";
 import { type Direction } from "~/components/ListPagination";
-import { timeFilterFromTo, timeFilters } from "~/components/runs/v3/SharedFilters";
+import { timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
+import { env } from "~/env.server";
 import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { getTaskIdentifiers } from "~/models/task.server";
-import { ServiceValidationError } from "~/v3/services/baseService.server";
-import { kindToLevel, type LogLevel, LogLevelSchema } from "~/utils/logUtils";
 import { BasePresenter } from "~/presenters/v3/basePresenter.server";
+import { kindToLevel, type LogLevel, LogLevelSchema } from "~/utils/logUtils";
 import {
-  convertDateToClickhouseDateTime,
   convertClickhouseDateTime64ToJsDate,
+  convertDateToClickhouseDateTime,
 } from "~/v3/eventRepository/clickhouseEventRepository.server";
+import { ServiceValidationError } from "~/v3/services/baseService.server";
+import {
+  escapeClickHouseLike,
+  hasMinimumLogsSearchLength,
+  logsSearchExpansionPeriod,
+  LOGS_SEARCH_RETRY_OVERFETCH_FACTOR,
+  MIN_LOGS_SEARCH_LENGTH,
+  normalizeLogsSearchTerm,
+  prepareLogsSearchPage,
+} from "~/utils/logSearch";
 
 export type { LogLevel };
-
-type ErrorAttributes = {
-  error?: {
-    message?: unknown;
-  };
-  [key: string]: unknown;
-};
-
-function escapeClickHouseString(val: string): string {
-  return val.replace(/\\/g, "\\\\").replace(/\//g, "\\/").replace(/%/g, "\\%").replace(/_/g, "\\_");
-}
 
 export type LogsListOptions = {
   userId?: string;
@@ -66,25 +64,32 @@ export const LogsListOptionsSchema = z.object({
   pageSize: z.number().int().positive().max(1000).optional(),
 });
 
-const DEFAULT_PAGE_SIZE = 50;
-
-export type LogsList = Awaited<ReturnType<LogsListPresenter["call"]>>;
+type LogsList = Awaited<ReturnType<LogsListPresenter["call"]>>;
 export type LogEntry = LogsList["logs"][0];
-export type LogsListAppliedFilters = LogsList["filters"];
+
+// Bump when the cursor shape changes so stale cursors are ignored (reset to the first page)
+// rather than misparsed.
+const LOG_CURSOR_VERSION = 4;
 
 // Cursor is a base64 encoded JSON of the pagination keys
 type LogCursor = {
+  v: number;
   organizationId: string;
   environmentId: string;
   triggeredTimestamp: string; // DateTime64(9) string
   traceId: string;
+  spanId: string;
+  projectionFingerprint?: string;
 };
 
 const LogCursorSchema = z.object({
+  v: z.literal(LOG_CURSOR_VERSION),
   organizationId: z.string(),
   environmentId: z.string(),
   triggeredTimestamp: z.string(),
   traceId: z.string(),
+  spanId: z.string(),
+  projectionFingerprint: z.string().optional(),
 });
 
 function encodeCursor(cursor: LogCursor): string {
@@ -143,7 +148,7 @@ export class LogsListPresenter extends BasePresenter {
       from,
       to,
       cursor,
-      pageSize = DEFAULT_PAGE_SIZE,
+      pageSize = env.LOGS_LIST_DEFAULT_PAGE_SIZE,
       defaultPeriod,
       retentionLimitDays,
     }: LogsListOptions
@@ -221,125 +226,157 @@ export class LogsListPresenter extends BasePresenter {
       );
     }
 
-    const queryBuilder = this.clickhouse.taskEventsSearch.logsListQueryBuilder();
+    const effectivePageSize = Math.min(pageSize, env.LOGS_LIST_MAX_PAGE_SIZE);
+    const queryLimit = (effectivePageSize + 1) * LOGS_SEARCH_RETRY_OVERFETCH_FACTOR;
 
-    // This should be removed once we clear the old inserts, 30 DAYS, the materialized view excludes events without trace_id)
-    queryBuilder.where("trace_id != ''", {
-      environmentId,
-    });
+    // Only honor a cursor scoped to this org+env; one copied from another scope would shift the
+    // pagination anchor instead of resetting to the first page.
+    const parsedCursor = cursor ? decodeCursor(cursor) : null;
+    const decodedCursor =
+      parsedCursor &&
+      parsedCursor.organizationId === organizationId &&
+      parsedCursor.environmentId === environmentId
+        ? parsedCursor
+        : null;
 
-    queryBuilder.where("environment_id = {environmentId: String}", {
-      environmentId,
-    });
+    // Effective upper bound, always clamped to now so a request never runs [floor, +inf).
+    const now = new Date();
+    const clampedTo = effectiveTo !== undefined ? (effectiveTo > now ? now : effectiveTo) : now;
 
-    queryBuilder.where("organization_id = {organizationId: String}", {
-      organizationId,
-    });
-    queryBuilder.where("project_id = {projectId: String}", { projectId });
-
-    if (effectiveFrom) {
-      queryBuilder.where("triggered_timestamp >= {triggeredAtStart: DateTime64(3)}", {
-        triggeredAtStart: convertDateToClickhouseDateTime(effectiveFrom),
-      });
-    }
-
-    if (effectiveTo) {
-      const clampedTo = effectiveTo > new Date() ? new Date() : effectiveTo;
-
-      queryBuilder.where("triggered_timestamp <= {triggeredAtEnd: DateTime64(3)}", {
-        triggeredAtEnd: convertDateToClickhouseDateTime(clampedTo),
-      });
-    }
-
-    // Task filter (applies directly to ClickHouse)
-    if (tasks && tasks.length > 0) {
-      queryBuilder.where("task_identifier IN {tasks: Array(String)}", {
-        tasks,
-      });
-    }
-
-    // Run ID filter
-    if (runId && runId !== "") {
-      queryBuilder.where("run_id = {runId: String}", { runId });
-    }
-
-    // Case-insensitive search in message, attributes, and status fields
-    if (search && search.trim() !== "") {
-      const searchTerm = escapeClickHouseString(search.trim()).toLowerCase();
-      queryBuilder.where(
-        "(lower(message) like {searchPattern: String} OR lower(attributes_text) like {searchPattern: String})",
-        {
-          searchPattern: `%${searchTerm}%`,
-        }
+    const rawSearchTerm = search?.trim() ?? "";
+    const normalizedSearchTerm = normalizeLogsSearchTerm(rawSearchTerm);
+    if (rawSearchTerm !== "" && !hasMinimumLogsSearchLength(normalizedSearchTerm)) {
+      throw new ServiceValidationError(
+        `Log searches must be at least ${MIN_LOGS_SEARCH_LENGTH} characters.`
       );
     }
+    const searchTerm =
+      normalizedSearchTerm === "" ? undefined : escapeClickHouseLike(normalizedSearchTerm);
 
-    if (levels && levels.length > 0) {
-      const conditions: WhereCondition[] = [];
+    // Run exactly one bounded query. Broadening a search window is an explicit user action;
+    // silently rescanning the same recent rows makes absence queries needlessly expensive.
+    const runQuery = () => {
+      const queryBuilder = this.clickhouse.taskEventsSearch.logsListQueryBuilder();
 
-      for (let i = 0; i < levels.length; i++) {
-        const filter = levelToKindsAndStatuses(levels[i]);
+      // The projector excludes events without a trace_id.
+      queryBuilder.where("trace_id != ''");
+      queryBuilder.where("environment_id = {environmentId: String}", { environmentId });
+      queryBuilder.where("organization_id = {organizationId: String}", { organizationId });
+      queryBuilder.where("project_id = {projectId: String}", { projectId });
 
-        if (filter.kinds && filter.kinds.length > 0) {
-          conditions.push({
-            clause: `kind IN {kinds_${i}: Array(String)} AND status NOT IN {excluded_statuses: Array(String)}`,
-            params: {
-              [`kinds_${i}`]: filter.kinds,
-              excluded_statuses: ["ERROR", "CANCELLED"],
-            },
-          });
-        }
-
-        if (filter.statuses && filter.statuses.length > 0) {
-          conditions.push({
-            clause: `status IN {statuses_${i}: Array(String)}`,
-            params: { [`statuses_${i}`]: filter.statuses },
-          });
-        }
+      if (clampedTo) {
+        queryBuilder.where("triggered_timestamp <= {triggeredAtEnd: DateTime64(3)}", {
+          triggeredAtEnd: convertDateToClickhouseDateTime(clampedTo),
+        });
       }
 
-      queryBuilder.whereOr(conditions);
-    }
+      if (effectiveFrom) {
+        queryBuilder.where("triggered_timestamp >= {triggeredAtStart: DateTime64(3)}", {
+          triggeredAtStart: convertDateToClickhouseDateTime(effectiveFrom),
+        });
+      }
 
-    // Cursor-based pagination using lexicographic comparison on (triggered_timestamp, trace_id).
-    // Since ORDER BY is DESC, "next page" means rows that sort *after* the cursor, i.e. less-than.
-    // The OR handles the tiebreaker: rows with an earlier timestamp always qualify, and rows
-    // with the *same* timestamp only qualify if their trace_id is also smaller.
-    // Equivalent to: WHERE (triggered_timestamp, trace_id) < (cursor.triggered_timestamp, cursor.trace_id)
-    const decodedCursor = cursor ? decodeCursor(cursor) : null;
-    if (decodedCursor) {
-      queryBuilder.where(
-        `(triggered_timestamp < {cursorTriggeredTimestamp: String} OR (triggered_timestamp = {cursorTriggeredTimestamp: String} AND trace_id < {cursorTraceId: String}))`,
-        {
+      // Task filter (applies directly to ClickHouse)
+      if (tasks && tasks.length > 0) {
+        queryBuilder.where("task_identifier IN {tasks: Array(String)}", { tasks });
+      }
+
+      // Run ID filter
+      if (runId && runId !== "") {
+        queryBuilder.where("run_id = {runId: String}", { runId });
+      }
+
+      if (searchTerm !== undefined) {
+        queryBuilder.where("search_text LIKE {searchPattern: String}", {
+          searchPattern: `%${searchTerm}%`,
+        });
+      }
+
+      if (levels && levels.length > 0) {
+        const conditions: WhereCondition[] = [];
+
+        for (let i = 0; i < levels.length; i++) {
+          const filter = levelToKindsAndStatuses(levels[i]);
+
+          if (filter.kinds && filter.kinds.length > 0) {
+            conditions.push({
+              clause: `kind IN {kinds_${i}: Array(String)} AND status NOT IN {excluded_statuses: Array(String)}`,
+              params: {
+                [`kinds_${i}`]: filter.kinds,
+                excluded_statuses: ["ERROR", "CANCELLED"],
+              },
+            });
+          }
+
+          if (filter.statuses && filter.statuses.length > 0) {
+            conditions.push({
+              clause: `status IN {statuses_${i}: Array(String)}`,
+              params: { [`statuses_${i}`]: filter.statuses },
+            });
+          }
+        }
+
+        queryBuilder.whereOr(conditions);
+      }
+
+      // Keyset pagination over the sort key. ORDER BY is DESC, so the next page is the rows
+      // that sort after the cursor (strictly less-than). V2 adds the projection identity as the
+      // final tiebreaker so retry copies and distinct rows at a span boundary paginate safely.
+      if (decodedCursor) {
+        const cursorParams = {
           cursorTriggeredTimestamp: decodedCursor.triggeredTimestamp,
           cursorTraceId: decodedCursor.traceId,
-        }
+          cursorSpanId: decodedCursor.spanId,
+          ...(decodedCursor.projectionFingerprint
+            ? { cursorProjectionFingerprint: decodedCursor.projectionFingerprint }
+            : {}),
+        };
+        queryBuilder.where(
+          decodedCursor.projectionFingerprint
+            ? `(triggered_timestamp < {cursorTriggeredTimestamp: String}
+              OR (triggered_timestamp = {cursorTriggeredTimestamp: String} AND trace_id < {cursorTraceId: String})
+              OR (triggered_timestamp = {cursorTriggeredTimestamp: String} AND trace_id = {cursorTraceId: String} AND span_id < {cursorSpanId: String})
+              OR (triggered_timestamp = {cursorTriggeredTimestamp: String} AND trace_id = {cursorTraceId: String} AND span_id = {cursorSpanId: String} AND projection_fingerprint < {cursorProjectionFingerprint: UInt128}))`
+            : `(triggered_timestamp < {cursorTriggeredTimestamp: String}
+              OR (triggered_timestamp = {cursorTriggeredTimestamp: String} AND trace_id < {cursorTraceId: String})
+              OR (triggered_timestamp = {cursorTriggeredTimestamp: String} AND trace_id = {cursorTraceId: String} AND span_id < {cursorSpanId: String}))`,
+          cursorParams
+        );
+      }
+
+      queryBuilder.orderBy(
+        "triggered_timestamp DESC, trace_id DESC, span_id DESC, projection_fingerprint DESC"
       );
-    }
+      queryBuilder.limit(queryLimit);
 
-    queryBuilder.orderBy("triggered_timestamp DESC, trace_id DESC");
-    // Limit + 1 to check if there are more results
-    queryBuilder.limit(pageSize + 1);
+      return queryBuilder.execute();
+    };
 
-    const [queryError, records] = await queryBuilder.execute();
-
+    const [queryError, queryResult] = await runQuery();
     if (queryError) {
       throw queryError;
     }
 
-    const results = records || [];
-    const hasMore = results.length > pageSize;
-    const logs = results.slice(0, pageSize);
+    // ClickHouse's break overflow modes can return a short prefix without a reliable completion
+    // marker. Keep the default throw behavior so the product never presents truncated results as
+    // complete.
+    const results = queryResult ?? [];
+    const page = prepareLogsSearchPage(results, effectivePageSize, queryLimit);
+    const hasMore = page.hasMore;
+    const logs = page.rows;
 
     // Build next cursor from the last item
     let nextCursor: string | undefined;
     if (hasMore && logs.length > 0) {
       const lastLog = logs[logs.length - 1];
       nextCursor = encodeCursor({
+        v: LOG_CURSOR_VERSION,
         organizationId,
         environmentId,
         triggeredTimestamp: lastLog.triggered_timestamp,
         traceId: lastLog.trace_id,
+        spanId: lastLog.span_id,
+        projectionFingerprint: lastLog.projection_fingerprint_string,
       });
     }
 
@@ -348,17 +385,10 @@ export class LogsListPresenter extends BasePresenter {
     const transformedLogs = logs.map((log) => {
       let displayMessage = log.message;
 
-      // For error logs with status ERROR, try to extract error message from attributes
-      if (log.status === "ERROR" && log.attributes_text) {
-        try {
-          const attributes = JSON.parse(log.attributes_text) as ErrorAttributes;
-
-          if (attributes?.error?.message && typeof attributes.error.message === "string") {
-            displayMessage = attributes.error.message;
-          }
-        } catch {
-          // If attributes parsing fails, use the regular message
-        }
+      // The search table extracts this leaf in the materialized view, so list queries never
+      // need to read or parse the complete attributes blob.
+      if (log.status === "ERROR" && log.error_message) {
+        displayMessage = log.error_message;
       }
 
       return {
@@ -379,6 +409,11 @@ export class LogsListPresenter extends BasePresenter {
         level: kindToLevel(log.kind, log.status),
       };
     });
+
+    const searchExpansion =
+      searchTerm !== undefined && time.isDefault && transformedLogs.length === 0
+        ? logsSearchExpansionPeriod(effectiveFrom, clampedTo, retentionLimitDays)
+        : undefined;
 
     return {
       logs: transformedLogs,
@@ -402,6 +437,7 @@ export class LogsListPresenter extends BasePresenter {
       hasFilters,
       hasAnyLogs: transformedLogs.length > 0,
       searchTerm: search,
+      searchExpansion: searchExpansion ? { nextPeriod: searchExpansion } : undefined,
       retention:
         retentionLimitDays !== undefined
           ? {

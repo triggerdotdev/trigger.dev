@@ -1,4 +1,4 @@
-import { MaybeDeferredPromise, WaitUntilManager } from "./types.js";
+import type { MaybeDeferredPromise, WaitUntilManager } from "./types.js";
 
 export class StandardWaitUntilManager implements WaitUntilManager {
   private maybeDeferredPromises: Set<MaybeDeferredPromise> = new Set();

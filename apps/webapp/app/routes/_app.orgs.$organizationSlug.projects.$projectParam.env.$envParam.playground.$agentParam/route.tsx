@@ -1,22 +1,25 @@
-import {
-  ArrowUpIcon,
-  BoltIcon,
-  CpuChipIcon,
-  StopIcon,
-  ArrowPathIcon,
-  TrashIcon,
-} from "@heroicons/react/20/solid";
-import { type MetaFunction } from "@remix-run/node";
-import { Link, useFetcher, useNavigate, useRouteLoaderData } from "@remix-run/react";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { useCallback, useEffect, useRef, useState } from "react";
+import type { UIMessage } from "@ai-sdk/react";
 import { useChat } from "@ai-sdk/react";
+import { BoltIcon, CheckIcon, StopIcon } from "@heroicons/react/20/solid";
+import { ClipboardIcon, TrashIcon } from "@heroicons/react/24/outline";
+import { Link, useFetcher, useNavigate, useRouteLoaderData } from "@remix-run/react";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { generateJWT as internal_generateJWT, MachinePresetName } from "@trigger.dev/core/v3";
 import { TriggerChatTransport } from "@trigger.dev/sdk/chat";
-import { MainCenteredContainer } from "~/components/layout/AppLayout";
-import { Badge } from "~/components/primitives/Badge";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
-import { CopyButton } from "~/components/primitives/CopyButton";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
+import { PlusIcon } from "~/assets/icons/PlusIcon";
+import { RunsIcon } from "~/assets/icons/RunsIcon";
+import { JSONEditor } from "~/components/code/JSONEditor";
+import { Button } from "~/components/primitives/Buttons";
+import {
+  ClientTabs,
+  ClientTabsContent,
+  ClientTabsList,
+  ClientTabsTrigger,
+} from "~/components/primitives/ClientTabs";
+import { DateTime } from "~/components/primitives/DateTime";
 import { DurationPicker } from "~/components/primitives/DurationPicker";
 import { Header3 } from "~/components/primitives/Headers";
 import { Hint } from "~/components/primitives/Hint";
@@ -24,47 +27,46 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { Spinner } from "~/components/primitives/Spinner";
-import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
-import { ClockRotateLeftIcon } from "~/assets/icons/ClockRotateLeftIcon";
-import type { PlaygroundConversation } from "~/presenters/v3/PlaygroundPresenter.server";
-import { DateTime } from "~/components/primitives/DateTime";
-import { cn } from "~/utils/cn";
-import { JSONEditor } from "~/components/code/JSONEditor";
-import { ToolUseRow, AssistantResponse, ChatBubble } from "~/components/runs/v3/ai/AIChatMessages";
-import { MessageBubble } from "~/components/runs/v3/agent/AgentMessageView";
-import { useAutoScrollToBottom } from "~/hooks/useAutoScrollToBottom";
+import {
+  Popover,
+  PopoverContent,
+  PopoverMenuItem,
+  PopoverVerticalEllipseTrigger,
+} from "~/components/primitives/Popover";
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
-import {
-  ClientTabs,
-  ClientTabsContent,
-  ClientTabsList,
-  ClientTabsTrigger,
-} from "~/components/primitives/ClientTabs";
+import { Select, SelectItem } from "~/components/primitives/Select";
+import { Spinner } from "~/components/primitives/Spinner";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { MessageBubble } from "~/components/runs/v3/agent/AgentMessageView";
+import { RunTagInput } from "~/components/runs/v3/RunTagInput";
+import { env as serverEnv } from "~/env.server";
+import { useAutoScrollToBottom } from "~/hooks/useAutoScrollToBottom";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
+import type { PlaygroundConversation } from "~/presenters/v3/PlaygroundPresenter.server";
 import { playgroundPresenter } from "~/presenters/v3/PlaygroundPresenter.server";
-import { requireUserId } from "~/services/session.server";
-import { RunTagInput } from "~/components/runs/v3/RunTagInput";
-import { Select, SelectItem } from "~/components/primitives/Select";
-import { EnvironmentParamSchema, v3PlaygroundAgentPath } from "~/utils/pathBuilder";
-import { env as serverEnv } from "~/env.server";
-import { generateJWT as internal_generateJWT, MachinePresetName } from "@trigger.dev/core/v3";
-import { extractJwtSigningSecretKey } from "~/services/realtime/jwtAuth.server";
-import { SchemaTabContent } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.test.tasks.$taskParam/SchemaTabContent";
 import { AIPayloadTabContent } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.test.tasks.$taskParam/AIPayloadTabContent";
-import type { UIMessage } from "@ai-sdk/react";
+import { SchemaTabContent } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.test.tasks.$taskParam/SchemaTabContent";
+import { extractJwtSigningSecretKey } from "~/services/realtime/jwtAuth.server";
+import { requireUserId } from "~/services/session.server";
+import { cn } from "~/utils/cn";
+import { EnvironmentParamSchema } from "~/utils/pathBuilder";
+import { playgroundAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 
-export const meta: MetaFunction = () => {
-  return [{ title: "Playground | Trigger.dev" }];
+export const handle: Handle = {
+  agentPageContext: (data) => playgroundAgentPageContext(data),
 };
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta(({ params }) => [params.agentParam ?? "Agent", "Playground"]);
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -186,7 +188,6 @@ function PlaygroundChat() {
         isDev: boolean;
       }
     | undefined;
-  const agents = parentData?.agents ?? [];
   const versions = parentData?.versions ?? [];
   const regions = parentData?.regions ?? [];
   const isDev = parentData?.isDev ?? false;
@@ -198,14 +199,15 @@ function PlaygroundChat() {
 
   const [conversationId, setConversationId] = useState<string | null>(() =>
     activeConversation
-      ? recentConversations.find((c) => c.chatId === activeConversation.chatId)?.id ?? null
+      ? (recentConversations.find((c) => c.chatId === activeConversation.chatId)?.id ?? null)
       : null
   );
-  const [chatId, setChatId] = useState(() => activeConversation?.chatId ?? crypto.randomUUID());
+  const [chatId, _setChatId] = useState(() => activeConversation?.chatId ?? crypto.randomUUID());
   const [clientDataJson, setClientDataJson] = useState(() =>
     activeConversation?.clientData ? JSON.stringify(activeConversation.clientData, null, 2) : "{}"
   );
   const clientDataJsonRef = useRef(clientDataJson);
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative route integration outside React state.
   clientDataJsonRef.current = clientDataJson;
   const [machine, setMachine] = useState<string | undefined>(undefined);
   const [tags, setTags] = useState<string[]>([]);
@@ -222,43 +224,42 @@ function PlaygroundChat() {
   // backing Session for `chatId` and triggers the first run, returns
   // the session-scoped PAT. Idempotent: called on initial use AND on
   // 401, so the same code path serves both first-run and PAT renewal.
-  const startSession = useCallback(
-    async (): Promise<string> => {
-      const formData = new FormData();
-      formData.set("intent", "start");
-      formData.set("agentSlug", agent.slug);
-      formData.set("chatId", chatId);
-      formData.set("clientData", clientDataJsonRef.current);
-      if (tags.length > 0) formData.set("tags", tags.join(","));
-      if (machine) formData.set("machine", machine);
-      if (maxAttempts) formData.set("maxAttempts", String(maxAttempts));
-      if (maxDuration) formData.set("maxDuration", String(maxDuration));
-      if (version) formData.set("version", version);
-      if (region) formData.set("region", region);
+  const startSession = useCallback(async (): Promise<string> => {
+    const formData = new FormData();
+    formData.set("intent", "start");
+    formData.set("agentSlug", agent.slug);
+    formData.set("chatId", chatId);
+    formData.set("clientData", clientDataJsonRef.current);
+    if (tags.length > 0) formData.set("tags", tags.join(","));
+    if (machine) formData.set("machine", machine);
+    if (maxAttempts) formData.set("maxAttempts", String(maxAttempts));
+    if (maxDuration) formData.set("maxDuration", String(maxDuration));
+    if (version) formData.set("version", version);
+    if (region) formData.set("region", region);
 
-      const response = await fetch(actionPath, { method: "POST", body: formData });
-      const data = (await response.json()) as {
-        runId?: string;
-        publicAccessToken?: string;
-        conversationId?: string;
-        error?: string;
-      };
+    const response = await fetch(actionPath, { method: "POST", body: formData });
+    const data = (await response.json()) as {
+      runId?: string;
+      publicAccessToken?: string;
+      conversationId?: string;
+      error?: string;
+    };
 
-      if (!response.ok || !data.publicAccessToken) {
-        throw new Error(data.error ?? "Failed to start chat session");
-      }
+    if (!response.ok || !data.publicAccessToken) {
+      throw new Error(data.error ?? "Failed to start chat session");
+    }
 
-      if (data.conversationId) {
-        setConversationId(data.conversationId);
-      }
+    if (data.conversationId) {
+      setConversationId(data.conversationId);
+    }
 
-      return data.publicAccessToken;
-    },
-    [actionPath, agent.slug, chatId, tags, machine, maxAttempts, maxDuration, version, region]
-  );
+    return data.publicAccessToken;
+  }, [actionPath, agent.slug, chatId, tags, machine, maxAttempts, maxDuration, version, region]);
 
-  // Resource route prefix — all realtime traffic goes through session-authed routes
-  const playgroundBaseURL = `${apiOrigin}/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/playground`;
+  // Same-origin resource routes: use the page origin, not apiOrigin, so in/append
+  // doesn't go cross-origin (CORS preflight) when API_ORIGIN != APP_ORIGIN.
+  const origin = typeof window !== "undefined" ? window.location.origin : apiOrigin;
+  const playgroundBaseURL = `${origin}/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/playground`;
 
   // The transport is constructed once (guarded ref below); reading
   // `startSession` directly there would freeze its closure to the
@@ -267,12 +268,14 @@ function PlaygroundChat() {
   // silently ignored on the first send. Mirror the `clientDataJsonRef`
   // pattern so the transport always calls the latest `startSession`.
   const startSessionRef = useRef(startSession);
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative route integration outside React state.
   startSessionRef.current = startSession;
 
   // Create TriggerChatTransport directly (not via useTriggerChatTransport hook
   // to avoid React version mismatch between SDK and webapp)
   const transportRef = useRef<TriggerChatTransport | null>(null);
   if (transportRef.current === null) {
+    // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative route integration outside React state.
     transportRef.current = new TriggerChatTransport({
       task: agent.slug,
       // The Remix action is idempotent on `(env, externalId)` and
@@ -301,6 +304,7 @@ function PlaygroundChat() {
         : {}),
     });
   }
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative route integration outside React state.
   const transport = transportRef.current;
 
   // Keep the transport's `defaultMetadata` in sync with the JSON editor.
@@ -351,6 +355,7 @@ function PlaygroundChat() {
   );
 
   // useChat from AI SDK — handles message accumulation, streaming, stop
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative route integration outside React state.
   const { messages, sendMessage, stop, status, error } = useChat({
     id: chatId,
     messages: initialMessages,
@@ -385,8 +390,16 @@ function PlaygroundChat() {
   const [preloaded, setPreloaded] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
+  // Focus on mount; refocus when the state-1 ↔ state-2 transition remounts the textarea.
+  const isEmpty = messages.length === 0;
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, [isEmpty]);
+
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative route integration outside React state.
   const session = transport.getSession(chatId);
 
+  /* oxlint-disable react/memo-dependencies -- The transport and chat ID are stable for this component's lifetime. */
   const handlePreload = useCallback(async () => {
     setPreloading(true);
     try {
@@ -397,6 +410,7 @@ function PlaygroundChat() {
       setPreloading(false);
     }
   }, [transport, chatId]);
+  /* oxlint-enable react/memo-dependencies */
 
   const handleNewConversation = useCallback(() => {
     // Navigate without ?conversation= so the loader returns activeConversation=null
@@ -424,6 +438,8 @@ function PlaygroundChat() {
     // steer() handles both cases: sends via input stream during streaming,
     // or sends as a normal message when ready
     pending.steer(trimmed);
+    // Keep focus after the state-1 → state-2 remount completes.
+    requestAnimationFrame(() => inputRef.current?.focus());
   }, [input, pending]);
 
   const handleKeyDown = useCallback(
@@ -439,200 +455,141 @@ function PlaygroundChat() {
   return (
     <ResizablePanelGroup orientation="horizontal" className="h-full">
       <ResizablePanel id="playground-chat" min="300px">
-        <div className="flex h-full flex-col">
-          {/* Header */}
-          <div className="flex items-center justify-between border-b border-grid-bright px-4 py-2">
-            <div className="flex items-center gap-2">
-              <Select
-                value={agent.slug}
-                setValue={(slug) => {
-                  if (slug && typeof slug === "string" && slug !== agent.slug) {
-                    navigate(v3PlaygroundAgentPath(organization, project, environment, slug));
-                  }
-                }}
-                icon={<CpuChipIcon className="size-4 text-indigo-500" />}
-                text={(val) => val || undefined}
-                variant="tertiary/small"
-                items={agents}
-                filter={(item, search) =>
-                  item.slug.toLowerCase().includes(search.toLowerCase())
-                }
-              >
-                {(matches) =>
-                  matches.map((a) => (
-                    <SelectItem key={a.slug} value={a.slug}>
-                      <div className="flex items-center gap-2">
-                        <CpuChipIcon className="size-3.5 text-indigo-500" />
-                        <span>{a.slug}</span>
-                      </div>
-                    </SelectItem>
-                  ))
-                }
-              </Select>
-              <Badge variant="extra-small">{formatAgentType(agent.type)}</Badge>
-            </div>
-            <div className="flex items-center gap-2">
-              {activeConversation?.runFriendlyId && (
-                <LinkButton
-                  to={`/runs/${activeConversation.runFriendlyId}`}
-                  variant="tertiary/small"
-                >
-                  View run
-                </LinkButton>
-              )}
-              {messages.length > 0 && (
-                <CopyButton
-                  value={JSON.stringify(messages, null, 2)}
-                  variant="button"
-                  size="extra-small"
-                  showTooltip={false}
-                >
-                  Copy raw
-                </CopyButton>
-              )}
-              <RecentConversationsPopover
-                conversations={recentConversations}
-                actionPath={actionPath}
+        <div className="relative flex h-full flex-col">
+          {/* Header — floats over the scroll area so messages can scroll behind it */}
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center justify-end px-2 py-2">
+            <div className="pointer-events-auto">
+              <ConversationMenu
+                runFriendlyId={activeConversation?.runFriendlyId ?? null}
+                hasMessages={messages.length > 0}
+                hasConversation={conversationId !== null}
+                messages={messages}
+                onDeleteConversation={handleDeleteConversation}
+                onNewConversation={handleNewConversation}
               />
-              {conversationId && (
-                <Button
-                  variant="tertiary/small"
-                  LeadingIcon={TrashIcon}
-                  onClick={handleDeleteConversation}
-                />
-              )}
-              <Button
-                variant="tertiary/small"
-                LeadingIcon={ArrowPathIcon}
-                onClick={handleNewConversation}
-              >
-                New conversation
-              </Button>
             </div>
           </div>
 
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-            {/* Always-mounted scroll-target wrapper so useAutoScrollToBottom
-                can find its container from `rootRef.current.parentElement`
-                on mount, even before any messages exist. */}
-            <div ref={messagesRootRef}>
+          {/* Scroll container is always mounted — useAutoScrollToBottom caches
+              its container on mount and won't refind it across remounts. */}
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+            <div
+              ref={messagesRootRef}
+              className={cn(
+                "min-h-full",
+                messages.length === 0
+                  ? "flex items-center justify-center px-4 pb-[20vh] pt-8"
+                  : "mx-auto w-full max-w-3xl space-y-4 px-4 pb-4 pt-12"
+              )}
+            >
               {messages.length === 0 ? (
-                <MainCenteredContainer>
-                  <div className="flex flex-col items-center gap-3 py-16">
-                    {preloaded ? (
+                <div className="w-full max-w-2xl">
+                  <h2 className="mb-6 text-center font-sans text-xl font-semibold leading-7 tracking-tight text-text-dimmed">
+                    Type a message to start testing{" "}
+                    <span className="inline-flex items-center gap-1.5 align-middle">
+                      <CubeSparkleIcon className="size-6 text-agents" />
+                      <code className="text-text-bright">{agent.slug}</code>
+                    </span>
+                  </h2>
+                  <ChatComposer
+                    inputRef={inputRef}
+                    value={input}
+                    onChange={setInput}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Type a message…"
+                    minHeightClassName="min-h-[80px]"
+                    maxHeightClassName="max-h-[60vh]"
+                    footer={
                       <>
-                        <BoltIcon className="size-10 text-success/50" />
-                        <Header3 className="text-text-dimmed">Preloaded</Header3>
-                        <Paragraph variant="small" className="max-w-sm text-center text-text-dimmed">
-                          Agent is warmed up and waiting. Type a message below to start.
-                        </Paragraph>
+                        <span className="text-[11px] text-text-dimmed">
+                          Press Enter to send, Shift+Enter for new line
+                        </span>
+                        <PreloadButton
+                          preloading={preloading}
+                          preloaded={preloaded}
+                          onPreload={handlePreload}
+                        />
                       </>
-                    ) : (
-                      <>
-                        <CpuChipIcon className="size-10 text-indigo-500/50" />
-                        <Header3 className="text-text-dimmed">Start a conversation</Header3>
-                        <Paragraph variant="small" className="max-w-sm text-center text-text-dimmed">
-                          Type a message below to start testing{" "}
-                          <code className="text-text-bright">{agent.slug}</code>
-                        </Paragraph>
-                        {!session && (
-                          <Button
-                            variant="tertiary/small"
-                            LeadingIcon={preloading ? Spinner : BoltIcon}
-                            onClick={handlePreload}
-                            disabled={preloading}
-                          >
-                            {preloading ? "Preloading..." : "Preload"}
-                          </Button>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </MainCenteredContainer>
+                    }
+                  />
+                </div>
               ) : (
-                <div className="mx-auto w-full max-w-4xl space-y-4">
+                <>
                   {messages.map((msg) => (
                     <MessageBubble key={msg.id} message={msg} />
                   ))}
                   {isSubmitted && (
                     <div className="flex justify-start">
-                      <div className="flex items-center gap-2 rounded-lg bg-charcoal-750 px-4 py-2.5">
+                      <div className="flex items-center gap-2 rounded-lg bg-background-hover px-4 py-2.5">
                         <Spinner className="size-3" />
-                        <span className="text-sm text-text-dimmed">Thinking...</span>
+                        <span className="text-sm text-text-dimmed">Thinking…</span>
                       </div>
                     </div>
                   )}
-                </div>
+                </>
               )}
             </div>
           </div>
 
           {/* Error */}
-          {error && (
+          {error && messages.length > 0 && (
             <div className="mx-4 mb-2 flex items-start gap-2 rounded border border-error/30 bg-error/10 px-3 py-2">
               <span className="flex-1 text-xs text-error">{error.message}</span>
             </div>
           )}
 
-          {/* Input */}
-          <div className="border-t border-grid-bright p-4">
-            <div className="mx-auto flex max-w-3xl items-end gap-2">
-              <textarea
-                ref={inputRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={isStreaming ? "Send a steering message..." : "Type a message..."}
-                rows={1}
-                className="flex-1 resize-none rounded-lg border border-charcoal-650 bg-charcoal-850 px-3 py-2.5 text-sm text-text-bright placeholder-text-dimmed focus:border-indigo-500 focus:outline-none"
-                style={{ minHeight: "40px", maxHeight: "120px" }}
-              />
-              <div className="flex items-end gap-1.5">
-                {isStreaming && (
-                  <Button variant="danger/small" LeadingIcon={StopIcon} onClick={stop}>
-                    Stop
-                  </Button>
-                )}
-                <Button
-                  variant={isStreaming ? "tertiary/small" : "primary/small"}
-                  LeadingIcon={ArrowUpIcon}
-                  onClick={handleSend}
-                  disabled={!input.trim()}
-                >
-                  {isStreaming ? "Steer" : "Send"}
-                </Button>
-              </div>
-            </div>
-            {/* Pending messages overlay */}
-            {pending.pending.length > 0 && (
-              <div className="mx-auto mt-1.5 max-w-3xl space-y-1">
-                {pending.pending.map((msg) => (
-                  <div key={msg.id} className="flex items-center gap-2 text-[10px]">
-                    <span
-                      className={cn(
-                        "rounded px-1.5 py-0.5",
-                        msg.mode === "steering"
-                          ? "bg-amber-500/10 text-amber-400"
-                          : "bg-charcoal-700 text-text-dimmed"
-                      )}
-                    >
-                      {msg.mode === "steering" ? "Steering" : "Queued"}
+          {messages.length > 0 && (
+            <div className="px-4 pb-8">
+              <div className="mx-auto max-w-3xl">
+                <ChatComposer
+                  inputRef={inputRef}
+                  value={input}
+                  onChange={setInput}
+                  onKeyDown={handleKeyDown}
+                  placeholder={isStreaming ? "Send a steering message…" : "Type a message…"}
+                  minHeightClassName="min-h-[44px]"
+                  maxHeightClassName="max-h-[40vh]"
+                  trailing={
+                    isStreaming ? (
+                      <Button variant="danger/small" LeadingIcon={StopIcon} onClick={stop}>
+                        Stop
+                      </Button>
+                    ) : undefined
+                  }
+                  footer={
+                    <span className="text-[11px] text-text-dimmed">
+                      Press Enter to send, Shift+Enter for new line
                     </span>
-                    <span className="truncate text-text-dimmed">{msg.text}</span>
-                    {msg.injected && <span className="text-success">Injected</span>}
+                  }
+                />
+                {pending.pending.length > 0 && (
+                  <div className="mt-1.5 space-y-1">
+                    {pending.pending.map((msg) => (
+                      <div key={msg.id} className="flex items-center gap-2 text-[10px]">
+                        <span
+                          className={cn(
+                            "rounded px-1.5 py-0.5",
+                            msg.mode === "steering"
+                              ? "bg-amber-500/10 text-amber-400"
+                              : "bg-background-raised text-text-dimmed"
+                          )}
+                        >
+                          {msg.mode === "steering" ? "Steering" : "Queued"}
+                        </span>
+                        <span className="truncate text-text-dimmed">{msg.text}</span>
+                        {msg.injected && <span className="text-success">Injected</span>}
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
+                {isStreaming && (
+                  <div className="mt-1.5 text-[10px] text-text-dimmed">
+                    Send a steering message to guide the agent between tool calls
+                  </div>
+                )}
               </div>
-            )}
-            <div className="mx-auto mt-1.5 max-w-3xl">
-              <span className="text-[10px] text-text-dimmed">
-                {isStreaming
-                  ? "Send a steering message to guide the agent between tool calls"
-                  : "Press Enter to send, Shift+Enter for new line"}
-              </span>
             </div>
-          </div>
+          )}
         </div>
       </ResizablePanel>
       <ResizableHandle id="playground-sidebar-handle" />
@@ -663,24 +620,101 @@ function PlaygroundChat() {
           messageCount={messages.length}
           isStreaming={isStreaming}
           status={status}
+          recentConversations={recentConversations}
+          currentConversationId={conversationId}
+          actionPath={actionPath}
         />
       </ResizablePanel>
     </ResizablePanelGroup>
   );
 }
 
-function formatAgentType(type: string): string {
-  switch (type) {
-    case "ai-sdk-chat":
-      return "AI SDK Chat";
-    default:
-      return type;
-  }
-}
-
 // Message rendering — `MessageBubble` is imported from
 // `~/components/runs/v3/agent/AgentMessageView`. The same module is used by
 // the run details Agent view so both surfaces stay in sync.
+
+function ChatComposer({
+  inputRef,
+  value,
+  onChange,
+  onKeyDown,
+  placeholder,
+  minHeightClassName,
+  maxHeightClassName,
+  trailing,
+  footer,
+}: {
+  inputRef: React.RefObject<HTMLTextAreaElement>;
+  value: string;
+  onChange: (val: string) => void;
+  onKeyDown: (e: React.KeyboardEvent) => void;
+  placeholder: string;
+  minHeightClassName: string;
+  maxHeightClassName: string;
+  trailing?: React.ReactNode;
+  footer?: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-border-bright bg-background-bright p-2 transition focus-within:border-border-brighter">
+      <div className="flex items-end gap-2">
+        <textarea
+          ref={inputRef}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={onKeyDown}
+          placeholder={placeholder}
+          className={cn(
+            "scrollbar-gutter-stable flex-1 resize-none border-0 bg-transparent px-2 py-1.5 text-sm text-text-bright placeholder-text-dimmed outline-hidden ring-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control field-sizing-content focus:border-0 focus:outline-hidden focus:ring-0",
+            minHeightClassName,
+            maxHeightClassName
+          )}
+        />
+        {trailing}
+      </div>
+      {footer && (
+        <div className="mt-1 flex items-center justify-between gap-2 px-2 pb-1">{footer}</div>
+      )}
+    </div>
+  );
+}
+
+function PreloadButton({
+  preloading,
+  preloaded,
+  onPreload,
+}: {
+  preloading: boolean;
+  preloaded: boolean;
+  onPreload: () => void;
+}) {
+  const tooltip = preloaded
+    ? "The agent is warmed up and waiting."
+    : "Pre-starts the agent to eliminate the cold-start delay on your first message.";
+
+  // Wrap in a span so hover fires even when the inner button is disabled —
+  // disabled buttons don't receive pointer events on their own.
+  return (
+    <SimpleTooltip
+      asChild
+      side="top"
+      className="max-w-[240px]"
+      content={tooltip}
+      button={
+        <span className="inline-flex">
+          <Button
+            variant="tertiary/small"
+            LeadingIcon={preloading ? Spinner : preloaded ? CheckIcon : BoltIcon}
+            leadingIconClassName={preloaded ? "text-success" : undefined}
+            onClick={onPreload}
+            disabled={preloading || preloaded}
+          >
+            {preloaded ? "Preloaded" : preloading ? "Preloading…" : "Preload"}
+          </Button>
+        </span>
+      }
+    />
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Sidebar
@@ -714,6 +748,9 @@ function PlaygroundSidebar({
   messageCount,
   isStreaming,
   status,
+  recentConversations,
+  currentConversationId,
+  actionPath,
 }: {
   clientDataJson: string;
   onClientDataChange: (val: string) => void;
@@ -752,18 +789,21 @@ function PlaygroundSidebar({
   messageCount: number;
   isStreaming: boolean;
   status: string;
+  recentConversations: PlaygroundConversation[];
+  currentConversationId: string | null;
+  actionPath: string;
 }) {
   const regionItems = regions.map((r) => ({
     value: r.name,
     label: r.description ? `${r.name} — ${r.description}` : r.name,
   }));
   return (
-    <div className="flex h-full flex-col border-l border-grid-bright">
+    <div className="flex h-full flex-col">
       <ClientTabs
         defaultValue="clientData"
         className="flex h-full min-h-0 flex-col overflow-hidden pt-1"
       >
-        <div className="h-fit overflow-x-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <div className="h-fit overflow-x-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
           <ClientTabsList variant="underline" className="mx-3 shrink-0">
             <ClientTabsTrigger
               value="clientData"
@@ -789,28 +829,39 @@ function PlaygroundSidebar({
             >
               Session
             </ClientTabsTrigger>
+            <ClientTabsTrigger
+              value="history"
+              variant="underline"
+              layoutId="playground-sidebar-tabs"
+              className="shrink-0"
+            >
+              History
+            </ClientTabsTrigger>
           </ClientTabsList>
         </div>
 
         {/* Client Data tab */}
         <ClientTabsContent
           value="clientData"
-          className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
         >
           <div className="min-w-64 space-y-4 p-3">
-            <div>
-              <p className="mb-2 text-xs text-text-dimmed">
-                Custom metadata sent with each conversation turn.
-              </p>
-              <div className="overflow-hidden rounded border border-charcoal-650">
+            <div className="space-y-2">
+              <div className="space-y-0.5">
+                <Header3 className="text-text-bright">Custom metadata</Header3>
+                <Paragraph variant="extra-small" className="text-text-dimmed">
+                  Sent with each conversation turn.
+                </Paragraph>
+              </div>
+              <div className="overflow-hidden rounded border border-border-bright">
                 <JSONEditor
                   defaultValue={clientDataJson}
                   readOnly={false}
                   onChange={onClientDataChange}
                   minHeight="120px"
                   maxHeight="300px"
-                  showClearButton={true}
-                  showCopyButton={true}
+                  showClearButton={false}
+                  showCopyButton={false}
                 />
               </div>
             </div>
@@ -821,8 +872,9 @@ function PlaygroundSidebar({
               taskIdentifier={agentSlug}
               getCurrentPayload={getCurrentClientData}
               generateButtonLabel="Generate client data"
-              placeholder="e.g. generate client data for a free-tier user"
+              placeholder="Prompt to generate client data using AI…"
               isAgent={true}
+              showExamplePromptsHeader={false}
               examplePromptsOverride={[
                 "Generate valid client data",
                 "Generate client data with all fields",
@@ -844,7 +896,7 @@ function PlaygroundSidebar({
         {/* Options tab */}
         <ClientTabsContent
           value="options"
-          className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
         >
           <div className="space-y-4 p-3">
             <InputGroup fullWidth>
@@ -881,7 +933,7 @@ function PlaygroundSidebar({
                 onTagsChange={onTagsChange}
                 variant="small"
                 maxTags={3}
-                placeholder="Add tag..."
+                placeholder="Add tag…"
               />
               <Hint>Add tags to easily filter runs. 3 max (2 added automatically).</Hint>
             </InputGroup>
@@ -908,11 +960,7 @@ function PlaygroundSidebar({
               <Label variant="small" required={false}>
                 Max duration
               </Label>
-              <DurationPicker
-                value={maxDuration}
-                onChange={onMaxDurationChange}
-                variant="small"
-              />
+              <DurationPicker value={maxDuration} onChange={onMaxDurationChange} variant="small" />
               <Hint>Overrides the maximum compute time limit for the run.</Hint>
             </InputGroup>
 
@@ -963,9 +1011,7 @@ function PlaygroundSidebar({
                   variant="tertiary/small"
                   disabled={isDev}
                   items={regionItems}
-                  filter={(item, search) =>
-                    item.label.toLowerCase().includes(search.toLowerCase())
-                  }
+                  filter={(item, search) => item.label.toLowerCase().includes(search.toLowerCase())}
                 >
                   {(matches) =>
                     matches.map((r) => (
@@ -988,19 +1034,17 @@ function PlaygroundSidebar({
         {/* Session tab */}
         <ClientTabsContent
           value="session"
-          className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
         >
           <div className="min-w-64 space-y-3 p-3">
             {session ? (
               <>
-                {runFriendlyId && (
-                  <SessionField label="Run ID" value={runFriendlyId} />
-                )}
+                {runFriendlyId && <SessionField label="Run ID" value={runFriendlyId} />}
                 <SessionField label="Messages" value={String(messageCount)} />
                 <div>
-                  <label className="mb-0.5 block text-[10px] font-medium uppercase tracking-wider text-text-dimmed">
+                  <span className="mb-0.5 block text-[10px] font-medium uppercase tracking-wider text-text-dimmed">
                     Status
-                  </label>
+                  </span>
                   <span className="flex items-center gap-1.5 text-xs">
                     <span
                       className={cn(
@@ -1018,6 +1062,18 @@ function PlaygroundSidebar({
               </p>
             )}
           </div>
+        </ClientTabsContent>
+
+        {/* History tab */}
+        <ClientTabsContent
+          value="history"
+          className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
+        >
+          <HistoryTabContent
+            conversations={recentConversations}
+            currentConversationId={currentConversationId}
+            actionPath={actionPath}
+          />
         </ClientTabsContent>
       </ClientTabs>
     </div>
@@ -1121,6 +1177,7 @@ function usePlaygroundPendingMessages({
     [status, transport, chatId, sendMessage, metadata]
   );
 
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative route integration outside React state.
   const pending: PendingMessageEntry[] = pendingMsgs.map((m) => ({
     id: m.id,
     text: m.parts[0]?.text ?? "",
@@ -1131,15 +1188,90 @@ function usePlaygroundPendingMessages({
   return { pending, steer };
 }
 
-function RecentConversationsPopover({
+function ConversationMenu({
+  runFriendlyId,
+  hasMessages,
+  hasConversation,
+  messages,
+  onDeleteConversation,
+  onNewConversation,
+}: {
+  runFriendlyId: string | null;
+  hasMessages: boolean;
+  hasConversation: boolean;
+  messages: UIMessage[];
+  onDeleteConversation: () => void;
+  onNewConversation: () => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  const handleCopyRaw = useCallback(() => {
+    void navigator.clipboard.writeText(JSON.stringify(messages, null, 2));
+    setIsOpen(false);
+  }, [messages]);
+
+  const wrap = useCallback(
+    (fn: () => void) => () => {
+      setIsOpen(false);
+      fn();
+    },
+    []
+  );
+
+  return (
+    <Popover open={isOpen} onOpenChange={setIsOpen}>
+      <PopoverVerticalEllipseTrigger variant="minimal" />
+      <PopoverContent className="w-fit min-w-48 p-1" align="end">
+        <div className="flex flex-col gap-1">
+          <PopoverMenuItem
+            icon={PlusIcon}
+            leadingIconClassName="text-green-500 -mx-0.5"
+            title="New conversation"
+            onClick={wrap(onNewConversation)}
+          />
+          {runFriendlyId && (
+            <PopoverMenuItem
+              to={`/runs/${runFriendlyId}`}
+              icon={RunsIcon}
+              leadingIconClassName="text-runs -mx-0.5"
+              title="View runs"
+              onClick={() => setIsOpen(false)}
+            />
+          )}
+          {hasMessages && (
+            <PopoverMenuItem
+              icon={ClipboardIcon}
+              leadingIconClassName="text-yellow-500"
+              title="Copy raw"
+              onClick={handleCopyRaw}
+            />
+          )}
+          {hasConversation && (
+            <PopoverMenuItem
+              icon={TrashIcon}
+              leadingIconClassName="text-error"
+              title="Delete conversation"
+              danger
+              onClick={wrap(onDeleteConversation)}
+            />
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function HistoryTabContent({
   conversations,
+  currentConversationId,
   actionPath,
 }: {
   conversations: PlaygroundConversation[];
+  currentConversationId: string | null;
   actionPath: string;
 }) {
   const fetcher = useFetcher();
-  const [isOpen, setIsOpen] = useState(false);
+  const navigate = useNavigate();
 
   const deletingId =
     fetcher.state !== "idle" ? (fetcher.formData?.get("deleteConversationId") as string) : null;
@@ -1157,64 +1289,65 @@ function RecentConversationsPopover({
         },
         { method: "POST", action: actionPath }
       );
-      setIsOpen(false);
+
+      // Deleted the active conv → clear ?conversation= so chat resets.
+      if (conv.id === currentConversationId) {
+        navigate(window.location.pathname);
+      }
     },
-    [actionPath, fetcher]
+    [actionPath, currentConversationId, fetcher, navigate]
   );
 
+  if (conversations.length === 0) {
+    return (
+      <div className="p-3">
+        <p className="text-xs text-text-dimmed">
+          No previous conversations yet. Send a message to start one.
+        </p>
+      </div>
+    );
+  }
+
   return (
-    <Popover open={isOpen} onOpenChange={setIsOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="tertiary/small"
-          LeadingIcon={ClockRotateLeftIcon}
-          disabled={conversations.length === 0}
-        >
-          Recent
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="min-w-[320px] p-0" align="end" sideOffset={6}>
-        <div className="max-h-80 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-          <div className="p-1">
-            {conversations.map((conv) => (
-              <div
-                key={conv.id}
-                className={cn(
-                  "group flex items-center gap-1 rounded-sm px-2 py-2 transition-colors hover:bg-charcoal-900",
-                  deletingId === conv.id && "pointer-events-none opacity-50"
-                )}
+    <ol className="space-y-0.5 p-2">
+      {conversations.map((conv, index) => {
+        const isActive = conv.id === currentConversationId;
+        return (
+          <li key={conv.id}>
+            <div
+              className={cn(
+                "group flex items-start gap-2 rounded-sm px-2 py-1.5 transition-colors hover:bg-background-bright",
+                isActive && "bg-background-hover hover:bg-background-hover",
+                deletingId === conv.id && "pointer-events-none opacity-50"
+              )}
+            >
+              <span className="w-5 shrink-0 text-right text-sm font-medium tabular-nums text-text-dimmed">
+                {index + 1}
+              </span>
+              <Link
+                to={`?conversation=${conv.id}`}
+                className="flex min-w-0 flex-1 flex-col items-start gap-0.5 outline-hidden focus-custom"
               >
-                <Link
-                  to={`?conversation=${conv.id}`}
-                  onClick={() => setIsOpen(false)}
-                  className="flex min-w-0 flex-1 flex-col items-start gap-0.5 outline-none focus-custom"
-                >
-                  <Paragraph variant="small/bright" className="line-clamp-1 text-left">
-                    {conv.title}
-                  </Paragraph>
-                  <div className="text-xs text-text-dimmed">
-                    <DateTime date={conv.updatedAt} showTooltip={false} />
-                  </div>
-                </Link>
-                <button
-                  type="button"
-                  onClick={(e) => handleDelete(e, conv)}
-                  className="shrink-0 rounded p-1 text-text-dimmed opacity-0 transition-opacity group-hover:opacity-100 hover:text-error"
-                >
-                  <TrashIcon className="size-3.5" />
-                </button>
-              </div>
-            ))}
-            {conversations.length === 0 && (
-              <div className="px-2 py-3 text-center text-xs text-text-dimmed">
-                No recent conversations
-              </div>
-            )}
-          </div>
-        </div>
-      </PopoverContent>
-    </Popover>
+                <Paragraph variant="small/bright" className="line-clamp-1 text-left">
+                  {conv.title}
+                </Paragraph>
+                <div className="text-xs text-text-dimmed">
+                  <DateTime date={conv.updatedAt} showTooltip={false} />
+                </div>
+              </Link>
+              <button
+                type="button"
+                onClick={(e) => handleDelete(e, conv)}
+                aria-label="Delete conversation"
+                className="shrink-0 rounded p-1 text-text-dimmed opacity-0 transition-opacity group-hover:opacity-100 hover:text-error"
+              >
+                <TrashIcon className="size-3.5" />
+              </button>
+            </div>
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 
@@ -1229,9 +1362,9 @@ function safeParseJson(json: string): Record<string, unknown> {
 function SessionField({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <label className="mb-0.5 block text-[10px] font-medium uppercase tracking-wider text-text-dimmed">
+      <span className="mb-0.5 block text-[10px] font-medium uppercase tracking-wider text-text-dimmed">
         {label}
-      </label>
+      </span>
       <code className="block truncate text-xs text-text-bright">{value}</code>
     </div>
   );

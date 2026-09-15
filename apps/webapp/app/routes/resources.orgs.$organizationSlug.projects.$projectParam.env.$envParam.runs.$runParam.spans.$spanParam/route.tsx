@@ -1,3 +1,4 @@
+import { GlobeLinesIcon } from "~/assets/icons/GlobeLinesIcon";
 import {
   ArrowPathIcon,
   BookOpenIcon,
@@ -7,7 +8,7 @@ import {
   ClockIcon,
   CloudArrowDownIcon,
   EnvelopeIcon,
-  GlobeAltIcon,
+  ExclamationTriangleIcon,
   KeyIcon,
   QueueListIcon,
   SignalIcon,
@@ -19,10 +20,11 @@ import {
   taskRunErrorEnhancer,
 } from "@trigger.dev/core/v3";
 import { assertNever } from "assert-never";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
+import { toast } from "sonner";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
-import { RegionLabel } from "~/components/runs/v3/RegionLabel";
+import { QueuesIcon } from "~/assets/icons/QueuesIcon";
 import { AdminDebugRun } from "~/components/admin/debugRun";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
@@ -30,6 +32,17 @@ import { Feedback } from "~/components/Feedback";
 import { MachineLabelCombo } from "~/components/MachineLabelCombo";
 import { MachineTooltipInfo } from "~/components/MachineTooltipInfo";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { InvestigateButton } from "~/components/dashboard-agent/InvestigateButton";
+import { WatchButton } from "~/components/dashboard-agent/WatchButton";
+import { isFinalRunStatus } from "~/v3/taskStatus";
+import { runWatchRecommendation } from "~/components/dashboard-agent/watch-recommendations";
+import {
+  failedRunPrompt,
+  isFailedRunStatus,
+  isInProgressRunStatus,
+  runningRunPrompt,
+  waitingRunPrompt,
+} from "~/components/dashboard-agent/investigate-prompts";
 import { Callout } from "~/components/primitives/Callout";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { CopyTextLink } from "~/components/primitives/CopyTextLink";
@@ -42,8 +55,6 @@ import {
   PopoverMenuItem,
   PopoverTrigger,
 } from "~/components/primitives/Popover";
-import { ToastUI } from "~/components/primitives/Toast";
-import { toast } from "sonner";
 import * as Property from "~/components/primitives/PropertyTable";
 import { Spinner } from "~/components/primitives/Spinner";
 import {
@@ -55,18 +66,19 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
-import { SessionStatusCombo } from "~/components/sessions/v1/SessionStatus";
 import { TextLink } from "~/components/primitives/TextLink";
+import { ToastUI } from "~/components/primitives/Toast";
 import { InfoIconTooltip, SimpleTooltip } from "~/components/primitives/Tooltip";
+import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
 import { RunTimeline, RunTimelineEvent, SpanTimeline } from "~/components/run/RunTimeline";
-import { SpanHorizontalTimeline } from "~/components/runs/v3/SpanHorizontalTimeline";
+import { AIEmbedSpanDetails, AISpanDetails, AIToolCallSpanDetails } from "~/components/runs/v3/ai";
 import { PacketDisplay } from "~/components/runs/v3/PacketDisplay";
+import { PromptSpanDetails } from "~/components/runs/v3/PromptSpanDetails";
+import { RegionLabel } from "~/components/runs/v3/RegionLabel";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { RunTag } from "~/components/runs/v3/RunTag";
-import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
 import { SpanEvents } from "~/components/runs/v3/SpanEvents";
-import { AISpanDetails, AIToolCallSpanDetails, AIEmbedSpanDetails } from "~/components/runs/v3/ai";
-import { PromptSpanDetails } from "~/components/runs/v3/PromptSpanDetails";
+import { SpanHorizontalTimeline } from "~/components/runs/v3/SpanHorizontalTimeline";
 import { SpanTitle } from "~/components/runs/v3/SpanTitle";
 import { TaskRunAttemptStatusCombo } from "~/components/runs/v3/TaskRunAttemptStatus";
 import {
@@ -75,23 +87,40 @@ import {
 } from "~/components/runs/v3/TaskRunStatus";
 import { WaitpointDetailTable } from "~/components/runs/v3/WaitpointDetails";
 import { RuntimeIcon } from "~/components/RuntimeIcon";
+import { SessionStatusCombo } from "~/components/sessions/v1/SessionStatus";
 import { WarmStartCombo } from "~/components/WarmStarts";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import { useIsMetricResponseFresh } from "~/hooks/useMetricResourceQuery";
 import { useHasAdminAccess } from "~/hooks/useUser";
 import { redirectWithErrorMessage } from "~/models/message.server";
+import {
+  clickhouseTimeToMs,
+  formatWaitMs,
+  QueueMetricChart,
+  QUEUE_METRIC_COLORS,
+  toNumber,
+  useQueueMetric,
+} from "~/components/queues/QueueMetricCards";
+import {
+  resolveRunQueueMetrics,
+  type RunQueueMetrics,
+  type RunQueueWaiting,
+} from "~/presenters/v3/RunQueueMetricsPresenter.server";
 import { type Span, SpanPresenter, type SpanRun } from "~/presenters/v3/SpanPresenter.server";
+import { findProjectBySlug } from "~/models/project.server";
 import { logger } from "~/services/logger.server";
+import { rbac } from "~/services/rbac.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { formatCurrencyAccurate } from "~/utils/numberFormatter";
 import {
   docsPath,
   v3BatchPath,
-  v3SessionPath,
   v3DeploymentVersionPath,
+  v3QueuePath,
   v3RunDownloadLogsPath,
   v3RunIdempotencyKeyResetPath,
   v3RunPath,
@@ -99,6 +128,7 @@ import {
   v3RunSpanPath,
   v3RunsPath,
   v3SchedulePath,
+  v3SessionPath,
   v3SpanParamsSchema,
 } from "~/utils/pathBuilder";
 import { createTimelineSpanEventsFromSpanEvents } from "~/utils/timelineSpanEvents";
@@ -111,6 +141,16 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { projectParam, organizationSlug, envParam, runParam, spanParam } =
     v3SpanParamsSchema.parse(params);
+
+  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+  if (!project) throw new Response("Project not found", { status: 404 });
+
+  const auth = await rbac.authenticateSession(request, {
+    userId,
+    organizationId: project.organizationId,
+    projectId: project.id,
+  });
+  const canWriteRuns = auth.ok && auth.ability.can("write", { type: "runs" });
 
   const url = new URL(request.url);
   const linkedRunId = url.searchParams.get("linkedRunId") ?? undefined;
@@ -144,7 +184,21 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     // `{ ...result }` collapses the union and loses the
     // `type === "run" | "span"` discriminant downstream in `SpanView`.
     if (result.type === "run") {
-      return typedjson({ type: "run" as const, run: result.run });
+      const queueMetrics = await resolveRunQueueMetrics({
+        request,
+        userId,
+        organizationSlug,
+        projectParam,
+        envParam,
+        run: result.run,
+      });
+      return typedjson({
+        type: "run" as const,
+        run: result.run,
+        queueMetrics,
+        canWriteRuns,
+        loadedAt: Date.now(),
+      });
     }
     return typedjson({ type: "span" as const, span: result.span });
   } catch (error) {
@@ -197,14 +251,15 @@ export function SpanView({
   const project = useProject();
   const environment = useEnvironment();
   const fetcher = useTypedFetcher<typeof loader>();
+  const { load } = fetcher;
 
   useEffect(() => {
     if (spanId === undefined) return;
     const url = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${
       environment.slug
     }/runs/${runParam}/spans/${spanId}${linkedRunId ? `?linkedRunId=${linkedRunId}` : ""}`;
-    fetcher.load(url);
-  }, [organization.slug, project.slug, environment.slug, runParam, spanId, linkedRunId]);
+    load(url);
+  }, [organization.slug, project.slug, environment.slug, runParam, spanId, linkedRunId, load]);
 
   if (spanId === undefined) {
     return null;
@@ -236,6 +291,9 @@ export function SpanView({
       return (
         <RunBody
           run={fetcher.data.run}
+          queueMetrics={fetcher.data.queueMetrics}
+          loadedAt={fetcher.data.loadedAt}
+          canWriteRuns={fetcher.data.canWriteRuns}
           runParam={runParam}
           spanId={spanId}
           closePanel={closePanel}
@@ -266,10 +324,10 @@ function SpanBody({
   runParam?: string;
   closePanel?: () => void;
 }) {
-  const organization = useOrganization();
-  const project = useProject();
-  const environment = useEnvironment();
-  const { value, replace } = useSearchParams();
+  const _organization = useOrganization();
+  const _project = useProject();
+  const _environment = useEnvironment();
+  const { value, replace: _replace } = useSearchParams();
   let tab = value("tab");
 
   if (tab === "context") {
@@ -319,23 +377,13 @@ function SpanBody({
       {isAiInspector ? (
         <SpanEntity span={span} />
       ) : (
-        <div className="scrollbar-gutter-stable overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <div className="scrollbar-gutter-stable overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
           <SpanEntity span={span} />
         </div>
       )}
     </div>
   );
 }
-
-function formatSpanDuration(nanoseconds: number): string {
-  const ms = nanoseconds / 1_000_000;
-  if (ms < 1000) return `${Math.round(ms)}ms`;
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
-  const mins = Math.floor(ms / 60_000);
-  const secs = ((ms % 60_000) / 1000).toFixed(0);
-  return `${mins}m ${secs}s`;
-}
-
 function applySpanOverrides(span: Span, spanOverrides?: SpanOverride): Span {
   if (!spanOverrides) {
     return span;
@@ -370,11 +418,17 @@ function applySpanOverrides(span: Span, spanOverrides?: SpanOverride): Span {
 
 function RunBody({
   run,
+  queueMetrics,
+  loadedAt,
+  canWriteRuns,
   runParam,
   spanId,
   closePanel,
 }: {
   run: SpanRun;
+  queueMetrics: RunQueueMetrics | null;
+  loadedAt: number;
+  canWriteRuns: boolean;
   runParam: string;
   spanId: string;
   closePanel?: () => void;
@@ -387,16 +441,39 @@ function RunBody({
   const tab = value("tab");
   const resetFetcher = useTypedFetcher<typeof resetIdempotencyKeyAction>();
 
+  const queuePath = queueMetrics?.queueFriendlyId
+    ? v3QueuePath(organization, project, environment, {
+        friendlyId: queueMetrics.queueFriendlyId,
+      })
+    : undefined;
+
   return (
     <div className="grid h-full max-h-full grid-rows-[2.5rem_2rem_1fr_minmax(3.25rem,auto)] overflow-hidden bg-background-bright">
       <div className="flex items-center justify-between gap-2 overflow-x-hidden px-3 pr-2">
         <div className="flex items-center gap-1 overflow-x-hidden">
           <RunIcon
-            name={run.isCached ? "task-cached" : "task"}
+            name={
+              run.isAgentRun
+                ? "agent"
+                : run.isScheduled
+                  ? "scheduled"
+                  : run.isCached
+                    ? "task-cached"
+                    : "task"
+            }
             spanName={run.taskIdentifier}
             className="size-5 min-h-5 min-w-5"
           />
-          <Header2 className={cn("overflow-x-hidden text-blue-500")}>
+          <Header2
+            className={cn(
+              "overflow-x-hidden",
+              // The run-type accents are drawn for 3:1 as icons; as 16px text the
+              // tasks and agents blues fall under 4.5:1 on the light themes, so
+              // the title takes the text colour there and the icon carries type.
+              run.isAgentRun ? "text-agents" : run.isScheduled ? "text-schedules" : "text-tasks",
+              "light:text-text-bright"
+            )}
+          >
             <span className="truncate">
               {run.taskIdentifier}
               {run.isCached ? " (cached)" : null}
@@ -414,7 +491,7 @@ function RunBody({
           />
         )}
       </div>
-      <div className="h-fit overflow-x-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="h-fit overflow-x-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <TabContainer>
           <TabButton
             isActive={!tab || tab === "overview"}
@@ -459,7 +536,7 @@ function RunBody({
           </TabButton>
         </TabContainer>
       </div>
-      <div className="overflow-y-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="overflow-y-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <div>
           {tab === "detail" ? (
             <div className="flex flex-col gap-4 py-3">
@@ -678,14 +755,14 @@ function RunBody({
                                   <KeyIcon className="size-4 text-text-dimmed" />
                                   <Header3>Idempotency keys</Header3>
                                 </div>
-                                <Paragraph variant="small" className="!text-wrap text-text-dimmed">
+                                <Paragraph variant="small" className="text-wrap! text-text-dimmed">
                                   Prevent duplicate task runs. If you trigger a task with the same
                                   key twice, the second request returns the original run.
                                 </Paragraph>
                               </div>
                               <div>
                                 <div className="mb-1 flex items-center gap-1">
-                                  <GlobeAltIcon className="size-4 text-blue-500" />
+                                  <GlobeLinesIcon className="size-4 text-blue-500" />
                                   <Header3>Scope</Header3>
                                 </div>
                                 <div className="flex flex-col gap-0.5 text-sm text-text-dimmed">
@@ -727,7 +804,12 @@ function RunBody({
                             type="submit"
                             variant="minimal/small"
                             LeadingIcon={ArrowPathIcon}
-                            disabled={resetFetcher.state === "submitting"}
+                            disabled={!canWriteRuns || resetFetcher.state === "submitting"}
+                            tooltip={
+                              canWriteRuns
+                                ? undefined
+                                : "You don't have permission to reset idempotency keys"
+                            }
                           >
                             {resetFetcher.state === "submitting" ? "Resetting..." : "Reset"}
                           </Button>
@@ -827,6 +909,12 @@ function RunBody({
                   </Property.Value>
                 </Property.Item>
                 <Property.Item>
+                  <Property.Label>External deployment ID</Property.Label>
+                  <Property.Value>
+                    <ExternalDeploymentIdValue externalDeploymentId={run.externalDeploymentId} />
+                  </Property.Value>
+                </Property.Item>
+                <Property.Item>
                   <Property.Label>SDK version</Property.Label>
                   <Property.Value>
                     {run.sdkVersion ? (
@@ -917,9 +1005,31 @@ function RunBody({
                 <Property.Item>
                   <Property.Label>Queue</Property.Label>
                   <Property.Value>
-                    <div>Name: {run.queue.name}</div>
                     <div>
-                      Concurrency key: {run.queue.concurrencyKey ? run.queue.concurrencyKey : "–"}
+                      Name:{" "}
+                      {queuePath ? (
+                        <TextLink to={queuePath}>{run.queue.name}</TextLink>
+                      ) : (
+                        run.queue.name
+                      )}
+                    </div>
+                    <div>
+                      Concurrency key:{" "}
+                      {run.queue.concurrencyKey ? (
+                        queuePath ? (
+                          <TextLink
+                            to={`${queuePath}?view=keys&key=${encodeURIComponent(
+                              run.queue.concurrencyKey
+                            )}`}
+                          >
+                            {run.queue.concurrencyKey}
+                          </TextLink>
+                        ) : (
+                          run.queue.concurrencyKey
+                        )
+                      ) : (
+                        "–"
+                      )}
                     </div>
                   </Property.Value>
                 </Property.Item>
@@ -1061,15 +1171,57 @@ function RunBody({
             </div>
           ) : (
             <div className="flex flex-col gap-4 pt-3">
-              <div className="border-b border-grid-bright pb-3">
-                <SimpleTooltip
-                  button={<TaskRunStatusCombo status={run.status} className="text-sm" />}
-                  content={descriptionForTaskRunStatus(run.status)}
+              {/* The waiting-queue block carries its own Status tile, so drop the duplicate
+                  status combo here; other runs still get it. */}
+              {queueMetrics?.waiting ? null : (
+                <div className="border-b border-grid-bright pb-3">
+                  <SimpleTooltip
+                    button={<TaskRunStatusCombo status={run.status} className="text-sm" />}
+                    content={descriptionForTaskRunStatus(run.status)}
+                  />
+                </div>
+              )}
+              {queueMetrics?.waiting ? (
+                <WaitingInQueueBlock
+                  queueName={queueMetrics.queueName}
+                  queuePath={queuePath}
+                  paused={queueMetrics.paused}
+                  waiting={queueMetrics.waiting}
+                  status={run.status}
+                  createdAt={run.createdAt}
+                  loadedAt={loadedAt}
+                  runFriendlyId={run.friendlyId}
                 />
-              </div>
+              ) : null}
+              {/* The universal `Watch…` entry (§2.1), pre-filled with this run's
+                  recommendation: tell me when it finishes. Only while the run can
+                  still change — a finished run has nothing left to wait for. */}
+              {isFinalRunStatus(run.status) ? null : (
+                <WatchButton spec={runWatchRecommendation(run.friendlyId)} className="self-start" />
+              )}
               <RunTimeline run={run} />
 
-              {run.error && <RunError error={run.error} />}
+              {/* Offer Investigate for runs that are actively in progress. Failed runs get
+                  their own prompt below, and waiting/queued runs already have one in
+                  WaitingInQueueBlock. */}
+              {isInProgressRunStatus(run.status) ? (
+                <InvestigateButton
+                  prompt={runningRunPrompt(run.friendlyId)}
+                  className="self-start"
+                />
+              ) : null}
+
+              {run.error && (
+                <div className="flex flex-col gap-2">
+                  <RunError error={run.error} />
+                  {isFailedRunStatus(run.status) ? (
+                    <InvestigateButton
+                      prompt={failedRunPrompt(run.friendlyId)}
+                      className="self-start"
+                    />
+                  ) : null}
+                </div>
+              )}
 
               {run.payload !== undefined && (
                 <PacketDisplay data={run.payload} dataType={run.payloadType} title="Payload" />
@@ -1122,6 +1274,223 @@ function RunBody({
           ) : null}
         </div>
       </div>
+    </div>
+  );
+}
+
+// Trust a ClickHouse gauge only while its newest bucket is recent (10s bucket + pipeline lag);
+// once it ages out, fall back to the loader's live Redis value instead of a stale count.
+const LIVE_GAUGE_FRESH_MS = 90_000;
+
+const WAITING_STATUS_LABELS: Partial<Record<SpanRun["status"], string>> = {
+  PENDING: "Queued",
+  DELAYED: "Delayed",
+  PENDING_VERSION: "Pending version",
+};
+
+// A mini version of the queue page's stat block: same chrome, title font and alignment, smaller value.
+function MiniStat({
+  title,
+  value,
+  valueClassName,
+  suffix,
+  accessory,
+}: {
+  title: ReactNode;
+  value: ReactNode;
+  valueClassName?: string;
+  suffix?: ReactNode;
+  accessory?: ReactNode;
+}) {
+  return (
+    <div className="flex min-h-[5.5rem] flex-col justify-between gap-3 rounded-sm border border-grid-dimmed bg-background-bright p-3">
+      <div className="flex items-center justify-between gap-1">
+        <Header3 className="leading-6">{title}</Header3>
+        {accessory ? <div className="-my-1 shrink-0">{accessory}</div> : null}
+      </div>
+      <div className="flex flex-wrap items-baseline gap-1">
+        <span
+          className={cn(
+            "text-2xl font-normal leading-none tabular-nums text-text-bright",
+            valueClassName
+          )}
+        >
+          {value}
+        </span>
+        {suffix ? <span className="text-xs tabular-nums text-text-dimmed">{suffix}</span> : null}
+      </div>
+    </div>
+  );
+}
+
+const EXTERNAL_DEPLOYMENT_ID_DISPLAY_LENGTH = 24;
+
+function ExternalDeploymentIdValue({
+  externalDeploymentId,
+}: {
+  externalDeploymentId: string | undefined;
+}) {
+  if (!externalDeploymentId) {
+    return <>–</>;
+  }
+
+  const display =
+    externalDeploymentId.length > EXTERNAL_DEPLOYMENT_ID_DISPLAY_LENGTH
+      ? `${externalDeploymentId.slice(0, EXTERNAL_DEPLOYMENT_ID_DISPLAY_LENGTH)}…`
+      : externalDeploymentId;
+
+  return (
+    <CopyableText value={display} copyValue={externalDeploymentId} className="font-mono" asChild />
+  );
+}
+
+// A compact "mini queue" for a waiting run: the queue page's stat blocks + charts, scaled down.
+function WaitingInQueueBlock({
+  queueName,
+  queuePath,
+  paused,
+  waiting,
+  status,
+  createdAt,
+  loadedAt,
+  runFriendlyId,
+}: {
+  queueName: string;
+  queuePath: string | undefined;
+  paused: boolean;
+  waiting: RunQueueWaiting;
+  status: SpanRun["status"];
+  createdAt: Date;
+  loadedAt: number;
+  runFriendlyId: string;
+}) {
+  // Latest gauges from ClickHouse (as on the queue page), polled so the blocks keep ticking. Trust
+  // the newest bucket only while fresh; otherwise fall back to the loader's live values.
+  const {
+    rows: liveRows,
+    responseReceivedAt,
+    lastSuccessfulResponseAt,
+  } = useQueueMetric(
+    `SELECT timeBucket() AS t, max(max_running) AS running, max(max_queued) AS queued, max(max_limit) AS q_limit\nFROM queue_metrics\nGROUP BY t\nORDER BY t`,
+    {
+      ids: waiting.ids,
+      timeRange: { period: "15m", from: null, to: null },
+      defaultPeriod: "15m",
+      queueName,
+      refreshIntervalMs: 15_000,
+    }
+  );
+  const latest = liveRows.length > 0 ? liveRows[liveRows.length - 1] : undefined;
+  const latestBucketMs = latest ? clickhouseTimeToMs(latest.t) : NaN;
+  const now = Math.max(loadedAt, lastSuccessfulResponseAt ?? loadedAt);
+  const liveFresh = useIsMetricResponseFresh(
+    responseReceivedAt,
+    latestBucketMs,
+    LIVE_GAUGE_FRESH_MS
+  );
+  const fresh = latest && liveFresh ? latest : undefined;
+
+  const key = waiting.concurrencyKey;
+  const running = fresh ? toNumber(fresh.running) : waiting.running;
+  const limit = waiting.concurrencyLimit ?? (fresh ? toNumber(fresh.q_limit) || null : null);
+
+  // The concurrency limit applies per key on keyed queues, so the tile has to compare like with
+  // like: the key's own running count against the per-key limit. `running` above is queue-wide,
+  // which would render "8 / 2 · 100%" while this run's key sits at 1 of 2. PENDING renders as
+  // "Queued".
+  const runningAgainstLimit = key ? key.running : running;
+  const atLimit = limit !== null && runningAgainstLimit >= limit;
+  const showAtLimit = status === "PENDING" && atLimit && !paused;
+  const pct =
+    limit && limit > 0 ? Math.min(100, Math.round((runningAgainstLimit / limit) * 100)) : null;
+  const waitedMs = Math.max(0, now - new Date(createdAt).getTime());
+
+  // Why the run is held, surfaced as a warning icon on the Status tile (queue-page style) rather
+  // than a separate sentence.
+  const warningMessage = paused
+    ? "Queue is paused. Runs will not start until it is resumed."
+    : showAtLimit
+      ? "At the concurrency limit. This run starts when a running one finishes."
+      : null;
+
+  return (
+    <div className="@container flex flex-col gap-3 border-b border-grid-bright pb-4">
+      {/* Responsive to the side panel width (container query, not viewport): 3-up while there's
+          room, stacking to a single column only once the panel gets narrow. */}
+      <div className="grid grid-cols-1 gap-2 @[22rem]:grid-cols-3">
+        <MiniStat
+          title={
+            <span className="flex items-center gap-1.5">
+              Status
+              {warningMessage ? (
+                <SimpleTooltip
+                  button={<ExclamationTriangleIcon className="size-4 text-warning" />}
+                  content={warningMessage}
+                />
+              ) : null}
+            </span>
+          }
+          value={WAITING_STATUS_LABELS[status] ?? "Waiting"}
+          valueClassName="tracking-tight"
+        />
+        <MiniStat
+          title="Concurrency"
+          value={runningAgainstLimit.toLocaleString()}
+          valueClassName={cn(atLimit && "text-warning")}
+          suffix={
+            limit !== null
+              ? `/ ${limit.toLocaleString()}${pct !== null ? ` · ${pct}%` : ""}`
+              : "of ∞"
+          }
+        />
+        <MiniStat
+          title="Waiting for"
+          value={formatDurationMilliseconds(waitedMs, { style: "short", maxDecimalPoints: 0 })}
+        />
+      </div>
+
+      <div className="rounded-sm border border-grid-dimmed bg-background-bright p-3">
+        <div className="mb-2 flex items-center justify-between gap-1.5">
+          <div className="flex items-center gap-1.5">
+            <Header3 className="leading-6">Scheduling delay</Header3>
+            <InfoIconTooltip
+              content="Wait from eligible to dequeued (p50/p95)."
+              contentClassName="max-w-xs"
+            />
+          </div>
+          {queuePath ? (
+            <LinkButton
+              variant="secondary/small-icon"
+              LeadingIcon={QueuesIcon}
+              leadingIconClassName="text-queues"
+              to={queuePath}
+              tooltip="View queue"
+            />
+          ) : null}
+        </div>
+        <div className="h-40">
+          <QueueMetricChart
+            query={`SELECT timeBucket() AS t,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[1]) AS p50,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS p95\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
+            series={[
+              { key: "p50", label: "p50", color: QUEUE_METRIC_COLORS.p50 },
+              { key: "p95", label: "p95", color: QUEUE_METRIC_COLORS.p95 },
+            ]}
+            ids={waiting.ids}
+            timeRange={{ period: "30m", from: null, to: null }}
+            defaultPeriod="30m"
+            queueName={queueName}
+            valueFormat={formatWaitMs}
+            fillGaps
+          />
+        </div>
+      </div>
+
+      {/* This block only exists while the run is still waiting, so the ask is always apt: hand the
+          stuck run to the agent. Hidden when the agent isn't available. */}
+      <InvestigateButton
+        prompt={waitingRunPrompt(runFriendlyId, queueName)}
+        className="self-start"
+      />
     </div>
   );
 }
@@ -1223,7 +1592,7 @@ function RunError({ error }: { error: TaskRunError }) {
           <Header3 className="text-rose-500">{name}</Header3>
           {enhancedError.message && (
             <Callout variant="error">
-              <pre className="text-wrap font-sans text-sm font-normal text-rose-200 [word-break:break-word]">
+              <pre className="text-wrap font-sans text-sm font-normal text-rose-500 dark:text-rose-200 [word-break:break-word]">
                 {enhancedError.message}
               </pre>
             </Callout>
@@ -1261,36 +1630,6 @@ function RunError({ error }: { error: TaskRunError }) {
     }
   }
 }
-
-function CollapsibleProperties({ code }: { code: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="border-t border-grid-bright pt-2">
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex w-full items-center gap-1 text-xs font-medium text-text-dimmed hover:text-text-bright"
-      >
-        <ChevronUpIcon
-          className={cn("size-3.5 transition-transform", open ? "rotate-180" : "rotate-90")}
-        />
-        Raw properties
-      </button>
-      {open && (
-        <div className="mt-1.5">
-          <CodeBlock
-            code={code}
-            maxLines={20}
-            showLineNumbers={false}
-            showCopyButton
-            showTextWrapping
-            showOpenInModal
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
 function SpanEntity({ span }: { span: Span }) {
   const isAdmin = useHasAdminAccess();
 
@@ -1310,10 +1649,10 @@ function SpanEntity({ span }: { span: Span }) {
                   span.isCancelled
                     ? "CANCELED"
                     : span.isError
-                    ? "FAILED"
-                    : span.isPartial
-                    ? "EXECUTING"
-                    : "COMPLETED"
+                      ? "FAILED"
+                      : span.isPartial
+                        ? "EXECUTING"
+                        : "COMPLETED"
                 }
                 className="text-sm"
               />
@@ -1341,7 +1680,7 @@ function SpanEntity({ span }: { span: Span }) {
               <span>Message</span>
               <CopyTextLink value={span.message} />
             </Property.Label>
-            <Property.Value className="whitespace-pre-wrap [overflow-wrap:break-word]">
+            <Property.Value className="whitespace-pre-wrap wrap-break-word">
               {span.message}
             </Property.Value>
           </Property.Item>
@@ -1372,7 +1711,7 @@ function SpanEntity({ span }: { span: Span }) {
         {span.triggeredRuns.length > 0 && (
           <div className="flex flex-col gap-1.5">
             <Header3>Runs</Header3>
-            <Table containerClassName="max-h-[12.5rem]">
+            <Table containerClassName="max-h-50">
               <TableHeader className="bg-background-bright">
                 <TableRow>
                   <TableHeaderCell>ID</TableHeaderCell>
@@ -1425,10 +1764,10 @@ function SpanEntity({ span }: { span: Span }) {
                 span.isCancelled
                   ? "CANCELED"
                   : span.isError
-                  ? "FAILED"
-                  : span.isPartial
-                  ? "EXECUTING"
-                  : "COMPLETED"
+                    ? "FAILED"
+                    : span.isPartial
+                      ? "EXECUTING"
+                      : "COMPLETED"
               }
               className="text-sm"
             />
@@ -1465,7 +1804,7 @@ function SpanEntity({ span }: { span: Span }) {
     case "waitpoint": {
       return (
         <div className="grid h-full grid-rows-[1fr_auto]">
-          <div className="flex flex-col gap-4 overflow-y-auto px-3 pt-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <div className="flex flex-col gap-4 overflow-y-auto px-3 pt-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
             <div>
               <Header2>Waitpoint</Header2>
               <Paragraph variant="small">
@@ -1493,6 +1832,21 @@ function SpanEntity({ span }: { span: Span }) {
         />
       );
     }
+    case "session-stream": {
+      const { sessionId, channel, io } = span.entity.object;
+      const base = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/sessions/${encodeURIComponent(sessionId)}/realtime/v1`;
+      const resourcePath = channel
+        ? `${base}/channels/${encodeURIComponent(channel)}/${io}`
+        : `${base}/${io}`;
+      const displayName = channel ? `${channel}.${io}` : `${sessionId}.${io}`;
+      return (
+        <RealtimeStreamViewer
+          resourcePath={resourcePath}
+          headerLabel={channel ? "Channel:" : "Session:"}
+          displayName={displayName}
+        />
+      );
+    }
     case "ai-generation":
     case "ai-summary": {
       return (
@@ -1503,8 +1857,8 @@ function SpanEntity({ span }: { span: Span }) {
             typeof span.properties === "string"
               ? span.properties
               : span.properties != null
-              ? JSON.stringify(span.properties, null, 2)
-              : undefined
+                ? JSON.stringify(span.properties, null, 2)
+                : undefined
           }
           startTime={span.startTime}
           duration={span.duration}
@@ -1513,21 +1867,21 @@ function SpanEntity({ span }: { span: Span }) {
     }
     case "ai-tool-call": {
       return (
-        <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
           <div className="px-3">
             <SpanHorizontalTimeline startTime={span.startTime} duration={span.duration} />
           </div>
-          <AIToolCallSpanDetails data={span.entity.object} />
+          <AIToolCallSpanDetails data={span.entity.object} spanEvents={span.events} />
         </div>
       );
     }
     case "ai-embed": {
       return (
-        <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
           <div className="px-3">
             <SpanHorizontalTimeline startTime={span.startTime} duration={span.duration} />
           </div>
-          <AIEmbedSpanDetails data={span.entity.object} />
+          <AIEmbedSpanDetails data={span.entity.object} spanEvents={span.events} />
         </div>
       );
     }

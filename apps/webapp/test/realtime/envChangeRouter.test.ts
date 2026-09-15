@@ -166,10 +166,7 @@ describe("EnvChangeRouter", () => {
     const { router, src } = makeRouter(rows);
     const reg = router.register("env_1", { kind: "batch", batchId: "batch_1" }, []);
     const wait = reg.waitForMatch(undefined, 1_000);
-    src.push("env_1", [
-      record("rX", { batchId: "other" }),
-      record("r1", { batchId: "batch_1" }),
-    ]);
+    src.push("env_1", [record("rX", { batchId: "other" }), record("r1", { batchId: "batch_1" })]);
     const result = await wait;
     expect(result.rows.map((m) => m.row.id)).toEqual(["r1"]);
     reg.close();
@@ -186,7 +183,10 @@ describe("EnvChangeRouter", () => {
 
     // r_one shares a tag (routes as a candidate via the index) but lacks "b" — must be
     // culled by the authoritative row check. r_both carries both and wakes the feed.
-    src.push("env_1", [record("r_one", { tags: ["a"] }), record("r_both", { tags: ["a", "b", "c"] })]);
+    src.push("env_1", [
+      record("r_one", { tags: ["a"] }),
+      record("r_both", { tags: ["a", "b", "c"] }),
+    ]);
 
     const result = await wait;
     expect(result.reason).toBe("notify");
@@ -197,7 +197,11 @@ describe("EnvChangeRouter", () => {
   it("drops a tag match created before the feed's createdAt floor", async () => {
     const rows = new Map([["r1", row("r1", { tags: ["a"], createdAtMs: FLOOR_MS - 10_000 })]]);
     const { router, src } = makeRouter(rows);
-    const reg = router.register("env_1", { kind: "tag", tags: ["a"], createdAtFloorMs: FLOOR_MS }, []);
+    const reg = router.register(
+      "env_1",
+      { kind: "tag", tags: ["a"], createdAtFloorMs: FLOOR_MS },
+      []
+    );
     let settled = false;
     const wait = reg.waitForMatch(undefined, 60).then((r) => {
       settled = true;
@@ -375,8 +379,7 @@ describe("EnvChangeRouter read-your-writes gate", () => {
         marginMs: 0,
         maxDelayMs: 1_000,
         staleRetries: 3,
-        onStaleHydrate: (outcome: string, runCount: number) =>
-          outcomes.push({ outcome, runCount }),
+        onStaleHydrate: (outcome: string, runCount: number) => outcomes.push({ outcome, runCount }),
         ...overrides,
       },
     };

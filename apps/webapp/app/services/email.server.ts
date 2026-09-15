@@ -1,5 +1,5 @@
-import type { DeliverEmail, SendPlainTextOptions } from "emails";
-import { EmailClient, MailTransportOptions } from "emails";
+import type { DeliverEmail, MailTransportOptions } from "emails";
+import { EmailClient } from "emails";
 import type { SendEmailOptions } from "remix-auth-email-link";
 import { redirect } from "remix-typedjson";
 import { env } from "~/env.server";
@@ -85,10 +85,6 @@ export async function sendMagicLinkEmail(options: SendEmailOptions<AuthUser>): P
     logger.error("Error sending magic link email", { error: JSON.stringify(error) });
     throw error;
   }
-}
-
-export async function sendPlainTextEmail(options: SendPlainTextOptions) {
-  return client.sendPlainText(options);
 }
 
 export async function sendEmail(data: DeliverEmail) {

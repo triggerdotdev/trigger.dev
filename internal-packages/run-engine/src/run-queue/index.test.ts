@@ -4,7 +4,7 @@ import { Logger } from "@trigger.dev/core/logger";
 import { describe } from "node:test";
 import { setTimeout } from "node:timers/promises";
 import { RunQueue } from "./index.js";
-import { InputPayload } from "./types.js";
+import type { InputPayload } from "./types.js";
 import { createRedisClient } from "@internal/redis";
 import { FairQueueSelectionStrategy } from "./fairQueueSelectionStrategy.js";
 import { RunQueueFullKeyProducer } from "./keyProducer.js";
@@ -70,6 +70,62 @@ const messageDev: InputPayload = {
 };
 
 describe("RunQueue", () => {
+  redisTest(
+    "snapshotRoute round-trips through enqueue+dequeue; a message without it parses fine (mixed version)",
+    async ({ redisContainer }) => {
+      const queue = new RunQueue({
+        ...testOptions,
+        queueSelectionStrategy: new FairQueueSelectionStrategy({
+          redis: {
+            keyPrefix: "runqueue:test:",
+            host: redisContainer.getHost(),
+            port: redisContainer.getPort(),
+          },
+          keys: testOptions.keys,
+        }),
+        redis: {
+          keyPrefix: "runqueue:test:",
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+        },
+      });
+
+      try {
+        const snapshotRoute = { version: 1, residency: "mirrored", organizationId: "o1234" };
+
+        // WITH a route: it survives serialize and is carried opaquely to the consumer.
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: { ...messageDev, snapshotRoute },
+          workerQueue: authenticatedEnvDev.id,
+        });
+        await setTimeout(1000);
+        const withRoute = await queue.dequeueMessageFromWorkerQueue(
+          "test_12345",
+          authenticatedEnvDev.id
+        );
+        assertNonNullable(withRoute);
+        expect(withRoute.message.snapshotRoute).toEqual(snapshotRoute);
+
+        // WITHOUT a route (an old producer / postgres run): the field is simply absent.
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: messageDev,
+          workerQueue: authenticatedEnvDev.id,
+        });
+        await setTimeout(1000);
+        const noRoute = await queue.dequeueMessageFromWorkerQueue(
+          "test_12345",
+          authenticatedEnvDev.id
+        );
+        assertNonNullable(noRoute);
+        expect(noRoute.message.snapshotRoute).toBeUndefined();
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
   redisTest(
     "Enqueue/Dequeue a message in env (DEV run, no concurrency key)",
     async ({ redisContainer }) => {
@@ -658,7 +714,7 @@ describe("RunQueue", () => {
       try {
         await queue.quit();
         await redis.quit();
-      } catch (e) {}
+      } catch (_e) {}
     }
   });
 
@@ -895,7 +951,7 @@ describe("RunQueue", () => {
       try {
         await queue.quit();
         await redis.quit();
-      } catch (e) {}
+      } catch (_e) {}
     }
   });
 
@@ -956,13 +1012,14 @@ describe("RunQueue", () => {
       try {
         await queue.quit();
         await redis.quit();
-      } catch (e) {}
+      } catch (_e) {}
     }
   });
 
   redisTest("Dead Letter Queue", async ({ redisContainer, redisOptions }) => {
     const queue = new RunQueue({
       ...testOptions,
+      name: "rq-redrive",
       retryOptions: {
         maxAttempts: 1,
       },
@@ -1056,7 +1113,7 @@ describe("RunQueue", () => {
       try {
         await queue.quit();
         await redis.quit();
-      } catch (e) {}
+      } catch (_e) {}
     }
   });
 });

@@ -1,8 +1,8 @@
-import { Attributes } from "@opentelemetry/api";
-import { TriggerTracerSpanEvent } from "../tracer.js";
+import type { Attributes } from "@opentelemetry/api";
+import type { TriggerTracerSpanEvent } from "../tracer.js";
 import { getGlobal, registerGlobal } from "../utils/globals.js";
 import { NoopRunTimelineMetricsManager } from "./runTimelineMetricsManager.js";
-import { RunTimelineMetric, RunTimelineMetricsManager } from "./types.js";
+import type { RunTimelineMetric, RunTimelineMetricsManager } from "./types.js";
 import { flattenAttributes } from "../utils/flattenAttributes.js";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 

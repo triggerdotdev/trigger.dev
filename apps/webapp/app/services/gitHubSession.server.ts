@@ -82,10 +82,7 @@ export async function validateGitHubAppInstallSession(
   }
 
   if (sessionState !== state) {
-    logger.warn("GitHub App installation state mismatch", {
-      expectedState: sessionState,
-      receivedState: state,
-    });
+    logger.warn("GitHub App installation state mismatch");
     return {
       valid: false,
       error: "state_mismatch",

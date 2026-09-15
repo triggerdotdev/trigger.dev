@@ -14,10 +14,17 @@ on:
 jobs:
   e2eTests:
     name: "🧪 E2E Tests: Webapp"
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    runs-on: warp-ubuntu-latest-x64-16x
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shardIndex: [1, 2]
+        shardTotal: [2]
     env:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      SHARD_INDEX: ${{ matrix.shardIndex }}
+      SHARD_TOTAL: ${{ matrix.shardTotal }}
     steps:
       - name: 🔧 Disable IPv6
         run: |
@@ -46,26 +53,26 @@ jobs:
         run: sudo systemctl restart docker
 
       - name: ⬇️ Checkout repo
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
 
       - name: ⎔ Setup pnpm
-        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           version: 10.33.2
 
       - name: ⎔ Setup node
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        uses: WarpBuilds/setup-node@2867cf8f859d73439e1ad18b542617e5a29f0f10 # v7.0.0
         with:
-          node-version: 20.20.2
+          node-version: 24.18.0
           cache: "pnpm"
 
       # ..to avoid rate limits when pulling images
       - name: 🐳 Login to DockerHub
         if: ${{ env.DOCKERHUB_USERNAME }}
-        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -73,17 +80,52 @@ jobs:
         if: ${{ !env.DOCKERHUB_USERNAME }}
         run: echo "DockerHub login skipped because secrets are not available."
 
-      - name: 🐳 Pre-pull testcontainer images
-        if: ${{ env.DOCKERHUB_USERNAME }}
+      - name: 📥 Prepare deps and testcontainer images
         run: |
-          echo "Pre-pulling Docker images with authenticated session..."
-          docker pull postgres:14
-          docker pull redis:7.2
-          docker pull testcontainers/ryuk:0.11.0
-          echo "Image pre-pull complete"
+          # Pull images concurrently with dependency installation. Retry each pull because
+          # registry timeouts are a recurring transient CI flake.
+          pull() {
+            for attempt in 1 2 3; do
+              docker pull "$1" && return 0
+              echo "::warning::docker pull $1 failed (attempt ${attempt}/3); retrying in 10s"
+              sleep 10
+            done
+            echo "::error::docker pull $1 failed after 3 attempts"
+            return 1
+          }
 
-      - name: 📥 Download deps
-        run: pnpm install --frozen-lockfile
+          pull_images() {
+            local pids=()
+            local failed=0
+            for image in \
+              postgres:14 \
+              redis:7.2 \
+              testcontainers/ryuk:0.14.0 \
+              ghcr.io/s2-streamstore/s2:0.40.0@sha256:b26249e2ede0949755f5af8028185dc2bcfc3aa2db21eb9610543d144eb6ee9d \
+              quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+            do
+              pull "$image" &
+              pids+=("$!")
+            done
+            for pid in "${pids[@]}"; do
+              if ! wait "$pid"; then
+                failed=1
+              fi
+            done
+            return "$failed"
+          }
+
+          echo "Installing dependencies and pre-pulling Docker images..."
+          pull_images &
+          pull_pid=$!
+          install_status=0
+          pnpm install --frozen-lockfile || install_status=$?
+          pull_status=0
+          wait "$pull_pid" || pull_status=$?
+          if (( install_status != 0 || pull_status != 0 )); then
+            exit 1
+          fi
+          echo "Dependency install and image pre-pull complete"
 
       - name: 📀 Generate Prisma Client
         run: pnpm run generate
@@ -91,7 +133,10 @@ jobs:
       - name: 🏗️ Build Webapp
         run: pnpm run build --filter webapp
 
+      - name: 🎭 Install Playwright Chromium
+        run: cd apps/webapp && pnpm exec playwright install chromium
+
       - name: 🧪 Run Webapp E2E Tests
-        run: cd apps/webapp && pnpm exec vitest run --config vitest.e2e.config.ts --reporter=default
+        run: cd apps/webapp && pnpm exec vitest run --config vitest.e2e.config.ts --reporter=default --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
         env:
           WEBAPP_TEST_VERBOSE: "1"

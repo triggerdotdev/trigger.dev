@@ -3,7 +3,7 @@ import Long from "long";
 import _m0 from "protobufjs/minimal";
 import { ResourceLogs } from "../../../logs/v1/logs";
 
-export const protobufPackage = "opentelemetry.proto.collector.logs.v1";
+const protobufPackage = "opentelemetry.proto.collector.logs.v1";
 
 export interface ExportLogsServiceRequest {
   /**
@@ -108,10 +108,14 @@ export const ExportLogsServiceRequest = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<ExportLogsServiceRequest>, I>>(base?: I): ExportLogsServiceRequest {
+  create<I extends Exact<DeepPartial<ExportLogsServiceRequest>, I>>(
+    base?: I
+  ): ExportLogsServiceRequest {
     return ExportLogsServiceRequest.fromPartial(base ?? ({} as any));
   },
-  fromPartial<I extends Exact<DeepPartial<ExportLogsServiceRequest>, I>>(object: I): ExportLogsServiceRequest {
+  fromPartial<I extends Exact<DeepPartial<ExportLogsServiceRequest>, I>>(
+    object: I
+  ): ExportLogsServiceRequest {
     const message = createBaseExportLogsServiceRequest();
     message.resourceLogs = object.resourceLogs?.map((e) => ResourceLogs.fromPartial(e)) || [];
     return message;
@@ -169,14 +173,19 @@ export const ExportLogsServiceResponse = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<ExportLogsServiceResponse>, I>>(base?: I): ExportLogsServiceResponse {
+  create<I extends Exact<DeepPartial<ExportLogsServiceResponse>, I>>(
+    base?: I
+  ): ExportLogsServiceResponse {
     return ExportLogsServiceResponse.fromPartial(base ?? ({} as any));
   },
-  fromPartial<I extends Exact<DeepPartial<ExportLogsServiceResponse>, I>>(object: I): ExportLogsServiceResponse {
+  fromPartial<I extends Exact<DeepPartial<ExportLogsServiceResponse>, I>>(
+    object: I
+  ): ExportLogsServiceResponse {
     const message = createBaseExportLogsServiceResponse();
-    message.partialSuccess = (object.partialSuccess !== undefined && object.partialSuccess !== null)
-      ? ExportLogsPartialSuccess.fromPartial(object.partialSuccess)
-      : undefined;
+    message.partialSuccess =
+      object.partialSuccess !== undefined && object.partialSuccess !== null
+        ? ExportLogsPartialSuccess.fromPartial(object.partialSuccess)
+        : undefined;
     return message;
   },
 };
@@ -189,7 +198,9 @@ export const ExportLogsPartialSuccess = {
   encode(message: ExportLogsPartialSuccess, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
     if (message.rejectedLogRecords !== BigInt("0")) {
       if (BigInt.asIntN(64, message.rejectedLogRecords) !== message.rejectedLogRecords) {
-        throw new globalThis.Error("value provided for field message.rejectedLogRecords of type int64 too large");
+        throw new globalThis.Error(
+          "value provided for field message.rejectedLogRecords of type int64 too large"
+        );
       }
       writer.uint32(8).int64(message.rejectedLogRecords.toString());
     }
@@ -231,7 +242,9 @@ export const ExportLogsPartialSuccess = {
 
   fromJSON(object: any): ExportLogsPartialSuccess {
     return {
-      rejectedLogRecords: isSet(object.rejectedLogRecords) ? BigInt(object.rejectedLogRecords) : BigInt("0"),
+      rejectedLogRecords: isSet(object.rejectedLogRecords)
+        ? BigInt(object.rejectedLogRecords)
+        : BigInt("0"),
       errorMessage: isSet(object.errorMessage) ? globalThis.String(object.errorMessage) : "",
     };
   },
@@ -247,10 +260,14 @@ export const ExportLogsPartialSuccess = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<ExportLogsPartialSuccess>, I>>(base?: I): ExportLogsPartialSuccess {
+  create<I extends Exact<DeepPartial<ExportLogsPartialSuccess>, I>>(
+    base?: I
+  ): ExportLogsPartialSuccess {
     return ExportLogsPartialSuccess.fromPartial(base ?? ({} as any));
   },
-  fromPartial<I extends Exact<DeepPartial<ExportLogsPartialSuccess>, I>>(object: I): ExportLogsPartialSuccess {
+  fromPartial<I extends Exact<DeepPartial<ExportLogsPartialSuccess>, I>>(
+    object: I
+  ): ExportLogsPartialSuccess {
     const message = createBaseExportLogsPartialSuccess();
     message.rejectedLogRecords = object.rejectedLogRecords ?? BigInt("0");
     message.errorMessage = object.errorMessage ?? "";
@@ -263,7 +280,7 @@ export const ExportLogsPartialSuccess = {
  * OpenTelemetry and an collector, or between an collector and a central collector (in this
  * case logs are sent/received to/from multiple Applications).
  */
-export interface LogsService {
+interface LogsService {
   /**
    * For performance reasons, it is recommended to keep this RPC
    * alive for the entire life of the application.
@@ -271,8 +288,8 @@ export interface LogsService {
   export(request: ExportLogsServiceRequest): Promise<ExportLogsServiceResponse>;
 }
 
-export const LogsServiceServiceName = "opentelemetry.proto.collector.logs.v1.LogsService";
-export class LogsServiceClientImpl implements LogsService {
+const LogsServiceServiceName = "opentelemetry.proto.collector.logs.v1.LogsService";
+class LogsServiceClientImpl implements LogsService {
   private readonly rpc: Rpc;
   private readonly service: string;
   constructor(rpc: Rpc, opts?: { service?: string }) {
@@ -293,14 +310,19 @@ interface Rpc {
 
 type Builtin = Date | Function | Uint8Array | string | number | boolean | bigint | undefined;
 
-export type DeepPartial<T> = T extends Builtin ? T
-  : T extends globalThis.Array<infer U> ? globalThis.Array<DeepPartial<U>>
-  : T extends ReadonlyArray<infer U> ? ReadonlyArray<DeepPartial<U>>
-  : T extends {} ? { [K in keyof T]?: DeepPartial<T[K]> }
-  : Partial<T>;
+type DeepPartial<T> = T extends Builtin
+  ? T
+  : T extends globalThis.Array<infer U>
+    ? globalThis.Array<DeepPartial<U>>
+    : T extends ReadonlyArray<infer U>
+      ? ReadonlyArray<DeepPartial<U>>
+      : T extends {}
+        ? { [K in keyof T]?: DeepPartial<T[K]> }
+        : Partial<T>;
 
 type KeysOfUnion<T> = T extends T ? keyof T : never;
-export type Exact<P, I extends P> = P extends Builtin ? P
+type Exact<P, I extends P> = P extends Builtin
+  ? P
   : P & { [K in keyof P]: Exact<P[K], I[K]> } & { [K in Exclude<keyof I, KeysOfUnion<P>>]: never };
 
 function longToBigint(long: Long) {

@@ -29,9 +29,9 @@ branch are tagged into a release periodically.
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/en) version 20.20.2
+- [Node.js](https://nodejs.org/en) version 24.18.0
 - [pnpm package manager](https://pnpm.io/installation) version 10.33.2
-- [Docker](https://www.docker.com/get-started/)
+- [Docker](https://www.docker.com/get-started/) (Compose 2.24.4 or newer for `dev:docker`)
 - [protobuf](https://github.com/protocolbuffers/protobuf)
 
 ### Setup
@@ -49,7 +49,7 @@ branch are tagged into a release periodically.
    ```
    cd trigger.dev
    ```
-3. Ensure you are on the correct version of Node.js (20.20.2). If you are using `nvm`, there is an `.nvmrc` file that will automatically select the correct version of Node.js when you navigate to the repository.
+3. Ensure you are on the correct version of Node.js (24.18.0). If you are using `nvm`, there is an `.nvmrc` file that will automatically select the correct version of Node.js when you navigate to the repository.
 
 4. Run `corepack enable` to use the correct version of pnpm (`10.33.2`) as specified in the root `package.json` file.
 
@@ -57,11 +57,12 @@ branch are tagged into a release periodically.
    ```
    pnpm i
    ```
-6. Create your `.env` file
+6. Create your local overrides file. [Varlock](https://varlock.dev/) loads the checked-in local defaults from `.env.schema`.
    ```
-   cp .env.example .env
+   cp .env.example .env.local
+   pnpm run env:check
    ```
-7. Open it and generate a new value for `ENCRYPTION_KEY`:
+7. Open `.env.local` and add a new value for `ENCRYPTION_KEY`:
 
    `ENCRYPTION_KEY` is used to two-way encrypt OAuth access tokens and so you'll probably want to actually generate a unique value, and it must be a random 16 byte hex string. You can generate one with the following command:
 
@@ -92,6 +93,37 @@ branch are tagged into a release periodically.
     pnpm run db:seed
     ```
 12. Run the app. See the section below.
+
+## Local environment configuration
+
+Local dev, seed, test, and database commands use Varlock before starting the process. The root `.env.schema` holds the local stack defaults; app and database schemas import shared configuration, including dependencies used in `${VAR}` references. Database commands use Varlock's `--filter` to resolve and inject only their connection settings; helper variables remain available for resolution without being injected. Libraries that use their caller's configuration don't need a schema.
+
+- Put shared overrides and credentials in root `.env.local`. Put app-only overrides in that app's `.env.local`.
+- Existing `.env` files still work. There is no need to copy or recreate the old `.env` symlinks. Prefer renaming the root `.env` to `.env.local` when you migrate; don't overwrite an existing `.env.local`.
+- Precedence is: schema defaults → root `.env` → root `.env.local` → package `.env` → package `.env.local` → exported environment variables. `${VAR}` references are expanded by Varlock.
+- An empty assignment is not an explicit clearing override: Varlock falls back to lower-priority definitions. Optional items with no value are omitted from the child environment rather than injected as empty strings.
+- Restart the command after changing configuration; the CLI loads it once at startup.
+- Real credentials must never go in `.env.schema`. New variables are sensitive by default; mark only known non-secret settings `@sensitive=false`. `env:check` uses agent-safe, redacted output.
+
+```sh
+pnpm run env:check
+pnpm --filter webapp run env:check
+pnpm --filter @trigger.dev/database run env:check
+# Run an ad-hoc script with that package's configuration:
+pnpm --filter webapp run env tsx scripts/my-script.ts
+```
+
+To run the supervisor, copy `apps/supervisor/.env.example` to `apps/supervisor/.env.local` and set `TRIGGER_WORKER_TOKEN`. Its shared secret and local API origin are imported from the root configuration.
+
+`pnpm run docker` and `docker:full` resolve only Compose settings, such as project names, container prefixes, host ports, and volume names. The `docker:stop`, `docker:full:stop`, and `dev:docker:stop` commands use the same scope: an invalid application setting does not prevent shutdown, while configuration needed to select and render the Compose stack must still be valid.
+
+For `dev:docker`, configuration is loaded from `apps/webapp`, including its local overrides, and passed to Compose through stdin; the Compose file's container-specific URLs still take precedence. No resolved secrets file is written. Local env files and schemas are excluded from image build contexts.
+
+The dedicated run-ops database is opt-in: set `RUN_OPS_DATABASE_URL` in root `.env.local` only when using the `runops` profile in `docker/docker-compose.yml`. Its local URL is shown in `.env.example`. The separate `dev:docker` stack has no run-ops database and explicitly clears this URL, including values from existing `.env` files.
+
+Use `db:migrate:local` (or root `pnpm run db:migrate`) for local migrations. `db:migrate:deploy` and production startup commands intentionally use **only injected environment variables**, without Varlock or local defaults. Existing runtime validation stays in place. Builds are also unchanged; if a local build needs your configuration, use `pnpm run env pnpm run build --filter webapp`.
+
+This does not change how the published CLI loads customer `.env` files, dashboard env-file imports, or the self-hosting Compose configuration. No secret-provider plugin is required: a secret manager can continue injecting environment variables, which override local values.
 
 ## Running
 
@@ -181,7 +213,7 @@ pnpm exec trigger dev --log-level debug
 
 6. Navigate to the `hello-world` project in your local dashboard at localhost:3030 and you should see the list of tasks.
 
-7. Go to the "Test" page in the sidebar and select a task. Then enter a payload and click "Run test". You can tell what the payloads should be by looking at the relevant task file inside the reference project's `src/trigger` folder. Many of them accept an empty payload.
+7. On the Tasks page, open a task and press the "Test" button to open its test page. Then enter a payload and click "Run test". You can tell what the payloads should be by looking at the relevant task file inside the reference project's `src/trigger` folder. Many of them accept an empty payload.
 
 8. Feel free to add additional files in the reference project's `src/trigger` dir to test out specific aspects of the system, or add in edge cases.
 
@@ -205,7 +237,7 @@ pnpm exec trigger dev --log-level debug
 4. Run the migration:
 
    ```
-   pnpm run db:migrate:deploy
+   pnpm run db:migrate:local
    pnpm run generate
    ```
 
@@ -213,6 +245,19 @@ pnpm exec trigger dev --log-level debug
 
 5. Commit the generated migration files as well as the changes to `schema.prisma`.
 6. If you're using VSCode you may need to restart the TypeScript server in the webapp to get updated type inference. Open a TypeScript file, then open the Command Palette (View > Command Palette) and run `TypeScript: Restart TS server`.
+
+## Git hooks (lefthook)
+
+We use [lefthook](https://lefthook.dev) for local git hooks, configured in `lefthook.yml` (the source of truth for what runs and when). Today that's a pre-push hook mirroring the CI `code-quality` checks; the set may grow, so check `lefthook.yml` rather than this guide.
+
+Hooks install automatically on `pnpm install`. A failing hook prints exactly what to run to fix it.
+
+**Opting out**
+
+- GitButler skips hooks on `but push` unless you enable **Run hooks** in the project settings (off by default).
+- Plain git: `LEFTHOOK=0 git push` / `--no-verify` to skip once; `pnpm exec lefthook uninstall` to remove.
+
+This never affects correctness — CI enforces the same checks on every PR; the hooks just give you faster feedback.
 
 ## Making a pull request
 
@@ -223,9 +268,16 @@ pnpm exec trigger dev --log-level debug
 ### PR workflow
 
 1. **Always open your PR in draft status first.** Do not mark it as "Ready for Review" until the steps below are complete.
-2. **Address all CodeRabbit code review comments.** Our CI runs an automated code review via CodeRabbit. Go through each comment and either fix the issue or resolve it with a comment explaining why no change is needed.
-3. **Wait for all CI checks to pass.** Do not mark the PR as "Ready for Review" until every check is green.
-4. **Then mark the PR as "Ready for Review"** so a maintainer can take a look.
+2. **Run format and lint locally before pushing:**
+   ```bash
+   pnpm run format
+   pnpm run lint
+   pnpm run knip
+   ```
+   These are enforced by CI — the `code-quality` check will fail if either produces a diff or errors.
+3. **Address all CodeRabbit code review comments.** Our CI runs an automated code review via CodeRabbit. Go through each comment and either fix the issue or resolve it with a comment explaining why no change is needed.
+4. **Wait for all CI checks to pass.** Do not mark the PR as "Ready for Review" until every check is green.
+5. **Then mark the PR as "Ready for Review"** so a maintainer can take a look.
 
 ### Cost/benefit analysis for risky changes
 
@@ -241,7 +293,7 @@ If your change touches core infrastructure, modifies widely-used code paths, or 
 
 We use [changesets](https://github.com/changesets/changesets) to manage our package versions and changelogs. If you've never used changesets before, first read [their guide here](https://github.com/changesets/changesets/blob/main/docs/adding-a-changeset.md).
 
-If you are contributing a change to any packages in this monorepo (anything in either the `/packages` or `/integrations` directories), then you will need to add a changeset to your Pull Requests before they can be merged.
+Changesets are user-facing release notes, not a catalog of every change. If you are contributing a **user-facing** change to a package in this monorepo (anything in `/packages` or `/integrations` that a user would notice or act on), add a changeset to your Pull Request before it can be merged. Skip the changeset for internal-only changes, refactors, chores, and packages that are not consumed independently (e.g. `@trigger.dev/redis-worker`), where a version bump means nothing to a user.
 
 To add a changeset, run the following command in the root of the repo
 
@@ -259,7 +311,7 @@ Most of the time the changes you'll make are likely to be categorized as patch r
 
 ## Adding server changes
 
-Changesets only track published npm packages. If your PR only changes server components (`apps/webapp/`, `apps/supervisor/`, `apps/coordinator/`, etc.) with no package changes, add a `.server-changes/` file so the change appears in release notes.
+Changesets only track published npm packages. If your PR only changes server components (`apps/webapp/`, `apps/supervisor/`, etc.) with no package changes AND the change is user-facing, add a `.server-changes/` file so the change appears in release notes. Skip it for internal-only or admin-only changes, refactors, and chores.
 
 Create a markdown file with a descriptive name:
 
@@ -275,18 +327,18 @@ EOF
 ```
 
 **Fields:**
-- `area` (required): `webapp` | `supervisor` | `coordinator` | `kubernetes-provider` | `docker-provider`
+- `area` (required): `webapp` | `supervisor`
 - `type` (required): `feature` | `fix` | `improvement` | `breaking`
 
 The body text (below the frontmatter) is a one-line description of the change. Keep it concise — it will appear in release notes.
 
-**When to add which:**
+**When to add which** (only for user-facing changes; skip the note entirely for internal-only or admin-only changes, refactors, and chores):
 
 | PR changes | What to add |
 |---|---|
-| Only packages (`packages/`) | Changeset |
-| Only server (`apps/`) | `.server-changes/` file |
-| Both packages and server | Just the changeset |
+| Only packages (`packages/` or `integrations/`) | Changeset (if the package change is user-facing) |
+| Only server (`apps/`) | `.server-changes/` file (if the server change is user-facing) |
+| Both packages and server | The changeset covers it; if the package change needs no changeset but the server change is user-facing, add a `.server-changes/` file |
 
 See `.server-changes/README.md` for more details.
 
@@ -313,4 +365,4 @@ The process running on port `3030` should be destroyed.
 
 ### Running two clones side by side (worktree, branch experiment)
 
-The default `pnpm run docker` uses the project name `triggerdotdev-docker` and the standard host ports (5432, 6379, 3060, 4566, 8123, 9000, 9005, 9006). To stand up a second instance in another clone without clashing, set a different `COMPOSE_PROJECT_NAME` and the offset host ports in that clone's `.env`. The "Running multiple instances side by side" block in `.env.example` lists every overridable env var with its default for reference; uncomment the lines you need and update `DATABASE_URL` / `CLICKHOUSE_URL` / `REDIS_PORT` / `APP_ORIGIN` / `LOGIN_ORIGIN` / `ELECTRIC_ORIGIN` / `REALTIME_STREAMS_S2_ENDPOINT` to match.
+The default `pnpm run docker` uses the project name `triggerdotdev-docker` and the standard host ports (5432, 6379, 3060, 4566, 8123, 9000, 9005, 9006). To stand up a second instance in another clone without clashing, set a different `COMPOSE_PROJECT_NAME` and the offset host ports in that clone's `.env.local`. The "Running multiple instances side by side" block in `.env.schema` lists the port overrides with their defaults for reference; copy the lines you need into `.env.local` and update `DATABASE_URL` / `CLICKHOUSE_URL` / `REDIS_PORT` / `APP_ORIGIN` / `LOGIN_ORIGIN` / `ELECTRIC_ORIGIN` / `REALTIME_STREAMS_S2_ENDPOINT` to match.

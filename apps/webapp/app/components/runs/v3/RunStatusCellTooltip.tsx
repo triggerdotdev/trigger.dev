@@ -56,7 +56,7 @@ function ChildStatusBreakdown({
   orderedChildStatuses: { status: NextRunListItem["status"]; count: number }[];
 }) {
   return (
-    <div className="flex min-w-[10rem] flex-col gap-1 p-1">
+    <div className="flex min-w-40 flex-col gap-1 p-1">
       <p className="mb-1 text-xs text-text-dimmed">Child run statuses</p>
       <AnimatePresence initial={false} mode="popLayout">
         {orderedChildStatuses.map((entry) => (
@@ -100,6 +100,7 @@ function useChildRunStatusesTooltip({
     key: `child-statuses-${friendlyId}`,
   });
   const fetcherStateRef = useRef(fetcher.state);
+
   fetcherStateRef.current = fetcher.state;
 
   const [childStatuses, setChildStatuses] = useState<ChildStatusEntry[] | undefined>();
@@ -120,6 +121,7 @@ function useChildRunStatusesTooltip({
   // Keep the latest loader callback available to the polling interval
   // without recreating the interval on every render.
   const loadChildStatusesRef = useRef(loadChildStatuses);
+
   loadChildStatusesRef.current = loadChildStatuses;
 
   const stopPolling = useCallback(() => {
@@ -169,6 +171,7 @@ function useChildRunStatusesTooltip({
   useEffect(() => {
     prevHasFinishedRef.current = hasFinished;
     stopPolling();
+
     setChildStatuses(undefined);
     if (isOpenRef.current) {
       loadChildStatuses();

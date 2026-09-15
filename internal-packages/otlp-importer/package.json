@@ -27,8 +27,7 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@types/node": "^20",
-    "rimraf": "^6.0.1",
+    "@types/node": "^24.13.3",
     "ts-proto": "^1.167.3"
   },
   "engines": {

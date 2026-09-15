@@ -4,17 +4,25 @@ import { Link, useLocation } from "@remix-run/react";
 import { cn } from "~/utils/cn";
 import { LinkButton } from "./Buttons";
 
+/** Pass `hasNextPage` when the total page count is unknown; use `showPageNumbers={false}` in that case. */
 export function PaginationControls({
   currentPage,
   totalPages,
+  hasNextPage,
   showPageNumbers = true,
 }: {
   currentPage: number;
   totalPages: number;
+  /** When set, navigation uses this instead of `totalPages`. */
+  hasNextPage?: boolean;
   showPageNumbers?: boolean;
 }) {
   const location = useLocation();
-  if (totalPages <= 1) {
+  const hasNextMode = hasNextPage !== undefined;
+  const showPagination = hasNextMode ? currentPage > 1 || hasNextPage : totalPages > 1;
+  const nextDisabled = hasNextMode ? !hasNextPage : currentPage === totalPages;
+
+  if (!showPagination) {
     return null;
   }
 
@@ -42,8 +50,8 @@ export function PaginationControls({
             TrailingIcon={ChevronRightIcon}
             shortcut={{ key: "k" }}
             tooltip="Next"
-            disabled={currentPage === totalPages}
-            className={cn("px-2", currentPage !== totalPages ? "group" : "")}
+            disabled={nextDisabled}
+            className={cn("px-2", !nextDisabled ? "group" : "")}
           />
         </>
       ) : (
@@ -57,7 +65,7 @@ export function PaginationControls({
               tooltip="Previous"
               disabled={currentPage === 1}
               className={cn(
-                "flex items-center rounded-r-none border-r-0 pl-2 pr-[0.5625rem]",
+                "flex items-center rounded-r-none border-r-0 pl-2 pr-2.25",
                 currentPage === 1 && "cursor-not-allowed opacity-50"
               )}
             />
@@ -65,24 +73,22 @@ export function PaginationControls({
 
           <div
             className={cn(
-              "order-2 h-6 w-px bg-charcoal-600 transition-colors peer-hover/next:bg-charcoal-550 peer-hover/prev:bg-charcoal-550",
-              currentPage === 1 && currentPage === totalPages && "opacity-30"
+              "order-2 h-6 w-px bg-surface-control transition-colors peer-hover/next:bg-surface-control-hover peer-hover/prev:bg-surface-control-hover",
+              currentPage === 1 && nextDisabled && "opacity-30"
             )}
           />
 
-          <div
-            className={cn("peer/next order-3", currentPage === totalPages && "pointer-events-none")}
-          >
+          <div className={cn("peer/next order-3", nextDisabled && "pointer-events-none")}>
             <LinkButton
               to={pageUrl(location, currentPage + 1)}
               variant="secondary/small"
               TrailingIcon={ChevronRightIcon}
               shortcut={{ key: "k" }}
               tooltip="Next"
-              disabled={currentPage === totalPages}
+              disabled={nextDisabled}
               className={cn(
-                "flex items-center rounded-l-none border-l-0 pl-[0.5625rem] pr-2",
-                currentPage === totalPages && "cursor-not-allowed opacity-50"
+                "flex items-center rounded-l-none border-l-0 pl-2.25 pr-2",
+                nextDisabled && "cursor-not-allowed opacity-50"
               )}
             />
           </div>
@@ -103,7 +109,8 @@ function pageUrl(location: ReturnType<typeof useLocation>, page: number): string
 const baseClass =
   "flex items-center justify-center border border-transparent min-w-6 h-6 px-1 text-xs font-medium transition text-text-dimmed rounded-sm focus-visible:focus-custom";
 const unselectedClass = "hover:bg-tertiary hover:text-text-bright";
-const selectedClass = "border-charcoal-600 bg-tertiary text-text-bright hover:bg-charcoal-600/50";
+const selectedClass =
+  "border-border-bright bg-tertiary text-text-bright hover:bg-surface-control/50";
 
 function PageLinkComponent({
   page,

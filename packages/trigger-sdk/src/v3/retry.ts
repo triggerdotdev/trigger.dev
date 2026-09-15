@@ -1,4 +1,5 @@
-import { Attributes, Span, SpanStatusCode, context, trace } from "@opentelemetry/api";
+import type { Attributes, Span } from "@opentelemetry/api";
+import { SpanStatusCode, context, trace } from "@opentelemetry/api";
 import {
   SEMATTRS_HTTP_HOST,
   SEMATTRS_HTTP_METHOD,
@@ -7,11 +8,13 @@ import {
   SEMATTRS_HTTP_STATUS_CODE,
   SEMATTRS_HTTP_URL,
 } from "@opentelemetry/semantic-conventions";
-import {
+import type {
   FetchRetryByStatusOptions,
   FetchRetryOptions,
   FetchRetryStrategy,
   RetryOptions,
+} from "@trigger.dev/core/v3";
+import {
   SemanticInternalAttributes,
   accessoryAttributes,
   calculateNextRetryDelay,
@@ -20,7 +23,6 @@ import {
   defaultRetryOptions,
   eventFilterMatches,
   flattenAttributes,
-  runtime,
 } from "@trigger.dev/core/v3";
 import { tracer } from "./tracer.js";
 import { wait } from "./wait.js";
@@ -114,7 +116,7 @@ function onThrow<T>(
   );
 }
 
-export interface RetryFetchRequestInit extends RequestInit {
+interface RetryFetchRequestInit extends RequestInit {
   retry?: FetchRetryOptions;
   timeoutInMs?: number;
 }
@@ -164,12 +166,9 @@ async function retryFetch(
           const abortController = new AbortController();
 
           const timeoutId = init?.timeoutInMs
-            ? setTimeout(
-                () => {
-                  abortController.abort();
-                },
-                init?.timeoutInMs
-              )
+            ? setTimeout(() => {
+                abortController.abort();
+              }, init?.timeoutInMs)
             : undefined;
 
           init?.signal?.addEventListener("abort", () => {
@@ -435,9 +434,7 @@ const getRetryStrategyForResponse = async (
   const statusCodes = Object.keys(retry);
   const clonedResponse = response.clone();
 
-  for (let i = 0; i < statusCodes.length; i++) {
-    const statusRange = statusCodes[i];
-
+  for (const statusRange of statusCodes) {
     if (!statusRange) {
       continue;
     }
@@ -515,15 +512,16 @@ const isStatusCodeInRange = (statusCode: number, statusRange: string): boolean =
   return statusCode === parseInt(start, 10);
 };
 
-const createAttributesFromHeaders = (headers: Headers): Attributes => {
+const SAFE_RESPONSE_HEADERS = new Set(["content-length", "content-type", "retry-after"]);
+
+export const createAttributesFromHeaders = (headers: Headers): Attributes => {
   const attributes: Attributes = {};
 
-  const normalizedHeaderKey = (key: string) => {
-    return key.toLowerCase();
-  };
-
   headers.forEach((value, key) => {
-    attributes[`http.response.header.${normalizedHeaderKey(key)}`] = value;
+    const normalizedKey = key.toLowerCase();
+    if (SAFE_RESPONSE_HEADERS.has(normalizedKey)) {
+      attributes[`http.response.header.${normalizedKey}`] = value;
+    }
   });
 
   return attributes;
@@ -532,7 +530,7 @@ const createAttributesFromHeaders = (headers: Headers): Attributes => {
 const safeJsonParse = (json: string): unknown => {
   try {
     return JSON.parse(json);
-  } catch (e) {
+  } catch (_e) {
     return null;
   }
 };
@@ -560,16 +558,21 @@ const resolveDefaults = <
   return obj[key] as TValue;
 };
 
-const createFetchAttributes = (
+export const createFetchAttributes = (
   input: RequestInfo | URL,
   init?: RetryFetchRequestInit | undefined
 ): Attributes => {
   const url = normalizeUrlFromInput(input);
+  const diagnosticUrl = new URL(url);
+  diagnosticUrl.username = "";
+  diagnosticUrl.password = "";
+  diagnosticUrl.search = "";
+  diagnosticUrl.hash = "";
   const httpMethod = normalizeHttpMethod(input, init);
 
   return {
     [SEMATTRS_HTTP_METHOD]: httpMethod,
-    [SEMATTRS_HTTP_URL]: url.href,
+    [SEMATTRS_HTTP_URL]: diagnosticUrl.href,
     [SEMATTRS_HTTP_HOST]: url.hostname,
     ["server.host"]: url.hostname,
     ["server.port"]: url.port,
@@ -586,7 +589,7 @@ const createFetchAttributes = (
   };
 };
 
-const createFetchResponseAttributes = (response: Response): Attributes => {
+export const createFetchResponseAttributes = (response: Response): Attributes => {
   return {
     [SEMATTRS_HTTP_STATUS_CODE]: response.status,
     "http.status_text": response.statusText,

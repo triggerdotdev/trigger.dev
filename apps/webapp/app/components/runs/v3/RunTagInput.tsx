@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect, type KeyboardEvent } from "react";
+import { useCallback, useState, type KeyboardEvent } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Input } from "~/components/primitives/Input";
 import { RunTag } from "./RunTag";
@@ -26,39 +26,30 @@ export function RunTagInput({
   maxTagLength = 128,
   onTagsChange,
 }: TagInputProps) {
-  // Use controlled tags if provided, otherwise use default
-  const initialTags = controlledTags ?? defaultTags;
-
-  const [tags, setTags] = useState<string[]>(initialTags);
+  const [internalTags, setInternalTags] = useState<string[]>(defaultTags);
+  const tags = controlledTags ?? internalTags;
   const [inputValue, setInputValue] = useState("");
-
-  // Sync internal state with external tag changes
-  useEffect(() => {
-    if (controlledTags !== undefined) {
-      setTags(controlledTags);
-    }
-  }, [controlledTags]);
 
   const addTag = useCallback(
     (tagText: string) => {
       const trimmedTag = tagText.trim();
       if (trimmedTag && !tags.includes(trimmedTag) && tags.length < maxTags) {
         const newTags = [...tags, trimmedTag];
-        setTags(newTags);
+        if (controlledTags === undefined) setInternalTags(newTags);
         onTagsChange?.(newTags);
       }
       setInputValue("");
     },
-    [tags, onTagsChange, maxTags]
+    [tags, controlledTags, onTagsChange, maxTags]
   );
 
   const removeTag = useCallback(
     (tagToRemove: string) => {
       const newTags = tags.filter((tag) => tag !== tagToRemove);
-      setTags(newTags);
+      if (controlledTags === undefined) setInternalTags(newTags);
       onTagsChange?.(newTags);
     },
-    [tags, onTagsChange]
+    [tags, controlledTags, onTagsChange]
   );
 
   const handleKeyDown = useCallback(

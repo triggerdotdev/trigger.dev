@@ -70,7 +70,7 @@ export class MollifierStaleSweepState implements StaleSweepStateStore {
         onError: (error) => {
           this.logger.error("MollifierStaleSweepState redis client error:", { error });
         },
-      },
+      }
     );
   }
 
@@ -97,10 +97,7 @@ export class MollifierStaleSweepState implements StaleSweepStateStore {
     await pipeline.exec();
   }
 
-  async readOrgListSlice(
-    start: number,
-    count: number,
-  ): Promise<{ orgs: string[]; total: number }> {
+  async readOrgListSlice(start: number, count: number): Promise<{ orgs: string[]; total: number }> {
     const pipeline = this.redis.pipeline();
     pipeline.lrange(ORG_LIST_KEY, start, start + count - 1);
     pipeline.llen(ORG_LIST_KEY);

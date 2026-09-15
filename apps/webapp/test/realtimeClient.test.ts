@@ -205,7 +205,7 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("RealtimeClient", () => {
         },
       });
 
-      const run = await prisma.taskRun.create({
+      const _run = await prisma.taskRun.create({
         data: {
           taskIdentifier: "test-task",
           friendlyId: "run_1234",

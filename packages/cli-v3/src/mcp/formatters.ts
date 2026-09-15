@@ -1,5 +1,5 @@
-import { AnyRunShape } from "@trigger.dev/core/v3";
-import {
+import type { AnyRunShape } from "@trigger.dev/core/v3";
+import type {
   ListRunResponseItem,
   RetrieveRunResponse,
   RetrieveRunTraceResponseBody,
@@ -236,7 +236,7 @@ function formatSpan(
 
   // Format span header
   const statusIndicator = getStatusIndicator(span.data);
-  // Trace durations are nanoseconds from ClickHouse
+  // The trace API reports span durations in nanoseconds
   const duration = formatDuration(span.data.duration / 1_000_000);
   const startTime = formatDateTime(span.data.startTime);
 
@@ -473,10 +473,10 @@ export function formatSpanDetail(span: RetrieveSpanDetailResponseBody): string {
   const statusIndicator = span.isCancelled
     ? "[CANCELLED]"
     : span.isError
-    ? "[ERROR]"
-    : span.isPartial
-    ? "[IN PROGRESS]"
-    : "[COMPLETED]";
+      ? "[ERROR]"
+      : span.isPartial
+        ? "[IN PROGRESS]"
+        : "[COMPLETED]";
 
   lines.push(`## Span: ${span.message} ${statusIndicator}`);
   lines.push(`Span ID: ${span.spanId}`);

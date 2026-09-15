@@ -9,7 +9,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   const url = new URL(request.url);
   const page = parseInt(url.searchParams.get("page") ?? "1");
-  const pageSize = parseInt(url.searchParams.get("pageSize") ?? "50");
+  const pageSize = Math.max(
+    1,
+    Math.min(parseInt(url.searchParams.get("pageSize") ?? "50") || 50, 100)
+  );
 
   const [models, total] = await Promise.all([
     prisma.llmModel.findMany({
@@ -81,7 +84,20 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({ error: "Invalid request body", details: parsed.error.issues }, { status: 400 });
   }
 
-  const { modelName, matchPattern, startDate, source, pricingTiers, provider, description, contextWindow, maxOutputTokens, capabilities, isHidden, pricingUnit } = parsed.data;
+  const {
+    modelName,
+    matchPattern,
+    startDate,
+    source,
+    pricingTiers,
+    provider,
+    description,
+    contextWindow,
+    maxOutputTokens,
+    capabilities,
+    isHidden,
+    pricingUnit,
+  } = parsed.data;
 
   // Validate regex pattern — strip (?i) POSIX flag since our registry handles it
   try {

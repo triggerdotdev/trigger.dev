@@ -5,6 +5,7 @@
     "isolatedDeclarations": false,
     "composite": true,
     "sourceMap": true,
-    "customConditions": ["@triggerdotdev/source"]
+    "customConditions": ["@triggerdotdev/source"],
+    "types": ["node"]
   }
 }

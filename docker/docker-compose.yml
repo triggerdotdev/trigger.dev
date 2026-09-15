@@ -11,6 +11,7 @@ name: triggerdotdev-docker
 volumes:
   database-data:
   database-data-alt:
+  database-runops-data:
   database-replica-data:
   redis-data:
   minio-data:
@@ -48,6 +49,36 @@ services:
       # The webapp opens ~50 pooled connections per instance and Electric another
       # ~40, so the default 100 is exhausted by one webapp + Electric alone. Raise
       # it so multiple instances / load tests have headroom.
+      - -c
+      - max_connections=500
+
+  # Opt-in NEW run-ops database, PG17 (the `database` above is PG14) — a separate cluster
+  # so the run-ops split's distinct-DB sentinel passes. Start with:
+  #   COMPOSE_PROFILES=runops pnpm run docker
+  database-runops:
+    container_name: ${CONTAINER_PREFIX:-}database-runops
+    profiles: ["runops"]
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres17
+    restart: always
+    volumes:
+      - ${DB_RUNOPS_VOLUME:-database-runops-data}:/var/lib/postgresql/data/
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    networks:
+      - app_network
+    ports:
+      - "${POSTGRES_RUNOPS_HOST_PORT:-5434}:5432"
+    command:
+      - -c
+      - listen_addresses=*
+      - -c
+      - wal_level=logical
+      - -c
+      - shared_preload_libraries=pg_partman_bgw
       - -c
       - max_connections=500
 
@@ -113,7 +144,7 @@ services:
   # routes to it when the OBJECT_STORE_* env vars are set (see .env.example).
   minio:
     container_name: ${CONTAINER_PREFIX:-}minio
-    image: minio/minio:latest@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
     restart: always
     command: server /data --console-address ":9001"
     environment:
@@ -134,7 +165,7 @@ services:
       start_period: 5s
 
   minio-init:
-    image: minio/mc:latest@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
+    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
     depends_on:
       minio:
         condition: service_healthy
@@ -164,7 +195,7 @@ services:
       - database
 
   clickhouse:
-    image: clickhouse/clickhouse-server:25.6.2@sha256:97f0fe0f8729569e8c9d11069acee23abadeade4889f56ca3dc3df069f28cb85
+    image: clickhouse/clickhouse-server:26.2.19.43@sha256:c2f2605585899d5103a0447daadbc0005f362200d5f0fcca7f40db3ca0dd36dd
     restart: always
     container_name: ${CONTAINER_PREFIX:-}clickhouse
     ulimits:
@@ -200,10 +231,10 @@ services:
           "--query",
           "SELECT 1",
         ]
-      interval: "3s"
-      timeout: "5s"
-      retries: "5"
-      start_period: "10s"
+      interval: 3s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   clickhouse_migrator:
     build:

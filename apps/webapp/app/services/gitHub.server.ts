@@ -1,8 +1,20 @@
-import { App, type Octokit } from "octokit";
+import { App, Octokit } from "octokit";
 import { env } from "../env.server";
 import { prisma } from "~/db.server";
 import { logger } from "./logger.server";
 import { errAsync, fromPromise, okAsync, type ResultAsync } from "neverthrow";
+import { tryCatch } from "@trigger.dev/core/utils";
+import {
+  getAuthenticatedGitHubLogin,
+  verifyGitHubAppInstallationAccess,
+} from "./gitHubInstallationOwnership.server";
+
+function isGitHubAppUserOAuthConfigured(): boolean {
+  return (
+    env.GITHUB_APP_ENABLED === "1" &&
+    Boolean(env.GITHUB_APP_CLIENT_ID && env.GITHUB_APP_CLIENT_SECRET)
+  );
+}
 
 export const githubApp =
   env.GITHUB_APP_ENABLED === "1"
@@ -12,41 +24,90 @@ export const githubApp =
         webhooks: {
           secret: env.GITHUB_APP_WEBHOOK_SECRET,
         },
+        ...(env.GITHUB_APP_CLIENT_ID && env.GITHUB_APP_CLIENT_SECRET
+          ? {
+              oauth: {
+                clientId: env.GITHUB_APP_CLIENT_ID,
+                clientSecret: env.GITHUB_APP_CLIENT_SECRET,
+              },
+            }
+          : {}),
       })
     : null;
 
-/**
- * Links a GitHub App installation to a Trigger organization
- */
-export async function linkGitHubAppInstallation(
-  installationId: number,
-  organizationId: string
-): Promise<void> {
+async function withGitHubUserToken<T>(
+  oauthCode: string,
+  fn: (userOctokit: Octokit) => Promise<T>
+): Promise<T> {
   if (!githubApp) {
     throw new Error("GitHub App is not enabled");
   }
 
-  const octokit = await githubApp.getInstallationOctokit(installationId);
-  const { data: installation } = await octokit.rest.apps.getInstallation({
-    installation_id: installationId,
+  const { authentication } = await githubApp.oauth.createToken({ code: oauthCode });
+
+  const [error, result] = await tryCatch(fn(new Octokit({ auth: authentication.token })));
+
+  const [revokeError] = await tryCatch(
+    githubApp.oauth.deleteToken({ token: authentication.token })
+  );
+  if (revokeError) {
+    logger.warn("Failed to revoke GitHub user token", {
+      error: revokeError instanceof Error ? revokeError.message : "Unknown error",
+    });
+  }
+
+  if (error) {
+    throw error;
+  }
+
+  return result;
+}
+
+/**
+ * Links a GitHub App installation to a Trigger organization
+ */
+export async function linkGitHubAppInstallation(params: {
+  installationId: number;
+  organizationId: string;
+  installedByUserId: string;
+  oauthCode: string;
+}): Promise<void> {
+  if (!githubApp) {
+    throw new Error("GitHub App is not enabled");
+  }
+
+  if (!isGitHubAppUserOAuthConfigured()) {
+    throw new Error("GitHub App user authorization is not configured");
+  }
+
+  const installedBy = await withGitHubUserToken(params.oauthCode, async (userOctokit) => {
+    await verifyGitHubAppInstallationAccess(userOctokit, params.installationId);
+    return getAuthenticatedGitHubLogin(userOctokit);
   });
 
-  const repositories = await fetchInstallationRepositories(octokit, installationId);
+  const octokit = await githubApp.getInstallationOctokit(params.installationId);
+  const { data: installation } = await octokit.rest.apps.getInstallation({
+    installation_id: params.installationId,
+  });
+
+  const repositories = await fetchInstallationRepositories(octokit, params.installationId);
 
   const repositorySelection = installation.repository_selection === "all" ? "ALL" : "SELECTED";
 
   await prisma.githubAppInstallation.create({
     data: {
-      appInstallationId: installationId,
-      organizationId,
+      appInstallationId: params.installationId,
+      organizationId: params.organizationId,
+      installedBy,
+      installedByUserId: params.installedByUserId,
       targetId: installation.target_id,
       targetType: installation.target_type,
       accountHandle: installation.account
         ? "login" in installation.account
           ? installation.account.login
           : "slug" in installation.account
-          ? installation.account.slug
-          : "-"
+            ? installation.account.slug
+            : "-"
         : "-",
       permissions: installation.permissions,
       repositorySelection,
@@ -58,25 +119,31 @@ export async function linkGitHubAppInstallation(
 }
 
 /**
- * Links a GitHub App installation to a Trigger organization
+ * Updates a GitHub App installation owned by the given Trigger organization
  */
-export async function updateGitHubAppInstallation(installationId: number): Promise<void> {
+export async function updateGitHubAppInstallation(
+  installationId: number,
+  organizationId: string
+): Promise<void> {
   if (!githubApp) {
     throw new Error("GitHub App is not enabled");
+  }
+
+  // Scope the lookup to the caller's organization so a cross-tenant
+  // installation_id cannot update another org's record. Resolve ownership
+  // before calling GitHub to avoid burning the victim's API rate limit.
+  const existingInstallation = await prisma.githubAppInstallation.findFirst({
+    where: { appInstallationId: installationId, organizationId },
+  });
+
+  if (!existingInstallation) {
+    throw new Error("GitHub App installation not found");
   }
 
   const octokit = await githubApp.getInstallationOctokit(installationId);
   const { data: installation } = await octokit.rest.apps.getInstallation({
     installation_id: installationId,
   });
-
-  const existingInstallation = await prisma.githubAppInstallation.findFirst({
-    where: { appInstallationId: installationId },
-  });
-
-  if (!existingInstallation) {
-    throw new Error("GitHub App installation not found");
-  }
 
   const repositorySelection = installation.repository_selection === "all" ? "ALL" : "SELECTED";
 
@@ -91,8 +158,8 @@ export async function updateGitHubAppInstallation(installationId: number): Promi
         ? "login" in installation.account
           ? installation.account.login
           : "slug" in installation.account
-          ? installation.account.slug
-          : "-"
+            ? installation.account.slug
+            : "-"
         : "-",
       permissions: installation.permissions,
       suspendedAt: existingInstallation?.suspendedAt,

@@ -3,7 +3,7 @@ import { trace } from "@internal/tracing";
 import { expect } from "vitest";
 import { RunEngine } from "../index.js";
 import { setTimeout } from "node:timers/promises";
-import { EventBusEventArgs } from "../eventBus.js";
+import type { EventBusEventArgs } from "../eventBus.js";
 import { isWaitpointOutputTimeout } from "@trigger.dev/core/v3";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 
@@ -216,7 +216,7 @@ describe("RunEngine Waitpoints", () => {
       });
       expect(waitpoint.completedAfter!.toISOString()).toBe(date.toISOString());
 
-      const result = await engine.blockRunWithWaitpoint({
+      const _result = await engine.blockRunWithWaitpoint({
         runId: run.id,
         waitpoints: [waitpoint.id],
         projectId: authenticatedEnvironment.project.id,
@@ -393,6 +393,7 @@ describe("RunEngine Waitpoints", () => {
         assertNonNullable(event);
         const notificationEvent = event as EventBusEventArgs<"workerNotification">[0];
         expect(notificationEvent.run.id).toBe(run.id);
+        expect(notificationEvent.snapshot.environmentType).toBe("PRODUCTION");
 
         const executionData2 = await engine.getRunExecutionData({ runId: run.id });
         expect(executionData2?.snapshot.executionStatus).toBe("EXECUTING");
@@ -1218,7 +1219,7 @@ describe("RunEngine Waitpoints", () => {
           consumerId: "test_snapshotsince",
           workerQueue: "main",
         });
-        const attemptResult = await engine.startRunAttempt({
+        const _attemptResult = await engine.startRunAttempt({
           runId: dequeued[0].run.id,
           snapshotId: dequeued[0].snapshot.id,
         });
@@ -1286,7 +1287,7 @@ describe("RunEngine Waitpoints", () => {
             snapshotId: "invalid-id",
           });
           expect(sinceInvalid).toBeNull();
-        } catch (e) {
+        } catch (_e) {
           threw = true;
         }
         // should never throw

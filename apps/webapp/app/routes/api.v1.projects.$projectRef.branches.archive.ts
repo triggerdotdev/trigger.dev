@@ -2,15 +2,19 @@ import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
 import { z } from "zod";
 import { prisma } from "~/db.server";
-import { authenticateRequest } from "~/services/apiAuth.server";
+import { authenticateRequestWithScopedApiKey } from "~/services/apiAuth.server";
 import { ArchiveBranchService } from "~/services/archiveBranch.server";
+import { authorizePatEnvironmentAccess } from "~/services/environmentVariableApiAccess.server";
 import { logger } from "~/services/logger.server";
+import { toBranchableEnvironmentType } from "~/utils/branchableEnvironment";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
 });
 
 const BodySchema = z.object({
+  // Defaults to "preview" so existing CLIs that don't send `env` keep working.
+  env: z.enum(["preview", "development"]).default("preview"),
   branch: z.string(),
 });
 
@@ -21,15 +25,25 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   logger.info("Archive branch", { url: request.url, params });
 
-  const authenticationResult = await authenticateRequest(request, {
+  const authentication = await authenticateRequestWithScopedApiKey(request, {
     personalAccessToken: true,
     organizationAccessToken: true,
-    apiKey: false,
+    apiKey: {
+      action: "write",
+      resource: { type: "branches" },
+      allowPreviewParent: true,
+    },
   });
 
-  if (!authenticationResult) {
-    return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
+  if (!authentication.ok) {
+    return json({ error: authentication.error }, { status: authentication.status });
   }
+  const authenticationResult = authentication.authentication;
+
+  const apiKeyEnvironment =
+    authenticationResult.type === "apiKey" && authenticationResult.result.ok
+      ? authenticationResult.result.environment
+      : undefined;
 
   const parsedParams = ParamsSchema.safeParse(params);
 
@@ -49,26 +63,64 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: parsed.error.message }, { status: 400 });
   }
 
+  const { env, branch } = parsed.data;
+
+  // API keys can only archive Preview branches
+  if (
+    authenticationResult.type === "apiKey" &&
+    (!apiKeyEnvironment ||
+      apiKeyEnvironment.type !== "PREVIEW" ||
+      apiKeyEnvironment.parentEnvironmentId !== null ||
+      env !== "preview")
+  ) {
+    return json(
+      { error: "API keys must belong to the parent Preview environment." },
+      { status: 403 }
+    );
+  }
+
+  // API keys can only act on their own project
+  if (
+    authenticationResult.type === "apiKey" &&
+    apiKeyEnvironment?.project.externalRef !== projectRef
+  ) {
+    return json({ error: "Project not found" }, { status: 404 });
+  }
+
+  const environmentType = toBranchableEnvironmentType(env);
+
+  const organizationFilter =
+    authenticationResult.type === "organizationAccessToken"
+      ? { id: authenticationResult.result.organizationId }
+      : authenticationResult.type === "apiKey"
+        ? { id: apiKeyEnvironment!.organizationId }
+        : {
+            members: {
+              some: {
+                userId: authenticationResult.result.userId,
+              },
+            },
+          };
+
   const environments = await prisma.runtimeEnvironment.findMany({
     select: {
       id: true,
       archivedAt: true,
+      type: true,
+      organizationId: true,
+      projectId: true,
     },
     where: {
-      organization:
-        authenticationResult.type === "organizationAccessToken"
-          ? { id: authenticationResult.result.organizationId }
-          : {
-              members: {
-                some: {
-                  userId: authenticationResult.result.userId,
-                },
-              },
-            },
+      organization: organizationFilter,
+      // Dev branches are per-org-member: only the owner may archive their own.
+      ...(authenticationResult.type === "personalAccessToken" && environmentType === "DEVELOPMENT"
+        ? { orgMember: { userId: authenticationResult.result.userId } }
+        : {}),
       project: {
         externalRef: projectRef,
       },
-      branchName: parsed.data.branch,
+      type: environmentType,
+      branchName: branch,
     },
   });
 
@@ -76,20 +128,56 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: "Branch not found" }, { status: 404 });
   }
 
-  const environment = environments.find((env) => env.archivedAt === null);
+  const activeEnvironments = environments.filter((env) => env.archivedAt === null);
+
+  if (
+    authenticationResult.type !== "personalAccessToken" &&
+    environmentType === "DEVELOPMENT" &&
+    activeEnvironments.length > 1
+  ) {
+    return json(
+      {
+        error:
+          "Branch name is ambiguous for development environments. Use a personal access token scoped to the branch owner.",
+      },
+      { status: 409 }
+    );
+  }
+
+  const environment = activeEnvironments[0];
+
   if (!environment) {
     return json({ error: "Branch already archived" }, { status: 400 });
   }
 
+  if (authenticationResult.type !== "apiKey") {
+    const denied = await authorizePatEnvironmentAccess({
+      request,
+      authType: authenticationResult.type,
+      organizationId: environment.organizationId,
+      projectId: environment.projectId,
+      envType: environment.type,
+      resource: ["branches", "deployments"],
+      action: "write",
+    });
+    if (denied) return denied;
+  }
+
+  let orgFilter:
+    | { type: "userMembership"; userId: string }
+    | { type: "orgId"; organizationId: string };
+  if (authenticationResult.type === "personalAccessToken") {
+    orgFilter = { type: "userMembership", userId: authenticationResult.result.userId };
+  } else if (authenticationResult.type === "organizationAccessToken") {
+    orgFilter = { type: "orgId", organizationId: authenticationResult.result.organizationId };
+  } else {
+    orgFilter = { type: "orgId", organizationId: apiKeyEnvironment!.organizationId };
+  }
+
   const service = new ArchiveBranchService();
-  const result = await service.call(
-    authenticationResult.type === "organizationAccessToken"
-      ? { type: "orgId", organizationId: authenticationResult.result.organizationId }
-      : { type: "userMembership", userId: authenticationResult.result.userId },
-    {
-      environmentId: environment.id,
-    }
-  );
+  const result = await service.call(orgFilter, {
+    environmentId: environment.id,
+  });
 
   if (result.success) {
     return json(result);

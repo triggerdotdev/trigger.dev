@@ -1,4 +1,5 @@
-import { z, ZodType } from "zod";
+import type { ZodType } from "zod";
+import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
 
 /**
@@ -17,6 +18,18 @@ export const runIdsQueryParam = z
         .filter(Boolean) ?? [];
     return [...new Set(ids)].slice(0, 100);
   });
+
+/**
+ * `parseInt` accepts garbage-suffixed numbers (`parseInt("123abc", 10) === 123`)
+ * and returns `NaN` for non-numeric input. Use this helper at loader boundaries
+ * for URL-supplied integer params so a malformed URL silently falls back to
+ * `undefined` rather than nudging downstream logic with a partial or NaN value.
+ */
+export function parseFiniteInt(value: string | null | undefined): number | undefined {
+  if (value == null || value === "") return undefined;
+  const n = Number.parseInt(value, 10);
+  return Number.isFinite(n) ? n : undefined;
+}
 
 export function objectToSearchParams(
   obj:
@@ -42,7 +55,10 @@ export function objectToSearchParams(
 }
 
 class SearchParams<TParams extends ParamType> {
-  constructor(private params: TParams, readonly schema: ZodType<TParams>) {}
+  constructor(
+    private params: TParams,
+    readonly schema: ZodType<TParams>
+  ) {}
 
   get(key: keyof TParams) {
     return this.params[key];
@@ -88,7 +104,7 @@ export function createSearchParams<TParams extends ParamType>(
   return { success: true, params: new SearchParams<TParams>(parsed.params as TParams, schema) };
 }
 
-function parseSearchParams<TParams extends ParamType>(params: TParams, schema: ZodType<TParams>) {
+function parseSearchParams<TParams>(params: unknown, schema: ZodType<TParams>) {
   const parsedParams = schema.safeParse(params);
 
   if (!parsedParams.success) {

@@ -1,4 +1,4 @@
-import { createRedisClient, Redis, type RedisOptions } from "@internal/redis";
+import { type Redis, createRedisClient, type RedisOptions } from "@internal/redis";
 import { startSpan, type Tracer } from "@internal/tracing";
 import {
   createCache,
@@ -9,14 +9,14 @@ import {
 } from "@internal/cache";
 import { randomUUID } from "crypto";
 import seedrandom from "seedrandom";
-import {
+import type {
   EnvDescriptor,
   EnvQueues,
   RunQueueKeyProducer,
   RunQueueSelectionStrategy,
 } from "./types.js";
 
-export type FairQueueSelectionStrategyBiases = {
+type FairQueueSelectionStrategyBiases = {
   /**
    * How much to bias towards environments with higher concurrency limits
    * 0 = no bias, 1 = full bias based on limit differences
@@ -209,7 +209,7 @@ export class FairQueueSelectionStrategy implements RunQueueSelectionStrategy {
   }
 
   #weightedShuffle(weightedItems: WeightedEnv[]): string[] {
-    const totalWeight = weightedItems.reduce((sum, item) => sum + item.weight, 0);
+    let totalWeight = weightedItems.reduce((sum, item) => sum + item.weight, 0);
     const result: string[] = [];
     const items = [...weightedItems];
 
@@ -224,8 +224,11 @@ export class FairQueueSelectionStrategy implements RunQueueSelectionStrategy {
       }
       index = Math.max(0, index - 1);
 
-      // Add selected item to result and remove from items
+      // Add selected item to result and remove from items. Decrement totalWeight
+      // so the next draw is scaled to the remaining items; otherwise random
+      // routinely overshoots the shrinking set and the tail item is over-picked.
       result.push(items[index].envId);
+      totalWeight -= items[index].weight;
       items.splice(index, 1);
     }
 
@@ -621,14 +624,5 @@ export class FairQueueSelectionStrategy implements RunQueueSelectionStrategy {
       projectId: queue.project,
       orgId: queue.org,
     };
-  }
-}
-
-export class NoopFairDequeuingStrategy implements RunQueueSelectionStrategy {
-  async distributeFairQueuesFromParentQueue(
-    parentQueue: string,
-    consumerId: string
-  ): Promise<Array<EnvQueues>> {
-    return [];
   }
 }

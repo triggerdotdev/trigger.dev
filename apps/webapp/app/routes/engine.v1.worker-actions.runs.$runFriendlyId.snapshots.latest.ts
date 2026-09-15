@@ -1,5 +1,6 @@
-import { json, TypedResponse } from "@remix-run/server-runtime";
-import { WorkerApiRunLatestSnapshotResponseBody } from "@trigger.dev/core/v3/workers";
+import type { TypedResponse } from "@remix-run/server-runtime";
+import { json } from "@remix-run/server-runtime";
+import type { WorkerApiRunLatestSnapshotResponseBody } from "@trigger.dev/core/v3/workers";
 import { z } from "zod";
 import { createLoaderWorkerApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
@@ -12,11 +13,13 @@ export const loader = createLoaderWorkerApiRoute(
   async ({
     authenticatedWorker,
     params,
+    environmentId,
   }): Promise<TypedResponse<WorkerApiRunLatestSnapshotResponseBody>> => {
     const { runFriendlyId } = params;
 
     const executionData = await authenticatedWorker.getLatestSnapshot({
       runFriendlyId,
+      environmentId,
     });
 
     if (!executionData) {

@@ -2,6 +2,7 @@ import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { $replica } from "~/db.server";
 import { S2RealtimeStreams } from "~/services/realtime/s2realtimeStreams.server";
+import { sessionStreamResources } from "~/services/realtime/sessionChannels.server";
 import {
   canonicalSessionAddressingKey,
   isSessionFriendlyIdForm,
@@ -59,20 +60,32 @@ export const loader = createLoaderApiRoute(
     authorization: {
       action: "read",
       // Multi-key: the channel is addressable by the URL key, the row's
-      // friendlyId, and (if set) externalId. Type-level `read:sessions`
-      // matches any of them; `read:all` / `admin` bypass via the JWT
-      // ability's wildcard branches.
-      resource: ({ row, addressingKey }) => {
+      // friendlyId, and (if set) externalId, each also in its direction-folded
+      // form (`{key}:out`) so a token narrowed to one direction matches. Type-level
+      // `read:sessions` matches any of them; `read:all` / `admin` bypass via the
+      // JWT ability's wildcard branches.
+      resource: ({ row, addressingKey }, params) => {
         const ids = new Set<string>([addressingKey]);
         if (row) {
           ids.add(row.friendlyId);
           if (row.externalId) ids.add(row.externalId);
         }
-        return anyResource([...ids].map((id) => ({ type: "sessions", id })));
+        return anyResource(sessionStreamResources(params.io, ids));
       },
     },
   },
   async ({ params, authentication, resource, searchParams }) => {
+    // `.in` is the client→agent channel: the agent run reads it, clients only append. A
+    // public token is a browser-held credential, and `.in` records can carry data meant
+    // for the agent alone (a server-side proxy may inject per-turn credentials), so
+    // reading `.in` requires the secret key. `.out` is the only public read.
+    if (params.io === "in" && authentication.type !== "PRIVATE") {
+      return json(
+        { ok: false, error: "Reading the in channel requires secret key authentication" },
+        { status: 403 }
+      );
+    }
+
     const realtimeStream = getRealtimeStreamInstance(authentication.environment, "v2", {
       session: resource.row,
       organization: resource.row ? null : authentication.environment.organization,

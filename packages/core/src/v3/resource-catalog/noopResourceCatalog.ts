@@ -1,13 +1,19 @@
-import {
+import type {
   PromptManifest,
   QueueManifest,
   SkillManifest,
   SkillMetadata,
   TaskManifest,
+  WebhookManifest,
+  WebhookMetadata,
   WorkerManifest,
 } from "../schemas/index.js";
-import { type PromptMetadataWithFunctions, type TaskMetadataWithFunctions, type TaskSchema } from "../types/index.js";
-import { ResourceCatalog } from "./catalog.js";
+import {
+  type PromptMetadataWithFunctions,
+  type TaskMetadataWithFunctions,
+  type TaskSchema,
+} from "../types/index.js";
+import type { ResourceCatalog } from "./catalog.js";
 
 export class NoopResourceCatalog implements ResourceCatalog {
   registerTaskMetadata(task: TaskMetadataWithFunctions): void {
@@ -92,5 +98,27 @@ export class NoopResourceCatalog implements ResourceCatalog {
 
   getSkillManifest(id: string): SkillManifest | undefined {
     return undefined;
+  }
+
+  registerWebhookMetadata(webhook: WebhookMetadata): void {
+    // noop
+  }
+  listWebhookManifests(): Array<WebhookManifest> {
+    return [];
+  }
+  getWebhookManifest(id: string): WebhookManifest | undefined {
+    return undefined;
+  }
+  listWebhookIdCollisions(): Array<{ id: string; filePaths: string[] }> {
+    return [];
+  }
+  registerDeclaredSessionWebhook(id: string): void {
+    // noop
+  }
+  markSessionWebhookClaimed(id: string): void {
+    // noop
+  }
+  listUnclaimedSessionWebhooks(): Array<string> {
+    return [];
   }
 }

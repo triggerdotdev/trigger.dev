@@ -1,9 +1,9 @@
-import { Attributes } from "@opentelemetry/api";
-import { ServerBackgroundWorker, TaskRunContext } from "../schemas/index.js";
+import type { Attributes } from "@opentelemetry/api";
+import type { ServerBackgroundWorker, TaskRunContext } from "../schemas/index.js";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 import { sdkScope } from "../sdkScope/index.js";
 import { getGlobal, registerGlobal } from "../utils/globals.js";
-import { TaskContext } from "./types.js";
+import type { TaskContext } from "./types.js";
 
 const API_NAME = "task-context";
 

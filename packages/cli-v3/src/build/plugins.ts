@@ -32,7 +32,7 @@ export async function buildPlugins(
   return plugins;
 }
 
-export function analyzeMetadataPlugin(): esbuild.Plugin {
+function analyzeMetadataPlugin(): esbuild.Plugin {
   return {
     name: "analyze-metafile",
     setup(build) {
@@ -58,7 +58,7 @@ const polysheds = [
   },
 ];
 
-export function polyshedPlugin(): esbuild.Plugin {
+function polyshedPlugin(): esbuild.Plugin {
   return {
     name: "polyshed",
     setup(build) {

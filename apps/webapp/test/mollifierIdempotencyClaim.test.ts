@@ -2,15 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("~/db.server", () => ({ prisma: {}, $replica: {} }));
 
-import {
-  claimOrAwait,
-  publishClaim,
-  releaseClaim,
-} from "~/v3/mollifier/idempotencyClaim.server";
-import type {
-  IdempotencyClaimResult,
-  MollifierBuffer,
-} from "@trigger.dev/redis-worker";
+import { claimOrAwait, publishClaim, releaseClaim } from "~/v3/mollifier/idempotencyClaim.server";
+import type { IdempotencyClaimResult, MollifierBuffer } from "@trigger.dev/redis-worker";
 
 type ClaimState = {
   value: string | null;
@@ -188,21 +181,21 @@ describe("publishClaim", () => {
     expect(buffer.publishClaim).toHaveBeenCalledOnce();
   });
 
-  it("no-op when buffer is null", async () => {
+  it("no buffer → true (nothing to converge, not a no-op'd publish)", async () => {
     await expect(
-      publishClaim({ ...baseInput, token: "owner-token", runId: "run_X", buffer: null }),
-    ).resolves.toBeUndefined();
+      publishClaim({ ...baseInput, token: "owner-token", runId: "run_X", buffer: null })
+    ).resolves.toBe(true);
   });
 
-  it("swallows errors so trigger pipeline isn't broken by Redis hiccups", async () => {
+  it("swallows errors so trigger pipeline isn't broken by Redis hiccups (returns true, unknown state)", async () => {
     const buffer = {
       publishClaim: vi.fn(async () => {
         throw new Error("ECONNREFUSED");
       }),
     } as unknown as MollifierBuffer;
     await expect(
-      publishClaim({ ...baseInput, token: "owner-token", runId: "run_X", buffer }),
-    ).resolves.toBeUndefined();
+      publishClaim({ ...baseInput, token: "owner-token", runId: "run_X", buffer })
+    ).resolves.toBe(true);
   });
 });
 
@@ -214,7 +207,9 @@ describe("releaseClaim", () => {
   });
 
   it("no-op when buffer is null", async () => {
-    await expect(releaseClaim({ ...baseInput, token: "owner-token", buffer: null })).resolves.toBeUndefined();
+    await expect(
+      releaseClaim({ ...baseInput, token: "owner-token", buffer: null })
+    ).resolves.toBeUndefined();
   });
 });
 
@@ -250,7 +245,7 @@ describe("claim ownership token wiring", () => {
       expect.objectContaining({
         token: "owner-token-xyz",
         runId: "run_X",
-      }),
+      })
     );
   });
 
@@ -262,7 +257,7 @@ describe("claim ownership token wiring", () => {
       buffer,
     });
     expect(buffer.releaseClaim).toHaveBeenCalledWith(
-      expect.objectContaining({ token: "owner-token-xyz" }),
+      expect.objectContaining({ token: "owner-token-xyz" })
     );
   });
 });

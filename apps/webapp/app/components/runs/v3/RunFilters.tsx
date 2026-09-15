@@ -1,10 +1,9 @@
 import * as Ariakit from "@ariakit/react";
+import { GlobeLinesIcon } from "~/assets/icons/GlobeLinesIcon";
 import {
   CalendarIcon,
-  ClockIcon,
   CpuChipIcon,
   FingerPrintIcon,
-  GlobeAltIcon,
   PlusIcon,
   RectangleStackIcon,
   Squares2X2Icon,
@@ -12,16 +11,18 @@ import {
   XMarkIcon,
 } from "@heroicons/react/20/solid";
 import { Form, useFetcher } from "@remix-run/react";
-import { IconBugFilled, IconRotateClockwise2, IconToggleLeft } from "@tabler/icons-react";
+import { IconRotateClockwise2, IconToggleLeft } from "@tabler/icons-react";
 import { MachinePresetName } from "@trigger.dev/core/v3";
 import type { BulkActionType, TaskRunStatus, TaskTriggerSource } from "@trigger.dev/database";
 import { matchSorter } from "match-sorter";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
+import { BugIcon } from "~/assets/icons/BugIcon";
+import { ClockIcon } from "~/assets/icons/ClockIcon";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { MachineDefaultIcon } from "~/assets/icons/MachineIcon";
 import { StatusIcon } from "~/assets/icons/StatusIcon";
-import { TaskIcon } from "~/assets/icons/TaskIcon";
+import { TasksIcon } from "~/assets/icons/TasksIcon";
 import {
   formatMachinePresetName,
   MachineLabelCombo,
@@ -44,6 +45,7 @@ import {
   SelectTrigger,
   shortcutFromIndex,
 } from "~/components/primitives/Select";
+import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Switch } from "~/components/primitives/Switch";
 import {
@@ -57,22 +59,22 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { useRegions } from "~/hooks/useRegions";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
-import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { type loader as tagsLoader } from "~/routes/resources.environments.$envId.runs.tags";
 import { type loader as queuesLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues";
-import { useRegions } from "~/hooks/useRegions";
-import { RegionLabel } from "./RegionLabel";
 import { type loader as versionsLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.versions";
+import { makeFriendlyIdValidator } from "~/utils/friendlyId";
 import { Button } from "../../primitives/Buttons";
 import { AIFilterInput } from "./AIFilterInput";
 import { BulkActionTypeCombo } from "./BulkAction";
+import { RegionLabel } from "./RegionLabel";
 import {
-  IdFilterDropdown,
-  type IdFilterDropdownProps,
   appliedSummary,
   FilterMenuProvider,
+  IdFilterDropdown,
+  type IdFilterDropdownProps,
   TimeFilter,
   timeFilters,
 } from "./SharedFilters";
@@ -85,7 +87,7 @@ import {
 } from "./TaskRunStatus";
 import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
 
-export const RunStatus = z.enum(allTaskRunStatuses);
+const RunStatus = z.enum(allTaskRunStatuses);
 
 const StringOrStringArray = z.preprocess((value) => {
   if (typeof value === "string") {
@@ -103,7 +105,7 @@ const StringOrStringArray = z.preprocess((value) => {
   return undefined;
 }, z.string().array().optional());
 
-export const MachinePresetOrMachinePresetArray = z.preprocess((value) => {
+const MachinePresetOrMachinePresetArray = z.preprocess((value) => {
   if (typeof value === "string") {
     if (value.length > 0) {
       const parsed = MachinePresetName.safeParse(value);
@@ -198,7 +200,7 @@ export const TaskRunListSearchFilters = z.object({
   ),
   errorId: z.string().optional().describe("Error ID to filter runs by (e.g. error_abc123)"),
   sources: StringOrStringArray.describe(
-    "Task trigger sources to filter by (STANDARD, SCHEDULED, AGENT)"
+    "Task trigger sources to filter by (STANDARD, SCHEDULED, AGENT, WEBHOOK)"
   ),
 });
 
@@ -244,7 +246,7 @@ export function filterTitle(filterKey: string) {
     case "errorId":
       return "Error ID";
     case "sources":
-      return "Source";
+      return "Task type";
     default:
       return filterKey;
   }
@@ -258,7 +260,7 @@ export function filterIcon(filterKey: string): ReactNode | undefined {
     case "statuses":
       return <StatusIcon className="size-4 border-text-bright" />;
     case "tasks":
-      return <TaskIcon className="size-4" />;
+      return <TasksIcon className="size-4" />;
     case "tags":
       return <TagIcon className="size-4" />;
     case "bulkId":
@@ -280,13 +282,13 @@ export function filterIcon(filterKey: string): ReactNode | undefined {
     case "queues":
       return <RectangleStackIcon className="size-4" />;
     case "regions":
-      return <GlobeAltIcon className="size-4" />;
+      return <GlobeLinesIcon className="size-4" />;
     case "machines":
       return <MachineDefaultIcon className="size-4" />;
     case "versions":
       return <IconRotateClockwise2 className="size-4" />;
     case "errorId":
-      return <IconBugFilled className="size-4" />;
+      return <BugIcon className="size-4" />;
     case "sources":
       return <CpuChipIcon className="size-4" />;
     default:
@@ -356,7 +358,11 @@ export function getRunFiltersFromSearchParams(
 }
 
 type RunFiltersProps = {
-  possibleTasks: { slug: string; triggerSource: TaskTriggerSource; isInLatestDeployment: boolean }[];
+  possibleTasks: {
+    slug: string;
+    triggerSource: TaskTriggerSource;
+    isInLatestDeployment: boolean;
+  }[];
   bulkActions: {
     id: string;
     type: BulkActionType;
@@ -400,6 +406,15 @@ export function RunsFilters(props: RunFiltersProps) {
       <FilterMenu {...props} />
       {hasFilters && (
         <Form className="-ml-1 h-6">
+          {searchParams.getAll("cols").map((v, i) => (
+            <input key={`cols-${i}`} type="hidden" name="cols" value={v} />
+          ))}
+          {searchParams.getAll("hide").map((v, i) => (
+            <input key={`hide-${i}`} type="hidden" name="hide" value={v} />
+          ))}
+          {searchParams.getAll("sc").map((v, i) => (
+            <input key={`sc-${i}`} type="hidden" name="sc" value={v} />
+          ))}
           <Button
             variant="minimal/small"
             LeadingIcon={XMarkIcon}
@@ -417,14 +432,14 @@ const filterTypes = [
   { name: "tags", title: "Tags", icon: <TagIcon className="size-4" /> },
   { name: "versions", title: "Versions", icon: <IconRotateClockwise2 className="size-4" /> },
   { name: "queues", title: "Queues", icon: <RectangleStackIcon className="size-4" /> },
-  { name: "regions", title: "Region", icon: <GlobeAltIcon className="size-4" /> },
+  { name: "regions", title: "Region", icon: <GlobeLinesIcon className="size-4" /> },
   { name: "machines", title: "Machines", icon: <MachineDefaultIcon className="size-4" /> },
   { name: "run", title: "Run ID", icon: <FingerPrintIcon className="size-4" /> },
   { name: "batch", title: "Batch ID", icon: <Squares2X2Icon className="size-4" /> },
   { name: "schedule", title: "Schedule ID", icon: <ClockIcon className="size-4" /> },
   { name: "bulk", title: "Bulk action", icon: <ListCheckedIcon className="size-4" /> },
-  { name: "error", title: "Error ID", icon: <IconBugFilled className="size-4" /> },
-  { name: "source", title: "Source", icon: <CpuChipIcon className="size-4" /> },
+  { name: "error", title: "Error ID", icon: <BugIcon className="size-4" /> },
+  { name: "source", title: "Task type", icon: <TasksIcon className="size-4" /> },
 ] as const;
 
 type FilterType = (typeof filterTypes)[number]["name"];
@@ -540,6 +555,7 @@ function MainMenu({ searchValue, trigger, clearSearchValue, setFilterType }: Men
           {filtered.map((type, index) => (
             <SelectButtonItem
               key={type.name}
+              accessibleLabel={type.title}
               onClick={() => {
                 clearSearchValue();
                 setFilterType(type.name);
@@ -667,7 +683,7 @@ function PermanentStatusFilter() {
                     className="pl-1"
                   />
                 ) : (
-                  <div className="flex h-6 items-center gap-1 rounded border border-charcoal-600 bg-secondary pl-1 pr-2 text-xs text-text-bright transition group-hover:border-charcoal-550 group-hover:bg-charcoal-600">
+                  <div className="flex h-6 items-center gap-1 rounded border border-border-bright/50 shadow-xs bg-secondary pl-1 pr-2 text-xs text-text-bright transition group-hover:bg-background-raised">
                     <div className="grid size-4 place-items-center">
                       <div className="size-[75%] rounded-full border-2 border-text-bright" />
                     </div>
@@ -675,7 +691,7 @@ function PermanentStatusFilter() {
                   </div>
                 )}
               </Ariakit.TooltipAnchor>
-              <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs">
+              <Ariakit.Tooltip className="z-40 cursor-default rounded border border-grid-bright bg-background-bright px-2 py-1.5 text-xs">
                 <div className="flex items-center gap-2">
                   <span>Filter by status</span>
                   <ShortcutKey
@@ -706,7 +722,11 @@ function TasksDropdown({
   clearSearchValue: () => void;
   searchValue: string;
   onClose?: () => void;
-  possibleTasks: { slug: string; triggerSource: TaskTriggerSource; isInLatestDeployment: boolean }[];
+  possibleTasks: {
+    slug: string;
+    triggerSource: TaskTriggerSource;
+    isInLatestDeployment: boolean;
+  }[];
 }) {
   const { values, replace } = useSearchParams();
 
@@ -842,13 +862,13 @@ function PermanentTasksFilter({ possibleTasks }: Pick<RunFiltersProps, "possible
                     className="pl-1"
                   />
                 ) : (
-                  <div className="flex h-6 items-center gap-1.5 rounded border border-charcoal-600 bg-secondary pl-1 pr-2 text-xs text-text-bright transition group-hover:border-charcoal-550 group-hover:bg-charcoal-600">
+                  <div className="flex h-6 items-center gap-1.5 rounded border border-border-bright/50 shadow-xs bg-secondary pl-1 pr-2 text-xs text-text-bright transition group-hover:bg-background-raised">
                     {filterIcon("tasks")}
                     <span>Tasks</span>
                   </div>
                 )}
               </Ariakit.TooltipAnchor>
-              <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs">
+              <Ariakit.Tooltip className="z-40 cursor-default rounded border border-grid-bright bg-background-bright px-2 py-1.5 text-xs">
                 <div className="flex items-center gap-2">
                   <span>Filter by task</span>
                   <ShortcutKey
@@ -947,7 +967,7 @@ function AppliedBulkActionsFilter({ bulkActions }: Pick<RunFiltersProps, "bulkAc
     return null;
   }
 
-  const action = bulkActions.find((action) => action.id === bulkId);
+  const _action = bulkActions.find((action) => action.id === bulkId);
 
   return (
     <FilterMenuProvider>
@@ -1001,11 +1021,14 @@ function TagsDropdown({
     from: value("from"),
     to: value("to"),
   });
+  const fromTimestamp = from?.getTime();
+  const toTimestamp = to?.getTime();
 
   const tagValues = values("tags").filter((v) => v !== "");
   const selected = tagValues.length > 0 ? tagValues : undefined;
 
   const fetcher = useFetcher<typeof tagsLoader>();
+  const { load } = fetcher;
 
   useEffect(() => {
     const searchParams = new URLSearchParams();
@@ -1015,14 +1038,14 @@ function TagsDropdown({
     if (period) {
       searchParams.set("period", period);
     }
-    if (from) {
-      searchParams.set("from", from.getTime().toString());
+    if (fromTimestamp !== undefined) {
+      searchParams.set("from", fromTimestamp.toString());
     }
-    if (to) {
-      searchParams.set("to", to.getTime().toString());
+    if (toTimestamp !== undefined) {
+      searchParams.set("to", toTimestamp.toString());
     }
-    fetcher.load(`/resources/environments/${environment.id}/runs/tags?${searchParams}`);
-  }, [environment.id, searchValue, period, from?.getTime(), to?.getTime()]);
+    load(`/resources/environments/${environment.id}/runs/tags?${searchParams}`);
+  }, [environment.id, fromTimestamp, load, period, searchValue, toTimestamp]);
 
   const filtered = useMemo(() => {
     let items: string[] = [];
@@ -1160,32 +1183,31 @@ function QueuesDropdown({
     250
   );
 
-  const filtered = useMemo(() => {
-    let items: { name: string; type: "custom" | "task"; value: string }[] = [];
+  const items: { name: string; type: "custom" | "task"; value: string }[] = [];
 
-    for (const queueName of selected ?? []) {
-      const queueItem = fetcher.data?.queues.find((q) => q.name === queueName);
-      if (!queueItem) {
-        if (queueName.startsWith("task/")) {
-          items.push({
-            name: queueName.replace("task/", ""),
-            type: "task",
-            value: queueName,
-          });
-        } else {
-          items.push({
-            name: queueName,
-            type: "custom",
-            value: queueName,
-          });
-        }
+  for (const queueName of selected ?? []) {
+    const queueItem = fetcher.data?.queues.find((q) => q.name === queueName);
+    if (!queueItem) {
+      if (queueName.startsWith("task/")) {
+        items.push({
+          name: queueName.replace("task/", ""),
+          type: "task",
+          value: queueName,
+        });
+      } else {
+        items.push({
+          name: queueName,
+          type: "custom",
+          value: queueName,
+        });
       }
     }
+  }
 
-    if (fetcher.data === undefined) {
-      return matchSorter(items, searchValue);
-    }
-
+  let filtered: typeof items;
+  if (fetcher.data === undefined) {
+    filtered = matchSorter(items, searchValue);
+  } else {
     items.push(
       ...fetcher.data.queues.map((q) => ({
         name: q.name,
@@ -1194,10 +1216,10 @@ function QueuesDropdown({
       }))
     );
 
-    return matchSorter(Array.from(new Set(items)), searchValue, {
+    filtered = matchSorter(Array.from(new Set(items)), searchValue, {
       keys: ["name"],
     });
-  }, [searchValue, fetcher.data]);
+  }
 
   return (
     <SelectProvider value={selected ?? []} setValue={handleChange} virtualFocus={true}>
@@ -1230,7 +1252,7 @@ function QueuesDropdown({
                   value={queue.value}
                   icon={
                     queue.type === "task" ? (
-                      <TaskIcon className="size-4 shrink-0 text-blue-500" />
+                      <TasksIcon className="size-4 shrink-0 text-blue-500" />
                     ) : (
                       <RectangleStackIcon className="size-4 shrink-0 text-purple-500" />
                     )
@@ -1307,29 +1329,27 @@ function RegionsDropdown({
 
   const selected = values("regions").filter((v) => v !== "");
 
-  const filtered = useMemo(() => {
-    type RegionItem = { masterQueue: string; name: string; location?: string };
-    const items: RegionItem[] = [];
+  type RegionItem = { masterQueue: string; name: string; location?: string };
+  const items: RegionItem[] = [];
 
-    for (const masterQueue of selected) {
-      const known = regions.find((r) => r.masterQueue === masterQueue);
-      if (!known) {
-        items.push({ masterQueue, name: masterQueue });
-      }
+  for (const masterQueue of selected) {
+    const known = regions.find((r) => r.masterQueue === masterQueue);
+    if (!known) {
+      items.push({ masterQueue, name: masterQueue });
     }
+  }
 
-    for (const region of regions) {
-      if (!items.some((i) => i.masterQueue === region.masterQueue)) {
-        items.push({
-          masterQueue: region.masterQueue,
-          name: region.name,
-          location: region.location,
-        });
-      }
+  for (const region of regions) {
+    if (!items.some((i) => i.masterQueue === region.masterQueue)) {
+      items.push({
+        masterQueue: region.masterQueue,
+        name: region.name,
+        location: region.location,
+      });
     }
+  }
 
-    return matchSorter(items, searchValue, { keys: ["name", "masterQueue"] });
-  }, [searchValue, regions, selected.join(",")]);
+  const filtered = matchSorter(items, searchValue, { keys: ["name", "masterQueue"] });
 
   return (
     <SelectProvider value={selected} setValue={handleChange} virtualFocus={true}>
@@ -1555,33 +1575,31 @@ export function VersionsDropdown({
     250
   );
 
-  const filtered = useMemo(() => {
-    let items: { version: string; isCurrent: boolean }[] = [];
+  const items: { version: string; isCurrent: boolean }[] = [];
 
-    for (const version of selected ?? []) {
-      const versionItem = fetcher.data?.versions.find((v) => v.version === version);
-      if (!versionItem) {
-        items.push({
-          version,
-          isCurrent: false,
-        });
-      }
+  for (const version of selected ?? []) {
+    const versionItem = fetcher.data?.versions.find((v) => v.version === version);
+    if (!versionItem) {
+      items.push({
+        version,
+        isCurrent: false,
+      });
     }
+  }
 
-    if (fetcher.data === undefined) {
-      return matchSorter(items, searchValue);
-    }
-
+  let filtered: typeof items;
+  if (fetcher.data === undefined) {
+    filtered = matchSorter(items, searchValue);
+  } else {
     items.push(...fetcher.data.versions);
 
-    if (searchValue === "") {
-      return items;
-    }
-
-    return matchSorter(Array.from(new Set(items)), searchValue, {
-      keys: ["version"],
-    });
-  }, [searchValue, fetcher.data]);
+    filtered =
+      searchValue === ""
+        ? items
+        : matchSorter(Array.from(new Set(items)), searchValue, {
+            keys: ["version"],
+          });
+  }
 
   return (
     <SelectProvider value={selected ?? []} setValue={handleChange} virtualFocus={true}>
@@ -1694,7 +1712,7 @@ function RootOnlyToggle({ defaultValue }: { defaultValue: boolean }) {
           }}
         />
       </Ariakit.TooltipAnchor>
-      <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs">
+      <Ariakit.Tooltip className="z-40 cursor-default rounded border border-grid-bright bg-background-bright px-2 py-1.5 text-xs">
         <div className="flex items-center gap-2">
           <span>Toggle root only</span>
           <ShortcutKey className="size-4 flex-none" shortcut={rootOnlyShortcut} variant="small" />
@@ -1704,10 +1722,7 @@ function RootOnlyToggle({ defaultValue }: { defaultValue: boolean }) {
   );
 }
 
-function validateRunId(value: string): string | undefined {
-  if (!value.startsWith("run_")) return "Run IDs start with 'run_'";
-  if (value.length !== 25 && value.length !== 29) return "Run IDs are 25 or 29 characters long";
-}
+const validateRunId = makeFriendlyIdValidator("run", "Run");
 
 function RunIdDropdown(
   props: Omit<
@@ -1759,10 +1774,7 @@ function AppliedRunIdFilter() {
   );
 }
 
-function validateBatchId(value: string): string | undefined {
-  if (!value.startsWith("batch_")) return "Batch IDs start with 'batch_'";
-  if (value.length !== 27 && value.length !== 31) return "Batch IDs are 27 or 31 characters long";
-}
+const validateBatchId = makeFriendlyIdValidator("batch", "Batch");
 
 function BatchIdDropdown(
   props: Omit<IdFilterDropdownProps, "label" | "placeholder" | "paramKey" | "validate">
@@ -1810,10 +1822,7 @@ function AppliedBatchIdFilter() {
   );
 }
 
-function validateScheduleId(value: string): string | undefined {
-  if (!value.startsWith("sched_")) return "Schedule IDs start with 'sched_'";
-  if (value.length !== 27) return "Schedule IDs are 27 characters long";
-}
+const validateScheduleId = makeFriendlyIdValidator("sched", "Schedule");
 
 function ScheduleIdDropdown(
   props: Omit<IdFilterDropdownProps, "label" | "placeholder" | "paramKey" | "validate">
@@ -1861,6 +1870,8 @@ function AppliedScheduleIdFilter() {
   );
 }
 
+// Error ids are `error_<16-char sha256 fingerprint>`, not a fixed-length generated
+// id, so they intentionally skip makeFriendlyIdValidator (its length check would reject them).
 function validateErrorId(value: string): string | undefined {
   if (!value.startsWith("error_")) return "Error IDs start with 'error_'";
 }
@@ -1915,6 +1926,7 @@ const sourceOptions: { value: TaskTriggerSource; title: string }[] = [
   { value: "STANDARD", title: "Standard" },
   { value: "SCHEDULED", title: "Scheduled" },
   { value: "AGENT", title: "Agent" },
+  { value: "WEBHOOK", title: "Webhook" },
 ];
 
 function SourceDropdown({
@@ -1954,18 +1966,16 @@ function SourceDropdown({
           return true;
         }}
       >
-        <ComboBox placeholder={"Filter by source..."} value={searchValue} />
+        <ComboBox placeholder={"Filter by task type…"} value={searchValue} />
         <SelectList>
           {filtered.map((item, index) => (
             <SelectItem
               key={item.value}
               value={item.value}
-              icon={
-                <TaskTriggerSourceIcon source={item.value} className="size-4 flex-none" />
-              }
+              icon={<TaskTriggerSourceIcon source={item.value} className="size-4 flex-none" />}
               shortcut={shortcutFromIndex(index, { shortcutsEnabled: true })}
             >
-              {item.title}
+              <span className="text-text-bright">{item.title}</span>
             </SelectItem>
           ))}
         </SelectList>
@@ -1989,12 +1999,10 @@ function AppliedSourceFilter() {
           trigger={
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
-                label="Source"
+                label="Task type"
                 icon={<CpuChipIcon className="size-4" />}
                 value={appliedSummary(
-                  sources.map(
-                    (v) => sourceOptions.find((o) => o.value === v)?.title ?? v
-                  )
+                  sources.map((v) => sourceOptions.find((o) => o.value === v)?.title ?? v)
                 )}
                 onRemove={() => del(["sources", "cursor", "direction"])}
                 variant="secondary/small"

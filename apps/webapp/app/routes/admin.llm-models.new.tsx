@@ -10,12 +10,9 @@ import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashb
 import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
 import { llmPricingRegistry } from "~/v3/llmPricingRegistry.server";
 
-export const loader = dashboardLoader(
-  { authorization: { requireSuper: true } },
-  async () => {
-    return typedjson({});
-  }
-);
+export const loader = dashboardLoader({ authorization: { requireSuper: true } }, async () => {
+  return typedjson({});
+});
 
 const CreateSchema = z.object({
   modelName: z.string().min(1),
@@ -40,7 +37,10 @@ export const action = dashboardAction(
 
     if (!parsed.success) {
       console.log("[admin] create model validation error:", JSON.stringify(parsed.error.issues));
-      return typedjson({ error: "Invalid form data", details: parsed.error.issues }, { status: 400 });
+      return typedjson(
+        { error: "Invalid form data", details: parsed.error.issues },
+        { status: 400 }
+      );
     }
 
     const { modelName, matchPattern, pricingTiersJson } = parsed.data;
@@ -66,7 +66,15 @@ export const action = dashboardAction(
       return typedjson({ error: "Invalid pricing tiers JSON" }, { status: 400 });
     }
 
-    const { provider, description, contextWindow, maxOutputTokens, capabilities, isHidden, pricingUnit } = parsed.data;
+    const {
+      provider,
+      description,
+      contextWindow,
+      maxOutputTokens,
+      capabilities,
+      isHidden,
+      pricingUnit,
+    } = parsed.data;
 
     const model = await prisma.llmModel.create({
       data: {
@@ -78,7 +86,12 @@ export const action = dashboardAction(
         description: description || null,
         contextWindow: contextWindow ? parseInt(contextWindow) || null : null,
         maxOutputTokens: maxOutputTokens ? parseInt(maxOutputTokens) || null : null,
-        capabilities: capabilities ? capabilities.split(",").map((s) => s.trim()).filter(Boolean) : [],
+        capabilities: capabilities
+          ? capabilities
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean)
+          : [],
         isHidden: isHidden === "on",
         pricingUnit: pricingUnit || null,
       },
@@ -123,15 +136,19 @@ export default function AdminLlmModelNewRoute() {
   const [pricingUnit, setPricingUnit] = useState("tokens");
   const [testInput, setTestInput] = useState("");
   const [tiers, setTiers] = useState<TierData[]>([
-    { name: "Standard", isDefault: true, priority: 0, conditions: [], prices: { input: 0, output: 0 } },
+    {
+      name: "Standard",
+      isDefault: true,
+      priority: 0,
+      conditions: [],
+      prices: { input: 0, output: 0 },
+    },
   ]);
 
   let testResult: boolean | null = null;
   if (testInput && matchPattern) {
     try {
-      const pattern = matchPattern.startsWith("(?i)")
-        ? matchPattern.slice(4)
-        : matchPattern;
+      const pattern = matchPattern.startsWith("(?i)") ? matchPattern.slice(4) : matchPattern;
       testResult = new RegExp(pattern, "i").test(testInput);
     } catch {
       testResult = null;
@@ -161,8 +178,11 @@ export default function AdminLlmModelNewRoute() {
 
           <div className="space-y-4">
             <div className="space-y-2">
-              <label className="text-xs font-medium text-text-dimmed">Model Name</label>
+              <label htmlFor="modelName" className="text-xs font-medium text-text-dimmed">
+                Model Name
+              </label>
               <Input
+                id="modelName"
                 name="modelName"
                 value={modelName}
                 onChange={(e) => setModelName(e.target.value)}
@@ -174,7 +194,9 @@ export default function AdminLlmModelNewRoute() {
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-medium text-text-dimmed">Match Pattern (regex)</label>
+                <label htmlFor="matchPattern" className="text-xs font-medium text-text-dimmed">
+                  Match Pattern (regex)
+                </label>
                 <button
                   type="button"
                   onClick={autoPattern}
@@ -184,6 +206,7 @@ export default function AdminLlmModelNewRoute() {
                 </button>
               </div>
               <Input
+                id="matchPattern"
                 name="matchPattern"
                 value={matchPattern}
                 onChange={(e) => setMatchPattern(e.target.value)}
@@ -195,9 +218,12 @@ export default function AdminLlmModelNewRoute() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-medium text-text-dimmed">Test pattern match</label>
+              <label htmlFor="testPattern" className="text-xs font-medium text-text-dimmed">
+                Test pattern match
+              </label>
               <div className="flex items-center gap-2">
                 <Input
+                  id="testPattern"
                   value={testInput}
                   onChange={(e) => setTestInput(e.target.value)}
                   placeholder="Type a model name to test..."
@@ -218,12 +244,15 @@ export default function AdminLlmModelNewRoute() {
 
             {/* Catalog metadata */}
             <div className="space-y-2 border-t border-grid-dimmed pt-4">
-              <label className="text-sm font-medium text-text-bright">Catalog Metadata</label>
+              <h3 className="text-sm font-medium text-text-bright">Catalog Metadata</h3>
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-text-dimmed">Provider</label>
+                  <label htmlFor="provider" className="text-xs font-medium text-text-dimmed">
+                    Provider
+                  </label>
                   <Input
+                    id="provider"
                     name="provider"
                     value={provider}
                     onChange={(e) => setProvider(e.target.value)}
@@ -233,8 +262,11 @@ export default function AdminLlmModelNewRoute() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-text-dimmed">Context Window</label>
+                  <label htmlFor="contextWindow" className="text-xs font-medium text-text-dimmed">
+                    Context Window
+                  </label>
                   <Input
+                    id="contextWindow"
                     name="contextWindow"
                     value={contextWindow}
                     onChange={(e) => setContextWindow(e.target.value)}
@@ -246,8 +278,11 @@ export default function AdminLlmModelNewRoute() {
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-medium text-text-dimmed">Description</label>
+                <label htmlFor="description" className="text-xs font-medium text-text-dimmed">
+                  Description
+                </label>
                 <Input
+                  id="description"
                   name="description"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
@@ -259,8 +294,11 @@ export default function AdminLlmModelNewRoute() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-text-dimmed">Max Output Tokens</label>
+                  <label htmlFor="maxOutputTokens" className="text-xs font-medium text-text-dimmed">
+                    Max Output Tokens
+                  </label>
                   <Input
+                    id="maxOutputTokens"
                     name="maxOutputTokens"
                     value={maxOutputTokens}
                     onChange={(e) => setMaxOutputTokens(e.target.value)}
@@ -270,8 +308,11 @@ export default function AdminLlmModelNewRoute() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-text-dimmed">Features (comma-separated)</label>
+                  <label htmlFor="capabilities" className="text-xs font-medium text-text-dimmed">
+                    Features (comma-separated)
+                  </label>
                   <Input
+                    id="capabilities"
                     name="capabilities"
                     value={capabilities}
                     onChange={(e) => setCapabilities(e.target.value)}
@@ -283,12 +324,15 @@ export default function AdminLlmModelNewRoute() {
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-medium text-text-dimmed">Pricing Unit</label>
+                <label htmlFor="pricingUnit" className="text-xs font-medium text-text-dimmed">
+                  Pricing Unit
+                </label>
                 <select
+                  id="pricingUnit"
                   name="pricingUnit"
                   value={pricingUnit}
                   onChange={(e) => setPricingUnit(e.target.value)}
-                  className="w-full rounded border border-grid-dimmed bg-charcoal-750 px-2 py-1.5 text-sm text-text-bright"
+                  className="w-full rounded border border-grid-dimmed bg-background-hover px-2 py-1.5 text-sm text-text-bright"
                 >
                   <option value="">(unset)</option>
                   {PRICING_UNITS.map((u) => (
@@ -313,7 +357,7 @@ export default function AdminLlmModelNewRoute() {
             {/* Pricing tiers */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <label className="text-sm font-medium text-text-bright">Pricing Tiers</label>
+                <h3 className="text-sm font-medium text-text-bright">Pricing Tiers</h3>
                 <Button
                   type="button"
                   variant="tertiary/small"
@@ -386,7 +430,15 @@ type TierData = {
   prices: Record<string, number>;
 };
 
-const PRICING_UNITS = ["tokens", "characters", "images", "minutes", "requests", "free", "not_findable"];
+const PRICING_UNITS = [
+  "tokens",
+  "characters",
+  "images",
+  "minutes",
+  "requests",
+  "free",
+  "not_findable",
+];
 
 const COMMON_USAGE_TYPES = [
   "input",
@@ -408,11 +460,11 @@ function TierEditor({
   const [newUsageType, setNewUsageType] = useState("");
 
   return (
-    <div className="rounded-md border border-grid-dimmed bg-charcoal-800 p-3 space-y-3">
+    <div className="rounded-md border border-grid-dimmed bg-background-bright p-3 space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <input
-            className="bg-charcoal-750 text-text-bright rounded px-2 py-1 text-sm border border-grid-dimmed"
+            className="bg-background-hover text-text-bright rounded px-2 py-1 text-sm border border-grid-dimmed"
             value={tier.name}
             onChange={(e) => onChange({ ...tier, name: e.target.value })}
             placeholder="Tier name"
@@ -429,7 +481,7 @@ function TierEditor({
             Priority:
             <input
               type="number"
-              className="w-12 bg-charcoal-750 text-text-bright rounded px-1 py-0.5 text-xs border border-grid-dimmed"
+              className="w-12 bg-background-hover text-text-bright rounded px-1 py-0.5 text-xs border border-grid-dimmed"
               value={tier.priority}
               onChange={(e) => onChange({ ...tier, priority: parseInt(e.target.value) || 0 })}
             />
@@ -452,7 +504,7 @@ function TierEditor({
               <span className="w-48 text-xs font-mono text-text-dimmed">{usageType}</span>
               <input
                 type="text"
-                className="w-32 bg-charcoal-750 text-text-bright rounded px-2 py-0.5 text-xs font-mono border border-grid-dimmed"
+                className="w-32 bg-background-hover text-text-bright rounded px-2 py-0.5 text-xs font-mono border border-grid-dimmed"
                 value={price}
                 onChange={(e) => {
                   const val = parseFloat(e.target.value);
@@ -477,7 +529,7 @@ function TierEditor({
 
         <div className="flex items-center gap-2 pt-1">
           <select
-            className="bg-charcoal-750 text-text-dimmed rounded px-2 py-0.5 text-xs border border-grid-dimmed"
+            className="bg-background-hover text-text-dimmed rounded px-2 py-0.5 text-xs border border-grid-dimmed"
             value={newUsageType}
             onChange={(e) => setNewUsageType(e.target.value)}
           >
@@ -495,9 +547,7 @@ function TierEditor({
               variant="tertiary/small"
               onClick={() => {
                 const key =
-                  newUsageType === "__custom"
-                    ? prompt("Usage type name:") ?? ""
-                    : newUsageType;
+                  newUsageType === "__custom" ? (prompt("Usage type name:") ?? "") : newUsageType;
                 if (key) {
                   onChange({ ...tier, prices: { ...tier.prices, [key]: 0 } });
                   setNewUsageType("");

@@ -4,7 +4,7 @@ import { env } from "~/env.server";
 
 const ONE_DAY = 60 * 60 * 24;
 
-export const { commitSession, getSession } = createCookieSessionStorage({
+const redirectToSessionStorage = createCookieSessionStorage({
   cookie: {
     name: "__redirectTo",
     path: "/",
@@ -16,7 +16,10 @@ export const { commitSession, getSession } = createCookieSessionStorage({
   },
 });
 
-export function getRedirectSession(request: Request) {
+export const { commitSession } = redirectToSessionStorage;
+const { getSession } = redirectToSessionStorage;
+
+function getRedirectSession(request: Request) {
   return getSession(request.headers.get("Cookie"));
 }
 

@@ -1,8 +1,8 @@
-import { conform, useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
+import { getFormProps, getInputProps, useForm } from "@conform-to/react";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { Form, useActionData, useFetcher, useLocation } from "@remix-run/react";
-import { json, type ActionFunctionArgs } from "@remix-run/server-runtime";
+import { Form, useActionData, useLocation } from "@remix-run/react";
+import { type ActionFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { ArchiveIcon } from "~/assets/icons/ArchiveIcon";
 import { Button } from "~/components/primitives/Buttons";
@@ -10,10 +10,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { $replica } from "~/db.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { ArchiveBranchService } from "~/services/archiveBranch.server";
+import { rbac } from "~/services/rbac.server";
 import { requireUserId } from "~/services/session.server";
-import { branchesPath, v3EnvironmentPath } from "~/utils/pathBuilder";
+import { sanitizeRedirectPath } from "~/utils";
 
 const ArchiveBranchOptions = z.object({
   environmentId: z.string(),
@@ -29,10 +31,40 @@ export async function action({ request }: ActionFunctionArgs) {
   const userId = await requireUserId(request);
 
   const formData = await request.formData();
-  const submission = parse(formData, { schema });
+  const submission = parseWithZod(formData, { schema });
 
-  if (!submission.value) {
+  if (submission.status !== "success") {
     return redirectWithErrorMessage("/", request, "Invalid form data");
+  }
+
+  const redirectPath = sanitizeRedirectPath(submission.value.redirectPath);
+
+  const environment = await $replica.runtimeEnvironment.findFirst({
+    where: {
+      id: submission.value.environmentId,
+      organization: { members: { some: { userId } } },
+    },
+    select: { type: true, organizationId: true, projectId: true },
+  });
+  if (!environment) {
+    return redirectWithErrorMessage(redirectPath, request, "Branch not found");
+  }
+
+  const auth = await rbac.authenticateSession(request, {
+    userId,
+    organizationId: environment.organizationId,
+    projectId: environment.projectId,
+  });
+  const canArchive =
+    auth.ok &&
+    (auth.ability.can("write", { type: "branches", envType: environment.type }) ||
+      auth.ability.can("write", { type: "deployments", envType: environment.type }));
+  if (!canArchive) {
+    return redirectWithErrorMessage(
+      redirectPath,
+      request,
+      "You don't have permission to archive this branch."
+    );
   }
 
   const archiveBranchService = new ArchiveBranchService();
@@ -46,28 +78,32 @@ export async function action({ request }: ActionFunctionArgs) {
 
   if (result.success) {
     return redirectWithSuccessMessage(
-      branchesPath(result.organization, result.project, result.branch),
+      redirectPath,
       request,
       `Branch "${result.branch.branchName}" archived`
     );
   }
 
-  return redirectWithErrorMessage(submission.value.redirectPath, request, result.error);
+  return redirectWithErrorMessage(redirectPath, request, result.error);
 }
 
 export function ArchiveButton({
   environment,
+  canArchive,
+  disabled,
 }: {
   environment: { id: string; branchName: string };
+  canArchive: boolean;
+  disabled?: boolean;
 }) {
   const lastSubmission = useActionData<typeof action>();
   const location = useLocation();
 
   const [form, { environmentId, redirectPath }] = useForm({
     id: "archive-branch",
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission as any,
     onValidate({ formData }) {
-      return parse(formData, { schema });
+      return parseWithZod(formData, { schema });
     },
     shouldRevalidate: "onInput",
   });
@@ -82,6 +118,8 @@ export function ArchiveButton({
           fullWidth
           textAlignLeft
           className="w-full px-1.5 py-[0.9rem]"
+          disabled={disabled || !canArchive}
+          tooltip={canArchive ? undefined : "You don't have permission to archive this branch."}
         >
           Archive branch
         </Button>
@@ -92,13 +130,16 @@ export function ArchiveButton({
           <Form
             method="post"
             action="/resources/branches/archive"
-            {...form.props}
+            {...getFormProps(form)}
             className="w-full"
           >
-            <input value={environment.id} {...conform.input(environmentId, { type: "hidden" })} />
+            <input
+              value={environment.id}
+              {...getInputProps(environmentId, { type: "hidden", value: false })}
+            />
             <input
               value={`${location.pathname}${location.search}`}
-              {...conform.input(redirectPath, { type: "hidden" })}
+              {...getInputProps(redirectPath, { type: "hidden", value: false })}
             />
             <Paragraph spacing>
               This will <span className="text-text-bright">permanently</span> make this branch{" "}
@@ -111,7 +152,7 @@ export function ArchiveButton({
             <Paragraph spacing>
               Once archived you can create a new branch with the same name.
             </Paragraph>
-            <FormError>{form.error}</FormError>
+            <FormError>{form.errors?.join(", ")}</FormError>
             <FormButtons
               confirmButton={
                 <Button LeadingIcon={ArchiveIcon} type="submit" variant="danger/medium">

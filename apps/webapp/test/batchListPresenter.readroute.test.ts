@@ -1,0 +1,913 @@
+import { Prisma } from "@trigger.dev/database";
+import { describe, expect, vi } from "vitest";
+
+// BatchListPresenter imports `~/db.server` (for `sqlDatabaseSchema` + `PrismaClientOrTransaction`),
+// `~/models/runtimeEnvironment.server`, and `~/components/*` at load — all of which pull
+// `env.server` at import time. Stub `~/db.server` to break that chain (the runsRepository
+// read-through test does the same). The presenter is driven entirely through injected real
+// containers; the only thing it actually reads off this module is `sqlDatabaseSchema`, which we
+// reproduce as the real `Prisma.sql(["public"])` value so the schema-qualified raw scan SQL is valid.
+vi.mock("~/db.server", () => ({
+  prisma: {},
+  $replica: {},
+  sqlDatabaseSchema: Prisma.sql(["public"]),
+}));
+
+import {
+  heteroPostgresTest,
+  heteroRunOpsPostgresTest,
+  makeNShardRunOpsPostgresTest,
+  postgresTest,
+} from "@internal/testcontainers";
+import { generateRunOpsId, generateRunOpsIdV2 } from "@trigger.dev/core/v3/isomorphic";
+import type { PrismaClient } from "@trigger.dev/database";
+import type { RunOpsPrismaClient } from "@internal/run-ops-database";
+import {
+  type BatchList,
+  type BatchListOptions,
+  BatchListPresenter,
+} from "~/presenters/v3/BatchListPresenter.server";
+import { nonAliasedShardReplicas } from "~/v3/runOpsMigration/shardHandles.server";
+
+vi.setConfig({ testTimeout: 120_000 });
+
+type SeedContext = {
+  organizationId: string;
+  projectId: string;
+  environmentId: string;
+  userId: string;
+};
+
+// The exact presenter scan SQL, lifted verbatim, so tests can compare the presenter's output
+// against a direct $queryRaw of the identical SQL on each DB version.
+function rawScan(
+  prisma: PrismaClient,
+  opts: {
+    environmentId: string;
+    pageSize: number;
+    direction: "forward" | "backward";
+    cursor?: string;
+  }
+) {
+  const { environmentId, pageSize, direction, cursor } = opts;
+  const sqlDatabaseSchema = Prisma.sql(["public"]);
+  return prisma.$queryRaw<
+    {
+      id: string;
+      friendlyId: string;
+      runtimeEnvironmentId: string;
+      status: any;
+      createdAt: Date;
+      updatedAt: Date;
+      completedAt: Date | null;
+      runCount: bigint;
+      batchVersion: string;
+    }[]
+  >`
+    SELECT
+    b.id,
+    b."friendlyId",
+    b."runtimeEnvironmentId",
+    b.status,
+    b."createdAt",
+    b."updatedAt",
+    b."completedAt",
+    b."runCount",
+    b."batchVersion"
+FROM
+    ${sqlDatabaseSchema}."BatchTaskRun" b
+WHERE
+    b."runtimeEnvironmentId" = ${environmentId}
+    ${
+      cursor
+        ? direction === "forward"
+          ? Prisma.sql`AND b.id < ${cursor}`
+          : Prisma.sql`AND b.id > ${cursor}`
+        : Prisma.empty
+    }
+    ORDER BY
+        ${direction === "forward" ? Prisma.sql`b.id DESC` : Prisma.sql`b.id ASC`}
+    LIMIT ${pageSize + 1}`;
+}
+
+async function seedParents(prisma: PrismaClient, slug: string): Promise<SeedContext> {
+  const user = await prisma.user.create({
+    data: {
+      email: `user-${slug}@example.com`,
+      name: `User ${slug}`,
+      authenticationMethod: "MAGIC_LINK",
+    },
+  });
+  const organization = await prisma.organization.create({
+    data: { title: `org-${slug}`, slug: `org-${slug}` },
+  });
+  const project = await prisma.project.create({
+    data: {
+      name: `proj-${slug}`,
+      slug: `proj-${slug}`,
+      organizationId: organization.id,
+      externalRef: `proj-${slug}`,
+    },
+  });
+  const orgMember = await prisma.orgMember.create({
+    data: { organizationId: organization.id, userId: user.id },
+  });
+  const runtimeEnvironment = await prisma.runtimeEnvironment.create({
+    data: {
+      slug: `env-${slug}`,
+      type: "DEVELOPMENT",
+      projectId: project.id,
+      organizationId: organization.id,
+      orgMemberId: orgMember.id,
+      apiKey: `tr_dev_${slug}`,
+      pkApiKey: `pk_dev_${slug}`,
+      shortcode: `sc-${slug}`,
+    },
+  });
+
+  return {
+    organizationId: organization.id,
+    projectId: project.id,
+    environmentId: runtimeEnvironment.id,
+    userId: user.id,
+  };
+}
+
+// Mirrors the org/project/env parents onto a second DB with the SAME ids (BatchTaskRun FK needs
+// the runtimeEnvironment to exist on whichever DB the row lives on).
+async function mirrorEnvParents(
+  prisma: PrismaClient,
+  ctx: SeedContext,
+  slug: string
+): Promise<void> {
+  const organization = await prisma.organization.create({
+    data: { id: ctx.organizationId, title: `org-${slug}`, slug: `org-${slug}` },
+  });
+  const project = await prisma.project.create({
+    data: {
+      id: ctx.projectId,
+      name: `proj-${slug}`,
+      slug: `proj-${slug}`,
+      organizationId: organization.id,
+      externalRef: `proj-${slug}`,
+    },
+  });
+  await prisma.runtimeEnvironment.create({
+    data: {
+      id: ctx.environmentId,
+      slug: `env-${slug}`,
+      type: "DEVELOPMENT",
+      projectId: project.id,
+      organizationId: organization.id,
+      apiKey: `tr_dev_${slug}_m`,
+      pkApiKey: `pk_dev_${slug}_m`,
+      shortcode: `sc-${slug}-m`,
+    },
+  });
+}
+
+async function createBatch(
+  prisma: PrismaClient | RunOpsPrismaClient,
+  ctx: SeedContext,
+  batch: {
+    id: string;
+    friendlyId: string;
+    status?: any;
+    batchVersion?: string;
+    runCount?: number;
+    createdAt?: Date;
+  }
+) {
+  return (prisma as PrismaClient).batchTaskRun.create({
+    data: {
+      id: batch.id,
+      friendlyId: batch.friendlyId,
+      runtimeEnvironmentId: ctx.environmentId,
+      status: batch.status ?? "PENDING",
+      batchVersion: batch.batchVersion ?? "v3",
+      runCount: batch.runCount ?? 1,
+      ...(batch.createdAt ? { createdAt: batch.createdAt } : {}),
+    },
+  });
+}
+
+const baseCall = (
+  ctx: SeedContext,
+  overrides: Partial<BatchListOptions> = {}
+): BatchListOptions => ({
+  projectId: ctx.projectId,
+  environmentId: ctx.environmentId,
+  userId: ctx.userId,
+  ...overrides,
+});
+
+// Wraps a prisma client so the test can assert whether/how often batchTaskRun.findMany or
+// batchTaskRun.findFirst are invoked. Optionally throws if invoked (proves a handle is never touched).
+function spyClient(
+  prisma: PrismaClient,
+  opts: { throwOnQueryRaw?: boolean; throwOnFindFirst?: boolean } = {}
+) {
+  const counts = { queryRaw: 0, findMany: 0, findFirst: 0 };
+  const proxy = new Proxy(prisma, {
+    get(target, prop, receiver) {
+      if (prop === "batchTaskRun") {
+        const real = (target as any).batchTaskRun;
+        return new Proxy(real, {
+          get(trTarget, trProp) {
+            if (trProp === "findMany") {
+              return (...args: any[]) => {
+                counts.findMany++;
+                if (opts.throwOnQueryRaw)
+                  throw new Error("batchTaskRun.findMany must not be invoked on this handle");
+                return (trTarget as any).findMany(...args);
+              };
+            }
+            if (trProp === "findFirst") {
+              return (...args: any[]) => {
+                counts.findFirst++;
+                if (opts.throwOnFindFirst)
+                  throw new Error("batchTaskRun.findFirst must not be invoked on this handle");
+                return (trTarget as any).findFirst(...args);
+              };
+            }
+            return (trTarget as any)[trProp];
+          },
+        });
+      }
+      return Reflect.get(target, prop, receiver);
+    },
+  }) as unknown as PrismaClient;
+  return { client: proxy, counts };
+}
+
+const desc = (a: string, b: string) => (a < b ? 1 : a > b ? -1 : 0);
+
+describe("BatchListPresenter run-ops read routing (PG14 control-plane/legacy + PG17 new)", () => {
+  // Byte-identical scan + identical ORDER-BY across PG14/PG17.
+  heteroPostgresTest(
+    "raw paginated scan is byte-identical and identically ordered across PG14 and PG17 (both directions, with/without cursor)",
+    async ({ prisma14, prisma17 }) => {
+      const ctx14 = await seedParents(prisma14, "scan");
+      const ctx17 = await seedParents(prisma17, "scan");
+
+      // Identical corpus on both sides (same logical ids), exercising statuses + batchVersion +
+      // createdAt spanning a period, and keyset cursor boundaries.
+      const ids = ["aaaa", "bbbb", "cccc", "dddd", "eeee"];
+      const statuses = ["PENDING", "COMPLETED", "ABORTED", "PROCESSING", "COMPLETED"];
+      const versions = ["v3", "v3", "v1", "v2", "v3"];
+      for (let i = 0; i < ids.length; i++) {
+        await createBatch(prisma14, ctx14, {
+          id: `batch_${ids[i]}`,
+          friendlyId: `fr_${ids[i]}`,
+          status: statuses[i],
+          batchVersion: versions[i],
+          runCount: i + 1,
+          createdAt: new Date(Date.now() - i * 60_000),
+        });
+        await createBatch(prisma17, ctx17, {
+          id: `batch_${ids[i]}`,
+          friendlyId: `fr_${ids[i]}`,
+          status: statuses[i],
+          batchVersion: versions[i],
+          runCount: i + 1,
+          createdAt: new Date(Date.now() - i * 60_000),
+        });
+      }
+
+      for (const direction of ["forward", "backward"] as const) {
+        for (const cursor of [undefined, "batch_cccc"]) {
+          const rows14 = await rawScan(prisma14, {
+            environmentId: ctx14.environmentId,
+            pageSize: 2,
+            direction,
+            cursor,
+          });
+          const rows17 = await rawScan(prisma17, {
+            environmentId: ctx17.environmentId,
+            pageSize: 2,
+            direction,
+            cursor,
+          });
+          // ids are identical across both DBs; rows must match byte-for-byte and in order.
+          expect(rows14.map((r) => r.id)).toEqual(rows17.map((r) => r.id));
+          expect(rows14.map((r) => r.friendlyId)).toEqual(rows17.map((r) => r.friendlyId));
+          expect(rows14.map((r) => r.runCount)).toEqual(rows17.map((r) => r.runCount));
+          expect(rows14.map((r) => r.status)).toEqual(rows17.map((r) => r.status));
+          // ORDER-BY parity: forward => id DESC, backward => id ASC.
+          const order = rows14.map((r) => r.id);
+          const expected = [...order].sort(direction === "forward" ? desc : (a, b) => -desc(a, b));
+          expect(order).toEqual(expected);
+        }
+      }
+
+      // The TS codepoint comparator reproduces the DB ORDER BY over the seeded id set.
+      const allIds = ids.map((i) => `batch_${i}`);
+      const dbForward = (
+        await rawScan(prisma17, {
+          environmentId: ctx17.environmentId,
+          pageSize: 50,
+          direction: "forward",
+        })
+      ).map((r) => r.id);
+      expect(dbForward).toEqual([...allIds].sort(desc));
+    }
+  );
+
+  // Split scan merge serves new + legacy in one createdAt-ordered page; legacy is always read.
+  heteroPostgresTest(
+    "split scan merges new (PG17) + legacy (PG14) rows under the createdAt keyset order; legacy always read",
+    async ({ prisma14, prisma17 }) => {
+      const ctx14 = await seedParents(prisma14, "merge");
+      await mirrorEnvParents(prisma17, ctx14, "merge");
+
+      // Interleaved ids across the keyset order. New (migrated) on PG17, legacy on PG14.
+      await createBatch(prisma17, ctx14, { id: "batch_a", friendlyId: "fr_a", runCount: 1 });
+      await createBatch(prisma14, ctx14, { id: "batch_b", friendlyId: "fr_b", runCount: 2 });
+      await createBatch(prisma17, ctx14, { id: "batch_c", friendlyId: "fr_c", runCount: 3 });
+      await createBatch(prisma14, ctx14, { id: "batch_d", friendlyId: "fr_d", runCount: 4 });
+      await createBatch(prisma17, ctx14, { id: "batch_e", friendlyId: "fr_e", runCount: 5 });
+
+      // Case A: always-merge — legacy is read even when new could fill the page (the old skip was
+      // unsound across the residency split). Page is the createdAt-ordered union of both DBs.
+      const legacySpyA = spyClient(prisma14);
+      const presenterA = new BatchListPresenter(prisma17, prisma17, {
+        runOpsNew: prisma17,
+        runOpsLegacyReplica: legacySpyA.client,
+        controlPlaneReplica: prisma14,
+        splitEnabled: true,
+      });
+      const pageA = await presenterA.call(baseCall(ctx14, { pageSize: 2 }));
+      // union newest-first (createdAt, insertion order a<b<c<d<e): e, d, c, b, a -> page of 2 = e, d.
+      expect(pageA.batches.map((b) => b.id)).toEqual(["batch_e", "batch_d"]);
+      expect(legacySpyA.counts.findMany).toBeGreaterThan(0);
+
+      // Case B: page needs legacy rows => legacy IS read and the merge is keyset-ordered union.
+      const legacySpyB = spyClient(prisma14);
+      const presenterB = new BatchListPresenter(prisma17, prisma17, {
+        runOpsNew: prisma17,
+        runOpsLegacyReplica: legacySpyB.client,
+        controlPlaneReplica: prisma14,
+        splitEnabled: true,
+      });
+      const pageB = await presenterB.call(baseCall(ctx14, { pageSize: 4 }));
+      // union DESC of all 5: e, d, c, b, a -> first 4.
+      expect(pageB.batches.map((b) => b.id)).toEqual(["batch_e", "batch_d", "batch_c", "batch_b"]);
+      expect(legacySpyB.counts.findMany).toBeGreaterThan(0);
+      // cursor parity: next is the FULL composite (createdAt, id) cursor of the 4th row (batch_b),
+      // previous undefined. Assert the complete value so a bad timestamp prefix can't pass.
+      const bRow = pageB.batches.find((b) => b.id === "batch_b")!;
+      expect(pageB.pagination.next).toBe(`${new Date(bRow.createdAt).getTime()}_batch_b`);
+      expect(pageB.pagination.previous).toBeUndefined();
+      expect(pageB.hasAnyBatches).toBe(true);
+    }
+  );
+
+  // Project resolves on control-plane; no cross-seam join.
+  heteroPostgresTest(
+    "project resolves on the control-plane handle (PG14); BatchTaskRun scan reads run-ops only",
+    async ({ prisma14, prisma17 }) => {
+      // Project/env/orgMember/user only on PG14 (control-plane). BatchTaskRun env mirrored to PG17.
+      const ctx = await seedParents(prisma14, "cp");
+      await mirrorEnvParents(prisma17, ctx, "cp");
+      await createBatch(prisma17, ctx, { id: "batch_cp1", friendlyId: "fr_cp1", runCount: 7 });
+
+      // controlPlaneReplica must never run the BatchTaskRun raw scan.
+      const cpSpy = spyClient(prisma14, { throwOnQueryRaw: true });
+      // runOpsNew must never run a project lookup — guard by making project absent on PG17.
+      const presenter = new BatchListPresenter(prisma17, prisma17, {
+        runOpsNew: prisma17,
+        runOpsLegacyReplica: prisma14,
+        controlPlaneReplica: cpSpy.client,
+        splitEnabled: true,
+      });
+
+      const page = await presenter.call(baseCall(ctx, { pageSize: 10 }));
+      expect(page.batches.map((b) => b.id)).toEqual(["batch_cp1"]);
+      // displayableEnvironment mapped by in-memory id match.
+      expect(page.batches[0].environment.id).toBe(ctx.environmentId);
+      expect(page.batches[0].environment.type).toBe("DEVELOPMENT");
+      // control-plane handle was used (project read) but never for the batch scan.
+      expect(cpSpy.counts.findMany).toBe(0);
+    }
+  );
+
+  // Empty-state probe is dual-DB during the window.
+  heteroPostgresTest(
+    "empty-state probe reads new then legacy replica: true when legacy has a batch, false when both empty",
+    async ({ prisma14, prisma17 }) => {
+      const ctx = await seedParents(prisma14, "probe");
+      await mirrorEnvParents(prisma17, ctx, "probe");
+
+      // Zero batches on new (PG17), one on legacy (PG14). A filter that yields an empty page.
+      await createBatch(prisma14, ctx, { id: "batch_legacy_only", friendlyId: "fr_legacy_only" });
+
+      const presenter = new BatchListPresenter(prisma17, prisma17, {
+        runOpsNew: prisma17,
+        runOpsLegacyReplica: prisma14,
+        controlPlaneReplica: prisma14,
+        splitEnabled: true,
+      });
+      // friendlyId filter that matches nothing => empty page, probe must still find the legacy row.
+      const page = await presenter.call(baseCall(ctx, { friendlyId: "fr_does_not_exist" }));
+      expect(page.batches).toHaveLength(0);
+      expect(page.hasAnyBatches).toBe(true);
+
+      // Now wipe legacy too => both empty => hasAnyBatches false.
+      await prisma14.batchTaskRun.deleteMany({
+        where: { runtimeEnvironmentId: ctx.environmentId },
+      });
+      const page2 = await presenter.call(baseCall(ctx, { friendlyId: "fr_does_not_exist" }));
+      expect(page2.batches).toHaveLength(0);
+      expect(page2.hasAnyBatches).toBe(false);
+    }
+  );
+
+  // Single-DB passthrough collapses to one handle.
+  postgresTest(
+    "passthrough (no readRoute): scan + probe + project all read the single handle; legacy closures never invoked",
+    async ({ prisma }) => {
+      const ctx = await seedParents(prisma, "pass");
+      await createBatch(prisma, ctx, { id: "batch_p1", friendlyId: "fr_p1", runCount: 3 });
+      await createBatch(prisma, ctx, { id: "batch_p2", friendlyId: "fr_p2", runCount: 4 });
+      await createBatch(prisma, ctx, { id: "batch_p3", friendlyId: "fr_p3", runCount: 5 });
+
+      const presenter = new BatchListPresenter(prisma, prisma);
+      const page = await presenter.call(baseCall(ctx, { pageSize: 2 }));
+
+      // Page content + ordering + cursors equal a direct $queryRaw of the same SQL.
+      const direct = await rawScan(prisma, {
+        environmentId: ctx.environmentId,
+        pageSize: 2,
+        direction: "forward",
+      });
+      const hasMore = direct.length > 2;
+      const expectedPage = direct.slice(0, 2);
+      expect(page.batches.map((b) => b.id)).toEqual(expectedPage.map((r) => r.id));
+      expect(
+        hasMore
+          ? page.pagination.next === `${expectedPage[1].createdAt.getTime()}_${expectedPage[1].id}`
+          : !page.pagination.next
+      ).toBe(true);
+      expect(page.pagination.previous).toBeUndefined();
+      expect(page.hasAnyBatches).toBe(true);
+
+      // A throwing legacy handle proves the split branch is never entered in passthrough.
+      const throwingLegacy = spyClient(prisma, { throwOnQueryRaw: true, throwOnFindFirst: true });
+      const presenterWithUnusedLegacy = new BatchListPresenter(prisma, prisma, {
+        runOpsLegacyReplica: throwingLegacy.client,
+        // splitEnabled omitted => passthrough; legacy must never be touched.
+      });
+      const page2 = await presenterWithUnusedLegacy.call(baseCall(ctx, { pageSize: 2 }));
+      expect(page2.batches.map((b) => b.id)).toEqual(expectedPage.map((r) => r.id));
+      expect(throwingLegacy.counts.findMany).toBe(0);
+      expect(throwingLegacy.counts.findFirst).toBe(0);
+    }
+  );
+
+  // REGRESSION: a flipped org's real id mix. A cuid ("c"=0x63) sorts ABOVE a run-ops id ("0"=0x30)
+  // under `id DESC`, so pre-flip legacy batches belong at the top — but #scanBatchTaskRun reads new
+  // first, skips legacy once the page is full, and `id < cursor` can never reach a "c…" from a "0…"
+  // cursor. Net: pre-flip legacy batches become unreachable.
+  heteroPostgresTest(
+    "flipped org: pre-flip legacy (cuid) batches remain reachable alongside post-flip run-ops batches",
+    async ({ prisma14, prisma17 }) => {
+      const ctx = await seedParents(prisma14, "flip");
+      await mirrorEnvParents(prisma17, ctx, "flip");
+
+      // Pre-flip cuid batch on legacy (sorts highest); post-flip run-ops batches on new (sort below).
+      const LEGACY_CUID = "cm0preflipbatch0000000001";
+      await createBatch(prisma14, ctx, { id: LEGACY_CUID, friendlyId: "fr_preflip", runCount: 9 });
+
+      const NEW_RUNOPS = [
+        "06fnewbatch00000000000000a",
+        "06fnewbatch00000000000000b",
+        "06fnewbatch00000000000000c",
+      ];
+      for (const id of NEW_RUNOPS) {
+        await createBatch(prisma17, ctx, { id, friendlyId: `fr_${id.slice(-1)}`, runCount: 1 });
+      }
+
+      const presenter = new BatchListPresenter(prisma17, prisma17, {
+        runOpsNew: prisma17,
+        runOpsLegacyReplica: prisma14,
+        controlPlaneReplica: prisma14,
+        splitEnabled: true,
+      });
+
+      // The pre-flip cuid batch is the oldest, so under newest-first it lands on a later page — but it
+      // must be REACHABLE by paging forward, not stranded behind the run-ops ids (the skip + id-order
+      // bug dropped it entirely: `id < <run-ops cursor>` never matches a "c…" id).
+      const seen = new Set<string>();
+      let cursor: string | undefined = undefined;
+      for (let i = 0; i < 10; i++) {
+        const page = await presenter.call(
+          baseCall(ctx, { pageSize: 2, cursor, direction: "forward" })
+        );
+        page.batches.forEach((b) => seen.add(b.id));
+        if (!page.pagination.next) break;
+        cursor = page.pagination.next;
+      }
+      expect([...seen]).toContain(LEGACY_CUID);
+    }
+  );
+
+  // REGRESSION (ordering): even with an always-merge fix, keyset-by-id is chronologically wrong across
+  // the flip — a cuid ("c") sorts above a run-ops id ("0"), so an OLDER pre-flip batch outranks a NEWER
+  // post-flip batch. The list is "newest first", so the later-created run-ops batch must come first.
+  heteroPostgresTest(
+    "flipped org: batches list is newest-first across the flip boundary (by createdAt, not id)",
+    async ({ prisma14, prisma17 }) => {
+      const ctx = await seedParents(prisma14, "order");
+      await mirrorEnvParents(prisma17, ctx, "order");
+
+      const OLD_LEGACY = "cm0oldbatch00000000000001"; // cuid, created EARLIER
+      const NEW_RUNOPS = "06fnewbatch000000000000001"; // run-ops, created LATER
+      await createBatch(prisma14, ctx, {
+        id: OLD_LEGACY,
+        friendlyId: "fr_old",
+        createdAt: new Date(Date.now() - 3_600_000),
+      });
+      await createBatch(prisma17, ctx, {
+        id: NEW_RUNOPS,
+        friendlyId: "fr_new",
+        createdAt: new Date(),
+      });
+
+      const presenter = new BatchListPresenter(prisma17, prisma17, {
+        runOpsNew: prisma17,
+        runOpsLegacyReplica: prisma14,
+        controlPlaneReplica: prisma14,
+        splitEnabled: true,
+      });
+      const page = await presenter.call(baseCall(ctx, { pageSize: 10 }));
+      // Newest-first: the later-created run-ops batch outranks the older legacy one.
+      expect(page.batches.map((b) => b.id)).toEqual([NEW_RUNOPS, OLD_LEGACY]);
+    }
+  );
+
+  // Overlap regression: batches duplicated on BOTH stores (mid-migration copies) must de-dupe to one
+  // each without dropping rows or underfilling pages. Proves the merge needs no post-dedup refill:
+  // the union of each store's top-(pageSize+1) always contains the global top, and the next page
+  // re-queries both stores from the cursor.
+  heteroPostgresTest(
+    "flipped org: batches duplicated across both stores de-dupe without dropping rows across pagination",
+    async ({ prisma14, prisma17 }) => {
+      const ctx = await seedParents(prisma14, "ovl");
+      await mirrorEnvParents(prisma17, ctx, "ovl");
+
+      const at = (secondsAgo: number) => new Date(Date.now() - secondsAgo * 1000);
+      // a..e newest->oldest. a,b,c live on BOTH DBs (dup); d,e only on legacy.
+      const rows = [
+        { id: "batch_ov_a", both: true, s: 1 },
+        { id: "batch_ov_b", both: true, s: 2 },
+        { id: "batch_ov_c", both: true, s: 3 },
+        { id: "batch_ov_d", both: false, s: 4 },
+        { id: "batch_ov_e", both: false, s: 5 },
+      ];
+      for (const r of rows) {
+        // A dup is a row COPY: identical (createdAt, id) on both DBs. Compute createdAt ONCE so both
+        // copies match exactly (two at(r.s) calls would drift by ms and the older copy would re-surface
+        // on the next page under the createdAt keyset).
+        const createdAt = at(r.s);
+        await createBatch(prisma14, ctx, { id: r.id, friendlyId: `fr_${r.id}`, createdAt });
+        if (r.both) {
+          await createBatch(prisma17, ctx, { id: r.id, friendlyId: `fr_${r.id}`, createdAt });
+        }
+      }
+
+      const seen: string[] = [];
+      let cursor: string | undefined = undefined;
+      for (let i = 0; i < 10; i++) {
+        const presenter = new BatchListPresenter(prisma17, prisma17, {
+          runOpsNew: prisma17,
+          runOpsLegacyReplica: prisma14,
+          controlPlaneReplica: prisma14,
+          splitEnabled: true,
+        });
+        const page = await presenter.call(
+          baseCall(ctx, { pageSize: 2, cursor, direction: "forward" })
+        );
+        seen.push(...page.batches.map((b) => b.id));
+        if (!page.pagination.next) break;
+        cursor = page.pagination.next;
+      }
+      // Every batch exactly once, newest-first; the three dups collapsed to one each.
+      expect(seen).toEqual(["batch_ov_a", "batch_ov_b", "batch_ov_c", "batch_ov_d", "batch_ov_e"]);
+    }
+  );
+
+  heteroRunOpsPostgresTest(
+    "scan against dedicated RunOpsPrismaClient (splitEnabled): returns batches from new DB",
+    async ({ prisma14, prisma17 }) => {
+      const ctx = await seedParents(prisma14, "rawscan-batch14");
+
+      // runtimeEnvironmentId is a FK-free scalar in the run-ops schema — no parent row needed.
+      await (prisma17 as RunOpsPrismaClient).batchTaskRun.create({
+        data: {
+          id: "rbatch00000000000000001",
+          friendlyId: "fr_rbatch00000000000000001",
+          runtimeEnvironmentId: ctx.environmentId,
+          status: "PENDING",
+          batchVersion: "v3",
+          runCount: 2,
+        },
+      });
+
+      const presenter = new BatchListPresenter(prisma14 as any, prisma14 as any, {
+        runOpsNew: prisma17 as any,
+        runOpsLegacyReplica: prisma14 as any,
+        controlPlaneReplica: prisma14 as any,
+        splitEnabled: true,
+      });
+
+      const page = await presenter.call(baseCall(ctx, { pageSize: 10 }));
+      expect(page.batches.map((b) => b.id)).toContain("rbatch00000000000000001");
+    }
+  );
+});
+
+describe("BatchListPresenter gen-2 shard legs (legacy PG14 + new PG17 + 2 shard PG17 databases)", () => {
+  const twoShardTest = makeNShardRunOpsPostgresTest(2);
+
+  const shardPresenter = (
+    legacyPrisma: PrismaClient,
+    newPrisma: RunOpsPrismaClient,
+    shardReplicas: ReadonlyArray<{ key: string; replica: RunOpsPrismaClient }>
+  ) =>
+    new BatchListPresenter(legacyPrisma, legacyPrisma, {
+      runOpsNew: newPrisma,
+      runOpsLegacyReplica: legacyPrisma as unknown as RunOpsPrismaClient,
+      controlPlaneReplica: legacyPrisma,
+      splitEnabled: true,
+      shardReplicas,
+    });
+
+  twoShardTest(
+    "a gen-2 batch on its shard appears in the list alongside gen-1 and legacy batches",
+    async ({ legacyPrisma, newPrisma, shardPrismas }) => {
+      const shardA = shardPrismas[0]!;
+      const ctx = await seedParents(legacyPrisma, "gen2-visible");
+
+      const legacyId = "cmm00000000000000000legac";
+      const newId = generateRunOpsId();
+      const shardId = generateRunOpsIdV2("a");
+
+      await createBatch(legacyPrisma, ctx, {
+        id: legacyId,
+        friendlyId: "fr_legacy",
+        createdAt: new Date(Date.now() - 3 * 60_000),
+      });
+      await createBatch(newPrisma, ctx, {
+        id: newId,
+        friendlyId: "fr_new",
+        createdAt: new Date(Date.now() - 2 * 60_000),
+      });
+      await createBatch(shardA, ctx, {
+        id: shardId,
+        friendlyId: "fr_shard_a",
+        createdAt: new Date(Date.now() - 1 * 60_000),
+      });
+
+      const page = await shardPresenter(legacyPrisma, newPrisma, [
+        { key: "a", replica: shardA },
+      ]).call(baseCall(ctx, { pageSize: 10 }));
+
+      expect(page.batches.map((b) => b.id)).toEqual([shardId, newId, legacyId]);
+      expect(page.batches.map((b) => b.friendlyId)).toContain("fr_shard_a");
+
+      const withoutShardLeg = await shardPresenter(legacyPrisma, newPrisma, []).call(
+        baseCall(ctx, { pageSize: 10 })
+      );
+      expect(withoutShardLeg.batches.map((b) => b.id)).toEqual([newId, legacyId]);
+    }
+  );
+
+  twoShardTest(
+    "a page spanning legacy, new and two shards is ordered by createdAt then id across all stores",
+    async ({ legacyPrisma, newPrisma, shardPrismas }) => {
+      const [shardA, shardB] = [shardPrismas[0]!, shardPrismas[1]!];
+      const ctx = await seedParents(legacyPrisma, "gen2-order");
+
+      const t0 = new Date(Date.now() - 10 * 60_000);
+      const at = (minutes: number) => new Date(t0.getTime() + minutes * 60_000);
+
+      const legacyId = "cmm00000000000000000order";
+      const newId = generateRunOpsId();
+      const shardAId = generateRunOpsIdV2("a");
+      const shardBId = generateRunOpsIdV2("b");
+
+      await createBatch(legacyPrisma, ctx, {
+        id: legacyId,
+        friendlyId: "fr_o_legacy",
+        createdAt: at(0),
+      });
+      await createBatch(newPrisma, ctx, { id: newId, friendlyId: "fr_o_new", createdAt: at(1) });
+      await createBatch(shardA, ctx, { id: shardAId, friendlyId: "fr_o_a", createdAt: at(2) });
+      await createBatch(shardB, ctx, { id: shardBId, friendlyId: "fr_o_b", createdAt: at(3) });
+
+      const tieTime = at(4);
+      const tieOnNew = generateRunOpsId();
+      const tieOnShardB = generateRunOpsIdV2("b");
+      await createBatch(newPrisma, ctx, {
+        id: tieOnNew,
+        friendlyId: "fr_tie_new",
+        createdAt: tieTime,
+      });
+      await createBatch(shardB, ctx, {
+        id: tieOnShardB,
+        friendlyId: "fr_tie_b",
+        createdAt: tieTime,
+      });
+
+      const page = await shardPresenter(legacyPrisma, newPrisma, [
+        { key: "a", replica: shardA },
+        { key: "b", replica: shardB },
+      ]).call(baseCall(ctx, { pageSize: 10 }));
+
+      const tieHead = tieOnNew > tieOnShardB ? tieOnNew : tieOnShardB;
+      const tieTail = tieOnNew > tieOnShardB ? tieOnShardB : tieOnNew;
+      expect(page.batches.map((b) => b.id)).toEqual([
+        tieHead,
+        tieTail,
+        shardBId,
+        shardAId,
+        newId,
+        legacyId,
+      ]);
+    }
+  );
+
+  twoShardTest(
+    "paging forward then backward across boundaries that span stores loses and repeats no batch",
+    async ({ legacyPrisma, newPrisma, shardPrismas }) => {
+      const [shardA, shardB] = [shardPrismas[0]!, shardPrismas[1]!];
+      const ctx = await seedParents(legacyPrisma, "gen2-paging");
+
+      const t0 = Date.now() - 60 * 60_000;
+      const seeded: string[] = [];
+      for (let i = 0; i < 8; i++) {
+        const store = [legacyPrisma, newPrisma, shardA, shardB][i % 4]!;
+        const id =
+          i % 4 === 0
+            ? `cmm0000000000000000pag${i}`
+            : i % 4 === 1
+              ? generateRunOpsId()
+              : generateRunOpsIdV2(i % 4 === 2 ? "a" : "b");
+        await createBatch(store, ctx, {
+          id,
+          friendlyId: `fr_pag_${i}`,
+          createdAt: new Date(t0 + i * 60_000),
+        });
+        seeded.push(id);
+      }
+      const newestFirst = [...seeded].reverse();
+
+      const presenter = shardPresenter(legacyPrisma, newPrisma, [
+        { key: "a", replica: shardA },
+        { key: "b", replica: shardB },
+      ]);
+
+      const forward: string[][] = [];
+      let cursor: string | undefined;
+      for (let guard = 0; guard < 10; guard++) {
+        const page = await presenter.call(
+          baseCall(ctx, { pageSize: 3, direction: "forward", cursor })
+        );
+        forward.push(page.batches.map((b) => b.id));
+        if (!page.pagination.next) break;
+        cursor = page.pagination.next;
+      }
+      expect(forward.flat()).toEqual(newestFirst);
+
+      let backCursor: string | undefined;
+      cursor = undefined;
+      for (let guard = 0; guard < 10; guard++) {
+        const page = await presenter.call(
+          baseCall(ctx, { pageSize: 3, direction: "forward", cursor })
+        );
+        backCursor = page.pagination.previous;
+        if (!page.pagination.next) break;
+        cursor = page.pagination.next;
+      }
+
+      const backward: string[][] = [];
+      for (let guard = 0; guard < 10 && backCursor; guard++) {
+        const page: BatchList = await presenter.call(
+          baseCall(ctx, { pageSize: 3, direction: "backward", cursor: backCursor })
+        );
+        backward.unshift(page.batches.map((b) => b.id));
+        backCursor = page.pagination.previous;
+      }
+
+      const backwardIds = backward.flat();
+      expect(backwardIds).toHaveLength(6);
+      expect(new Set(backwardIds).size).toBe(backwardIds.length);
+      expect(backwardIds).toEqual(newestFirst.slice(0, 6));
+    }
+  );
+
+  twoShardTest(
+    "the empty-state probe reports batches present when only a shard holds batches",
+    async ({ legacyPrisma, newPrisma, shardPrismas }) => {
+      const shardB = shardPrismas[1]!;
+      const ctx = await seedParents(legacyPrisma, "gen2-probe");
+
+      await createBatch(shardB, ctx, {
+        id: generateRunOpsIdV2("b"),
+        friendlyId: "fr_probe_shard",
+      });
+
+      const presenter = shardPresenter(legacyPrisma, newPrisma, [
+        { key: "a", replica: shardPrismas[0]! },
+        { key: "b", replica: shardB },
+      ]);
+
+      const page = await presenter.call(baseCall(ctx, { friendlyId: "fr_does_not_exist" }));
+      expect(page.batches).toHaveLength(0);
+      expect(page.hasAnyBatches).toBe(true);
+
+      const withoutShardLeg = await shardPresenter(legacyPrisma, newPrisma, []).call(
+        baseCall(ctx, { friendlyId: "fr_does_not_exist" })
+      );
+      expect(withoutShardLeg.hasAnyBatches).toBe(false);
+    }
+  );
+
+  twoShardTest(
+    "a duplicated id resolves by precedence: a shard copy outranks new, and new outranks legacy",
+    async ({ legacyPrisma, newPrisma, shardPrismas }) => {
+      const shardA = shardPrismas[0]!;
+      const ctx = await seedParents(legacyPrisma, "gen2-precedence");
+
+      const onBothGenOne = "cmm000000000000000000prec";
+      await createBatch(legacyPrisma, ctx, {
+        id: onBothGenOne,
+        friendlyId: "fr_prec_gen1",
+        status: "PENDING",
+        createdAt: new Date(Date.now() - 60_000),
+      });
+      await createBatch(newPrisma, ctx, {
+        id: onBothGenOne,
+        friendlyId: "fr_prec_gen1",
+        status: "COMPLETED",
+        createdAt: new Date(Date.now() - 60_000),
+      });
+
+      const onNewAndShard = generateRunOpsIdV2("a");
+      await createBatch(newPrisma, ctx, {
+        id: onNewAndShard,
+        friendlyId: "fr_prec_shard",
+        status: "PENDING",
+        createdAt: new Date(Date.now() - 30_000),
+      });
+      await createBatch(shardA, ctx, {
+        id: onNewAndShard,
+        friendlyId: "fr_prec_shard",
+        status: "COMPLETED",
+        createdAt: new Date(Date.now() - 30_000),
+      });
+
+      const page = await shardPresenter(legacyPrisma, newPrisma, [
+        { key: "a", replica: shardA },
+      ]).call(baseCall(ctx, { pageSize: 10 }));
+
+      expect(page.batches.map((b) => b.id).filter((id) => id === onBothGenOne)).toHaveLength(1);
+      expect(page.batches.map((b) => b.id).filter((id) => id === onNewAndShard)).toHaveLength(1);
+      expect(page.batches.find((b) => b.id === onBothGenOne)?.status).toBe("COMPLETED");
+      expect(page.batches.find((b) => b.id === onNewAndShard)?.status).toBe("COMPLETED");
+    }
+  );
+
+  twoShardTest(
+    "an aliased shard contributes no leg, and its rows still arrive once via the aliased store",
+    async ({ legacyPrisma, newPrisma, shardPrismas }) => {
+      const shardB = shardPrismas[1]!;
+      const ctx = await seedParents(legacyPrisma, "gen2-alias");
+
+      const soakId = generateRunOpsIdV2("a");
+      const realShardId = generateRunOpsIdV2("b");
+      await createBatch(newPrisma, ctx, {
+        id: soakId,
+        friendlyId: "fr_soak",
+        createdAt: new Date(Date.now() - 60_000),
+      });
+      await createBatch(shardB, ctx, { id: realShardId, friendlyId: "fr_real_shard" });
+
+      const aliasedSpy = spyClient(newPrisma as unknown as PrismaClient);
+
+      const legs = nonAliasedShardReplicas([
+        { key: "a", replica: aliasedSpy.client as unknown as RunOpsPrismaClient, aliasOf: "new" },
+        { key: "b", replica: shardB },
+      ]);
+      expect(legs.map((leg) => leg.key)).toEqual(["b"]);
+
+      const page = await shardPresenter(
+        legacyPrisma,
+        aliasedSpy.client as unknown as RunOpsPrismaClient,
+        legs
+      ).call(baseCall(ctx, { pageSize: 10 }));
+      expect(page.batches.map((b) => b.id)).toEqual([realShardId, soakId]);
+      expect(aliasedSpy.counts.findMany).toBe(1);
+    }
+  );
+});

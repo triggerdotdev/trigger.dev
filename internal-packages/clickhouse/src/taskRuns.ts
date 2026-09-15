@@ -1,6 +1,6 @@
-import { ClickHouseSettings } from "@clickhouse/client";
+import type { ClickHouseSettings } from "@clickhouse/client";
 import { z } from "zod";
-import { ClickhouseReader, ClickhouseWriter } from "./client/types.js";
+import type { ClickhouseReader, ClickhouseWriter } from "./client/types.js";
 
 export const TaskRunV2 = z.object({
   environment_id: z.string(),
@@ -9,6 +9,7 @@ export const TaskRunV2 = z.object({
   run_id: z.string(),
   updated_at: z.number().int(),
   created_at: z.number().int(),
+  queue_timestamp: z.number().int().nullish(),
   status: z.string(),
   environment_type: z.string(),
   friendly_id: z.string(),
@@ -48,11 +49,14 @@ export const TaskRunV2 = z.object({
   concurrency_key: z.string().default(""),
   bulk_action_group_ids: z.array(z.string()).default([]),
   worker_queue: z.string().default(""),
+  region: z.string().default(""),
+  plan_type: z.string().default(""),
   max_duration_in_seconds: z.number().int().nullish(),
   trigger_source: z.string().default(""),
   root_trigger_source: z.string().default(""),
   task_kind: z.string().default(""),
   is_warm_start: z.boolean().nullish(),
+  external_deployment_id: z.string().default(""),
   _version: z.string(),
   _is_deleted: z.number().int().default(0),
 });
@@ -67,6 +71,7 @@ export const TASK_RUN_COLUMNS = [
   "run_id",
   "updated_at",
   "created_at",
+  "queue_timestamp",
   "status",
   "environment_type",
   "friendly_id",
@@ -108,11 +113,14 @@ export const TASK_RUN_COLUMNS = [
   "concurrency_key",
   "bulk_action_group_ids",
   "worker_queue",
+  "region",
+  "plan_type",
   "max_duration_in_seconds",
   "trigger_source",
   "root_trigger_source",
   "task_kind",
   "is_warm_start",
+  "external_deployment_id",
 ] as const;
 
 export type TaskRunColumnName = (typeof TASK_RUN_COLUMNS)[number];
@@ -134,6 +142,7 @@ export type TaskRunFieldTypes = {
   run_id: string;
   updated_at: number;
   created_at: number;
+  queue_timestamp: number | null;
   status: string;
   environment_type: string;
   friendly_id: string;
@@ -175,11 +184,14 @@ export type TaskRunFieldTypes = {
   concurrency_key: string;
   bulk_action_group_ids: string[];
   worker_queue: string;
+  region: string;
+  plan_type: string;
   max_duration_in_seconds: number | null;
   trigger_source: string;
   root_trigger_source: string;
   task_kind: string;
   is_warm_start: boolean | null;
+  external_deployment_id: string;
 };
 
 /**
@@ -197,6 +209,32 @@ export function getTaskRunField<K extends TaskRunColumnName>(
   return run[TASK_RUN_INDEX[field]] as TaskRunFieldTypes[K];
 }
 
+/**
+ * Compose a globally-comparable ReplacingMergeTree version for task_runs_v2
+ * when the same run can be replicated from more than one Postgres producer.
+ *
+ * Each producer has its own, mutually-incomparable LSN space, so the raw
+ * LSN-derived version cannot be compared across producers. We reserve the top
+ * 8 bits for an `originGeneration` epoch (monotonic across producers: the more
+ * authoritative / later-cutover producer gets the higher generation) and keep
+ * the producer's own LSN in the low 56 bits to preserve in-producer ordering.
+ *
+ * Self-host single-DB never calls this (one producer => generation is constant
+ * and the existing raw LSN path is sufficient); the split gate skips it.
+ */
+export function composeTaskRunVersion(opts: {
+  originGeneration: number;
+  lsnVersion: bigint;
+}): bigint {
+  const gen = BigInt(opts.originGeneration);
+  if (gen < BigInt(0) || gen > BigInt(0xff)) {
+    throw new Error(`originGeneration out of range (0-255): ${opts.originGeneration}`);
+  }
+  const LSN_BITS = BigInt(56);
+  const LSN_MASK = (BigInt(1) << LSN_BITS) - BigInt(1); // low 56 bits
+  return (gen << LSN_BITS) | (opts.lsnVersion & LSN_MASK);
+}
+
 export function insertTaskRunsCompactArrays(ch: ClickhouseWriter, settings?: ClickHouseSettings) {
   return ch.insertCompactRaw({
     name: "insertTaskRunsCompactArrays",
@@ -205,6 +243,7 @@ export function insertTaskRunsCompactArrays(ch: ClickhouseWriter, settings?: Cli
     settings: {
       enable_json_type: 1,
       type_json_skip_duplicated_paths: 1,
+      input_format_json_infer_array_of_dynamic_from_array_of_different_types: 1,
       ...settings,
     },
   });
@@ -219,6 +258,7 @@ export function insertTaskRuns(ch: ClickhouseWriter, settings?: ClickHouseSettin
     settings: {
       enable_json_type: 1,
       type_json_skip_duplicated_paths: 1,
+      input_format_json_infer_array_of_dynamic_from_array_of_different_types: 1,
       ...settings,
     },
   });
@@ -272,6 +312,7 @@ export type TaskRunInsertArray = [
   run_id: string,
   updated_at: number,
   created_at: number,
+  queue_timestamp: number | null,
   status: string,
   environment_type: string,
   friendly_id: string,
@@ -313,11 +354,14 @@ export type TaskRunInsertArray = [
   concurrency_key: string,
   bulk_action_group_ids: string[],
   worker_queue: string,
+  region: string,
+  plan_type: string,
   max_duration_in_seconds: number | null,
   trigger_source: string,
   root_trigger_source: string,
   task_kind: string,
   is_warm_start: boolean | null,
+  external_deployment_id: string,
 ];
 
 /**
@@ -341,6 +385,7 @@ export function insertRawTaskRunPayloadsCompactArrays(
       async_insert_busy_timeout_ms: 1000,
       enable_json_type: 1,
       type_json_skip_duplicated_paths: 1,
+      input_format_json_infer_array_of_dynamic_from_array_of_different_types: 1,
       ...settings,
     },
   });
@@ -359,6 +404,7 @@ export function insertRawTaskRunPayloads(ch: ClickhouseWriter, settings?: ClickH
       async_insert_busy_timeout_ms: 1000,
       enable_json_type: 1,
       type_json_skip_duplicated_paths: 1,
+      input_format_json_infer_array_of_dynamic_from_array_of_different_types: 1,
       ...settings,
     },
   });
@@ -419,6 +465,23 @@ export function getTaskRunsCountQueryBuilder(ch: ClickhouseReader, settings?: Cl
     schema: z.object({
       count: z.number().int(),
     }),
+    settings,
+  });
+}
+
+export const TaskRunExistsQueryResult = z.object({
+  run_exists: z.number().int(),
+});
+
+export type TaskRunExistsQueryResult = z.infer<typeof TaskRunExistsQueryResult>;
+
+// Empty-state existence probe. No FINAL (a stale/dup row still answers "a run exists").
+// Callers must filter organization_id + project_id + environment_id (the sort-key prefix).
+export function getTaskRunExistsQueryBuilder(ch: ClickhouseReader, settings?: ClickHouseSettings) {
+  return ch.queryBuilder({
+    name: "getTaskRunExists",
+    baseQuery: "SELECT 1 AS run_exists FROM trigger_dev.task_runs_v2",
+    schema: TaskRunExistsQueryResult,
     settings,
   });
 }

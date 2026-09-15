@@ -70,12 +70,6 @@ import { ChartZoom } from "./ChartZoom";
 
 // Re-export types
 export type { ChartConfig, ChartState } from "./Chart";
-export type { ZoomRange } from "./hooks/useZoomSelection";
-export type { ChartRootProps } from "./ChartRoot";
-export type { ChartBarRendererProps } from "./ChartBar";
-export type { ChartLineRendererProps } from "./ChartLine";
-export type { ChartLegendCompoundProps } from "./ChartLegendCompound";
-export type { ChartZoomProps } from "./ChartZoom";
 
 /**
  * Chart compound component for building flexible, composable charts.
@@ -98,9 +92,5 @@ export const Chart = {
 };
 
 // Also export individual components for direct imports
-export { ChartRoot, ChartBarRenderer, ChartLineRenderer, ChartLegendCompound, ChartZoom };
 
 // Re-export context hook for advanced usage
-export { useChartContext } from "./ChartContext";
-export { useHasNoData, useSeriesTotal } from "./ChartRoot";
-export { useZoomHandlers, ZoomTooltip } from "./ChartZoom";

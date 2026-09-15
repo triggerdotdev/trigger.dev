@@ -61,9 +61,43 @@ export function AIQueryInput({
   // If mode is edit but there's no current query, switch to new
   useEffect(() => {
     if (mode === "edit" && !canEdit) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setMode("new");
     }
   }, [mode, canEdit]);
+
+  const processStreamEvent = useCallback(
+    (event: StreamEventType) => {
+      switch (event.type) {
+        case "thinking":
+          setThinking((prev) => prev + event.content);
+          break;
+        case "tool_call":
+          // Tool calls are handled silently — no UI text needed
+          break;
+        case "time_filter":
+          // Apply time filter immediately when the AI sets it
+          onTimeFilterChange?.(event.filter);
+          break;
+        case "result":
+          if (event.success) {
+            // Apply time filter if included in result (backup in case time_filter event was missed)
+            if (event.timeFilter) {
+              onTimeFilterChange?.(event.timeFilter);
+            }
+            onQueryGenerated(event.query);
+            setPrompt("");
+            setLastResult("success");
+            // Keep thinking visible to show what happened
+          } else {
+            setError(event.error);
+            setLastResult("error");
+          }
+          break;
+      }
+    },
+    [onQueryGenerated, onTimeFilterChange]
+  );
 
   const submitQuery = useCallback(
     async (queryPrompt: string, submitMode: AIQueryMode = mode) => {
@@ -158,40 +192,7 @@ export function AIQueryInput({
         setIsLoading(false);
       }
     },
-    [isLoading, resourcePath, mode, getCurrentQuery]
-  );
-
-  const processStreamEvent = useCallback(
-    (event: StreamEventType) => {
-      switch (event.type) {
-        case "thinking":
-          setThinking((prev) => prev + event.content);
-          break;
-        case "tool_call":
-          // Tool calls are handled silently — no UI text needed
-          break;
-        case "time_filter":
-          // Apply time filter immediately when the AI sets it
-          onTimeFilterChange?.(event.filter);
-          break;
-        case "result":
-          if (event.success) {
-            // Apply time filter if included in result (backup in case time_filter event was missed)
-            if (event.timeFilter) {
-              onTimeFilterChange?.(event.timeFilter);
-            }
-            onQueryGenerated(event.query);
-            setPrompt("");
-            setLastResult("success");
-            // Keep thinking visible to show what happened
-          } else {
-            setError(event.error);
-            setLastResult("error");
-          }
-          break;
-      }
-    },
-    [onQueryGenerated, onTimeFilterChange]
+    [getCurrentQuery, isLoading, mode, processStreamEvent, resourcePath]
   );
 
   const handleSubmit = useCallback(
@@ -257,7 +258,7 @@ export function AIQueryInput({
               onChange={(e) => setPrompt(e.target.value)}
               disabled={isLoading}
               rows={8}
-              className="m-0 min-h-10 w-full resize-none border-0 bg-background-bright px-3 py-2.5 text-sm text-text-bright scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600 file:border-0 file:bg-transparent file:text-base file:font-medium placeholder:text-text-dimmed focus:border-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50"
+              className="m-0 min-h-10 w-full resize-none border-0 bg-background-bright px-3 py-2.5 text-sm text-text-bright scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control file:border-0 file:bg-transparent file:text-base file:font-medium placeholder:text-text-dimmed focus:border-0 focus:outline-hidden focus:ring-0 focus-visible:outline-hidden focus-visible:ring-0 focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50"
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey && prompt.trim() && !isLoading) {
                   e.preventDefault();
@@ -342,7 +343,7 @@ export function AIQueryInput({
             className="overflow-hidden"
           >
             <div className="px-1">
-              <div className="rounded-b-lg border-x border-b border-grid-dimmed bg-charcoal-850 p-3 pb-1">
+              <div className="rounded-b-lg border-x border-b border-grid-dimmed bg-background-dimmed p-3 pb-1">
                 <div className="mb-1 flex items-center justify-between">
                   <div className="flex items-center gap-1">
                     {isLoading ? (
@@ -356,10 +357,10 @@ export function AIQueryInput({
                       {isLoading
                         ? "AI is thinking…"
                         : lastResult === "success"
-                        ? "Query generated"
-                        : lastResult === "error"
-                        ? "Generation failed"
-                        : "AI response"}
+                          ? "Query generated"
+                          : lastResult === "error"
+                            ? "Generation failed"
+                            : "AI response"}
                     </span>
                   </div>
                   {isLoading ? (
@@ -390,7 +391,7 @@ export function AIQueryInput({
                     </Button>
                   )}
                 </div>
-                <div className="streamdown-container max-h-96 overflow-y-auto text-xs text-text-dimmed scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+                <div className="streamdown-container max-h-96 overflow-y-auto text-xs text-text-dimmed scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
                   <Suspense fallback={<p className="whitespace-pre-wrap">{thinking}</p>}>
                     <StreamdownRenderer isAnimating={isLoading}>{thinking}</StreamdownRenderer>
                   </Suspense>

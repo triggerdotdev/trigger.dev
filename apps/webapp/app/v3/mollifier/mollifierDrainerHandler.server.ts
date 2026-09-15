@@ -7,6 +7,7 @@ import type {
   MollifierDrainerTerminalFailureHandler,
 } from "@trigger.dev/redis-worker";
 import { logger } from "~/services/logger.server";
+import { looksLikeConnectivityError } from "~/utils/prismaErrors";
 import { recordRunDebugLog } from "~/v3/eventRepository/index.server";
 import { PerformTaskRunAlertsService } from "~/v3/services/alerts/performTaskRunAlerts.server";
 import { startSpan } from "~/v3/tracing.server";
@@ -29,6 +30,7 @@ export function isRetryablePgError(err: unknown): boolean {
   if (msg.includes("Can't reach database server")) return true;
   if (msg.includes("Connection lost")) return true;
   if (msg.includes("ECONNRESET")) return true;
+  if (looksLikeConnectivityError(err)) return true;
   return false;
 }
 
@@ -89,7 +91,7 @@ export function createDrainerHandler(deps: {
                 cancelReason,
                 emitRunCancelledEvent: false,
               },
-              deps.prisma,
+              deps.prisma
             );
           } catch (err) {
             // createCancelledRun throws a conflict when the normal trigger
@@ -118,8 +120,10 @@ export function createDrainerHandler(deps: {
               if (isRetryablePgError(err)) {
                 throw err;
               }
-              span.setAttribute("mollifier.cancel_terminal_failure_reason",
-                err instanceof Error ? err.message : String(err));
+              span.setAttribute(
+                "mollifier.cancel_terminal_failure_reason",
+                err instanceof Error ? err.message : String(err)
+              );
               try {
                 const wrote = await writeMollifierTerminalFailureRow(deps, {
                   friendlyId: input.runId,
@@ -141,9 +145,7 @@ export function createDrainerHandler(deps: {
             }
             span.setAttribute("mollifier.cancel_conflict", true);
             const friendlyId =
-              typeof input.payload.friendlyId === "string"
-                ? input.payload.friendlyId
-                : input.runId;
+              typeof input.payload.friendlyId === "string" ? input.payload.friendlyId : input.runId;
             await deps.engine.cancelRun({
               runId: RunId.fromFriendlyId(friendlyId),
               completedAt: new Date(cancelledAtStr),
@@ -295,7 +297,7 @@ export function createDrainerHandler(deps: {
 // logic can own the decision.
 async function writeMollifierTerminalFailureRow(
   deps: { engine: RunEngine; prisma: PrismaClientOrTransaction },
-  args: { friendlyId: string; snapshot: Record<string, unknown>; reason: string },
+  args: { friendlyId: string; snapshot: Record<string, unknown>; reason: string }
 ) {
   const { snapshot } = args;
   const env = snapshot.environment as
@@ -334,8 +336,7 @@ async function writeMollifierTerminalFailureRow(
     },
     parentTaskRunId:
       typeof snapshot.parentTaskRunId === "string" ? snapshot.parentTaskRunId : undefined,
-    rootTaskRunId:
-      typeof snapshot.rootTaskRunId === "string" ? snapshot.rootTaskRunId : undefined,
+    rootTaskRunId: typeof snapshot.rootTaskRunId === "string" ? snapshot.rootTaskRunId : undefined,
     depth: typeof snapshot.depth === "number" ? snapshot.depth : 0,
     resumeParentOnCompletion: snapshot.resumeParentOnCompletion === true,
     batch,
@@ -344,8 +345,7 @@ async function writeMollifierTerminalFailureRow(
     taskEventStore:
       typeof snapshot.taskEventStore === "string" ? snapshot.taskEventStore : undefined,
     queue: typeof snapshot.queue === "string" ? snapshot.queue : undefined,
-    lockedQueueId:
-      typeof snapshot.lockedQueueId === "string" ? snapshot.lockedQueueId : undefined,
+    lockedQueueId: typeof snapshot.lockedQueueId === "string" ? snapshot.lockedQueueId : undefined,
     emitRunFailedEvent: false,
   });
   // Alerts side of `runFailed` — the engine emit was suppressed above

@@ -1,34 +1,39 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { z } from "zod";
+import { z } from "zod/v4";
 import { SimpleStructuredLogger } from "../utils/structuredLogger.js";
 import { HttpReply, getJsonBody } from "../apps/http.js";
-import { Registry, Histogram, Counter } from "prom-client";
+import type { Registry } from "prom-client";
+import { Histogram, Counter } from "prom-client";
 import { tryCatch } from "../../utils.js";
+import type { AnyZodSchema, inferZodSchemaOutput } from "../types/schemas.js";
 
 const logger = new SimpleStructuredLogger("http-server");
 
 type RouteHandler<
-  TParams extends z.ZodFirstPartySchemaTypes = z.ZodUnknown,
-  TQuery extends z.ZodFirstPartySchemaTypes = z.ZodUnknown,
-  TBody extends z.ZodFirstPartySchemaTypes = z.ZodUnknown,
+  TParams extends AnyZodSchema = z.ZodUnknown,
+  TQuery extends AnyZodSchema = z.ZodUnknown,
+  TBody extends AnyZodSchema = z.ZodUnknown,
 > = (ctx: {
-  params: z.infer<TParams>;
-  queryParams: z.infer<TQuery>;
-  body: z.infer<TBody>;
+  params: inferZodSchemaOutput<TParams>;
+  queryParams: inferZodSchemaOutput<TQuery>;
+  body: inferZodSchemaOutput<TBody>;
   req: IncomingMessage;
   res: ServerResponse;
   reply: HttpReply;
 }) => Promise<any>;
 
 interface RouteDefinition<
-  TParams extends z.ZodFirstPartySchemaTypes = z.ZodUnknown,
-  TQuery extends z.ZodFirstPartySchemaTypes = z.ZodUnknown,
-  TBody extends z.ZodFirstPartySchemaTypes = z.ZodUnknown,
+  TParams extends AnyZodSchema = z.ZodUnknown,
+  TQuery extends AnyZodSchema = z.ZodUnknown,
+  TBody extends AnyZodSchema = z.ZodUnknown,
 > {
   paramsSchema?: TParams;
   querySchema?: TQuery;
   bodySchema?: TBody;
   keepConnectionAlive?: boolean;
+  /** Skip reading + parsing the request body. The handler receives `body: undefined`.
+   * Node drains any unconsumed body before the next keep-alive request. */
+  skipBodyParsing?: boolean;
   handler: RouteHandler<TParams, TQuery, TBody>;
 }
 
@@ -157,8 +162,14 @@ export class HttpServer {
           return reply.empty(405);
         }
 
-        const { handler, paramsSchema, querySchema, bodySchema, keepConnectionAlive } =
-          routeDefinition;
+        const {
+          handler,
+          paramsSchema,
+          querySchema,
+          bodySchema,
+          keepConnectionAlive,
+          skipBodyParsing,
+        } = routeDefinition;
 
         const params = this.parseRouteParams(route, url);
         const parsedParams = this.optionalSchema(paramsSchema, params);
@@ -176,7 +187,7 @@ export class HttpServer {
           return reply.text("Invalid query params", 400);
         }
 
-        const body = await getJsonBody(req);
+        const body = skipBodyParsing ? undefined : await getJsonBody(req);
         const parsedBody = this.optionalSchema(bodySchema, body);
 
         if (!parsedBody.success) {
@@ -225,9 +236,9 @@ export class HttpServer {
   }
 
   route<
-    TParams extends z.ZodFirstPartySchemaTypes = z.ZodUnknown,
-    TQuery extends z.ZodFirstPartySchemaTypes = z.ZodUnknown,
-    TBody extends z.ZodFirstPartySchemaTypes = z.ZodUnknown,
+    TParams extends AnyZodSchema = z.ZodUnknown,
+    TQuery extends AnyZodSchema = z.ZodUnknown,
+    TBody extends AnyZodSchema = z.ZodUnknown,
   >(path: `/${string}`, method: HttpMethod, definition: RouteDefinition<TParams, TQuery, TBody>) {
     this.routes[path] = {
       ...this.routes[path],
@@ -274,8 +285,8 @@ export class HttpServer {
   }
 
   private optionalSchema<
-    TSchema extends z.ZodFirstPartySchemaTypes | undefined,
-    TData extends TSchema extends z.ZodFirstPartySchemaTypes ? z.TypeOf<TSchema> : TData,
+    TSchema extends AnyZodSchema | undefined,
+    TData extends TSchema extends AnyZodSchema ? inferZodSchemaOutput<TSchema> : TData,
   >(
     schema: TSchema,
     data: TData
@@ -286,7 +297,7 @@ export class HttpServer {
       }
     | {
         success: true;
-        data: TSchema extends z.ZodFirstPartySchemaTypes ? z.infer<TSchema> : TData;
+        data: TSchema extends AnyZodSchema ? inferZodSchemaOutput<TSchema> : TData;
       } {
     if (!schema) {
       return { success: true, data };
@@ -298,7 +309,10 @@ export class HttpServer {
       return { success: false, error: parsed.error.message };
     }
 
-    return { success: true, data: parsed.data };
+    return {
+      success: true,
+      data: parsed.data as TSchema extends AnyZodSchema ? inferZodSchemaOutput<TSchema> : TData,
+    };
   }
 
   private parseQueryParams(url: string): Record<string, string> {
@@ -336,6 +350,7 @@ export class HttpServer {
 
   private findRoute(url: string): string | null {
     for (const route in this.routes) {
+      if (!Object.hasOwn(this.routes, route)) continue;
       const routeParts = route.split("/");
       const urlWithoutQueryParams = url.split("?")[0];
 

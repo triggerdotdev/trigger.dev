@@ -1,9 +1,9 @@
-import { conform, useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
+import { getFormProps, getInputProps, useForm } from "@conform-to/react";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { BookOpenIcon, ShieldCheckIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { ShieldExclamationIcon } from "@heroicons/react/24/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { Form, type MetaFunction, useActionData, useFetcher } from "@remix-run/react";
+import { Form, useActionData, useFetcher } from "@remix-run/react";
 import { type ActionFunction, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -48,13 +48,15 @@ import {
 import { requireUserId } from "~/services/session.server";
 import { docsPath, personalAccessTokensPath } from "~/utils/pathBuilder";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Personal Access Tokens | Trigger.dev`,
-    },
-  ];
-};
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Personal Access Tokens");
+
+// Shared between the create-token panel hint and the listing column
+// header tooltip so the cap is explained identically in both places.
+const MAX_ROLE_EXPLANATION =
+  "The token can act with up to this role. Your current role in each org is the actual ceiling. The token never grants permissions that are beyond your own user role.";
 
 // PATs aren't org-scoped, but the RBAC plugin's allRoles is org-keyed
 // (a plugin may also expose org-defined custom roles alongside the
@@ -90,9 +92,7 @@ async function loadSystemRolesForUser(userId: string) {
   // anything else would be a noisy create-time failure (or, with a
   // permissive fallback, a token bound to a role this org isn't
   // allowed to issue).
-  const availableIds = new Set(
-    (systemRoles ?? []).filter((r) => r.available).map((r) => r.id)
-  );
+  const availableIds = new Set((systemRoles ?? []).filter((r) => r.available).map((r) => r.id));
   const roles = allRoles.filter((r) => r.isSystem && availableIds.has(r.id));
 
   return {
@@ -106,7 +106,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
 
   try {
-    const [personalAccessTokens, { roles, userRoleId, orgId }] = await Promise.all([
+    const [personalAccessTokens, { roles, userRoleId, orgId: _orgId }] = await Promise.all([
       getValidPersonalAccessTokens(userId),
       loadSystemRolesForUser(userId),
     ]);
@@ -128,10 +128,25 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const defaultRoleId =
       userRoleId && assignableIds.has(userRoleId) ? userRoleId : lowestAssignable;
 
+    // The "Maximum role" column is a plugin concept — the OSS fallback
+    // has no TokenRole store, so only surface it when a plugin is
+    // installed. Tokens without a cap (legacy, or created when no
+    // plugin was present) render as "-".
+    const showMaxRole = await rbac.isUsingPlugin();
+    const tokensWithMaxRole = showMaxRole
+      ? await Promise.all(
+          personalAccessTokens.map(async (pat) => ({
+            ...pat,
+            maxRole: (await rbac.getTokenRole(pat.id))?.name ?? null,
+          }))
+        )
+      : personalAccessTokens.map((pat) => ({ ...pat, maxRole: null as string | null }));
+
     return typedjson({
-      personalAccessTokens,
+      personalAccessTokens: tokensWithMaxRole,
       roles,
       defaultRoleId,
+      showMaxRole,
     });
   } catch (error) {
     if (error instanceof Response) {
@@ -150,9 +165,9 @@ const CreateTokenSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("create"),
     tokenName: z
-      .string({ required_error: "You must enter a name" })
+      .string({ error: "You must enter a name" })
       .min(2, "Your name must be at least 2 characters long")
-      .max(50),
+      .max(50, "Your name must be 50 characters or less"),
     // Optional — when no RBAC plugin is installed the UI hides the
     // dropdown and submits no roleId; the action passes that through
     // and createPersonalAccessToken just doesn't write a TokenRole.
@@ -167,10 +182,10 @@ const CreateTokenSchema = z.discriminatedUnion("action", [
 export const action: ActionFunction = async ({ request }) => {
   const userId = await requireUserId(request);
   const formData = await request.formData();
-  const submission = parse(formData, { schema: CreateTokenSchema });
+  const submission = parseWithZod(formData, { schema: CreateTokenSchema });
 
-  if (!submission.value) {
-    return json(submission);
+  if (submission.status !== "success") {
+    return json(submission.reply());
   }
 
   switch (submission.value.action) {
@@ -199,7 +214,7 @@ export const action: ActionFunction = async ({ request }) => {
           roleId: submittedRoleId,
         });
 
-        return json({ ...submission, payload: { token: tokenResult } });
+        return json({ ...submission.reply(), payload: { token: tokenResult } });
       } catch (error: any) {
         return json({ errors: { body: error.message } }, { status: 400 });
       }
@@ -225,20 +240,23 @@ export const action: ActionFunction = async ({ request }) => {
 };
 
 export default function Page() {
-  const { personalAccessTokens, roles, defaultRoleId } = useTypedLoaderData<typeof loader>();
+  const { personalAccessTokens, roles, defaultRoleId, showMaxRole } =
+    useTypedLoaderData<typeof loader>();
 
   return (
     <PageContainer>
       <NavBar>
         <PageTitle title="Personal Access Tokens" />
         <PageAccessories>
-          <LinkButton
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("management/overview#personal-access-token-pat")}
-            variant="docs/small"
-          >
-            Personal Access Token docs
-          </LinkButton>
+          <WhenAgentUnavailable>
+            <LinkButton
+              LeadingIcon={BookOpenIcon}
+              to={docsPath("management/overview#personal-access-token-pat")}
+              variant="docs/small"
+            >
+              Personal Access Token docs
+            </LinkButton>
+          </WhenAgentUnavailable>
           <Dialog>
             <DialogTrigger asChild>
               <Button variant="primary/small">Create new token…</Button>
@@ -258,6 +276,9 @@ export default function Page() {
               <TableRow>
                 <TableHeaderCell>Name</TableHeaderCell>
                 <TableHeaderCell>Token</TableHeaderCell>
+                {showMaxRole && (
+                  <TableHeaderCell tooltip={MAX_ROLE_EXPLANATION}>Maximum role</TableHeaderCell>
+                )}
                 <TableHeaderCell>Created</TableHeaderCell>
                 <TableHeaderCell>Last accessed</TableHeaderCell>
                 <TableHeaderCell hiddenLabel>Delete</TableHeaderCell>
@@ -270,6 +291,7 @@ export default function Page() {
                     <TableRow key={personalAccessToken.id} className="group">
                       <TableCell>{personalAccessToken.name}</TableCell>
                       <TableCell>{personalAccessToken.obfuscatedToken}</TableCell>
+                      {showMaxRole && <TableCell>{personalAccessToken.maxRole ?? "-"}</TableCell>}
                       <TableCell>
                         <DateTime date={personalAccessToken.createdAt} />
                       </TableCell>
@@ -288,7 +310,7 @@ export default function Page() {
                   );
                 })
               ) : (
-                <TableBlankRow colSpan={5}>
+                <TableBlankRow colSpan={showMaxRole ? 6 : 5}>
                   <Paragraph
                     variant="base/bright"
                     className="flex items-center justify-center py-8"
@@ -320,9 +342,9 @@ function CreatePersonalAccessToken({
   const [form, { tokenName }] = useForm({
     id: "create-personal-access-token",
     // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission as any,
     onValidate({ formData }) {
-      return parse(formData, { schema: CreateTokenSchema });
+      return parseWithZod(formData, { schema: CreateTokenSchema });
     },
   });
 
@@ -349,6 +371,9 @@ function CreatePersonalAccessToken({
           </Callout>
           <ClipboardField
             secure
+            // 7-char "tr_pat_" prefix + 4 token chars, matching the tokens list display
+            secureRevealStart={11}
+            secureRevealEnd={4}
             value={token.token}
             variant={"secondary/medium"}
             icon={<ShieldExclamationIcon className="size-5 text-success" />}
@@ -356,14 +381,14 @@ function CreatePersonalAccessToken({
           />
         </div>
       ) : (
-        <fetcher.Form method="post" {...form.props}>
+        <fetcher.Form method="post" {...getFormProps(form)}>
           <input type="hidden" name="action" value="create" />
           {showRolePicker && <input type="hidden" name="roleId" value={selectedRoleId} />}
           <Fieldset className="mt-3">
             <InputGroup>
               <Label htmlFor={tokenName.id}>Name</Label>
               <Input
-                {...conform.input(tokenName, { type: "text" })}
+                {...getInputProps(tokenName, { type: "text" })}
                 placeholder="Name your Personal Access Token"
                 defaultValue=""
                 icon={ShieldCheckIcon}
@@ -373,7 +398,7 @@ function CreatePersonalAccessToken({
                 This will help you to identify your token. Tokens called "cli" are automatically
                 generated when you login with our CLI.
               </Hint>
-              <FormError id={tokenName.errorId}>{tokenName.error}</FormError>
+              <FormError id={tokenName.errorId}>{tokenName.errors}</FormError>
             </InputGroup>
 
             {showRolePicker && (
@@ -400,10 +425,7 @@ function CreatePersonalAccessToken({
                     ))
                   }
                 </Select>
-                <Hint>
-                  The token can act with up to this role. Your current role in each org is the
-                  actual ceiling — the token never grants more than you have.
-                </Hint>
+                <Hint>{MAX_ROLE_EXPLANATION}</Hint>
               </InputGroup>
             )}
 
@@ -429,12 +451,12 @@ function CreatePersonalAccessToken({
 function RevokePersonalAccessToken({ token }: { token: ObfuscatedPersonalAccessToken }) {
   const lastSubmission = useActionData();
 
-  const [form, { tokenId }] = useForm({
+  const [form, _fields] = useForm({
     id: "revoke-personal-access-token",
     // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission as any,
     onValidate({ formData }) {
-      return parse(formData, { schema: CreateTokenSchema });
+      return parseWithZod(formData, { schema: CreateTokenSchema });
     },
   });
 
@@ -444,7 +466,7 @@ function RevokePersonalAccessToken({ token }: { token: ObfuscatedPersonalAccessT
         <Dialog>
           <DialogTrigger
             asChild
-            className="size-6 rounded-sm p-1 text-error transition hover:bg-charcoal-700"
+            className="size-6 rounded-sm p-1 text-error transition hover:bg-background-raised"
           >
             <TrashIcon className="size-3" />
           </DialogTrigger>
@@ -456,7 +478,7 @@ function RevokePersonalAccessToken({ token }: { token: ObfuscatedPersonalAccessT
               </Paragraph>
               <FormButtons
                 confirmButton={
-                  <Form method="post" {...form.props}>
+                  <Form method="post" {...getFormProps(form)}>
                     <input type="hidden" name="action" value="revoke" />
                     <input type="hidden" name="tokenId" value={token.id} />
                     <Button type="submit" variant="danger/medium">

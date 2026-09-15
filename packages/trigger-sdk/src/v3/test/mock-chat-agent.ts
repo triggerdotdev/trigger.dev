@@ -1,30 +1,24 @@
 import type { UIMessage, UIMessageChunk } from "ai";
-import { resourceCatalog } from "@trigger.dev/core/v3";
-import type { LocalsKey } from "@trigger.dev/core/v3";
+import { resourceCatalog, sessionStreams } from "@trigger.dev/core/v3";
+import type { LocalsKey, SessionChannelIO, TranscriptSnapshotV2 } from "@trigger.dev/core/v3";
+import { runInMockTaskContext, type MockTaskContextOptions } from "@trigger.dev/core/v3/test";
 import {
-  runInMockTaskContext,
-  type MockTaskContextOptions,
-} from "@trigger.dev/core/v3/test";
-import {
+  __setSessionCloseImplForTests,
   __setSessionOpenImplForTests,
   __setSessionStartImplForTests,
 } from "../sessions.js";
 import {
+  __resetChatInputRouterForTests,
   __setReadChatSnapshotImplForTests,
   __setReplaySessionInTailImplForTests,
   __setReplaySessionOutTailImplForTests,
   __setWriteChatSnapshotImplForTests,
   type ChatSnapshotV1,
 } from "../ai.js";
-import {
-  createTestSessionHandle,
-  type TestSessionOutState,
-} from "./test-session-handle.js";
+import { createTestSessionHandle, type TestSessionOutState } from "./test-session-handle.js";
 
 /** Pre-seed locals before the agent's `run()` starts. */
-export type SetupLocals = (locals: {
-  set<T>(key: LocalsKey<T>, value: T): void;
-}) => void | Promise<void>;
+type SetupLocals = (locals: { set<T>(key: LocalsKey<T>, value: T): void }) => void | Promise<void>;
 
 // The slim wire payload shape used by chat.agent tasks. Kept loose here so we
 // don't import from the backend-only ai.ts module. At most ONE message per
@@ -107,7 +101,7 @@ export type MockChatAgentOptions = {
    *
    * See plan section B.3 for the boot orchestration spec.
    */
-  snapshot?: ChatSnapshotV1;
+  snapshot?: ChatSnapshotV1 | TranscriptSnapshotV2;
   /**
    * Set `payload.continuation = true` on the initial wire payload. Used
    * to simulate a continuation-run boot (a new run picking up after a
@@ -196,6 +190,17 @@ export type MockChatAgentHarness = {
   /** Send a custom action and wait for the next turn-complete. */
   sendAction(action: unknown): Promise<MockChatAgentTurn>;
 
+  /**
+   * Deliver a message mid-turn without waiting for it, the way the browser's
+   * steering path does. With a `pendingMessages` config the agent routes it into
+   * the steering queue for injection at the next step boundary; without one it
+   * buffers as the next turn.
+   *
+   * Send it while a turn is in flight — start the turn without awaiting it, then
+   * call this. Awaiting the turn first leaves nothing to steer.
+   */
+  sendPendingMessage(message: UIMessage): Promise<void>;
+
   /** Fire a stop signal. Does not wait for the turn — the task keeps running. */
   sendStop(message?: string): Promise<void>;
 
@@ -232,7 +237,7 @@ export type MockChatAgentHarness = {
    * Effective on the next run boot only. Calling mid-turn is a no-op
    * because the snapshot read happens once at run boot.
    */
-  seedSnapshot(snapshot: ChatSnapshotV1 | undefined): void;
+  seedSnapshot(snapshot: ChatSnapshotV1 | TranscriptSnapshotV2 | undefined): void;
 
   /**
    * Pre-seed `session.out` chunks for the next boot's replay. The runtime's
@@ -267,11 +272,46 @@ export type MockChatAgentHarness = {
   seedSessionInTail(messages: UIMessage[]): void;
 
   /**
+   * Append a `trigger: "close"` record to `session.in` — what the server does
+   * when a session is closed from outside (dashboard, `sessions.close()`, MCP).
+   * Resolves once the run has exited, so a test can assert the agent left its
+   * loop instead of waiting out the idle timeout.
+   */
+  sendClose(): Promise<void>;
+
+  /** Wait for the agent's run to exit (bounded, so a stuck loop fails the test). */
+  waitForExit(timeoutMs?: number): Promise<void>;
+
+  /**
+   * Every `sessions.close()` the agent made during this run, in order. A
+   * `chat.close()` produces exactly one entry.
+   */
+  getCloseCalls(): Array<{ sessionId: string; reason?: string }>;
+
+  /**
+   * Make the next `count` `sessions.close()` calls throw, to exercise the
+   * retry path. The calls are still recorded by {@link getCloseCalls}.
+   */
+  failNextCloseCalls(count: number): void;
+
+  /**
+   * Deliver a user message on the live `session.in` tail at an explicit
+   * seq_num, without waiting for a turn.
+   *
+   * `seedSessionInTail` only feeds the boot replay, so the two ways a record
+   * reaches a run — the boot's own read and the tail re-reading the same
+   * sequence — never coexist. Pairing them is what reproduces a record being
+   * answered twice, so a seq_num already handed to `seedSessionInTail`
+   * (`i + 1`) is the interesting argument.
+   */
+  deliverSessionInAtSeq(message: UIMessage, seqNum: number): Promise<void>;
+
+  /**
    * The most recently written snapshot, or `undefined` if no snapshot
    * has been written yet. Updated each time `writeChatSnapshot` is
    * invoked from the run loop's snapshot-write site (plan section B.6).
    */
-  getSnapshot(): ChatSnapshotV1 | undefined;
+  getSnapshot(): TranscriptSnapshotV2 | undefined;
 
   /**
    * Close the chat session cleanly. Sends `trigger: "close"` and awaits the
@@ -287,16 +327,23 @@ export type MockChatAgentHarness = {
   readonly allRawChunks: unknown[];
 };
 
-const CONTROL_CHUNK_TYPES = new Set([
-  "trigger:turn-complete",
-  "trigger:upgrade-required",
-]);
+const CONTROL_CHUNK_TYPES = new Set(["trigger:turn-complete", "trigger:upgrade-required"]);
 
 function isControlChunk(chunk: unknown): boolean {
   if (typeof chunk !== "object" || chunk === null) return false;
   const type = (chunk as { type?: string }).type;
   return typeof type === "string" && CONTROL_CHUNK_TYPES.has(type);
 }
+
+/**
+ * Highest `session.in` seqNum any harness has produced for a session id,
+ * keyed by `sessionId`. Production `session.in` is a durable S2 stream whose
+ * seqNums are monotonic across the runs of a chat; a fresh in-memory manager
+ * per `mockChatAgent` would otherwise restart at 0, so a continuation's
+ * follow-up message would collide with the resume floor and be dropped. This
+ * survives the per-run manager reset so continuation runs stay monotonic.
+ */
+const durableSessionInSeq = new Map<string, number>();
 
 /**
  * Create an offline test harness for a `chat.agent` task.
@@ -374,7 +421,12 @@ export function mockChatAgent(
 
   // Promise that resolves when the background task run() function returns.
   let taskFinished!: Promise<void>;
-  let sendSessionInput!: (sessionId: string, data: unknown) => Promise<void>;
+  let sendSessionInput!: (
+    sessionId: string,
+    data: unknown,
+    io?: SessionChannelIO,
+    metadata?: { id?: string; seqNum?: number }
+  ) => Promise<void>;
   let closeSessionInput: ((sessionId: string) => void) | undefined;
   let runSignal!: AbortController;
 
@@ -398,18 +450,22 @@ export function mockChatAgent(
   // `lastWrittenSnapshot` for harness consumers to assert via
   // `getSnapshot()`. Installed below alongside the session overrides;
   // cleared on close in the same finally block.
-  let seededSnapshot: ChatSnapshotV1 | undefined = options.snapshot;
-  let lastWrittenSnapshot: ChatSnapshotV1 | undefined;
+  let seededSnapshot: ChatSnapshotV1 | TranscriptSnapshotV2 | undefined = options.snapshot;
+  let lastWrittenSnapshot: TranscriptSnapshotV2 | undefined;
   let seededReplayChunks: UIMessageChunk[] = [];
   let seededReplayPartial: UIMessage | undefined;
   let seededSessionInMessages: UIMessage[] = [];
+  const closeCalls: Array<{ sessionId: string; reason?: string }> = [];
+  let failCloseCalls = 0;
 
-  __setReadChatSnapshotImplForTests(<T extends UIMessage>(_id: string) => {
-    return seededSnapshot as ChatSnapshotV1<T> | undefined;
-  });
-  __setWriteChatSnapshotImplForTests(<T extends UIMessage>(_id: string, snapshot: ChatSnapshotV1<T>) => {
-    lastWrittenSnapshot = snapshot as ChatSnapshotV1;
-  });
+  __resetChatInputRouterForTests();
+
+  __setReadChatSnapshotImplForTests(() => seededSnapshot);
+  __setWriteChatSnapshotImplForTests(
+    <T extends UIMessage>(_id: string, snapshot: TranscriptSnapshotV2<T>) => {
+      lastWrittenSnapshot = snapshot as TranscriptSnapshotV2;
+    }
+  );
 
   // Replay override: install a default that returns whatever
   // `seededReplayChunks` reduces to. `mockChatAgent` doesn't model the
@@ -432,15 +488,10 @@ export function mockChatAgent(
     } as never;
   });
 
-  // session.in tail override: each seeded UIMessage becomes a
-  // { message, metadata: undefined, seqNum: i+1 } entry. Mirrors the
-  // seq-num pattern from the out-tail stub so cursor-advance logic is
-  // exercised correctly. `metadata` is `undefined` for seeded users —
-  // the boot path falls back to `payload.metadata` for those.
   __setReplaySessionInTailImplForTests(async () => {
     return seededSessionInMessages.map((message, i) => ({
       message,
-      metadata: undefined,
+      metadata: clientData,
       seqNum: i + 1,
     })) as never;
   });
@@ -455,6 +506,25 @@ export function mockChatAgent(
   __setSessionOpenImplForTests((id) =>
     createTestSessionHandle(id, sessionOutState, () => runSignal?.signal)
   );
+
+  // Record `sessions.close()` calls instead of reaching the control plane, so
+  // a test can assert the agent actually closed the row (and with what reason).
+  __setSessionCloseImplForTests((sessionIdOrExternalId, body) => {
+    closeCalls.push({
+      sessionId: sessionIdOrExternalId,
+      ...(body?.reason ? { reason: body.reason } : {}),
+    });
+    if (failCloseCalls > 0) {
+      failCloseCalls--;
+      throw new Error("mockChatAgent: sessions.close() failure injected by the test");
+    }
+    return {
+      id: sessionIdOrExternalId,
+      externalId: sessionIdOrExternalId,
+      closedAt: new Date().toISOString(),
+      closedReason: body?.reason ?? null,
+    } as never;
+  });
 
   // Install the session start override so any test path that invokes
   // `sessions.start()` (typically through a server action shim like
@@ -487,83 +557,94 @@ export function mockChatAgent(
     };
   });
 
-  taskFinished = runInMockTaskContext(
-    async (drivers) => {
-      runSignal = new AbortController();
+  taskFinished = runInMockTaskContext(async (drivers) => {
+    runSignal = new AbortController();
 
-      // For `mode: "continuation"`, omit `trigger` from the wire payload —
-      // mirrors what the server's `ensureRunForSession` / `swapSessionRun`
-      // produces (the continuation overrides clear `trigger` so the SDK
-      // boot path falls into the continuation-wait branch instead of
-      // re-firing the basePayload's stale first-run trigger). `continuation:
-      // true` is set unconditionally for this mode so the boot path's
-      // continuation-wait condition matches.
-      const isContinuationMode = mode === "continuation";
-      const initialPayload: ChatWirePayload = {
-        chatId,
-        ...(isContinuationMode
-          ? { trigger: undefined as never, continuation: true }
-          : { trigger: mode }),
-        metadata: clientData,
-        ...(!isContinuationMode && options.continuation ? { continuation: true } : {}),
-        ...(options.previousRunId ? { previousRunId: options.previousRunId } : {}),
-        ...(options.headStartMessages ? { headStartMessages: options.headStartMessages } : {}),
-      };
+    // For `mode: "continuation"`, omit `trigger` from the wire payload —
+    // mirrors what the server's `ensureRunForSession` / `swapSessionRun`
+    // produces (the continuation overrides clear `trigger` so the SDK
+    // boot path falls into the continuation-wait branch instead of
+    // re-firing the basePayload's stale first-run trigger). `continuation:
+    // true` is set unconditionally for this mode so the boot path's
+    // continuation-wait condition matches.
+    const isContinuationMode = mode === "continuation";
+    const initialPayload: ChatWirePayload = {
+      chatId,
+      ...(isContinuationMode
+        ? { trigger: undefined as never, continuation: true }
+        : { trigger: mode }),
+      metadata: clientData,
+      ...(!isContinuationMode && options.continuation ? { continuation: true } : {}),
+      ...(options.previousRunId ? { previousRunId: options.previousRunId } : {}),
+      ...(options.headStartMessages ? { headStartMessages: options.headStartMessages } : {}),
+    };
 
-      sendSessionInput = drivers.sessions.in.send;
-      closeSessionInput = drivers.sessions.in.close;
-
-      // Record every chunk written to session.out, detect turn-complete.
-      const listener = (chunk: unknown) => {
-        allRawChunks.push(chunk);
-        if (!isControlChunk(chunk)) {
-          allChunks.push(chunk as UIMessageChunk);
+    const durableSeq = durableSessionInSeq.get(sessionId);
+    if (durableSeq !== undefined) {
+      sessionStreams.setLastSeqNum(sessionId, "in", durableSeq);
+    }
+    const rawSendSessionInput = drivers.sessions.in.send;
+    sendSessionInput = async (id, data, io, metadata) => {
+      await rawSendSessionInput(id, data, io, metadata);
+      const io2 = io ?? "in";
+      if (io2 === "in") {
+        const latest = sessionStreams.lastSeqNum(id, "in");
+        if (latest !== undefined) {
+          durableSessionInSeq.set(id, Math.max(durableSessionInSeq.get(id) ?? latest, latest));
         }
-        if (
-          typeof chunk === "object" &&
-          chunk !== null &&
-          (chunk as { type?: string }).type === "trigger:turn-complete"
-        ) {
-          const resolvers = turnCompleteResolvers;
-          turnCompleteResolvers = [];
-          for (const resolve of resolvers) resolve();
-        }
-      };
-      sessionOutState.listeners.add(listener);
-      const unsubscribe = () => sessionOutState.listeners.delete(listener);
-
-      if (options.setupLocals) {
-        await options.setupLocals({ set: drivers.locals.set });
       }
+    };
+    closeSessionInput = drivers.sessions.in.close;
 
-      harnessReadyResolve();
-
-      try {
-        if (process.env.TRIGGER_CHAT_TEST_DEBUG === "1") {
-          console.log("[mockChatAgent] Starting runFn with payload:", initialPayload);
-        }
-        await runFn(initialPayload, {
-          ctx: drivers.ctx,
-          signal: runSignal.signal,
-        });
-        if (process.env.TRIGGER_CHAT_TEST_DEBUG === "1") {
-          console.log("[mockChatAgent] runFn returned");
-        }
-      } catch (err) {
-        if (process.env.TRIGGER_CHAT_TEST_DEBUG === "1") {
-          console.log("[mockChatAgent] runFn threw:", err);
-        }
-        throw err;
-      } finally {
-        unsubscribe();
-        // Resolve any outstanding turn-complete waiters so callers don't hang
+    // Record every chunk written to session.out, detect turn-complete.
+    const listener = (chunk: unknown) => {
+      allRawChunks.push(chunk);
+      if (!isControlChunk(chunk)) {
+        allChunks.push(chunk as UIMessageChunk);
+      }
+      if (
+        typeof chunk === "object" &&
+        chunk !== null &&
+        (chunk as { type?: string }).type === "trigger:turn-complete"
+      ) {
         const resolvers = turnCompleteResolvers;
         turnCompleteResolvers = [];
         for (const resolve of resolvers) resolve();
       }
-    },
-    options.taskContext
-  )
+    };
+    sessionOutState.listeners.add(listener);
+    const unsubscribe = () => sessionOutState.listeners.delete(listener);
+
+    if (options.setupLocals) {
+      await options.setupLocals({ set: drivers.locals.set });
+    }
+
+    harnessReadyResolve();
+
+    try {
+      if (process.env.TRIGGER_CHAT_TEST_DEBUG === "1") {
+        console.log("[mockChatAgent] Starting runFn with payload:", initialPayload);
+      }
+      await runFn(initialPayload, {
+        ctx: drivers.ctx,
+        signal: runSignal.signal,
+      });
+      if (process.env.TRIGGER_CHAT_TEST_DEBUG === "1") {
+        console.log("[mockChatAgent] runFn returned");
+      }
+    } catch (err) {
+      if (process.env.TRIGGER_CHAT_TEST_DEBUG === "1") {
+        console.log("[mockChatAgent] runFn threw:", err);
+      }
+      throw err;
+    } finally {
+      unsubscribe();
+      // Resolve any outstanding turn-complete waiters so callers don't hang
+      const resolvers = turnCompleteResolvers;
+      turnCompleteResolvers = [];
+      for (const resolve of resolvers) resolve();
+    }
+  }, options.taskContext)
     .catch((err) => {
       // Propagate errors to pending turn waiters instead of dropping them
       const resolvers = turnCompleteResolvers;
@@ -575,24 +656,21 @@ export function mockChatAgent(
       // Always clear the test overrides, even if the task threw.
       __setSessionOpenImplForTests(undefined);
       __setSessionStartImplForTests(undefined);
+      __setSessionCloseImplForTests(undefined);
       __setReadChatSnapshotImplForTests(undefined);
       __setWriteChatSnapshotImplForTests(undefined);
       __setReplaySessionOutTailImplForTests(undefined);
       __setReplaySessionInTailImplForTests(undefined);
     });
 
-  const sendPayloadAndWait = async (
-    payload: ChatWirePayload
-  ): Promise<MockChatAgentTurn> => {
+  const sendPayloadAndWait = async (payload: ChatWirePayload): Promise<MockChatAgentTurn> => {
     await harnessReady;
     const before = allRawChunks.length;
     const turnComplete = waitForTurnComplete();
     await sendSessionInput(sessionId, { kind: "message", payload });
     await turnComplete;
     const rawChunks = allRawChunks.slice(before);
-    const chunks = rawChunks.filter(
-      (c) => !isControlChunk(c)
-    ) as UIMessageChunk[];
+    const chunks = rawChunks.filter((c) => !isControlChunk(c)) as UIMessageChunk[];
     return { chunks, rawChunks };
   };
 
@@ -634,6 +712,39 @@ export function mockChatAgent(
       });
     },
 
+    async sendPendingMessage(message) {
+      await harnessReady;
+
+      const seqBefore = sessionStreams.lastSeqNum(chatId, "in") ?? -1;
+
+      await sendSessionInput(sessionId, {
+        kind: "message",
+        payload: {
+          message,
+          chatId,
+          trigger: "submit-message",
+          metadata: clientData,
+        },
+      });
+
+      /**
+       * Wait for the record to be observable on the channel, not merely for the
+       * send call to return. A test that continues on the send alone is racing the
+       * append: the message can still be in flight when the step boundary runs, so
+       * the injection it was meant to trigger silently does not happen and the test
+       * passes while proving nothing.
+       */
+      const deadline = Date.now() + 5_000;
+      while ((sessionStreams.lastSeqNum(chatId, "in") ?? -1) <= seqBefore) {
+        if (Date.now() > deadline) {
+          throw new Error(
+            `sendPendingMessage: append for ${message.id} never landed on session.in`
+          );
+        }
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+    },
+
     async sendStop(message) {
       await harnessReady;
       await sendSessionInput(sessionId, { kind: "stop", message });
@@ -666,6 +777,41 @@ export function mockChatAgent(
       ]);
     },
 
+    async sendClose() {
+      await harnessReady;
+      await sendSessionInput(sessionId, {
+        kind: "message",
+        payload: {
+          chatId,
+          trigger: "close",
+        },
+      });
+      await harness.waitForExit();
+    },
+
+    async waitForExit(timeoutMs = 2000) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timedOut = new Promise<"timeout">((resolve) => {
+        timer = setTimeout(() => resolve("timeout"), timeoutMs);
+      });
+      try {
+        const result = await Promise.race([taskFinished.catch(() => "done" as const), timedOut]);
+        if (result === "timeout") {
+          throw new Error(`mockChatAgent: run did not exit within ${timeoutMs}ms`);
+        }
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+    },
+
+    getCloseCalls() {
+      return [...closeCalls];
+    },
+
+    failNextCloseCalls(count) {
+      failCloseCalls = count;
+    },
+
     seedSnapshot(snapshot) {
       seededSnapshot = snapshot;
     },
@@ -680,6 +826,21 @@ export function mockChatAgent(
 
     seedSessionInTail(messages) {
       seededSessionInMessages = messages;
+      // The seeded tail occupies seqNums 1..n of the channel, so anything sent
+      // live afterwards has to continue above it.
+      if (messages.length > 0) {
+        sessionStreams.setLastSeqNum(sessionId, "in", messages.length);
+      }
+    },
+
+    async deliverSessionInAtSeq(message, seqNum) {
+      await harnessReady;
+      await sendSessionInput(
+        sessionId,
+        { kind: "message", payload: { chatId, trigger: "submit-message", message } },
+        "in",
+        { seqNum }
+      );
     },
 
     getSnapshot() {
@@ -745,7 +906,9 @@ export function mockChatAgent(
 async function reduceChunksToMessages(chunks: UIMessageChunk[]): Promise<UIMessage[]> {
   if (chunks.length === 0) return [];
   const aiModule = (await import("ai")) as {
-    readUIMessageStream?: (args: { stream: ReadableStream<UIMessageChunk> }) => AsyncIterable<UIMessage>;
+    readUIMessageStream?: (args: {
+      stream: ReadableStream<UIMessageChunk>;
+    }) => AsyncIterable<UIMessage>;
     cleanupAbortedParts?: (msg: UIMessage) => UIMessage;
   };
   const readUIMessageStream = aiModule.readUIMessageStream;

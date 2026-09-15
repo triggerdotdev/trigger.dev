@@ -1,20 +1,24 @@
-import { env } from "~/env.server";
-import { parse } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { Form, useLocation, useNavigation, useSubmit } from "@remix-run/react";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { stringifyIO, timeoutError, WaitpointTokenStatus } from "@trigger.dev/core/v3";
+import type { WaitpointTokenStatus } from "@trigger.dev/core/v3";
+import { stringifyIO, timeoutError } from "@trigger.dev/core/v3";
 import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import type { Waitpoint } from "@trigger.dev/database";
-import { useCallback, useRef } from "react";
+import { useRef } from "react";
 import { z } from "zod";
 import { AnimatedHourglassIcon } from "~/assets/icons/AnimatedHourglassIcon";
 import { JSONEditor } from "~/components/code/JSONEditor";
 import { Button } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { SpinnerWhite } from "~/components/primitives/Spinner";
 import { InfoIconTooltip } from "~/components/primitives/Tooltip";
 import { LiveCountdown } from "~/components/runs/v3/LiveTimer";
 import { $replica } from "~/db.server";
+import { runStore } from "~/v3/runStore.server";
+import { env } from "~/env.server";
+import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
@@ -22,10 +26,8 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { processWaitpointCompletionPacket } from "~/runEngine/concerns/waitpointCompletionPacket.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
-import { EnvironmentParamSchema, ProjectParamSchema, v3RunsPath } from "~/utils/pathBuilder";
+import { EnvironmentParamSchema, v3RunsPath } from "~/utils/pathBuilder";
 import { engine } from "~/v3/runEngine.server";
-import { SpinnerWhite } from "~/components/primitives/Spinner";
-import { useEnvironment } from "~/hooks/useEnvironment";
 
 const CompleteWaitpointFormData = z.discriminatedUnion("type", [
   z.object({
@@ -51,10 +53,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const { organizationSlug, projectParam, envParam, waitpointFriendlyId } = Params.parse(params);
 
   const formData = await request.formData();
-  const submission = parse(formData, { schema: CompleteWaitpointFormData });
+  const submission = parseWithZod(formData, { schema: CompleteWaitpointFormData });
 
-  if (!submission.value) {
-    return json(submission);
+  if (submission.status !== "success") {
+    return json(submission.reply());
   }
 
   try {
@@ -77,19 +79,41 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       throw new Error("Project not found");
     }
 
+    const environment = await findEnvironmentBySlug(project.id, envParam, userId);
+    if (!environment) {
+      return redirectWithErrorMessage(
+        submission.value.failureRedirect,
+        request,
+        "No waitpoint found"
+      );
+    }
+
     const waitpointId = WaitpointId.toId(waitpointFriendlyId);
 
-    const waitpoint = await $replica.waitpoint.findFirst({
+    let waitpoint = await runStore.findWaitpoint({
       select: {
-        projectId: true,
-        environmentId: true,
+        id: true,
       },
       where: {
         id: waitpointId,
+        projectId: project.id,
+        environmentId: environment.id,
       },
     });
+    if (!waitpoint) {
+      // Read-your-writes: a just-minted token may not have replicated. Re-read the owning primary
+      // before the auth guard / "No waitpoint found" (mirrors the token complete/callback routes).
+      waitpoint = await runStore.findWaitpointOnPrimary({
+        select: { id: true },
+        where: {
+          id: waitpointId,
+          projectId: project.id,
+          environmentId: environment.id,
+        },
+      });
+    }
 
-    if (waitpoint?.projectId !== project.id) {
+    if (!waitpoint) {
       return redirectWithErrorMessage(
         submission.value.failureRedirect,
         request,
@@ -99,7 +123,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
     switch (submission.value.type) {
       case "DATETIME": {
-        const result = await engine.completeWaitpoint({
+        const _result = await engine.completeWaitpoint({
           id: waitpointId,
         });
 
@@ -112,7 +136,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       case "MANUAL": {
         if (submission.value.isTimeout) {
           try {
-            const result = await engine.completeWaitpoint({
+            const _result = await engine.completeWaitpoint({
               id: waitpointId,
               output: {
                 type: "application/json",
@@ -126,7 +150,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
               request,
               "Waitpoint timed out"
             );
-          } catch (e) {
+          } catch (_e) {
             return redirectWithErrorMessage(
               submission.value.failureRedirect,
               request,
@@ -147,23 +171,6 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             );
           }
 
-          const environment = await findEnvironmentBySlug(project.id, envParam, userId);
-          if (!environment) {
-            return redirectWithErrorMessage(
-              submission.value.failureRedirect,
-              request,
-              "Environment not found"
-            );
-          }
-
-          if (environment.id !== waitpoint.environmentId) {
-            return redirectWithErrorMessage(
-              submission.value.failureRedirect,
-              request,
-              "No waitpoint found"
-            );
-          }
-
           const data = submission.value.payload ? JSON.parse(submission.value.payload) : {};
           const stringifiedData = await stringifyIO(data);
           const finalData = await processWaitpointCompletionPacket(
@@ -172,7 +179,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             `${WaitpointId.toFriendlyId(waitpointId)}/token`
           );
 
-          const result = await engine.completeWaitpoint({
+          const _result = await engine.completeWaitpoint({
             id: waitpointId,
             output: finalData.data
               ? { type: finalData.dataType, value: finalData.data, isError: false }
@@ -184,7 +191,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             request,
             "Waitpoint completed"
           );
-        } catch (e) {
+        } catch (_e) {
           return redirectWithErrorMessage(
             submission.value.failureRedirect,
             request,
@@ -242,7 +249,9 @@ function CompleteDateTimeWaitpointForm({
   const project = useProject();
   const environment = useEnvironment();
 
-  const timeToComplete = waitpoint.completedAfter.getTime() - Date.now();
+  // oxlint-disable-next-line react/purity -- This form intentionally snapshots wall-clock time for its deadline UI.
+  const now = Date.now();
+  const timeToComplete = waitpoint.completedAfter.getTime() - now;
   if (timeToComplete < 0) {
     return (
       <div className="flex items-center justify-center">
@@ -276,7 +285,7 @@ function CompleteDateTimeWaitpointForm({
           <div className="flex items-center gap-1">
             <AnimatedHourglassIcon
               className="text-dimmed-dimmed size-4"
-              delay={(waitpoint.completedAfter.getMilliseconds() - Date.now()) / 1000}
+              delay={(waitpoint.completedAfter.getMilliseconds() - now) / 1000}
             />
             <span className="mt-0.5 ">
               <LiveCountdown endTime={waitpoint.completedAfter} />
@@ -311,84 +320,80 @@ function CompleteManualWaitpointForm({ waitpoint }: { waitpoint: { id: string } 
   const currentJson = useRef<string>("{\n\n}");
   const formAction = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/waitpoints/${waitpoint.id}/complete`;
 
-  const submitForm = useCallback(
-    (e: React.FormEvent<HTMLFormElement>) => {
-      const formData = new FormData(e.currentTarget);
-      const data: Record<string, string> = {
-        type: formData.get("type") as string,
-        failureRedirect: formData.get("failureRedirect") as string,
-        successRedirect: formData.get("successRedirect") as string,
-      };
+  const submitForm = (e: React.FormEvent<HTMLFormElement>) => {
+    const formData = new FormData(e.currentTarget);
+    const data: Record<string, string> = {
+      type: formData.get("type") as string,
+      failureRedirect: formData.get("failureRedirect") as string,
+      successRedirect: formData.get("successRedirect") as string,
+    };
 
-      data.payload = currentJson.current;
+    data.payload = currentJson.current;
 
-      submit(data, {
-        action: formAction,
-        method: "post",
-      });
-      e.preventDefault();
-    },
-    [currentJson]
-  );
+    submit(data, {
+      action: formAction,
+      method: "post",
+    });
+    e.preventDefault();
+  };
 
   return (
-    <>
-      <Form
-        action={formAction}
-        method="post"
-        onSubmit={(e) => submitForm(e)}
-        className="grid h-full max-h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden border-t border-grid-bright"
-      >
-        <input type="hidden" name="type" value={"MANUAL"} />
-        <input
-          type="hidden"
-          name="successRedirect"
-          value={`${location.pathname}${location.search}`}
+    <Form
+      action={formAction}
+      method="post"
+      onSubmit={(e) => submitForm(e)}
+      className="grid h-full max-h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden border-t border-grid-bright"
+    >
+      <input type="hidden" name="type" value={"MANUAL"} />
+      <input
+        type="hidden"
+        name="successRedirect"
+        value={`${location.pathname}${location.search}`}
+      />
+      <input
+        type="hidden"
+        name="failureRedirect"
+        value={`${location.pathname}${location.search}`}
+      />
+      <div className="mx-3 flex items-center gap-1">
+        <Paragraph variant="small/bright">Manually complete this waitpoint</Paragraph>
+        <InfoIconTooltip
+          content={
+            "This is will immediately complete this waitpoint with the payload you specify. This is useful during development for testing."
+          }
+          contentClassName="normal-case tracking-normal max-w-xs"
         />
-        <input
-          type="hidden"
-          name="failureRedirect"
-          value={`${location.pathname}${location.search}`}
-        />
-        <div className="mx-3 flex items-center gap-1">
-          <Paragraph variant="small/bright">Manually complete this waitpoint</Paragraph>
-          <InfoIconTooltip
-            content={
-              "This is will immediately complete this waitpoint with the payload you specify. This is useful during development for testing."
-            }
-            contentClassName="normal-case tracking-normal max-w-xs"
+      </div>
+      <div className="overflow-y-auto bg-background-deep scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+        <div className="max-h-[70vh] min-h-40 overflow-y-auto bg-background-deep scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+          <JSONEditor
+            autoFocus
+            // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative route integration outside React state.
+            defaultValue={currentJson.current}
+            readOnly={false}
+            basicSetup
+            onChange={(v) => {
+              currentJson.current = v;
+            }}
+            showClearButton={false}
+            showCopyButton={false}
+            height="100%"
+            min-height="100%"
+            max-height="100%"
           />
         </div>
-        <div className="overflow-y-auto bg-charcoal-900 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-          <div className="max-h-[70vh] min-h-40 overflow-y-auto bg-charcoal-900 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-            <JSONEditor
-              autoFocus
-              defaultValue={currentJson.current}
-              readOnly={false}
-              basicSetup
-              onChange={(v) => {
-                currentJson.current = v;
-              }}
-              showClearButton={false}
-              showCopyButton={false}
-              height="100%"
-              min-height="100%"
-              max-height="100%"
-            />
-          </div>
-        </div>
-        <div className="flex items-center justify-end gap-2 border-t border-grid-dimmed bg-background-dimmed px-2">
-          <Button
-            variant="secondary/medium"
-            type="submit"
-            disabled={isLoading}
-            LeadingIcon={isLoading ? SpinnerWhite : undefined}
-          >
-            {isLoading ? "Completing…" : "Complete waitpoint"}
-          </Button>
-        </div>
-      </Form>
-    </>
+      </div>
+      <div className="flex items-center justify-end gap-2 border-t border-grid-dimmed bg-background-dimmed px-2">
+        <Button
+          variant="secondary/medium"
+          type="submit"
+          disabled={isLoading}
+          LeadingIcon={isLoading ? SpinnerWhite : undefined}
+        >
+          {isLoading ? "Completing…" : "Complete waitpoint"}
+        </Button>
+      </div>
+    </Form>
   );
 }
 

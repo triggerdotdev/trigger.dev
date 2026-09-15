@@ -25,7 +25,7 @@ export function TestSidebarTabs({
       onValueChange={onTabChange}
       className="flex h-full min-h-0 flex-col overflow-hidden pt-1"
     >
-      <div className="h-fit overflow-x-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="h-fit overflow-x-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <ClientTabsList variant="underline" className="mx-3 shrink-0">
           <ClientTabsTrigger
             value="options"
@@ -57,19 +57,19 @@ export function TestSidebarTabs({
       </div>
       <ClientTabsContent
         value="options"
-        className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
       >
         {optionsContent}
       </ClientTabsContent>
       <ClientTabsContent
         value="ai"
-        className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
       >
         <div className="min-w-64 p-3">{aiContent}</div>
       </ClientTabsContent>
       <ClientTabsContent
         value="schema"
-        className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
       >
         <div className="min-w-64 p-3">{schemaContent}</div>
       </ClientTabsContent>

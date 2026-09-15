@@ -1,0 +1,886 @@
+// Cross-DB WRITE ATOMICITY against the REAL dedicated split topology.
+//
+// Under the run-ops split, several engine operations that were atomic-by-`prisma.$transaction` in
+// single-DB make TWO distinct RunStore writes (e.g. startAttempt + createExecutionSnapshot, or
+// promotePendingVersionRuns + createExecutionSnapshot). `RoutingRunStore` routes each write to its
+// owning store and NEVER threads the caller's control-plane `tx` into a sub-store (for BOTH
+// residencies) — so the two writes execute as independent auto-commit statements on the owning DB,
+// OUTSIDE any shared transaction. A crash between them leaves partial state (a run EXECUTING with no
+// matching snapshot; promoted-but-no-snapshot).
+//
+// `heteroRunOpsPostgresTest` gives the REAL production split: prisma17 = a real `RunOpsPrismaClient`
+// over the @internal/run-ops-database SUBSET schema (#new), prisma14 = the full control-plane schema on
+// a SEPARATE physical PG container (#legacy). No mocks.
+//
+// The first test EMPIRICALLY DEMONSTRATES the regression (two un-wrapped routed writes persist partial
+// state on a mid-pair failure). The remaining tests prove `RoutingRunStore.runInTransaction(runId, fn)`
+// wraps the co-resident multi-write unit in ONE `#new` transaction so a failure between the two writes
+// rolls BOTH back — no partial state.
+
+import { heteroRunOpsPostgresTest } from "@internal/testcontainers";
+import type { PrismaClient } from "@trigger.dev/database";
+import type { RunOpsPrismaClient } from "@internal/run-ops-database";
+import { describe, expect } from "vitest";
+import { PostgresRunStore } from "./PostgresRunStore.js";
+import { RoutingRunStore } from "./runOpsStore.js";
+import type { CreateRunInput, RunStore, RunStoreSchemaVariant } from "./types.js";
+
+type AnyClient = PrismaClient | RunOpsPrismaClient;
+
+// ownerEngine classifies by the version char: no marker → cuid → LEGACY, v1 body → run-ops id → NEW.
+const CUID_25 = "c".repeat(25); // → LEGACY (#legacy / control-plane DB, full schema)
+const NEW_ID_26 = "k".repeat(24) + "01"; // → NEW (#new / dedicated run-ops DB, subset schema)
+
+async function seedEnvironment(
+  prisma: AnyClient,
+  schemaVariant: RunStoreSchemaVariant,
+  suffix: string
+) {
+  if (schemaVariant === "dedicated") {
+    return {
+      organization: { id: `org_${suffix}` },
+      project: { id: `proj_${suffix}` },
+      environment: { id: `env_${suffix}` },
+    };
+  }
+  const organization = await (prisma as PrismaClient).organization.create({
+    data: { title: `Org ${suffix}`, slug: `org-${suffix}` },
+  });
+  const project = await (prisma as PrismaClient).project.create({
+    data: {
+      name: `Project ${suffix}`,
+      slug: `project-${suffix}`,
+      externalRef: `proj_${suffix}`,
+      organizationId: organization.id,
+    },
+  });
+  const environment = await (prisma as PrismaClient).runtimeEnvironment.create({
+    data: {
+      type: "DEVELOPMENT",
+      slug: "dev",
+      projectId: project.id,
+      organizationId: organization.id,
+      apiKey: `tr_dev_${suffix}`,
+      pkApiKey: `pk_dev_${suffix}`,
+      shortcode: `short_${suffix}`,
+    },
+  });
+  return { organization, project, environment };
+}
+
+function buildCreateRunInput(params: {
+  runId: string;
+  friendlyId: string;
+  organizationId: string;
+  projectId: string;
+  runtimeEnvironmentId: string;
+}): CreateRunInput {
+  return {
+    data: {
+      id: params.runId,
+      engine: "V2",
+      status: "PENDING",
+      friendlyId: params.friendlyId,
+      runtimeEnvironmentId: params.runtimeEnvironmentId,
+      environmentType: "DEVELOPMENT",
+      organizationId: params.organizationId,
+      projectId: params.projectId,
+      taskIdentifier: "my-task",
+      payload: '{"hello":"world"}',
+      payloadType: "application/json",
+      traceContext: { trace: "ctx" },
+      traceId: `trace_${params.runId}`,
+      spanId: `span_${params.runId}`,
+      runTags: [],
+      queue: "task/my-task",
+      isTest: false,
+      taskEventStore: "taskEvent",
+      depth: 0,
+      createdAt: new Date("2024-01-01T00:00:00.000Z"),
+    },
+    snapshot: {
+      engine: "V2",
+      executionStatus: "RUN_CREATED",
+      description: "Run was created",
+      runStatus: "PENDING",
+      environmentId: params.runtimeEnvironmentId,
+      environmentType: "DEVELOPMENT",
+      projectId: params.projectId,
+      organizationId: params.organizationId,
+    },
+  };
+}
+
+function makeDedicatedStore(prisma17: RunOpsPrismaClient) {
+  return new PostgresRunStore({
+    prisma: prisma17 as never,
+    readOnlyPrisma: prisma17 as never,
+    schemaVariant: "dedicated",
+  });
+}
+
+function makeLegacyStore(prisma14: PrismaClient) {
+  return new PostgresRunStore({
+    prisma: prisma14,
+    readOnlyPrisma: prisma14,
+    schemaVariant: "legacy",
+  });
+}
+
+function makeSplitRouter(prisma14: PrismaClient, prisma17: RunOpsPrismaClient) {
+  const legacyStore = makeLegacyStore(prisma14);
+  const newStore = makeDedicatedStore(prisma17);
+  return {
+    router: new RoutingRunStore({ new: newStore, legacy: legacyStore }),
+    legacyStore,
+    newStore,
+  };
+}
+
+// Seed a run-ops run on #new (its create nests the initial RUN_CREATED snapshot) and return its ids.
+async function seedRunOpsRun(
+  router: RunStore,
+  prisma17: RunOpsPrismaClient,
+  suffix: string
+): Promise<{ runId: string; env: { project: { id: string }; environment: { id: string } } }> {
+  const env = await seedEnvironment(prisma17, "dedicated", suffix);
+  const runId = `run_${NEW_ID_26}`;
+  await router.createRun(
+    buildCreateRunInput({
+      runId,
+      friendlyId: `run_${suffix}`,
+      organizationId: env.organization.id,
+      projectId: env.project.id,
+      runtimeEnvironmentId: env.environment.id,
+    })
+  );
+  return { runId, env };
+}
+
+const ATTEMPT_SELECT = { id: true, status: true, attemptNumber: true } as const;
+
+function snapshotInput(
+  runId: string,
+  env: { project: { id: string }; environment: { id: string } }
+) {
+  return {
+    run: { id: runId, status: "EXECUTING" as const, attemptNumber: 1 },
+    snapshot: { executionStatus: "EXECUTING" as const, description: "Attempt created, starting" },
+    environmentId: env.environment.id,
+    environmentType: "DEVELOPMENT" as const,
+    projectId: env.project.id,
+    organizationId: env.project.id,
+  };
+}
+
+describe("cross-DB write atomicity (startAttempt + createExecutionSnapshot)", () => {
+  // ---------------------------------------------------------------------------------------------
+  // RED demonstration: the BROKEN behaviour. Two separate routed writes (as the engine made them
+  // before the fix) on a run-ops run leave PARTIAL state on a mid-pair failure — the run is EXECUTING
+  // but no EXECUTING snapshot exists. This is the regression vs single-DB.
+  // ---------------------------------------------------------------------------------------------
+  heteroRunOpsPostgresTest(
+    "BROKEN baseline: two un-wrapped routed writes persist partial state on a mid-pair failure",
+    async ({ prisma14, prisma17 }) => {
+      const { router } = makeSplitRouter(prisma14, prisma17);
+      const { runId, env } = await seedRunOpsRun(router, prisma17, "broken_atomic");
+
+      // Simulate the OLD engine pattern: startAttempt then a failure BEFORE createExecutionSnapshot,
+      // each as an independent routed (auto-commit) write — no shared transaction.
+      await expect(
+        (async () => {
+          await router.startAttempt(
+            runId,
+            { attemptNumber: 1, executedAt: new Date(), isWarmStart: false },
+            { select: ATTEMPT_SELECT }
+          );
+          throw new Error("boom between writes");
+          // eslint-disable-next-line no-unreachable
+          await router.createExecutionSnapshot(snapshotInput(runId, env));
+        })()
+      ).rejects.toThrow("boom between writes");
+
+      // The first write was auto-committed: the run is EXECUTING but there is NO EXECUTING snapshot.
+      const run = await prisma17.taskRun.findFirstOrThrow({ where: { id: runId } });
+      expect(run.status).toBe("EXECUTING"); // partial state PERSISTED — the bug
+      const execSnap = await prisma17.taskRunExecutionSnapshot.findFirst({
+        where: { runId, executionStatus: "EXECUTING" },
+      });
+      expect(execSnap).toBeNull(); // no snapshot → run executing without a snapshot
+    }
+  );
+
+  // ---------------------------------------------------------------------------------------------
+  // FIX: runInTransaction wraps the co-resident multi-write unit in ONE #new transaction. A failure
+  // BETWEEN the two writes rolls the FIRST write back — no partial state.
+  // ---------------------------------------------------------------------------------------------
+  heteroRunOpsPostgresTest(
+    "runInTransaction rolls back startAttempt when a failure is injected before the snapshot write (run-ops id → #new)",
+    async ({ prisma14, prisma17 }) => {
+      const { router } = makeSplitRouter(prisma14, prisma17);
+      const { runId, env } = await seedRunOpsRun(router, prisma17, "rollback_new");
+
+      await expect(
+        router.runInTransaction(runId, async (store, tx) => {
+          await store.startAttempt(
+            runId,
+            { attemptNumber: 1, executedAt: new Date(), isWarmStart: false },
+            { select: ATTEMPT_SELECT },
+            tx
+          );
+          // Inject the failure AFTER the first write, BEFORE the snapshot write.
+          throw new Error("boom between writes");
+          // eslint-disable-next-line no-unreachable
+          await store.createExecutionSnapshot(snapshotInput(runId, env), tx);
+        })
+      ).rejects.toThrow("boom between writes");
+
+      // Both writes rolled back: run is still PENDING and no EXECUTING snapshot exists.
+      const run = await prisma17.taskRun.findFirstOrThrow({ where: { id: runId } });
+      expect(run.status).toBe("PENDING");
+      expect(run.attemptNumber).toBeNull();
+      const execSnap = await prisma17.taskRunExecutionSnapshot.findFirst({
+        where: { runId, executionStatus: "EXECUTING" },
+      });
+      expect(execSnap).toBeNull();
+    }
+  );
+
+  heteroRunOpsPostgresTest(
+    "runInTransaction commits BOTH writes atomically on success (run-ops id → #new)",
+    async ({ prisma14, prisma17 }) => {
+      const { router } = makeSplitRouter(prisma14, prisma17);
+      const { runId, env } = await seedRunOpsRun(router, prisma17, "commit_new");
+
+      const result = await router.runInTransaction(runId, async (store, tx) => {
+        const run = await store.startAttempt(
+          runId,
+          { attemptNumber: 1, executedAt: new Date(), isWarmStart: false },
+          { select: ATTEMPT_SELECT },
+          tx
+        );
+        const snapshot = await store.createExecutionSnapshot(snapshotInput(runId, env), tx);
+        return { run, snapshot };
+      });
+
+      expect(result.run.status).toBe("EXECUTING");
+      expect(result.snapshot.executionStatus).toBe("EXECUTING");
+
+      // Both persisted on #new.
+      const run = await prisma17.taskRun.findFirstOrThrow({ where: { id: runId } });
+      expect(run.status).toBe("EXECUTING");
+      expect(run.attemptNumber).toBe(1);
+      const execSnap = await prisma17.taskRunExecutionSnapshot.findFirst({
+        where: { runId, executionStatus: "EXECUTING" },
+      });
+      expect(execSnap).not.toBeNull();
+    }
+  );
+
+  // The same atomic guarantee for a cuid run on #legacy — the owning store is #legacy and the inner
+  // writes share its transaction.
+  heteroRunOpsPostgresTest(
+    "runInTransaction rolls back BOTH writes on a cuid run (#legacy)",
+    async ({ prisma14, prisma17 }) => {
+      const { router } = makeSplitRouter(prisma14, prisma17);
+      const env = await seedEnvironment(prisma14, "legacy", "rollback_leg");
+      const runId = `run_${CUID_25}`;
+      await router.createRun(
+        buildCreateRunInput({
+          runId,
+          friendlyId: `run_rollback_leg`,
+          organizationId: env.organization.id,
+          projectId: env.project.id,
+          runtimeEnvironmentId: env.environment.id,
+        })
+      );
+
+      await expect(
+        router.runInTransaction(runId, async (store, tx) => {
+          await store.startAttempt(
+            runId,
+            { attemptNumber: 1, executedAt: new Date(), isWarmStart: false },
+            { select: ATTEMPT_SELECT },
+            tx
+          );
+          throw new Error("boom between writes");
+        })
+      ).rejects.toThrow("boom between writes");
+
+      const run = await prisma14.taskRun.findFirstOrThrow({ where: { id: runId } });
+      expect(run.status).toBe("PENDING");
+      expect(run.attemptNumber).toBeNull();
+    }
+  );
+});
+
+// A run's blocking edges may straddle both DBs mid-drain, so clearBlockingWaitpoints routes the
+// taskRunId-keyed delete through the both-stores fan-out. The caller's control-plane tx is NEVER
+// threaded into either leg (e.g. attemptFailed passes its base client): each leg deletes on its own
+// store's client, so the edges are removed independently of whether the caller's tx commits.
+async function seedLegacyBlockingEdge(
+  prisma14: PrismaClient,
+  env: { project: { id: string }; environment: { id: string } },
+  runId: string,
+  suffix: string
+): Promise<void> {
+  const waitpoint = await prisma14.waitpoint.create({
+    data: {
+      friendlyId: `wp_${suffix}`,
+      type: "MANUAL",
+      status: "PENDING",
+      idempotencyKey: `idem_${suffix}`,
+      userProvidedIdempotencyKey: false,
+      projectId: env.project.id,
+      environmentId: env.environment.id,
+    },
+  });
+  await prisma14.taskRunWaitpoint.create({
+    data: { taskRunId: runId, waitpointId: waitpoint.id, projectId: env.project.id },
+  });
+}
+
+describe("fan-out deleteManyTaskRunWaitpoints never threads the caller's tx into a sub-store", () => {
+  // The routed delete runs on each store's OWN client, outside the caller's control-plane tx, so it
+  // commits even though the caller's tx rolls back — proving the tx was not threaded through.
+  heteroRunOpsPostgresTest(
+    "deletes the #legacy edge even when the caller's control-plane tx rolls back",
+    async ({ prisma14, prisma17 }) => {
+      const { router } = makeSplitRouter(prisma14, prisma17);
+      const env = await seedEnvironment(prisma14, "legacy", "del_tx_rb");
+      const runId = `run_${CUID_25}`;
+      await router.createRun(
+        buildCreateRunInput({
+          runId,
+          friendlyId: "run_del_tx_rb",
+          organizationId: env.organization.id,
+          projectId: env.project.id,
+          runtimeEnvironmentId: env.environment.id,
+        })
+      );
+      await seedLegacyBlockingEdge(prisma14, env, runId, "del_tx_rb");
+
+      await expect(
+        prisma14.$transaction(async (tx) => {
+          await router.deleteManyTaskRunWaitpoints({ where: { taskRunId: runId } }, tx);
+          throw new Error("rollback");
+        })
+      ).rejects.toThrow("rollback");
+
+      // The edge is gone: the routed delete auto-committed on the legacy store's own client and was
+      // never enrolled in the caller's (rolled-back) transaction.
+      const remaining = await prisma14.taskRunWaitpoint.count({ where: { taskRunId: runId } });
+      expect(remaining).toBe(0);
+    }
+  );
+});
+
+// createExecutionSnapshot writes the snapshot row and its completed-waitpoint join rows. These MUST
+// commit together: with the flag off, `/snapshots/since` is served from a lagging read replica, so a
+// snapshot that commits before its `_completedWaitpoints` rows can be read waitpoint-less, and the
+// runner's EXECUTING branch no-ops on an empty completedWaitpoints -> the resume is lost -> hang.
+describe("createExecutionSnapshot writes the snapshot and its completed-waitpoint links atomically", () => {
+  heteroRunOpsPostgresTest(
+    "rolls the snapshot back if the completed-waitpoint insert fails (no waitpoint-less snapshot persists)",
+    async ({ prisma14 }) => {
+      const legacy = makeLegacyStore(prisma14);
+      const env = await seedEnvironment(prisma14, "legacy", "ces_atomic");
+      const runId = `run_${CUID_25}`;
+      await legacy.createRun(
+        buildCreateRunInput({
+          runId,
+          friendlyId: "run_ces_atomic",
+          organizationId: env.organization.id,
+          projectId: env.project.id,
+          runtimeEnvironmentId: env.environment.id,
+        })
+      );
+      const waitpoint = await prisma14.waitpoint.create({
+        data: {
+          friendlyId: "wp_ces_atomic",
+          type: "MANUAL",
+          status: "COMPLETED",
+          idempotencyKey: "idem-ces_atomic",
+          userProvidedIdempotencyKey: false,
+          projectId: env.project.id,
+          environmentId: env.environment.id,
+        },
+      });
+
+      // Force the completed-waitpoint join insert to fail mid-write.
+      await prisma14.$executeRawUnsafe('DROP TABLE "_completedWaitpoints"');
+
+      await expect(
+        // Pass the base client as `tx` - exactly how the engine threads its base prisma through
+        // (continueRunIfUnblocked -> executionSnapshotSystem.createExecutionSnapshot(prisma, ...)).
+        // It is NOT an interactive transaction, so the store must still open its own to stay atomic.
+        legacy.createExecutionSnapshot(
+          {
+            run: { id: runId, status: "EXECUTING", attemptNumber: 1 },
+            snapshot: {
+              executionStatus: "EXECUTING_WITH_WAITPOINTS",
+              description: "Run was blocked by a waitpoint.",
+            },
+            environmentId: env.environment.id,
+            environmentType: "DEVELOPMENT",
+            projectId: env.project.id,
+            organizationId: env.project.id,
+            completedWaitpoints: [{ id: waitpoint.id, index: 0 }],
+          },
+          prisma14
+        )
+      ).rejects.toThrow();
+
+      // The snapshot must NOT persist without its links, or a replica can serve it waitpoint-less.
+      const snap = await prisma14.taskRunExecutionSnapshot.findFirst({
+        where: { runId, executionStatus: "EXECUTING_WITH_WAITPOINTS" },
+      });
+      expect(snap).toBeNull();
+    }
+  );
+});
+
+// RoutingRunStore.createExecutionSnapshot never threads a caller tx into the owning store: the write
+// runs on that store's own client (which opens its OWN transaction to keep the snapshot and its links
+// atomic), so it commits independently of the caller's control-plane tx.
+describe("createExecutionSnapshot never threads the caller's tx into the owning store", () => {
+  heteroRunOpsPostgresTest(
+    "persists a legacy run's snapshot even when the caller's control-plane tx rolls back",
+    async ({ prisma14, prisma17 }) => {
+      const { router } = makeSplitRouter(prisma14, prisma17);
+      const env = await seedEnvironment(prisma14, "legacy", "ces_rb");
+      const runId = `run_${CUID_25}`;
+      await router.createRun(
+        buildCreateRunInput({
+          runId,
+          friendlyId: "run_ces_rb",
+          organizationId: env.organization.id,
+          projectId: env.project.id,
+          runtimeEnvironmentId: env.environment.id,
+        })
+      );
+
+      await expect(
+        prisma14.$transaction(async (tx) => {
+          await router.createExecutionSnapshot(snapshotInput(runId, env), tx);
+          throw new Error("rollback");
+        })
+      ).rejects.toThrow("rollback");
+
+      // The snapshot survived the caller's rollback: it was written on the legacy store's own client
+      // in its own transaction, never enrolled in the caller's (rolled-back) control-plane tx.
+      const snap = await prisma14.taskRunExecutionSnapshot.findFirst({
+        where: { runId, executionStatus: "EXECUTING" },
+      });
+      expect(snap).not.toBeNull();
+    }
+  );
+});
+
+// On the dedicated subset schema the associated (RUN-type) waitpoint is created as a SEPARATE
+// waitpoint.create after taskRun.create (the legacy schema nests it atomically). The pair must commit
+// together, or a crash / lagging read leaves a run with no completion waitpoint and its parent never resumes.
+function assocWaitpoint(
+  env: { project: { id: string }; environment: { id: string } },
+  suffix: string
+) {
+  return {
+    id: `wp_${suffix}`,
+    friendlyId: `waitpoint_${suffix}`,
+    type: "RUN" as const,
+    status: "PENDING" as const,
+    idempotencyKey: `idem_${suffix}`,
+    userProvidedIdempotencyKey: false,
+    projectId: env.project.id,
+    environmentId: env.environment.id,
+  };
+}
+
+describe("createRun / createFailedRun write the run and its associated waitpoint atomically (dedicated)", () => {
+  heteroRunOpsPostgresTest(
+    "createRun rolls the run back if the associated-waitpoint create fails",
+    async ({ prisma17 }) => {
+      const newStore = makeDedicatedStore(prisma17);
+      const env = await seedEnvironment(prisma17, "dedicated", "cr_atomic");
+      const runId = `run_${NEW_ID_26}`;
+      const input = {
+        ...buildCreateRunInput({
+          runId,
+          friendlyId: "run_cr_atomic",
+          organizationId: env.organization.id,
+          projectId: env.project.id,
+          runtimeEnvironmentId: env.environment.id,
+        }),
+        associatedWaitpoint: assocWaitpoint(env, "cr_atomic"),
+      };
+
+      // Force #createAssociatedWaitpoint (waitpoint.create) to fail after taskRun.create.
+      await prisma17.$executeRawUnsafe('DROP TABLE "Waitpoint"');
+
+      await expect(newStore.createRun(input)).rejects.toThrow();
+
+      const run = await prisma17.taskRun.findFirst({ where: { id: runId } });
+      expect(run).toBeNull();
+    }
+  );
+
+  heteroRunOpsPostgresTest(
+    "createFailedRun rolls the run back if the associated-waitpoint create fails",
+    async ({ prisma17 }) => {
+      const newStore = makeDedicatedStore(prisma17);
+      const env = await seedEnvironment(prisma17, "dedicated", "cf_atomic");
+      const runId = `run_${NEW_ID_26}`;
+      const base = buildCreateRunInput({
+        runId,
+        friendlyId: "run_cf_atomic",
+        organizationId: env.organization.id,
+        projectId: env.project.id,
+        runtimeEnvironmentId: env.environment.id,
+      });
+      const input = { data: base.data, associatedWaitpoint: assocWaitpoint(env, "cf_atomic") };
+
+      await prisma17.$executeRawUnsafe('DROP TABLE "Waitpoint"');
+
+      await expect(newStore.createFailedRun(input)).rejects.toThrow();
+
+      const run = await prisma17.taskRun.findFirst({ where: { id: runId } });
+      expect(run).toBeNull();
+    }
+  );
+});
+
+// The dedicated (#new) leg connects completed waitpoints through the `CompletedWaitpoint` join table
+// (createMany), where the legacy leg uses the implicit `_completedWaitpoints` M2M. Both must commit the
+// snapshot and its links together: a snapshot that commits before its links can be read waitpoint-less
+// from a lagging replica, and the runner's EXECUTING branch no-ops on an empty set -> the resume hangs.
+describe("createExecutionSnapshot / lockRunToWorker write the snapshot and its links atomically (dedicated)", () => {
+  heteroRunOpsPostgresTest(
+    "createExecutionSnapshot rolls the snapshot back if the CompletedWaitpoint insert fails",
+    async ({ prisma17 }) => {
+      const newStore = makeDedicatedStore(prisma17);
+      const env = await seedEnvironment(prisma17, "dedicated", "ces_ded");
+      const runId = `run_${NEW_ID_26}`;
+      await newStore.createRun(
+        buildCreateRunInput({
+          runId,
+          friendlyId: "run_ces_ded",
+          organizationId: env.organization.id,
+          projectId: env.project.id,
+          runtimeEnvironmentId: env.environment.id,
+        })
+      );
+
+      // Force the dedicated join insert (completedWaitpoint.createMany) to fail mid-write.
+      await prisma17.$executeRawUnsafe('DROP TABLE "CompletedWaitpoint"');
+
+      await expect(
+        // Base client as `tx` = how the engine threads its base prisma through
+        // (continueRunIfUnblocked -> executionSnapshotSystem.createExecutionSnapshot(prisma, ...)).
+        // It is NOT an interactive transaction, so the store must still open its own to stay atomic.
+        newStore.createExecutionSnapshot(
+          {
+            run: { id: runId, status: "EXECUTING", attemptNumber: 1 },
+            snapshot: {
+              executionStatus: "EXECUTING_WITH_WAITPOINTS",
+              description: "Run was blocked by a waitpoint.",
+            },
+            environmentId: env.environment.id,
+            environmentType: "DEVELOPMENT",
+            projectId: env.project.id,
+            organizationId: env.project.id,
+            completedWaitpoints: [{ id: `wp_${NEW_ID_26}`, index: 0 }],
+          },
+          prisma17 as never
+        )
+      ).rejects.toThrow();
+
+      const snap = await prisma17.taskRunExecutionSnapshot.findFirst({
+        where: { runId, executionStatus: "EXECUTING_WITH_WAITPOINTS" },
+      });
+      expect(snap).toBeNull();
+    }
+  );
+
+  heteroRunOpsPostgresTest(
+    "lockRunToWorker rolls the snapshot and run lock back if the CompletedWaitpoint insert fails",
+    async ({ prisma17 }) => {
+      const newStore = makeDedicatedStore(prisma17);
+      const env = await seedEnvironment(prisma17, "dedicated", "lock_ded");
+      const runId = `run_${NEW_ID_26}`;
+      await newStore.createRun(
+        buildCreateRunInput({
+          runId,
+          friendlyId: "run_lock_ded",
+          organizationId: env.organization.id,
+          projectId: env.project.id,
+          runtimeEnvironmentId: env.environment.id,
+        })
+      );
+      const prior = await prisma17.taskRunExecutionSnapshot.findFirstOrThrow({ where: { runId } });
+
+      await prisma17.$executeRawUnsafe('DROP TABLE "CompletedWaitpoint"');
+
+      const snapshotId = `snap_${NEW_ID_26}`;
+      await expect(
+        // lockedById/lockedToVersionId/lockedQueueId are FK-free scalars on the dedicated subset, so
+        // synthetic ids are fine; the base client as `tx` mirrors the dequeue path (no interactive tx).
+        newStore.lockRunToWorker(
+          runId,
+          {
+            lockedAt: new Date(),
+            lockedById: `bwt_${NEW_ID_26}`,
+            lockedToVersionId: `bw_${NEW_ID_26}`,
+            lockedQueueId: `queue_${NEW_ID_26}`,
+            startedAt: new Date(),
+            baseCostInCents: 5,
+            machinePreset: "small-1x",
+            taskVersion: "20260601.1",
+            sdkVersion: "3.0.0",
+            cliVersion: "3.0.0",
+            maxDurationInSeconds: null,
+            snapshot: {
+              id: snapshotId,
+              previousSnapshotId: prior.id,
+              environmentId: env.environment.id,
+              environmentType: "DEVELOPMENT",
+              projectId: env.project.id,
+              organizationId: env.project.id,
+              completedWaitpointIds: [`wp_${NEW_ID_26}`],
+              completedWaitpointOrder: [`wp_${NEW_ID_26}`],
+            },
+          },
+          prisma17 as never
+        )
+      ).rejects.toThrow();
+
+      const snap = await prisma17.taskRunExecutionSnapshot.findUnique({
+        where: { id: snapshotId },
+      });
+      expect(snap).toBeNull();
+      // The whole lock write must roll back, not just the status: no lock columns may leak through.
+      const run = await prisma17.taskRun.findUniqueOrThrow({ where: { id: runId } });
+      expect(run.status).not.toBe("DEQUEUED");
+      expect(run.lockedAt).toBeNull();
+      expect(run.lockedById).toBeNull();
+      expect(run.lockedToVersionId).toBeNull();
+      expect(run.lockedQueueId).toBeNull();
+    }
+  );
+});
+
+// lockRunToWorker builds its nested snapshot under the write decision and, after the taskRun.update
+// awaits, connects the completed-waitpoint join rows under the decision AGAIN. It resolves the input's
+// `writeSnapshotRow` ONCE for the whole operation, so the snapshot row and its link rows always agree:
+// both written, or neither - never a snapshot without its links, nor links pointing at a phantom
+// snapshot. These tests drive both settings and assert the two halves land together.
+async function lockRunWithWaitpoints(
+  store: RunStore,
+  runId: string,
+  priorSnapshotId: string,
+  env: { project: { id: string }; environment: { id: string } },
+  prisma17: RunOpsPrismaClient,
+  writeSnapshotRow: boolean
+) {
+  const snapshotId = `snap_${NEW_ID_26}`;
+  await store.lockRunToWorker(
+    runId,
+    {
+      lockedAt: new Date(),
+      lockedById: `bwt_${NEW_ID_26}`,
+      lockedToVersionId: `bw_${NEW_ID_26}`,
+      lockedQueueId: `queue_${NEW_ID_26}`,
+      startedAt: new Date(),
+      baseCostInCents: 5,
+      machinePreset: "small-1x",
+      taskVersion: "20260601.1",
+      sdkVersion: "3.0.0",
+      cliVersion: "3.0.0",
+      maxDurationInSeconds: null,
+      snapshot: {
+        id: snapshotId,
+        previousSnapshotId: priorSnapshotId,
+        environmentId: env.environment.id,
+        environmentType: "DEVELOPMENT",
+        projectId: env.project.id,
+        organizationId: env.project.id,
+        completedWaitpointIds: [`wp_${NEW_ID_26}`],
+        completedWaitpointOrder: [`wp_${NEW_ID_26}`],
+        writeSnapshotRow,
+      },
+    },
+    prisma17 as never
+  );
+  return snapshotId;
+}
+
+describe("lockRunToWorker resolves the snapshot-write decision once, so the snapshot and its links never split (dedicated)", () => {
+  heteroRunOpsPostgresTest(
+    "written: the snapshot and its links commit together (never a link-less snapshot)",
+    async ({ prisma17 }) => {
+      const env = await seedEnvironment(prisma17, "dedicated", "write_on");
+      const runId = `run_${NEW_ID_26}`;
+      await makeDedicatedStore(prisma17).createRun(
+        buildCreateRunInput({
+          runId,
+          friendlyId: "run_write_on",
+          organizationId: env.organization.id,
+          projectId: env.project.id,
+          runtimeEnvironmentId: env.environment.id,
+        })
+      );
+      const prior = await prisma17.taskRunExecutionSnapshot.findFirstOrThrow({ where: { runId } });
+
+      const store = makeDedicatedStore(prisma17);
+      const snapshotId = await lockRunWithWaitpoints(store, runId, prior.id, env, prisma17, true);
+
+      const snap = await prisma17.taskRunExecutionSnapshot.findUnique({
+        where: { id: snapshotId },
+      });
+      const links = await prisma17.completedWaitpoint.count({ where: { snapshotId } });
+      expect(snap).not.toBeNull();
+      expect(links).toBe(1);
+    }
+  );
+
+  heteroRunOpsPostgresTest(
+    "suppressed: no snapshot and no dangling links",
+    async ({ prisma17 }) => {
+      const env = await seedEnvironment(prisma17, "dedicated", "write_off");
+      const runId = `run_${NEW_ID_26}`;
+      await makeDedicatedStore(prisma17).createRun(
+        buildCreateRunInput({
+          runId,
+          friendlyId: "run_write_off",
+          organizationId: env.organization.id,
+          projectId: env.project.id,
+          runtimeEnvironmentId: env.environment.id,
+        })
+      );
+      const prior = await prisma17.taskRunExecutionSnapshot.findFirstOrThrow({ where: { runId } });
+
+      const store = makeDedicatedStore(prisma17);
+      const snapshotId = await lockRunWithWaitpoints(store, runId, prior.id, env, prisma17, false);
+
+      const snap = await prisma17.taskRunExecutionSnapshot.findUnique({
+        where: { id: snapshotId },
+      });
+      const links = await prisma17.completedWaitpoint.count({ where: { snapshotId } });
+      expect(snap).toBeNull();
+      expect(links).toBe(0);
+    }
+  );
+});
+
+// Direct (not behavioural) proof of the never-forward invariant: a recording proxy over each REAL
+// sub-store captures the arguments every routed call receives, so we can assert the SECOND (tx)
+// argument the router hands each sub-store is `undefined`. No mocks — the real PostgresRunStore does
+// the DB work; the proxy only observes. Property access (e.g. the `primaryReadClient` getter) runs on
+// the real instance so its private fields resolve; only methods are wrapped.
+type RecordedCall = { method: string; args: unknown[] };
+
+function recordingStore(inner: RunStore, calls: RecordedCall[]): RunStore {
+  return new Proxy(inner as unknown as Record<string | symbol, unknown>, {
+    get(target, prop) {
+      const value = target[prop];
+      if (typeof value === "function") {
+        return (...args: unknown[]) => {
+          calls.push({ method: String(prop), args });
+          return (value as (...a: unknown[]) => unknown).apply(target, args);
+        };
+      }
+      return value;
+    },
+  }) as unknown as RunStore;
+}
+
+// The tx (second) argument of every recorded call to `method`.
+function txArgsFor(calls: RecordedCall[], method: string): unknown[] {
+  return calls.filter((c) => c.method === method).map((c) => c.args[1]);
+}
+
+describe("RoutingRunStore never threads a caller tx into either sub-store (recorded)", () => {
+  heteroRunOpsPostgresTest(
+    "createExecutionSnapshot hands the #legacy sub-store an undefined tx (cuid run)",
+    async ({ prisma14, prisma17 }) => {
+      const legacyCalls: RecordedCall[] = [];
+      const newCalls: RecordedCall[] = [];
+      const router = new RoutingRunStore({
+        new: recordingStore(makeDedicatedStore(prisma17), newCalls),
+        legacy: recordingStore(makeLegacyStore(prisma14), legacyCalls),
+      });
+      const env = await seedEnvironment(prisma14, "legacy", "spy_ces_leg");
+      const runId = `run_${CUID_25}`;
+      await router.createRun(
+        buildCreateRunInput({
+          runId,
+          friendlyId: "run_spy_ces_leg",
+          organizationId: env.organization.id,
+          projectId: env.project.id,
+          runtimeEnvironmentId: env.environment.id,
+        })
+      );
+
+      // Thread the base control-plane client as `tx`, exactly as the engine does (`tx ?? this.$.prisma`).
+      await router.createExecutionSnapshot(snapshotInput(runId, env), prisma14);
+
+      const forwarded = txArgsFor(legacyCalls, "createExecutionSnapshot");
+      expect(forwarded.length).toBeGreaterThan(0);
+      for (const arg of forwarded) expect(arg).toBeUndefined();
+      // A cuid run's snapshot must not touch the #new store at all.
+      expect(txArgsFor(newCalls, "createExecutionSnapshot")).toHaveLength(0);
+    }
+  );
+
+  heteroRunOpsPostgresTest(
+    "createExecutionSnapshot hands the #new sub-store an undefined tx (run-ops id)",
+    async ({ prisma14, prisma17 }) => {
+      const legacyCalls: RecordedCall[] = [];
+      const newCalls: RecordedCall[] = [];
+      const router = new RoutingRunStore({
+        new: recordingStore(makeDedicatedStore(prisma17), newCalls),
+        legacy: recordingStore(makeLegacyStore(prisma14), legacyCalls),
+      });
+      const { runId, env } = await seedRunOpsRun(router, prisma17, "spy_ces_new");
+
+      await router.createExecutionSnapshot(snapshotInput(runId, env), prisma14);
+
+      const forwarded = txArgsFor(newCalls, "createExecutionSnapshot");
+      expect(forwarded.length).toBeGreaterThan(0);
+      for (const arg of forwarded) expect(arg).toBeUndefined();
+    }
+  );
+
+  heteroRunOpsPostgresTest(
+    "deleteManyTaskRunWaitpoints routes by taskRunId to the owning store with an undefined tx",
+    async ({ prisma14, prisma17 }) => {
+      const legacyCalls: RecordedCall[] = [];
+      const newCalls: RecordedCall[] = [];
+      const router = new RoutingRunStore({
+        new: recordingStore(makeDedicatedStore(prisma17), newCalls),
+        legacy: recordingStore(makeLegacyStore(prisma14), legacyCalls),
+      });
+      const env = await seedEnvironment(prisma14, "legacy", "spy_del");
+      const runId = `run_${CUID_25}`;
+      await router.createRun(
+        buildCreateRunInput({
+          runId,
+          friendlyId: "run_spy_del",
+          organizationId: env.organization.id,
+          projectId: env.project.id,
+          runtimeEnvironmentId: env.environment.id,
+        })
+      );
+      await seedLegacyBlockingEdge(prisma14, env, runId, "spy_del");
+
+      // Keyed by a classifiable taskRunId (a cuid run → #legacy): routes to the owning store, no
+      // fan-out. Pass the base control-plane client as tx — it must NOT be threaded into the routed leg.
+      await router.deleteManyTaskRunWaitpoints({ where: { taskRunId: runId } }, prisma14);
+
+      const legacyTx = txArgsFor(legacyCalls, "deleteManyTaskRunWaitpoints");
+      const newTx = txArgsFor(newCalls, "deleteManyTaskRunWaitpoints");
+      expect(legacyTx.length).toBeGreaterThan(0);
+      expect(newTx.length).toBe(0); // routed to #legacy only; the non-owning store is never touched
+      for (const arg of legacyTx) expect(arg).toBeUndefined();
+    }
+  );
+});

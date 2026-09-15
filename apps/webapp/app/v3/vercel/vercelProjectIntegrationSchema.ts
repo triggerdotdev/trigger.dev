@@ -1,10 +1,12 @@
 import { Result } from "neverthrow";
 import { z } from "zod";
 
-export const EnvSlugSchema = z.enum(["dev", "stg", "prod", "preview"]);
+const EnvSlugSchema = z.enum(["dev", "stg", "prod", "preview"]);
 export type EnvSlug = z.infer<typeof EnvSlugSchema>;
 
 export const ALL_ENV_SLUGS: EnvSlug[] = ["dev", "stg", "prod", "preview"];
+
+export const SKEW_PROTECTION_ENV_VAR_KEY = "TRIGGER_AUTOMATIC_SKEW_VERSION_PROTECTION";
 
 const safeJsonParse = Result.fromThrowable(
   (val: string) => JSON.parse(val) as unknown,
@@ -15,38 +17,37 @@ const safeJsonParse = Result.fromThrowable(
  * Zod transform for form fields that submit JSON-encoded arrays.
  * Parses the string as JSON and returns the array, or null if invalid.
  */
-export const jsonArrayField = z.string().optional().transform((val) => {
-  if (!val) return null;
-  return safeJsonParse(val).match(
-    (parsed) => (Array.isArray(parsed) ? parsed : null),
-    () => null
-  );
-});
 
 /**
  * Zod transform for form fields that submit JSON-encoded EnvSlug arrays.
  * Parses the string as JSON and validates each element is a valid EnvSlug.
  * Invalid elements are filtered out rather than rejecting the whole array.
  */
-export const envSlugArrayField = z.string().optional().transform((val): EnvSlug[] | null => {
-  if (!val) return null;
-  return safeJsonParse(val).match(
-    (parsed) => {
-      if (!Array.isArray(parsed)) return null;
-      return parsed.filter((item): item is EnvSlug => EnvSlugSchema.safeParse(item).success);
-    },
-    () => null
-  );
-});
+export const envSlugArrayField = z
+  .string()
+  .optional()
+  .transform((val): EnvSlug[] | null => {
+    if (!val) return null;
+    return safeJsonParse(val).match(
+      (parsed) => {
+        if (!Array.isArray(parsed)) return null;
+        return parsed.filter((item): item is EnvSlug => EnvSlugSchema.safeParse(item).success);
+      },
+      () => null
+    );
+  });
 
-export const VercelIntegrationConfigSchema = z.object({
+const VercelIntegrationConfigSchema = z.object({
   atomicBuilds: z.array(EnvSlugSchema).nullable().optional(),
   pullEnvVarsBeforeBuild: z.array(EnvSlugSchema).nullable().optional(),
   /** Maps a custom Vercel environment to Trigger.dev's staging environment. */
-  vercelStagingEnvironment: z.object({
-    environmentId: z.string(),
-    displayName: z.string(),
-  }).nullable().optional(),
+  vercelStagingEnvironment: z
+    .object({
+      environmentId: z.string(),
+      displayName: z.string(),
+    })
+    .nullable()
+    .optional(),
   discoverEnvVars: z.array(EnvSlugSchema).nullable().optional(),
   autoPromote: z.boolean().optional().default(true),
 });
@@ -61,7 +62,9 @@ export type TriggerEnvironmentType = z.infer<typeof TriggerEnvironmentType>;
  * Missing env slug = sync all vars. Missing var in env = sync by default.
  * Only explicitly `false` entries disable sync.
  */
-export const SyncEnvVarsMappingSchema = z.record(EnvSlugSchema, z.record(z.string(), z.boolean())).default({});
+const SyncEnvVarsMappingSchema = z
+  .partialRecord(EnvSlugSchema, z.record(z.string(), z.boolean()))
+  .default({});
 
 export type SyncEnvVarsMapping = z.infer<typeof SyncEnvVarsMappingSchema>;
 
@@ -82,13 +85,16 @@ export function createDefaultVercelIntegrationData(
   vercelProjectId: string,
   vercelProjectName: string,
   vercelTeamId: string | null,
-  vercelTeamSlug?: string
+  vercelTeamSlug?: string,
+  availableEnvSlugs: EnvSlug[] = ALL_ENV_SLUGS
 ): VercelProjectIntegrationData {
+  const defaultOn = (["prod", "preview"] as EnvSlug[]).filter((s) => availableEnvSlugs.includes(s));
+
   return {
     config: {
-      atomicBuilds: ["prod"],
-      pullEnvVarsBeforeBuild: ["prod", "preview"],
-      discoverEnvVars: ["prod", "preview"],
+      atomicBuilds: [],
+      pullEnvVarsBeforeBuild: defaultOn,
+      discoverEnvVars: defaultOn,
       vercelStagingEnvironment: null,
       autoPromote: true,
     },
@@ -98,6 +104,14 @@ export function createDefaultVercelIntegrationData(
     vercelTeamId,
     vercelTeamSlug,
   };
+}
+
+const VERCEL_STANDARD_TARGETS = ["production", "preview", "development"] as const;
+
+export type VercelStandardTarget = (typeof VERCEL_STANDARD_TARGETS)[number];
+
+export function isVercelStandardTarget(target: string): target is VercelStandardTarget {
+  return (VERCEL_STANDARD_TARGETS as readonly string[]).includes(target);
 }
 
 /**
@@ -131,22 +145,33 @@ export function getAvailableEnvSlugs(
   });
 }
 
+export function restrictConfigToAvailableEnvSlugs(
+  config: Partial<VercelIntegrationConfig>,
+  availableEnvSlugs: EnvSlug[]
+): Partial<VercelIntegrationConfig> {
+  const restricted = { ...config };
+
+  for (const key of ["atomicBuilds", "pullEnvVarsBeforeBuild", "discoverEnvVars"] as const) {
+    const slugs = restricted[key];
+    if (slugs) {
+      restricted[key] = slugs.filter((slug) => availableEnvSlugs.includes(slug));
+    }
+  }
+
+  if ("vercelStagingEnvironment" in restricted && !availableEnvSlugs.includes("stg")) {
+    restricted.vercelStagingEnvironment = null;
+  }
+
+  return restricted;
+}
+
 export function getAvailableEnvSlugsForBuildSettings(
   hasStagingEnvironment: boolean,
   hasPreviewEnvironment: boolean
 ): EnvSlug[] {
-  return getAvailableEnvSlugs(hasStagingEnvironment, hasPreviewEnvironment).filter((s) => s !== "dev");
-}
-
-export function isDiscoverEnvVarsEnabledForEnvironment(
-  discoverEnvVars: EnvSlug[] | null | undefined,
-  environmentType: TriggerEnvironmentType
-): boolean {
-  if (!discoverEnvVars || discoverEnvVars.length === 0) {
-    return false;
-  }
-  const envSlug = envTypeToSlug(environmentType);
-  return discoverEnvVars.includes(envSlug);
+  return getAvailableEnvSlugs(hasStagingEnvironment, hasPreviewEnvironment).filter(
+    (s) => s !== "dev"
+  );
 }
 
 export function envTypeToSlug(environmentType: TriggerEnvironmentType): EnvSlug {
@@ -223,15 +248,4 @@ export function isPullEnvVarsEnabledForEnvironment(
   }
   const envSlug = envTypeToSlug(environmentType);
   return pullEnvVarsBeforeBuild.includes(envSlug);
-}
-
-export function isAtomicBuildsEnabledForEnvironment(
-  atomicBuilds: EnvSlug[] | null | undefined,
-  environmentType: TriggerEnvironmentType
-): boolean {
-  if (!atomicBuilds || atomicBuilds.length === 0) {
-    return false;
-  }
-  const envSlug = envTypeToSlug(environmentType);
-  return atomicBuilds.includes(envSlug);
 }

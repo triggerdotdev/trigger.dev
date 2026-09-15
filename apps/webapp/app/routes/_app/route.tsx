@@ -35,12 +35,10 @@ export default function App() {
 
 export function ErrorBoundary() {
   return (
-    <>
-      <AppContainer>
-        <MainCenteredContainer>
-          <RouteErrorDisplay />
-        </MainCenteredContainer>
-      </AppContainer>
-    </>
+    <AppContainer>
+      <MainCenteredContainer>
+        <RouteErrorDisplay />
+      </MainCenteredContainer>
+    </AppContainer>
   );
 }

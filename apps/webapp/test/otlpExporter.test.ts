@@ -1,15 +1,14 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import {
-  enrichCreatableEvents,
-  setLlmPricingRegistry,
-} from "../app/v3/utils/enrichCreatableEvents.server.js";
 import {
   RuntimeEnvironmentType,
   TaskEventKind,
   TaskEventLevel,
   TaskEventStatus,
 } from "@trigger.dev/database";
-import { SemanticInternalAttributes } from "@trigger.dev/core/v3";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  enrichCreatableEvents,
+  setLlmPricingRegistry,
+} from "../app/v3/utils/enrichCreatableEvents.server.js";
 
 describe("OTLPExporter", () => {
   describe("enrichCreatableEvents", () => {

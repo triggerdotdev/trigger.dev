@@ -7,12 +7,12 @@ import type {
   AnyOnInitHookFunction,
   AnyOnStartHookFunction,
   AnyOnSuccessHookFunction,
-  BuildRuntime,
+  ConfigRuntime,
   RetryOptions,
 } from "./index.js";
 import type { LogLevel } from "./logger/taskLogger.js";
 import type { MachinePresetName } from "./schemas/common.js";
-import { LogRecordExporter } from "@opentelemetry/sdk-logs";
+import type { LogRecordExporter } from "@opentelemetry/sdk-logs";
 import type { Resource } from "@opentelemetry/resources";
 
 export type CompatibilityFlag = "run_engine_v2";
@@ -44,7 +44,7 @@ export type TriggerConfig = {
   /**
    * @default "node"
    */
-  runtime?: BuildRuntime;
+  runtime?: ConfigRuntime;
 
   /**
    * Specify the project ref for your trigger.dev tasks. This is the project ref that you get when you create a new project in the trigger.dev dashboard.

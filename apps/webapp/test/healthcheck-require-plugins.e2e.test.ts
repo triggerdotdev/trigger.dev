@@ -23,13 +23,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { TestServer } from "@internal/testcontainers/webapp";
 import { startTestServer } from "@internal/testcontainers/webapp";
 
-const LINKED_PLUGIN_PATH = resolve(
-  __dirname,
-  "..",
-  "node_modules",
-  "@triggerdotdev",
-  "plugins"
-);
+const LINKED_PLUGIN_PATH = resolve(__dirname, "..", "node_modules", "@triggerdotdev", "plugins");
 const pluginLocallyLinked = existsSync(LINKED_PLUGIN_PATH);
 
 vi.setConfig({ testTimeout: 180_000 });
@@ -63,10 +57,7 @@ describe("/healthcheck with REQUIRE_PLUGINS", () => {
   describe.runIf(pluginLocallyLinked)(
     "REQUIRE_PLUGINS=1 + plugin LOCALLY LINKED (cross-repo dev setup)",
     () => {
-      it.skip(
-        `skipped because ${LINKED_PLUGIN_PATH} exists — plugin would load successfully. Run \`pnpm dev:unlink-webapp\` to exercise this case locally; CI runs it without the link.`,
-        () => {}
-      );
+      it.skip(`skipped because ${LINKED_PLUGIN_PATH} exists — plugin would load successfully. Run \`pnpm dev:unlink-webapp\` to exercise this case locally; CI runs it without the link.`, () => {});
     }
   );
 

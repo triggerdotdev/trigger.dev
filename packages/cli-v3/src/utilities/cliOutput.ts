@@ -1,13 +1,12 @@
 import { log } from "@clack/prompts";
 import chalk from "chalk";
-import { terminalLink, TerminalLinkOptions } from "./terminalLink.js";
-import { hasTTY } from "std-env";
+import type { TerminalLinkOptions } from "./terminalLink.js";
+import { terminalLink } from "./terminalLink.js";
 
-export const isInteractive = hasTTY;
 export const isLinksSupported = terminalLink.isSupported;
 
-export const green = "#4FFF54";
-export const purple = "#735BF3";
+const green = "#4FFF54";
+const purple = "#735BF3";
 
 export function chalkGreen(text: string) {
   return chalk.hex(green)(text);
@@ -134,7 +133,7 @@ export function aiHelpLink({
   const url = new URL(`/projects/${project}/ai-help`, dashboardUrl);
   url.search = searchParams.toString();
 
-  log.message(chalkLink(cliLink("💡 Get a fix for this error using AI", url.toString())));
+  log.message(chalkLink(cliLink("💡 Ask Trigger about this error", url.toString())));
 }
 
 export function cliLink(text: string, url: string, options?: TerminalLinkOptions) {

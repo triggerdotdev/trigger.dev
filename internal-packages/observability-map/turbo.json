@@ -1,0 +1,31 @@
+{
+  "$schema": "https://turborepo.org/schema.json",
+  "extends": ["//"],
+  "pipeline": {
+    // Uncacheable on purpose. This suite's real inputs live outside the package: it scans
+    // `apps/webapp/app`, `packages/plugins/src`, `internal-packages/rbac/src` and four files under
+    // `.github/workflows`. The root `test` task keys the cache on this package's own files, so a
+    // cached pass replayed after a route change broke the scan, which is a guard that stops
+    // guarding while still reading green.
+    //
+    // `inputs` was tried and rejected rather than assumed unworkable. Turbo 1.x does accept `..`
+    // in an input glob, and `../../apps/webapp/app/**` did bust the cache on a route change. What
+    // it also does is replace the default file set rather than add to it, so the same config
+    // silently dropped this package's own `vitest.config.ts` from the hash: editing it replayed a
+    // cached pass. The `$TURBO_DEFAULT$` token that adds rather than replaces is turbo 2.x only
+    // and matches nothing on the 1.10.3 here. Trading a stale-on-routes hole for a
+    // stale-on-own-config hole is not a fix, and an inputs list mirroring what the tests read is
+    // one more thing that drifts out of sync without saying so.
+    //
+    // Cost is about 23s per run, and no CI job pays it: the dedicated workflow calls vitest
+    // without turbo, and `unit-tests-internal.yml` runs cold.
+    //
+    // `it("keeps its test task out of the turbo cache")` in `src/integration.test.ts` fails if
+    // this is removed.
+    "test": {
+      "dependsOn": ["^build"],
+      "outputs": [],
+      "cache": false
+    }
+  }
+}

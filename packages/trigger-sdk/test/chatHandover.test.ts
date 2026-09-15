@@ -98,8 +98,12 @@ describe("chat.handover", () => {
 
     const agent = chat.agent({
       id: "chat.handover.pure-text",
-      onChatStart: () => { order.push("onChatStart"); },
-      onTurnStart: () => { order.push("onTurnStart"); },
+      onChatStart: () => {
+        order.push("onChatStart");
+      },
+      onTurnStart: () => {
+        order.push("onTurnStart");
+      },
       onTurnComplete: ({ responseMessage }) => {
         order.push("onTurnComplete");
         capturedResponse = {
@@ -265,9 +269,7 @@ describe("chat.handover", () => {
     // synthesized partial must carry it (with provider metadata, so an
     // Anthropic signature survives a UIMessage -> ModelMessage round
     // trip) or the durable history loses the step-1 thinking.
-    let captured:
-      | { partTypes?: string[]; reasoningText?: string; meta?: unknown }
-      | undefined;
+    let captured: { partTypes?: string[]; reasoningText?: string; meta?: unknown } | undefined;
 
     const agent = chat.agent({
       id: "chat.handover.reasoning",
@@ -279,9 +281,9 @@ describe("chat.handover", () => {
             .filter((p) => p.type === "reasoning")
             .map((p) => (p as { text?: string }).text || "")
             .join(""),
-          meta: (parts.find((p) => p.type === "reasoning") as
-            | { providerMetadata?: unknown }
-            | undefined)?.providerMetadata,
+          meta: (
+            parts.find((p) => p.type === "reasoning") as { providerMetadata?: unknown } | undefined
+          )?.providerMetadata,
         };
       },
       run: async ({ messages, signal }) => {
@@ -338,9 +340,7 @@ describe("chat.handover", () => {
     const runFn = vi.fn();
     const stored: { id: string; role: string; parts: unknown[] }[] = [];
     const hydrateIncomingRoles: string[] = [];
-    let captured:
-      | { responseId?: string; responseText?: string; roles?: string[] }
-      | undefined;
+    let captured: { responseId?: string; responseText?: string; roles?: string[] } | undefined;
 
     const agent = chat.agent({
       id: "chat.handover.hydrate-pure-text",
@@ -628,6 +628,65 @@ describe("chat.handover", () => {
       expect(onTurnStart).not.toHaveBeenCalled();
       expect(onTurnComplete).not.toHaveBeenCalled();
       expect(harness.allChunks).toHaveLength(0);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("seeds the accumulator from headStartMessages without hydrateMessages", async () => {
+    // The hydrate variant above gets the head-start user message through
+    // `incomingMessages`. Without `hydrateMessages` it arrives only via the
+    // boot-time seed from `payload.headStartMessages`, so this is the path
+    // that keeps an app with a display-only transcript from storing an
+    // answer with no question above it.
+    //
+    // Note the shape a persisting app has to handle: by `onTurnStart` the
+    // accumulator is already ["user", "assistant"], because the warm route's
+    // partial is spliced in before the hook fires. "The incoming message is
+    // the last one" is therefore false on this path.
+    let captured: { roles: string[]; texts: string[] } | undefined;
+
+    const agent = chat.agent({
+      id: "test-handover-seed-no-hydrate",
+      onTurnComplete: async ({ uiMessages }) => {
+        captured = {
+          roles: uiMessages.map((m) => m.role),
+          texts: uiMessages.map((m) =>
+            m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")
+          ),
+        };
+      },
+      run: async ({ messages, signal }) =>
+        streamText({
+          model: new MockLanguageModelV3({
+            doStream: async () => ({ stream: textStream("should-not-run") }),
+          }),
+          messages,
+          abortSignal: signal,
+        }),
+    });
+
+    const harness = mockChatAgent(agent, {
+      chatId: "test-handover-seed-no-hydrate",
+      mode: "handover-prepare",
+      headStartMessages: [
+        { id: "hs-user-1", role: "user", parts: [{ type: "text", text: "say hi" }] },
+      ],
+    });
+
+    try {
+      await harness.sendHandover({
+        partialAssistantMessage: [
+          { role: "assistant", content: [{ type: "text", text: "Hi there." }] },
+        ],
+        messageId: "asst-seed-1",
+        isFinal: true,
+      });
+      await new Promise((r) => setTimeout(r, 30));
+
+      expect(captured).toBeDefined();
+      expect(captured!.roles).toEqual(["user", "assistant"]);
+      expect(captured!.texts[0]).toBe("say hi");
     } finally {
       await harness.close();
     }

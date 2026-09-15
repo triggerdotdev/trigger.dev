@@ -1,11 +1,12 @@
 import {
   type RuntimeEnvironment,
   type PrismaClient,
-  RuntimeEnvironmentType,
+  type RuntimeEnvironmentType,
 } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { type UserFromSession } from "~/services/session.server";
+import { selectAccessibleEnvironment } from "~/utils/environmentAccess";
 
 export type MinimumEnvironment = Pick<RuntimeEnvironment, "id" | "type" | "slug" | "paused"> & {
   orgMember: null | {
@@ -45,10 +46,12 @@ export class SelectBestEnvironmentPresenter {
         include: {
           organization: true,
           environments: {
+            where: { archivedAt: null },
             select: {
               id: true,
               type: true,
               slug: true,
+              parentEnvironmentId: true,
               paused: true,
               orgMember: {
                 select: {
@@ -69,10 +72,12 @@ export class SelectBestEnvironmentPresenter {
       include: {
         organization: true,
         environments: {
+          where: { archivedAt: null },
           select: {
             id: true,
             type: true,
             slug: true,
+            parentEnvironmentId: true,
             paused: true,
             orgMember: {
               select: {
@@ -140,20 +145,33 @@ export class SelectBestEnvironmentPresenter {
   }
 
   async selectBestEnvironment<
-    T extends { id: string; type: RuntimeEnvironmentType; orgMember: { userId: string } | null }
+    T extends {
+      id: string;
+      type: RuntimeEnvironmentType;
+      slug: string;
+      parentEnvironmentId: string | null;
+      orgMember: { userId: string } | null;
+    },
   >(projectId: string, user: UserFromSession, environments: T[]): Promise<T> {
     //try get current environment from prefs
     const currentEnvironmentId: string | undefined =
       user.dashboardPreferences.projects[projectId]?.currentEnvironment.id;
 
-    const currentEnvironment = environments.find((env) => env.id === currentEnvironmentId);
+    const currentEnvironment = selectAccessibleEnvironment(
+      environments.filter((env) => env.id === currentEnvironmentId),
+      user.id
+    );
     if (currentEnvironment) {
       return currentEnvironment;
     }
 
     //otherwise show their dev environment
     const yourDevEnvironment = environments.find(
-      (env) => env.type === "DEVELOPMENT" && env.orgMember?.userId === user.id
+      // Return the default dev environment (the root, no parent), not a branch
+      (env) =>
+        env.type === "DEVELOPMENT" &&
+        env.parentEnvironmentId === null &&
+        env.orgMember?.userId === user.id
     );
     if (yourDevEnvironment) {
       return yourDevEnvironment;

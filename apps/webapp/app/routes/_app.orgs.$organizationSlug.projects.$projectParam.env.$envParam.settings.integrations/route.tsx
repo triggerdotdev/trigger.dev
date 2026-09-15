@@ -1,86 +1,114 @@
-import { conform, useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
-import { Form, useActionData, useNavigation } from "@remix-run/react";
-import { type ActionFunction, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
-import { typedjson, useTypedLoaderData, useTypedFetcher } from "remix-typedjson";
+import { getFormProps, getInputProps, useForm } from "@conform-to/react";
+import { parseWithZod } from "@conform-to/zod/v4";
+import { Form, useActionData, useNavigation, useSearchParams } from "@remix-run/react";
+import { json } from "@remix-run/server-runtime";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { typedjson, useTypedFetcher, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
-import { MainHorizontallyCenteredContainer } from "~/components/layout/AppLayout";
+import { InlineCode } from "~/components/code/InlineCode";
 import { Button } from "~/components/primitives/Buttons";
-import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
-import { Fieldset } from "~/components/primitives/Fieldset";
-import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
-import { Header2 } from "~/components/primitives/Headers";
-import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
-import { InputGroup } from "~/components/primitives/InputGroup";
-import { Label } from "~/components/primitives/Label";
+import {
+  SettingsActions,
+  SettingsContainer,
+  SettingsHeader,
+  SettingsRow,
+  SettingsSection,
+} from "~/components/primitives/SettingsLayout";
 import { SpinnerWhite } from "~/components/primitives/Spinner";
+import { Switch } from "~/components/primitives/Switch";
+import { useEnvironment } from "~/hooks/useEnvironment";
+import { useHasAdminAccess } from "~/hooks/useUser";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { useEnvironment } from "~/hooks/useEnvironment";
 import {
   redirectBackWithErrorMessage,
   redirectBackWithSuccessMessage,
 } from "~/models/message.server";
+import { prisma } from "~/db.server";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
+import { OrgIntegrationRepository } from "~/models/orgIntegration.server";
+import { logger } from "~/services/logger.server";
 import { ProjectSettingsService } from "~/services/projectSettings.server";
 import { ProjectSettingsPresenter } from "~/services/projectSettingsPresenter.server";
-import { logger } from "~/services/logger.server";
-import { requireUserId } from "~/services/session.server";
+import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { EnvironmentParamSchema, v3BillingPath, vercelResourcePath } from "~/utils/pathBuilder";
-import React, { useEffect, useState, useCallback, useRef } from "react";
-import { useSearchParams } from "@remix-run/react";
-import { type BuildSettings } from "~/v3/buildSettings";
+import { throwPermissionDenied } from "~/utils/permissionDenied";
+import { BuildSettingsSchema, type BuildSettings } from "~/v3/buildSettings";
 import { GitHubSettingsPanel } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.github";
-import {
-  VercelSettingsPanel,
-  VercelOnboardingModal,
-} from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
 import type { loader as vercelLoader } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
-import { OrgIntegrationRepository } from "~/models/orgIntegration.server";
+import {
+  VercelOnboardingModal,
+  VercelSettingsPanel,
+} from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
+import { pageMeta } from "~/utils/pageTitle";
 
-export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
-  const { projectParam, organizationSlug } = EnvironmentParamSchema.parse(params);
+export const meta = pageMeta("Integrations");
 
-  const projectSettingsPresenter = new ProjectSettingsPresenter();
-  const resultOrFail = await projectSettingsPresenter.getProjectSettings(
-    organizationSlug,
-    projectParam,
-    userId
-  );
+export const handle = { pageTitle: "Integrations" };
 
-  if (resultOrFail.isErr()) {
-    switch (resultOrFail.error.type) {
-      case "project_not_found": {
-        throw new Response(undefined, {
-          status: 404,
-          statusText: "Project not found",
-        });
-      }
-      case "other":
-      default: {
-        resultOrFail.error.type satisfies "other";
+export const loader = dashboardLoader(
+  {
+    params: EnvironmentParamSchema,
+    context: async (params) => {
+      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
+      return organizationId ? { organizationId } : {};
+    },
+    // No hard authorization: the page renders a PermissionDenied panel for
+    // roles that can't manage any integration (see canManageIntegrations).
+  },
+  async ({ params, user, ability }) => {
+    const { projectParam, organizationSlug } = params;
 
-        logger.error("Failed loading project settings", {
-          error: resultOrFail.error,
-        });
-        throw new Response(undefined, {
-          status: 400,
-          statusText: "Something went wrong, please try again!",
-        });
+    const canManageBuildSettings = ability.can("write", { type: "github" });
+    const canManageIntegrations =
+      canManageBuildSettings || ability.can("write", { type: "vercel" });
+
+    if (!canManageIntegrations) {
+      throwPermissionDenied("With your current role, you can't manage integrations.");
+    }
+
+    const projectSettingsPresenter = new ProjectSettingsPresenter();
+    const resultOrFail = await projectSettingsPresenter.getProjectSettings(
+      organizationSlug,
+      projectParam,
+      user.id
+    );
+
+    if (resultOrFail.isErr()) {
+      switch (resultOrFail.error.type) {
+        case "project_not_found": {
+          throw new Response(undefined, {
+            status: 404,
+            statusText: "Project not found",
+          });
+        }
+        case "other":
+        default: {
+          resultOrFail.error.type satisfies "other";
+
+          logger.error("Failed loading project settings", {
+            error: resultOrFail.error,
+          });
+          throw new Response(undefined, {
+            status: 400,
+            statusText: "Something went wrong, please try again!",
+          });
+        }
       }
     }
+
+    const { gitHubApp, buildSettings } = resultOrFail.value;
+
+    return typedjson({
+      githubAppEnabled: gitHubApp.enabled,
+      buildSettings,
+      vercelIntegrationEnabled: OrgIntegrationRepository.isVercelSupported,
+      canManageBuildSettings,
+    });
   }
-
-  const { gitHubApp, buildSettings } = resultOrFail.value;
-
-  return typedjson({
-    githubAppEnabled: gitHubApp.enabled,
-    buildSettings,
-    vercelIntegrationEnabled: OrgIntegrationRepository.isVercelSupported,
-  });
-};
+);
 
 const UpdateBuildSettingsFormSchema = z.object({
   action: z.literal("update-build-settings"),
@@ -112,68 +140,91 @@ const UpdateBuildSettingsFormSchema = z.object({
     .refine((val) => !val || val.length <= 500, {
       message: "Pre-build command must not exceed 500 characters",
     }),
+  // Positive checkbox in the UI ("Use native build server"). It is checked by
+  // default; we store the inverse as `disableNativeBuildServer`.
   useNativeBuildServer: z
     .string()
     .optional()
     .transform((val) => val === "on"),
 });
 
-export const action: ActionFunction = async ({ request, params }) => {
-  const userId = await requireUserId(request);
-  const { organizationSlug, projectParam } = params;
-  if (!organizationSlug || !projectParam) {
-    return json({ errors: { body: "organizationSlug and projectParam are required" } }, { status: 400 });
-  }
+export const action = dashboardAction(
+  {
+    params: EnvironmentParamSchema,
+    context: async (params) => {
+      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
+      return organizationId ? { organizationId } : {};
+    },
+    // Build settings configure the Git-based deploy, so gate on write:github
+    // (a restricted role can view neither this page nor mutate via a POST).
+    authorization: { action: "write", resource: { type: "github" } },
+  },
+  async ({ request, params, user }) => {
+    const { organizationSlug, projectParam } = params;
 
-  const formData = await request.formData();
-  const submission = parse(formData, { schema: UpdateBuildSettingsFormSchema });
+    const formData = await request.formData();
+    const submission = parseWithZod(formData, { schema: UpdateBuildSettingsFormSchema });
 
-  if (!submission.value || submission.intent !== "submit") {
-    return json(submission);
-  }
+    if (submission.status !== "success") {
+      return json(submission.reply());
+    }
 
-  const projectSettingsService = new ProjectSettingsService();
-  const membershipResultOrFail = await projectSettingsService.verifyProjectMembership(
-    organizationSlug,
-    projectParam,
-    userId
-  );
+    const projectSettingsService = new ProjectSettingsService();
+    const membershipResultOrFail = await projectSettingsService.verifyProjectMembership(
+      organizationSlug,
+      projectParam,
+      user.id
+    );
 
-  if (membershipResultOrFail.isErr()) {
-    return json({ errors: { body: membershipResultOrFail.error.type } }, { status: 404 });
-  }
+    if (membershipResultOrFail.isErr()) {
+      return json({ errors: { body: membershipResultOrFail.error.type } }, { status: 404 });
+    }
 
-  const { projectId } = membershipResultOrFail.value;
+    const { projectId } = membershipResultOrFail.value;
 
-  const { installCommand, preBuildCommand, triggerConfigFilePath, useNativeBuildServer } =
-    submission.value;
+    const { installCommand, preBuildCommand, triggerConfigFilePath, useNativeBuildServer } =
+      submission.value;
 
-  const resultOrFail = await projectSettingsService.updateBuildSettings(projectId, {
-    installCommand: installCommand || undefined,
-    preBuildCommand: preBuildCommand || undefined,
-    triggerConfigFilePath: triggerConfigFilePath || undefined,
-    useNativeBuildServer: useNativeBuildServer,
-  });
+    // Only admins may change the opt-out; other saves carry the stored value forward.
+    let disableNativeBuildServer: true | undefined = useNativeBuildServer ? undefined : true;
+    if (!user.admin && !user.isImpersonating) {
+      const project = await prisma.project.findFirst({
+        where: { id: projectId },
+        select: { buildSettings: true },
+      });
+      const stored = BuildSettingsSchema.safeParse(project?.buildSettings);
+      disableNativeBuildServer =
+        stored.success && stored.data.disableNativeBuildServer === true ? true : undefined;
+    }
 
-  if (resultOrFail.isErr()) {
-    switch (resultOrFail.error.type) {
-      case "other":
-      default: {
-        resultOrFail.error.type satisfies "other";
+    const resultOrFail = await projectSettingsService.updateBuildSettings(projectId, {
+      installCommand: installCommand || undefined,
+      preBuildCommand: preBuildCommand || undefined,
+      triggerConfigFilePath: triggerConfigFilePath || undefined,
+      // Native build server is the default, so we only persist the opt-out.
+      disableNativeBuildServer,
+    });
 
-        logger.error("Failed to update build settings", {
-          error: resultOrFail.error,
-        });
-        return redirectBackWithErrorMessage(request, "Failed to update build settings");
+    if (resultOrFail.isErr()) {
+      switch (resultOrFail.error.type) {
+        case "other":
+        default: {
+          resultOrFail.error.type satisfies "other";
+
+          logger.error("Failed to update build settings", {
+            error: resultOrFail.error,
+          });
+          return redirectBackWithErrorMessage(request, "Failed to update build settings");
+        }
       }
     }
-  }
 
-  return redirectBackWithSuccessMessage(request, "Build settings updated successfully");
-};
+    return redirectBackWithSuccessMessage(request, "Build settings updated successfully");
+  }
+);
 
 export default function IntegrationsSettingsPage() {
-  const { githubAppEnabled, buildSettings, vercelIntegrationEnabled } =
+  const { githubAppEnabled, buildSettings, vercelIntegrationEnabled, canManageBuildSettings } =
     useTypedLoaderData<typeof loader>();
   const project = useProject();
   const organization = useOrganization();
@@ -185,6 +236,16 @@ export default function IntegrationsSettingsPage() {
   const nextUrl = searchParams.get("next");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const vercelFetcher = useTypedFetcher<typeof vercelLoader>();
+  const loadVercelOnboarding = vercelFetcher.load;
+  const onboardingData = vercelFetcher.data?.onboardingData ?? null;
+  const hasVercelFetcherData = vercelFetcher.data !== undefined;
+  const onboardingDataUnavailable =
+    hasVercelFetcherData && vercelFetcher.state === "idle" && onboardingData === null;
+  const vercelOnboardingPath = `${vercelResourcePath(
+    organization.slug,
+    project.slug,
+    environment.slug
+  )}?vercelOnboarding=true`;
 
   // Helper to open modal and ensure query param is present
   const openVercelOnboarding = useCallback(() => {
@@ -215,22 +276,31 @@ export default function IntegrationsSettingsPage() {
   useEffect(() => {
     if (hasQueryParam && vercelIntegrationEnabled) {
       // Ensure query param is present and modal is open
-      if (vercelFetcher.data?.onboardingData && vercelFetcher.state === "idle") {
+      if (onboardingData && vercelFetcher.state === "idle") {
         // Data is loaded, ensure modal is open (query param takes precedence)
         if (!isModalOpen) {
+          // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
           openVercelOnboarding();
         }
-      } else if (vercelFetcher.state === "idle" && vercelFetcher.data === undefined) {
+      } else if (vercelFetcher.state === "idle" && !hasVercelFetcherData) {
         // Load onboarding data
-        vercelFetcher.load(
-          `${vercelResourcePath(organization.slug, project.slug, environment.slug)}?vercelOnboarding=true`
-        );
+        loadVercelOnboarding(vercelOnboardingPath);
       }
     } else if (!hasQueryParam && isModalOpen) {
       // Query param removed but modal is open, close modal
       setIsModalOpen(false);
     }
-  }, [hasQueryParam, vercelIntegrationEnabled, organization.slug, project.slug, environment.slug, vercelFetcher.data, vercelFetcher.state, isModalOpen, openVercelOnboarding]);
+  }, [
+    hasQueryParam,
+    vercelIntegrationEnabled,
+    onboardingData,
+    hasVercelFetcherData,
+    vercelFetcher.state,
+    isModalOpen,
+    openVercelOnboarding,
+    loadVercelOnboarding,
+    vercelOnboardingPath,
+  ]);
 
   // Ensure modal stays open when query param is present (even after data reloads)
   // This is a safeguard to prevent the modal from closing during form submissions
@@ -238,19 +308,21 @@ export default function IntegrationsSettingsPage() {
     if (hasQueryParam && !isModalOpen) {
       // Query param is present but modal is closed, open it
       // This ensures the modal stays open during the onboarding flow
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
       openVercelOnboarding();
     }
   }, [hasQueryParam, isModalOpen, openVercelOnboarding]);
 
   // When data finishes loading (from query param), ensure modal is open
   useEffect(() => {
-    if (hasQueryParam && vercelFetcher.data?.onboardingData && vercelFetcher.state === "idle") {
+    if (hasQueryParam && onboardingData && vercelFetcher.state === "idle") {
       // Data loaded and query param is present, ensure modal is open
       if (!isModalOpen) {
+        // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
         openVercelOnboarding();
       }
     }
-  }, [hasQueryParam, vercelFetcher.data, vercelFetcher.state, isModalOpen, openVercelOnboarding]);
+  }, [hasQueryParam, onboardingData, vercelFetcher.state, isModalOpen, openVercelOnboarding]);
 
   // Track if we're waiting for data from button click (not query param)
   const waitingForButtonClickRef = useRef(false);
@@ -265,89 +337,106 @@ export default function IntegrationsSettingsPage() {
       });
     }
 
-    if (vercelFetcher.data && vercelFetcher.data.onboardingData) {
+    if (onboardingData) {
       // Data already loaded, open modal immediately
       openVercelOnboarding();
     } else {
       // Need to load data first, mark that we're waiting for button click
       waitingForButtonClickRef.current = true;
-      vercelFetcher.load(
-        `${vercelResourcePath(organization.slug, project.slug, environment.slug)}?vercelOnboarding=true`
-      );
+      loadVercelOnboarding(vercelOnboardingPath);
     }
-  }, [organization.slug, project.slug, environment.slug, vercelFetcher, setSearchParams, hasQueryParam, openVercelOnboarding]);
+  }, [
+    loadVercelOnboarding,
+    vercelOnboardingPath,
+    onboardingData,
+    setSearchParams,
+    hasQueryParam,
+    openVercelOnboarding,
+  ]);
 
   // When data loads from button click, open modal
   useEffect(() => {
-    if (waitingForButtonClickRef.current && vercelFetcher.data?.onboardingData && vercelFetcher.state === "idle") {
+    if (waitingForButtonClickRef.current && onboardingData && vercelFetcher.state === "idle") {
       // Data loaded from button click, open modal and ensure query param is present
       waitingForButtonClickRef.current = false;
       openVercelOnboarding();
     }
-  }, [vercelFetcher.data, vercelFetcher.state, openVercelOnboarding]);
+  }, [onboardingData, vercelFetcher.state, openVercelOnboarding]);
 
   return (
     <>
-      <MainHorizontallyCenteredContainer className="md:mt-6">
-        <div className="flex flex-col gap-6">
-          {githubAppEnabled && (
-            <React.Fragment>
-              <div>
-                <Header2 spacing>Git settings</Header2>
-                <div className="w-full rounded-sm border border-grid-dimmed p-4">
-                  <GitHubSettingsPanel
-                    organizationSlug={organization.slug}
-                    projectSlug={project.slug}
-                    environmentSlug={environment.slug}
-                    billingPath={v3BillingPath({ slug: organization.slug })}
-                  />
-                </div>
-              </div>
+      <SettingsContainer className="md:mt-6">
+        {githubAppEnabled && (
+          <>
+            <SettingsSection>
+              <SettingsHeader title="Git settings" />
+              <GitHubSettingsPanel
+                organizationSlug={organization.slug}
+                projectSlug={project.slug}
+                environmentSlug={environment.slug}
+                billingPath={v3BillingPath({ slug: organization.slug })}
+                layout="settings"
+              />
+            </SettingsSection>
 
-              {vercelIntegrationEnabled && (
-                <div>
-                  <Header2 spacing>Vercel integration</Header2>
-                  <div className="w-full rounded-sm border border-grid-dimmed p-4">
-                    <VercelSettingsPanel
-                      organizationSlug={organization.slug}
-                      projectSlug={project.slug}
-                      environmentSlug={environment.slug}
-                      onOpenVercelModal={handleOpenVercelModal}
-                      isLoadingVercelData={vercelFetcher.state === "loading" || vercelFetcher.state === "submitting"}
-                    />
-                  </div>
-                </div>
-              )}
+            {vercelIntegrationEnabled && (
+              <SettingsSection>
+                <SettingsHeader title="Vercel integration" />
+                <VercelSettingsPanel
+                  organizationSlug={organization.slug}
+                  projectSlug={project.slug}
+                  environmentSlug={environment.slug}
+                  onOpenVercelModal={handleOpenVercelModal}
+                  isLoadingVercelData={
+                    vercelFetcher.state === "loading" || vercelFetcher.state === "submitting"
+                  }
+                />
+              </SettingsSection>
+            )}
+          </>
+        )}
 
-              <div>
-                <Header2 spacing>Build settings</Header2>
-                <div className="w-full rounded-sm border border-grid-dimmed p-4">
-                  <BuildSettingsForm buildSettings={buildSettings ?? {}} />
-                </div>
-              </div>
-            </React.Fragment>
-          )}
-        </div>
-      </MainHorizontallyCenteredContainer>
+        <SettingsSection>
+          <SettingsHeader
+            title="Build settings"
+            description={
+              <>
+                Applies to deployments triggered from GitHub, and CLI deployments run with the{" "}
+                <InlineCode variant="extra-small" className="whitespace-nowrap">
+                  --native-build
+                </InlineCode>{" "}
+                flag.
+              </>
+            }
+          />
+          <BuildSettingsForm
+            buildSettings={buildSettings ?? {}}
+            canManageBuildSettings={canManageBuildSettings}
+          />
+        </SettingsSection>
+      </SettingsContainer>
 
       {/* Vercel Onboarding Modal */}
       {vercelIntegrationEnabled && (
         <VercelOnboardingModal
           isOpen={isModalOpen}
           onClose={closeVercelOnboarding}
-          onboardingData={vercelFetcher.data?.onboardingData ?? null}
+          onboardingData={onboardingData}
           organizationSlug={organization.slug}
           projectSlug={project.slug}
           environmentSlug={environment.slug}
           hasStagingEnvironment={vercelFetcher.data?.hasStagingEnvironment ?? false}
           hasPreviewEnvironment={vercelFetcher.data?.hasPreviewEnvironment ?? false}
           hasOrgIntegration={vercelFetcher.data?.hasOrgIntegration ?? false}
+          onboardingDataUnavailable={onboardingDataUnavailable}
           nextUrl={nextUrl ?? undefined}
           vercelManageAccessUrl={vercelFetcher.data?.vercelManageAccessUrl}
           onDataReload={(vercelEnvironmentId) => {
-            vercelFetcher.load(
-              `${vercelResourcePath(organization.slug, project.slug, environment.slug)}?vercelOnboarding=true${
-                vercelEnvironmentId ? `&vercelEnvironmentId=${encodeURIComponent(vercelEnvironmentId)}` : ""
+            loadVercelOnboarding(
+              `${vercelOnboardingPath}${
+                vercelEnvironmentId
+                  ? `&vercelEnvironmentId=${encodeURIComponent(vercelEnvironmentId)}`
+                  : ""
               }`
             );
           }}
@@ -357,16 +446,27 @@ export default function IntegrationsSettingsPage() {
   );
 }
 
-function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) {
+function BuildSettingsForm({
+  buildSettings,
+  canManageBuildSettings = true,
+}: {
+  buildSettings: BuildSettings;
+  canManageBuildSettings?: boolean;
+}) {
   const lastSubmission = useActionData() as any;
   const navigation = useNavigation();
 
   const [hasBuildSettingsChanges, setHasBuildSettingsChanges] = useState(false);
+  const hasAdminAccess = useHasAdminAccess();
+
+  // The native build server is enabled by default; it's only off when the
+  // project has explicitly opted out via `disableNativeBuildServer`.
+  const nativeBuildServerEnabled = buildSettings?.disableNativeBuildServer !== true;
   const [buildSettingsValues, setBuildSettingsValues] = useState({
     preBuildCommand: buildSettings?.preBuildCommand || "",
     installCommand: buildSettings?.installCommand || "",
     triggerConfigFilePath: buildSettings?.triggerConfigFilePath || "",
-    useNativeBuildServer: buildSettings?.useNativeBuildServer || false,
+    useNativeBuildServer: nativeBuildServerEnabled,
   });
 
   useEffect(() => {
@@ -374,16 +474,17 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
       buildSettingsValues.preBuildCommand !== (buildSettings?.preBuildCommand || "") ||
       buildSettingsValues.installCommand !== (buildSettings?.installCommand || "") ||
       buildSettingsValues.triggerConfigFilePath !== (buildSettings?.triggerConfigFilePath || "") ||
-      buildSettingsValues.useNativeBuildServer !== (buildSettings?.useNativeBuildServer || false);
+      buildSettingsValues.useNativeBuildServer !== nativeBuildServerEnabled;
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setHasBuildSettingsChanges(hasChanges);
-  }, [buildSettingsValues, buildSettings]);
+  }, [buildSettingsValues, buildSettings, nativeBuildServerEnabled]);
 
   const [buildSettingsForm, fields] = useForm({
     id: "update-build-settings",
-    lastSubmission: lastSubmission,
+    lastResult: lastSubmission,
     shouldRevalidate: "onSubmit",
     onValidate({ formData }) {
-      return parse(formData, {
+      return parseWithZod(formData, {
         schema: UpdateBuildSettingsFormSchema,
       });
     },
@@ -394,107 +495,132 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
     (navigation.state === "submitting" || navigation.state === "loading");
 
   return (
-    <Form method="post" {...buildSettingsForm.props}>
-      <Fieldset>
-        <InputGroup fullWidth>
-          <Label htmlFor={fields.triggerConfigFilePath.id}>Trigger config file</Label>
-          <Input
-            {...conform.input(fields.triggerConfigFilePath, { type: "text" })}
-            defaultValue={buildSettings?.triggerConfigFilePath || ""}
-            placeholder="trigger.config.ts"
-            onChange={(e) => {
-              setBuildSettingsValues((prev) => ({
-                ...prev,
-                triggerConfigFilePath: e.target.value,
-              }));
-            }}
-          />
-          <Hint>
-            Path to your Trigger configuration file, relative to the root directory of your repo.
-          </Hint>
-          <FormError id={fields.triggerConfigFilePath.errorId}>
-            {fields.triggerConfigFilePath.error}
-          </FormError>
-        </InputGroup>
-
-        <InputGroup fullWidth>
-          <Label htmlFor={fields.installCommand.id}>Install command</Label>
-          <Input
-            {...conform.input(fields.installCommand, { type: "text" })}
-            defaultValue={buildSettings?.installCommand || ""}
-            placeholder="e.g., `npm install`, `pnpm install`, or `bun install`"
-            onChange={(e) => {
-              setBuildSettingsValues((prev) => ({
-                ...prev,
-                installCommand: e.target.value,
-              }));
-            }}
-          />
-          <Hint>
-            Command to install your project dependencies. This will be run from the root directory
-            of your repo. Auto-detected by default.
-          </Hint>
-          <FormError id={fields.installCommand.errorId}>{fields.installCommand.error}</FormError>
-        </InputGroup>
-        <InputGroup fullWidth>
-          <Label htmlFor={fields.preBuildCommand.id}>Pre-build command</Label>
-          <Input
-            {...conform.input(fields.preBuildCommand, { type: "text" })}
-            defaultValue={buildSettings?.preBuildCommand || ""}
-            placeholder="e.g., `npm run prisma:generate`"
-            onChange={(e) => {
-              setBuildSettingsValues((prev) => ({
-                ...prev,
-                preBuildCommand: e.target.value,
-              }));
-            }}
-          />
-          <Hint>
-            Any command that needs to run before we build and deploy your project. This will be run
-            from the root directory of your repo.
-          </Hint>
-          <FormError id={fields.preBuildCommand.errorId}>{fields.preBuildCommand.error}</FormError>
-        </InputGroup>
-        <div className="border-t border-grid-dimmed pt-4">
-          <InputGroup>
-            <CheckboxWithLabel
-              id={fields.useNativeBuildServer.id}
-              {...conform.input(fields.useNativeBuildServer, { type: "checkbox" })}
-              label="Use native build server"
-              variant="simple/small"
-              defaultChecked={buildSettings?.useNativeBuildServer || false}
-              onChange={(isChecked) => {
+    <Form method="post" {...getFormProps(buildSettingsForm)}>
+      <SettingsRow
+        align="start"
+        htmlFor={fields.triggerConfigFilePath.id}
+        title="Trigger config file"
+        description="Path relative to your repo root. Auto-detected by default."
+        action={
+          <SettingsControl>
+            <Input
+              {...getInputProps(fields.triggerConfigFilePath, { type: "text" })}
+              variant="medium"
+              defaultValue={buildSettings?.triggerConfigFilePath || ""}
+              placeholder="trigger.config.ts"
+              onChange={(e) => {
                 setBuildSettingsValues((prev) => ({
                   ...prev,
-                  useNativeBuildServer: isChecked,
+                  triggerConfigFilePath: e.target.value,
                 }));
               }}
             />
-            <Hint>
-              Native build server builds do not rely on external build providers and will become the
-              default in the future. Version 4.2.0 or newer is required.
-            </Hint>
-            <FormError id={fields.useNativeBuildServer.errorId}>
-              {fields.useNativeBuildServer.error}
+            <FormError id={fields.triggerConfigFilePath.errorId}>
+              {fields.triggerConfigFilePath.errors}
             </FormError>
-          </InputGroup>
-        </div>
-        <FormError>{buildSettingsForm.error}</FormError>
-        <FormButtons
-          confirmButton={
-            <Button
-              type="submit"
-              name="action"
-              value="update-build-settings"
-              variant="secondary/small"
-              disabled={isBuildSettingsLoading || !hasBuildSettingsChanges}
-              LeadingIcon={isBuildSettingsLoading ? SpinnerWhite : undefined}
-            >
-              Save
-            </Button>
+          </SettingsControl>
+        }
+      />
+
+      <SettingsRow
+        align="start"
+        htmlFor={fields.installCommand.id}
+        title="Install command"
+        description="Runs from your repo root. Auto-detected by default."
+        action={
+          <SettingsControl>
+            <Input
+              {...getInputProps(fields.installCommand, { type: "text" })}
+              variant="medium"
+              defaultValue={buildSettings?.installCommand || ""}
+              placeholder="e.g., pnpm install"
+              onChange={(e) => {
+                setBuildSettingsValues((prev) => ({
+                  ...prev,
+                  installCommand: e.target.value,
+                }));
+              }}
+            />
+            <FormError id={fields.installCommand.errorId}>
+              {fields.installCommand.errors?.join(", ")}
+            </FormError>
+          </SettingsControl>
+        }
+      />
+      <SettingsRow
+        align="start"
+        htmlFor={fields.preBuildCommand.id}
+        title="Pre-build command"
+        description="Runs from your repo root, before the build."
+        action={
+          <SettingsControl>
+            <Input
+              {...getInputProps(fields.preBuildCommand, { type: "text" })}
+              variant="medium"
+              defaultValue={buildSettings?.preBuildCommand || ""}
+              placeholder="e.g., npm run prisma:generate"
+              onChange={(e) => {
+                setBuildSettingsValues((prev) => ({
+                  ...prev,
+                  preBuildCommand: e.target.value,
+                }));
+              }}
+            />
+            <FormError id={fields.preBuildCommand.errorId}>
+              {fields.preBuildCommand.errors?.join(", ")}
+            </FormError>
+          </SettingsControl>
+        }
+      />
+
+      {hasAdminAccess ? (
+        <>
+          <SettingsRow
+            title="Use native build server"
+            description="Builds without an external build provider. Requires trigger.dev v4.2.0 or newer."
+            action={
+              <Switch
+                variant="medium"
+                name={fields.useNativeBuildServer.name}
+                defaultChecked={nativeBuildServerEnabled}
+                onCheckedChange={(isChecked) => {
+                  setBuildSettingsValues((prev) => ({
+                    ...prev,
+                    useNativeBuildServer: isChecked,
+                  }));
+                }}
+              />
+            }
+          />
+
+          <FormError id={fields.useNativeBuildServer.errorId}>
+            {fields.useNativeBuildServer.errors}
+          </FormError>
+        </>
+      ) : null}
+      <FormError>{buildSettingsForm.errors}</FormError>
+
+      <SettingsActions>
+        <Button
+          type="submit"
+          name="action"
+          value="update-build-settings"
+          variant="secondary/small"
+          disabled={isBuildSettingsLoading || !hasBuildSettingsChanges || !canManageBuildSettings}
+          tooltip={
+            canManageBuildSettings
+              ? undefined
+              : "You don't have permission to manage build settings"
           }
-        />
-      </Fieldset>
+          LeadingIcon={isBuildSettingsLoading ? SpinnerWhite : undefined}
+        >
+          Save
+        </Button>
+      </SettingsActions>
     </Form>
   );
+}
+
+function SettingsControl({ children }: { children: React.ReactNode }) {
+  return <div className="flex w-64 flex-col gap-1">{children}</div>;
 }

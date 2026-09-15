@@ -1,4 +1,4 @@
-import { BuildManifest, WorkerManifest } from "@trigger.dev/core/v3/schemas";
+import type { BuildManifest, WorkerManifest } from "@trigger.dev/core/v3/schemas";
 
 type DeepPartial<T> = T extends object
   ? {

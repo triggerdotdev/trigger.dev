@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { SpanEvent } from "@trigger.dev/core/v3";
+import type { SpanEvent } from "@trigger.dev/core/v3";
 import { createTimelineSpanEventsFromSpanEvents } from "../app/utils/timelineSpanEvents";
 import { millisecondsToNanoseconds } from "@trigger.dev/core/v3/utils/durations";
 
@@ -27,8 +27,7 @@ describe("createTimelineSpanEventsFromSpanEvents", () => {
         file: "src/trigger/chat.ts",
         event: "import",
         duration: 67,
-        entryPoint:
-          "/project/.trigger/tmp/build-AL7zTl/src/trigger/chat.mjs",
+        entryPoint: "/project/.trigger/tmp/build-AL7zTl/src/trigger/chat.mjs",
       },
     },
   ];
@@ -52,8 +51,7 @@ describe("createTimelineSpanEventsFromSpanEvents", () => {
         file: "src/trigger/chat.ts",
         event: "import",
         duration: 67,
-        entryPoint:
-          "/project/.trigger/tmp/build-AL7zTl/src/trigger/chat.mjs",
+        entryPoint: "/project/.trigger/tmp/build-AL7zTl/src/trigger/chat.mjs",
       },
     },
   ];

@@ -3,8 +3,10 @@ export * from "./apiClient/types.js";
 export * from "./apiClient/pagination.js";
 export type { ApiPromise, OffsetLimitPagePromise, CursorPagePromise } from "./apiClient/core.js";
 export * from "./apiClient/errors.js";
+export * from "./apiClient/refreshAccessToken.js";
 export * from "./clock-api.js";
 export * from "./errors.js";
+export * from "./externalDeploymentId.js";
 export * from "./limits.js";
 export * from "./logger-api.js";
 export * from "./runtime-api.js";
@@ -30,6 +32,8 @@ export * from "./resource-catalog-api.js";
 export * from "./types/index.js";
 export { links } from "./links.js";
 export * from "./jwt.js";
+export * from "./apiKeys.js";
+export * from "./workloadDeploymentToken.js";
 export * from "./idempotencyKeys.js";
 export * from "./streams/asyncIterableStream.js";
 export * from "./utils/getEnv.js";
@@ -81,8 +85,13 @@ export * from "./config.js";
 export {
   getSchemaParseFn,
   type AnySchemaParseFn,
+  type AnyZodSchema,
   type SchemaParseFn,
+  type ZodErrorLike,
+  type ZodIssueLike,
   type inferSchemaOut,
+  type inferZodSchemaInput,
+  type inferZodSchemaOutput,
   isSchemaZodEsque,
   isSchemaValibotEsque,
   isSchemaArkTypeEsque,

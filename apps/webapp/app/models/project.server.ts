@@ -1,10 +1,14 @@
-import { nanoid, customAlphabet } from "nanoid";
+import type { Prisma, Project } from "@trigger.dev/database";
+import { customAlphabet, nanoid } from "nanoid";
 import slug from "slug";
 import { $replica, prisma } from "~/db.server";
-import type { Prisma, Project } from "@trigger.dev/database";
-import { type Organization, createEnvironment } from "./organization.server";
-import { env } from "~/env.server";
 import { projectCreated } from "~/services/projectCreated.server";
+import { ServiceValidationError } from "~/v3/services/common.server";
+import {
+  type Organization,
+  createDevelopmentEnvironmentForMember,
+  createEnvironment,
+} from "./organization.server";
 export type { Project } from "@trigger.dev/database";
 
 const externalRefGenerator = customAlphabet("abcdefghijklmnopqrstuvwxyz", 20);
@@ -33,7 +37,7 @@ export async function createProject(
     select: {
       id: true,
       slug: true,
-      v3Enabled: true,
+      isActivated: true,
       maximumConcurrencyLimit: true,
       maximumProjectCount: true,
     },
@@ -50,8 +54,11 @@ export async function createProject(
   }
 
   if (version === "v3") {
-    if (!organization.v3Enabled) {
-      throw new Error(`Organization can't create v3 projects.`);
+    if (!organization.isActivated) {
+      throw new ServiceValidationError(
+        "You must select a plan for this organization before creating projects.",
+        402
+      );
     }
   }
 
@@ -102,6 +109,11 @@ export async function createProject(
       },
       externalRef: `proj_${externalRefGenerator()}`,
       version: version === "v3" ? "V3" : "V2",
+      // New projects run on the v2 engine. The Prisma column still defaults to V1
+      // for historical rows; the V1->V2 upgrade guards on worker-register / deploy
+      // stay in place to migrate existing legacy projects.
+      engine: "V2",
+      defaultRuntime: "node-24",
       onboardingData,
     },
     include: {
@@ -122,11 +134,9 @@ export async function createProject(
   });
 
   for (const member of project.organization.members) {
-    await createEnvironment({
+    await createDevelopmentEnvironmentForMember({
       organization,
       project,
-      type: "DEVELOPMENT",
-      isBranchableEnvironment: false,
       member,
     });
   }
@@ -146,6 +156,27 @@ export async function findProjectBySlug(orgSlug: string, projectSlug: string, us
         members: { some: { userId } },
       },
     },
+  });
+}
+
+/**
+ * The same membership-scoped lookup with the organization's feature flags attached, for a
+ * request that has to answer an org flag as well: one read instead of two.
+ */
+export async function findProjectWithOrgFlagsBySlug(
+  orgSlug: string,
+  projectSlug: string,
+  userId: string
+) {
+  return await $replica.project.findFirst({
+    where: {
+      slug: projectSlug,
+      organization: {
+        slug: orgSlug,
+        members: { some: { userId } },
+      },
+    },
+    include: { organization: { select: { featureFlags: true } } },
   });
 }
 

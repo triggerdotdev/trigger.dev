@@ -1,11 +1,4 @@
-import {
-  ArrowDownTrayIcon,
-  BookmarkIcon,
-  CalendarIcon,
-  ClipboardIcon,
-  PencilIcon,
-  PencilSquareIcon,
-} from "@heroicons/react/20/solid";
+import { ArrowDownTrayIcon, CalendarIcon, PencilSquareIcon } from "@heroicons/react/20/solid";
 import type { OutputColumnMetadata } from "@internal/clickhouse";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { useFetcher } from "@remix-run/react";
@@ -17,6 +10,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -27,7 +21,6 @@ import simplur from "simplur";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { ChartConfigPanel, defaultChartConfig } from "~/components/code/ChartConfigPanel";
 import { autoFormatSQL, TSQLEditor } from "~/components/code/TSQLEditor";
-import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import {
   QueryWidget,
@@ -80,7 +73,8 @@ import type { action as titleAction } from "~/routes/resources.orgs.$organizatio
 import type { QueryScope } from "~/services/queryService.server";
 import { downloadFile, rowsToCSV, rowsToJSON } from "~/utils/dataExport";
 import { organizationBillingPath } from "~/utils/pathBuilder";
-import { querySchemas } from "~/v3/querySchemas";
+import { listableQuerySchemas } from "~/v3/querySchemas";
+import { useFeatures } from "~/hooks/useFeatures";
 
 /** Convert a Date or ISO string to ISO string format */
 function toISOString(value: Date | string): string {
@@ -105,7 +99,7 @@ type QueryActionResponse = {
   maxQueryPeriod?: number;
 };
 
-export type QueryEditorMode =
+type QueryEditorMode =
   | { type: "standalone" }
   | { type: "dashboard-add"; dashboardId: string; dashboardName: string }
   | {
@@ -195,6 +189,11 @@ const QueryEditorForm = forwardRef<
   ref
 ) {
   const isLoading = fetcher.state === "submitting" || fetcher.state === "loading";
+  const { queueMetricsQueryTables } = useFeatures();
+  const schemas = useMemo(
+    () => listableQuerySchemas({ includeQueueMetrics: queueMetricsQueryTables }),
+    [queueMetricsQueryTables]
+  );
   const [query, setQuery] = useState(defaultQuery);
   const [scope, setScope] = useState<QueryScope>(defaultScope);
   const formRef = useRef<HTMLFormElement>(null);
@@ -249,11 +248,11 @@ const QueryEditorForm = forwardRef<
   );
 
   return (
-    <div className="flex h-full flex-col gap-2 bg-charcoal-900 pb-2">
+    <div className="flex h-full flex-col gap-2 bg-white pb-2 dark:bg-background-deep">
       <TSQLEditor
         defaultValue={query}
         onChange={setQuery}
-        schema={querySchemas}
+        schema={schemas}
         linterEnabled={true}
         showCopyButton={true}
         showClearButton={true}
@@ -284,11 +283,7 @@ const QueryEditorForm = forwardRef<
               Explain
             </Button>
           )}
-          <ScopeFilter
-            value={scope}
-            onValueChange={setScope}
-            shortcut={{ key: "e" }}
-          />
+          <ScopeFilter value={scope} onValueChange={setScope} shortcut={{ key: "e" }} />
           {queryHasTriggeredAt ? (
             <SimpleTooltip
               asChild
@@ -339,7 +334,7 @@ const QueryEditorForm = forwardRef<
             shortcut={{ modifiers: ["mod"], key: "enter", enabledOnInputElements: true }}
             className={
               isLoading
-                ? "relative !text-transparent [&_*]:!border-transparent [&_*]:!text-transparent"
+                ? "relative text-transparent! **:border-transparent! **:text-transparent!"
                 : undefined
             }
           >
@@ -382,22 +377,25 @@ export function QueryEditor({
 
   // Use defaultData as initial results, then switch to fetcher data once a query is run
   const fetcherResults = fetcher.data;
-  const results =
-    fetcherResults ??
-    (defaultData
-      ? {
-          error: null,
-          rows: defaultData.rows,
-          columns: defaultData.columns,
-          stats: null,
-          hiddenColumns: null,
-          reachedMaxRows: false,
-          explainOutput: null,
-          generatedSql: null,
-          queryId: null,
-          periodClipped: null,
-        }
-      : null);
+  const results = useMemo(
+    () =>
+      fetcherResults ??
+      (defaultData
+        ? {
+            error: null,
+            rows: defaultData.rows,
+            columns: defaultData.columns,
+            stats: null,
+            hiddenColumns: null,
+            reachedMaxRows: false,
+            explainOutput: null,
+            generatedSql: null,
+            queryId: null,
+            periodClipped: null,
+          }
+        : null),
+    [defaultData, fetcherResults]
+  );
 
   const organization = useOrganization();
   const project = useProject();
@@ -425,7 +423,7 @@ export function QueryEditor({
   const isTitleLoading = titleFetcher.state !== "idle";
   const generatedTitle = titleFetcher.data?.title;
   const [historyTitle, setHistoryTitle] = useState<string | null>(
-    history.length > 0 ? history[0].title ?? null : null
+    history.length > 0 ? (history[0].title ?? null) : null
   );
 
   // For edit mode, use the widget name as initial title
@@ -439,8 +437,8 @@ export function QueryEditor({
   const queryTitle =
     userTitle ??
     (mode.type === "dashboard-edit"
-      ? editModeTitle ?? historyTitle ?? generatedTitle ?? null
-      : historyTitle ?? generatedTitle ?? null);
+      ? (editModeTitle ?? historyTitle ?? generatedTitle ?? null)
+      : (historyTitle ?? generatedTitle ?? null));
 
   // Track if user has manually set a title (disables AI regeneration)
   const hasUserTitle = userTitle !== null;
@@ -507,6 +505,7 @@ export function QueryEditor({
 
   // Use a ref so the effect can read chartConfig without re-firing on every config tweak
   const chartConfigRef = useRef(chartConfig);
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
   chartConfigRef.current = chartConfig;
 
   // Reset chart config only when a column referenced by the current config is no
@@ -564,6 +563,7 @@ export function QueryEditor({
   }, []);
 
   // Compute current save data for the save render prop
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
   const currentQuery = editorRef.current?.getQuery() ?? "";
   const saveData: QueryEditorSaveData = {
     title: queryTitle ?? "Untitled Query",
@@ -572,8 +572,8 @@ export function QueryEditor({
       resultsView === "table"
         ? { type: "table", prettyFormatting, sorting: [] }
         : resultsView === "bignumber"
-        ? { type: "bignumber", ...bigNumberConfig }
-        : { type: "chart", ...chartConfig },
+          ? { type: "bignumber", ...bigNumberConfig }
+          : { type: "chart", ...chartConfig },
   };
 
   // Render NavBar based on mode
@@ -626,7 +626,10 @@ export function QueryEditor({
     <PageContainer>
       {renderNavBar()}
       <PageBody scrollable={false}>
-        <ResizablePanelGroup orientation="horizontal" className="h-full max-h-full bg-charcoal-800">
+        <ResizablePanelGroup
+          orientation="horizontal"
+          className="h-full max-h-full bg-background-bright"
+        >
           <ResizablePanel id="query-main" className="h-full">
             <ResizablePanelGroup orientation="vertical" className="h-full overflow-hidden">
               {/* Query editor - isolated component to prevent re-renders */}
@@ -656,7 +659,7 @@ export function QueryEditor({
               <ResizablePanel
                 id="query-results"
                 min="200px"
-                className="overflow-hidden bg-charcoal-800"
+                className="overflow-hidden bg-background-bright"
               >
                 <ClientTabs
                   value={resultsView}
@@ -749,7 +752,7 @@ export function QueryEditor({
                         {results.generatedSql && (
                           <div>
                             <Header3 className="mb-2">Generated ClickHouse SQL</Header3>
-                            <div className="overflow-auto rounded border border-grid-dimmed bg-charcoal-900 p-3">
+                            <div className="overflow-auto rounded border border-grid-dimmed bg-background-deep p-3">
                               <pre className="whitespace-pre font-mono text-xs text-text-bright">
                                 {results.generatedSql}
                               </pre>
@@ -758,7 +761,7 @@ export function QueryEditor({
                         )}
                         <div className="flex min-h-0 flex-1 flex-col">
                           <Header3 className="mb-2">Query Execution Plan</Header3>
-                          <div className="min-h-0 flex-1 overflow-auto rounded border border-grid-dimmed bg-charcoal-900 p-3">
+                          <div className="min-h-0 flex-1 overflow-auto rounded border border-grid-dimmed bg-background-deep p-3">
                             <pre className="whitespace-pre font-mono text-xs text-text-bright">
                               {results.explainOutput}
                             </pre>
@@ -789,6 +792,7 @@ export function QueryEditor({
                                 onRename={handleRenameTitle}
                               />
                             }
+                            // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
                             query={editorRef.current?.getQuery() ?? defaultQuery}
                             data={{
                               rows: results.rows,
@@ -816,7 +820,7 @@ export function QueryEditor({
                       </div>
                     ) : (
                       <div className="flex h-full flex-col items-center justify-center gap-3">
-                        <IconChartHistogram className="size-16 text-charcoal-650" />
+                        <IconChartHistogram className="size-16 text-secondary" />
                         <Paragraph className="max-w-48 text-center text-text-dimmed">
                           Run a query to visualize the results.
                         </Paragraph>
@@ -843,6 +847,7 @@ export function QueryEditor({
                         <ResultsChart
                           rows={results.rows}
                           columns={results.columns}
+                          // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
                           query={editorRef.current?.getQuery() ?? defaultQuery}
                           chartConfig={chartConfig}
                           onChartConfigChange={handleChartConfigChange}
@@ -865,7 +870,7 @@ export function QueryEditor({
                       </>
                     ) : (
                       <div className="flex h-full flex-col items-center justify-center gap-3">
-                        <IconChartHistogram className="size-16 text-charcoal-650" />
+                        <IconChartHistogram className="size-16 text-secondary" />
                         <Paragraph className="max-w-48 text-center text-text-dimmed">
                           Run a query to visualize the results.
                         </Paragraph>
@@ -892,6 +897,7 @@ export function QueryEditor({
                         <ResultsBigNumber
                           rows={results.rows}
                           columns={results.columns}
+                          // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
                           query={editorRef.current?.getQuery() ?? defaultQuery}
                           bigNumberConfig={bigNumberConfig}
                           onBigNumberConfigChange={setBigNumberConfig}
@@ -914,7 +920,7 @@ export function QueryEditor({
                       </>
                     ) : (
                       <div className="flex h-full flex-col items-center justify-center gap-3">
-                        <IconChartHistogram className="size-16 text-charcoal-650" />
+                        <IconChartHistogram className="size-16 text-secondary" />
                         <Paragraph className="max-w-48 text-center text-text-dimmed">
                           Run a query to visualize the results.
                         </Paragraph>
@@ -954,13 +960,14 @@ export function QueryEditor({
       {mode.type === "standalone" && (
         <SaveToDashboardDialog
           title={queryTitle ?? "Untitled Query"}
+          // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
           query={editorRef.current?.getQuery() ?? ""}
           config={
             resultsView === "table"
               ? { type: "table", prettyFormatting, sorting: [] }
               : resultsView === "bignumber"
-              ? { type: "bignumber", ...bigNumberConfig }
-              : { type: "chart", ...chartConfig }
+                ? { type: "bignumber", ...bigNumberConfig }
+                : { type: "chart", ...chartConfig }
           }
           isOpen={isSaveDialogOpen}
           onOpenChange={setIsSaveDialogOpen}
@@ -984,6 +991,7 @@ function QueryTitle({
 
   // Update rename value when title changes
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
     setRenameValue(title ?? "");
   }, [title]);
 
@@ -1090,7 +1098,7 @@ function ExportResultsButton({
       <PopoverArrowTrigger variant="minimal" isOpen={isOpen}>
         Export
       </PopoverArrowTrigger>
-      <PopoverContent className="min-w-[10rem] p-1" align="end">
+      <PopoverContent className="min-w-40 p-1" align="end">
         <div className="flex flex-col gap-1">
           <PopoverMenuItem
             icon={Clipboard}
@@ -1189,38 +1197,36 @@ function ResultsChart({
   accessory?: ReactNode;
 }) {
   return (
-    <>
-      <ResizablePanelGroup className="overflow-hidden">
-        <ResizablePanel id="chart-results">
-          <div className="h-full overflow-hidden bg-background-bright">
-            <QueryWidget
-              className="border-0"
-              title={
-                <QueryTitle
-                  isTitleLoading={isTitleLoading}
-                  title={queryTitle}
-                  onRename={onRenameTitle}
-                />
-              }
-              query={query}
-              data={{
-                rows,
-                columns,
-              }}
-              config={{
-                type: "chart",
-                ...chartConfig,
-              }}
-              accessory={accessory}
-            />
-          </div>
-        </ResizablePanel>
-        <ResizableHandle id="chart-split" />
-        <ResizablePanel id="chart-config" min="50px" default="200px">
-          <ChartConfigPanel columns={columns} config={chartConfig} onChange={onChartConfigChange} />
-        </ResizablePanel>
-      </ResizablePanelGroup>
-    </>
+    <ResizablePanelGroup className="overflow-hidden">
+      <ResizablePanel id="chart-results">
+        <div className="h-full overflow-hidden bg-background-bright">
+          <QueryWidget
+            className="border-0"
+            title={
+              <QueryTitle
+                isTitleLoading={isTitleLoading}
+                title={queryTitle}
+                onRename={onRenameTitle}
+              />
+            }
+            query={query}
+            data={{
+              rows,
+              columns,
+            }}
+            config={{
+              type: "chart",
+              ...chartConfig,
+            }}
+            accessory={accessory}
+          />
+        </div>
+      </ResizablePanel>
+      <ResizableHandle id="chart-split" />
+      <ResizablePanel id="chart-config" min="50px" default="200px">
+        <ChartConfigPanel columns={columns} config={chartConfig} onChange={onChartConfigChange} />
+      </ResizablePanel>
+    </ResizablePanelGroup>
   );
 }
 
@@ -1259,51 +1265,49 @@ function ResultsBigNumber({
   accessory?: ReactNode;
 }) {
   // Auto-select first numeric column if none selected
-  const numericColumns = columns.filter((c) => isNumericColumnType(c.type));
+  const firstNumericColumn = columns.find((column) => isNumericColumnType(column.type));
 
   useEffect(() => {
-    if (!bigNumberConfig.column && numericColumns.length > 0) {
-      onBigNumberConfigChange({ ...bigNumberConfig, column: numericColumns[0].name });
+    if (!bigNumberConfig.column && firstNumericColumn) {
+      onBigNumberConfigChange({ ...bigNumberConfig, column: firstNumericColumn.name });
     }
-  }, [columns]);
+  }, [bigNumberConfig, firstNumericColumn, onBigNumberConfigChange]);
 
   return (
-    <>
-      <ResizablePanelGroup className="overflow-hidden">
-        <ResizablePanel id="bignumber-results">
-          <div className="h-full overflow-hidden bg-background-bright">
-            <QueryWidget
-              className="border-0"
-              title={
-                <QueryTitle
-                  isTitleLoading={isTitleLoading}
-                  title={queryTitle}
-                  onRename={onRenameTitle}
-                />
-              }
-              query={query}
-              data={{
-                rows,
-                columns,
-              }}
-              config={{
-                type: "bignumber",
-                ...bigNumberConfig,
-              }}
-              accessory={accessory}
-            />
-          </div>
-        </ResizablePanel>
-        <ResizableHandle id="bignumber-split" />
-        <ResizablePanel id="bignumber-config" min="50px" default="200px">
-          <BigNumberConfigPanel
-            columns={columns}
-            config={bigNumberConfig}
-            onChange={onBigNumberConfigChange}
+    <ResizablePanelGroup className="overflow-hidden">
+      <ResizablePanel id="bignumber-results">
+        <div className="h-full overflow-hidden bg-background-bright">
+          <QueryWidget
+            className="border-0"
+            title={
+              <QueryTitle
+                isTitleLoading={isTitleLoading}
+                title={queryTitle}
+                onRename={onRenameTitle}
+              />
+            }
+            query={query}
+            data={{
+              rows,
+              columns,
+            }}
+            config={{
+              type: "bignumber",
+              ...bigNumberConfig,
+            }}
+            accessory={accessory}
           />
-        </ResizablePanel>
-      </ResizablePanelGroup>
-    </>
+        </div>
+      </ResizablePanel>
+      <ResizableHandle id="bignumber-split" />
+      <ResizablePanel id="bignumber-config" min="50px" default="200px">
+        <BigNumberConfigPanel
+          columns={columns}
+          config={bigNumberConfig}
+          onChange={onBigNumberConfigChange}
+        />
+      </ResizablePanel>
+    </ResizablePanelGroup>
   );
 }
 

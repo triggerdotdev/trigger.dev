@@ -42,10 +42,10 @@ async function register(): Promise<void> {
     if (typeof aiMod.registerTelemetry !== "function") {
       return; // v5 / v6 — `ai` core emits spans itself, nothing to wire.
     }
-    // Computed specifier keeps the optional peer out of static bundler
-    // resolution; resolves at runtime only when the customer installed it.
+    // Computed specifier + @vite-ignore keep the optional peer out of static
+    // bundler resolution; resolves at runtime only when installed.
     const otelSpecifier = ["@ai-sdk", "otel"].join("/");
-    const otelMod: any = await import(otelSpecifier).catch(() => null);
+    const otelMod: any = await import(/* @vite-ignore */ otelSpecifier).catch(() => null);
     if (typeof otelMod?.OpenTelemetry !== "function") {
       return; // optional peer not installed
     }

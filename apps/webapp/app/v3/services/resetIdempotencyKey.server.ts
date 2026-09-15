@@ -2,6 +2,7 @@ import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { logger } from "~/services/logger.server";
 import { getMollifierBuffer } from "~/v3/mollifier/mollifierBuffer.server";
+import { resolveRunIdMintKind } from "~/v3/engineVersion.server";
 
 export class ResetIdempotencyKeyService extends BaseService {
   public async call(
@@ -9,17 +10,31 @@ export class ResetIdempotencyKeyService extends BaseService {
     taskIdentifier: string,
     authenticatedEnv: AuthenticatedEnvironment
   ): Promise<{ id: string }> {
-    const { count: pgCount } = await this._prisma.taskRun.updateMany({
-      where: {
-        idempotencyKey,
-        taskIdentifier,
-        runtimeEnvironmentId: authenticatedEnv.id,
+    // The predicate has no run id to route by. When the env mints run-ops ids its runs live on NEW,
+    // so pin the reset to NEW and skip the wrong-DB (0-row) write to the draining legacy DB. Resolve
+    // this only when the org (and its flags) is loaded on the env — which the authenticated API path
+    // always provides; otherwise fall back to the two-store reset (correct, just not optimized).
+    let residency: "NEW" | "LEGACY" = "LEGACY";
+    if (authenticatedEnv.organization) {
+      const mintKind = await resolveRunIdMintKind({
+        organizationId: authenticatedEnv.organizationId,
+        id: authenticatedEnv.id,
+        orgFeatureFlags: authenticatedEnv.organization.featureFlags,
+      });
+      residency = mintKind === "runOpsId" ? "NEW" : "LEGACY";
+    }
+
+    const { count: pgCount } = await this.runStore.clearIdempotencyKey(
+      {
+        byPredicate: {
+          idempotencyKey,
+          taskIdentifier,
+          runtimeEnvironmentId: authenticatedEnv.id,
+          residency,
+        },
       },
-      data: {
-        idempotencyKey: null,
-        idempotencyKeyExpiresAt: null,
-      },
-    });
+      this._prisma
+    );
 
     // Buffer-side reset: the key may belong to a buffered run that
     // hasn't materialised yet. The PG updateMany above can't see it.
@@ -75,17 +90,17 @@ export class ResetIdempotencyKeyService extends BaseService {
       // lookup against the writer when there's nothing to find;
       // otherwise the exact write the customer asked for (i.e., not
       // duplicative — without it the reset is silently lost).
-      const { count: handoffPgCount } = await this._prisma.taskRun.updateMany({
-        where: {
-          idempotencyKey,
-          taskIdentifier,
-          runtimeEnvironmentId: authenticatedEnv.id,
+      const { count: handoffPgCount } = await this.runStore.clearIdempotencyKey(
+        {
+          byPredicate: {
+            idempotencyKey,
+            taskIdentifier,
+            runtimeEnvironmentId: authenticatedEnv.id,
+            residency,
+          },
         },
-        data: {
-          idempotencyKey: null,
-          idempotencyKeyExpiresAt: null,
-        },
-      });
+        this._prisma
+      );
       if (handoffPgCount > 0) {
         logger.info(
           `Reset idempotency key via handoff re-check: ${idempotencyKey} for task: ${taskIdentifier} in env: ${authenticatedEnv.id}, affected ${handoffPgCount} run(s)`

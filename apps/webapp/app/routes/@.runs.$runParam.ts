@@ -1,16 +1,22 @@
 import { redirect, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
+import { runStore } from "~/v3/runStore.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
+import { requireAdminDashboardEnabled } from "~/models/admin.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { requireUser } from "~/services/session.server";
 import { impersonate, rootPath, v3RunPath, v3RunSpanPath } from "~/utils/pathBuilder";
 import { findBufferedRunRedirectInfo } from "~/v3/mollifier/syntheticRedirectInfo.server";
+import { undefinedOnUnroutableId } from "~/v3/runOpsMigration/unroutableRead.server";
 
 const ParamsSchema = z.object({
   runParam: z.string(),
 });
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
+  requireAdminDashboardEnabled();
+
   const user = await requireUser(request);
 
   const { runParam } = ParamsSchema.parse(params);
@@ -28,29 +34,22 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     );
   }
 
-  const run = await prisma.taskRun.findFirst({
-    where: {
-      friendlyId: runParam,
-    },
-    select: {
-      spanId: true,
-      runtimeEnvironment: {
-        select: {
-          slug: true,
+  const run = await undefinedOnUnroutableId(
+    () =>
+      runStore.findRun(
+        {
+          friendlyId: runParam,
         },
-      },
-      project: {
-        select: {
-          slug: true,
-          organization: {
-            select: {
-              slug: true,
-            },
+        {
+          select: {
+            spanId: true,
+            runtimeEnvironmentId: true,
           },
         },
-      },
-    },
-  });
+        prisma
+      ),
+    { runParam: params.runParam ?? params.runId }
+  );
 
   if (!run) {
     // Admin impersonation route — bypass org membership so admins can
@@ -86,10 +85,18 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     });
   }
 
+  const environment = await controlPlaneResolver.resolveAuthenticatedEnv(run.runtimeEnvironmentId);
+
+  if (!environment) {
+    return redirectWithErrorMessage(rootPath(), request, "Run doesn't exist", {
+      ephemeral: false,
+    });
+  }
+
   const path = v3RunSpanPath(
-    { slug: run.project.organization.slug },
-    { slug: run.project.slug },
-    { slug: run.runtimeEnvironment.slug },
+    { slug: environment.organization.slug },
+    { slug: environment.project.slug },
+    { slug: environment.slug },
     { friendlyId: runParam },
     { spanId: run.spanId }
   );

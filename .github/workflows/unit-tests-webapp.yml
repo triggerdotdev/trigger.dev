@@ -14,13 +14,18 @@ on:
 jobs:
   unitTests:
     name: "🧪 Unit Tests: Webapp"
-    runs-on: ubuntu-latest
+    # Webapp test throughput is limited per-machine (one docker daemon + disk absorbing
+    # all the per-file Postgres/ClickHouse container spin-up), so many machines beats
+    # few big ones - fewer/bigger (3x32) measured slower than 10x8. The 16x (vs 8x)
+    # gives the fork pool the CPU headroom the 8x runners lacked.
+    runs-on: warp-ubuntu-latest-x64-16x
     strategy:
       # one flaky shard shouldn't cancel its siblings - lets us re-run only the failed shard
       fail-fast: false
       matrix:
-        shardIndex: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-        shardTotal: [10]
+        shardIndex:
+          [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]
+        shardTotal: [24]
     env:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       SHARD_INDEX: ${{ matrix.shardIndex }}
@@ -53,26 +58,26 @@ jobs:
         run: sudo systemctl restart docker
 
       - name: ⬇️ Checkout repo
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
           persist-credentials: false
 
       - name: ⎔ Setup pnpm
-        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           version: 10.33.2
 
       - name: ⎔ Setup node
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        uses: WarpBuilds/setup-node@2867cf8f859d73439e1ad18b542617e5a29f0f10 # v7.0.0
         with:
-          node-version: 20.20.2
+          node-version: 24.18.0
           cache: "pnpm"
 
       # ..to avoid rate limits when pulling images
       - name: 🐳 Login to DockerHub
         if: ${{ env.DOCKERHUB_USERNAME }}
-        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -80,10 +85,10 @@ jobs:
         if: ${{ !env.DOCKERHUB_USERNAME }}
         run: echo "DockerHub login skipped because secrets are not available."
 
-      - name: 🐳 Pre-pull testcontainer images
-        if: ${{ env.DOCKERHUB_USERNAME }}
+      - name: 📥 Prepare deps and testcontainer images
         run: |
-          # Retry each pull - DockerHub registry timeouts are a recurring transient CI flake.
+          # Pull images concurrently with dependency installation. Retry each pull because
+          # DockerHub registry timeouts are a recurring transient CI flake.
           pull() {
             for attempt in 1 2 3; do
               docker pull "$1" && return 0
@@ -93,17 +98,41 @@ jobs:
             echo "::error::docker pull $1 failed after 3 attempts"
             return 1
           }
-          echo "Pre-pulling Docker images with authenticated session..."
-          pull postgres:14
-          pull clickhouse/clickhouse-server:25.4-alpine
-          pull redis:7.2
-          pull testcontainers/ryuk:0.14.0
-          pull electricsql/electric:1.2.4
-          pull minio/minio:latest
-          echo "Image pre-pull complete"
 
-      - name: 📥 Download deps
-        run: pnpm install --frozen-lockfile
+          pull_images() {
+            local pids=()
+            local failed=0
+            for image in \
+              postgres:14 \
+              postgres:17 \
+              clickhouse/clickhouse-server:26.2.19.43-alpine@sha256:c6ad6a7eb2fb5999df3adfb8b69a0c7222c68fa9b8f6b04a088564ebbc959251 \
+              redis:7.2 \
+              testcontainers/ryuk:0.14.0 \
+              electricsql/electric:1.2.4@sha256:20da3d0b0e74926c5623392db67fd56698b9e374c4aeb6cb5cadeb8fea171c36 \
+              quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+            do
+              pull "$image" &
+              pids+=("$!")
+            done
+            for pid in "${pids[@]}"; do
+              if ! wait "$pid"; then
+                failed=1
+              fi
+            done
+            return "$failed"
+          }
+
+          echo "Installing dependencies and pre-pulling Docker images..."
+          pull_images &
+          pull_pid=$!
+          install_status=0
+          pnpm install --frozen-lockfile || install_status=$?
+          pull_status=0
+          wait "$pull_pid" || pull_status=$?
+          if (( install_status != 0 || pull_status != 0 )); then
+            exit 1
+          fi
+          echo "Dependency install and image pre-pull complete"
 
       - name: 📀 Generate Prisma Client
         run: pnpm run generate
@@ -139,23 +168,23 @@ jobs:
     name: "📊 Merge Reports"
     if: ${{ !cancelled() }}
     needs: [unitTests]
-    runs-on: ubuntu-latest
+    runs-on: warp-ubuntu-latest-x64-2x
     steps:
       - name: ⬇️ Checkout repo
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
           persist-credentials: false
 
       - name: ⎔ Setup pnpm
-        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           version: 10.33.2
 
       - name: ⎔ Setup node
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 20.20.2
+          node-version: 24.18.0
           # no cache enabled, we're not installing deps
 
       - name: Download blob reports from GitHub Actions Artifacts

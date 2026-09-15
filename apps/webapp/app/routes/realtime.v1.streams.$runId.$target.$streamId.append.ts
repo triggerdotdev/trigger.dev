@@ -6,6 +6,7 @@ import { $replica, prisma } from "~/db.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
+import { runStore } from "~/v3/runStore.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),
@@ -26,11 +27,11 @@ const { action } = createActionApiRoute(
     maxContentLength: MAX_APPEND_BODY_BYTES,
   },
   async ({ request, params, authentication }) => {
-    const run = await $replica.taskRun.findFirst({
-      where: {
-        friendlyId: params.runId,
-        runtimeEnvironmentId: authentication.environment.id,
-      },
+    const where = {
+      friendlyId: params.runId,
+      runtimeEnvironmentId: authentication.environment.id,
+    };
+    const args = {
       select: {
         id: true,
         friendlyId: true,
@@ -45,7 +46,12 @@ const { action } = createActionApiRoute(
           },
         },
       },
-    });
+    };
+    // Replica lag can null out a live run; a spurious 404 permanently fails the append. Re-read the
+    // owning primary on a replica miss.
+    const run =
+      (await runStore.findRun(where, args, $replica)) ??
+      (await runStore.findRunOnPrimary(where, args));
 
     if (!run) {
       return new Response("Run not found", { status: 404 });
@@ -55,26 +61,29 @@ const { action } = createActionApiRoute(
       params.target === "self"
         ? run.friendlyId
         : params.target === "parent"
-        ? run.parentTaskRun?.friendlyId
-        : run.rootTaskRun?.friendlyId;
+          ? run.parentTaskRun?.friendlyId
+          : run.rootTaskRun?.friendlyId;
 
     if (!targetId) {
       return new Response("Target not found", { status: 404 });
     }
 
-    const targetRun = await prisma.taskRun.findFirst({
-      where: {
+    const targetRun = await runStore.findRun(
+      {
         friendlyId: targetId,
         runtimeEnvironmentId: authentication.environment.id,
       },
-      select: {
-        realtimeStreams: true,
-        realtimeStreamsVersion: true,
-        completedAt: true,
-        id: true,
-        streamBasinName: true,
+      {
+        select: {
+          realtimeStreams: true,
+          realtimeStreamsVersion: true,
+          completedAt: true,
+          id: true,
+          streamBasinName: true,
+        },
       },
-    });
+      prisma
+    );
 
     if (!targetRun) {
       return new Response("Run not found", { status: 404 });
@@ -87,16 +96,7 @@ const { action } = createActionApiRoute(
     }
 
     if (!targetRun.realtimeStreams.includes(params.streamId)) {
-      await prisma.taskRun.update({
-        where: {
-          id: targetRun.id,
-        },
-        data: {
-          realtimeStreams: {
-            push: params.streamId,
-          },
-        },
-      });
+      await runStore.pushRealtimeStream(targetRun.id, params.streamId, prisma);
     }
 
     const part = await request.text();

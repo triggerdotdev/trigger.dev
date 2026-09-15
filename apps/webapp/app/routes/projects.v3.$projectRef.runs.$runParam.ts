@@ -3,6 +3,9 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { requireUserId } from "~/services/session.server";
 import { v3RunSpanPath } from "~/utils/pathBuilder";
+import { runStore } from "~/v3/runStore.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
+import { undefinedOnUnroutableId } from "~/v3/runOpsMigration/unroutableRead.server";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
@@ -34,29 +37,38 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     return new Response("Not found", { status: 404 });
   }
 
-  const run = await prisma.taskRun.findUnique({
-    where: {
-      friendlyId: validatedParams.runParam,
-    },
-    include: {
-      runtimeEnvironment: true,
-    },
-  });
+  const run = await undefinedOnUnroutableId(
+    () =>
+      runStore.findRun(
+        {
+          friendlyId: validatedParams.runParam,
+        },
+        {
+          select: {
+            friendlyId: true,
+            spanId: true,
+            runtimeEnvironmentId: true,
+          },
+        },
+        prisma
+      ),
+    { runParam: params.runParam ?? params.runId }
+  );
 
   if (!run) {
     throw new Response("Not found", { status: 404 });
   }
 
+  const environment = await controlPlaneResolver.resolveAuthenticatedEnv(run.runtimeEnvironmentId);
+
+  if (!environment) {
+    throw new Response("Not found", { status: 404 });
+  }
+
   // Redirect to the project's runs page
   return redirect(
-    v3RunSpanPath(
-      { slug: project.organization.slug },
-      { slug: project.slug },
-      run.runtimeEnvironment,
-      run,
-      {
-        spanId: run.spanId,
-      }
-    )
+    v3RunSpanPath({ slug: project.organization.slug }, { slug: project.slug }, environment, run, {
+      spanId: run.spanId,
+    })
   );
 }

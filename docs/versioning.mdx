@@ -47,6 +47,8 @@ So a task run will continue running on the version it was locked to. We do this 
 
 Every deployment creates a new version of all tasks for that environment.
 
+Because your application and your tasks deploy separately, a release of your app can briefly trigger tasks that belong to a different version. [Version skew protection](/deployment/version-skew-protection) pins each run to the deployment built from the same commit, once your app sends the id it was deployed with.
+
 ## Retries and reattempts
 
 When a task has an uncaught error it will [retry](/errors-retrying), assuming you have not set `maxAttempts` to 0. Retries are locked to the original version of the run.

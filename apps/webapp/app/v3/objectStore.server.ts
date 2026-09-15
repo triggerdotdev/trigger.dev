@@ -3,11 +3,13 @@ import { type IOPacket } from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { safeEnvironmentLogFields } from "~/services/safeEnvironmentLog";
 import { ServiceValidationError } from "~/v3/services/common.server";
 import { singleton } from "~/utils/singleton";
 import {
   normalizeObjectStoreLogicalKeyPathname,
   ObjectStoreClient,
+  type ObjectRange,
   type ObjectStoreClientConfig,
 } from "./objectStoreClient.server";
 
@@ -265,6 +267,31 @@ export async function uploadPacketToObjectStore(
   return formatStorageUri(safePath, protocol);
 }
 
+/**
+ * One ranged read of a stored packet, for a caller that needs a byte window
+ * rather than the whole object.
+ */
+export async function downloadObjectRangeFromObjectStore(
+  packet: IOPacket,
+  location: { projectRef: string; envSlug: string },
+  range: { suffixLength: number } | { start: number; end: number },
+  opts?: { ifMatch?: string }
+): Promise<ObjectRange> {
+  if (packet.dataType !== "application/store" || !packet.data) {
+    throw new Error("Ranged reads require a stored packet");
+  }
+
+  const { protocol, path } = parseStorageUri(packet.data);
+  const key = buildPacketObjectStoreKey(location.projectRef, location.envSlug, path);
+  const client = getObjectStoreClient(protocol);
+
+  if (!client) {
+    throw new Error(`Object store is not configured for protocol: ${protocol || "default"}`);
+  }
+
+  return client.getObjectRange(key, range, opts);
+}
+
 export async function downloadPacketFromObjectStore(
   packet: IOPacket,
   environment: AuthenticatedEnvironment
@@ -275,7 +302,10 @@ export async function downloadPacketFromObjectStore(
 
   // There shouldn't be an offloaded packet with undefined data…
   if (!packet.data) {
-    logger.error("Object store packet has undefined data", { packet, environment });
+    logger.error("Object store packet has undefined data", {
+      packet,
+      environment: safeEnvironmentLogFields(environment),
+    });
     return {
       dataType: "application/json",
       data: undefined,
@@ -283,11 +313,7 @@ export async function downloadPacketFromObjectStore(
   }
 
   const { protocol, path } = parseStorageUri(packet.data);
-  const key = buildPacketObjectStoreKey(
-    environment.project.externalRef,
-    environment.slug,
-    path
-  );
+  const key = buildPacketObjectStoreKey(environment.project.externalRef, environment.slug, path);
 
   const client = getObjectStoreClient(protocol);
 

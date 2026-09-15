@@ -1,39 +1,52 @@
-import { spawn, type ChildProcess } from "node:child_process";
-import { readFileSync, writeFileSync, renameSync, unlinkSync, existsSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { setTimeout as awaitTimeout } from "node:timers/promises";
-import {
+import { tryCatch } from "@trigger.dev/core/utils";
+import { TaskRunErrorCodes } from "@trigger.dev/core/v3";
+import type {
   BuildManifest,
   CreateBackgroundWorkerRequestBody,
+  DequeuedMessage,
   DevConfigResponseBody,
-  SemanticInternalAttributes,
   WorkerManifest,
 } from "@trigger.dev/core/v3";
-import { ResolvedConfig } from "@trigger.dev/core/v3/build";
-import { CliApiClient } from "../apiClient.js";
-import { DevCommandOptions } from "../commands/dev.js";
-import { eventBus } from "../utilities/eventBus.js";
-import { logger } from "../utilities/logger.js";
-import { resolveSourceFiles } from "../utilities/sourceFiles.js";
-import { BackgroundWorker } from "./backgroundWorker.js";
-import { copySkillFolders } from "../build/bundleSkills.js";
-import { WorkerRuntime } from "./workerRuntime.js";
-import { cliLink, prettyError } from "../utilities/cliOutput.js";
-import { DevRunController } from "../entryPoints/dev-run-controller.js";
-import { io, Socket } from "socket.io-client";
-import {
+import type { ResolvedConfig } from "@trigger.dev/core/v3/build";
+import type {
   WorkerClientToServerEvents,
   WorkerServerToClientEvents,
 } from "@trigger.dev/core/v3/workers";
-import pLimit from "p-limit";
-import { resolveLocalEnvVars } from "../utilities/localEnvVars.js";
 import type { Metafile } from "esbuild";
+import { spawn, type ChildProcess } from "node:child_process";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { join } from "node:path";
+import { setTimeout as awaitTimeout } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
+import pLimit from "p-limit";
+import type { Socket } from "socket.io-client";
+import { io } from "socket.io-client";
+import type { CliApiClient } from "../apiClient.js";
+import { copySkillFolders } from "../build/bundleSkills.js";
+import type { DevCommandOptions } from "../commands/dev.js";
+import { DevRunController } from "../entryPoints/dev-run-controller.js";
+import { cliLink, prettyError } from "../utilities/cliOutput.js";
+import { devBranchPathSegment } from "../utilities/devBranch.js";
+import { eventBus } from "../utilities/eventBus.js";
+import { resolveLocalEnvVars } from "../utilities/localEnvVars.js";
+import { logger } from "../utilities/logger.js";
+import { resolveSourceFiles } from "../utilities/sourceFiles.js";
+import { getTmpRoot } from "../utilities/tempDirectories.js";
+import { BackgroundWorker } from "./backgroundWorker.js";
 import { TaskRunProcessPool } from "./taskRunProcessPool.js";
-import { tryCatch } from "@trigger.dev/core/utils";
+import type { WorkerRuntime } from "./workerRuntime.js";
+import { SchedulePlanLimitError } from "./errors.js";
 
 export type WorkerRuntimeOptions = {
   name: string | undefined;
+  branch?: string;
   config: ResolvedConfig;
   args: DevCommandOptions;
   client: CliApiClient;
@@ -80,7 +93,7 @@ class DevSupervisor implements WorkerRuntime {
   private activeRunsPath?: string;
   private watchdogPidPath?: string;
 
-  constructor(public readonly options: WorkerRuntimeOptions) { }
+  constructor(public readonly options: WorkerRuntimeOptions) {}
 
   async init(): Promise<void> {
     logger.debug("[DevSupervisor] initialized worker runtime", { options: this.options });
@@ -121,10 +134,10 @@ class DevSupervisor implements WorkerRuntime {
           : false;
 
     const maxPoolSize =
-      typeof processKeepAlive === "object" ? processKeepAlive.devMaxPoolSize ?? 25 : 25;
+      typeof processKeepAlive === "object" ? (processKeepAlive.devMaxPoolSize ?? 25) : 25;
 
     const maxExecutionsPerProcess =
-      typeof processKeepAlive === "object" ? processKeepAlive.maxExecutionsPerProcess ?? 50 : 50;
+      typeof processKeepAlive === "object" ? (processKeepAlive.maxExecutionsPerProcess ?? 50) : 50;
 
     if (enableProcessReuse) {
       logger.debug("[DevSupervisor] Enabling process reuse", {
@@ -206,8 +219,15 @@ class DevSupervisor implements WorkerRuntime {
       mkdirSync(triggerDir, { recursive: true });
     }
 
-    this.activeRunsPath = join(triggerDir, "active-runs.json");
-    this.watchdogPidPath = join(triggerDir, "watchdog.pid");
+    // Namespace watchdog state per branch so concurrent dev sessions on
+    // different branches don't share a single watchdog instance (the
+    // single-instance guard would otherwise kill the other branch's watchdog).
+    const safeBranch = devBranchPathSegment(this.options.branch);
+    const suffix = safeBranch ? `-${safeBranch}` : "";
+
+    this.activeRunsPath = join(triggerDir, `active-runs${suffix}.json`);
+    this.watchdogPidPath = join(triggerDir, `watchdog${suffix}.pid`);
+    const lockFilePath = join(triggerDir, safeBranch ? `dev.${safeBranch}.lock` : "dev.lock");
 
     // Write empty active-runs file
     this.#updateActiveRunsFile();
@@ -232,7 +252,8 @@ class DevSupervisor implements WorkerRuntime {
           WATCHDOG_API_KEY: this.options.client.accessToken ?? "",
           WATCHDOG_ACTIVE_RUNS: this.activeRunsPath,
           WATCHDOG_PID_FILE: this.watchdogPidPath,
-          WATCHDOG_TMP_DIR: join(triggerDir, "tmp"),
+          WATCHDOG_TMP_DIR: getTmpRoot(this.options.config.workingDir, this.options.branch),
+          WATCHDOG_LOCK_FILE: lockFilePath,
         },
       });
 
@@ -279,10 +300,10 @@ class DevSupervisor implements WorkerRuntime {
     // Clean up files
     try {
       if (this.activeRunsPath) unlinkSync(this.activeRunsPath);
-    } catch { }
+    } catch {}
     try {
       if (this.watchdogPidPath) unlinkSync(this.watchdogPidPath);
-    } catch { }
+    } catch {}
   }
 
   #updateActiveRunsFile() {
@@ -388,10 +409,14 @@ class DevSupervisor implements WorkerRuntime {
 
     if (!backgroundWorkerRecord.success) {
       stop();
+      if (backgroundWorkerRecord.errorCode === "schedule_plan_limit") {
+        throw new SchedulePlanLimitError(backgroundWorkerRecord.error);
+      }
       throw new Error(backgroundWorkerRecord.error);
     }
 
     backgroundWorker.serverWorker = backgroundWorkerRecord.data;
+    backgroundWorker.warnings = backgroundWorkerRecord.data.warnings ?? [];
     this.#registerWorker(backgroundWorker);
     this.lastManifest = manifest;
     this.latestWorkerId = backgroundWorker.serverWorker.id;
@@ -462,7 +487,9 @@ class DevSupervisor implements WorkerRuntime {
             }
           );
 
-          //todo call the API to crash the run with a good message
+          this.#failRunWithMissingWorker(message).catch((error) => {
+            logger.debug("[DevSupervisor] Failed to fail run with missing worker", { error });
+          });
           continue;
         }
 
@@ -526,7 +553,6 @@ class DevSupervisor implements WorkerRuntime {
           taskRunProcessPool: this.taskRunProcessPool,
           cwd,
           onFinished: () => {
-
             logger.debug("[DevSupervisor] Run finished", { runId: message.run.friendlyId });
 
             //stop the run controller, and remove it
@@ -573,6 +599,33 @@ class DevSupervisor implements WorkerRuntime {
     }
   }
 
+  async #failRunWithMissingWorker(message: DequeuedMessage) {
+    const start = await this.options.client.dev.startRunAttempt(
+      message.run.friendlyId,
+      message.snapshot.friendlyId
+    );
+
+    if (!start.success) {
+      return;
+    }
+
+    const { run, snapshot, execution } = start.data;
+
+    await this.options.client.dev.completeRunAttempt(run.friendlyId, snapshot.friendlyId, {
+      completion: {
+        id: execution.run.id,
+        ok: false,
+        retry: undefined,
+        error: {
+          type: "INTERNAL_ERROR",
+          code: TaskRunErrorCodes.COULD_NOT_FIND_EXECUTOR,
+          message:
+            "This run was assigned to a background worker version that is no longer available in the dev session because it was superseded by a rebuild. Trigger the run again to use the current version.",
+        },
+      },
+    });
+  }
+
   async #startPresenceConnection() {
     try {
       const eventSource = this.options.client.dev.presenceConnection();
@@ -597,6 +650,7 @@ class DevSupervisor implements WorkerRuntime {
         logger.info("[DevSupervisor] Closing presence connection");
         eventSource.close();
       };
+      // eslint-disable-next-line no-useless-catch
     } catch (error) {
       throw error;
     }
@@ -710,7 +764,7 @@ class DevSupervisor implements WorkerRuntime {
       }
     });
 
-    const interval = setInterval(() => {
+    const _interval = setInterval(() => {
       logger.debug("[DevSupervisor] Socket connections", {
         connections: Array.from(this.socketConnections),
       });
@@ -901,4 +955,3 @@ function generateValidationIssueMessage(
     }
   }
 }
-

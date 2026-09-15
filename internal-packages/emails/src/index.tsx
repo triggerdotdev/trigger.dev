@@ -1,10 +1,11 @@
-import { ReactElement } from "react";
+import type { ReactElement } from "react";
 
 import { z } from "zod";
 import AlertAttemptFailureEmail, { AlertAttemptEmailSchema } from "../emails/alert-attempt-failure";
-import AlertErrorGroupEmail, {
-  AlertErrorGroupEmailSchema,
-} from "../emails/alert-error-group";
+import AlertDashboardAgentWatchEmail, {
+  AlertDashboardAgentWatchEmailSchema,
+} from "../emails/alert-dashboard-agent-watch";
+import AlertErrorGroupEmail, { AlertErrorGroupEmailSchema } from "../emails/alert-error-group";
 import AlertRunFailureEmail, { AlertRunEmailSchema } from "../emails/alert-run-failure";
 import { setGlobalBasePath } from "../emails/components/BasePath";
 import AlertDeploymentFailureEmail, {
@@ -16,12 +17,16 @@ import AlertDeploymentSuccessEmail, {
 import InviteEmail, { InviteEmailSchema } from "../emails/invite";
 import MagicLinkEmail from "../emails/magic-link";
 
-import { constructMailTransport, MailTransport, MailTransportOptions } from "./transports";
+import type { MailTransport, MailTransportOptions } from "./transports";
+import { constructMailTransport } from "./transports";
 import MfaEnabledEmail, { MfaEnabledEmailSchema } from "../emails/mfa-enabled";
 import MfaDisabledEmail, { MfaDisabledEmailSchema } from "../emails/mfa-disabled";
 import BulkActionCompletedEmail, {
   BulkActionCompletedEmailSchema,
 } from "../emails/bulk-action-complete";
+import NodeRuntimeDeprecationEmail, {
+  NodeRuntimeDeprecationEmailSchema,
+} from "../emails/node-runtime-deprecation";
 
 export { type MailTransportOptions };
 
@@ -35,11 +40,13 @@ export const DeliverEmailSchema = z
     AlertRunEmailSchema,
     AlertAttemptEmailSchema,
     AlertErrorGroupEmailSchema,
+    AlertDashboardAgentWatchEmailSchema,
     AlertDeploymentFailureEmailSchema,
     AlertDeploymentSuccessEmailSchema,
     MfaEnabledEmailSchema,
     MfaDisabledEmailSchema,
     BulkActionCompletedEmailSchema,
+    NodeRuntimeDeprecationEmailSchema,
   ])
   .and(z.object({ to: z.string() }));
 
@@ -130,6 +137,13 @@ export class EmailClient {
           component: <AlertErrorGroupEmail {...data} />,
         };
       }
+      case "alert-dashboard-agent-watch": {
+        return {
+          // The headline is the same sentence the chat and Slack use; `identity` is a key.
+          subject: `[${data.organization}] ${data.headline ?? `Watch update: ${data.identity}`}`,
+          component: <AlertDashboardAgentWatchEmail {...data} />,
+        };
+      }
       case "alert-deployment-failure": {
         return {
           subject: `[${data.organization}] Deployment ${data.version} [${data.environment}] failed: ${data.error.name}`,
@@ -158,6 +172,12 @@ export class EmailClient {
         return {
           subject: `Bulk action finished`,
           component: <BulkActionCompletedEmail {...data} />,
+        };
+      }
+      case "node-runtime-deprecation": {
+        return {
+          subject: `[${data.organization}] ${data.project} deployed using deprecated Node.js 21`,
+          component: <NodeRuntimeDeprecationEmail {...data} />,
         };
       }
     }

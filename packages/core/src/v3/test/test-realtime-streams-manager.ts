@@ -1,7 +1,5 @@
-import {
-  AsyncIterableStream,
-  createAsyncIterableStreamFromAsyncIterable,
-} from "../streams/asyncIterableStream.js";
+import type { AsyncIterableStream } from "../streams/asyncIterableStream.js";
+import { createAsyncIterableStreamFromAsyncIterable } from "../streams/asyncIterableStream.js";
 import type {
   RealtimeStreamInstance,
   RealtimeStreamOperationOptions,
@@ -28,6 +26,7 @@ export class TestRealtimeStreamsManager implements RealtimeStreamsManager {
     _options?: RealtimeStreamOperationOptions
   ): RealtimeStreamInstance<T> {
     const buffer = this.getBuffer(key);
+    // eslint-disable-next-line no-this-alias
     const self = this;
 
     // Eagerly drain the source in the background so chunks land in the

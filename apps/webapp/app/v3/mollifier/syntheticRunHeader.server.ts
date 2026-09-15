@@ -46,8 +46,8 @@ export function buildSyntheticRunHeader(args: {
     status: isCancelled
       ? ("CANCELED" as const)
       : isFailed
-      ? ("SYSTEM_FAILURE" as const)
-      : ("PENDING" as const),
+        ? ("SYSTEM_FAILURE" as const)
+        : ("PENDING" as const),
     isFinished: isCancelled || isFailed,
     startedAt: null,
     // Symmetric with `buildSyntheticSpanRun` and the

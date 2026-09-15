@@ -1,5 +1,4 @@
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { prisma } from "~/db.server";
+import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { metricsRegister } from "~/metrics.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
@@ -13,12 +12,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     }
   }
 
-  // We need to remove empty lines from the prisma metrics, grafana doesn't like them
-  const prismaMetrics = (await prisma.$metrics.prometheus()).replace(/^\s*[\r\n]/gm, "");
-  const coreMetrics = await metricsRegister.metrics();
-
-  // Order matters, core metrics end with `# EOF`, prisma metrics don't
-  const metrics = prismaMetrics + coreMetrics;
+  const metrics = await metricsRegister.metrics();
 
   return new Response(metrics, {
     headers: {

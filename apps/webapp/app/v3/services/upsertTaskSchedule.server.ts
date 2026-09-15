@@ -3,11 +3,24 @@ import cronstrue from "cronstrue";
 import { nanoid } from "nanoid";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { type UpsertSchedule } from "../schedules";
-import { calculateNextScheduledTimestampFromNow } from "../utils/calculateNextSchedule.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { CheckScheduleService } from "./checkSchedule.server";
 import { scheduleEngine } from "../scheduleEngine.server";
+import {
+  calculateNextScheduleRunTimes,
+  formatResolvedScheduleWindow,
+  normalizeScheduleWindow,
+} from "../scheduleWindow.server";
+import { resolveNewScheduleDefaultWindowSeconds } from "../scheduleDefaultWindow.server";
 import { scheduleWhereClause } from "~/models/schedules.server";
+import { env } from "~/env.server";
+import {
+  assertCronMeetsFreeMinimum,
+  minimumWindowForNewSchedule,
+  resolveFreeSchedulePolicyContext,
+  resolveMinimumWindowOnUpdate,
+  type FreeSchedulePolicyContext,
+} from "../freeSchedulePolicy.server";
 
 export type UpsertTaskScheduleServiceOptions = UpsertSchedule;
 
@@ -31,6 +44,23 @@ export class UpsertTaskScheduleService extends BaseService {
     const checkSchedule = new CheckScheduleService(this._prisma);
     await checkSchedule.call(projectId, schedule, schedule.environments);
 
+    const project = await this._prisma.project.findFirst({
+      where: { id: projectId },
+      select: {
+        organizationId: true,
+        organization: { select: { featureFlags: true } },
+      },
+    });
+
+    if (!project) {
+      throw new ServiceValidationError("Project not found");
+    }
+
+    const policy = await resolveFreeSchedulePolicyContext({
+      id: project.organizationId,
+      featureFlags: project.organization.featureFlags,
+    });
+
     const deduplicationKey =
       typeof schedule.deduplicationKey === "string" && schedule.deduplicationKey !== ""
         ? schedule.deduplicationKey
@@ -52,9 +82,19 @@ export class UpsertTaskScheduleService extends BaseService {
       if (existingSchedule.type === "DECLARATIVE") {
         throw new ServiceValidationError("Cannot update a declarative schedule");
       }
-      result = await this.#updateExistingSchedule(existingSchedule, schedule);
+      result = await this.#updateExistingSchedule(existingSchedule, schedule, policy);
     } else {
-      result = await this.#createNewSchedule(schedule, projectId, deduplicationKey);
+      const defaultWindowDurationSeconds = await resolveNewScheduleDefaultWindowSeconds(
+        this._prisma,
+        project.organizationId
+      );
+      result = await this.#createNewSchedule(
+        schedule,
+        projectId,
+        deduplicationKey,
+        policy,
+        defaultWindowDurationSeconds
+      );
     }
 
     if (!result) {
@@ -80,14 +120,27 @@ export class UpsertTaskScheduleService extends BaseService {
       },
     });
 
-    return this.#createReturnObject(scheduleRecord, instances);
+    return this.#createReturnObject(scheduleRecord, instances, schedule.environments[0]);
   }
 
   async #createNewSchedule(
     options: UpsertTaskScheduleServiceOptions,
     projectId: string,
-    deduplicationKey: string
+    deduplicationKey: string,
+    policy: FreeSchedulePolicyContext,
+    defaultWindowDurationSeconds: number | null
   ) {
+    const minimumWindowDurationSeconds = minimumWindowForNewSchedule(policy, "IMPERATIVE");
+
+    if (minimumWindowDurationSeconds !== null) {
+      assertCronMeetsFreeMinimum({
+        cron: options.cron,
+        timezone: options.timezone,
+        minimumWindowDurationSeconds,
+        scheduleType: "IMPERATIVE",
+      });
+    }
+
     const scheduleRecord = await this._prisma.taskSchedule.create({
       data: {
         projectId,
@@ -100,6 +153,9 @@ export class UpsertTaskScheduleService extends BaseService {
         generatorDescription: cronstrue.toString(options.cron),
         timezone: options.timezone ?? "UTC",
         externalId: options.externalId ? options.externalId : undefined,
+        minimumWindowDurationSeconds,
+        ...normalizeScheduleWindow(options.window),
+        defaultWindowDurationSeconds,
       },
     });
 
@@ -132,8 +188,23 @@ export class UpsertTaskScheduleService extends BaseService {
 
   async #updateExistingSchedule(
     existingSchedule: TaskSchedule,
-    options: UpsertTaskScheduleServiceOptions
+    options: UpsertTaskScheduleServiceOptions,
+    policy: FreeSchedulePolicyContext
   ) {
+    const minimumResolution = resolveMinimumWindowOnUpdate(
+      policy,
+      existingSchedule.minimumWindowDurationSeconds
+    );
+
+    if (minimumResolution.enforce && minimumResolution.minimumWindowDurationSeconds !== null) {
+      assertCronMeetsFreeMinimum({
+        cron: options.cron,
+        timezone: options.timezone,
+        minimumWindowDurationSeconds: minimumResolution.minimumWindowDurationSeconds,
+        scheduleType: "IMPERATIVE",
+      });
+    }
+
     // find the existing instances
     const existingInstances = await this._prisma.taskScheduleInstance.findMany({
       where: {
@@ -161,12 +232,19 @@ export class UpsertTaskScheduleService extends BaseService {
         generatorDescription: cronstrue.toString(options.cron),
         timezone: options.timezone ?? "UTC",
         externalId: options.externalId ? options.externalId : null,
+        minimumWindowDurationSeconds: minimumResolution.minimumWindowDurationSeconds,
+        ...normalizeScheduleWindow(options.window),
       },
     });
 
+    // Updates preserve the captured default; omitting the explicit window falls back to it.
     const scheduleHasChanged =
       scheduleRecord.generatorExpression !== existingSchedule.generatorExpression ||
-      scheduleRecord.timezone !== existingSchedule.timezone;
+      scheduleRecord.timezone !== existingSchedule.timezone ||
+      scheduleRecord.windowDurationSeconds !== existingSchedule.windowDurationSeconds ||
+      scheduleRecord.windowPercentage !== existingSchedule.windowPercentage ||
+      // Clearing the minimum changes the effective range.
+      scheduleRecord.minimumWindowDurationSeconds !== existingSchedule.minimumWindowDurationSeconds;
 
     // create the new instances
     const newInstances: InstanceWithEnvironment[] = [];
@@ -232,7 +310,29 @@ export class UpsertTaskScheduleService extends BaseService {
     return { scheduleRecord };
   }
 
-  #createReturnObject(taskSchedule: TaskSchedule, instances: InstanceWithEnvironment[]) {
+  #createReturnObject(
+    taskSchedule: TaskSchedule,
+    instances: InstanceWithEnvironment[],
+    environmentId: string
+  ) {
+    const instance = instances.find((instance) => instance.environmentId === environmentId);
+    if (!instance) {
+      throw new ServiceValidationError("Failed to find the schedule instance");
+    }
+
+    const [nextRun] = calculateNextScheduleRunTimes({
+      cron: taskSchedule.generatorExpression,
+      timezone: taskSchedule.timezone,
+      deduplicationKey: taskSchedule.deduplicationKey,
+      environmentId: instance.environmentId,
+      schedulePhase: instance.schedulePhase,
+      phaseSecret: env.ENCRYPTION_KEY,
+      windowDurationSeconds: taskSchedule.windowDurationSeconds,
+      windowPercentage: taskSchedule.windowPercentage,
+      defaultWindowDurationSeconds: taskSchedule.defaultWindowDurationSeconds,
+      minimumWindowDurationSeconds: taskSchedule.minimumWindowDurationSeconds,
+    });
+
     return {
       id: taskSchedule.friendlyId,
       type: taskSchedule.type,
@@ -245,10 +345,16 @@ export class UpsertTaskScheduleService extends BaseService {
       cron: taskSchedule.generatorExpression,
       cronDescription: taskSchedule.generatorDescription,
       timezone: taskSchedule.timezone,
-      nextRun: calculateNextScheduledTimestampFromNow(
-        taskSchedule.generatorExpression,
-        taskSchedule.timezone
-      ),
+      window: formatResolvedScheduleWindow(taskSchedule).window,
+      nextRun: nextRun.nominalAt,
+      nextRunEffectiveAt: nextRun.effectiveAt,
+      appliedSchedulePolicy:
+        taskSchedule.minimumWindowDurationSeconds !== null
+          ? {
+              minimumWindowSeconds: taskSchedule.minimumWindowDurationSeconds,
+              reason: "free_schedule" as const,
+            }
+          : undefined,
       environments: instances.map((instance) => ({
         id: instance.environment.id,
         shortcode: instance.environment.shortcode,

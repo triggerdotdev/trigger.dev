@@ -2,6 +2,7 @@ import { XMarkIcon } from "@heroicons/react/20/solid";
 import { useLayoutEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { cn } from "~/utils/cn";
+import { textLinkClassName } from "~/components/primitives/TextLink";
 
 export function NotificationCard({
   title,
@@ -52,7 +53,7 @@ export function NotificationCard({
   const safeImage = sanitizeUrl(image);
 
   return (
-    <div className="group/card relative overflow-hidden rounded border border-charcoal-650 bg-charcoal-700/50 shadow-lg">
+    <div className="group/card relative overflow-hidden rounded border border-border-bright bg-background-raised/50 shadow-lg">
       {safeActionUrl && (
         <a
           href={safeActionUrl}
@@ -71,7 +72,7 @@ export function NotificationCard({
           onClick={handleDismiss}
           aria-label="Dismiss notification"
           title="Dismiss notification"
-          className="relative z-20 -mr-1 shrink-0 rounded p-0.5 text-text-dimmed opacity-0 transition group-hover/card:opacity-100 hover:bg-charcoal-700 hover:text-text-bright focus-visible:opacity-100"
+          className="relative z-20 -mr-1 shrink-0 rounded p-0.5 text-text-dimmed opacity-0 transition group-hover/card:opacity-100 hover:bg-background-raised hover:text-text-bright focus-visible:opacity-100"
         >
           <XMarkIcon className="size-3.5" />
         </button>
@@ -87,7 +88,7 @@ export function NotificationCard({
           <button
             type="button"
             onClick={handleToggleExpand}
-            className="relative z-20 mt-0.5 text-xs text-indigo-400 hover:text-indigo-300"
+            className={cn(textLinkClassName(), "relative z-20 mt-0.5 text-xs")}
           >
             {isExpanded ? "Show less" : "Show more"}
           </button>
@@ -109,7 +110,7 @@ function getMarkdownComponents(onLinkClick?: () => void) {
         href={href}
         target="_blank"
         rel="noopener noreferrer"
-        className="relative z-20 text-indigo-400 underline transition-colors hover:text-indigo-300"
+        className={cn(textLinkClassName(), "relative z-20")}
         onClick={(e) => {
           e.stopPropagation();
           onLinkClick?.();
@@ -123,7 +124,7 @@ function getMarkdownComponents(onLinkClick?: () => void) {
     ),
     em: ({ children }: { children?: React.ReactNode }) => <em>{children}</em>,
     code: ({ children }: { children?: React.ReactNode }) => (
-      <code className="rounded bg-charcoal-700 px-1 py-0.5 text-[11px]">{children}</code>
+      <code className="rounded bg-background-raised px-1 py-0.5 text-[11px]">{children}</code>
     ),
   };
 }

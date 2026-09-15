@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import SegmentedControl from "~/components/primitives/SegmentedControl";
 import type { QueryScope } from "~/services/queryService.server";
-import { querySchemas } from "~/v3/querySchemas";
+import { listableQuerySchemas } from "~/v3/querySchemas";
+import { useFeatures } from "~/hooks/useFeatures";
 import { TryableCodeBlock } from "./TRQLGuideContent";
 
 // Example queries for the Examples tab
@@ -120,7 +121,8 @@ LIMIT 100`,
   },
   {
     title: "LLM cost by model (past 7d)",
-    description: "Total cost, input tokens, and output tokens grouped by model over the last 7 days.",
+    description:
+      "Total cost, input tokens, and output tokens grouped by model over the last 7 days.",
     query: `SELECT
   response_model,
   SUM(total_cost) AS total_cost,
@@ -210,14 +212,21 @@ LIMIT 20`,
   },
 ];
 
-const tableOptions = querySchemas.map((s) => ({ label: s.name, value: s.name }));
-
 export function ExamplesContent({
   onTryExample,
 }: {
   onTryExample: (query: string, scope: QueryScope) => void;
 }) {
-  const [selectedTable, setSelectedTable] = useState(querySchemas[0].name);
+  const { queueMetricsQueryTables } = useFeatures();
+  const schemas = useMemo(
+    () => listableQuerySchemas({ includeQueueMetrics: queueMetricsQueryTables }),
+    [queueMetricsQueryTables]
+  );
+  const tableOptions = useMemo(
+    () => schemas.map((s) => ({ label: s.name, value: s.name })),
+    [schemas]
+  );
+  const [selectedTable, setSelectedTable] = useState(schemas[0].name);
   const filtered = exampleQueries.filter((e) => e.table === selectedTable);
 
   return (

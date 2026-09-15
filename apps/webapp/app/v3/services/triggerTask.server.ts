@@ -1,5 +1,5 @@
-import { TriggerTaskRequestBody } from "@trigger.dev/core/v3";
-import { RunEngineVersion, TaskRun } from "@trigger.dev/database";
+import type { TriggerTaskRequestBody } from "@trigger.dev/core/v3";
+import type { RunEngineVersion, TaskRun } from "@trigger.dev/database";
 import { env } from "~/env.server";
 import { IdempotencyKeyConcern } from "~/runEngine/concerns/idempotencyKeys.server";
 import { DefaultPayloadProcessor } from "~/runEngine/concerns/payloads.server";
@@ -7,11 +7,11 @@ import { DefaultQueueManager } from "~/runEngine/concerns/queues.server";
 import { DefaultTraceEventsConcern } from "~/runEngine/concerns/traceEvents.server";
 import { RunEngineTriggerTaskService } from "~/runEngine/services/triggerTask.server";
 import { DefaultTriggerTaskValidator } from "~/runEngine/validators/triggerTaskValidator";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { determineEngineVersion } from "../engineVersion.server";
 import { tracer } from "../tracer.server";
-import { WithRunEngine } from "./baseService.server";
-import { TriggerTaskServiceV1 } from "./triggerTaskV1.server";
+import { V3_TRIGGER_DEPRECATION_MESSAGE } from "../engineDeprecation.server";
+import { ServiceValidationError, WithRunEngine } from "./baseService.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -37,11 +37,7 @@ export type TriggerTaskServiceOptions = {
   triggerAction?: string;
 };
 
-export class OutOfEntitlementError extends Error {
-  constructor() {
-    super("You can't trigger a task because you have run out of credits.");
-  }
-}
+export { OutOfEntitlementError } from "../outOfEntitlementError.server";
 
 export type TriggerTaskServiceResult = {
   run: TaskRun;
@@ -77,23 +73,16 @@ export class TriggerTaskService extends WithRunEngine {
 
       switch (v) {
         case "V1": {
-          return await this.callV1(taskId, environment, body, options);
+          // v3 (engine V1) is retired. Reject the trigger with a graceful,
+          // actionable error instead of executing. Covers single, batch,
+          // schedule, replay, and triggerAndWait, which all route through here.
+          throw new ServiceValidationError(V3_TRIGGER_DEPRECATION_MESSAGE);
         }
         case "V2": {
           return await this.callV2(taskId, environment, body, options);
         }
       }
     });
-  }
-
-  private async callV1(
-    taskId: string,
-    environment: AuthenticatedEnvironment,
-    body: TriggerTaskRequestBody,
-    options: TriggerTaskServiceOptions = {}
-  ): Promise<TriggerTaskServiceResult | undefined> {
-    const service = new TriggerTaskServiceV1(this._prisma);
-    return await service.call(taskId, environment, body, options);
   }
 
   private async callV2(

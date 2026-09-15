@@ -2,7 +2,9 @@ import { json } from "@remix-run/node";
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { useFetcher, type ShouldRevalidateFunction } from "@remix-run/react";
 import { useEffect, useRef } from "react";
+import { useLatest } from "react-use";
 import { requireUserId } from "~/services/session.server";
+import { useInterval } from "~/hooks/useInterval";
 import {
   getActivePlatformNotifications,
   verifyOrgMembership,
@@ -41,24 +43,27 @@ const POLL_INTERVAL_MS = 60000; // 1 minute
 
 export function usePlatformNotifications(organizationId: string, projectId: string) {
   const fetcher = useFetcher<typeof loader>();
+  const { load, state } = fetcher;
+  const stateRef = useLatest(state);
   const lastLoadedUrl = useRef<string | null>(null);
+  const url = `/resources/platform-notifications?organizationId=${encodeURIComponent(organizationId)}&projectId=${encodeURIComponent(projectId)}`;
 
   useEffect(() => {
-    const url = `/resources/platform-notifications?organizationId=${encodeURIComponent(organizationId)}&projectId=${encodeURIComponent(projectId)}`;
-
-    if (lastLoadedUrl.current !== url && fetcher.state === "idle") {
+    if (lastLoadedUrl.current !== url && state === "idle") {
       lastLoadedUrl.current = url;
-      fetcher.load(url);
+      load(url);
     }
+  }, [load, state, url]);
 
-    const interval = setInterval(() => {
-      if (fetcher.state === "idle") {
-        fetcher.load(url);
+  useInterval({
+    interval: POLL_INTERVAL_MS,
+    onLoad: false,
+    callback: () => {
+      if (stateRef.current === "idle") {
+        load(url);
       }
-    }, POLL_INTERVAL_MS);
-
-    return () => clearInterval(interval);
-  }, [organizationId, projectId]);
+    },
+  });
 
   return {
     notifications: fetcher.data?.notifications ?? [],

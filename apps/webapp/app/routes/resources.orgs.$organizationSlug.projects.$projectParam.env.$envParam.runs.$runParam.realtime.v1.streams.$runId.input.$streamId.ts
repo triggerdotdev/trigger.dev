@@ -7,6 +7,8 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
+import { runStore } from "~/v3/runStore.server";
+import { undefinedOnUnroutableId } from "~/v3/runOpsMigration/unroutableRead.server";
 
 const ParamsSchema = z.object({
   runParam: z.string(),
@@ -46,18 +48,27 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     return new Response("Environment not found", { status: 404 });
   }
 
-  const run = await $replica.taskRun.findFirst({
-    where: {
-      friendlyId: runId,
-      runtimeEnvironmentId: environment.id,
-    },
+  const runWhere = {
+    friendlyId: runId,
+    runtimeEnvironmentId: environment.id,
+  };
+  const runArgs = {
     select: {
       id: true,
       friendlyId: true,
       realtimeStreamsVersion: true,
       streamBasinName: true,
     },
-  });
+  };
+  // Replica lag can null out a live run; a spurious 404 breaks the dashboard Agent tab input-stream
+  // subscription (useRealtimeStream surfaces the error, no auto-retry). Re-read the primary on a miss.
+  const run =
+    (await undefinedOnUnroutableId(() => runStore.findRun(runWhere, runArgs, $replica), {
+      runParam: params.runParam,
+    })) ??
+    (await undefinedOnUnroutableId(() => runStore.findRunOnPrimary(runWhere, runArgs), {
+      runParam: params.runParam,
+    }));
 
   if (!run) {
     return new Response("Run not found", { status: 404 });

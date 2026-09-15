@@ -10,11 +10,7 @@
   },
   "favicon": "/images/favicon.png",
   "contextual": {
-    "options": [
-      "copy",
-      "view",
-      "claude"
-    ]
+    "options": ["copy", "view", "claude"]
   },
   "navigation": {
     "dropdowns": [
@@ -40,11 +36,7 @@
             "pages": [
               {
                 "group": "Tasks",
-                "pages": [
-                  "tasks/overview",
-                  "tasks/schemaTask",
-                  "tasks/scheduled"
-                ]
+                "pages": ["tasks/overview", "tasks/schemaTask", "tasks/scheduled"]
               },
               "triggering",
               "runs",
@@ -57,10 +49,7 @@
               "building-with-ai",
               {
                 "group": "MCP Server",
-                "pages": [
-                  "mcp-introduction",
-                  "mcp-tools"
-                ]
+                "pages": ["mcp-introduction", "mcp-tools"]
               },
               "skills",
               "mcp-agent-rules"
@@ -74,12 +63,7 @@
               "errors-retrying",
               {
                 "group": "Wait",
-                "pages": [
-                  "wait",
-                  "wait-for",
-                  "wait-until",
-                  "wait-for-token"
-                ]
+                "pages": ["wait", "wait-for", "wait-until", "wait-for-token"]
               },
               "queue-concurrency",
               "versioning",
@@ -93,7 +77,8 @@
               "run-usage",
               "context",
               "runs/priority",
-              "hidden-tasks"
+              "hidden-tasks",
+              "runs/bulk-actions"
             ]
           },
           {
@@ -101,6 +86,7 @@
             "pages": [
               "ai-chat/overview",
               "ai-chat/quick-start",
+              "ai-chat/migrating-from-a-route-handler",
               {
                 "group": "Building agents",
                 "pages": [
@@ -111,6 +97,7 @@
                   "ai-chat/frontend",
                   "ai-chat/server-chat",
                   "ai-chat/sessions",
+                  "ai-chat/side-channels",
                   "ai-chat/chat-local",
                   "ai-chat/types",
                   "ai-chat/custom-agents",
@@ -121,11 +108,15 @@
                 "group": "Features",
                 "pages": [
                   "ai/prompts",
+                  "ai/observability",
                   "ai-chat/fast-starts",
                   "ai-chat/compaction",
+                  "ai-chat/prompt-caching",
                   "ai-chat/pending-messages",
                   "ai-chat/background-injection",
                   "ai-chat/actions",
+                  "ai-chat/transcript-storage",
+                  "ai-chat/migrating-from-hydrate-messages",
                   "ai-chat/error-handling"
                 ]
               },
@@ -144,7 +135,8 @@
                   "ai-chat/patterns/skills",
                   "ai-chat/patterns/oom-resilience",
                   "ai-chat/patterns/recovery-boot",
-                  "ai-chat/patterns/trusted-edge-signals"
+                  "ai-chat/patterns/trusted-edge-signals",
+                  "ai-chat/patterns/native-compaction"
                 ]
               },
               {
@@ -192,25 +184,18 @@
             ]
           },
           {
-            "group": "Development",
-            "pages": [
-              "cli-dev"
-            ]
-          },
-          {
             "group": "Deployment",
             "pages": [
               "deployment/overview",
               "deploy-environment-variables",
               "github-actions",
               "deployment/preview-branches",
+              "deployment/dev-branches",
+              "deployment/version-skew-protection",
               "deployment/atomic-deployment",
               {
                 "group": "Deployment integrations",
-                "pages": [
-                  "github-integration",
-                  "vercel-integration"
-                ]
+                "pages": ["github-integration", "vercel-integration"]
               }
             ]
           },
@@ -236,6 +221,7 @@
                   "realtime/react-hooks/triggering",
                   "realtime/react-hooks/subscribe",
                   "realtime/react-hooks/streams",
+                  "realtime/react-hooks/session-stream",
                   "realtime/react-hooks/swr",
                   "realtime/react-hooks/use-wait-token"
                 ]
@@ -259,12 +245,15 @@
                 "pages": [
                   "cli-deploy-commands",
                   "cli-dev-commands",
+                  "cli-env-commands",
                   "cli-init-commands",
                   "cli-list-profiles-commands",
                   "cli-login-commands",
                   "cli-logout-commands",
                   "cli-preview-archive",
+                  "cli-projects-commands",
                   "cli-promote-commands",
+                  "cli-runs-commands",
                   "cli-switch",
                   "cli-update-commands",
                   "cli-whoami-commands"
@@ -274,16 +263,14 @@
           },
           {
             "group": "Observability",
-            "pages": [
-              "observability/query",
-              "observability/dashboards"
-            ]
+            "pages": ["observability/query", "observability/dashboards", "reports"]
           },
           {
             "group": "Using the Dashboard",
             "pages": [
               "run-tests",
               "troubleshooting-alerts",
+              "billing-limits",
               "replaying",
               "bulk-actions"
             ]
@@ -296,6 +283,7 @@
               "how-to-reduce-your-spend",
               "troubleshooting-debugging-in-vscode",
               "upgrading-packages",
+              "troubleshooting-zod",
               "troubleshooting-uptime-status",
               "troubleshooting-github-issues",
               "request-feature"
@@ -307,32 +295,20 @@
               "self-hosting/overview",
               "self-hosting/docker",
               "self-hosting/kubernetes",
+              "self-hosting/security",
               {
                 "group": "Environment variables",
-                "pages": [
-                  "self-hosting/env/webapp",
-                  "self-hosting/env/supervisor"
-                ]
-              },
-              "open-source-self-hosting"
+                "pages": ["self-hosting/env/webapp", "self-hosting/env/supervisor"]
+              }
             ]
           },
           {
             "group": "Open source",
-            "pages": [
-              "open-source-contributing",
-              "github-repo",
-              "changelog",
-              "roadmap"
-            ]
+            "pages": ["open-source-contributing", "github-repo", "changelog", "roadmap"]
           },
           {
             "group": "Help",
-            "pages": [
-              "community",
-              "help-slack",
-              "help-email"
-            ]
+            "pages": ["community", "help-slack", "help-email"]
           }
         ]
       },
@@ -382,6 +358,25 @@
               "management/runs/retrieve-events",
               "management/runs/retrieve-trace",
               "management/runs/retrieve-result"
+            ]
+          },
+          {
+            "group": "Bulk actions API",
+            "pages": [
+              "management/bulk-actions/create",
+              "management/bulk-actions/list",
+              "management/bulk-actions/retrieve",
+              "management/bulk-actions/abort"
+            ]
+          },
+          {
+            "group": "Errors API",
+            "pages": [
+              "management/errors/list",
+              "management/errors/retrieve",
+              "management/errors/resolve",
+              "management/errors/ignore",
+              "management/errors/unresolve"
             ]
           },
           {
@@ -438,6 +433,17 @@
             ]
           },
           {
+            "group": "Sessions API",
+            "pages": [
+              "management/sessions/create",
+              "management/sessions/list",
+              "management/sessions/retrieve",
+              "management/sessions/update",
+              "management/sessions/close",
+              "management/sessions/channels"
+            ]
+          },
+          {
             "group": "Query API",
             "pages": [
               "management/query/execute",
@@ -454,9 +460,7 @@
         "groups": [
           {
             "group": "Introduction",
-            "pages": [
-              "guides/introduction"
-            ]
+            "pages": ["guides/introduction"]
           },
           {
             "group": "Frameworks",
@@ -479,6 +483,7 @@
                 },
                 "pages": [
                   "guides/ai-agents/overview",
+                  "guides/ai-agents/chat-agent",
                   "guides/ai-agents/generate-translate-copy",
                   "guides/ai-agents/route-question",
                   "guides/ai-agents/respond-and-check-content",
@@ -522,10 +527,7 @@
           },
           {
             "group": "Migration guides",
-            "pages": [
-              "migration-mergent",
-              "migration-n8n"
-            ]
+            "pages": ["migration-mergent", "migration-n8n"]
           },
           {
             "group": "Use cases",
@@ -541,11 +543,14 @@
             "group": "Example projects",
             "pages": [
               "guides/example-projects/anchor-browser-web-scraper",
+              "guides/example-projects/ask-trigger-chat-agent",
               "guides/example-projects/batch-llm-evaluator",
               "guides/example-projects/claude-changelog-generator",
               "guides/example-projects/claude-github-wiki",
               "guides/example-projects/claude-thinking-chatbot",
+              "guides/example-projects/clickhouse-chat-agent",
               "guides/example-projects/cursor-background-agent",
+              "guides/example-projects/elevenlabs-voice-agent",
               "guides/example-projects/human-in-the-loop-workflow",
               "guides/example-projects/mastra-agents-with-memory",
               "guides/example-projects/meme-generator-human-in-the-loop",
@@ -582,6 +587,7 @@
               "guides/examples/libreoffice-pdf-conversion",
               "guides/examples/open-ai-with-retrying",
               "guides/examples/pdf-to-image",
+              "guides/examples/private-gcp-resource",
               "guides/examples/puppeteer",
               "guides/examples/react-pdf",
               "guides/examples/react-email",
@@ -616,10 +622,7 @@
     "href": "https://trigger.dev"
   },
   "api": {
-    "openapi": [
-      "openapi.yml",
-      "v3-openapi.yaml"
-    ],
+    "openapi": ["openapi.yml", "v3-openapi.yaml"],
     "playground": {
       "display": "simple"
     }
@@ -735,6 +738,36 @@
   },
   "redirects": [
     {
+      "source": "/config/extensions",
+      "destination": "/config/extensions/overview",
+      "permanent": true
+    },
+    {
+      "source": "/upgrading-beta",
+      "destination": "/upgrading-packages",
+      "permanent": true
+    },
+    {
+      "source": "/guides/new-build-system-preview",
+      "destination": "/upgrading-packages",
+      "permanent": true
+    },
+    {
+      "source": "/cli-dev",
+      "destination": "/cli-dev-commands",
+      "permanent": true
+    },
+    {
+      "source": "/cli-deploy",
+      "destination": "/cli-deploy-commands",
+      "permanent": true
+    },
+    {
+      "source": "/cli-development-commands",
+      "destination": "/cli-dev-commands",
+      "permanent": true
+    },
+    {
       "source": "/v3/feature-matrix",
       "destination": "https://feedback.trigger.dev/roadmap"
     },
@@ -743,8 +776,12 @@
       "destination": "/guides/use-cases/upgrading-from-v2"
     },
     {
+      "source": "/open-source-self-hosting",
+      "destination": "/self-hosting/overview"
+    },
+    {
       "source": "/v3/open-source-self-hosting",
-      "destination": "/open-source-self-hosting"
+      "destination": "/self-hosting/overview"
     },
     {
       "source": "/v3/:slug*",
@@ -753,6 +790,10 @@
     {
       "source": "/reattempting-replaying",
       "destination": "/replaying"
+    },
+    {
+      "source": "/management/runs/bulk-actions",
+      "destination": "/runs/bulk-actions"
     },
     {
       "source": "/tasks-overview",
@@ -865,6 +906,11 @@
     {
       "source": "/guides/ai-chat",
       "destination": "/ai-chat/overview"
+    },
+    {
+      "source": "/deployment/vercel-skew-protection",
+      "destination": "/deployment/version-skew-protection",
+      "permanent": true
     }
   ]
 }

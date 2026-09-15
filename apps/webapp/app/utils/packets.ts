@@ -1,4 +1,4 @@
-import { IOPacket } from "@trigger.dev/core/v3/utils/ioSerialization";
+import type { IOPacket } from "@trigger.dev/core/v3/utils/ioSerialization";
 import { ServiceValidationError } from "~/v3/services/common.server";
 
 export class MetadataTooLargeError extends ServiceValidationError {
@@ -13,6 +13,14 @@ export function handleMetadataPacket(
   metadataType: string,
   maximumSize: number
 ): IOPacket | undefined {
+  return handleMetadataPacketWithByteLength(metadata, metadataType, maximumSize)?.packet;
+}
+
+export function handleMetadataPacketWithByteLength(
+  metadata: any,
+  metadataType: string,
+  maximumSize: number
+): { packet: IOPacket; byteLength: number } | undefined {
   let metadataPacket: IOPacket | undefined = undefined;
 
   if (typeof metadata === "string") {
@@ -33,5 +41,5 @@ export function handleMetadataPacket(
     throw new MetadataTooLargeError(`Metadata exceeds maximum size of ${maximumSize} bytes`);
   }
 
-  return metadataPacket;
+  return { packet: metadataPacket, byteLength };
 }

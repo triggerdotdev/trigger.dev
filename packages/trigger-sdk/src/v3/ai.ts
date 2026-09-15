@@ -1,57 +1,73 @@
 import {
+  type AnyTask,
+  type Task,
   accessoryAttributes,
-  AnyTask,
+  type ChatSnapshotV1 as CoreChatSnapshotV1,
+  type ApiClientConfiguration,
   apiClientManager,
+  type AppendStreamOptions,
   controlSubtype,
+  generateJWT,
   getSchemaParseFn,
   headerValue,
+  type inferSchemaIn,
+  type inferSchemaOut,
   InputStreamOncePromise,
-  type InputStreamOnceOptions,
-  type InputStreamWaitOptions,
-  type InputStreamWaitWithIdleTimeoutOptions,
+  isAdditionalApiKey,
   isSchemaZodEsque,
   logger,
   type MachinePresetName,
   ManualWaitpointPromise,
   OutOfMemoryError,
-  sessionStreams,
-  type PipeStreamResult,
+  type PipeStreamOptions,
   type RealtimeDefinedInputStream,
   type RealtimeDefinedStream,
-  type ReadStreamOptions,
+  resourceCatalog,
   SemanticInternalAttributes,
-  type SendInputStreamOptions,
-  Task,
+  SESSION_IN_CONSUMED_ID_HEADER,
+  SESSION_IN_EVENT_ID_HEADER,
+  sessionStreams,
+  SessionChannelRouter,
+  InputStreamTimeoutError,
   taskContext,
-  type AppendStreamOptions,
-  type InputStreamOnceResult,
-  type inferSchemaIn,
-  type inferSchemaOut,
-  type PipeStreamOptions,
   type TaskIdentifier,
   type TaskOptions,
-  type TaskSchema,
   type TaskRunContext,
+  type TaskSchema,
   type TaskWithSchema,
-  SESSION_IN_EVENT_ID_HEADER,
   TRIGGER_CONTROL_SUBTYPE,
-  generateJWT,
+  SESSION_CLOSED_HEADER,
+  SESSION_CLOSED_REASON_HEADER,
+  tryCatch,
+  type StreamWriteResult,
   type WriterStreamOptions,
+  type RouterCheckpoint,
+  type SessionRouteTable,
+  type SessionStreamRecord,
+  type AnySessionChannel,
+  type SessionChannelName,
 } from "@trigger.dev/core/v3";
 import type {
+  streamText as aiStreamTextSignature,
   FinishReason,
   LanguageModelUsage,
   ModelMessage,
+  SystemModelMessage,
+  ProviderMetadata,
   Tool,
   ToolSet,
   UIMessage,
   UIMessageChunk,
   UIMessageStreamOptions,
+  JSONSchema7,
+  Schema,
 } from "ai";
-import type { ChatSnapshotV1, StreamWriteResult } from "@trigger.dev/core/v3";
 // Runtime VALUES go through the ESM/CJS shim so the CJS build can `require`
 // ESM-only `ai@7` (see ../imports/ai-runtime.ts).
+import { type Attributes, trace } from "@opentelemetry/api";
+import { traceSessionIdle } from "./sessionTracing.js";
 import {
+  tool as aiTool,
   convertToModelMessages,
   dynamicTool,
   generateId as generateMessageId,
@@ -59,10 +75,52 @@ import {
   isToolUIPart,
   jsonSchema,
   readUIMessageStream,
-  tool as aiTool,
+  streamText as aiStreamText,
   zodSchema,
 } from "../imports/ai-runtime.js";
-import type { JSONSchema7, Schema } from "ai";
+import {
+  createTranscriptShadow,
+  defaultStorage,
+  diffTranscript,
+  fingerprintMessage,
+  parseTranscriptRuntimeState,
+  restoreModelLane,
+  type TranscriptChange,
+  type TranscriptChangeReason,
+  type TranscriptLoadResult,
+  type TranscriptRuntimeState,
+  type TranscriptShadow,
+  type TranscriptStorage,
+  type TranscriptStorageContext,
+} from "./transcriptStorage.js";
+
+let transcriptStorageOverride: TranscriptStorage<unknown> | undefined;
+
+/**
+ * Test-only override for the storage `chat.agent` persists through, so a
+ * test can capture the exact changesets the runtime produces.
+ * @internal
+ */
+export function __setTranscriptStorageForTests(
+  storage: TranscriptStorage<unknown> | undefined
+): void {
+  transcriptStorageOverride = storage;
+}
+import {
+  type ChatInputChunk,
+  type ChatTaskWirePayload,
+  type InferChatClientData,
+  type InferChatUIMessage,
+  type InferChatUIMessageFromTools,
+  PENDING_MESSAGE_INJECTED_TYPE,
+  upsertIncomingMessage,
+  chatRunTags,
+} from "./ai-shared.js";
+import { auth } from "./auth.js";
+import { locals } from "./locals.js";
+import { metadata } from "./metadata.js";
+import type { ResolvedPrompt } from "./prompt.js";
+import type { ResolvedSkill } from "./skill.js";
 
 // `ToolCallOptions` is defined locally rather than imported from `ai`: v7
 // renamed/removed that export (it's `ToolExecutionOptions<CONTEXT>` now), so a
@@ -76,12 +134,6 @@ type ToolCallOptions = {
   experimental_context?: unknown;
   context?: unknown;
 };
-import { type Attributes, trace } from "@opentelemetry/api";
-import { auth } from "./auth.js";
-import { locals } from "./locals.js";
-import { metadata } from "./metadata.js";
-import type { ResolvedPrompt } from "./prompt.js";
-import type { ResolvedSkill } from "./skill.js";
 // Bash-skill runtime lives in `./agentSkillsRuntime.ts` (exposed as
 // the `@trigger.dev/sdk/ai/skills-runtime` subpath). It's a normal
 // static import — `ai.ts` is server-only by reachability now that
@@ -90,19 +142,20 @@ import type { ResolvedSkill } from "./skill.js";
 // that wants those primitives imports `./ai-shared.js` directly and
 // never touches `ai.ts`'s module graph, so the `node:*` builtins
 // pulled in transitively here never reach a client chunk.
-import { runBashInSkill, readFileInSkill } from "./agentSkillsRuntime.js";
-import { streams, markChatAgentRunForStreamsWarning } from "./streams.js";
+import { readFileInSkill, runBashInSkill } from "./agentSkillsRuntime.js";
+import { ensureAiSdkTelemetry } from "./aiAutoTelemetry.js";
+import { withResolvedExternalDeploymentId } from "./externalDeploymentId.js";
+import { type ChatVersionSkewPolicy, resolvePinToFollow } from "./chatVersionSkew.js";
 import {
-  sessions,
+  type SessionChannelHandleFor,
   type SessionHandle,
-  type SessionInputChannel,
-  type SessionOutputChannel,
   type SessionPipeStreamOptions,
+  sessions,
   type SessionSubscribeOptions,
+  type SessionTriggerConfigInput,
 } from "./sessions.js";
 import { createTask } from "./shared.js";
-import { ensureAiSdkTelemetry } from "./aiAutoTelemetry.js";
-import { resourceCatalog, type SessionTriggerConfig } from "@trigger.dev/core/v3";
+import { markChatAgentRunForStreamsWarning } from "./streams.js";
 import { tracer } from "./tracer.js";
 
 /** Re-export for typing `ctx` in `chat.agent` hooks without importing `@trigger.dev/core`. */
@@ -160,6 +213,10 @@ const chatTurnContextKey = locals.create<ChatTurnContext>("chat.turnContext");
  * @internal
  */
 const chatSessionHandleKey = locals.create<SessionHandle>("chat.sessionHandle");
+// The external `chatId` from the boot payload — the value `ToolCallExecutionOptions.chatId`
+// is documented to carry. Custom-agent loops never set per-turn context, so subtask tool
+// metadata reads this directly rather than the Session handle id.
+const chatExternalIdKey = locals.create<string>("chat.externalId");
 
 /**
  * S2 seq_num of the most recent `turn-complete` control record written by
@@ -198,9 +255,7 @@ const lastTurnCompleteSeqNumKey = locals.create<{ value: number | undefined }>(
  * merge handles any dedup against snapshot-restored messages.
  * @internal
  */
-async function findLatestSessionInCursor(
-  chatId: string
-): Promise<number | undefined> {
+async function findLatestSessionInCursor(chatId: string): Promise<number | undefined> {
   const apiClient = apiClientManager.clientOrThrow();
   const response = await apiClient.readSessionStreamRecords(chatId, "out");
   let latestCursor: number | undefined;
@@ -214,232 +269,47 @@ async function findLatestSessionInCursor(
   return latestCursor;
 }
 
-/** Test-only entry point for the records-based cursor scan. @internal */
-export async function __findLatestSessionInCursorForTests(
-  chatId: string
-): Promise<number | undefined> {
-  return findLatestSessionInCursor(chatId);
-}
-
 /**
- * Versioned blob written to S3 after every turn completes (when no
- * `hydrateMessages` hook is registered). Read at run boot to seed the
- * accumulator with prior conversation state, replacing the old wire-borne
- * full-history seed.
+ * Versioned blob written to the object store after every turn completes
+ * (when no `hydrateMessages` hook is registered). Read at run boot to seed
+ * the accumulator with prior conversation state.
  *
- * The shape is shared with the Sessions dashboard (which reads the same
- * blob to render the full conversation transcript) via
- * `@trigger.dev/core/v3`. Customer code shouldn't reach in here — the
- * SDK transports surface the messages through the standard `messages`
- * accumulator.
+ * The shape is shared with the Sessions dashboard via `@trigger.dev/core/v3`.
+ * Customer code shouldn't reach in here; the SDK transports surface the
+ * messages through the standard `messages` accumulator.
  *
  * @internal
  */
-export type { ChatSnapshotV1 } from "@trigger.dev/core/v3";
+export type ChatSnapshotV1<TUIMessage extends UIMessage = UIMessage> =
+  CoreChatSnapshotV1<TUIMessage>;
+/** @internal */
+export type { ChatInputChunk, ChatTaskWirePayload };
 
-/**
- * Test-only override hook — `mockChatAgent` installs a fake to return
- * synthetic snapshots without hitting S3. Mirrors the `__set*ImplForTests`
- * pattern in `sessions.ts`. Not part of the public API.
- * @internal
- */
-type ReadChatSnapshotImpl = <TUIMessage extends UIMessage>(
-  sessionId: string
-) => Promise<ChatSnapshotV1<TUIMessage> | undefined> | ChatSnapshotV1<TUIMessage> | undefined;
-let readChatSnapshotImpl: ReadChatSnapshotImpl | undefined;
+export {
+  __readChatSnapshotProductionPathForTests,
+  __setReadChatSnapshotImplForTests,
+  __setWriteChatSnapshotImplForTests,
+  __writeChatSnapshotProductionPathForTests,
+} from "./chatSnapshotIo.js";
 
-export function __setReadChatSnapshotImplForTests(impl: ReadChatSnapshotImpl | undefined): void {
-  readChatSnapshotImpl = impl;
-}
-
-/**
- * Test-only override hook — see `__setReadChatSnapshotImplForTests`. The
- * mock harness records writes for assertion via this setter. Not public.
- * @internal
- */
-type WriteChatSnapshotImpl = <TUIMessage extends UIMessage>(
-  sessionId: string,
-  snapshot: ChatSnapshotV1<TUIMessage>
-) => Promise<void> | void;
-let writeChatSnapshotImpl: WriteChatSnapshotImpl | undefined;
-
-export function __setWriteChatSnapshotImplForTests(impl: WriteChatSnapshotImpl | undefined): void {
-  writeChatSnapshotImpl = impl;
-}
-
-/**
- * Read the persisted snapshot for a session. Returns `undefined` on:
- *   - missing object (404 from the presigned GET — fresh session, never
- *     persisted)
- *   - presign failure (network/auth issue)
- *   - malformed JSON
- *   - version mismatch (forward-compat — older runtimes ignore newer blobs)
- *
- * Always swallows errors via `logger.warn`. The agent boot loop must stay
- * available even if S3 hiccups; the worst case is replaying more of
- * `session.out` than strictly necessary.
- * @internal
- */
-async function readChatSnapshot<TUIMessage extends UIMessage>(
-  sessionId: string
-): Promise<ChatSnapshotV1<TUIMessage> | undefined> {
-  if (readChatSnapshotImpl) {
-    return (await readChatSnapshotImpl<TUIMessage>(sessionId)) ?? undefined;
-  }
-  const apiClient = apiClientManager.clientOrThrow();
-  let presignedUrl: string;
-  try {
-    const resp = await apiClient.getChatSnapshotUrl(sessionId);
-    presignedUrl = resp.presignedUrl;
-  } catch (error) {
-    logger.warn("chat.agent: snapshot presign (read) failed; continuing without snapshot", {
-      error: error instanceof Error ? error.message : String(error),
-      sessionId,
-    });
-    return undefined;
-  }
-  let response: Response;
-  try {
-    response = await fetch(presignedUrl, { method: "GET" });
-  } catch (error) {
-    logger.warn("chat.agent: snapshot fetch failed; continuing without snapshot", {
-      error: error instanceof Error ? error.message : String(error),
-      sessionId,
-    });
-    return undefined;
-  }
-  if (response.status === 404) {
-    // First-ever boot for this session — no snapshot yet. Caller falls
-    // through to replay-only.
-    return undefined;
-  }
-  if (!response.ok) {
-    logger.warn("chat.agent: snapshot fetch returned non-OK; continuing without snapshot", {
-      status: response.status,
-      sessionId,
-    });
-    return undefined;
-  }
-  let parsed: unknown;
-  try {
-    parsed = await response.json();
-  } catch (error) {
-    logger.warn("chat.agent: snapshot JSON parse failed; continuing without snapshot", {
-      error: error instanceof Error ? error.message : String(error),
-      sessionId,
-    });
-    return undefined;
-  }
-  if (!parsed || typeof parsed !== "object") return undefined;
-  const candidate = parsed as Partial<ChatSnapshotV1<TUIMessage>>;
-  if (candidate.version !== 1 || !Array.isArray(candidate.messages)) {
-    logger.warn("chat.agent: snapshot version/shape mismatch; ignoring", {
-      version: candidate.version,
-      sessionId,
-    });
-    return undefined;
-  }
-  return candidate as ChatSnapshotV1<TUIMessage>;
-}
-
-/**
- * Persist the snapshot for a session. Awaited by callers immediately after
- * `onTurnComplete` — the agent may suspend right after this point, and
- * fire-and-forget promises don't reliably complete on suspend.
- *
- * Errors are swallowed via `logger.warn`. A failed write means the next
- * boot replays slightly more of `session.out` (back to the previous
- * snapshot's cursor) instead of failing — the conversation stays
- * coherent, only the boot path does marginally more work.
- * @internal
- */
-async function writeChatSnapshot<TUIMessage extends UIMessage>(
-  sessionId: string,
-  snapshot: ChatSnapshotV1<TUIMessage>
-): Promise<void> {
-  if (writeChatSnapshotImpl) {
-    await writeChatSnapshotImpl<TUIMessage>(sessionId, snapshot);
-    return;
-  }
-  const apiClient = apiClientManager.clientOrThrow();
-  let presignedUrl: string;
-  try {
-    const resp = await apiClient.createChatSnapshotUploadUrl(sessionId);
-    presignedUrl = resp.presignedUrl;
-  } catch (error) {
-    logger.warn("chat.agent: snapshot presign (write) failed; next run will replay further", {
-      error: error instanceof Error ? error.message : String(error),
-      sessionId,
-    });
-    return;
-  }
-  let response: Response;
-  try {
-    response = await fetch(presignedUrl, {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(snapshot),
-    });
-  } catch (error) {
-    logger.warn("chat.agent: snapshot upload failed; next run will replay further", {
-      error: error instanceof Error ? error.message : String(error),
-      sessionId,
-    });
-    return;
-  }
-  if (!response.ok) {
-    logger.warn("chat.agent: snapshot upload returned non-OK; next run will replay further", {
-      status: response.status,
-      sessionId,
-    });
-  }
-}
-
-/**
- * Test-only entry point that bypasses `__setReadChatSnapshotImplForTests`
- * and reaches the real `apiClient.getPayloadUrl` + `fetch` + JSON-parse path.
- * Used by `chat-snapshot.test.ts` to verify 404 / 500 / malformed JSON /
- * version-mismatch / network-error behavior end-to-end. Tests mock global
- * `fetch` and the api-client config; this wrapper lets them drive the
- * production code without the override hook short-circuiting.
- *
- * Not part of the public API. The `__` prefix and `ForTests` suffix mirror
- * the override-hook setters above.
- * @internal
- */
-export async function __readChatSnapshotProductionPathForTests<TUIMessage extends UIMessage>(
-  sessionId: string
-): Promise<ChatSnapshotV1<TUIMessage> | undefined> {
-  const saved = readChatSnapshotImpl;
-  readChatSnapshotImpl = undefined;
-  try {
-    return await readChatSnapshot<TUIMessage>(sessionId);
-  } finally {
-    readChatSnapshotImpl = saved;
-  }
-}
-
-/**
- * Test-only entry point that bypasses `__setWriteChatSnapshotImplForTests`
- * and reaches the real `apiClient.createUploadPayloadUrl` + `fetch` PUT
- * path. Pairs with `__readChatSnapshotProductionPathForTests` — see that
- * function's note for the rationale.
- *
- * Not part of the public API.
- * @internal
- */
-export async function __writeChatSnapshotProductionPathForTests<TUIMessage extends UIMessage>(
-  sessionId: string,
-  snapshot: ChatSnapshotV1<TUIMessage>
-): Promise<void> {
-  const saved = writeChatSnapshotImpl;
-  writeChatSnapshotImpl = undefined;
-  try {
-    await writeChatSnapshot<TUIMessage>(sessionId, snapshot);
-  } finally {
-    writeChatSnapshotImpl = saved;
-  }
-}
+export {
+  defaultStorage,
+  memoryTranscriptStorage,
+  reduceTranscriptChanges,
+  snapshotTranscriptStorage,
+  type LoadContextEvent,
+  type MemoryTranscriptStorage,
+  type TranscriptChange,
+  type TranscriptChangeReason,
+  type TranscriptChangeset,
+  type TranscriptCursors,
+  type TranscriptLoadOptions,
+  type TranscriptLoadResult,
+  type TranscriptScope,
+  type TranscriptState,
+  type TranscriptStorage,
+  type TranscriptStorageContext,
+} from "./transcriptStorage.js";
 
 /**
  * Merge two `UIMessage[]` lists by `id`, with the second list winning on
@@ -680,9 +550,7 @@ async function replaySessionOutTail<TUIMessage extends UIMessage>(
  * Not part of the public API.
  * @internal
  */
-export async function __replaySessionOutTailProductionPathForTests<
-  TUIMessage extends UIMessage,
->(
+export async function __replaySessionOutTailProductionPathForTests<TUIMessage extends UIMessage>(
   sessionId: string,
   options?: { lastEventId?: string }
 ): Promise<TUIMessage[]> {
@@ -706,6 +574,7 @@ type ReplaySessionInTailImpl = <TUIMessage extends UIMessage>(
   sessionId: string,
   options?: { lastEventId?: string }
 ) => Promise<{ message: TUIMessage; metadata: unknown; seqNum: number }[]>;
+
 let replaySessionInTailImpl: ReplaySessionInTailImpl | undefined;
 
 export function __setReplaySessionInTailImplForTests(
@@ -793,9 +662,7 @@ async function replaySessionInTail<TUIMessage extends UIMessage>(
  * `__replaySessionOutTailProductionPathForTests`.
  * @internal
  */
-export async function __replaySessionInTailProductionPathForTests<
-  TUIMessage extends UIMessage,
->(
+export async function __replaySessionInTailProductionPathForTests<TUIMessage extends UIMessage>(
   sessionId: string,
   options?: { lastEventId?: string }
 ): Promise<{ message: TUIMessage; metadata: unknown; seqNum: number }[]> {
@@ -856,14 +723,14 @@ function stampConversationIdOnActiveSpan(
 
 type ToolResultContent = Array<
   | {
-    type: "text";
-    text: string;
-  }
+      type: "text";
+      text: string;
+    }
   | {
-    type: "image";
-    data: string;
-    mimeType?: string;
-  }
+      type: "image";
+      data: string;
+      mimeType?: string;
+    }
 >;
 
 export type ToolOptions<TResult> = {
@@ -921,6 +788,15 @@ function createTaskToolExecuteHandler<
       toolMeta.turn = chatCtx.turn;
       toolMeta.continuation = chatCtx.continuation;
       toolMeta.clientData = chatCtx.clientData;
+    } else {
+      // Hand-rolled chat.customAgent loops never set per-turn context, but
+      // the wrapper records the boot payload's external chatId at run boot
+      // — thread it so subtask chat helpers (`chat.stream.writer` with
+      // target "root") can open the parent's session.
+      const chatExternalId = locals.get(chatExternalIdKey);
+      if (chatExternalId) {
+        toolMeta.chatId = chatExternalId;
+      }
     }
 
     const chatLocals: Record<string, unknown> = {};
@@ -1038,7 +914,9 @@ function toolFromTask<
         : {}),
     } as any);
     return staticTool as unknown as ToolSetCompatible<
-      TTaskSchema extends TaskSchema ? Tool<inferSchemaIn<TTaskSchema>, TOutput> : Tool<TInput, TOutput>
+      TTaskSchema extends TaskSchema
+        ? Tool<inferSchemaIn<TTaskSchema>, TOutput>
+        : Tool<TInput, TOutput>
     >;
   }
 
@@ -1053,7 +931,9 @@ function toolFromTask<
   });
 
   return toolDefinition as unknown as ToolSetCompatible<
-    TTaskSchema extends TaskSchema ? Tool<inferSchemaIn<TTaskSchema>, TOutput> : Tool<TInput, TOutput>
+    TTaskSchema extends TaskSchema
+      ? Tool<inferSchemaIn<TTaskSchema>, TOutput>
+      : Tool<TInput, TOutput>
   >;
 }
 
@@ -1114,7 +994,7 @@ function getToolChatContextOrThrow<TChatTask extends AnyTask = AnyTask>(): ChatT
   if (!ctx) {
     throw new Error(
       "ai.chatContextOrThrow() called outside of a chat.agent context. " +
-      "This helper can only be used inside a subtask invoked via ai.toolExecute() (or legacy ai.tool()) from a chat.agent."
+        "This helper can only be used inside a subtask invoked via ai.toolExecute() (or legacy ai.tool()) from a chat.agent."
     );
   }
   return ctx;
@@ -1212,6 +1092,179 @@ function createChatAccessToken<TTask extends AnyTask>(
  * the session's `.out`, not a per-run stream. Run-scoped `target`
  * options on `.pipe()` are honoured as no-ops; the session is the target.
  */
+/**
+ * Gates `session.out` writes on the current turn's turn-start transcript
+ * save, so nothing that renders an answer can reach a subscriber before the
+ * message being answered is durable. Set once per turn; writes outside a
+ * turn see no gate and proceed immediately.
+ * @internal
+ */
+type ChatOutGate = {
+  /** Registered work not yet settled. Drained as it settles. */
+  pending: Set<Promise<unknown>>;
+  /** Latched once the gate has failed open, so a turn pays the timeout at most once. */
+  open: boolean;
+  /**
+   * Resolves when the gate fails open. Every waiter races it, so the first
+   * timeout releases the callers already asleep on their own deadlines rather
+   * than only the one that happened to time out.
+   */
+  opened: Promise<void>;
+  failOpen: () => void;
+};
+
+function createChatOutGate(): ChatOutGate {
+  let resolveOpened!: () => void;
+  const opened = new Promise<void>((resolve) => {
+    resolveOpened = resolve;
+  });
+  const gate: ChatOutGate = {
+    pending: new Set(),
+    open: false,
+    opened,
+    failOpen() {
+      if (gate.open) return;
+      gate.open = true;
+      resolveOpened();
+    },
+  };
+  return gate;
+}
+
+const chatOutGateKey = locals.create<ChatOutGate>("chat.outGate");
+
+/**
+ * How long a write waits on the gate before giving up. A storage that hangs
+ * degrades to an ungated write rather than stalling the conversation.
+ * @internal
+ */
+const CHAT_OUT_GATE_TIMEOUT_MS = 10_000;
+
+/**
+ * The ids to save non-final after a failed turn: the stream's partial answer,
+ * but only while the message under its id is still that partial by content.
+ * `onTurnComplete` may hand back a cloned history (same content, new objects),
+ * which keeps it partial, or replace it in place, which finishes it.
+ * @internal
+ */
+function partialStillUnfinished(
+  partial: UIMessage | undefined,
+  fingerprint: string | undefined,
+  messages: readonly UIMessage[]
+): Set<string> | undefined {
+  if (!partial || fingerprint === undefined) return undefined;
+  const current = messages.find((message) => message.id === partial.id);
+  if (!current || fingerprintMessage(current) !== fingerprint) return undefined;
+  return new Set([partial.id]);
+}
+
+async function awaitChatOutGate(): Promise<void> {
+  const gate = locals.get(chatOutGateKey);
+  if (!gate || gate.open) return;
+  const deadline = Date.now() + CHAT_OUT_GATE_TIMEOUT_MS;
+  while (gate.pending.size > 0) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      gate.failOpen();
+      return;
+    }
+    const waitingOn = [...gate.pending];
+    let timedOut = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        Promise.allSettled(waitingOn),
+        gate.opened,
+        new Promise<void>((resolve) => {
+          timer = setTimeout(() => {
+            timedOut = true;
+            resolve();
+          }, remaining);
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    if (gate.open) return;
+    if (timedOut) {
+      gate.failOpen();
+      return;
+    }
+    for (const settled of waitingOn) gate.pending.delete(settled);
+  }
+}
+
+/**
+ * Register work that must land before anything from this turn reaches the
+ * frontend.
+ *
+ * Like {@link chatDefer} the work starts immediately and is never awaited by
+ * the hook that registered it, so it runs alongside the model and costs no
+ * time to first token. Unlike `chat.defer`, the output stream waits for it:
+ * no chunk of the answer is written to the session until it settles. That
+ * makes it the right home for a write the next page load has to see (a
+ * conversation row, a message insert), because a reader that can see the
+ * answer can also see what the write persisted.
+ *
+ * Reach for `chat.defer` instead when the timing does not matter for a
+ * reload: analytics, audit logs, search-index updates.
+ *
+ * This is not a consistency barrier for the turn. The work is still in flight
+ * while the model runs, so a tool, a `prepareStep`, or anything else executing
+ * during the turn can still read the state as it was before the write. It
+ * orders the write against what the frontend can see, nothing more. When the
+ * turn's own code has to read the write back, `await` it instead and accept
+ * the cost.
+ *
+ * A write registered here that fails, or outlasts the internal timeout, lets
+ * the stream through rather than stalling the conversation.
+ *
+ * @example
+ * ```ts
+ * onTurnStart: async ({ chatId, uiMessages }) => {
+ *   chat.deferBeforeOutput(
+ *     db.chat.update({ where: { id: chatId }, data: { messages: uiMessages } })
+ *   );
+ * },
+ * ```
+ */
+function chatDeferBeforeOutput(promiseOrFn: Promise<unknown> | (() => Promise<unknown>)): void {
+  const gate = locals.get(chatOutGateKey);
+  const work = typeof promiseOrFn === "function" ? promiseOrFn() : promiseOrFn;
+  if (!gate || gate.open) return;
+  gate.pending.add(work);
+}
+
+function gateWriterOptions<T>(options: WriterStreamOptions<T>): WriterStreamOptions<T> {
+  return {
+    ...options,
+    execute: async (api) => {
+      await awaitChatOutGate();
+      return await options.execute(api);
+    },
+  };
+}
+
+function gateOutStream<T>(value: AsyncIterable<T> | ReadableStream<T>): AsyncIterable<T> {
+  return (async function* () {
+    await awaitChatOutGate();
+    if (isReadableStream(value)) {
+      const reader = (value as ReadableStream<T>).getReader();
+      try {
+        while (true) {
+          const { done, value: chunk } = await reader.read();
+          if (done) break;
+          yield chunk as T;
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    } else {
+      yield* value as AsyncIterable<T>;
+    }
+  })();
+}
+
 const chatStream: RealtimeDefinedStream<UIMessageChunk> = {
   // Stable opaque label for the run-scoped `RealtimeDefinedStream` shape.
   // `chatStream` is backed by the Session's `.out` channel — this id is
@@ -1222,7 +1275,7 @@ const chatStream: RealtimeDefinedStream<UIMessageChunk> = {
   pipe(value, options) {
     const { target: _target, ...sessionOptions } = (options ?? {}) as PipeStreamOptions;
     return getChatSession().out.pipe<UIMessageChunk>(
-      value,
+      gateOutStream(value),
       sessionOptions as SessionPipeStreamOptions
     );
   },
@@ -1236,10 +1289,11 @@ const chatStream: RealtimeDefinedStream<UIMessageChunk> = {
   },
   async append(value, options) {
     const { target: _target, ...sessionOptions } = (options ?? {}) as AppendStreamOptions;
+    await awaitChatOutGate();
     return getChatSession().out.append(value, sessionOptions as SessionPipeStreamOptions);
   },
   writer(options) {
-    return getChatSession().out.writer<UIMessageChunk>(options);
+    return getChatSession().out.writer<UIMessageChunk>(gateWriterOptions(options));
   },
 };
 
@@ -1322,9 +1376,13 @@ function createLazyChatWriter(): { writer: ChatWriter; flush: () => Promise<void
   let mergeImpl: ((stream: ReadableStream<UIMessageChunk>) => void) | null = null;
   let waitPromise: (() => Promise<unknown>) | null = null;
   let resolveExecute: (() => void) | null = null;
+  let started = false;
+  const bufferedParts: UIMessageChunk[] = [];
+  const bufferedStreams: ReadableStream<UIMessageChunk>[] = [];
 
   function ensureInitialized() {
-    if (writeImpl) return;
+    if (started) return;
+    started = true;
 
     const executePromise = new Promise<void>((resolve) => {
       resolveExecute = resolve;
@@ -1336,7 +1394,9 @@ function createLazyChatWriter(): { writer: ChatWriter; flush: () => Promise<void
       execute: ({ write, merge }) => {
         writeImpl = write;
         mergeImpl = merge;
-        return executePromise; // Keep execute alive until flush()
+        for (const part of bufferedParts.splice(0)) write(part);
+        for (const stream of bufferedStreams.splice(0)) merge(stream);
+        return executePromise;
       },
     });
     waitPromise = waitUntilComplete;
@@ -1347,11 +1407,13 @@ function createLazyChatWriter(): { writer: ChatWriter; flush: () => Promise<void
       write(part: UIMessageChunk) {
         ensureInitialized();
         queueResponsePart(part);
-        writeImpl!(part);
+        if (writeImpl) writeImpl(part);
+        else bufferedParts.push(part);
       },
       merge(stream: ReadableStream<UIMessageChunk>) {
         ensureInitialized();
-        mergeImpl!(stream);
+        if (mergeImpl) mergeImpl(stream);
+        else bufferedStreams.push(stream);
       },
     },
     async flush() {
@@ -1374,12 +1436,191 @@ async function withChatWriter<T>(fn: (writer: ChatWriter) => Promise<T> | T): Pr
   return result;
 }
 
+type ChatCustomAgentClientDataParser = {
+  parse: (value: unknown) => Promise<unknown> | unknown;
+  parseSync: (value: unknown) => unknown;
+};
+
+type ChatCustomAgentClientDataErrorHandler = (event: {
+  error: unknown;
+  payload: ChatTaskWirePayload;
+}) => Promise<void> | void;
+
+const CHAT_CUSTOM_AGENT_CLIENT_DATA_ERROR_TEXT = "Invalid client data";
+
+const chatCustomAgentClientDataParserKey = locals.create<ChatCustomAgentClientDataParser>(
+  "chat.customAgentClientDataParser"
+);
+const chatCustomAgentClientDataErrorHandlerKey =
+  locals.create<ChatCustomAgentClientDataErrorHandler>("chat.customAgentClientDataErrorHandler");
+
+function shouldValidateChatCustomAgentPayload(payload: ChatTaskWirePayload): boolean {
+  return (
+    payload.trigger !== "close" && locals.get(chatCustomAgentClientDataParserKey) !== undefined
+  );
+}
+
+function assertChatCustomAgentSyncParseResult(result: unknown): unknown {
+  if (result && typeof (result as { then?: unknown }).then === "function") {
+    void Promise.resolve(result).catch(() => {});
+    throw new Error(
+      "chat.messages.peek() cannot validate clientData with an asynchronous schema. " +
+        "Use chat.messages.once(), chat.messages.wait(), or chat.messages.waitWithIdleTimeout()."
+    );
+  }
+  return result;
+}
+
+function getChatCustomAgentSyncSchemaParseFn(schema: TaskSchema): (value: unknown) => unknown {
+  const parser = schema as any;
+
+  if (typeof parser === "function" && typeof parser.assert === "function") {
+    return parser.assert.bind(parser);
+  }
+
+  if (typeof parser === "function") {
+    return (value) => assertChatCustomAgentSyncParseResult(parser(value));
+  }
+
+  if (typeof parser.parse === "function") {
+    return (value) => assertChatCustomAgentSyncParseResult(parser.parse(value));
+  }
+
+  if (typeof parser.validateSync === "function") {
+    return parser.validateSync.bind(parser);
+  }
+
+  if (typeof parser.create === "function") {
+    return parser.create.bind(parser);
+  }
+
+  if (typeof parser.assert === "function") {
+    return (value) => {
+      parser.assert(value);
+      return value;
+    };
+  }
+
+  return () => {
+    throw new Error(
+      "chat.messages.peek() cannot validate clientData with this schema. " +
+        "Use chat.messages.once(), chat.messages.wait(), or chat.messages.waitWithIdleTimeout()."
+    );
+  };
+}
+
+async function writeChatCustomAgentClientDataErrorToStream(
+  payload: ChatTaskWirePayload
+): Promise<void> {
+  try {
+    await withChatWriter((writer) => {
+      writer.write({
+        type: "error",
+        errorText: CHAT_CUSTOM_AGENT_CLIENT_DATA_ERROR_TEXT,
+      } as any);
+    });
+    await chatWriteTurnComplete();
+  } catch (signalError) {
+    logger.warn("chat.customAgent: failed to report clientData validation error", {
+      chatId: payload.chatId,
+      trigger: payload.trigger,
+      error: signalError instanceof Error ? signalError.message : String(signalError),
+    });
+  }
+}
+
+async function reportChatCustomAgentClientDataError(
+  payload: ChatTaskWirePayload,
+  error: unknown,
+  options: { writeToStream: boolean; callHandler?: boolean }
+): Promise<void> {
+  const errorText =
+    error instanceof Error && error.message ? error.message : "An unexpected error occurred";
+  logger.warn("chat.customAgent: clientData validation failed", {
+    chatId: payload.chatId,
+    trigger: payload.trigger,
+    error: errorText,
+  });
+
+  const errorHandler =
+    options.callHandler === false
+      ? undefined
+      : locals.get(chatCustomAgentClientDataErrorHandlerKey);
+  if (errorHandler) {
+    try {
+      await errorHandler({ error, payload });
+    } catch (handlerError) {
+      logger.warn("chat.customAgent: clientData validation error handler failed", {
+        chatId: payload.chatId,
+        trigger: payload.trigger,
+        error: handlerError instanceof Error ? handlerError.message : String(handlerError),
+      });
+    }
+  }
+
+  if (!options.writeToStream) {
+    return;
+  }
+  await writeChatCustomAgentClientDataErrorToStream(payload);
+}
+
+type ChatCustomAgentPayloadValidationResult<TPayload extends ChatTaskWirePayload> =
+  | { ok: true; payload: TPayload }
+  | { ok: false; error: unknown };
+
+async function parseChatCustomAgentPayload<TPayload extends ChatTaskWirePayload>(
+  payload: TPayload
+): Promise<ChatCustomAgentPayloadValidationResult<TPayload>> {
+  const parser = locals.get(chatCustomAgentClientDataParserKey);
+  if (!parser || payload.trigger === "close") {
+    return { ok: true, payload };
+  }
+
+  try {
+    const metadata = await parser.parse(payload.metadata);
+    return { ok: true, payload: { ...payload, metadata } };
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
+
+async function validateChatCustomAgentPayload<TPayload extends ChatTaskWirePayload>(
+  payload: TPayload,
+  options: { writeErrorToStream?: boolean } = {}
+): Promise<ChatCustomAgentPayloadValidationResult<TPayload>> {
+  const result = await parseChatCustomAgentPayload(payload);
+  if (!result.ok) {
+    await reportChatCustomAgentClientDataError(payload, result.error, {
+      writeToStream: options.writeErrorToStream ?? true,
+    });
+  }
+  return result;
+}
+
+function validateChatCustomAgentPayloadSync<TPayload extends ChatTaskWirePayload>(
+  payload: TPayload
+): TPayload {
+  const parser = locals.get(chatCustomAgentClientDataParserKey);
+  if (!parser || payload.trigger === "close") {
+    return payload;
+  }
+
+  try {
+    return { ...payload, metadata: parser.parseSync(payload.metadata) };
+  } catch (error) {
+    logger.warn("chat.customAgent: clientData validation failed in chat.messages.peek()", {
+      chatId: payload.chatId,
+      trigger: payload.trigger,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+}
+
 // `ChatTaskWirePayload` and `ChatInputChunk` live in `./ai-shared.ts` so
 // browser bundles (which import them via `chat-client.ts` / `chat.ts`)
 // can pull the types without dragging `ai.ts` into the client graph.
 // Re-exported here so `@trigger.dev/sdk/ai` consumers see them.
-import type { ChatTaskWirePayload, ChatInputChunk } from "./ai-shared.js";
-export type { ChatTaskWirePayload, ChatInputChunk } from "./ai-shared.js";
 
 /**
  * The payload shape passed to the `chatAgent` run function.
@@ -1408,7 +1649,7 @@ export type ChatTaskPayload<TClientData = unknown> = {
    *   to short-circuit the LLM call when an action doesn't need a response.
    * - `"close"`: The chat session is being closed (internal; `run()` is not called).
    */
-  trigger: "submit-message" | "regenerate-message" | "preload" | "action" | "close";
+  trigger: "submit-message" | "regenerate-message" | "preload" | "action" | "action-turn" | "close";
 
   /** The ID of the message to regenerate (only for `"regenerate-message"`) */
   messageId?: string;
@@ -1458,6 +1699,16 @@ export type ChatTaskRunPayload<
      * Use for tags, metadata, parent run links, or any API that needs the full run record.
      */
     ctx: TaskRunContext;
+    /**
+     * `streamText` with this agent's managed options already applied: the
+     * prompt from `chat.prompt.set()`, the skill tools, telemetry, and the
+     * `prepareStep` that delivers steering, compaction and injected context.
+     *
+     * Prefer it over importing `streamText` from `ai`. The imported one takes
+     * none of that unless you spread `chat.toStreamTextOptions()` yourself, and
+     * forgetting the spread fails silently.
+     */
+    streamText: AiStreamTextFn;
     /** Token usage from the previous turn. Undefined on turn 0. */
     previousTurnUsage?: LanguageModelUsage;
     /** Cumulative token usage across all completed turns so far. */
@@ -1488,85 +1739,447 @@ export type ChatTaskRunPayload<
 // keep their original shape. Each accessor resolves the session handle
 // lazily via `getChatSession()` so the module-level references stay
 // compatible with the pre-migration wiring.
-const messagesInput: RealtimeDefinedInputStream<ChatTaskWirePayload> = {
+/**
+ * One message record delivered through {@link chat.messages}.
+ *
+ * `id` is the append's stable idempotency key and `seqNum` is its monotonic
+ * sequence on the Session `.in` channel. Both remain stable if the record is
+ * delivered again after a reconnect.
+ */
+export type ChatMessageRecord = Readonly<{
+  id: string;
+  seqNum: number;
+  payload: ChatTaskWirePayload;
+}>;
+
+export type ChatMessages = RealtimeDefinedInputStream<ChatTaskWirePayload> & {
+  /** Whether the local buffer head is a message that can be consumed immediately. */
+  hasPending(): Promise<boolean>;
+  /** Consume one message record, or return `undefined` when the optional timeout elapses. */
+  next(options?: { timeoutInSeconds?: number }): Promise<ChatMessageRecord | undefined>;
+};
+
+/**
+ * Read one record from a route, suspending the run if nothing is there yet.
+ *
+ * The wake and the read are separate steps: the channel wakes the run, then the
+ * router hands over whatever it routed. Nothing else can take the record in
+ * between, which is what keeps the published cursors and the delivered record
+ * in agreement.
+ * @internal
+ */
+async function waitOnChatRoute<T>(
+  route: string,
+  options: {
+    idleTimeoutInSeconds?: number;
+    timeout?: string;
+    spanName?: string;
+    skipSuspend?: boolean;
+    onSuspend?: () => Promise<void> | void;
+    onResume?: () => Promise<void> | void;
+  }
+): Promise<{ ok: true; output: T; record: SessionStreamRecord } | { ok: false; error?: Error }> {
+  const router = chatInputRouter();
+  const session = getChatSession();
+
+  return tracer.startActiveSpan(
+    options.spanName ?? `chat.${route}.wait()`,
+    async (span) => {
+      const idleMs = (options.idleTimeoutInSeconds ?? 0) * 1000;
+      if (idleMs > 0) {
+        const warm = await traceSessionIdle(session.id, idleMs / 1000, () =>
+          router.next(route, { timeoutMs: idleMs })
+        );
+        if (warm) {
+          span.setAttribute("wait.resolved", "idle");
+          return { ok: true as const, output: warm.data as T, record: warm };
+        }
+      } else {
+        const buffered = await router.next(route, { timeoutMs: 0 });
+        if (buffered) {
+          span.setAttribute("wait.resolved", "buffered");
+          return { ok: true as const, output: buffered.data as T, record: buffered };
+        }
+      }
+
+      if (options.skipSuspend) {
+        span.setAttribute("wait.resolved", "skipped");
+        return {
+          ok: false as const,
+          error: new Error("Idle timeout elapsed and skipSuspend is set"),
+        };
+      }
+
+      if (options.onSuspend) await options.onSuspend();
+
+      span.setAttribute("wait.resolved", "suspended");
+      while (true) {
+        /**
+         * The floor doubles as the wake cursor: the server completes the
+         * waitpoint immediately if anything sits after this sequence, so a
+         * floor that has advanced past an unread record parks a waitpoint
+         * nothing will complete. Recorded on the span so a run that never woke
+         * can be diagnosed from its trace alone.
+         */
+        const wakeFrom = router.resumeFloor();
+        span.setAttribute("wait.lastSeqNum", wakeFrom ?? -1);
+        const wake = await session.in.awaitWake({
+          timeout: options.timeout,
+          lastSeqNum: wakeFrom,
+        });
+        if (!wake.ok) {
+          span.recordException(wake.error);
+          return { ok: false as const, error: wake.error };
+        }
+
+        const record = await router.next(route);
+        if (!record) continue;
+
+        if (options.onResume) await options.onResume();
+        return { ok: true as const, output: record.data as T, record };
+      }
+    },
+    {
+      attributes: {
+        [SemanticInternalAttributes.STYLE_ICON]: "sessions",
+        session: session.id,
+        io: "in",
+        route,
+      },
+    }
+  );
+}
+
+type ChatMessageSubscription = {
+  off: () => void;
+};
+
+/**
+ * Raw `.in` message delivery, with no client-data validation.
+ *
+ * Sits directly on the router's `messages` route, so a record handed to the
+ * handler is consumed and the resume floor is free to advance past it.
+ */
+function subscribeToRawChatMessages(
+  handler: (payload: ChatTaskWirePayload) => unknown
+): ChatMessageSubscription {
+  return chatInputRouter().on(CHAT_ROUTE_MESSAGES, (record) => {
+    const chunk = record.data as Extract<ChatInputChunk, { kind: "message" }>;
+    void Promise.resolve(handler(chunk.payload)).catch(() => {});
+  });
+}
+
+/**
+ * Message delivery with client-data validation in front of it.
+ *
+ * Parses are chained so payloads are validated in wire order, which is the
+ * point of the feature: a later message must not be validated against state a
+ * earlier one has not established yet.
+ *
+ * The handler is dispatched but **not** awaited by that chain. Awaiting it
+ * would serialise user code, so one slow or never-resolving handler would stall
+ * delivery of every later message, and only when a schema is declared. Raw
+ * delivery has always been fire-and-forget, so awaiting here would also make
+ * handler concurrency differ between the validated and unvalidated paths for no
+ * stated reason.
+ *
+ * `off()` detaches from the router but does not cancel work already chained:
+ * the parse chain is a live promise chain and runs to completion on its own, so
+ * a frame that arrives just before a turn closes is still parsed and a failure
+ * is still reported (through the `!active` branch). Nothing therefore has to
+ * wait on it, which is why no `drain()` hook is exposed. The one uncovered edge
+ * is a parse still in flight when the task itself returns, where teardown can
+ * cut the report short; give this a bounded wait at the run-end boundary rather
+ * than an unbounded one, since the chain awaits a user-supplied schema.
+ */
+function subscribeToValidatedChatMessages(
+  handler: (payload: ChatTaskWirePayload, isActive: () => boolean) => unknown,
+  options: {
+    onAfterOff?: (payload: ChatTaskWirePayload) => unknown;
+    onInvalidAfterOff?: (payload: ChatTaskWirePayload, error: unknown) => unknown;
+  } = {}
+): ChatMessageSubscription {
+  let active = true;
+  let delivery = Promise.resolve();
+  const subscription = subscribeToRawChatMessages((payload) => {
+    delivery = delivery
+      .then(async () => {
+        const result = await parseChatCustomAgentPayload(payload);
+        if (!result.ok) {
+          if (active) {
+            // Completing the turn here could close an active response.
+            await reportChatCustomAgentClientDataError(payload, result.error, {
+              writeToStream: false,
+            });
+          } else if (options.onInvalidAfterOff) {
+            await options.onInvalidAfterOff(payload, result.error);
+          } else {
+            // The subscription was removed while parsing. Keep the failure
+            // observable without invoking a user callback after off().
+            await reportChatCustomAgentClientDataError(payload, result.error, {
+              writeToStream: false,
+              callHandler: false,
+            });
+          }
+          return;
+        }
+        if (active) {
+          void Promise.resolve(handler(result.payload, () => active)).catch(() => {});
+        } else {
+          void Promise.resolve(options.onAfterOff?.(result.payload)).catch(() => {});
+        }
+      })
+      .catch(() => {});
+  });
+
+  return {
+    off() {
+      active = false;
+      subscription.off();
+    },
+  };
+}
+
+/**
+ * Validated delivery that does **not** consume.
+ *
+ * The steering path must observe rather than take: a record it does not inject
+ * has to stay queued so a later turn answers it. Validation still runs in wire
+ * order in front of the handler, so `clientData` is parsed before steering code
+ * sees it, and a frame whose parse finishes after the turn closed needs no
+ * buffer of its own, because the record was never removed from the channel.
+ */
+function observeValidatedChatMessages(
+  /**
+   * Receives the observed record's own `seqNum`. It is passed per record rather
+   * than tracked outside, because the handler runs after an await: with two
+   * frames in flight a shared slot already holds the newer sequence by the time
+   * the older frame's parse resolves, and the steering queue would then take
+   * the wrong record off the channel.
+   */
+  handler: (payload: ChatTaskWirePayload, seqNum: number, isActive: () => boolean) => unknown
+): ChatMessageSubscription {
+  let active = true;
+  let delivery = Promise.resolve();
+  const claims =
+    locals.get(chatObserverClaimedSeqNumsKey) ??
+    new Map<number, { released: Promise<void>; release: () => void }>();
+  locals.set(chatObserverClaimedSeqNumsKey, claims);
+
+  const subscription = chatInputRouter().observe(CHAT_ROUTE_MESSAGES, (record) => {
+    const payload = (record.data as Extract<ChatInputChunk, { kind: "message" }>).payload;
+    const seqNum = record.seqNum;
+    /**
+     * Claimed synchronously, before any await, so a read cannot validate the
+     * same record. The promise lets a read wait for the outcome rather than
+     * spin on a record it is not allowed to take.
+     */
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    claims.set(record.seqNum, { released, release });
+    const releaseClaim = () => {
+      claims.delete(record.seqNum);
+      release();
+    };
+    delivery = delivery
+      .then(async () => {
+        const result = await parseChatCustomAgentPayload(payload);
+        if (!result.ok) {
+          /**
+           * Reported once, then taken off the channel.
+           *
+           * Observing does not consume, so without this the record would be
+           * read again by the next turn and parsed a second time, firing a
+           * user-supplied schema and reporting the same failure twice. A frame
+           * that fails validation is never going to be answered by this run or
+           * a later one, so removing it loses nothing that was still owed.
+           */
+          const timing = locals.get(chatCustomAgentClientDataErrorTimingKey) ?? "turn-end";
+          const writeNow = timing === "arrival" || !active;
+          await reportChatCustomAgentClientDataError(payload, result.error, {
+            writeToStream: writeNow,
+          });
+          if (!writeNow) {
+            const deferred = locals.get(chatCustomAgentDeferredClientDataErrorsKey) ?? [];
+            deferred.push(payload);
+            locals.set(chatCustomAgentDeferredClientDataErrorsKey, deferred);
+          }
+          // Drop the record: an invalid frame is never answered, by this run or
+          // a later one. Released so a waiting read stops waiting, finds it
+          // gone, and goes back to waiting for the next message.
+          chatInputRouter().take(CHAT_ROUTE_MESSAGES, record.seqNum);
+          releaseClaim();
+          return;
+        }
+
+        // Valid, so release. The record is still queued, and whichever comes
+        // first, an injection or a later turn's read, now owns it.
+        releaseClaim();
+        void Promise.resolve(handler(result.payload, seqNum, () => active)).catch(() => {});
+      })
+      .catch(() => {});
+  });
+
+  return {
+    off() {
+      active = false;
+      subscription.off();
+    },
+  };
+}
+
+/**
+ * Whether a record is currently owned by the validating observer.
+ *
+ * A read that pulls one puts it back and keeps waiting, so the observer's parse
+ * stays the only one and the record is not consumed out from under it.
+ */
+function observerClaimFor(record: SessionStreamRecord): Promise<void> | undefined {
+  return locals.get(chatObserverClaimedSeqNumsKey)?.get(record.seqNum)?.released;
+}
+
+const messagesInput: ChatMessages = {
   id: "chat-messages",
   on(handler) {
-    return getChatSession().in.on<ChatInputChunk>((chunk) => {
-      if (chunk.kind === "message") {
-        // Returning `true` marks the record CONSUMED at the manager level:
-        // it is neither buffered for a later `once()` nor re-delivered by
-        // the buffer drain when the next turn re-attaches its handler.
-        // Without this, a message arriving mid-stream was delivered twice
-        // and ran a duplicate turn.
-        void Promise.resolve(handler(chunk.payload)).catch(() => {});
-        return true;
-      }
-      return undefined;
-    });
+    if (!locals.get(chatCustomAgentClientDataParserKey)) {
+      return subscribeToRawChatMessages(handler);
+    }
+
+    const deliver = (payload: ChatTaskWirePayload) => handler(payload);
+    return subscribeToValidatedChatMessages(deliver, { onAfterOff: deliver });
   },
   once(options) {
-    const ctx = taskContext.ctx;
-    const runId = ctx?.run.id;
-
     return new InputStreamOncePromise<ChatTaskWirePayload>((resolve, reject) => {
-      tracer
-        .startActiveSpan(
-          options?.spanName ?? `chat.messages.once()`,
-          async () => {
-            while (true) {
-              const result = await getChatSession().in.once<ChatInputChunk>(options);
-              if (!result.ok) {
-                resolve(result as InputStreamOnceResult<ChatTaskWirePayload>);
-                return;
-              }
-              if (result.output.kind === "message") {
-                resolve({ ok: true, output: result.output.payload });
-                return;
-              }
-              // Non-message chunks (stops) are handled by the stopInput
-              // facade's persistent listener; loop and wait for the next.
+      /**
+       * Same skip-and-wait rule as `waitWithIdleTimeout`: a payload that fails
+       * validation is reported and not surfaced. The timeout is a total budget
+       * across retries, so skipping a frame cannot extend the wait forever.
+       */
+      const deadline =
+        options?.timeoutMs === undefined ? undefined : Date.now() + options.timeoutMs;
+      const take = () => {
+        chatInputRouter()
+          .next(CHAT_ROUTE_MESSAGES, {
+            timeoutMs: deadline === undefined ? undefined : Math.max(0, deadline - Date.now()),
+          })
+          .then(async (record) => {
+            if (!record) {
+              resolve({
+                ok: false,
+                error: new InputStreamTimeoutError("chat-messages", options?.timeoutMs ?? 0),
+              });
+              return;
             }
-          },
-          {
-            attributes: {
-              [SemanticInternalAttributes.STYLE_ICON]: "streams",
-              [SemanticInternalAttributes.ENTITY_TYPE]: "input-stream",
-              ...(runId
-                ? {
-                    [SemanticInternalAttributes.ENTITY_ID]: `${runId}:chat-messages`,
-                  }
-                : {}),
-              streamId: "chat-messages",
-              ...accessoryAttributes({
-                items: [{ text: "chat-messages", variant: "normal" }],
-                style: "codepath",
-              }),
-            },
-          }
-        )
-        .catch(reject);
+            const claim = observerClaimFor(record);
+            if (claim) {
+              chatInputRouter().untake(CHAT_ROUTE_MESSAGES, record);
+              await claim;
+              take();
+              return;
+            }
+            const payload = (record.data as Extract<ChatInputChunk, { kind: "message" }>).payload;
+            if (!shouldValidateChatCustomAgentPayload(payload)) {
+              resolve({ ok: true, output: payload });
+              return;
+            }
+            const validated = await validateChatCustomAgentPayload(payload);
+            if (validated.ok) {
+              resolve({ ok: true, output: validated.payload });
+              return;
+            }
+            take();
+          }, reject);
+      };
+      take();
     });
   },
   peek() {
-    const chunk = getChatSession().in.peek<ChatInputChunk>();
-    if (chunk && chunk.kind === "message") return chunk.payload;
-    return undefined;
+    const record = chatInputRouter().peek(CHAT_ROUTE_MESSAGES);
+    if (!record) return undefined;
+    const payload = (record.data as Extract<ChatInputChunk, { kind: "message" }>).payload;
+    return validateChatCustomAgentPayloadSync(payload);
+  },
+  async hasPending() {
+    return chatInputRouter().hasPending(CHAT_ROUTE_MESSAGES);
+  },
+  async next(options) {
+    const timeoutInSeconds = options?.timeoutInSeconds;
+    if (
+      timeoutInSeconds !== undefined &&
+      (!Number.isFinite(timeoutInSeconds) || timeoutInSeconds < 0)
+    ) {
+      throw new TypeError(
+        "chat.messages.next() timeoutInSeconds must be a finite non-negative number"
+      );
+    }
+
+    // Consuming read, so it takes the same claim-and-validate path as the other
+    // reads: a record the observer still owns is put back and awaited, and an
+    // invalid payload is reported and skipped rather than surfaced raw.
+    const totalMs = timeoutInSeconds === undefined ? undefined : timeoutInSeconds * 1000;
+    /**
+     * The caller's timeout is a total budget, not a per-attempt one. Skipping an
+     * invalid frame must not buy another full wait, or a client sending invalid
+     * frames faster than the timeout would keep the read blocked indefinitely
+     * and it would never return.
+     */
+    const deadline = totalMs === undefined ? undefined : Date.now() + totalMs;
+
+    while (true) {
+      const record = await chatInputRouter().next(CHAT_ROUTE_MESSAGES, {
+        timeoutMs: deadline === undefined ? undefined : Math.max(0, deadline - Date.now()),
+      });
+      if (!record) return undefined;
+
+      const claim = observerClaimFor(record);
+      if (claim) {
+        chatInputRouter().untake(CHAT_ROUTE_MESSAGES, record);
+        await claim;
+        continue;
+      }
+
+      const chunk = record.data as Extract<ChatInputChunk, { kind: "message" }>;
+      if (!shouldValidateChatCustomAgentPayload(chunk.payload)) {
+        return { id: record.id, seqNum: record.seqNum, payload: chunk.payload };
+      }
+      const validated = await validateChatCustomAgentPayload(chunk.payload);
+      if (validated.ok) {
+        return { id: record.id, seqNum: record.seqNum, payload: validated.payload };
+      }
+    }
   },
   wait(options) {
     return new ManualWaitpointPromise<ChatTaskWirePayload>(async (resolve, reject) => {
       try {
+        // Same skip-and-wait rule as `waitWithIdleTimeout`, looping back into
+        // the suspending wait rather than surfacing an unvalidated payload.
         while (true) {
-          const result = await getChatSession().in.wait<ChatInputChunk>(options);
+          const result = await waitOnChatRoute<Extract<ChatInputChunk, { kind: "message" }>>(
+            CHAT_ROUTE_MESSAGES,
+            { timeout: options?.timeout, spanName: options?.spanName }
+          );
           if (!result.ok) {
-            resolve(result);
+            resolve({ ok: false, error: result.error ?? new Error("Timed out") });
             return;
           }
-          if (result.output.kind === "message") {
-            resolve({ ok: true, output: result.output.payload });
+          const claim = observerClaimFor(result.record);
+          if (claim) {
+            chatInputRouter().untake(CHAT_ROUTE_MESSAGES, result.record);
+            await claim;
+            continue;
+          }
+          const payload = result.output.payload;
+          if (!shouldValidateChatCustomAgentPayload(payload)) {
+            resolve({ ok: true, output: payload });
             return;
           }
-          // Stop chunks are handled by the stopInput facade's persistent
-          // listener; loop back into the suspending wait.
+          const validated = await validateChatCustomAgentPayload(payload);
+          if (validated.ok) {
+            resolve({ ok: true, output: validated.payload });
+            return;
+          }
         }
       } catch (error) {
         reject(error);
@@ -1574,21 +2187,36 @@ const messagesInput: RealtimeDefinedInputStream<ChatTaskWirePayload> = {
     });
   },
   async waitWithIdleTimeout(options) {
+    /**
+     * A payload that fails client-data validation is reported and skipped
+     * rather than surfaced, so the caller never sees an unvalidated
+     * `clientData`. The loop waits for the next message instead of returning an
+     * error, which keeps a single bad client send from ending the turn.
+     */
     while (true) {
-      const result = await getChatSession().in.waitWithIdleTimeout<ChatInputChunk>(options);
-      if (!result.ok) return result;
-      if (result.output.kind === "message") {
-        return { ok: true, output: result.output.payload };
+      const result = await waitOnChatRoute<Extract<ChatInputChunk, { kind: "message" }>>(
+        CHAT_ROUTE_MESSAGES,
+        options
+      );
+      if (!result.ok) return { ok: false, error: result.error };
+
+      const claim = observerClaimFor(result.record);
+      if (claim) {
+        chatInputRouter().untake(CHAT_ROUTE_MESSAGES, result.record);
+        await claim;
+        continue;
       }
-      // Swallow stop-kind chunks — persistent stop listener already handled
-      // the abort; we just loop for the next message.
+      const payload = result.output.payload;
+      if (!shouldValidateChatCustomAgentPayload(payload)) {
+        return { ok: true, output: payload };
+      }
+      const validated = await validateChatCustomAgentPayload(payload);
+      if (validated.ok) {
+        return { ok: true, output: validated.payload };
+      }
     }
   },
   async send(_runId, data, options) {
-    // The `runId` argument is kept for signature parity with
-    // `RealtimeDefinedInputStream` but ignored — sessions are addressed
-    // by sessionId, not runId. Callers producing messages from outside
-    // the run should prefer the transport's `session.in.send(...)` path.
     await getChatSession().in.send(
       { kind: "message", payload: data } satisfies ChatInputChunk,
       options?.requestOptions
@@ -1599,98 +2227,59 @@ const messagesInput: RealtimeDefinedInputStream<ChatTaskWirePayload> = {
 const stopInput: RealtimeDefinedInputStream<{ stop: true; message?: string }> = {
   id: "chat-stop",
   on(handler) {
-    return getChatSession().in.on<ChatInputChunk>((chunk) => {
-      if (chunk.kind === "stop") {
-        // Consume stop records (see the messages facade above). A stop is
-        // only meaningful to the turn it interrupts — buffering it would
-        // let a stale stop abort a future turn.
-        void Promise.resolve(handler({ stop: true, message: chunk.message })).catch(() => {});
-        return true;
-      }
-      return undefined;
+    return chatInputRouter().on(CHAT_ROUTE_STOP, (record) => {
+      const chunk = record.data as Extract<ChatInputChunk, { kind: "stop" }>;
+      void Promise.resolve(handler({ stop: true, message: chunk.message })).catch(() => {});
     });
   },
   once(options) {
-    const ctx = taskContext.ctx;
-    const runId = ctx?.run.id;
-
     return new InputStreamOncePromise<{ stop: true; message?: string }>((resolve, reject) => {
-      tracer
-        .startActiveSpan(
-          options?.spanName ?? `chat.stop.once()`,
-          async () => {
-            while (true) {
-              const result = await getChatSession().in.once<ChatInputChunk>(options);
-              if (!result.ok) {
-                resolve(result as InputStreamOnceResult<{ stop: true; message?: string }>);
-                return;
-              }
-              if (result.output.kind === "stop") {
-                resolve({
-                  ok: true,
-                  output: { stop: true, message: result.output.message },
-                });
-                return;
-              }
-            }
-          },
-          {
-            attributes: {
-              [SemanticInternalAttributes.STYLE_ICON]: "streams",
-              [SemanticInternalAttributes.ENTITY_TYPE]: "input-stream",
-              ...(runId
-                ? {
-                    [SemanticInternalAttributes.ENTITY_ID]: `${runId}:chat-stop`,
-                  }
-                : {}),
-              streamId: "chat-stop",
-              ...accessoryAttributes({
-                items: [{ text: "chat-stop", variant: "normal" }],
-                style: "codepath",
-              }),
-            },
+      chatInputRouter()
+        .next(CHAT_ROUTE_STOP, { timeoutMs: options?.timeoutMs })
+        .then((record) => {
+          if (!record) {
+            resolve({
+              ok: false,
+              error: new InputStreamTimeoutError("chat-stop", options?.timeoutMs ?? 0),
+            });
+            return;
           }
-        )
-        .catch(reject);
+          const chunk = record.data as Extract<ChatInputChunk, { kind: "stop" }>;
+          resolve({ ok: true, output: { stop: true, message: chunk.message } });
+        }, reject);
     });
   },
   peek() {
-    const chunk = getChatSession().in.peek<ChatInputChunk>();
-    if (chunk && chunk.kind === "stop") {
-      return { stop: true, message: chunk.message };
-    }
-    return undefined;
+    const record = chatInputRouter().peek(CHAT_ROUTE_STOP);
+    if (!record) return undefined;
+    const chunk = record.data as Extract<ChatInputChunk, { kind: "stop" }>;
+    return { stop: true, message: chunk.message };
   },
   wait(options) {
     return new ManualWaitpointPromise<{ stop: true; message?: string }>(async (resolve, reject) => {
       try {
-        while (true) {
-          const result = await getChatSession().in.wait<ChatInputChunk>(options);
-          if (!result.ok) {
-            resolve(result);
-            return;
-          }
-          if (result.output.kind === "stop") {
-            resolve({
-              ok: true,
-              output: { stop: true, message: result.output.message },
-            });
-            return;
-          }
-        }
+        const result = await waitOnChatRoute<Extract<ChatInputChunk, { kind: "stop" }>>(
+          CHAT_ROUTE_STOP,
+          { timeout: options?.timeout, spanName: options?.spanName }
+        );
+        resolve(
+          result.ok
+            ? { ok: true, output: { stop: true, message: result.output.message } }
+            : { ok: false, error: result.error ?? new Error("Timed out") }
+        );
       } catch (error) {
         reject(error);
       }
     });
   },
   async waitWithIdleTimeout(options) {
-    while (true) {
-      const result = await getChatSession().in.waitWithIdleTimeout<ChatInputChunk>(options);
-      if (!result.ok) return result;
-      if (result.output.kind === "stop") {
-        return { ok: true, output: { stop: true, message: result.output.message } };
-      }
-    }
+    const result = await waitOnChatRoute<Extract<ChatInputChunk, { kind: "stop" }>>(
+      CHAT_ROUTE_STOP,
+      options
+    );
+    return result.ok
+      ? { ok: true as const, output: { stop: true, message: result.output.message } }
+      : { ok: false as const, error: result.error };
   },
   async send(_runId, data, options) {
     await getChatSession().in.send(
@@ -1706,9 +2295,10 @@ const stopInput: RealtimeDefinedInputStream<{ stop: true; message?: string }> = 
  * with pending tool calls (`"handover"` — agent picks up from tool
  * execution), or it finished pure-text (`"handover-skip"` — agent
  * exits cleanly without making an LLM call).
- * @internal
+ *
+ * Returned by `chat.waitForHandover()` for custom-agent loops.
  */
-type HandoverSignal =
+export type HandoverSignal =
   | {
       kind: "handover";
       partialAssistantMessage: ModelMessage[];
@@ -1737,21 +2327,298 @@ const handoverInput = {
     spanName?: string;
     skipSuspend?: boolean;
   }) {
-    while (true) {
-      const result = await getChatSession().in.waitWithIdleTimeout<ChatInputChunk>(options);
-      if (!result.ok) return result;
-      if (
-        result.output.kind === "handover" ||
-        result.output.kind === "handover-skip"
-      ) {
-        return { ok: true as const, output: result.output as HandoverSignal };
-      }
-      // Other kinds (message, stop) are not expected during handover-prepare.
-      // Loop back; the message and stop facades have their own listeners
-      // running so signals on those kinds aren't lost.
-    }
+    const result = await waitOnChatRoute<HandoverSignal>(CHAT_ROUTE_HANDOVER, options);
+    return result.ok ? { ok: true as const, output: result.output } : result;
   },
 };
+
+/**
+ * Wait for a `chat.headStart` handover signal inside a custom-agent loop or
+ * `chat.createSession`. Returns:
+ * - `null` — this run is not a `handover-prepare` boot, or the wait idled out /
+ *   the warm handler crashed before signaling. Treat as "no handover".
+ * - `{ kind: "handover-skip" }` — the warm handler aborted; exit without a turn.
+ * - `{ kind: "handover", partialAssistantMessage, messageId?, isFinal }` — splice
+ *   the partial (`chat.MessageAccumulator.applyHandover`) and, when `isFinal` is
+ *   false, fall through to `streamText` to run the handed-over tool round.
+ *
+ * For the common case prefer `accumulator.consumeHandover()`, which also seeds
+ * `payload.headStartMessages` and applies the partial for you.
+ *
+ * Safe to call at any point in turn 0: the handover signal has its own route,
+ * so a message facade waiting at the same time cannot take it.
+ */
+async function waitForHandover(options: {
+  /** The run's wire payload (only `trigger` / `idleTimeoutInSeconds` are read). */
+  payload: { trigger?: string; idleTimeoutInSeconds?: number };
+  idleTimeoutInSeconds?: number;
+  timeout?: string;
+  spanName?: string;
+}): Promise<HandoverSignal | null> {
+  if (options.payload.trigger !== "handover-prepare") return null;
+  try {
+    const result = await handoverInput.waitWithIdleTimeout({
+      idleTimeoutInSeconds:
+        options.idleTimeoutInSeconds ?? options.payload.idleTimeoutInSeconds ?? 60,
+      timeout: options.timeout,
+      spanName: options.spanName ?? "waiting for handover signal",
+    });
+    // Non-ok = idle timeout or the warm handler crashed without signaling.
+    if (!result.ok) return null;
+    return result.output;
+  } finally {
+    chatInputRouter().clearRoute(CHAT_ROUTE_HANDOVER);
+  }
+}
+
+/**
+ * Everything `session.in` carries, and what happens to each kind.
+ *
+ * A route's two properties are what make the resume protocol derivable rather
+ * than hand-maintained. `messages` is replayable because losing a user message
+ * is data loss. `stop` is neither queued nor replayable: it only means anything
+ * to the turn that is live when it lands, and a replayed one would abort
+ * whichever turn happened to be running. `handover` is queued but not
+ * replayable, because it can arrive before its consumer is ready yet is
+ * meaningless to any later boot.
+ *
+ * A kind absent from this table has no consumer, so the router discards it
+ * instead of letting it park at the head of a queue.
+ * @internal
+ */
+const CHAT_INPUT_ROUTES: SessionRouteTable = {
+  kindOf: (data) => (data as ChatInputChunk | undefined)?.kind,
+  routes: [
+    { name: "messages", delivery: "queue", replayable: true, kinds: ["message"] },
+    { name: "stop", delivery: "at-arrival", replayable: false, kinds: ["stop"] },
+    {
+      name: "handover",
+      delivery: "queue",
+      replayable: false,
+      kinds: ["handover", "handover-skip"],
+    },
+  ],
+};
+
+const CHAT_ROUTE_MESSAGES = "messages";
+const CHAT_ROUTE_STOP = "stop";
+const CHAT_ROUTE_HANDOVER = "handover";
+
+/**
+ * The `.in` router for the run this worker is currently serving.
+ *
+ * One slot rather than a map, because the facades have to reach the same router
+ * the boot attached without depending on a locals scope being active. Tagged
+ * with the run as well as the chat: a warm process is reused across runs and the
+ * executor tears the channel subscription down at the end of each one, so
+ * reusing a router across runs would leave the new run with no input at all. A
+ * nested `chat.createSession` within the same run still shares it.
+ * @internal
+ */
+let currentChatInputRouter:
+  | { chatId: string; runId: string | undefined; router: SessionChannelRouter; attached: boolean }
+  | undefined;
+
+/**
+ * Both cursors from the latest `turn-complete` on `.out`, in one scan.
+ *
+ * Absent for a chat whose turns predate the headers, in which case the router
+ * starts from the beginning of the channel and nothing is treated as replayed.
+ * @internal
+ */
+async function findLatestSessionInCheckpoint(chatId: string): Promise<RouterCheckpoint> {
+  const apiClient = apiClientManager.clientOrThrow();
+  const response = await apiClient.readSessionStreamRecords(chatId, "out");
+  const checkpoint: RouterCheckpoint = {};
+  for (const record of response.records) {
+    if (controlSubtype(record.headers) !== TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) continue;
+    const resumeFrom = Number.parseInt(
+      headerValue(record.headers, SESSION_IN_EVENT_ID_HEADER) ?? "",
+      10
+    );
+    if (Number.isFinite(resumeFrom)) checkpoint.resumeFrom = resumeFrom;
+    const appliedThrough = Number.parseInt(
+      headerValue(record.headers, SESSION_IN_CONSUMED_ID_HEADER) ?? "",
+      10
+    );
+    if (Number.isFinite(appliedThrough)) checkpoint.appliedThrough = appliedThrough;
+  }
+  return checkpoint;
+}
+
+/**
+ * The highest `.in` sequence already on the channel at boot, above the floor.
+ *
+ * Everything already on the channel when a run boots is, by definition, not
+ * arriving live on this run, so the channel's own tail is the end of this run's
+ * replay window.
+ *
+ * The turn boundary's value is not enough on its own. A boundary is written when
+ * a turn ends, so a control record that arrived after the last boundary is not
+ * covered by it, and a boundary written by an older SDK does not carry one at
+ * all. Both cases leave an already-applied record looking live.
+ *
+ * Bounded by `afterEventId` when a floor is known, which is the common case, so
+ * the read covers the replay window rather than the conversation. An absent
+ * floor means no boundary has committed a cursor yet, and the channel is still
+ * short.
+ *
+ * Returns `undefined` if the read fails; the caller then falls back to the
+ * floor, which is the previous release's behaviour.
+ * @internal
+ */
+async function findSessionInReplayWindowEnd(
+  chatId: string,
+  afterSeqNum: number | undefined
+): Promise<number | undefined> {
+  try {
+    const apiClient = apiClientManager.clientOrThrow();
+    const response = await apiClient.readSessionStreamRecords(chatId, "in", {
+      ...(afterSeqNum === undefined ? {} : { afterEventId: String(afterSeqNum) }),
+    });
+    let highest: number | undefined;
+    for (const record of response.records) {
+      const seqNum = typeof record.seqNum === "number" ? record.seqNum : Number.NaN;
+      if (Number.isFinite(seqNum) && (highest === undefined || seqNum > highest)) {
+        highest = seqNum;
+      }
+    }
+    return highest;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Attach the `.in` router for this run.
+ *
+ * Reads the checkpoint and subscribes in one call, so there is no window in
+ * which a listener is attached before the resume cursor is seeded. Attaching
+ * first would open the tail at sequence 0 and replay every record the previous
+ * run already answered, which is a mistake the previous shape of this code made
+ * possible and this shape does not.
+ *
+ * The router consumes every record at dispatch, so the channel's own buffer
+ * stays empty for chat and its cursor bookkeeping never engages. Delivery,
+ * ordering and the published cursors are the router's, entirely.
+ * @internal
+ */
+async function installChatInputRouter(
+  chatId: string,
+  options?: {
+    fallbackResumeFrom?: number;
+    recoveredSeqNums?: readonly number[];
+    resuming?: boolean;
+  }
+): Promise<SessionChannelRouter> {
+  const entry = chatInputRouterEntry(chatId);
+  if (entry.attached) return entry.router;
+
+  let checkpoint: RouterCheckpoint = {};
+  try {
+    checkpoint = await findLatestSessionInCheckpoint(chatId);
+  } catch (error) {
+    logger.warn("chat session: session.in resume cursor lookup failed; old messages may replay", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+  if (checkpoint.resumeFrom === undefined && options?.fallbackResumeFrom !== undefined) {
+    checkpoint.resumeFrom = options.fallbackResumeFrom;
+  }
+  // Only a resuming run has a replay window. On a first boot nothing has been
+  // applied by anyone, so treating what is already on the channel as replayed
+  // would discard a signal that arrived before the agent got here, which is
+  // exactly how a head-start handover reaches a cold run.
+  const resuming = checkpoint.resumeFrom !== undefined || options?.resuming === true;
+  if (resuming) {
+    const replayWindowEnd = await findSessionInReplayWindowEnd(chatId, checkpoint.resumeFrom);
+    if (replayWindowEnd !== undefined) {
+      checkpoint.appliedThrough = Math.max(
+        checkpoint.appliedThrough ?? replayWindowEnd,
+        replayWindowEnd
+      );
+    }
+  }
+
+  const router = entry.router;
+  router.restore(checkpoint);
+
+  if (options?.recoveredSeqNums && options.recoveredSeqNums.length > 0) {
+    router.markRecovered(options.recoveredSeqNums);
+  }
+
+  const floor = router.resumeFrom();
+  if (floor !== undefined) {
+    sessionStreams.setLastSeqNum(chatId, "in", floor);
+    sessionStreams.setLastDispatchedSeqNum(chatId, "in", floor);
+  }
+
+  sessionStreams.onRecord(chatId, "in", (record) => {
+    // The floor is the tail's `Last-Event-ID`, but a reconnect can still
+    // re-deliver below it and a replayable route would re-queue it.
+    if (floor !== undefined && record.seqNum <= floor) return true;
+    router.ingest(record);
+    return true;
+  });
+
+  entry.attached = true;
+  return router;
+}
+
+function chatInputRouterEntry(chatId: string): {
+  chatId: string;
+  runId: string | undefined;
+  router: SessionChannelRouter;
+  attached: boolean;
+} {
+  const runId = taskContext.ctx?.run.id;
+  if (currentChatInputRouter?.chatId === chatId && currentChatInputRouter.runId === runId) {
+    return currentChatInputRouter;
+  }
+
+  currentChatInputRouter = {
+    chatId,
+    runId,
+    router: new SessionChannelRouter(CHAT_INPUT_ROUTES, {
+      onDrop: (record, reason) => {
+        if (reason === "unroutable" || reason === "malformed") {
+          logger.warn("chat: discarded a session.in record nothing on this worker can consume", {
+            reason,
+            seqNum: record.seqNum,
+          });
+        }
+      },
+    }),
+    attached: false,
+  };
+  return currentChatInputRouter;
+}
+
+/** Drop the router so the next boot attaches a fresh one. @internal */
+export function __resetChatInputRouterForTests(): void {
+  currentChatInputRouter = undefined;
+}
+
+/** The cursors this run would publish on its next turn boundary. @internal */
+export function __chatInputCheckpointForTests(): RouterCheckpoint {
+  return currentChatInputRouter?.router.checkpoint() ?? {};
+}
+
+/** Test-only entry point for the turn-boundary cursor scan. @internal */
+export async function __findLatestSessionInCheckpointForTests(
+  chatId: string
+): Promise<RouterCheckpoint> {
+  return findLatestSessionInCheckpoint(chatId);
+}
+
+/**
+ * This chat's router. Created on first use so a facade reached before the
+ * install still shares the one the install will attach.
+ * @internal
+ */
+function chatInputRouter(): SessionChannelRouter {
+  return chatInputRouterEntry(getChatSession().id).router;
+}
 
 /**
  * Per-turn deferred promises. Registered via `chat.defer()`, awaited
@@ -1864,11 +2731,72 @@ function synthesizeHandoverUIMessage(
 }
 
 /**
+ * Splice a head-start handover partial into an accumulating message pair
+ * (model + UI). Dedups by `messageId` against the UI chain (so a hydrated
+ * history that already persisted the partial isn't doubled), then pushes the
+ * partial into `modelMessages` and the synthesized UIMessage into `uiMessages`.
+ * Shared by the `chat.agent` turn-0 splice and `ChatMessageAccumulator.applyHandover`.
+ * @internal
+ */
+function spliceHandoverPartial(
+  modelMessages: ModelMessage[],
+  uiMessages: UIMessage[],
+  signal: { partialAssistantMessage: ModelMessage[]; messageId?: string }
+): void {
+  if (!signal.partialAssistantMessage || signal.partialAssistantMessage.length === 0) {
+    return;
+  }
+  // Skip if the hydrated chain already persisted the partial under this id.
+  const alreadyInChain =
+    signal.messageId !== undefined && uiMessages.some((m) => m.id === signal.messageId);
+  if (alreadyInChain) return;
+  modelMessages.push(...signal.partialAssistantMessage);
+  const partialUI = synthesizeHandoverUIMessage(signal.partialAssistantMessage, signal.messageId);
+  if (partialUI) uiMessages.push(partialUI);
+}
+
+/**
  * Per-turn background context queue. Messages added via `chat.backgroundWork.inject()`
  * are drained at the next `prepareStep` boundary and appended to the model messages.
  * @internal
  */
 const chatBackgroundQueueKey = locals.create<ModelMessage[]>("chat.backgroundQueue");
+/**
+ * Background injections a step-boundary drain handed to the model this turn,
+ * with the transcript message they followed. Reconciled into the model lane
+ * and the persisted injections once the turn's response is in.
+ */
+const chatPendingBackgroundKey =
+  locals.create<{ afterId: string; messages: ModelMessage[] }[]>("chat.pendingBackground");
+
+/**
+ * System-role context injected mid-conversation, held for the instructions lane.
+ *
+ * Kept apart from the message queue because ai@7 rejects a system message inside
+ * `messages` for every provider — `standardizePrompt` throws upstream of any
+ * provider call, and its own advice is to use the instructions option. Instructions
+ * accept `Array<SystemModelMessage>`, so a system-role injection has a correct
+ * home: appended as another system block rather than smuggled into the transcript.
+ *
+ * This is also the only way to inject *trusted* context. A message injected as
+ * `user` is untrusted by construction, and a well-aligned model treats it that
+ * way — it will say so, and re-derive the answer from tools instead.
+ */
+const chatInjectedInstructionsKey = locals.create<SystemModelMessage[]>(
+  "chat.injectedInstructions"
+);
+/**
+ * What a turn already consumed from the instructions lane, so a second
+ * `toStreamTextOptions()` call in the same turn sees the same blocks.
+ *
+ * Consumed blocks are moved here rather than left in the pending lane: leaving
+ * them there means an injection made during the consumed turn sits behind them,
+ * and clearing the lane on the next turn destroys both.
+ */
+const chatInstructionsConsumedKey = locals.create<{
+  turn: number;
+  blocks: SystemModelMessage[];
+}>("chat.injectedInstructionsConsumed");
 
 /**
  * Run-scoped pipe counter. Stored in locals so concurrent runs in the
@@ -1899,11 +2827,11 @@ const chatUIStreamPerTurnKey = locals.create<ChatUIMessageStreamOptions<UIMessag
  * have to. See TRI-9137.
  * @internal
  */
-const chatToolCallToMessageIdKey = locals.create<Map<string, string>>(
-  "chat.toolCallToMessageId"
-);
+const chatToolCallToMessageIdKey = locals.create<Map<string, string>>("chat.toolCallToMessageId");
 
-function recordToolCallIdsFromMessage(message: { id?: string; role?: string; parts?: unknown[] } | undefined) {
+function recordToolCallIdsFromMessage(
+  message: { id?: string; role?: string; parts?: unknown[] } | undefined
+) {
   if (!message || message.role !== "assistant" || !message.id) return;
   let map = locals.get(chatToolCallToMessageIdKey);
   if (!map) {
@@ -2173,9 +3101,7 @@ function extractNewToolResultsFromHistory(
   message: UIMessage,
   messages: UIMessage[]
 ): ChatNewToolResult[] {
-  const resolved = new Set(
-    getResolvedToolCallsFromHistory(messages).map((r) => r.toolCallId)
-  );
+  const resolved = new Set(getResolvedToolCallsFromHistory(messages).map((r) => r.toolCallId));
   const seen = new Set<string>();
   const out: ChatNewToolResult[] = [];
   for (const { part, toolCallId, toolName, state } of iterateToolParts(message)) {
@@ -2426,6 +3352,36 @@ const chatOnCompactedKey =
   locals.create<(event: CompactedEvent) => Promise<void> | void>("chat.onCompacted");
 /** @internal Full task `ctx` for the active `chat.agent` run (for hooks invoked from nested compaction). */
 const chatAgentRunContextKey = locals.create<TaskRunContext>("chat.agentRunContext");
+/** @internal When a mid-turn validation failure writes its terminal error. */
+const chatCustomAgentClientDataErrorTimingKey = locals.create<"turn-end" | "arrival">(
+  "chat.customAgent.clientDataErrorTiming"
+);
+/**
+ * @internal Client-data errors held back until the open turn closes.
+ *
+ * The default timing exists so a bad send cannot truncate an answer already
+ * being read, which means the write has to happen later rather than not at all:
+ * the callback and the task log are server-side, so dropping the stream write
+ * would leave the client with no signal that its frame was rejected.
+ */
+const chatCustomAgentDeferredClientDataErrorsKey = locals.create<ChatTaskWirePayload[]>(
+  "chat.customAgent.deferredClientDataErrors"
+);
+/**
+ * @internal Sequences the validating observer has claimed.
+ *
+ * The observer watches without consuming, so a record it is still validating is
+ * also visible to a turn's read. Claiming makes ownership single: a read that
+ * pulls a claimed record puts it back and keeps waiting, so exactly one of them
+ * validates it and the schema runs once per frame.
+ */
+const chatObserverClaimedSeqNumsKey = locals.create<
+  Map<number, { released: Promise<void>; release: () => void }>
+>("chat.customAgent.observerClaims");
+/** @internal Marks the root run created by `chat.customAgent()`. */
+const chatCustomAgentRunKey = locals.create<boolean>("chat.customAgentRun");
+/** @internal Number of active `chat.createSession()` iterators in this run. */
+const chatActiveSessionIteratorsKey = locals.create<number>("chat.createSession.activeIterators");
 const chatPrepareMessagesKey =
   locals.create<(event: PrepareMessagesEvent<unknown>) => ModelMessage[] | Promise<ModelMessage[]>>(
     "chat.prepareMessages"
@@ -2447,6 +3403,10 @@ const chatResolvedToolsKey = locals.create<ToolSet>("chat.resolvedTools");
 
 /** @internal Flag set by `chat.requestUpgrade()` to exit the loop after the current turn. */
 const chatUpgradeRequestedKey = locals.create<boolean>("chat.upgradeRequested");
+/** @internal Target for the upgrade handoff, set by `chat.requestUpgrade({ externalDeploymentId })`. */
+const chatUpgradeExternalDeploymentIdKey = locals.create<string>(
+  "chat.upgradeExternalDeploymentId"
+);
 
 /**
  * @internal Flag set by `chat.endRun()` to exit the loop after the current
@@ -2454,6 +3414,27 @@ const chatUpgradeRequestedKey = locals.create<boolean>("chat.upgradeRequested");
  * post-turn / pre-wait sites as `chatUpgradeRequestedKey`.
  */
 const chatEndRunRequestedKey = locals.create<boolean>("chat.endRunRequested");
+
+/**
+ * @internal Set by `chat.close()`. Holds the close request (and its reason)
+ * for the rest of the run: the loop writes the terminal `session-closed`
+ * record, closes the session row, and exits at the same post-turn /
+ * pre-wait sites as `chatEndRunRequestedKey`.
+ */
+const chatCloseRequestedKey = locals.create<{ reason?: string }>("chat.closeRequested");
+
+/** @internal Matches the server's `CloseSessionRequestBody.reason` cap. */
+const CHAT_CLOSE_REASON_MAX_LENGTH = 256;
+
+/** @internal Set once the session row is closed, so the close happens once. */
+const chatClosePerformedKey = locals.create<boolean>("chat.closePerformed");
+
+/**
+ * @internal Set once the terminal `.out` record is written. Tracked apart from
+ * {@link chatClosePerformedKey} so a retried close does not emit a second
+ * client-visible event.
+ */
+const chatCloseRecordWrittenKey = locals.create<boolean>("chat.closeRecordWritten");
 
 /**
  * Event passed to `summarize` callbacks.
@@ -2649,15 +3630,60 @@ export type PendingMessagesOptions<TUIM extends UIMessage = UIMessage> = {
 // React hooks (`@trigger.dev/sdk/chat/react`) can import it without
 // dragging `ai.ts` into the browser graph. Re-exported here so
 // `@trigger.dev/sdk/ai` consumers still see it.
-export { PENDING_MESSAGE_INJECTED_TYPE, upsertIncomingMessage } from "./ai-shared.js";
-import { PENDING_MESSAGE_INJECTED_TYPE } from "./ai-shared.js";
+export { PENDING_MESSAGE_INJECTED_TYPE, upsertIncomingMessage };
+export type { InferChatClientData, InferChatUIMessage, InferChatUIMessageFromTools };
 
 /** @internal */
-type SteeringQueueEntry = { uiMessage: UIMessage; modelMessages: ModelMessage[] };
+/**
+ * A message observed mid-turn and offered for injection. `seqNum` is the record
+ * it came from, so injecting can take it off the router; a batch that is
+ * declined leaves its records queued and they become later turns instead.
+ * Absent for entries that did not come from a channel record.
+ */
+type SteeringQueueEntry = {
+  uiMessage: UIMessage;
+  modelMessages: ModelMessage[];
+  seqNum?: number;
+};
 /** @internal */
 const chatPendingMessagesKey = locals.create<PendingMessagesOptions>("chat.pendingMessages");
 /** @internal */
 const chatSteeringQueueKey = locals.create<SteeringQueueEntry[]>("chat.steeringQueue");
+
+/**
+ * This turn's new messages, as `onTurnComplete.newUIMessages` will see them.
+ *
+ * Held in locals because `drainSteeringQueue` runs outside the turn closure and
+ * has to append the messages it injects. Without that, an injected message
+ * reaches the model and the browser but no hook, so an app persisting from
+ * `onTurnComplete` never learns it existed.
+ */
+const chatTurnNewUIMessagesKey = locals.create<UIMessage[]>("chat.turnNewUIMessages");
+
+/**
+ * Steering messages a drain consumed that the model accumulator has not been
+ * given yet.
+ *
+ * The two accumulators are maintained separately, and the model one is
+ * normally advanced by appending each turn's delta. A drained message is
+ * appended to the UI one but reaches the model only through the `prepareStep`
+ * return value, which is per-step: without this the model lane never learns
+ * the message exists and every later turn of the run answers without it,
+ * while the browser, the snapshot and `chat.history.*` all still show it.
+ *
+ * Held as the messages rather than a "rebuild me" flag because the model lane
+ * can only be appended to, never reconstructed. Compaction replaces it with a
+ * summary and deliberately leaves the UI lane whole, so reconverting the UI
+ * lane restores every message the summary replaced.
+ */
+const chatPendingSteerKey = locals.create<PendingSteer[]>("chat.pendingSteer");
+
+/**
+ * A consumed steering message in both forms: the UI message for display and
+ * persistence, and the model messages `pendingMessages.prepare` produced for
+ * it, which is what the model actually saw and what later turns must see too.
+ */
+type PendingSteer = { ui: UIMessage; model: ModelMessage[] };
 /** @internal — IDs of messages that were successfully injected via prepareStep */
 const chatInjectedMessageIdsKey = locals.create<Set<string>>("chat.injectedMessageIds");
 /** @internal — non-transient data parts queued via chat.response or writer.write() for accumulation into the response message */
@@ -2693,9 +3719,9 @@ export type PrepareMessagesEvent<TClientData = unknown> = {
   messages: ModelMessage[];
   /** Why messages are being prepared. */
   reason:
-  | "run" // Messages being passed to run() for streamText
-  | "compaction-rebuild" // Rebuilding from a previous compaction summary
-  | "compaction-result"; // Fresh compaction just produced these messages
+    | "run" // Messages being passed to run() for streamText
+    | "compaction-rebuild" // Rebuilding from a previous compaction summary
+    | "compaction-result"; // Fresh compaction just produced these messages
   /** The chat session ID. */
   chatId: string;
   /** The current turn number (0-indexed). */
@@ -2863,6 +3889,63 @@ function isStepBoundarySafe(step: {
 }
 
 /**
+ * True when a model message is a `tool` message carrying a
+ * `tool-approval-response` part — the trailing row a head-start handover
+ * reshapes a pending first-turn tool call into. AI SDK's `collectToolApprovals`
+ * only inspects the conversation's last message, so this row must survive to
+ * `streamText` intact for the agent to execute the handed-over call.
+ * @internal
+ */
+function hasToolApprovalResponse(message: ModelMessage | undefined): message is ModelMessage {
+  return (
+    message?.role === "tool" &&
+    Array.isArray(message.content) &&
+    message.content.some(
+      (part) =>
+        part != null &&
+        typeof part === "object" &&
+        (part as { type?: string }).type === "tool-approval-response"
+    )
+  );
+}
+
+/**
+ * Keep a head-start handover's tool-approval tail intact across `prepareMessages`.
+ *
+ * The handover reshapes the warm step-1's pending tool call into AI SDK's
+ * tool-approval round: a `tool-approval-request` on the assistant plus a
+ * trailing `tool` message with `tool-approval-response { approved: true }`. The
+ * agent's next `streamText` runs `collectToolApprovals`, which ONLY looks at the
+ * last message — so that tool row must stay last and unmodified for the pending
+ * call to execute. A user `prepareMessages` hook that rewrites or drops the last
+ * message (e.g. rolling a provider cache breakpoint onto it) silently breaks the
+ * resume: the agent sends a bare `tool_use` and the turn dies with
+ * "tool_use ids were found without tool_result". If the hook's input ended with
+ * that approval tail, re-assert the original tail as the last message.
+ *
+ * No-op for every normal turn — only fires when the input genuinely ended with a
+ * pending tool-approval response (i.e. a head-start resume).
+ * @internal
+ */
+function preserveToolApprovalTail(
+  original: ModelMessage[],
+  prepared: ModelMessage[]
+): ModelMessage[] {
+  const originalTail = original[original.length - 1];
+  if (!hasToolApprovalResponse(originalTail)) return prepared;
+  // Hook left the exact tail object in place — nothing to do.
+  if (prepared[prepared.length - 1] === originalTail) return prepared;
+  // Otherwise drop only the trailing approval tail the hook produced (the
+  // original moved, or a rewritten copy) and re-append the original so it is
+  // last and intact. Older approval rounds deeper in history must survive.
+  const withoutMovedOriginal = prepared.filter((m) => m !== originalTail);
+  while (hasToolApprovalResponse(withoutMovedOriginal[withoutMovedOriginal.length - 1])) {
+    withoutMovedOriginal.pop();
+  }
+  return [...withoutMovedOriginal, originalTail];
+}
+
+/**
  * Apply the prepareMessages hook if one is set in locals.
  * @internal
  */
@@ -2875,7 +3958,7 @@ async function applyPrepareMessages(
 
   const turnCtx = locals.get(chatTurnContextKey);
 
-  return tracer.startActiveSpan(
+  const prepared = await tracer.startActiveSpan(
     "prepareMessages()",
     async () => {
       return hook({
@@ -2895,6 +3978,10 @@ async function applyPrepareMessages(
       },
     }
   );
+
+  // A user hook must never be able to break the head-start handover resume by
+  // disturbing the trailing tool-approval row (see preserveToolApprovalTail).
+  return preserveToolApprovalTail(messages, prepared);
 }
 
 /**
@@ -2911,9 +3998,12 @@ async function applyPrepareMessages(
  * declared.
  * @internal
  */
-async function resolveTurnTools(
-  override?: { chatId: string; turn: number; continuation: boolean; clientData: unknown }
-): Promise<void> {
+async function resolveTurnTools(override?: {
+  chatId: string;
+  turn: number;
+  continuation: boolean;
+  clientData: unknown;
+}): Promise<void> {
   const option = locals.get(chatToolsOptionKey);
   if (!option) return;
 
@@ -3014,18 +4104,18 @@ async function chatCompact(
 
   const shouldTrigger = options.shouldCompact
     ? await options.shouldCompact({
-      messages,
-      totalTokens,
-      inputTokens,
-      outputTokens,
-      usage: currentStep.usage,
-      source: "inner",
-      stepNumber,
-      steps,
-      chatId: turnCtx?.chatId,
-      turn: turnCtx?.turn,
-      clientData: turnCtx?.clientData,
-    })
+        messages,
+        totalTokens,
+        inputTokens,
+        outputTokens,
+        usage: currentStep.usage,
+        source: "inner",
+        stepNumber,
+        steps,
+        chatId: turnCtx?.chatId,
+        turn: turnCtx?.turn,
+        clientData: turnCtx?.clientData,
+      })
     : totalTokens != null && options.threshold != null && totalTokens > options.threshold;
 
   if (!shouldTrigger) {
@@ -3178,11 +4268,36 @@ function chatCompactionStep(
 // Steering queue drain — shared by toStreamTextOptions, session, accumulator
 // ---------------------------------------------------------------------------
 
+/** What a steering drain produced: what to send now, and what it consumed. */
+type DrainedSteering = {
+  /** Model messages to add to this step's prompt. */
+  injected: ModelMessage[];
+  /** The UI messages the drain consumed, for the caller to record. */
+  claimed: UIMessage[];
+};
+
+const EMPTY_DRAIN: DrainedSteering = { injected: [], claimed: [] };
+
+/**
+ * The model messages to record for one claimed message. Without `prepare`
+ * each entry's own conversion is used. With it, `prepare` returned one list
+ * for the whole batch, so the first claimed message carries all of it and the
+ * rest carry none, which keeps the total exactly what the model received.
+ */
+function modelFormOf(m: UIMessage, batch: UIMessage[], injected: ModelMessage[]): ModelMessage[] {
+  return batch[0] === m ? injected : [];
+}
+
 /**
  * Drain the steering queue as a batch. Calls `shouldInject` once with all
  * pending messages. If it returns true, calls `prepareMessages` once to
  * transform the batch, then clears the queue.
- * Returns the model messages to inject (empty if none).
+ * Returns the model messages to inject and the UI messages actually claimed.
+ *
+ * `claimed` is returned rather than only published to locals because each
+ * surface files it somewhere different: `chat.agent` has an accumulator in
+ * locals, while `chat.createSession` keeps its own. Publishing to locals alone
+ * is silently a no-op for any surface that never set the key.
  * @internal
  */
 async function drainSteeringQueue(
@@ -3190,13 +4305,20 @@ async function drainSteeringQueue(
   messages: ModelMessage[],
   steps: CompactionStep[],
   queueOverride?: SteeringQueueEntry[]
-): Promise<ModelMessage[]> {
+): Promise<DrainedSteering> {
   const queue = queueOverride ?? locals.get(chatSteeringQueueKey);
-  if (!queue || queue.length === 0) return [];
+  if (!queue || queue.length === 0) return EMPTY_DRAIN;
 
   const ctx = locals.get(chatTurnContextKey);
   const stepNumber = steps.length - 1;
-  const uiMessages = queue.map((e) => e.uiMessage);
+  /**
+   * Snapshot, because `shouldInject` and `prepare` can await. A record arriving
+   * during either is not in this batch, so it must not be consumed by it: the
+   * callbacks never saw it and could not have injected it, and taking it would
+   * lose a message that should become a later turn instead.
+   */
+  const batch = [...queue];
+  const uiMessages = batch.map((e) => e.uiMessage);
 
   const batchEvent: PendingMessagesBatchEvent = {
     messages: uiMessages,
@@ -3211,32 +4333,115 @@ async function drainSteeringQueue(
   // Call shouldInject once for the whole batch
   const shouldInject = config.shouldInject ? await config.shouldInject(batchEvent) : false;
 
-  if (!shouldInject) return [];
+  if (!shouldInject) return EMPTY_DRAIN;
 
-  // Extract message texts for span attributes
-  const messageTexts = uiMessages.map(
-    (m) =>
-      (m.parts ?? [])
-        .filter((p: any) => p.type === "text")
-        .map((p: any) => p.text)
-        .join("") || ""
-  );
-  const previewText =
+  const textOfUIMessage = (m: UIMessage) =>
+    (m.parts ?? [])
+      .filter((p: any) => p.type === "text")
+      .map((p: any) => p.text)
+      .join("") || "";
+  // Span attributes describe the offered batch; the chunk and callback below
+  // describe what was actually claimed and injected.
+  const messageTexts = uiMessages.map(textOfUIMessage);
+  const _previewText =
     messageTexts.length === 1 ? messageTexts[0]!.slice(0, 80) : `${queue.length} messages`;
 
   return tracer.startActiveSpan(
     "pending message injected",
     async () => {
-      // Transform the batch — default: concatenate all pre-converted model messages
-      const injected = config.prepare
-        ? await config.prepare(batchEvent)
-        : queue.flatMap((e) => e.modelMessages);
+      /**
+       * Claim before transforming, and inject only what was claimed.
+       *
+       * Injection is the point of consumption: the records were only observed
+       * on arrival, so they are still queued on the router and still holding
+       * the resume floor, and taking them here is what stops the same message
+       * also being answered as a later turn. A declined batch never reaches
+       * this line, so its records stay queued and become later turns, which is
+       * what "messages queue for the next turn" means.
+       *
+       * A failed claim means something else already consumed that record while
+       * `shouldInject` was awaiting, so it is already being answered as a turn
+       * of its own. Injecting it as well would process the same message twice.
+       * An entry with no `seqNum` did not come from a channel record (the
+       * accumulator's own queue), so there is nothing to claim and it is kept.
+       */
+      const router = chatInputRouter();
+      const claimed: SteeringQueueEntry[] = [];
+      const takenRecords: SessionStreamRecord[] = [];
+      for (const entry of batch) {
+        if (entry.seqNum === undefined) {
+          claimed.push(entry);
+          continue;
+        }
+        const record = router.take(CHAT_ROUTE_MESSAGES, entry.seqNum);
+        if (!record) continue;
+        takenRecords.push(record);
+        claimed.push(entry);
+      }
+      for (const entry of claimed) {
+        const at = queue.indexOf(entry);
+        if (at !== -1) queue.splice(at, 1);
+      }
 
-      // Clear the queue and record injected IDs
-      queue.length = 0;
+      if (claimed.length === 0) return EMPTY_DRAIN;
+
+      /**
+       * Give the claim back if the transform fails. `prepare` is caller code and
+       * can throw; the records have already left the router by this point, so
+       * without returning them a failed transform would consume the messages and
+       * they would never be answered at all.
+       */
+      const releaseClaim = () => {
+        for (const record of takenRecords) router.untake(CHAT_ROUTE_MESSAGES, record);
+        for (const entry of claimed) if (!queue.includes(entry)) queue.push(entry);
+      };
+
+      const claimedUIMessages = claimed.map((e) => e.uiMessage);
+      let injected: ModelMessage[];
+      try {
+        injected = config.prepare
+          ? await config.prepare({ ...batchEvent, messages: claimedUIMessages })
+          : claimed.flatMap((e) => e.modelMessages);
+      } catch (err) {
+        releaseClaim();
+        throw err;
+      }
+
       const injectedIds = locals.get(chatInjectedMessageIdsKey);
       if (injectedIds) {
-        for (const m of uiMessages) injectedIds.add(m.id);
+        for (const m of claimedUIMessages) injectedIds.add(m.id);
+      }
+
+      // Record them as part of the conversation.
+      //
+      // The model has them and the browser has them; without this the
+      // accumulator does not, so they reach neither `uiMessages` nor
+      // `newUIMessages` on `onTurnComplete` and an app that persists from there
+      // silently loses the instruction the answer was shaped by. Appending here
+      // rather than at turn end keeps them in the order they happened: after the
+      // message that started the turn, before the response that answers it.
+      //
+      // De-duplicated by id because a step boundary can drain more than once per
+      // turn, and because a message that failed to inject falls back to becoming
+      // its own turn, where it is accumulated the normal way.
+      const currentUIMessages = locals.get(chatCurrentUIMessagesKey);
+      const turnNew = locals.get(chatTurnNewUIMessagesKey);
+      for (const m of claimedUIMessages) {
+        if (currentUIMessages && !currentUIMessages.some((existing) => existing.id === m.id)) {
+          currentUIMessages.push(m);
+        }
+        if (turnNew && !turnNew.some((existing) => existing.id === m.id)) {
+          turnNew.push(m);
+        }
+      }
+      if (claimedUIMessages.length > 0 && currentUIMessages) {
+        const pendingSteer = locals.get(chatPendingSteerKey) ?? [];
+        for (const m of claimedUIMessages) {
+          if (!pendingSteer.some((existing) => existing.ui.id === m.id)) {
+            pendingSteer.push({ ui: m, model: modelFormOf(m, claimedUIMessages, injected) });
+          }
+        }
+        locals.set(chatPendingSteerKey, pendingSteer);
       }
 
       // Write injection confirmation chunk to the stream so the frontend
@@ -3250,10 +4455,10 @@ async function drainSteeringQueue(
                 type: PENDING_MESSAGE_INJECTED_TYPE,
                 id: generateMessageId(),
                 data: {
-                  messageIds: uiMessages.map((m) => m.id),
-                  messages: uiMessages.map((m, idx) => ({
+                  messageIds: claimedUIMessages.map((m) => m.id),
+                  messages: claimedUIMessages.map((m) => ({
                     id: m.id,
-                    text: messageTexts[idx] ?? "",
+                    text: textOfUIMessage(m),
                   })),
                 },
               });
@@ -3269,7 +4474,7 @@ async function drainSteeringQueue(
       if (config.onInjected && injected.length > 0) {
         try {
           await config.onInjected({
-            messages: uiMessages,
+            messages: claimedUIMessages,
             injectedModelMessages: injected,
             chatId: ctx?.chatId ?? "",
             turn: ctx?.turn ?? 0,
@@ -3280,7 +4485,7 @@ async function drainSteeringQueue(
         }
       }
 
-      return injected;
+      return { injected, claimed: claimedUIMessages };
     },
     {
       attributes: {
@@ -3341,25 +4546,54 @@ function isCompactionSafe(messages: UIMessage[]): boolean {
 export type ChatPromptValue =
   | ResolvedPrompt
   | {
-    text: string;
-    model: undefined;
-    config: undefined;
-    promptId: string;
-    version: number;
-    labels: string[];
-    toAISDKTelemetry: (additionalMetadata?: Record<string, string>) => {
-      experimental_telemetry: { isEnabled: true; metadata: Record<string, string> };
+      text: string;
+      model: undefined;
+      config: undefined;
+      promptId: string;
+      version: number;
+      labels: string[];
+      toAISDKTelemetry: (additionalMetadata?: Record<string, string>) => {
+        experimental_telemetry: { isEnabled: true; metadata: Record<string, string> };
+      };
     };
-  };
 
 /** @internal */
 const chatPromptKey = locals.create<ChatPromptValue>("chat.prompt");
 
 /**
+ * @internal Provider options attached to the system message that
+ * `toStreamTextOptions()` builds from the stored prompt — lets a provider cache
+ * the system block. Stored separately so it works for both the `ResolvedPrompt`
+ * and plain-string forms without mutating the prompt object.
+ */
+const chatPromptProviderOptionsKey = locals.create<ProviderMetadata | undefined>(
+  "chat.prompt.providerOptions"
+);
+
+/**
+ * Options for `chat.prompt.set()`.
+ */
+export type SetChatPromptOptions = {
+  /**
+   * Provider options attached to the system prompt so a provider can cache it.
+   * The most common use is an Anthropic prompt-cache breakpoint on the (large,
+   * stable) system block — see the prompt-caching guide. Carried through to
+   * `chat.toStreamTextOptions()` automatically; a `systemProviderOptions` /
+   * `cacheControl` passed there overrides this.
+   *
+   * @example
+   * chat.prompt.set(SYSTEM_PROMPT, {
+   *   providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
+   * });
+   */
+  providerOptions?: ProviderMetadata;
+};
+
+/**
  * Store a resolved prompt (or plain string) for the current run.
  * Call from any hook (`onPreload`, `onChatStart`, `onTurnStart`) or `run()`.
  */
-function setChatPrompt(resolved: ResolvedPrompt | string): void {
+function setChatPrompt(resolved: ResolvedPrompt | string, options?: SetChatPromptOptions): void {
   if (typeof resolved === "string") {
     locals.set(chatPromptKey, {
       text: resolved,
@@ -3375,6 +4609,10 @@ function setChatPrompt(resolved: ResolvedPrompt | string): void {
   } else {
     locals.set(chatPromptKey, resolved);
   }
+
+  // Always overwrite the slot (even with undefined) so a later prompt.set with
+  // no options clears a previous prompt's cache opt-in rather than leaking it.
+  locals.set(chatPromptProviderOptionsKey, options?.providerOptions);
 }
 
 /**
@@ -3417,9 +4655,7 @@ function getChatSkills(): ResolvedSkill[] | undefined {
  */
 function buildSkillsSystemPrompt(skills: ResolvedSkill[]): string {
   if (skills.length === 0) return "";
-  const lines = skills.map(
-    (s) => `- ${s.frontmatter.name}: ${s.frontmatter.description}`
-  );
+  const lines = skills.map((s) => `- ${s.frontmatter.name}: ${s.frontmatter.description}`);
   return [
     "Available skills (call `loadSkill` to read the full instructions before using one):",
     ...lines,
@@ -3480,7 +4716,8 @@ export function buildSkillTools(skills: ResolvedSkill[]): Record<string, Tool> {
         skill: { type: "string", description: "The skill's name (from frontmatter)." },
         path: {
           type: "string",
-          description: "Relative path inside the skill folder (e.g. `references/citation-style.md`).",
+          description:
+            "Relative path inside the skill folder (e.g. `references/citation-style.md`).",
         },
       },
       required: ["skill", "path"],
@@ -3511,7 +4748,8 @@ export function buildSkillTools(skills: ResolvedSkill[]): Record<string, Tool> {
         skill: { type: "string", description: "The skill's name (from frontmatter)." },
         command: {
           type: "string",
-          description: "Bash command to run. Relative script paths resolve against the skill's root.",
+          description:
+            "Bash command to run. Relative script paths resolve against the skill's root.",
         },
       },
       required: ["skill", "command"],
@@ -3544,6 +4782,12 @@ export function buildSkillTools(skills: ResolvedSkill[]): Record<string, Tool> {
  * Options for {@link toStreamTextOptions}.
  */
 export type ToStreamTextOptionsOptions = {
+  /**
+   * A base system prompt, used when `chat.prompt.set()` has not supplied one.
+   * `chat.agent({ system })` and a `system` passed to the managed `streamText`
+   * both arrive here.
+   */
+  system?: string | SystemModelMessage;
   /** Additional telemetry metadata merged into `experimental_telemetry.metadata`. */
   telemetry?: Record<string, string>;
   /**
@@ -3566,7 +4810,39 @@ export type ToStreamTextOptionsOptions = {
    * your tools here.
    */
   tools?: Record<string, Tool>;
+  /**
+   * Provider options attached to the system prompt so a provider can cache it.
+   * When set (or when {@link cacheControl} or `chat.prompt.set`'s
+   * `providerOptions` is set), `system` is returned as a structured
+   * `SystemModelMessage` carrying these options instead of a plain string —
+   * letting providers like Anthropic apply prompt caching to the (large,
+   * stable) system block, which is the single highest-value cache target.
+   *
+   * Overrides any `providerOptions` set on `chat.prompt.set()`.
+   *
+   * @example
+   * chat.toStreamTextOptions({
+   *   systemProviderOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
+   * });
+   */
+  systemProviderOptions?: ProviderMetadata;
+  /**
+   * Anthropic-only convenience for {@link systemProviderOptions}: caches the
+   * system prompt with the given cache breakpoint. Equivalent to
+   * `systemProviderOptions: { anthropic: { cacheControl } }`. For other
+   * providers (e.g. Amazon Bedrock's `cachePoint`), use `systemProviderOptions`.
+   *
+   * @example
+   * chat.toStreamTextOptions({ cacheControl: { type: "ephemeral" } });
+   */
+  cacheControl?: SystemCacheControl;
 };
+
+/**
+ * Anthropic prompt-cache breakpoint shape (`providerOptions.anthropic.cacheControl`).
+ * `ttl` defaults to the 5-minute cache; `"1h"` selects the 1-hour cache.
+ */
+export type SystemCacheControl = { type: "ephemeral"; ttl?: "5m" | "1h" };
 
 /**
  * Returns an options object ready to spread into `streamText()`.
@@ -3579,16 +4855,316 @@ export type ToStreamTextOptionsOptions = {
  *
  * If no prompt has been set, returns `{}` (no-op spread).
  */
+/**
+ * The AI SDK's own `streamText` signature, borrowed rather than restated.
+ *
+ * The peer range spans `ai` v5, v6 and v7, whose `streamText` options differ.
+ * Describing the shape here would drift against all three; `typeof` resolves to
+ * whichever version the user installed, so generics, overloads and tool
+ * inference are exactly theirs.
+ */
+type AiStreamTextFn = typeof aiStreamTextSignature;
+
+/**
+ * The `streamText` handed to a `chat.agent` `run()`, carrying the agent's
+ * managed options.
+ *
+ * Exported so a loop factored out of `run` can take it as a parameter and keep
+ * them: `function loop(messages: ModelMessage[], streamText: ChatStreamText)`.
+ */
+export type ChatStreamText = AiStreamTextFn;
+
+/**
+ * A `streamText` with the agent's managed options already applied.
+ *
+ * Handed to `run()` so the managed state cannot be missed by omission. Spreading
+ * `chat.toStreamTextOptions()` is still supported and equivalent; this exists
+ * because forgetting the spread silently drops the managed prompt, the skill
+ * tools, telemetry, and the `prepareStep` that delivers steering, compaction and
+ * conversational injection.
+ *
+ * Caller options win for everything the caller owns (model, messages, signal,
+ * stopWhen). The three that would otherwise clobber managed behaviour are
+ * merged instead of replaced:
+ *
+ * - `tools` are passed into the helper, so skill tools survive.
+ * - `prepareStep` is composed after the managed one, so a caller's per-step
+ *   overrides apply on top of steering and compaction instead of disabling them.
+ *
+ * `system` may be set at the call site, on `chat.agent({ system })`, or
+ * through `chat.prompt.set()`, but only in one of them. Setting it in two
+ * places throws: no shape merges two system values on every supported
+ * version, and dropping one silently is the failure this seam exists to
+ * prevent. Injected instructions append to whichever one is in play.
+ */
+/**
+ * The agent-level managed options (`registry`, `system`, `cacheControl`,
+ * `systemProviderOptions`), published for the run so that
+ * `chat.toStreamTextOptions()` applies them too. Without this only the bound
+ * `streamText` saw them, and the documented spread form silently ran without
+ * the agent's system prompt or model.
+ */
+const chatAgentManagedConfigKey = locals.create<ManagedStreamTextConfig>("chat.agentManagedConfig");
+
+type ManagedStreamTextConfig = {
+  registry?: ToStreamTextOptionsOptions["registry"];
+  system?: ToStreamTextOptionsOptions["system"];
+  cacheControl?: ToStreamTextOptionsOptions["cacheControl"];
+  systemProviderOptions?: ToStreamTextOptionsOptions["systemProviderOptions"];
+  /** The agent's resolved tools, used when the call site names no `tools` of its own. */
+  tools?: ToolSet;
+};
+
+/**
+ * The caller's `streamText` options merged with the agent's managed ones.
+ *
+ * Pure, and separate from the call so it can be asserted directly: everything
+ * the caller did not name has to survive the merge, and the way to be sure of
+ * that is to look at the merged object rather than at what the model received.
+ */
+function buildManagedStreamTextOptions(
+  options: Record<string, unknown>,
+  config: ManagedStreamTextConfig
+): Record<string, unknown> {
+  const {
+    registry,
+    system: agentSystem,
+    cacheControl,
+    systemProviderOptions,
+    tools: agentTools,
+  } = config;
+
+  /**
+   * Only the three keys that collide are intercepted. Everything else, telemetry
+   * included, stays in `rest` and reaches `streamText` untouched, with the
+   * caller's value winning because `rest` is spread after `managed`. Pulling a
+   * key out to "handle" it is how a caller's option gets silently dropped.
+   */
+  const {
+    tools,
+    system: callerSystem,
+    prepareStep: callerPrepareStep,
+    ...rest
+  } = options as Record<string, any>;
+
+  const managed = toStreamTextOptions({
+    registry,
+    system: (callerSystem as ToStreamTextOptionsOptions["system"]) ?? agentSystem,
+    cacheControl,
+    systemProviderOptions,
+    /**
+     * A call site that names `tools` replaces the agent's set rather than
+     * adding to it, so narrowing the tools for one call still works. Omitting
+     * `tools` falls back to the agent's, which is what an `onAction`
+     * regenerate needs: without it a regenerated answer can call nothing.
+     */
+    tools: (tools ?? agentTools) as Record<string, Tool> | undefined,
+  });
+
+  const promptSystem = locals.get(chatPromptKey)?.text;
+
+  /**
+   * Two managed sources conflict too, not only a caller against a managed one.
+   * `toStreamTextOptions` resolves `prompt?.text || agentSystem`, so the prompt
+   * would win and `chat.agent({ system })` would go nowhere.
+   */
+  if (promptSystem && agentSystem) {
+    throw new Error(
+      "chat.agent: `system` is set both on chat.agent({ system }) and by chat.prompt.set(), and only one " +
+        "of them can apply. The prompt would win and the agent's `system` would go nowhere. Keep it in one " +
+        "place, and add per-turn context with chat.inject({ role: 'system' })."
+    );
+  }
+
+  const managedSystem = promptSystem || agentSystem;
+  if (callerSystem !== undefined && managedSystem) {
+    throw new Error(
+      "chat.agent: `system` is already set " +
+        (promptSystem ? "by chat.prompt.set()" : "on chat.agent({ system })") +
+        ", so it cannot also be passed to the `streamText` given to run(). Set it in one place, and add " +
+        "per-turn context with chat.inject({ role: 'system' }) rather than a second system value."
+    );
+  }
+
+  const managedPrepareStep = managed.prepareStep as ((arg: any) => Promise<any> | any) | undefined;
+  if (typeof callerPrepareStep === "function") {
+    managed.prepareStep = async (arg: any) => {
+      const first = managedPrepareStep ? await managedPrepareStep(arg) : undefined;
+      const second = await callerPrepareStep({ ...arg, ...(first ?? {}) });
+      return { ...(first ?? {}), ...(second ?? {}) };
+    };
+  }
+
+  return { ...managed, ...rest };
+}
+
+/** @internal Test hook for {@link buildManagedStreamTextOptions}. */
+export const __buildManagedStreamTextOptionsForTests = buildManagedStreamTextOptions;
+
+function createBoundStreamText(
+  registry: ToStreamTextOptionsOptions["registry"] | undefined,
+  agentSystem: ToStreamTextOptionsOptions["system"] | undefined,
+  agentCacheControl: ToStreamTextOptionsOptions["cacheControl"] | undefined,
+  agentSystemProviderOptions: ToStreamTextOptionsOptions["systemProviderOptions"] | undefined
+): AiStreamTextFn {
+  const bound = (options: Record<string, unknown> = {}) =>
+    aiStreamText(
+      buildManagedStreamTextOptions(options, {
+        registry,
+        system: agentSystem,
+        cacheControl: agentCacheControl,
+        systemProviderOptions: agentSystemProviderOptions,
+        /** Read per call, so per-turn tools resolved after binding are included. */
+        tools: locals.get(chatResolvedToolsKey),
+      }) as any
+    );
+
+  return bound as unknown as AiStreamTextFn;
+}
+
 function toStreamTextOptions(options?: ToStreamTextOptionsOptions): Record<string, unknown> {
+  const agentDefaults = locals.get(chatAgentManagedConfigKey);
+  if (agentDefaults) {
+    options = {
+      registry: agentDefaults.registry,
+      system: agentDefaults.system,
+      cacheControl: agentDefaults.cacheControl,
+      systemProviderOptions: agentDefaults.systemProviderOptions,
+      ...options,
+    };
+  }
   const prompt = locals.get(chatPromptKey);
   const skills = locals.get(chatSkillsKey);
   const result: Record<string, unknown> = {};
 
   // Build the combined system prompt: stored prompt + skills preamble.
-  const promptText = prompt?.text ?? "";
+  const baseSystem = options?.system;
+  const baseSystemText =
+    typeof baseSystem === "string"
+      ? baseSystem
+      : typeof baseSystem?.content === "string"
+        ? baseSystem.content
+        : "";
+  const promptText = prompt?.text || baseSystemText;
   const skillsText = skills && skills.length > 0 ? buildSkillsSystemPrompt(skills) : "";
   if (promptText || skillsText) {
-    result.system = [promptText, skillsText].filter(Boolean).join("\n\n");
+    const systemText = [promptText, skillsText].filter(Boolean).join("\n\n");
+
+    /**
+     * Resolve system-prompt provider options for caching. Precedence, most
+     * specific first and no deep merge: explicit `systemProviderOptions`, the
+     * `cacheControl` sugar, the ones carried on a structured `system` message,
+     * then whatever `chat.prompt.set()` stored.
+     *
+     * A structured `system` counts only when its own text is the one being
+     * sent. When `chat.prompt.set()` supplied the text, its provider options
+     * are the ones that describe it.
+     */
+    const baseSystemProviderOptions: ProviderMetadata | undefined =
+      !prompt?.text && baseSystem && typeof baseSystem !== "string"
+        ? (baseSystem.providerOptions as ProviderMetadata | undefined)
+        : undefined;
+
+    const systemProviderOptions: ProviderMetadata | undefined =
+      options?.systemProviderOptions ??
+      (options?.cacheControl
+        ? ({ anthropic: { cacheControl: options.cacheControl } } as ProviderMetadata)
+        : undefined) ??
+      baseSystemProviderOptions ??
+      locals.get(chatPromptProviderOptionsKey);
+
+    // A bare string stays a bare string (the unchanged default). With provider
+    // options, emit a structured `SystemModelMessage` so the provider can cache
+    // the system block — `streamText`'s `system` accepts string | message.
+    result.system = systemProviderOptions
+      ? { role: "system", content: systemText, providerOptions: systemProviderOptions }
+      : systemText;
+  }
+
+  /**
+   * Append anything injected as system context, in whichever shape the installed
+   * AI SDK accepts.
+   *
+   * `system` widened over time: on ai@5 it is `string` only, and from ai@6 it is
+   * `string | SystemModelMessage | Array<SystemModelMessage>`. This package's peer
+   * range still spans all three, so emitting an array unconditionally would break
+   * v5 consumers — for whom a system-role injection used to work, since v5 accepted
+   * a system message inside `messages` that v7 rejects.
+   *
+   * So: concatenate into one string when the base is a plain string, which every
+   * version accepts and which loses nothing (separate blocks only matter for
+   * per-block `providerOptions`). Use the array form only when the base is already
+   * a structured message — that path requires v6+ regardless, because it is how
+   * prompt caching marks the system block, and flattening it would silently throw
+   * the cache away.
+   *
+   * Either way the injected text goes last: the base prompt keeps its position for
+   * caching, and the addition reads as a later amendment. A changed prefix does
+   * cost the first call its cache hit, on turns that actually injected.
+   */
+  /**
+   * Consumed once per turn, not once per read, and moved out of the lane rather
+   * than marked read in place.
+   *
+   * Per turn, because a `run()` that builds options twice (a cheap classifier
+   * pass and then the answer) has to see the injection in both, and draining on
+   * read hands it to whichever call ran first. Moved out, because blocks left in
+   * the lane sit in front of anything injected during the same turn, and
+   * clearing the lane on the next turn then destroys both. Outside a turn there
+   * is no turn to scope the stash to, so the lane drains on read there.
+   */
+  const injectedInstructions = locals.get(chatInjectedInstructionsKey);
+  const currentTurn = locals.get(chatTurnContextKey)?.turn;
+  const consumedThisTurn =
+    currentTurn === undefined ? undefined : locals.get(chatInstructionsConsumedKey);
+
+  let injectedBlocks: SystemModelMessage[] = [];
+  if (consumedThisTurn && consumedThisTurn.turn === currentTurn) {
+    injectedBlocks = consumedThisTurn.blocks;
+    // Anything injected since the stash was taken joins it, so an instruction
+    // added after an action read the lane still reaches the real turn that
+    // shares the action's turn number, rather than the one after.
+    if (injectedInstructions && injectedInstructions.length > 0) {
+      injectedBlocks.push(...injectedInstructions.splice(0));
+    }
+  } else if (injectedInstructions && injectedInstructions.length > 0) {
+    injectedBlocks = injectedInstructions.splice(0);
+    if (currentTurn !== undefined) {
+      locals.set(chatInstructionsConsumedKey, { turn: currentTurn, blocks: injectedBlocks });
+    }
+  }
+
+  if (injectedBlocks.length > 0) {
+    const blocks = injectedBlocks;
+
+    const injectedText = blocks
+      .map((block) => (typeof block.content === "string" ? block.content : ""))
+      .filter(Boolean)
+      .join("\n\n");
+
+    const base = result.system;
+
+    if (base === undefined) {
+      result.system = injectedText;
+    } else if (typeof base === "string") {
+      result.system = [base, injectedText].filter(Boolean).join("\n\n");
+    } else {
+      // Merged into the existing block rather than added as a second one. An array
+      // of system blocks would keep the base block's cache entry, but ai@5 rejects
+      // it outright ("Invalid prompt: system must be a string") while accepting a
+      // single structured block, and this package's peer range still spans v5.
+      // Choosing per version would mean resolving the installed version at runtime,
+      // which is not something to build on: `import.meta.url` is illegal in this
+      // package's CommonJS output, and a bundled task may have no resolvable `ai`
+      // to read. One shape that works everywhere beats a cache hit.
+      const baseBlock = base as SystemModelMessage;
+      result.system = {
+        ...baseBlock,
+        content: [typeof baseBlock.content === "string" ? baseBlock.content : "", injectedText]
+          .filter(Boolean)
+          .join("\n\n"),
+      };
+    }
   }
 
   // Prompt-related options (only if chat.prompt.set() was called)
@@ -3657,7 +5233,7 @@ function toStreamTextOptions(options?: ToStreamTextOptionsOptions): Record<strin
 
       // 2. Pending message injection (steering)
       if (taskPendingMessages) {
-        const injected = await drainSteeringQueue(
+        const { injected } = await drainSteeringQueue(
           taskPendingMessages,
           resultMessages ?? messages,
           steps
@@ -3672,6 +5248,13 @@ function toStreamTextOptions(options?: ToStreamTextOptionsOptions): Record<strin
       if (bgQueue && bgQueue.length > 0) {
         const injected = bgQueue.splice(0); // drain
         resultMessages = [...(resultMessages ?? messages), ...injected];
+        const pendingBackground = locals.get(chatPendingBackgroundKey) ?? [];
+        pendingBackground.push({
+          afterId:
+            (locals.get(chatCurrentUIMessagesKey) as UIMessage[] | undefined)?.at(-1)?.id ?? "",
+          messages: injected,
+        });
+        locals.set(chatPendingBackgroundKey, pendingBackground);
       }
 
       return resultMessages ? { messages: resultMessages } : undefined;
@@ -3734,12 +5317,98 @@ type UIMessageStreamable = {
   toUIMessageStream: (...args: any[]) => AsyncIterable<unknown> | ReadableStream<unknown>;
 };
 
+const actionTurnBrand = Symbol.for("trigger.dev/chat/actionTurn");
+
+/**
+ * The marker `onAction` returns to have a turn run on the history it just
+ * edited. Produce it with {@link chat.turn}.
+ */
+export type ActionTurn = { readonly [actionTurnBrand]: true };
+
+/**
+ * Turn the current action into a turn.
+ *
+ * Return it from `onAction` after editing history. The action's own work is
+ * finished first (the edit is applied and snapshotted), then a turn runs on the
+ * result exactly as a message turn does: `onTurnStart`, `run()` with the edited
+ * history, `onBeforeTurnComplete`, `onTurnComplete`, and the turn counter
+ * advances. That gives the answer everything a turn has, the system prompt,
+ * tools, steering, compaction, injected instructions and persistence, with no
+ * action-specific handling.
+ *
+ * @example
+ * ```ts
+ * onAction: async ({ action }) => {
+ *   if (action.type === "regenerate") {
+ *     chat.history.slice(0, -1);
+ *     return chat.turn();
+ *   }
+ *   if (action.type === "undo") chat.history.slice(0, -2); // no turn
+ * },
+ * ```
+ */
+function chatTurn(): ActionTurn {
+  return { [actionTurnBrand]: true } as ActionTurn;
+}
+
+function isActionTurn(value: unknown): value is ActionTurn {
+  return typeof value === "object" && value !== null && (value as any)[actionTurnBrand] === true;
+}
+
+/**
+ * Replace, in a model lane, the run of messages one UI message contributed.
+ *
+ * Used when a UI message is replaced in place (a tool-approval continuation
+ * merging onto the trailing assistant, a captured response reusing an existing
+ * id, a partial replacing an existing message). Reconverting the whole lane
+ * from the UI lane would also replace a compaction summary with the full
+ * transcript and drop the model forms `pendingMessages.prepare` produced.
+ *
+ * The replaced message is the trailing one, so its run is the lane's tail,
+ * before any steer forms appended after it this turn (`tailAfter`). If the
+ * tail does not match the old message's conversion, nothing is changed and
+ * `false` is returned so the caller can fall back to a full reconversion.
+ */
+async function replaceModelRun(
+  lane: ModelMessage[],
+  oldUi: UIMessage,
+  newUi: UIMessage,
+  tailAfter: number
+): Promise<boolean> {
+  const oldRun = await toModelMessages([stripProviderMetadata(oldUi)]);
+  const newRun = await toModelMessages([stripProviderMetadata(newUi)]);
+  // A message that converts to nothing (a pending tool call with no output yet,
+  // which `ignoreIncompleteToolCalls` drops) locates no run in the lane. Matching
+  // an empty slice would splice the new run in without removing what the message
+  // actually contributed, such as a spliced head-start partial, and the lane would
+  // then carry the same tool call twice.
+  if (oldRun.length === 0) return false;
+  const end = lane.length - tailAfter;
+  const start = end - oldRun.length;
+  if (start < 0 || end > lane.length) return false;
+  if (JSON.stringify(lane.slice(start, end)) !== JSON.stringify(oldRun)) return false;
+  lane.splice(start, oldRun.length, ...newRun);
+  return true;
+}
+
 function isUIMessageStreamable(value: unknown): value is UIMessageStreamable {
   return (
     typeof value === "object" &&
     value !== null &&
     "toUIMessageStream" in value &&
     typeof (value as any).toUIMessageStream === "function"
+  );
+}
+
+const warnedHydrateMessagesDeprecated = new Set<string>();
+function warnHydrateMessagesDeprecatedOnce(agentId: string) {
+  if (warnedHydrateMessagesDeprecated.has(agentId)) return;
+  warnedHydrateMessagesDeprecated.add(agentId);
+  console.warn(
+    `[chat.agent] \`hydrateMessages\` on "${agentId}" is deprecated. Give the agent a transcript ` +
+      "storage instead: `save` receives every change to the conversation and `loadContext` " +
+      "lets the application own the model's context, with crash recovery and durable " +
+      "compaction that `hydrateMessages` never had."
   );
 }
 
@@ -3818,7 +5487,7 @@ async function pipeChat(
   } else {
     throw new Error(
       "pipeChat: source must be a StreamTextResult (with .toUIMessageStream()), " +
-      "an AsyncIterable, or a ReadableStream"
+        "an AsyncIterable, or a ReadableStream"
     );
   }
 
@@ -3953,8 +5622,9 @@ export type RecoveryPendingToolCall = {
  * `chat.endRun()` with no buffered user messages, fresh chat, OOM retry
  * after a successful turn-complete with no in-flight tail).
  *
- * Does NOT fire when `hydrateMessages` is registered (the customer owns
- * persistence; recovery decisions live in their own DB query).
+ * Fires regardless of who owns the model's context. With `hydrateMessages`
+ * or a storage `loadContext`, the recovered tail reaches that hook in
+ * `previousMessages` on the next turn.
  */
 export type RecoveryBootEvent<TUIM extends UIMessage = UIMessage> = {
   /** Task run context — same as `task({ run })` second-argument `ctx`. */
@@ -3981,8 +5651,11 @@ export type RecoveryBootEvent<TUIM extends UIMessage = UIMessage> = {
   /**
    * User messages that arrived on `session.in` past the cursor — i.e.
    * the message(s) the predecessor was processing or had queued when
-   * it died. The runtime's default is to re-dispatch each as a fresh
-   * turn after the chain is restored. Return a different list via
+   * it died. The runtime's default re-dispatches each as a fresh turn
+   * after the chain is restored, except when a `partialAssistant` is
+   * present AND there are two or more of them: the first is then
+   * spliced into the chain (as the question the partial was answering)
+   * rather than dispatched. Return a different list via
    * `recoveredTurns` to skip / reorder / collapse them.
    */
   inFlightUsers: TUIM[];
@@ -4021,14 +5694,19 @@ export type RecoveryBootResult<TUIM extends UIMessage = UIMessage> = {
    * context, mutate its tool parts to inject synthesized results,
    * collapse history, etc.
    *
-   * Ignored when `hydrateMessages` is registered (the hydrate hook
-   * runs per-turn and overwrites the chain).
+   * With `hydrateMessages` or a storage `loadContext`, this chain is what
+   * the hook receives as `previousMessages` on the next turn; the hook's
+   * return value is the chain the model sees.
    */
   chain?: TUIM[];
   /**
    * The user messages to re-dispatch as fresh turns after the chain is
-   * restored. Default: `inFlightUsers` (re-process every in-flight
-   * user). Return `[]` to suppress all of them; return a filtered /
+   * restored. Default: `inFlightUsers.slice(1)` when a
+   * `partialAssistant` is present and there are two or more in-flight
+   * users (the first one is spliced into the chain instead), otherwise
+   * `inFlightUsers` — including the single-user case, where the
+   * interrupted user is re-dispatched and the orphan partial is
+   * dropped. Return `[]` to suppress all of them; return a filtered /
    * reordered subset to skip specific ones.
    */
   recoveredTurns?: TUIM[];
@@ -4283,53 +5961,53 @@ export type BeforeTurnCompleteEvent<
  */
 export type ChatSuspendEvent<TClientData = unknown, TUIM extends UIMessage = UIMessage> =
   | {
-    /** Suspend is happening after onPreload, before the first message. */
-    phase: "preload";
-    /** Task run context. */
-    ctx: TaskRunContext;
-    /** The chat session ID. */
-    chatId: string;
-    /** The Trigger.dev run ID. */
-    runId: string;
-    /** Custom data from the frontend. */
-    clientData?: TClientData;
-  }
+      /** Suspend is happening after onPreload, before the first message. */
+      phase: "preload";
+      /** Task run context. */
+      ctx: TaskRunContext;
+      /** The chat session ID. */
+      chatId: string;
+      /** The Trigger.dev run ID. */
+      runId: string;
+      /** Custom data from the frontend. */
+      clientData?: TClientData;
+    }
   | {
-    /**
-     * Suspend is happening on a continuation run that booted with no incoming
-     * message (post-`endRun`, post-waitpoint-timeout, etc.) and is waiting
-     * for the next session.in record before running any turn. Distinct from
-     * `phase: "preload"` — the chat already started; `onPreload` has not
-     * fired and will not fire on this run.
-     */
-    phase: "continuation";
-    /** Task run context. */
-    ctx: TaskRunContext;
-    /** The chat session ID. */
-    chatId: string;
-    /** The Trigger.dev run ID. */
-    runId: string;
-    /** Custom data from the frontend. */
-    clientData?: TClientData;
-  }
+      /**
+       * Suspend is happening on a continuation run that booted with no incoming
+       * message (post-`endRun`, post-waitpoint-timeout, etc.) and is waiting
+       * for the next session.in record before running any turn. Distinct from
+       * `phase: "preload"` — the chat already started; `onPreload` has not
+       * fired and will not fire on this run.
+       */
+      phase: "continuation";
+      /** Task run context. */
+      ctx: TaskRunContext;
+      /** The chat session ID. */
+      chatId: string;
+      /** The Trigger.dev run ID. */
+      runId: string;
+      /** Custom data from the frontend. */
+      clientData?: TClientData;
+    }
   | {
-    /** Suspend is happening after a completed turn, waiting for the next message. */
-    phase: "turn";
-    /** Task run context. */
-    ctx: TaskRunContext;
-    /** The chat session ID. */
-    chatId: string;
-    /** The Trigger.dev run ID. */
-    runId: string;
-    /** The turn number (0-indexed) that just completed. */
-    turn: number;
-    /** The accumulated model messages after the completed turn. */
-    messages: ModelMessage[];
-    /** The accumulated UI messages after the completed turn. */
-    uiMessages: TUIM[];
-    /** Custom data from the frontend. */
-    clientData?: TClientData;
-  };
+      /** Suspend is happening after a completed turn, waiting for the next message. */
+      phase: "turn";
+      /** Task run context. */
+      ctx: TaskRunContext;
+      /** The chat session ID. */
+      chatId: string;
+      /** The Trigger.dev run ID. */
+      runId: string;
+      /** The turn number (0-indexed) that just completed. */
+      turn: number;
+      /** The accumulated model messages after the completed turn. */
+      messages: ModelMessage[];
+      /** The accumulated UI messages after the completed turn. */
+      uiMessages: TUIM[];
+      /** Custom data from the frontend. */
+      clientData?: TClientData;
+    };
 
 /**
  * Discriminated event passed to the `onChatResume` callback.
@@ -4337,52 +6015,52 @@ export type ChatSuspendEvent<TClientData = unknown, TUIM extends UIMessage = UIM
  */
 export type ChatResumeEvent<TClientData = unknown, TUIM extends UIMessage = UIMessage> =
   | {
-    /** First message arrived after preload suspension. */
-    phase: "preload";
-    /** Task run context. */
-    ctx: TaskRunContext;
-    /** The chat session ID. */
-    chatId: string;
-    /** The Trigger.dev run ID. */
-    runId: string;
-    /** Custom data from the frontend. */
-    clientData?: TClientData;
-  }
+      /** First message arrived after preload suspension. */
+      phase: "preload";
+      /** Task run context. */
+      ctx: TaskRunContext;
+      /** The chat session ID. */
+      chatId: string;
+      /** The Trigger.dev run ID. */
+      runId: string;
+      /** Custom data from the frontend. */
+      clientData?: TClientData;
+    }
   | {
-    /**
-     * First message arrived after continuation-wait suspension. Distinct
-     * from `phase: "preload"` — the chat already started; this is a new
-     * run picking up after a prior run ended (`endRun`, waitpoint timeout,
-     * etc.).
-     */
-    phase: "continuation";
-    /** Task run context. */
-    ctx: TaskRunContext;
-    /** The chat session ID. */
-    chatId: string;
-    /** The Trigger.dev run ID. */
-    runId: string;
-    /** Custom data from the frontend. */
-    clientData?: TClientData;
-  }
+      /**
+       * First message arrived after continuation-wait suspension. Distinct
+       * from `phase: "preload"` — the chat already started; this is a new
+       * run picking up after a prior run ended (`endRun`, waitpoint timeout,
+       * etc.).
+       */
+      phase: "continuation";
+      /** Task run context. */
+      ctx: TaskRunContext;
+      /** The chat session ID. */
+      chatId: string;
+      /** The Trigger.dev run ID. */
+      runId: string;
+      /** Custom data from the frontend. */
+      clientData?: TClientData;
+    }
   | {
-    /** Next message arrived after turn suspension. */
-    phase: "turn";
-    /** Task run context. */
-    ctx: TaskRunContext;
-    /** The chat session ID. */
-    chatId: string;
-    /** The Trigger.dev run ID. */
-    runId: string;
-    /** The turn number that was completed before suspension. */
-    turn: number;
-    /** The accumulated model messages (from before suspension). */
-    messages: ModelMessage[];
-    /** The accumulated UI messages (from before suspension). */
-    uiMessages: TUIM[];
-    /** Custom data from the frontend. */
-    clientData?: TClientData;
-  };
+      /** Next message arrived after turn suspension. */
+      phase: "turn";
+      /** Task run context. */
+      ctx: TaskRunContext;
+      /** The chat session ID. */
+      chatId: string;
+      /** The Trigger.dev run ID. */
+      runId: string;
+      /** The turn number that was completed before suspension. */
+      turn: number;
+      /** The accumulated model messages (from before suspension). */
+      messages: ModelMessage[];
+      /** The accumulated UI messages (from before suspension). */
+      uiMessages: TUIM[];
+      /** Custom data from the frontend. */
+      clientData?: TClientData;
+    };
 
 export type ChatAgentOptions<
   TIdentifier extends string,
@@ -4431,6 +6109,18 @@ export type ChatAgentOptions<
    * ```
    */
   oomMachine?: MachinePresetName;
+
+  /**
+   * What to do when the session's `externalDeploymentId` no longer names the deployment
+   * this run is on — after a redeploy re-pins the session, say.
+   *
+   * - `"follow"` (default) hands the conversation to the pinned deployment at the next
+   *   turn boundary, so no `chat.requestUpgrade()` of your own is needed.
+   * - `"hold"` stays put until you ask to move. Manual `chat.requestUpgrade()` works either way.
+   *
+   * Ignored for sessions with no pin, and for sessions using `lockToVersion`.
+   */
+  versionSkew?: ChatVersionSkewPolicy;
 
   /**
    * Schema for validating `clientData` from the frontend.
@@ -4488,9 +6178,10 @@ export type ChatAgentOptions<
    * `onBeforeTurnComplete` / `onTurnComplete`, no `run()`. Use
    * `chat.history.*` inside `onAction` to mutate state.
    *
-   * To produce a model response from an action, return a
-   * `StreamTextResult` (auto-piped), `string`, or `UIMessage`. Returning
-   * `void` or nothing is the side-effect-only default.
+   * To answer after the edit, return `chat.turn()`: the edit is applied and
+   * snapshotted, then a turn runs on the result with every turn guarantee. An
+   * action that returns nothing is a state edit only. Returning anything else
+   * is an error; a response can no longer be returned directly.
    */
   onAction?: (
     event: ActionEvent<
@@ -4498,7 +6189,7 @@ export type ChatAgentOptions<
       inferSchemaOut<TClientDataSchema>,
       TUIMessage
     >
-  ) => Promise<unknown> | unknown;
+  ) => Promise<void | ActionTurn> | void | ActionTurn;
 
   /**
    * The tools available to this agent.
@@ -4545,9 +6236,7 @@ export type ChatAgentOptions<
    * **Auto-piping:** If this function returns a value with `.toUIMessageStream()`,
    * the stream is automatically piped to the frontend.
    */
-  run: (
-    payload: ChatTaskRunPayload<inferSchemaOut<TClientDataSchema>, TTools>
-  ) => Promise<unknown>;
+  run: (payload: ChatTaskRunPayload<inferSchemaOut<TClientDataSchema>, TTools>) => Promise<unknown>;
 
   /**
    * Called once at the start of every run boot — for the initial run, for
@@ -4592,13 +6281,18 @@ export type ChatAgentOptions<
    * continuation after `chat.endRun()` with no buffered user, a fresh
    * chat, or an OOM retry on top of a complete snapshot.
    *
-   * Does NOT fire when `hydrateMessages` is registered — that hook owns
-   * the per-turn chain and overlapping recovery decisions belong in the
-   * customer's DB.
+   * Fires regardless of who owns the model's context; a `hydrateMessages`
+   * hook or a storage `loadContext` receives the recovered tail in
+   * `previousMessages` on the next turn.
    *
    * Defaults (returned when the hook is omitted or returns no field):
-   *   - `chain` = `settledMessages` (drop the orphan partial)
-   *   - `recoveredTurns` = `inFlightUsers` (re-dispatch every user)
+   *   - With two or more in-flight users, the partial and the user it
+   *     was answering are spliced into the chain:
+   *     `chain` = `[...settledMessages, inFlightUsers[0], partialAssistant]`
+   *     and `recoveredTurns` = `inFlightUsers.slice(1)`.
+   *   - Otherwise `chain` = `settledMessages` (drop the orphan partial)
+   *     and `recoveredTurns` = `inFlightUsers` (re-dispatch every user)
+   *     — so a single interrupted user is answered on the new run.
    *
    * @example
    * ```ts
@@ -4731,6 +6425,33 @@ export type ChatAgentOptions<
   ) => TUIMessage[] | Promise<TUIMessage[]>;
 
   /**
+   * Where the conversation is persisted. The runtime calls `save` after
+   * every turn, failed turn and history-changing action with the changes
+   * since the last save, and `load` once when a new run boots to continue
+   * the conversation.
+   *
+   * Defaults to `defaultStorage`, the platform's snapshot in object storage
+   * that the Sessions dashboard renders. Bring your own to write each change
+   * to your database; `memoryTranscriptStorage()` is the reference
+   * implementation and `runTranscriptStorageTests` from
+   * `@trigger.dev/sdk/ai/test` checks yours against the contract.
+   *
+   * A storage with `loadContext` also owns the model's context on every
+   * turn, which is what `hydrateMessages` did. The two cannot be combined.
+   *
+   * @example
+   * ```ts
+   * chat.agent({
+   *   id: "my-chat",
+   *   storage: myPostgresTranscriptStorage,
+   *   run: async ({ messages, signal, streamText }) =>
+   *     streamText({ model, messages, abortSignal: signal }),
+   * });
+   * ```
+   */
+  storage?: TranscriptStorage<inferSchemaOut<TClientDataSchema>>;
+
+  /**
    * Called at the start of every turn, after message accumulation and `onChatStart` (turn 0),
    * but before the `run` function executes.
    *
@@ -4811,6 +6532,35 @@ export type ChatAgentOptions<
    * });
    * ```
    */
+  /**
+   * A provider registry, so the runtime can resolve the managed prompt's model
+   * for the `streamText` it hands to `run()`. Only needed when you set a model
+   * through `chat.prompt.set()` and want the bound `streamText` to honour it.
+   */
+  registry?: ToStreamTextOptionsOptions["registry"];
+
+  /**
+   * The agent's system prompt. Injected instructions append to it, and the
+   * `streamText` handed to `run()` carries it without a spread.
+   *
+   * Set it here, at the call site, or through `chat.prompt.set()` for versioned
+   * config, but only in one of them.
+   */
+  system?: ToStreamTextOptionsOptions["system"];
+
+  /**
+   * Mark the system prompt for provider-side caching, the same sugar
+   * `chat.toStreamTextOptions({ cacheControl })` takes. See
+   * [prompt caching](/ai-chat/prompt-caching).
+   */
+  cacheControl?: ToStreamTextOptionsOptions["cacheControl"];
+
+  /**
+   * Provider options for the system block, when `cacheControl` is not enough.
+   * Takes precedence over `cacheControl`.
+   */
+  systemProviderOptions?: ToStreamTextOptionsOptions["systemProviderOptions"];
+
   compaction?: ChatAgentCompactionOptions<TUIMessage>;
 
   /**
@@ -5067,9 +6817,53 @@ type ChatCustomAgentOptions<
     ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>,
     unknown
   >,
-  "triggerSource" | "agentConfig"
+  "triggerSource" | "agentConfig" | "run"
 > & {
+  /**
+   * Schema for validating `metadata` from the frontend.
+   *
+   * The initial payload and later `chat.messages` frames are parsed before
+   * user code receives them. Invalid submitted turns and async reads write an
+   * error chunk followed by `turn-complete`. Messageless boots and active
+   * subscriptions use `onClientDataValidationError` and the task log because
+   * there is no submitted turn to complete or a response may still be streaming.
+   * This validates `metadata` only; raw `action` payloads remain `unknown`.
+   */
   clientDataSchema?: TClientDataSchema;
+  /**
+   * Called when a custom-agent input fails `clientDataSchema` validation.
+   *
+   * Submitted turns and async reads also write an error chunk followed by
+   * `turn-complete`. Messageless boots and active `chat.messages.on()`
+   * subscriptions are reported through this callback and the task log only.
+   *
+   * `payload.metadata` is typed `unknown`: this callback only fires when
+   * the metadata failed to parse, so it can be any shape the client sent.
+   */
+  onClientDataValidationError?: (event: {
+    error: unknown;
+    payload: ChatTaskWirePayload<TUIMessage, unknown>;
+  }) => Promise<void> | void;
+  /**
+   * When a frame that arrived mid-turn fails `clientDataSchema` validation,
+   * decides when the terminal error reaches the client.
+   *
+   * - `"turn-end"` (default) waits until the turn has closed. A terminal error
+   *   written into a live response can close it, so this keeps a bad client
+   *   send from truncating an answer the user is already reading.
+   * - `"arrival"` writes it as soon as validation fails, which surfaces the
+   *   problem sooner at the cost of ending the response in progress.
+   *
+   * `onClientDataValidationError` and the task log fire on arrival either way;
+   * this only governs the stream-visible error. The frame is never delivered as
+   * a turn in either mode.
+   */
+  clientDataReportErrorAt?: "turn-end" | "arrival";
+  run: TaskOptions<
+    TIdentifier,
+    ChatTaskWirePayload<TUIMessage, inferSchemaOut<TClientDataSchema>>,
+    unknown
+  >["run"];
 };
 
 function chatCustomAgent<
@@ -5079,7 +6873,17 @@ function chatCustomAgent<
 >(
   options: ChatCustomAgentOptions<TIdentifier, TClientDataSchema, TUIMessage>
 ): Task<TIdentifier, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>, unknown> {
-  const { clientDataSchema, run: userRun, ...restOptions } = options;
+  const {
+    clientDataSchema,
+    onClientDataValidationError,
+    clientDataReportErrorAt,
+    run: userRun,
+    ...restOptions
+  } = options;
+  const parseClientData = clientDataSchema ? getSchemaParseFn(clientDataSchema) : undefined;
+  const parseClientDataSync = clientDataSchema
+    ? getChatCustomAgentSyncSchemaParseFn(clientDataSchema)
+    : undefined;
 
   const task = createTask<
     TIdentifier,
@@ -5104,7 +6908,22 @@ function chatCustomAgent<
       // `chat.createStartSessionAction`) before this run is triggered.
       // No client-side upsert needed.
       locals.set(chatSessionHandleKey, sessions.open(payload.chatId));
+      locals.set(chatExternalIdKey, payload.chatId);
       locals.set(chatAgentRunContextKey, runOptions.ctx);
+      locals.set(chatCustomAgentRunKey, true);
+      if (parseClientData && parseClientDataSync) {
+        locals.set(chatCustomAgentClientDataParserKey, {
+          parse: parseClientData,
+          parseSync: parseClientDataSync,
+        });
+      }
+      if (onClientDataValidationError) {
+        locals.set(
+          chatCustomAgentClientDataErrorHandlerKey,
+          onClientDataValidationError as ChatCustomAgentClientDataErrorHandler
+        );
+      }
+      locals.set(chatCustomAgentClientDataErrorTimingKey, clientDataReportErrorAt ?? "turn-end");
       // Initialize the turn-complete trim slot so `chat.writeTurnComplete`
       // trims `session.out` back to the previous turn boundary. Without
       // this the slot is undefined and the trim never runs, so `.out`
@@ -5113,7 +6932,95 @@ function chatCustomAgent<
       markChatAgentRunForStreamsWarning();
       taskContext.setConversationId(payload.chatId);
       stampConversationIdOnActiveSpan(payload.chatId);
-      return userRun(payload, runOptions);
+      await installChatInputRouter(payload.chatId, {
+        resuming: Boolean(payload.continuation),
+      });
+
+      // A custom agent's loop is the customer's, so there is no exit site the
+      // SDK controls. Perform a requested close when `run()` returns, whatever
+      // shape the loop had. Idempotent, so the createSession iterator having
+      // already closed on its own exit costs nothing.
+      const withClose = async <T>(result: Promise<T> | T): Promise<T> => {
+        try {
+          return await result;
+        } finally {
+          await performChatClose();
+        }
+      };
+
+      // Keep the schema-free path identical to the original custom-agent
+      // wrapper, including when userRun starts executing.
+      if (!parseClientData) {
+        return withClose(userRun(payload, runOptions));
+      }
+
+      const isHandoverBoot = payload.trigger === "handover-prepare";
+      const isMessagelessBoot =
+        payload.trigger === "preload" ||
+        (payload.continuation === true &&
+          payload.message === undefined &&
+          payload.trigger !== "action" &&
+          payload.trigger !== "regenerate-message" &&
+          !isHandoverBoot);
+      const validated = await validateChatCustomAgentPayload(payload, {
+        // Preload and continuation boots do not represent a submitted turn,
+        // so there is no sender waiting for a terminal frame. Handover errors
+        // must be written after the warm response flushes and signals below.
+        writeErrorToStream: !isMessagelessBoot && !isHandoverBoot,
+      });
+      if (validated.ok) {
+        return withClose(
+          userRun(
+            validated.payload as ChatTaskWirePayload<TUIMessage, inferSchemaOut<TClientDataSchema>>,
+            runOptions
+          )
+        );
+      }
+
+      if (isHandoverBoot) {
+        const signal = await waitForHandover({
+          payload,
+          timeout: "1h",
+          spanName: "waiting for handover signal (invalid clientData)",
+        });
+        if (!signal || signal.kind === "handover-skip") {
+          return;
+        }
+
+        // The head-start writer flushes before sending this signal. Writing
+        // the terminal error now preserves stream order and closes the stitch.
+        await writeChatCustomAgentClientDataErrorToStream(payload);
+        return;
+      }
+
+      // The Session base payload is sticky across continuation runs. If it is
+      // invalid, returning here would boot the same bad metadata again on the
+      // next message. Stay attached and wait for a valid wire frame instead.
+      const next = await messagesInput.waitWithIdleTimeout({
+        idleTimeoutInSeconds: payload.idleTimeoutInSeconds ?? 30,
+        timeout: "1h",
+        spanName: "waiting for valid clientData",
+      });
+      if (!next.ok || next.output.trigger === "close") {
+        return;
+      }
+
+      // Normal input frames omit run-level boot context. Carry it forward so
+      // a continuation still tells the custom loop to restore prior state.
+      const recoveredPayload = {
+        ...next.output,
+        continuation: next.output.continuation ?? payload.continuation,
+        previousRunId: next.output.previousRunId ?? payload.previousRunId,
+        sessionId: next.output.sessionId ?? payload.sessionId,
+        idleTimeoutInSeconds: next.output.idleTimeoutInSeconds ?? payload.idleTimeoutInSeconds,
+      };
+
+      return withClose(
+        userRun(
+          recoveredPayload as ChatTaskWirePayload<TUIMessage, inferSchemaOut<TClientDataSchema>>,
+          runOptions
+        )
+      );
     },
   });
 
@@ -5146,6 +7053,7 @@ function chatAgent<
     onChatStart,
     onValidateMessages,
     hydrateMessages,
+    storage,
     actionSchema,
     onAction,
     onTurnStart,
@@ -5167,8 +7075,30 @@ function chatAgent<
     onChatResume,
     exitAfterPreloadIdle = false,
     oomMachine,
+    registry: promptRegistry,
+    system: agentSystem,
+    cacheControl: agentCacheControl,
+    systemProviderOptions: agentSystemProviderOptions,
+    versionSkew,
     ...restOptions
   } = options;
+
+  if (hydrateMessages) {
+    if (storage) {
+      throw new Error(
+        `chat.agent: "${options.id}" sets both \`hydrateMessages\` and \`storage\`. ` +
+          "`hydrateMessages` is deprecated and replaced by the storage: `save` receives every " +
+          "change and `loadContext` on the storage owns the model's context. Remove `hydrateMessages`."
+      );
+    }
+    if (typeof (transcriptStorageOverride ?? defaultStorage).loadContext === "function") {
+      throw new Error(
+        `chat.agent: "${options.id}" sets \`hydrateMessages\` and uses a transcript storage with ` +
+          "`loadContext`. Both would own the model's context; keep one."
+      );
+    }
+    warnHydrateMessagesDeprecatedOnce(options.id);
+  }
 
   const parseClientData = clientDataSchema ? getSchemaParseFn(clientDataSchema) : undefined;
   const parseAction = actionSchema ? getSchemaParseFn(actionSchema) : undefined;
@@ -5195,6 +7125,7 @@ function chatAgent<
       { signal: runSignal, ctx }
     ) => {
       locals.set(chatAgentRunContextKey, ctx);
+      locals.set(chatCustomAgentRunKey, false);
 
       // On AI SDK 7, register the `@ai-sdk/otel` integration (once per process)
       // so `experimental_telemetry` spans flow into the run trace. Awaited here
@@ -5213,6 +7144,7 @@ function chatAgent<
       // `chat.createStartSessionAction` or browser-direct) before this
       // run is triggered — no client-side upsert needed here.
       locals.set(chatSessionHandleKey, sessions.open(payload.chatId));
+      locals.set(chatExternalIdKey, payload.chatId);
       // Mutable holder; advances in `writeTurnCompleteChunk` after each turn
       // and is the trim target for the NEXT turn's trim record.
       locals.set(lastTurnCompleteSeqNumKey, { value: undefined });
@@ -5278,6 +7210,43 @@ function chatAgent<
       // durable snapshot + `session.out` replay (or `hydrateMessages` if
       // registered) — the wire is delta-only now, no longer a seed.
       let accumulatedMessages: ModelMessage[] = [];
+      /**
+       * Give the model accumulator the background injections a step-boundary
+       * drain handed to the model this turn, and record them for persistence.
+       * Returns how many model messages were appended.
+       */
+      const reconcilePendingBackground = (): number => {
+        const pending = locals.get(chatPendingBackgroundKey);
+        if (!pending || pending.length === 0) return 0;
+        locals.set(chatPendingBackgroundKey, []);
+        let appended = 0;
+        for (const entry of pending) {
+          accumulatedMessages.push(...entry.messages);
+          laneInjections.push(entry);
+          appended += entry.messages.length;
+        }
+        return appended;
+      };
+      /**
+       * Give the model accumulator the steering messages a drain consumed,
+       * in the form the model actually received. Appended, never reconverted
+       * from the UI lane, so a model-only compaction summary survives. Called
+       * on both the success and the error path, before the response or the
+       * partial joins the lane, so the order stays steer-then-answer.
+       */
+      const reconcilePendingSteer = (options?: {
+        /** This turn's model delta, as `onTurnComplete.newMessages` reports it. */
+        turnNew?: ModelMessage[];
+      }): PendingSteer[] => {
+        const pending = locals.get(chatPendingSteerKey);
+        if (!pending || pending.length === 0) return [];
+        locals.set(chatPendingSteerKey, []);
+        for (const entry of pending) {
+          accumulatedMessages.push(...entry.model);
+          options?.turnNew?.push(...entry.model);
+        }
+        return pending;
+      };
 
       // Accumulated UI messages for persistence. Mirrors the model accumulator
       // but in frontend-friendly UIMessage format (with parts, id, etc.).
@@ -5297,7 +7266,229 @@ function chatAgent<
       // collectively cost ~600ms on every first-message TTFC. Both reads
       // swallow errors internally; the agent stays available either way.
       const sessionIdForSnapshot = payload.sessionId ?? payload.chatId;
-      let bootSnapshot: ChatSnapshotV1<TUIMessage> | undefined;
+      const transcriptStorage: TranscriptStorage<unknown> =
+        (storage as TranscriptStorage<unknown> | undefined) ??
+        transcriptStorageOverride ??
+        defaultStorage;
+      const storageLoadContext = transcriptStorage.loadContext?.bind(transcriptStorage);
+      /**
+       * Who supplies the model's context each turn: the deprecated
+       * `hydrateMessages` hook, the storage's `loadContext`, or (undefined)
+       * the runtime's own transcript.
+       */
+      const loadContextHook = hydrateMessages
+        ? (event: HydrateMessagesEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>) =>
+            hydrateMessages(event)
+        : storageLoadContext
+          ? (event: HydrateMessagesEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>) =>
+              storageLoadContext<TUIMessage>(
+                { chatId: event.chatId, clientData: event.clientData },
+                event
+              )
+          : undefined;
+      let transcriptShadow: TranscriptShadow = createTranscriptShadow([]);
+      let bootTranscriptState: unknown = null;
+      /**
+       * True while the model lane holds a compaction summary, so it cannot be
+       * rebuilt from the transcript and has to be persisted as state. Reset
+       * wherever the lane is reconverted from the UI lane.
+       */
+      let laneCompacted = false;
+      /** Conversational `chat.inject` messages in the lane, anchored to the transcript. */
+      let laneInjections: NonNullable<TranscriptRuntimeState["injections"]> = [];
+      let persistedStateSet = false;
+      let bootSnapshot:
+        | { messages: TUIMessage[]; lastOutEventId?: string; lastInEventId?: string }
+        | undefined;
+      let bootClientData: unknown = payload.metadata;
+      if (parseClientData) {
+        try {
+          bootClientData = await parseClientData(payload.metadata);
+        } catch {
+          bootClientData = payload.metadata;
+        }
+      }
+
+      /**
+       * The `lastOutEventId` the most recent snapshot carried.
+       *
+       * A snapshot written outside a turn — after an action mutates history — has
+       * no turn cursor of its own, and writing `undefined` there would drop the
+       * resume point and make the next boot replay from further back. Retaining it
+       * keeps an action's write cursor-neutral.
+       */
+      let lastSnapshotOutEventId: string | undefined;
+
+      /**
+       * The `lastInEventId` the most recent snapshot carried.
+       *
+       * A turn-start save happens after the incoming message has been handed to
+       * the turn loop, so the router's live resume floor has already advanced
+       * past it. Persisting that floor before the turn runs would let the next
+       * boot resume past a message this run never answered, which is exactly
+       * what a deferred or recovered message depends on. Turn-start carries
+       * this instead.
+       */
+      let lastSnapshotInEventId: string | undefined;
+
+      const storageTrigger = (trigger: string): TranscriptStorageContext["trigger"] =>
+        trigger === "regenerate-message"
+          ? "regenerate-message"
+          : trigger === "action" || trigger === "action-turn"
+            ? "action"
+            : "submit-message";
+
+      /**
+       * Hand the runtime's view of the transcript to the storage as a
+       * changeset: the diff against what was last saved, plus the cursors the
+       * next boot resumes from. The shadow only advances when the save
+       * succeeds, so a failed save is folded into the next changeset.
+       */
+      /** The runtime's opaque state as of the last save; carried on every changeset's transcript. */
+      let transcriptState: unknown | null = null;
+      let transcriptSaveChain: Promise<void> = Promise.resolve();
+      const runSaveTranscript = async (opts: {
+        reason: TranscriptChangeReason;
+        messages: TUIMessage[];
+        turn: number;
+        trigger: TranscriptStorageContext["trigger"];
+        clientData: unknown;
+        lastOutEventId: string | undefined;
+        nonFinalIds?: ReadonlySet<string>;
+        skipIfUnchanged?: boolean;
+        carryInCursor?: boolean;
+      }) => {
+        const { changes, shadow } = diffTranscript(transcriptShadow, opts.messages, {
+          nonFinalIds: opts.nonFinalIds,
+        });
+        const throughId = opts.messages.at(-1)?.id ?? "";
+        const queued = locals.get(chatBackgroundQueueKey) ?? [];
+        const runtimeState: TranscriptRuntimeState | null =
+          laneCompacted || laneInjections.length > 0 || queued.length > 0
+            ? {
+                v: 1,
+                ...(laneCompacted
+                  ? {
+                      compaction: {
+                        modelMessages: accumulatedMessages,
+                        throughId,
+                      },
+                    }
+                  : {}),
+                ...(laneInjections.length > 0 ? { injections: laneInjections } : {}),
+                ...(queued.length > 0 ? { queued: [...queued] } : {}),
+              }
+            : null;
+        if (runtimeState !== null || persistedStateSet) {
+          changes.push({ op: "state", value: runtimeState } satisfies TranscriptChange);
+        }
+        if (opts.skipIfUnchanged && changes.length === 0) return;
+        transcriptState = runtimeState;
+        const liveInCursor = chatInputRouter().resumeFloor();
+        const inCursor = opts.carryInCursor
+          ? lastSnapshotInEventId
+          : liveInCursor !== undefined
+            ? String(liveInCursor)
+            : undefined;
+        await transcriptStorage.save(
+          {
+            chatId: payload.chatId,
+            clientData: opts.clientData,
+            turn: opts.turn,
+            trigger: opts.trigger,
+            runId: ctx.run.id,
+            ctx,
+          },
+          {
+            reason: opts.reason,
+            changes,
+            transcript: {
+              entries: opts.messages.map((message) => ({
+                id: message.id,
+                final: !shadow.nonFinal.has(message.id),
+                message,
+              })),
+              state: transcriptState,
+            },
+            cursors: {
+              lastOutEventId: opts.lastOutEventId,
+              lastInEventId: inCursor,
+            },
+          }
+        );
+        transcriptShadow = shadow;
+        lastSnapshotInEventId = inCursor;
+        persistedStateSet = runtimeState !== null;
+      };
+
+      /**
+       * Serialise every save onto one chain. `runSaveTranscript` derives its
+       * changeset from `transcriptShadow` and only advances it once the write
+       * lands, so two overlapping saves would diff against stale state. The
+       * message list is copied on the way in because the accumulator keeps
+       * mutating while a queued save waits its turn. A rejection is handed to
+       * the caller but never poisons the chain.
+       */
+      const saveTranscript = (opts: Parameters<typeof runSaveTranscript>[0]): Promise<void> => {
+        const queued = { ...opts, messages: [...opts.messages] };
+        const run = () => runSaveTranscript(queued);
+        const next = transcriptSaveChain.then(run, run);
+        transcriptSaveChain = next.then(
+          () => undefined,
+          () => undefined
+        );
+        return next;
+      };
+
+      /**
+       * Persist the accumulator outside a turn.
+       *
+       * An action is not a turn, so it never reaches the turn-complete path where
+       * the transcript is normally saved, but a `chat.history` mutation changes
+       * the conversation and has to survive the run ending.
+       *
+       * Cursor-neutral: an action has no turn cursor of its own, and writing
+       * `undefined` would drop the resume point the last turn established and make
+       * the next boot replay from further back.
+       */
+      const writeSnapshotOutsideTurn = async (
+        reason: string,
+        turnContext: { turn: number; clientData: unknown }
+      ) => {
+        if (hydrateMessages) return;
+        try {
+          await tracer.startActiveSpan(
+            "snapshot.write",
+            async () => {
+              await saveTranscript({
+                reason: "action",
+                messages: accumulatedUIMessages,
+                turn: turnContext.turn,
+                trigger: "action",
+                clientData: turnContext.clientData,
+                lastOutEventId: lastSnapshotOutEventId,
+              });
+            },
+            {
+              attributes: {
+                [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                [SemanticInternalAttributes.COLLAPSED]: true,
+                "chat.snapshot.reason": reason,
+                "chat.messages.count": accumulatedUIMessages.length,
+              },
+            }
+          );
+        } catch (error) {
+          logger.warn(
+            "chat.agent: snapshot write outside a turn failed; the change may not survive a continuation",
+            {
+              error: error instanceof Error ? error.message : String(error),
+              sessionId: sessionIdForSnapshot,
+              reason,
+            }
+          );
+        }
+      };
       let replayedSettled: TUIMessage[] = [];
       let replayedPartial: TUIMessage | undefined;
       let replayedPartialRaw: TUIMessage | undefined;
@@ -5306,12 +7497,23 @@ function chatAgent<
       // pump kicks in. Populated by `onRecoveryBoot.recoveredTurns` (or its
       // default, `inFlightUsers`). The turn-loop checks this queue ahead of
       // `messagesInput.waitWithIdleTimeout` so recovered turns fire first.
-      const bootInjectedQueue: ChatTaskWirePayload<
+      const bootInjectedQueue: ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>[] =
+        [];
+      const recoveredSeqByPayload = new WeakMap<
+        ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>,
+        number
+      >();
+      const dispatchBootInjected = (): ChatTaskWirePayload<
         TUIMessage,
         inferSchemaIn<TClientDataSchema>
-      >[] = [];
-      const couldHavePriorState =
-        payload.continuation === true || ctx.attempt.number > 1;
+      > => bootInjectedQueue.shift()!;
+      const settleRecoveredTurn = (
+        wirePayload: ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>
+      ) => {
+        const settledSeq = recoveredSeqByPayload.get(wirePayload);
+        if (settledSeq !== undefined) chatInputRouter().settleRecovered(settledSeq);
+      };
+      const couldHavePriorState = payload.continuation === true || ctx.attempt.number > 1;
 
       // `.in` resume cursor, computed at most once per boot. The boot
       // block below resolves it (snapshot field or records scan) and the
@@ -5319,7 +7521,7 @@ function chatAgent<
       let bootInCursor: number | undefined;
       let bootInCursorResolved = false;
 
-      if (!hydrateMessages && couldHavePriorState) {
+      if (couldHavePriorState) {
         // Single parent span for the whole boot read phase — snapshot
         // read, session.out replay, session.in replay. Per-phase timing
         // + result counts are attributes on the span.
@@ -5329,20 +7531,38 @@ function chatAgent<
             // snapshot read
             const snapStart = Date.now();
             try {
-              bootSnapshot = await readChatSnapshot<TUIMessage>(sessionIdForSnapshot);
+              const loaded = hydrateMessages
+                ? undefined
+                : await transcriptStorage.load<TUIMessage>({
+                    chatId: payload.chatId,
+                    clientData: bootClientData,
+                  });
+              if (loaded) {
+                transcriptShadow = createTranscriptShadow(
+                  loaded.messages,
+                  new Set(loaded.nonFinalIds ?? [])
+                );
+                bootTranscriptState = loaded.state;
+                transcriptState = loaded.state ?? null;
+                persistedStateSet = loaded.state !== null && loaded.state !== undefined;
+                bootSnapshot = {
+                  messages: loaded.messages,
+                  lastOutEventId: loaded.cursors?.lastOutEventId,
+                  lastInEventId: loaded.cursors?.lastInEventId,
+                };
+              }
             } catch (error) {
-              // `readChatSnapshot` already swallows + warns internally; this catch
-              // is just belt-and-suspenders against tracer/span errors.
-              logger.warn(
-                "chat.agent: snapshot read failed; continuing without snapshot",
-                {
-                  error: error instanceof Error ? error.message : String(error),
-                  sessionId: sessionIdForSnapshot,
-                }
-              );
+              logger.warn("chat.agent: transcript load failed; continuing from the stream tail", {
+                error: error instanceof Error ? error.message : String(error),
+                sessionId: sessionIdForSnapshot,
+              });
             }
             bootSpan.setAttribute("chat.boot.snapshot.durationMs", Date.now() - snapStart);
-            bootSpan.setAttribute("chat.boot.snapshot.present", !!bootSnapshot);
+            bootSpan.setAttribute(
+              "chat.boot.snapshot.present",
+              bootSnapshot !== undefined &&
+                (bootSnapshot.messages.length > 0 || bootSnapshot.lastOutEventId !== undefined)
+            );
             bootSpan.setAttribute(
               "chat.boot.snapshot.messageCount",
               bootSnapshot?.messages?.length ?? 0
@@ -5354,6 +7574,9 @@ function chatAgent<
             // Without seeding, the new worker would emit no trim on its first
             // turn (chain self-bootstraps from turn 2), so this is purely an
             // optimization to keep continuation runs bounded from the first turn.
+            lastSnapshotOutEventId = bootSnapshot?.lastOutEventId;
+            lastSnapshotInEventId = bootSnapshot?.lastInEventId;
+
             if (bootSnapshot?.lastOutEventId !== undefined) {
               const seeded = Number.parseInt(bootSnapshot.lastOutEventId, 10);
               if (Number.isFinite(seeded)) {
@@ -5369,26 +7592,19 @@ function chatAgent<
             const replayOutPhase = async () => {
               const replayOutStart = Date.now();
               try {
-                const replayResult = await replaySessionOutTail<TUIMessage>(
-                  sessionIdForSnapshot,
-                  { lastEventId: bootSnapshot?.lastOutEventId }
-                );
+                const replayResult = await replaySessionOutTail<TUIMessage>(sessionIdForSnapshot, {
+                  lastEventId: bootSnapshot?.lastOutEventId,
+                });
                 replayedSettled = replayResult.settled;
                 replayedPartial = replayResult.partial;
                 replayedPartialRaw = replayResult.partialRaw;
               } catch (error) {
-                logger.warn(
-                  "chat.agent: session.out replay failed; using snapshot only",
-                  {
-                    error: error instanceof Error ? error.message : String(error),
-                    sessionId: sessionIdForSnapshot,
-                  }
-                );
+                logger.warn("chat.agent: session.out replay failed; using snapshot only", {
+                  error: error instanceof Error ? error.message : String(error),
+                  sessionId: sessionIdForSnapshot,
+                });
               }
-              bootSpan.setAttribute(
-                "chat.boot.replay.out.durationMs",
-                Date.now() - replayOutStart
-              );
+              bootSpan.setAttribute("chat.boot.replay.out.durationMs", Date.now() - replayOutStart);
               bootSpan.setAttribute("chat.boot.replay.out.settledCount", replayedSettled.length);
               bootSpan.setAttribute(
                 "chat.boot.replay.out.partialPresent",
@@ -5443,14 +7659,8 @@ function chatAgent<
                   { error: error instanceof Error ? error.message : String(error) }
                 );
               }
-              bootSpan.setAttribute(
-                "chat.boot.replay.in.durationMs",
-                Date.now() - replayInStart
-              );
-              bootSpan.setAttribute(
-                "chat.boot.replay.in.userCount",
-                replayedInTail.length
-              );
+              bootSpan.setAttribute("chat.boot.replay.in.durationMs", Date.now() - replayInStart);
+              bootSpan.setAttribute("chat.boot.replay.in.userCount", replayedInTail.length);
             };
 
             await Promise.all([replayOutPhase(), replayInPhase()]);
@@ -5467,58 +7677,18 @@ function chatAgent<
         );
       }
 
-      // ── session.in resume cursor ───────────────────────────────────
+      // ── session.in router ──────────────────────────────────────────
       //
-      // A fresh worker subscribes to `session.in` from seq 0 and would
-      // re-deliver every record ever appended — including user messages
-      // from turns already completed on a prior run. Without a cursor,
-      // the loop would re-process them as fresh turns and the slim-wire
-      // merge would replace-by-id against snapshot-restored copies,
-      // yielding no-op replaces while the customer's actual new message
-      // waits in the queue.
-      //
-      // The cursor is the seq_num of the last `.in` record the prior
-      // worker committed to processing, persisted on each `turn-complete`
-      // control record as a `session-in-event-id` sibling header. The
-      // boot scan reads the header off `.out`'s latest turn-complete and
-      // seeds the manager so the upcoming `.in` SSE subscribe opens with
-      // `Last-Event-ID: <cursor>` — S2 starts after that seq and old
-      // messages never reach this worker.
-      //
-      // Applies in three cases (any of which means `.in` has records
-      // belonging to completed turns the new run should skip):
-      //  - OOM retry (`ctx.attempt.number > 1`)
-      //  - Continuation run (`payload.continuation === true`) — prior run
-      //    crashed / was canceled / requested upgrade
-      //  - Snapshot exists at all (catches edge cases where the wire
-      //    didn't set `continuation` but a snapshot indicates prior turns)
-      const needsResumeCursor =
-        ctx.attempt.number > 1 ||
-        payload.continuation === true ||
-        bootSnapshot !== undefined;
+      const recoveredSeqNums = replayedInTail.map((r) => r.seqNum);
 
-      if (needsResumeCursor) {
-        try {
-          // Reuse the cursor the boot block already resolved (snapshot
-          // field or records scan) — only scan here when the boot block
-          // was skipped (hydrateMessages, or snapshot-only signals).
-          const cursor = bootInCursorResolved
-            ? bootInCursor
-            : await findLatestSessionInCursor(payload.chatId);
-          if (cursor !== undefined) {
-            sessionStreams.setLastSeqNum(payload.chatId, "in", cursor);
-            sessionStreams.setLastDispatchedSeqNum(payload.chatId, "in", cursor);
-          }
-        } catch (error) {
-          logger.warn(
-            "chat.agent: session.in resume cursor lookup failed; old messages may replay",
-            { error: error instanceof Error ? error.message : String(error) }
-          );
-        }
-      }
+      await installChatInputRouter(payload.chatId, {
+        fallbackResumeFrom: bootInCursorResolved ? bootInCursor : undefined,
+        recoveredSeqNums,
+        resuming: Boolean(payload.continuation) || ctx.attempt.number > 1,
+      });
 
       // ── Recovery boot + chain reconstruction ────────────────────────
-      if (!hydrateMessages) {
+      {
         const settledMessages = mergeByIdReplaceWins<TUIMessage>(
           (bootSnapshot?.messages as TUIMessage[]) ?? [],
           replayedSettled
@@ -5587,45 +7757,53 @@ function chatAgent<
             if (Array.isArray(hookResult.chain)) hookChain = hookResult.chain;
             if (Array.isArray(hookResult.recoveredTurns))
               hookRecoveredTurns = hookResult.recoveredTurns;
-            if (typeof hookResult.beforeBoot === "function")
-              hookBeforeBoot = hookResult.beforeBoot;
+            if (typeof hookResult.beforeBoot === "function") hookBeforeBoot = hookResult.beforeBoot;
           }
         }
 
-        // Default: splice partial + the user it was answering into
-        // the chain so follow-ups like "keep going" still have context.
+        // Default: splice partial + the user it was answering into the chain
+        // so follow-ups like "keep going" still have context, and re-dispatch
+        // the users that arrived after it.
+        //
+        // The splice needs a follow-up user to answer — it consumes
+        // `inFlightUsers[0]` into the chain instead of dispatching it. With
+        // exactly ONE in-flight user (the plain OOM / crash-mid-answer case)
+        // there is nothing left to dispatch, so splicing would strand that
+        // user unanswered and idle the run. Require `length > 1` on both
+        // branches: at n=1 the orphan partial is dropped and the interrupted
+        // user is re-dispatched as a fresh turn instead.
         let seedChain: TUIMessage[];
-        let recoveredTurns: TUIMessage[];
+        let recoveredEntries: { message: TUIMessage; seqNum: number | undefined }[];
         if (hookChain !== undefined) {
           seedChain = hookChain;
-        } else if (partialAssistant !== undefined && inFlightUsers.length > 0) {
+        } else if (partialAssistant !== undefined && inFlightUsers.length > 1) {
           seedChain = [...settledMessages, inFlightUsers[0]!, partialAssistant];
         } else {
           seedChain = settledMessages;
         }
         if (hookRecoveredTurns !== undefined) {
-          recoveredTurns = hookRecoveredTurns;
-        } else if (partialAssistant !== undefined && inFlightUsers.length > 0) {
-          recoveredTurns = inFlightUsers.slice(1);
+          const seqNumsByRecoveredId = new Map<string, number[]>();
+          for (const entry of replayedInTail) {
+            const existing = seqNumsByRecoveredId.get(entry.message.id);
+            if (existing) existing.push(entry.seqNum);
+            else seqNumsByRecoveredId.set(entry.message.id, [entry.seqNum]);
+          }
+          recoveredEntries = hookRecoveredTurns.map((message) => ({
+            message,
+            seqNum: seqNumsByRecoveredId.get(message.id)?.shift(),
+          }));
+        } else if (partialAssistant !== undefined && inFlightUsers.length > 1) {
+          recoveredEntries = replayedInTail
+            .slice(1)
+            .map((r) => ({ message: r.message, seqNum: r.seqNum }));
         } else {
-          recoveredTurns = inFlightUsers;
+          recoveredEntries = replayedInTail.map((r) => ({ message: r.message, seqNum: r.seqNum }));
         }
         // `beforeBoot` errors bubble — the customer opted into blocking
         // persistence and a failure there should fail the run rather than
         // dispatch recovered turns against half-persisted state.
         if (hookBeforeBoot) {
           await hookBeforeBoot();
-        }
-
-        // Advance the session.in cursor past every recovered user so
-        // the live subscription doesn't re-deliver them.
-        if (replayedInTail.length > 0) {
-          const lastRecoveredSeq = replayedInTail[replayedInTail.length - 1]!.seqNum;
-          const currentCursor = sessionStreams.lastSeqNum(payload.chatId, "in");
-          if (currentCursor === undefined || lastRecoveredSeq > currentCursor) {
-            sessionStreams.setLastSeqNum(payload.chatId, "in", lastRecoveredSeq);
-            sessionStreams.setLastDispatchedSeqNum(payload.chatId, "in", lastRecoveredSeq);
-          }
         }
 
         // Synthesize wire payloads for each recoveredTurn. The turn-loop
@@ -5645,18 +7823,18 @@ function chatAgent<
         // across attempts, but session.in records it once), the wire
         // payload already runs turn 0 — drop the duplicate from the queue
         // so we don't fire the same turn twice.
-        const wireMessageId =
-          (payload.message as { id?: string } | undefined)?.id;
+        const wireMessageId = (payload.message as { id?: string } | undefined)?.id;
         const metadataById = new Map<string, unknown>();
         for (const entry of replayedInTail) {
           metadataById.set(entry.message.id, entry.metadata);
         }
-        for (const msg of recoveredTurns) {
+        const dispatchedRecoveredSeqs = new Set<number>();
+        for (const { message: msg, seqNum } of recoveredEntries) {
           if (wireMessageId && msg.id === wireMessageId) continue;
           const recoveredMetadata = metadataById.has(msg.id)
             ? metadataById.get(msg.id)
             : payload.metadata;
-          bootInjectedQueue.push({
+          const injectedPayload = {
             chatId: payload.chatId,
             sessionId: payload.sessionId,
             metadata: recoveredMetadata,
@@ -5665,7 +7843,17 @@ function chatAgent<
             messageId: msg.id,
             continuation: payload.continuation,
             previousRunId: payload.previousRunId,
-          } as ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>);
+          } as ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>;
+          bootInjectedQueue.push(injectedPayload);
+          if (seqNum !== undefined) {
+            recoveredSeqByPayload.set(injectedPayload, seqNum);
+            dispatchedRecoveredSeqs.add(seqNum);
+          }
+        }
+        for (const entry of replayedInTail) {
+          if (!dispatchedRecoveredSeqs.has(entry.seqNum)) {
+            chatInputRouter().settleRecovered(entry.seqNum);
+          }
         }
 
         accumulatedUIMessages = seedChain;
@@ -5680,6 +7868,7 @@ function chatAgent<
         // and it's safe because the route handler isn't subject to the
         // `/in/append` 512 KiB cap.
         if (
+          !loadContextHook &&
           accumulatedUIMessages.length === 0 &&
           payload.trigger === "handover-prepare" &&
           Array.isArray(payload.headStartMessages) &&
@@ -5713,7 +7902,21 @@ function chatAgent<
             }
           }
           try {
-            accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+            const bootRuntimeState = parseTranscriptRuntimeState(bootTranscriptState);
+            const restored = await restoreModelLane(
+              accumulatedUIMessages,
+              bootRuntimeState,
+              (messages) => toModelMessages(messages)
+            );
+            accumulatedMessages = restored.messages;
+            laneCompacted = restored.compacted;
+            laneInjections = restored.injections;
+            if (bootRuntimeState?.queued && bootRuntimeState.queued.length > 0) {
+              locals.set(chatBackgroundQueueKey, [
+                ...(locals.get(chatBackgroundQueueKey) ?? []),
+                ...bootRuntimeState.queued,
+              ]);
+            }
           } catch (error) {
             logger.warn("chat.agent: toModelMessages failed at boot; starting empty", {
               error: error instanceof Error ? error.message : String(error),
@@ -5726,8 +7929,14 @@ function chatAgent<
         // Make the seeded UI accumulator visible to `chat.history.*`
         // before any hook (`onChatStart`, `onTurnStart`, etc.) fires.
         locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
-
       }
+
+      locals.set(chatAgentManagedConfigKey, {
+        registry: promptRegistry,
+        system: agentSystem,
+        cacheControl: agentCacheControl,
+        systemProviderOptions: agentSystemProviderOptions,
+      });
 
       // Token usage tracking across turns
       let previousTurnUsage: LanguageModelUsage | undefined;
@@ -5817,8 +8026,23 @@ function chatAgent<
           );
         }
 
+        /**
+         * A retry (e.g. OOM) or continuation whose boot recovery restored an
+         * in-flight `.in` message dispatches it as the first turn. The recovery
+         * block already advanced the `.in` cursor past the recovered message,
+         * so the preload wait below would otherwise strand it (the run would
+         * sit waiting for a "first message" that already arrived). `onPreload`
+         * is a one-time start-of-run hook and is deliberately not re-run on a
+         * recovered/continuation turn.
+         */
+        let dispatchedRecoveredFirstTurn = false;
+        if (preloaded && bootInjectedQueue.length > 0) {
+          currentWirePayload = dispatchBootInjected();
+          dispatchedRecoveredFirstTurn = true;
+        }
+
         // Handle preloaded runs — fire onPreload, then wait for the first real message
-        if (preloaded) {
+        if (preloaded && !dispatchedRecoveredFirstTurn) {
           if (activeSpan) {
             activeSpan.setAttribute("chat.preloaded", true);
           }
@@ -5881,9 +8105,7 @@ function chatAgent<
           // `transport.preload(..., { idleTimeoutInSeconds })` / wire payload so
           // `chat.agent({ idleTimeoutInSeconds, preloadIdleTimeoutInSeconds })` is authoritative.
           const effectivePreloadIdleTimeout =
-            preloadIdleTimeoutInSeconds ??
-            idleTimeoutInSeconds ??
-            payload.idleTimeoutInSeconds;
+            preloadIdleTimeoutInSeconds ?? idleTimeoutInSeconds ?? payload.idleTimeoutInSeconds;
 
           const effectivePreloadTimeout =
             (metadata.get(TURN_TIMEOUT_METADATA_KEY) as string | undefined) ??
@@ -5893,55 +8115,55 @@ function chatAgent<
           const preloadResult = await messagesInput.waitWithIdleTimeout({
             idleTimeoutInSeconds: effectivePreloadIdleTimeout,
             timeout: effectivePreloadTimeout,
-            spanName: "waiting for first message",
+            spanName: "first message",
             skipSuspend: exitAfterPreloadIdle,
             onSuspend: onChatSuspend
               ? async () => {
-                await tracer.startActiveSpan(
-                  "onChatSuspend()",
-                  async () => {
-                    await onChatSuspend({
-                      phase: "preload",
-                      ctx,
-                      chatId: payload.chatId,
-                      runId: currentRunId,
-                      clientData: preloadClientData,
-                    });
-                  },
-                  {
-                    attributes: {
-                      [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
-                      [SemanticInternalAttributes.COLLAPSED]: true,
-                      "chat.id": payload.chatId,
-                      "chat.suspend.phase": "preload",
+                  await tracer.startActiveSpan(
+                    "onChatSuspend()",
+                    async () => {
+                      await onChatSuspend({
+                        phase: "preload",
+                        ctx,
+                        chatId: payload.chatId,
+                        runId: currentRunId,
+                        clientData: preloadClientData,
+                      });
                     },
-                  }
-                );
-              }
+                    {
+                      attributes: {
+                        [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
+                        [SemanticInternalAttributes.COLLAPSED]: true,
+                        "chat.id": payload.chatId,
+                        "chat.suspend.phase": "preload",
+                      },
+                    }
+                  );
+                }
               : undefined,
             onResume: onChatResume
               ? async () => {
-                await tracer.startActiveSpan(
-                  "onChatResume()",
-                  async () => {
-                    await onChatResume({
-                      phase: "preload",
-                      ctx,
-                      chatId: payload.chatId,
-                      runId: currentRunId,
-                      clientData: preloadClientData,
-                    });
-                  },
-                  {
-                    attributes: {
-                      [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
-                      [SemanticInternalAttributes.COLLAPSED]: true,
-                      "chat.id": payload.chatId,
-                      "chat.resume.phase": "preload",
+                  await tracer.startActiveSpan(
+                    "onChatResume()",
+                    async () => {
+                      await onChatResume({
+                        phase: "preload",
+                        ctx,
+                        chatId: payload.chatId,
+                        runId: currentRunId,
+                        clientData: preloadClientData,
+                      });
                     },
-                  }
-                );
-              }
+                    {
+                      attributes: {
+                        [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                        [SemanticInternalAttributes.COLLAPSED]: true,
+                        "chat.id": payload.chatId,
+                        "chat.resume.phase": "preload",
+                      },
+                    }
+                  );
+                }
               : undefined,
           });
 
@@ -6012,10 +8234,7 @@ function chatAgent<
           //     call entirely (the response is already complete).
           //     `onTurnComplete` fires with the partial as
           //     `responseMessage` so persistence works normally.
-          locals.set(
-            chatHandoverPartialKey,
-            handoverResult.output.partialAssistantMessage
-          );
+          locals.set(chatHandoverPartialKey, handoverResult.output.partialAssistantMessage);
           // Stash the customer-side step-1 messageId. Turn-0 setup
           // uses it to seed the synthesized partial UIMessage with the
           // SAME id, so the agent's post-handover chunks merge into
@@ -6069,195 +8288,207 @@ function chatAgent<
           // waiting on the live session.in. Subsequent recovered turns
           // get drained by the end-of-turn picker below.
           if (bootInjectedQueue.length > 0) {
-            currentWirePayload = bootInjectedQueue.shift()!;
+            currentWirePayload = dispatchBootInjected();
           } else {
+            const effectiveIdleTimeout = idleTimeoutInSeconds ?? payload.idleTimeoutInSeconds;
+            const effectiveTurnTimeout =
+              (metadata.get(TURN_TIMEOUT_METADATA_KEY) as string | undefined) ?? turnTimeout;
 
-          const effectiveIdleTimeout =
-            idleTimeoutInSeconds ?? payload.idleTimeoutInSeconds;
-          const effectiveTurnTimeout =
-            (metadata.get(TURN_TIMEOUT_METADATA_KEY) as string | undefined) ?? turnTimeout;
-
-          const continuationResult = await messagesInput.waitWithIdleTimeout({
-            idleTimeoutInSeconds: effectiveIdleTimeout,
-            timeout: effectiveTurnTimeout,
-            spanName: "waiting for first message (continuation)",
-            onSuspend: onChatSuspend
-              ? async () => {
-                  await tracer.startActiveSpan(
-                    "onChatSuspend()",
-                    async () => {
-                      await onChatSuspend({
-                        phase: "continuation",
-                        ctx,
-                        chatId: payload.chatId,
-                        runId: ctx.run.id,
-                        clientData: continuationClientData,
-                      });
-                    },
-                    {
-                      attributes: {
-                        [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
-                        [SemanticInternalAttributes.COLLAPSED]: true,
-                        "chat.id": payload.chatId,
-                        "chat.suspend.phase": "continuation",
+            const continuationResult = await messagesInput.waitWithIdleTimeout({
+              idleTimeoutInSeconds: effectiveIdleTimeout,
+              timeout: effectiveTurnTimeout,
+              spanName: "first message (continuation)",
+              onSuspend: onChatSuspend
+                ? async () => {
+                    await tracer.startActiveSpan(
+                      "onChatSuspend()",
+                      async () => {
+                        await onChatSuspend({
+                          phase: "continuation",
+                          ctx,
+                          chatId: payload.chatId,
+                          runId: ctx.run.id,
+                          clientData: continuationClientData,
+                        });
                       },
-                    }
-                  );
-                }
-              : undefined,
-            onResume: onChatResume
-              ? async () => {
-                  await tracer.startActiveSpan(
-                    "onChatResume()",
-                    async () => {
-                      await onChatResume({
-                        phase: "continuation",
-                        ctx,
-                        chatId: payload.chatId,
-                        runId: ctx.run.id,
-                        clientData: continuationClientData,
-                      });
-                    },
-                    {
-                      attributes: {
-                        [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
-                        [SemanticInternalAttributes.COLLAPSED]: true,
-                        "chat.id": payload.chatId,
-                        "chat.resume.phase": "continuation",
+                      {
+                        attributes: {
+                          [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
+                          [SemanticInternalAttributes.COLLAPSED]: true,
+                          "chat.id": payload.chatId,
+                          "chat.suspend.phase": "continuation",
+                        },
+                      }
+                    );
+                  }
+                : undefined,
+              onResume: onChatResume
+                ? async () => {
+                    await tracer.startActiveSpan(
+                      "onChatResume()",
+                      async () => {
+                        await onChatResume({
+                          phase: "continuation",
+                          ctx,
+                          chatId: payload.chatId,
+                          runId: ctx.run.id,
+                          clientData: continuationClientData,
+                        });
                       },
-                    }
-                  );
-                }
-              : undefined,
-          });
+                      {
+                        attributes: {
+                          [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                          [SemanticInternalAttributes.COLLAPSED]: true,
+                          "chat.id": payload.chatId,
+                          "chat.resume.phase": "continuation",
+                        },
+                      }
+                    );
+                  }
+                : undefined,
+            });
 
-          if (!continuationResult.ok) {
-            // Timed out waiting for the customer's next message — exit.
-            return;
-          }
+            if (!continuationResult.ok) {
+              // Timed out waiting for the customer's next message — exit.
+              return;
+            }
 
-          currentWirePayload = continuationResult.output as ChatTaskWirePayload<
-            TUIMessage,
-            inferSchemaIn<TClientDataSchema>
-          >;
+            currentWirePayload = continuationResult.output as ChatTaskWirePayload<
+              TUIMessage,
+              inferSchemaIn<TClientDataSchema>
+            >;
 
-          if (currentWirePayload.trigger === "close") {
-            return;
-          }
+            if (currentWirePayload.trigger === "close") {
+              return;
+            }
           } // end else (no boot-injected first turn)
         }
 
         for (let turn = 0; turn < maxTurns; turn++) {
+          let turnClientData: unknown = payload.metadata;
+          // Declared here so the finally can detach it — a handler leaked past
+          // its turn duplicates every mid-stream message into the shared buffer.
+          let turnMsgSub: { off: () => void } | undefined;
+          let capturedPartialResponse: TUIMessage | undefined;
+          let responseCommitted = false;
+          const turnBufferedChunks: UIMessageChunk[] = [];
           try {
-              // Extract turn-level context before entering the span. Slim
-              // wire: at most one delta message per record. `headStartMessages`
-              // is consumed at boot only (via `payload.headStartMessages`)
-              // and intentionally discarded here.
-              const {
-                metadata: wireMetadata,
-                message: incomingMessage,
-                headStartMessages: _hsm,
-                ...restWire
-              } = currentWirePayload;
-              void _hsm;
-              const incomingMessages: TUIMessage[] = incomingMessage
-                ? [incomingMessage as TUIMessage]
-                : [];
-              // Cleaning happens once here so `extractLastUserMessageText` and
-              // every downstream consumer see the same message shape — and
-              // `cleanupAbortedParts` no longer has to be re-applied below.
-              const cleanedIncomingMessages: TUIMessage[] = incomingMessages.map((msg) =>
-                msg.role === "assistant" ? cleanupAbortedParts(msg) : msg
+            // Extract turn-level context before entering the span. Slim
+            // wire: at most one delta message per record. `headStartMessages`
+            // is consumed at boot only (via `payload.headStartMessages`)
+            // and intentionally discarded here.
+            const {
+              metadata: wireMetadata,
+              message: incomingMessage,
+              headStartMessages: _hsm,
+              ...restWire
+            } = currentWirePayload;
+            void _hsm;
+            const incomingMessages: TUIMessage[] = incomingMessage
+              ? [incomingMessage as TUIMessage]
+              : [];
+            // Cleaning happens once here so `extractLastUserMessageText` and
+            // every downstream consumer see the same message shape — and
+            // `cleanupAbortedParts` no longer has to be re-applied below.
+            const cleanedIncomingMessages: TUIMessage[] = incomingMessages.map((msg) =>
+              msg.role === "assistant" ? cleanupAbortedParts(msg) : msg
+            );
+            const clientData = (
+              parseClientData ? await parseClientData(wireMetadata) : wireMetadata
+            ) as inferSchemaOut<TClientDataSchema>;
+            turnClientData = clientData;
+            const lastUserMessage = extractLastUserMessageText(cleanedIncomingMessages);
+
+            // Actions are not turns. They use a different span name
+            // and don't carry a turn.number. Branched on at `isAction`.
+            const isAction = currentWirePayload.trigger === "action";
+            const spanName = isAction ? "chat action" : `chat turn ${turn + 1}`;
+
+            const turnAttributes: Attributes = {
+              ...(isAction ? {} : { "turn.number": turn + 1 }),
+              "gen_ai.conversation.id": currentWirePayload.chatId,
+              "gen_ai.operation.name": "chat",
+              "chat.trigger": currentWirePayload.trigger,
+              [SemanticInternalAttributes.STYLE_ICON]: isAction
+                ? "tabler-bolt"
+                : "tabler-message-chatbot",
+              [SemanticInternalAttributes.ENTITY_TYPE]: isAction ? "chat-action" : "chat-turn",
+            };
+
+            if (lastUserMessage) {
+              turnAttributes["chat.user_message"] = lastUserMessage;
+
+              // Show a truncated preview of the user message as an accessory
+              const preview =
+                lastUserMessage.length > 80
+                  ? lastUserMessage.slice(0, 80) + "..."
+                  : lastUserMessage;
+              Object.assign(
+                turnAttributes,
+                accessoryAttributes({
+                  items: [{ text: preview, variant: "normal" }],
+                  style: "codepath",
+                })
               );
-              const clientData = (
-                parseClientData ? await parseClientData(wireMetadata) : wireMetadata
-              ) as inferSchemaOut<TClientDataSchema>;
-              const lastUserMessage = extractLastUserMessageText(cleanedIncomingMessages);
+            }
 
-              // Actions are not turns. They use a different span name
-              // and don't carry a turn.number. Branched on at `isAction`.
-              const isAction = currentWirePayload.trigger === "action";
-              const spanName = isAction ? "chat action" : `chat turn ${turn + 1}`;
+            if (wireMetadata !== undefined) {
+              turnAttributes["chat.client_data"] =
+                typeof wireMetadata === "string" ? wireMetadata : JSON.stringify(wireMetadata);
+            }
 
-              const turnAttributes: Attributes = {
-                ...(isAction ? {} : { "turn.number": turn + 1 }),
-                "gen_ai.conversation.id": currentWirePayload.chatId,
-                "gen_ai.operation.name": "chat",
-                "chat.trigger": currentWirePayload.trigger,
-                [SemanticInternalAttributes.STYLE_ICON]: isAction
-                  ? "tabler-bolt"
-                  : "tabler-message-chatbot",
-                [SemanticInternalAttributes.ENTITY_TYPE]: isAction ? "chat-action" : "chat-turn",
-              };
+            const turnResult = await tracer.startActiveSpan(
+              spanName,
+              async (turnSpan) => {
+                // (errors are caught by the outer try/catch which writes an error chunk)
+                locals.set(chatPipeCountKey, 0);
+                locals.set(chatDeferKey, new Set());
+                locals.set(chatOutGateKey, createChatOutGate());
+                locals.set(chatCompactionStateKey, undefined);
+                locals.set(chatSteeringQueueKey, []);
+                locals.set(chatPendingBackgroundKey, []);
+                locals.set(chatResponsePartsKey, []);
+                // NOTE: chatBackgroundQueueKey is NOT reset here — messages injected
+                // by deferred work from the previous turn's onTurnComplete need to
+                // survive into the next turn. The queue is drained before run().
+                locals.set(chatInjectedMessageIdsKey, new Set());
 
-              if (lastUserMessage) {
-                turnAttributes["chat.user_message"] = lastUserMessage;
+                // Store chat context for auto-detection by task-tool subtasks (ai.toolExecute / legacy ai.tool)
+                locals.set(chatTurnContextKey, {
+                  chatId: currentWirePayload.chatId,
+                  turn,
+                  continuation,
+                  clientData,
+                });
 
-                // Show a truncated preview of the user message as an accessory
-                const preview =
-                  lastUserMessage.length > 80 ? lastUserMessage.slice(0, 80) + "..." : lastUserMessage;
-                Object.assign(
-                  turnAttributes,
-                  accessoryAttributes({
-                    items: [{ text: preview, variant: "normal" }],
-                    style: "codepath",
-                  })
-                );
-              }
+                // Resolve the per-turn `tools` set now that turn context
+                // (incl. parsed clientData) exists, so every toModelMessages
+                // call this turn can re-apply tool `toModelOutput`.
+                await resolveTurnTools();
 
-              if (wireMetadata !== undefined) {
-                turnAttributes["chat.client_data"] =
-                  typeof wireMetadata === "string" ? wireMetadata : JSON.stringify(wireMetadata);
-              }
+                // Per-turn stop controller (reset each turn)
+                const stopController = new AbortController();
+                currentStopController = stopController;
+                locals.set(chatStopControllerKey, stopController);
 
-              const turnResult = await tracer.startActiveSpan(
-                spanName,
-                async (turnSpan) => {
-                  // (errors are caught by the outer try/catch which writes an error chunk)
-                  locals.set(chatPipeCountKey, 0);
-                  locals.set(chatDeferKey, new Set());
-                  locals.set(chatCompactionStateKey, undefined);
-                  locals.set(chatSteeringQueueKey, []);
-                  locals.set(chatResponsePartsKey, []);
-                  // NOTE: chatBackgroundQueueKey is NOT reset here — messages injected
-                  // by deferred work from the previous turn's onTurnComplete need to
-                  // survive into the next turn. The queue is drained before run().
-                  locals.set(chatInjectedMessageIdsKey, new Set());
+                // Three signals for the user's run function
+                const stopSignal = stopController.signal;
+                const cancelSignal = runSignal;
+                const combinedSignal = AbortSignal.any([runSignal, stopController.signal]);
 
-                  // Store chat context for auto-detection by task-tool subtasks (ai.toolExecute / legacy ai.tool)
-                  locals.set(chatTurnContextKey, {
-                    chatId: currentWirePayload.chatId,
-                    turn,
-                    continuation,
-                    clientData,
-                  });
-
-                  // Resolve the per-turn `tools` set now that turn context
-                  // (incl. parsed clientData) exists, so every toModelMessages
-                  // call this turn can re-apply tool `toModelOutput`.
-                  await resolveTurnTools();
-
-                  // Per-turn stop controller (reset each turn)
-                  const stopController = new AbortController();
-                  currentStopController = stopController;
-                  locals.set(chatStopControllerKey, stopController);
-
-                  // Three signals for the user's run function
-                  const stopSignal = stopController.signal;
-                  const cancelSignal = runSignal;
-                  const combinedSignal = AbortSignal.any([runSignal, stopController.signal]);
-
-                  // Buffer messages that arrive during streaming
-                  const pendingMessages: ChatTaskWirePayload<
-                    TUIMessage,
-                    inferSchemaIn<TClientDataSchema>
-                  >[] = [];
-                  const pmConfig = locals.get(chatPendingMessagesKey);
-                  const msgSub = messagesInput.on(async (msg) => {
-                    // If pendingMessages is configured, route to the steering queue
-                    // instead of the wire buffer. The frontend handles re-sending
-                    // non-injected messages via sendMessage on turn complete.
-                    if (pmConfig) {
+                const pmConfig = locals.get(chatPendingMessagesKey);
+                /**
+                 * Only attached when there is a steering config to feed. Without
+                 * one a mid-turn message is left queued on the router, which is
+                 * what holds the resume floor behind it: a record handed to a
+                 * handler counts as terminally decided, so buffering one here
+                 * published a cursor past a message held only in memory and a
+                 * crash before the next turn lost it.
+                 */
+                const msgSub = pmConfig
+                  ? chatInputRouter().observe(CHAT_ROUTE_MESSAGES, async (record) => {
+                      const msg = (record.data as Extract<ChatInputChunk, { kind: "message" }>)
+                        .payload;
                       // Slim wire: at most one delta message per record. The
                       // pendingMessages handler reads `msg.message` directly
                       // instead of slicing an array — a wire record arrives
@@ -6290,122 +8521,136 @@ function chatAgent<
                           queue.push({
                             uiMessage: lastUIMessage as UIMessage,
                             modelMessages: modelMsgs,
+                            seqNum: record.seqNum,
                           });
                           locals.set(chatSteeringQueueKey, queue);
                         } catch {
                           /* conversion failed — skip steering queue */
                         }
                       }
-                      return; // Don't add to wire buffer — frontend handles non-injected case
-                    }
+                    })
+                  : undefined;
+                turnMsgSub = msgSub;
 
-                    // No pendingMessages config — standard wire buffer for next turn
-                    pendingMessages.push(
-                      msg as ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>
-                    );
-                  });
+                // Track new messages for this turn (user input + assistant response).
+                const turnNewModelMessages: ModelMessage[] = [];
+                const turnNewUIMessages: TUIMessage[] = [];
+                locals.set(chatTurnNewUIMessagesKey, turnNewUIMessages);
+                // A head-start handover deliberately resumes from an assistant
+                // message it spliced in, so it isn't a no-op turn.
+                let splicedHandoverPartial = false;
 
-                  // Track new messages for this turn (user input + assistant response).
-                  const turnNewModelMessages: ModelMessage[] = [];
-                  const turnNewUIMessages: TUIMessage[] = [];
+                // ── Action handling ──────────────────────────────────────
+                // Actions arrive on the same input stream but with
+                // trigger === "action". They are NOT turns — only
+                // `hydrateMessages` and `onAction` fire. No turn lifecycle
+                // hooks (`onTurnStart` / `prepareMessages` /
+                // `onBeforeTurnComplete` / `onTurnComplete`) and no
+                // `run()` invocation. To produce a model response from
+                // an action, return a `StreamTextResult` (auto-piped),
+                // string, or UIMessage from `onAction`. Turn counter
+                // does not advance.
+                let actionResult: unknown = undefined;
+                /** Set when `onAction` returned `chat.turn()`: the turn block below runs. */
+                let actionTurn = false;
+                /**
+                 * Whether this action changed the conversation, by rolling history
+                 * back or by streaming a response. Drives the single snapshot write
+                 * at the end — an action never reaches the turn-complete path that
+                 * normally does it.
+                 */
+                let actionChangedHistory = false;
+                if (isAction) {
+                  // Parse and validate the action payload
+                  const parsedAction = parseAction
+                    ? await parseAction(currentWirePayload.action)
+                    : currentWirePayload.action;
 
-                  // ── Action handling ──────────────────────────────────────
-                  // Actions arrive on the same input stream but with
-                  // trigger === "action". They are NOT turns — only
-                  // `hydrateMessages` and `onAction` fire. No turn lifecycle
-                  // hooks (`onTurnStart` / `prepareMessages` /
-                  // `onBeforeTurnComplete` / `onTurnComplete`) and no
-                  // `run()` invocation. To produce a model response from
-                  // an action, return a `StreamTextResult` (auto-piped),
-                  // string, or UIMessage from `onAction`. Turn counter
-                  // does not advance.
-                  let actionStreamResult: unknown = undefined;
-                  if (isAction) {
-                    // Parse and validate the action payload
-                    const parsedAction = parseAction
-                      ? await parseAction(currentWirePayload.action)
-                      : currentWirePayload.action;
-
-                    // Hydrate messages from backend if configured
-                    if (hydrateMessages) {
-                      const hydrated = await tracer.startActiveSpan(
-                        "hydrateMessages()",
-                        async () => {
-                          return hydrateMessages({
-                            chatId: currentWirePayload.chatId,
-                            turn,
-                            trigger: "action",
-                            incomingMessages: [] as TUIMessage[],
-                            previousMessages: [...accumulatedUIMessages],
-                            clientData,
-                            continuation,
-                            previousRunId,
-                          });
+                  // Hydrate messages from backend if configured
+                  if (loadContextHook) {
+                    const hydrated = await tracer.startActiveSpan(
+                      "hydrateMessages()",
+                      async () => {
+                        return loadContextHook({
+                          chatId: currentWirePayload.chatId,
+                          turn,
+                          trigger: "action",
+                          incomingMessages: [] as TUIMessage[],
+                          previousMessages: [...accumulatedUIMessages],
+                          clientData,
+                          continuation,
+                          previousRunId,
+                        });
+                      },
+                      {
+                        attributes: {
+                          [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                          [SemanticInternalAttributes.COLLAPSED]: true,
+                          "chat.id": currentWirePayload.chatId,
+                          "chat.trigger": "action",
                         },
-                        {
-                          attributes: {
-                            [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
-                            [SemanticInternalAttributes.COLLAPSED]: true,
-                            "chat.id": currentWirePayload.chatId,
-                            "chat.trigger": "action",
-                          },
-                        }
-                      );
-                      accumulatedUIMessages = [...hydrated] as TUIMessage[];
-                      accumulatedMessages = await toModelMessages(hydrated);
-                      locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
-                    }
-
-                    // Fire onAction — handler may mutate state via
-                    // `chat.history.*` and / or return a model response.
-                    if (onAction) {
-                      actionStreamResult = await tracer.startActiveSpan(
-                        "onAction()",
-                        async () => {
-                          return await onAction({
-                            action: parsedAction as any,
-                            chatId: currentWirePayload.chatId,
-                            turn,
-                            clientData,
-                            uiMessages: accumulatedUIMessages,
-                            messages: accumulatedMessages,
-                          });
-                        },
-                        {
-                          attributes: {
-                            [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
-                            [SemanticInternalAttributes.COLLAPSED]: true,
-                            "chat.id": currentWirePayload.chatId,
-                            "chat.action":
-                              typeof parsedAction === "object" && parsedAction !== null
-                                ? JSON.stringify(parsedAction)
-                                : String(parsedAction),
-                          },
-                        }
-                      );
-
-                      // Apply chat.history mutations from onAction
-                      const actionOverride = locals.get(chatOverrideMessagesKey);
-                      if (actionOverride) {
-                        locals.set(chatOverrideMessagesKey, undefined);
-                        accumulatedUIMessages = [...actionOverride] as TUIMessage[];
-                        accumulatedMessages = await toModelMessages(actionOverride);
-                        locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                       }
-                    } else {
-                      warnMissingOnActionOnce();
-                    }
+                    );
+                    accumulatedUIMessages = [...hydrated] as TUIMessage[];
+                    accumulatedMessages = await toModelMessages(hydrated);
+                    laneCompacted = false;
+                    laneInjections = [];
+                    locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                   }
 
-                  // ── Message handling (non-action turns) ───────────────────
-                  //
-                  // Slim wire: at most one delta message arrives per record.
-                  // The accumulator was already seeded at boot from a durable
-                  // snapshot + `session.out` replay (or `hydrateMessages`,
-                  // which also fires per-turn below). Per-turn handling is
-                  // therefore a delta merge, not a full-history reset.
-                  if (currentWirePayload.trigger !== "action") {
+                  // Fire onAction — handler may mutate state via
+                  // `chat.history.*` and / or return a model response.
+                  if (onAction) {
+                    actionResult = await tracer.startActiveSpan(
+                      "onAction()",
+                      async () => {
+                        return await onAction({
+                          action: parsedAction as any,
+                          chatId: currentWirePayload.chatId,
+                          turn,
+                          clientData,
+                          uiMessages: accumulatedUIMessages,
+                          messages: accumulatedMessages,
+                        });
+                      },
+                      {
+                        attributes: {
+                          [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                          [SemanticInternalAttributes.COLLAPSED]: true,
+                          "chat.id": currentWirePayload.chatId,
+                          "chat.action":
+                            typeof parsedAction === "object" && parsedAction !== null
+                              ? JSON.stringify(parsedAction)
+                              : String(parsedAction),
+                        },
+                      }
+                    );
 
+                    // Apply chat.history mutations from onAction
+                    const actionOverride = locals.get(chatOverrideMessagesKey);
+                    if (actionOverride) {
+                      locals.set(chatOverrideMessagesKey, undefined);
+                      accumulatedUIMessages = [...actionOverride] as TUIMessage[];
+                      accumulatedMessages = await toModelMessages(actionOverride);
+                      laneCompacted = false;
+                      laneInjections = [];
+                      locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+
+                      actionChangedHistory = true;
+                    }
+                  } else {
+                    warnMissingOnActionOnce();
+                  }
+                }
+
+                // ── Message handling (non-action turns) ───────────────────
+                //
+                // Slim wire: at most one delta message arrives per record.
+                // The accumulator was already seeded at boot from a durable
+                // snapshot + `session.out` replay (or `hydrateMessages`,
+                // which also fires per-turn below). Per-turn handling is
+                // therefore a delta merge, not a full-history reset.
+                if (currentWirePayload.trigger !== "action") {
                   let cleanedUIMessages: TUIMessage[] = cleanedIncomingMessages;
 
                   // Turn-0 head-start with hydrateMessages: the boot seeding from
@@ -6414,7 +8659,7 @@ function chatAgent<
                   // incoming messages instead (gated on the pending handover).
                   if (
                     turn === 0 &&
-                    hydrateMessages &&
+                    loadContextHook &&
                     cleanedUIMessages.length === 0 &&
                     (locals.get(chatHandoverPartialKey)?.length ?? 0) > 0 &&
                     Array.isArray(payload.headStartMessages) &&
@@ -6451,7 +8696,7 @@ function chatAgent<
                     )) as TUIMessage[];
                   }
 
-                  if (hydrateMessages) {
+                  if (loadContextHook) {
                     // Snapshot the ids the accumulator knew BEFORE this
                     // turn ran — used below to decide whether an
                     // incoming wire message is genuinely new or just a
@@ -6474,7 +8719,7 @@ function chatAgent<
                     const hydrated = await tracer.startActiveSpan(
                       "hydrateMessages()",
                       async () => {
-                        return hydrateMessages({
+                        return loadContextHook({
                           chatId: currentWirePayload.chatId,
                           turn,
                           trigger: currentWirePayload.trigger as
@@ -6521,6 +8766,8 @@ function chatAgent<
 
                     accumulatedUIMessages = merged;
                     accumulatedMessages = await toModelMessages(merged);
+                    laneCompacted = false;
+                    laneInjections = [];
                     locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
 
                     // Track new messages for onTurnComplete.newUIMessages.
@@ -6542,8 +8789,7 @@ function chatAgent<
                     ) {
                       const lastUI = cleanedUIMessages[cleanedUIMessages.length - 1]!;
                       const matchedExisting =
-                        lastUI.id !== undefined &&
-                        previouslyKnownMessageIds.has(lastUI.id);
+                        lastUI.id !== undefined && previouslyKnownMessageIds.has(lastUI.id);
                       if (!matchedExisting) {
                         turnNewUIMessages.push(lastUI);
                         const lastModel = (await toModelMessages([lastUI]))[0];
@@ -6571,6 +8817,8 @@ function chatAgent<
                         accumulatedUIMessages.pop();
                       }
                       accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+                      laneCompacted = false;
+                      laneInjections = [];
                     } else if (cleanedUIMessages.length > 0) {
                       // Submit-message (and the special-cased
                       // handover-prepare → submit-message rewrite earlier in
@@ -6586,25 +8834,24 @@ function chatAgent<
                       // where AI SDK regenerates the id (TRI-9137) still
                       // applies via `rewriteIncomingIdViaToolCallMap`.
                       let replaced = false;
+                      const replacedPairs: { previous: TUIMessage; merged: TUIMessage }[] = [];
                       for (const raw of cleanedUIMessages) {
                         let incoming = raw;
-                        let idx = accumulatedUIMessages.findIndex(
-                          (m) => m.id === incoming.id
-                        );
+                        let idx = accumulatedUIMessages.findIndex((m) => m.id === incoming.id);
                         if (idx === -1) {
                           const rewritten = rewriteIncomingIdViaToolCallMap(incoming);
                           if (rewritten.id !== incoming.id) {
                             incoming = rewritten as typeof raw;
-                            idx = accumulatedUIMessages.findIndex(
-                              (m) => m.id === incoming.id
-                            );
+                            idx = accumulatedUIMessages.findIndex((m) => m.id === incoming.id);
                           }
                         }
                         if (idx !== -1) {
+                          const previous = accumulatedUIMessages[idx]!;
                           accumulatedUIMessages[idx] = mergeIncomingIntoHydrated(
-                            accumulatedUIMessages[idx]!,
+                            previous,
                             incoming
                           ) as TUIMessage;
+                          replacedPairs.push({ previous, merged: accumulatedUIMessages[idx]! });
                           replaced = true;
                         } else {
                           accumulatedUIMessages.push(incoming as TUIMessage);
@@ -6613,17 +8860,27 @@ function chatAgent<
                         recordToolCallIdsFromMessage(incoming);
                       }
                       if (replaced) {
-                        // Replacement changes structure — reconvert all model
-                        // messages instead of appending.
-                        accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+                        let inPlace = true;
+                        for (const { previous, merged } of replacedPairs) {
+                          if (!(await replaceModelRun(accumulatedMessages, previous, merged, 0))) {
+                            inPlace = false;
+                            break;
+                          }
+                        }
+                        if (!inPlace) {
+                          logger.warn(
+                            "chat.agent: replaced message not found at the model lane tail; reconverting the lane"
+                          );
+                          accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+                          laneCompacted = false;
+                          laneInjections = [];
+                        }
                       } else {
                         const incomingModelMessages = await toModelMessages(cleanedUIMessages);
                         accumulatedMessages.push(...incomingModelMessages);
                       }
                       if (turnNewUIMessages.length > 0) {
-                        turnNewModelMessages.push(
-                          ...(await toModelMessages(turnNewUIMessages))
-                        );
+                        turnNewModelMessages.push(...(await toModelMessages(turnNewUIMessages)));
                       }
                     }
                     // `preload` / `close` / `handover-prepare` and submits
@@ -6655,77 +8912,104 @@ function chatAgent<
                     // `UIMessageStreamError: No tool invocation found`.
                     const pendingHandoverPartial = locals.get(chatHandoverPartialKey);
                     if (pendingHandoverPartial && pendingHandoverPartial.length > 0) {
-                      const handoverMessageId = locals.get(chatHandoverMessageIdKey);
-                      // Skip if the hydrated chain already persisted the
-                      // partial under the handover messageId.
-                      const alreadyInChain =
-                        handoverMessageId !== undefined &&
-                        accumulatedUIMessages.some((m) => m.id === handoverMessageId);
-                      if (!alreadyInChain) {
-                        accumulatedMessages.push(...pendingHandoverPartial);
-                        const partialUI = synthesizeHandoverUIMessage(
-                          pendingHandoverPartial,
-                          handoverMessageId
-                        );
-                        if (partialUI) {
-                          accumulatedUIMessages.push(partialUI as TUIMessage);
-                        }
-                      }
+                      spliceHandoverPartial(accumulatedMessages, accumulatedUIMessages, {
+                        partialAssistantMessage: pendingHandoverPartial,
+                        messageId: locals.get(chatHandoverMessageIdKey),
+                      });
                       locals.set(chatHandoverPartialKey, []); // consume once
+                      splicedHandoverPartial = true;
                     }
                   }
 
                   locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+                } // end if (trigger !== "action")
 
-                  } // end if (trigger !== "action")
+                // ── No-op turn ──────────────────────────────────────────
+                //
+                // A submit that added no new user message and leaves the model
+                // chain ending on an assistant message has nothing to answer —
+                // calling the model would prefill its own last reply. Keyed on
+                // the model tail, so a `tool`-terminated chain (a merged tool
+                // approval) still runs.
+                const isNoOpTurn =
+                  !isAction &&
+                  !splicedHandoverPartial &&
+                  currentWirePayload.trigger === "submit-message" &&
+                  turnNewUIMessages.length === 0 &&
+                  accumulatedMessages[accumulatedMessages.length - 1]?.role === "assistant";
 
-                  // ── Action result handling ──────────────────────────────
-                  // For action turns, skip the turn machinery entirely.
-                  // If `onAction` returned a stream / string / UIMessage,
-                  // pipe it as the response. Either way, emit
-                  // `trigger:turn-complete` and then fall through to the
-                  // wait-for-next-message logic (shared with message turns).
-                  // The turn counter is decremented so the next iteration
-                  // sees the same `turn` value — actions don't count.
-                  if (isAction) {
-                    msgSub.off();
+                if (isNoOpTurn) {
+                  msgSub?.off();
+                  logger.warn("chat.agent: turn added no new user message; skipping the model", {
+                    chatId: currentWirePayload.chatId,
+                    messageId: currentWirePayload.messageId,
+                  });
+                  settleRecoveredTurn(currentWirePayload);
+                  await writeTurnCompleteChunk(currentWirePayload.chatId);
+                  // Not a turn — don't consume an iteration.
+                  turn--;
+                }
 
-                    if (
-                      (locals.get(chatPipeCountKey) ?? 0) === 0 &&
-                      isUIMessageStreamable(actionStreamResult)
-                    ) {
-                      try {
-                        const resolvedOptions = resolveUIMessageStreamOptions();
-                        const uiStream = (
-                          actionStreamResult as UIMessageStreamable
-                        ).toUIMessageStream({
-                          ...resolvedOptions,
-                          generateMessageId:
-                            resolvedOptions.generateMessageId ?? generateMessageId,
-                        });
-                        await pipeChat(uiStream, {
-                          signal: combinedSignal,
-                          spanName: "stream response",
-                        });
-                      } catch (error) {
-                        if (
-                          error instanceof Error &&
-                          error.name === "AbortError" &&
-                          runSignal.aborted
-                        ) {
-                          return "exit";
-                        }
-                        throw error;
-                      }
+                // ── Action result handling ──────────────────────────────
+                // For action turns, skip the turn machinery entirely.
+                // If `onAction` returned a stream / string / UIMessage,
+                // pipe it as the response. Either way, emit
+                // `trigger:turn-complete` and then fall through to the
+                // wait-for-next-message logic (shared with message turns).
+                // The turn counter is decremented so the next iteration
+                // sees the same `turn` value — actions don't count.
+                if (isAction) {
+                  if (isActionTurn(actionResult)) {
+                    // Persist the edit before the turn starts, so a turn that is
+                    // cancelled or runs out of memory continues from the edited
+                    // history rather than from the snapshot the edit replaced.
+                    // The turn then does its own hooks, completion and snapshot.
+                    if (actionChangedHistory) {
+                      await writeSnapshotOutsideTurn("action", { turn, clientData });
                     }
-
+                    actionTurn = true;
+                  } else if (actionResult !== undefined) {
+                    throw new Error(
+                      "chat.agent: onAction returned a value. An action is a state edit; to answer " +
+                        "after the edit, return chat.turn() and a turn runs on the edited history. " +
+                        "Returning a StreamTextResult, string or UIMessage is no longer supported."
+                    );
+                  } else {
+                    msgSub?.off();
+                    if (actionChangedHistory) {
+                      await writeSnapshotOutsideTurn("action", { turn, clientData });
+                    }
                     await writeTurnCompleteChunk(currentWirePayload.chatId);
-
                     // Don't consume a turn iteration — actions aren't turns.
                     turn--;
                   }
+                }
 
-                  if (!isAction) {
+                // A no-op turn skips this block, and with it `followSessionPin`:
+                // there is nothing to answer, so nothing to hand over.
+                if ((!isAction || actionTurn) && !isNoOpTurn) {
+                  if (!hydrateMessages) {
+                    chatDeferBeforeOutput(
+                      saveTranscript({
+                        reason: "turn-start",
+                        messages: accumulatedUIMessages,
+                        turn,
+                        trigger: storageTrigger(currentWirePayload.trigger),
+                        clientData,
+                        lastOutEventId: lastSnapshotOutEventId,
+                        skipIfUnchanged: true,
+                        carryInCursor: true,
+                      }).catch((error) => {
+                        logger.warn(
+                          "chat.agent: turn-start transcript write failed; a reload mid-answer may not show the message being answered",
+                          {
+                            error: error instanceof Error ? error.message : String(error),
+                            sessionId: sessionIdForSnapshot,
+                          }
+                        );
+                      })
+                    );
+                  }
 
                   // Mint a scoped public access token once per turn, reused for
                   // onChatStart, onTurnStart, onTurnComplete, and the turn-complete chunk.
@@ -6823,6 +9107,8 @@ function chatAgent<
                           locals.set(chatOverrideMessagesKey, undefined);
                           accumulatedUIMessages = [...turnStartOverride] as TUIMessage[];
                           accumulatedMessages = await toModelMessages(turnStartOverride);
+                          laneCompacted = false;
+                          laneInjections = [];
                           locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                         }
                       },
@@ -6842,9 +9128,12 @@ function chatAgent<
                     );
                   }
 
+                  await followSessionPin(currentWirePayload.chatId, versionSkew);
+
                   // chat.requestUpgrade() called in onTurnStart (or onValidateMessages) —
-                  // skip run() and signal the transport to re-trigger the same message
-                  // on the new version.
+                  // skip run() and hand over to a fresh run on the new version. The
+                  // successor picks the message up off session.in; the transport only
+                  // keeps reading.
                   if (locals.get(chatUpgradeRequestedKey)) {
                     await writeUpgradeRequiredChunk();
                     return "exit";
@@ -6888,7 +9177,12 @@ function chatAgent<
                     const lastAccumulated = accumulatedMessages[accumulatedMessages.length - 1];
                     const bgQueue = locals.get(chatBackgroundQueueKey);
                     if (bgQueue && bgQueue.length > 0 && lastAccumulated?.role !== "tool") {
-                      accumulatedMessages.push(...bgQueue.splice(0));
+                      const injected = bgQueue.splice(0);
+                      accumulatedMessages.push(...injected);
+                      laneInjections.push({
+                        afterId: accumulatedUIMessages.at(-1)?.id ?? "",
+                        messages: injected,
+                      });
                     }
 
                     if (isHeadStartFinalTurn) {
@@ -6904,9 +9198,15 @@ function chatAgent<
                       // Don't call userRun. Don't pipe. Skip directly
                       // to the post-turn flow below.
                     } else {
-                      const preparedMessages = await applyPrepareMessages(accumulatedMessages, "run");
+                      const preparedMessages = await applyPrepareMessages(
+                        accumulatedMessages,
+                        "run"
+                      );
                       runResult = await userRun({
                         ...restWire,
+                        // A turn requested by chat.turn() is not the action itself:
+                        // a run() that short-circuits on "action" must still answer.
+                        ...(actionTurn ? { trigger: "action-turn" as const } : {}),
                         messages: preparedMessages,
                         clientData,
                         continuation,
@@ -6919,6 +9219,12 @@ function chatAgent<
                         signal: combinedSignal,
                         cancelSignal,
                         stopSignal,
+                        streamText: createBoundStreamText(
+                          promptRegistry,
+                          agentSystem,
+                          agentCacheControl,
+                          agentSystemProviderOptions
+                        ),
                       } as any);
                     }
 
@@ -6927,7 +9233,10 @@ function chatAgent<
                     // We call toUIMessageStream ourselves to attach onFinish for response capture.
                     // Pass originalMessages so the AI SDK reuses message IDs across turns
                     // (e.g. for tool approval continuations / HITL flows).
-                    if ((locals.get(chatPipeCountKey) ?? 0) === 0 && isUIMessageStreamable(runResult)) {
+                    if (
+                      (locals.get(chatPipeCountKey) ?? 0) === 0 &&
+                      isUIMessageStreamable(runResult)
+                    ) {
                       onFinishAttached = true;
                       const resolvedOptions = resolveUIMessageStreamOptions();
                       // For action turns, don't pass originalMessages: the response
@@ -6940,9 +9249,7 @@ function chatAgent<
                         // Pass originalMessages so the AI SDK reuses message IDs across
                         // turns (e.g. for tool approval continuations / HITL flows).
                         // Omit for action turns to force a fresh response ID.
-                        ...(isActionTurn
-                          ? {}
-                          : { originalMessages: accumulatedUIMessages }),
+                        ...(isActionTurn ? {} : { originalMessages: accumulatedUIMessages }),
                         // Always provide generateMessageId so the start chunk carries a
                         // messageId. Without this, the frontend and backend generate IDs
                         // independently and they won't match for ID-based dedup.
@@ -6955,11 +9262,15 @@ function chatAgent<
                           finishReason?: FinishReason;
                         }) => {
                           capturedResponseMessage = responseMessage as TUIMessage;
+                          capturedPartialResponse = responseMessage as TUIMessage;
                           capturedFinishReason = finishReason;
                           resolveOnFinish!();
                         },
                       });
-                      await pipeChat(uiStream, { signal: combinedSignal, spanName: "stream response" });
+                      await pipeChat(tapUIMessageChunks(uiStream, turnBufferedChunks), {
+                        signal: combinedSignal,
+                        spanName: "stream response",
+                      });
                     }
                   } catch (error) {
                     // Handle AbortError from streamText gracefully
@@ -6972,7 +9283,7 @@ function chatAgent<
                       throw error;
                     }
                   } finally {
-                    msgSub.off();
+                    msgSub?.off();
                   }
 
                   // Wait for onFinish to fire — on abort this may resolve slightly
@@ -6993,7 +9304,10 @@ function chatAgent<
                   // never reports final usage), which would block the turn loop
                   // from ever firing onTurnComplete / writeTurnComplete.
                   let turnUsage: LanguageModelUsage | undefined;
-                  if (runResult != null && typeof (runResult as any).totalUsage?.then === "function") {
+                  if (
+                    runResult != null &&
+                    typeof (runResult as any).totalUsage?.then === "function"
+                  ) {
                     try {
                       turnUsage = (await Promise.race([
                         (runResult as any).totalUsage,
@@ -7044,7 +9358,25 @@ function chatAgent<
                   if (runOverride) {
                     locals.set(chatOverrideMessagesKey, undefined);
                     accumulatedUIMessages = [...runOverride] as TUIMessage[];
-                    accumulatedMessages = await toModelMessages(runOverride);
+                    /**
+                     * Steers the drain consumed are left out of the rebuild and
+                     * appended by the reconciliation below instead, so the lane
+                     * gets the form the model actually received rather than a
+                     * reconversion of the UI message, and gets it once. A steer
+                     * the edit removed is dropped from the pending list too, so
+                     * the edit is honoured.
+                     */
+                    const overrideIds = new Set(runOverride.map((m) => m.id));
+                    const pending = (locals.get(chatPendingSteerKey) ?? []).filter((e) =>
+                      overrideIds.has(e.ui.id)
+                    );
+                    locals.set(chatPendingSteerKey, pending);
+                    const pendingIds = new Set(pending.map((e) => e.ui.id));
+                    accumulatedMessages = await toModelMessages(
+                      runOverride.filter((m) => !pendingIds.has(m.id))
+                    );
+                    laneCompacted = false;
+                    laneInjections = [];
                     locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                   }
 
@@ -7070,6 +9402,8 @@ function chatAgent<
                     accumulatedMessages = taskCompactionConfig?.compactModelMessages
                       ? await taskCompactionConfig.compactModelMessages(compactEvent)
                       : modelOnlyOverride;
+                    laneCompacted = true;
+                    laneInjections = [];
 
                     // Apply UI messages: callback or default (preserve all)
                     if (taskCompactionConfig?.compactUIMessages) {
@@ -7082,10 +9416,22 @@ function chatAgent<
                   // Determine if the user stopped generation this turn (not a full run cancel).
                   const wasStopped = stopController.signal.aborted && !runSignal.aborted;
 
+                  // Give the model accumulator the steering messages the drain
+                  // consumed. Appended, never reconverted from the UI lane, so a
+                  // model-only compaction summary set just above survives; and done
+                  // before the response is appended so the order stays
+                  // steer-then-answer. Outside the `capturedResponseMessage`
+                  // branches below, so a turn that captured no response is covered.
+                  const steerTailThisTurn =
+                    reconcilePendingSteer({
+                      turnNew: turnNewModelMessages,
+                    }).reduce((n, e) => n + e.model.length, 0) + reconcilePendingBackground();
+
                   // Append the assistant's response (partial or complete) to the accumulator.
                   // The onFinish callback fires even on abort/stop, so partial responses
                   // from stopped generation are captured correctly.
                   let rawResponseMessage: TUIMessage | undefined;
+                  let responseWasSkipped = false;
                   if (capturedResponseMessage) {
                     // Keep the raw message before cleanup for users who want custom handling
                     rawResponseMessage = capturedResponseMessage;
@@ -7097,7 +9443,10 @@ function chatAgent<
                     // may produce a message with an empty ID since IDs are normally
                     // assigned by the frontend's useChat).
                     if (!capturedResponseMessage.id) {
-                      capturedResponseMessage = { ...capturedResponseMessage, id: generateMessageId() };
+                      capturedResponseMessage = {
+                        ...capturedResponseMessage,
+                        id: generateMessageId(),
+                      };
                     }
                     // Append any non-transient data parts queued via chat.response or writer.write()
                     const queuedParts = locals.get(chatResponsePartsKey);
@@ -7108,42 +9457,65 @@ function chatAgent<
                       } as TUIMessage;
                       locals.set(chatResponsePartsKey, []);
                     }
-                    // Tool-approval continuations: the AI SDK reuses the trailing
-                    // assistant's ID (via originalMessages) so the captured response
-                    // carries the same ID as an existing message. Replace in place
-                    // instead of pushing a duplicate. For action turns this never
-                    // matches because originalMessages is omitted (fresh ID).
-                    const existingIdx = capturedResponseMessage.id
-                      ? accumulatedUIMessages.findIndex(
-                          (m) => m.id === capturedResponseMessage!.id
-                        )
-                      : -1;
-                    if (existingIdx !== -1) {
-                      accumulatedUIMessages[existingIdx] = capturedResponseMessage;
-                    } else {
-                      accumulatedUIMessages.push(capturedResponseMessage);
-                    }
-                    turnNewUIMessages.push(capturedResponseMessage);
-                    locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
-                    // Record toolCallId → head messageId so a HITL
-                    // continuation next turn can recover the head id
-                    // even if the AI SDK regenerates it. See
-                    // `chatToolCallToMessageIdKey` for the full
-                    // rationale (TRI-9137).
-                    recordToolCallIdsFromMessage(capturedResponseMessage);
-                    try {
-                      const responseModelMessages = await toModelMessages([
-                        stripProviderMetadata(capturedResponseMessage),
-                      ]);
+                    const responseHasContent = capturedResponseMessage.parts.some(
+                      (part) => part.type !== "step-start"
+                    );
+                    if (responseHasContent) {
+                      // Tool-approval continuations: the AI SDK reuses the trailing
+                      // assistant's ID (via originalMessages) so the captured response
+                      // carries the same ID as an existing message. Replace in place
+                      // instead of pushing a duplicate. For action turns this never
+                      // matches because originalMessages is omitted (fresh ID).
+                      const existingIdx = capturedResponseMessage.id
+                        ? accumulatedUIMessages.findIndex(
+                            (m) => m.id === capturedResponseMessage!.id
+                          )
+                        : -1;
+                      const previousAtIdx =
+                        existingIdx !== -1 ? accumulatedUIMessages[existingIdx] : undefined;
                       if (existingIdx !== -1) {
-                        // Reconvert all model messages since we replaced rather than appended
-                        accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+                        accumulatedUIMessages[existingIdx] = capturedResponseMessage;
                       } else {
-                        accumulatedMessages.push(...responseModelMessages);
+                        accumulatedUIMessages.push(capturedResponseMessage);
                       }
-                      turnNewModelMessages.push(...responseModelMessages);
-                    } catch {
-                      // Conversion failed — skip accumulation for this turn
+                      turnNewUIMessages.push(capturedResponseMessage);
+                      locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+                      // Record toolCallId → head messageId so a HITL
+                      // continuation next turn can recover the head id
+                      // even if the AI SDK regenerates it. See
+                      // `chatToolCallToMessageIdKey` for the full
+                      // rationale (TRI-9137).
+                      recordToolCallIdsFromMessage(capturedResponseMessage);
+                      try {
+                        const responseModelMessages = await toModelMessages([
+                          stripProviderMetadata(capturedResponseMessage),
+                        ]);
+                        if (existingIdx !== -1) {
+                          const ok =
+                            previousAtIdx !== undefined &&
+                            (await replaceModelRun(
+                              accumulatedMessages,
+                              previousAtIdx,
+                              capturedResponseMessage,
+                              steerTailThisTurn
+                            ));
+                          if (!ok) {
+                            logger.warn(
+                              "chat.agent: replaced response not found at the model lane tail; reconverting the lane"
+                            );
+                            accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+                            laneCompacted = false;
+                            laneInjections = [];
+                          }
+                        } else {
+                          accumulatedMessages.push(...responseModelMessages);
+                        }
+                        turnNewModelMessages.push(...responseModelMessages);
+                      } catch {
+                        // Conversion failed — skip accumulation for this turn
+                      }
+                    } else {
+                      responseWasSkipped = true;
                     }
                   }
                   // If there's no captured response (manual pipe mode) but there are
@@ -7161,6 +9533,12 @@ function chatAgent<
                       turnNewUIMessages.push(capturedResponseMessage);
                       locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                     }
+                  }
+
+                  if (capturedResponseMessage) {
+                    responseCommitted = true;
+                    capturedPartialResponse = capturedResponseMessage;
+                    turnBufferedChunks.length = 0;
                   }
 
                   if (runSignal.aborted) return "exit";
@@ -7239,16 +9617,19 @@ function chatAgent<
                               accumulatedMessages = outerCompaction.compactModelMessages
                                 ? await outerCompaction.compactModelMessages(outerCompactEvent)
                                 : [
-                                  {
-                                    role: "assistant" as const,
-                                    content: [
-                                      {
-                                        type: "text" as const,
-                                        text: `[Conversation summary]\n\n${summary}`,
-                                      },
-                                    ],
-                                  },
-                                ];
+                                    {
+                                      role: "assistant" as const,
+                                      content: [
+                                        {
+                                          type: "text" as const,
+                                          text: `[Conversation summary]\n\n${summary}`,
+                                        },
+                                      ],
+                                    },
+                                  ];
+
+                              laneCompacted = true;
+                              laneInjections = [];
 
                               // UI messages: callback or default (preserve all)
                               if (outerCompaction.compactUIMessages) {
@@ -7276,7 +9657,10 @@ function chatAgent<
                                 });
                               }
 
-                              compactionSpan.setAttribute("compaction.summary_length", summary.length);
+                              compactionSpan.setAttribute(
+                                "compaction.summary_length",
+                                summary.length
+                              );
 
                               write({
                                 type: "data-compaction",
@@ -7351,6 +9735,8 @@ function chatAgent<
                           locals.set(chatOverrideMessagesKey, undefined);
                           accumulatedUIMessages = [...override] as TUIMessage[];
                           accumulatedMessages = await toModelMessages(override);
+                          laneCompacted = false;
+                          laneInjections = [];
                           locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                           // Update event so onTurnComplete sees compacted messages
                           turnCompleteEvent.messages = accumulatedMessages;
@@ -7371,7 +9757,9 @@ function chatAgent<
                   // Drain any late response parts added during onBeforeTurnComplete
                   const lateParts = locals.get(chatResponsePartsKey);
                   if (lateParts && lateParts.length > 0 && capturedResponseMessage) {
-                    const idx = accumulatedUIMessages.findIndex((m) => m.id === capturedResponseMessage!.id);
+                    const idx = accumulatedUIMessages.findIndex(
+                      (m) => m.id === capturedResponseMessage!.id
+                    );
                     if (idx !== -1) {
                       const msg = accumulatedUIMessages[idx]!;
                       accumulatedUIMessages[idx] = {
@@ -7379,11 +9767,26 @@ function chatAgent<
                         parts: [...(msg.parts ?? []), ...lateParts],
                       } as TUIMessage;
                       capturedResponseMessage = accumulatedUIMessages[idx] as TUIMessage;
+                      capturedPartialResponse = capturedResponseMessage;
                       turnCompleteEvent.responseMessage = capturedResponseMessage;
                       turnCompleteEvent.uiMessages = accumulatedUIMessages;
+                      locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+                    } else if (responseWasSkipped) {
+                      capturedResponseMessage = {
+                        ...capturedResponseMessage,
+                        parts: [...(capturedResponseMessage.parts ?? []), ...lateParts],
+                      } as TUIMessage;
+                      accumulatedUIMessages.push(capturedResponseMessage);
+                      turnNewUIMessages.push(capturedResponseMessage);
+                      capturedPartialResponse = capturedResponseMessage;
+                      turnCompleteEvent.responseMessage = capturedResponseMessage;
+                      turnCompleteEvent.uiMessages = accumulatedUIMessages;
+                      locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                     }
                     locals.set(chatResponsePartsKey, []);
                   }
+
+                  settleRecoveredTurn(currentWirePayload);
 
                   // Write turn-complete control chunk — closes the frontend stream.
                   const turnCompleteResult = await writeTurnCompleteChunk(
@@ -7407,6 +9810,8 @@ function chatAgent<
                           locals.set(chatOverrideMessagesKey, undefined);
                           accumulatedUIMessages = [...turnCompleteOverride] as TUIMessage[];
                           accumulatedMessages = await toModelMessages(turnCompleteOverride);
+                          laneCompacted = false;
+                          laneInjections = [];
                           locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                         }
                       },
@@ -7433,7 +9838,9 @@ function chatAgent<
                             ? { "gen_ai.usage.total_tokens": turnUsage.totalTokens }
                             : {}),
                           ...(cumulativeUsage.totalTokens != null
-                            ? { "gen_ai.usage.cumulative_total_tokens": cumulativeUsage.totalTokens }
+                            ? {
+                                "gen_ai.usage.cumulative_total_tokens": cumulativeUsage.totalTokens,
+                              }
                             : {}),
                         },
                       }
@@ -7463,16 +9870,18 @@ function chatAgent<
                       await tracer.startActiveSpan(
                         "snapshot.write",
                         async () => {
-                          const snapshotInCursor =
-                            getChatSession().in.lastDispatchedSeqNum();
-                          await writeChatSnapshot<TUIMessage>(sessionIdForSnapshot, {
-                            version: 1,
-                            savedAt: Date.now(),
+                          lastSnapshotOutEventId =
+                            turnCompleteResult?.lastEventId ?? lastSnapshotOutEventId;
+                          await saveTranscript({
+                            reason: "turn-complete",
                             messages: accumulatedUIMessages,
-                            lastOutEventId: turnCompleteResult?.lastEventId,
-                            lastInEventId:
-                              snapshotInCursor !== undefined
-                                ? String(snapshotInCursor)
+                            turn,
+                            trigger: storageTrigger(currentWirePayload.trigger),
+                            clientData,
+                            lastOutEventId: lastSnapshotOutEventId,
+                            nonFinalIds:
+                              wasStopped && capturedResponseMessage?.id
+                                ? new Set([capturedResponseMessage.id])
                                 : undefined,
                           });
                         },
@@ -7496,54 +9905,51 @@ function chatAgent<
                       );
                     }
                   }
+                } // end if (!isAction)
 
-                  } // end if (!isAction)
+                // NOTE: We intentionally do NOT await deferred work from onTurnComplete here.
+                // Promises deferred in onTurnComplete (e.g. background self-review via
+                // chat.defer + chat.inject) run during the idle wait. If they complete
+                // before the next message, their injected context is picked up in prepareStep.
+                // The pre-onBeforeTurnComplete drain handles promises from onTurnStart/run().
 
-                  // NOTE: We intentionally do NOT await deferred work from onTurnComplete here.
-                  // Promises deferred in onTurnComplete (e.g. background self-review via
-                  // chat.defer + chat.inject) run during the idle wait. If they complete
-                  // before the next message, their injected context is picked up in prepareStep.
-                  // The pre-onBeforeTurnComplete drain handles promises from onTurnStart/run().
+                // Recovery-boot injection: drain remaining recovered turns
+                // before any other source. `onRecoveryBoot` (or its default)
+                // produced these from in-flight user messages on session.in
+                // that the dead predecessor never acknowledged.
+                if (bootInjectedQueue.length > 0) {
+                  currentWirePayload = dispatchBootInjected();
+                  return "continue";
+                }
 
-                  // Recovery-boot injection: drain remaining recovered turns
-                  // before any other source. `onRecoveryBoot` (or its default)
-                  // produced these from in-flight user messages on session.in
-                  // that the dead predecessor never acknowledged.
-                  if (bootInjectedQueue.length > 0) {
-                    currentWirePayload = bootInjectedQueue.shift()!;
-                    return "continue";
+                // chat.requestUpgrade() was called — exit the loop; the handover
+                // has already triggered a new run on the latest version.
+                // chat.endRun() — same exit, no upgrade semantics.
+                if (locals.get(chatCloseRequestedKey)) {
+                  await performChatClose();
+                  return "exit";
+                }
+
+                if (locals.get(chatUpgradeRequestedKey) || locals.get(chatEndRunRequestedKey)) {
+                  if (locals.get(chatUpgradeRequestedKey)) {
+                    await persistUpgradeHandoff();
                   }
+                  return "exit";
+                }
 
-                  // If messages arrived during streaming (without pendingMessages config),
-                  // use the first one immediately as the next turn.
-                  if (pendingMessages.length > 0) {
-                    currentWirePayload = pendingMessages[0]!;
-                    return "continue";
-                  }
+                // Wait for the next message — stay idle briefly, then suspend
+                const effectiveIdleTimeout =
+                  (metadata.get(IDLE_TIMEOUT_METADATA_KEY) as number | undefined) ??
+                  idleTimeoutInSeconds;
+                const effectiveTurnTimeout =
+                  (metadata.get(TURN_TIMEOUT_METADATA_KEY) as string | undefined) ?? turnTimeout;
 
-                  // chat.requestUpgrade() was called — exit the loop so the
-                  // transport triggers a new run on the latest version.
-                  // chat.endRun() — same exit, no upgrade semantics.
-                  if (
-                    locals.get(chatUpgradeRequestedKey) ||
-                    locals.get(chatEndRunRequestedKey)
-                  ) {
-                    return "exit";
-                  }
-
-                  // Wait for the next message — stay idle briefly, then suspend
-                  const effectiveIdleTimeout =
-                    (metadata.get(IDLE_TIMEOUT_METADATA_KEY) as number | undefined) ??
-                    idleTimeoutInSeconds;
-                  const effectiveTurnTimeout =
-                    (metadata.get(TURN_TIMEOUT_METADATA_KEY) as string | undefined) ?? turnTimeout;
-
-                  const next = await messagesInput.waitWithIdleTimeout({
-                    idleTimeoutInSeconds: effectiveIdleTimeout,
-                    timeout: effectiveTurnTimeout,
-                    spanName: "waiting for next message",
-                    onSuspend: onChatSuspend
-                      ? async () => {
+                const next = await messagesInput.waitWithIdleTimeout({
+                  idleTimeoutInSeconds: effectiveIdleTimeout,
+                  timeout: effectiveTurnTimeout,
+                  spanName: "next message",
+                  onSuspend: onChatSuspend
+                    ? async () => {
                         await tracer.startActiveSpan(
                           "onChatSuspend()",
                           async () => {
@@ -7569,9 +9975,9 @@ function chatAgent<
                           }
                         );
                       }
-                      : undefined,
-                    onResume: onChatResume
-                      ? async () => {
+                    : undefined,
+                  onResume: onChatResume
+                    ? async () => {
                         await tracer.startActiveSpan(
                           "onChatResume()",
                           async () => {
@@ -7597,204 +10003,384 @@ function chatAgent<
                           }
                         );
                       }
-                      : undefined,
-                  });
-
-                  if (!next.ok) {
-                    return "exit";
-                  }
-
-                  currentWirePayload = next.output as ChatTaskWirePayload<
-                    TUIMessage,
-                    inferSchemaIn<TClientDataSchema>
-                  >;
-
-                  // Close signal — exit the loop gracefully
-                  if (currentWirePayload.trigger === "close") {
-                    return "exit";
-                  }
-
-                  return "continue";
-                },
-                {
-                  attributes: turnAttributes,
-                }
-              );
-
-              if (turnResult === "exit") return;
-              // "continue" means proceed to next iteration
-            } catch (turnError) {
-              // Turn error handler: write an error chunk + turn-complete to the stream
-              // so the client sees the error, then wait for the next message instead
-              // of killing the entire run. This keeps the conversation alive.
-              if (turnError instanceof Error && turnError.name === "AbortError" && runSignal.aborted) {
-                // Full run cancellation — exit immediately
-                throw turnError;
-              }
-
-              // OOM errors must escape the turn loop so the task runtime can
-              // honor `retry.outOfMemory.machine` (set on chat.agent via
-              // `oomMachine`). Catching them here would keep the dead worker
-              // alive and defeat the machine swap. Re-throw and let the
-              // runtime dispatch the retry on a larger machine; recovery on
-              // attempt 2 picks up via the standard continuation path
-              // (same chatId / Session, accumulator rehydrates).
-              if (turnError instanceof OutOfMemoryError) {
-                throw turnError;
-              }
-
-              let errorTurnCompleteResult: Awaited<
-                ReturnType<typeof writeTurnCompleteChunk>
-              > | undefined;
-              try {
-                await withChatWriter(async (writer) => {
-                  const errorText =
-                    turnError instanceof Error ? turnError.message : "An unexpected error occurred";
-                  writer.write({ type: "error", errorText } as any);
+                    : undefined,
                 });
-                // Signal turn complete so the client knows this turn is done
-                errorTurnCompleteResult = await writeTurnCompleteChunk(currentWirePayload.chatId);
-              } catch {
-                // Best-effort — if stream write fails, let the run continue anyway
-              }
 
-              // The submit-message merge into the accumulator may not have run
-              // yet (a pre-run hook threw), so fold the wire message in for the
-              // error event + snapshot — the cursor has already advanced past it,
-              // so otherwise it survives in neither the snapshot nor the `.in` tail.
-              const erroredWireMessage = (currentWirePayload as { message?: TUIMessage }).message;
-              const erroredUIMessages =
-                erroredWireMessage &&
-                !accumulatedUIMessages.some((m) => m.id === erroredWireMessage.id)
-                  ? [...accumulatedUIMessages, erroredWireMessage]
-                  : accumulatedUIMessages;
-
-              // Fire onTurnComplete on the error path too — the docs promise it
-              // runs "after every turn, successful or errored" so customers can
-              // mark the turn failed. `responseMessage` is undefined/partial and
-              // `error` carries the thrown value.
-              if (onTurnComplete) {
-                try {
-                  await tracer.startActiveSpan(
-                    "onTurnComplete()",
-                    async () => {
-                      await onTurnComplete({
-                        ctx,
-                        chatId: currentWirePayload.chatId,
-                        messages: accumulatedMessages,
-                        uiMessages: erroredUIMessages,
-                        newMessages: [],
-                        newUIMessages: erroredWireMessage ? [erroredWireMessage] : [],
-                        responseMessage: undefined,
-                        rawResponseMessage: undefined,
-                        turn,
-                        runId: ctx.run.id,
-                        chatAccessToken: "",
-                        // Parsed `clientData` isn't reliably in scope here (parsing
-                        // may itself be the failure), and the raw metadata is the
-                        // wrong shape — leave it undefined on the error path.
-                        clientData: undefined,
-                        stopped: false,
-                        continuation,
-                        previousRunId,
-                        preloaded,
-                        totalUsage: cumulativeUsage,
-                        finishReason: "error",
-                        error: turnError,
-                        lastEventId: errorTurnCompleteResult?.lastEventId,
-                      });
-                    },
-                    {
-                      attributes: {
-                        [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
-                        [SemanticInternalAttributes.COLLAPSED]: true,
-                        "chat.id": currentWirePayload.chatId,
-                        "chat.turn": turn + 1,
-                        "chat.errored": true,
-                      },
-                    }
-                  );
-                } catch {
-                  // A throwing onTurnComplete on the error path must not crash
-                  // the run — keep the conversation alive for the next message.
+                if (!next.ok) {
+                  return "exit";
                 }
-              }
 
-              // Persist a snapshot so the failed turn's user message isn't
-              // stranded. `writeTurnCompleteChunk` already advanced the `.in`
-              // cursor past it (via the session-in-event-id header), and the
-              // success-path snapshot write is skipped on error — without this
-              // the next boot would resume past a message that exists in
-              // neither the snapshot nor the replayable `.in` tail.
-              if (!hydrateMessages) {
-                try {
-                  const errorSnapshotInCursor =
-                    getChatSession().in.lastDispatchedSeqNum();
-                  await writeChatSnapshot<TUIMessage>(sessionIdForSnapshot, {
-                    version: 1,
-                    savedAt: Date.now(),
-                    messages: erroredUIMessages,
-                    lastOutEventId: errorTurnCompleteResult?.lastEventId,
-                    lastInEventId:
-                      errorSnapshotInCursor !== undefined
-                        ? String(errorSnapshotInCursor)
-                        : undefined,
-                  });
-                } catch (error) {
-                  logger.warn("chat.agent: error-path snapshot write failed", {
-                    error: error instanceof Error ? error.message : String(error),
-                    sessionId: sessionIdForSnapshot,
-                  });
+                currentWirePayload = next.output as ChatTaskWirePayload<
+                  TUIMessage,
+                  inferSchemaIn<TClientDataSchema>
+                >;
+
+                // Close signal — exit the loop gracefully
+                if (currentWirePayload.trigger === "close") {
+                  return "exit";
                 }
+
+                return "continue";
+              },
+              {
+                attributes: turnAttributes,
               }
+            );
 
-              // chat.requestUpgrade() / chat.endRun() — exit after error turn too
-              if (
-                locals.get(chatUpgradeRequestedKey) ||
-                locals.get(chatEndRunRequestedKey)
-              ) {
-                return;
-              }
-
-              // Drain remaining recovered turns before idling — a thrown
-              // recovered turn shouldn't strand the rest of the boot queue
-              // until an unrelated live message arrives.
-              if (bootInjectedQueue.length > 0) {
-                currentWirePayload = bootInjectedQueue.shift()!;
-                continue;
-              }
-
-              // Wait for the next message — same as after a successful turn
-              const effectiveIdleTimeout =
-                (metadata.get(IDLE_TIMEOUT_METADATA_KEY) as number | undefined) ??
-                idleTimeoutInSeconds;
-              const effectiveTurnTimeout =
-                (metadata.get(TURN_TIMEOUT_METADATA_KEY) as string | undefined) ?? turnTimeout;
-
-              const next = await messagesInput.waitWithIdleTimeout({
-                idleTimeoutInSeconds: effectiveIdleTimeout,
-                timeout: effectiveTurnTimeout,
-                spanName: "waiting for next message (after error)",
-              });
-
-              if (!next.ok) {
-                return; // Timed out — end run gracefully
-              }
-
-              currentWirePayload = next.output as ChatTaskWirePayload<
-                TUIMessage,
-                inferSchemaIn<TClientDataSchema>
-              >;
-              // Continue to next iteration of the for loop
+            if (turnResult === "exit") return;
+            // "continue" means proceed to next iteration
+          } catch (turnError) {
+            // Turn error handler: write an error chunk + turn-complete to the stream
+            // so the client sees the error, then wait for the next message instead
+            // of killing the entire run. This keeps the conversation alive.
+            // Detach the turn's message handler first — left attached it would
+            // eat the very message the wait below is waiting for.
+            turnMsgSub?.off();
+            if (
+              turnError instanceof Error &&
+              turnError.name === "AbortError" &&
+              runSignal.aborted
+            ) {
+              // Full run cancellation — exit immediately
+              throw turnError;
             }
+
+            // OOM errors must escape the turn loop so the task runtime can
+            // honor `retry.outOfMemory.machine` (set on chat.agent via
+            // `oomMachine`). Catching them here would keep the dead worker
+            // alive and defeat the machine swap. Re-throw and let the
+            // runtime dispatch the retry on a larger machine; recovery on
+            // attempt 2 picks up via the standard continuation path
+            // (same chatId / Session, accumulator rehydrates).
+            if (turnError instanceof OutOfMemoryError) {
+              throw turnError;
+            }
+
+            let errorTurnCompleteResult:
+              | Awaited<ReturnType<typeof writeTurnCompleteChunk>>
+              | undefined;
+            try {
+              await withChatWriter(async (writer) => {
+                const errorText =
+                  turnError instanceof Error && turnError.message
+                    ? turnError.message
+                    : "An unexpected error occurred";
+                writer.write({ type: "error", errorText } as any);
+              });
+              // Signal turn complete so the client knows this turn is done
+              errorTurnCompleteResult = await writeTurnCompleteChunk(currentWirePayload.chatId);
+              // A later action's snapshot reuses this cursor, so it has to move
+              // here too or that snapshot resumes from before the failed turn.
+              lastSnapshotOutEventId =
+                errorTurnCompleteResult?.lastEventId ?? lastSnapshotOutEventId;
+            } catch {
+              // Best-effort — if stream write fails, let the run continue anyway
+            }
+
+            // The submit-message merge into the accumulator may not have run
+            // yet (a pre-run hook threw), so fold the wire message in for the
+            // error event + snapshot — the cursor has already advanced past it,
+            // so otherwise it survives in neither the snapshot nor the `.in` tail.
+            const erroredWireMessage = (currentWirePayload as { message?: TUIMessage }).message;
+            const erroredUIMessages =
+              erroredWireMessage &&
+              !accumulatedUIMessages.some((m) => m.id === erroredWireMessage.id)
+                ? [...accumulatedUIMessages, erroredWireMessage]
+                : accumulatedUIMessages;
+
+            let partialResponse: TUIMessage | undefined =
+              capturedPartialResponse ??
+              ((await assemblePartialFromChunks(turnBufferedChunks)) as TUIMessage | undefined);
+            if (partialResponse) {
+              partialResponse = cleanupAbortedParts(partialResponse);
+            }
+
+            let partialIdx = partialResponse?.id
+              ? erroredUIMessages.findIndex((m) => m.id === partialResponse!.id)
+              : -1;
+            if (partialResponse && capturedPartialResponse === undefined && partialIdx !== -1) {
+              partialResponse = undefined;
+              partialIdx = -1;
+            }
+            if (partialResponse && !partialResponse.id) {
+              partialResponse = { ...partialResponse, id: generateMessageId() } as TUIMessage;
+            }
+            if (partialResponse && !responseCommitted) {
+              const queuedParts = locals.get(chatResponsePartsKey);
+              if (queuedParts && queuedParts.length > 0) {
+                partialResponse = {
+                  ...partialResponse,
+                  parts: [...partialResponse.parts, ...(queuedParts as UIMessage["parts"])],
+                } as TUIMessage;
+                locals.set(chatResponsePartsKey, []);
+              }
+            }
+            const includePartial = partialResponse != null && !responseCommitted;
+            // What the stream left behind, by content. After `onTurnComplete` the
+            // partial is still unfinished only if the message under its id is
+            // byte-for-byte this: a clone keeps it partial, an edit finishes it.
+            const partialFingerprint =
+              includePartial && partialResponse ? fingerprintMessage(partialResponse) : undefined;
+            let erroredUIMessagesWithPartial: TUIMessage[] = !includePartial
+              ? erroredUIMessages
+              : partialIdx === -1
+                ? [...erroredUIMessages, partialResponse!]
+                : (erroredUIMessages.map((m, i) =>
+                    i === partialIdx ? partialResponse! : m
+                  ) as TUIMessage[]);
+
+            /**
+             * Seeded from the per-turn list, not just the wire message and the
+             * partial, so a steering message the drain consumed is reported too.
+             * An app persisting from `newUIMessages` would otherwise lose the
+             * instruction whenever the turn it steered went on to fail.
+             */
+            const buildErroredNew = (): TUIMessage[] => {
+              const out: TUIMessage[] = [];
+              const addUnique = (m?: TUIMessage) => {
+                if (m && !out.some((existing) => existing.id === m.id)) out.push(m);
+              };
+              addUnique(erroredWireMessage);
+              for (const m of (locals.get(chatTurnNewUIMessagesKey) ?? []) as TUIMessage[]) {
+                addUnique(m);
+              }
+              if (includePartial) addUnique(partialResponse!);
+              return out;
+            };
+
+            let erroredNewUIMessages: TUIMessage[] = buildErroredNew();
+
+            let erroredNewModelMessages: ModelMessage[] = [];
+
+            const reconciledSteer = reconcilePendingSteer();
+            const backgroundTailThisTurn = reconcilePendingBackground();
+
+            if (!responseCommitted) {
+              try {
+                if (erroredNewUIMessages.length > 0) {
+                  /**
+                   * Built in order from the recorded forms rather than by
+                   * converting the UI list, so a steer appears in the delta as
+                   * the model received it (what `prepare` produced), matching the
+                   * lane. The wire message and partial are converted as before.
+                   */
+                  const steerModelById = new Map(
+                    reconciledSteer.map((e) => [e.ui.id, e.model] as const)
+                  );
+                  for (const m of erroredNewUIMessages) {
+                    const recorded = steerModelById.get(m.id);
+                    if (recorded) erroredNewModelMessages.push(...recorded);
+                    else
+                      erroredNewModelMessages.push(
+                        ...(await toModelMessages([stripProviderMetadata(m)]))
+                      );
+                  }
+                }
+                if (erroredUIMessagesWithPartial !== accumulatedUIMessages) {
+                  if (partialIdx === -1) {
+                    const appended = erroredUIMessagesWithPartial.slice(
+                      accumulatedUIMessages.length
+                    );
+                    accumulatedMessages.push(
+                      ...(await toModelMessages(appended.map((m) => stripProviderMetadata(m))))
+                    );
+                  } else {
+                    const ok = await replaceModelRun(
+                      accumulatedMessages,
+                      erroredUIMessages[partialIdx]!,
+                      partialResponse!,
+                      reconciledSteer.reduce((n, e) => n + e.model.length, 0) +
+                        backgroundTailThisTurn
+                    );
+                    if (!ok) {
+                      logger.warn(
+                        "chat.agent: replaced partial not found at the model lane tail; reconverting the lane"
+                      );
+                      accumulatedMessages = await toModelMessages(erroredUIMessagesWithPartial);
+                      laneCompacted = false;
+                      laneInjections = [];
+                    }
+                  }
+                  accumulatedUIMessages = erroredUIMessagesWithPartial;
+                  locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+                }
+              } catch {
+                erroredNewModelMessages = [];
+                erroredUIMessagesWithPartial = erroredUIMessages;
+                erroredNewUIMessages = buildErroredNew().filter((m) => m !== partialResponse);
+              }
+            }
+
+            // An earlier hook that set the history and then threw (which is one way
+            // to get here) left its abandoned edit pending. Discard it before the
+            // failed turn continues, so neither the error-path `onTurnComplete`
+            // below nor the next turn's history reads mistake it for a real edit.
+            locals.set(chatOverrideMessagesKey, undefined);
+
+            if (onTurnComplete) {
+              try {
+                await tracer.startActiveSpan(
+                  "onTurnComplete()",
+                  async () => {
+                    await onTurnComplete({
+                      ctx,
+                      chatId: currentWirePayload.chatId,
+                      messages: accumulatedMessages,
+                      uiMessages: erroredUIMessagesWithPartial,
+                      newMessages: erroredNewModelMessages,
+                      newUIMessages: erroredNewUIMessages,
+                      responseMessage: partialResponse,
+                      rawResponseMessage: partialResponse,
+                      turn,
+                      runId: ctx.run.id,
+                      chatAccessToken: "",
+                      // Parsed `clientData` isn't reliably in scope here (parsing
+                      // may itself be the failure), and the raw metadata is the
+                      // wrong shape — leave it undefined on the error path.
+                      clientData: undefined,
+                      stopped: false,
+                      continuation,
+                      previousRunId,
+                      preloaded,
+                      totalUsage: cumulativeUsage,
+                      finishReason: "error",
+                      error: turnError,
+                      lastEventId: errorTurnCompleteResult?.lastEventId,
+                    });
+
+                    // The hook may edit the history here too (a failure record, a
+                    // card the turn left open). Honour it the way the success path
+                    // does, so the edit reaches the accumulator and the save below.
+                    const errorTurnOverride = locals.get(chatOverrideMessagesKey);
+                    if (errorTurnOverride) {
+                      locals.set(chatOverrideMessagesKey, undefined);
+                      // Convert first: a rejected conversion (a tool's `toModelOutput`
+                      // can throw) must leave every lane on the history it had.
+                      const overrideUIMessages = [...errorTurnOverride] as TUIMessage[];
+                      const overrideModelMessages = await toModelMessages(errorTurnOverride);
+                      erroredUIMessagesWithPartial = overrideUIMessages;
+                      accumulatedUIMessages = overrideUIMessages;
+                      accumulatedMessages = overrideModelMessages;
+                      laneCompacted = false;
+                      laneInjections = [];
+                      locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+                    }
+                  },
+                  {
+                    attributes: {
+                      [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
+                      [SemanticInternalAttributes.COLLAPSED]: true,
+                      "chat.id": currentWirePayload.chatId,
+                      "chat.turn": turn + 1,
+                      "chat.errored": true,
+                    },
+                  }
+                );
+              } catch {
+                // A throwing onTurnComplete on the error path must not crash
+                // the run — keep the conversation alive for the next message.
+                locals.set(chatOverrideMessagesKey, undefined);
+              }
+            }
+
+            // Persist a snapshot so the failed turn's user message isn't
+            // stranded. `writeTurnCompleteChunk` already advanced the `.in`
+            // cursor past it (via the session-in-event-id header), and the
+            // success-path snapshot write is skipped on error — without this
+            // the next boot would resume past a message that exists in
+            // neither the snapshot nor the replayable `.in` tail.
+            if (!hydrateMessages) {
+              try {
+                await saveTranscript({
+                  reason: "turn-error",
+                  messages: erroredUIMessagesWithPartial,
+                  turn,
+                  trigger: storageTrigger(currentWirePayload.trigger),
+                  clientData: turnClientData,
+                  lastOutEventId: lastSnapshotOutEventId,
+                  // The partial is non-final only while the message under its id is
+                  // still what the stream left behind. A hook that replaced it (a
+                  // closed card, a finished body) produced a final message.
+                  nonFinalIds: partialStillUnfinished(
+                    partialResponse,
+                    partialFingerprint,
+                    erroredUIMessagesWithPartial
+                  ),
+                });
+              } catch (error) {
+                logger.warn("chat.agent: error-path snapshot write failed", {
+                  error: error instanceof Error ? error.message : String(error),
+                  sessionId: sessionIdForSnapshot,
+                });
+              }
+            }
+
+            if (locals.get(chatCloseRequestedKey)) {
+              await performChatClose();
+              return;
+            }
+
+            // chat.requestUpgrade() / chat.endRun() — exit after error turn too
+            if (locals.get(chatUpgradeRequestedKey) || locals.get(chatEndRunRequestedKey)) {
+              if (locals.get(chatUpgradeRequestedKey)) {
+                await persistUpgradeHandoff();
+              }
+              return;
+            }
+
+            // Drain remaining recovered turns before idling — a thrown
+            // recovered turn shouldn't strand the rest of the boot queue
+            // until an unrelated live message arrives.
+            if (bootInjectedQueue.length > 0) {
+              currentWirePayload = dispatchBootInjected();
+              continue;
+            }
+
+            // Wait for the next message — same as after a successful turn
+            const effectiveIdleTimeout =
+              (metadata.get(IDLE_TIMEOUT_METADATA_KEY) as number | undefined) ??
+              idleTimeoutInSeconds;
+            const effectiveTurnTimeout =
+              (metadata.get(TURN_TIMEOUT_METADATA_KEY) as string | undefined) ?? turnTimeout;
+
+            const next = await messagesInput.waitWithIdleTimeout({
+              idleTimeoutInSeconds: effectiveIdleTimeout,
+              timeout: effectiveTurnTimeout,
+              spanName: "next message (after error)",
+            });
+
+            if (!next.ok) {
+              return; // Timed out — end run gracefully
+            }
+
+            currentWirePayload = next.output as ChatTaskWirePayload<
+              TUIMessage,
+              inferSchemaIn<TClientDataSchema>
+            >;
+
+            // Same close check the success path makes. Without it a close
+            // record that lands after a failed turn is consumed as if it were
+            // a turn payload, and the loop runs on against a closed session.
+            if (currentWirePayload.trigger === "close") {
+              return;
+            }
+            // Continue to next iteration of the for loop
+          } finally {
+            turnMsgSub?.off();
           }
-        } finally {
-          // `stopSub` is registered post-preload so the close-during-preload
-          // early-return path may exit before it ever attached. Guard the
-          // cleanup so a missing subscription doesn't throw.
-          stopSub?.off();
         }
-    }
+      } finally {
+        // Safety net for a close requested on a path that exits without
+        // reaching one of the loop's close checks (a turn timeout, an OOM
+        // re-throw). `performChatClose` is idempotent, so the ordinary path
+        // having already run it costs nothing here.
+        await performChatClose();
+        // `stopSub` is registered post-preload so the close-during-preload
+        // early-return path may exit before it ever attached. Guard the
+        // cleanup so a missing subscription doesn't throw.
+        stopSub?.off();
+      }
+    },
   });
 
   // Register clientDataSchema so the CLI converts it to JSONSchema
@@ -7848,9 +10434,29 @@ export interface ChatBuilder<
     config?: ChatWithUIMessageConfig<TUIM>
   ): ChatBuilder<TUIM, TClientDataSchema>;
 
-  /** Fix the client data schema. Returns a new builder preserving all accumulated state. */
+  /**
+   * Fix the client data schema, and how validation failures are handled.
+   * Returns a new builder preserving all accumulated state.
+   */
   withClientData<TSchema extends TaskSchema>(config: {
     schema: TSchema;
+    /**
+     * When a frame that arrived mid-turn fails validation, decides when the
+     * client-visible error is written.
+     *
+     * `"turn-end"` (default) waits for the turn to close, so a bad send cannot
+     * truncate an answer already being read. `"arrival"` writes it as soon as
+     * validation fails, ending the response in progress.
+     *
+     * `onValidationError` and the task log fire on arrival either way, and the
+     * frame is never delivered as a turn.
+     */
+    reportErrorAt?: "turn-end" | "arrival";
+    /** Called when an input fails validation. Composes with the task-level hook. */
+    onValidationError?: (event: {
+      error: unknown;
+      payload: ChatTaskWirePayload<TUIMessage, unknown>;
+    }) => Promise<void> | void;
   }): ChatBuilder<TUIMessage, TSchema>;
 
   /** Register a builder-level `onBoot` hook. Runs before the task-level hook if both are set. */
@@ -7890,7 +10496,9 @@ export interface ChatBuilder<
   ): ChatBuilder<TUIMessage, TClientDataSchema>;
 
   /** Register a builder-level `onCompacted` hook. Runs before the task-level hook if both are set. */
-  onCompacted(fn: (event: CompactedEvent) => Promise<void> | void): ChatBuilder<TUIMessage, TClientDataSchema>;
+  onCompacted(
+    fn: (event: CompactedEvent) => Promise<void> | void
+  ): ChatBuilder<TUIMessage, TClientDataSchema>;
 
   /** Register a builder-level `onChatSuspend` hook. Runs before the task-level hook if both are set. */
   onChatSuspend(
@@ -7914,12 +10522,24 @@ export interface ChatBuilder<
    * (backwards compatible).
    */
   agent: [TClientDataSchema] extends [undefined]
-  ? <TId extends string, TInfer extends TaskSchema | undefined = undefined, TAction extends TaskSchema | undefined = undefined, TTools extends ToolSet = ToolSet>(
-    options: ChatAgentOptions<TId, TInfer, TUIMessage, TAction, TTools>
-  ) => Task<TId, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TInfer>>, unknown>
-  : <TId extends string, TAction extends TaskSchema | undefined = undefined, TTools extends ToolSet = ToolSet>(
-    options: Omit<ChatAgentOptions<TId, TClientDataSchema, TUIMessage, TAction, TTools>, "clientDataSchema">
-  ) => Task<TId, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>, unknown>;
+    ? <
+        TId extends string,
+        TInfer extends TaskSchema | undefined = undefined,
+        TAction extends TaskSchema | undefined = undefined,
+        TTools extends ToolSet = ToolSet,
+      >(
+        options: ChatAgentOptions<TId, TInfer, TUIMessage, TAction, TTools>
+      ) => Task<TId, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TInfer>>, unknown>
+    : <
+        TId extends string,
+        TAction extends TaskSchema | undefined = undefined,
+        TTools extends ToolSet = ToolSet,
+      >(
+        options: Omit<
+          ChatAgentOptions<TId, TClientDataSchema, TUIMessage, TAction, TTools>,
+          "clientDataSchema"
+        >
+      ) => Task<TId, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>, unknown>;
 
   /**
    * Create a custom agent with manual lifecycle control.
@@ -7936,7 +10556,10 @@ export interface ChatBuilder<
         options: ChatCustomAgentOptions<TId, undefined, TUIMessage>
       ) => Task<TId, ChatTaskWirePayload<TUIMessage, undefined>, unknown>
     : <TId extends string>(
-        options: ChatCustomAgentOptions<TId, TClientDataSchema, TUIMessage>
+        options: Omit<
+          ChatCustomAgentOptions<TId, TClientDataSchema, TUIMessage>,
+          "clientDataSchema"
+        >
       ) => Task<TId, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>, unknown>;
 }
 
@@ -7957,6 +10580,8 @@ type ChatBuilderHooks = {
 type ChatBuilderConfig = {
   uiStreamOptions?: ChatUIMessageStreamOptions<any>;
   clientDataSchema?: TaskSchema;
+  clientDataReportErrorAt?: "turn-end" | "arrival";
+  clientDataOnValidationError?: ChatCustomAgentClientDataErrorHandler;
   hooks: ChatBuilderHooks;
 };
 
@@ -7984,16 +10609,21 @@ function createChatBuilder<
       });
     },
 
-    withClientData<TSchema extends TaskSchema>(cdConfig: { schema: TSchema }) {
+    withClientData<TSchema extends TaskSchema>(cdConfig: {
+      schema: TSchema;
+      reportErrorAt?: "turn-end" | "arrival";
+      onValidationError?: ChatCustomAgentClientDataErrorHandler;
+    }) {
       return createChatBuilder<TUIMessage, TSchema>({
         ...config,
         clientDataSchema: cdConfig.schema,
+        clientDataReportErrorAt: cdConfig.reportErrorAt ?? config.clientDataReportErrorAt,
+        clientDataOnValidationError:
+          cdConfig.onValidationError ?? config.clientDataOnValidationError,
       });
     },
 
-    onBoot(
-      fn: (event: BootEvent<inferSchemaOut<TClientDataSchema>>) => Promise<void> | void
-    ) {
+    onBoot(fn: (event: BootEvent<inferSchemaOut<TClientDataSchema>>) => Promise<void> | void) {
       return createChatBuilder<TUIMessage, TClientDataSchema>({
         ...config,
         hooks: { ...config.hooks, onBoot: fn },
@@ -8076,7 +10706,7 @@ function createChatBuilder<
       const mergedUiStream =
         config.uiStreamOptions && options.uiMessageStreamOptions
           ? { ...config.uiStreamOptions, ...options.uiMessageStreamOptions }
-          : options.uiMessageStreamOptions ?? config.uiStreamOptions;
+          : (options.uiMessageStreamOptions ?? config.uiStreamOptions);
 
       return chatAgent({
         ...options,
@@ -8102,6 +10732,13 @@ function createChatBuilder<
       return chatCustomAgent({
         ...options,
         ...(config.clientDataSchema ? { clientDataSchema: config.clientDataSchema } : {}),
+        ...(config.clientDataReportErrorAt
+          ? { clientDataReportErrorAt: config.clientDataReportErrorAt }
+          : {}),
+        onClientDataValidationError: composeHooks(
+          config.clientDataOnValidationError,
+          options.onClientDataValidationError
+        ),
       });
     },
   } as unknown as ChatBuilder<TUIMessage, TClientDataSchema>;
@@ -8157,9 +10794,13 @@ function withUIMessage<TUIM extends UIMessage = UIMessage>(
  */
 function withClientData<TSchema extends TaskSchema>(config: {
   schema: TSchema;
+  reportErrorAt?: "turn-end" | "arrival";
+  onValidationError?: ChatCustomAgentClientDataErrorHandler;
 }): ChatBuilder<UIMessage, TSchema> {
   return createChatBuilder<UIMessage, TSchema>({
     clientDataSchema: config.schema,
+    clientDataReportErrorAt: config.reportErrorAt,
+    clientDataOnValidationError: config.onValidationError,
     hooks: {},
   });
 }
@@ -8330,15 +10971,22 @@ function isStopped(): boolean {
 // ---------------------------------------------------------------------------
 
 /**
- * Request that the current run exits so the next message starts on the latest
- * deployed version (via the standard continuation mechanism).
+ * Hand the conversation over to another deployment.
+ *
+ * The handover happens immediately and server-side: a successor run is created
+ * and picks the conversation up from `session.in`. The transport keeps reading
+ * the same session output, so no client action is needed and nothing waits for
+ * the next message.
+ *
+ * Without a target the session's pin is cleared, so the successor lands on the
+ * latest deployed version; with `externalDeploymentId` the session is re-pinned
+ * to that deployment.
  *
  * When called from `onTurnStart` or `onValidateMessages`, `run()` is skipped
- * entirely — the run exits immediately and the transport re-triggers the
- * same message on the new version.
+ * entirely and the successor answers the message that opened the turn.
  *
  * When called from `run()` or `chat.defer()`, the current turn completes
- * normally and the run exits afterward instead of waiting for the next message.
+ * normally and the handover happens afterward.
  *
  * Call from `onTurnStart`, `onValidateMessages`, `onChatResume`, `run()`,
  * or inside `chat.defer()`.
@@ -8358,8 +11006,127 @@ function isStopped(): boolean {
  * });
  * ```
  */
-function requestUpgrade(): void {
+function requestUpgrade(options?: { externalDeploymentId?: string }): void {
   locals.set(chatUpgradeRequestedKey, true);
+
+  // Without a target the handoff clears the session's pin; with one it re-pins to that deployment.
+  const target = options?.externalDeploymentId?.trim();
+  if (target) locals.set(chatUpgradeExternalDeploymentIdKey, target);
+}
+
+/** @internal Requests a handoff when the session's pin no longer names this deployment. */
+async function followSessionPin(
+  chatId: string | undefined,
+  policy: ChatVersionSkewPolicy | undefined
+): Promise<void> {
+  if (!chatId) {
+    return;
+  }
+
+  const deployedExternalId = locals.get(chatAgentRunContextKey)?.deployment?.externalId;
+
+  if (policy !== "hold" && !deployedExternalId) {
+    logger.debug("chat.versionSkew: cannot follow the session pin", {
+      chatId,
+      reason: "the run context carries no deployment.externalId",
+    });
+  }
+
+  const target = await resolvePinToFollow({
+    policy,
+    deployedExternalId,
+    upgradeAlreadyRequested: locals.get(chatUpgradeRequestedKey) === true,
+    readPin: async () =>
+      (await sessions.retrieve(chatId, { retry: { maxAttempts: 2, randomize: true } }))
+        .triggerConfig,
+  });
+
+  if (!target) {
+    return;
+  }
+
+  logger.info("chat.versionSkew: following the session pin", { chatId, target });
+  requestUpgrade({ externalDeploymentId: target });
+}
+
+/**
+ * Hand off the current custom agent Session to a fresh run.
+ *
+ * This is the low-level handoff for a fully hand-rolled
+ * `chat.customAgent()` loop. This method rejects while a
+ * `chat.createSession()` iterator is active. Close the iterator before calling
+ * it. If `return()` races an active `next()`, it waits for that read to settle
+ * before releasing the handoff guard. Call only between turns and after
+ * detaching input listeners for the old run. If the old run completed its
+ * current turn, persist its state and call {@link chatWriteTurnComplete} before
+ * handing off.
+ * Do not write a new turn boundary after input that the continuation run should
+ * process has been dispatched: the boundary acknowledges that input.
+ *
+ * The server starts the continuation run but does not stop this run, so return
+ * from the task immediately after awaiting this function. The promise rejects
+ * if the server cannot complete the handoff.
+ *
+ * Pending Session input that the old run has not consumed remains on the
+ * durable `.in` stream and is delivered to the continuation run.
+ *
+ * @example
+ * ```ts
+ * // Detach any chat.messages.on() subscriptions you created.
+ * await persistMessages();
+ * await chat.writeTurnComplete();
+ * await chat.endAndContinue();
+ * return;
+ * ```
+ */
+async function endAndContinue(): Promise<void> {
+  if (locals.get(chatCustomAgentRunKey) !== true) {
+    throw new Error(
+      "chat.endAndContinue() can only be called from inside a chat.customAgent() run"
+    );
+  }
+  if ((locals.get(chatActiveSessionIteratorsKey) ?? 0) > 0) {
+    throw new Error(
+      "chat.endAndContinue() cannot be called while a chat.createSession() iterator is active. Close the iterator, then call chat.endAndContinue()."
+    );
+  }
+
+  await performEndAndContinue({ reason: "continuation" });
+}
+
+/** @internal Shared server handoff used by managed and custom agent loops. */
+async function performEndAndContinue(options: {
+  reason: "continuation" | "upgrade";
+  externalDeploymentId?: string;
+}): Promise<void> {
+  const chatId = locals.get(chatExternalIdKey);
+  const callingRunId = locals.get(chatAgentRunContextKey)?.run.id;
+
+  if (!chatId || !callingRunId) {
+    throw new Error("Cannot end and continue without an active chat agent run");
+  }
+
+  const externalDeploymentId = options.externalDeploymentId;
+  const apiClient = apiClientManager.clientOrThrow();
+  const result = await apiClient.endAndContinueSession(chatId, {
+    callingRunId,
+    reason: options.reason,
+    ...(externalDeploymentId ? { externalDeploymentId } : {}),
+  });
+
+  if (result?.pendingVersion !== true) {
+    return;
+  }
+
+  // The successor parked. Say so on `.out` while this run still can — the transport's
+  // subscription survives the swap, so the client learns without waiting for its next send.
+  const [error] = await tryCatch(
+    getChatSession().out.writeControl(TRIGGER_CONTROL_SUBTYPE.PENDING_VERSION)
+  );
+
+  if (error) {
+    logger.warn("could not signal a parked handoff", { chatId, error });
+  }
 }
 
 /**
@@ -8390,6 +11157,133 @@ function requestUpgrade(): void {
  */
 function endRun(): void {
   locals.set(chatEndRunRequestedKey, true);
+}
+
+/**
+ * End the whole conversation, permanently. The session row is closed, further
+ * appends are refused, and the run exits without scheduling a continuation.
+ *
+ * This is the session-level stop. {@link endRun} ends the current run and lets
+ * the next message start a fresh one; `chat.close()` ends the session itself,
+ * so there is no next message. Use it for a budget cap, a completed goal,
+ * abuse detection, or a user signing out.
+ *
+ * In a `chat.agent`, call it from `run()`, `prepareStep`, or
+ * `onBeforeTurnComplete`. Called mid-step, it aborts the in-flight
+ * `streamText` the same way the stop signal does, so the partial response is
+ * still captured and streamed. The turn then completes normally, a terminal
+ * `session-closed` record carrying `reason` is written to the response stream,
+ * and the loop exits.
+ *
+ * Prefer `onBeforeTurnComplete` over `onTurnComplete`. It carries the same
+ * fields but still runs while the stream is open, so the closed state rides
+ * out on the turn's final record. `onTurnComplete` runs after that record, so
+ * a close decided there does not reach a reader that has already finished the
+ * turn, and the user only finds out when their next message is refused.
+ *
+ * In a `chat.customAgent`, call it anywhere in your own loop. The close is
+ * performed when `run()` returns, so it lands whether you break out of a
+ * `chat.createSession` loop, return early, or hand-roll the loop entirely.
+ *
+ * Closing is one-way: a closed session cannot be reopened. Its transcript
+ * stays readable.
+ *
+ * @example
+ * ```ts
+ * chat.agent({
+ *   id: "budgeted-agent",
+ *   onBeforeTurnComplete: async ({ usage }) => {
+ *     if (await overBudget(usage)) {
+ *       chat.close({ reason: "Monthly budget reached" });
+ *     }
+ *   },
+ * });
+ * ```
+ */
+function close(options?: { reason?: string }): void {
+  if (!locals.get(chatExternalIdKey)) {
+    throw new Error(
+      "chat.close() can only be called from inside a chat.agent() or chat.customAgent() run"
+    );
+  }
+
+  // Bound the reason once, here. It goes out on S2 record headers as well as
+  // the close API, and an oversized value would fail the turn-complete write
+  // that carries the turn boundary, costing the client far more than the
+  // reason text.
+  // Trailing high surrogate: the cut landed between the two halves of an
+  // astral character, and encoding the orphan to UTF-8 for a record header
+  // yields a replacement character. Drop it rather than ship mojibake.
+  const reason = options?.reason
+    ?.slice(0, CHAT_CLOSE_REASON_MAX_LENGTH)
+    .replace(/[\uD800-\uDBFF]$/, "");
+  locals.set(chatCloseRequestedKey, reason ? { reason } : {});
+
+  // Mid-step call: unblock the in-flight streamText exactly like the stop
+  // signal, so the turn can reach its turn boundary instead of running the
+  // model out to completion after the decision to close has been made.
+  locals.get(chatStopControllerKey)?.abort(reason ?? "closed");
+}
+
+/**
+ * @internal Terminal close sequence, run once at whichever exit site observes
+ * the close request. Writes the standalone `session-closed` record, then closes
+ * the session row.
+ *
+ * The record lands after the turn's `turn-complete`, so a client reading that
+ * turn's stream has already terminated on it and will not see this one. It is
+ * there for a reconnect and for replay. What a live client reads is the
+ * `session-closed` header stamped onto `turn-complete` itself by
+ * `writeTurnCompleteChunk`, which fires whenever the close was decided before
+ * the turn ended. A close decided from `onTurnComplete` is past that point, so
+ * the client learns from the 409 on its next send.
+ */
+async function performChatClose(): Promise<void> {
+  const request = locals.get(chatCloseRequestedKey);
+  if (!request || locals.get(chatClosePerformedKey)) return;
+
+  const reason = request.reason;
+
+  // Two flags, not one. The record is a client-visible event and must not be
+  // written twice, but the row close is the part that actually ends the
+  // conversation: flagging it as done before it succeeds would let a transient
+  // failure leave the session open with no later call willing to retry.
+  if (!locals.get(chatCloseRecordWrittenKey)) {
+    locals.set(chatCloseRecordWrittenKey, true);
+    try {
+      const session = getChatSession();
+      await session.out.writeControl(
+        TRIGGER_CONTROL_SUBTYPE.SESSION_CLOSED,
+        reason ? [[SESSION_CLOSED_REASON_HEADER, reason]] : undefined
+      );
+    } catch (error) {
+      logger.warn("chat.close: failed to write the session-closed record", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  const chatId = locals.get(chatExternalIdKey);
+  if (!chatId) return;
+
+  try {
+    await sessions.close(chatId, {
+      ...(reason ? { reason } : {}),
+      ...(locals.get(chatAgentRunContextKey)?.run.id
+        ? { callingRunId: locals.get(chatAgentRunContextKey)!.run.id }
+        : {}),
+    });
+    locals.set(chatClosePerformedKey, true);
+  } catch (error) {
+    // Deliberately NOT flagged as performed: the close API is idempotent, so a
+    // later exit site on this run gets to retry it. Losing every retry to a
+    // transient failure would leave the row open and the conversation alive.
+    // Non-fatal either way — the run still exits.
+    logger.error("chat.close: failed to close the session", {
+      chatId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -8456,9 +11350,22 @@ function chatDefer(promiseOrFn: Promise<unknown> | (() => Promise<unknown>)): vo
  * ```
  */
 function injectBackgroundContext(messages: ModelMessage[]): void {
-  const queue = locals.get(chatBackgroundQueueKey) ?? [];
-  queue.push(...messages);
-  locals.set(chatBackgroundQueueKey, queue);
+  const systemBlocks = messages.filter(
+    (message): message is SystemModelMessage => message.role === "system"
+  );
+  const conversational = messages.filter((message) => message.role !== "system");
+
+  if (systemBlocks.length > 0) {
+    const instructions = locals.get(chatInjectedInstructionsKey) ?? [];
+    instructions.push(...systemBlocks);
+    locals.set(chatInjectedInstructionsKey, instructions);
+  }
+
+  if (conversational.length > 0) {
+    const queue = locals.get(chatBackgroundQueueKey) ?? [];
+    queue.push(...conversational);
+    locals.set(chatBackgroundQueueKey, queue);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -8579,14 +11486,139 @@ function createStopSignal(): {
  * The `TriggerChatTransport` intercepts this to close the ReadableStream
  * for the current turn. Call after piping the response stream.
  *
+ * Returns two resume cursors for the turn boundary, both saveable from the
+ * task instead of round-tripping them back from the client:
+ * - `lastEventId` — the turn-complete control record's seq_num on
+ *   `session.out`; where the next turn's output stream resumes.
+ * - `sessionInEventId` — the safe-to-resume-from cursor on `session.in` as of
+ *   this turn-complete. It is the highest sequence that can be resumed past
+ *   without skipping an unhandled message, so it is held back behind any
+ *   message still buffered unconsumed and is NOT necessarily the sequence of
+ *   the record this turn answered. Trigger owns input-cursor recovery, so this
+ *   is for correlation / out-of-sync detection, not required. Treat it as a
+ *   lower bound: a value below the record you just handled is expected, not a
+ *   sign of a lost turn.
+ *
+ * Either is `undefined` when the corresponding cursor isn't available.
+ *
  * @example
  * ```ts
  * await chat.pipe(result);
- * await chat.writeTurnComplete();
+ * const { lastEventId, sessionInEventId } = await chat.writeTurnComplete();
+ * await db.chats.update(chatId, { lastEventId, sessionInEventId });
  * ```
  */
-async function chatWriteTurnComplete(options?: { publicAccessToken?: string }): Promise<void> {
-  await writeTurnCompleteChunk(undefined, options?.publicAccessToken);
+async function chatWriteTurnComplete(options?: {
+  publicAccessToken?: string;
+}): Promise<{ lastEventId?: string; sessionInEventId?: string }> {
+  await flushDeferredChatCustomAgentClientDataErrors();
+  const result = await writeTurnCompleteChunk(undefined, options?.publicAccessToken);
+  // Same cursor written to the `session-in-event-id` header inside
+  // `writeTurnCompleteChunk`; surfaced here so the caller can persist it.
+  const inCursor = chatInputRouter().resumeFloor();
+  return {
+    lastEventId: result?.lastEventId,
+    ...(inCursor !== undefined ? { sessionInEventId: String(inCursor) } : {}),
+  };
+}
+
+/**
+ * Writes the client-data errors held back by the default `"turn-end"` timing.
+ *
+ * Ordered before the turn-complete chunk, matching the error-then-turn-complete
+ * shape the submitted-turn and async-read paths already write.
+ */
+async function flushDeferredChatCustomAgentClientDataErrors(): Promise<void> {
+  const deferred = locals.get(chatCustomAgentDeferredClientDataErrorsKey);
+  if (!deferred || deferred.length === 0) return;
+  locals.set(chatCustomAgentDeferredClientDataErrorsKey, []);
+  for (const payload of deferred) {
+    try {
+      await writeChatCustomAgentClientDataErrorToStream(payload);
+    } catch {
+      /* non-fatal */
+    }
+  }
+}
+
+/**
+ * The outcome of a turn's stream, reported by {@link pipeChatAndCapture}.
+ *
+ * - `complete` — the stream finished on its own.
+ * - `aborted` — the stream was stopped via the `signal` (user stop / cancel).
+ * - `error` — the stream threw; `error` carries what was thrown.
+ *
+ * `message` holds whatever the assistant produced and is present for every
+ * status — including `aborted` and `error` — as long as any output streamed
+ * before the stop or failure, so partial responses are never lost.
+ */
+export type PipeAndCaptureResult = {
+  /** The captured assistant message, or `undefined` if nothing streamed. */
+  message: UIMessage | undefined;
+  /** Coarse outcome of the stream. */
+  status: "complete" | "aborted" | "error";
+  /** The AI SDK finish reason, when the stream reported one. */
+  finishReason?: FinishReason;
+  /** What the stream threw, present only when `status === "error"`. */
+  error?: unknown;
+};
+
+/**
+ * Pass every chunk through untouched while recording it in `buffer`. Handles
+ * both the `AsyncIterable` and `ReadableStream` shapes `toUIMessageStream()`
+ * can return, and propagates a source error to the consumer after buffering
+ * whatever streamed first. See {@link pipeChatAndCapture} for why.
+ */
+function tapUIMessageChunks(
+  source: AsyncIterable<unknown> | ReadableStream<unknown>,
+  buffer: UIMessageChunk[]
+): ReadableStream<unknown> | AsyncGenerator<unknown> {
+  if (isReadableStream(source)) {
+    return source.pipeThrough(
+      new TransformStream<unknown, unknown>({
+        transform(chunk, controller) {
+          buffer.push(chunk as UIMessageChunk);
+          controller.enqueue(chunk);
+        },
+      })
+    );
+  }
+  return (async function* () {
+    for await (const chunk of source) {
+      buffer.push(chunk as UIMessageChunk);
+      yield chunk;
+    }
+  })();
+}
+
+/**
+ * Reconstruct a partial assistant `UIMessage` from the raw chunks that
+ * streamed before a failure — the fallback for {@link pipeChatAndCapture}
+ * when a transport error abandons the stream before `onFinish` runs. Uses the
+ * same `readUIMessageStream` reducer as the boot-time replay path. Returns
+ * `undefined` if there's nothing to assemble or the reducer throws.
+ */
+async function assemblePartialFromChunks(chunks: UIMessageChunk[]): Promise<UIMessage | undefined> {
+  const relevant = chunks.filter((c) => {
+    const type = (c as { type?: unknown }).type;
+    return typeof type === "string" && !type.startsWith("trigger:");
+  });
+  if (relevant.length === 0) return undefined;
+  try {
+    const stream = new ReadableStream<UIMessageChunk>({
+      start(controller) {
+        for (const chunk of relevant) controller.enqueue(chunk);
+        controller.close();
+      },
+    });
+    let last: UIMessage | undefined;
+    for await (const message of readUIMessageStream({ stream })) {
+      last = message;
+    }
+    return last;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -8594,40 +11626,104 @@ async function chatWriteTurnComplete(options?: { publicAccessToken?: string }): 
  * the assistant's response message via `onFinish`.
  *
  * Combines `toUIMessageStream()` + `onFinish` callback + `chat.pipe()`.
- * Returns the captured `UIMessage`, or `undefined` if capture failed.
+ * Never throws on a stopped or failed stream: it returns a
+ * {@link PipeAndCaptureResult} whose `message` holds any partial output
+ * captured before the stop/failure, alongside a typed `status` (and `error`
+ * on failure). Save the partial after a stop or error without separate
+ * capture logic.
  *
  * @example
  * ```ts
  * const result = streamText({ model, messages, abortSignal: signal });
- * const response = await chat.pipeAndCapture(result, { signal });
- * if (response) conversation.addResponse(response);
+ * const { message, status, error } = await chat.pipeAndCapture(result, { signal });
+ * if (message) conversation.addResponse(message);
+ * if (status === "error") logger.error("turn failed", { error });
  * ```
  */
 async function pipeChatAndCapture(
   source: UIMessageStreamable,
-  options?: { signal?: AbortSignal; spanName?: string }
-): Promise<UIMessage | undefined> {
+  options?: { signal?: AbortSignal; spanName?: string; originalMessages?: UIMessage[] }
+): Promise<PipeAndCaptureResult> {
   let captured: UIMessage | undefined;
+  let capturedFinishReason: FinishReason | undefined;
   let resolveOnFinish: () => void;
   const onFinishPromise = new Promise<void>((r) => {
     resolveOnFinish = r;
   });
 
+  const resolvedOptions = resolveUIMessageStreamOptions();
   const uiStream = source.toUIMessageStream({
-    ...resolveUIMessageStreamOptions(),
-    onFinish: ({ responseMessage }: { responseMessage: UIMessage }) => {
+    ...resolvedOptions,
+    // Thread the prior chain (incl. a spliced handover partial) so a resumed
+    // tool round's tool-output chunks merge into the originating tool-call
+    // instead of throwing "No tool invocation found".
+    ...(options?.originalMessages ? { originalMessages: options.originalMessages } : {}),
+    // Stamp a server-generated id on the start chunk, same as chat.agent's
+    // pipe. Without it the AI SDK regenerates the assistant id when a
+    // prepareStep injection (steering) starts a new step mid-stream, and
+    // the frontend replaces the partial message — wiping the
+    // pre-injection text from the UI and the captured response.
+    generateMessageId: resolvedOptions.generateMessageId ?? generateMessageId,
+    onFinish: ({
+      responseMessage,
+      finishReason,
+    }: {
+      responseMessage: UIMessage;
+      finishReason?: FinishReason;
+    }) => {
       captured = responseMessage;
+      capturedFinishReason = finishReason;
       resolveOnFinish!();
     },
   });
 
-  await pipeChat(uiStream, {
-    signal: options?.signal,
-    spanName: options?.spanName ?? "stream response",
-  });
-  await onFinishPromise;
+  // Buffer chunks as they flow to the pipe so a transport failure that
+  // abandons the UI stream before `onFinish` fires — the one termination path
+  // that skips `onFinish` — can still reconstruct the partial. This retains
+  // chunk references only; the reassembly runs solely in the failure fallback
+  // below, so the happy path pays nothing extra.
+  const bufferedChunks: UIMessageChunk[] = [];
+  const tappedStream = tapUIMessageChunks(uiStream, bufferedChunks);
 
-  return captured;
+  let status: PipeAndCaptureResult["status"] = "complete";
+  let error: unknown;
+  try {
+    await pipeChat(tappedStream, {
+      signal: options?.signal,
+      spanName: options?.spanName ?? "stream response",
+    });
+    // The pipe can drain cleanly on a stop — the source stream just ends
+    // early — so classify by the signal rather than relying on a throw.
+    if (options?.signal?.aborted) {
+      status = "aborted";
+    }
+  } catch (err) {
+    if ((err instanceof Error && err.name === "AbortError") || options?.signal?.aborted) {
+      status = "aborted";
+    } else {
+      status = "error";
+      error = err;
+    }
+  }
+
+  // `onFinish` fires even on abort, carrying the partial — but a hard stop can
+  // prevent it from firing at all, so race it against a timeout to avoid
+  // hanging the caller. Mirrors chat.agent's capture path.
+  await Promise.race([onFinishPromise, new Promise<void>((r) => setTimeout(r, 2_000))]);
+
+  // A transport failure can abandon the UI stream before `onFinish` fires, so
+  // reconstruct the partial from the buffered chunks rather than losing output
+  // that already streamed. Only runs when `onFinish` produced nothing.
+  if (!captured && bufferedChunks.length > 0) {
+    captured = await assemblePartialFromChunks(bufferedChunks);
+  }
+
+  return {
+    message: captured,
+    status,
+    finishReason: capturedFinishReason,
+    ...(error !== undefined ? { error } : {}),
+  };
 }
 
 /**
@@ -8643,8 +11739,8 @@ async function pipeChatAndCapture(
  * for (let turn = 0; turn < 100; turn++) {
  *   const messages = await conversation.addIncoming(payload.messages, payload.trigger, turn);
  *   const result = streamText({ model, messages });
- *   const response = await chat.pipeAndCapture(result);
- *   if (response) await conversation.addResponse(response);
+ *   const { message } = await chat.pipeAndCapture(result);
+ *   if (message) await conversation.addResponse(message);
  * }
  * ```
  */
@@ -8694,9 +11790,77 @@ class ChatMessageAccumulator {
     this.modelMessages = await toModelMessages(uiMessages);
   }
 
+  /**
+   * Splice a `chat.headStart` handover partial into the accumulator (the warm
+   * step-1 response). Dedups by `messageId` so a seeded/hydrated history that
+   * already carries the partial isn't doubled. Seed any prior history first
+   * (e.g. `setMessages(payload.headStartMessages)`). Low-level — see
+   * `consumeHandover` for the wait+seed+apply convenience.
+   */
+  applyHandover(signal: { partialAssistantMessage: ModelMessage[]; messageId?: string }): void {
+    spliceHandoverPartial(this.modelMessages, this.uiMessages, signal);
+  }
+
+  /**
+   * One-call `chat.headStart` handover for a custom-agent loop: waits for the
+   * handover signal, seeds prior history from `payload.headStartMessages`,
+   * applies the warm step-1 partial, and reports what to do next.
+   *
+   * Returns `{ isFinal, skipped }`:
+   * - `skipped: true` — not a `handover-prepare` run, the wait idled out, or the
+   *   warm handler aborted. Exit the run without a turn.
+   * - `isFinal: true` — step 1 IS the response (pure text). Write turn-complete
+   *   and continue; do not call `streamText`.
+   * - `isFinal: false` — fall through to `streamText`, which runs the pending
+   *   tool round handed over from step 1.
+   */
+  async consumeHandover(options: {
+    payload: {
+      trigger?: string;
+      idleTimeoutInSeconds?: number;
+      headStartMessages?: UIMessage[];
+    };
+    idleTimeoutInSeconds?: number;
+    timeout?: string;
+  }): Promise<{ isFinal: boolean; skipped: boolean }> {
+    const signal = await waitForHandover({
+      payload: options.payload,
+      idleTimeoutInSeconds: options.idleTimeoutInSeconds,
+      timeout: options.timeout,
+    });
+    if (!signal || signal.kind === "handover-skip") {
+      return { isFinal: false, skipped: true };
+    }
+    if (options.payload.headStartMessages && options.payload.headStartMessages.length > 0) {
+      await this.setMessages(options.payload.headStartMessages);
+    }
+    this.applyHandover(signal);
+    return { isFinal: signal.isFinal, skipped: false };
+  }
+
   async addResponse(response: UIMessage): Promise<void> {
     if (!response.id) {
       response = { ...response, id: generateMessageId() };
+    }
+    // Tool-approval and handover-resume continuations reuse the trailing
+    // assistant's ID (via originalMessages on the pipe), so the captured
+    // response can carry the same ID as a message already in the chain
+    // (e.g. a spliced handover partial). Replace in place instead of pushing
+    // a duplicate, mirroring the chat.agent accumulator.
+    const existingIdx = this.uiMessages.findIndex((m) => m.id === response.id);
+    if (existingIdx !== -1) {
+      const previous = this.uiMessages[existingIdx]!;
+      this.uiMessages[existingIdx] = response;
+      try {
+        if (!(await replaceModelRun(this.modelMessages, previous, response, 0))) {
+          this.modelMessages = await toModelMessages(
+            this.uiMessages.map((m) => stripProviderMetadata(m))
+          );
+        }
+      } catch {
+        // Conversion failed — leave the existing model messages in place
+      }
+      return;
     }
     this.uiMessages.push(response);
     try {
@@ -8729,6 +11893,30 @@ class ChatMessageAccumulator {
   }
 
   /**
+   * Record the messages a steering drain consumed.
+   *
+   * The drain only puts them in this step's prompt, so without this they
+   * shape one answer and then exist in neither lane: not in `uiMessages`,
+   * which is what an app persists from, and not in `modelMessages`, which is
+   * what every later turn sends.
+   *
+   * Both lanes are appended to. The model lane is never reconverted from the
+   * UI lane, because `compactIfNeeded` replaces it with a summary and leaves
+   * the UI lane whole: a reconversion would restore everything the summary
+   * replaced.
+   */
+  async absorbSteering(claimed: UIMessage[], injected?: ModelMessage[]): Promise<void> {
+    const fresh = claimed.filter((m) => !this.uiMessages.some((e) => e.id === m.id));
+    if (fresh.length === 0) return;
+    this.uiMessages.push(...fresh);
+    // Record what the model received. Only when the whole batch is new is
+    // `injected` known to describe exactly these messages.
+    this.modelMessages.push(
+      ...(injected && fresh.length === claimed.length ? injected : await toModelMessages(fresh))
+    );
+  }
+
+  /**
    * Get and clear unconsumed steering messages.
    */
   drainSteering(): UIMessage[] {
@@ -8743,9 +11931,9 @@ class ChatMessageAccumulator {
    */
   prepareStep():
     | ((args: {
-      messages: ModelMessage[];
-      steps: CompactionStep[];
-    }) => Promise<{ messages: ModelMessage[] } | undefined>)
+        messages: ModelMessage[];
+        steps: CompactionStep[];
+      }) => Promise<{ messages: ModelMessage[] } | undefined>)
     | undefined {
     if (!this._compaction && !this._pendingMessages) return undefined;
     const comp = this._compaction;
@@ -8768,7 +11956,13 @@ class ChatMessageAccumulator {
 
       // 2. Pending message injection
       if (pm && queue.length > 0) {
-        const injected = await drainSteeringQueue(pm, resultMessages ?? messages, steps, queue);
+        const { injected, claimed } = await drainSteeringQueue(
+          pm,
+          resultMessages ?? messages,
+          steps,
+          queue
+        );
+        await this.absorbSteering(claimed, injected);
         if (injected.length > 0) {
           resultMessages = [...(resultMessages ?? messages), ...injected];
         }
@@ -8834,11 +12028,11 @@ class ChatMessageAccumulator {
     this.modelMessages = this._compaction.compactModelMessages
       ? await this._compaction.compactModelMessages(compactEvent)
       : [
-        {
-          role: "assistant" as const,
-          content: [{ type: "text" as const, text: `[Conversation summary]\n\n${summary}` }],
-        },
-      ];
+          {
+            role: "assistant" as const,
+            content: [{ type: "text" as const, text: `[Conversation summary]\n\n${summary}` }],
+          },
+        ];
 
     if (this._compaction.compactUIMessages) {
       this.uiMessages = await this._compaction.compactUIMessages(compactEvent);
@@ -8861,13 +12055,18 @@ export type ChatSessionOptions = {
   timeout?: string;
   /** Max turns before ending. @default 100 */
   maxTurns?: number;
+  /**
+   * What to do when the session's `externalDeploymentId` no longer names this deployment.
+   * `"follow"` (default) hands over at the next turn boundary; `"hold"` stays put.
+   */
+  versionSkew?: ChatVersionSkewPolicy;
   /** Automatic context compaction — same options as `chat.agent({ compaction })`. */
   compaction?: ChatAgentCompactionOptions;
   /** Configure mid-execution message injection — same options as `chat.agent({ pendingMessages })`. */
   pendingMessages?: PendingMessagesOptions;
 };
 
-export type ChatTurn = {
+export type ChatTurn<TClientData = unknown> = {
   /** Turn number (0-indexed). */
   number: number;
   /** Chat session ID. */
@@ -8875,7 +12074,7 @@ export type ChatTurn = {
   /** What triggered this turn. */
   trigger: string;
   /** Client data from the transport (`metadata` field on the wire payload). */
-  clientData: unknown;
+  clientData: TClientData;
   /** Full accumulated model messages — pass directly to `streamText`. */
   readonly messages: ModelMessage[];
   /** Full accumulated UI messages — use for persistence. */
@@ -8890,6 +12089,13 @@ export type ChatTurn = {
   previousTurnUsage?: LanguageModelUsage;
   /** Cumulative token usage across all completed turns so far. */
   totalUsage: LanguageModelUsage;
+  /**
+   * Set on the first turn of a `chat.headStart` handover; `null` otherwise.
+   * When `isFinal` is true the warm step-1 IS the response — call
+   * `turn.complete()` with no argument (don't call `streamText`). When false,
+   * call `streamText` as usual; it runs the handed-over tool round.
+   */
+  handover: { isFinal: boolean } | null;
 
   /**
    * Replace accumulated messages (for compaction). Takes UIMessages and
@@ -8901,8 +12107,11 @@ export type ChatTurn = {
   /**
    * Easy path: pipe stream, capture response, accumulate it,
    * clean up aborted parts if stopped, and write turn-complete chunk.
+   *
+   * Call with no argument on a head-start final turn (`turn.handover?.isFinal`)
+   * — the warm step-1 partial is already the response, so there's nothing to pipe.
    */
-  complete(source: UIMessageStreamable): Promise<UIMessage | undefined>;
+  complete(source?: UIMessageStreamable): Promise<UIMessage | undefined>;
 
   /**
    * Manual path: just write turn-complete chunk.
@@ -8923,11 +12132,103 @@ export type ChatTurn = {
    */
   prepareStep():
     | ((args: {
-      messages: ModelMessage[];
-      steps: CompactionStep[];
-    }) => Promise<{ messages: ModelMessage[] } | undefined>)
+        messages: ModelMessage[];
+        steps: CompactionStep[];
+      }) => Promise<{ messages: ModelMessage[] } | undefined>)
     | undefined;
 };
+
+function trackActiveChatSessionIterator<TTurn>(
+  iterator: AsyncIterator<TTurn>
+): AsyncIterator<TTurn> {
+  locals.set(chatActiveSessionIteratorsKey, (locals.get(chatActiveSessionIteratorsKey) ?? 0) + 1);
+  let active = true;
+  let closing = false;
+  let activeNextCalls = 0;
+  let closePromise: Promise<IteratorResult<TTurn>> | undefined;
+  const nextSettledWaiters = new Set<() => void>();
+
+  function finish() {
+    if (!active) return;
+    active = false;
+    const remaining = Math.max((locals.get(chatActiveSessionIteratorsKey) ?? 1) - 1, 0);
+    locals.set(chatActiveSessionIteratorsKey, remaining);
+  }
+
+  function settleNextCall() {
+    activeNextCalls = Math.max(activeNextCalls - 1, 0);
+    if (activeNextCalls > 0) return;
+
+    for (const resolve of nextSettledWaiters) {
+      resolve();
+    }
+    nextSettledWaiters.clear();
+  }
+
+  function waitForNextCalls(): Promise<void> {
+    if (activeNextCalls === 0) return Promise.resolve();
+    return new Promise((resolve) => nextSettledWaiters.add(resolve));
+  }
+
+  function closeIterator(): Promise<IteratorResult<TTurn>> {
+    closing = true;
+    if (!closePromise) {
+      closePromise = (async () => {
+        // A blocked next() can install a new message listener after it resumes.
+        // Let every started call settle, then make the inner cleanup final.
+        await waitForNextCalls();
+        try {
+          return iterator.return
+            ? await iterator.return()
+            : { done: true as const, value: undefined };
+        } finally {
+          finish();
+        }
+      })();
+    }
+    return closePromise;
+  }
+
+  return {
+    async next() {
+      if (closing) {
+        return { done: true as const, value: undefined };
+      }
+
+      activeNextCalls++;
+      let result: IteratorResult<TTurn>;
+      try {
+        result = await iterator.next();
+      } catch (error) {
+        settleNextCall();
+        try {
+          await closeIterator();
+        } catch {
+          // Preserve the original iterator error after best-effort cleanup.
+        }
+        throw error;
+      }
+
+      settleNextCall();
+      if (result.done) {
+        try {
+          await closeIterator();
+        } catch {
+          // The inner next() already ended cleanly; cleanup remains best-effort.
+        }
+      } else if (closing) {
+        // return() won the race. Do not expose a turn the caller has already
+        // abandoned; without a new turn-complete boundary its input remains
+        // replayable by the continuation run.
+        return { done: true as const, value: undefined };
+      }
+      return result;
+    },
+    return() {
+      return closeIterator();
+    },
+  };
+}
 
 /**
  * Create a chat session that yields turns as an async iterator.
@@ -8936,14 +12237,18 @@ export type ChatTurn = {
  * signaling, and idle/suspend between turns. You control: initialization,
  * model/tool selection, persistence, and any custom per-turn logic.
  *
+ * Call from inside a `chat.customAgent()` run — the wrapper binds the
+ * backing Session that the iterator's stop signal and message channels
+ * resolve to. (A plain `task()` does not bind it, so `createSession`
+ * would throw "session handle is not initialized".)
+ *
  * @example
  * ```ts
- * import { task } from "@trigger.dev/sdk";
  * import { chat, type ChatTaskWirePayload } from "@trigger.dev/sdk/ai";
  * import { streamText } from "ai";
  * import { openai } from "@ai-sdk/openai";
  *
- * export const myChat = task({
+ * export const myChat = chat.customAgent({
  *   id: "my-chat",
  *   run: async (payload: ChatTaskWirePayload, { signal }) => {
  *     const session = chat.createSession(payload, { signal });
@@ -8960,10 +12265,10 @@ export type ChatTurn = {
  * });
  * ```
  */
-function createChatSession(
-  payload: ChatTaskWirePayload,
+function createChatSession<TClientData = unknown>(
+  payload: ChatTaskWirePayload<UIMessage, TClientData>,
   options: ChatSessionOptions
-): AsyncIterable<ChatTurn> {
+): AsyncIterable<ChatTurn<TClientData>> {
   const {
     signal: runSignal,
     idleTimeoutInSeconds: sessionIdleTimeoutOpt,
@@ -8971,6 +12276,7 @@ function createChatSession(
     maxTurns = 100,
     compaction: sessionCompaction,
     pendingMessages: sessionPendingMessages,
+    versionSkew: sessionVersionSkew,
   } = options;
 
   const idleTimeoutInSeconds = sessionIdleTimeoutOpt ?? 30;
@@ -8979,14 +12285,58 @@ function createChatSession(
     [Symbol.asyncIterator]() {
       let currentPayload = payload;
       let turn = -1;
-      const stop = createStopSignal();
+      // Created on the first next() call, AFTER the resume-cursor seed —
+      // createStopSignal attaches the `.in` SSE tail, and attaching
+      // before the seed replays every record from seq 0 (the seed is a
+      // no-op when the chatCustomAgent wrapper already ran it).
+      let stop!: ReturnType<typeof createStopSignal>;
+      let booted = false;
       const accumulator = new ChatMessageAccumulator();
       let previousTurnUsage: LanguageModelUsage | undefined;
       let cumulativeUsage: LanguageModelUsage = emptyUsage();
+      // The current turn's message subscription — detached defensively at the
+      // top of next() in case user code threw without complete()/done().
+      let activeMsgSub: ChatMessageSubscription | undefined;
 
-      return {
-        async next(): Promise<IteratorResult<ChatTurn>> {
+      const iterator: AsyncIterator<ChatTurn<TClientData>> = {
+        async next(): Promise<IteratorResult<ChatTurn<TClientData>>> {
+          activeMsgSub?.off();
+          activeMsgSub = undefined;
+          if (!booted) {
+            booted = true;
+            await installChatInputRouter(currentPayload.chatId, {
+              resuming: Boolean(currentPayload.continuation),
+            });
+            stop = createStopSignal();
+          }
           turn++;
+
+          // Head-start handover: the server triggered this run with
+          // `trigger: "handover-prepare"` and signals the warm step-1 partial on
+          // `session.in`. Wait for it BEFORE any `messagesInput.waitWithIdleTimeout`
+          // (that facade consumes-and-discards non-message chunks and would swallow
+          // the signal). Turn-0 only — continuation boots never carry this trigger.
+          let handoverThisTurn: { isFinal: boolean } | null = null;
+          let pendingHandoverSignal: HandoverSignal | null = null;
+          if (turn === 0 && currentPayload.trigger === "handover-prepare") {
+            const signal = await waitForHandover({
+              payload: currentPayload,
+              idleTimeoutInSeconds:
+                sessionIdleTimeoutOpt ??
+                currentPayload.idleTimeoutInSeconds ??
+                idleTimeoutInSeconds,
+              timeout,
+            });
+            if (!signal || signal.kind === "handover-skip" || runSignal.aborted) {
+              stop.cleanup();
+              return { done: true, value: undefined };
+            }
+            pendingHandoverSignal = signal;
+            handoverThisTurn = { isFinal: signal.isFinal };
+            // Rewrite to a normal first-turn message turn so the rest of the loop
+            // (steering setup, addIncoming, turnObj) runs unchanged.
+            currentPayload = { ...currentPayload, trigger: "submit-message", message: undefined };
+          }
 
           // First turn: wait when the boot payload carries no message.
           // Preload boots wait for the first real message; continuation
@@ -8995,22 +12345,25 @@ function createChatSession(
           // a turn immediately would invoke the model with no user input.
           const isMessagelessContinuationBoot =
             currentPayload.continuation === true && !currentPayload.message;
-          if (turn === 0 && (currentPayload.trigger === "preload" || isMessagelessContinuationBoot)) {
+          if (
+            turn === 0 &&
+            (currentPayload.trigger === "preload" || isMessagelessContinuationBoot)
+          ) {
             const result = await messagesInput.waitWithIdleTimeout({
               idleTimeoutInSeconds:
                 sessionIdleTimeoutOpt ?? currentPayload.idleTimeoutInSeconds ?? 30,
               timeout,
               spanName:
                 currentPayload.trigger === "preload"
-                  ? "waiting for first message"
-                  : "waiting for first message (continuation)",
+                  ? "first message"
+                  : "first message (continuation)",
             });
             if (!result.ok || runSignal.aborted) {
               stop.cleanup();
               return { done: true, value: undefined };
             }
             const continuationBoot = isMessagelessContinuationBoot;
-            currentPayload = result.output;
+            currentPayload = result.output as ChatTaskWirePayload<UIMessage, TClientData>;
             // Preserve the continuation flag — the wire payload of the next
             // message doesn't carry it, and `turn.continuation` is how the
             // user knows to seed history (e.g. `turn.setMessages(stored)`).
@@ -9019,13 +12372,23 @@ function createChatSession(
             }
           }
 
-          // Subsequent turns: wait for the next message
+          /**
+           * Subsequent turns take the next message from the router. A record
+           * that arrived mid-turn is already queued there, so this returns it
+           * without suspending.
+           */
           if (turn > 0) {
+            if (locals.get(chatCloseRequestedKey)) {
+              await performChatClose();
+              stop.cleanup();
+              return { done: true, value: undefined };
+            }
+
             // chat.requestUpgrade() / chat.endRun() — exit before waiting
-            if (
-              locals.get(chatUpgradeRequestedKey) ||
-              locals.get(chatEndRunRequestedKey)
-            ) {
+            if (locals.get(chatUpgradeRequestedKey) || locals.get(chatEndRunRequestedKey)) {
+              if (locals.get(chatUpgradeRequestedKey)) {
+                await persistUpgradeHandoff();
+              }
               stop.cleanup();
               return { done: true, value: undefined };
             }
@@ -9033,13 +12396,18 @@ function createChatSession(
             const next = await messagesInput.waitWithIdleTimeout({
               idleTimeoutInSeconds,
               timeout,
-              spanName: "waiting for next message",
+              spanName: "next message",
             });
             if (!next.ok || runSignal.aborted) {
               stop.cleanup();
               return { done: true, value: undefined };
             }
-            currentPayload = next.output;
+            /**
+             * The facade validated `clientData` against the configured schema
+             * before returning, so the parsed shape is what arrives here. The
+             * cast carries that across the untyped wire payload boundary.
+             */
+            currentPayload = next.output as typeof currentPayload;
           }
 
           // Check limits
@@ -9067,36 +12435,54 @@ function createChatSession(
             clientData: currentPayload.metadata,
           });
 
-          // Listen for messages during streaming (steering + next-turn buffer)
-          const sessionPendingWire: ChatTaskWirePayload[] = [];
-          const sessionMsgSub = messagesInput.on(async (msg) => {
-            sessionPendingWire.push(msg);
-
-            if (sessionPendingMessages) {
-              // Slim wire: at most one delta message per record. Read
-              // `msg.message` directly — no array slicing needed.
-              const lastUIMessage = msg.message;
-              if (lastUIMessage) {
-                if (sessionPendingMessages.onReceived) {
-                  try {
-                    await sessionPendingMessages.onReceived({
-                      message: lastUIMessage,
-                      chatId: currentPayload.chatId,
-                      turn,
-                    });
-                  } catch {
-                    /* non-fatal */
-                  }
-                }
+          /**
+           * Only attached when there is a steering config to feed. Without one a
+           * mid-turn message stays queued on the router, which is what keeps the
+           * resume floor behind it.
+           */
+          const handleSteeringMessage = async (
+            msg: ChatTaskWirePayload,
+            seqNum: number | undefined,
+            isActive: () => boolean = () => true
+          ) => {
+            const lastUIMessage = msg.message;
+            if (lastUIMessage) {
+              if (sessionPendingMessages?.onReceived) {
                 try {
-                  const modelMsgs = await toModelMessages([lastUIMessage]);
-                  turnSteeringQueue.push({ uiMessage: lastUIMessage, modelMessages: modelMsgs });
+                  await sessionPendingMessages.onReceived({
+                    message: lastUIMessage,
+                    chatId: currentPayload.chatId,
+                    turn,
+                  });
                 } catch {
                   /* non-fatal */
                 }
               }
+              if (!isActive()) return;
+              try {
+                const modelMsgs = await toModelMessages([lastUIMessage]);
+                turnSteeringQueue.push({
+                  uiMessage: lastUIMessage,
+                  modelMessages: modelMsgs,
+                  seqNum,
+                });
+              } catch {
+                /* non-fatal */
+              }
             }
-          });
+          };
+
+          const sessionMsgSub: ChatMessageSubscription | undefined = sessionPendingMessages
+            ? locals.get(chatCustomAgentClientDataParserKey)
+              ? observeValidatedChatMessages((msg, seqNum, isActive) =>
+                  handleSteeringMessage(msg, seqNum, isActive)
+                )
+              : chatInputRouter().observe(CHAT_ROUTE_MESSAGES, (record) => {
+                  const msg = (record.data as Extract<ChatInputChunk, { kind: "message" }>).payload;
+                  void handleSteeringMessage(msg, record.seqNum);
+                })
+            : undefined;
+          activeMsgSub = sessionMsgSub;
 
           // Accumulate messages. Slim wire: pass the single delta message as
           // a 0-or-1-length array. The accumulator's behavior is unchanged —
@@ -9104,27 +12490,40 @@ function createChatSession(
           const incomingForAccumulator: UIMessage[] = currentPayload.message
             ? [currentPayload.message]
             : [];
-          const messages = await accumulator.addIncoming(
+          const _messages = await accumulator.addIncoming(
             incomingForAccumulator,
             currentPayload.trigger,
             turn
           );
 
+          // Apply the head-start handover AFTER addIncoming — turn-0 addIncoming
+          // replaces accumulator state, which would wipe a pre-applied splice.
+          // Seed prior history first, then splice the warm step-1 partial.
+          if (pendingHandoverSignal) {
+            const priorHistory = currentPayload.headStartMessages as UIMessage[] | undefined;
+            if (priorHistory && priorHistory.length > 0) {
+              await accumulator.setMessages(priorHistory);
+            }
+            accumulator.applyHandover(pendingHandoverSignal);
+          }
+
+          await followSessionPin(currentPayload.chatId, sessionVersionSkew);
+
           // chat.requestUpgrade() called before this turn — signal transport and exit
           if (locals.get(chatUpgradeRequestedKey)) {
             await writeUpgradeRequiredChunk();
-            sessionMsgSub.off();
+            sessionMsgSub?.off();
             stop.cleanup();
             return { done: true, value: undefined };
           }
 
           const combinedSignal = AbortSignal.any([runSignal, stop.signal]);
 
-          const turnObj: ChatTurn = {
+          const turnObj: ChatTurn<TClientData> = {
             number: turn,
             chatId: currentPayload.chatId,
             trigger: currentPayload.trigger,
-            clientData: currentPayload.metadata,
+            clientData: currentPayload.metadata as TClientData,
             get messages() {
               return accumulator.modelMessages;
             },
@@ -9138,27 +12537,67 @@ function createChatSession(
             continuation: currentPayload.continuation ?? false,
             previousTurnUsage,
             totalUsage: cumulativeUsage,
+            handover: handoverThisTurn,
 
             async setMessages(uiMessages: UIMessage[]) {
               await accumulator.setMessages(uiMessages);
             },
 
-            async complete(source: UIMessageStreamable) {
+            async complete(source?: UIMessageStreamable) {
+              // Head-start final turn: the warm step-1 partial is already spliced
+              // into the accumulator and IS the response — nothing to pipe. Only
+              // valid on a final handover; a missing source on any other turn is a
+              // mistake (it would silently finalize without an assistant response).
+              if (!source) {
+                if (!handoverThisTurn?.isFinal) {
+                  throw new Error(
+                    "turn.complete() requires a stream source unless turn.handover.isFinal is true"
+                  );
+                }
+                const response = accumulator.uiMessages.at(-1);
+                if (!response || response.role !== "assistant") {
+                  throw new Error("turn.complete() could not find the spliced handover response");
+                }
+                sessionMsgSub?.off();
+                await chatWriteTurnComplete();
+                return response;
+              }
               let response: UIMessage | undefined;
               try {
-                response = await pipeChatAndCapture(source, { signal: combinedSignal });
-              } catch (error) {
-                if (error instanceof Error && error.name === "AbortError") {
-                  if (runSignal.aborted) {
-                    // Full cancel — don't accumulate
-                    sessionMsgSub.off();
-                    await chatWriteTurnComplete();
-                    return undefined;
-                  }
-                  // Stop — fall through to accumulate partial response
-                } else {
-                  throw error;
+                const captured = await pipeChatAndCapture(source, {
+                  signal: combinedSignal,
+                  // On a non-final handover turn, thread the spliced partial so a
+                  // resumed tool round's tool-output chunks merge into the
+                  // handed-over tool-call. Gated on the handover turn only — a
+                  // normal turn must not pass originalMessages (it would merge the
+                  // fresh response into the prior assistant message).
+                  ...(handoverThisTurn ? { originalMessages: accumulator.uiMessages } : {}),
+                });
+                if (runSignal.aborted) {
+                  // Full cancel — don't accumulate
+                  sessionMsgSub?.off();
+                  await chatWriteTurnComplete();
+                  return undefined;
                 }
+                // Surface a genuine stream failure to the caller. A user stop
+                // (status "aborted") falls through so the partial is accumulated.
+                if (captured.status === "error") {
+                  if (captured.message) {
+                    const partial = cleanupAbortedParts(captured.message);
+                    const queuedParts = locals.get(chatResponsePartsKey);
+                    if (queuedParts && queuedParts.length > 0) {
+                      (partial as any).parts = [...(partial.parts ?? []), ...queuedParts];
+                      locals.set(chatResponsePartsKey, []);
+                    }
+                    await accumulator.addResponse(partial);
+                  }
+                  throw captured.error;
+                }
+                response = captured.message;
+              } finally {
+                // Detach at stream end (like the agent loop): the steering queue
+                // can't inject anymore, so later arrivals must buffer for the next turn.
+                sessionMsgSub?.off();
               }
 
               if (response) {
@@ -9246,23 +12685,22 @@ function createChatSession(
                   accumulator.modelMessages = sessionCompaction.compactModelMessages
                     ? await sessionCompaction.compactModelMessages(compactEvent)
                     : [
-                      {
-                        role: "assistant" as const,
-                        content: [
-                          { type: "text" as const, text: `[Conversation summary]\n\n${summary}` },
-                        ],
-                      },
-                    ];
+                        {
+                          role: "assistant" as const,
+                          content: [
+                            { type: "text" as const, text: `[Conversation summary]\n\n${summary}` },
+                          ],
+                        },
+                      ];
 
                   if (sessionCompaction.compactUIMessages) {
-                    accumulator.uiMessages = await sessionCompaction.compactUIMessages(
-                      compactEvent
-                    );
+                    accumulator.uiMessages =
+                      await sessionCompaction.compactUIMessages(compactEvent);
                   }
                 }
               }
 
-              sessionMsgSub.off();
+              sessionMsgSub?.off();
               await chatWriteTurnComplete();
               return response;
             },
@@ -9271,14 +12709,17 @@ function createChatSession(
               // Append any non-transient data parts queued via chat.response or writer.write()
               const queuedParts = locals.get(chatResponsePartsKey);
               if (queuedParts && queuedParts.length > 0) {
-                response = { ...response, parts: [...(response.parts ?? []), ...(queuedParts as UIMessage["parts"])] };
+                response = {
+                  ...response,
+                  parts: [...(response.parts ?? []), ...(queuedParts as UIMessage["parts"])],
+                };
                 locals.set(chatResponsePartsKey, []);
               }
               await accumulator.addResponse(response);
             },
 
             async done() {
-              sessionMsgSub.off();
+              sessionMsgSub?.off();
               await chatWriteTurnComplete();
             },
 
@@ -9308,12 +12749,13 @@ function createChatSession(
                 }
 
                 if (sessionPendingMessages) {
-                  const injected = await drainSteeringQueue(
+                  const { injected, claimed } = await drainSteeringQueue(
                     sessionPendingMessages,
                     resultMessages ?? stepMsgs,
                     steps,
                     turnSteeringQueue
                   );
+                  await accumulator.absorbSteering(claimed, injected);
                   if (injected.length > 0) {
                     resultMessages = [...(resultMessages ?? stepMsgs), ...injected];
                   }
@@ -9328,10 +12770,20 @@ function createChatSession(
         },
 
         async return() {
-          stop.cleanup();
+          activeMsgSub?.off();
+          activeMsgSub = undefined;
+          // Reached when the consumer leaves the `for await` early (`break`,
+          // `return`, a throw). A `chat.close()` from the loop body would
+          // otherwise be dropped: the exit that performs it lives in `next()`,
+          // and `next()` is never called again.
+          await performChatClose();
+          // `stop` only exists once next() has booted the iterator.
+          stop?.cleanup();
           return { done: true, value: undefined };
         },
       };
+
+      return trackActiveChatSessionIterator(iterator);
     },
   };
 }
@@ -9507,8 +12959,8 @@ function chatLocal<T extends Record<string, unknown>>(options: { id: string }): 
       if (current === undefined) {
         throw new Error(
           "chat.local can only be modified after initialization. " +
-          "Call local.init() in onBoot (recommended — fires on every fresh worker including continuation runs) or run() first. " +
-          "If you previously initialized in onChatStart, move it to onBoot — onChatStart only fires on the chat's very first message and will not run on a continuation."
+            "Call local.init() in onBoot (recommended — fires on every fresh worker including continuation runs) or run() first. " +
+            "If you previously initialized in onChatStart, move it to onBoot — onChatStart only fires on the chat's very first message and will not run on a continuation."
         );
       }
       locals.set(localKey, { ...current, [prop]: value });
@@ -9570,12 +13022,6 @@ function chatLocal<T extends Record<string, unknown>>(options: { id: string }): 
 // so the chat React hooks can import them without dragging `ai.ts` into
 // the browser graph. Re-exported here so `@trigger.dev/sdk/ai` consumers
 // still see them.
-import type { InferChatClientData, InferChatUIMessage } from "./ai-shared.js";
-export type {
-  InferChatClientData,
-  InferChatUIMessage,
-  InferChatUIMessageFromTools,
-} from "./ai-shared.js";
 
 /**
  * Options for {@link createChatStartSessionAction}.
@@ -9596,9 +13042,7 @@ export type ChatStartSessionEndpointContext = {
   chatId: string;
 };
 
-export type ChatStartSessionBaseURLResolver = (
-  ctx: ChatStartSessionEndpointContext
-) => string;
+export type ChatStartSessionBaseURLResolver = (ctx: ChatStartSessionEndpointContext) => string;
 
 export type ChatStartSessionFetchOverride = (
   url: string,
@@ -9613,7 +13057,7 @@ export type CreateChatStartSessionActionOptions = {
    * Default trigger config used when starting a new session for a chat.
    * Per-call `params.triggerConfig` shallow-merges on top.
    */
-  triggerConfig?: Partial<SessionTriggerConfig>;
+  triggerConfig?: Partial<SessionTriggerConfigInput>;
   /**
    * Override the Trigger.dev API base URL. String applies to both
    * `/api/v1/sessions` and `/api/v1/auth/jwt/claims`; function picks per
@@ -9629,6 +13073,12 @@ export type CreateChatStartSessionActionOptions = {
    * custom retry. Applies to both session-create and JWT-claims POSTs.
    */
   fetch?: ChatStartSessionFetchOverride;
+  /**
+   * API client config (baseURL / accessToken) to scope this action to a specific
+   * environment, for callers that can't set a global `TRIGGER_SECRET_KEY`. The
+   * returned action runs under this config.
+   */
+  apiClient?: ApiClientConfiguration;
 };
 
 /**
@@ -9651,7 +13101,7 @@ export type ChatStartSessionParams<TChat extends AnyTask = AnyTask> = {
    * `chat.agent`: anything beyond `chatId`/`messages`/`trigger`/`metadata`,
    * which the runtime injects automatically).
    */
-  triggerConfig?: Partial<SessionTriggerConfig>;
+  triggerConfig?: Partial<SessionTriggerConfigInput>;
   /**
    * Opaque session-level metadata stored on the Session row. Separate from
    * the per-turn `clientData` above. Use this when you want to attach
@@ -9674,6 +13124,11 @@ export type ChatStartSessionResult = {
   runId: string;
   /** Session friendlyId — informational. */
   sessionId: string;
+  /**
+   * The session's run is parked waiting for its deployment. Messages sent meanwhile are durable
+   * and delivered once it lands; surface this so the wait reads as a deploy in progress.
+   */
+  pendingVersion?: boolean;
 };
 
 /**
@@ -9721,6 +13176,15 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
       );
     }
 
+    // Scope the action to `apiClient`'s env: re-enter without it so the body
+    // runs once, under that config (read via apiClientManager.accessToken/.baseURL).
+    if (options?.apiClient) {
+      const { apiClient, ...rest } = options;
+      return apiClientManager.runWithConfig(apiClient, () =>
+        createChatStartSessionAction<TChat>(taskId, rest)(params)
+      );
+    }
+
     // The first run boots before the user's first message lands on
     // `.in/append`, so it sees an empty `messages` array and `trigger:
     // "preload"`. This matches the pre-Sessions preload semantics:
@@ -9733,14 +13197,27 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
     // Auto-tag every chat.agent run with `chat:{chatId}` so the dashboard /
     // run-list filter by chat works without the customer having to wire it
     // up. Mirrors the browser-mediated `TriggerChatTransport.doStart` path.
-    const userTags = params.triggerConfig?.tags ?? options?.triggerConfig?.tags ?? [];
-    // Platform cap is 10 tags per run; the auto chat tag takes one slot.
-    const tags = [`chat:${params.chatId}`, ...userTags].slice(0, 10);
+    // IDs too long to fit within the tag length limit get no automatic tag.
+    const tags = chatRunTags(
+      params.chatId,
+      params.triggerConfig?.tags ?? options?.triggerConfig?.tags
+    );
 
     const clientDataMetadata =
       params.clientData !== undefined ? { metadata: params.clientData } : {};
+    const maxAttempts = params.triggerConfig?.maxAttempts ?? options?.triggerConfig?.maxAttempts;
+    const maxDuration = params.triggerConfig?.maxDuration ?? options?.triggerConfig?.maxDuration;
+    const idleTimeoutInSeconds =
+      params.triggerConfig?.idleTimeoutInSeconds ?? options?.triggerConfig?.idleTimeoutInSeconds;
 
-    const triggerConfig: SessionTriggerConfig = {
+    // Only `undefined` means "not supplied": a per-call `null` (opt out) has to beat a pinning
+    // action default, which neither truthiness nor `??` would allow.
+    const externalDeploymentId =
+      params.triggerConfig?.externalDeploymentId !== undefined
+        ? params.triggerConfig.externalDeploymentId
+        : options?.triggerConfig?.externalDeploymentId;
+
+    const triggerConfig: SessionTriggerConfigInput = {
       basePayload: {
         messages: [],
         trigger: "preload",
@@ -9756,21 +13233,22 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
         ? { queue: params.triggerConfig?.queue ?? options?.triggerConfig?.queue }
         : {}),
       tags,
-      ...(options?.triggerConfig?.maxAttempts !== undefined ||
-      params.triggerConfig?.maxAttempts !== undefined
+      ...(maxAttempts !== undefined ? { maxAttempts } : {}),
+      ...(maxDuration !== undefined ? { maxDuration } : {}),
+      ...(options?.triggerConfig?.region || params.triggerConfig?.region
+        ? { region: params.triggerConfig?.region ?? options?.triggerConfig?.region }
+        : {}),
+      ...(options?.triggerConfig?.lockToVersion || params.triggerConfig?.lockToVersion
         ? {
-            maxAttempts:
-              params.triggerConfig?.maxAttempts ?? options?.triggerConfig?.maxAttempts!,
+            lockToVersion:
+              params.triggerConfig?.lockToVersion ?? options?.triggerConfig?.lockToVersion,
           }
         : {}),
-      ...(options?.triggerConfig?.idleTimeoutInSeconds !== undefined ||
-      params.triggerConfig?.idleTimeoutInSeconds !== undefined
-        ? {
-            idleTimeoutInSeconds:
-              params.triggerConfig?.idleTimeoutInSeconds ??
-              options?.triggerConfig?.idleTimeoutInSeconds!,
-          }
+      ...(params.triggerConfig?.ttl !== undefined || options?.triggerConfig?.ttl !== undefined
+        ? { ttl: params.triggerConfig?.ttl ?? options?.triggerConfig?.ttl }
         : {}),
+      ...(externalDeploymentId !== undefined ? { externalDeploymentId } : {}),
+      ...(idleTimeoutInSeconds !== undefined ? { idleTimeoutInSeconds } : {}),
     };
 
     const startBody = {
@@ -9785,7 +13263,12 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
     const fetchOverride = options?.fetch;
     const hasOverride = baseURLOption !== undefined || fetchOverride !== undefined;
 
-    const created: { id: string; runId: string; publicAccessToken: string } = hasOverride
+    const created: {
+      id: string;
+      runId: string;
+      publicAccessToken: string;
+      pendingVersion?: boolean;
+    } = hasOverride
       ? await callSessionsCreateWithOverride({
           chatId: params.chatId,
           body: startBody,
@@ -9820,6 +13303,7 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
       publicAccessToken,
       runId: created.runId,
       sessionId: created.id,
+      ...(created.pendingVersion ? { pendingVersion: true } : {}),
     };
   };
 }
@@ -9830,10 +13314,7 @@ function resolveChatStartBaseURL(
   option: string | ChatStartSessionBaseURLResolver | undefined
 ): string {
   const fallback = apiClientManager.baseURL ?? "https://api.trigger.dev";
-  const raw =
-    typeof option === "function"
-      ? option({ endpoint, chatId })
-      : option ?? fallback;
+  const raw = typeof option === "function" ? option({ endpoint, chatId }) : (option ?? fallback);
   return raw.replace(/\/$/, "");
 }
 
@@ -9855,10 +13336,21 @@ function overrideRequestHeaders(accessToken: string): Record<string, string> {
 
 async function callSessionsCreateWithOverride(args: {
   chatId: string;
-  body: { type: "chat.agent"; externalId: string; taskIdentifier: string; triggerConfig: SessionTriggerConfig; metadata?: Record<string, unknown> };
+  body: {
+    type: "chat.agent";
+    externalId: string;
+    taskIdentifier: string;
+    triggerConfig: SessionTriggerConfigInput;
+    metadata?: Record<string, unknown>;
+  };
   baseURLOption: string | ChatStartSessionBaseURLResolver | undefined;
   fetchOverride: ChatStartSessionFetchOverride | undefined;
-}): Promise<{ id: string; runId: string; publicAccessToken: string }> {
+}): Promise<{
+  id: string;
+  runId: string;
+  publicAccessToken: string;
+  pendingVersion?: boolean;
+}> {
   const accessToken = apiClientManager.accessToken;
   if (!accessToken) {
     throw new Error(
@@ -9870,7 +13362,8 @@ async function callSessionsCreateWithOverride(args: {
   const init: RequestInit = {
     method: "POST",
     headers: overrideRequestHeaders(accessToken),
-    body: JSON.stringify(args.body),
+    // This path bypasses `sessions.start`, so it resolves the pin itself.
+    body: JSON.stringify(withResolvedExternalDeploymentId(args.body)),
   };
   const response = args.fetchOverride
     ? await args.fetchOverride(url, init, ctx)
@@ -9879,7 +13372,12 @@ async function callSessionsCreateWithOverride(args: {
     const text = await response.text().catch(() => "");
     throw new Error(`sessions.start failed: ${response.status} ${text}`);
   }
-  const json = (await response.json()) as { id: string; runId: string; publicAccessToken: string };
+  const json = (await response.json()) as {
+    id: string;
+    runId: string;
+    publicAccessToken: string;
+    pendingVersion?: boolean;
+  };
   return json;
 }
 
@@ -9891,32 +13389,121 @@ async function mintPublicTokenWithOverride(args: {
 }): Promise<string> {
   const accessToken = apiClientManager.accessToken;
   if (!accessToken) {
-    throw new Error(
-      "chat.createStartSessionAction: no API access token configured for JWT mint."
-    );
+    throw new Error("chat.createStartSessionAction: no API access token configured for JWT mint.");
   }
   const ctx: ChatStartSessionEndpointContext = { endpoint: "auth", chatId: args.chatId };
-  const url = `${resolveChatStartBaseURL("auth", args.chatId, args.baseURLOption)}/api/v1/auth/jwt/claims`;
+  const scopes = [`read:sessions:${args.chatId}`, `write:sessions:${args.chatId}`];
+  const serverMint = isAdditionalApiKey(accessToken);
+  const endpoint = serverMint ? "/api/v1/auth/public-tokens" : "/api/v1/auth/jwt/claims";
+  const url = `${resolveChatStartBaseURL("auth", args.chatId, args.baseURLOption)}${endpoint}`;
   const init: RequestInit = {
     method: "POST",
     headers: overrideRequestHeaders(accessToken),
+    ...(serverMint
+      ? {
+          body: JSON.stringify({
+            scopes,
+            expirationTime:
+              args.expirationTime instanceof Date
+                ? Math.floor(args.expirationTime.getTime() / 1000)
+                : args.expirationTime,
+          }),
+        }
+      : {}),
   };
   const response = args.fetchOverride
     ? await args.fetchOverride(url, init, ctx)
     : await fetch(url, init);
   if (!response.ok) {
+    // An additional API key cannot self-sign, so it must use the server mint
+    // endpoint. On a server too old to expose it, explain the recovery path
+    // instead of surfacing a bare 404 (mirrors auth.createServerPublicToken).
+    if (serverMint && response.status === 404) {
+      throw new Error(
+        "This additional API key cannot self-sign public tokens, and the server does not support public-token minting. Upgrade the server or use the root API key."
+      );
+    }
     const text = await response.text().catch(() => "");
     throw new Error(`auth.createPublicToken failed: ${response.status} ${text}`);
   }
-  const claims = (await response.json()) as Record<string, unknown>;
+  const responseBody = (await response.json()) as Record<string, unknown>;
+  if (serverMint) {
+    if (typeof responseBody.token !== "string") {
+      throw new Error("auth.createPublicToken failed: server response did not include a token");
+    }
+    return responseBody.token;
+  }
+
   return generateJWT({
     secretKey: accessToken,
     payload: {
-      ...claims,
-      scopes: [`read:sessions:${args.chatId}`, `write:sessions:${args.chatId}`],
+      ...responseBody,
+      scopes,
     },
     expirationTime: args.expirationTime,
   });
+}
+
+export type CreateChatLoadTranscriptActionOptions = {
+  /**
+   * Scope the action to a specific API client configuration (secret key,
+   * base URL) instead of the process-wide one. The default storage reads
+   * through this client.
+   */
+  apiClient?: ApiClientConfiguration;
+  /** Page size when the caller passes none. */
+  limit?: number;
+};
+
+export type ChatLoadTranscriptParams<TClientData = unknown> = {
+  chatId: string;
+  clientData?: TClientData;
+  limit?: number;
+  before?: string;
+};
+
+/**
+ * Creates a server-side helper that reads a conversation from a transcript
+ * storage, for rendering history before the chat connects. Works the same
+ * for every storage, the platform default included, so the browser never
+ * reads a store directly and the secret key stays on the server.
+ *
+ * Wrap it in a Next.js server action (or any server-side handler), scope it
+ * to the authenticated user through `clientData`, and pass the result to
+ * `useLoadTranscript` in the browser.
+ *
+ * @example
+ * ```ts
+ * // actions.ts
+ * "use server";
+ * import { chat, defaultStorage } from "@trigger.dev/sdk/ai";
+ *
+ * export const loadTranscript = chat.createLoadTranscriptAction(defaultStorage, { limit: 50 });
+ * ```
+ */
+function createChatLoadTranscriptAction<TClientData = unknown>(
+  storage: TranscriptStorage<TClientData>,
+  options?: CreateChatLoadTranscriptActionOptions
+): (params: ChatLoadTranscriptParams<TClientData>) => Promise<TranscriptLoadResult> {
+  return async (params) => {
+    if (!params.chatId) {
+      throw new Error("chat.createLoadTranscriptAction: params.chatId is required.");
+    }
+    if (options?.apiClient) {
+      const { apiClient, ...rest } = options;
+      return apiClientManager.runWithConfig(apiClient, () =>
+        createChatLoadTranscriptAction(storage, rest)(params)
+      );
+    }
+    const limit = params.limit ?? options?.limit;
+    return storage.load(
+      { chatId: params.chatId, clientData: params.clientData as TClientData },
+      {
+        ...(limit !== undefined ? { limit } : {}),
+        ...(params.before !== undefined ? { before: params.before } : {}),
+      }
+    );
+  };
 }
 
 export const chat = {
@@ -9930,8 +13517,12 @@ export const chat = {
   withClientData,
   /** Create a server-side helper for starting (or resuming) a Session for a chatId. See {@link createChatStartSessionAction}. */
   createStartSessionAction: createChatStartSessionAction,
+  /** Returns a server-side helper that reads a conversation from a transcript storage. */
+  createLoadTranscriptAction: createChatLoadTranscriptAction,
   /** Pipe a stream to the chat transport. See {@link pipeChat}. */
   pipe: pipeChat,
+  /** Return from `onAction` to run a turn on the edited history. See {@link chatTurn}. */
+  turn: chatTurn,
   /** Create a per-run typed local. See {@link chatLocal}. */
   local: chatLocal,
   /** Create a public access token for a chat task. See {@link createChatAccessToken}. */
@@ -9948,12 +13539,17 @@ export const chat = {
   isStopped,
   /** Request that the run exits after the current turn so the next message starts on the latest version. See {@link requestUpgrade}. */
   requestUpgrade,
+  /** Hand off a custom agent Session to a fresh run. See {@link endAndContinue}. */
+  endAndContinue,
   /** Exit the run after the current turn completes, without any upgrade signal. See {@link endRun}. */
   endRun,
+  /** End the conversation permanently: close the session and exit the run. See {@link close}. */
+  close,
   /** Clean up aborted parts from a UIMessage. See {@link cleanupAbortedParts}. */
   cleanupAbortedParts,
   /** Register background work that runs in parallel with streaming. See {@link chatDefer}. */
   defer: chatDefer,
+  deferBeforeOutput: chatDeferBeforeOutput,
   /** Queue model messages for injection at the next `prepareStep` boundary. See {@link injectBackgroundContext}. */
   inject: injectBackgroundContext,
   /** Typed chat output stream for writing custom chunks or piping from subtasks. */
@@ -9962,6 +13558,17 @@ export const chat = {
   response: chatResponse,
   /** Pre-built input stream for receiving messages from the transport. */
   messages: messagesInput,
+  /** The current chat.agent run's Session handle. See {@link SessionHandle}. */
+  session: getChatSession,
+  /**
+   * Open a named side channel on the current chat.agent run's Session: a
+   * durable, cross-run `.in`/`.out` pair addressed by `name`, separate from the
+   * chat transcript. Writing its `.in` does not wake a run. Shortcut for
+   * `chat.session().channel(name)`.
+   */
+  channel: <C extends AnySessionChannel = AnySessionChannel>(
+    channel: SessionChannelName<C> | C
+  ): SessionChannelHandleFor<C> => getChatSession().channel<C>(channel),
   /** Create a managed stop signal wired to the stop input stream. See {@link createStopSignal}. */
   createStopSignal,
   /** Signal the frontend that the current turn is complete. See {@link chatWriteTurnComplete}. */
@@ -9973,9 +13580,19 @@ export const chat = {
   /** Create a chat session (async iterator). See {@link createChatSession}. */
   createSession: createChatSession,
   /**
+   * Wait for a `chat.headStart` handover signal inside a `chat.customAgent`
+   * loop (turn 0). See {@link waitForHandover}. For most loops prefer the
+   * `chat.MessageAccumulator.consumeHandover()` convenience, which also seeds
+   * `payload.headStartMessages` and applies the partial.
+   */
+  waitForHandover,
+  /**
    * Store and retrieve a resolved prompt for the current run.
    *
    * - `chat.prompt.set(resolved)` — store a `ResolvedPrompt` or plain string
+   * - `chat.prompt.set(resolved, { providerOptions })` — also attach provider
+   *   options to the system block so a provider can cache it (e.g. Anthropic
+   *   prompt caching). See the prompt-caching guide.
    * - `chat.prompt()` — read the stored prompt (throws if not set)
    */
   prompt: Object.assign(getChatPrompt, { set: setChatPrompt }),
@@ -10050,6 +13667,17 @@ async function writeTurnCompleteChunk(
 ): Promise<StreamWriteResult> {
   const session = getChatSession();
 
+  // A handover-prepare boot claims the handover kinds so a signal arriving
+  // before `waitForHandover` attaches is not drained. Released here rather than
+  // only in `waitForHandover`, because a loop that never calls it would
+  // otherwise hold the claim for the life of the run and leave a handover
+  // record parked at the head of the channel, where it wedges
+  // `chat.messages.next()`. Every surface reaches a turn boundary through this
+  // function, including the managed agent, which does not call the public
+  // `chat.writeTurnComplete`. By the time a turn completes the handover window
+  // is over either way.
+  chatInputRouter().clearRoute(CHAT_ROUTE_HANDOVER);
+
   // 1. Write the turn-complete control record. The ack's `lastEventId` is
   //    this record's seq_num — that's the trim target for the NEXT turn.
   //
@@ -10064,9 +13692,24 @@ async function writeTurnCompleteChunk(
   if (publicAccessToken) {
     extraHeaders.push(["public-access-token", publicAccessToken]);
   }
-  const inCursor = session.in.lastDispatchedSeqNum();
+  const routerCheckpoint = chatInputRouter().checkpoint();
+  const inCursor = routerCheckpoint.resumeFrom;
   if (inCursor !== undefined) {
     extraHeaders.push([SESSION_IN_EVENT_ID_HEADER, String(inCursor)]);
+  }
+  const consumedCursor = routerCheckpoint.appliedThrough;
+  if (consumedCursor !== undefined) {
+    extraHeaders.push([SESSION_IN_CONSUMED_ID_HEADER, String(consumedCursor)]);
+  }
+  // A close decided before this turn ended rides out on turn-complete. Readers
+  // terminate their stream on turn-complete, so a standalone record written
+  // after it only reaches a reconnect — this header is what a live client sees.
+  const pendingClose = locals.get(chatCloseRequestedKey);
+  if (pendingClose) {
+    extraHeaders.push([SESSION_CLOSED_HEADER, "true"]);
+    if (pendingClose.reason) {
+      extraHeaders.push([SESSION_CLOSED_REASON_HEADER, pendingClose.reason]);
+    }
   }
   const result = await session.out.writeControl(
     TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE,
@@ -10131,17 +13774,49 @@ async function writeTurnCompleteChunk(
  *
  * @internal
  */
+/**
+ * Persists an upgrade requested after the turn has already run.
+ *
+ * The pre-turn sites reach {@link performEndAndContinue} through
+ * {@link writeUpgradeRequiredChunk}, which is what clears (or re-points) the
+ * session's stored `externalDeploymentId`. The post-turn exits had no such path,
+ * so a `chat.requestUpgrade()` from `run()` or `chat.defer()` left the pin intact
+ * and every continuation re-pinned to the deployment the agent asked to leave.
+ *
+ * No `upgrade-required` chunk is written here: the turn already produced its
+ * answer, so there is nothing for a client to be told about.
+ */
+async function persistUpgradeHandoff(): Promise<void> {
+  const chatId = locals.get(chatExternalIdKey);
+  const callingRunId = locals.get(chatAgentRunContextKey)?.run.id;
+
+  if (!chatId || !callingRunId) {
+    return;
+  }
+
+  try {
+    await performEndAndContinue({
+      reason: "upgrade",
+      externalDeploymentId: locals.get(chatUpgradeExternalDeploymentIdKey),
+    });
+  } catch (error) {
+    logger.warn("upgrade handoff failed; session keeps its current version pin", {
+      chatId,
+      callingRunId,
+      error,
+    });
+  }
+}
+
 async function writeUpgradeRequiredChunk(): Promise<StreamWriteResult> {
-  const ctx = taskContext.ctx;
-  const chatId = ctx?.run.id ? getChatIdFromContext() : undefined;
-  const callingRunId = ctx?.run.id;
+  const chatId = locals.get(chatExternalIdKey);
+  const callingRunId = locals.get(chatAgentRunContextKey)?.run.id;
 
   if (chatId && callingRunId) {
-    const apiClient = apiClientManager.clientOrThrow();
     try {
-      await apiClient.endAndContinueSession(chatId, {
-        callingRunId,
+      await performEndAndContinue({
         reason: "upgrade",
+        externalDeploymentId: locals.get(chatUpgradeExternalDeploymentIdKey),
       });
     } catch (error) {
       // Non-fatal: the next `.in/append` re-triggers via the probe.
@@ -10156,17 +13831,6 @@ async function writeUpgradeRequiredChunk(): Promise<StreamWriteResult> {
 
   const session = getChatSession();
   return session.out.writeControl(TRIGGER_CONTROL_SUBTYPE.UPGRADE_REQUIRED);
-}
-
-/**
- * Resolves the current chat's `chatId` (used as session externalId) from
- * the bound session handle. Returns `undefined` if no agent is bound —
- * shouldn't happen at the call sites that invoke
- * `writeUpgradeRequiredChunk`, but defensive against misuse.
- * @internal
- */
-function getChatIdFromContext(): string | undefined {
-  return locals.get(chatSessionHandleKey)?.id;
 }
 
 /**

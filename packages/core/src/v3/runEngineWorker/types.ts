@@ -29,4 +29,6 @@ export type WorkloadClientSocketData = {
   runnerId: string;
   runFriendlyId?: string;
   snapshotId?: string;
+  // Deployment friendlyId resolved from the verified token; prefer over the raw deploymentId.
+  deploymentFriendlyId?: string;
 };

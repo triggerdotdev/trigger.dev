@@ -4,10 +4,6 @@ sidebarTitle: "Human-in-the-loop"
 description: "Pause the agent mid-response to ask the user a clarifying question, then resume with their answer."
 ---
 
-import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
-
-<RcBanner />
-
 Some turns need to stop and ask the user something before they can finish — picking between options, confirming a destructive action, or clarifying an ambiguous request. The AI SDK calls this **human-in-the-loop** (HITL), and the building block is a tool with no `execute` function.
 
 When the LLM calls a tool that has no `execute`, `streamText` ends with the tool call still pending. The turn completes cleanly, the frontend renders UI to collect the answer, and when the user responds, a new turn resumes with the answer merged into the same assistant message.
@@ -20,7 +16,7 @@ Turn N:
   LLM streams text → calls askUser tool (no execute)
   streamText ends with tool-call in `input-available` state
   onTurnComplete fires (finishReason = "tool-calls")
-  Agent idle
+  Agent suspends (compute freed) — maxDuration does not tick while paused
 
 Frontend:
   Renders question + option buttons from tool input
@@ -35,6 +31,14 @@ Turn N+1:
 ```
 
 The AI SDK's `toUIMessageStream` automatically reuses the assistant message ID across the pause (we pass `originalMessages` internally), so `responseMessage` in the post-resume `onTurnComplete` is the **full merged message** — the original text, the completed tool call, and any follow-up content — not just the new parts.
+
+## Duration and cost while paused
+
+A pause doesn't hold compute. After the model calls a no-execute tool, the turn finishes and the run stays warm for `idleTimeoutInSeconds` (default 30s), then **suspends** and frees its compute, the same way [`wait.for`](/wait-for) does. The user's `addToolOutput` wakes it back up.
+
+Because the run is suspended while it waits, the human's thinking time is not billed and does **not** count against [`maxDuration`](/runs/max-duration). `maxDuration` measures active CPU time and excludes suspended waitpoint time, exactly like `wait.for`, so a user can take minutes, hours, or days to answer without the run hitting `maxDuration`. The only time that counts is each turn's actual compute plus the short warm window before each suspend.
+
+You don't need to raise `maxDuration` or end the run to support long human waits. How long a single suspended pause stays open is governed by the run's suspend timeout, not `maxDuration`; if a wait outlives it the run ends, and the next `addToolOutput` boots a fresh continuation that picks up the resolved tool result.
 
 ## Backend: define the tool
 

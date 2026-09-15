@@ -2,7 +2,7 @@ import { generateJWT, validateJWT } from "@trigger.dev/core/v3/jwt";
 import { z } from "zod";
 import { env } from "~/env.server";
 
-export const VercelOAuthStateSchema = z.object({
+const VercelOAuthStateSchema = z.object({
   organizationId: z.string(),
   projectId: z.string(),
   environmentSlug: z.string(),
@@ -12,9 +12,7 @@ export const VercelOAuthStateSchema = z.object({
 
 export type VercelOAuthState = z.infer<typeof VercelOAuthStateSchema>;
 
-export async function generateVercelOAuthState(
-  params: VercelOAuthState
-): Promise<string> {
+export async function generateVercelOAuthState(params: VercelOAuthState): Promise<string> {
   return generateJWT({
     secretKey: env.ENCRYPTION_KEY,
     payload: params,

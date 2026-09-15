@@ -3,12 +3,14 @@ import { json } from "@remix-run/node";
 import { useFetcher, type ShouldRevalidateFunction } from "@remix-run/react";
 import { motion } from "framer-motion";
 import { useEffect, useRef } from "react";
+import { useLatest } from "react-use";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { useFeatures } from "~/hooks/useFeatures";
 import { BetterStackClient, type AggregateState } from "~/services/betterstack/betterstack.server";
+import { useInterval } from "~/hooks/useInterval";
 
 // Prevent Remix from revalidating this route when other fetchers submit
 export const shouldRevalidate: ShouldRevalidateFunction = () => false;
@@ -41,26 +43,30 @@ const POLL_INTERVAL_MS = 60_000;
 export function useIncidentStatus() {
   const { isManagedCloud } = useFeatures();
   const fetcher = useFetcher<typeof loader>();
+  const { load, state } = fetcher;
+  const stateRef = useLatest(state);
   const hasInitiallyFetched = useRef(false);
 
   useEffect(() => {
     if (!isManagedCloud) return;
 
     // Initial fetch on mount
-    if (!hasInitiallyFetched.current && fetcher.state === "idle") {
+    if (!hasInitiallyFetched.current && state === "idle") {
       hasInitiallyFetched.current = true;
-      fetcher.load("/resources/incidents");
+      load("/resources/incidents");
     }
+  }, [isManagedCloud, load, state]);
 
-    // Poll every 60 seconds
-    const interval = setInterval(() => {
-      if (fetcher.state === "idle") {
-        fetcher.load("/resources/incidents");
+  useInterval({
+    interval: POLL_INTERVAL_MS,
+    onLoad: false,
+    disabled: !isManagedCloud,
+    callback: () => {
+      if (stateRef.current === "idle") {
+        load("/resources/incidents");
       }
-    }, POLL_INTERVAL_MS);
-
-    return () => clearInterval(interval);
-  }, [isManagedCloud]);
+    },
+  });
 
   return {
     status: fetcher.data?.status ?? "operational",
@@ -113,8 +119,8 @@ export function IncidentStatusPanel({
         >
           <SimpleTooltip
             button={
-              <PopoverTrigger className="flex !h-8 w-full items-center justify-center rounded border border-yellow-500/30 bg-yellow-500/15 transition-colors hover:border-yellow-500/50 hover:bg-yellow-500/25">
-                <ExclamationTriangleIcon className="size-5 text-yellow-400" />
+              <PopoverTrigger className="flex h-8! w-full items-center justify-center rounded border border-warning/30 bg-warning/10 transition-colors hover:border-warning/50 hover:bg-warning/20">
+                <ExclamationTriangleIcon className="size-5 text-warning" />
               </PopoverTrigger>
             }
             content="Active incident"
@@ -125,7 +131,7 @@ export function IncidentStatusPanel({
           />
         </motion.div>
       </div>
-      <PopoverContent side="right" sideOffset={8} align="start" className="!min-w-0 w-52 p-0">
+      <PopoverContent side="right" sideOffset={8} align="start" className="min-w-0! w-52 p-0">
         <IncidentPanelContent message={message} />
       </PopoverContent>
     </Popover>
@@ -134,14 +140,14 @@ export function IncidentStatusPanel({
 
 function IncidentPanelContent({ message }: { message: string }) {
   return (
-    <div className="flex flex-col gap-2 rounded border border-yellow-500/30 bg-yellow-500/10 p-2 pt-1.5">
-      <div className="flex items-center gap-1 border-b border-yellow-500/30 pb-1">
-        <ExclamationTriangleIcon className="size-4 text-yellow-400" />
-        <Paragraph variant="small/bright" className="text-yellow-300">
+    <div className="flex flex-col gap-2 rounded border border-warning/30 bg-warning/10 p-2 pt-1.5">
+      <div className="flex items-center gap-1 border-b border-warning/20 pb-1">
+        <ExclamationTriangleIcon className="size-4 text-warning" />
+        <Paragraph variant="small/bright" className="text-callout-warning-text">
           Active incident
         </Paragraph>
       </div>
-      <Paragraph variant="extra-small/bright" className="text-yellow-300">
+      <Paragraph variant="extra-small/bright" className="text-callout-warning-text">
         {message}
       </Paragraph>
       <LinkButton
@@ -149,9 +155,9 @@ function IncidentPanelContent({ message }: { message: string }) {
         to="https://status.trigger.dev"
         target="_blank"
         fullWidth
-        className="border-yellow-500/30 bg-yellow-500/15 hover:!border-yellow-500/50 hover:!bg-yellow-500/25"
+        className="border-warning/30 bg-warning/10 hover:border-warning/50! hover:bg-warning/20!"
       >
-        <span className="text-yellow-300">View status page</span>
+        <span className="text-callout-warning-text">View status page</span>
       </LinkButton>
     </div>
   );

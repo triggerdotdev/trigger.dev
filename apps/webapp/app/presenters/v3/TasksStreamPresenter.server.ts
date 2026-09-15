@@ -1,17 +1,8 @@
-import { type TaskRunAttempt } from "@trigger.dev/database";
 import { eventStream } from "remix-utils/sse/server";
 import { type PrismaClient, prisma } from "~/db.server";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { logger } from "~/services/logger.server";
 import { projectPubSub } from "~/v3/services/projectPubSub.server";
-
-type RunWithAttempts = {
-  updatedAt: Date;
-  attempts: {
-    status: TaskRunAttempt["status"];
-    updatedAt: Date;
-  }[];
-};
 
 const pingInterval = 1000;
 
@@ -95,6 +86,10 @@ export class TasksStreamPresenter {
 
       subscriber.on("WORKER_CREATED", async (message) => {
         safeSend({ data: message.createdAt.toISOString() });
+      });
+
+      subscriber.on("PROJECT_INITIALIZED", async (message) => {
+        safeSend({ data: message.initializedAt.toISOString() });
       });
 
       pinger = setInterval(() => {

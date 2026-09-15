@@ -1,7 +1,9 @@
 import { json } from "@remix-run/server-runtime";
+import { STREAM_START_HEADER } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { S2RealtimeStreams } from "~/services/realtime/s2realtimeStreams.server";
+import { sessionStreamResources } from "~/services/realtime/sessionChannels.server";
 import {
   canonicalSessionAddressingKey,
   isSessionFriendlyIdForm,
@@ -34,6 +36,16 @@ const { action } = createActionApiRoute(
     },
   },
   async ({ params, authentication }) => {
+    // `.out` is the agent→client channel. Only PRIVATE (secret key) auth —
+    // i.e. the agent run itself — may initialize it. Session-scoped JWTs carry
+    // `write:sessions:<key>` for `.in`; without this gate they could obtain
+    // credentials to forge assistant chunks on their own session's `.out`.
+    if (params.io === "out" && authentication.type !== "PRIVATE") {
+      return new Response("Initializing the out channel requires secret key authentication", {
+        status: 403,
+      });
+    }
+
     // Row-optional addressing. The agent calls PUT initialize as part
     // of `session.out.writer()`, by which time it has already created
     // the row at bind, so a missing row here is an unusual case
@@ -98,10 +110,7 @@ const loader = createLoaderApiRoute(
     allowJWT: true,
     corsStrategy: "all",
     findResource: async (params, auth) => {
-      const row = await resolveSessionWithWriterFallback(
-        auth.environment.id,
-        params.session
-      );
+      const row = await resolveSessionWithWriterFallback(auth.environment.id, params.session);
       if (!row && isSessionFriendlyIdForm(params.session)) {
         return undefined; // 404 — opaque friendlyId must reference a real row
       }
@@ -114,20 +123,31 @@ const loader = createLoaderApiRoute(
     authorization: {
       action: "read",
       // Multi-key: the channel is addressable by the URL key, the row's
-      // friendlyId, and (if set) externalId. Type-level `read:sessions`
-      // matches any of them; `read:all` / `admin` bypass via the JWT
-      // ability's wildcard branches.
-      resource: ({ row, addressingKey }) => {
+      // friendlyId, and (if set) externalId, each also in its direction-folded
+      // form (`{key}:out`) so a token narrowed to one direction matches. Type-level
+      // `read:sessions` matches any of them; `read:all` / `admin` bypass via the
+      // JWT ability's wildcard branches.
+      resource: ({ row, addressingKey }, params) => {
         const ids = new Set<string>([addressingKey]);
         if (row) {
           ids.add(row.friendlyId);
           if (row.externalId) ids.add(row.externalId);
         }
-        return anyResource([...ids].map((id) => ({ type: "sessions", id })));
+        return anyResource(sessionStreamResources(params.io, ids));
       },
     },
   },
   async ({ params, request, authentication, resource }) => {
+    // `.in` is the client→agent channel: the agent run reads it, clients only append. A
+    // public token is a browser-held credential, and `.in` records can carry data meant
+    // for the agent alone (a server-side proxy may inject per-turn credentials), so
+    // reading `.in` requires the secret key. `.out` is the only public read.
+    if (params.io === "in" && authentication.type !== "PRIVATE") {
+      return new Response("Reading the in channel requires secret key authentication", {
+        status: 403,
+      });
+    }
+
     // Same no-row fallback as PUT above.
     const realtimeStream = getRealtimeStreamInstance(authentication.environment, "v2", {
       session: resource.row,
@@ -178,12 +198,15 @@ const loader = createLoaderApiRoute(
     // turn's first chunk and the SSE closes before records land.
     const peekSettled = request.headers.get("X-Peek-Settled") === "1";
 
+    const startFrom =
+      request.headers.get(STREAM_START_HEADER)?.toLowerCase() === "latest" ? "latest" : undefined;
+
     return realtimeStream.streamResponseFromSessionStream(
       request,
       resource.addressingKey,
       params.io,
       getRequestAbortSignal(),
-      { lastEventId, timeoutInSeconds, peekSettled }
+      { lastEventId, timeoutInSeconds, peekSettled, startFrom }
     );
   }
 );

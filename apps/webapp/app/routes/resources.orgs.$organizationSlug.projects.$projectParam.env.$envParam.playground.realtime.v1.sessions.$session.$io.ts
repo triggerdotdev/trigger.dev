@@ -41,11 +41,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     return new Response("Environment not found", { status: 404 });
   }
 
-  const session = await resolveSessionByIdOrExternalId(
-    $replica,
-    environment.id,
-    sessionParam
-  );
+  const session = await resolveSessionByIdOrExternalId($replica, environment.id, sessionParam);
 
   if (!session) {
     return new Response("Session not found", { status: 404 });

@@ -23,7 +23,6 @@ This is a pnpm 10.33.2 monorepo that uses turborepo @turbo.json. The following w
 - <root>/internal-packages/run-engine is the `@internal/run-engine` package that is "Run Engine 2.0" and handles moving a run all the way through it's lifecycle
 - <root>/internal-packages/redis is the `@internal/redis` package that exports Redis types and the `createRedisClient` function to unify how we create redis clients in the repo. It's not used everywhere yet, but it's the preferred way to create redis clients from now on.
 - <root>/internal-packages/testcontainers is the `@internal/testcontainers` package that exports a few useful functions for spinning up local testcontainers when writing vitest tests. See our [tests.md](./tests.md) file for more information.
-- <root>/internal-packages/zodworker is the `@internal/zodworker` package that implements a wrapper around graphile-worker that allows us to use zod to validate our background jobs. We are moving away from using graphile-worker as our background job system, replacing it with our own redis-worker package.
 
 ## References
 

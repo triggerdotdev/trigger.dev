@@ -1,4 +1,5 @@
-import { PrismaClientOrTransaction, prisma } from "~/db.server";
+import type { PrismaClientOrTransaction } from "~/db.server";
+import { prisma } from "~/db.server";
 import { z } from "zod";
 import { env } from "~/env.server";
 import nodeCrypto from "node:crypto";
@@ -6,6 +7,7 @@ import { safeJsonParse } from "~/utils/json";
 import { logger } from "../logger.server";
 import type { SecretStoreOptions } from "./secretStoreOptionsSchema.server";
 
+import { boundedIn } from "@trigger.dev/database";
 type ProviderInitializationOptions = {
   DATABASE: {
     prismaClient?: PrismaClientOrTransaction;
@@ -117,7 +119,7 @@ class PrismaSecretStore implements SecretStoreProvider {
     const secrets = await this.#prismaClient.secretStore.findMany({
       where: {
         key: {
-          in: keys,
+          in: boundedIn(keys),
         },
       },
     });
@@ -219,7 +221,7 @@ class PrismaSecretStore implements SecretStoreProvider {
 
 export function getSecretStore<
   K extends SecretStoreOptions,
-  TOptions extends ProviderInitializationOptions[K]
+  TOptions extends ProviderInitializationOptions[K],
 >(provider: K, options?: TOptions): SecretStore {
   switch (provider) {
     case "DATABASE": {

@@ -4,11 +4,11 @@ import { cn } from "~/utils/cn";
 
 const variants = {
   "secondary/small": {
-    box: "h-6 bg-secondary rounded pl-1.5 gap-1.5 text-xs divide-x divide-black/15 group-hover:bg-charcoal-600 group-hover:border-charcoal-550 text-text-bright border border-charcoal-600",
+    box: "h-6 bg-secondary rounded pl-1.5 gap-1.5 text-xs divide-x divide-black/15 shadow-xs group-hover:bg-background-raised text-text-bright border border-border-bright/50",
     clear: "size-6 text-text-bright hover:text-text-bright transition-colors",
   },
   "tertiary/small": {
-    box: "h-6 bg-tertiary rounded pl-1.5 gap-1.5 text-xs divide-x divide-black/15 group-hover:bg-charcoal-600",
+    box: "h-6 bg-tertiary rounded pl-1.5 gap-1.5 text-xs divide-x divide-black/15 group-hover:bg-background-raised",
     clear: "size-6 text-text-dimmed hover:text-text-bright transition-colors",
   },
   "minimal/medium": {
@@ -53,7 +53,7 @@ export function AppliedFilter({
       <div
         className={cn("flex items-start leading-4", label === undefined ? "gap-1.5" : "gap-0.5")}
       >
-        <div className="-mt-[0.5px] flex items-center gap-1.5">
+        <div className="mt-[-0.5px] flex items-center gap-1.5">
           {icon}
           {label && (
             <div className="text-text-bright">
@@ -67,6 +67,7 @@ export function AppliedFilter({
       </div>
       {removable && (
         <button
+          type="button"
           className={cn(
             "group flex size-6 items-center justify-center focus-custom",
             variantClassName.clear

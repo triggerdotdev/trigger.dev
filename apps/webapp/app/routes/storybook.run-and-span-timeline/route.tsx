@@ -1,11 +1,7 @@
-import {
-  RunTimeline,
-  RunTimelineEvent,
-  SpanTimeline,
-  SpanTimelineProps,
-  TimelineSpanRun,
-} from "~/components/run/RunTimeline";
+import { ComponentNames } from "../storybook/StoryKit";
 import { Header2 } from "~/components/primitives/Headers";
+import type { SpanTimelineProps, TimelineSpanRun } from "~/components/run/RunTimeline";
+import { RunTimeline, SpanTimeline } from "~/components/run/RunTimeline";
 
 const spanTimelines = [
   {
@@ -193,6 +189,9 @@ const runTimelines = [
 export default function Story() {
   return (
     <div className="flex flex-col items-start gap-y-8 p-4">
+      <div className="px-4 pt-4">
+        <ComponentNames names={["RunTimeline.tsx"]} />
+      </div>
       <Header2>Span Timeline</Header2>
       {spanTimelines.map((props, index) => (
         <SpanTimeline key={index} {...props} />

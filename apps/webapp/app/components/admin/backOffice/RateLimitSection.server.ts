@@ -3,19 +3,12 @@ import {
   RateLimitTokenBucketConfig,
   RateLimiterConfig,
 } from "~/services/authorizationRateLimitMiddleware.server";
-import {
-  parseDurationToMs,
-  type EffectiveRateLimit,
-} from "./RateLimitSection";
+import { parseDurationToMs, type EffectiveRateLimit } from "./RateLimitSection";
 
 export type RateLimitDomain = {
   intent: string;
   systemDefault: () => RateLimiterConfig;
-  apply: (
-    orgId: string,
-    next: RateLimitTokenBucketConfig,
-    adminUserId: string
-  ) => Promise<void>;
+  apply: (orgId: string, next: RateLimitTokenBucketConfig, adminUserId: string) => Promise<void>;
 };
 
 export function resolveEffectiveRateLimit(

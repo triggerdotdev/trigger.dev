@@ -9,12 +9,16 @@ const BodySchema = z.object({
   type: RetrieveQueueType.default("id"),
 });
 
-export const { action } = createActionApiRoute(
+const route = createActionApiRoute(
   {
     body: BodySchema,
     params: z.object({
       queueParam: z.string().transform((val) => val.replace(/%2F/g, "/")),
     }),
+    authorization: {
+      action: "write",
+      resource: () => ({ type: "queues" }),
+    },
   },
   async ({ params, body, authentication }) => {
     const input: RetrieveQueueParam =
@@ -73,3 +77,7 @@ export const { action } = createActionApiRoute(
     );
   }
 );
+
+export const action = route.action;
+// The builder's loader answers non-POST methods with a 405
+export const loader = route.loader;

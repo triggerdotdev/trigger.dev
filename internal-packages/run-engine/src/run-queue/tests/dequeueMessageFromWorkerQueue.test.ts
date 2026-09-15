@@ -4,7 +4,7 @@ import { describe } from "node:test";
 import { FairQueueSelectionStrategy } from "../fairQueueSelectionStrategy.js";
 import { RunQueue } from "../index.js";
 import { RunQueueFullKeyProducer } from "../keyProducer.js";
-import { InputPayload } from "../types.js";
+import type { InputPayload } from "../types.js";
 import { setTimeout } from "node:timers/promises";
 import { Decimal } from "@trigger.dev/database";
 
@@ -272,9 +272,8 @@ describe("RunQueue.dequeueMessageFromWorkerQueue", () => {
         const dequeued3 = await queue.dequeueMessageFromWorkerQueue("test_12345", "main");
         expect(dequeued3).toBeUndefined();
 
-        const envConcurrencyAfter = await queue.currentConcurrencyOfEnvironment(
-          authenticatedEnvDev
-        );
+        const envConcurrencyAfter =
+          await queue.currentConcurrencyOfEnvironment(authenticatedEnvDev);
         expect(envConcurrencyAfter).toBe(2);
       } finally {
         await queue.quit();

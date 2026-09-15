@@ -1,8 +1,7 @@
-import { parse } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { ArrowPathIcon, InformationCircleIcon } from "@heroicons/react/20/solid";
 import { XCircleIcon } from "@heroicons/react/24/outline";
 import { Form } from "@remix-run/react";
-import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/router";
 import { tryCatch } from "@trigger.dev/core";
 import { useEffect, useState } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
@@ -40,6 +39,7 @@ import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { RadioGroup, RadioGroupItem } from "~/components/primitives/RadioButton";
+import { Select, SelectItem } from "~/components/primitives/Select";
 import { type TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
@@ -48,46 +48,86 @@ import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useUser } from "~/hooks/useUser";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
+import { getRunFiltersFromRequest } from "~/presenters/RunFilters.server";
 import { CreateBulkActionPresenter } from "~/presenters/v3/CreateBulkActionPresenter.server";
+import { RegionsPresenter } from "~/presenters/v3/RegionsPresenter.server";
 import { RUNS_BULK_INSPECTOR_UI_SEARCH_PARAMS } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs._index/shouldRevalidateRunsList";
 import { logger } from "~/services/logger.server";
-import { requireUserId } from "~/services/session.server";
+import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
+import { checkPermissions } from "~/services/routeBuilders/permissions.server";
 import { cn } from "~/utils/cn";
 import { EnvironmentParamSchema, v3BulkActionPath } from "~/utils/pathBuilder";
 import { BulkActionService } from "~/v3/services/bulk/BulkActionV2.server";
 
-export async function loader({ request, params }: LoaderFunctionArgs) {
-  const userId = await requireUserId(request);
+export const loader = dashboardLoader(
+  {
+    params: EnvironmentParamSchema,
+    context: async (params) => {
+      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
+      return organizationId ? { organizationId } : {};
+    },
+    authorization: { action: "read", resource: { type: "runs" } },
+  },
+  async ({ request, params, user, ability }) => {
+    const { organizationSlug, projectParam, envParam } = params;
 
-  const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
+    const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
+    if (!project) {
+      throw new Response("Not Found", { status: 404 });
+    }
 
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
-  if (!project) {
-    throw new Response("Not Found", { status: 404 });
+    const environment = await findEnvironmentBySlug(project.id, envParam, user.id);
+    if (!environment) {
+      throw new Response("Not Found", { status: 404 });
+    }
+
+    // Raw impersonation, not `hasAdminDisplayAccess`: this list is the bulk
+    // action's "override region" picker, so it decides which region a submitted
+    // bulk replay can re-route runs to. "View as user" only changes what is
+    // shown.
+    const isAdmin = user.admin || user.isImpersonating;
+
+    const presenter = new CreateBulkActionPresenter();
+    const [data, regionsResult] = await Promise.all([
+      presenter.call({
+        organizationId: project.organizationId,
+        projectId: project.id,
+        environmentId: environment.id,
+        request,
+      }),
+      tryCatch(
+        new RegionsPresenter().call({
+          userId: user.id,
+          projectSlug: projectParam,
+          isAdmin,
+        })
+      ),
+    ]);
+
+    const [regionsError, regionsData] = regionsResult;
+    const regions = regionsError ? [] : regionsData.regions;
+
+    // Display flag for the inspector's Cancel/Replay controls — the action
+    // below enforces write:runs independently.
+    const { canCreateBulkAction } = checkPermissions(ability, {
+      canCreateBulkAction: { action: "write", resource: { type: "runs" } },
+    });
+
+    return typedjson({ ...data, regions, canCreateBulkAction });
   }
-
-  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
-  if (!environment) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  const presenter = new CreateBulkActionPresenter();
-  const data = await presenter.call({
-    organizationId: project.organizationId,
-    projectId: project.id,
-    environmentId: environment.id,
-    request,
-  });
-
-  return typedjson(data);
-}
+);
 
 export const CreateBulkActionSearchParams = z.object({
   mode: BulkActionMode.default("filter"),
   action: BulkActionAction.default("cancel"),
 });
+
+// Sentinel for the "Override region" dropdown meaning "keep each run's original
+// region". Normalized to `undefined` in the action so the service never sees it.
+const REPLAY_REGION_NO_OVERRIDE_VALUE = "__no_override__";
 
 export const CreateBulkActionPayload = z.discriminatedUnion("mode", [
   z.object({
@@ -99,6 +139,7 @@ export const CreateBulkActionPayload = z.discriminatedUnion("mode", [
       return [];
     }, z.array(z.string())),
     title: z.string().optional(),
+    region: z.string().optional(),
     failedRedirect: z.string(),
     emailNotification: z.preprocess((value) => value === "on", z.boolean()),
   }),
@@ -106,73 +147,99 @@ export const CreateBulkActionPayload = z.discriminatedUnion("mode", [
     mode: z.literal("filter"),
     action: BulkActionAction,
     title: z.string().optional(),
+    region: z.string().optional(),
     failedRedirect: z.string(),
     emailNotification: z.preprocess((value) => value === "on", z.boolean()),
   }),
 ]);
 export type CreateBulkActionPayload = z.infer<typeof CreateBulkActionPayload>;
 
-export async function action({ params, request }: ActionFunctionArgs) {
-  const userId = await requireUserId(request);
+export const action = dashboardAction(
+  {
+    params: EnvironmentParamSchema,
+    context: async (params) => {
+      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
+      return organizationId ? { organizationId } : {};
+    },
+    authorization: { action: "write", resource: { type: "runs" } },
+  },
+  async ({ request, params, user }) => {
+    const { organizationSlug, projectParam, envParam } = params;
 
-  const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
+    const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
+    if (!project) {
+      throw new Response("Not Found", { status: 404 });
+    }
 
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
-  if (!project) {
-    throw new Response("Not Found", { status: 404 });
-  }
+    const environment = await findEnvironmentBySlug(project.id, envParam, user.id);
+    if (!environment) {
+      throw new Response("Not Found", { status: 404 });
+    }
 
-  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
-  if (!environment) {
-    throw new Response("Not Found", { status: 404 });
-  }
+    const formData = await request.formData();
+    const submission = parseWithZod(formData, { schema: CreateBulkActionPayload });
 
-  const formData = await request.formData();
-  const submission = parse(formData, { schema: CreateBulkActionPayload });
+    if (submission.status !== "success") {
+      logger.error("Invalid bulk action", {
+        submission,
+        formData: Object.fromEntries(formData),
+      });
+      return redirectWithErrorMessage("/", request, "Invalid bulk action");
+    }
 
-  if (!submission.value) {
-    logger.error("Invalid bulk action", {
-      submission,
-      formData: Object.fromEntries(formData),
-    });
-    return redirectWithErrorMessage("/", request, "Invalid bulk action");
-  }
+    // "Don't override" keeps each run's original region — drop it so it isn't
+    // stored as a real override.
+    if (submission.value.region === REPLAY_REGION_NO_OVERRIDE_VALUE) {
+      submission.value.region = undefined;
+    }
 
-  const service = new BulkActionService();
-  const [error, result] = await tryCatch(
-    service.create(
-      project.organizationId,
-      project.id,
-      environment.id,
-      userId,
-      submission.value,
-      request
-    )
-  );
+    const service = new BulkActionService();
+    const [error, result] = await tryCatch(
+      (async () => {
+        const filters =
+          submission.value.mode === "selected"
+            ? { runId: submission.value.selectedRunIds }
+            : await getRunFiltersFromRequest(request);
 
-  if (error) {
-    logger.error("Failed to create bulk action", {
-      error,
-    });
+        return service.create({
+          organizationId: project.organizationId,
+          projectId: project.id,
+          environmentId: environment.id,
+          userId: user.id,
+          action: submission.value.action,
+          title: submission.value.title,
+          region: submission.value.region,
+          emailNotification: submission.value.emailNotification,
+          filters,
+          triggerSource: "dashboard",
+        });
+      })()
+    );
 
-    return redirectWithErrorMessage(
-      submission.value.failedRedirect,
+    if (error) {
+      logger.error("Failed to create bulk action", {
+        error,
+      });
+
+      return redirectWithErrorMessage(
+        submission.value.failedRedirect,
+        request,
+        `Failed to create bulk action: ${error.message}`
+      );
+    }
+
+    return redirectWithSuccessMessage(
+      v3BulkActionPath(
+        { slug: organizationSlug },
+        { slug: projectParam },
+        { slug: envParam },
+        { friendlyId: result.bulkActionId }
+      ),
       request,
-      `Failed to create bulk action: ${error.message}`
+      "Bulk action started"
     );
   }
-
-  return redirectWithSuccessMessage(
-    v3BulkActionPath(
-      { slug: organizationSlug },
-      { slug: projectParam },
-      { slug: envParam },
-      { friendlyId: result.bulkActionId }
-    ),
-    request,
-    "Bulk action started"
-  );
-}
+);
 
 export function CreateBulkActionInspector({
   filters,
@@ -188,29 +255,44 @@ export function CreateBulkActionInspector({
   const project = useProject();
   const environment = useEnvironment();
   const fetcher = useTypedFetcher<typeof loader>();
+  const { load } = fetcher;
   const { value, replace, del } = useSearchParams();
-  const [action, setAction] = useState<BulkActionAction>(
-    bulkActionActionFromString(value("action"))
-  );
+  const action = bulkActionActionFromString(value("action"));
   const location = useOptimisticLocation();
   const user = useUser();
 
   useEffect(() => {
-    fetcher.load(
+    load(
       `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/runs/bulkaction${location.search}`
     );
-  }, [organization.id, project.id, environment.id, location.search]);
-
-  useEffect(() => {
-    setAction(bulkActionActionFromString(value("action")));
-  }, [value("action")]);
+  }, [organization.slug, project.slug, environment.slug, location.search, load]);
 
   const mode = bulkActionModeFromString(value("mode"));
 
   const data = fetcher.data != null ? fetcher.data : undefined;
 
+  // Permissive while the fetcher is loading; the action enforces write:runs.
+  const canCreateBulkAction = data?.canCreateBulkAction ?? true;
+
   const impactedCountElement =
     mode === "selected" ? selectedItems.size : <EstimatedCount count={data?.count} />;
+
+  // Region is a replay-only override and only applies to deployed environments.
+  // The default keeps each run in its original region so a bulk action spanning
+  // multiple regions doesn't silently re-route runs.
+  const regions = data?.regions ?? [];
+  const showRegion =
+    action === "replay" && environment.type !== "DEVELOPMENT" && regions.length > 1;
+  const regionItems = [
+    { value: REPLAY_REGION_NO_OVERRIDE_VALUE, label: "Don't override", isDefault: false },
+    ...regions.map((r) => ({
+      // masterQueue is the region routing key the replay resolves against
+      // (WorkerGroupService matches regionOverride on masterQueue); name is display only.
+      value: r.masterQueue,
+      label: r.description ? `${r.name} — ${r.description}` : r.name,
+      isDefault: r.isDefault,
+    })),
+  ];
 
   return (
     <Form
@@ -233,7 +315,7 @@ export function CreateBulkActionInspector({
             className="pl-1"
           />
         </div>
-        <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
           <div className="px-3 pt-3">
             <Accordion
               type="single"
@@ -342,6 +424,34 @@ export function CreateBulkActionInspector({
                 />
               </RadioGroup>
             </InputGroup>
+            {showRegion && (
+              <InputGroup>
+                <Label htmlFor="region">Override region</Label>
+                {/* Our Select primitive uses Ariakit, which treats value={undefined}
+                    as uncontrolled and keeps stale state when switching environments.
+                    The key forces a remount so it reinitializes with the default value. */}
+                <Select
+                  key={`bulk-region-${environment.id}`}
+                  name="region"
+                  variant="tertiary/medium"
+                  dropdownIcon
+                  items={regionItems}
+                  defaultValue={REPLAY_REGION_NO_OVERRIDE_VALUE}
+                  text={(value) => regionItems.find((r) => r.value === value)?.label}
+                >
+                  {regionItems.map((r) => (
+                    <SelectItem key={r.value} value={r.value}>
+                      {r.label}
+                      {r.isDefault ? " (default)" : ""}
+                    </SelectItem>
+                  ))}
+                </Select>
+                <Hint>
+                  By default each run is replayed in its original region. Select a region to run
+                  them all there instead.
+                </Hint>
+              </InputGroup>
+            )}
             <InputGroup>
               <Label>Preview</Label>
               <BulkActionFilterSummary
@@ -369,7 +479,12 @@ export function CreateBulkActionInspector({
                   key: "enter",
                   enabledOnInputElements: true,
                 }}
-                disabled={impactedCountElement === 0 || isDialogOpen}
+                disabled={impactedCountElement === 0 || isDialogOpen || !canCreateBulkAction}
+                tooltip={
+                  canCreateBulkAction
+                    ? undefined
+                    : "You don't have permission to create bulk actions"
+                }
               >
                 {action === "replay" ? (
                   <span className="text-text-bright">Replay {impactedCountElement} runs…</span>

@@ -9,6 +9,7 @@ import {
 import { MultiFactorAuthenticationService } from "~/services/mfa/multiFactorAuthentication.server";
 import { requireUserId } from "~/services/session.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
+import { MfaRateLimitError } from "~/services/mfa/mfaRateLimiterGlobal.server";
 import { useMfaSetup } from "./useMfaSetup";
 import { MfaToggle } from "./MfaToggle";
 import { MfaSetupDialog } from "./MfaSetupDialog";
@@ -137,14 +138,27 @@ export async function action({ request }: ActionFunctionArgs) {
       return redirectWithErrorMessage("/account/security", request, error.message);
     }
 
+    if (error instanceof MfaRateLimitError) {
+      return redirectWithErrorMessage(
+        "/account/security",
+        request,
+        "Too many attempts. Please try again later."
+      );
+    }
+
     // Re-throw unexpected errors
     throw error;
   }
 }
 
 export function MfaSetup({ isEnabled }: { isEnabled: boolean }) {
-  const { state, actions, isQrDialogOpen, isRecoveryDialogOpen, isDisableDialogOpen } =
-    useMfaSetup(isEnabled);
+  const {
+    state,
+    actions,
+    isQrDialogOpen,
+    isRecoveryDialogOpen: _isRecoveryDialogOpen,
+    isDisableDialogOpen,
+  } = useMfaSetup(isEnabled);
 
   const handleToggle = (enabled: boolean) => {
     if (enabled && !state.isEnabled) {

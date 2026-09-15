@@ -1,7 +1,12 @@
-import { conform, useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
+import { getFormProps, getInputProps, useForm } from "@conform-to/react";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { CommandLineIcon, FolderIcon } from "@heroicons/react/20/solid";
-import { json, type ActionFunction, type LoaderFunctionArgs } from "@remix-run/node";
+import {
+  json,
+  redirectDocument,
+  type ActionFunction,
+  type LoaderFunctionArgs,
+} from "@remix-run/node";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
 import type { Prisma } from "@trigger.dev/database";
 import React, { useEffect, useState } from "react";
@@ -36,6 +41,9 @@ import {
   v3ProjectPath,
 } from "~/utils/pathBuilder";
 import { generateVercelOAuthState } from "~/v3/vercel/vercelOAuthState.server";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("New project");
 
 const WORKING_ON_OTHER = "Other/not sure yet";
 const GOALS_OTHER = "Other/not sure yet";
@@ -68,6 +76,17 @@ function shuffleArray<T>(arr: T[]): T[] {
   return shuffled;
 }
 
+function renderMultiSelectValue(value: string[]) {
+  if (value.length === 0) return;
+
+  return (
+    <span className="flex min-w-0 items-center text-text-bright">
+      <span className="truncate">{value.slice(0, 2).join(", ")}</span>
+      {value.length > 2 && <span className="ml-1 flex-none">+{value.length - 2} more</span>}
+    </span>
+  );
+}
+
 function MultiSelectField({
   value,
   setValue,
@@ -88,15 +107,8 @@ function MultiSelectField({
       dropdownIcon
       icon={icon}
       items={items}
-      className="h-8 min-w-0 border-0 bg-charcoal-750 pl-2 text-sm text-text-dimmed ring-charcoal-600 transition hover:bg-charcoal-650 hover:text-text-dimmed hover:ring-1"
-      text={(v) =>
-        v.length === 0 ? undefined : (
-          <span className="flex min-w-0 items-center text-text-bright">
-            <span className="truncate">{v.slice(0, 2).join(", ")}</span>
-            {v.length > 2 && <span className="ml-1 flex-none">+{v.length - 2} more</span>}
-          </span>
-        )
-      }
+      className="h-8 min-w-0 border-0 bg-background-hover pl-2 text-sm text-text-dimmed ring-border-bright transition hover:bg-secondary hover:text-text-dimmed hover:ring-1"
+      text={renderMultiSelectValue}
     >
       {(items) =>
         items.map((item) => (
@@ -118,9 +130,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     select: {
       id: true,
       title: true,
-      v3Enabled: true,
-      v2Enabled: true,
-      hasRequestedV3: true,
+      isActivated: true,
       _count: {
         select: {
           projects: {
@@ -138,7 +148,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   }
 
   const { isManagedCloud } = featuresForRequest(request);
-  if (isManagedCloud && !organization.v3Enabled) {
+  if (isManagedCloud && !organization.isActivated) {
     return redirect(selectPlanPath({ slug: organizationSlug }));
   }
 
@@ -151,9 +161,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
       title: organization.title,
       slug: organizationSlug,
       projectsCount: organization._count.projects,
-      v3Enabled: organization.v3Enabled,
-      v2Enabled: organization.v2Enabled,
-      hasRequestedV3: organization.hasRequestedV3,
+      isActivated: organization.isActivated,
     },
     defaultVersion: url.searchParams.get("version") ?? "v2",
     message: message ? decodeURIComponent(message) : undefined,
@@ -179,10 +187,10 @@ export const action: ActionFunction = async ({ request, params }) => {
   invariant(organizationSlug, "organizationSlug is required");
 
   const formData = await request.formData();
-  const submission = parse(formData, { schema });
+  const submission = parseWithZod(formData, { schema });
 
-  if (!submission.value || submission.intent !== "submit") {
-    return json(submission);
+  if (submission.status !== "success") {
+    return json(submission.reply());
   }
 
   const url = new URL(request.url);
@@ -286,14 +294,17 @@ export const action: ActionFunction = async ({ request, params }) => {
       if (next) {
         params.set("next", next);
       }
-      return redirect(`/vercel/connect?${params.toString()}`);
+      return redirectDocument(`/vercel/connect?${params.toString()}`);
     }
 
-    return redirectWithSuccessMessage(
-      v3ProjectPath(project.organization, project),
+    const destination = v3ProjectPath(project.organization, project);
+    const response = await redirectWithSuccessMessage(
+      destination,
       request,
       `${submission.value.projectName} created`
     );
+
+    return redirectDocument(destination, { headers: response.headers });
   } catch (error) {
     if (error instanceof ExceededProjectLimitError) {
       return redirectWithErrorMessage(
@@ -324,13 +335,13 @@ export default function Page() {
   const { organization, message } = useTypedLoaderData<typeof loader>();
   const lastSubmission = useActionData();
 
-  const canCreateV3Projects = organization.v3Enabled;
+  const canCreateV3Projects = organization.isActivated;
 
   const [form, { projectName, projectVersion }] = useForm({
     id: "create-project",
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission as any,
     onValidate({ formData }) {
-      return parse(formData, { schema });
+      return parseWithZod(formData, { schema });
     },
   });
 
@@ -349,6 +360,7 @@ export default function Page() {
 
   useEffect(() => {
     const nonOther = workingOnOptions.filter((o) => o !== WORKING_ON_OTHER);
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setShuffledWorkingOn([...shuffleArray(nonOther), WORKING_ON_OTHER]);
 
     const nonOtherGoals = goalOptions.filter((o) => o !== GOALS_OTHER);
@@ -359,16 +371,19 @@ export default function Page() {
   const showGoalsOther = selectedGoals.includes(GOALS_OTHER);
 
   return (
-    <AppContainer className="bg-charcoal-900">
+    <AppContainer className="bg-background-deep">
       <BackgroundWrapper>
-        <MainCenteredContainer variant="onboarding" className="max-w-[29rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg">
+        <MainCenteredContainer
+          variant="onboarding"
+          className="max-w-116 rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg"
+        >
           <div>
             <FormTitle
               LeadingIcon={<FolderIcon className="size-7 text-indigo-500" />}
               title="Create a new project"
               description={`This will create a new project in your "${organization.title}" organization.`}
             />
-            <Form method="post" {...form.props}>
+            <Form method="post" {...getFormProps(form)}>
               {message && (
                 <Callout variant="success" className="mb-4">
                   {message}
@@ -380,20 +395,26 @@ export default function Page() {
                     Project name <span className="text-text-bright">*</span>
                   </Label>
                   <Input
-                    {...conform.input(projectName, { type: "text" })}
+                    {...getInputProps(projectName, { type: "text" })}
                     placeholder="Your project name"
                     icon={FolderIcon}
                     autoFocus
                   />
-                  <FormError id={projectName.errorId}>{projectName.error}</FormError>
+                  <FormError id={projectName.errorId}>{projectName.errors}</FormError>
                 </InputGroup>
                 {canCreateV3Projects ? (
-                  <input {...conform.input(projectVersion, { type: "hidden" })} value={"v3"} />
+                  <input
+                    {...getInputProps(projectVersion, { type: "hidden", value: false })}
+                    defaultValue={"v3"}
+                  />
                 ) : (
-                  <input {...conform.input(projectVersion, { type: "hidden" })} value={"v2"} />
+                  <input
+                    {...getInputProps(projectVersion, { type: "hidden", value: false })}
+                    defaultValue={"v2"}
+                  />
                 )}
 
-                <div className="border-t border-charcoal-700" />
+                <div className="border-t border-grid-bright" />
                 <InputGroup>
                   <Label>What are you working on?</Label>
                   <input type="hidden" name="workingOn" value={JSON.stringify(selectedWorkingOn)} />
@@ -452,9 +473,7 @@ export default function Page() {
                   <input
                     type="hidden"
                     name="goalsPositions"
-                    value={JSON.stringify(
-                      selectedGoals.map((v) => shuffledGoals.indexOf(v) + 1)
-                    )}
+                    value={JSON.stringify(selectedGoals.map((v) => shuffledGoals.indexOf(v) + 1))}
                   />
                   <MultiSelectField
                     value={selectedGoals}
@@ -495,7 +514,7 @@ export default function Page() {
               </Fieldset>
             </Form>
           </div>
-          <Feedback button={<></>} />
+          <Feedback />
         </MainCenteredContainer>
       </BackgroundWrapper>
     </AppContainer>

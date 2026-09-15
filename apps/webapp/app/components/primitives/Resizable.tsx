@@ -2,6 +2,8 @@
 
 import React, { useRef } from "react";
 import { PanelGroup, Panel, PanelResizer } from "@window-splitter/react";
+import { useTypedMatchesData } from "~/hooks/useTypedMatchData";
+import type { loader as rootLoader } from "~/root";
 import { cn } from "~/utils/cn";
 
 const ResizablePanelGroup = ({ className, ...props }: React.ComponentProps<typeof PanelGroup>) => (
@@ -14,7 +16,25 @@ const ResizablePanelGroup = ({ className, ...props }: React.ComponentProps<typeo
   />
 );
 
-const ResizablePanel = Panel;
+// react-window-splitter drives the collapse animation through @react-spring/rafz,
+// which has timing/interaction issues with Firefox that produce visual glitches
+// (alternating frames, panels stuck at min, panelHasSpace invariant violations),
+// so the animation is dropped on Firefox. The browser check must agree between
+// SSR and hydration (a client-only `navigator` check made the panel tree differ
+// and shifted useIds), so it comes from the root loader's user-agent sniff.
+const ResizablePanel = React.forwardRef<
+  React.ElementRef<typeof Panel>,
+  React.ComponentProps<typeof Panel>
+>(function ResizablePanel({ collapseAnimation, ...props }, ref) {
+  const rootData = useTypedMatchesData<typeof rootLoader>({ id: "root" });
+  return (
+    <Panel
+      ref={ref}
+      collapseAnimation={rootData?.isFirefox ? undefined : collapseAnimation}
+      {...props}
+    />
+  );
+});
 
 const ResizableHandle = ({
   withHandle = true,
@@ -53,15 +73,15 @@ const ResizableHandle = ({
     {withHandle && (
       <>
         {/* Horizontal orientation dots (vertical arrangement) */}
-        <div className="relative z-[1] flex h-5 w-0.75 flex-col items-center justify-center gap-[0.1875rem] bg-background-dimmed transition-opacity group-hover:opacity-0 group-data-[handle-orientation=vertical]:hidden">
+        <div className="relative z-1 flex h-5 w-0.75 flex-col items-center justify-center gap-0.75 bg-background-dimmed transition-opacity group-hover:opacity-0 group-data-[handle-orientation=vertical]:hidden">
           {Array.from({ length: 3 }).map((_, index) => (
-            <div key={index} className="h-[0.1875rem] w-0.75 rounded-full bg-charcoal-600" />
+            <div key={index} className="h-[0.1875rem] w-0.75 rounded-full bg-surface-control" />
           ))}
         </div>
         {/* Vertical orientation dots (horizontal arrangement) */}
-        <div className="relative z-[1] hidden h-0.75 w-5 flex-row items-center justify-center gap-[0.1875rem] bg-background-dimmed transition-opacity group-hover:opacity-0 group-data-[handle-orientation=vertical]:flex">
+        <div className="relative z-1 hidden h-0.75 w-5 flex-row items-center justify-center gap-0.75 bg-background-dimmed transition-opacity group-hover:opacity-0 group-data-[handle-orientation=vertical]:flex">
           {Array.from({ length: 3 }).map((_, index) => (
-            <div key={index} className="h-0.75 w-[0.1875rem] rounded-full bg-charcoal-600" />
+            <div key={index} className="h-0.75 w-[0.1875rem] rounded-full bg-surface-control" />
           ))}
         </div>
       </>
@@ -69,14 +89,8 @@ const ResizableHandle = ({
   </PanelResizer>
 );
 
-// react-window-splitter drives the collapse animation through @react-spring/rafz,
-// which has timing/interaction issues with Firefox that produce visual glitches
-// (alternating frames, panels stuck at min, panelHasSpace invariant violations).
-// Disable the animation on Firefox; it works correctly in Chromium and Safari.
-const RESIZABLE_PANEL_ANIMATION =
-  typeof navigator !== "undefined" && /firefox/i.test(navigator.userAgent)
-    ? undefined
-    : ({ easing: "ease-in-out", duration: 300 } as const);
+// Firefox filtering happens inside ResizablePanel (see above).
+const RESIZABLE_PANEL_ANIMATION = { easing: "ease-in-out", duration: 300 } as const;
 
 const COLLAPSIBLE_HANDLE_CLASSNAME = "transition-opacity duration-200";
 
@@ -86,7 +100,9 @@ function collapsibleHandleClassName(show: boolean) {
 
 function useFrozenValue<T>(value: T | null | undefined): T | null | undefined {
   const ref = useRef(value);
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
   if (value != null) ref.current = value;
+  // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
   return ref.current;
 }
 

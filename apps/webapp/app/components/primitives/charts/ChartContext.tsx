@@ -104,17 +104,14 @@ export function ChartProvider({
   const [activePayload, setActivePayloadRaw] = useState<any[] | null>(null);
   const activeTooltipIndexRef = useRef<number | null>(null);
 
-  const setActivePayload = useCallback(
-    (payload: any[] | null, tooltipIndex?: number | null) => {
-      const idx = tooltipIndex ?? null;
-      if (idx !== null && idx === activeTooltipIndexRef.current) {
-        return;
-      }
-      activeTooltipIndexRef.current = idx;
-      setActivePayloadRaw(payload);
-    },
-    []
-  );
+  const setActivePayload = useCallback((payload: any[] | null, tooltipIndex?: number | null) => {
+    const idx = tooltipIndex ?? null;
+    if (idx !== null && idx === activeTooltipIndexRef.current) {
+      return;
+    }
+    activeTooltipIndexRef.current = idx;
+    setActivePayloadRaw(payload);
+  }, []);
 
   // Reset the tooltip index ref when highlight resets (mouse leaves chart)
   const originalReset = highlight.reset;
@@ -135,10 +132,7 @@ export function ChartProvider({
     [series, config, dataKey]
   );
 
-  const visibleSeries = useMemo(
-    () => visibleSeriesProp ?? dataKeys,
-    [visibleSeriesProp, dataKeys]
-  );
+  const visibleSeries = useMemo(() => visibleSeriesProp ?? dataKeys, [visibleSeriesProp, dataKeys]);
 
   const value = useMemo<ChartContextValue>(
     () => ({
@@ -155,7 +149,21 @@ export function ChartProvider({
       onZoomChange: enableZoom ? onZoomChange : undefined,
       showLegend,
     }),
-    [config, data, dataKey, dataKeys, visibleSeries, state, labelFormatter, highlightWithReset, setActivePayload, zoomState, enableZoom, onZoomChange, showLegend]
+    [
+      config,
+      data,
+      dataKey,
+      dataKeys,
+      visibleSeries,
+      state,
+      labelFormatter,
+      highlightWithReset,
+      setActivePayload,
+      zoomState,
+      enableZoom,
+      onZoomChange,
+      showLegend,
+    ]
   );
 
   return (

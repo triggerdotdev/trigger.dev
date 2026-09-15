@@ -1,28 +1,31 @@
 import {
+  type TaskRunExecutionRetry,
+  type TaskRunExecutionStatus,
+  type WorkerManifest,
   type CompleteRunAttemptResult,
   type RunExecutionData,
   SuspendedProcessError,
   type TaskRunExecutionMetrics,
   type TaskRunExecutionResult,
-  TaskRunExecutionRetry,
-  TaskRunExecutionStatus,
   type TaskRunFailedExecutionResult,
-  WorkerManifest,
+  type SnapshotRouteWire,
 } from "@trigger.dev/core/v3";
-import { type WorkloadRunAttemptStartResponseBody } from "@trigger.dev/core/v3/workers";
+import {
+  type WorkloadRunAttemptStartResponseBody,
+  type WorkloadHttpClient,
+} from "@trigger.dev/core/v3/workers";
 import { TaskRunProcess } from "../../executions/taskRunProcess.js";
-import { RunLogger, SendDebugLogOptions } from "./logger.js";
-import { RunnerEnv } from "./env.js";
-import { WorkloadHttpClient } from "@trigger.dev/core/v3/workers";
+import type { RunLogger, SendDebugLogOptions } from "./logger.js";
+import type { RunnerEnv } from "./env.js";
 import { setTimeout as sleep } from "timers/promises";
 import { RunExecutionSnapshotPoller } from "./poller.js";
 import { assertExhaustive, tryCatch } from "@trigger.dev/core/utils";
-import { Metadata, MetadataClient } from "./overrides.js";
+import { type Metadata, MetadataClient } from "./overrides.js";
 import { randomBytes } from "node:crypto";
-import { SnapshotManager, SnapshotState } from "./snapshot.js";
+import { type SnapshotState, SnapshotManager } from "./snapshot.js";
 import type { SupervisorSocket } from "./controller.js";
 import { RunNotifier } from "./notifier.js";
-import { TaskRunProcessProvider } from "./taskRunProcessProvider.js";
+import type { TaskRunProcessProvider } from "./taskRunProcessProvider.js";
 
 class ExecutionAbortError extends Error {
   constructor(message: string) {
@@ -50,6 +53,9 @@ type RunExecutionRunOptions = {
   dequeuedAt?: Date;
   podScheduledAt?: Date;
   isWarmStart?: boolean;
+  // The run's storage route, carried from the DequeuedMessage so the worker's start/complete requests
+  // echo it back to the engine and residency is honored on a poll-lagging webapp pod.
+  snapshotRoute?: SnapshotRouteWire;
 };
 
 export class RunExecution {
@@ -63,6 +69,7 @@ export class RunExecution {
 
   private dequeuedAt?: Date;
   private podScheduledAt?: Date;
+  private snapshotRoute?: SnapshotRouteWire;
   private readonly workerManifest: WorkerManifest;
   private readonly env: RunnerEnv;
   private readonly httpClient: WorkloadHttpClient;
@@ -412,7 +419,7 @@ export class RunExecution {
     const start = await this.httpClient.startRunAttempt(
       this.runFriendlyId,
       this.snapshotManager.snapshotId,
-      { isWarmStart }
+      { isWarmStart, snapshotRoute: this.snapshotRoute }
     );
 
     if (this.executionAbortController.signal.aborted) {
@@ -477,6 +484,7 @@ export class RunExecution {
 
     this.dequeuedAt = runOpts.dequeuedAt;
     this.podScheduledAt = runOpts.podScheduledAt;
+    this.snapshotRoute = runOpts.snapshotRoute;
 
     // Create and start services
     this.snapshotPoller = new RunExecutionSnapshotPoller({
@@ -683,7 +691,7 @@ export class RunExecution {
     const completionResult = await this.httpClient.completeRunAttempt(
       this.runFriendlyId,
       this.snapshotManager.snapshotId,
-      { completion }
+      { completion, snapshotRoute: this.snapshotRoute }
     );
 
     if (!completionResult.success) {
@@ -870,7 +878,8 @@ export class RunExecution {
 
     const continuationResult = await this.httpClient.continueRunExecution(
       this.runFriendlyId,
-      this.snapshotManager.snapshotId
+      this.snapshotManager.snapshotId,
+      this.snapshotRoute
     );
 
     if (!continuationResult.success) {
@@ -882,7 +891,8 @@ export class RunExecution {
         // Retry the continuation after refreshing metadata
         const retryResult = await this.httpClient.continueRunExecution(
           this.runFriendlyId,
-          this.snapshotManager.snapshotId
+          this.snapshotManager.snapshotId,
+          this.snapshotRoute
         );
 
         if (!retryResult.success) {
@@ -949,7 +959,7 @@ export class RunExecution {
 
     this.sendDebugLog(`[override] processing: ${reason}`, {
       overrides,
-      currentEnv: this.env.raw,
+      currentEnv: this.env.rawForLogging,
     });
 
     // Override the env with the new values

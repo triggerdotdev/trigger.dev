@@ -13,6 +13,11 @@ export {
   type MockChatAgentTurn,
 } from "./mock-chat-agent.js";
 
+export {
+  runTranscriptStorageTests,
+  type TranscriptStorageTestOptions,
+} from "./transcript-storage-tests.js";
+
 // Re-export the lower-level task context harness so consumers can build
 // their own test helpers without adding a separate `@trigger.dev/core`
 // dependency to their reference projects.

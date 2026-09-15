@@ -89,6 +89,60 @@ describe("BackpressureMonitor", () => {
     monitor.stop();
   });
 
+  it("holds an engaged verdict while reads fail, then releases past the max age", async () => {
+    let call = 0;
+    const source: BackpressureSignalSource = {
+      read: async () => {
+        call++;
+        if (call === 1) {
+          return { engaged: true, ts: Date.now() };
+        }
+        throw new Error("signal source unreachable");
+      },
+    };
+    const monitor = new BackpressureMonitor({
+      enabled: true,
+      source,
+      refreshIntervalMs: 1000,
+      maxVerdictAgeMs: 15_000,
+    });
+
+    monitor.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(monitor.shouldSkipDequeue()).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(monitor.shouldSkipDequeue()).toBe(true); // read failing, verdict held
+
+    await vi.advanceTimersByTimeAsync(11_000);
+    expect(monitor.shouldSkipDequeue()).toBe(false); // past max age, released
+
+    monitor.stop();
+  });
+
+  it("releases immediately on an explicit null even when a grace window is configured", async () => {
+    let engaged: boolean | null = true;
+    const source: BackpressureSignalSource = {
+      read: async () => (engaged === null ? null : { engaged, ts: Date.now() }),
+    };
+    const monitor = new BackpressureMonitor({
+      enabled: true,
+      source,
+      refreshIntervalMs: 1000,
+      maxVerdictAgeMs: 15_000,
+    });
+
+    monitor.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(monitor.shouldSkipDequeue()).toBe(true);
+
+    engaged = null;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(monitor.shouldSkipDequeue()).toBe(false); // null is an answer, not a failure
+
+    monitor.stop();
+  });
+
   it("fails open when the source reports unknown (null)", async () => {
     const { source } = countingSource(null);
     const monitor = new BackpressureMonitor({ enabled: true, source, refreshIntervalMs: 1000 });
@@ -292,6 +346,7 @@ describe("BackpressureMonitor", () => {
     const logs: Array<{ message: string; meta?: Record<string, unknown> }> = [];
     const logger = {
       info: (message: string, meta?: Record<string, unknown>) => logs.push({ message, meta }),
+      error: (message: string, meta?: Record<string, unknown>) => logs.push({ message, meta }),
     };
     const monitor = new BackpressureMonitor({
       enabled: true,

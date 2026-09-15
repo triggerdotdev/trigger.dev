@@ -1,12 +1,15 @@
-import { conform, useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
+import { getFormProps, getInputProps, getSelectProps, useForm } from "@conform-to/react";
+import { parseWithZod } from "@conform-to/zod/v4";
+import { RectangleStackIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, useActionData, useNavigation, useParams, useSubmit } from "@remix-run/react";
+import { MachinePresetName } from "@trigger.dev/core/v3";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type UseDataFunctionReturn, useTypedFetcher } from "remix-typedjson";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { JSONEditor } from "~/components/code/JSONEditor";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
+import { Badge } from "~/components/primitives/Badge";
 import { Button } from "~/components/primitives/Buttons";
 import { DialogContent, DialogHeader } from "~/components/primitives/Dialog";
 import { DurationPicker } from "~/components/primitives/DurationPicker";
@@ -17,7 +20,6 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { type loader as queuesLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -27,15 +29,12 @@ import { Select, SelectItem } from "~/components/primitives/Select";
 import { Spinner, SpinnerWhite } from "~/components/primitives/Spinner";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { TextLink } from "~/components/primitives/TextLink";
+import { InfoIconTooltip } from "~/components/primitives/Tooltip";
+import { type loader as queuesLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues";
 import { type loader } from "~/routes/resources.taskruns.$runParam.replay";
 import { docsPath } from "~/utils/pathBuilder";
 import { ReplayRunData } from "~/v3/replayTask";
-import { RectangleStackIcon } from "@heroicons/react/20/solid";
-import { Badge } from "~/components/primitives/Badge";
 import { RunTagInput } from "./RunTagInput";
-import { MachinePresetName } from "@trigger.dev/core/v3";
-import { InfoIconTooltip } from "~/components/primitives/Tooltip";
-import { divide } from "effect/Duration";
 
 type ReplayRunDialogProps = {
   runFriendlyId: string;
@@ -55,8 +54,10 @@ export function ReplayRunDialog({ runFriendlyId, failedRedirect }: ReplayRunDial
 
 function ReplayContent({ runFriendlyId, failedRedirect }: ReplayRunDialogProps) {
   const replayDataFetcher = useTypedFetcher<typeof loader>();
+  const { load: loadReplayData } = replayDataFetcher;
   const isLoading = replayDataFetcher.state === "loading";
   const queueFetcher = useTypedFetcher<typeof queuesLoader>();
+  const { load: loadQueues } = queueFetcher;
 
   const [environmentIdOverride, setEnvironmentIdOverride] = useState<string | undefined>(undefined);
 
@@ -66,34 +67,35 @@ function ReplayContent({ runFriendlyId, failedRedirect }: ReplayRunDialogProps) 
       searchParams.set("environmentIdOverride", environmentIdOverride);
     }
 
-    replayDataFetcher.load(
-      `/resources/taskruns/${runFriendlyId}/replay?${searchParams.toString()}`
-    );
-  }, [runFriendlyId, environmentIdOverride]);
+    loadReplayData(`/resources/taskruns/${runFriendlyId}/replay?${searchParams.toString()}`);
+  }, [environmentIdOverride, loadReplayData, runFriendlyId]);
 
   const params = useParams();
+  const environmentOverrideSlug = environmentIdOverride
+    ? replayDataFetcher.data?.environments.find((env) => env.id === environmentIdOverride)?.slug
+    : undefined;
+
   useEffect(() => {
     if (params.organizationSlug && params.projectParam && params.envParam) {
       const searchParams = new URLSearchParams();
       searchParams.set("type", "custom");
       searchParams.set("per_page", "100");
 
-      let envSlug = params.envParam;
+      const envSlug = environmentOverrideSlug ?? params.envParam;
 
-      if (environmentIdOverride) {
-        const environmentOverride = replayDataFetcher.data?.environments.find(
-          (env) => env.id === environmentIdOverride
-        );
-        envSlug = environmentOverride?.slug ?? envSlug;
-      }
-
-      queueFetcher.load(
+      loadQueues(
         `/resources/orgs/${params.organizationSlug}/projects/${
           params.projectParam
         }/env/${envSlug}/queues?${searchParams.toString()}`
       );
     }
-  }, [params.organizationSlug, params.projectParam, params.envParam, environmentIdOverride]);
+  }, [
+    environmentOverrideSlug,
+    loadQueues,
+    params.envParam,
+    params.organizationSlug,
+    params.projectParam,
+  ]);
 
   const customQueues = useMemo(() => {
     return queueFetcher.data?.queues ?? [];
@@ -124,6 +126,22 @@ function ReplayContent({ runFriendlyId, failedRedirect }: ReplayRunDialogProps) 
 
 const startingJson = "{\n\n}";
 const machinePresets = Object.values(MachinePresetName.enum);
+
+type ReplayEnvironment = UseDataFunctionReturn<typeof loader>["environments"][number];
+
+function renderReplayEnvironment(
+  environments: ReplayEnvironment[],
+  value: string
+): React.ReactNode {
+  const environment = environments.find((environment) => environment.id === value);
+  if (!environment) return;
+
+  return (
+    <div className="flex items-center pl-1 pr-2">
+      <EnvironmentCombo environment={environment} />
+    </div>
+  );
+}
 
 function ReplayForm({
   failedRedirect,
@@ -184,49 +202,47 @@ function ReplayForm({
   }));
 
   const lastSubmission = useActionData();
-  const [
-    form,
-    {
-      environment,
-      payload,
-      metadata,
-      delaySeconds,
-      ttlSeconds,
-      idempotencyKey,
-      idempotencyKeyTTLSeconds,
-      queue,
-      concurrencyKey,
-      maxAttempts,
-      maxDurationSeconds,
-      tags,
-      version,
-      machine,
-      region,
-      prioritySeconds,
-    },
-  ] = useForm({
+  const [form, fields] = useForm({
     id: "replay-task",
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission as any,
     onSubmit(event, { formData }) {
       event.preventDefault();
       if (editablePayload) {
-        formData.set(payload.name, currentPayloadJson.current);
+        formData.set(fields.payload.name, currentPayloadJson.current);
       }
-      formData.set(metadata.name, currentMetadataJson.current);
+      formData.set(fields.metadata.name, currentMetadataJson.current);
 
       submit(formData, { method: "POST", action: formAction });
     },
     onValidate({ formData }) {
-      return parse(formData, { schema: ReplayRunData });
+      return parseWithZod(formData, { schema: ReplayRunData });
     },
   });
+  const {
+    environment,
+    payload: _payload,
+    metadata: _metadata,
+    delaySeconds,
+    ttlSeconds,
+    idempotencyKey,
+    idempotencyKeyTTLSeconds,
+    queue,
+    concurrencyKey,
+    maxAttempts,
+    maxDurationSeconds,
+    tags,
+    version,
+    machine,
+    region,
+    prioritySeconds,
+  } = fields;
 
   return (
     <Form
       action={formAction}
       method="post"
       className="flex flex-1 flex-col overflow-hidden px-3"
-      {...form.props}
+      {...getFormProps(form)}
     >
       <input type="hidden" name="failedRedirect" value={failedRedirect} />
 
@@ -239,7 +255,7 @@ function ReplayForm({
         className="-mx-3 mt-3 w-auto flex-1 border-b border-t border-grid-dimmed"
       >
         <ResizablePanel id="payload" min="300px">
-          <div className="rounded-smbg-charcoal-900 mb-3 h-full min-h-40 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <div className="mb-3 h-full min-h-40 overflow-y-auto rounded-sm bg-background-deep scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
             <JSONEditor
               className="h-full"
               autoFocus
@@ -302,7 +318,7 @@ function ReplayForm({
         </ResizablePanel>
         <ResizableHandle />
         <ResizablePanel id="test-task-options" min="300px" default="300px" max="360px">
-          <div className="h-full overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <div className="h-full overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
             <Fieldset className="px-3 py-3">
               <Hint>
                 Options enable you to control the execution behavior of your task.{" "}
@@ -313,7 +329,7 @@ function ReplayForm({
                   Machine
                 </Label>
                 <Select
-                  {...conform.select(machine)}
+                  {...getSelectProps(machine)}
                   variant="tertiary/small"
                   placeholder="Select machine type"
                   dropdownIcon
@@ -327,14 +343,14 @@ function ReplayForm({
                   ))}
                 </Select>
                 <Hint>Overrides the machine preset.</Hint>
-                <FormError id={machine.errorId}>{machine.error}</FormError>
+                <FormError id={machine.errorId}>{machine.errors}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label htmlFor={version.id} variant="small">
                   Version
                 </Label>
                 <Select
-                  {...conform.select(version)}
+                  {...getSelectProps(version)}
                   defaultValue="latest"
                   variant="tertiary/small"
                   placeholder="Select version"
@@ -356,7 +372,7 @@ function ReplayForm({
                 ) : (
                   <Hint>Runs task on a specific version.</Hint>
                 )}
-                <FormError id={version.errorId}>{version.error}</FormError>
+                <FormError id={version.errorId}>{version.errors}</FormError>
               </InputGroup>
               {replayData.regions.length > 1 && (
                 <InputGroup>
@@ -364,7 +380,7 @@ function ReplayForm({
                     Region
                   </Label>
                   <Select
-                    {...conform.select(region)}
+                    {...getSelectProps(region)}
                     variant="tertiary/small"
                     placeholder={replayData.disableVersionSelection ? "–" : undefined}
                     dropdownIcon
@@ -384,7 +400,7 @@ function ReplayForm({
                   ) : (
                     <Hint>Overrides the region for this run.</Hint>
                   )}
-                  <FormError id={region.errorId}>{region.error}</FormError>
+                  <FormError id={region.errorId}>{region.errors}</FormError>
                 </InputGroup>
               )}
               <InputGroup>
@@ -393,7 +409,7 @@ function ReplayForm({
                 </Label>
                 {replayData.allowArbitraryQueues ? (
                   <Input
-                    {...conform.input(queue, { type: "text" })}
+                    {...getInputProps(queue, { type: "text" })}
                     variant="small"
                     defaultValue={replayData.queue}
                   />
@@ -414,7 +430,7 @@ function ReplayForm({
                         <SelectItem
                           key={queueItem.value}
                           value={queueItem.value}
-                          className="max-w-[var(--popover-anchor-width)]"
+                          className="max-w-(--popover-anchor-width)"
                           icon={
                             queueItem.type === "task" ? (
                               <TaskIcon className="size-4 shrink-0 text-blue-500" />
@@ -437,7 +453,7 @@ function ReplayForm({
                   </Select>
                 )}
                 <Hint>Assign run to a specific queue.</Hint>
-                <FormError id={queue.errorId}>{queue.error}</FormError>
+                <FormError id={queue.errorId}>{queue.errors}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label htmlFor={tags.id} variant="small">
@@ -450,14 +466,14 @@ function ReplayForm({
                   defaultTags={replayData.runTags}
                 />
                 <Hint>Add tags to easily filter runs.</Hint>
-                <FormError id={tags.errorId}>{tags.error}</FormError>
+                <FormError id={tags.errorId}>{tags.errors}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label htmlFor={maxAttempts.id} variant="small">
                   Max attempts
                 </Label>
                 <Input
-                  {...conform.input(maxAttempts, { type: "number" })}
+                  {...getInputProps(maxAttempts, { type: "number" })}
                   className="[&::-webkit-inner-spin-button]:appearance-none"
                   variant="small"
                   min={1}
@@ -476,7 +492,7 @@ function ReplayForm({
                   }}
                 />
                 <Hint>Retries failed runs up to the specified number of attempts.</Hint>
-                <FormError id={maxAttempts.errorId}>{maxAttempts.error}</FormError>
+                <FormError id={maxAttempts.errorId}>{maxAttempts.errors}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label variant="small">Max duration</Label>
@@ -486,14 +502,14 @@ function ReplayForm({
                   defaultValueSeconds={replayData.maxDurationSeconds ?? undefined}
                 />
                 <Hint>Overrides the maximum compute time limit for the run.</Hint>
-                <FormError id={maxDurationSeconds.errorId}>{maxDurationSeconds.error}</FormError>
+                <FormError id={maxDurationSeconds.errorId}>{maxDurationSeconds.errors}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label htmlFor={idempotencyKey.id} variant="small">
                   Idempotency key
                 </Label>
-                <Input {...conform.input(idempotencyKey, { type: "text" })} variant="small" />
-                <FormError id={idempotencyKey.errorId}>{idempotencyKey.error}</FormError>
+                <Input {...getInputProps(idempotencyKey, { type: "text" })} variant="small" />
+                <FormError id={idempotencyKey.errorId}>{idempotencyKey.errors}</FormError>
                 <Hint>
                   Specify an idempotency key to ensure that a task is only triggered once with the
                   same key.
@@ -507,7 +523,7 @@ function ReplayForm({
                 />
                 <Hint>Keys expire after 30 days by default.</Hint>
                 <FormError id={idempotencyKeyTTLSeconds.errorId}>
-                  {idempotencyKeyTTLSeconds.error}
+                  {idempotencyKeyTTLSeconds.errors}
                 </FormError>
               </InputGroup>
               <InputGroup>
@@ -515,26 +531,26 @@ function ReplayForm({
                   Concurrency key
                 </Label>
                 <Input
-                  {...conform.input(concurrencyKey, { type: "text" })}
+                  {...getInputProps(concurrencyKey, { type: "text" })}
                   variant="small"
                   defaultValue={replayData.concurrencyKey ?? undefined}
                 />
                 <Hint>
                   Limits concurrency by creating a separate queue for each value of the key.
                 </Hint>
-                <FormError id={concurrencyKey.errorId}>{concurrencyKey.error}</FormError>
+                <FormError id={concurrencyKey.errorId}>{concurrencyKey.errors}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label variant="small">Delay</Label>
                 <DurationPicker name={delaySeconds.name} id={delaySeconds.id} />
                 <Hint>Delays run by a specific duration.</Hint>
-                <FormError id={delaySeconds.errorId}>{delaySeconds.error}</FormError>
+                <FormError id={delaySeconds.errorId}>{delaySeconds.errors}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label variant="small">Priority</Label>
                 <DurationPicker name={prioritySeconds.name} id={prioritySeconds.id} />
                 <Hint>Sets the priority of the run. Higher values mean higher priority.</Hint>
-                <FormError id={prioritySeconds.errorId}>{prioritySeconds.error}</FormError>
+                <FormError id={prioritySeconds.errorId}>{prioritySeconds.errors}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label variant="small">TTL</Label>
@@ -544,9 +560,9 @@ function ReplayForm({
                   defaultValueSeconds={replayData.ttlSeconds}
                 />
                 <Hint>Expires the run if it hasn't started within the TTL.</Hint>
-                <FormError id={ttlSeconds.errorId}>{ttlSeconds.error}</FormError>
+                <FormError id={ttlSeconds.errorId}>{ttlSeconds.errors}</FormError>
               </InputGroup>
-              <FormError>{form.error}</FormError>
+              <FormError>{form.errors}</FormError>
             </Fieldset>
           </div>
         </ResizablePanel>
@@ -560,7 +576,7 @@ function ReplayForm({
           <InputGroup className="flex flex-row items-center gap-3">
             <Label>Replay this run in</Label>
             <Select
-              {...conform.select(environment)}
+              {...getSelectProps(environment)}
               placeholder="Select an environment"
               defaultValue={replayData.environment.id}
               items={replayData.environments}
@@ -575,14 +591,7 @@ function ReplayForm({
                   (item) => item.branchName?.replace(/\//g, " ").replace(/_/g, " ") ?? "",
                 ],
               }}
-              text={(value) => {
-                const env = replayData.environments.find((env) => env.id === value)!;
-                return (
-                  <div className="flex items-center pl-1 pr-2">
-                    <EnvironmentCombo environment={env} />
-                  </div>
-                );
-              }}
+              text={(value) => renderReplayEnvironment(replayData.environments, value)}
             >
               {(matches) =>
                 matches.map((env) => (

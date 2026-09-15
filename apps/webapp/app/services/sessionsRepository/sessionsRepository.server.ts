@@ -24,6 +24,13 @@ export type SessionsRepositoryOptions = {
 export const SessionStatus = z.enum(["ACTIVE", "CLOSED", "EXPIRED"]);
 export type SessionStatus = z.infer<typeof SessionStatus>;
 
+/**
+ * Legacy marker tag for sessions created from the Test/playground before the
+ * `Session.isTest` boolean existed. New sessions set `isTest` instead; this tag
+ * is hidden from the Tags display so it doesn't surface on pre-isTest rows.
+ */
+export const LEGACY_PLAYGROUND_TAG = "playground";
+
 const SessionListInputOptionsSchema = z.object({
   organizationId: z.string(),
   projectId: z.string(),
@@ -40,10 +47,6 @@ const SessionListInputOptionsSchema = z.object({
 });
 
 export type SessionListInputOptions = z.infer<typeof SessionListInputOptionsSchema>;
-export type SessionListInputFilters = Omit<
-  SessionListInputOptions,
-  "organizationId" | "projectId" | "environmentId"
->;
 
 export type FilterSessionsOptions = Omit<SessionListInputOptions, "period"> & {
   /** period converted to milliseconds duration */
@@ -76,17 +79,18 @@ export type SessionTagListOptions = {
   query?: string;
 } & OffsetPagination;
 
-export type SessionTagList = {
+type SessionTagList = {
   tags: string[];
 };
 
-export type ListedSession = Prisma.SessionGetPayload<{
+type ListedSession = Prisma.SessionGetPayload<{
   select: {
     id: true;
     friendlyId: true;
     externalId: true;
     type: true;
     taskIdentifier: true;
+    isTest: true;
     tags: true;
     metadata: true;
     closedAt: true;
@@ -185,15 +189,11 @@ export class SessionsRepository implements ISessionsRepository {
   }
 }
 
-export function parseSessionListInputOptions(data: unknown): SessionListInputOptions {
-  return SessionListInputOptionsSchema.parse(data);
-}
-
 export function convertSessionListInputOptionsToFilterOptions(
   options: SessionListInputOptions
 ): FilterSessionsOptions {
   return {
     ...options,
-    period: options.period ? parseDuration(options.period) ?? undefined : undefined,
+    period: options.period ? (parseDuration(options.period) ?? undefined) : undefined,
   };
 }

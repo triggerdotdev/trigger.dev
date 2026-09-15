@@ -3,6 +3,9 @@ export const WORKER_HEADERS = {
   DEPLOYMENT_ID: "x-trigger-worker-deployment-id",
   MANAGED_SECRET: "x-trigger-worker-managed-secret",
   RUNNER_ID: "x-trigger-worker-runner-id",
+  // Verified environment id recovered from the deployment token. Set by the supervisor only when
+  // enforcing; the platform scopes the worker-action's snapshot read by it.
+  ENVIRONMENT_ID: "x-trigger-worker-environment-id",
 };
 
 export const WORKLOAD_HEADERS = {

@@ -1,10 +1,12 @@
 import { startSpan } from "@internal/tracing";
-import { SystemResources } from "./systems.js";
-import { PrismaClientOrTransaction, TaskRun } from "@trigger.dev/database";
+import type { SystemResources } from "./systems.js";
+import type { PrismaClientOrTransaction, TaskRun } from "@trigger.dev/database";
 import { getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
 import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/isomorphic";
-import { EnqueueSystem } from "./enqueueSystem.js";
+import type { EnqueueSystem } from "./enqueueSystem.js";
+import { deletedEnvironmentReason, MISSING_ENVIRONMENT_REASON } from "../controlPlaneResolver.js";
 import { ServiceValidationError } from "../errors.js";
+import { toWireRoute } from "@internal/run-store";
 
 export type DelayedRunSystemOptions = {
   resources: SystemResources;
@@ -38,7 +40,7 @@ export class DelayedRunSystem {
       "rescheduleDelayedRun",
       async () => {
         return await this.$.runLock.lock("rescheduleDelayedRun", [runId], async () => {
-          const snapshot = await getLatestExecutionSnapshot(prisma, runId);
+          const snapshot = await getLatestExecutionSnapshot(prisma, runId, this.$.runStore);
 
           // Check if the run is still in DELAYED status (or legacy RUN_CREATED for older runs)
           if (
@@ -48,26 +50,28 @@ export class DelayedRunSystem {
             throw new ServiceValidationError("Cannot reschedule a run that is not delayed");
           }
 
-          const updatedRun = await prisma.taskRun.update({
-            where: {
-              id: runId,
-            },
-            data: {
+          const isParked = snapshot.runStatus === "PENDING_VERSION";
+
+          const updatedRun = await this.$.runStore.rescheduleRun(
+            runId,
+            {
               delayUntil: delayUntil,
-              executionSnapshots: {
-                create: {
-                  engine: "V2",
-                  executionStatus: "DELAYED",
-                  description: "Delayed run was rescheduled to a future date",
-                  runStatus: "DELAYED",
-                  environmentId: snapshot.environmentId,
-                  environmentType: snapshot.environmentType,
-                  projectId: snapshot.projectId,
-                  organizationId: snapshot.organizationId,
-                },
+              snapshot: {
+                environmentId: snapshot.environmentId,
+                environmentType: snapshot.environmentType,
+                projectId: snapshot.projectId,
+                organizationId: snapshot.organizationId,
+                ...(isParked
+                  ? {
+                      executionStatus: "RUN_CREATED" as const,
+                      runStatus: "PENDING_VERSION" as const,
+                      description: "Parked run was rescheduled to a future date",
+                    }
+                  : {}),
               },
             },
-          });
+            prisma
+          );
 
           await this.$.worker.reschedule(`enqueueDelayedRun:${updatedRun.id}`, delayUntil);
 
@@ -102,12 +106,23 @@ export class DelayedRunSystem {
     );
   }
 
+  /**
+   * Moves a delayed run into the queue once its `delayUntil` has passed.
+   *
+   * A run whose project or organization was deleted while it waited is cancelled instead of
+   * enqueued: enqueuing would re-add the environment queue that deletion removed, and the run
+   * would execute (and alert) long after the customer left.
+   *
+   * The deletion state is read authoritatively rather than off the resolved env, because
+   * enqueuing on stale state is what re-arms the whole failure mode. This runs once per
+   * delayed run coming due, so the extra read is not on a hot path.
+   */
   async enqueueDelayedRun({ runId }: { runId: string }) {
     // Use lock to prevent race with debounce rescheduling
     return await this.$.runLock.lock("enqueueDelayedRun", [runId], async () => {
       // Check if run is still in DELAYED status before enqueuing
       // This prevents a race where debounce reschedules the run while we're about to enqueue it
-      const snapshot = await getLatestExecutionSnapshot(this.$.prisma, runId);
+      const snapshot = await getLatestExecutionSnapshot(this.$.prisma, runId, this.$.runStore);
 
       if (snapshot.executionStatus !== "DELAYED" && snapshot.executionStatus !== "RUN_CREATED") {
         this.$.logger.debug("enqueueDelayedRun: run is no longer delayed, skipping enqueue", {
@@ -117,20 +132,47 @@ export class DelayedRunSystem {
         return;
       }
 
-      const run = await this.$.prisma.taskRun.findFirst({
-        where: { id: runId },
-        include: {
-          runtimeEnvironment: {
-            include: {
-              project: true,
-              organization: true,
-            },
-          },
-        },
-      });
+      // Read run-ops scalars only; resolve the control-plane env separately so the run-ops DB can
+      // split without a cross-provider join.
+      const run = await this.$.runStore.findRun({ id: runId }, this.$.prisma);
 
       if (!run) {
         throw new Error(`#enqueueDelayedRun: run not found: ${runId}`);
+      }
+
+      const env = await this.$.controlPlaneResolver.resolveEnv(run.runtimeEnvironmentId);
+
+      if (!env) {
+        throw new Error(`#enqueueDelayedRun: environment not found for run: ${runId}`);
+      }
+
+      const deletionState = await this.$.controlPlaneResolver.resolveEnvDeletionState(
+        run.runtimeEnvironmentId
+      );
+      const deletedReason = deletionState
+        ? deletedEnvironmentReason(deletionState)
+        : MISSING_ENVIRONMENT_REASON;
+
+      if (deletedReason) {
+        this.$.logger.warn("enqueueDelayedRun: environment is not runnable, cancelling the run", {
+          runId,
+          projectId: env.projectId,
+          organizationId: env.organizationId,
+          reason: deletedReason,
+          deletionStateFound: deletionState !== null,
+        });
+
+        await this.$.worker.enqueue({
+          id: `cancelRun:${runId}`,
+          job: "cancelRun",
+          payload: {
+            runId,
+            completedAt: new Date(),
+            reason: deletedReason,
+          },
+        });
+
+        return;
       }
 
       // Check if delayUntil has been rescheduled to the future (e.g., by debounce)
@@ -150,7 +192,7 @@ export class DelayedRunSystem {
       // For DEV environments where the dev CLI may not be running, fast-pathed
       // runs can sit on the worker queue indefinitely. Keep the legacy per-run
       // expireRun job armed for DEV so those runs still expire.
-      if (run.ttl && run.runtimeEnvironment.type === "DEVELOPMENT") {
+      if (run.ttl && env.type === "DEVELOPMENT") {
         const expireAt = parseNaturalLanguageDuration(run.ttl);
         if (expireAt) {
           await this.$.worker.enqueue({
@@ -162,7 +204,14 @@ export class DelayedRunSystem {
         }
       }
 
-      // Now we need to enqueue the run into the RunQueue
+      // This is a scheduled/background promotion that may run on any pod, so resolve the run's route
+      // durably (forceDurable) rather than let enqueueRun take its dial-gated fallback. On a pod whose
+      // dial reads undefined the fallback returns no route, which would strand a redis-primary run's
+      // QUEUED snapshot on the never-enrolled Postgres shortcut while its head stays in MemoryDB.
+      const promoteRoute = await this.$.runStore.readSnapshotRoute(runId, env.organizationId, {
+        forceDurable: true,
+      });
+
       // Skip the lock in enqueueRun since we already hold it.
       // includeTtl: true so the run's TTL is armed from the moment it enters
       // the queue (not from taskRun.createdAt). The TTL system tracks runs
@@ -170,21 +219,23 @@ export class DelayedRunSystem {
       // enqueued here, so this is the correct point to arm TTL.
       await this.enqueueSystem.enqueueRun({
         run,
-        env: run.runtimeEnvironment,
+        env,
         batchId: run.batchId ?? undefined,
         skipRunLock: true,
         includeTtl: true,
+        anchorEligibilityAtQueuePosition: true,
+        snapshotRoute: promoteRoute ? toWireRoute(promoteRoute) : undefined,
       });
 
       const queuedAt = new Date();
 
-      const updatedRun = await this.$.prisma.taskRun.update({
-        where: { id: runId },
-        data: {
-          status: "PENDING",
+      const updatedRun = await this.$.runStore.enqueueDelayedRun(
+        runId,
+        {
           queuedAt,
         },
-      });
+        this.$.prisma
+      );
 
       this.$.eventBus.emit("runEnqueuedAfterDelay", {
         time: new Date(),
@@ -198,16 +249,15 @@ export class DelayedRunSystem {
           batchId: updatedRun.batchId,
         },
         organization: {
-          id: run.runtimeEnvironment.organizationId,
+          id: env.organizationId,
         },
         project: {
-          id: run.runtimeEnvironment.projectId,
+          id: env.projectId,
         },
         environment: {
           id: run.runtimeEnvironmentId,
         },
       });
-
     });
   }
 

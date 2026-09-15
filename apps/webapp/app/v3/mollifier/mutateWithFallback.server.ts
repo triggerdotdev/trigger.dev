@@ -5,18 +5,20 @@ import type {
   SnapshotPatch,
 } from "@trigger.dev/redis-worker";
 import type { TaskRun } from "@trigger.dev/database";
+import type { PrismaClientOrTransaction, PrismaReplicaClient } from "~/db.server";
 import { prisma, $replica } from "~/db.server";
+import { runStore } from "~/v3/runStore.server";
 import { logger } from "~/services/logger.server";
 import { getMollifierBuffer } from "./mollifierBuffer.server";
 
 // Wait/retry knobs. Exported for tests.
-export const DEFAULT_SAFETY_NET_MS = 2_000;
+const DEFAULT_SAFETY_NET_MS = 2_000;
 // Initial gap between buffer polls; grows by BACKOFF_FACTOR up to
 // DEFAULT_MAX_POLL_STEP_MS so a slow drain doesn't poll at a tight fixed
 // cadence for the whole safety-net budget.
-export const DEFAULT_POLL_STEP_MS = 20;
-export const DEFAULT_MAX_POLL_STEP_MS = 250;
-export const DEFAULT_BACKOFF_FACTOR = 1.7;
+const DEFAULT_POLL_STEP_MS = 20;
+const DEFAULT_MAX_POLL_STEP_MS = 250;
+const DEFAULT_BACKOFF_FACTOR = 1.7;
 
 export type MutateWithFallbackInput<TResponse> = {
   runId: string;
@@ -35,18 +37,14 @@ export type MutateWithFallbackInput<TResponse> = {
   // matching the PG path, without an extra Redis round-trip.
   // `bufferEntry` is `null` in the rare race where the entry didn't
   // exist at pre-check time but appeared before `mutateSnapshot`.
-  synthesisedResponse: (ctx: {
-    bufferEntry: BufferEntry | null;
-  }) => TResponse | Promise<TResponse>;
+  synthesisedResponse: (ctx: { bufferEntry: BufferEntry | null }) => TResponse | Promise<TResponse>;
   // Called when the buffer rejected the patch as invalid (e.g. an
   // `append_tags` patch carrying `maxTags` would exceed the cap). Required
   // only by callers that send a rejectable patch; the helper throws if the
   // buffer reports a rejection and no builder was supplied. Receives the
   // same `bufferEntry` context as `synthesisedResponse` so a rejection
   // message can reference the prior state if useful.
-  rejectedResponse?: (ctx: {
-    bufferEntry: BufferEntry | null;
-  }) => TResponse | Promise<TResponse>;
+  rejectedResponse?: (ctx: { bufferEntry: BufferEntry | null }) => TResponse | Promise<TResponse>;
   abortSignal?: AbortSignal;
   // Override defaults for tests.
   safetyNetMs?: number;
@@ -55,8 +53,8 @@ export type MutateWithFallbackInput<TResponse> = {
   backoffFactor?: number;
   // Test injection.
   getBuffer?: () => MollifierBuffer | null;
-  prismaWriter?: TaskRunReader;
-  prismaReplica?: TaskRunReader;
+  prismaWriter?: PrismaClientOrTransaction;
+  prismaReplica?: PrismaReplicaClient;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
   // Jitter source; defaults to Math.random. Inject `() => 0` for
@@ -76,7 +74,7 @@ export type MutateWithFallbackOutcome<TResponse> =
 // this helper never throws Response objects so it remains route-agnostic
 // and unit-testable in isolation.
 export async function mutateWithFallback<TResponse>(
-  input: MutateWithFallbackInput<TResponse>,
+  input: MutateWithFallbackInput<TResponse>
 ): Promise<MutateWithFallbackOutcome<TResponse>> {
   const replica = input.prismaReplica ?? $replica;
   const writer = input.prismaWriter ?? prisma;
@@ -120,8 +118,7 @@ export async function mutateWithFallback<TResponse>(
   const entryForAuth = await buffer.getEntry(input.runId);
   if (
     entryForAuth &&
-    (entryForAuth.envId !== input.environmentId ||
-      entryForAuth.orgId !== input.organizationId)
+    (entryForAuth.envId !== input.environmentId || entryForAuth.orgId !== input.organizationId)
   ) {
     // Hide existence on env mismatch: return not_found, same shape as
     // a true miss, rather than 403 which would leak that the runId
@@ -130,10 +127,7 @@ export async function mutateWithFallback<TResponse>(
   }
 
   // Path 2 — buffer snapshot mutation.
-  const result: MutateSnapshotResult = await buffer.mutateSnapshot(
-    input.runId,
-    input.bufferPatch,
-  );
+  const result: MutateSnapshotResult = await buffer.mutateSnapshot(input.runId, input.bufferPatch);
 
   if (result === "applied_to_snapshot") {
     return {
@@ -148,7 +142,7 @@ export async function mutateWithFallback<TResponse>(
     // caller sent a rejectable patch without handling the rejection.
     if (!input.rejectedResponse) {
       throw new Error(
-        "mutateWithFallback: buffer returned 'limit_exceeded' but no rejectedResponse was provided",
+        "mutateWithFallback: buffer returned 'limit_exceeded' but no rejectedResponse was provided"
       );
     }
     return {
@@ -222,25 +216,12 @@ export async function mutateWithFallback<TResponse>(
   return { kind: "timed_out" };
 }
 
-// Structural reader interface — accepts both the writer (`prisma`) and the
-// replica (`$replica`), which differ slightly in their generated Prisma
-// types but share the findFirst surface used here.
-type TaskRunReader = {
-  taskRun: {
-    findFirst(args: {
-      where: { friendlyId: string; runtimeEnvironmentId: string };
-    }): Promise<TaskRun | null>;
-  };
-};
-
 async function findRunInPg(
-  client: TaskRunReader,
+  client: PrismaClientOrTransaction | PrismaReplicaClient,
   friendlyId: string,
-  environmentId: string,
+  environmentId: string
 ): Promise<TaskRun | null> {
-  return client.taskRun.findFirst({
-    where: { friendlyId, runtimeEnvironmentId: environmentId },
-  });
+  return runStore.findRun({ friendlyId, runtimeEnvironmentId: environmentId }, client);
 }
 
 function defaultSleep(ms: number): Promise<void> {

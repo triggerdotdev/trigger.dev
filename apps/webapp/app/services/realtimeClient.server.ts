@@ -1,17 +1,21 @@
 import { json } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { safeParseNaturalLanguageDurationAgo } from "@trigger.dev/core/v3/isomorphic";
-import { Callback, Result } from "ioredis";
+import type { Callback, Result } from "ioredis";
 import { randomUUID } from "node:crypto";
-import { createRedisClient, RedisClient, RedisWithClusterOptions } from "~/redis.server";
+import type { RedisClient, RedisWithClusterOptions } from "~/redis.server";
+import { createRedisClient } from "~/redis.server";
 import { longPollingFetch } from "~/utils/longPollingFetch";
 import { logger } from "./logger.server";
 import { jumpHash } from "@trigger.dev/core/v3/serverOnly";
-import { Cache, createCache, DefaultStatefulContext, Namespace } from "@unkey/cache";
+import type { Cache } from "@unkey/cache";
+import { createCache, DefaultStatefulContext, Namespace } from "@unkey/cache";
 import { createLRUMemoryStore } from "@internal/cache";
 import { RedisCacheStore } from "./unkey/redisCacheStore.server";
 import { env } from "~/env.server";
-import { API_VERSIONS, CURRENT_API_VERSION } from "~/api/versions";
+import type { API_VERSIONS } from "~/api/versions";
+import { CURRENT_API_VERSION } from "~/api/versions";
+import { sanitizeRealtimeTagsForSql } from "~/v3/electricShape.server";
 
 export interface CachedLimitProvider {
   getCachedLimit: (organizationId: string, defaultValue: number) => Promise<number | undefined>;
@@ -168,7 +172,10 @@ export class RealtimeClient {
     const whereClauses: string[] = [`"runtimeEnvironmentId"='${environment.id}'`];
 
     if (params.tags) {
-      whereClauses.push(`"runTags" @> ARRAY[${params.tags.map((t) => `'${t}'`).join(",")}]`);
+      // Reject unsafe chars and escape single quotes so tag values can't
+      // break out of the Electric SQL string literal.
+      const safeTags = sanitizeRealtimeTagsForSql(params.tags);
+      whereClauses.push(`"runTags" @> ARRAY[${safeTags.map((t) => `'${t}'`).join(",")}]`);
     }
 
     const createdAtFilter = await this.#calculateCreatedAtFilter(url, params.createdAt);

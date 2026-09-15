@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/plugins",
-  "version": "4.5.0-rc.6",
+  "version": "4.5.2",
   "description": "Plugin contracts and interfaces for Trigger.dev",
   "license": "MIT",
   "private": true,
@@ -14,19 +14,20 @@
     "dist"
   ],
   "dependencies": {
-    "@trigger.dev/core": "workspace:*"
+    "@trigger.dev/core": "workspace:*",
+    "neverthrow": "^8.2.0"
   },
   "scripts": {
     "clean": "rimraf dist .turbo",
-    "build": "tsup",
-    "dev": "tsup --watch",
+    "build": "tsdown",
+    "dev": "tsdown --watch",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@types/node": "^20.14.14",
+    "@types/node": "^24.13.3",
     "rimraf": "6.0.1",
-    "tsup": "^8.4.0",
-    "typescript": "^5.3.0"
+    "tsdown": "0.22.10",
+    "typescript": "catalog:"
   },
   "engines": {
     "node": ">=18.20.0"

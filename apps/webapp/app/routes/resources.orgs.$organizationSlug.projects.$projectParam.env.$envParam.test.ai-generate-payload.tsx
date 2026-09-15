@@ -22,6 +22,8 @@ const RequestSchema = z.object({
   payloadSchema: z.string().max(50_000).optional(),
   currentPayload: z.string().max(50_000).optional(),
   isAgent: z.enum(["true", "false"]).optional(),
+  payloadKind: z.enum(["standard", "agent", "webhook"]).optional(),
+  providerSource: z.string().max(100).optional(),
 });
 
 export async function action({ request, params }: ActionFunctionArgs) {
@@ -65,20 +67,31 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
   }
 
-  const { prompt, taskIdentifier, payloadSchema, currentPayload, isAgent } = submission.data;
-  const agentMode = isAgent === "true";
+  const {
+    prompt,
+    taskIdentifier,
+    payloadSchema,
+    currentPayload,
+    isAgent,
+    payloadKind,
+    providerSource,
+  } = submission.data;
+  const kind = payloadKind ?? (isAgent === "true" ? "agent" : "standard");
 
   logger.info("[AI payload] Generating payload", {
     taskIdentifier,
     hasPayloadSchema: !!payloadSchema,
     hasCurrentPayload: !!currentPayload,
     promptLength: prompt.length,
-    agentMode,
+    kind,
   });
 
-  const systemPrompt = agentMode
-    ? buildAgentClientDataPrompt(taskIdentifier, payloadSchema, currentPayload)
-    : buildSystemPrompt(taskIdentifier, payloadSchema, currentPayload);
+  const systemPrompt =
+    kind === "webhook"
+      ? buildWebhookEventPrompt(providerSource, currentPayload)
+      : kind === "agent"
+        ? buildAgentClientDataPrompt(taskIdentifier, payloadSchema, currentPayload)
+        : buildSystemPrompt(taskIdentifier, payloadSchema, currentPayload);
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -101,16 +114,19 @@ export async function action({ request, params }: ActionFunctionArgs) {
           abortSignal: getRequestAbortSignal(),
           system: systemPrompt,
           prompt,
-          tools: {
-            getTaskSourceCode: tool({
-              description:
-                "Look up the source code of the task to understand what payload shape it expects. Use this when there is no JSON Schema available and you need to infer the payload structure from the task implementation.",
-              inputSchema: z.object({}),
-              execute: async () => {
-                return getTaskSourceCode(environment.id, environment.type, taskIdentifier);
-              },
-            }),
-          },
+          tools:
+            kind === "webhook"
+              ? {}
+              : {
+                  getTaskSourceCode: tool({
+                    description:
+                      "Look up the source code of the task to understand what payload shape it expects. Use this when there is no JSON Schema available and you need to infer the payload structure from the task implementation.",
+                    inputSchema: z.object({}),
+                    execute: async () => {
+                      return getTaskSourceCode(environment.id, environment.type, taskIdentifier);
+                    },
+                  }),
+                },
           stopWhen: stepCountIs(3),
         });
 
@@ -288,6 +304,43 @@ ${currentPayload}
 \`\`\`
 
 Use this as context but generate new client data based on the user's prompt.`;
+  }
+
+  return prompt;
+}
+
+function buildWebhookEventPrompt(providerSource?: string, currentPayload?: string): string {
+  const provider = providerSource && providerSource !== "custom" ? providerSource : undefined;
+
+  let prompt = `You are generating a realistic example webhook event body${
+    provider ? ` for the "${provider}" provider` : ""
+  }.
+
+Return ONLY the raw JSON event body that the provider would POST to a webhook endpoint, wrapped in a \`\`\`json code block. Do NOT include HTTP headers, a signature, or any {event, headers} envelope — just the event JSON itself.
+
+Requirements:
+- Generate a realistic, well-formed event payload matching the shape ${
+    provider ? `the "${provider}" provider actually sends` : "a typical webhook provider sends"
+  }.
+- Use plausible values (real-looking ids with the provider's prefixes, unix/ISO timestamps, emails, amounts).
+- Include the fields a consumer branches on (e.g. an event "type"/"event" discriminator and a "data"/"object" payload) when the provider uses them.
+- The JSON must be valid and parseable.`;
+
+  if (provider) {
+    prompt += `
+
+If you know the "${provider}" webhook event schema, follow it closely (field names, nesting, id prefixes) and pick a common, representative event type for this provider.`;
+  }
+
+  if (currentPayload) {
+    prompt += `
+
+The current event body in the editor is:
+\`\`\`json
+${currentPayload}
+\`\`\`
+
+Use it as context but generate a new event based on the user's prompt.`;
   }
 
   return prompt;

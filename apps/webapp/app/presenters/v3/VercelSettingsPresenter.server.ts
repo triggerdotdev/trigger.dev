@@ -3,17 +3,16 @@ import { type Result, fromPromise, ok, okAsync, ResultAsync } from "neverthrow";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { OrgIntegrationRepository } from "~/models/orgIntegration.server";
-import {
-  VercelIntegrationRepository,
+import type {
   VercelCustomEnvironment,
   VercelEnvironmentVariable,
 } from "~/models/vercelIntegration.server";
+import { VercelIntegrationRepository } from "~/models/vercelIntegration.server";
 import { type GitHubAppInstallation } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.github";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
-import {
-  VercelProjectIntegrationDataSchema,
-  VercelProjectIntegrationData,
-} from "~/v3/vercel/vercelProjectIntegrationSchema";
+import { isReservedForExternalSync } from "~/v3/environmentVariableRules.server";
+import type { VercelProjectIntegrationData } from "~/v3/vercel/vercelProjectIntegrationSchema";
+import { VercelProjectIntegrationDataSchema } from "~/v3/vercel/vercelProjectIntegrationSchema";
 import { BasePresenter } from "./basePresenter.server";
 
 type VercelSettingsOptions = {
@@ -51,7 +50,7 @@ export type VercelSettingsResult = {
   currentTriggerVersionFetchFailed?: boolean;
 };
 
-export type VercelAvailableProject = {
+type VercelAvailableProject = {
   id: string;
   name: string;
 };
@@ -73,7 +72,10 @@ export class VercelSettingsPresenter extends BasePresenter {
   /**
    * Get Vercel integration settings for the settings page
    */
-  public async call({ projectId, organizationId }: VercelSettingsOptions): Promise<Result<VercelSettingsResult, unknown>> {
+  public async call({
+    projectId,
+    organizationId,
+  }: VercelSettingsOptions): Promise<Result<VercelSettingsResult, unknown>> {
     const vercelIntegrationEnabled = OrgIntegrationRepository.isVercelSupported;
 
     if (!vercelIntegrationEnabled) {
@@ -104,12 +106,17 @@ export class VercelSettingsPresenter extends BasePresenter {
     );
 
     if (orgIntegrationResult.isErr()) {
-      logger.error("Unexpected error in VercelSettingsPresenter.call", { error: orgIntegrationResult.error });
+      logger.error("Unexpected error in VercelSettingsPresenter.call", {
+        error: orgIntegrationResult.error,
+      });
       return ok({
         enabled: true,
         hasOrgIntegration: false,
         authInvalid: true,
-        authError: orgIntegrationResult.error instanceof Error ? orgIntegrationResult.error.message : "Failed to fetch organization integration",
+        authError:
+          orgIntegrationResult.error instanceof Error
+            ? orgIntegrationResult.error.message
+            : "Failed to fetch organization integration",
         connectedProject: undefined,
         isGitHubConnected: false,
         hasStagingEnvironment: false,
@@ -138,13 +145,11 @@ export class VercelSettingsPresenter extends BasePresenter {
       }
     }
 
-    const checkOrgIntegration = () => fromPromise(
-      Promise.resolve(hasOrgIntegration),
-      (error) => ({
+    const checkOrgIntegration = () =>
+      fromPromise(Promise.resolve(hasOrgIntegration), (error) => ({
         type: "other" as const,
         cause: error,
-      })
-    );
+      }));
 
     const checkGitHubConnection = () =>
       fromPromise(
@@ -177,6 +182,7 @@ export class VercelSettingsPresenter extends BasePresenter {
           where: {
             projectId,
             type: "STAGING",
+            parentEnvironmentId: null,
           },
         }),
         (error) => ({
@@ -194,6 +200,7 @@ export class VercelSettingsPresenter extends BasePresenter {
           where: {
             projectId,
             type: "PREVIEW",
+            parentEnvironmentId: null,
           },
         }),
         (error) => ({
@@ -250,108 +257,150 @@ export class VercelSettingsPresenter extends BasePresenter {
       checkStagingEnvironment(),
       checkPreviewEnvironment(),
       getVercelProjectIntegration(),
-    ]).andThen(([hasOrgIntegration, isGitHubConnected, hasStagingEnvironment, hasPreviewEnvironment, connectedProject]) => {
-        const fetchVercelData = async (): Promise<{
-          customEnvironments: VercelCustomEnvironment[];
-          autoAssignCustomDomains: boolean | null;
-          vercelManageAccessUrl?: string;
-          currentTriggerVersion: string | null;
-          currentTriggerVersionFetchFailed: boolean;
-        }> => {
-          if (!orgIntegration) {
-            return { customEnvironments: [], autoAssignCustomDomains: null, currentTriggerVersion: null, currentTriggerVersionFetchFailed: false };
-          }
-          const clientResult = await VercelIntegrationRepository.getVercelClient(orgIntegration);
-          if (clientResult.isErr()) {
-            // We couldn't even build a Vercel client — treat as fetch failure so the UI
-            // still prompts the user when they disable atomic deployments.
-            return { customEnvironments: [], autoAssignCustomDomains: null, currentTriggerVersion: null, currentTriggerVersionFetchFailed: true };
-          }
-          const client = clientResult.value;
-          const teamId = await VercelIntegrationRepository.getTeamIdFromIntegration(orgIntegration);
-
-          // Build manage access URL
-          let vercelManageAccessUrl: string | undefined;
-          const appSlug = env.VERCEL_INTEGRATION_APP_SLUG;
-          const integrationData = orgIntegration.integrationData as Record<string, unknown> | null;
-          const installationId =
-            typeof integrationData?.installationId === "string"
-              ? integrationData.installationId
-              : undefined;
-          if (appSlug && installationId && teamId) {
-            const teamSlugResult = await VercelIntegrationRepository.getTeamSlug(client, teamId);
-            if (teamSlugResult.isOk()) {
-              vercelManageAccessUrl = `https://vercel.com/${teamSlugResult.value}/~/integrations/${appSlug}/${installationId}`;
-            }
-          }
-
-          if (!connectedProject) {
-            return { customEnvironments: [], autoAssignCustomDomains: null, vercelManageAccessUrl, currentTriggerVersion: null, currentTriggerVersionFetchFailed: false };
-          }
-
-          const [customEnvsResult, autoAssignResult, triggerVersionResult] = await Promise.all([
-            VercelIntegrationRepository.getVercelCustomEnvironments(
-              client,
-              connectedProject.vercelProjectId,
-              teamId
-            ),
-            VercelIntegrationRepository.getAutoAssignCustomDomains(
-              client,
-              connectedProject.vercelProjectId,
-              teamId
-            ),
-            VercelIntegrationRepository.getVercelEnvironmentVariableValues(
-              client,
-              connectedProject.vercelProjectId,
-              teamId,
-              "production",
-              (key) => key === "TRIGGER_VERSION"
-            ),
-          ]);
-
-          let currentTriggerVersion: string | null = null;
-          let currentTriggerVersionFetchFailed = false;
-          if (triggerVersionResult.isOk()) {
-            const match = triggerVersionResult.value.find(
-              (envVar) => envVar.key === "TRIGGER_VERSION" && envVar.target.includes("production")
-            );
-            currentTriggerVersion = match?.value ?? null;
-          } else {
-            currentTriggerVersionFetchFailed = true;
-            logger.warn("Failed to fetch current TRIGGER_VERSION from Vercel — surfacing as unknown", {
-              projectId,
-              vercelProjectId: connectedProject.vercelProjectId,
-              error: triggerVersionResult.error.message,
-            });
-          }
-
-          return {
-            customEnvironments: customEnvsResult.isOk() ? customEnvsResult.value : [],
-            autoAssignCustomDomains: autoAssignResult.isOk() ? autoAssignResult.value : null,
-            vercelManageAccessUrl,
-            currentTriggerVersion,
-            currentTriggerVersionFetchFailed,
-          };
-        };
-
-        return fromPromise(
-          fetchVercelData(),
-          (error) => ({ type: "other" as const, cause: error })
-        ).map(({ customEnvironments, autoAssignCustomDomains, vercelManageAccessUrl, currentTriggerVersion, currentTriggerVersionFetchFailed }) => ({
-          enabled: true,
+    ])
+      .andThen(
+        ([
           hasOrgIntegration,
-          authInvalid: false,
-          connectedProject,
           isGitHubConnected,
           hasStagingEnvironment,
           hasPreviewEnvironment,
-          customEnvironments,
-          autoAssignCustomDomains,
-          vercelManageAccessUrl,
-          currentTriggerVersion,
-          currentTriggerVersionFetchFailed,
-        } as VercelSettingsResult));
-      }).mapErr((error) => {
+          connectedProject,
+        ]) => {
+          const fetchVercelData = async (): Promise<{
+            customEnvironments: VercelCustomEnvironment[];
+            autoAssignCustomDomains: boolean | null;
+            vercelManageAccessUrl?: string;
+            currentTriggerVersion: string | null;
+            currentTriggerVersionFetchFailed: boolean;
+          }> => {
+            if (!orgIntegration) {
+              return {
+                customEnvironments: [],
+                autoAssignCustomDomains: null,
+                currentTriggerVersion: null,
+                currentTriggerVersionFetchFailed: false,
+              };
+            }
+            const clientResult = await VercelIntegrationRepository.getVercelClient(orgIntegration);
+            if (clientResult.isErr()) {
+              // We couldn't even build a Vercel client — treat as fetch failure so the UI
+              // still prompts the user when they disable atomic deployments.
+              return {
+                customEnvironments: [],
+                autoAssignCustomDomains: null,
+                currentTriggerVersion: null,
+                currentTriggerVersionFetchFailed: true,
+              };
+            }
+            const client = clientResult.value;
+            const teamId =
+              await VercelIntegrationRepository.getTeamIdFromIntegration(orgIntegration);
+
+            // Build manage access URL
+            let vercelManageAccessUrl: string | undefined;
+            const appSlug = env.VERCEL_INTEGRATION_APP_SLUG;
+            const integrationData = orgIntegration.integrationData as Record<
+              string,
+              unknown
+            > | null;
+            const installationId =
+              typeof integrationData?.installationId === "string"
+                ? integrationData.installationId
+                : undefined;
+            if (appSlug && installationId && teamId) {
+              const teamSlugResult = await VercelIntegrationRepository.getTeamSlug(client, teamId);
+              if (teamSlugResult.isOk()) {
+                vercelManageAccessUrl = `https://vercel.com/${teamSlugResult.value}/~/integrations/${appSlug}/${installationId}`;
+              }
+            }
+
+            if (!connectedProject) {
+              return {
+                customEnvironments: [],
+                autoAssignCustomDomains: null,
+                vercelManageAccessUrl,
+                currentTriggerVersion: null,
+                currentTriggerVersionFetchFailed: false,
+              };
+            }
+
+            const [customEnvsResult, autoAssignResult, triggerVersionResult] = await Promise.all([
+              VercelIntegrationRepository.getVercelCustomEnvironments(
+                client,
+                connectedProject.vercelProjectId,
+                teamId
+              ),
+              VercelIntegrationRepository.getAutoAssignCustomDomains(
+                client,
+                connectedProject.vercelProjectId,
+                teamId
+              ),
+              VercelIntegrationRepository.getVercelEnvironmentVariableValues(
+                client,
+                connectedProject.vercelProjectId,
+                teamId,
+                "production",
+                (key) => key === "TRIGGER_VERSION"
+              ),
+            ]);
+
+            let currentTriggerVersion: string | null = null;
+            let currentTriggerVersionFetchFailed = false;
+            if (triggerVersionResult.isOk()) {
+              const match = triggerVersionResult.value.find(
+                (envVar) => envVar.key === "TRIGGER_VERSION" && envVar.target.includes("production")
+              );
+              currentTriggerVersion = match?.value ?? null;
+            } else {
+              currentTriggerVersionFetchFailed = true;
+              logger.warn(
+                "Failed to fetch current TRIGGER_VERSION from Vercel — surfacing as unknown",
+                {
+                  projectId,
+                  vercelProjectId: connectedProject.vercelProjectId,
+                  error: triggerVersionResult.error.message,
+                }
+              );
+            }
+
+            return {
+              customEnvironments: customEnvsResult.isOk() ? customEnvsResult.value : [],
+              autoAssignCustomDomains: autoAssignResult.isOk() ? autoAssignResult.value : null,
+              vercelManageAccessUrl,
+              currentTriggerVersion,
+              currentTriggerVersionFetchFailed,
+            };
+          };
+
+          return fromPromise(fetchVercelData(), (error) => ({
+            type: "other" as const,
+            cause: error,
+          })).map(
+            ({
+              customEnvironments,
+              autoAssignCustomDomains,
+              vercelManageAccessUrl,
+              currentTriggerVersion,
+              currentTriggerVersionFetchFailed,
+            }) =>
+              ({
+                enabled: true,
+                hasOrgIntegration,
+                authInvalid: false,
+                connectedProject,
+                isGitHubConnected,
+                hasStagingEnvironment,
+                hasPreviewEnvironment,
+                customEnvironments,
+                autoAssignCustomDomains,
+                vercelManageAccessUrl,
+                currentTriggerVersion,
+                currentTriggerVersionFetchFailed,
+              }) as VercelSettingsResult
+          );
+        }
+      )
+      .mapErr((error) => {
         // Log the error and return a safe fallback
         logger.error("Error in VercelSettingsPresenter.call", { error });
         return error;
@@ -413,21 +462,25 @@ export class VercelSettingsPresenter extends BasePresenter {
         ]);
 
         const isGitHubConnected = connectedGitHubRepo !== null;
-        const gitHubAppInstallations: GitHubAppInstallation[] = gitHubInstallations.map((installation) => ({
-          id: installation.id,
-          appInstallationId: installation.appInstallationId,
-          targetType: installation.targetType,
-          accountHandle: installation.accountHandle,
-          repositories: installation.repositories.map((repo) => ({
-            id: repo.id,
-            name: repo.name,
-            fullName: repo.fullName,
-            private: repo.private,
-            htmlUrl: repo.htmlUrl,
-          })),
-        }));
+        const gitHubAppInstallations: GitHubAppInstallation[] = gitHubInstallations.map(
+          (installation) => ({
+            id: installation.id,
+            appInstallationId: installation.appInstallationId,
+            targetType: installation.targetType,
+            accountHandle: installation.accountHandle,
+            repositories: installation.repositories.map((repo) => ({
+              id: repo.id,
+              name: repo.name,
+              fullName: repo.fullName,
+              private: repo.private,
+              htmlUrl: repo.htmlUrl,
+            })),
+          })
+        );
 
-        const orgIntegration = await (this._replica as PrismaClient).organizationIntegration.findFirst({
+        const orgIntegration = await (
+          this._replica as PrismaClient
+        ).organizationIntegration.findFirst({
           where: {
             organizationId,
             service: "VERCEL",
@@ -458,7 +511,8 @@ export class VercelSettingsPresenter extends BasePresenter {
           };
         }
 
-        const clientResult = await VercelIntegrationRepository.getVercelClientAndToken(orgIntegration);
+        const clientResult =
+          await VercelIntegrationRepository.getVercelClientAndToken(orgIntegration);
         if (clientResult.isErr()) {
           return {
             customEnvironments: [],
@@ -476,7 +530,9 @@ export class VercelSettingsPresenter extends BasePresenter {
         const { client, accessToken } = clientResult.value;
         const teamId = await VercelIntegrationRepository.getTeamIdFromIntegration(orgIntegration);
 
-        const projectIntegration = await (this._replica as PrismaClient).organizationProjectIntegration.findFirst({
+        const projectIntegration = await (
+          this._replica as PrismaClient
+        ).organizationProjectIntegration.findFirst({
           where: {
             projectId,
             deletedAt: null,
@@ -487,7 +543,10 @@ export class VercelSettingsPresenter extends BasePresenter {
           },
         });
 
-        const availableProjectsResult = await VercelIntegrationRepository.getVercelProjects(client, teamId);
+        const availableProjectsResult = await VercelIntegrationRepository.getVercelProjects(
+          client,
+          teamId
+        );
 
         if (availableProjectsResult.isErr()) {
           return {
@@ -496,7 +555,9 @@ export class VercelSettingsPresenter extends BasePresenter {
             availableProjects: [],
             hasProjectSelected: false,
             authInvalid: availableProjectsResult.error.authInvalid,
-            authError: availableProjectsResult.error.authInvalid ? availableProjectsResult.error.message : undefined,
+            authError: availableProjectsResult.error.authInvalid
+              ? availableProjectsResult.error.message
+              : undefined,
             existingVariables: {},
             gitHubAppInstallations,
             isGitHubConnected,
@@ -517,26 +578,35 @@ export class VercelSettingsPresenter extends BasePresenter {
           };
         }
 
-        const [customEnvironmentsResult, projectEnvVarsResult, sharedEnvVarsResult] = await Promise.all([
-          VercelIntegrationRepository.getVercelCustomEnvironments(
-            client,
-            projectIntegration.externalEntityId,
+        const [customEnvironmentsResult, projectEnvVarsResult, sharedEnvVarsResult] =
+          await Promise.all([
+            VercelIntegrationRepository.getVercelCustomEnvironments(
+              client,
+              projectIntegration.externalEntityId,
+              teamId
+            ),
+            VercelIntegrationRepository.getVercelEnvironmentVariables(
+              client,
+              projectIntegration.externalEntityId,
+              teamId
+            ),
+            // Only fetch shared env vars if teamId is available
             teamId
-          ),
-          VercelIntegrationRepository.getVercelEnvironmentVariables(
-            client,
-            projectIntegration.externalEntityId,
-            teamId
-          ),
-        // Only fetch shared env vars if teamId is available
-          teamId
-            ? VercelIntegrationRepository.getVercelSharedEnvironmentVariables(
-                accessToken,
-                teamId,
-                projectIntegration.externalEntityId
-              )
-            : okAsync([] as Array<{ id: string; key: string; type: string; isSecret: boolean; target: string[] }>),
-        ]);
+              ? VercelIntegrationRepository.getVercelSharedEnvironmentVariables(
+                  accessToken,
+                  teamId,
+                  projectIntegration.externalEntityId
+                )
+              : okAsync(
+                  [] as Array<{
+                    id: string;
+                    key: string;
+                    type: string;
+                    isSecret: boolean;
+                    target: string[];
+                  }>
+                ),
+          ]);
         const authInvalid =
           (customEnvironmentsResult.isErr() && customEnvironmentsResult.error.authInvalid) ||
           (projectEnvVarsResult.isErr() && projectEnvVarsResult.error.authInvalid) ||
@@ -544,9 +614,15 @@ export class VercelSettingsPresenter extends BasePresenter {
 
         if (authInvalid) {
           const authError =
-            (customEnvironmentsResult.isErr() && customEnvironmentsResult.error.authInvalid && customEnvironmentsResult.error.message) ||
-            (projectEnvVarsResult.isErr() && projectEnvVarsResult.error.authInvalid && projectEnvVarsResult.error.message) ||
-            (sharedEnvVarsResult.isErr() && sharedEnvVarsResult.error.authInvalid && sharedEnvVarsResult.error.message) ||
+            (customEnvironmentsResult.isErr() &&
+              customEnvironmentsResult.error.authInvalid &&
+              customEnvironmentsResult.error.message) ||
+            (projectEnvVarsResult.isErr() &&
+              projectEnvVarsResult.error.authInvalid &&
+              projectEnvVarsResult.error.message) ||
+            (sharedEnvVarsResult.isErr() &&
+              sharedEnvVarsResult.error.authInvalid &&
+              sharedEnvVarsResult.error.message) ||
             undefined;
 
           return {
@@ -563,25 +639,29 @@ export class VercelSettingsPresenter extends BasePresenter {
           };
         }
 
-        const customEnvironments = customEnvironmentsResult.isOk() ? customEnvironmentsResult.value : [];
+        const customEnvironments = customEnvironmentsResult.isOk()
+          ? customEnvironmentsResult.value
+          : [];
         const projectEnvVars = projectEnvVarsResult.isOk() ? projectEnvVarsResult.value : [];
         const sharedEnvVars = sharedEnvVarsResult.isOk() ? sharedEnvVarsResult.value : [];
 
-        // Filter out TRIGGER_SECRET_KEY and TRIGGER_VERSION (managed by Trigger.dev) and merge project + shared env vars
-        const excludedKeys = new Set(["TRIGGER_SECRET_KEY", "TRIGGER_VERSION"]);
+        // Hide platform-managed reserved keys from the onboarding preview.
         const projectEnvVarKeys = new Set(projectEnvVars.map((v) => v.key));
         const mergedEnvVars: VercelEnvironmentVariable[] = [
           ...projectEnvVars
-            .filter((v) => !excludedKeys.has(v.key))
+            .filter((v) => !isReservedForExternalSync(v.key))
             .map((v) => {
               const envVar = { ...v };
-              if (vercelEnvironmentId && (v as any).customEnvironmentIds?.includes(vercelEnvironmentId)) {
-                envVar.target = [...v.target, 'staging'];
+              if (
+                vercelEnvironmentId &&
+                (v as any).customEnvironmentIds?.includes(vercelEnvironmentId)
+              ) {
+                envVar.target = [...v.target, "staging"];
               }
               return envVar;
             }),
           ...sharedEnvVars
-            .filter((v) => !projectEnvVarKeys.has(v.key) && !excludedKeys.has(v.key))
+            .filter((v) => !projectEnvVarKeys.has(v.key) && !isReservedForExternalSync(v.key))
             .map((v) => {
               const envVar = {
                 id: v.id,
@@ -592,16 +672,17 @@ export class VercelSettingsPresenter extends BasePresenter {
                 isShared: true,
                 customEnvironmentIds: [] as string[],
               };
-              if (vercelEnvironmentId && (v as any).customEnvironmentIds?.includes(vercelEnvironmentId)) {
-                envVar.target = [...v.target, 'staging'];
+              if (
+                vercelEnvironmentId &&
+                (v as any).customEnvironmentIds?.includes(vercelEnvironmentId)
+              ) {
+                envVar.target = [...v.target, "staging"];
               }
               return envVar;
             }),
         ];
 
-        const sortedEnvVars = [...mergedEnvVars].sort((a, b) =>
-          a.key.localeCompare(b.key)
-        );
+        const sortedEnvVars = [...mergedEnvVars].sort((a, b) => a.key.localeCompare(b.key));
 
         const projectEnvs = await (this._replica as PrismaClient).runtimeEnvironment.findMany({
           where: {
@@ -624,7 +705,9 @@ export class VercelSettingsPresenter extends BasePresenter {
           // Filter out archived environments and map to slugs
           const activeEnvSlugs = v.values
             .filter((val) => activeEnvIds.has(val.environment.id))
-            .map((val) => envIdToSlug.get(val.environment.id) || val.environment.type.toLowerCase());
+            .map(
+              (val) => envIdToSlug.get(val.environment.id) || val.environment.type.toLowerCase()
+            );
           if (activeEnvSlugs.length > 0) {
             existingVariablesRecord[v.key] = {
               environments: activeEnvSlugs,
@@ -659,5 +742,4 @@ export class VercelSettingsPresenter extends BasePresenter {
 
     return result.value;
   }
-
 }

@@ -1,3 +1,4 @@
+import { ComponentNames } from "../storybook/StoryKit";
 import { ArrowRightIcon, BuildingOffice2Icon, FolderIcon } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
 import { MainCenteredContainer } from "~/components/layout/AppLayout";
@@ -14,6 +15,11 @@ import { Label } from "~/components/primitives/Label";
 export default function Story() {
   return (
     <MainCenteredContainer>
+      <div className="px-4 pt-4">
+        <ComponentNames
+          names={["Fieldset.tsx", "FormButtons.tsx", "FormError.tsx", "InputGroup.tsx"]}
+        />
+      </div>
       <div>
         <FormTitle
           LeadingIcon={<BuildingOffice2Icon className="size-6 text-fuchsia-600" />}

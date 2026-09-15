@@ -2,13 +2,15 @@ import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson } from "remix-typedjson";
 import { z } from "zod";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
-import { requireUserId } from "~/services/session.server";
+import { requireUser } from "~/services/session.server";
 import { LogDetailPresenter } from "~/presenters/v3/LogDetailPresenter.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { $replica } from "~/db.server";
+import { runStore } from "~/v3/runStore.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import type { TaskRunStatus } from "@trigger.dev/database";
+import { hasLogsPageAccess } from "~/services/logsAccess.server";
 
 const LogIdParamsSchema = z.object({
   organizationSlug: z.string(),
@@ -18,8 +20,13 @@ const LogIdParamsSchema = z.object({
 });
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
+  const user = await requireUser(request);
+  const userId = user.id;
   const { organizationSlug, projectParam, envParam, logId } = LogIdParamsSchema.parse(params);
+
+  if (!(await hasLogsPageAccess(user.id, user.admin, user.isImpersonating, organizationSlug))) {
+    throw new Response("Logs are not available", { status: 403 });
+  }
 
   // Validate access to project and environment
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
@@ -43,7 +50,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const [traceId, spanId, , startTime] = parts;
 
-  const logsClickhouse = await clickhouseFactory.getClickhouseForOrganization(project.organizationId, "logs");
+  const logsClickhouse = await clickhouseFactory.getClickhouseForOrganization(
+    project.organizationId,
+    "logs"
+  );
   const presenter = new LogDetailPresenter($replica, logsClickhouse);
 
   let result;
@@ -70,13 +80,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   // Look up the run status from Postgres
   let runStatus: TaskRunStatus | undefined;
   if (result.runId) {
-    const run = await $replica.taskRun.findFirst({
-      select: { status: true },
-      where: {
+    const run = await runStore.findRun(
+      {
         friendlyId: result.runId,
         runtimeEnvironmentId: environment.id,
       },
-    });
+      { select: { status: true } },
+      $replica
+    );
     runStatus = run?.status;
   }
 

@@ -1,0 +1,6 @@
+node_modules
+dist
+generated/run-ops
+
+# Ensure the .env symlink is not removed by accident
+!.env

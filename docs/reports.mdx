@@ -1,0 +1,157 @@
+---
+title: "Project health report"
+sidebarTitle: "Health report"
+description: "Get a deterministic verdict on your project's health — split into Flow, Execution, and Liveness — from the CLI, an MCP tool or prompt, or the HTTP API."
+---
+
+**The health report answers one question — "is my project healthy, and if not, is the problem my code or the platform?" — with a deterministic verdict, not a dashboard.** The server computes the verdict from your telemetry; no LLM interprets it, so the same numbers always produce the same answer.
+
+Every report reads a live window of your project's data and returns a headline verdict, the evidence behind it, and a single suggested next action. The only report today is `health`.
+
+## What the report measures
+
+The report splits a project into three dimensions, each with its own verdict:
+
+| Dimension | Question | What a bad verdict means |
+| --- | --- | --- |
+| **Flow** | Is work starting? | Runs are queuing but not being picked up — a concurrency limit, a throttle, or a trigger spike. |
+| **Execution** | Are the runs that start succeeding? | Runs are failing or slowing more than your baseline — usually your code. |
+| **Liveness** | Is the telemetry fresh? | The data behind the report is stale, so the verdict can't be trusted. |
+
+Splitting Flow from Execution is the point: a project can be failing to _start_ work (Flow) while every run that does start _completes_ fine (Execution), or the reverse. The report names which one, so you know whether to look at your concurrency settings or your task code.
+
+Each dimension carries a severity — healthy, degraded, or failing — and the report leads with the worst one as its headline. The headline finding is expanded with its supporting metrics; the others collapse to a one-line verdict.
+
+## Reading the report
+
+Here is `trigger report health` for a project whose runs are backing up against the environment concurrency limit:
+
+```text
+/report health        prod · last 1h · vs 7d normal
+
+✕ Flow stalled — at your env concurrency limit for the last 40 min
+
+  concurrency     100/100           ▄▅▆▇████   40 min at limit
+  pending         1,240      ↑ 6×   ▁▂▄▅▆▇██   (normal ~120)
+  start latency   p95 8.2s   ↑ 4×   ▁▂▃▄▆▇██   (normal ~2s)
+
+  why:  runs are finishing at ~90/min
+        nothing dead-lettered
+
+✓ EXECUTION   runs are executing normally
+
+✓ LIVENESS    fresh — telemetry current, updated 12s ago
+
+  read: limit saturated → incoming work exceeds capacity → backlog grows
+
+→ Raise the env concurrency limit
+  Read concurrency docs
+  or do nothing — backlog drains in ~26.7 min once triggers ease
+```
+
+The verdict reads top to bottom:
+
+- **Headline** — the worst finding, stated as a verdict with the breach window. Here Flow is stalled because concurrency has been pinned at its limit for 40 minutes.
+- **Evidence** — the metrics behind the headline, each with a sparkline over the window, its movement against your baseline (`↑ 6×` means six times normal), and an annotation (`40 min at limit`) or baseline (`normal ~120`).
+- **`why:`** — the facts that support the verdict, including what the problem _isn't_ (runs are still finishing, nothing is dead-lettered — so it's not your code).
+- **Sibling findings** — Execution and Liveness, each a one-line verdict.
+- **`read:`** — the causal chain in one line.
+- **Next steps** — the primary action first (`→`), then any alternatives.
+
+### The verdict vocabulary
+
+Every surface carries meaning in glyphs, never color alone, so the report is legible in a monochrome terminal or a plain-text MCP host:
+
+| Glyph | Meaning |
+| --- | --- |
+| `✓` | Healthy |
+| `⚠` | Degraded |
+| `✕` | Failing |
+| `○` | Genuinely unknown — neither good nor bad |
+| `⚑` | The data behind the report can't be trusted |
+| `↑` `↓` `→` | Above, below, or flat against the baseline |
+
+<Note>
+  The markdown surface swaps the status glyphs for traffic-light emoji (`🟢` `🟡` `🔴` `⚪` `🚩`) — the one color cue a chat host that renders neither ANSI nor HTML can show. The glyph and the emoji mean the same thing.
+</Note>
+
+## Surfaces
+
+The same report renders four ways.
+
+### CLI: `trigger report`
+
+Print an interpreted report for an environment. The command defaults to the `health` report and the `prod` environment — a manual production check.
+
+```bash
+npx trigger.dev@latest report health --env prod --period 24h
+```
+
+| Flag | Default | Description |
+| --- | --- | --- |
+| `[key]` | `health` | The report to render (positional argument). |
+| `-e, --env` | `prod` | The environment: `dev`, `staging`, `prod`, or `preview`. |
+| `-b, --branch` | — | The preview branch. Required when `--env preview`. |
+| `--period` | `1h` | The live window: `30m`, `1h`, `24h`, `7d`. Minutes to weeks, max 90 days. |
+| `-p, --project-ref` | from config | The project ref (`proj_…`). Required if there is no `trigger.config.ts`. |
+| `-c, --config` | — | Path to the config file. |
+
+The command prints only the report — no banner — so it pipes cleanly. Output is ANSI-colored in a real terminal and plain markdown when piped:
+
+```bash
+trigger report health > health.md   # markdown, no escape codes
+```
+
+Color follows the [supports-color](https://github.com/chalk/supports-color) convention: `NO_COLOR` (any value) or `FORCE_COLOR=0` disables color outright; `FORCE_COLOR` set to anything else force-enables it. Both win over TTY detection — which matters for agents spawned on a PTY, where `isTTY` is `true` but escape codes would be garbled.
+
+### MCP tool: `get_report`
+
+Fetch the report from an AI coding tool through the [Trigger.dev MCP server](/mcp-introduction). The tool returns plain markdown by default, or ANSI when `color` is set (for hosts that display escapes in tool output). It is read-only.
+
+| Parameter | Default | Description |
+| --- | --- | --- |
+| `key` | — | The report to render. Currently only `health`. |
+| `environment` | `dev` | The environment. The MCP server is dev-centric, so an unspecified environment reports on `dev` — pass `environment` explicitly to report on production. |
+| `period` | `1h` | Time window shorthand, e.g. `1h`, `24h`, `7d`. |
+| `color` | `false` | Return ANSI-colored text instead of markdown. |
+| `projectRef` | auto-detected | The project ref. Detected from `trigger.config.ts` if present. |
+| `branch` | — | The preview branch, for preview or branchable dev environments. |
+
+### MCP prompt: `/report`
+
+The MCP server also registers a `report` prompt, which hosts that support MCP prompts surface as a slash command (Claude Code renders it as `/mcp__trigger__report`). Running `/report health` calls `get_report` for you and shows the result verbatim in a fenced code block, preserving the monospace alignment and sparklines.
+
+### HTTP API: `GET /api/v1/reports/:key`
+
+The endpoint behind every surface. It accepts a `period` and a `format`, and authenticates with a token scoped to read the report's query tables (`read:query`).
+
+| Query param | Default | Description |
+| --- | --- | --- |
+| `period` | `1h` | The live window, same grammar as the CLI. |
+| `format` | `markdown` | `markdown`, `ansi`, or `json`. |
+
+`format=markdown` and `format=ansi` return the rendered text. `format=json` returns the `ReportViewModel` — the semantic payload behind the render, where verdicts are codes rather than prose, for building your own surface on top of the report.
+
+```bash
+curl "https://api.trigger.dev/api/v1/reports/health?period=24h&format=json" \
+  -H "Authorization: Bearer $TRIGGER_ACCESS_TOKEN"
+```
+
+An unknown report key returns `404` with the list of available keys.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="MCP server" icon="plug" href="/mcp-introduction">
+    Connect your AI coding tool to Trigger.dev.
+  </Card>
+  <Card title="MCP tools" icon="wrench" href="/mcp-tools">
+    Every tool the MCP server exposes, including `get_report`.
+  </Card>
+  <Card title="Concurrency & queues" icon="layer-group" href="/queue-concurrency">
+    Configure the concurrency limits the Flow verdict checks against.
+  </Card>
+  <Card title="Query your data" icon="magnifying-glass" href="/observability/query">
+    Run TRQL queries against the same telemetry the report reads.
+  </Card>
+</CardGroup>

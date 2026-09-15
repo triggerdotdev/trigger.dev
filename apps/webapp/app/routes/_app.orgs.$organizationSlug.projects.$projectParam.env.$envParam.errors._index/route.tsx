@@ -1,11 +1,19 @@
 import * as Ariakit from "@ariakit/react";
 import { BellAlertIcon, XMarkIcon } from "@heroicons/react/20/solid";
-import { Form, useFetcher, useRevalidator, type MetaFunction } from "@remix-run/react";
+import { Form, useFetcher, useRevalidator } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { IconBugFilled } from "@tabler/icons-react";
 import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
 import { type ErrorGroupStatus } from "@trigger.dev/database";
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
 import {
   Bar,
   BarChart,
@@ -16,7 +24,13 @@ import {
   type TooltipProps,
 } from "recharts";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
+import { BugIcon } from "~/assets/icons/BugIcon";
 import { ErrorStatusBadge } from "~/components/errors/ErrorStatusBadge";
+import {
+  CustomIgnoreDialog,
+  ErrorStatusMenuItems,
+  statusActionToastMessage,
+} from "~/components/errors/ErrorStatusMenu";
 import { PageBody } from "~/components/layout/AppLayout";
 import { ListPagination } from "~/components/ListPagination";
 import { LogsTaskFilter } from "~/components/logs/LogsTaskFilter";
@@ -28,9 +42,9 @@ import { formatDateTime, RelativeDateTime } from "~/components/primitives/DateTi
 import { Header3 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { PopoverSectionHeader } from "~/components/primitives/Popover";
 import { SearchInput } from "~/components/primitives/SearchInput";
 import {
-  ComboBox,
   SelectItem,
   SelectList,
   SelectPopover,
@@ -48,12 +62,6 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import { PopoverSectionHeader } from "~/components/primitives/Popover";
-import {
-  ErrorStatusMenuItems,
-  CustomIgnoreDialog,
-  statusActionToastMessage,
-} from "~/components/errors/ErrorStatusMenu";
 import { useToast } from "~/components/primitives/Toast";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import TooltipPortal from "~/components/primitives/TooltipPortal";
@@ -77,14 +85,15 @@ import { requireUser } from "~/services/session.server";
 import { formatNumberCompact } from "~/utils/numberFormatter";
 import { EnvironmentParamSchema, v3ErrorPath } from "~/utils/pathBuilder";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
+import { errorsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Errors | Trigger.dev`,
-    },
-  ];
+export const handle: Handle = {
+  agentPageContext: () => errorsAgentPageContext(),
 };
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Errors");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
@@ -292,7 +301,7 @@ const errorStatusOptions = [
   { value: "IGNORED", label: "Ignored" },
 ] as const;
 
-const statusIcon = <IconBugFilled className="size-4" />;
+const statusIcon = <BugIcon className="size-4" />;
 const statusShortcut = { key: "s" };
 const timeShortcut = { key: "d" };
 const alertsShortcut = { key: "c" };
@@ -506,7 +515,7 @@ function ErrorsList({
   if (errorGroups.length === 0) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3">
-        <IconBugFilled className="size-16 text-charcoal-650" />
+        <BugIcon className="size-16 text-secondary" />
         <Paragraph className="text-center text-text-dimmed">
           No errors found for this time period.
         </Paragraph>
@@ -515,7 +524,7 @@ function ErrorsList({
   }
 
   return (
-    <Table containerClassName="max-h-full pb-[2.5rem]" showTopBorder={false}>
+    <Table containerClassName="max-h-full pb-10" showTopBorder={false}>
       <TableHeader>
         <TableRow>
           <TableHeaderCell>ID</TableHeaderCell>
@@ -558,9 +567,9 @@ function ErrorGroupRow({
   envParam: string;
 }) {
   const location = useOptimisticLocation();
-  const searchParams = new URLSearchParams(location.search);
 
   const errorPath = useMemo(() => {
+    const searchParams = new URLSearchParams(location.search);
     const base = v3ErrorPath(
       { slug: organizationSlug },
       { slug: projectParam },
@@ -579,7 +588,7 @@ function ErrorGroupRow({
     }
     const qs = carry.toString();
     return qs ? `${base}?${qs}` : base;
-  }, [organizationSlug, projectParam, envParam, errorGroup.fingerprint, searchParams.toString()]);
+  }, [organizationSlug, projectParam, envParam, errorGroup.fingerprint, location.search]);
 
   const errorMessage = `${errorGroup.errorMessage}`;
 
@@ -628,6 +637,17 @@ function ErrorGroupRow({
   );
 }
 
+function renderErrorActionsPopoverContent(props: ComponentProps<typeof ErrorStatusMenuItems>) {
+  return (
+    <>
+      <PopoverSectionHeader title="Mark error as…" />
+      <div className="flex flex-col gap-1 p-1">
+        <ErrorStatusMenuItems {...props} />
+      </div>
+    </>
+  );
+}
+
 function ErrorActionsCell({
   errorGroup,
   organizationSlug,
@@ -664,26 +684,21 @@ function ErrorActionsCell({
     <>
       <TableCellMenu
         isSticky
-        popoverContent={(close) => (
-          <>
-            <PopoverSectionHeader title="Mark error as…" />
-            <div className="flex flex-col gap-1 p-1">
-              <ErrorStatusMenuItems
-                status={errorGroup.status}
-                taskIdentifier={errorGroup.taskIdentifier}
-                onAction={(data) => {
-                  close();
-                  pendingToast.current = statusActionToastMessage(data);
-                  fetcher.submit(data, { method: "post", action: actionUrl });
-                }}
-                onCustomIgnore={() => {
-                  close();
-                  setCustomIgnoreOpen(true);
-                }}
-              />
-            </div>
-          </>
-        )}
+        popoverContent={(close) =>
+          renderErrorActionsPopoverContent({
+            status: errorGroup.status,
+            taskIdentifier: errorGroup.taskIdentifier,
+            onAction: (data) => {
+              close();
+              pendingToast.current = statusActionToastMessage(data);
+              fetcher.submit(data, { method: "post", action: actionUrl });
+            },
+            onCustomIgnore: () => {
+              close();
+              setCustomIgnoreOpen(true);
+            },
+          })
+        }
       />
       <CustomIgnoreDialog
         open={customIgnoreOpen}
@@ -700,7 +715,7 @@ function ErrorActivityGraph({ activity }: { activity: ErrorOccurrenceActivity })
 
   return (
     <div className="flex items-start gap-1.5">
-      <div className="h-6 w-[7rem] rounded-sm">
+      <div className="h-6 w-28 rounded-sm">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={activity} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
             <YAxis domain={[0, maxCount || 1]} hide />
@@ -718,9 +733,14 @@ function ErrorActivityGraph({ activity }: { activity: ErrorOccurrenceActivity })
               isAnimationActive={false}
               minPointSize={1}
             />
-            <ReferenceLine y={0} stroke="#2C3034" strokeWidth={1} />
+            <ReferenceLine y={0} stroke="var(--color-border-bright)" strokeWidth={1} />
             {maxCount > 0 && (
-              <ReferenceLine y={maxCount} stroke="#4D525B" strokeDasharray="4 4" strokeWidth={1} />
+              <ReferenceLine
+                y={maxCount}
+                stroke="var(--color-border-brighter)"
+                strokeDasharray="4 4"
+                strokeWidth={1}
+              />
             )}
           </BarChart>
         </ResponsiveContainer>
@@ -747,7 +767,7 @@ const ErrorActivityTooltip = ({ active, payload }: TooltipProps<number, string>)
     return (
       <TooltipPortal active={active}>
         <div className="rounded-sm border border-grid-bright bg-background-dimmed px-3 py-2">
-          <Header3 className="border-b border-b-charcoal-650 pb-2">{formattedDate}</Header3>
+          <Header3 className="border-b border-b-border-bright pb-2">{formattedDate}</Header3>
           <div className="mt-2 text-xs text-text-bright">
             <span className="tabular-nums">{entry.count}</span>{" "}
             <span className="text-text-dimmed">
@@ -764,9 +784,9 @@ const ErrorActivityTooltip = ({ active, payload }: TooltipProps<number, string>)
 
 function ErrorActivityBlankState() {
   return (
-    <div className="flex h-6 w-[7rem] items-end gap-px rounded-sm">
+    <div className="flex h-6 w-28 items-end gap-px rounded-sm">
       {[...Array(24)].map((_, i) => (
-        <div key={i} className="h-full flex-1 bg-[#212327]" />
+        <div key={i} className="h-full flex-1 bg-background-hover" />
       ))}
     </div>
   );

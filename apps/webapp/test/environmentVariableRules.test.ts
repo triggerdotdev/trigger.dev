@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
 import type { EnvironmentVariable } from "../app/v3/environmentVariables/repository";
-import { removeBlacklistedVariables } from "~/v3/environmentVariableRules.server";
+import {
+  isBlacklistedVariable,
+  isReservedForExternalSync,
+  removeBlacklistedVariables,
+} from "~/v3/environmentVariableRules.server";
+import { SKEW_PROTECTION_ENV_VAR_KEY } from "~/v3/vercel/vercelProjectIntegrationSchema";
 
 describe("removeBlacklistedVariables", () => {
   it("should remove exact match blacklisted variables", () => {
@@ -66,5 +71,39 @@ describe("removeBlacklistedVariables", () => {
       { key: "NORMAL_VAR", value: "normal" },
       { key: "DATABASE_URL", value: "postgres://..." },
     ]);
+  });
+});
+
+describe("isBlacklistedVariable", () => {
+  it("blacklists the platform-managed keys", () => {
+    expect(isBlacklistedVariable("TRIGGER_SECRET_KEY")).toBe(true);
+    expect(isBlacklistedVariable("TRIGGER_API_URL")).toBe(true);
+  });
+
+  it("allows ordinary user keys", () => {
+    expect(isBlacklistedVariable("DATABASE_URL")).toBe(false);
+    expect(isBlacklistedVariable("MY_API_KEY")).toBe(false);
+  });
+});
+
+describe("isReservedForExternalSync", () => {
+  it("reserves every key the repository would reject", () => {
+    expect(isReservedForExternalSync("TRIGGER_SECRET_KEY")).toBe(true);
+    expect(isReservedForExternalSync("TRIGGER_API_URL")).toBe(true);
+  });
+
+  it("reserves deploy-managed keys that are not blacklisted", () => {
+    expect(isReservedForExternalSync("TRIGGER_VERSION")).toBe(true);
+    expect(isReservedForExternalSync("TRIGGER_PREVIEW_BRANCH")).toBe(true);
+  });
+
+  it("reserves the skew protection key we set on the customer's Vercel project", () => {
+    expect(isReservedForExternalSync(SKEW_PROTECTION_ENV_VAR_KEY)).toBe(true);
+    expect(isReservedForExternalSync("TRIGGER_AUTOMATIC_SKEW_VERSION_PROTECTION")).toBe(true);
+  });
+
+  it("does not reserve ordinary user keys", () => {
+    expect(isReservedForExternalSync("DATABASE_URL")).toBe(false);
+    expect(isReservedForExternalSync("MY_API_KEY")).toBe(false);
   });
 });

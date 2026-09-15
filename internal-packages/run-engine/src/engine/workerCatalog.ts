@@ -35,6 +35,10 @@ export const workerCatalog = {
       runId: z.string(),
       completedAt: z.coerce.date(),
       reason: z.string().optional(),
+      // The run's versioned storage route, resolved and stamped at schedule time so the cancel
+      // consumer honors durable residency without its own lookup. Lenient (unknown): an unrecognized
+      // version is dropped at consumption rather than failing the whole job. Absent = never-enrolled.
+      snapshotRoute: z.unknown().optional(),
     }),
     visibilityTimeoutMs: 30_000,
   },
@@ -52,7 +56,20 @@ export const workerCatalog = {
     }),
     visibilityTimeoutMs: 60_000,
   },
+  expireParkedExternalDeploymentRun: {
+    schema: z.object({
+      runId: z.string(),
+      externalDeploymentId: z.string(),
+    }),
+    visibilityTimeoutMs: 60_000,
+  },
   tryCompleteBatch: {
+    schema: z.object({
+      batchId: z.string(),
+    }),
+    visibilityTimeoutMs: 30_000,
+  },
+  expireBatch: {
     schema: z.object({
       batchId: z.string(),
     }),
@@ -61,8 +78,58 @@ export const workerCatalog = {
   continueRunIfUnblocked: {
     schema: z.object({
       runId: z.string(),
+      // See cancelRun.snapshotRoute — carries the route to the resume transition.
+      snapshotRoute: z.unknown().optional(),
     }),
     visibilityTimeoutMs: 30_000,
+  },
+  /**
+   * Write-ahead guard enqueued before every run-finish commit and acked when the
+   * inline finalization side effects (waitpoint completion, parent unblock fan-out,
+   * batch nudge) all succeed. It is the recovery mechanism for a finish whose side
+   * effects were lost mid-flight, so its retry budget must outlive any database
+   * outage: roughly five weeks at the capped backoff before it dead-letters, where
+   * a genuinely poisoned item becomes visible and redrivable instead of retrying
+   * silently forever.
+   */
+  ensureRunFinalized: {
+    schema: z.object({
+      runId: z.string(),
+      /**
+       * How many times the guard has already deferred to an in-flight cancellation.
+       * Bounds the watch: past the budget the guard delivers anyway, so a lost
+       * heartbeat job cannot turn the deferral into an infinite loop.
+       */
+      deferCount: z.number().int().nonnegative().optional(),
+    }),
+    visibilityTimeoutMs: 30_000,
+    retry: {
+      maxAttempts: 10_000,
+      minTimeoutInMs: 1_000,
+      maxTimeoutInMs: 300_000,
+    },
+  },
+  // Write-ahead guard for a MANUAL/API waitpoint completion (the run-finish path is already covered
+  // by ensureRunFinalized). Armed before the completion mutation and acked once the transition and
+  // every fanout enqueue succeed; it only executes when the inline path died in between. The payload
+  // is the first-writer's output (enqueueOnce), so a replay preserves the winning completion.
+  ensureWaitpointCompleted: {
+    schema: z.object({
+      waitpointId: z.string(),
+      output: z
+        .object({
+          value: z.string(),
+          type: z.string().optional(),
+          isError: z.boolean(),
+        })
+        .optional(),
+    }),
+    visibilityTimeoutMs: 30_000,
+    retry: {
+      maxAttempts: 10_000,
+      minTimeoutInMs: 1_000,
+      maxTimeoutInMs: 300_000,
+    },
   },
   enqueueDelayedRun: {
     schema: z.object({
@@ -71,3 +138,7 @@ export const workerCatalog = {
     visibilityTimeoutMs: 30_000,
   },
 };
+
+for (const job of Object.values(workerCatalog)) {
+  job.schema = z.compile(job.schema);
+}

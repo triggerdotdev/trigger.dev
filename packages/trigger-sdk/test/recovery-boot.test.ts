@@ -2,13 +2,14 @@
 // `chat.agent()` calls register their task functions correctly.
 import { mockChatAgent } from "../src/v3/test/index.js";
 
-import { describe, expect, it, vi } from "vitest";
-import { chat } from "../src/v3/ai.js";
-import type { RecoveryBootEvent, RecoveryBootResult } from "../src/v3/ai.js";
-import { __setReplaySessionOutTailImplForTests } from "../src/v3/ai.js";
+import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { simulateReadableStream, streamText } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
-import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import { TestSessionStreamManager } from "@trigger.dev/core/v3/test";
+import { describe, expect, it, vi } from "vitest";
+import { z } from "zod/v4";
+import type { RecoveryBootEvent, RecoveryBootResult } from "../src/v3/ai.js";
+import { __setReplaySessionOutTailImplForTests, chat } from "../src/v3/ai.js";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -71,8 +72,7 @@ describe("onRecoveryBoot — chat.agent recovery hook", () => {
     const agent = chat.agent({
       id: "recovery-boot.no-state",
       onRecoveryBoot,
-      run: async ({ messages, signal }) =>
-        streamText({ model, messages, abortSignal: signal }),
+      run: async ({ messages, signal }) => streamText({ model, messages, abortSignal: signal }),
     });
     const harness = mockChatAgent(agent, {
       chatId: "no-state",
@@ -102,8 +102,7 @@ describe("onRecoveryBoot — chat.agent recovery hook", () => {
         captured.event = event as never;
         return {};
       },
-      run: async ({ messages, signal }) =>
-        streamText({ model, messages, abortSignal: signal }),
+      run: async ({ messages, signal }) => streamText({ model, messages, abortSignal: signal }),
     });
     const harness = mockChatAgent(agent, {
       chatId: "partial-fires-hook",
@@ -162,8 +161,7 @@ describe("onRecoveryBoot — chat.agent recovery hook", () => {
         captured.event = event;
         return {};
       },
-      run: async ({ messages, signal }) =>
-        streamText({ model, messages, abortSignal: signal }),
+      run: async ({ messages, signal }) => streamText({ model, messages, abortSignal: signal }),
     });
     const harness = mockChatAgent(agent, {
       chatId: "pending-tool-from-raw",
@@ -173,12 +171,13 @@ describe("onRecoveryBoot — chat.agent recovery hook", () => {
     harness.seedSessionInTail([u1 as never]);
     // Install AFTER mockChatAgent — its constructor sets its own default
     // override that we want to replace for this test.
-    __setReplaySessionOutTailImplForTests(async () =>
-      ({
-        settled: [],
-        partial: cleanedPartial,
-        partialRaw: rawPartial,
-      }) as never
+    __setReplaySessionOutTailImplForTests(
+      async () =>
+        ({
+          settled: [],
+          partial: cleanedPartial,
+          partialRaw: rawPartial,
+        }) as never
     );
     try {
       await new Promise((r) => setTimeout(r, 50));
@@ -207,8 +206,7 @@ describe("onRecoveryBoot — chat.agent recovery hook", () => {
     const agent = chat.agent({
       id: "recovery-boot.inflight-users-no-partial",
       onRecoveryBoot,
-      run: async ({ messages, signal }) =>
-        streamText({ model, messages, abortSignal: signal }),
+      run: async ({ messages, signal }) => streamText({ model, messages, abortSignal: signal }),
     });
     const harness = mockChatAgent(agent, {
       chatId: "inflight-users-no-partial",
@@ -237,8 +235,7 @@ describe("onRecoveryBoot — chat.agent recovery hook", () => {
     const agent = chat.agent({
       id: "recovery-boot.default-dispatch",
       // NO onRecoveryBoot — exercise the default path
-      run: async ({ messages, signal }) =>
-        streamText({ model, messages, abortSignal: signal }),
+      run: async ({ messages, signal }) => streamText({ model, messages, abortSignal: signal }),
     });
     const harness = mockChatAgent(agent, {
       chatId: "default-dispatch",
@@ -277,8 +274,7 @@ describe("onRecoveryBoot — chat.agent recovery hook", () => {
           }));
         }
       },
-      run: async ({ messages, signal }) =>
-        streamText({ model, messages, abortSignal: signal }),
+      run: async ({ messages, signal }) => streamText({ model, messages, abortSignal: signal }),
     });
     const harness = mockChatAgent(agent, {
       chatId: "smart-default",
@@ -292,14 +288,58 @@ describe("onRecoveryBoot — chat.agent recovery hook", () => {
       // Turn 1 fires with the follow-up user (u2). Its chain should
       // include [u1 (original), a-partial, u2 (follow-up)].
       expect(turnCount).toBe(1);
-      expect(observedChain.map((m) => m.role)).toEqual([
-        "user",
-        "assistant",
-        "user",
-      ]);
+      expect(observedChain.map((m) => m.role)).toEqual(["user", "assistant", "user"]);
       expect(observedChain[0]!.idHead).toBe("u-1");
       expect(observedChain[1]!.idHead).toBe("a-partial");
       expect(observedChain[2]!.idHead).toBe("u-2");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("smart default: a single in-flight user is re-dispatched, not swallowed by the splice", async () => {
+    // The plain OOM / crash-mid-answer shape: the run died while answering
+    // the only outstanding user message. Splicing that user into the chain
+    // would leave nothing to dispatch, so the run would boot and idle with
+    // the message unanswered. The default must re-dispatch it instead (and
+    // drop the orphan partial).
+    let observedChain: Array<{ role: string; idHead: string }> = [];
+    let turnCount = 0;
+    const model = new MockLanguageModelV3({
+      doStream: async () => {
+        turnCount++;
+        return { stream: textStream("ok") };
+      },
+    });
+    const partial = assistantMessage("partial answer in progress", "a-partial");
+    const u1 = userMessage("the question that OOM'd", "u-1");
+    const agent = chat.agent({
+      id: "recovery-boot.single-inflight-user",
+      // NO onRecoveryBoot — exercise the default path
+      onTurnStart: async ({ uiMessages }) => {
+        if (turnCount === 0) {
+          observedChain = uiMessages.map((m) => ({
+            role: m.role,
+            idHead: m.id.slice(0, 10),
+          }));
+        }
+      },
+      run: async ({ messages, signal }) => streamText({ model, messages, abortSignal: signal }),
+    });
+    const harness = mockChatAgent(agent, {
+      chatId: "single-inflight-user",
+      continuation: true,
+      previousRunId: "run_prior",
+    });
+    harness.seedSessionOutPartial(partial as never);
+    harness.seedSessionInTail([u1 as never]);
+    try {
+      await new Promise((r) => setTimeout(r, 100));
+      // One turn fires, for the interrupted user.
+      expect(turnCount).toBe(1);
+      // The orphan partial is dropped — the chain is just the re-dispatched user.
+      expect(observedChain.map((m) => m.role)).toEqual(["user"]);
+      expect(observedChain[0]!.idHead).toBe("u-1");
     } finally {
       await harness.close();
     }
@@ -318,8 +358,7 @@ describe("onRecoveryBoot — chat.agent recovery hook", () => {
     const agent = chat.agent({
       id: "recovery-boot.suppress-dispatch",
       onRecoveryBoot: async (): Promise<RecoveryBootResult> => ({ recoveredTurns: [] }),
-      run: async ({ messages, signal }) =>
-        streamText({ model, messages, abortSignal: signal }),
+      run: async ({ messages, signal }) => streamText({ model, messages, abortSignal: signal }),
     });
     const harness = mockChatAgent(agent, {
       chatId: "suppress-dispatch",
@@ -356,8 +395,7 @@ describe("onRecoveryBoot — chat.agent recovery hook", () => {
       onTurnStart: async ({ uiMessages }) => {
         observedMessageCount = uiMessages.length;
       },
-      run: async ({ messages, signal }) =>
-        streamText({ model, messages, abortSignal: signal }),
+      run: async ({ messages, signal }) => streamText({ model, messages, abortSignal: signal }),
     });
     const harness = mockChatAgent(agent, {
       chatId: "chain-override",
@@ -387,8 +425,7 @@ describe("onRecoveryBoot — chat.agent recovery hook", () => {
       id: "recovery-boot.hydrate-skips",
       hydrateMessages: async ({ incomingMessages }) => incomingMessages,
       onRecoveryBoot,
-      run: async ({ messages, signal }) =>
-        streamText({ model, messages, abortSignal: signal }),
+      run: async ({ messages, signal }) => streamText({ model, messages, abortSignal: signal }),
     });
     const harness = mockChatAgent(agent, {
       chatId: "hydrate-skips",
@@ -423,8 +460,7 @@ describe("onRecoveryBoot — chat.agent recovery hook", () => {
           order.push("beforeBoot");
         },
       }),
-      run: async ({ messages, signal }) =>
-        streamText({ model, messages, abortSignal: signal }),
+      run: async ({ messages, signal }) => streamText({ model, messages, abortSignal: signal }),
     });
     const harness = mockChatAgent(agent, {
       chatId: "before-boot",
@@ -459,8 +495,7 @@ describe("onRecoveryBoot — chat.agent recovery hook", () => {
       onRecoveryBoot: async () => {
         throw new Error("kaboom");
       },
-      run: async ({ messages, signal }) =>
-        streamText({ model, messages, abortSignal: signal }),
+      run: async ({ messages, signal }) => streamText({ model, messages, abortSignal: signal }),
     });
     const harness = mockChatAgent(agent, {
       chatId: "hook-throws",
@@ -478,6 +513,130 @@ describe("onRecoveryBoot — chat.agent recovery hook", () => {
     } finally {
       await harness.close();
       warnSpy.mockRestore();
+    }
+  });
+});
+
+describe("continuation boot — the message that resumed the run", () => {
+  it("is not dispatched a second time when the live tail re-delivers it", async () => {
+    const sessionStreamManager = new TestSessionStreamManager();
+    let modelCalls = 0;
+    const model = new MockLanguageModelV3({
+      doStream: async () => {
+        modelCalls++;
+        return { stream: textStream("answered") };
+      },
+    });
+    const u1 = userMessage("the message that woke the run", "u-1");
+    const agent = chat.agent({
+      id: "recovery-boot.no-redispatch",
+      run: async ({ messages, signal }) => streamText({ model, messages, abortSignal: signal }),
+    });
+    const harness = mockChatAgent(agent, {
+      chatId: "no-redispatch",
+      continuation: true,
+      previousRunId: "run_prior",
+      taskContext: { sessionStreamManager },
+    });
+    // Seeded at seqNum 1 by the harness — the same record the live tail
+    // re-delivers below when the boot floor doesn't cover it.
+    harness.seedSessionInTail([u1 as never]);
+    try {
+      await new Promise((r) => setTimeout(r, 100));
+      expect(modelCalls).toBe(1);
+
+      await sessionStreamManager.__sendFromTest(
+        harness.chatId,
+        "in",
+        {
+          kind: "message",
+          payload: {
+            chatId: harness.chatId,
+            trigger: "submit-message",
+            message: u1,
+            messageId: u1.id,
+          },
+        },
+        { seqNum: 1 }
+      );
+      await new Promise((r) => setTimeout(r, 100));
+
+      expect(modelCalls).toBe(1);
+      expect(
+        harness.allRawChunks.filter(
+          (chunk) => (chunk as { type?: string }).type === "trigger:turn-complete"
+        )
+      ).toHaveLength(1);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("does not call the model for a turn that added no new user message", async () => {
+    let modelCalls = 0;
+    const model = new MockLanguageModelV3({
+      doStream: async () => {
+        modelCalls++;
+        return { stream: textStream("second answer") };
+      },
+    });
+    const u1 = userMessage("the question", "u-1");
+    const a1 = assistantMessage("the completed answer", "a-1");
+    const agent = chat.agent({
+      id: "recovery-boot.no-op-turn",
+      run: async ({ messages, signal }) => streamText({ model, messages, abortSignal: signal }),
+    });
+    const harness = mockChatAgent(agent, {
+      chatId: "no-op-turn",
+      continuation: true,
+      previousRunId: "run_prior",
+      snapshot: { version: 1, messages: [u1, a1] } as never,
+    });
+    try {
+      // Same message id as the settled user message: it merges onto the
+      // accumulator, so the turn adds nothing and the chain still ends on
+      // the assistant's completed answer.
+      const turn = await harness.sendMessage(u1 as never);
+      await new Promise((r) => setTimeout(r, 20));
+
+      expect(modelCalls).toBe(0);
+      // The client still gets its turn-complete, so the stream closes.
+      expect(
+        turn.rawChunks.some(
+          (chunk) => (chunk as { type?: string }).type === "trigger:turn-complete"
+        )
+      ).toBe(true);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("re-dispatches a recovered in-flight user for a clientData-scoped agent", async () => {
+    let modelCalls = 0;
+    const model = new MockLanguageModelV3({
+      doStream: async () => {
+        modelCalls++;
+        return { stream: textStream("answered") };
+      },
+    });
+    const u1 = userMessage("the interrupted question", "u-1");
+    const agent = chat.agent({
+      id: "recovery-boot.clientdata-scoped",
+      clientDataSchema: z.object({ userId: z.string() }),
+      run: async ({ messages, signal }) => streamText({ model, messages, abortSignal: signal }),
+    });
+    const harness = mockChatAgent(agent, {
+      chatId: "clientdata-scoped",
+      continuation: true,
+      previousRunId: "run_prior",
+      clientData: { userId: "u_123" },
+    });
+    harness.seedSessionInTail([u1 as never]);
+    try {
+      await new Promise((r) => setTimeout(r, 100));
+      expect(modelCalls).toBe(1);
+    } finally {
+      await harness.close();
     }
   });
 });

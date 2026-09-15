@@ -2,7 +2,7 @@ import type { MollifierBuffer } from "@trigger.dev/redis-worker";
 import { logger } from "~/services/logger.server";
 import type { GateInputs, TripDecision, TripEvaluator } from "./mollifierGate.server";
 
-export type TripEvaluatorOptions = {
+type TripEvaluatorOptions = {
   windowMs: number;
   threshold: number;
   holdMs: number;

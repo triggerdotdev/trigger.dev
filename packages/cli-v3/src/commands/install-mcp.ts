@@ -1,6 +1,6 @@
 import { confirm, intro, isCancel, log, multiselect, select } from "@clack/prompts";
 import chalk from "chalk";
-import { Command } from "commander";
+import type { Command } from "commander";
 import { extname } from "node:path";
 import { z } from "zod";
 import { OutroCommandError, wrapCommandAction } from "../cli/common.js";
@@ -161,7 +161,7 @@ export function configureInstallMcpCommand(program: Command) {
     });
 }
 
-export async function installMcpCommand(options: unknown) {
+async function installMcpCommand(options: unknown) {
   return await wrapCommandAction(
     "installMcpCommand",
     InstallMcpCommandOptions,

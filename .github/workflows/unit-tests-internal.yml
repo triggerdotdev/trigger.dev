@@ -14,17 +14,14 @@ on:
 jobs:
   unitTests:
     name: "🧪 Unit Tests: Internal"
-    runs-on: ubuntu-latest
-    strategy:
-      # one flaky shard shouldn't cancel its siblings - lets us re-run only the failed shard
-      fail-fast: false
-      matrix:
-        shardIndex: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-        shardTotal: [12]
+    # Single big machine instead of a 12-job matrix: the internal suites are serial
+    # (fileParallelism: false) and container-wait-bound, so 12 in-machine shard processes
+    # fit comfortably in 32 vCPUs while paying the setup cost (install, prisma generate,
+    # image pulls) once instead of 12 times.
+    runs-on: warp-ubuntu-latest-x64-32x
     env:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      SHARD_INDEX: ${{ matrix.shardIndex }}
-      SHARD_TOTAL: ${{ matrix.shardTotal }}
+      SHARD_TOTAL: 12
     steps:
       - name: 🔧 Disable IPv6
         run: |
@@ -53,26 +50,26 @@ jobs:
         run: sudo systemctl restart docker
 
       - name: ⬇️ Checkout repo
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
           persist-credentials: false
 
       - name: ⎔ Setup pnpm
-        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           version: 10.33.2
 
       - name: ⎔ Setup node
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 20.20.2
+          node-version: 24.18.0
           cache: "pnpm"
 
       # ..to avoid rate limits when pulling images
       - name: 🐳 Login to DockerHub
         if: ${{ env.DOCKERHUB_USERNAME }}
-        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -81,7 +78,6 @@ jobs:
         run: echo "DockerHub login skipped because secrets are not available."
 
       - name: 🐳 Pre-pull testcontainer images
-        if: ${{ env.DOCKERHUB_USERNAME }}
         run: |
           # Retry each pull - DockerHub registry timeouts are a recurring transient CI flake.
           pull() {
@@ -95,10 +91,10 @@ jobs:
           }
           echo "Pre-pulling Docker images with authenticated session..."
           pull postgres:14
-          pull clickhouse/clickhouse-server:25.4-alpine
+          pull postgres:17 # for the heterogeneous PG14/17 test fixture gate (heteroPostgresTest)
+          pull clickhouse/clickhouse-server:26.2.19.43-alpine@sha256:c6ad6a7eb2fb5999df3adfb8b69a0c7222c68fa9b8f6b04a088564ebbc959251
           pull redis:7.2
           pull testcontainers/ryuk:0.14.0
-          pull electricsql/electric:1.2.4
           echo "Image pre-pull complete"
 
       - name: 📥 Download deps
@@ -107,8 +103,34 @@ jobs:
       - name: 📀 Generate Prisma Client
         run: pnpm run generate
 
-      - name: 🧪 Run Internal Unit Tests
-        run: pnpm run test:internal --reporter=default --reporter=blob --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }} --passWithNoTests
+      - name: 🏗️ Build test dependencies
+        # Build once up-front so the parallel shard runs below (turbo --only) never race
+        # to build or cache-restore the same outputs concurrently.
+        run: pnpm exec turbo run build --filter "@internal/*..."
+
+      - name: 🧪 Run Internal Unit Tests (${{ env.SHARD_TOTAL }} in-machine shards)
+        run: |
+          # Same shard partitioning as the old 12-job matrix (DurationShardingSequencer
+          # keys off --shard=i/N), but as parallel local processes. --only skips the
+          # ^build dependency handled by the step above.
+          status=0
+          declare -a pids
+          for i in $(seq 1 "$SHARD_TOTAL"); do
+            pnpm exec turbo run test --only --concurrency=1 --filter "@internal/*" -- \
+              --run --reporter=default --reporter=blob --shard="$i/$SHARD_TOTAL" --passWithNoTests \
+              > "/tmp/internal-shard-$i.log" 2>&1 &
+            pids[i]=$!
+          done
+          for i in $(seq 1 "$SHARD_TOTAL"); do
+            if ! wait "${pids[i]}"; then
+              status=1
+              echo "::error::internal unit test shard $i/$SHARD_TOTAL failed"
+            fi
+            echo "::group::🧪 shard $i/$SHARD_TOTAL"
+            cat "/tmp/internal-shard-$i.log"
+            echo "::endgroup::"
+          done
+          exit "$status"
 
       - name: Gather all reports
         if: ${{ !cancelled() }}
@@ -117,44 +139,6 @@ jobs:
           find . -type f -path '*/.vitest-reports/blob-*.json' \
             -exec bash -c 'src="$1"; basename=$(basename "$src"); pkg=$(dirname "$src" | sed "s|^\./||;s|/\.vitest-reports$||;s|/|_|g"); cp "$src" ".vitest-reports/${pkg}-${basename}"' _ {} \;
 
-      - name: Upload blob reports to GitHub Actions Artifacts
+      - name: 📊 Merge reports
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: internal-blob-report-${{ matrix.shardIndex }}
-          path: .vitest-reports/*
-          include-hidden-files: true
-          retention-days: 1
-
-  merge-reports:
-    name: "📊 Merge Reports"
-    if: ${{ !cancelled() }}
-    needs: [unitTests]
-    runs-on: ubuntu-latest
-    steps:
-      - name: ⬇️ Checkout repo
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          fetch-depth: 1
-          persist-credentials: false
-
-      - name: ⎔ Setup pnpm
-        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
-        with:
-          version: 10.33.2
-
-      - name: ⎔ Setup node
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
-        with:
-          node-version: 20.20.2
-          # no cache enabled, we're not installing deps
-
-      - name: Download blob reports from GitHub Actions Artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          path: .vitest-reports
-          pattern: internal-blob-report-*
-          merge-multiple: true
-
-      - name: Merge reports
         run: pnpm dlx vitest@4.1.7 run --merge-reports --pass-with-no-tests

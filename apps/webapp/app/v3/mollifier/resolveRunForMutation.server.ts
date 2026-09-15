@@ -1,5 +1,7 @@
 import type { MollifierBuffer } from "@trigger.dev/redis-worker";
+import type { PrismaClientOrTransaction, PrismaReplicaClient } from "~/db.server";
 import { $replica as defaultReplica, prisma as defaultWriter } from "~/db.server";
+import { runStore } from "~/v3/runStore.server";
 import { getMollifierBuffer as defaultGetBuffer } from "./mollifierBuffer.server";
 
 // Discriminated-union resolver used by mutation routes' `findResource`.
@@ -13,21 +15,12 @@ import { getMollifierBuffer as defaultGetBuffer } from "./mollifierBuffer.server
 // `findResource: async () => null`, which made every cancel 404 before
 // the action ran. The helper makes the lookup unit-testable.)
 export type ResolvedRunForMutation =
-  | { source: "pg"; friendlyId: string }
-  | { source: "buffer"; friendlyId: string };
-
-type PrismaTaskRunFindFirst = {
-  taskRun: {
-    findFirst(args: {
-      where: { friendlyId: string; runtimeEnvironmentId: string };
-      select: { friendlyId: true };
-    }): Promise<{ friendlyId: string } | null>;
-  };
-};
+  | { source: "pg"; friendlyId: string; taskIdentifier: string }
+  | { source: "buffer"; friendlyId: string; taskIdentifier: string };
 
 export type ResolveRunForMutationDeps = {
-  prismaReplica?: PrismaTaskRunFindFirst;
-  prismaWriter?: PrismaTaskRunFindFirst;
+  prismaReplica?: PrismaReplicaClient;
+  prismaWriter?: PrismaClientOrTransaction;
   getBuffer?: () => MollifierBuffer | null;
 };
 
@@ -41,22 +34,36 @@ export async function resolveRunForMutation(input: {
   const writer = input.deps?.prismaWriter ?? defaultWriter;
   const getBuffer = input.deps?.getBuffer ?? defaultGetBuffer;
 
-  const pgRun = await replica.taskRun.findFirst({
-    where: { friendlyId: input.runParam, runtimeEnvironmentId: input.environmentId },
-    select: { friendlyId: true },
-  });
-  if (pgRun) return { source: "pg", friendlyId: pgRun.friendlyId };
+  const pgRun = await runStore.findRun(
+    { friendlyId: input.runParam, runtimeEnvironmentId: input.environmentId },
+    { select: { friendlyId: true, taskIdentifier: true } },
+    replica
+  );
+  if (pgRun) {
+    return {
+      source: "pg",
+      friendlyId: pgRun.friendlyId,
+      taskIdentifier: pgRun.taskIdentifier,
+    };
+  }
 
   const buffer = getBuffer();
 
   if (buffer) {
     const entry = await buffer.getEntry(input.runParam);
-    if (
-      entry &&
-      entry.envId === input.environmentId &&
-      entry.orgId === input.organizationId
-    ) {
-      return { source: "buffer", friendlyId: input.runParam };
+    if (entry && entry.envId === input.environmentId && entry.orgId === input.organizationId) {
+      try {
+        const snapshot = JSON.parse(entry.payload) as { taskIdentifier?: unknown };
+        if (typeof snapshot.taskIdentifier === "string") {
+          return {
+            source: "buffer",
+            friendlyId: input.runParam,
+            taskIdentifier: snapshot.taskIdentifier,
+          };
+        }
+      } catch {
+        // A malformed snapshot is not an authorizable run resource.
+      }
     }
   }
 
@@ -72,11 +79,18 @@ export async function resolveRunForMutation(input: {
   //      lookup-by-friendlyId timing).
   // Without this, the resolver returns null in degraded states that the
   // downstream mutateWithFallback flow would otherwise handle correctly.
-  const writerRun = await writer.taskRun.findFirst({
-    where: { friendlyId: input.runParam, runtimeEnvironmentId: input.environmentId },
-    select: { friendlyId: true },
-  });
-  if (writerRun) return { source: "pg", friendlyId: writerRun.friendlyId };
+  const writerRun = await runStore.findRun(
+    { friendlyId: input.runParam, runtimeEnvironmentId: input.environmentId },
+    { select: { friendlyId: true, taskIdentifier: true } },
+    writer
+  );
+  if (writerRun) {
+    return {
+      source: "pg",
+      friendlyId: writerRun.friendlyId,
+      taskIdentifier: writerRun.taskIdentifier,
+    };
+  }
 
   return null;
 }

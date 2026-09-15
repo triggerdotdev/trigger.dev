@@ -4,10 +4,6 @@ sidebarTitle: "Large payloads"
 description: "Why a single chunk on the chat stream is capped at ~1 MiB, what error you'll see, and how to work around it with ID references."
 ---
 
-import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
-
-<RcBanner />
-
 The realtime stream that backs `chat.agent` enforces a **per-record cap of ~1 MiB** (`1048576` bytes minus a small envelope reserve). Anything written through the chat output — auto-piped LLM chunks, `chat.response.write`, custom `writer.write` parts — counts as one record per chunk and is rejected if it crosses the cap.
 
 This is a platform-level limit and cannot be raised per project or per stream.

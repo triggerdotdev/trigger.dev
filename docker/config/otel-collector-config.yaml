@@ -1,5 +1,8 @@
 # OpenTelemetry Collector configuration for local development
-# Receives OTLP metrics from the webapp and exposes them in Prometheus format
+# Receives OTLP metrics and traces from the webapp. Metrics are exposed in
+# Prometheus format; traces are counted by the debug exporter so you can point
+# INTERNAL_OTEL_TRACE_EXPORTER_URL at a real local endpoint instead of falling
+# back to the console span logger.
 
 receivers:
   otlp:
@@ -23,9 +26,14 @@ exporters:
     resource_to_telemetry_conversion:
       enabled: true
 
-  # Debug exporter for troubleshooting (optional, uncomment to enable)
-  # debug:
-  #   verbosity: detailed
+  # Traces are accepted and summarised rather than stored. That is enough to
+  # exercise the whole client-side export path (serialize -> HTTP -> accept),
+  # which is what a local run needs to measure. Raise to `detailed` to inspect
+  # individual spans.
+  debug:
+    verbosity: basic
+    sampling_initial: 5
+    sampling_thereafter: 200
 
 service:
   pipelines:
@@ -33,4 +41,7 @@ service:
       receivers: [otlp]
       processors: [batch]
       exporters: [prometheus]
-
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]

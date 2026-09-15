@@ -1,23 +1,23 @@
-import { sql, StandardSQL } from "@codemirror/lang-sql";
 import { autocompletion, startCompletion } from "@codemirror/autocomplete";
+import { sql, StandardSQL } from "@codemirror/lang-sql";
 import { linter, lintGutter } from "@codemirror/lint";
-import { EditorView, keymap } from "@codemirror/view";
 import type { ViewUpdate } from "@codemirror/view";
-import { CheckIcon, ClipboardIcon, SparklesIcon, TrashIcon } from "@heroicons/react/20/solid";
+import { EditorView, keymap } from "@codemirror/view";
+import { CheckIcon, ClipboardIcon, TrashIcon } from "@heroicons/react/20/solid";
+import type { TableSchema } from "@internal/tsql";
 import {
   type ReactCodeMirrorProps,
   type UseCodeMirror,
   useCodeMirror,
 } from "@uiw/react-codemirror";
-import { useCallback, useEffect, useRef, useState, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { format as formatSQL } from "sql-formatter";
 import { cn } from "~/utils/cn";
 import { Button } from "../primitives/Buttons";
 import { getEditorSetup } from "./codeMirrorSetup";
 import { darkTheme } from "./codeMirrorTheme";
 import { createTSQLCompletion } from "./tsql/tsqlCompletion";
 import { createTSQLLinter } from "./tsql/tsqlLinter";
-import type { TableSchema } from "@internal/tsql";
-import { format as formatSQL } from "sql-formatter";
 
 export interface TSQLEditorProps extends Omit<ReactCodeMirrorProps, "onBlur"> {
   /** Initial value for the editor */
@@ -196,6 +196,7 @@ export function TSQLEditor(opts: TSQLEditorProps) {
 
   const settings: Omit<UseCodeMirror, "onBlur"> = {
     ...opts,
+    // oxlint-disable-next-line react/refs -- This ref intentionally coordinates an imperative integration outside React state.
     container: editor.current,
     extensions,
     editable: !readOnly,
@@ -264,6 +265,7 @@ export function TSQLEditor(opts: TSQLEditorProps) {
 
   const showButtons = showClearButton || showCopyButton || showFormatButton || additionalActions;
 
+  /* oxlint-disable jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- The CodeMirror mount forwards pointer focus to CodeMirror's own keyboard-accessible editor. */
   return (
     <div
       className={cn("relative flex h-full flex-col", opts.className)}
@@ -271,7 +273,7 @@ export function TSQLEditor(opts: TSQLEditorProps) {
     >
       <div
         className={cn(
-          "min-h-0 flex-1 overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          "min-h-0 flex-1 overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
         )}
         ref={editor}
         onClick={() => {
@@ -284,7 +286,7 @@ export function TSQLEditor(opts: TSQLEditorProps) {
         }}
       />
       {showButtons && (
-        <div className="absolute right-0 top-0 z-10 flex items-center justify-end bg-charcoal-900/80 p-1.5">
+        <div className="absolute right-0 top-0 z-10 flex items-center justify-end bg-background-deep/80 light:bg-white/80 p-1.5">
           {additionalActions && additionalActions}
           {showFormatButton && (
             <Button
@@ -337,6 +339,7 @@ export function TSQLEditor(opts: TSQLEditorProps) {
     </div>
   );
 }
+/* oxlint-enable jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */
 
 // SQL keywords that legitimately appear before parentheses with a space
 const SQL_KEYWORDS_BEFORE_PAREN = new Set([

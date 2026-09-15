@@ -1,15 +1,14 @@
 import { describe, expect, test } from "vitest";
 import { ApiError } from "../src/v3/apiClient/errors.js";
 import { ConsoleInterceptor } from "../src/v3/consoleInterceptor.js";
-import {
-  lifecycleHooks,
+import type {
   RetryOptions,
   RunFnParams,
   ServerBackgroundWorker,
   TaskMetadataWithFunctions,
-  TaskRunErrorCodes,
   TaskRunExecution,
 } from "../src/v3/index.js";
+import { lifecycleHooks, TaskRunErrorCodes } from "../src/v3/index.js";
 import { StandardLifecycleHooksManager } from "../src/v3/lifecycleHooks/manager.js";
 import { TracingSDK } from "../src/v3/otel/tracingSDK.js";
 import { TriggerTracer } from "../src/v3/tracer.js";
@@ -1040,8 +1039,10 @@ describe("TaskExecutor", () => {
         executionOrder.push("middleware-before");
         throw expectedError;
         // Should never get here
+        /* eslint-disable no-unreachable */
         await next();
         executionOrder.push("middleware-after");
+        /* eslint-enable no-unreachable */
       },
     });
 
@@ -1801,8 +1802,10 @@ describe("TaskExecutor", () => {
         // Rate limit errors should use the rate limit retry delay
         expect((result.result as any).retry.delay).toBeGreaterThan(0);
       } else {
-        // Other retryable errors should use the exponential backoff
-        expect((result.result as any).retry.delay).toBeGreaterThan(1000);
+        // Other retryable errors should use the exponential backoff. The first retry uses
+        // minDelay (1000ms) as its base, and jitter can land exactly on the floor, so this
+        // is >= rather than > to avoid a flaky boundary failure.
+        expect((result.result as any).retry.delay).toBeGreaterThanOrEqual(1000);
         expect((result.result as any).retry.delay).toBeLessThan(5000);
       }
     }
@@ -1973,7 +1976,7 @@ function executeTask(
     },
   };
 
-  const worker: ServerBackgroundWorker = {
+  const _worker: ServerBackgroundWorker = {
     id: "test-background-worker-id",
     version: "1.0.0",
     contentHash: "test-content-hash",

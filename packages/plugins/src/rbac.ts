@@ -19,6 +19,33 @@ export type SystemRole = {
   available: boolean;
 };
 
+export type ApiKeyPreset = {
+  id: string;
+  label: string;
+  description: string;
+  /**
+   * The plugin-generated, all-task scope template for this preset. The host
+   * uses it only to preview the policy before creation; `prepareApiKeyPolicy`
+   * remains the authorization source of truth.
+   */
+  scopes: string[];
+  usesTaskSelection: boolean;
+  available: boolean;
+};
+
+export type ApiKeyPolicy = {
+  presetId: string | null;
+  scopes: string[];
+};
+
+export type PrepareApiKeyPolicyResult =
+  | { ok: true; policy: ApiKeyPolicy }
+  | { ok: false; error: string };
+
+export type ApiKeyPolicyDescription = {
+  taskIdentifiers?: string[];
+};
+
 export type Permission = {
   // `<action>:<subject>` — display name, derived from the ability rule.
   name: string;
@@ -46,7 +73,31 @@ export type Role = {
 export type RbacSubject =
   | { type: "user"; userId: string; organizationId: string; projectId?: string }
   | { type: "personalAccessToken"; tokenId: string; organizationId: string; projectId?: string }
-  | { type: "publicJWT"; environmentId: string; organizationId: string; projectId?: string };
+  | { type: "publicJWT"; environmentId: string; organizationId: string; projectId?: string }
+  // A host-owned additional environment API key. The host builds its ability
+  // from the effective scopes stored with the credential. Route builders use
+  // `restricted` to fail closed when a scoped key reaches an endpoint without a
+  // declared authorization resource. `apiKeyId` identifies the key for
+  // attribution. Root/legacy environment keys keep the `user` subject.
+  | {
+      type: "apiKey";
+      apiKeyId: string;
+      restricted: boolean;
+      organizationId: string;
+      projectId?: string;
+    }
+  // Delegated user-actor token (`tr_uat_…`): a short-lived, stateless
+  // credential that authenticates as `userId`. `client` records what minted
+  // it (e.g. a dashboard agent) for attribution.
+  | {
+      type: "userActor";
+      userId: string;
+      client?: string;
+      // The environment the token was signed for, when it carries the claim.
+      environmentId?: string;
+      organizationId: string;
+      projectId?: string;
+    };
 
 export type RbacResource = {
   type: string;
@@ -64,6 +115,7 @@ export type RbacResource = {
 // internal package without going through the plugin contract itself.
 export type { AuthenticatedEnvironment } from "@trigger.dev/core/v3/auth/environment";
 import type { AuthenticatedEnvironment as RbacEnv } from "@trigger.dev/core/v3/auth/environment";
+import { generateJWT, validateJWT } from "@trigger.dev/core/v3/jwt";
 
 /** @deprecated Renamed to `AuthenticatedEnvironment`. Kept as alias for transitional code. */
 export type RbacEnvironment = RbacEnv;
@@ -99,29 +151,92 @@ export interface RbacAbility {
  * which auth path serves the request — two copies of this grammar would
  * drift, and the difference would silently change what a token grants.
  */
+function parseScope(scope: string): { action: string; type?: string; id?: string } | undefined {
+  // Only the first two colons are delimiters — everything after the
+  // second colon is the resource id (which may itself contain colons,
+  // e.g. user-provided tags like "env:staging"). Naive
+  // `split(":")` + 3-tuple destructuring truncates such ids.
+  const parts = scope.split(":");
+  const action = parts[0];
+  if (!action) return undefined;
+
+  return {
+    action,
+    type: parts[1] || undefined,
+    id: parts.length > 2 ? parts.slice(2).join(":") || undefined : undefined,
+  };
+}
+
+/** Only exact bare `admin` represents unrestricted access. */
+export function scopesGrantFullAccess(scopes: readonly string[]): boolean {
+  return scopes.includes("admin");
+}
+
+/**
+ * The one preset every install supports, including those with no preset
+ * catalogue at all. `prepareApiKeyPolicy` takes a required `presetId`, so
+ * callers that want a root-key-equivalent credential name this rather than
+ * relying on a default — see the note on that method.
+ */
+export const FULL_ACCESS_PRESET_ID = "FULL_ACCESS";
+
+// The closed vocabulary a public token / API-key scope can address. This is
+// the ONE place the `action:type[:id]` string grammar's terms are enumerated,
+// shared by the scope *generator* (a plugin's preset builder) and the host's
+// scope *checks* so the two cannot drift on a rename/typo. Every value here is
+// already public: it appears in the OSS webapp's route authorization
+// declarations and in `buildJwtAbility`'s grammar. A plugin that gates
+// resources beyond this set can widen the union locally — do not add
+// non-public terms here.
+export type RbacScopeAction = "read" | "write" | "trigger" | "batchTrigger";
+
+export type RbacScopeResourceType =
+  | "runs"
+  | "tasks"
+  | "batch"
+  | "queues"
+  | "deployments"
+  | "envvars"
+  | "apiKeys"
+  | "branches"
+  | "sessions"
+  | "waitpoints"
+  | "tags"
+  | "query";
+
+/**
+ * Builds a single `action:type[:id]` scope string from typed parts. Scope
+ * generators should construct every scope through this helper so the shared
+ * `RbacScopeAction` / `RbacScopeResourceType` unions catch a mistyped or
+ * renamed term at compile time — the drift the grammar comment above warns
+ * about. `id` may itself contain colons (e.g. a tag like `env:staging`); it is
+ * appended verbatim and decoded by `parseScope`'s slice-join.
+ */
+export function buildScope(
+  action: RbacScopeAction,
+  type: RbacScopeResourceType,
+  id?: string
+): string {
+  return id ? `${action}:${type}:${id}` : `${action}:${type}`;
+}
+
 export function buildJwtAbility(scopes: string[]): RbacAbility {
   const matches = (action: string, r: RbacResource): boolean =>
     scopes.some((scope) => {
-      // Only the first two colons are delimiters — everything after the
-      // second colon is the resource id (which may itself contain colons,
-      // e.g. user-provided tags like "env:staging"). Naive
-      // `split(":")` + 3-tuple destructuring truncated such ids to the
-      // first segment and silently failed to match.
-      const parts = scope.split(":");
-      const scopeAction = parts[0];
-      const scopeType = parts[1];
-      const scopeId = parts.length > 2 ? parts.slice(2).join(":") : undefined;
+      const parsed = parseScope(scope);
+      if (!parsed) return false;
+
       // Bare `admin` is the universal wildcard. `admin:<type>` is *not* —
       // it falls through to normal matching as action="admin" against
       // resources of that type. Treating `admin:<anything>` as universal
       // would silently broaden any such tokens beyond the narrow,
       // route-listed grant they had before scope-based abilities.
-      if (scopeAction === "admin" && !scopeType) return true;
-      if (scopeAction !== action && scopeAction !== "*") return false;
-      if (scopeType === "all") return true;
-      if (scopeType !== r.type) return false;
-      if (!scopeId) return true;
-      return scopeId === r.id;
+      if (parsed.action === "admin" && !parsed.type) return true;
+      if (parsed.action !== action && parsed.action !== "*") return false;
+      if (parsed.type === "all") return true;
+      if (parsed.type !== r.type) return false;
+      if (!parsed.id) return true;
+      return parsed.id === r.id;
     });
   return {
     can(action: string, resource: RbacResource | RbacResource[]): boolean {
@@ -137,6 +252,168 @@ export function buildJwtAbility(scopes: string[]): RbacAbility {
   };
 }
 
+/**
+ * Checks requested public-token scopes against an already-authenticated ability.
+ * Scope parsing intentionally lives beside buildJwtAbility so minting and
+ * validation use the same action:type[:id] grammar.
+ */
+export function scopesWithinAbility(
+  scopes: string[],
+  ability: RbacAbility
+): { ok: boolean; deniedScopes: string[] } {
+  const deniedScopes = scopes.filter((scope) => {
+    const parsed = parseScope(scope);
+    if (!parsed || (!parsed.type && parsed.action !== "admin")) {
+      return true;
+    }
+
+    const resource = {
+      type: parsed.type ?? "all",
+      ...(parsed.id ? { id: parsed.id } : {}),
+    };
+    if (ability.can(parsed.action, resource)) return false;
+
+    // A session scope narrowed to one channel or direction is contained by the
+    // scope on the key it folds from, so a key holding `read:sessions:{id}` may
+    // mint `read:sessions:{id}:out` (and the channel forms) for that session.
+    return !(
+      parsed.type === "sessions" &&
+      parsed.id !== undefined &&
+      sessionScopeAncestors(parsed.id).some((id) =>
+        ability.can(parsed.action, { type: "sessions", id })
+      )
+    );
+  });
+
+  return { ok: deniedScopes.length === 0, deniedScopes };
+}
+
+// The ids a folded session scope id is contained by, nearest first. The fold
+// grammar is `{key}[:channels:{name}][:out|:in]`; channel names cannot contain
+// `:` and session externalIds may neither contain `:channels:` nor end in
+// `:out`/`:in`, so unfolding by suffix is unambiguous. Mirrors the webapp's
+// `sessionChannelResources` / `sessionStreamResources` fold.
+function sessionScopeAncestors(id: string): string[] {
+  const ancestors: string[] = [];
+  let current = id;
+  const direction = current.match(/:(?:out|in)$/);
+  if (direction) {
+    current = current.slice(0, -direction[0].length);
+    ancestors.push(current);
+  }
+  const channel = current.match(/:channels:[^:]+$/);
+  if (channel) {
+    current = current.slice(0, -channel[0].length);
+    ancestors.push(current);
+  }
+  return ancestors;
+}
+
+// ── Delegated user-actor token grammar ───────────────────────────────────
+//
+// A `tr_uat_…` token is the JWT body (signed HS256 with the platform secret)
+// behind a routing prefix. Single source of truth for minting/verifying so
+// the host, its fallback, and any auth plugin agree on the wire format — same
+// reasoning as `buildJwtAbility`. Built on core's `generateJWT`/`validateJWT`
+// so it shares the issuer/audience/alg the rest of the platform's JWTs use.
+
+export const USER_ACTOR_TOKEN_PREFIX = "tr_uat_";
+// Distinguishes a UAT from other platform-secret-signed JWTs.
+const USER_ACTOR_KIND = "user_actor";
+
+export type UserActorClaims = {
+  userId: string;
+  client?: string;
+  sessionId?: string;
+  // The id of the source PAT this token was minted from, when it was minted
+  // from one. Hosts recheck it is still live so revoking the PAT invalidates
+  // the token. Absent for flows with no source PAT (e.g. the dashboard agent).
+  pat?: string;
+  // The `RuntimeEnvironment.id` the token was minted for, so a route need not trust the request
+  // body. Optional because other UAT flows are environment-agnostic.
+  environmentId?: string;
+  // The `Organization.id` the token was minted for. An org-scoped route may read across the
+  // org's projects; `environmentId` stays the conversation's home environment.
+  organizationId?: string;
+  // Optional scope cap (e.g. `["read:runs"]`) — ceilings the token below the
+  // user's role. Absent today; the auth path is already cap-ready.
+  cap?: string[];
+  // The token's own expiry (`exp`, epoch seconds) when signed with one. Used to
+  // clamp the lifetime of anything minted from it — a delegated token can't be
+  // exchanged for a longer-lived one.
+  expiresAt?: number;
+};
+
+export function isUserActorToken(token: string): boolean {
+  return token.startsWith(USER_ACTOR_TOKEN_PREFIX);
+}
+
+export async function signUserActorToken(
+  secret: string,
+  opts: {
+    userId: string;
+    client: string;
+    sessionId?: string;
+    environmentId?: string;
+    organizationId?: string;
+    pat?: string;
+    cap?: string[];
+    expirationTime?: string | number | Date;
+  }
+): Promise<string> {
+  const jwt = await generateJWT({
+    secretKey: secret,
+    payload: {
+      kind: USER_ACTOR_KIND,
+      sub: opts.userId,
+      act: {
+        client: opts.client,
+        ...(opts.sessionId ? { sessionId: opts.sessionId } : {}),
+        ...(opts.environmentId ? { environmentId: opts.environmentId } : {}),
+        ...(opts.organizationId ? { organizationId: opts.organizationId } : {}),
+        ...(opts.pat ? { pat: opts.pat } : {}),
+      },
+      ...(opts.cap ? { cap: opts.cap } : {}),
+    },
+    expirationTime: opts.expirationTime ?? "1h",
+  });
+  return `${USER_ACTOR_TOKEN_PREFIX}${jwt}`;
+}
+
+// undefined for anything that isn't a valid, unexpired, correctly-signed UAT.
+export async function verifyUserActorToken(
+  secret: string,
+  token: string
+): Promise<UserActorClaims | undefined> {
+  if (!isUserActorToken(token)) return;
+
+  const result = await validateJWT(token.slice(USER_ACTOR_TOKEN_PREFIX.length), secret);
+  if (!result.ok) return;
+
+  const payload = result.payload;
+  if (payload.kind !== USER_ACTOR_KIND || typeof payload.sub !== "string") return;
+
+  const act = payload.act as
+    | {
+        client?: string;
+        sessionId?: string;
+        environmentId?: string;
+        organizationId?: string;
+        pat?: string;
+      }
+    | undefined;
+  return {
+    userId: payload.sub,
+    client: act?.client,
+    sessionId: act?.sessionId,
+    environmentId: act?.environmentId,
+    organizationId: act?.organizationId,
+    pat: act?.pat,
+    cap: Array.isArray(payload.cap) ? (payload.cap as string[]) : undefined,
+    expiresAt: typeof payload.exp === "number" ? payload.exp : undefined,
+  };
+}
+
 export type BearerAuthResult =
   | { ok: false; status: 401 | 403; error: string }
   | {
@@ -144,8 +421,18 @@ export type BearerAuthResult =
       environment: RbacEnv;
       subject: RbacSubject;
       ability: RbacAbility;
-      jwt?: { realtime?: { skipColumns?: string[] }; oneTimeUse?: boolean };
+      // `act` carries the acting user (`act.sub`) when the public JWT was
+      // minted from a PAT/UAT exchange that stamped a delegation claim. Hosts
+      // surface it for attribution (e.g. who resolved an error).
+      jwt?: { realtime?: { skipColumns?: string[] }; oneTimeUse?: boolean; act?: { sub: string } };
     };
+
+export type BearerAuthOptions = {
+  allowJWT?: boolean;
+  // Branch creation authenticates against the branchable Preview parent before
+  // the requested child environment exists.
+  allowPreviewParent?: boolean;
+};
 
 export type SessionAuthResult =
   | { ok: false; reason: "unauthenticated" | "unauthorized" }
@@ -174,6 +461,21 @@ export type PatAuthResult =
       ability: RbacAbility;
     };
 
+// Like PatAuthResult but stateless — a UAT has no stored row, so there's no
+// `tokenId`/`lastAccessedAt`. The ability is `min(user's role in the target
+// org, the token's optional scope cap)`, same cap-and-floor model as PATs.
+export type UserActorAuthResult =
+  | { ok: false; status: 401 | 403; error: string }
+  | {
+      ok: true;
+      userId: string;
+      // Optional only for plugins built against an older contract: a host enforcing the
+      // environment claim must fail closed when it is absent.
+      claims?: UserActorClaims;
+      subject: RbacSubject;
+      ability: RbacAbility;
+    };
+
 export interface RoleBaseAccessController {
   // True when a real RBAC plugin is loaded; false when the built-in
   // fallback is in use. Hosts gate behaviour that's only meaningful
@@ -184,7 +486,7 @@ export interface RoleBaseAccessController {
 
   // API routes (Bearer token): one DB query → identity + pre-built ability
   // options.allowJWT: when true, accepts PUBLIC_JWT tokens in addition to environment API keys
-  authenticateBearer(request: Request, options?: { allowJWT?: boolean }): Promise<BearerAuthResult>;
+  authenticateBearer(request: Request, options?: BearerAuthOptions): Promise<BearerAuthResult>;
 
   // Dashboard loaders/actions (session cookie): one DB query → user + pre-built ability.
   // The caller resolves `userId` from the session cookie and passes it in.
@@ -213,13 +515,26 @@ export interface RoleBaseAccessController {
     context: { organizationId?: string; projectId?: string }
   ): Promise<PatAuthResult>;
 
+  // Delegated user-actor token routes (Authorization: Bearer tr_uat_…). The
+  // plugin verifies the token itself (stateless — no DB lookup of the token)
+  // and resolves the same cap-and-floor ability a PAT would for the same
+  // user: floor = the user's role in the target org (rejects non-members,
+  // like authenticatePat), cap = the token's optional scope cap.
+  //
+  // No plugin installed → the fallback builds the ability from the token's own cap
+  // (read-only when it declares none), never the blanket ability it gives a PAT.
+  authenticateUserActor(
+    request: Request,
+    context: { organizationId?: string; projectId?: string }
+  ): Promise<UserActorAuthResult>;
+
   // Convenience: authenticate + ability.can() check in one call; returns ok:false if check fails.
   // resource accepts the same single-or-array shape as RbacAbility.can — array form means
   // "grant access if any element passes".
   authenticateAuthorizeBearer(
     request: Request,
     check: { action: string; resource: RbacResource | RbacResource[] },
-    options?: { allowJWT?: boolean }
+    options?: BearerAuthOptions
   ): Promise<BearerAuthResult>;
 
   authenticateAuthorizeSession(
@@ -238,6 +553,41 @@ export interface RoleBaseAccessController {
   // assigning that role; consumers can render unavailable entries with
   // an upgrade badge or hide them.
   systemRoles(organizationId: string): Promise<SystemRole[] | null>;
+
+  // Plugin-owned API-key policy catalogue and policy generation. A null
+  // catalogue means no plugin is installed. The host owns credentials and
+  // persists the effective policy returned by prepareApiKeyPolicy().
+  //
+  // These three are OPTIONAL, and are the first optional members of this
+  // interface — the distinction is deliberate. Methods the host cannot serve a
+  // request without (authenticateBearer, authenticatePat, authenticateSession)
+  // stay required. Capability extensions the host can degrade past are
+  // optional, so a plugin built against an older contract still satisfies this
+  // interface. That matters because the plugin is compiled against whichever
+  // OSS commit its base image carries: making an additive capability required
+  // turns every such addition into a lockstep two-repo merge, and turns a
+  // plugin rollback into an image build failure instead of a graceful
+  // degradation.
+  //
+  // Absence must fail CLOSED, and each default is chosen so it does:
+  //   - apiKeyPresets       -> null (identical to "no plugin installed")
+  //   - prepareApiKeyPolicy -> { ok: false } — NEVER a full-access default;
+  //                            key creation stops, while already-issued keys
+  //                            keep authorizing from their persisted scopes
+  //   - describeApiKeyPolicy -> {} (presentation only)
+  // LazyController applies these defaults, so host callers going through
+  // `rbac` see a total surface and cannot forget the guard.
+  apiKeyPresets?(organizationId: string): Promise<ApiKeyPreset[] | null>;
+  // `presetId` is deliberately required: an authorization function must not
+  // have an implicit default, least of all a full-access one. A caller that
+  // omits the field should fail to compile rather than silently mint an admin
+  // credential. Installs with no preset catalogue pass "FULL_ACCESS".
+  prepareApiKeyPolicy?(params: {
+    organizationId: string;
+    presetId: string;
+    taskIdentifiers?: string[];
+  }): Promise<PrepareApiKeyPolicyResult>;
+  describeApiKeyPolicy?(policy: ApiKeyPolicy): Promise<ApiKeyPolicyDescription>;
 
   // Role introspection. The fallback returns []; a plugin may return
   // its own role catalogue.
@@ -288,10 +638,7 @@ export interface RoleBaseAccessController {
   // Org-scoped only — project-scoped reads still go through getUserRole.
   // Returns a Map keyed by userId; users with no resolvable role map to
   // null. The default fallback returns a Map of all userIds → null.
-  getUserRoles(
-    userIds: string[],
-    organizationId: string
-  ): Promise<Map<string, Role | null>>;
+  getUserRoles(userIds: string[], organizationId: string): Promise<Map<string, Role | null>>;
 
   setUserRole(params: {
     userId: string;
@@ -313,13 +660,32 @@ export interface RoleBaseAccessController {
 
 // Mutation result for role create/update — success carries the new
 // `role`, failure carries a user-facing `error` string.
-export type RoleMutationResult =
-  | { ok: true; role: Role }
-  | { ok: false; error: string };
+export type RoleMutationResult = { ok: true; role: Role } | { ok: false; error: string };
 
 // Result for assignment / deletion mutations that don't return a value.
-export type RoleAssignmentResult = { ok: true } | { ok: false; error: string };
+// `code` is an optional machine-readable reason so callers can branch on
+// expected outcomes (e.g. `last_owner`, the guard that keeps an org from
+// losing its final Owner) instead of matching the free-text `error`.
+type RoleAssignmentErrorCode = "last_owner";
+export type RoleAssignmentResult =
+  | { ok: true }
+  | { ok: false; error: string; code?: RoleAssignmentErrorCode };
+
+import type { PluginDatabaseConfig } from "./databaseConfig.js";
+
+// Host-injected configuration the plugin can't read from the environment
+// itself (the plugin runs in the host's process but owns no env contract).
+export type RbacPluginConfig = {
+  // Platform secret the host signs user-actor tokens with; the plugin uses
+  // it to verify them in `authenticateUserActor`. Omitted → UAT auth 401s.
+  userActorSecret?: string;
+  // Database connections for a plugin that owns its own client. Omitted →
+  // the plugin falls back to its own defaults.
+  database?: PluginDatabaseConfig;
+};
+
+export type { PluginDatabaseConfig as RbacDatabaseConfig } from "./databaseConfig.js";
 
 export interface RoleBasedAccessControlPlugin {
-  create(): RoleBaseAccessController | Promise<RoleBaseAccessController>;
+  create(config?: RbacPluginConfig): RoleBaseAccessController | Promise<RoleBaseAccessController>;
 }

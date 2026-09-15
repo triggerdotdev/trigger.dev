@@ -96,6 +96,109 @@ describe("chat.createStartSessionAction — runtime", () => {
     expect(lastStartBody?.triggerConfig.basePayload).not.toHaveProperty("metadata");
   });
 
+  it("prepends chat:{chatId} to triggerConfig.tags and caps at 10", async () => {
+    installStartFixture();
+
+    const start = chat.createStartSessionAction("fake-chat", {
+      triggerConfig: {
+        tags: ["org:acme", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j"],
+      },
+    });
+    await start({ chatId: "chat-tags" });
+
+    expect(lastStartBody?.triggerConfig.tags).toEqual([
+      "chat:chat-tags",
+      "org:acme",
+      "a",
+      "b",
+      "c",
+      "d",
+      "e",
+      "f",
+      "g",
+      "h",
+    ]);
+  });
+
+  it("omits the chat tag when the chat ID would exceed the tag length limit", async () => {
+    installStartFixture();
+
+    const start = chat.createStartSessionAction("fake-chat", {
+      triggerConfig: { tags: ["org:acme"] },
+    });
+    const longChatId = "c".repeat(200);
+    await start({ chatId: longChatId });
+
+    expect(lastStartBody?.triggerConfig.tags).toEqual(["org:acme"]);
+    expect(lastStartBody?.externalId).toBe(longChatId);
+  });
+
+  it("forwards maxDuration, region, and lockToVersion from triggerConfig", async () => {
+    installStartFixture();
+
+    const start = chat.createStartSessionAction("fake-chat", {
+      triggerConfig: {
+        maxDuration: 120,
+        region: "us-east-1",
+        lockToVersion: "20260101.1",
+      },
+    });
+    await start({ chatId: "chat-parity" });
+
+    expect(lastStartBody?.triggerConfig.maxDuration).toBe(120);
+    expect(lastStartBody?.triggerConfig.region).toBe("us-east-1");
+    expect(lastStartBody?.triggerConfig.lockToVersion).toBe("20260101.1");
+  });
+
+  it("forwards ttl from triggerConfig", async () => {
+    installStartFixture();
+
+    const start = chat.createStartSessionAction("fake-chat", {
+      triggerConfig: { ttl: "2m" },
+    });
+    await start({ chatId: "chat-ttl" });
+
+    expect(lastStartBody?.triggerConfig.ttl).toBe("2m");
+  });
+
+  it("server-mints override tokens for additional API keys", async () => {
+    const requests: Array<{ url: string; body: unknown }> = [];
+    const start = chat.createStartSessionAction("fake-chat", {
+      apiClient: {
+        baseURL: "https://example.invalid",
+        accessToken: "tr_prod_sk_0123456789abcdefghijklmn",
+      },
+      tokenTTL: "30m",
+      fetch: async (url, init, context) => {
+        requests.push({
+          url,
+          body: typeof init.body === "string" ? JSON.parse(init.body) : undefined,
+        });
+
+        if (context.endpoint === "sessions") {
+          return Response.json({
+            id: "session_fixture",
+            runId: "run_fixture",
+            publicAccessToken: "session-token",
+          });
+        }
+
+        return Response.json({ token: "server-minted-token" });
+      },
+    });
+
+    const result = await start({ chatId: "chat-additional-key" });
+
+    expect(result.publicAccessToken).toBe("server-minted-token");
+    expect(requests[1]).toEqual({
+      url: "https://example.invalid/api/v1/auth/public-tokens",
+      body: {
+        scopes: ["read:sessions:chat-additional-key", "write:sessions:chat-additional-key"],
+        expirationTime: "30m",
+      },
+    });
+  });
+
   it("keeps session-level metadata distinct from per-turn clientData", async () => {
     installStartFixture();
 

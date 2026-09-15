@@ -1,11 +1,11 @@
-import { FlushedRunMetadata, TaskRunError } from "@trigger.dev/core/v3";
-import {
+import type { FlushedRunMetadata, TaskRunError } from "@trigger.dev/core/v3";
+import type {
   RuntimeEnvironmentType,
   TaskRunExecutionStatus,
   TaskRunStatus,
 } from "@trigger.dev/database";
-import { EventEmitter } from "events";
-import { AuthenticatedEnvironment } from "../shared/index.js";
+import type { EventEmitter } from "events";
+import type { AuthenticatedEnvironment } from "../shared/index.js";
 
 export type EventBusEvents = {
   runCreated: [
@@ -328,6 +328,7 @@ export type EventBusEvents = {
       snapshot: {
         id: string;
         executionStatus: TaskRunExecutionStatus;
+        environmentType: RuntimeEnvironmentType;
       };
     },
   ];
@@ -387,6 +388,7 @@ export async function sendNotificationToWorker({
   snapshot: {
     id: string;
     executionStatus: TaskRunExecutionStatus;
+    environmentType: RuntimeEnvironmentType;
   };
   eventBus: EventBus;
 }) {
@@ -398,6 +400,7 @@ export async function sendNotificationToWorker({
     snapshot: {
       id: snapshot.id,
       executionStatus: snapshot.executionStatus,
+      environmentType: snapshot.environmentType,
     },
   });
 }

@@ -1,10 +1,7 @@
 {
   "title": "Realtime Native Backend",
   "uid": "realtime-native",
-  "tags": [
-    "trigger.dev",
-    "realtime"
-  ],
+  "tags": ["trigger.dev", "realtime"],
   "timezone": "browser",
   "schemaVersion": 39,
   "refresh": "10s",
@@ -174,9 +171,7 @@
         "colorMode": "background",
         "graphMode": "area",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
+          "calcs": ["lastNotNull"]
         }
       },
       "description": "A backstop that finds missed changes means the notify/replay path is leaking. Alert on sustained non-zero."

@@ -95,7 +95,7 @@ There are two ways of doing this:
 
 ### Declarative schedules
 
-These sync when you run the [dev](/cli-dev) or [deploy](/cli-deploy) commands.
+These sync when you run the [dev](/cli-dev-commands) or [deploy](/cli-deploy-commands) commands.
 
 To create them you add the `cron` property to your `schedules.task()`. This property is optional and is only used if you want to add a declarative schedule to your task:
 
@@ -127,11 +127,11 @@ export const secondScheduledTask = schedules.task({
 });
 ```
 
-When you run the [dev](/cli-dev) or [deploy](/cli-deploy) commands, declarative schedules will be synced. If you add, delete or edit the `cron` property it will be updated when you run these commands. You can view your schedules on the Schedules page in the dashboard.
+When you run the [dev](/cli-dev-commands) or [deploy](/cli-deploy-commands) commands, declarative schedules will be synced. If you add, delete or edit the `cron` property it will be updated when you run these commands. You can view your synced schedules in the dashboard: open the task on the Tasks page and check its "Schedules" tab.
 
 ### Imperative schedules
 
-Alternatively you can explicitly attach schedules to a `schedules.task`. You can do this in the Schedules page in the dashboard by just pressing the "New schedule" button, or you can use the SDK to create schedules.
+Alternatively you can explicitly attach schedules to a `schedules.task`. You can do this in the dashboard from the scheduled task's page by pressing the "Create schedule" button, or you can use the SDK to create schedules.
 
 The advantage of imperative schedules is that they can be created dynamically, for example, you could create a schedule for each user in your database. They can also be activated, disabled, edited, and deleted without deploying new code by using the SDK or dashboard.
 
@@ -139,6 +139,74 @@ To use imperative schedules you need to do two things:
 
 1. Define a task in your code using `schedules.task()`.
 2. Attach 1+ schedules to the task either using the dashboard or the SDK.
+
+## Spreading runs with windows
+
+By default a schedule runs at its exact cron time. When many schedules share the same cron pattern, such as a daily `0 9 * * *`, they all fire at the same time and load your downstream systems as well as ours. A **window** spreads those runs out: each schedule is assigned a stable time within the window after its cron time, so the load is smoothed while each schedule keeps firing at a predictable, repeatable moment.
+
+The assigned time is deterministic. A given schedule always lands at the same offset for a given interval, so runs don't jump around between occurrences. And you can always see exactly when the next run will start.
+
+Set a `window` as either:
+
+- **An absolute duration** in whole minutes or hours, up to 24 hours: `"30m"`, `"2h"`, `"24h"`. Absolute windows are capped at the next cron time, so a run is never delayed past its following occurrence.
+- **A percentage** of the interval between runs: `"30%"`, `"100%"`. A `"50%"` window on an hourly schedule spreads runs across the first 30 minutes of each hour.
+
+Set `"0m"` (or `"0%"`) for no spreading — the run fires at its exact cron time.
+
+Declarative schedules set the window on the `cron` object:
+
+```ts
+export const dailyReport = schedules.task({
+  id: "daily-report",
+  cron: {
+    pattern: "0 0 * * *",
+    // spread this run across the 30 minutes after midnight
+    window: "30m",
+  },
+  run: async (payload) => {},
+});
+```
+
+Imperative schedules set it when creating or updating a schedule, either in the dashboard form or through the SDK:
+
+```ts
+const createdSchedule = await schedules.create({
+  task: dailyReport.id,
+  cron: "0 0 * * *",
+  window: "30m",
+  deduplicationKey: "user_123456-daily-report",
+});
+```
+
+<Note>
+  The payload `timestamp` and `upcoming` values are always the nominal cron times, not the assigned
+  times. When you retrieve a schedule, `nextRun` is the nominal cron time and `nextRunEffectiveAt`
+  is the assigned time the run will actually start.
+</Note>
+
+### Free-plan minimum window
+
+Schedules created while an organization is on a free plan run no more than once per hour and use a minimum 60-minute window.
+
+- The minimum applies to the **cron cadence**: creating or deploying a schedule whose cron fires more often than once an hour is rejected with an actionable error. Change the cron expression or upgrade before saving.
+- Omitted, zero (`"0m"` / `"0%"`), or smaller windows are treated as the 60-minute minimum. A larger configured window still wins, subject to the usual cap at the next cron occurrence.
+- The policy applies to **all environment types**, including Development.
+- It is captured when the schedule is created. Existing schedules — and schedules created while paid, even after a later downgrade — are **grandfathered** and keep running unchanged.
+- Upgrading does not immediately rewrite existing schedules. A free-created restriction is cleared the next time the schedule is saved (imperative/dashboard) or redeployed (declarative) while the organization is paying.
+- No runs are ever skipped or coalesced: unsupported high-frequency schedules are rejected at create/update time rather than silently thinned out.
+- Self-hosted deployments, and any case where the billing plan can't be determined, are unrestricted.
+
+When a schedule is subject to this policy, the API returns an `appliedSchedulePolicy` object alongside the configured `window`:
+
+```json
+{
+  "window": "0m",
+  "appliedSchedulePolicy": {
+    "minimumWindowSeconds": 3600,
+    "reason": "free_schedule"
+  }
+}
+```
 
 ## Supported cron syntax
 
@@ -166,27 +234,39 @@ There are two situations when a scheduled task won't trigger:
 
 ## Attaching schedules in the dashboard
 
-You need to attach a schedule to a task before it will run on a schedule. You can attach static schedules in the dashboard:
+You need to attach a schedule to a task before it will run on a schedule. You can attach imperative schedules in the dashboard:
+
+<Note>
+  **The Schedules page has moved.** There is no longer a standalone "Schedules" page in the
+  sidebar. Schedules now live on the Tasks page: open a scheduled task to create, view, edit,
+  enable/disable, and delete its schedules. The old `/schedules` URL redirects to the Tasks page.
+
+  The scheduled task must already exist first — define it in your code with `schedules.task()` and
+  sync it to the environment by running the [dev](/cli-dev-commands) or
+  [deploy](/cli-deploy-commands) command so it appears on the Tasks page. A project with no tasks
+  yet will only show the deploy onboarding.
+</Note>
 
 <Steps>
 
-<Step title="Go to the Schedules page">
-  In the sidebar select the "Schedules" page, then press the "New schedule" button. Or you can
-  follow the onboarding and press the create in dashboard button. ![Blank schedules
-  page](/images/schedules-blank.png)
+<Step title="Open the scheduled task">
+  In the sidebar select the "Tasks" page, then select the scheduled task you want to attach a
+  schedule to (scheduled tasks have a clock icon, and you can filter the list to Scheduled).
+  ![Scheduled task page](/images/schedules-blank.png)
 </Step>
 
 <Step title="Create your schedule">
-  Fill in the form and press "Create schedule" when you're done. ![Environment variables
-  page](/images/schedules-create.png)
+  Press the "Create schedule" button, fill in the form, and press "Create schedule" when you're
+  done. ![Create schedule form](/images/schedules-create.png)
 
 These are the options when creating a schedule:
 
 | Name              | Description                                                                                   |
 | ----------------- | --------------------------------------------------------------------------------------------- |
 | Task              | The id of the task you want to attach to.                                                     |
-| Cron pattern      | The schedule in cron format.                                                                  |
+| Cron pattern      | The schedule in cron format. You can also describe it in natural language and press "Generate" to fill this in. |
 | Timezone          | The timezone the schedule will run in. Defaults to "UTC"                                      |
+| Window            | An optional [window](#spreading-runs-with-windows) to spread runs after their cron time, e.g. `30m`, `2h`, or `50%`. |
 | External id       | An optional external id, usually you'd use a userId.                                          |
 | Deduplication key | An optional deduplication key. If you pass the same value, it will update rather than create. Scoped per project, not per environment. |
 | Environments      | The environments this schedule will run in.                                                   |
@@ -194,6 +274,12 @@ These are the options when creating a schedule:
 </Step>
 
 </Steps>
+
+## Managing schedules in the dashboard
+
+Open the scheduled task and switch to the "Schedules" tab to see every schedule attached to it — both declarative and imperative — with its type, cron pattern, external id, next and last run, and status.
+
+Click a schedule to open the inspector, where you can **enable/disable**, **edit**, or **delete** imperative schedules without deploying new code. Declarative schedules are managed in your code, so they can't be edited or deleted from here.
 
 ## Attaching schedules with the SDK
 
@@ -302,14 +388,19 @@ You can also retrieve, list, delete, deactivate and re-activate schedules using 
 
 You can test a scheduled task in the dashboard. Note that the `scheduleId` will always come through as `sched_1234` to the run.
 
+<Note>
+  There is no longer a standalone "Test" page in the sidebar. You test a task from the task itself —
+  open it on the Tasks page and press the "Test schedule" button.
+</Note>
+
 <Steps>
 
-<Step title="Go to the Test page">
-  In the sidebar select the "Test" page, then select a scheduled task from the list (they have a
-  clock icon on them) ![Test page](/images/schedules-test.png)
+<Step title="Open the test page for your task">
+  On the "Tasks" page, open your scheduled task and press the "Test schedule" button.
+  ![Scheduled task page](/images/schedules-test.png)
 </Step>
 
-<Step title="Create your schedule">
+<Step title="Run the test">
   Fill in the form [1]. You can select from a recent run [2] to pre-populate the fields. Press "Run
   test" when you're ready ![Schedule test form](/images/schedules-test-form.png)
 </Step>

@@ -3,17 +3,16 @@ import { IconSortAscending, IconSortDescending } from "@tabler/icons-react";
 import { BarChart, CheckIcon, LineChart, Plus, XIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "~/utils/cn";
-import { Paragraph } from "../primitives/Paragraph";
-import { Popover, PopoverContent, PopoverTrigger } from "../primitives/Popover";
-import { Select, SelectItem } from "../primitives/Select";
-import { Switch } from "../primitives/Switch";
-import SegmentedControl from "../primitives/SegmentedControl";
-import { Button } from "../primitives/Buttons";
 import {
   type AggregationType,
   type ChartConfiguration,
   type SortDirection,
 } from "../metrics/QueryWidget";
+import { Paragraph } from "../primitives/Paragraph";
+import { Popover, PopoverContent, PopoverTrigger } from "../primitives/Popover";
+import SegmentedControl from "../primitives/SegmentedControl";
+import { Select, SelectItem } from "../primitives/Select";
+import { Switch } from "../primitives/Switch";
 import { CHART_COLORS_BY_HUE, getSeriesColor } from "./chartColors";
 
 export const defaultChartConfig: ChartConfiguration = {
@@ -382,7 +381,7 @@ export function ChartConfigPanel({ columns, config, onChange, className }: Chart
                         }
                         updateConfig(updates);
                       }}
-                      className="rounded p-1 text-text-dimmed hover:bg-charcoal-700 hover:text-text-bright"
+                      className="rounded p-1 text-text-dimmed hover:bg-background-raised hover:text-text-bright"
                       title="Remove series"
                     >
                       <XIcon className="h-3.5 w-3.5" />
@@ -407,7 +406,7 @@ export function ChartConfigPanel({ columns, config, onChange, className }: Chart
                         });
                       }
                     }}
-                    className="flex items-center gap-1 self-start rounded px-1 py-0.5 text-xs text-text-dimmed hover:bg-charcoal-700 hover:text-text-bright"
+                    className="flex items-center gap-1 self-start rounded px-1 py-0.5 text-xs text-text-dimmed hover:bg-background-raised hover:text-text-bright"
                   >
                     <Plus className="h-3 w-3" />
                     Add series
@@ -569,11 +568,12 @@ function SeriesColorPicker({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="flex-shrink-0 rounded p-0.5 hover:bg-charcoal-700"
+          aria-label="Change series color"
+          className="shrink-0 rounded p-0.5 hover:bg-background-raised"
           title="Change series color"
         >
           <span
-            className="block h-4 w-4 rounded-full border border-white/30"
+            className="block h-4 w-4 rounded-full border border-text-bright/30"
             style={{ backgroundColor: color }}
           />
         </button>
@@ -588,7 +588,7 @@ function SeriesColorPicker({
                 onColorChange(c);
                 setOpen(false);
               }}
-              className="group/swatch flex h-6 w-6 items-center justify-center rounded-full border border-white/30"
+              className="group/swatch flex h-6 w-6 items-center justify-center rounded-full border border-text-bright/30"
               style={{ backgroundColor: c }}
               title={c}
             >
@@ -617,7 +617,7 @@ function TypeBadge({ type }: { type: string }) {
   }
 
   return (
-    <span className="rounded bg-charcoal-750 px-1 py-0.5 font-mono text-xxs text-text-dimmed">
+    <span className="rounded bg-background-hover px-1 py-0.5 font-mono text-xxs text-text-dimmed">
       {displayType}
     </span>
   );

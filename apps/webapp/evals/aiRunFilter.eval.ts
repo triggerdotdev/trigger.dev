@@ -7,11 +7,8 @@ import {
   type QueryTasks,
   type QueryVersions,
 } from "~/v3/services/aiRunFilterService.server";
-import dotenv from "dotenv";
 import { wrapAISDKModel } from "evalite/ai-sdk";
 import { openai } from "@ai-sdk/openai";
-
-dotenv.config({ path: "../../.env" });
 
 const queryTags: QueryTags = {
   query: async (search) => {
@@ -232,8 +229,12 @@ evalite("AI Run Filter", {
         expected: JSON.stringify({
           success: true,
           filters: {
-            from: new Date(new Date(Date.now() - 24*60*60*1000).toDateString() + " 14:00:00").getTime(),
-            to: new Date(new Date(Date.now() - 24*60*60*1000).toDateString() + " 14:59:59").getTime(),
+            from: new Date(
+              new Date(Date.now() - 24 * 60 * 60 * 1000).toDateString() + " 14:00:00"
+            ).getTime(),
+            to: new Date(
+              new Date(Date.now() - 24 * 60 * 60 * 1000).toDateString() + " 14:59:59"
+            ).getTime(),
           },
         }),
       },

@@ -1,10 +1,17 @@
+import type { Informer, V1Pod } from "@kubernetes/client-node";
 import { LogLevel, SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
-import { K8sApi } from "../clients/kubernetes.js";
-import { createK8sApi } from "../clients/kubernetes.js";
-import { Informer, V1Pod } from "@kubernetes/client-node";
-import { Counter, Registry, Histogram } from "prom-client";
-import { register } from "../metrics.js";
+import type { Registry } from "prom-client";
+import { Counter, Histogram } from "prom-client";
 import { setTimeout } from "timers/promises";
+import type { K8sApi } from "../clients/kubernetes.js";
+import { createK8sApi } from "../clients/kubernetes.js";
+import { register } from "../metrics.js";
+
+// Operator-owned pods carry app=task-run too, since the network policy selects
+// on it, so they have to be excluded by their own label instead. Unconditional:
+// a rolling update runs this against pods the next version created. One
+// constant because the list and the watch must select the same set.
+const RUN_POD_SELECTOR = "app=task-run,!compute.trigger.dev/runner";
 
 type PodStatus = "Pending" | "Running" | "Succeeded" | "Failed" | "Unknown" | "GracefulShutdown";
 
@@ -53,10 +60,10 @@ export class FailedPodHandler {
       () =>
         this.k8s.core.listNamespacedPod({
           namespace: this.namespace,
-          labelSelector: "app=task-run",
+          labelSelector: RUN_POD_SELECTOR,
           fieldSelector: "status.phase=Failed",
         }),
-      "app=task-run",
+      RUN_POD_SELECTOR,
       "status.phase=Failed"
     );
 

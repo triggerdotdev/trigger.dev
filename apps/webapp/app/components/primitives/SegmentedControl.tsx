@@ -18,16 +18,17 @@ const sizes = {
 
 const theme = {
   primary: {
-    base: "bg-charcoal-700",
-    active: "text-text-bright hover:bg-charcoal-750/50",
+    base: "bg-background-raised",
+    active: "text-text-bright hover:bg-background-hover/50",
     inactive: "text-text-dimmed transition hover:text-text-bright",
-    selected: "absolute inset-0 rounded-[2px] outline outline-3 outline-primary",
+    selected: "absolute inset-0 rounded-[2px] outline-solid outline-3 outline-primary",
   },
   secondary: {
-    base: "bg-charcoal-700/50",
+    base: "bg-segmented-track",
     active: "text-text-bright",
     inactive: "text-text-dimmed transition hover:text-text-bright",
-    selected: "absolute inset-0 rounded bg-charcoal-700 border border-charcoal-600",
+    selected:
+      "absolute inset-0 rounded bg-white border border-grid-bright dark:bg-background-raised dark:border-border-bright",
   },
 };
 
@@ -76,6 +77,8 @@ type SegmentedControlProps = {
   variant?: VariantType;
   fullWidth?: boolean;
   onChange?: (value: string) => void;
+  /** Override the control's outer styling (e.g. a height that matches an adjacent input). */
+  className?: string;
 };
 
 export default function SegmentedControl({
@@ -86,16 +89,18 @@ export default function SegmentedControl({
   variant = "secondary/medium",
   fullWidth,
   onChange,
+  className,
 }: SegmentedControlProps) {
   const variantStyle = variants[variant];
-  const isPrimary = variant.startsWith("primary");
+  const _isPrimary = variant.startsWith("primary");
 
   return (
     <div
       className={cn(
         "flex rounded text-text-bright",
         variantStyle.base,
-        fullWidth ? "w-full" : "w-fit"
+        fullWidth ? "w-full" : "w-fit",
+        className
       )}
     >
       <RadioGroup
@@ -124,25 +129,23 @@ export default function SegmentedControl({
               }
             >
               {({ checked }) => (
-                <>
-                  <div
-                    className={cn(
-                      "relative flex h-full w-full items-center justify-between",
-                      variantStyle.option
-                    )}
-                  >
-                    <div className="z-10 flex h-full w-full items-center justify-center">
-                      <RadioGroup.Label as="p">{option.label}</RadioGroup.Label>
-                    </div>
-                    {checked && (
-                      <motion.div
-                        layoutId={`segmented-control-${name}`}
-                        transition={{ duration: 0.4, type: "spring" }}
-                        className={variantStyle.selected}
-                      />
-                    )}
+                <div
+                  className={cn(
+                    "relative flex h-full w-full items-center justify-between",
+                    variantStyle.option
+                  )}
+                >
+                  <div className="z-10 flex h-full w-full items-center justify-center">
+                    <RadioGroup.Label as="p">{option.label}</RadioGroup.Label>
                   </div>
-                </>
+                  {checked && (
+                    <motion.div
+                      layoutId={`segmented-control-${name}`}
+                      transition={{ duration: 0.4, type: "spring" }}
+                      className={variantStyle.selected}
+                    />
+                  )}
+                </div>
               )}
             </RadioGroup.Option>
           ))}

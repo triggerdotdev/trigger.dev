@@ -26,10 +26,12 @@ import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.s
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { v3RunStreamParamsSchema } from "~/utils/pathBuilder";
+import { runStore } from "~/v3/runStore.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 
 type ViewMode = "list" | "compact";
 
-type StreamChunk = {
+export type StreamChunk = {
   id: string;
   data: unknown;
   timestamp: number;
@@ -58,42 +60,49 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throw new Response("Not Found", { status: 404 });
   }
 
-  const run = await $replica.taskRun.findFirst({
-    where: {
-      friendlyId: runParam,
-      projectId: project.id,
+  const runWhere = { friendlyId: runParam, projectId: project.id };
+  const runArgs = {
+    select: {
+      id: true,
+      friendlyId: true,
+      realtimeStreamsVersion: true,
+      streamBasinName: true,
+      runtimeEnvironmentId: true,
     },
-    include: {
-      runtimeEnvironment: {
-        include: {
-          project: true,
-          organization: true,
-          orgMember: true,
-        },
-      },
-    },
-  });
+  };
+  // Client-less findRun defaults to the read replica; replica lag can null out a live run and 404 a
+  // valid stream-viewer request (useRealtimeStream surfaces the error, no auto-retry). Re-read the
+  // owning primary on a replica miss.
+  const run =
+    (await runStore.findRun(runWhere, runArgs)) ??
+    (await runStore.findRunOnPrimary(runWhere, runArgs));
 
   if (!run) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  if (run.runtimeEnvironment.slug !== envParam) {
+  const environment = await controlPlaneResolver.resolveAuthenticatedEnv(run.runtimeEnvironmentId);
+
+  if (!environment || environment.slug !== envParam) {
     throw new Response("Not Found", { status: 404 });
   }
 
   // Get Last-Event-ID header for resuming from a specific position
   const lastEventId = request.headers.get("Last-Event-ID") || undefined;
 
-  const realtimeStream = getRealtimeStreamInstance(
-    run.runtimeEnvironment,
-    run.realtimeStreamsVersion,
-    { run }
-  );
-
-  return realtimeStream.streamResponse(request, run.friendlyId, streamKey, getRequestAbortSignal(), {
-    lastEventId,
+  const realtimeStream = getRealtimeStreamInstance(environment, run.realtimeStreamsVersion, {
+    run: { streamBasinName: run.streamBasinName },
   });
+
+  return realtimeStream.streamResponse(
+    request,
+    run.friendlyId,
+    streamKey,
+    getRequestAbortSignal(),
+    {
+      lastEventId,
+    }
+  );
 };
 
 export function RealtimeStreamViewer({
@@ -104,6 +113,9 @@ export function RealtimeStreamViewer({
   resourcePath: resourcePathOverride,
   headerLabel,
   headerLeft,
+  headerRight,
+  hideViewModeToggle = false,
+  headerClassName,
 }: {
   runId?: string;
   streamKey?: string;
@@ -119,6 +131,16 @@ export function RealtimeStreamViewer({
    * label.
    */
   headerLeft?: React.ReactNode;
+  /**
+   * Extra content appended after the built-in chunks/view-mode/copy
+   * controls on the right side of the header. Use to inline a mode
+   * toggle or other actions alongside the stream controls.
+   */
+  headerRight?: React.ReactNode;
+  /** Hide the "Flow as text" / "View as list" view-mode toggle button. */
+  hideViewModeToggle?: boolean;
+  /** Extra classes applied to the header bar (overrides default styling via tailwind-merge). */
+  headerClassName?: string;
 }) {
   const organization = useOrganization();
   const project = useProject();
@@ -188,7 +210,6 @@ export function RealtimeStreamViewer({
     const handleScroll = () => {
       if (!scrollElement || !bottomElement) return;
 
-      // Clear any existing timeout
       if (scrollTimeout) {
         clearTimeout(scrollTimeout);
       }
@@ -232,6 +253,7 @@ export function RealtimeStreamViewer({
     .length;
 
   // Virtual rendering for list view
+  // oxlint-disable-next-line react/incompatible-library -- TanStack Virtual is not compatible with compiler memoization.
   const rowVirtualizer = useVirtualizer({
     count: chunks.length,
     getScrollElement: () => scrollRef.current,
@@ -242,7 +264,12 @@ export function RealtimeStreamViewer({
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Header */}
-      <div className="border-b border-grid-bright bg-background-bright @container">
+      <div
+        className={cn(
+          "border-b border-grid-bright bg-background-bright @container",
+          headerClassName
+        )}
+      >
         <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 @[300px]:flex-nowrap">
           <div className="flex min-w-0 items-center gap-3">
             <TooltipProvider>
@@ -276,29 +303,31 @@ export function RealtimeStreamViewer({
               {simplur`${chunks.length} chunk[|s]`}
             </Paragraph>
             <div className="flex items-center gap-3">
-              <TooltipProvider>
-                <Tooltip open={chunks.length === 0 ? false : undefined} disableHoverableContent>
-                  <TooltipTrigger
-                    disabled={chunks.length === 0}
-                    onClick={() => setViewMode(viewMode === "list" ? "compact" : "list")}
-                    className={cn(
-                      "text-text-dimmed transition-colors focus-custom",
-                      chunks.length === 0
-                        ? "cursor-not-allowed opacity-50"
-                        : "hover:cursor-pointer hover:text-text-bright"
-                    )}
-                  >
-                    {viewMode === "list" ? (
-                      <SnakedArrowIcon className="size-4" />
-                    ) : (
-                      <ListBulletIcon className="size-4" />
-                    )}
-                  </TooltipTrigger>
-                  <TooltipContent side="left" className="text-xs">
-                    {viewMode === "list" ? "Flow as text" : "View as list"}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+              {!hideViewModeToggle && (
+                <TooltipProvider>
+                  <Tooltip open={chunks.length === 0 ? false : undefined} disableHoverableContent>
+                    <TooltipTrigger
+                      disabled={chunks.length === 0}
+                      onClick={() => setViewMode(viewMode === "list" ? "compact" : "list")}
+                      className={cn(
+                        "text-text-dimmed transition-colors focus-custom",
+                        chunks.length === 0
+                          ? "cursor-not-allowed opacity-50"
+                          : "hover:cursor-pointer hover:text-text-bright"
+                      )}
+                    >
+                      {viewMode === "list" ? (
+                        <SnakedArrowIcon className="size-4" />
+                      ) : (
+                        <ListBulletIcon className="size-4" />
+                      )}
+                    </TooltipTrigger>
+                    <TooltipContent side="left" className="text-xs">
+                      {viewMode === "list" ? "Flow as text" : "View as list"}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
               <TooltipProvider>
                 <Tooltip
                   open={chunks.length === 0 ? false : copied || mouseOver || undefined}
@@ -314,8 +343,8 @@ export function RealtimeStreamViewer({
                       chunks.length === 0
                         ? "cursor-not-allowed opacity-50"
                         : copied
-                        ? "text-success hover:cursor-pointer"
-                        : "text-text-dimmed hover:cursor-pointer hover:text-text-bright"
+                          ? "text-success hover:cursor-pointer"
+                          : "text-text-dimmed hover:cursor-pointer hover:text-text-bright"
                     )}
                   >
                     {copied ? (
@@ -359,6 +388,7 @@ export function RealtimeStreamViewer({
                 </Tooltip>
               </TooltipProvider>
             </div>
+            {headerRight}
           </div>
         </div>
       </div>
@@ -366,7 +396,7 @@ export function RealtimeStreamViewer({
       {/* Content */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-x-auto overflow-y-auto bg-charcoal-900 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        className="flex-1 overflow-x-auto overflow-y-auto bg-background-deep scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
       >
         {error && (
           <div className="border-b border-error/20 bg-error/10 p-3">
@@ -478,7 +508,7 @@ function StreamChunkLine({
 
   return (
     <div
-      className="group flex gap-3 py-1 hover:bg-charcoal-800"
+      className="group flex gap-3 py-1 hover:bg-background-bright"
       style={{
         position: "absolute",
         top: 0,
@@ -489,14 +519,14 @@ function StreamChunkLine({
     >
       {/* Line number */}
       <div
-        className="flex-none select-none pl-2 text-right text-charcoal-500"
+        className="flex-none select-none pl-2 text-right text-text-faint"
         style={{ width: `${Math.max(maxLineNumberWidth, 3)}ch` }}
       >
         {lineNumber}
       </div>
 
       {/* Timestamp */}
-      <div className="flex-none select-none pl-1 text-charcoal-500">{timestamp}</div>
+      <div className="flex-none select-none pl-1 text-text-faint">{timestamp}</div>
 
       {/* Content */}
       <div className="whitespace-nowrap text-text-bright">{formattedData}</div>
@@ -504,12 +534,13 @@ function StreamChunkLine({
   );
 }
 
-function useRealtimeStream(resourcePath: string, startIndex?: number) {
+export function useRealtimeStream(resourcePath: string, startIndex?: number) {
   const [chunks, setChunks] = useState<StreamChunk[]>([]);
   const [error, setError] = useState<Error | null>(null);
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setChunks([]);
     setError(null);
 
@@ -529,7 +560,6 @@ function useRealtimeStream(resourcePath: string, startIndex?: number) {
 
         reader = stream.getReader();
 
-        // Read from the stream
         while (true) {
           const { done, value } = await reader.read();
 

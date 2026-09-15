@@ -3,7 +3,7 @@ import Long from "long";
 import _m0 from "protobufjs/minimal";
 import { ResourceSpans } from "../../../trace/v1/trace";
 
-export const protobufPackage = "opentelemetry.proto.collector.trace.v1";
+const protobufPackage = "opentelemetry.proto.collector.trace.v1";
 
 export interface ExportTraceServiceRequest {
   /**
@@ -108,10 +108,14 @@ export const ExportTraceServiceRequest = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<ExportTraceServiceRequest>, I>>(base?: I): ExportTraceServiceRequest {
+  create<I extends Exact<DeepPartial<ExportTraceServiceRequest>, I>>(
+    base?: I
+  ): ExportTraceServiceRequest {
     return ExportTraceServiceRequest.fromPartial(base ?? ({} as any));
   },
-  fromPartial<I extends Exact<DeepPartial<ExportTraceServiceRequest>, I>>(object: I): ExportTraceServiceRequest {
+  fromPartial<I extends Exact<DeepPartial<ExportTraceServiceRequest>, I>>(
+    object: I
+  ): ExportTraceServiceRequest {
     const message = createBaseExportTraceServiceRequest();
     message.resourceSpans = object.resourceSpans?.map((e) => ResourceSpans.fromPartial(e)) || [];
     return message;
@@ -123,7 +127,10 @@ function createBaseExportTraceServiceResponse(): ExportTraceServiceResponse {
 }
 
 export const ExportTraceServiceResponse = {
-  encode(message: ExportTraceServiceResponse, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+  encode(
+    message: ExportTraceServiceResponse,
+    writer: _m0.Writer = _m0.Writer.create()
+  ): _m0.Writer {
     if (message.partialSuccess !== undefined) {
       ExportTracePartialSuccess.encode(message.partialSuccess, writer.uint32(10).fork()).ldelim();
     }
@@ -169,14 +176,19 @@ export const ExportTraceServiceResponse = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<ExportTraceServiceResponse>, I>>(base?: I): ExportTraceServiceResponse {
+  create<I extends Exact<DeepPartial<ExportTraceServiceResponse>, I>>(
+    base?: I
+  ): ExportTraceServiceResponse {
     return ExportTraceServiceResponse.fromPartial(base ?? ({} as any));
   },
-  fromPartial<I extends Exact<DeepPartial<ExportTraceServiceResponse>, I>>(object: I): ExportTraceServiceResponse {
+  fromPartial<I extends Exact<DeepPartial<ExportTraceServiceResponse>, I>>(
+    object: I
+  ): ExportTraceServiceResponse {
     const message = createBaseExportTraceServiceResponse();
-    message.partialSuccess = (object.partialSuccess !== undefined && object.partialSuccess !== null)
-      ? ExportTracePartialSuccess.fromPartial(object.partialSuccess)
-      : undefined;
+    message.partialSuccess =
+      object.partialSuccess !== undefined && object.partialSuccess !== null
+        ? ExportTracePartialSuccess.fromPartial(object.partialSuccess)
+        : undefined;
     return message;
   },
 };
@@ -189,7 +201,9 @@ export const ExportTracePartialSuccess = {
   encode(message: ExportTracePartialSuccess, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
     if (message.rejectedSpans !== BigInt("0")) {
       if (BigInt.asIntN(64, message.rejectedSpans) !== message.rejectedSpans) {
-        throw new globalThis.Error("value provided for field message.rejectedSpans of type int64 too large");
+        throw new globalThis.Error(
+          "value provided for field message.rejectedSpans of type int64 too large"
+        );
       }
       writer.uint32(8).int64(message.rejectedSpans.toString());
     }
@@ -247,10 +261,14 @@ export const ExportTracePartialSuccess = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<ExportTracePartialSuccess>, I>>(base?: I): ExportTracePartialSuccess {
+  create<I extends Exact<DeepPartial<ExportTracePartialSuccess>, I>>(
+    base?: I
+  ): ExportTracePartialSuccess {
     return ExportTracePartialSuccess.fromPartial(base ?? ({} as any));
   },
-  fromPartial<I extends Exact<DeepPartial<ExportTracePartialSuccess>, I>>(object: I): ExportTracePartialSuccess {
+  fromPartial<I extends Exact<DeepPartial<ExportTracePartialSuccess>, I>>(
+    object: I
+  ): ExportTracePartialSuccess {
     const message = createBaseExportTracePartialSuccess();
     message.rejectedSpans = object.rejectedSpans ?? BigInt("0");
     message.errorMessage = object.errorMessage ?? "";
@@ -263,7 +281,7 @@ export const ExportTracePartialSuccess = {
  * OpenTelemetry and a collector, or between a collector and a central collector (in this
  * case spans are sent/received to/from multiple Applications).
  */
-export interface TraceService {
+interface TraceService {
   /**
    * For performance reasons, it is recommended to keep this RPC
    * alive for the entire life of the application.
@@ -271,8 +289,8 @@ export interface TraceService {
   export(request: ExportTraceServiceRequest): Promise<ExportTraceServiceResponse>;
 }
 
-export const TraceServiceServiceName = "opentelemetry.proto.collector.trace.v1.TraceService";
-export class TraceServiceClientImpl implements TraceService {
+const TraceServiceServiceName = "opentelemetry.proto.collector.trace.v1.TraceService";
+class TraceServiceClientImpl implements TraceService {
   private readonly rpc: Rpc;
   private readonly service: string;
   constructor(rpc: Rpc, opts?: { service?: string }) {
@@ -293,14 +311,19 @@ interface Rpc {
 
 type Builtin = Date | Function | Uint8Array | string | number | boolean | bigint | undefined;
 
-export type DeepPartial<T> = T extends Builtin ? T
-  : T extends globalThis.Array<infer U> ? globalThis.Array<DeepPartial<U>>
-  : T extends ReadonlyArray<infer U> ? ReadonlyArray<DeepPartial<U>>
-  : T extends {} ? { [K in keyof T]?: DeepPartial<T[K]> }
-  : Partial<T>;
+type DeepPartial<T> = T extends Builtin
+  ? T
+  : T extends globalThis.Array<infer U>
+    ? globalThis.Array<DeepPartial<U>>
+    : T extends ReadonlyArray<infer U>
+      ? ReadonlyArray<DeepPartial<U>>
+      : T extends {}
+        ? { [K in keyof T]?: DeepPartial<T[K]> }
+        : Partial<T>;
 
 type KeysOfUnion<T> = T extends T ? keyof T : never;
-export type Exact<P, I extends P> = P extends Builtin ? P
+type Exact<P, I extends P> = P extends Builtin
+  ? P
   : P & { [K in keyof P]: Exact<P[K], I[K]> } & { [K in Exclude<keyof I, KeysOfUnion<P>>]: never };
 
 function longToBigint(long: Long) {

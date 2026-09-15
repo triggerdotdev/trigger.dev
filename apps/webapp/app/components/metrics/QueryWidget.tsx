@@ -32,7 +32,7 @@ import {
 } from "../primitives/Popover";
 
 const ChartType = z.union([z.literal("bar"), z.literal("line")]);
-export type ChartType = z.infer<typeof ChartType>;
+type ChartType = z.infer<typeof ChartType>;
 
 const SortDirection = z.union([z.literal("asc"), z.literal("desc")]);
 export type SortDirection = z.infer<typeof SortDirection>;
@@ -55,7 +55,7 @@ const chartConfigOptions = {
   sortByColumn: z.string().nullable(),
   sortDirection: SortDirection,
   aggregation: AggregationType,
-  seriesColors: z.record(z.string()).optional(),
+  seriesColors: z.record(z.string(), z.string()).optional(),
 };
 
 const ChartConfiguration = z.object({ ...chartConfigOptions });
@@ -227,7 +227,7 @@ export function QueryWidget({
                     LeadingIcon={Maximize2}
                     leadingIconClassName="text-text-dimmed group-hover/button:text-text-bright"
                     onClick={() => setIsFullscreen(true)}
-                    className="!px-1"
+                    className="px-1!"
                   />
                 </span>
               }
@@ -321,7 +321,7 @@ export function QueryWidget({
                       icon={TrashIcon}
                       title="Delete chart"
                       leadingIconClassName="text-error"
-                      className="text-error hover:!bg-error/10"
+                      className="text-error hover:bg-error/10!"
                       onClick={() => {
                         onDelete();
                         setIsMenuOpen(false);

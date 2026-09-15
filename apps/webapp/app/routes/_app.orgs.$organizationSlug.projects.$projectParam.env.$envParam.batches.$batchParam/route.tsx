@@ -24,6 +24,11 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { formatNumber } from "~/utils/numberFormatter";
 import { EnvironmentParamSchema, v3BatchesPath, v3BatchRunsPath } from "~/utils/pathBuilder";
+import { batchAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta(({ params }) => [params.batchParam ?? "Batch", "Batches"]);
 
 const BatchParamSchema = EnvironmentParamSchema.extend({
   batchParam: z.string(),
@@ -68,6 +73,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 };
 
+export const handle: Handle = {
+  agentPageContext: (data) => batchAgentPageContext(data),
+};
+
 export default function Page() {
   const { batch } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
@@ -108,7 +117,7 @@ export default function Page() {
       </div>
 
       {/* Scrollable content */}
-      <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <div className="space-y-3">
           {/* Progress meter for v2 batches */}
           {showProgressMeter && (
@@ -208,7 +217,7 @@ export default function Page() {
                 <ExclamationTriangleIcon className="size-4" />
                 Run creation errors ({batch.errors.length})
               </Header3>
-              <div className="divide-y divide-grid-dimmed rounded-md border border-grid-dimmed bg-charcoal-900">
+              <div className="divide-y divide-grid-dimmed rounded-md border border-grid-dimmed bg-background-deep">
                 {batch.errors.map((error) => (
                   <div key={error.id} className="px-3 py-2">
                     <div className="flex items-center justify-between">
@@ -219,7 +228,7 @@ export default function Page() {
                         <span className="text-sm text-text-bright">{error.taskIdentifier}</span>
                       </div>
                       {error.errorCode && (
-                        <span className="rounded bg-charcoal-750 px-1.5 py-0.5 font-mono text-xs text-text-dimmed">
+                        <span className="rounded bg-background-hover px-1.5 py-0.5 font-mono text-xs text-text-dimmed">
                           {error.errorCode}
                         </span>
                       )}
@@ -270,7 +279,7 @@ function BatchProgressMeter({ successCount, failureCount, totalCount }: BatchPro
           {formatNumber(processedCount)}/{formatNumber(totalCount)}
         </Paragraph>
       </div>
-      <div className="relative h-4 w-full overflow-hidden rounded-sm bg-charcoal-900">
+      <div className="relative h-4 w-full overflow-hidden rounded-sm bg-background-deep">
         <motion.div
           className="absolute left-0 top-0 h-full bg-success"
           initial={{ width: `${successPercentage}%` }}

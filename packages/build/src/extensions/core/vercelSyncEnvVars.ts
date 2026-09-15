@@ -36,7 +36,7 @@ export function syncVercelEnvVars(options?: {
       process.env.VERCEL_PREVIEW_BRANCH ??
       ctx.env.VERCEL_PREVIEW_BRANCH ??
       ctx.branch;
-    const isVercelEnv = !!(ctx.env.VERCEL);
+    const isVercelEnv = !!ctx.env.VERCEL;
 
     if (!projectId) {
       throw new Error(

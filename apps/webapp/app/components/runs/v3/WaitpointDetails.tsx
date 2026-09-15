@@ -65,7 +65,7 @@ export function WaitpointDetailTable({
           <div>
             <div>
               {waitpoint.userProvidedIdempotencyKey
-                ? waitpoint.inactiveIdempotencyKey ?? waitpoint.idempotencyKey
+                ? (waitpoint.inactiveIdempotencyKey ?? waitpoint.idempotencyKey)
                 : "–"}
             </div>
             <div>
@@ -87,9 +87,7 @@ export function WaitpointDetailTable({
               <div>
                 <div className="flex w-full flex-wrap items-center justify-between gap-1">
                   {waitpoint.completedAfter ? (
-                    <>
-                      <DateTimeAccurate date={waitpoint.completedAfter} />
-                    </>
+                    <DateTimeAccurate date={waitpoint.completedAfter} />
                   ) : (
                     "–"
                   )}
@@ -99,8 +97,8 @@ export function WaitpointDetailTable({
                   {waitpoint.status === "TIMED_OUT"
                     ? "The waitpoint timed out"
                     : waitpoint.status === "COMPLETED"
-                    ? "The waitpoint completed before this timeout was reached"
-                    : "The waitpoint is still waiting"}
+                      ? "The waitpoint completed before this timeout was reached"
+                      : "The waitpoint is still waiting"}
                 </Paragraph>
               </div>
             </Property.Value>
@@ -127,9 +125,8 @@ export function WaitpointDetailTable({
           {waitpoint.completedAt ? <DateTimeAccurate date={waitpoint.completedAt} /> : "–"}
         </Property.Value>
       </Property.Item>
-      {waitpoint.status === "WAITING" ? null : waitpoint.status === "TIMED_OUT" ? (
-        <></>
-      ) : waitpoint.output ? (
+      {waitpoint.status === "WAITING" ? null : waitpoint.status ===
+        "TIMED_OUT" ? null : waitpoint.output ? (
         <PacketDisplay title="Output" data={waitpoint.output} dataType={waitpoint.outputType} />
       ) : waitpoint.completedAfter ? null : (
         "Completed with no output"

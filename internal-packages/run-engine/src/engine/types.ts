@@ -1,29 +1,67 @@
 import { type RedisOptions } from "@internal/redis";
-import { Meter, Tracer } from "@internal/tracing";
-import { Logger, LogLevel } from "@trigger.dev/core/logger";
-import {
+import type { Meter, Tracer } from "@internal/tracing";
+import type { Logger, LogLevel } from "@trigger.dev/core/logger";
+import type {
   MachinePreset,
   MachinePresetName,
   RetryOptions,
   TriggerTraceContext,
 } from "@trigger.dev/core/v3";
-import { PrismaClient, PrismaReplicaClient, TaskRun, Waitpoint } from "@trigger.dev/database";
+import type { PrismaClient, PrismaReplicaClient, TaskRun, Waitpoint } from "@trigger.dev/database";
+import type { RunStore } from "@internal/run-store";
 import {
-  Worker,
+  type Worker,
   type WorkerConcurrencyOptions,
   type GlobalRateLimiter,
 } from "@trigger.dev/redis-worker";
-import { FairQueueSelectionStrategyOptions } from "../run-queue/fairQueueSelectionStrategy.js";
-import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
-import { LockRetryConfig } from "./locking.js";
-import { workerCatalog } from "./workerCatalog.js";
+import type { ControlPlaneResolver } from "./controlPlaneResolver.js";
+import type { FairQueueSelectionStrategyOptions } from "../run-queue/fairQueueSelectionStrategy.js";
+import type { RunQueueMetricsEmitter } from "../run-queue/index.js";
+import type { MinimalAuthenticatedEnvironment } from "../shared/index.js";
+import type { LockRetryConfig } from "./locking.js";
+import type { workerCatalog } from "./workerCatalog.js";
 import { type BillingPlan } from "./billingCache.js";
 import type { DRRConfig } from "../batch-queue/types.js";
 import type { PendingVersionRunIdLookup } from "./services/pendingVersionLookup.js";
 
+/**
+ * Structural mirror of the webapp's CrossSeamGuardDecision
+ * (apps/webapp/app/v3/runOpsMigration/crossSeamGuard.server.ts).
+ * Re-declared here because @internal/run-engine must not depend on the webapp.
+ * Keep field names identical so the injected value is assignable.
+ */
+type CrossSeamGuardDecision = {
+  store: "new" | "legacy";
+  residency: "NEW" | "LEGACY";
+  routeKind: string;
+  pinnedReason?: string;
+};
+
+/**
+ * Optional cross-seam residency store-selection guard for waitpoint completion.
+ * Injected by the webapp as `pickRunOpsStoreForCompletion`.
+ * A no-op (returns store="legacy", the single store) when the split is OFF — the
+ * webapp wrapper short-circuits without classifying.
+ * When omitted entirely (self-host, tests), completeWaitpoint behaves exactly
+ * as today.
+ */
+export type CrossSeamGuardHook = (input: {
+  waitpointId: string;
+  routeKind: "MANUAL" | "DATETIME" | "RESUME_TOKEN" | "IDEMPOTENCY_REUSE" | "RUN";
+}) => Promise<CrossSeamGuardDecision>;
+
 export type RunEngineOptions = {
   prisma: PrismaClient;
   readOnlyPrisma?: PrismaReplicaClient;
+  /** Optional RunStore implementation to inject. Defaults to a PostgresRunStore
+   *  built from `prisma`/`readOnlyPrisma`, so single-DB / self-host behavior is unchanged. */
+  store?: RunStore;
+  /** Optional ControlPlaneResolver to inject. Defaults to a PassthroughControlPlaneResolver
+   *  built from `prisma`/`readOnlyPrisma` (in-DB joins), so single-DB / self-host behavior is
+   *  unchanged. The webapp injects an adapter over its cross-DB cached resolver. */
+  controlPlaneResolver?: ControlPlaneResolver;
+  /** Optional cross-seam store-selection guard. Omit for single-DB / tests. */
+  crossSeamGuard?: CrossSeamGuardHook;
   worker: {
     disabled?: boolean;
     redis: RedisOptions;
@@ -53,6 +91,8 @@ export type RunEngineOptions = {
     defaultEnvConcurrency?: number;
     defaultEnvConcurrencyBurstFactor?: number;
     logLevel?: LogLevel;
+    /** Optional queue-metrics emitter; enables gauge + counter emission from the RunQueue. */
+    queueMetrics?: RunQueueMetricsEmitter;
     queueSelectionStrategyOptions?: Pick<
       FairQueueSelectionStrategyOptions,
       "parentQueueLimit" | "tracer" | "biases" | "reuseSnapshotCount" | "maximumEnvCount"
@@ -128,7 +168,16 @@ export type RunEngineOptions = {
   };
   debounce?: {
     redis?: RedisOptions;
-    /** Maximum duration in milliseconds that a run can be debounced. Default: 1 hour */
+    /**
+     * Optional ceiling on how long a debounced run can be pushed back, measured from the run's
+     * `createdAt`. A trigger's own `debounce.maxDelay` overrides this. Once a trigger would push
+     * `delayUntil` past the ceiling, the existing run is released to execute and the trigger
+     * starts a new one.
+     *
+     * Unset by default, which means a continuously triggered key is pushed back for as long as
+     * the triggers keep coming. Set it to bound that; note that any `delay` at or above the
+     * ceiling stops the run from ever being pushed, so every trigger creates its own run.
+     */
     maxDebounceDurationMs?: number;
     /**
      * Bucket size in milliseconds used to quantize the newly computed `delayUntil`.
@@ -169,6 +218,17 @@ export type RunEngineOptions = {
   };
   /** If not set then checkpoints won't ever be used */
   retryWarmStartThresholdMs?: number;
+  /**
+   * Delay before the `ensureRunFinalized` write-ahead guard fires after a run-finish
+   * commit whose inline side effects never acked it. Long enough that the guard
+   * stays a pure failure path in steady state. Default: 60s.
+   */
+  finalizationGuardDelayMs?: number;
+  /**
+   * Delay before the `ensureWaitpointCompleted` write-ahead guard fires after a manual/API waitpoint
+   * completion whose inline side effects never acked it. Default: 30s.
+   */
+  completionGuardDelayMs?: number;
   heartbeatTimeoutsMs?: Partial<HeartbeatTimeouts>;
   repairSnapshotTimeoutMs?: number;
   treatProductionExecutionStallsAsOOM?: boolean;
@@ -200,6 +260,7 @@ export type RunEngineOptions = {
    * to disable lag-aware retries entirely.
    */
   pendingVersionLagMaxRetries?: number;
+  externalDeploymentParkDeadlineMs?: number;
   /** Optional maximum TTL for all runs (e.g. "14d"). If set, runs without an explicit TTL
    *  will use this as their TTL, and runs with a TTL larger than this will be clamped. */
   defaultMaxTtl?: string;
@@ -211,6 +272,31 @@ export type RunEngineOptions = {
    * the since snapshot is not yet on the replica, before falling back to the primary.
    * Set maxMs to 0 (or any value <= 0) to skip the replica retry and go straight to the primary. */
   readReplicaSnapshotsSinceRetryDelay?: { minMs: number; maxMs: number };
+  /**
+   * Periodically refreshes the set of worker queues observed by the
+   * `runqueue.workerQueue.length` gauge from the WorkerInstanceGroup records, so the
+   * gauge reports every active worker queue's length even when this instance is not
+   * dequeuing from them (a dequeue is otherwise the only thing that registers a worker
+   * queue for observation). When enabled the observer is the source of truth for the
+   * observed set, so the per-dequeue registration is skipped. Disabled by default; the
+   * server enables it.
+   */
+  workerQueueObserver?: {
+    enabled?: boolean;
+    /** How often to refresh the observed worker queue set from the database (ms). Default: 30_000. */
+    intervalMs?: number;
+    /**
+     * Extra suffix variants to also observe for each worker queue, e.g. the scheduled
+     * split queue suffix. The suffix value lives with the caller that owns the naming
+     * convention rather than in the engine. Default: [].
+     */
+    additionalQueueSuffixes?: string[];
+    /**
+     * Worker groups whose `cloudProvider` is in this list are not observed. Groups with
+     * no `cloudProvider` are always observed. Matched case-insensitively. Default: [].
+     */
+    excludedCloudProviders?: string[];
+  };
   tracer: Tracer;
   meter?: Meter;
   logger?: Logger;
@@ -247,6 +333,7 @@ export type TriggerParams = {
   cliVersion?: string;
   concurrencyKey?: string;
   workerQueue?: string;
+  region?: string;
   /** When true, the run queue may push directly to the worker queue if concurrency is available.
    *  Gated per WorkerInstanceGroup (production) or always true (development). */
   enableFastPath?: boolean;
@@ -297,7 +384,9 @@ export type TriggerParams = {
     triggerAction: string;
     rootTriggerSource: string;
     rootScheduleId?: string;
+    externalDeploymentId?: string;
   };
+  parkedOnExternalDeploymentId?: string;
   /**
    * Called when a run is debounced (existing delayed run found with triggerAndWait).
    * Return spanIdToComplete to enable span closing when the run completes.

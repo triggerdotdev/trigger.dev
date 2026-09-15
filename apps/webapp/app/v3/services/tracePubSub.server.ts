@@ -1,15 +1,16 @@
-import { createRedisClient, RedisClient, RedisWithClusterOptions } from "~/redis.server";
+import type { RedisClient, RedisWithClusterOptions } from "~/redis.server";
+import { createRedisClient } from "~/redis.server";
 import { EventEmitter } from "node:events";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
 import { Gauge } from "prom-client";
 import { metricsRegister } from "~/metrics.server";
 
-export type TracePubSubOptions = {
+type TracePubSubOptions = {
   redis: RedisWithClusterOptions;
 };
 
-export class TracePubSub {
+class TracePubSub {
   private _publisher: RedisClient;
   private _subscriberCount = 0;
 

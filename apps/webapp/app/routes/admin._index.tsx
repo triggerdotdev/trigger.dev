@@ -2,6 +2,7 @@ import { MagnifyingGlassIcon } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { env } from "~/env.server";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { Input } from "~/components/primitives/Input";
@@ -36,7 +37,7 @@ export const loader = dashboardLoader(
     }
     const result = await adminGetUsers(user.id, searchParams.params.getAll());
 
-    return typedjson(result);
+    return typedjson({ ...result, impersonationEnabled: env.ADMIN_DASHBOARD_ENABLED });
   }
 );
 
@@ -57,7 +58,8 @@ export const action = dashboardAction(
 );
 
 export default function AdminDashboardRoute() {
-  const { users, filters, page, pageCount } = useTypedLoaderData<typeof loader>();
+  const { users, filters, page, pageCount, impersonationEnabled } =
+    useTypedLoaderData<typeof loader>();
 
   return (
     <main
@@ -134,23 +136,25 @@ export default function AdminDashboardRoute() {
                     </TableCell>
                     <TableCell>{user.admin ? "✅" : ""}</TableCell>
                     <TableCell isSticky={true}>
-                      <Form method="post" action="/admin/impersonate" reloadDocument>
-                        <input type="hidden" name="id" value={user.id} />
-                        <Button
-                          type="submit"
-                          name="action"
-                          value="impersonate"
-                          className="mr-2"
-                          variant="tertiary/small"
-                          shortcut={
-                            users.length === 1
-                              ? { modifiers: ["mod"], key: "enter", enabledOnInputElements: true }
-                              : undefined
-                          }
-                        >
-                          Impersonate
-                        </Button>
-                      </Form>
+                      {impersonationEnabled && (
+                        <Form method="post" action="/admin/impersonate" reloadDocument>
+                          <input type="hidden" name="id" value={user.id} />
+                          <Button
+                            type="submit"
+                            name="action"
+                            value="impersonate"
+                            className="mr-2"
+                            variant="tertiary/small"
+                            shortcut={
+                              users.length === 1
+                                ? { modifiers: ["mod"], key: "enter", enabledOnInputElements: true }
+                                : undefined
+                            }
+                          >
+                            Impersonate
+                          </Button>
+                        </Form>
+                      )}
                     </TableCell>
                   </TableRow>
                 );

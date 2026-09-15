@@ -1,15 +1,12 @@
-import { XMarkIcon } from "@heroicons/react/20/solid";
 import * as SheetPrimitive from "@radix-ui/react-dialog";
 import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
 import { cn } from "~/utils/cn";
-import { ShortcutKey } from "./ShortcutKey";
+import { ModalCloseButton } from "./ModalCloseButton";
 
 const Sheet = SheetPrimitive.Root;
 
 const SheetTrigger = SheetPrimitive.Trigger;
-
-const SheetClose = SheetPrimitive.Close;
 
 const SheetPortal = SheetPrimitive.Portal;
 
@@ -48,7 +45,8 @@ const sheetVariants = cva(
 );
 
 interface SheetContentProps
-  extends React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content>,
+  extends
+    React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content>,
     VariantProps<typeof sheetVariants> {}
 
 const SheetContent = React.forwardRef<
@@ -90,11 +88,9 @@ const SheetTitle = React.forwardRef<
     {...props}
   >
     {children}
-    <SheetPrimitive.Close className="flex items-center gap-1 rounded-sm p-1 pl-0 transition hover:bg-charcoal-750 focus-visible:focus-custom disabled:pointer-events-none">
-      <ShortcutKey shortcut={{ key: "esc" }} variant="small" />
-      <XMarkIcon className="size-4 text-text-dimmed" />
-      <span className="sr-only">Close</span>
-    </SheetPrimitive.Close>
+    {/* size-6 rather than the default size-7 keeps this header row at the height it had when the
+        button rendered the esc key alongside the icon — it only gets narrower. */}
+    <ModalCloseButton className="size-6" />
   </SheetPrimitive.Title>
 ));
 SheetTitle.displayName = SheetPrimitive.Title.displayName;
@@ -111,15 +107,4 @@ const SheetDescription = React.forwardRef<
 ));
 SheetDescription.displayName = SheetPrimitive.Description.displayName;
 
-export {
-  Sheet,
-  SheetClose,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetOverlay,
-  SheetPortal,
-  SheetTitle,
-  SheetTrigger,
-};
+export { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger };

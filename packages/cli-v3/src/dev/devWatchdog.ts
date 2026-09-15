@@ -34,6 +34,7 @@ const apiKey = process.env.WATCHDOG_API_KEY!;
 const activeRunsPath = process.env.WATCHDOG_ACTIVE_RUNS!;
 const pidFilePath = process.env.WATCHDOG_PID_FILE!;
 const tmpDir = process.env.WATCHDOG_TMP_DIR;
+const lockFilePath = process.env.WATCHDOG_LOCK_FILE;
 
 if (!parentPid || !apiUrl || !apiKey || !activeRunsPath || !pidFilePath) {
   process.exit(1);
@@ -77,8 +78,25 @@ function cleanup() {
   } catch {}
 }
 
+function tmpDirOwnedByLiveSession(): boolean {
+  if (!lockFilePath) return false;
+  try {
+    const pid = Number(readFileSync(lockFilePath, "utf8").trim());
+    if (!pid || pid === parentPid) return false;
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  } catch {
+    return false;
+  }
+}
+
 function cleanupTmpDir() {
   if (!tmpDir) return;
+  if (tmpDirOwnedByLiveSession()) return;
   try {
     rmSync(tmpDir, { recursive: true, force: true });
   } catch {

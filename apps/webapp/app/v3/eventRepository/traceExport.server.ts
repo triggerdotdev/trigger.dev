@@ -28,7 +28,7 @@ export type TraceExportFormat = {
   footer?: (ctx: TraceExportContext) => string;
 };
 
-export type TraceExportFormatName = "log" | "jsonl" | "markdown";
+type TraceExportFormatName = "log" | "jsonl" | "markdown";
 
 /**
  * Streams a trace export by piping events through a {@link TraceExportFormat}.
@@ -105,7 +105,8 @@ const logFormat: TraceExportFormat = {
     const level = event.level.padEnd(5);
     const errMsg = errorMessage(event);
     const status = event.isError ? (errMsg ? ` [ERROR: ${errMsg}]` : " [ERROR]") : "";
-    const duration = event.durationNs > 0 ? ` (${formatDurationNanoseconds(event.durationNs)})` : "";
+    const duration =
+      event.durationNs > 0 ? ` (${formatDurationNanoseconds(event.durationNs)})` : "";
 
     let out = `${time} ${level} [${lineage(event)}] ${event.message}${status}${duration}\n`;
     if (hasProperties(event.propertiesText)) {
@@ -198,7 +199,7 @@ const FORMATS: Record<TraceExportFormatName, TraceExportFormat> = {
 
 /** Resolve a `?format=` value to a format, defaulting to `log`. */
 export function getTraceExportFormat(name: string | null | undefined): TraceExportFormat {
-  if (name && Object.prototype.hasOwnProperty.call(FORMATS, name)) {
+  if (name && Object.hasOwn(FORMATS, name)) {
     return FORMATS[name as TraceExportFormatName];
   }
   return logFormat;

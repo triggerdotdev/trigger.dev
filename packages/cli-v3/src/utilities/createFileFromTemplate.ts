@@ -1,6 +1,6 @@
 import fs from "fs/promises";
-import { pathExists, readFile } from "./fileSystem.js";
 import path from "path";
+import { pathExists } from "./fileSystem.js";
 
 type Result =
   | {
@@ -57,7 +57,7 @@ export async function createFileFromTemplate(params: {
 }
 
 // find strings that match ${varName} and replace with the value from a Record<string, string> where { varName: "value" }
-export function replaceAll(input: string, replacements: Record<string, string>) {
+function replaceAll(input: string, replacements: Record<string, string>) {
   let output = input;
   for (const [key, value] of Object.entries(replacements)) {
     output = output.replace(new RegExp(`\\$\\{${key}\\}`, "g"), value);

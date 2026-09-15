@@ -5,7 +5,12 @@
 import "../src/v3/test/index.js";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { apiClientManager } from "@trigger.dev/core/v3";
+import {
+  apiClientManager,
+  parseTranscriptBlob,
+  TRANSCRIPT_BLOB_CONTENT_TYPE,
+} from "@trigger.dev/core/v3";
+import type { TranscriptSnapshotV2 } from "@trigger.dev/core/v3";
 import {
   __readChatSnapshotProductionPathForTests as readChatSnapshot,
   __writeChatSnapshotProductionPathForTests as writeChatSnapshot,
@@ -29,6 +34,20 @@ function buildSnapshot(count = 1): ChatSnapshotV1 {
       parts: [{ type: "text" as const, text: `hello ${i}` }],
     })),
     lastOutEventId: "evt-42",
+  };
+}
+
+/**
+ * The version 2 counterpart, which is what the runtime writes.
+ */
+function buildSnapshotV2(count = 1): TranscriptSnapshotV2 {
+  const v1 = buildSnapshot(count);
+  return {
+    version: 2,
+    savedAt: v1.savedAt,
+    messages: v1.messages.map((message) => ({ id: message.id, final: true, message })),
+    state: null,
+    lastOutEventId: v1.lastOutEventId,
   };
 }
 
@@ -85,23 +104,34 @@ describe("chat snapshot helpers", () => {
   });
 
   describe("readChatSnapshot", () => {
-    it("returns the snapshot on a successful GET", async () => {
+    it("returns a version 1 snapshot upgraded to the version 2 shape on a successful GET", async () => {
       const { getChatSnapshotUrl } = stubApiClient({});
       const snapshot = buildSnapshot(2);
-      stubFetch(async () =>
-        new Response(JSON.stringify(snapshot), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        })
+      stubFetch(
+        async () =>
+          new Response(JSON.stringify(snapshot), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          })
       );
 
       const result = await readChatSnapshot("session-1");
       expect(getChatSnapshotUrl).toHaveBeenCalledWith("session-1");
-      expect(result).toMatchObject({
-        version: 1,
-        messages: snapshot.messages,
-        lastOutEventId: "evt-42",
-      });
+      expect(result).toEqual(buildSnapshotV2(2));
+    });
+
+    it("returns a version 2 snapshot as-is on a successful GET", async () => {
+      stubApiClient({});
+      const snapshot = buildSnapshotV2(2);
+      stubFetch(
+        async () =>
+          new Response(JSON.stringify(snapshot), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          })
+      );
+
+      expect(await readChatSnapshot("session-1")).toEqual(snapshot);
     });
 
     it("returns undefined on 404 (fresh session, no snapshot yet)", async () => {
@@ -122,11 +152,12 @@ describe("chat snapshot helpers", () => {
 
     it("returns undefined when the response body is malformed JSON", async () => {
       stubApiClient({});
-      stubFetch(async () =>
-        new Response("not-json-{[", {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        })
+      stubFetch(
+        async () =>
+          new Response("not-json-{[", {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          })
       );
 
       const result = await readChatSnapshot("malformed-session");
@@ -141,11 +172,12 @@ describe("chat snapshot helpers", () => {
         savedAt: Date.now(),
         messages: [],
       };
-      stubFetch(async () =>
-        new Response(JSON.stringify(futureSnapshot), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        })
+      stubFetch(
+        async () =>
+          new Response(JSON.stringify(futureSnapshot), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          })
       );
 
       const result = await readChatSnapshot("v99-session");
@@ -154,10 +186,11 @@ describe("chat snapshot helpers", () => {
 
     it("returns undefined when `messages` field is missing or wrong type", async () => {
       stubApiClient({});
-      stubFetch(async () =>
-        new Response(JSON.stringify({ version: 1, savedAt: 1, messages: "not-an-array" }), {
-          status: 200,
-        })
+      stubFetch(
+        async () =>
+          new Response(JSON.stringify({ version: 1, savedAt: 1, messages: "not-an-array" }), {
+            status: 200,
+          })
       );
 
       const result = await readChatSnapshot("bad-shape-session");
@@ -190,9 +223,7 @@ describe("chat snapshot helpers", () => {
 
     it("returns undefined when the response is not an object", async () => {
       stubApiClient({});
-      stubFetch(async () =>
-        new Response(JSON.stringify("just-a-string"), { status: 200 })
-      );
+      stubFetch(async () => new Response(JSON.stringify("just-a-string"), { status: 200 }));
 
       const result = await readChatSnapshot("string-response");
       expect(result).toBeUndefined();
@@ -200,11 +231,11 @@ describe("chat snapshot helpers", () => {
   });
 
   describe("writeChatSnapshot", () => {
-    it("PUTs the snapshot JSON to the presigned URL", async () => {
+    it("PUTs the line-based snapshot blob to the presigned URL", async () => {
       const { createChatSnapshotUploadUrl } = stubApiClient({});
       const fetchSpy = stubFetch(async () => new Response(null, { status: 200 }));
 
-      const snapshot = buildSnapshot(3);
+      const snapshot = buildSnapshotV2(3);
       await writeChatSnapshot("session-2", snapshot);
 
       expect(createChatSnapshotUploadUrl).toHaveBeenCalledWith("session-2");
@@ -213,18 +244,23 @@ describe("chat snapshot helpers", () => {
       expect(url).toBe("https://example.invalid/put");
       expect((init as RequestInit).method).toBe("PUT");
       expect((init as RequestInit).headers).toMatchObject({
-        "content-type": "application/json",
+        "content-type": TRANSCRIPT_BLOB_CONTENT_TYPE,
       });
-      // Body is the JSON-stringified snapshot — round-trip to confirm.
-      const sentBody = JSON.parse((init as RequestInit).body as string);
-      expect(sentBody).toEqual(snapshot);
+
+      // One line per entry, an index footer, and a fixed trailer — round-trip
+      // through the reader to confirm it is the same conversation.
+      const sentBody = (init as RequestInit).body as string;
+      expect(sentBody.startsWith('{"v":2')).toBe(true);
+      expect(parseTranscriptBlob(sentBody)).toEqual(snapshot);
     });
 
     it("returns without throwing on a non-OK PUT response (warns)", async () => {
       stubApiClient({});
       stubFetch(async () => new Response("forbidden", { status: 403 }));
 
-      await expect(writeChatSnapshot("forbidden-session", buildSnapshot())).resolves.toBeUndefined();
+      await expect(
+        writeChatSnapshot("forbidden-session", buildSnapshotV2())
+      ).resolves.toBeUndefined();
     });
 
     it("returns without throwing on a fetch network error (warns)", async () => {
@@ -233,7 +269,9 @@ describe("chat snapshot helpers", () => {
         throw new Error("ETIMEDOUT");
       });
 
-      await expect(writeChatSnapshot("timeout-session", buildSnapshot())).resolves.toBeUndefined();
+      await expect(
+        writeChatSnapshot("timeout-session", buildSnapshotV2())
+      ).resolves.toBeUndefined();
     });
 
     it("returns without throwing when presign fails (warns)", async () => {
@@ -244,7 +282,7 @@ describe("chat snapshot helpers", () => {
       });
       const fetchSpy = stubFetch(async () => new Response(null, { status: 200 }));
 
-      await expect(writeChatSnapshot("denied-session", buildSnapshot())).resolves.toBeUndefined();
+      await expect(writeChatSnapshot("denied-session", buildSnapshotV2())).resolves.toBeUndefined();
       // Presign failed → no PUT attempted.
       expect(fetchSpy).not.toHaveBeenCalled();
     });
@@ -266,7 +304,7 @@ describe("chat snapshot helpers", () => {
         createChatSnapshotUploadUrl: async () => ({ presignedUrl: "https://example.invalid/put" }),
       });
       stubFetch(async () => new Response(null, { status: 200 }));
-      await writeChatSnapshot("round-trip-session", buildSnapshot());
+      await writeChatSnapshot("round-trip-session", buildSnapshotV2());
       const [writeArg] = createChatSnapshotUploadUrl.mock.calls[0]!;
 
       expect(readArg).toBe(writeArg);

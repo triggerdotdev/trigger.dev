@@ -5,10 +5,17 @@ import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { humanToCronSupported } from "~/v3/humanToCron.server";
 import { UpsertScheduleForm } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.new/route";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("New schedule");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
-  const { projectParam, envParam, organizationSlug } = EnvironmentParamSchema.parse(params);
+  const {
+    projectParam,
+    envParam,
+    organizationSlug: _organizationSlug,
+  } = EnvironmentParamSchema.parse(params);
 
   const presenter = new EditSchedulePresenter();
   const result = await presenter.call({
@@ -21,8 +28,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export default function Page() {
-  const { schedule, possibleTasks, possibleEnvironments, possibleTimezones, showGenerateField } =
-    useTypedLoaderData<typeof loader>();
+  const {
+    schedule,
+    possibleTasks,
+    possibleEnvironments,
+    possibleTimezones,
+    newSchedulePolicy,
+    showGenerateField,
+  } = useTypedLoaderData<typeof loader>();
 
   return (
     <UpsertScheduleForm
@@ -31,6 +44,7 @@ export default function Page() {
       possibleEnvironments={possibleEnvironments}
       showGenerateField={showGenerateField}
       possibleTimezones={possibleTimezones}
+      newSchedulePolicy={newSchedulePolicy}
     />
   );
 }

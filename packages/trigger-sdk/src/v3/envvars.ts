@@ -3,9 +3,7 @@ import type {
   ApiRequestOptions,
   CreateEnvironmentVariableParams,
   EnvironmentVariableResponseBody,
-  EnvironmentVariableValue,
   EnvironmentVariableWithSecret,
-  EnvironmentVariables,
   ImportEnvironmentVariablesParams,
   UpdateEnvironmentVariableParams,
 } from "@trigger.dev/core/v3";
@@ -202,8 +200,8 @@ export function retrieve(
   name?: string,
   requestOptions?: ApiRequestOptions
 ): ApiPromise<EnvironmentVariableWithSecret> {
-  let $projectRef: string;
-  let $slug: string;
+  let $projectRef: string | undefined;
+  let $slug: string | undefined;
   let $name: string;
   const $requestOptions = overloadRequestOptions("retrieve", slugOrRequestOptions, requestOptions);
 
@@ -212,11 +210,11 @@ export function retrieve(
     $slug =
       typeof slugOrRequestOptions === "string"
         ? slugOrRequestOptions
-        : taskContext.ctx?.environment.slug!;
+        : taskContext.ctx?.environment.slug;
     $name = name;
   } else {
-    $projectRef = taskContext.ctx?.project.ref!;
-    $slug = taskContext.ctx?.environment.slug!;
+    $projectRef = taskContext.ctx?.project.ref;
+    $slug = taskContext.ctx?.environment.slug;
     $name = projectRefOrName;
   }
 
@@ -249,8 +247,8 @@ export function del(
   name?: string,
   requestOptions?: ApiRequestOptions
 ): ApiPromise<EnvironmentVariableResponseBody> {
-  let $projectRef: string;
-  let $slug: string;
+  let $projectRef: string | undefined;
+  let $slug: string | undefined;
   let $name: string;
   const $requestOptions = overloadRequestOptions("del", slugOrRequestOptions, requestOptions);
 
@@ -259,11 +257,11 @@ export function del(
     $slug =
       typeof slugOrRequestOptions === "string"
         ? slugOrRequestOptions
-        : taskContext.ctx?.environment.slug!;
+        : taskContext.ctx?.environment.slug;
     $name = name;
   } else {
-    $projectRef = taskContext.ctx?.project.ref!;
-    $slug = taskContext.ctx?.environment.slug!;
+    $projectRef = taskContext.ctx?.project.ref;
+    $slug = taskContext.ctx?.environment.slug;
     $name = projectRefOrName;
   }
 

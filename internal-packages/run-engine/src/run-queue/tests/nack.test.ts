@@ -4,7 +4,7 @@ import { describe } from "node:test";
 import { FairQueueSelectionStrategy } from "../fairQueueSelectionStrategy.js";
 import { RunQueue } from "../index.js";
 import { RunQueueFullKeyProducer } from "../keyProducer.js";
-import { InputPayload } from "../types.js";
+import type { InputPayload } from "../types.js";
 import { setTimeout } from "node:timers/promises";
 import { Decimal } from "@trigger.dev/database";
 
@@ -89,9 +89,8 @@ describe("RunQueue.nackMessage", () => {
       );
       expect(queueCurrentConcurrency).toBe(1);
 
-      const envCurrentConcurrency = await queue.currentConcurrencyOfEnvironment(
-        authenticatedEnvDev
-      );
+      const envCurrentConcurrency =
+        await queue.currentConcurrencyOfEnvironment(authenticatedEnvDev);
       expect(envCurrentConcurrency).toBe(1);
 
       // Nack the message
@@ -107,9 +106,8 @@ describe("RunQueue.nackMessage", () => {
       );
       expect(queueCurrentConcurrencyAfterNack).toBe(0);
 
-      const envCurrentConcurrencyAfterNack = await queue.currentConcurrencyOfEnvironment(
-        authenticatedEnvDev
-      );
+      const envCurrentConcurrencyAfterNack =
+        await queue.currentConcurrencyOfEnvironment(authenticatedEnvDev);
       expect(envCurrentConcurrencyAfterNack).toBe(0);
 
       const envQueueLength = await queue.lengthOfEnvQueue(authenticatedEnvDev);
@@ -131,6 +129,81 @@ describe("RunQueue.nackMessage", () => {
       await queue.quit();
     }
   });
+
+  redisTest(
+    "nacking with resetAttemptCount zeroes the counter instead of dead-lettering",
+    async ({ redisContainer }) => {
+      const queue = new RunQueue({
+        ...testOptions,
+        retryOptions: {
+          ...testOptions.retryOptions,
+          maxAttempts: 2,
+        },
+        queueSelectionStrategy: new FairQueueSelectionStrategy({
+          redis: {
+            keyPrefix: "runqueue:test:",
+            host: redisContainer.getHost(),
+            port: redisContainer.getPort(),
+          },
+          keys: testOptions.keys,
+        }),
+        redis: {
+          keyPrefix: "runqueue:test:",
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+        },
+      });
+
+      try {
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: messageDev,
+          workerQueue: authenticatedEnvDev.id,
+        });
+
+        await setTimeout(1000);
+
+        const dequeued = await queue.dequeueMessageFromWorkerQueue(
+          "test_12345",
+          authenticatedEnvDev.id
+        );
+        assertNonNullable(dequeued);
+
+        const first = await queue.nackMessage({
+          orgId: messageDev.orgId,
+          messageId: messageDev.runId,
+        });
+        expect(first).toBe(true);
+
+        const afterFirst = await queue.readMessage(messageDev.orgId, messageDev.runId);
+        expect(afterFirst?.attempt).toBe(1);
+
+        await setTimeout(1000);
+
+        const dequeued2 = await queue.dequeueMessageFromWorkerQueue(
+          "test_12345",
+          authenticatedEnvDev.id
+        );
+        assertNonNullable(dequeued2);
+
+        // A plain nack here would hit maxAttempts and dead-letter the run
+        const second = await queue.nackMessage({
+          orgId: messageDev.orgId,
+          messageId: messageDev.runId,
+          resetAttemptCount: true,
+        });
+        expect(second).toBe(true);
+
+        const afterReset = await queue.readMessage(messageDev.orgId, messageDev.runId);
+        expect(afterReset?.attempt).toBe(0);
+
+        expect(await queue.lengthOfEnvQueue(authenticatedEnvDev)).toBe(1);
+        expect(await queue.lengthOfDeadLetterQueue(authenticatedEnvDev)).toBe(0);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
 
   redisTest(
     "nacking a message with maxAttempts reached should be moved to dead letter queue",
@@ -196,9 +269,8 @@ describe("RunQueue.nackMessage", () => {
         const envQueueLengthDequeue = await queue.lengthOfEnvQueue(authenticatedEnvDev);
         expect(envQueueLengthDequeue).toBe(0);
 
-        const deadLetterQueueLengthBefore = await queue.lengthOfDeadLetterQueue(
-          authenticatedEnvDev
-        );
+        const deadLetterQueueLengthBefore =
+          await queue.lengthOfDeadLetterQueue(authenticatedEnvDev);
         expect(deadLetterQueueLengthBefore).toBe(0);
 
         await queue.nackMessage({
@@ -209,9 +281,8 @@ describe("RunQueue.nackMessage", () => {
         const envQueueLengthAfterNack = await queue.lengthOfEnvQueue(authenticatedEnvDev);
         expect(envQueueLengthAfterNack).toBe(0);
 
-        const deadLetterQueueLengthAfterNack = await queue.lengthOfDeadLetterQueue(
-          authenticatedEnvDev
-        );
+        const deadLetterQueueLengthAfterNack =
+          await queue.lengthOfDeadLetterQueue(authenticatedEnvDev);
         expect(deadLetterQueueLengthAfterNack).toBe(1);
       } finally {
         await queue.quit();
@@ -265,7 +336,7 @@ describe("RunQueue.nackMessage", () => {
         });
 
         // Check the score of the message in the queue
-        const queueKey = queue.keys.queueKey(authenticatedEnvDev, messageDev.queue);
+        const _queueKey = queue.keys.queueKey(authenticatedEnvDev, messageDev.queue);
         const score = await queue.oldestMessageInQueue(authenticatedEnvDev, messageDev.queue);
         expect(typeof score).toBe("number");
         if (typeof score !== "number") {

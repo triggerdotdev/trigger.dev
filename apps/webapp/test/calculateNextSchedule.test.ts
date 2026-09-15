@@ -14,7 +14,7 @@ describe("calculateNextScheduledTimestampFromNow", () => {
 
   test("should calculate next run time for a recent timestamp", () => {
     const schedule = "0 * * * *"; // Every hour
-    const lastRun = new Date("2024-01-01T11:00:00.000Z"); // 1.5 hours ago
+    const _lastRun = new Date("2024-01-01T11:00:00.000Z"); // 1.5 hours ago
 
     const nextRun = calculateNextScheduledTimestampFromNow(schedule, null);
 
@@ -24,7 +24,7 @@ describe("calculateNextScheduledTimestampFromNow", () => {
 
   test("should handle timezone correctly", () => {
     const schedule = "0 * * * *"; // Every hour
-    const lastRun = new Date("2024-01-01T11:00:00.000Z");
+    const _lastRun = new Date("2024-01-01T11:00:00.000Z");
 
     const nextRun = calculateNextScheduledTimestampFromNow(schedule, "America/New_York");
 
@@ -35,7 +35,7 @@ describe("calculateNextScheduledTimestampFromNow", () => {
 
   test("should efficiently handle very old timestamps (performance fix)", () => {
     const schedule = "*/1 * * * *"; // Every minute
-    const veryOldTimestamp = new Date("2020-01-01T00:00:00.000Z"); // 4 years ago
+    const _veryOldTimestamp = new Date("2020-01-01T00:00:00.000Z"); // 4 years ago
 
     const startTime = performance.now();
     const nextRun = calculateNextScheduledTimestampFromNow(schedule, null);
@@ -53,7 +53,7 @@ describe("calculateNextScheduledTimestampFromNow", () => {
 
   test("should still work correctly when timestamp is within threshold", () => {
     const schedule = "0 */2 * * *"; // Every 2 hours
-    const recentTimestamp = new Date("2024-01-01T10:00:00.000Z"); // 2.5 hours ago
+    const _recentTimestamp = new Date("2024-01-01T10:00:00.000Z"); // 2.5 hours ago
 
     const nextRun = calculateNextScheduledTimestampFromNow(schedule, null);
 
@@ -63,7 +63,7 @@ describe("calculateNextScheduledTimestampFromNow", () => {
 
   test("should handle frequent schedules with old timestamps efficiently", () => {
     const schedule = "*/5 * * * *"; // Every 5 minutes
-    const oldTimestamp = new Date("2023-12-01T00:00:00.000Z"); // Over a month ago
+    const _oldTimestamp = new Date("2023-12-01T00:00:00.000Z"); // Over a month ago
 
     const startTime = performance.now();
     const nextRun = calculateNextScheduledTimestampFromNow(schedule, null);
@@ -78,7 +78,7 @@ describe("calculateNextScheduledTimestampFromNow", () => {
 
   test("should work with complex cron expressions", () => {
     const schedule = "0 9 * * MON"; // Every Monday at 9 AM
-    const oldTimestamp = new Date("2022-01-01T00:00:00.000Z"); // Very old (beyond 1hr threshold)
+    const _oldTimestamp = new Date("2022-01-01T00:00:00.000Z"); // Very old (beyond 1hr threshold)
 
     const nextRun = calculateNextScheduledTimestampFromNow(schedule, null);
 
@@ -92,7 +92,7 @@ describe("calculateNextScheduledTimestampFromNow", () => {
   test("performance: dynamic optimization for extreme scenarios", () => {
     // This test simulates the exact scenario that was causing event loop lag
     const schedule = "* * * * *"; // Every minute (very frequent)
-    const extremelyOldTimestamp = new Date("2000-01-01T00:00:00.000Z"); // 24 years ago
+    const _extremelyOldTimestamp = new Date("2000-01-01T00:00:00.000Z"); // 24 years ago
 
     const startTime = performance.now();
     const nextRun = calculateNextScheduledTimestampFromNow(schedule, null);
@@ -108,7 +108,7 @@ describe("calculateNextScheduledTimestampFromNow", () => {
   test("dynamic optimization: 23h59m old now handled efficiently", () => {
     // This should now be handled efficiently regardless of being "just under" a threshold
     const schedule = "* * * * *"; // Every minute
-    const oldTimestamp = new Date("2023-12-31T12:31:00.000Z"); // 23h59m ago
+    const _oldTimestamp = new Date("2023-12-31T12:31:00.000Z"); // 23h59m ago
 
     const startTime = performance.now();
     const nextRun = calculateNextScheduledTimestampFromNow(schedule, null);
@@ -124,7 +124,7 @@ describe("calculateNextScheduledTimestampFromNow", () => {
   test("small intervals still use normal iteration", () => {
     // This should use normal iteration since it's only a few steps
     const schedule = "*/5 * * * *"; // Every 5 minutes
-    const recentTimestamp = new Date("2024-01-01T12:00:00.000Z"); // 30 minutes ago (6 steps)
+    const _recentTimestamp = new Date("2024-01-01T12:00:00.000Z"); // 30 minutes ago (6 steps)
 
     const startTime = performance.now();
     const nextRun = calculateNextScheduledTimestampFromNow(schedule, null);
@@ -139,7 +139,7 @@ describe("calculateNextScheduledTimestampFromNow", () => {
 
   test("should work with weekly schedules and old timestamps", () => {
     const schedule = "0 9 * * MON"; // Every Monday at 9 AM
-    const oldTimestamp = new Date("2023-12-25T09:00:00.000Z"); // Old Monday
+    const _oldTimestamp = new Date("2023-12-25T09:00:00.000Z"); // Old Monday
 
     const startTime = performance.now();
     const nextRun = calculateNextScheduledTimestampFromNow(schedule, null);
@@ -158,7 +158,7 @@ describe("calculateNextScheduledTimestampFromNow", () => {
   test("weekly schedule with 2-hour old timestamp should calculate properly", () => {
     // This tests your specific concern about weekly schedules
     const schedule = "0 14 * * SUN"; // Every Sunday at 2 PM
-    const twoHoursAgo = new Date("2024-01-01T10:30:00.000Z"); // 2 hours before current time (12:30)
+    const _twoHoursAgo = new Date("2024-01-01T10:30:00.000Z"); // 2 hours before current time (12:30)
 
     const nextRun = calculateNextScheduledTimestampFromNow(schedule, null);
 
@@ -289,7 +289,9 @@ describe("calculateNextScheduledTimestampFromNow - Fuzzy Testing", () => {
       const schedule = frequentSchedules[Math.floor(Math.random() * frequentSchedules.length)];
 
       // Generate very old timestamps that would cause many iterations without optimization
-      const veryOldTimestamp = new Date(Date.now() - Math.random() * 5 * 365 * 24 * 60 * 60 * 1000);
+      const _veryOldTimestamp = new Date(
+        Date.now() - Math.random() * 5 * 365 * 24 * 60 * 60 * 1000
+      );
 
       const startTime = performance.now();
       const nextRun = calculateNextScheduledTimestampFromNow(schedule, null);
@@ -319,7 +321,7 @@ describe("calculateNextScheduledTimestampFromNow - Fuzzy Testing", () => {
 
       vi.setSystemTime(new Date(testDate));
 
-      const lastTimestamp = new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000);
+      const _lastTimestamp = new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000);
 
       const nextRun = calculateNextScheduledTimestampFromNow(schedule, timezone);
 
@@ -351,8 +353,8 @@ describe("calculateNextScheduledTimestampFromNow - Fuzzy Testing", () => {
       vi.setSystemTime(new Date(test.time));
 
       // Test with timestamps both before and after the boundary
-      const beforeBoundary = new Date(Date.now() - 1000);
-      const afterBoundary = new Date(Date.now() + 1000);
+      const _beforeBoundary = new Date(Date.now() - 1000);
+      const _afterBoundary = new Date(Date.now() + 1000);
 
       const nextRun1 = calculateNextScheduledTimestampFromNow(test.schedule, null);
       const nextRun2 = calculateNextScheduledTimestampFromNow(test.schedule, null);
@@ -404,7 +406,7 @@ describe("calculateNextScheduledTimestampFromNow - Fuzzy Testing", () => {
     // Test that the function is consistent when called multiple times with same inputs
     for (let i = 0; i < 20; i++) {
       const schedule = generateRandomCronExpression();
-      const lastTimestamp = generateRandomTimestamp();
+      const _lastTimestamp = generateRandomTimestamp();
       const timezone = Math.random() > 0.5 ? "UTC" : "America/New_York";
 
       const results: Date[] = [];
@@ -433,7 +435,7 @@ describe("calculateNextScheduledTimestampFromNow - Fuzzy Testing", () => {
     ];
 
     for (const testCase of testCases) {
-      const lastTimestamp = new Date(Date.now() - testCase.minutesAgo * 60 * 1000);
+      const _lastTimestamp = new Date(Date.now() - testCase.minutesAgo * 60 * 1000);
 
       const startTime = performance.now();
       const nextRun = calculateNextScheduledTimestampFromNow(testCase.schedule, null);

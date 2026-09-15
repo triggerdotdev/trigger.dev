@@ -88,9 +88,7 @@ function extractChangesFromPrBody(body) {
 
 function getContributors(previousVersion) {
   try {
-    const range = previousVersion
-      ? `v${previousVersion}...HEAD`
-      : "HEAD~50..HEAD";
+    const range = previousVersion ? `v${previousVersion}...HEAD` : "HEAD~50..HEAD";
     const log = execSync(`git log ${range} --format="%aN|%aE" --no-merges`, {
       cwd: ROOT_DIR,
       encoding: "utf-8",
@@ -111,9 +109,7 @@ function getContributors(previousVersion) {
       contributors.set(name, (contributors.get(name) || 0) + 1);
     }
 
-    return [...contributors.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .map(([name]) => name);
+    return [...contributors.entries()].sort((a, b) => b[1] - a[1]).map(([name]) => name);
   } catch {
     return [];
   }
@@ -128,9 +124,7 @@ function getPublishedPackages() {
     for (const dir of readdirSync(packagesDir, { withFileTypes: true })) {
       if (!dir.isDirectory()) continue;
       try {
-        const pkg = JSON.parse(
-          readFileSync(join(packagesDir, dir.name, "package.json"), "utf-8")
-        );
+        const pkg = JSON.parse(readFileSync(join(packagesDir, dir.name, "package.json"), "utf-8"));
         if (pkg.name && !pkg.private) {
           names.push(pkg.name);
         }
@@ -217,9 +211,7 @@ function formatRelease({ version, changesContent, contributors, packages }) {
     lines.push("## Contributors");
     lines.push("");
     lines.push(
-      contributors
-        .map((c) => (/^[A-Za-z0-9][-A-Za-z0-9]*$/.test(c) ? `@${c}` : c))
-        .join(", ")
+      contributors.map((c) => (/^[A-Za-z0-9][-A-Za-z0-9]*$/.test(c) ? `@${c}` : c)).join(", ")
     );
     lines.push("");
   }
@@ -247,6 +239,21 @@ async function main() {
   }
 
   const changesContent = extractChangesFromPrBody(prBody);
+
+  // Fail loudly when a stable (non-prerelease) release resolved no changelog. This
+  // guards against publishing an empty "What's changed" section, which previously
+  // happened silently on workflow_dispatch re-runs where RELEASE_PR_BODY was empty.
+  // Prereleases (any version with a hyphen, e.g. 4.5.0-rc.0) are allowed to be empty.
+  const isPrerelease = version.includes("-");
+  if (!changesContent && !isPrerelease) {
+    console.error(
+      `Error: no "What's changed" content could be resolved for v${version}. ` +
+        `RELEASE_PR_BODY was empty or contained no changelog entries. ` +
+        `Refusing to publish a release with an empty changelog.`
+    );
+    process.exit(1);
+  }
+
   const contributors = getContributors(getPreviousVersion(version));
   const packages = getPublishedPackages();
 

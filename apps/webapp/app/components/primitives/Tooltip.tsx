@@ -42,7 +42,7 @@ const TooltipContent = React.forwardRef<
       ref={ref}
       sideOffset={sideOffset}
       className={cn(
-        "z-50 overflow-hidden animate-in data-[side=bottom]:slide-in-from-top-1 data-[side=left]:slide-in-from-right-1 data-[side=right]:slide-in-from-left-1 data-[side=top]:slide-in-from-bottom-1 focus-visible:outline-none",
+        "z-50 overflow-hidden animate-in data-[side=bottom]:slide-in-from-top-1 data-[side=left]:slide-in-from-right-1 data-[side=right]:slide-in-from-left-1 data-[side=top]:slide-in-from-bottom-1 focus-visible:outline-hidden",
         variantClasses[variant],
         className
       )}
@@ -63,6 +63,7 @@ function SimpleTooltip({
   buttonClassName,
   buttonStyle,
   asChild = false,
+  tabbable = false,
   sideOffset,
   open,
   onOpenChange,
@@ -78,6 +79,9 @@ function SimpleTooltip({
   buttonClassName?: string;
   buttonStyle?: React.CSSProperties;
   asChild?: boolean;
+  /** Set when the trigger wraps an interactive element that should stay tabbable; default removes
+   * it from the tab order (decorative tooltips add no tab stops). */
+  tabbable?: boolean;
   sideOffset?: number;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -88,7 +92,7 @@ function SimpleTooltip({
       <Tooltip open={open} onOpenChange={onOpenChange} delayDuration={delayDuration}>
         <TooltipTrigger
           type={asChild ? undefined : "button"}
-          tabIndex={-1}
+          tabIndex={tabbable ? undefined : -1}
           className={cn(!asChild && "h-fit", buttonClassName)}
           style={buttonStyle}
           asChild={asChild}
@@ -140,4 +144,4 @@ export function InfoIconTooltip({
   );
 }
 
-export { SimpleTooltip, Tooltip, TooltipArrow, TooltipContent, TooltipProvider, TooltipTrigger };
+export { SimpleTooltip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger };

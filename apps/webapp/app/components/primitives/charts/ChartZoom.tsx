@@ -36,8 +36,8 @@ export type ChartZoomProps = {
  * ```
  */
 export function ChartZoom({ syncWithDateRange = false, minDataPoints = 3 }: ChartZoomProps) {
-  const { zoom, data, dataKey, onZoomChange } = useChartContext();
-  const globalDateRange = useDateRange();
+  const { zoom, data: _data, dataKey: _dataKey, onZoomChange: _onZoomChange } = useChartContext();
+  const _globalDateRange = useDateRange();
 
   if (!zoom) {
     console.warn("ChartZoom: zoom is not enabled. Add enableZoom to Chart.Root.");
@@ -52,7 +52,7 @@ export function ChartZoom({ syncWithDateRange = false, minDataPoints = 3 }: Char
       {inspectionLine && (
         <ReferenceLine
           x={inspectionLine}
-          stroke="#D7D9DD"
+          stroke="var(--color-text-bright)"
           strokeWidth={2}
           isFront={true}
           onClick={(e: any) => {
@@ -68,7 +68,7 @@ export function ChartZoom({ syncWithDateRange = false, minDataPoints = 3 }: Char
           x1={refAreaLeft}
           x2={refAreaRight}
           strokeOpacity={0.4}
-          fill="#3B82F6"
+          fill="var(--color-pending)"
           fillOpacity={0.2}
         />
       )}
@@ -126,8 +126,8 @@ export function ZoomTooltip({
         className={cn(
           "absolute whitespace-nowrap rounded border px-2 py-1 text-xxs tabular-nums",
           invalidSelection
-            ? "border-amber-800 bg-amber-950 text-amber-400"
-            : "border-blue-800 bg-[#1B2334] text-blue-400"
+            ? "border-amber-800 bg-amber-950 text-amber-400 light:border-amber-300 light:bg-amber-50 light:text-amber-700"
+            : "border-blue-800 bg-[#1B2334] text-blue-400 light:border-blue-300 light:bg-blue-50 light:text-blue-700"
         )}
         style={{
           left: coordinate?.x,
@@ -138,10 +138,10 @@ export function ZoomTooltip({
         {message}
         <div
           className={cn(
-            "absolute -top-[5px] left-1/2 h-2 w-2 -translate-x-1/2 rotate-45",
+            "absolute top-[-5px] left-1/2 h-2 w-2 -translate-x-1/2 rotate-45",
             invalidSelection
-              ? "border-l border-t border-amber-800 bg-amber-950"
-              : "border-l border-t border-blue-800 bg-[#1B2334]"
+              ? "border-l border-t border-amber-800 bg-amber-950 light:border-amber-300 light:bg-amber-50"
+              : "border-l border-t border-blue-800 bg-[#1B2334] light:border-blue-300 light:bg-blue-50"
           )}
         />
       </div>
@@ -153,7 +153,7 @@ export function ZoomTooltip({
 
   return (
     <div
-      className="absolute whitespace-nowrap rounded border border-charcoal-600 bg-charcoal-700 px-2 py-1 text-xxs tabular-nums text-text-bright"
+      className="absolute whitespace-nowrap rounded border border-border-bright bg-background-raised px-2 py-1 text-xxs tabular-nums text-text-bright"
       style={{
         left: coordinate?.x,
         top: viewBox?.height ? viewBox.height + 13 : 0,
@@ -161,7 +161,7 @@ export function ZoomTooltip({
       }}
     >
       {label}
-      <div className="absolute -top-[5px] left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 border-l border-t border-charcoal-600 bg-charcoal-700" />
+      <div className="absolute top-[-5px] left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 border-l border-t border-border-bright bg-background-raised" />
     </div>
   );
 }

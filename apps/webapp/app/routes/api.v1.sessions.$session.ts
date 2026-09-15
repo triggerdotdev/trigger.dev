@@ -1,8 +1,5 @@
 import { json } from "@remix-run/server-runtime";
-import {
-  type RetrieveSessionResponseBody,
-  UpdateSessionRequestBody,
-} from "@trigger.dev/core/v3";
+import { type RetrieveSessionResponseBody, UpdateSessionRequestBody } from "@trigger.dev/core/v3";
 import { Prisma } from "@trigger.dev/database";
 import { z } from "zod";
 import { $replica, prisma } from "~/db.server";
@@ -44,9 +41,7 @@ export const loader = createLoaderApiRoute(
     },
   },
   async ({ resource: session }) => {
-    return json<RetrieveSessionResponseBody>(
-      await serializeSessionWithFriendlyRunId(session)
-    );
+    return json<RetrieveSessionResponseBody>(await serializeSessionWithFriendlyRunId(session));
   }
 );
 
@@ -79,10 +74,7 @@ const { action } = createActionApiRoute(
     // scope all derive from it. Re-keying a session would orphan its
     // streams (the chat goes silent) and invalidate the PAT's scope, so
     // reject any change. Same-value PATCHes stay idempotent.
-    if (
-      body.externalId !== undefined &&
-      body.externalId !== existing.externalId
-    ) {
+    if (body.externalId !== undefined && body.externalId !== existing.externalId) {
       return json(
         {
           error:
@@ -109,9 +101,7 @@ const { action } = createActionApiRoute(
         },
       });
 
-      return json<RetrieveSessionResponseBody>(
-        await serializeSessionWithFriendlyRunId(updated)
-      );
+      return json<RetrieveSessionResponseBody>(await serializeSessionWithFriendlyRunId(updated));
     } catch (error) {
       // A duplicate externalId in the same environment violates the
       // `(runtimeEnvironmentId, externalId)` unique constraint. Surface that

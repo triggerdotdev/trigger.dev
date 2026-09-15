@@ -1,8 +1,14 @@
-import { conform, useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
-import { BuildingOffice2Icon, GlobeAltIcon } from "@heroicons/react/20/solid";
+import { getFormProps, getInputProps, useForm } from "@conform-to/react";
+import { GlobeLinesIcon } from "~/assets/icons/GlobeLinesIcon";
+import { parseWithZod } from "@conform-to/zod/v4";
+import { BuildingOffice2Icon } from "@heroicons/react/20/solid";
 import { RadioGroup } from "@radix-ui/react-radio-group";
-import { json, redirect, type ActionFunction, type LoaderFunctionArgs } from "@remix-run/node";
+import {
+  json,
+  redirectDocument,
+  type ActionFunctionArgs,
+  type LoaderFunctionArgs,
+} from "@remix-run/node";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
 import { useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -23,9 +29,13 @@ import { useFaviconUrl } from "~/hooks/useFaviconUrl";
 import { useFeatures } from "~/hooks/useFeatures";
 import { createOrganization } from "~/models/organization.server";
 import { NewOrganizationPresenter } from "~/presenters/NewOrganizationPresenter.server";
+import { logger } from "~/services/logger.server";
 import { requireUser, requireUserId } from "~/services/session.server";
 import { extractDomain, faviconUrl } from "~/utils/favicon";
 import { organizationPath, rootPath } from "~/utils/pathBuilder";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("New organization");
 
 const schema = z.object({
   orgName: z.string().min(3).max(50),
@@ -43,13 +53,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   });
 };
 
-export const action: ActionFunction = async ({ request }) => {
+export const action = async ({ request }: ActionFunctionArgs) => {
   const user = await requireUser(request);
   const formData = await request.formData();
-  const submission = parse(formData, { schema });
+  const submission = parseWithZod(formData, { schema });
 
-  if (!submission.value || submission.intent !== "submit") {
-    return json(submission);
+  if (submission.status !== "success") {
+    return json(submission.reply());
   }
 
   try {
@@ -79,6 +89,10 @@ export const action: ActionFunction = async ({ request }) => {
       avatar,
     });
 
+    // A promo code carried over from the /promo landing page (via cookie) is
+    // redeemed later, once the org is activated through plan selection and its
+    // usage entitlement exists — not here, where there's nothing to grant onto.
+
     const url = new URL(request.url);
     const code = url.searchParams.get("code");
     const configurationId = url.searchParams.get("configurationId");
@@ -94,19 +108,32 @@ export const action: ActionFunction = async ({ request }) => {
       if (next) {
         params.set("next", next);
       }
-      const redirectUrl = `${organizationPath(organization)}/projects/new?${params.toString()}`;
-      return redirect(redirectUrl);
+      return redirectDocument(
+        `${organizationPath(organization)}/projects/new?${params.toString()}`
+      );
     }
 
-    return redirect(organizationPath(organization));
-  } catch (error: any) {
-    return json({ errors: { body: error.message } }, { status: 400 });
+    return redirectDocument(organizationPath(organization));
+  } catch (error) {
+    logger.error("Failed to create organization", {
+      userId: user.id,
+      error: error instanceof Error ? error.message : error,
+    });
+
+    return json(
+      submission.reply({
+        formErrors: [
+          "We couldn't create your organization. Check your organization list before trying again, and if this problem persists please contact support.",
+        ],
+      }),
+      { status: 400 }
+    );
   }
 };
 
 export default function NewOrganizationPage() {
   const { hasOrganizations } = useTypedLoaderData<typeof loader>();
-  const lastSubmission = useActionData();
+  const lastSubmission = useActionData<typeof action>();
   const { isManagedCloud } = useFeatures();
   const navigation = useNavigation();
   const [companyUrl, setCompanyUrl] = useState("");
@@ -115,9 +142,9 @@ export default function NewOrganizationPage() {
 
   const [form, { orgName }] = useForm({
     id: "create-organization",
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission,
     onValidate({ formData }) {
-      return parse(formData, { schema });
+      return parseWithZod(formData, { schema });
     },
     shouldRevalidate: "onSubmit",
     shouldValidate: "onSubmit",
@@ -137,29 +164,32 @@ export default function NewOrganizationPage() {
         onLoad={() => setFaviconError(false)}
       />
     ) : (
-      GlobeAltIcon
+      GlobeLinesIcon
     );
 
   return (
-    <AppContainer className="bg-charcoal-900">
+    <AppContainer className="bg-background-deep">
       <BackgroundWrapper>
-        <MainCenteredContainer variant="onboarding" className="max-w-[26rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg">
+        <MainCenteredContainer
+          variant="onboarding"
+          className="max-w-104 rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg"
+        >
           <FormTitle
             LeadingIcon={<BuildingOffice2Icon className="size-6 text-fuchsia-600" />}
             title="Create an Organization"
           />
-          <Form method="post" {...form.props}>
+          <Form method="post" {...getFormProps(form)}>
             <Fieldset>
               <InputGroup>
                 <Label htmlFor={orgName.id}>Organization name *</Label>
                 <Input
-                  {...conform.input(orgName, { type: "text" })}
+                  {...getInputProps(orgName, { type: "text" })}
                   placeholder="Your Organization name"
                   icon={BuildingOffice2Icon}
                   autoFocus
                 />
                 <Hint>Normally your company name.</Hint>
-                <FormError id={orgName.errorId}>{orgName.error}</FormError>
+                <FormError id={orgName.errorId}>{orgName.errors}</FormError>
               </InputGroup>
               {isManagedCloud && (
                 <>
@@ -217,6 +247,8 @@ export default function NewOrganizationPage() {
                   </InputGroup>
                 </>
               )}
+
+              <FormError id={form.errorId}>{form.errors}</FormError>
 
               <FormButtons
                 confirmButton={

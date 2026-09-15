@@ -1,23 +1,23 @@
 "use client";
 
 import {
+  type InferRunTypes,
+  type RunHandleFromTypes,
   type AnyTask,
   type TaskIdentifier,
   type TaskPayload,
-  InferRunTypes,
   makeIdempotencyKey,
-  RunHandleFromTypes,
   stringifyIO,
   type TriggerOptions,
   type RealtimeRunSkipColumns,
 } from "@trigger.dev/core/v3";
 import useSWRMutation from "swr/mutation";
-import { useApiClient, UseApiClientOptions } from "./useApiClient.js";
+import { type UseApiClientOptions, useApiClient } from "./useApiClient.js";
 import {
+  type UseRealtimeRunInstance,
+  type UseRealtimeRunWithStreamsInstance,
   useRealtimeRun,
-  UseRealtimeRunInstance,
   useRealtimeRunWithStreams,
-  UseRealtimeRunWithStreamsInstance,
 } from "./useRealtime.js";
 
 /**
@@ -87,6 +87,7 @@ export function useTaskTrigger<TTask extends AnyTask>(
         metadata: options?.metadata,
         maxDuration: options?.maxDuration,
         lockToVersion: options?.version,
+        debounce: options?.debounce,
       },
     });
 

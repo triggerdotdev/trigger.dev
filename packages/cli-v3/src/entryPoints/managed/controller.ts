@@ -1,4 +1,4 @@
-import { WorkerManifest } from "@trigger.dev/core/v3";
+import type { SnapshotRouteWire, WorkerManifest } from "@trigger.dev/core/v3";
 import {
   WarmStartClient,
   WORKLOAD_HEADERS,
@@ -8,8 +8,9 @@ import {
 } from "@trigger.dev/core/v3/workers";
 import { io, type Socket } from "socket.io-client";
 import { RunnerEnv } from "./env.js";
-import { ManagedRunLogger, RunLogger, SendDebugLogOptions } from "./logger.js";
-import { EnvObject } from "std-env";
+import type { RunLogger, SendDebugLogOptions } from "./logger.js";
+import { ManagedRunLogger } from "./logger.js";
+import type { EnvObject } from "std-env";
 import { RunExecution } from "./execution.js";
 import { TaskRunProcessProvider } from "./taskRunProcessProvider.js";
 import { tryCatch } from "@trigger.dev/core/utils";
@@ -75,7 +76,7 @@ export class ManagedRunController {
     });
 
     const properties = {
-      ...env.raw,
+      ...env.rawForLogging,
       TRIGGER_POD_SCHEDULED_AT_MS: env.TRIGGER_POD_SCHEDULED_AT_MS.toISOString(),
       TRIGGER_DEQUEUED_AT_MS: env.TRIGGER_DEQUEUED_AT_MS.toISOString(),
     };
@@ -192,6 +193,7 @@ export class ManagedRunController {
     podScheduledAt,
     isWarmStart,
     previousRunId,
+    snapshotRoute,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
@@ -199,6 +201,8 @@ export class ManagedRunController {
     podScheduledAt?: Date;
     isWarmStart?: boolean;
     previousRunId?: string;
+    // The run's storage route from the DequeuedMessage (warm start) or the cold-start env var.
+    snapshotRoute?: SnapshotRouteWire;
   }) {
     this.sendDebugLog({
       runId: runFriendlyId,
@@ -257,6 +261,7 @@ export class ManagedRunController {
         dequeuedAt,
         podScheduledAt,
         isWarmStart,
+        snapshotRoute,
       });
     };
 
@@ -426,6 +431,7 @@ export class ManagedRunController {
         dequeuedAt: nextRun.dequeuedAt,
         isWarmStart: true,
         previousRunId,
+        snapshotRoute: nextRun.snapshotRoute,
       }).finally(() => {});
     } catch (error) {
       this.sendDebugLog({
@@ -585,6 +591,7 @@ export class ManagedRunController {
         snapshotFriendlyId: this.env.TRIGGER_SNAPSHOT_ID,
         dequeuedAt: this.env.TRIGGER_DEQUEUED_AT_MS,
         podScheduledAt: this.env.TRIGGER_POD_SCHEDULED_AT_MS,
+        snapshotRoute: this.env.TRIGGER_SNAPSHOT_ROUTE,
       }).finally(() => {});
       return;
     }

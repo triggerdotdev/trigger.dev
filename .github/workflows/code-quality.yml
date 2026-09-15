@@ -1,0 +1,41 @@
+name: "🎨 Format & Lint"
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  code-quality:
+    runs-on: warp-ubuntu-latest-x64-2x
+
+    steps:
+      - name: ⬇️ Checkout repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: ⎔ Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 10.33.2
+
+      - name: ⎔ Setup node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.18.0
+          cache: "pnpm"
+
+      - name: 📥 Download deps
+        run: pnpm install --frozen-lockfile
+
+      - name: 💅 Check formatting
+        run: pnpm exec oxfmt --check .
+
+      - name: 🔎 Lint
+        run: pnpm exec oxlint .
+
+      - name: ✂️ Check unused code and dependencies
+        run: pnpm run knip

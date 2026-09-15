@@ -8,6 +8,8 @@ export class BackpressureMetrics {
   readonly dryRun: Gauge<string>;
   /** Dequeue attempts the gate skipped - or would have, in dry-run (labelled). */
   readonly skipsTotal: Counter<string>;
+  /** Verdict source reads that failed (threw). */
+  readonly readFailuresTotal: Counter<string>;
 
   constructor(opts: { register: Registry; prefix?: string }) {
     const prefix = opts.prefix ?? "supervisor_backpressure";
@@ -28,6 +30,12 @@ export class BackpressureMetrics {
       name: `${prefix}_skipped_dequeues_total`,
       help: "Dequeue attempts skipped by backpressure (or would be, in dry-run)",
       labelNames: ["dry_run"],
+      registers: [opts.register],
+    });
+
+    this.readFailuresTotal = new Counter({
+      name: `${prefix}_read_failures_total`,
+      help: "Verdict source reads that threw",
       registers: [opts.register],
     });
   }

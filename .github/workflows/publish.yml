@@ -15,8 +15,6 @@ on:
         required: false
       SENTRY_AUTH_TOKEN:
         required: false
-      CROSS_REPO_PAT:
-        required: false
   push:
     branches:
       - main
@@ -30,11 +28,21 @@ on:
       - ".github/workflows/unit-tests.yml"
       - ".github/workflows/e2e.yml"
       - ".github/workflows/publish-webapp.yml"
-      - ".github/workflows/publish-worker.yml"
       - "packages/**"
       - "!packages/**/*.md"
       - "!packages/**/*.eslintrc"
+      # CLI + libraries published to npm; none are built into the webapp/supervisor images.
+      - "!packages/cli-v3/**"
+      - "!packages/build/**"
+      - "!packages/python/**"
+      - "!packages/react-hooks/**"
+      - "!packages/rsc/**"
+      - "!packages/schema-to-json/**"
       - "internal-packages/**"
+      # Test/tooling-only internal packages, never in an image.
+      - "!internal-packages/testcontainers/**"
+      - "!internal-packages/sdk-compat-tests/**"
+      - "!internal-packages/observability-map/**"
       - "apps/**"
       - "!apps/**/*.md"
       - "!apps/**/*.eslintrc"
@@ -80,19 +88,6 @@ jobs:
       # to its own namespace; set the IMAGE_REGISTRY repository variable to override.
       image_registry: ${{ vars.IMAGE_REGISTRY || format('ghcr.io/{0}', github.repository_owner) }}
 
-  publish-worker:
-    needs: [typecheck]
-    permissions:
-      contents: read
-      packages: write
-    uses: ./.github/workflows/publish-worker.yml
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-    with:
-      image_tag: ${{ inputs.image_tag }}
-      image_registry: ${{ vars.IMAGE_REGISTRY || format('ghcr.io/{0}', github.repository_owner) }}
-
   publish-worker-v4:
     needs: [typecheck]
     permissions:
@@ -111,53 +106,15 @@ jobs:
     permissions:
       contents: read
       packages: read # pull the just-published image from GHCR
-    uses: ./.github/workflows/trivy-image-webapp.yml
+    uses: ./.github/workflows/trivy-image.yml
     with:
       image-ref: ${{ needs.publish-webapp.outputs.image_repo }}:${{ needs.publish-webapp.outputs.version }}
 
-  # Announce the freshly published mutable `main` webapp image to subscriber
-  # repos via repository_dispatch, handing them a digest-pinned ref to build or
-  # deploy from. The repo, ref prefix, and dispatch target all default to the
-  # canonical values and can be overridden by repository variables.
-  #
-  # `push` only: release builds reach publish.yml via workflow_call (from
-  # release.yml) with an explicit image_tag while github.ref_name is still
-  # `main`, so gate on the event to avoid dispatching — and failing on the
-  # absent CROSS_REPO_PAT — during a release.
-  dispatch-main-image:
-    name: 📣 Dispatch main image
-    needs: [publish-webapp]
-    if: github.repository == (vars.MAIN_IMAGE_DISPATCH_REPO || 'triggerdotdev/trigger.dev') && github.event_name == 'push' && startsWith(github.ref_name, vars.MAIN_IMAGE_DISPATCH_REF_PREFIX || 'main')
-    runs-on: ubuntu-latest
-    permissions: {}
-    steps:
-      - name: Build dispatch payload
-        id: payload
-        env:
-          IMAGE_REPO: ${{ needs.publish-webapp.outputs.image_repo }}
-          DIGEST: ${{ needs.publish-webapp.outputs.digest }}
-          COMMIT: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          # Pin to the exact multi-arch index just pushed so subscribers resolve a
-          # single immutable artifact rather than chasing the moving `main` tag.
-          if [[ -z "${DIGEST}" ]]; then
-            echo "::error::publish-webapp produced no image digest; refusing to dispatch"
-            exit 1
-          fi
-          image="${IMAGE_REPO}@${DIGEST}"
-          # jq --arg JSON-escapes every value, so the ref/commit can't break out of
-          # or inject into the client payload.
-          payload=$(jq -nc \
-            --arg img "$image" \
-            --arg c "$COMMIT" \
-            '{image: $img, commit: $c}')
-          echo "client_payload=$payload" >> "$GITHUB_OUTPUT"
-
-      - name: Send repository_dispatch
-        uses: peter-evans/repository-dispatch@28959ce8df70de7be546dd1250a005dd32156697 # v4.0.1
-        with:
-          token: ${{ secrets.CROSS_REPO_PAT }}
-          repository: ${{ vars.MAIN_IMAGE_DISPATCH_TARGET || 'triggerdotdev/cloud' }}
-          event-type: main-image-published
-          client-payload: ${{ steps.payload.outputs.client_payload }}
+  scan-supervisor:
+    needs: [publish-worker-v4]
+    permissions:
+      contents: read
+      packages: read # pull the just-published image from GHCR
+    uses: ./.github/workflows/trivy-image.yml
+    with:
+      image-ref: ${{ needs.publish-worker-v4.outputs.image_repo }}:${{ needs.publish-worker-v4.outputs.version }}

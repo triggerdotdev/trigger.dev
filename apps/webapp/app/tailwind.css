@@ -1,143 +1,548 @@
-@import url("non.geist");
-@import url("non.geist/mono");
+@import "react-grid-layout/css/styles.css" layer(base);
+@import "react-resizable/css/styles.css" layer(base);
 
-@import "react-grid-layout/css/styles.css";
-@import "react-resizable/css/styles.css";
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "tailwind-scrollbar-hide/v4";
 
-/* Override react-grid-layout placeholder color (default is red) */
-.react-grid-item.react-grid-placeholder {
-  background: rgb(99 102 241) !important; /* indigo-500 */
-  border-radius: 0.375rem !important; /* rounded-md */
-}
+@plugin "@tailwindcss/forms";
+@plugin "@tailwindcss/typography";
+@plugin "tailwind-scrollbar";
 
-/* Sidebar reorder grid: subtle placeholder */
-.sidebar-reorder-grid .react-grid-item.react-grid-placeholder {
-  background: rgb(39 42 46) !important; /* charcoal-700 */
-  border-radius: 0.25rem;
-  opacity: 1 !important;
-}
+/* Streamdown ships prebuilt Tailwind classes - scan it for used utilities */
+@source "../node_modules/streamdown/dist";
 
-/* Sidebar reorder grid: only animate transform (vertical position), not width/height */
-.sidebar-reorder-grid .react-grid-item {
-  transition: transform 200ms ease !important;
-}
+/* Raw palettes and static tokens - theme-independent, never override per theme */
+@theme {
+  --font-sans: "Geist Variable", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-mono: "Geist Mono Variable", monaco, Consolas, "Lucida Console", monospace;
 
-/* Override resize handle icon to white */
-.react-resizable-handle {
-  background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2IDYiIHN0eWxlPSJiYWNrZ3JvdW5kLWNvbG9yOiNmZmZmZmYwMCIgeD0iMHB4IiB5PSIwcHgiIHdpZHRoPSI2cHgiIGhlaWdodD0iNnB4Ij48ZyBvcGFjaXR5PSIwLjMwMiI+PHBhdGggZD0iTSA2IDYgTCAwIDYgTCAwIDQuMiBMIDQgNC4yIEwgNC4yIDQuMiBMIDQuMiAwIEwgNiAwIEwgNiA2IEwgNiA2IFoiIGZpbGw9IiNmZmZmZmYiLz48L2c+PC9zdmc+') !important;
-}
-.react-resizable-handle::after {
-  border-bottom-color: rgba(255, 255, 255, 0.4) !important;
-  border-right-color: rgba(255, 255, 255, 0.4) !important;
-  border-top-color: rgba(255, 255, 255, 0.4) !important;
-  border-left-color: rgba(255, 255, 255, 0.4) !important;
-}
+  --text-xxs: 0.65rem;
+  --text-xxs--line-height: 0.75rem;
+  --text-xxs--letter-spacing: -0.01em;
+  --text-xxs--font-weight: 500;
+  --text-2sm: 0.8125rem;
+  --text-2sm--line-height: 0.875rem;
+  --text-2sm--letter-spacing: -0.01em;
+  --text-2sm--font-weight: 500;
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+  --color-charcoal-100: #e8e9ec;
+  --color-charcoal-200: #d7d9dd;
+  --color-charcoal-300: #b5b8c0;
+  --color-charcoal-400: #878c99;
+  --color-charcoal-500: #5f6570;
+  --color-charcoal-550: #4d525b;
+  --color-charcoal-600: #3b3e45;
+  --color-charcoal-650: #2c3034;
+  --color-charcoal-700: #272a2e;
+  --color-charcoal-750: #212327;
+  --color-charcoal-775: #1c1e21;
+  --color-charcoal-800: #1a1b1f;
+  --color-charcoal-850: #15171a;
+  --color-charcoal-900: #121317;
+  --color-charcoal-950: #0d0e12;
+  --color-charcoal-1000: #0b0c0f;
 
-@property --gradient-angle {
-  syntax: "<angle>";
-  initial-value: 0deg;
-  inherits: false;
-}
+  --color-apple-100: #e4ffc9;
+  --color-apple-200: #cfffa0;
+  --color-apple-300: #bfff81;
+  --color-apple-400: #afff62;
+  --color-apple-500: #a8ff53;
+  --color-apple-600: #82d134;
+  --color-apple-700: #6fb12f;
+  --color-apple-750: #5e932a;
+  --color-apple-800: #45711a;
+  --color-apple-850: #2e4e10;
+  --color-apple-900: #20370a;
+  --color-apple-950: #152506;
 
-@supports (-webkit-hyphens: none) {
-  .safari-only {
-    @apply border-b border-grid-dimmed;
+  --color-mint-50: #f0fdf4;
+  --color-mint-100: #ddfbe6;
+  --color-mint-200: #bdf5d0;
+  --color-mint-300: #87eba9;
+  --color-mint-400: #4fd97e;
+  --color-mint-500: #28bf5c;
+  --color-mint-600: #1b9e48;
+  --color-mint-700: #197c3c;
+  --color-mint-800: #196233;
+  --color-mint-900: #16512c;
+  --color-mint-950: #062d15;
+
+  --color-sun-50: #fdfee8;
+  --color-sun-100: #fdffc2;
+  --color-sun-200: #ffff89;
+  --color-sun-300: #fff852;
+  --color-sun-400: #fdea12;
+  --color-sun-500: #eccf06;
+  --color-sun-600: #cca302;
+  --color-sun-700: #a37505;
+  --color-sun-800: #865b0d;
+  --color-sun-900: #724b11;
+  --color-sun-950: #432705;
+
+  --color-lavender-50: #f4f2ff;
+  --color-lavender-100: #eae8ff;
+  --color-lavender-200: #d7d4ff;
+  --color-lavender-300: #bab2ff;
+  --color-lavender-400: #826dff;
+  --color-lavender-500: #7655fd;
+  --color-lavender-600: #6532f5;
+  --color-lavender-700: #5620e1;
+  --color-lavender-800: #481abd;
+  --color-lavender-900: #3d189a;
+  --color-lavender-950: #230c69;
+
+  --text-shadow-custom: 1px 1px 1px rgba(0, 0, 0, 0.5);
+
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+  --animate-tile-scroll: tile-move 0.5s infinite linear;
+  --animate-tile-scroll-offset: tile-move-offset 0.5s infinite linear;
+  --animate-text-shimmer: text-shimmer 2s infinite linear;
+
+  @keyframes accordion-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-accordion-content-height);
+    }
+  }
+  @keyframes accordion-up {
+    from {
+      height: var(--radix-accordion-content-height);
+    }
+    to {
+      height: 0;
+    }
+  }
+  @keyframes tile-move {
+    0% {
+      background-position: 0px;
+    }
+    100% {
+      background-position: 8px;
+    }
+  }
+  @keyframes tile-move-offset {
+    0% {
+      background-position: -1px;
+    }
+    100% {
+      background-position: 7px;
+    }
+  }
+  /* Starts and ends off the glyphs, so the highlight sweeps through once a cycle. */
+  @keyframes text-shimmer {
+    0% {
+      background-position: 150% 0;
+    }
+    100% {
+      background-position: -50% 0;
+    }
   }
 }
 
-@layer base {
-  * {
-    @apply border-grid-bright;
-  }
-  body {
-    @apply bg-background-dimmed text-text-dimmed;
-    font-feature-settings: "rlig" 1, "calt" 1;
-  }
+/*
+  Semantic tokens - the themable layer. Utilities compile to var(--color-*),
+  so a theme overrides these vars in a scoped selector, e.g.
+  [data-theme="light"] { --color-text-bright: #1a1b1f; }
+  Defaults below are the original dark theme.
+*/
+@theme {
+  /* Text colors */
+  --color-primary: var(--color-text-link);
+  --color-secondary: var(--color-charcoal-650);
+  --color-tertiary: var(--color-charcoal-700);
+  --color-text-link: var(--color-lavender-400);
+  --color-text-link-hover: var(--color-lavender-300);
+  /* One value for every theme: white content on this fill needs 4.5:1. */
+  --color-accent-fill: var(--color-lavender-600);
+  --color-text-faint: var(--color-charcoal-500);
+  --color-text-dimmed: var(--color-charcoal-400);
+  --color-text-bright: var(--color-charcoal-200);
 
-  /* Text selection styles */
-  ::selection {
-    @apply bg-text-bright/30 text-text-bright;
-  }
-  ::-moz-selection {
-    @apply bg-text-bright/30 text-text-bright;
-  }
-  
-  /* shadcn charts: https://ui.shadcn.com/docs/components/chart#add-a-grid */
-  :root {
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
-  }
- 
-  .dark {
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
+  /* Surfaces, from deepest to most raised */
+  --color-background-deep: var(--color-charcoal-900);
+  --color-background-dimmed: var(--color-charcoal-850);
+  --color-background-bright: var(--color-charcoal-800);
+  --color-background-hover: var(--color-charcoal-750);
+  --color-surface-hover-subtle: var(--color-charcoal-750);
+  --color-background-raised: var(--color-charcoal-700);
+
+  --color-segmented-track: color-mix(in srgb, var(--color-background-raised) 50%, transparent);
+  --color-surface-selected: var(--color-charcoal-650);
+  --color-surface-selected-hover: var(--color-charcoal-600);
+  --color-surface-control: var(--color-charcoal-600);
+  --color-surface-control-hover: var(--color-charcoal-550);
+  --color-surface-control-active: var(--color-charcoal-500);
+  --color-input-bg: var(--color-charcoal-750);
+
+  /* Borders, from subtlest to most visible */
+  --color-grid-dimmed: var(--color-charcoal-750);
+  --color-grid-bright: var(--color-charcoal-700);
+  --color-border-selected: color-mix(in srgb, var(--color-border-bright) 50%, var(--color-surface-selected));
+  --color-border-bright: var(--color-charcoal-600);
+  --color-border-brighter: var(--color-charcoal-550);
+  --color-border-brightest: var(--color-charcoal-500);
+  --color-success: var(--color-mint-500);
+  --color-pending: var(--color-blue-500);
+  --color-warning: var(--color-amber-500);
+
+  --color-log-trace: var(--color-purple-500);
+  --color-error: var(--color-rose-600);
+
+  /* Environment colors */
+  --color-dev: var(--color-pink-500);
+  --color-staging: var(--color-orange-400);
+  --color-prod: var(--color-mint-500);
+  --color-preview: var(--color-blue-500);
+
+  /* Icon colors */
+  --color-tasks: var(--color-blue-500);
+  --color-runs: var(--color-indigo-500);
+  --color-batches: var(--color-pink-500);
+  --color-schedules: var(--color-yellow-500);
+  --color-queues: var(--color-purple-500);
+  --color-query: var(--color-blue-500);
+  --color-metrics: var(--color-green-500);
+  --color-customDashboards: var(--color-charcoal-400);
+  --color-deployments: var(--color-blue-500);
+  --color-concurrency: var(--color-amber-500);
+  --color-limits: var(--color-purple-500);
+  --color-regions: var(--color-green-500);
+  --color-logs: var(--color-pink-500);
+  --color-tests: var(--color-pink-500);
+  --color-apiKeys: var(--color-amber-500);
+  --color-environmentVariables: var(--color-pink-500);
+  --color-alerts: var(--color-red-500);
+  --color-projectSettings: var(--color-blue-500);
+  --color-orgSettings: var(--color-blue-500);
+  --color-docs: var(--color-blue-500);
+  --color-bulkActions: var(--color-emerald-500);
+  --color-aiPrompts: var(--color-blue-500);
+  --color-aiMetrics: var(--color-green-500);
+  --color-errors: var(--color-amber-500);
+  --color-agents: var(--color-purple-500);
+  --color-webhooks: var(--color-teal-500);
+  --color-sessions: var(--color-pink-500);
+  --color-playgrounds: var(--color-fuchsia-500);
+  --color-models: var(--color-violet-500);
+  --color-previewBranches: var(--color-blue-500);
+}
+
+/* Callout variant accents (see components/primitives/Callout.tsx) */
+@theme {
+  --color-callout-warning-text: var(--color-yellow-200);
+  --color-callout-error-text: var(--color-rose-200);
+  --color-callout-success-text: var(--color-green-200);
+  --color-callout-docs: var(--color-blue-400);
+  --color-callout-docs-text: var(--color-blue-200);
+  --color-callout-pending: var(--color-blue-400);
+  --color-callout-pending-bg: var(--color-blue-800);
+  --color-callout-pending-text: var(--color-blue-300);
+  --color-callout-pricing: var(--color-indigo-400);
+  --color-callout-pricing-bg: var(--color-indigo-800);
+  --color-callout-pricing-text: var(--color-indigo-300);
+}
+
+/*
+  Theme overrides. A theme re-maps ONLY the semantic tokens above, never the raw
+  palette values. That invariant is what lets a future [data-contrast] overlay
+  re-map semantic tokens on top of whichever theme is active.
+*/
+
+/*
+  High-contrast accents, opt-in via the "Distinguish without color" preference
+  (data-icon-contrast on <html>), independent of the theme. One shared value
+  per accent token, >=3:1 against both dark cards and white. Accents whose
+  base value already clears both modes (blue-500, indigo-500, pink-500,
+  purple-500, red-500, violet-500, fuchsia-500, rose-600) are not repeated
+  here. Text-sized tokens (text-link, callout text) stay per-mode: no color
+  reaches 4.5:1 on both #1a1b1f and #ffffff.
+
+  With the preference off, every theme keeps the base accents from @theme; the
+  Light theme darkens them for white further down, holding those same hues.
+*/
+[data-icon-contrast="true"] {
+  /* Status */
+  --color-success: var(--color-mint-600);
+  --color-warning: var(--color-amber-600);
+  --color-prod: var(--color-mint-600);
+
+  /* Icons */
+  --color-schedules: var(--color-yellow-700);
+  --color-metrics: var(--color-green-600);
+  --color-regions: var(--color-green-600);
+  --color-aiMetrics: var(--color-green-600);
+  --color-bulkActions: var(--color-emerald-600);
+  --color-concurrency: var(--color-amber-600);
+  --color-errors: var(--color-amber-600);
+  --color-apiKeys: var(--color-amber-600);
+
+  --color-queues-chart: var(--color-blue-500);
+  --color-queues-chart-ref: var(--color-charcoal-500);
+
+  /* Callout accents (callout text/bg tints stay per-mode) */
+  --color-callout-docs: var(--color-blue-500);
+  --color-callout-pending: var(--color-blue-500);
+  --color-callout-pricing: var(--color-indigo-500);
+
+  --color-run-waiting-for-deploy: var(--color-amber-700);
+  --color-run-pending-version: #c76508;
+  --color-run-paused: var(--color-amber-600);
+  /* Nudged under 3:1's ceiling on white; stays lighter than system-failure */
+  --color-run-timed-out: #ed5f74;
+}
+
+/* Underlines body-text links only: the TextLink marker class plus markdown
+   prose links, which can't take a class. */
+[data-underline-links="true"] :is(.inline-text-link, .streamdown-container a) {
+  text-decoration-line: underline;
+  text-underline-offset: 2px;
+}
+
+[data-icon-contrast="true"] :is(.side-menu-active-icon, .system-mono-icon) {
+  color: var(--color-text-bright);
+}
+
+[data-icon-contrast="true"] .system-mono-label {
+  color: inherit;
+}
+
+/* Tinted status chips respond to the contrast control: a ring in the chip's
+   own text color fades in as contrast rises, so the soft tint keeps its
+   footprint but the chip gains definition. Transparent at contrast 0; only
+   set under icon contrast. Marker set by the chip components. */
+/* Tinted chips only - chips that fill solid under the preference omit it. */
+[data-icon-contrast="true"] .contrast-chip {
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, currentcolor calc(var(--theme-contrast, 0) * 70%), transparent);
+}
+
+
+/*
+  Code syntax palette - the trigger-dark highlight theme, shared by the shiki
+  theme (streamdown) and the prism theme (CodeBlock). Consumed from JS via
+  var(), so declared static to always be emitted.
+*/
+@theme static {
+  --color-code-background: #212327;
+  --color-code-foreground: #878c99;
+  --color-code-line-number: #484c54;
+  --color-code-plain: #d4d4d4;
+  --color-code-muted: #5f6570;
+  --color-code-comment: #6f736d;
+  --color-code-keyword: #e888f8;
+  --color-code-storage: #8271ed;
+  --color-code-type: #f770c6;
+  --color-code-function: #d9f07c;
+  --color-code-variable: #cccbff;
+  --color-code-constant: #9c9af2;
+  --color-code-language: #9b99ff;
+  --color-code-object-key: #8b89ff;
+  --color-code-string: #afec73;
+  --color-code-template-punctuation: #7a78ea;
+  --color-code-number: #b5cea8;
+  --color-code-builtin: #e5c07b;
+  --color-code-attribute: #c39eff;
+  --color-code-escape: #d7ba7d;
+  --color-code-regexp: #d16969;
+  --color-code-regexp-constant: #646695;
+  --color-code-invalid: #f44747;
+  --color-code-deleted: #f85149;
+  --color-code-jsx-text: #d7d9dd;
+}
+
+/*
+  CodeMirror editor palette (see components/code/codeMirrorTheme.ts).
+  Consumed from JS via var(), so declared static to always be emitted.
+*/
+@theme static {
+  --color-editor-background: var(--color-background-deep);
+  --color-editor-foreground: #abb2bf;
+  --color-editor-keyword: #c678dd;
+  --color-editor-name: #9b99ff;
+  --color-editor-function: #61afef;
+  --color-editor-constant: #d19a66;
+  --color-editor-type: #e5c07b;
+  --color-editor-operator: #56b6c2;
+  --color-editor-comment: #7d8799;
+  --color-editor-heading: #e06c75;
+  --color-editor-string: #afec73;
+  --color-editor-invalid: #ffffff;
+  --color-editor-panel-background: #21252b;
+  --color-editor-highlight-background: rgba(71, 85, 105, 0.2);
+  --color-editor-tooltip-background: #353a42;
+  --color-editor-selection: rgb(71 85 105);
+  --color-editor-cursor: #528bff;
+  --color-editor-search-match: #72a1ff59;
+  --color-editor-search-match-outline: #457dff;
+  --color-editor-search-match-selected: #6199ff2f;
+  --color-editor-selection-match: #aafe661a;
+  --color-editor-matching-bracket: rgba(18, 19, 23, 0.9);
+  --color-editor-matching-bracket-outline: rgba(81, 90, 107, 0.5);
+  --color-editor-fold-placeholder: #dddddd;
+  --color-editor-scrollbar-track-active: #131b2b;
+  --color-editor-scrollbar-thumb: #293649;
+  --color-editor-scrollbar-thumb-active: #3c4b62;
+}
+
+@theme static {
+  --color-queues-chart: var(--color-queues);
+  --color-queues-chart-ref: #4d525b;
+}
+
+/*
+  Run-status chart colors. In-between shades are intentional - statuses within
+  a family (blues, roses, charcoals) are evenly spaced so chart series stay
+  distinguishable. Referenced from JS via var(--color-run-*), so declared
+  static to always be emitted.
+*/
+@theme static {
+  --color-run-pending: var(--color-charcoal-500);
+  --color-run-delayed: #6b7580;
+  --color-run-pending-version: var(--color-warning);
+  --color-run-waiting-for-deploy: #d97706;
+  --color-run-executing: var(--color-pending);
+  --color-run-retrying-after-failure: #2f6fec;
+  --color-run-dequeued: #4d8ef5;
+  --color-run-waiting-to-resume: #555d67;
+  --color-run-paused: #fbbf24;
+  --color-run-canceled: #78828c;
+  --color-run-expired: #848d96;
+  --color-run-interrupted: #d52c4d;
+  --color-run-completed-successfully: var(--color-success);
+  --color-run-completed-with-errors: #de405c;
+  --color-run-system-failure: #e7536c;
+  --color-run-crashed: #cc193d;
+  --color-run-timed-out: #f0667b;
+}
+
+/*
+  shadcn/ui tokens used by streamdown's internals. Inline so the vars resolve
+  where the utility is used - .streamdown-container redefines them locally.
+*/
+@theme inline {
+  --color-background: var(--background, #121317);
+  --color-foreground: var(--foreground, #d7d9dd);
+  --color-muted: var(--muted, #1c1e21);
+  --color-muted-foreground: var(--muted-foreground, #878c99);
+  --color-border: var(--border, #2c3034);
+  --color-sidebar: var(--sidebar, #15171a);
+  --color-primary-foreground: var(--primary-foreground, #121317);
+}
+
+@custom-variant lg-height (@media (max-height: 750px));
+@custom-variant md-height (@media (max-height: 600px));
+
+/* dark: follows the app theme (data-theme on <html>), not the OS preference.
+   Dark and Black are both dark-mode themes, so the variant matches both. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="black"], [data-theme="dark"] *, [data-theme="black"] *));
+
+@custom-variant system (&:where([data-icon-contrast="true"], [data-icon-contrast="true"] *));
+
+@custom-variant light (&:where([data-theme="light"], [data-theme="white"], [data-theme="light"] *, [data-theme="white"] *));
+
+@utility focus-custom {
+  &:focus-visible {
+    outline: 1px solid var(--color-text-link);
+    /* Inset the ring inside the box; at offset 0 the outline sits outside the border edge and gets
+       clipped by ancestors with overflow hidden/auto (scroll areas, the side menu grid). */
+    outline-offset: -1px;
+    border-radius: 5px;
   }
 }
 
-@layer utilities {
-  .scrollbar-gutter-stable {
-    scrollbar-gutter: stable;
+@utility scrollbar-gutter-stable {
+  scrollbar-gutter: stable;
+}
+
+/* Fade the thumb in only while the pointer is in the scroll area. Uses
+   ::-webkit-scrollbar (no scrollbar-width) so Chrome keeps a classic always-present
+   bar to reveal, not the auto-hiding overlay; Firefox falls back to standard props.
+   Thumb color is a registered @property so it can transition. */
+@property --sm-sb-thumb {
+  syntax: "<color>";
+  initial-value: transparent;
+  inherits: true;
+}
+
+@utility scrollbar-thumb-on-hover {
+  transition: --sm-sb-thumb 200ms ease;
+
+  &::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    background-color: var(--sm-sb-thumb);
+    /* transparent border + padding-box clip = thinner thumb, inset from the channel edges */
+    border: 2px solid transparent;
+    border-radius: 9999px;
+    background-clip: padding-box;
   }
 
-  .animated-gradient-glow {
-    position: relative;
-    overflow: visible;
+  @supports (-moz-appearance: none) {
+    scrollbar-width: thin;
+    scrollbar-color: var(--sm-sb-thumb) transparent;
   }
 
-  .animated-gradient-glow::before {
+  &:hover {
+    --sm-sb-thumb: var(--color-surface-control);
+  }
+}
+
+/* Shared stop list for the animated glow utilities below. The gradient itself
+   is assembled per-element so the animated --gradient-angle resolves there. */
+:root {
+  --glow-gradient-stops: rgb(99 102 241), rgb(245 158 11), rgb(236 72 153), rgb(245 158 11),
+    rgb(99 102 241);
+}
+
+@utility animated-gradient-glow {
+  position: relative;
+  overflow: visible;
+
+  &::before {
     content: "";
     position: absolute;
     inset: -8px;
     z-index: -1;
-    background: conic-gradient(
-      from var(--gradient-angle),
-      rgb(99 102 241),
-      rgb(245 158 11),
-      rgb(236 72 153),
-      rgb(245 158 11),
-      rgb(99 102 241)
-    );
+    background: conic-gradient(from var(--gradient-angle), var(--glow-gradient-stops));
     border-radius: inherit;
     animation: gradient-rotation 3s linear infinite;
     pointer-events: none;
     filter: blur(0.5rem);
     opacity: 0.1;
   }
+}
 
-  .animated-gradient-glow-small {
-    position: relative;
-    overflow: visible;
-  }
+@utility animated-gradient-glow-small {
+  position: relative;
+  overflow: visible;
 
-  .animated-gradient-glow-small::before {
+  &::before {
     content: "";
     position: absolute;
     inset: -1px;
     z-index: -1;
-    background: conic-gradient(
-      from var(--gradient-angle),
-      rgb(99 102 241),
-      rgb(245 158 11),
-      rgb(236 72 153),
-      rgb(245 158 11),
-      rgb(99 102 241)
-    );
+    background: conic-gradient(from var(--gradient-angle), var(--glow-gradient-stops));
     border-radius: inherit;
     animation: gradient-rotation 3s linear infinite;
     pointer-events: none;
     filter: blur(0.2rem);
     opacity: 0.3;
   }
+}
+
+@property --gradient-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
 }
 
 @keyframes gradient-rotation {
@@ -149,33 +554,137 @@
   }
 }
 
+@layer base {
+  /* v4 defaults border color to currentcolor - keep the app-wide default from v3 */
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-grid-bright);
+  }
+
+  body {
+    @apply bg-background-dimmed text-text-dimmed;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Text selection styles */
+  ::selection {
+    @apply bg-text-bright/30 text-text-bright;
+  }
+  /* Kept separate from ::selection on purpose: grouping them makes older
+     Firefox drop the whole rule. */
+  /* stylelint-disable-next-line selector-no-vendor-prefix */
+  ::-moz-selection {
+    @apply bg-text-bright/30 text-text-bright;
+  }
+
+  /* Native form controls, scrollbars etc. follow the app theme */
+  :root {
+    color-scheme: dark;
+  }
+  :is([data-theme="light"], [data-theme="white"]) {
+    color-scheme: light;
+  }
+
+  /* shadcn charts: https://ui.shadcn.com/docs/components/chart#add-a-grid */
+  :root {
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+  }
+
+  :is([data-theme="dark"], [data-theme="black"]) {
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+  }
+
+  :is([data-theme="light"], [data-theme="white"]) {
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 40%;
+    --chart-3: 30 80% 47%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+  }
+
+  [data-icon-contrast="true"]:is([data-theme="dark"], [data-theme="black"]) {
+    --chart-2: 160 60% 40%;
+    --chart-3: 30 80% 47%;
+  }
+
+  /* Override react-grid-layout placeholder color (default is red) */
+  .react-grid-item.react-grid-placeholder {
+    background: rgb(99 102 241) !important; /* indigo-500 */
+    border-radius: 0.375rem !important; /* rounded-md */
+  }
+
+  /* Sidebar reorder grid: subtle placeholder */
+  .sidebar-reorder-grid .react-grid-item.react-grid-placeholder {
+    background: var(--color-background-raised) !important;
+    border-radius: 0.25rem;
+    opacity: 1 !important;
+  }
+
+  /* Sidebar reorder grid: only animate transform (vertical position), not width/height */
+  .sidebar-reorder-grid .react-grid-item {
+    transition: transform 200ms ease !important;
+  }
+
+  /* Override resize handle icon to white */
+  .react-resizable-handle {
+    background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2IDYiIHN0eWxlPSJiYWNrZ3JvdW5kLWNvbG9yOiNmZmZmZmYwMCIgeD0iMHB4IiB5PSIwcHgiIHdpZHRoPSI2cHgiIGhlaWdodD0iNnB4Ij48ZyBvcGFjaXR5PSIwLjMwMiI+PHBhdGggZD0iTSA2IDYgTCAwIDYgTCAwIDQuMiBMIDQgNC4yIEwgNC4yIDQuMiBMIDQuMiAwIEwgNiAwIEwgNiA2IEwgNiA2IFoiIGZpbGw9IiNmZmZmZmYiLz48L2c+PC9zdmc+') !important;
+  }
+  .react-resizable-handle::after {
+    border-bottom-color: rgba(255, 255, 255, 0.4) !important;
+    border-right-color: rgba(255, 255, 255, 0.4) !important;
+    border-top-color: rgba(255, 255, 255, 0.4) !important;
+    border-left-color: rgba(255, 255, 255, 0.4) !important;
+  }
+}
+
+@layer components {
+  @supports (-webkit-hyphens: none) {
+    .safari-only {
+      @apply border-b border-grid-dimmed;
+    }
+  }
+}
+
 /* Streamdown markdown styling */
 .streamdown-container {
-  /* Streamdown uses shadcn/ui CSS variables - define them for our theme.
-     These map Tailwind utility classes like bg-background, bg-primary, etc.
-     that streamdown uses internally for its link safety modal, code blocks,
-     and other interactive elements. */
-  --background: 230 16% 9%; /* charcoal-900 #121317 */
-  --foreground: 215 19% 87%; /* charcoal-200 #D7D9DD */
-  --muted: 220 8% 17%; /* charcoal-775 #1C1E21 */
-  --muted-foreground: 220 8% 57%; /* charcoal-400 #878C99 */
-  --border: 216 7% 27%; /* charcoal-650 #2C3034 */
-  --primary: 95 100% 66%; /* apple-500 #A8FF53 */
-  --primary-foreground: 230 16% 9%; /* charcoal-900 */
-  --sidebar: 228 10% 11%; /* charcoal-850 #15171A */;
+  /* Streamdown uses shadcn/ui CSS variables - derive them from our semantic
+     tokens so they follow the theme. They map Tailwind utility classes like
+     bg-background, bg-primary, etc. that streamdown uses internally for its
+     link safety modal, code blocks, and other interactive elements. */
+  --background: var(--color-background-deep);
+  --foreground: var(--color-text-bright);
+  --muted: var(--color-charcoal-775);
+  --muted-foreground: var(--color-text-dimmed);
+  --border: var(--color-border-bright);
+  --primary: var(--color-primary);
+  --primary-foreground: var(--color-background-deep);
+  --sidebar: var(--color-background-dimmed);
 
   /* Code block styling */
-  & [data-code-block-container] {
-    @apply rounded border-charcoal-650 my-0;
-  }
-  & [data-code-block] {
-    border-top: none;
+  & [data-streamdown="code-block"] {
+    @apply rounded-sm my-2 border-charcoal-700;
   }
 
   & p {
     @apply my-1;
   }
-  & h1, & h2, & h3, & h4, & h5, & h6 {
+  & h1,
+  & h2,
+  & h3,
+  & h4,
+  & h5,
+  & h6 {
     @apply font-semibold text-text-bright mt-2 mb-1;
   }
   & h1 {
@@ -184,10 +693,14 @@
   & h2 {
     @apply text-sm;
   }
-  & h3, & h4, & h5, & h6 {
+  & h3,
+  & h4,
+  & h5,
+  & h6 {
     @apply text-xs;
   }
-  & ul, & ol {
+  & ul,
+  & ol {
     @apply ml-4 my-1;
   }
   & ul {
@@ -199,15 +712,18 @@
   & li {
     @apply my-0.5;
   }
-  /* Inline code (not in pre blocks) */
+  /* Theme-mapped, not raw charcoal: fenced blocks stay dark via shiki. */
   & code:not(pre code) {
-    @apply bg-charcoal-700 px-1 py-0.5 rounded text-text-bright font-mono;
+    @apply px-1 py-0.5 rounded-sm text-text-bright font-mono;
+    background-color: var(--muted);
   }
   & blockquote {
     @apply border-l-2 border-charcoal-600 pl-3 my-2 italic;
   }
+  /* `no-underline` is load-bearing: streamdown hard-codes `underline` on every
+   anchor, and a class plus type selector outspecifies it. */
   & a {
-    @apply text-blue-400 hover:underline;
+    @apply text-text-link no-underline transition hover:text-text-link-hover;
   }
   & strong {
     @apply font-semibold text-text-bright;
@@ -219,38 +735,387 @@
     @apply my-2 border-charcoal-600;
   }
   & table {
-    @apply w-full my-2 border-collapse;
+    @apply my-2 border-collapse;
+    width: auto;
   }
-  & th, & td {
-    @apply border border-charcoal-600 px-2 py-1 text-left;
+  & th,
+  & td {
+    @apply border border-grid-bright px-2 py-1 text-left;
+    overflow-wrap: normal;
+    word-break: normal;
   }
   & th {
-    @apply bg-charcoal-700 font-semibold;
+    @apply font-semibold whitespace-nowrap;
+    background-color: var(--muted);
   }
 
-  /* Streamdown code block container */
-  & [data-code-block-container] {
-    @apply my-2 border-charcoal-700;
+  /* The body scrolls and sizes the code; streamdown ships it at text-sm. */
+  & [data-streamdown="code-block-body"] {
+    @apply text-xs leading-relaxed scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600;
   }
-  & [data-code-block-header] {
-    @apply bg-charcoal-800 text-text-dimmed border-b border-charcoal-700;
+}
+
+/* The agent table is font-mono text-xs throughout; streamdown's own inline code sets
+   text-sm directly, so it needs an override. Not nested under .streamdown-container - the
+   fullscreen table's dialog portals to document.body, outside that container, so an ancestor
+   requirement silently stops matching there. data-agent-table alone scopes it, present on
+   both the compact and fullscreen wrapper. Flat and same-height as surrounding text (py-0,
+   leading-5, baseline-aligned) so a row with a code chip does not grow taller than plain text. */
+[data-agent-table] code:not(pre code) {
+  @apply px-1 py-0 text-xs leading-5 align-baseline;
+}
+
+/* The stored 0-100 is a position within the active theme's own range, mapped
+   here rather than in JS so `system` needs nothing resolved on the client.
+   Ramps read --theme-contrast (strengthen) and --theme-fade (Black only). */
+:root {
+  --theme-contrast: var(--theme-contrast-percent, 0);
+  --theme-fade: 0;
+}
+
+/*
+  Light theme. Overrides the themable variables only; raw palettes stay put.
+  Code/editor values come from the trigger.light VS Code theme.
+*/
+:is([data-theme="light"], [data-theme="white"]) {
+  --color-secondary: #ffffff;
+  --color-input-bg: #ffffff;
+
+  /* shadcn vars consumed by charts/streamdown (tooltip cursor fill etc.) */
+  --background: #ffffff;
+  --foreground: #1a1b1f;
+  --muted: #eceef1;
+  --muted-foreground: #5f6570;
+  --border: #e2e4e9;
+  --sidebar: #f6f7f8;
+  --primary-foreground: #ffffff;
+
+  /* Text */
+  --color-tertiary: #eef0f3;
+  --color-text-link: var(--color-lavender-600);
+  --color-text-link-hover: var(--color-lavender-800);
+  --color-text-faint: var(--color-charcoal-400);
+  --color-text-dimmed: var(--color-charcoal-500);
+  --color-text-bright: var(--color-charcoal-800);
+
+  /* Surfaces */
+  --color-background-deep: #f1f2f4;
+  --color-background-dimmed: #fbfbfc;
+  --color-background-bright: #ffffff;
+  --color-background-hover: #f2f3f5;
+  /* Cards on white need a gentler hover than the app-wide surfaces */
+  --color-surface-hover-subtle: #f7f8f9;
+  --color-background-raised: #e9eaee;
+  --color-surface-control: #dcdee3;
+  --color-segmented-track: var(--color-background-raised);
+  --color-surface-control-hover: #cfd2d9;
+  --color-surface-control-active: #b8bcc6;
+  --color-surface-selected: #eff0f2;
+  --color-surface-selected-hover: #e7e9ec;
+
+  /* Borders */
+  --color-grid-dimmed: #eceef1;
+  --color-grid-bright: #e2e4e9;
+  --color-border-selected: #e0e2e6;
+  --color-border-bright: #d2d5db;
+  --color-border-brighter: #b9bdc7;
+  --color-border-brightest: #9ba1ad;
+
+
+  --color-staging: var(--color-orange-600);
+
+  /* Grey chart reference series, light enough not to dominate on white */
+  --color-queues-chart-ref: #c3c7cf;
+
+  /* Neutral run statuses: soft light grays for sparkbars and charts */
+  --color-run-pending: #ccd0d6;
+  --color-run-delayed: #d3d6db;
+  --color-run-waiting-to-resume: #c5c9d0;
+  --color-run-canceled: #d8dbdf;
+  --color-run-expired: #dee0e4;
+
+  /* Monochrome icon gray - per-mode, not part of the unified accent set */
+  --color-customDashboards: var(--color-charcoal-500);
+
+  --color-callout-warning-text: var(--color-yellow-800);
+  --color-callout-error-text: var(--color-rose-700);
+  --color-callout-success-text: var(--color-green-800);
+  --color-callout-docs-text: var(--color-blue-800);
+  --color-callout-pending-bg: var(--color-blue-100);
+  --color-callout-pending-text: var(--color-blue-800);
+  --color-callout-pricing-bg: var(--color-indigo-100);
+  --color-callout-pricing-text: var(--color-indigo-800);
+
+  /* Code syntax - trigger.light */
+  --color-code-background: #ffffff;
+  --color-code-foreground: #333333;
+  --color-code-line-number: #a8a8ad;
+  --color-code-plain: #2e2e4b;
+  --color-code-muted: #333333;
+  --color-code-comment: #767a81;
+  --color-code-keyword: #b114d3;
+  --color-code-storage: #b114d3;
+  --color-code-type: #b114d3;
+  --color-code-function: #6532f5;
+  --color-code-variable: #404040;
+  --color-code-constant: #1e1e1e;
+  --color-code-language: #b114d3;
+  --color-code-object-key: #222222;
+  --color-code-string: #262626;
+  --color-code-template-punctuation: #0879e2;
+  --color-code-number: #262626;
+  --color-code-builtin: #3080e0;
+  --color-code-attribute: #222222;
+  --color-code-escape: #222222;
+  --color-code-regexp: #dc3545;
+  --color-code-regexp-constant: #5f6570;
+  --color-code-invalid: #dc3545;
+  --color-code-deleted: #dc3545;
+  --color-code-jsx-text: #2e2e4b;
+
+  /* CodeMirror - trigger.light */
+  --color-editor-background: #ffffff;
+  --color-editor-foreground: #2e2e4b;
+  --color-editor-keyword: #b114d3;
+  --color-editor-name: #197c3c;
+  --color-editor-function: #6532f5;
+  --color-editor-constant: #3080e0;
+  --color-editor-type: #2980b9;
+  --color-editor-operator: #333333;
+  --color-editor-comment: #767a81;
+  --color-editor-heading: #2c3e50;
+  --color-editor-string: #262626;
+  --color-editor-invalid: #dc3545;
+  --color-editor-panel-background: #f4f4f6;
+  --color-editor-highlight-background: #f8f8fa;
+  --color-editor-tooltip-background: #ffffff;
+  --color-editor-selection: #d9dce3;
+  --color-editor-cursor: #2e2e4b;
+  --color-editor-search-match: #0879e226;
+  --color-editor-search-match-outline: #0879e2;
+  --color-editor-search-match-selected: #0879e240;
+  --color-editor-selection-match: #e8e8ed;
+  --color-editor-matching-bracket: rgba(240, 241, 244, 0.9);
+  --color-editor-matching-bracket-outline: rgba(160, 166, 180, 0.5);
+  --color-editor-fold-placeholder: #555555;
+  --color-editor-scrollbar-track-active: #e8e9ec;
+  --color-editor-scrollbar-thumb: #c9ccd4;
+  --color-editor-scrollbar-thumb-active: #aeb3be;
+}
+
+/*
+  Light themes with "Distinguish without color" off: the base accents were drawn
+  for dark cards and most sit under 3:1 on white (preview 1.57, warning 2.13,
+  metrics 2.22). This is the same palette read for a white page - each token
+  keeps its base hue and is only stepped down in lightness, so yellows stay
+  yellow and queues stay purple rather than moving to the blue the high-contrast
+  set uses. Every base accent that already clears white (dev, tasks, runs,
+  batches, logs, alerts...) is left alone.
+*/
+:is([data-theme="light"], [data-theme="white"]):not([data-icon-contrast="true"]) {
+  /* Status */
+  --color-success: var(--color-mint-600);
+  --color-warning: var(--color-amber-600);
+
+  /* Environments */
+  --color-prod: var(--color-mint-600);
+
+  /* Icons */
+  --color-schedules: var(--color-yellow-700);
+  --color-metrics: var(--color-green-600);
+  --color-regions: var(--color-green-600);
+  --color-aiMetrics: var(--color-green-600);
+  --color-bulkActions: var(--color-emerald-600);
+  --color-concurrency: var(--color-amber-600);
+  --color-errors: var(--color-amber-600);
+  --color-apiKeys: var(--color-amber-600);
+
+  --color-queues-chart: var(--color-purple-600);
+  --color-log-trace: var(--color-purple-600);
+
+  /* Callout accents */
+  --color-callout-docs: var(--color-blue-500);
+  --color-callout-pending: var(--color-blue-500);
+  --color-callout-pricing: var(--color-indigo-500);
+
+  --color-run-waiting-for-deploy: var(--color-amber-700);
+  --color-run-pending-version: #c76508;
+  --color-run-paused: var(--color-amber-600);
+  --color-run-timed-out: #ed5f74;
+}
+
+/* The five pale greys all sit under the 3:1 a chart series needs on white;
+   charcoal-400 is the first stop that clears it. Dark themes are untouched. */
+/* TRACE stays an outline on the light themes so it doesn't compete with
+   ERROR two chips along. The other four fill solid. */
+[data-icon-contrast="true"]:is([data-theme="light"], [data-theme="white"])
+  .log-level-chip-trace {
+  background-color: transparent;
+  border-color: var(--color-charcoal-600);
+  color: var(--color-charcoal-600);
+}
+
+[data-icon-contrast="true"]:is([data-theme="light"], [data-theme="white"]) {
+  --color-run-pending: var(--color-charcoal-400);
+  --color-run-delayed: var(--color-charcoal-400);
+  --color-run-waiting-to-resume: var(--color-charcoal-400);
+  --color-run-canceled: var(--color-charcoal-400);
+  --color-run-expired: var(--color-charcoal-400);
+}
+
+/* Streamdown's muted surface has no semantic token (charcoal-775); theme it here */
+:is([data-theme="light"], [data-theme="white"]) .streamdown-container {
+  --muted: #eceef1;
+}
+
+[data-icon-contrast="true"] .text-shadow-custom {
+  text-shadow: none;
+}
+
+/* Neutral timeline points: invert to a light dot with a gray ring */
+:is([data-theme="light"], [data-theme="white"]) .timeline-point.bg-surface-control-active {
+  border-color: var(--color-surface-control-active);
+  background-color: var(--color-background-bright);
+}
+
+/* Run timeline bars: no fade gradient on light */
+:is([data-theme="light"], [data-theme="white"]) .timeline-span {
+  background-image: none;
+}
+/* On saturated bars the duration label keeps the dark-theme treatment,
+   but only when the bar is wide enough to contain the label — on narrow
+   bars the sticky label overflows onto the page background, where the
+   default dark-on-light text is correct. */
+:is([data-theme="light"], [data-theme="white"]) .timeline-span.bg-success,
+:is([data-theme="light"], [data-theme="white"]) .timeline-span.bg-error,
+:is([data-theme="light"], [data-theme="white"]) .timeline-span.bg-blue-500 {
+  container-type: inline-size;
+}
+@container (min-width: 3.5rem) {
+  :is([data-theme="light"], [data-theme="white"]) .timeline-span.bg-success .text-shadow-custom,
+  :is([data-theme="light"], [data-theme="white"]) .timeline-span.bg-error .text-shadow-custom,
+  :is([data-theme="light"], [data-theme="white"]) .timeline-span.bg-blue-500 .text-shadow-custom {
+    color: #ffffff;
   }
-  /* Hide light mode code block, show dark mode */
-  & [data-code-block].dark\:hidden {
-    display: none !important;
-  }
-  & [data-code-block].hidden.dark\:block {
-    display: block !important;
-  }
-  /* Override the bg-muted/40 class to let inline styles work */
-  & [data-code-block] pre {
-    background-color: inherit !important;
-    @apply scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600;
-  }
-  & [data-code-block] pre code {
-    @apply bg-transparent;
-  }
-  & [data-code-block] .line {
-    @apply leading-relaxed;
-  }
+}
+
+:is([data-theme="light"], [data-theme="white"]) .suggest-region-cell > div > div {
+  box-shadow: none;
+}
+
+/* Interface contrast. Text and borders travel toward the light end of the
+   charcoal ramp, backgrounds toward the dark end; accents are untouched. Every
+   token moves between two ramp stops, never toward #fff/#000, so intermediate
+   values stay in the palette. Must stay below the theme blocks to win the
+   cascade. */
+:is([data-theme="dark"], [data-theme="black"]) {
+  --color-text-bright: color-mix(in srgb, var(--color-charcoal-200), var(--color-charcoal-100) calc(var(--theme-contrast, 0) * 100%));
+  --color-text-dimmed: color-mix(in srgb, var(--color-charcoal-400), var(--color-charcoal-300) calc(var(--theme-contrast, 0) * 100%));
+  --color-text-faint: color-mix(in srgb, var(--color-charcoal-500), var(--color-charcoal-400) calc(var(--theme-contrast, 0) * 100%));
+
+  --color-background-deep: color-mix(in srgb, var(--color-charcoal-900), var(--color-charcoal-1000) calc(var(--theme-contrast, 0) * 100%));
+  --color-background-dimmed: color-mix(in srgb, var(--color-charcoal-850), var(--color-charcoal-950) calc(var(--theme-contrast, 0) * 100%));
+  --color-background-bright: color-mix(in srgb, var(--color-charcoal-800), var(--color-charcoal-900) calc(var(--theme-contrast, 0) * 100%));
+  --color-background-hover: color-mix(in srgb, var(--color-charcoal-750), var(--color-charcoal-800) calc(var(--theme-contrast, 0) * 100%));
+  --color-surface-hover-subtle: color-mix(in srgb, var(--color-charcoal-750), var(--color-charcoal-800) calc(var(--theme-contrast, 0) * 100%));
+  --color-background-raised: color-mix(in srgb, var(--color-charcoal-700), var(--color-charcoal-775) calc(var(--theme-contrast, 0) * 100%));
+  --color-input-bg: color-mix(in srgb, var(--color-charcoal-750), var(--color-charcoal-800) calc(var(--theme-contrast, 0) * 100%));
+
+  --color-surface-control: color-mix(in srgb, var(--color-charcoal-600), var(--color-charcoal-500) calc(var(--theme-contrast, 0) * 100%));
+  --color-surface-control-hover: color-mix(in srgb, var(--color-charcoal-550), var(--color-charcoal-400) calc(var(--theme-contrast, 0) * 100%));
+  --color-surface-control-active: color-mix(in srgb, var(--color-charcoal-500), var(--color-charcoal-300) calc(var(--theme-contrast, 0) * 100%));
+  --color-grid-dimmed: color-mix(in srgb, var(--color-charcoal-750), var(--color-charcoal-650) calc(var(--theme-contrast, 0) * 100%));
+  --color-grid-bright: color-mix(in srgb, var(--color-charcoal-700), var(--color-charcoal-600) calc(var(--theme-contrast, 0) * 100%));
+  --color-border-bright: color-mix(in srgb, var(--color-charcoal-600), var(--color-charcoal-500) calc(var(--theme-contrast, 0) * 100%));
+  --color-border-brighter: color-mix(in srgb, var(--color-charcoal-550), var(--color-charcoal-400) calc(var(--theme-contrast, 0) * 100%));
+  --color-border-brightest: color-mix(in srgb, var(--color-charcoal-500), var(--color-charcoal-300) calc(var(--theme-contrast, 0) * 100%));
+}
+
+/* Light's pale greys continue onto the same cool scale, but unevenly, so
+   destinations are picked per token by where it should land rather than by
+   counting stops. */
+:is([data-theme="light"], [data-theme="white"]) {
+  --color-text-bright: color-mix(in srgb, var(--color-charcoal-800), var(--color-charcoal-900) calc(var(--theme-contrast, 0) * 100%));
+  --color-text-dimmed: color-mix(in srgb, var(--color-charcoal-500), var(--color-charcoal-600) calc(var(--theme-contrast, 0) * 100%));
+  --color-text-faint: color-mix(in srgb, var(--color-charcoal-400), var(--color-charcoal-500) calc(var(--theme-contrast, 0) * 100%));
+
+  /* Light has nowhere brighter to go, so the stack deepens. Destinations are
+     chosen by luminance: the scale is unevenly spaced here, and equal step
+     counts collapsed the bright/dimmed gap. White pins all six afterwards. */
+  --color-background-bright: color-mix(in srgb, #ffffff, #eef0f3 calc(var(--theme-contrast, 0) * 100%));
+  --color-background-dimmed: color-mix(in srgb, #fbfbfc, #e9eaee calc(var(--theme-contrast, 0) * 100%));
+  --color-background-hover: color-mix(in srgb, #f2f3f5, #e2e4e9 calc(var(--theme-contrast, 0) * 100%));
+  --color-background-deep: color-mix(in srgb, #f1f2f4, #dcdee3 calc(var(--theme-contrast, 0) * 100%));
+  --color-background-raised: color-mix(in srgb, #e9eaee, var(--color-charcoal-200) calc(var(--theme-contrast, 0) * 100%));
+  --color-input-bg: color-mix(in srgb, #ffffff, #eef0f3 calc(var(--theme-contrast, 0) * 100%));
+
+  /* Where light-mode contrast is actually visible. */
+  --color-surface-control: color-mix(in srgb, #dcdee3, var(--color-charcoal-300) calc(var(--theme-contrast, 0) * 100%));
+  --color-surface-control-hover: color-mix(in srgb, #cfd2d9, var(--color-charcoal-400) calc(var(--theme-contrast, 0) * 100%));
+  --color-surface-control-active: color-mix(in srgb, #b8bcc6, var(--color-charcoal-500) calc(var(--theme-contrast, 0) * 100%));
+  /* A tier short of the controls: they divide rows rather than outline. */
+  --color-grid-dimmed: color-mix(in srgb, #eceef1, #cfd2d9 calc(var(--theme-contrast, 0) * 100%));
+  --color-grid-bright: color-mix(in srgb, #e2e4e9, var(--color-charcoal-300) calc(var(--theme-contrast, 0) * 100%));
+  /* Steeper than border-bright so the selected card stays the loudest edge */
+  --color-border-selected: color-mix(in srgb, #e0e2e6, var(--color-charcoal-500) calc(var(--theme-contrast, 0) * 100%));
+  --color-border-bright: color-mix(in srgb, #d2d5db, var(--color-charcoal-400) calc(var(--theme-contrast, 0) * 100%));
+  --color-border-brighter: color-mix(in srgb, #b9bdc7, var(--color-charcoal-500) calc(var(--theme-contrast, 0) * 100%));
+  --color-border-brightest: color-mix(in srgb, #9ba1ad, var(--color-charcoal-550) calc(var(--theme-contrast, 0) * 100%));
+}
+
+/* Black and White inherit Dark's and Light's token sets and only pin their
+   surfaces flat. Must stay below the contrast blocks so the pins win. */
+[data-theme="black"] {
+  --color-background-deep: #000000;
+  --color-background-dimmed: #000000;
+  --color-background-bright: #000000;
+  /* Black's range is -30..100: r = p * 1.3 - 0.3, split into two always-positive
+     halves because `color-mix` rejects a negative percentage. */
+  --theme-contrast: max(0, var(--theme-contrast-percent, 0) * 1.3 - 0.3);
+  --theme-fade: max(0, 0.3 - var(--theme-contrast-percent, 0) * 1.3);
+
+  /* Grid lines are the only structure on a flat black page, so they get the
+     extra travel below the base palette. */
+  --color-grid-dimmed: color-mix(
+    in srgb,
+    color-mix(
+      in srgb,
+      var(--color-charcoal-750),
+      var(--color-charcoal-650) calc(var(--theme-contrast, 0) * 100%)
+    ),
+    #000000 calc(var(--theme-fade, 0) * 100%)
+  );
+  --color-grid-bright: color-mix(
+    in srgb,
+    color-mix(
+      in srgb,
+      var(--color-charcoal-700),
+      var(--color-charcoal-600) calc(var(--theme-contrast, 0) * 100%)
+    ),
+    #000000 calc(var(--theme-fade, 0) * 100%)
+  );
+
+  --color-background-hover: #171717;
+  --color-background-raised: #1f1f1f;
+  --color-segmented-track: var(--color-background-raised);
+  --color-input-bg: #0a0a0a;
+}
+
+[data-theme="white"] {
+  --color-background-deep: #ffffff;
+  --color-background-dimmed: #ffffff;
+  --color-background-bright: #ffffff;
+  --color-background-hover: #f5f5f5;
+  --color-background-raised: #ededed;
+  --color-input-bg: #ffffff;
+}
+
+form:has(.unlock-hint-staging-env:hover) [data-unlock-target="staging-env"],
+form:has(.unlock-hint-pull-prod:hover) [data-unlock-target="pull-prod"],
+form:has(.unlock-hint-pull-stg:hover) [data-unlock-target="pull-stg"],
+form:has(.unlock-hint-pull-preview:hover) [data-unlock-target="pull-preview"],
+form:has(.unlock-hint-pull-dev:hover) [data-unlock-target="pull-dev"] {
+  border-radius: 0.25rem;
+  outline: 2px dashed var(--color-warning);
+  outline-offset: 2px;
 }

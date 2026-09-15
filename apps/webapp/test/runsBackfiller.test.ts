@@ -28,7 +28,7 @@ describe("RunsBackfillerService", () => {
         },
       });
 
-      const { tracer, exporter } = createInMemoryTracing();
+      const { tracer, exporter: _exporter } = createInMemoryTracing();
 
       const runsReplicationService = new RunsReplicationService({
         clickhouseFactory: new TestReplicationClickhouseFactory(clickhouse),

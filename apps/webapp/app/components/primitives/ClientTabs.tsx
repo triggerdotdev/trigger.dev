@@ -20,18 +20,13 @@ const ClientTabs = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof TabsPrimitive.Root>
 >(({ onValueChange, value: valueProp, defaultValue, ...props }, ref) => {
-  const [value, setValue] = React.useState<string | undefined>(valueProp ?? defaultValue);
-
-  React.useEffect(() => {
-    if (valueProp !== undefined) {
-      setValue(valueProp);
-    }
-  }, [valueProp]);
+  const [internalValue, setInternalValue] = React.useState<string | undefined>(defaultValue);
+  const value = valueProp ?? internalValue;
 
   const handleValueChange = React.useCallback(
     (nextValue: string) => {
       if (valueProp === undefined) {
-        setValue(nextValue);
+        setInternalValue(nextValue);
       }
       onValueChange?.(nextValue);
     },
@@ -42,8 +37,8 @@ const ClientTabs = React.forwardRef<
     valueProp !== undefined
       ? { value: valueProp }
       : defaultValue !== undefined
-      ? { defaultValue }
-      : {};
+        ? { defaultValue }
+        : {};
 
   const contextValue = React.useMemo<ClientTabsContextValue>(() => ({ value }), [value]);
 
@@ -70,7 +65,7 @@ const ClientTabsList = React.forwardRef<
   const variantClassName = (() => {
     switch (variant) {
       case "segmented":
-        return "relative flex h-10 w-full items-center rounded bg-charcoal-700/50 p-1";
+        return "relative flex h-10 w-full items-center rounded bg-background-raised/50 p-1";
       case "underline":
         return "flex gap-x-6 border-b border-grid-bright";
       default:
@@ -122,10 +117,10 @@ const ClientTabsTrigger = React.forwardRef<
             <motion.div
               layoutId={layoutId}
               transition={{ duration: 0.4, type: "spring" }}
-              className="absolute inset-0 rounded-[2px] border border-charcoal-500/50 bg-charcoal-600"
+              className="absolute inset-0 rounded-[2px] border border-grid-bright bg-white dark:border-border-brightest/50 dark:bg-surface-control"
             />
           ) : (
-            <div className="absolute inset-0 rounded-[2px] border border-charcoal-500/50 bg-charcoal-600" />
+            <div className="absolute inset-0 rounded-[2px] border border-grid-bright bg-white dark:border-border-brightest/50 dark:bg-surface-control" />
           )
         ) : null}
       </TabsPrimitive.Trigger>
@@ -159,12 +154,12 @@ const ClientTabsTrigger = React.forwardRef<
               className="mt-1 h-0.5 w-full bg-indigo-500"
             />
           ) : (
-            <div className="mt-1 h-0.5 w-full bg-charcoal-500 opacity-0 transition duration-200 group-hover:opacity-100" />
+            <div className="mt-1 h-0.5 w-full bg-surface-control-active opacity-0 transition duration-200 group-hover:opacity-100" />
           )
         ) : isActive ? (
           <div className="mt-1 h-0.5 w-full bg-indigo-500" />
         ) : (
-          <div className="mt-1 h-0.5 w-full bg-charcoal-500 opacity-0 transition duration-200 group-hover:opacity-100" />
+          <div className="mt-1 h-0.5 w-full bg-surface-control-active opacity-0 transition duration-200 group-hover:opacity-100" />
         )}
       </TabsPrimitive.Trigger>
     );
@@ -175,7 +170,7 @@ const ClientTabsTrigger = React.forwardRef<
       ref={ref}
       tabIndex={0}
       className={cn(
-        "inline-flex items-center justify-center whitespace-nowrap border-r border-charcoal-700 px-2 text-sm transition-all first:pl-0 last:border-none focus-custom data-[state=active]:text-indigo-500 data-[state=inactive]:text-text-dimmed data-[state=inactive]:hover:text-text-bright disabled:pointer-events-none disabled:opacity-50",
+        "inline-flex items-center justify-center whitespace-nowrap border-r border-grid-bright px-2 text-sm transition-all first:pl-0 last:border-none focus-custom data-[state=active]:text-indigo-500 system:data-[state=active]:text-text-bright data-[state=inactive]:text-text-dimmed data-[state=inactive]:hover:text-text-bright disabled:pointer-events-none disabled:opacity-50",
         className
       )}
       {...props}
@@ -193,25 +188,10 @@ const ClientTabsContent = React.forwardRef<
   <TabsPrimitive.Content
     ref={ref}
     tabIndex={-1}
-    className={cn(
-      "mt-1 outline-none",
-      className,
-      "data-[state=inactive]:hidden"
-    )}
+    className={cn("mt-1 outline-hidden", className, "data-[state=inactive]:hidden")}
     {...props}
   />
 ));
 ClientTabsContent.displayName = TabsPrimitive.Content.displayName;
-
-export type TabsProps = {
-  tabs: {
-    label: string;
-    value: string;
-  }[];
-  currentValue: string;
-  className?: string;
-  layoutId: string;
-  variant?: Variants;
-};
 
 export { ClientTabs, ClientTabsContent, ClientTabsList, ClientTabsTrigger };

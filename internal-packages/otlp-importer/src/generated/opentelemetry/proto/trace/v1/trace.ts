@@ -4,7 +4,7 @@ import _m0 from "protobufjs/minimal";
 import { InstrumentationScope, KeyValue } from "../../common/v1/common";
 import { Resource } from "../../resource/v1/resource";
 
-export const protobufPackage = "opentelemetry.proto.trace.v1";
+const protobufPackage = "opentelemetry.proto.trace.v1";
 
 /**
  * SpanFlags represents constants used to interpret the
@@ -40,7 +40,7 @@ export enum SpanFlags {
   UNRECOGNIZED = -1,
 }
 
-export function spanFlagsFromJSON(object: any): SpanFlags {
+function spanFlagsFromJSON(object: any): SpanFlags {
   switch (object) {
     case 0:
     case "SPAN_FLAGS_DO_NOT_USE":
@@ -61,7 +61,7 @@ export function spanFlagsFromJSON(object: any): SpanFlags {
   }
 }
 
-export function spanFlagsToJSON(object: SpanFlags): string {
+function spanFlagsToJSON(object: SpanFlags): string {
   switch (object) {
     case SpanFlags.DO_NOT_USE:
       return "SPAN_FLAGS_DO_NOT_USE";
@@ -89,7 +89,7 @@ export function spanFlagsToJSON(object: SpanFlags): string {
  * When new fields are added into this message, the OTLP request MUST be updated
  * as well.
  */
-export interface TracesData {
+interface TracesData {
   /**
    * An array of ResourceSpans.
    * For data coming from a single resource this array will typically contain
@@ -106,9 +106,7 @@ export interface ResourceSpans {
    * The resource for the spans in this message.
    * If this field is not set then no resource info is known.
    */
-  resource:
-    | Resource
-    | undefined;
+  resource: Resource | undefined;
   /** A list of ScopeSpans that originate from a resource. */
   scopeSpans: ScopeSpans[];
   /**
@@ -128,9 +126,7 @@ export interface ScopeSpans {
    * Semantically when InstrumentationScope isn't set, it is equivalent with
    * an empty instrumentation scope name (unknown).
    */
-  scope:
-    | InstrumentationScope
-    | undefined;
+  scope: InstrumentationScope | undefined;
   /** A list of Spans that originate from an instrumentation scope. */
   spans: Span[];
   /**
@@ -322,7 +318,7 @@ export enum Span_SpanKind {
   UNRECOGNIZED = -1,
 }
 
-export function span_SpanKindFromJSON(object: any): Span_SpanKind {
+function span_SpanKindFromJSON(object: any): Span_SpanKind {
   switch (object) {
     case 0:
     case "SPAN_KIND_UNSPECIFIED":
@@ -349,7 +345,7 @@ export function span_SpanKindFromJSON(object: any): Span_SpanKind {
   }
 }
 
-export function span_SpanKindToJSON(object: Span_SpanKind): string {
+function span_SpanKindToJSON(object: Span_SpanKind): string {
   switch (object) {
     case Span_SpanKind.UNSPECIFIED:
       return "SPAN_KIND_UNSPECIFIED";
@@ -471,7 +467,7 @@ export enum Status_StatusCode {
   UNRECOGNIZED = -1,
 }
 
-export function status_StatusCodeFromJSON(object: any): Status_StatusCode {
+function status_StatusCodeFromJSON(object: any): Status_StatusCode {
   switch (object) {
     case 0:
     case "STATUS_CODE_UNSET":
@@ -489,7 +485,7 @@ export function status_StatusCodeFromJSON(object: any): Status_StatusCode {
   }
 }
 
-export function status_StatusCodeToJSON(object: Status_StatusCode): string {
+function status_StatusCodeToJSON(object: Status_StatusCode): string {
   switch (object) {
     case Status_StatusCode.UNSET:
       return "STATUS_CODE_UNSET";
@@ -507,7 +503,7 @@ function createBaseTracesData(): TracesData {
   return { resourceSpans: [] };
 }
 
-export const TracesData = {
+const TracesData = {
   encode(message: TracesData, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
     for (const v of message.resourceSpans) {
       ResourceSpans.encode(v!, writer.uint32(10).fork()).ldelim();
@@ -648,9 +644,10 @@ export const ResourceSpans = {
   },
   fromPartial<I extends Exact<DeepPartial<ResourceSpans>, I>>(object: I): ResourceSpans {
     const message = createBaseResourceSpans();
-    message.resource = (object.resource !== undefined && object.resource !== null)
-      ? Resource.fromPartial(object.resource)
-      : undefined;
+    message.resource =
+      object.resource !== undefined && object.resource !== null
+        ? Resource.fromPartial(object.resource)
+        : undefined;
     message.scopeSpans = object.scopeSpans?.map((e) => ScopeSpans.fromPartial(e)) || [];
     message.schemaUrl = object.schemaUrl ?? "";
     return message;
@@ -715,7 +712,9 @@ export const ScopeSpans = {
   fromJSON(object: any): ScopeSpans {
     return {
       scope: isSet(object.scope) ? InstrumentationScope.fromJSON(object.scope) : undefined,
-      spans: globalThis.Array.isArray(object?.spans) ? object.spans.map((e: any) => Span.fromJSON(e)) : [],
+      spans: globalThis.Array.isArray(object?.spans)
+        ? object.spans.map((e: any) => Span.fromJSON(e))
+        : [],
       schemaUrl: isSet(object.schemaUrl) ? globalThis.String(object.schemaUrl) : "",
     };
   },
@@ -739,9 +738,10 @@ export const ScopeSpans = {
   },
   fromPartial<I extends Exact<DeepPartial<ScopeSpans>, I>>(object: I): ScopeSpans {
     const message = createBaseScopeSpans();
-    message.scope = (object.scope !== undefined && object.scope !== null)
-      ? InstrumentationScope.fromPartial(object.scope)
-      : undefined;
+    message.scope =
+      object.scope !== undefined && object.scope !== null
+        ? InstrumentationScope.fromPartial(object.scope)
+        : undefined;
     message.spans = object.spans?.map((e) => Span.fromPartial(e)) || [];
     message.schemaUrl = object.schemaUrl ?? "";
     return message;
@@ -794,13 +794,17 @@ export const Span = {
     }
     if (message.startTimeUnixNano !== BigInt("0")) {
       if (BigInt.asUintN(64, message.startTimeUnixNano) !== message.startTimeUnixNano) {
-        throw new globalThis.Error("value provided for field message.startTimeUnixNano of type fixed64 too large");
+        throw new globalThis.Error(
+          "value provided for field message.startTimeUnixNano of type fixed64 too large"
+        );
       }
       writer.uint32(57).fixed64(message.startTimeUnixNano.toString());
     }
     if (message.endTimeUnixNano !== BigInt("0")) {
       if (BigInt.asUintN(64, message.endTimeUnixNano) !== message.endTimeUnixNano) {
-        throw new globalThis.Error("value provided for field message.endTimeUnixNano of type fixed64 too large");
+        throw new globalThis.Error(
+          "value provided for field message.endTimeUnixNano of type fixed64 too large"
+        );
       }
       writer.uint32(65).fixed64(message.endTimeUnixNano.toString());
     }
@@ -958,14 +962,20 @@ export const Span = {
 
   fromJSON(object: any): Span {
     return {
-      traceId: isSet(object.traceId) ? Buffer.from(bytesFromBase64(object.traceId)) : Buffer.alloc(0),
+      traceId: isSet(object.traceId)
+        ? Buffer.from(bytesFromBase64(object.traceId))
+        : Buffer.alloc(0),
       spanId: isSet(object.spanId) ? Buffer.from(bytesFromBase64(object.spanId)) : Buffer.alloc(0),
       traceState: isSet(object.traceState) ? globalThis.String(object.traceState) : "",
-      parentSpanId: isSet(object.parentSpanId) ? Buffer.from(bytesFromBase64(object.parentSpanId)) : Buffer.alloc(0),
+      parentSpanId: isSet(object.parentSpanId)
+        ? Buffer.from(bytesFromBase64(object.parentSpanId))
+        : Buffer.alloc(0),
       flags: isSet(object.flags) ? globalThis.Number(object.flags) : 0,
       name: isSet(object.name) ? globalThis.String(object.name) : "",
       kind: isSet(object.kind) ? span_SpanKindFromJSON(object.kind) : 0,
-      startTimeUnixNano: isSet(object.startTimeUnixNano) ? BigInt(object.startTimeUnixNano) : BigInt("0"),
+      startTimeUnixNano: isSet(object.startTimeUnixNano)
+        ? BigInt(object.startTimeUnixNano)
+        : BigInt("0"),
       endTimeUnixNano: isSet(object.endTimeUnixNano) ? BigInt(object.endTimeUnixNano) : BigInt("0"),
       attributes: globalThis.Array.isArray(object?.attributes)
         ? object.attributes.map((e: any) => KeyValue.fromJSON(e))
@@ -973,10 +983,18 @@ export const Span = {
       droppedAttributesCount: isSet(object.droppedAttributesCount)
         ? globalThis.Number(object.droppedAttributesCount)
         : 0,
-      events: globalThis.Array.isArray(object?.events) ? object.events.map((e: any) => Span_Event.fromJSON(e)) : [],
-      droppedEventsCount: isSet(object.droppedEventsCount) ? globalThis.Number(object.droppedEventsCount) : 0,
-      links: globalThis.Array.isArray(object?.links) ? object.links.map((e: any) => Span_Link.fromJSON(e)) : [],
-      droppedLinksCount: isSet(object.droppedLinksCount) ? globalThis.Number(object.droppedLinksCount) : 0,
+      events: globalThis.Array.isArray(object?.events)
+        ? object.events.map((e: any) => Span_Event.fromJSON(e))
+        : [],
+      droppedEventsCount: isSet(object.droppedEventsCount)
+        ? globalThis.Number(object.droppedEventsCount)
+        : 0,
+      links: globalThis.Array.isArray(object?.links)
+        ? object.links.map((e: any) => Span_Link.fromJSON(e))
+        : [],
+      droppedLinksCount: isSet(object.droppedLinksCount)
+        ? globalThis.Number(object.droppedLinksCount)
+        : 0,
       status: isSet(object.status) ? Status.fromJSON(object.status) : undefined,
     };
   },
@@ -1054,9 +1072,10 @@ export const Span = {
     message.droppedEventsCount = object.droppedEventsCount ?? 0;
     message.links = object.links?.map((e) => Span_Link.fromPartial(e)) || [];
     message.droppedLinksCount = object.droppedLinksCount ?? 0;
-    message.status = (object.status !== undefined && object.status !== null)
-      ? Status.fromPartial(object.status)
-      : undefined;
+    message.status =
+      object.status !== undefined && object.status !== null
+        ? Status.fromPartial(object.status)
+        : undefined;
     return message;
   },
 };
@@ -1069,7 +1088,9 @@ export const Span_Event = {
   encode(message: Span_Event, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
     if (message.timeUnixNano !== BigInt("0")) {
       if (BigInt.asUintN(64, message.timeUnixNano) !== message.timeUnixNano) {
-        throw new globalThis.Error("value provided for field message.timeUnixNano of type fixed64 too large");
+        throw new globalThis.Error(
+          "value provided for field message.timeUnixNano of type fixed64 too large"
+        );
       }
       writer.uint32(9).fixed64(message.timeUnixNano.toString());
     }
@@ -1266,7 +1287,9 @@ export const Span_Link = {
 
   fromJSON(object: any): Span_Link {
     return {
-      traceId: isSet(object.traceId) ? Buffer.from(bytesFromBase64(object.traceId)) : Buffer.alloc(0),
+      traceId: isSet(object.traceId)
+        ? Buffer.from(bytesFromBase64(object.traceId))
+        : Buffer.alloc(0),
       spanId: isSet(object.spanId) ? Buffer.from(bytesFromBase64(object.spanId)) : Buffer.alloc(0),
       traceState: isSet(object.traceState) ? globalThis.String(object.traceState) : "",
       attributes: globalThis.Array.isArray(object?.attributes)
@@ -1418,14 +1441,19 @@ function base64FromBytes(arr: Uint8Array): string {
 
 type Builtin = Date | Function | Uint8Array | string | number | boolean | bigint | undefined;
 
-export type DeepPartial<T> = T extends Builtin ? T
-  : T extends globalThis.Array<infer U> ? globalThis.Array<DeepPartial<U>>
-  : T extends ReadonlyArray<infer U> ? ReadonlyArray<DeepPartial<U>>
-  : T extends {} ? { [K in keyof T]?: DeepPartial<T[K]> }
-  : Partial<T>;
+type DeepPartial<T> = T extends Builtin
+  ? T
+  : T extends globalThis.Array<infer U>
+    ? globalThis.Array<DeepPartial<U>>
+    : T extends ReadonlyArray<infer U>
+      ? ReadonlyArray<DeepPartial<U>>
+      : T extends {}
+        ? { [K in keyof T]?: DeepPartial<T[K]> }
+        : Partial<T>;
 
 type KeysOfUnion<T> = T extends T ? keyof T : never;
-export type Exact<P, I extends P> = P extends Builtin ? P
+type Exact<P, I extends P> = P extends Builtin
+  ? P
   : P & { [K in keyof P]: Exact<P[K], I[K]> } & { [K in Exclude<keyof I, KeysOfUnion<P>>]: never };
 
 function longToBigint(long: Long) {

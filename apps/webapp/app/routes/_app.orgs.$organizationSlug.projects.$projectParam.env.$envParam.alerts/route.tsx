@@ -1,16 +1,16 @@
-import { useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
+import { getFormProps, useForm } from "@conform-to/react";
+import { GlobeLinesIcon } from "~/assets/icons/GlobeLinesIcon";
+import { parseWithZod } from "@conform-to/zod/v4";
 import {
   BellAlertIcon,
   BellSlashIcon,
   BookOpenIcon,
   EnvelopeIcon,
-  GlobeAltIcon,
   LockClosedIcon,
   PlusIcon,
   TrashIcon,
 } from "@heroicons/react/20/solid";
-import { Form, type MetaFunction, Outlet, useActionData, useNavigation } from "@remix-run/react";
+import { Form, Outlet, useActionData, useNavigation } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { SlackIcon } from "@trigger.dev/companyicons";
 import type { ProjectAlertChannelType, ProjectAlertType } from "@trigger.dev/database";
@@ -18,6 +18,7 @@ import assertNever from "assert-never";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { AlertsNoneDev, AlertsNoneDeployed } from "~/components/BlankStatePanels";
+import { Feedback } from "~/components/Feedback";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -45,6 +46,7 @@ import {
 import { EnabledStatus } from "~/components/runs/v3/EnabledStatus";
 import { prisma } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
+import { useShowSelfServe } from "~/hooks/useShowSelfServe";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithSuccessMessage } from "~/models/message.server";
@@ -64,14 +66,16 @@ import {
   v3ProjectAlertsPath,
 } from "~/utils/pathBuilder";
 import { alertsWorker } from "~/v3/alertsWorker.server";
+import { alertsAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
+import type { Handle } from "~/utils/handle";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Alerts | Trigger.dev`,
-    },
-  ];
+export const handle: Handle = {
+  agentPageContext: (data) => alertsAgentPageContext(data),
 };
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Alerts");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -114,17 +118,16 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 
   const formData = await request.formData();
-  const submission = parse(formData, { schema });
+  const submission = parseWithZod(formData, { schema });
 
-  if (!submission.value) {
-    return json(submission);
+  if (submission.status !== "success") {
+    return json(submission.reply());
   }
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
 
   if (!project) {
-    submission.error.key = ["Project not found"];
-    return json(submission);
+    return json(submission.reply({ formErrors: ["Project not found"] }));
   }
 
   switch (submission.value.action) {
@@ -182,6 +185,7 @@ export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
+  const showSelfServe = useShowSelfServe();
 
   const requiresUpgrade = limits.used >= limits.limit;
 
@@ -190,13 +194,15 @@ export default function Page() {
       <NavBar>
         <PageTitle title="Alerts" />
         <PageAccessories>
-          <LinkButton
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("v3/troubleshooting-alerts")}
-            variant="docs/small"
-          >
-            Alerts docs
-          </LinkButton>
+          <WhenAgentUnavailable>
+            <LinkButton
+              LeadingIcon={BookOpenIcon}
+              to={docsPath("v3/troubleshooting-alerts")}
+              variant="docs/small"
+            >
+              Alerts docs
+            </LinkButton>
+          </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
@@ -270,7 +276,9 @@ export default function Page() {
                           </>
                         }
                         className={
-                          alertChannel.enabled ? "" : "group-hover/table-row:bg-charcoal-800/50"
+                          alertChannel.enabled
+                            ? ""
+                            : "group-hover/table-row:bg-background-bright/50"
                         }
                       />
                     </TableRow>
@@ -343,9 +351,16 @@ export default function Page() {
                       </Header3>
                     )}
 
-                    <LinkButton to={v3BillingPath(organization)} variant="secondary/small">
-                      Upgrade
-                    </LinkButton>
+                    {showSelfServe ? (
+                      <LinkButton to={v3BillingPath(organization)} variant="secondary/small">
+                        Upgrade
+                      </LinkButton>
+                    ) : (
+                      <Feedback
+                        defaultValue="enterprise"
+                        button={<Button variant="secondary/small">Request more</Button>}
+                      />
+                    )}
                   </div>
                 </div>
               </div>
@@ -375,18 +390,18 @@ function DeleteAlertChannelButton(props: { id: string }) {
     navigation.formMethod === "post" &&
     navigation.formData?.get("action") === "delete";
 
-  const [form, { id }] = useForm({
+  const [form] = useForm({
     id: "delete-alert-channel",
     // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission as any,
     onValidate({ formData }) {
-      return parse(formData, { schema });
+      return parseWithZod(formData, { schema });
     },
     shouldRevalidate: "onSubmit",
   });
 
   return (
-    <Form method="post" {...form.props}>
+    <Form method="post" {...getFormProps(form)}>
       <input type="hidden" name="id" value={props.id} />
       <Button
         name="action"
@@ -414,18 +429,18 @@ function DisableAlertChannelButton(props: { id: string }) {
     navigation.formMethod === "post" &&
     navigation.formData?.get("action") === "delete";
 
-  const [form, { id }] = useForm({
+  const [form] = useForm({
     id: "disable-alert-channel",
     // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission as any,
     onValidate({ formData }) {
-      return parse(formData, { schema });
+      return parseWithZod(formData, { schema });
     },
     shouldRevalidate: "onSubmit",
   });
 
   return (
-    <Form method="post" {...form.props}>
+    <Form method="post" {...getFormProps(form)}>
       <input type="hidden" name="id" value={props.id} />
 
       <Button
@@ -454,18 +469,18 @@ function EnableAlertChannelButton(props: { id: string }) {
     navigation.formMethod === "post" &&
     navigation.formData?.get("action") === "delete";
 
-  const [form, { id }] = useForm({
+  const [form] = useForm({
     id: "enable-alert-channel",
     // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission as any,
     onValidate({ formData }) {
-      return parse(formData, { schema });
+      return parseWithZod(formData, { schema });
     },
     shouldRevalidate: "onSubmit",
   });
 
   return (
-    <Form method="post" {...form.props}>
+    <Form method="post" {...getFormProps(form)}>
       <input type="hidden" name="id" value={props.id} />
 
       <Button
@@ -493,13 +508,13 @@ function AlertChannelDetails({ alertChannel }: { alertChannel: AlertChannelListP
           leadingIcon={
             <AlertChannelTypeIcon
               channelType={alertChannel.type}
-              className="size-5 text-charcoal-400"
+              className="size-5 text-text-dimmed"
             />
           }
-          leadingIconClassName="text-charcoal-400"
+          leadingIconClassName="text-text-dimmed"
           label={"Email"}
           description={alertChannel.properties.email}
-          boxClassName="group-hover/table-row:bg-charcoal-800"
+          boxClassName="group-hover/table-row:bg-background-bright"
           className="h-12"
         />
       );
@@ -513,14 +528,14 @@ function AlertChannelDetails({ alertChannel }: { alertChannel: AlertChannelListP
                 <TooltipTrigger>
                   <AlertChannelTypeIcon
                     channelType={alertChannel.type}
-                    className="size-5 text-charcoal-400"
+                    className="size-5 text-text-dimmed"
                   />
                 </TooltipTrigger>
                 <TooltipContent className="flex items-center gap-1">Webhook</TooltipContent>
               </Tooltip>
             </TooltipProvider>
           }
-          leadingIconClassName="text-charcoal-400"
+          leadingIconClassName="text-text-dimmed"
           label={alertChannel.properties.url}
           description={
             <ClipboardField
@@ -532,7 +547,7 @@ function AlertChannelDetails({ alertChannel }: { alertChannel: AlertChannelListP
               className="mt-1 w-80"
             />
           }
-          boxClassName="group-hover/table-row:bg-charcoal-800"
+          boxClassName="group-hover/table-row:bg-background-bright"
         />
       );
     }
@@ -542,13 +557,13 @@ function AlertChannelDetails({ alertChannel }: { alertChannel: AlertChannelListP
           leadingIcon={
             <AlertChannelTypeIcon
               channelType={alertChannel.type}
-              className="size-5 text-charcoal-400"
+              className="size-5 text-text-dimmed"
             />
           }
-          leadingIconClassName="text-charcoal-400"
+          leadingIconClassName="text-text-dimmed"
           label={"Slack"}
           description={`#${alertChannel.properties.channelName}`}
-          boxClassName="group-hover/table-row:bg-charcoal-800"
+          boxClassName="group-hover/table-row:bg-background-bright"
         />
       );
     }
@@ -569,6 +584,8 @@ export function alertTypeTitle(alertType: ProjectAlertType): string {
       return "Deployment success";
     case "ERROR_GROUP":
       return "Error group";
+    case "DASHBOARD_AGENT_WATCH":
+      return "Dashboard agent watches";
     default: {
       throw new Error(`Unknown alertType: ${alertType}`);
     }
@@ -588,7 +605,7 @@ export function AlertChannelTypeIcon({
     case "SLACK":
       return <SlackIcon className={className} />;
     case "WEBHOOK":
-      return <GlobeAltIcon className={className} />;
+      return <GlobeLinesIcon className={className} />;
     default: {
       assertNever(channelType);
     }

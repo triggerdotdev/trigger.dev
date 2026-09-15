@@ -1,0 +1,18 @@
+// Typechecks harness/, which the build configs exclude by living outside src/.
+//
+// Extends tsconfig.build.json, NOT tsconfig.src.json: the latter carries the
+// "@triggerdotdev/source" customCondition, which pulls @trigger.dev/core's source into this
+// program, and that source does not typecheck on `lib: ES2020`. Same trap as
+// tsconfig.freeze-test.json. Cross-package imports therefore resolve from dist, so run this
+// through turbo (`pnpm run typecheck --filter @internal/run-engine`), whose typecheck task
+// declares `dependsOn: ["^build"]`.
+{
+  "extends": "./tsconfig.build.json",
+  "include": ["harness/**/*.ts", "src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts", "src/engine/tests/utils/*.ts"],
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "noEmit": true
+  }
+}

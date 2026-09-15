@@ -1,4 +1,4 @@
-import { McpContext } from "./context.js";
+import type { McpContext } from "./context.js";
 import { deployTool, listDeploysTool } from "./tools/deploys.js";
 import { searchDocsTool } from "./tools/docs.js";
 import {
@@ -12,6 +12,7 @@ import { startDevServerTool, stopDevServerTool, devServerStatusTool } from "./to
 import { listPreviewBranchesTool } from "./tools/previewBranches.js";
 import { listProfilesTool, switchProfileTool, whoamiTool } from "./tools/profiles.js";
 import { getQuerySchemaTool, queryTool } from "./tools/query.js";
+import { getReportTool } from "./tools/report.js";
 import {
   cancelRunTool,
   getRunDetailsTool,
@@ -30,11 +31,8 @@ import {
   reactivatePromptOverrideTool,
 } from "./tools/prompts.js";
 import { listAgentsTool } from "./tools/agents.js";
-import {
-  startAgentChatTool,
-  sendAgentMessageTool,
-  closeAgentChatTool,
-} from "./tools/agentChat.js";
+import { startAgentChatTool, sendAgentMessageTool, closeAgentChatTool } from "./tools/agentChat.js";
+import { readSessionChannelTool, writeSessionChannelTool } from "./tools/sessionChannels.js";
 import { respondWithError } from "./utils.js";
 
 /** Tool names that perform write/mutating operations. */
@@ -52,6 +50,7 @@ const WRITE_TOOLS = new Set([
   startAgentChatTool.name,
   sendAgentMessageTool.name,
   closeAgentChatTool.name,
+  writeSessionChannelTool.name,
 ]);
 
 export function registerTools(context: McpContext) {
@@ -93,6 +92,9 @@ export function registerTools(context: McpContext) {
     startAgentChatTool,
     sendAgentMessageTool,
     closeAgentChatTool,
+    readSessionChannelTool,
+    writeSessionChannelTool,
+    getReportTool,
   ];
 
   for (const tool of tools) {
@@ -116,7 +118,9 @@ export function registerTools(context: McpContext) {
       },
       async (input, extra) => {
         try {
-          return tool.handler(input, { ...extra, ctx: context });
+          // await so a rejected async handler (e.g. a network failure in get_report) is caught
+          // here and wrapped, not surfaced as an unhandled rejection.
+          return await tool.handler(input, { ...extra, ctx: context });
         } catch (error) {
           return respondWithError(error);
         }

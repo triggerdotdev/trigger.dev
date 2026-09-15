@@ -2,7 +2,10 @@ import type {
   AnyRetrieveRunResult,
   AnyRunShape,
   ApiRequestOptions,
+  CreateBulkCancelActionOptions,
+  CreateBulkReplayActionOptions,
   InferRunTypes,
+  ListBulkActionsQueryParams,
   ListProjectRunsQueryParams,
   ListRunsQueryParams,
   RescheduleRunRequestBody,
@@ -16,13 +19,16 @@ import type {
   AsyncIterableStream,
   ApiPromise,
   RealtimeRunSkipColumns,
-} from "@trigger.dev/core/v3";
-import {
+  AbortBulkActionResponseBody,
+  BulkActionObject,
   CanceledRunResponse,
+  CreateBulkActionResponseBody,
   CursorPagePromise,
   ListRunResponseItem,
   ReplayRunResponse,
   RetrieveRunResponse,
+} from "@trigger.dev/core/v3";
+import {
   accessoryAttributes,
   apiClientManager,
   flattenAttributes,
@@ -30,7 +36,7 @@ import {
   mergeRequestOptions,
 } from "@trigger.dev/core/v3";
 import { resolvePresignedPacketUrl } from "@trigger.dev/core/v3/utils/ioSerialization";
-import { AnyRunHandle, AnyTask } from "./shared.js";
+import type { AnyRunHandle, AnyTask } from "./shared.js";
 import { tracer } from "./tracer.js";
 
 export type {
@@ -49,6 +55,14 @@ export const runs = {
   retrieve: retrieveRun,
   list: listRuns,
   reschedule: rescheduleRun,
+  bulk: {
+    cancel: bulkCancelRuns,
+    replay: bulkReplayRuns,
+    retrieve: retrieveBulkAction,
+    abort: abortBulkAction,
+    list: listBulkActions,
+    poll: pollBulkAction,
+  },
   poll,
   subscribeToRun,
   subscribeToRunsWithTag,
@@ -56,7 +70,7 @@ export const runs = {
   fetchStream,
 };
 
-export type ListRunsItem = ListRunResponseItem;
+export type BulkAction = BulkActionObject;
 
 function listRuns(
   projectRef: string,
@@ -160,10 +174,10 @@ function listRunsRequestOptions(
 type RunId<TRunId> = TRunId extends AnyRunHandle | AnyBatchedRunHandle
   ? TRunId
   : TRunId extends AnyTask
-  ? string
-  : TRunId extends string
-  ? TRunId
-  : never;
+    ? string
+    : TRunId extends string
+      ? TRunId
+      : never;
 
 function retrieveRun<TRunId extends AnyRunHandle | AnyBatchedRunHandle | AnyTask | string>(
   runId: RunId<TRunId>,
@@ -278,6 +292,139 @@ function cancelRun(
   return apiClient.cancelRun(runId, $requestOptions);
 }
 
+function bulkCancelRuns(
+  options: CreateBulkCancelActionOptions,
+  requestOptions?: ApiRequestOptions
+): ApiPromise<CreateBulkActionResponseBody> {
+  const apiClient = apiClientManager.clientOrThrow();
+
+  const $requestOptions = mergeRequestOptions(
+    {
+      tracer,
+      name: "runs.bulk.cancel()",
+      icon: "runs",
+      attributes: {
+        ...flattenAttributes(options as Record<string, unknown>, "bulkAction"),
+      },
+    },
+    requestOptions
+  );
+
+  return apiClient.createBulkAction({ ...options, action: "cancel" }, $requestOptions);
+}
+
+function bulkReplayRuns(
+  options: CreateBulkReplayActionOptions,
+  requestOptions?: ApiRequestOptions
+): ApiPromise<CreateBulkActionResponseBody> {
+  const apiClient = apiClientManager.clientOrThrow();
+
+  const $requestOptions = mergeRequestOptions(
+    {
+      tracer,
+      name: "runs.bulk.replay()",
+      icon: "runs",
+      attributes: {
+        ...flattenAttributes(options as Record<string, unknown>, "bulkAction"),
+      },
+    },
+    requestOptions
+  );
+
+  return apiClient.createBulkAction({ ...options, action: "replay" }, $requestOptions);
+}
+
+function retrieveBulkAction(
+  bulkActionId: string,
+  requestOptions?: ApiRequestOptions
+): ApiPromise<BulkActionObject> {
+  const apiClient = apiClientManager.clientOrThrow();
+
+  const $requestOptions = mergeRequestOptions(
+    {
+      tracer,
+      name: "runs.bulk.retrieve()",
+      icon: "runs",
+      attributes: {
+        bulkActionId,
+        ...accessoryAttributes({
+          items: [{ text: bulkActionId, variant: "normal" }],
+          style: "codepath",
+        }),
+      },
+    },
+    requestOptions
+  );
+
+  return apiClient.retrieveBulkAction(bulkActionId, $requestOptions);
+}
+
+function abortBulkAction(
+  bulkActionId: string,
+  requestOptions?: ApiRequestOptions
+): ApiPromise<AbortBulkActionResponseBody> {
+  const apiClient = apiClientManager.clientOrThrow();
+
+  const $requestOptions = mergeRequestOptions(
+    {
+      tracer,
+      name: "runs.bulk.abort()",
+      icon: "runs",
+      attributes: {
+        bulkActionId,
+        ...accessoryAttributes({
+          items: [{ text: bulkActionId, variant: "normal" }],
+          style: "codepath",
+        }),
+      },
+    },
+    requestOptions
+  );
+
+  return apiClient.abortBulkAction(bulkActionId, $requestOptions);
+}
+
+function listBulkActions(
+  params?: ListBulkActionsQueryParams,
+  requestOptions?: ApiRequestOptions
+): CursorPagePromise<typeof BulkActionObject> {
+  const apiClient = apiClientManager.clientOrThrow();
+
+  const $requestOptions = mergeRequestOptions(
+    {
+      tracer,
+      name: "runs.bulk.list()",
+      icon: "runs",
+      attributes: {
+        ...flattenAttributes(params as Record<string, unknown>, "queryParams"),
+      },
+    },
+    requestOptions
+  );
+
+  return apiClient.listBulkActions(params, $requestOptions);
+}
+
+async function pollBulkAction(
+  bulkActionId: string,
+  options?: { pollIntervalMs?: number },
+  requestOptions?: ApiRequestOptions
+): Promise<BulkActionObject> {
+  let attempts = 0;
+
+  while (attempts++ < MAX_POLL_ATTEMPTS) {
+    const bulkAction = await retrieveBulkAction(bulkActionId, requestOptions);
+
+    if (bulkAction.status !== "PENDING") {
+      return bulkAction;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, options?.pollIntervalMs ?? 1000));
+  }
+
+  throw new Error(`Bulk action ${bulkActionId} did not finish after ${MAX_POLL_ATTEMPTS} attempts`);
+}
+
 function rescheduleRun(
   runId: string,
   body: RescheduleRunRequestBody,
@@ -309,8 +456,6 @@ function rescheduleRun(
   return apiClient.rescheduleRun(runId, body, $requestOptions);
 }
 
-export type PollOptions = { pollIntervalMs?: number };
-
 const MAX_POLL_ATTEMPTS = 500;
 
 async function poll<TRunId extends AnyRunHandle | AnyTask | string>(
@@ -337,7 +482,7 @@ async function poll<TRunId extends AnyRunHandle | AnyTask | string>(
   );
 }
 
-export type SubscribeToRunOptions = {
+type SubscribeToRunOptions = {
   /**
    * Whether to close the subscription when the run completes
    *
@@ -415,7 +560,7 @@ function subscribeToRun<TRunId extends AnyRunHandle | AnyTask | string>(
   });
 }
 
-export type SubscribeToRunsFilterOptions = {
+type SubscribeToRunsFilterOptions = {
   /**
    * Filter runs by the time they were created. You must specify the duration string like "1h", "10s", "30m", etc.
    *

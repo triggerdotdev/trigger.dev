@@ -20,6 +20,7 @@ import {
   jsonSchema,
   readUIMessageStream,
   stepCountIs,
+  streamText,
   tool,
   zodSchema,
 } from "ai";
@@ -34,6 +35,7 @@ export {
   jsonSchema,
   readUIMessageStream,
   stepCountIs,
+  streamText,
   tool,
   zodSchema,
 };

@@ -1,4 +1,3 @@
-import { XCircleIcon } from "@heroicons/react/24/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, useNavigation } from "@remix-run/react";
 import { Button } from "~/components/primitives/Buttons";
@@ -7,7 +6,6 @@ import { FormButtons } from "~/components/primitives/FormButtons";
 import { Input } from "~/components/primitives/Input";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { SpinnerWhite } from "~/components/primitives/Spinner";
 
 type CloseSessionDialogProps = {
   sessionParam: string;
@@ -30,8 +28,8 @@ export function CloseSessionDialog({
       <DialogHeader>Close this session?</DialogHeader>
       <div className="flex flex-col gap-3 pt-3">
         <Paragraph>
-          Closing a session is permanent. The session will no longer accept new input or trigger
-          new runs. Any in-flight run continues until it finishes on its own.
+          Closing a session is permanent. The session will no longer accept new input or trigger new
+          runs. Any in-flight run continues until it finishes on its own.
         </Paragraph>
         <Form action={formAction} method="post" className="flex flex-col gap-3">
           <input type="hidden" name="redirectUrl" value={redirectPath} />
@@ -52,16 +50,15 @@ export function CloseSessionDialog({
               <Button
                 type="submit"
                 variant="danger/medium"
-                LeadingIcon={isLoading ? SpinnerWhite : XCircleIcon}
                 disabled={isLoading}
                 shortcut={{ modifiers: ["mod"], key: "enter" }}
               >
-                {isLoading ? "Closing..." : "Close session"}
+                {isLoading ? "Closing…" : "Close session"}
               </Button>
             }
             cancelButton={
               <DialogClose asChild>
-                <Button variant={"tertiary/medium"}>Cancel</Button>
+                <Button variant={"secondary/medium"}>Cancel</Button>
               </DialogClose>
             }
           />

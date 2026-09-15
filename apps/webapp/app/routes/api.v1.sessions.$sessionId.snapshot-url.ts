@@ -18,8 +18,10 @@ const routeConfig = {
   params: ParamsSchema,
   allowJWT: true,
   corsStrategy: "all" as const,
-  findResource: async (params: z.infer<typeof ParamsSchema>, auth: { environment: { id: string } }) =>
-    resolveSessionByIdOrExternalId($replica, auth.environment.id, params.sessionId),
+  findResource: async (
+    params: z.infer<typeof ParamsSchema>,
+    auth: { environment: { id: string } }
+  ) => resolveSessionByIdOrExternalId($replica, auth.environment.id, params.sessionId),
 };
 
 // Authorize against the union of the URL form, friendlyId, and externalId —
@@ -38,7 +40,7 @@ function sessionResource(
   return anyResource([...ids].map((id) => ({ type: "sessions" as const, id })));
 }
 
-export const { action } = createActionApiRoute(
+const route = createActionApiRoute(
   {
     ...routeConfig,
     method: "PUT",
@@ -69,25 +71,29 @@ export const { action } = createActionApiRoute(
 export const loader = createLoaderApiRoute(
   {
     ...routeConfig,
+    allowJWT: false,
     authorization: {
       action: "read",
       resource: (session, params) => sessionResource(params.sessionId, session),
     },
   },
   async ({ authentication, resource: session }) => {
-  if (!session) {
-    return json({ error: "Session not found" }, { status: 404 });
-  }
+    if (!session) {
+      return json({ error: "Session not found" }, { status: 404 });
+    }
 
-  const signed = await generatePresignedUrl(
-    authentication.environment.project.externalRef,
-    authentication.environment.slug,
-    chatSnapshotStorageKey(session),
-    "GET"
-  );
-  if (!signed.success) {
-    return json({ error: `Failed to generate presigned URL: ${signed.error}` }, { status: 500 });
-  }
+    const signed = await generatePresignedUrl(
+      authentication.environment.project.externalRef,
+      authentication.environment.slug,
+      chatSnapshotStorageKey(session),
+      "GET"
+    );
+    if (!signed.success) {
+      return json({ error: `Failed to generate presigned URL: ${signed.error}` }, { status: 500 });
+    }
 
-  return json({ presignedUrl: signed.url });
-});
+    return json({ presignedUrl: signed.url });
+  }
+);
+
+export const action = route.action;

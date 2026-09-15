@@ -1,9 +1,11 @@
-import {
+import type {
   AttemptStatus,
   RunStatus,
   SerializedError,
-  TaskRunError,
   TriggerFunction,
+} from "@trigger.dev/core/v3";
+import {
+  TaskRunError,
   conditionallyImportPacket,
   createJsonErrorObject,
   logger,
@@ -11,21 +13,23 @@ import {
 import { parsePacketAsJson } from "@trigger.dev/core/v3/utils/ioSerialization";
 import { BatchId } from "@trigger.dev/core/v3/isomorphic";
 import { getUserProvidedIdempotencyKey } from "@trigger.dev/core/v3/serverOnly";
-import { Prisma, TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
+import type { Prisma, TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
 import assertNever from "assert-never";
-import { API_VERSIONS, CURRENT_API_VERSION, RunStatusUnspecifiedApiVersion } from "~/api/versions";
+import type { API_VERSIONS, RunStatusUnspecifiedApiVersion } from "~/api/versions";
+import { CURRENT_API_VERSION } from "~/api/versions";
 import { $replica, prisma } from "~/db.server";
-import { baseWorkerQueue } from "~/runEngine/concerns/workerQueueSplit.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { regionForDisplay } from "~/runEngine/concerns/workerQueueSplit.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import {
   findRunByIdWithMollifierFallback,
   type SyntheticRun,
 } from "~/v3/mollifier/readFallback.server";
 import { generatePresignedUrl } from "~/v3/objectStore.server";
+import { runStore } from "~/v3/runStore.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { tracer } from "~/v3/tracer.server";
 import { startSpanWithEnv } from "~/v3/tracing.server";
 
-// Build 'select' object
 const commonRunSelect = {
   id: true,
   friendlyId: true,
@@ -49,11 +53,8 @@ const commonRunSelect = {
   depth: true,
   scheduleId: true,
   workerQueue: true,
-  lockedToVersion: {
-    select: {
-      version: true,
-    },
-  },
+  region: true,
+  lockedToVersionId: true,
   resumeParentOnCompletion: true,
   batch: {
     select: {
@@ -70,14 +71,19 @@ type CommonRelatedRun = Prisma.Result<
   "findFirstOrThrow"
 >;
 
+// commonRunSelect carries only the scalar `lockedToVersionId`; `version` is resolved via the
+// control-plane resolver and folded back on for the run and each related run, since
+// `createCommonRunStructure` reads `.lockedToVersion?.version` for all of them.
+type CommonRelatedRunWithVersion = CommonRelatedRun & {
+  lockedToVersion: { version: string } | null;
+};
+
 // Full shape returned by findRun() — the commonRunSelect fields plus the
 // extras the route handler reads. Declared explicitly (not inferred via
 // ReturnType<typeof findRun>) so findRun can return a synthesised buffered
-// run without the type becoming self-referential.
-// Exported so the buffer-synthesis helper below can be unit-tested
-// against a stable shape without re-deriving it (FoundRun's exact field
-// list is what the buffered run must match for `call()` not to surprise).
-export type FoundRun = CommonRelatedRun & {
+// run without the type becoming self-referential. Exported so the
+// buffer-synthesis helper below can match this shape under unit test.
+export type FoundRun = CommonRelatedRunWithVersion & {
   traceId: string;
   payload: string;
   payloadType: string;
@@ -88,17 +94,14 @@ export type FoundRun = CommonRelatedRun & {
   attemptNumber: number | null;
   engine: "V1" | "V2";
   taskEventStore: string;
-  parentTaskRun: CommonRelatedRun | null;
-  rootTaskRun: CommonRelatedRun | null;
-  childRuns: CommonRelatedRun[];
+  parentTaskRun: CommonRelatedRunWithVersion | null;
+  rootTaskRun: CommonRelatedRunWithVersion | null;
+  childRuns: CommonRelatedRunWithVersion[];
   // True when this run was synthesised from the mollifier buffer rather
   // than read from Postgres. Callers that would otherwise query backing
   // stores keyed on PG identifiers (e.g. ClickHouse event lookups by
   // traceId) can short-circuit to an empty response — buffered runs
-  // haven't executed and have no events to fetch. Devin's analysis on
-  // PR #3755 (events endpoint) flagged the pre-fix code as making a
-  // wasted ClickHouse round-trip when this is set; gate on this flag
-  // instead.
+  // haven't executed and have no events to fetch.
   isBuffered: boolean;
 };
 
@@ -107,42 +110,91 @@ export class ApiRetrieveRunPresenter {
 
   public static async findRun(
     friendlyId: string,
-    env: AuthenticatedEnvironment,
+    env: AuthenticatedEnvironment
   ): Promise<FoundRun | null> {
-    const pgRow = await $replica.taskRun.findFirst({
-      where: {
+    const pgRow = await runStore.findRun(
+      {
         friendlyId,
         runtimeEnvironmentId: env.id,
       },
-      select: {
-        ...commonRunSelect,
-        traceId: true,
-        payload: true,
-        payloadType: true,
-        output: true,
-        outputType: true,
-        error: true,
-        attempts: {
-          select: {
-            id: true,
+      {
+        select: {
+          ...commonRunSelect,
+          traceId: true,
+          payload: true,
+          payloadType: true,
+          output: true,
+          outputType: true,
+          error: true,
+          attempts: {
+            select: {
+              id: true,
+            },
+          },
+          attemptNumber: true,
+          engine: true,
+          taskEventStore: true,
+          parentTaskRun: {
+            select: commonRunSelect,
+          },
+          rootTaskRun: {
+            select: commonRunSelect,
+          },
+          childRuns: {
+            select: commonRunSelect,
           },
         },
-        attemptNumber: true,
-        engine: true,
-        taskEventStore: true,
-        parentTaskRun: {
-          select: commonRunSelect,
-        },
-        rootTaskRun: {
-          select: commonRunSelect,
-        },
-        childRuns: {
-          select: commonRunSelect,
-        },
       },
-    });
+      $replica
+    );
 
-    if (pgRow) return { ...pgRow, isBuffered: false };
+    if (pgRow) {
+      // Dedup distinct locked-version ids so each hits the resolver exactly once
+      // (unbounded childRuns mostly share the same lockedToVersionId).
+      const distinctVersionIds = new Set<string>();
+      const collect = (id: string | null) => {
+        if (id) {
+          distinctVersionIds.add(id);
+        }
+      };
+      collect(pgRow.lockedToVersionId);
+      collect(pgRow.parentTaskRun?.lockedToVersionId ?? null);
+      collect(pgRow.rootTaskRun?.lockedToVersionId ?? null);
+      for (const child of pgRow.childRuns) {
+        collect(child.lockedToVersionId);
+      }
+
+      const lockedWorkersByVersionId =
+        await controlPlaneResolver.resolveRunLockedWorkersByVersionIds([...distinctVersionIds]);
+      const versionById = new Map<string, string | null>(
+        [...distinctVersionIds].map((id) => [
+          id,
+          lockedWorkersByVersionId.get(id)?.lockedToVersion?.version ?? null,
+        ])
+      );
+
+      const resolveVersion = (id: string | null): { version: string } | null => {
+        if (!id) {
+          return null;
+        }
+        const version = versionById.get(id) ?? null;
+        return version !== null ? { version } : null;
+      };
+
+      const foldVersion = (run: CommonRelatedRun): CommonRelatedRunWithVersion => ({
+        ...run,
+        lockedToVersion: resolveVersion(run.lockedToVersionId),
+      });
+
+      return {
+        ...pgRow,
+        lockedToVersion: resolveVersion(pgRow.lockedToVersionId),
+        parentTaskRun: pgRow.parentTaskRun ? foldVersion(pgRow.parentTaskRun) : null,
+        rootTaskRun: pgRow.rootTaskRun ? foldVersion(pgRow.rootTaskRun) : null,
+        childRuns: pgRow.childRuns.map((child) => foldVersion(child)),
+        isBuffered: false,
+      };
+    }
 
     // Postgres miss → fall back to the mollifier buffer. When the gate
     // diverted a trigger, the run lives in Redis until the drainer replays
@@ -235,8 +287,10 @@ export class ApiRetrieveRunPresenter {
         schedule: await resolveSchedule(taskRun),
         // We're removing attempts from the API
         attemptCount:
-          taskRun.engine === "V1" ? taskRun.attempts.length : taskRun.attemptNumber ?? 0,
+          taskRun.engine === "V1" ? taskRun.attempts.length : (taskRun.attemptNumber ?? 0),
         attempts: [],
+        // Related runs are an embedded projection of the authorized run, not independent reads.
+        // Preserve the established response shape for run-scoped credentials.
         relatedRuns: {
           root: taskRun.rootTaskRun
             ? await createCommonRunStructure(taskRun.rootTaskRun, this.apiVersion)
@@ -245,7 +299,9 @@ export class ApiRetrieveRunPresenter {
             ? await createCommonRunStructure(taskRun.parentTaskRun, this.apiVersion)
             : undefined,
           children: await Promise.all(
-            taskRun.childRuns.map(async (r) => await createCommonRunStructure(r, this.apiVersion))
+            taskRun.childRuns.map(
+              async (run) => await createCommonRunStructure(run, this.apiVersion)
+            )
           ),
         },
       };
@@ -491,7 +547,10 @@ async function resolveSchedule(run: CommonRelatedRun) {
   };
 }
 
-async function createCommonRunStructure(run: CommonRelatedRun, apiVersion: API_VERSIONS) {
+async function createCommonRunStructure(
+  run: CommonRelatedRunWithVersion,
+  apiVersion: API_VERSIONS
+) {
   const metadata = await parsePacketAsJson({
     data: run.metadata ?? undefined,
     dataType: run.metadataType,
@@ -520,7 +579,7 @@ async function createCommonRunStructure(run: CommonRelatedRun, apiVersion: API_V
     triggerFunction: resolveTriggerFunction(run),
     batchId: run.batch?.friendlyId,
     metadata,
-    region: run.workerQueue ? baseWorkerQueue(run.workerQueue) : undefined,
+    region: regionForDisplay(run.region, run.workerQueue),
   };
 }
 
@@ -638,8 +697,7 @@ export function synthesiseFoundRunFromBuffer(buffered: SyntheticRun): FoundRun {
     // FAILED (the buffer entry has no separate "failedAt" — the
     // best-available approximation of when the terminal state landed
     // is the entry's creation time).
-    completedAt:
-      buffered.cancelledAt ?? (status === "SYSTEM_FAILURE" ? buffered.createdAt : null),
+    completedAt: buffered.cancelledAt ?? (status === "SYSTEM_FAILURE" ? buffered.createdAt : null),
     expiredAt: null,
     delayUntil: buffered.delayUntil ?? null,
     metadata,
@@ -659,6 +717,8 @@ export function synthesiseFoundRunFromBuffer(buffered: SyntheticRun): FoundRun {
     // field in the API response instead of silently dropping it until the
     // drainer materialises.
     scheduleId: buffered.scheduleId ?? null,
+    // commonRunSelect now carries the scalar id; a buffered run has no locked worker yet.
+    lockedToVersionId: null,
     lockedToVersion: buffered.lockedToVersion ? { version: buffered.lockedToVersion } : null,
     resumeParentOnCompletion: buffered.resumeParentOnCompletion,
     // Reconstruct the batch from the snapshot's internal id so a buffered
@@ -684,6 +744,7 @@ export function synthesiseFoundRunFromBuffer(buffered: SyntheticRun): FoundRun {
     // API response's `region` to undefined instead of advertising a
     // misleading "main" region for a not-yet-assigned buffered run).
     workerQueue: buffered.workerQueue ?? "",
+    region: buffered.region ?? "",
     parentTaskRun: null,
     rootTaskRun: null,
     childRuns: [],

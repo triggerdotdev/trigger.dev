@@ -1,4 +1,9 @@
-import { BuildManifest, ServerBackgroundWorker, WorkerManifest } from "@trigger.dev/core/v3";
+import type {
+  BackgroundWorkerWarning,
+  BuildManifest,
+  ServerBackgroundWorker,
+  WorkerManifest,
+} from "@trigger.dev/core/v3";
 import { execOptionsForRuntime } from "@trigger.dev/core/v3/build";
 import { join } from "node:path";
 import { indexWorkerManifest } from "../indexing/indexWorkerManifest.js";
@@ -17,6 +22,7 @@ export class BackgroundWorker {
   public deprecated: boolean = false;
   public manifest: WorkerManifest | undefined;
   public serverWorker: ServerBackgroundWorker | undefined;
+  public warnings: BackgroundWorkerWarning[] = [];
 
   constructor(
     public build: BuildManifest,

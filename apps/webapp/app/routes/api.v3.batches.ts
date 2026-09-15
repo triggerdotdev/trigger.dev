@@ -1,23 +1,33 @@
 import { json } from "@remix-run/server-runtime";
-import { CreateBatchRequestBody, CreateBatchResponse, generateJWT } from "@trigger.dev/core/v3";
-import { prisma } from "~/db.server";
+import type { CreateBatchResponse } from "@trigger.dev/core/v3";
+import { CreateBatchRequestBody, generateJWT } from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
 import { BatchRateLimitExceededError } from "~/runEngine/concerns/batchLimits.server";
 import { CreateBatchService } from "~/runEngine/services/createBatch.server";
-import { AuthenticatedEnvironment, getOneTimeUseToken } from "~/services/apiAuth.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import type { RbacAbility } from "@trigger.dev/rbac";
+import { getOneTimeUseToken } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import { extractJwtSigningSecretKey } from "~/services/realtime/jwtAuth.server";
+import { determineRealtimeStreamsVersion } from "~/services/realtime/v1StreamsGlobal.server";
+import {
+  anyResource,
+  createActionApiRoute,
+  everyResource,
+} from "~/services/routeBuilders/apiBuilder.server";
+import { batchPublicAccessScopes } from "~/utils/batchItemAuthorization";
+import { canWriteParentRun } from "~/utils/parentRunAuthorization.server";
+import { clientSafeErrorMessage } from "~/utils/prismaErrors";
 import {
   handleRequestIdempotency,
   saveRequestIdempotency,
 } from "~/utils/requestIdempotency.server";
+import { scopeRequestIdempotencyKey } from "~/utils/requestIdempotencyKey";
+import { sanitizeTriggerSource } from "~/utils/triggerSource";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
-import { sanitizeTriggerSource } from "~/utils/triggerSource";
-import { HeadersSchema } from "./api.v1.tasks.$taskId.trigger";
-import { determineRealtimeStreamsVersion } from "~/services/realtime/v1StreamsGlobal.server";
-import { extractJwtSigningSecretKey } from "~/services/realtime/jwtAuth.server";
 import { engine } from "~/v3/runEngine.server";
+import { HeadersSchema } from "./api.v1.tasks.$taskId.trigger";
 
 /**
  * Phase 1 of 2-phase batch API: Create a batch.
@@ -35,16 +45,39 @@ const { action, loader } = createActionApiRoute(
     maxContentLength: 131_072, // 128KB is plenty for the batch metadata
     authorization: {
       action: "batchTrigger",
-      // No specific tasks to authorize at batch creation time — tasks are
-      // validated when items are streamed. Collection-level check.
-      resource: () => ({ type: "tasks" }),
+      resource: (_params, _searchParams, _headers, body) => {
+        // Newer clients declare the distinct task identifiers before creating
+        // the batch, so selected-task credentials can be authorized before the
+        // shell is created. Older clients omit them and retain the existing
+        // collection-level behavior: broad credentials pass, selected-task
+        // credentials fail closed.
+        if (!body.taskIdentifiers) {
+          return anyResource([{ type: "batch" }, { type: "tasks" }]);
+        }
+
+        return everyResource(
+          body.taskIdentifiers.map((id) => ({ type: "tasks" as const, id })),
+          [{ type: "batch" }, { type: "tasks" }]
+        );
+      },
     },
     corsStrategy: "all",
   },
-  async ({ body, headers, authentication }) => {
+  async ({ body, headers, authentication, ability }) => {
     // Validate runCount
     if (body.runCount <= 0) {
       return json({ error: "runCount must be a positive integer" }, { status: 400 });
+    }
+
+    if (
+      !(await canWriteParentRun(
+        ability,
+        authentication.environment.id,
+        authentication.environment.organizationId,
+        body.parentRunId
+      ))
+    ) {
+      return json({ error: "Unauthorized" }, { status: 403 });
     }
 
     // Check runCount against limit
@@ -80,23 +113,23 @@ const { action, loader } = createActionApiRoute(
       triggerClient,
     });
 
-    // Handle idempotency for the batch creation
+    // Keep create-batch retries isolated by environment and the task set that
+    // was authorized above. Sorting makes the scope stable when callers send
+    // the same identifiers in a different order.
+    const scopedIdempotencyKey = scopeRequestIdempotencyKey(body.idempotencyKey, [
+      authentication.environment.id,
+      ...(body.taskIdentifiers ? [...new Set(body.taskIdentifiers)].sort() : []),
+    ]);
+
     const cachedResponse = await handleRequestIdempotency<
       { friendlyId: string; runCount: number },
       CreateBatchResponse
-    >(body.idempotencyKey, {
+    >(scopedIdempotencyKey, {
       requestType: "create-batch",
       findCachedEntity: async (cachedRequestId) => {
-        return await prisma.batchTaskRun.findFirst({
-          where: {
-            id: cachedRequestId,
-            runtimeEnvironmentId: authentication.environment.id,
-          },
-          select: {
-            friendlyId: true,
-            runCount: true,
-          },
-        });
+        const batch = await engine.runStore.findBatchTaskRunById(cachedRequestId);
+        if (!batch || batch.runtimeEnvironmentId !== authentication.environment.id) return null;
+        return batch;
       },
       buildResponse: (cachedBatch) => ({
         id: cachedBatch.friendlyId,
@@ -104,7 +137,12 @@ const { action, loader } = createActionApiRoute(
         isCached: true,
       }),
       buildResponseHeaders: async (responseBody) => {
-        return await responseHeaders(responseBody, authentication.environment, triggerClient);
+        return await responseHeaders(
+          responseBody,
+          authentication.environment,
+          ability,
+          triggerClient
+        );
       },
     });
 
@@ -119,7 +157,7 @@ const { action, loader } = createActionApiRoute(
     const service = new CreateBatchService();
 
     service.onBatchTaskRunCreated.attachOnce(async (batch) => {
-      await saveRequestIdempotency(body.idempotencyKey, "create-batch", batch.id);
+      await saveRequestIdempotency(scopedIdempotencyKey, "create-batch", batch.id);
     });
 
     try {
@@ -129,14 +167,16 @@ const { action, loader } = createActionApiRoute(
         spanParentAsLink: spanParentAsLink === 1,
         oneTimeUseToken,
         realtimeStreamsVersion: determineRealtimeStreamsVersion(
-          realtimeStreamsVersion ?? undefined
+          realtimeStreamsVersion ?? undefined,
+          authentication.environment.organization.streamBasinName
         ),
-        triggerSource: isFromWorker ? "sdk" : sanitizeTriggerSource(triggerSourceHeader) ?? "api",
+        triggerSource: isFromWorker ? "sdk" : (sanitizeTriggerSource(triggerSourceHeader) ?? "api"),
       });
 
       const $responseHeaders = await responseHeaders(
         batch,
         authentication.environment,
+        ability,
         triggerClient
       );
 
@@ -190,7 +230,7 @@ const { action, loader } = createActionApiRoute(
 
       if (error instanceof Error) {
         return json(
-          { error: error.message },
+          { error: clientSafeErrorMessage(error) },
           { status: 500, headers: { "x-should-retry": "false" } }
         );
       }
@@ -203,34 +243,27 @@ const { action, loader } = createActionApiRoute(
 async function responseHeaders(
   batch: CreateBatchResponse,
   environment: AuthenticatedEnvironment,
+  ability: RbacAbility,
   triggerClient?: string | null
 ): Promise<Record<string, string>> {
-  const claimsHeader = JSON.stringify({
-    sub: environment.id,
-    pub: true,
-  });
+  // Browser clients need a delegated token for phase two because they must not
+  // retain a private API key. Selected-task credentials only receive read access
+  // and must continue to authorize each streamed item with their private key.
+  const scopes = batchPublicAccessScopes(batch.id, ability, triggerClient === "browser");
 
-  if (triggerClient === "browser") {
-    const claims = {
+  const jwt = await generateJWT({
+    secretKey: extractJwtSigningSecretKey(environment),
+    payload: {
       sub: environment.id,
       pub: true,
-      scopes: [`read:batch:${batch.id}`, `write:batch:${batch.id}`],
-    };
-
-    const jwt = await generateJWT({
-      secretKey: extractJwtSigningSecretKey(environment),
-      payload: claims,
-      expirationTime: "1h",
-    });
-
-    return {
-      "x-trigger-jwt-claims": claimsHeader,
-      "x-trigger-jwt": jwt,
-    };
-  }
+      scopes,
+    },
+    expirationTime: "1h",
+  });
 
   return {
-    "x-trigger-jwt-claims": claimsHeader,
+    "x-trigger-jwt-claims": JSON.stringify({ sub: environment.id, pub: true }),
+    "x-trigger-jwt": jwt,
   };
 }
 

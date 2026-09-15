@@ -41,9 +41,7 @@ export function buildSyntheticTraceForBufferedRun(run: SyntheticRun) {
 
   const events = tree
     ? flattenTree(tree).map((n) => {
-        const offset = millisecondsToNanoseconds(
-          n.data.startTime.getTime() - treeRootStartTimeMs
-        );
+        const offset = millisecondsToNanoseconds(n.data.startTime.getTime() - treeRootStartTimeMs);
         // Mirror RunPresenter: raw span events stay server-side, only
         // timelineEvents ship to the client.
         const { events: spanEvents, ...data } = n.data;
@@ -51,10 +49,21 @@ export function buildSyntheticTraceForBufferedRun(run: SyntheticRun) {
           ...n,
           data: {
             ...data,
-            timelineEvents: createTimelineSpanEventsFromSpanEvents(spanEvents, false, treeRootStartTimeMs),
+            timelineEvents: createTimelineSpanEventsFromSpanEvents(
+              spanEvents,
+              false,
+              treeRootStartTimeMs
+            ),
             duration: n.data.isPartial ? null : n.data.duration,
             offset,
             isRoot: n.id === spanId,
+            // Synthetic traces represent buffered/queued/canceled runs that
+            // haven't executed yet — they can't be agent runs. Keeping this
+            // field present (instead of omitting it) keeps the trace shape
+            // structurally identical to `RunPresenter`'s, which downstream
+            // consumers like the agent-icon check in runs/$runParam/route
+            // require to typecheck against the JsonifyObject union.
+            isAgentRun: false,
           },
         };
       })
@@ -75,5 +84,7 @@ export function buildSyntheticTraceForBufferedRun(run: SyntheticRun) {
     queuedDuration: undefined,
     overridesBySpanId: undefined,
     linkedRunIdBySpanId: {} as Record<string, string>,
+    isTruncated: false,
+    missingAnchor: false,
   };
 }

@@ -1,19 +1,39 @@
-import { z } from "zod";
+import { z } from "zod/v4";
+import { discriminatedUnion } from "../utils/zod.js";
 import { DeserializedJsonSchema } from "../../schemas/json.js";
 import type { RuntimeEnvironmentType as DBRuntimeEnvironmentType } from "@trigger.dev/database";
 
 export type Enum<T extends string> = { [K in T]: K };
 
+const DANGEROUS_METADATA_KEY_SEGMENTS = new Set(["__proto__", "constructor", "prototype"]);
+
+/**
+ * Prototype-pollution guard for run metadata operation keys. JSON paths are applied via
+ * JSONHeroPath, so dangerous path segments must be rejected. Literal keys are assigned directly,
+ * where only __proto__ can change the target object's prototype.
+ */
+export function isSafeMetadataKey(key: string): boolean {
+  if (!key.startsWith("$.")) {
+    return key !== "__proto__";
+  }
+
+  return !key.split(/[.[\]'"]+/).some((segment) => DANGEROUS_METADATA_KEY_SEGMENTS.has(segment));
+}
+
+const MetadataOperationKey = z.string().refine(isSafeMetadataKey, {
+  message: "Metadata key may not reference __proto__, constructor, or prototype",
+});
+
 export const RunMetadataUpdateOperation = z.object({
   type: z.literal("update"),
-  value: z.record(z.unknown()),
+  value: z.record(z.string(), z.unknown()),
 });
 
 export type RunMetadataUpdateOperation = z.infer<typeof RunMetadataUpdateOperation>;
 
 export const RunMetadataSetKeyOperation = z.object({
   type: z.literal("set"),
-  key: z.string(),
+  key: MetadataOperationKey,
   value: DeserializedJsonSchema,
 });
 
@@ -21,14 +41,14 @@ export type RunMetadataSetKeyOperation = z.infer<typeof RunMetadataSetKeyOperati
 
 export const RunMetadataDeleteKeyOperation = z.object({
   type: z.literal("delete"),
-  key: z.string(),
+  key: MetadataOperationKey,
 });
 
 export type RunMetadataDeleteKeyOperation = z.infer<typeof RunMetadataDeleteKeyOperation>;
 
 export const RunMetadataAppendKeyOperation = z.object({
   type: z.literal("append"),
-  key: z.string(),
+  key: MetadataOperationKey,
   value: DeserializedJsonSchema,
 });
 
@@ -36,7 +56,7 @@ export type RunMetadataAppendKeyOperation = z.infer<typeof RunMetadataAppendKeyO
 
 export const RunMetadataRemoveFromKeyOperation = z.object({
   type: z.literal("remove"),
-  key: z.string(),
+  key: MetadataOperationKey,
   value: DeserializedJsonSchema,
 });
 
@@ -44,13 +64,13 @@ export type RunMetadataRemoveFromKeyOperation = z.infer<typeof RunMetadataRemove
 
 export const RunMetadataIncrementKeyOperation = z.object({
   type: z.literal("increment"),
-  key: z.string(),
+  key: MetadataOperationKey,
   value: z.number(),
 });
 
 export type RunMetadataIncrementKeyOperation = z.infer<typeof RunMetadataIncrementKeyOperation>;
 
-export const RunMetadataChangeOperation = z.discriminatedUnion("type", [
+export const RunMetadataChangeOperation = discriminatedUnion("type", [
   RunMetadataUpdateOperation,
   RunMetadataSetKeyOperation,
   RunMetadataDeleteKeyOperation,
@@ -62,7 +82,7 @@ export const RunMetadataChangeOperation = z.discriminatedUnion("type", [
 export type RunMetadataChangeOperation = z.infer<typeof RunMetadataChangeOperation>;
 
 export const FlushedRunMetadata = z.object({
-  metadata: z.record(DeserializedJsonSchema).optional(),
+  metadata: z.record(z.string(), DeserializedJsonSchema).optional(),
   operations: z.array(RunMetadataChangeOperation).optional(),
   parentOperations: z.array(RunMetadataChangeOperation).optional(),
   rootOperations: z.array(RunMetadataChangeOperation).optional(),
@@ -201,7 +221,7 @@ export type TaskRunInternalError = z.infer<typeof TaskRunInternalError>;
 export const TaskRunErrorCodes = TaskRunInternalError.shape.code.enum;
 export type TaskRunErrorCodes = TaskRunInternalError["code"];
 
-export const TaskRunError = z.discriminatedUnion("type", [
+export const TaskRunError = discriminatedUnion("type", [
   TaskRunBuiltInError,
   TaskRunCustomErrorObject,
   TaskRunStringError,
@@ -225,7 +245,7 @@ export const TaskRun = z.object({
   idempotencyKeyScope: z.enum(["run", "attempt", "global"]).optional(),
   maxAttempts: z.number().optional(),
   version: z.string().optional(),
-  metadata: z.record(DeserializedJsonSchema).optional(),
+  metadata: z.record(z.string(), DeserializedJsonSchema).optional(),
   maxDuration: z.number().optional(),
   /** The priority of the run. Wih a value of 10 it will be dequeued before runs that were triggered 9 seconds before it (assuming they had no priority set).  */
   priority: z.number().optional(),
@@ -321,6 +341,12 @@ export const TaskRunExecutionDeployment = z.object({
   runtime: z.string(),
   runtimeVersion: z.string(),
   git: GitMeta.optional(),
+  /**
+   * The `--external-id` this deployment was deployed under. Lets a run tell whether
+   * it is the deployment a version-skew pin currently names, which a version alone
+   * cannot answer.
+   */
+  externalId: z.string().optional(),
 });
 
 export type TaskRunExecutionDeployment = z.infer<typeof TaskRunExecutionDeployment>;
@@ -346,7 +372,7 @@ export const TaskRunExecution = z.object({
   attempt: TaskRunExecutionAttempt.passthrough(),
   run: TaskRun.and(
     z.object({
-      traceContext: z.record(z.unknown()).optional(),
+      traceContext: z.record(z.string(), z.unknown()).optional(),
       realtimeStreamsVersion: z.string().optional(),
     })
   ),
@@ -389,7 +415,7 @@ export const V3TaskRun = z.object({
   idempotencyKeyScope: z.enum(["run", "attempt", "global"]).optional(),
   maxAttempts: z.number().optional(),
   version: z.string().optional(),
-  metadata: z.record(DeserializedJsonSchema).optional(),
+  metadata: z.record(z.string(), DeserializedJsonSchema).optional(),
   maxDuration: z.number().optional(),
   context: z.unknown(),
   durationMs: z.number(),
@@ -404,7 +430,7 @@ export const V3TaskRunExecution = z.object({
   attempt: V3TaskRunExecutionAttempt,
   run: V3TaskRun.and(
     z.object({
-      traceContext: z.record(z.unknown()).optional(),
+      traceContext: z.record(z.string(), z.unknown()).optional(),
     })
   ),
   queue: TaskRunExecutionQueue,
@@ -518,7 +544,7 @@ export const TaskRunSuccessfulExecutionResult = z.object({
 
 export type TaskRunSuccessfulExecutionResult = z.infer<typeof TaskRunSuccessfulExecutionResult>;
 
-export const TaskRunExecutionResult = z.discriminatedUnion("ok", [
+export const TaskRunExecutionResult = discriminatedUnion("ok", [
   TaskRunSuccessfulExecutionResult,
   TaskRunFailedExecutionResult,
 ]);

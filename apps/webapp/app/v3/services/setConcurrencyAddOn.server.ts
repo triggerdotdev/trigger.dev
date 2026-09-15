@@ -4,7 +4,7 @@ import { tryCatch } from "@trigger.dev/core";
 import { setConcurrencyAddOn } from "~/services/platform.v3.server";
 import assertNever from "assert-never";
 import { sendToPlain } from "~/utils/plain.server";
-import { uiComponent } from "@team-plain/typescript-sdk";
+import { uiComponent } from "@team-plain/ui-components";
 
 type Input = {
   userId: string;
@@ -100,12 +100,14 @@ export class SetConcurrencyAddOnService extends BaseService {
           where: { id: organizationId },
         });
 
-        const [error, result] = await tryCatch(
+        const [error, _result] = await tryCatch(
           sendToPlain({
             userId,
             email: user.email,
             name: user.name ?? user.displayName ?? user.email,
             title: `Concurrency quota request: ${totalExtraConcurrency}`,
+            organizationId,
+            organizationName: organization?.title,
             components: [
               uiComponent.text({
                 text: `Org: ${organization?.title} (${organizationId})`,

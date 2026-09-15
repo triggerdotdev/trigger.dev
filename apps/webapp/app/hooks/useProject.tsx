@@ -24,5 +24,6 @@ export function useProject(matches?: UIMatch[]) {
 }
 
 export const useProjectChanged = (action: (org: MatchedProject | undefined) => void) => {
-  useChanged(useOptionalProject, action);
+  const project = useOptionalProject();
+  useChanged(project, action);
 };

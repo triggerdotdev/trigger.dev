@@ -1,3 +1,4 @@
+import { scheduleWhereClause } from "~/models/schedules.server";
 import { BaseService } from "./baseService.server";
 
 type Options = {
@@ -28,9 +29,7 @@ export class DeleteTaskScheduleService extends BaseService {
 
     try {
       const schedule = await this._prisma.taskSchedule.findFirst({
-        where: {
-          friendlyId,
-        },
+        where: scheduleWhereClause(projectId, friendlyId),
       });
 
       if (!schedule) {

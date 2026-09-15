@@ -1,0 +1,20 @@
+-- CreateTable
+CREATE TABLE "public"."LogsSearchProjectorCheckpoint" (
+    "id" BIGSERIAL NOT NULL,
+    "projectorId" TEXT NOT NULL,
+    "mode" TEXT NOT NULL,
+    "windowStart" TIMESTAMP(3) NOT NULL,
+    "windowEnd" TIMESTAMP(3) NOT NULL,
+    "queryId" TEXT,
+    "completedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "LogsSearchProjectorCheckpoint_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE UNIQUE INDEX "LogsSearchProjectorCheckpoint_projectorId_mode_windowStart__key"
+ON "public"."LogsSearchProjectorCheckpoint"("projectorId", "mode", "windowStart", "windowEnd");
+
+-- CreateIndex
+CREATE INDEX "LogsSearchProjectorCheckpoint_projectorId_mode_windowEnd_idx"
+ON "public"."LogsSearchProjectorCheckpoint"("projectorId", "mode", "windowEnd" DESC);

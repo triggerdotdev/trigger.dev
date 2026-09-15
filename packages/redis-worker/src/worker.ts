@@ -1,25 +1,29 @@
-import { createRedisClient, Redis, type RedisOptions } from "@internal/redis";
+import { type Redis, createRedisClient, type RedisOptions } from "@internal/redis";
 import {
-  Attributes,
-  Histogram,
-  Meter,
+  type Attributes,
+  type Histogram,
+  type Meter,
+  type ObservableResult,
+  type Tracer,
   metrics,
-  ObservableResult,
   SpanKind,
   startSpan,
   trace,
-  Tracer,
   ValueType,
 } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
-import { calculateNextRetryDelay } from "@trigger.dev/core/v3";
+import {
+  calculateNextRetryDelay,
+  type AnyZodSchema,
+  type inferZodSchemaOutput,
+} from "@trigger.dev/core/v3";
 import { type RetryOptions } from "@trigger.dev/core/v3/schemas";
 import { shutdownManager } from "@trigger.dev/core/v3/serverOnly";
 import { nanoid } from "nanoid";
 import pLimit from "p-limit";
-import { z } from "zod";
-import { AnyQueueItem, SimpleQueue } from "./queue.js";
-import { parseExpression } from "cron-parser";
+import { z } from "zod/v4";
+import { type AnyQueueItem, SimpleQueue } from "./queue.js";
+import cronParser from "cron-parser";
 
 export const CronSchema = z.object({
   cron: z.string(),
@@ -36,7 +40,7 @@ export type BatchConfig = {
 
 export type WorkerCatalog = {
   [key: string]: {
-    schema: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
+    schema: AnyZodSchema;
     visibilityTimeoutMs: number;
     retry?: RetryOptions;
     cron?: string;
@@ -56,7 +60,7 @@ type QueueCatalogFromWorkerCatalog<Catalog extends WorkerCatalog> = {
 
 export type JobHandlerParams<Catalog extends WorkerCatalog, K extends keyof Catalog> = {
   id: string;
-  payload: z.infer<Catalog[K]["schema"]>;
+  payload: inferZodSchemaOutput<Catalog[K]["schema"]>;
   visibilityTimeoutMs: number;
   attempt: number;
   deduplicationKey?: string;
@@ -66,10 +70,11 @@ export type JobHandler<Catalog extends WorkerCatalog, K extends keyof Catalog> =
   params: JobHandlerParams<Catalog, K>
 ) => Promise<void>;
 
-type JobHandlerFor<Catalog extends WorkerCatalog, K extends keyof Catalog> =
-  Catalog[K] extends { batch: BatchConfig }
-    ? (items: Array<JobHandlerParams<Catalog, K>>) => Promise<void>
-    : (params: JobHandlerParams<Catalog, K>) => Promise<void>;
+type JobHandlerFor<Catalog extends WorkerCatalog, K extends keyof Catalog> = Catalog[K] extends {
+  batch: BatchConfig;
+}
+  ? (items: Array<JobHandlerParams<Catalog, K>>) => Promise<void>
+  : (params: JobHandlerParams<Catalog, K>) => Promise<void>;
 
 export type WorkerConcurrencyOptions = {
   workers?: number;
@@ -139,7 +144,7 @@ class Worker<TCatalog extends WorkerCatalog> {
   > = new Map();
 
   constructor(private options: WorkerOptions<TCatalog>) {
-    this.logger = options.logger ?? new Logger("Worker", "debug");
+    this.logger = options.logger ?? new Logger("Worker", "debug", ["item"]);
     this.tracer = options.tracer ?? trace.getTracer(options.name);
     this.meter = options.meter ?? metrics.getMeter(options.name);
 
@@ -205,6 +210,17 @@ class Worker<TCatalog extends WorkerCatalog> {
     concurrencyLimitPendingObservableGauge.addCallback(
       this.#updateConcurrencyLimitPendingMetric.bind(this)
     );
+
+    const oldestMessageAgeObservableGauge = this.meter.createObservableGauge(
+      "redis_worker.queue.oldest_message_age",
+      {
+        description: "Age of the oldest overdue message in the queue",
+        unit: "ms",
+        valueType: ValueType.INT,
+      }
+    );
+
+    oldestMessageAgeObservableGauge.addCallback(this.#updateOldestMessageAgeMetric.bind(this));
   }
 
   async #updateQueueSizeMetric(observableResult: ObservableResult<Attributes>) {
@@ -218,6 +234,14 @@ class Worker<TCatalog extends WorkerCatalog> {
   async #updateDeadLetterQueueSizeMetric(observableResult: ObservableResult<Attributes>) {
     const deadLetterQueueSize = await this.queue.sizeOfDeadLetterQueue();
     observableResult.observe(deadLetterQueueSize, {
+      worker_name: this.options.name,
+    });
+  }
+
+  async #updateOldestMessageAgeMetric(observableResult: ObservableResult<Attributes>) {
+    const oldestMessageAge = await this.queue.oldestMessageAge();
+
+    observableResult.observe(oldestMessageAge, {
       worker_name: this.options.name,
     });
   }
@@ -291,7 +315,7 @@ class Worker<TCatalog extends WorkerCatalog> {
   }: {
     id?: string;
     job: K;
-    payload: z.infer<TCatalog[K]["schema"]>;
+    payload: inferZodSchemaOutput<TCatalog[K]["schema"]>;
     visibilityTimeoutMs?: number;
     availableAt?: Date;
     cancellationKey?: string;
@@ -353,7 +377,7 @@ class Worker<TCatalog extends WorkerCatalog> {
   }: {
     id: string;
     job: K;
-    payload: z.infer<TCatalog[K]["schema"]>;
+    payload: inferZodSchemaOutput<TCatalog[K]["schema"]>;
     visibilityTimeoutMs?: number;
     availableAt?: Date;
   }) {
@@ -583,15 +607,16 @@ class Worker<TCatalog extends WorkerCatalog> {
               await this.flushBatch(queueItem.job, workerId, limiter);
             }
           } else {
-            limiter(() =>
-              this.processItem(queueItem, items.length, workerId, limiter)
-            ).catch((err) => {
-              this.logger.error("Unhandled error in processItem:", {
-                error: err,
-                workerId,
-                item,
-              });
-            });
+            limiter(() => this.processItem(queueItem, items.length, workerId, limiter)).catch(
+              (err) => {
+                this.logger.error("Unhandled error in processItem:", {
+                  error: err,
+                  workerId,
+                  id: queueItem.id,
+                  job: queueItem.job,
+                });
+              }
+            );
           }
         }
       } catch (error) {
@@ -785,13 +810,25 @@ class Worker<TCatalog extends WorkerCatalog> {
             };
 
             if (!shouldLogError) {
-              this.logger.info(`Worker batch item reached max attempts. Moving to DLQ.`, dlqLogAttributes);
+              this.logger.info(
+                `Worker batch item reached max attempts. Moving to DLQ.`,
+                dlqLogAttributes
+              );
             } else if (errorLogLevel === "warn") {
-              this.logger.warn(`Worker batch item reached max attempts. Moving to DLQ.`, dlqLogAttributes);
+              this.logger.warn(
+                `Worker batch item reached max attempts. Moving to DLQ.`,
+                dlqLogAttributes
+              );
             } else if (errorLogLevel === "info") {
-              this.logger.info(`Worker batch item reached max attempts. Moving to DLQ.`, dlqLogAttributes);
+              this.logger.info(
+                `Worker batch item reached max attempts. Moving to DLQ.`,
+                dlqLogAttributes
+              );
             } else {
-              this.logger.error(`Worker batch item reached max attempts. Moving to DLQ.`, dlqLogAttributes);
+              this.logger.error(
+                `Worker batch item reached max attempts. Moving to DLQ.`,
+                dlqLogAttributes
+              );
             }
 
             await this.queue.moveToDeadLetterQueue(item.id, errorMessage);
@@ -901,11 +938,12 @@ class Worker<TCatalog extends WorkerCatalog> {
       const errorLogLevel =
         error && typeof error === "object" && "logLevel" in error ? error.logLevel : undefined;
 
+      // Never include the raw item/payload here: it is job data that may be
+      // customer-controlled. It is retrievable via `getJob(id)` if needed for triage.
       const logAttributes = {
         name: this.options.name,
         id,
         job,
-        item,
         visibilityTimeoutMs,
         error,
         errorMessage,
@@ -962,7 +1000,6 @@ class Worker<TCatalog extends WorkerCatalog> {
           name: this.options.name,
           id,
           job,
-          item,
           retryDate,
           retryDelay,
           visibilityTimeoutMs,
@@ -983,7 +1020,6 @@ class Worker<TCatalog extends WorkerCatalog> {
             name: this.options.name,
             id,
             job,
-            item,
             visibilityTimeoutMs,
             error: requeueError,
           }
@@ -1056,11 +1092,13 @@ class Worker<TCatalog extends WorkerCatalog> {
     const enqueued = await this.enqueueOnce({
       id: identifier,
       job,
+      // job is a runtime string here, so K widens and the payload can't match a
+      // single catalog entry statically; the shape is correct for the cron job.
       payload: {
         timestamp: scheduledAt.getTime(),
         lastTimestamp: lastTimestamp?.getTime(),
         cron,
-      },
+      } as inferZodSchemaOutput<TCatalog[string]["schema"]>,
       availableAt,
     });
 
@@ -1098,9 +1136,10 @@ class Worker<TCatalog extends WorkerCatalog> {
   }
 
   private calculateNextScheduledAt(cron: string, lastTimestamp?: Date): Date {
-    const scheduledAt = parseExpression(cron, {
-      currentDate: lastTimestamp,
-    })
+    const scheduledAt = cronParser
+      .parseExpression(cron, {
+        currentDate: lastTimestamp,
+      })
       .next()
       .toDate();
 
@@ -1165,16 +1204,26 @@ class Worker<TCatalog extends WorkerCatalog> {
     this.isShuttingDown = true;
     this.logger.log("Shutting down worker loops...", { signal });
 
-    // Wait for all worker loops to finish.
-    await Promise.race([
-      Promise.all(this.workerLoops),
-      Worker.delay(this.shutdownTimeoutMs).then(() => {
+    // Wait for all worker loops to finish, retaining ownership of the deadline timer so the
+    // losing timeout cannot keep the process alive after a prompt shutdown.
+    let shutdownDeadline: ReturnType<typeof setTimeout> | undefined;
+    const deadlinePromise = new Promise<void>((resolve) => {
+      shutdownDeadline = setTimeout(() => {
         this.logger.error("Worker shutdown timed out", {
           signal,
           shutdownTimeoutMs: this.shutdownTimeoutMs,
         });
-      }),
-    ]);
+        resolve();
+      }, this.shutdownTimeoutMs);
+    });
+
+    try {
+      await Promise.race([Promise.all(this.workerLoops), deadlinePromise]);
+    } finally {
+      if (shutdownDeadline) {
+        clearTimeout(shutdownDeadline);
+      }
+    }
 
     await this.subscriber?.unsubscribe();
     await this.subscriber?.quit();

@@ -72,10 +72,15 @@ export class DockerWorkloadManager implements WorkloadManager {
       `TRIGGER_DEQUEUED_AT_MS=${opts.dequeuedAt.getTime()}`,
       `TRIGGER_POD_SCHEDULED_AT_MS=${Date.now()}`,
       `TRIGGER_ENV_ID=${opts.envId}`,
-      `TRIGGER_DEPLOYMENT_ID=${opts.deploymentFriendlyId}`,
+      `TRIGGER_DEPLOYMENT_ID=${opts.deploymentToken ?? opts.deploymentFriendlyId}`,
+      // Plain friendlyId for telemetry (worker.id), so it isn't the opaque token in DEPLOYMENT_ID.
+      `TRIGGER_DEPLOYMENT_FRIENDLY_ID=${opts.deploymentFriendlyId}`,
       `TRIGGER_DEPLOYMENT_VERSION=${opts.deploymentVersion}`,
       `TRIGGER_RUN_ID=${opts.runFriendlyId}`,
       `TRIGGER_SNAPSHOT_ID=${opts.snapshotFriendlyId}`,
+      ...(opts.snapshotRoute
+        ? [`TRIGGER_SNAPSHOT_ROUTE=${JSON.stringify(opts.snapshotRoute)}`]
+        : []),
       `TRIGGER_SUPERVISOR_API_PROTOCOL=${this.opts.workloadApiProtocol}`,
       `TRIGGER_SUPERVISOR_API_PORT=${this.opts.workloadApiPort}`,
       `TRIGGER_SUPERVISOR_API_DOMAIN=${this.opts.workloadApiDomain ?? getDockerHostDomain()}`,
@@ -84,6 +89,7 @@ export class DockerWorkloadManager implements WorkloadManager {
       `TRIGGER_MACHINE_CPU=${opts.machine.cpu}`,
       `TRIGGER_MACHINE_MEMORY=${opts.machine.memory}`,
       `PRETTY_LOGS=${env.RUNNER_PRETTY_LOGS}`,
+      `TRIGGER_SEND_RUN_DEBUG_LOGS=${env.SEND_RUN_DEBUG_LOGS}`,
     ];
 
     if (this.opts.warmStartUrl) {

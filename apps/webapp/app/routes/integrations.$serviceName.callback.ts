@@ -1,6 +1,5 @@
 import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import z from "zod";
-import { redirectBackWithErrorMessage } from "~/models/message.server";
 import { OrgIntegrationRepository } from "~/models/orgIntegration.server";
 import { requireUserId } from "~/services/session.server";
 import { requestUrl } from "~/utils/requestUrl.server";
@@ -45,22 +44,35 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   const parsedParams = ParamsSchema.safeParse(params);
 
-  if (!parsedParams.success) {
+  if (!parsedParams.success || parsedParams.data.serviceName !== "slack") {
     throw new Response("Invalid params", { status: 400 });
+  }
+
+  const oauthState = await OrgIntegrationRepository.consumeSlackOAuthState(
+    request,
+    parsedSearchParams.data.state,
+    userId
+  );
+  if (!oauthState) {
+    throw new Response("Invalid state", { status: 400 });
   }
 
   const service = new CreateOrgIntegrationService();
 
   const integration = await service.call(
     userId,
-    parsedSearchParams.data.state,
-    parsedParams.data.serviceName,
+    oauthState.organizationId,
+    oauthState.service,
     parsedSearchParams.data.code
   );
 
   if (integration) {
-    return await OrgIntegrationRepository.redirectAfterAuth(request);
+    return await OrgIntegrationRepository.redirectAfterAuth(request, oauthState.redirectTo);
   }
 
-  return redirectBackWithErrorMessage(request, "Failed to connect to the service");
+  return await OrgIntegrationRepository.redirectAfterAuth(
+    request,
+    oauthState.redirectTo,
+    "Failed to connect to the service"
+  );
 }

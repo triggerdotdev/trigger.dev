@@ -2,14 +2,12 @@ import { json } from "@remix-run/server-runtime";
 import { BatchId } from "@trigger.dev/core/v3/isomorphic";
 import { z } from "zod";
 import { $replica } from "~/db.server";
-import {
-  anyResource,
-  createLoaderApiRoute,
-} from "~/services/routeBuilders/apiBuilder.server";
+import { anyResource, createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.server";
 import { buildSyntheticTraceBody } from "~/v3/mollifier/syntheticApiResponses.server";
+import { runStore } from "~/v3/runStore.server";
 
 const ParamsSchema = z.object({
   runId: z.string(), // This is the run friendly ID
@@ -23,12 +21,13 @@ const ParamsSchema = z.object({
 // pass-through control case in scripts/mollifier-api-parity.sh).
 type ResolvedRun =
   | { source: "pg"; run: Awaited<ReturnType<typeof findPgRun>> & {} }
-  | { source: "buffer"; run: NonNullable<Awaited<ReturnType<typeof findRunByIdWithMollifierFallback>>> };
+  | {
+      source: "buffer";
+      run: NonNullable<Awaited<ReturnType<typeof findRunByIdWithMollifierFallback>>>;
+    };
 
 async function findPgRun(runId: string, environmentId: string) {
-  return $replica.taskRun.findFirst({
-    where: { friendlyId: runId, runtimeEnvironmentId: environmentId },
-  });
+  return runStore.findRun({ friendlyId: runId, runtimeEnvironmentId: environmentId }, $replica);
 }
 
 export const loader = createLoaderApiRoute(
@@ -94,10 +93,11 @@ export const loader = createLoaderApiRoute(
       authentication.environment.organization.id
     );
 
-    const traceSummary = await eventRepository.getTraceDetailedSummary(
+    const traceSummary = await eventRepository.getTraceDetailedSubtreeSummary(
       getTaskEventStoreTableForRun(run),
       authentication.environment.id,
       run.traceId,
+      run.spanId,
       run.createdAt,
       run.completedAt ?? undefined
     );

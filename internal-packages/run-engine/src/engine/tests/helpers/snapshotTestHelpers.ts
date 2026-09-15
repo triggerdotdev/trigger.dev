@@ -1,5 +1,5 @@
 import { generateFriendlyId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
-import {
+import type {
   PrismaClient,
   TaskRunExecutionSnapshot,
   TaskRunExecutionStatus,
@@ -12,7 +12,7 @@ import type { AuthenticatedEnvironment } from "../setup.js";
  * Generates a large output string of the specified size in KB.
  * The output is a valid JSON string to simulate realistic waitpoint output.
  */
-export function generateLargeOutput(sizeKB: number): string {
+function generateLargeOutput(sizeKB: number): string {
   if (sizeKB <= 0) return JSON.stringify({ data: "" });
 
   // Create a string that's approximately the target size
@@ -29,7 +29,7 @@ export function generateLargeOutput(sizeKB: number): string {
 /**
  * Creates waitpoints with specified output sizes for testing.
  */
-export async function createWaitpointsWithOutput(
+async function createWaitpointsWithOutput(
   prisma: PrismaClient,
   count: number,
   outputSizeKB: number,
@@ -172,7 +172,7 @@ function getRunStatusFromExecutionStatus(
 /**
  * Creates a checkpoint for testing suspended snapshots.
  */
-export async function createTestCheckpoint(
+async function createTestCheckpoint(
   prisma: PrismaClient,
   {
     runId,
@@ -294,7 +294,9 @@ export async function setupTestScenario(
     }
 
     // Get the waitpoint IDs that should be "completed" at this snapshot
-    const completedWaitpointIds = waitpoints.slice(0, config.completedWaitpointCount).map((w) => w.id);
+    const completedWaitpointIds = waitpoints
+      .slice(0, config.completedWaitpointCount)
+      .map((w) => w.id);
 
     const snapshot = await createTestSnapshot(prisma, {
       runId: run.id,

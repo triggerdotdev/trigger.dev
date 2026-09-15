@@ -2,7 +2,7 @@ export function isValidRegex(regex: string) {
   try {
     new RegExp(regex);
     return true;
-  } catch (err) {
+  } catch (_err) {
     return false;
   }
 }

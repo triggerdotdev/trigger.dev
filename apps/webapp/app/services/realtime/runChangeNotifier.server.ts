@@ -1,7 +1,8 @@
-import { createRedisClient, RedisClient, RedisWithClusterOptions } from "~/redis.server";
+import type { RedisClient, RedisWithClusterOptions } from "~/redis.server";
+import { createRedisClient } from "~/redis.server";
 import { logger } from "../logger.server";
 
-export const CHANGE_RECORD_VERSION = 1;
+const CHANGE_RECORD_VERSION = 1;
 
 /**
  * A self-describing run-change fact published once to the run's environment channel; row state is
@@ -225,7 +226,13 @@ export class RunChangeNotifier {
 
   #ensurePublisher(): RedisClient {
     if (!this.#publisher) {
-      this.#publisher = createRedisClient(`${this.#connectionName}:pub`, this.options.redis);
+      // Publishes are fire-and-forget with a consumer-side backstop, so a dropped publish is
+      // latency-only. Cap retries (vs ioredis's default 20) so a pub/sub outage rejects publishes
+      // after ~1 reconnect cycle instead of buffering them in memory across the fleet.
+      this.#publisher = createRedisClient(`${this.#connectionName}:pub`, {
+        ...this.options.redis,
+        maxRetriesPerRequest: 1,
+      });
     }
     return this.#publisher;
   }

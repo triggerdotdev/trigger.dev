@@ -32,14 +32,14 @@ export function formatDuration(ms: number): string {
  * Parse provider metadata from a JSON string.
  * Handles Anthropic, Azure, OpenAI, Gateway, and OpenRouter formats.
  */
-export function parseProviderMetadata(
-  raw: unknown
-): {
-  serviceTier?: string;
-  resolvedProvider?: string;
-  gatewayCost?: string;
-  responseId?: string;
-} | undefined {
+export function parseProviderMetadata(raw: unknown):
+  | {
+      serviceTier?: string;
+      resolvedProvider?: string;
+      gatewayCost?: string;
+      responseId?: string;
+    }
+  | undefined {
   if (typeof raw !== "string") return undefined;
   try {
     const parsed = JSON.parse(raw) as Record<string, unknown>;

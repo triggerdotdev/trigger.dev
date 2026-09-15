@@ -1,9 +1,9 @@
-import {
+import type {
   DebugLogPropertiesInput,
   WorkloadDebugLogRequestBody,
   WorkloadHttpClient,
 } from "@trigger.dev/core/v3/runEngineWorker";
-import { RunnerEnv } from "./env.js";
+import type { RunnerEnv } from "./env.js";
 import { flattenAttributes } from "@trigger.dev/core/v3";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 
@@ -53,6 +53,11 @@ export class ManagedRunLogger implements RunLogger {
 
     if (print) {
       this.logger.log(message, mergedProperties);
+    }
+
+    // Skip the per-log-line POST to the supervisor unless explicitly enabled
+    if (!this.env.TRIGGER_SEND_RUN_DEBUG_LOGS) {
+      return;
     }
 
     const flattenedProperties = flattenAttributes(

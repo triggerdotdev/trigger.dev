@@ -1,10 +1,12 @@
-import { Tracer } from "@opentelemetry/api";
+import type { Tracer } from "@opentelemetry/api";
 import type { PrismaClientOrTransaction } from "@trigger.dev/database";
-import { RunsReplicationService } from "~/services/runsReplicationService.server";
+import type { RunsReplicationService } from "~/services/runsReplicationService.server";
+import { runStore } from "~/v3/runStore.server";
 import { startSpan } from "~/v3/tracing.server";
 import { FINAL_RUN_STATUSES } from "../v3/taskStatus";
 import { Logger } from "@trigger.dev/core/logger";
 
+import { boundedIn } from "@trigger.dev/database";
 export class RunsBackfillerService {
   private readonly prisma: PrismaClientOrTransaction;
   private readonly runsReplicationInstance: RunsReplicationService;
@@ -40,22 +42,25 @@ export class RunsBackfillerService {
       span.setAttribute("cursor", cursor ?? "");
       span.setAttribute("batchSize", batchSize ?? 0);
 
-      const runs = await this.prisma.taskRun.findMany({
-        where: {
-          createdAt: {
-            gte: from,
-            lte: to,
+      const runs = await runStore.findRuns(
+        {
+          where: {
+            createdAt: {
+              gte: from,
+              lte: to,
+            },
+            status: {
+              in: boundedIn(FINAL_RUN_STATUSES),
+            },
+            ...(cursor ? { id: { gt: cursor } } : {}),
           },
-          status: {
-            in: FINAL_RUN_STATUSES,
+          orderBy: {
+            id: "asc",
           },
-          ...(cursor ? { id: { gt: cursor } } : {}),
+          take: batchSize,
         },
-        orderBy: {
-          id: "asc",
-        },
-        take: batchSize,
-      });
+        this.prisma
+      );
 
       if (runs.length === 0) {
         this.logger.info("No runs to backfill", { from, to, cursor });

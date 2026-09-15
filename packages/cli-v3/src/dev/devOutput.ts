@@ -1,13 +1,15 @@
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
-import { ResolvedConfig } from "@trigger.dev/core/v3/build";
+import { DEFAULT_DEV_BRANCH } from "@trigger.dev/core/v3/utils/gitBranch";
+import type { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import {
   createTaskMetadataFailedErrorStack,
   DuplicateTaskIdsError,
   TaskIndexingImportError,
   TaskMetadataParseError,
 } from "@trigger.dev/core/v3/errors";
-import { TaskRunError, TaskRunErrorCodes } from "@trigger.dev/core/v3/schemas";
-import { DevCommandOptions } from "../commands/dev.js";
+import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
+import { TaskRunErrorCodes } from "@trigger.dev/core/v3/schemas";
+import type { DevCommandOptions } from "../commands/dev.js";
 import {
   aiHelpLink,
   chalkError,
@@ -22,22 +24,26 @@ import {
   isLinksSupported,
   prettyError,
   prettyPrintDate,
+  prettyWarning,
 } from "../utilities/cliOutput.js";
-import { eventBus, EventBusEventArgs } from "../utilities/eventBus.js";
+import type { EventBusEventArgs } from "../utilities/eventBus.js";
+import { eventBus } from "../utilities/eventBus.js";
 import { logger } from "../utilities/logger.js";
-import { Socket } from "socket.io-client";
+import type { Socket } from "socket.io-client";
 import { BundleError } from "../build/bundle.js";
 import { analyzeWorker } from "../utilities/analyze.js";
+import { SCHEDULE_PLAN_LIMIT_HEADER, SchedulePlanLimitError } from "./errors.js";
 
 export type DevOutputOptions = {
   name: string | undefined;
+  branch?: string;
   dashboardUrl: string;
   config: ResolvedConfig;
   args: DevCommandOptions;
 };
 
 export function startDevOutput(options: DevOutputOptions) {
-  const { dashboardUrl, config } = options;
+  const { branch, dashboardUrl, config } = options;
 
   const baseUrl = `${dashboardUrl}/projects/v3/${config.project}`;
 
@@ -75,6 +81,13 @@ export function startDevOutput(options: DevOutputOptions) {
   ) => {
     analyzeWorker(worker, options.args.analyze, options.args.disableWarnings);
 
+    if (!options.args.disableWarnings && worker.warnings.length > 0) {
+      prettyWarning(
+        "Schedule policy applied",
+        worker.warnings.map((warning) => warning.message).join("\n")
+      );
+    }
+
     const logParts: string[] = [];
 
     const testUrl = `${dashboardUrl}/projects/v3/${config.project}/test?environment=dev`;
@@ -90,7 +103,9 @@ export function startDevOutput(options: DevOutputOptions) {
     const runsLink = chalkLink(cliLink("View runs", runsUrl));
 
     const runtime = chalkGrey(`[${worker.build.runtime}]`);
-    const workerStarted = chalkGrey("Local worker ready");
+    const workerStarted = chalkGrey(
+      `Local worker ready on branch: ${branch ?? DEFAULT_DEV_BRANCH}`
+    );
     const workerVersion = chalkWorker(worker.serverWorker!.version);
 
     logParts.push(workerStarted, runtime, arrow, workerVersion);
@@ -152,6 +167,8 @@ export function startDevOutput(options: DevOutputOptions) {
         project: config.project,
         query: `Duplicate task ids: ${error.collisions.map((c) => c.id).join(", ")}`,
       });
+    } else if (error instanceof SchedulePlanLimitError) {
+      prettyError(SCHEDULE_PLAN_LIMIT_HEADER, error.message);
     } else {
       const errorText = error instanceof Error ? error.message : "Unknown error";
       const stack = error instanceof Error ? error.stack : undefined;
@@ -194,8 +211,8 @@ export function startDevOutput(options: DevOutputOptions) {
       !completion.ok && completion.skippedRetrying
         ? " (retrying skipped)"
         : !completion.ok && completion.retry !== undefined
-        ? ` (retrying in ${completion.retry.delay}ms)`
-        : ""
+          ? ` (retrying in ${completion.retry.delay}ms)`
+          : ""
     );
 
     const resultText = !completion.ok
@@ -209,8 +226,8 @@ export function startDevOutput(options: DevOutputOptions) {
     const errorText = !completion.ok
       ? formatErrorLog(completion.error)
       : "retry" in completion
-      ? `retry in ${completion.retry}ms`
-      : "";
+        ? `retry in ${completion.retry}ms`
+        : "";
 
     const elapsedText = chalkGrey(
       `(${formatDurationMilliseconds(durationMs, { style: "short" })})`

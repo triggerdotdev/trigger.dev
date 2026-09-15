@@ -1,5 +1,5 @@
 import { EnvelopeIcon } from "@heroicons/react/24/solid";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import crypto from "node:crypto";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -11,6 +11,9 @@ import { TextLink } from "~/components/primitives/TextLink";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { rootPath } from "~/utils/pathBuilder";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Unsubscribe");
 
 export const ParamsSchema = z.object({
   userId: z.string(),
@@ -61,7 +64,7 @@ export default function Page() {
 
   return (
     <AppContainer>
-      <MainCenteredContainer className="max-w-[22rem]">
+      <MainCenteredContainer className="max-w-88">
         {result.success ? (
           <div>
             <FormTitle

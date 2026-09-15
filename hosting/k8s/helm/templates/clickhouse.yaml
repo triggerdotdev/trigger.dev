@@ -1,0 +1,242 @@
+{{- if .Values.clickhouse.deploy }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "trigger-v4.fullname" . }}-clickhouse-config
+  labels:
+    {{- $component := "clickhouse" }}
+    {{- include "trigger-v4.componentLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
+data:
+  {{- if not (hasKey .Values.clickhouse.configdFiles "data-paths.xml") }}
+  data-paths.xml: |
+    {{- include "trigger-v4.clickhouse.dataPathsConfig" . | nindent 4 }}
+  {{- end }}
+  {{- range $filename, $content := .Values.clickhouse.configdFiles }}
+  {{ $filename }}: |
+    {{- $content | nindent 4 }}
+  {{- end }}
+---
+{{- /* Reuse an existing data PVC instead of creating one via
+       volumeClaimTemplates. Set explicitly through persistence.existingClaim,
+       or detected automatically: upgrades from chart versions that bundled
+       the Bitnami subchart leave their PVC behind under the old name, and
+       adopting it preserves all ClickHouse data with no manual migration.
+       (lookup returns nothing during template/dry-run rendering; set
+       persistence.existingClaim explicitly when pre-rendering manifests,
+       e.g. with GitOps tools.) */}}
+{{- $existingClaim := .Values.clickhouse.persistence.existingClaim }}
+{{- if and (not $existingClaim) .Values.clickhouse.persistence.enabled }}
+{{- $legacyName := printf "data-%s-clickhouse-shard0-0" .Release.Name }}
+{{- if lookup "v1" "PersistentVolumeClaim" .Release.Namespace $legacyName }}
+{{- $existingClaim = $legacyName }}
+{{- end }}
+{{- end }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "trigger-v4.fullname" . }}-clickhouse
+  labels:
+    {{- $component := "clickhouse" }}
+    {{- include "trigger-v4.componentLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
+spec:
+  replicas: 1
+  serviceName: {{ include "trigger-v4.fullname" . }}-clickhouse
+  selector:
+    matchLabels:
+      {{- include "trigger-v4.componentSelectorLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ printf "%s\n%s" (include "trigger-v4.clickhouse.dataPathsConfig" .) (.Values.clickhouse.configdFiles | toYaml) | sha256sum }}
+        {{- /* Restart on pinned-password changes; when the password is
+               auto-generated it lives in the retained datastore secret and
+               never rotates on upgrade, so there is nothing to hash. */}}
+        {{- if .Values.clickhouse.auth.password }}
+        checksum/secret: {{ .Values.clickhouse.auth.password | sha256sum }}
+        {{- end }}
+        {{- with .Values.clickhouse.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "trigger-v4.componentSelectorLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 8 }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.clickhouse.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- /* Adopting a volume from the Bitnami-based chart (auto-detected or an
+             explicit existingClaim) means the data is owned by the old uid. On
+             storage where fsGroup can't relabel it (hostPath, NFS, local-path),
+             the non-root server can't read it, so run the chown init container
+             automatically. Fresh installs create their own data and skip it. */}}
+      {{- if or .Values.clickhouse.volumePermissions.enabled $existingClaim }}
+      initContainers:
+        - name: volume-permissions
+          image: "{{ .Values.global.imageRegistry | default .Values.clickhouse.volumePermissions.image.registry }}/{{ .Values.clickhouse.volumePermissions.image.repository }}:{{ .Values.clickhouse.volumePermissions.image.tag }}"
+          imagePullPolicy: {{ .Values.clickhouse.volumePermissions.image.pullPolicy }}
+          {{- $chownUser := .Values.clickhouse.securityContext.runAsUser | default 101 }}
+          {{- $chownGroup := .Values.clickhouse.securityContext.runAsGroup | default 101 }}
+          {{- /* Idempotent: skip the recursive chown when the volume root is already
+                 owned by the run-as user, so it doesn't re-walk the whole database on
+                 every restart (only the first mount after adoption pays the cost). */}}
+          command: ["sh", "-c", "test \"$(stat -c %u /var/lib/clickhouse)\" = \"{{ $chownUser }}\" || chown -R {{ $chownUser }}:{{ $chownGroup }} /var/lib/clickhouse"]
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/clickhouse
+      {{- end }}
+      containers:
+        - name: clickhouse
+          {{- with .Values.clickhouse.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: "{{ .Values.global.imageRegistry | default .Values.clickhouse.image.registry }}/{{ .Values.clickhouse.image.repository }}:{{ .Values.clickhouse.image.tag }}{{ with .Values.clickhouse.image.digest }}@{{ . }}{{ end }}"
+          imagePullPolicy: {{ .Values.clickhouse.image.pullPolicy }}
+          env:
+            - name: CLICKHOUSE_USER
+              value: {{ .Values.clickhouse.auth.username | quote }}
+            {{- /* Same chart-managed datastore secret the webapp reads for its
+                   connection URL, so the server credential and the app's URL
+                   always match. */}}
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.clickhouse.auth.existingSecret | default (include "trigger-v4.datastore.secretName" .) }}
+                  key: {{ .Values.clickhouse.auth.existingSecretKey | default "clickhouse-admin-password" }}
+            - name: CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT
+              value: "1"
+          ports:
+            - name: http
+              containerPort: 8123
+              protocol: TCP
+            - name: native
+              containerPort: 9000
+              protocol: TCP
+          {{- if .Values.clickhouse.livenessProbe.enabled }}
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            initialDelaySeconds: {{ .Values.clickhouse.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.clickhouse.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.clickhouse.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.clickhouse.livenessProbe.failureThreshold }}
+            successThreshold: {{ .Values.clickhouse.livenessProbe.successThreshold }}
+          {{- end }}
+          {{- if .Values.clickhouse.readinessProbe.enabled }}
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            initialDelaySeconds: {{ .Values.clickhouse.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.clickhouse.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.clickhouse.readinessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.clickhouse.readinessProbe.failureThreshold }}
+            successThreshold: {{ .Values.clickhouse.readinessProbe.successThreshold }}
+          {{- end }}
+          {{- if .Values.clickhouse.startupProbe.enabled }}
+          startupProbe:
+            httpGet:
+              path: /ping
+              port: http
+            initialDelaySeconds: {{ .Values.clickhouse.startupProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.clickhouse.startupProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.clickhouse.startupProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.clickhouse.startupProbe.failureThreshold }}
+            successThreshold: {{ .Values.clickhouse.startupProbe.successThreshold }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.clickhouse.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/clickhouse
+            - name: logs
+              mountPath: /var/log/clickhouse-server
+            {{- /* Mount each override file individually: shadowing the whole
+                   config.d directory would remove the image's built-in
+                   docker_related_config.xml, which makes the server listen on
+                   0.0.0.0 instead of localhost only. */}}
+            {{- if not (hasKey .Values.clickhouse.configdFiles "data-paths.xml") }}
+            - name: config
+              mountPath: /etc/clickhouse-server/config.d/data-paths.xml
+              subPath: data-paths.xml
+            {{- end }}
+            {{- range $filename, $_ := .Values.clickhouse.configdFiles }}
+            - name: config
+              mountPath: /etc/clickhouse-server/config.d/{{ $filename }}
+              subPath: {{ $filename }}
+            {{- end }}
+      {{- with .Values.clickhouse.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.clickhouse.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.clickhouse.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "trigger-v4.fullname" . }}-clickhouse-config
+        - name: logs
+          emptyDir: {}
+        {{- if not .Values.clickhouse.persistence.enabled }}
+        - name: data
+          emptyDir: {}
+        {{- else if $existingClaim }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ $existingClaim }}
+        {{- end }}
+  {{- if and .Values.clickhouse.persistence.enabled (not $existingClaim) }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        {{- if .Values.clickhouse.persistence.retain }}
+        annotations:
+          helm.sh/resource-policy: keep
+        {{- end }}
+      spec:
+        accessModes:
+          - {{ .Values.clickhouse.persistence.accessMode }}
+        resources:
+          requests:
+            storage: {{ .Values.clickhouse.persistence.size }}
+        {{- $storageClass := .Values.clickhouse.persistence.storageClass | default .Values.global.storageClass }}
+        {{- if $storageClass }}
+        storageClassName: {{ $storageClass }}
+        {{- end }}
+  {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "trigger-v4.fullname" . }}-clickhouse
+  labels:
+    {{- $component := "clickhouse" }}
+    {{- include "trigger-v4.componentLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
+spec:
+  type: {{ .Values.clickhouse.service.type }}
+  ports:
+    - port: {{ .Values.clickhouse.service.ports.http }}
+      targetPort: http
+      protocol: TCP
+      name: http
+    - port: {{ .Values.clickhouse.service.ports.native }}
+      targetPort: native
+      protocol: TCP
+      name: native
+  selector:
+    {{- include "trigger-v4.componentSelectorLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
+{{- end }}

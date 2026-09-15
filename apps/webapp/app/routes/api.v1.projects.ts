@@ -1,27 +1,24 @@
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { GetProjectsResponseBody } from "@trigger.dev/core/v3";
+import type { GetProjectsResponseBody } from "@trigger.dev/core/v3";
 import { prisma } from "~/db.server";
-import { logger } from "~/services/logger.server";
-import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
+import { createLoaderPATApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
-export async function loader({ request }: LoaderFunctionArgs) {
-  logger.info("get projects", { url: request.url });
-
-  try {
-    const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
-
-    if (!authenticationResult) {
-      return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
-    }
+// Identity-only: lists projects across the caller's orgs, so no authorization gate.
+export const loader = createLoaderPATApiRoute(
+  { identityOnly: true },
+  async ({ authentication }) => {
+    // A token minted for one organization sees only its projects, server-side. Still intersected
+    // with the caller's membership.
+    const claimedOrganizationId = authentication.userActor?.organizationId;
 
     const projects = await prisma.project.findMany({
       where: {
         organization: {
           deletedAt: null,
+          ...(claimedOrganizationId ? { id: claimedOrganizationId } : {}),
           members: {
             some: {
-              userId: authenticationResult.userId,
+              userId: authentication.userId,
             },
           },
         },
@@ -30,6 +27,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       },
       include: {
         organization: true,
+        defaultWorkerGroup: { select: { name: true } },
       },
     });
 
@@ -43,6 +41,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       name: project.name,
       slug: project.slug,
       createdAt: project.createdAt,
+      defaultRegion: project.defaultWorkerGroup?.name ?? null,
       organization: {
         id: project.organization.id,
         title: project.organization.title,
@@ -52,9 +51,5 @@ export async function loader({ request }: LoaderFunctionArgs) {
     }));
 
     return json(result);
-  } catch (error) {
-    if (error instanceof Response) throw error;
-    logger.error("Failed to list projects", { error });
-    return json({ error: "Internal Server Error" }, { status: 500 });
   }
-}
+);

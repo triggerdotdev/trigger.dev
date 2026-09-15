@@ -22,13 +22,16 @@ export function WaitpointStatusCombo({
   );
 }
 
-export function WaitpointStatusLabel({ status }: { status: WaitpointTokenStatus }) {
+function WaitpointStatusLabel({ status }: { status: WaitpointTokenStatus }) {
   return (
-    <span className={waitpointStatusClassNameColor(status)}>{waitpointStatusTitle(status)}</span>
+    // system-mono-label: System themes uncolor the label (see tailwind.css)
+    <span className={cn("system-mono-label", waitpointStatusClassNameColor(status))}>
+      {waitpointStatusTitle(status)}
+    </span>
   );
 }
 
-export function WaitpointStatusIcon({
+function WaitpointStatusIcon({
   status,
   className,
 }: {
@@ -48,7 +51,7 @@ export function WaitpointStatusIcon({
   }
 }
 
-export function waitpointStatusClassNameColor(status: WaitpointTokenStatus): string {
+function waitpointStatusClassNameColor(status: WaitpointTokenStatus): string {
   switch (status) {
     case "WAITING":
       return "text-blue-500";

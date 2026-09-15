@@ -35,33 +35,76 @@ function parsePrBody(body) {
   const entries = [];
   if (!body) return entries;
 
-  // Deduplicate by PR number
+  // Deduplicate by entry content. A single changeset that targets multiple
+  // packages is rendered once per package section, so the same text repeats and
+  // we collapse it. But several distinct changesets from one PR have distinct
+  // text (and each still carries that PR's link), so keying on content keeps
+  // them all instead of dropping every entry after the first for that PR.
   const seen = new Set();
-  const prPattern = /\[#(\d+)\]\(([^)]+)\)/;
+
+  // A standalone dependency-bump list item, e.g. "`@trigger.dev/core@4.5.0-rc.7`"
+  // or "trigger.dev@4.5.0-rc.7". These normally appear nested under
+  // "Updated dependencies:" (and so get swallowed into that item below), but we
+  // guard against them showing up on their own too. Crucially this only matches
+  // a line that is *entirely* a package bump, so a real changeset that merely
+  // begins with a package name (e.g. "`@trigger.dev/sdk` now bundles ...") is
+  // kept.
+  const depBumpPattern = /^`?(?:@trigger\.dev\/[\w-]+|trigger\.dev)@[\w.+-]+`?$/;
+
+  // Group lines into top-level list items. A top-level item starts with a bullet
+  // at column 0 ("- " / "* "); every indented or blank line below it (sub-bullets,
+  // fenced code blocks, continuation paragraphs) belongs to that same item.
+  const items = [];
+  let current = null;
+
+  const flush = () => {
+    if (!current) return;
+    while (current.length > 1 && current[current.length - 1].trim() === "") {
+      current.pop();
+    }
+    items.push(current);
+    current = null;
+  };
 
   for (const line of body.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("- ") && !trimmed.startsWith("* ")) continue;
-
-    let text = trimmed.replace(/^[-*]\s+/, "").trim();
-    if (!text) continue;
-
-    // Skip dependency-only updates (e.g. "Updated dependencies:" or "@trigger.dev/core@4.4.2")
-    if (text.startsWith("Updated dependencies")) continue;
-    if (text.startsWith("`@trigger.dev/")) continue;
-    if (text.startsWith("@trigger.dev/")) continue;
-    if (text.startsWith("`trigger.dev@")) continue;
-    if (text.startsWith("trigger.dev@")) continue;
-
-    const prMatch = trimmed.match(prPattern);
-    if (prMatch) {
-      const prNumber = prMatch[1];
-      if (seen.has(prNumber)) continue;
-      seen.add(prNumber);
+    const isTopLevelBullet = /^[-*]\s+/.test(line);
+    if (isTopLevelBullet) {
+      flush();
+      current = [line];
+    } else if (current) {
+      if (line.trim() === "" || /^\s/.test(line)) {
+        current.push(line);
+      } else {
+        // A non-indented, non-blank, non-bullet line (heading or prose) ends the item
+        flush();
+      }
     }
+  }
+  flush();
 
-    // Categorize
-    const lower = text.toLowerCase();
+  for (const itemLines of items) {
+    const headLine = itemLines[0].replace(/^[-*]\s+/, "").trim();
+    if (!headLine) continue;
+
+    // Skip dependency-only updates
+    if (headLine.startsWith("Updated dependencies")) continue;
+    if (depBumpPattern.test(headLine)) continue;
+
+    // Reconstruct the full item: head line + dedented continuation lines, so
+    // code blocks and sub-bullets survive. Continuation under a "-   " item is
+    // indented 4 spaces; strip up to 4 to bring it back to the base level.
+    const continuation = itemLines.slice(1).map((l) => l.replace(/^ {1,4}/, ""));
+    const text = [headLine, ...continuation].join("\n").replace(/\s+$/, "");
+
+    // Deduplicate on the full entry text (which embeds the PR link). The same
+    // changeset echoed across package sections collapses to one, while multiple
+    // distinct changesets from a single PR are each preserved.
+    const dedupeKey = text.replace(/\s+/g, " ").trim();
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+
+    // Categorize off the head line
+    const lower = headLine.toLowerCase();
     let type = "improvement";
     if (lower.startsWith("fix") || lower.includes("bug fix")) {
       type = "fix";
@@ -140,28 +183,8 @@ async function getPrForCommit(commitSha) {
 // --- Parse .server-changes/ files ---
 
 async function parseServerChanges() {
-  const dir = join(ROOT_DIR, ".server-changes");
   const entries = [];
-
-  let files;
-  try {
-    files = await fs.readdir(dir);
-  } catch {
-    return entries;
-  }
-
-  // Collect file info and look up commits in parallel
-  const fileData = [];
-  for (const file of files) {
-    if (!file.endsWith(".md") || file === "README.md") continue;
-
-    const filePath = join(".server-changes", file);
-    const content = await fs.readFile(join(dir, file), "utf-8");
-    const parsed = parseFrontmatter(content);
-    if (!parsed.body.trim()) continue;
-
-    fileData.push({ filePath, parsed });
-  }
+  const fileData = await getServerChangeFileData();
 
   // Look up commits for all files in parallel
   const commits = await Promise.all(fileData.map((f) => getCommitForFile(f.filePath)));
@@ -189,6 +212,98 @@ async function parseServerChanges() {
   return entries;
 }
 
+async function getServerChangeFileData() {
+  // The changesets version command deletes .server-changes before this script
+  // enhances the release PR body. We combine files still live on disk with the
+  // ones recovered from the release branch diff, deduped by filename, rather
+  // than picking one source or the other. This is additive so a partial cleanup
+  // (some files deleted, some still live) can't silently drop entries. Live
+  // files win on collision since they are the current on-disk truth.
+  const [live, deleted] = await Promise.all([
+    getLiveServerChangeFileData(),
+    getDeletedServerChangeFileDataFromReleaseBranch(),
+  ]);
+
+  const byName = new Map();
+  for (const fileData of deleted) {
+    byName.set(fileData.filePath.split("/").pop(), fileData);
+  }
+  for (const fileData of live) {
+    byName.set(fileData.filePath.split("/").pop(), fileData);
+  }
+
+  return [...byName.values()].sort((a, b) => a.filePath.localeCompare(b.filePath));
+}
+
+async function getLiveServerChangeFileData() {
+  const dir = join(ROOT_DIR, ".server-changes");
+
+  let files;
+  try {
+    files = await fs.readdir(dir);
+  } catch {
+    return [];
+  }
+
+  const fileData = [];
+  for (const file of files.sort()) {
+    if (!file.endsWith(".md") || file === "README.md") continue;
+
+    const filePath = join(".server-changes", file);
+    const content = await fs.readFile(join(dir, file), "utf-8");
+    const parsed = parseFrontmatter(content);
+    if (!parsed.body.trim()) continue;
+
+    fileData.push({ filePath, parsed });
+  }
+
+  return fileData;
+}
+
+async function getDeletedServerChangeFileDataFromReleaseBranch() {
+  const baseRef = process.env.SERVER_CHANGES_BASE_REF || "origin/main";
+  const releaseRef = process.env.SERVER_CHANGES_RELEASE_REF || "origin/changeset-release/main";
+
+  let mergeBase;
+  let deletedFiles;
+  try {
+    mergeBase = await gitExec(["merge-base", baseRef, releaseRef]);
+    deletedFiles = await gitExec([
+      "diff",
+      "--name-only",
+      "--diff-filter=D",
+      `${mergeBase}..${releaseRef}`,
+      "--",
+      ".server-changes",
+    ]);
+  } catch (err) {
+    console.error(
+      "[enhance-release-pr] failed to recover deleted server-changes from release branch:",
+      err
+    );
+    return [];
+  }
+
+  const fileData = [];
+  for (const filePath of deletedFiles.split("\n").filter(Boolean).sort()) {
+    const file = filePath.split("/").pop();
+    if (!file?.endsWith(".md") || file === "README.md") continue;
+
+    try {
+      const content = await gitExec(["show", `${mergeBase}:${filePath}`]);
+      const parsed = parseFrontmatter(content);
+      if (!parsed.body.trim()) continue;
+      fileData.push({ filePath, parsed });
+    } catch (err) {
+      // If an individual file cannot be recovered, skip it rather than hiding
+      // all other server changes.
+      console.error(`[enhance-release-pr] failed to read deleted server-change ${filePath}:`, err);
+    }
+  }
+
+  return fileData;
+}
+
 function parseFrontmatter(content) {
   const match = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
   if (!match) return { frontmatter: {}, body: content };
@@ -205,6 +320,12 @@ function parseFrontmatter(content) {
 }
 
 // --- Format the enhanced PR body ---
+
+// Render an entry as a list item, re-indenting continuation lines (code blocks,
+// sub-bullets, paragraphs) by 2 spaces so they stay inside the "- " bullet.
+function renderEntry(text) {
+  return `- ${text.replace(/\n/g, "\n  ")}`;
+}
 
 function formatPrBody({ version, packageEntries, serverEntries, rawBody }) {
   const lines = [];
@@ -238,7 +359,7 @@ function formatPrBody({ version, packageEntries, serverEntries, rawBody }) {
   // Breaking changes
   if (breaking.length > 0 || serverBreaking.length > 0) {
     lines.push("## Breaking changes");
-    for (const entry of [...breaking, ...serverBreaking]) lines.push(`- ${entry.text}`);
+    for (const entry of [...breaking, ...serverBreaking]) lines.push(renderEntry(entry.text));
     lines.push("");
   }
 
@@ -247,7 +368,7 @@ function formatPrBody({ version, packageEntries, serverEntries, rawBody }) {
     lines.push("## Highlights");
     lines.push("");
     for (const entry of features) {
-      lines.push(`- ${entry.text}`);
+      lines.push(renderEntry(entry.text));
     }
     lines.push("");
   }
@@ -255,14 +376,14 @@ function formatPrBody({ version, packageEntries, serverEntries, rawBody }) {
   // Improvements
   if (improvements.length > 0) {
     lines.push("## Improvements");
-    for (const entry of improvements) lines.push(`- ${entry.text}`);
+    for (const entry of improvements) lines.push(renderEntry(entry.text));
     lines.push("");
   }
 
   // Bug fixes
   if (fixes.length > 0) {
     lines.push("## Bug fixes");
-    for (const entry of fixes) lines.push(`- ${entry.text}`);
+    for (const entry of fixes) lines.push(renderEntry(entry.text));
     lines.push("");
   }
 
@@ -274,9 +395,7 @@ function formatPrBody({ version, packageEntries, serverEntries, rawBody }) {
     lines.push("These changes affect the self-hosted Docker image and Trigger.dev Cloud:");
     lines.push("");
     for (const entry of allServer) {
-      // Indent continuation lines so multi-line entries stay inside the list item
-      const indented = entry.text.replace(/\n/g, "\n  ");
-      lines.push(`- ${indented}`);
+      lines.push(renderEntry(entry.text));
     }
     lines.push("");
   }

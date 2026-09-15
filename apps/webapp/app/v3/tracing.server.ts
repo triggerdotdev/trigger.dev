@@ -1,7 +1,6 @@
-import { Span, SpanKind, SpanOptions, SpanStatusCode, Tracer } from "@opentelemetry/api";
-import { Logger, SeverityNumber } from "@opentelemetry/api-logs";
-import { flattenAttributes } from "@trigger.dev/core/v3/utils/flattenAttributes";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import type { Span, SpanOptions, Tracer } from "@opentelemetry/api";
+import { SpanKind, SpanStatusCode } from "@opentelemetry/api";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { attributesFromAuthenticatedEnv } from "./tracer.server";
 
 export async function startSpan<T>(
@@ -48,53 +47,5 @@ export async function startSpanWithEnv<T>(
       ...options?.attributes,
     },
     kind: SpanKind.SERVER,
-  });
-}
-
-export async function emitDebugLog(
-  logger: Logger,
-  message: string,
-  params: Record<string, unknown> = {}
-) {
-  logger.emit({
-    severityNumber: SeverityNumber.DEBUG,
-    body: message,
-    attributes: { ...flattenAttributes(params, "params") },
-  });
-}
-
-export async function emitInfoLog(
-  logger: Logger,
-  message: string,
-  params: Record<string, unknown> = {}
-) {
-  logger.emit({
-    severityNumber: SeverityNumber.INFO,
-    body: message,
-    attributes: { ...flattenAttributes(params, "params") },
-  });
-}
-
-export async function emitErrorLog(
-  logger: Logger,
-  message: string,
-  params: Record<string, unknown> = {}
-) {
-  logger.emit({
-    severityNumber: SeverityNumber.ERROR,
-    body: message,
-    attributes: { ...flattenAttributes(params, "params") },
-  });
-}
-
-export async function emitWarnLog(
-  logger: Logger,
-  message: string,
-  params: Record<string, unknown> = {}
-) {
-  logger.emit({
-    severityNumber: SeverityNumber.WARN,
-    body: message,
-    attributes: { ...flattenAttributes(params, "params") },
   });
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useReducer } from "react";
+import { createContext, useCallback, useContext, useMemo, useReducer } from "react";
 
 type SelectedItemsContext = {
   selectedItems: Set<string>;
@@ -60,21 +60,14 @@ export function SelectedItemsProvider({
     [state]
   );
 
+  const contextValue = useMemo(
+    () => ({ selectedItems: state.items, select, deselect, toggle, deselectAll, has, hasAll }),
+    [state.items, select, deselect, toggle, deselectAll, has, hasAll]
+  );
+
   return (
-    <SelectedItemsContext.Provider
-      value={{ selectedItems: state.items, select, deselect, toggle, deselectAll, has, hasAll }}
-    >
-      {typeof children === "function"
-        ? children({
-            selectedItems: state.items,
-            select,
-            deselect,
-            toggle,
-            deselectAll,
-            has,
-            hasAll,
-          })
-        : children}
+    <SelectedItemsContext.Provider value={contextValue}>
+      {typeof children === "function" ? children(contextValue) : children}
     </SelectedItemsContext.Provider>
   );
 }

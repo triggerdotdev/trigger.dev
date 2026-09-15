@@ -1,9 +1,14 @@
 import type { Result } from "@trigger.dev/core/v3";
 import type { z } from "zod";
 import type { InsertError, QueryError } from "./errors.js";
-import { ClickHouseSettings } from "@clickhouse/client";
-import type { BaseQueryParams, InsertResult } from "@clickhouse/client";
-import { ClickhouseQueryBuilder, ClickhouseQueryFastBuilder } from "./queryBuilder.js";
+import {
+  type ClickHouseSettings,
+  type BaseQueryParams,
+  type CommandResult,
+  type InsertParams,
+  type InsertResult,
+} from "@clickhouse/client";
+import type { ClickhouseQueryBuilder, ClickhouseQueryFastBuilder } from "./queryBuilder.js";
 
 export type ClickhouseQueryFunction<TInput, TOutput> = (
   params: TInput,
@@ -132,6 +137,11 @@ export interface ClickhouseReader {
      * These will be merged with the default settings.
      */
     settings?: ClickHouseSettings;
+    /**
+     * Set when the SQL originates from whoever made the request rather than
+     * from us. Invalid-SQL rejections are then their mistake, not a bug.
+     */
+    userAuthoredQuery?: boolean;
   }): ClickhouseQueryWithStatsFunction<z.input<TIn>, z.output<TOut>>;
 
   queryFast<TOut extends Record<string, any>, TParams extends Record<string, any>>(req: {
@@ -224,6 +234,14 @@ export interface ClickhouseReader {
   close(): Promise<void>;
 }
 
+export type ClickhouseCommandFunction<TInput> = (
+  params: TInput,
+  options?: {
+    attributes?: Record<string, string | number | boolean>;
+    params?: BaseQueryParams;
+  }
+) => Promise<Result<CommandResult, QueryError>>;
+
 export type ClickhouseInsertFunction<TInput> = (
   events: TInput | TInput[],
   options?: {
@@ -233,6 +251,13 @@ export type ClickhouseInsertFunction<TInput> = (
 ) => Promise<Result<InsertResult, InsertError>>;
 
 export interface ClickhouseWriter {
+  command<TSchema extends z.ZodSchema<any>>(req: {
+    name: string;
+    query: string;
+    params?: TSchema;
+    settings?: ClickHouseSettings;
+  }): ClickhouseCommandFunction<z.input<TSchema>>;
+
   insert<TSchema extends z.ZodSchema<any>>(req: {
     name: string;
     table: string;
@@ -243,6 +268,7 @@ export interface ClickhouseWriter {
   insertUnsafe<TRecord extends Record<string, any>>(req: {
     name: string;
     table: string;
+    columns?: InsertParams["columns"];
     settings?: ClickHouseSettings;
   }): ClickhouseInsertFunction<TRecord>;
 

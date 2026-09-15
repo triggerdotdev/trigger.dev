@@ -1,6 +1,6 @@
-import { conform, useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
-import { ArrowRightIcon, EnvelopeIcon, UserGroupIcon, UserIcon } from "@heroicons/react/20/solid";
+import { getFormProps, getInputProps, useForm } from "@conform-to/react";
+import { conformZodMessage, parseWithZod } from "@conform-to/zod/v4";
+import { ArrowRightIcon, EnvelopeIcon, UserIcon } from "@heroicons/react/20/solid";
 import { HandRaisedIcon } from "@heroicons/react/24/solid";
 import { RadioGroup } from "@radix-ui/react-radio-group";
 import { json, type ActionFunction } from "@remix-run/node";
@@ -8,14 +8,14 @@ import { Form, useActionData, useNavigation } from "@remix-run/react";
 import { motion } from "framer-motion";
 import { forwardRef, useEffect, useState } from "react";
 import { z } from "zod";
-import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
+import { UserGroupIcon } from "~/assets/icons/UserGroupIcon";
 import { BackgroundWrapper } from "~/components/BackgroundWrapper";
+import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
 import { Button } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
 import { FormTitle } from "~/components/primitives/FormTitle";
-import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
@@ -27,8 +27,12 @@ import { useUser } from "~/hooks/useUser";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { updateUser } from "~/models/user.server";
 import { requireUserId } from "~/services/session.server";
+import { emailSchema, MAX_EMAIL_LENGTH } from "~/utils/emailValidation";
 import { rootPath } from "~/utils/pathBuilder";
 import { getVercelInstallParams } from "~/v3/vercel";
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Confirm your details");
 
 const referralSourceOptions = [
   "Search engine",
@@ -72,14 +76,12 @@ function createSchema(
   return z
     .object({
       name: z.string().min(3, "Your name must be at least 3 characters").max(50),
-      email: z
-        .string()
-        .email()
-        .superRefine((email, ctx) => {
+      email: emailSchema.pipe(
+        z.string().superRefine((email, ctx) => {
           if (constraints.isEmailUnique === undefined) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
-              message: conform.VALIDATION_UNDEFINED,
+              message: conformZodMessage.VALIDATION_UNDEFINED,
             });
           } else {
             return constraints.isEmailUnique(email).then((isUnique) => {
@@ -93,8 +95,9 @@ function createSchema(
               });
             });
           }
-        }),
-      confirmEmail: z.string(),
+        })
+      ),
+      confirmEmail: emailSchema,
       referralSource: z.string().optional(),
       referralSourceOther: z.string().optional(),
       role: z.string().optional(),
@@ -132,10 +135,10 @@ export const action: ActionFunction = async ({ request }) => {
     },
   });
 
-  const submission = await parse(formData, { schema: formSchema, async: true });
+  const submission = await parseWithZod(formData, { schema: formSchema, async: true });
 
-  if (!submission.value) {
-    return json(submission);
+  if (submission.status !== "success") {
+    return json(submission.reply());
   }
 
   try {
@@ -204,6 +207,10 @@ const HandIcon = forwardRef<HTMLDivElement, {}>(({}, ref) => {
 });
 const MotionHand = motion(HandIcon);
 
+function renderRole(value: string) {
+  return value ? <span className="text-text-bright">{value}</span> : undefined;
+}
+
 export default function Page() {
   const user = useUser();
   const lastSubmission = useActionData();
@@ -221,6 +228,7 @@ export default function Page() {
 
   useEffect(() => {
     const nonOtherReferral = referralSourceOptions.filter((r) => r !== "Other");
+    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
     setShuffledReferralSources([...shuffleArray(nonOtherReferral), "Other"]);
 
     const nonOtherRoles = roleOptions.filter((r) => r !== "Other");
@@ -229,9 +237,9 @@ export default function Page() {
 
   const [form, { name, email, confirmEmail }] = useForm({
     id: "confirm-basic-details",
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission as any,
     onValidate({ formData }) {
-      return parse(formData, { schema: createSchema() });
+      return parseWithZod(formData, { schema: createSchema() });
     },
     shouldRevalidate: "onSubmit",
   });
@@ -239,10 +247,13 @@ export default function Page() {
   const shouldShowConfirm = user.email !== enteredEmail || user.email === "";
 
   return (
-    <AppContainer className="bg-charcoal-900">
+    <AppContainer className="bg-background-deep">
       <BackgroundWrapper>
-        <MainCenteredContainer variant="onboarding" className="max-w-[29rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg">
-          <Form method="post" {...form.props}>
+        <MainCenteredContainer
+          variant="onboarding"
+          className="max-w-116 rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg"
+        >
+          <Form method="post" {...getFormProps(form)}>
             <FormTitle
               title="Welcome to Trigger.dev"
               LeadingIcon={
@@ -273,20 +284,21 @@ export default function Page() {
                   Full name <span className="text-text-bright">*</span>
                 </Label>
                 <Input
-                  {...conform.input(name, { type: "text" })}
+                  {...getInputProps(name, { type: "text" })}
                   defaultValue={user.name ?? ""}
                   placeholder="Your full name"
                   icon={UserIcon}
                   autoFocus
                 />
-                <FormError id={name.errorId}>{name.error}</FormError>
+                <FormError id={name.errorId}>{name.errors}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label htmlFor={email.id}>
                   Email <span className="text-text-bright">*</span>
                 </Label>
                 <Input
-                  {...conform.input(email, { type: "email" })}
+                  {...getInputProps(email, { type: "email" })}
+                  maxLength={MAX_EMAIL_LENGTH}
                   defaultValue={enteredEmail}
                   onChange={(e) => {
                     setEnteredEmail(e.target.value);
@@ -295,29 +307,31 @@ export default function Page() {
                   icon={EnvelopeIcon}
                   spellCheck={false}
                 />
-                <FormError id={email.errorId}>{email.error}</FormError>
+                <FormError id={email.errorId}>{email.errors}</FormError>
               </InputGroup>
 
               {shouldShowConfirm ? (
                 <InputGroup>
                   <Label htmlFor={confirmEmail.id}>Confirm email</Label>
                   <Input
-                    {...conform.input(confirmEmail, { type: "email" })}
+                    {...getInputProps(confirmEmail, { type: "email" })}
+                    maxLength={MAX_EMAIL_LENGTH}
                     placeholder="Your email, again"
                     icon={EnvelopeIcon}
                     spellCheck={false}
                   />
-                  <FormError id={confirmEmail.errorId}>{confirmEmail.error}</FormError>
+                  <FormError id={confirmEmail.errorId}>{confirmEmail.errors}</FormError>
                 </InputGroup>
               ) : (
-                <>
-                  <input {...conform.input(confirmEmail, { type: "hidden" })} value={user.email} />
-                </>
+                <input
+                  {...getInputProps(confirmEmail, { type: "hidden", value: false })}
+                  value={user.email}
+                />
               )}
 
               {isManagedCloud && (
                 <>
-                  <div className="border-t border-charcoal-700" />
+                  <div className="border-t border-grid-bright" />
                   <InputGroup>
                     <Label className="mb-0.5" id="referral-label">
                       How did you hear about us?
@@ -381,8 +395,8 @@ export default function Page() {
                       dropdownIcon
                       icon={<UserGroupIcon className="mr-1 size-4.5 text-text-dimmed" />}
                       items={shuffledRoles}
-                      className="h-8 min-w-0 border-0 bg-charcoal-750 pl-2 text-sm text-text-dimmed ring-charcoal-600 transition hover:bg-charcoal-650 hover:text-text-dimmed hover:ring-1"
-                      text={(v) => (v ? <span className="text-text-bright">{v}</span> : undefined)}
+                      className="h-8 min-w-0 border-0 bg-background-hover pl-2 text-sm text-text-dimmed ring-border-bright transition hover:bg-secondary hover:text-text-dimmed hover:ring-1"
+                      text={renderRole}
                     >
                       {(items) =>
                         items.map((item) => (

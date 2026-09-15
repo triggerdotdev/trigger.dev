@@ -1,5 +1,6 @@
 import { type ClickhouseQueryBuilder } from "@internal/clickhouse";
 import parseDuration from "parse-duration";
+import { boundedIn } from "@trigger.dev/database";
 import {
   convertSessionListInputOptionsToFilterOptions,
   type FilterSessionsOptions,
@@ -56,7 +57,7 @@ export class ClickHouseSessionsRepository implements ISessionsRepository {
     const direction = options.page.direction ?? "forward";
     switch (direction) {
       case "forward": {
-        previousCursor = options.page.cursor ? sessionIds.at(0) ?? null : null;
+        previousCursor = options.page.cursor ? (sessionIds.at(0) ?? null) : null;
         if (hasMore) {
           nextCursor = sessionIds[options.page.size - 1];
         }
@@ -83,7 +84,7 @@ export class ClickHouseSessionsRepository implements ISessionsRepository {
 
     let sessions = await this.options.prisma.session.findMany({
       where: {
-        id: { in: idsToReturn },
+        id: { in: boundedIn(idsToReturn) },
         runtimeEnvironmentId: options.environmentId,
       },
       orderBy: { createdAt: "desc" },
@@ -93,6 +94,7 @@ export class ClickHouseSessionsRepository implements ISessionsRepository {
         externalId: true,
         type: true,
         taskIdentifier: true,
+        isTest: true,
         tags: true,
         metadata: true,
         closedAt: true,
@@ -154,7 +156,7 @@ export class ClickHouseSessionsRepository implements ISessionsRepository {
         environmentId: options.environmentId,
       });
 
-    const periodMs = options.period ? parseDuration(options.period) ?? undefined : undefined;
+    const periodMs = options.period ? (parseDuration(options.period) ?? undefined) : undefined;
     if (periodMs) {
       queryBuilder.where("created_at >= fromUnixTimestamp64Milli({period: Int64})", {
         period: new Date(Date.now() - periodMs).getTime(),
@@ -220,9 +222,7 @@ function applySessionFiltersToQueryBuilder<T>(
   if (options.statuses && options.statuses.length > 0) {
     const conditions: string[] = [];
     if (options.statuses.includes("ACTIVE")) {
-      conditions.push(
-        "(closed_at IS NULL AND (expires_at IS NULL OR expires_at > now64(3)))"
-      );
+      conditions.push("(closed_at IS NULL AND (expires_at IS NULL OR expires_at > now64(3)))");
     }
     if (options.statuses.includes("CLOSED")) {
       conditions.push("closed_at IS NOT NULL");

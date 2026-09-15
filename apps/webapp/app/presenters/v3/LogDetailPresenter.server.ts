@@ -15,8 +15,6 @@ export type LogDetailOptions = {
   startTime: string;
 };
 
-export type LogDetail = Awaited<ReturnType<LogDetailPresenter["call"]>>;
-
 export class LogDetailPresenter {
   constructor(
     private readonly replica: PrismaClientOrTransaction,
@@ -66,10 +64,8 @@ export class LogDetailPresenter {
 
     const log = records[0];
 
-
     let parsedAttributes: Record<string, unknown> = {};
     let rawAttributesString = "";
-
 
     try {
       // Handle attributes_text which is a string
@@ -81,7 +77,8 @@ export class LogDetailPresenter {
       // Ignore parse errors
     }
 
-    const durationMs = (typeof log.duration === "number" ? log.duration : Number(log.duration)) / 1_000_000;
+    const durationMs =
+      (typeof log.duration === "number" ? log.duration : Number(log.duration)) / 1_000_000;
 
     return {
       // Use :: separator to match LogsListPresenter format

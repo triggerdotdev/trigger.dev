@@ -138,19 +138,16 @@ describe("getOrganizationSessionCap", () => {
 });
 
 describe("getEffectiveSessionDuration", () => {
-  containerTest(
-    "returns the user setting when no org cap is set",
-    async ({ prisma }) => {
-      const user = await createUser(prisma, "effective-no-cap@test.com", oneDay);
-      await createOrgWithMember(prisma, "effective-no-cap-org", user.id, null);
+  containerTest("returns the user setting when no org cap is set", async ({ prisma }) => {
+    const user = await createUser(prisma, "effective-no-cap@test.com", oneDay);
+    await createOrgWithMember(prisma, "effective-no-cap-org", user.id, null);
 
-      const result = await getEffectiveSessionDuration(user.id, prisma);
-      expect(result.userSettingSeconds).toBe(oneDay);
-      expect(result.orgCapSeconds).toBeNull();
-      expect(result.cappingOrgId).toBeNull();
-      expect(result.durationSeconds).toBe(oneDay);
-    }
-  );
+    const result = await getEffectiveSessionDuration(user.id, prisma);
+    expect(result.userSettingSeconds).toBe(oneDay);
+    expect(result.orgCapSeconds).toBeNull();
+    expect(result.cappingOrgId).toBeNull();
+    expect(result.durationSeconds).toBe(oneDay);
+  });
 
   containerTest("caps the user setting at the most restrictive org cap", async ({ prisma }) => {
     const user = await createUser(prisma, "effective-capped@test.com", oneYear);

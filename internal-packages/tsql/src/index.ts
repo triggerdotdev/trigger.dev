@@ -26,7 +26,6 @@ import { TSQLParseTreeConverter } from "./query/parser.js";
 import { printToClickHouse, type PrintResult } from "./query/printer.js";
 import {
   createPrinterContext,
-  type BetweenCondition,
   type QuerySettings,
   type SimpleComparisonCondition,
   type TimeRange,
@@ -135,7 +134,9 @@ export {
 // Re-export time bucket utilities
 export {
   BUCKET_THRESHOLDS,
+  INTERVAL_UNIT_SECONDS,
   calculateTimeBucketInterval,
+  intervalToSeconds,
   type BucketThreshold,
   type TimeBucketInterval,
 } from "./query/time_buckets.js";
@@ -430,6 +431,24 @@ export function injectFallbackConditions(
 
   // Handle SelectQuery
   const selectQuery = ast as SelectQuery;
+
+  // When the FROM is a subquery, the fallback columns belong to the inner query's
+  // table, not this level; descend so e.g. a time fallback lands next to the table ref.
+  const fromTable = selectQuery.select_from?.table;
+  if (
+    fromTable &&
+    (fromTable.expression_type === "select_query" ||
+      fromTable.expression_type === "select_set_query")
+  ) {
+    return {
+      ...selectQuery,
+      select_from: {
+        ...selectQuery.select_from!,
+        table: injectFallbackConditions(fromTable, fallbacks) as SelectQuery | SelectSetQuery,
+      },
+    };
+  }
+
   const existingWhere = selectQuery.where;
 
   // Collect fallback expressions for columns not already in WHERE
@@ -542,6 +561,18 @@ export interface CompileTSQLOptions {
    * ```
    */
   timeRange?: TimeRange;
+  /**
+   * Opt-in: emit rows for empty time buckets in a top-level time-bucketed query.
+   * Counters zero-fill, gauges (columns with `fillMode: "carry"`) carry forward.
+   * Off by default; output is unchanged when not set.
+   */
+  fillGaps?: boolean;
+  /**
+   * Floor for the `timeBucket()` interval, in seconds. Widens buckets past what the range
+   * would pick, for series whose samples are too sparse to read at that width (e.g. a
+   * percentile over buckets that often contain no samples at all).
+   */
+  minBucketSeconds?: number;
 }
 
 /**
@@ -600,6 +631,8 @@ export function compileTSQL(query: string, options: CompileTSQLOptions): PrintRe
     fieldMappings: options.fieldMappings,
     enforcedWhereClause,
     timeRange: options.timeRange,
+    fillGaps: options.fillGaps,
+    minBucketSeconds: options.minBucketSeconds,
   });
 
   // 6. Print the AST to ClickHouse SQL (enforced conditions applied at printer level)

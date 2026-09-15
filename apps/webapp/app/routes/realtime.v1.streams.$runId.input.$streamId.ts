@@ -15,6 +15,7 @@ import {
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
 import { engine } from "~/v3/runEngine.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
+import { runStore } from "~/v3/runStore.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),
@@ -38,11 +39,11 @@ const { action } = createActionApiRoute(
     },
   },
   async ({ request, params, authentication }) => {
-    const run = await $replica.taskRun.findFirst({
-      where: {
-        friendlyId: params.runId,
-        runtimeEnvironmentId: authentication.environment.id,
-      },
+    const where = {
+      friendlyId: params.runId,
+      runtimeEnvironmentId: authentication.environment.id,
+    };
+    const args = {
       select: {
         id: true,
         friendlyId: true,
@@ -50,7 +51,12 @@ const { action } = createActionApiRoute(
         realtimeStreamsVersion: true,
         streamBasinName: true,
       },
-    });
+    };
+    // Replica lag can null out a live run; a spurious 404 permanently fails the input send. Re-read
+    // the owning primary on a replica miss.
+    const run =
+      (await runStore.findRun(where, args, $replica)) ??
+      (await runStore.findRunOnPrimary(where, args));
 
     if (!run) {
       return json({ ok: false, error: "Run not found" }, { status: 404 });
@@ -129,11 +135,11 @@ const loader = createLoaderApiRoute(
     allowJWT: true,
     corsStrategy: "all",
     findResource: async (params, auth) => {
-      return $replica.taskRun.findFirst({
-        where: {
-          friendlyId: params.runId,
-          runtimeEnvironmentId: auth.environment.id,
-        },
+      const where = {
+        friendlyId: params.runId,
+        runtimeEnvironmentId: auth.environment.id,
+      };
+      const args = {
         include: {
           batch: {
             select: {
@@ -141,7 +147,11 @@ const loader = createLoaderApiRoute(
             },
           },
         },
-      });
+      };
+      // Replica lag can null out a live run; a spurious 404 permanently fails the SSE tail (the
+      // client treats 404 as "stream gone"). Re-read the owning primary on a replica miss.
+      const run = await runStore.findRun(where, args, $replica);
+      return run ?? runStore.findRunOnPrimary(where, args);
     },
     authorization: {
       action: "read",

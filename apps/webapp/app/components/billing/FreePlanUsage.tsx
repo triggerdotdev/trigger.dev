@@ -1,16 +1,21 @@
 import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
-import { motion, useMotionValue, useTransform } from "framer-motion";
-import { Paragraph } from "../primitives/Paragraph";
 import { Link } from "@remix-run/react";
+import { motion, useMotionValue, useTransform } from "framer-motion";
+import { textLinkClassName } from "~/components/primitives/TextLink";
+import { useThemeColor } from "~/hooks/useThemeColor";
 import { cn } from "~/utils/cn";
 
 export function FreePlanUsage({ to, percentage }: { to: string; percentage: number }) {
   const cappedPercentage = Math.min(percentage, 1);
   const widthProgress = useMotionValue(cappedPercentage * 100);
+  // Resolved to concrete colors - framer-motion can't interpolate var() strings
+  const successColor = useThemeColor("--color-success", "#28bf5c");
+  const warningColor = useThemeColor("--color-warning", "#f59e0b");
+  const errorColor = useThemeColor("--color-error", "#e11d48");
   const color = useTransform(
     widthProgress,
     [0, 74, 75, 95, 100],
-    ["#22C55E", "#22C55E", "#F59E0B", "#F43F5E", "#F43F5E"]
+    [successColor, successColor, warningColor, errorColor, errorColor]
   );
 
   const hasHitLimit = cappedPercentage >= 1;
@@ -18,16 +23,16 @@ export function FreePlanUsage({ to, percentage }: { to: string; percentage: numb
   return (
     <div
       className={cn(
-        "rounded border border-charcoal-700 bg-charcoal-750 p-2.5",
+        "rounded border border-grid-bright bg-background-hover p-2.5",
         hasHitLimit && "border-error/40"
       )}
     >
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1">
-          <ArrowUpCircleIcon className="h-5 w-5 text-text-dimmed" />
-          <span className="text-2sm text-text-bright">Free Plan</span>
+        <div className="flex min-w-0 items-center gap-1">
+          <ArrowUpCircleIcon className="h-5 w-5 shrink-0 text-text-dimmed" />
+          <span className="truncate text-2sm text-text-bright">Free Plan</span>
         </div>
-        <Link to={to} className="text-2sm text-text-link focus-custom">
+        <Link to={to} className={cn(textLinkClassName(), "shrink-0 text-2sm")}>
           Upgrade
         </Link>
       </div>

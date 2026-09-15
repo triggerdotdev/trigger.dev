@@ -1,38 +1,38 @@
-import { z } from "zod";
-import {
+import { z } from "zod/v4";
+import type {
   WorkloadHeartbeatRequestBody,
-  WorkloadHeartbeatResponseBody,
   WorkloadRunAttemptCompleteRequestBody,
+  WorkloadRunAttemptStartRequestBody,
+  WorkloadDebugLogRequestBody,
+} from "./schemas.js";
+import {
+  WorkloadHeartbeatResponseBody,
   WorkloadRunAttemptCompleteResponseBody,
   WorkloadRunAttemptStartResponseBody,
-  WorkloadDequeueFromVersionResponseBody,
-  WorkloadRunAttemptStartRequestBody,
   WorkloadSuspendRunResponseBody,
   WorkloadContinueRunExecutionResponseBody,
-  WorkloadDebugLogRequestBody,
   WorkloadRunSnapshotsSinceResponseBody,
 } from "./schemas.js";
-import { WorkloadClientCommonOptions } from "./types.js";
+import type { WorkloadClientCommonOptions } from "./types.js";
 import { getDefaultWorkloadHeaders } from "./util.js";
 import { wrapZodFetch } from "../../zodfetch.js";
+import type { SnapshotRouteWire } from "../../schemas/runEngine.js";
 
 type WorkloadHttpClientOptions = WorkloadClientCommonOptions;
 
 export class WorkloadHttpClient {
   private apiUrl: string;
   private runnerId: string;
-  private readonly deploymentId: string;
 
   constructor(private opts: WorkloadHttpClientOptions) {
     this.apiUrl = opts.workerApiUrl.replace(/\/$/, "");
-    this.deploymentId = opts.deploymentId;
     this.runnerId = opts.runnerId;
 
     if (!this.apiUrl) {
       throw new Error("apiURL is required and needs to be a non-empty string");
     }
 
-    if (!this.deploymentId) {
+    if (!opts.deploymentId) {
       throw new Error("deploymentId is required and needs to be a non-empty string");
     }
   }
@@ -120,15 +120,33 @@ export class WorkloadHttpClient {
     );
   }
 
-  async continueRunExecution(runId: string, snapshotId: string) {
+  async continueRunExecution(runId: string, snapshotId: string, snapshotRoute?: SnapshotRouteWire) {
+    const query = snapshotRoute
+      ? `?snapshotRoute=${encodeURIComponent(JSON.stringify(snapshotRoute))}`
+      : "";
+
     return this.withConnectionErrorDetection(() =>
       wrapZodFetch(
         WorkloadContinueRunExecutionResponseBody,
-        `${this.apiUrl}/api/v1/workload-actions/runs/${runId}/snapshots/${snapshotId}/continue`,
+        `${this.apiUrl}/api/v1/workload-actions/runs/${runId}/snapshots/${snapshotId}/continue${query}`,
         {
           method: "GET",
           headers: {
             ...this.defaultHeaders(),
+          },
+        },
+        {
+          // This hop only reaches the supervisor's workload server, so retry
+          // generously with jittered backoff to ride out a transient blip
+          // talking to the supervisor (e.g. a restart) rather than aborting the
+          // run. Database outages surface one hop further in, on the
+          // supervisor-to-engine call, which carries its own retry for them.
+          retry: {
+            minTimeoutInMs: 500,
+            maxTimeoutInMs: 10_000,
+            maxAttempts: 8,
+            factor: 2,
+            randomize: true,
           },
         }
       )
@@ -149,6 +167,15 @@ export class WorkloadHttpClient {
           ...this.defaultHeaders(),
         },
         body: JSON.stringify(body),
+      },
+      {
+        retry: {
+          minTimeoutInMs: 1000,
+          maxTimeoutInMs: 10_000,
+          maxAttempts: 6,
+          factor: 2,
+          randomize: true,
+        },
       }
     );
   }
@@ -208,19 +235,5 @@ export class WorkloadHttpClient {
     } catch (error) {
       console.error("Failed to send debug log", { error });
     }
-  }
-
-  /** @deprecated Not currently used */
-  async dequeue() {
-    return wrapZodFetch(
-      WorkloadDequeueFromVersionResponseBody,
-      `${this.apiUrl}/api/v1/workload-actions/deployments/${this.deploymentId}/dequeue`,
-      {
-        method: "GET",
-        headers: {
-          ...this.defaultHeaders(),
-        },
-      }
-    );
   }
 }

@@ -1,4 +1,4 @@
-import { Cluster, Redis, type ClusterNode, type ClusterOptions } from "ioredis";
+import { type Cluster, Redis, type ClusterNode, type ClusterOptions } from "ioredis";
 import { defaultReconnectOnError } from "@internal/redis";
 import { logger } from "./services/logger.server";
 
@@ -11,6 +11,8 @@ export type RedisWithClusterOptions = {
   clusterMode?: boolean;
   clusterOptions?: Omit<ClusterOptions, "redisOptions">;
   keyPrefix?: string;
+  /** Cap retries for a command before it rejects; `null` means unlimited (default: ioredis's default of 20). */
+  maxRetriesPerRequest?: number | null;
 };
 
 export type RedisClient = Redis | Cluster;
@@ -44,6 +46,9 @@ export function createRedisClient(
         password: options.password,
         enableAutoPipelining: true,
         reconnectOnError: defaultReconnectOnError,
+        ...(options.maxRetriesPerRequest !== undefined
+          ? { maxRetriesPerRequest: options.maxRetriesPerRequest }
+          : {}),
         ...(options.tlsDisabled
           ? {
               checkServerIdentity: () => {
@@ -72,6 +77,9 @@ export function createRedisClient(
       enableAutoPipelining: true,
       keyPrefix: options.keyPrefix,
       reconnectOnError: defaultReconnectOnError,
+      ...(options.maxRetriesPerRequest !== undefined
+        ? { maxRetriesPerRequest: options.maxRetriesPerRequest }
+        : {}),
       ...(options.tlsDisabled ? {} : { tls: {} }),
     });
   }

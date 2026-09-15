@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { calculateTimeBucketInterval, type TimeBucketInterval } from "./time_buckets.js";
+import {
+  calculateTimeBucketInterval,
+  type BucketThreshold,
+  type TimeBucketInterval,
+} from "./time_buckets.js";
 
 /**
  * Helper to create a Date range from a start date and a duration
@@ -176,6 +180,48 @@ describe("calculateTimeBucketInterval", () => {
         value: 5,
         unit: "SECOND",
       });
+    });
+  });
+
+  describe("minBucketSeconds floor", () => {
+    const tenSecondThresholds: BucketThreshold[] = [
+      { maxRangeSeconds: 3 * 60 * 60, interval: { value: 10, unit: "SECOND" } },
+    ];
+
+    it("should widen an interval below the floor", () => {
+      const { from, to } = makeRange(new Date("2024-01-01T00:00:00Z"), 1 * HOUR);
+      expect(
+        calculateTimeBucketInterval(from, to, tenSecondThresholds, 60)
+      ).toEqual<TimeBucketInterval>({ value: 1, unit: "MINUTE" });
+    });
+
+    it("should leave an interval already above the floor alone", () => {
+      const { from, to } = makeRange(new Date("2024-01-01T00:00:00Z"), 5 * DAY);
+      expect(calculateTimeBucketInterval(from, to, undefined, 60)).toEqual<TimeBucketInterval>({
+        value: 6,
+        unit: "HOUR",
+      });
+    });
+
+    it("should be a no-op when no floor is given", () => {
+      const { from, to } = makeRange(new Date("2024-01-01T00:00:00Z"), 1 * HOUR);
+      expect(
+        calculateTimeBucketInterval(from, to, tenSecondThresholds)
+      ).toEqual<TimeBucketInterval>({ value: 10, unit: "SECOND" });
+    });
+
+    it("should express the floor in the largest unit it divides evenly into", () => {
+      const { from, to } = makeRange(new Date("2024-01-01T00:00:00Z"), 1 * HOUR);
+      expect(
+        calculateTimeBucketInterval(from, to, tenSecondThresholds, 300)
+      ).toEqual<TimeBucketInterval>({ value: 5, unit: "MINUTE" });
+    });
+
+    it("should fall back to seconds for a floor that is not a whole number of minutes", () => {
+      const { from, to } = makeRange(new Date("2024-01-01T00:00:00Z"), 1 * HOUR);
+      expect(
+        calculateTimeBucketInterval(from, to, tenSecondThresholds, 90)
+      ).toEqual<TimeBucketInterval>({ value: 90, unit: "SECOND" });
     });
   });
 });

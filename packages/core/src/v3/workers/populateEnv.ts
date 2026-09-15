@@ -39,7 +39,7 @@ export function populateEnv(
 
   // Set process.env values
   for (const key of Object.keys(envObject)) {
-    if (Object.prototype.hasOwnProperty.call(process.env, key)) {
+    if (Object.hasOwn(process.env, key)) {
       if (override) {
         process.env[key] = envObject[key];
 
@@ -57,7 +57,7 @@ export function populateEnv(
   if (previousEnv) {
     // if there are any keys in previousEnv that are not in envObject, remove them from process.env
     for (const key of Object.keys(previousEnv)) {
-      if (!Object.prototype.hasOwnProperty.call(envObject, key)) {
+      if (!Object.hasOwn(envObject, key)) {
         delete process.env[key];
       }
     }

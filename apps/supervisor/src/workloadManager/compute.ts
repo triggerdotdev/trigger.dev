@@ -75,6 +75,7 @@ type ComputeWorkloadManagerOptions = WorkloadManagerOptions & {
     instanceName: string;
     otelEndpoint: string;
     prettyLogs: boolean;
+    sendRunDebugLogs: boolean;
   };
   createRetry?: {
     maxAttempts: number;
@@ -150,10 +151,13 @@ export class ComputeWorkloadManager implements WorkloadManager {
       TRIGGER_DEQUEUED_AT_MS: String(opts.dequeuedAt.getTime()),
       TRIGGER_POD_SCHEDULED_AT_MS: String(Date.now()),
       TRIGGER_ENV_ID: opts.envId,
-      TRIGGER_DEPLOYMENT_ID: opts.deploymentFriendlyId,
+      TRIGGER_DEPLOYMENT_ID: opts.deploymentToken ?? opts.deploymentFriendlyId,
+      // Plain friendlyId for telemetry (worker.id), so it isn't the opaque token in DEPLOYMENT_ID.
+      TRIGGER_DEPLOYMENT_FRIENDLY_ID: opts.deploymentFriendlyId,
       TRIGGER_DEPLOYMENT_VERSION: opts.deploymentVersion,
       TRIGGER_RUN_ID: opts.runFriendlyId,
       TRIGGER_SNAPSHOT_ID: opts.snapshotFriendlyId,
+      ...(opts.snapshotRoute ? { TRIGGER_SNAPSHOT_ROUTE: JSON.stringify(opts.snapshotRoute) } : {}),
       TRIGGER_SUPERVISOR_API_PROTOCOL: this.opts.workloadApiProtocol,
       TRIGGER_SUPERVISOR_API_PORT: String(this.opts.workloadApiPort),
       TRIGGER_SUPERVISOR_API_DOMAIN: this.opts.workloadApiDomain ?? "",
@@ -162,6 +166,7 @@ export class ComputeWorkloadManager implements WorkloadManager {
       TRIGGER_MACHINE_CPU: String(opts.machine.cpu),
       TRIGGER_MACHINE_MEMORY: String(opts.machine.memory),
       PRETTY_LOGS: String(this.opts.runner.prettyLogs),
+      TRIGGER_SEND_RUN_DEBUG_LOGS: String(this.opts.runner.sendRunDebugLogs),
     };
 
     if (this.opts.warmStartUrl) {
@@ -248,9 +253,7 @@ export class ComputeWorkloadManager implements WorkloadManager {
       // name registered, so subsequent attempts use a suffixed name.
       let suffixAttempts = false;
       for (; attempt <= this.createMaxAttempts; attempt++) {
-        const attemptRunnerId = suffixAttempts
-          ? runnerNameForAttempt(runnerId, attempt)
-          : runnerId;
+        const attemptRunnerId = suffixAttempts ? runnerNameForAttempt(runnerId, attempt) : runnerId;
         [error, data] = await tryCatch(
           this.compute.instances.create(
             attemptRunnerId === runnerId

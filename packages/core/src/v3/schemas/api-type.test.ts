@@ -1,6 +1,42 @@
 import { describe, it, expect } from "vitest";
-import { InitializeDeploymentRequestBody, TriggerTaskRequestBody } from "./api.js";
+import {
+  BatchItemNDJSON,
+  InitializeDeploymentRequestBody,
+  needsNodeRuntimeUpdate,
+  nodeMajor,
+  TriggerTaskRequestBody,
+} from "./api.js";
 import type { InitializeDeploymentRequestBody as InitializeDeploymentRequestBodyType } from "./api.js";
+
+describe("nodeMajor", () => {
+  it.each([
+    ["node", "20.18.0", 20],
+    ["node", "21.7.3", 21],
+    ["node-22", "22.16.0", 22],
+    ["node-24", "24.18.0", 24],
+    ["bun", "1.3.3", undefined],
+    ["node", null, undefined],
+    ["node", "unknown", undefined],
+  ])("resolves %s %s", (runtime, runtimeVersion, expected) => {
+    expect(nodeMajor(runtime, runtimeVersion)).toBe(expected);
+  });
+});
+
+describe("needsNodeRuntimeUpdate", () => {
+  it.each([
+    ["node", "21.7.3", true],
+    [null, "21.7.3", true],
+    ["node", null, true],
+    [null, null, true],
+    ["node-21", null, true],
+    ["node-22", null, false],
+    ["node-22", "22.16.0", false],
+    ["node", "unknown", false],
+    ["bun", "1.3.3", false],
+  ])("classifies %s %s", (runtime, runtimeVersion, expected) => {
+    expect(needsNodeRuntimeUpdate(runtime, runtimeVersion)).toBe(expected);
+  });
+});
 
 describe("InitializeDeploymentRequestBody", () => {
   const base = { contentHash: "abc123" };
@@ -109,6 +145,172 @@ describe("InitializeDeploymentRequestBody", () => {
     });
   });
 
+  describe("externalId and force", () => {
+    it("accepts an externalId on the non-native variant", () => {
+      const result = InitializeDeploymentRequestBody.safeParse({
+        ...base,
+        externalId: "a1b2c3d4e5f6",
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.externalId).toBe("a1b2c3d4e5f6");
+      }
+    });
+
+    it("accepts an externalId on the native variant", () => {
+      const result = InitializeDeploymentRequestBody.safeParse({
+        ...base,
+        isNativeBuild: true,
+        externalId: "a1b2c3d4e5f6",
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.externalId).toBe("a1b2c3d4e5f6");
+      }
+    });
+
+    it("accepts a free-form externalId, imposing no format", () => {
+      for (const externalId of [
+        "refs/tags/v1.2.3_rc:4-final",
+        "release 2026-08-07",
+        "build #4821",
+        "déployé-en-français",
+        "🚀 ship it",
+        '{"run":42}',
+      ]) {
+        const result = InitializeDeploymentRequestBody.safeParse({ ...base, externalId });
+        expect(result.success, `expected ${externalId} to be accepted`).toBe(true);
+        if (result.success) {
+          expect(result.data.externalId).toBe(externalId);
+        }
+      }
+    });
+
+    it("trims surrounding whitespace but keeps whitespace inside the value", () => {
+      const result = InitializeDeploymentRequestBody.safeParse({
+        ...base,
+        externalId: "  release 2026-08-07  ",
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.externalId).toBe("release 2026-08-07");
+      }
+    });
+
+    it("treats a blank externalId as absent", () => {
+      const result = InitializeDeploymentRequestBody.safeParse({ ...base, externalId: "" });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.externalId).toBeUndefined();
+      }
+    });
+
+    it("treats a whitespace-only externalId as absent", () => {
+      const result = InitializeDeploymentRequestBody.safeParse({ ...base, externalId: "   " });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.externalId).toBeUndefined();
+      }
+    });
+
+    it("accepts an externalId of exactly 128 characters", () => {
+      const result = InitializeDeploymentRequestBody.safeParse({
+        ...base,
+        externalId: "a".repeat(128),
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("accepts a 64-character SHA-256 commit hash", () => {
+      const result = InitializeDeploymentRequestBody.safeParse({
+        ...base,
+        externalId: "a".repeat(64),
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("accepts a 40-character commit SHA", () => {
+      const result = InitializeDeploymentRequestBody.safeParse({
+        ...base,
+        externalId: "e3f1c0a9b7d24e5f6081a2b3c4d5e6f708192a3b",
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("rejects an externalId longer than 128 characters", () => {
+      const result = InitializeDeploymentRequestBody.safeParse({
+        ...base,
+        externalId: "a".repeat(129),
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("names the limit in the rejection message", () => {
+      const result = InitializeDeploymentRequestBody.safeParse({
+        ...base,
+        externalId: "a".repeat(129),
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues[0]?.message).toBe("externalId must be at most 128 characters");
+      }
+    });
+
+    it("measures the length limit after trimming", () => {
+      const result = InitializeDeploymentRequestBody.safeParse({
+        ...base,
+        externalId: `  ${"a".repeat(128)}  `,
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("leaves force absent when omitted, which reads as not forced", () => {
+      const result = InitializeDeploymentRequestBody.safeParse(base);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.force ?? false).toBe(false);
+      }
+    });
+
+    it("accepts force alongside an externalId", () => {
+      const result = InitializeDeploymentRequestBody.safeParse({
+        ...base,
+        externalId: "a1b2c3",
+        force: true,
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.force).toBe(true);
+      }
+    });
+
+    it("rejects force without an externalId", () => {
+      const result = InitializeDeploymentRequestBody.safeParse({ ...base, force: true });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues[0]?.message).toBe("force requires externalId");
+      }
+    });
+
+    it("rejects force when the externalId is blank", () => {
+      const result = InitializeDeploymentRequestBody.safeParse({
+        ...base,
+        externalId: "  ",
+        force: true,
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects force without an externalId on the native variant too", () => {
+      const result = InitializeDeploymentRequestBody.safeParse({
+        ...base,
+        isNativeBuild: true,
+        force: true,
+      });
+      expect(result.success).toBe(false);
+    });
+  });
+
   describe("type-level checks", () => {
     it("native variant exposes native-specific fields", () => {
       const result = InitializeDeploymentRequestBody.parse({
@@ -141,6 +343,14 @@ describe("InitializeDeploymentRequestBody", () => {
 });
 
 describe("TriggerTaskRequestBody", () => {
+  it("accepts a missing payload", () => {
+    const result = TriggerTaskRequestBody.safeParse({
+      options: {},
+    });
+
+    expect(result.success).toBe(true);
+  });
+
   it("accepts application/store payload as a non-empty string", () => {
     const result = TriggerTaskRequestBody.safeParse({
       payload: "packets/payloads/file.json",
@@ -175,5 +385,48 @@ describe("TriggerTaskRequestBody", () => {
     });
 
     expect(result.success).toBe(false);
+  });
+
+  it("accepts an optional payloadSize on the options", () => {
+    const result = TriggerTaskRequestBody.safeParse({
+      payload: "packets/payloads/file.json",
+      context: {},
+      options: {
+        payloadType: "application/store",
+        payloadSize: 512 * 1024,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.success && result.data.options?.payloadSize).toBe(512 * 1024);
+  });
+
+  it("rejects a negative payloadSize", () => {
+    const result = TriggerTaskRequestBody.safeParse({
+      payload: { foo: "bar" },
+      context: {},
+      options: {
+        payloadSize: -1,
+      },
+    });
+
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("BatchItemNDJSON", () => {
+  it("accepts an optional payloadSize on a batch item's options", () => {
+    const result = BatchItemNDJSON.safeParse({
+      index: 0,
+      task: "my-task",
+      payload: "packets/payloads/file.json",
+      options: {
+        payloadType: "application/store",
+        payloadSize: 256 * 1024,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.success && result.data.options?.payloadSize).toBe(256 * 1024);
   });
 });

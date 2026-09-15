@@ -1,0 +1,346 @@
+// Import the test harness FIRST — installs the resource catalog so
+// `chat.agent()` below registers its task functions correctly.
+import { mockChatAgent } from "../src/v3/test/index.js";
+
+import { describe, expect, it } from "vitest";
+import { chat } from "../src/v3/ai.js";
+import { simulateReadableStream, streamText } from "ai";
+import { MockLanguageModelV3 } from "ai/test";
+import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
+
+function textStream(text: string): ReadableStream<LanguageModelV3StreamPart> {
+  return simulateReadableStream({
+    chunks: [
+      { type: "text-start", id: "t1" },
+      { type: "text-delta", id: "t1", delta: text },
+      { type: "text-end", id: "t1" },
+      {
+        type: "finish",
+        finishReason: { unified: "stop", raw: "stop" },
+        usage: {
+          inputTokens: { total: 10, noCache: 10, cacheRead: undefined, cacheWrite: undefined },
+          outputTokens: { total: 10, text: 10, reasoning: undefined },
+        },
+      },
+    ],
+  });
+}
+
+describe("chat.inject with a system role", () => {
+  it("goes to the instructions lane instead of poisoning the prompt", async () => {
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({ stream: textStream("ok") }),
+    });
+
+    let injected = false;
+
+    const agent = chat.agent({
+      id: "inject-system-instructions",
+      onBoot: async () => {
+        chat.prompt.set({
+          promptId: "base",
+          version: 1,
+          labels: ["local"],
+          text: "You are a helpful assistant.",
+          model: undefined,
+          config: undefined,
+          toAISDKTelemetry: () => ({ experimental_telemetry: { isEnabled: true, metadata: {} } }),
+        });
+      },
+      onTurnComplete: async () => {
+        if (injected) return;
+        injected = true;
+        /**
+         * The shape every docs example uses. On ai@7 a system message inside
+         * `messages` is rejected by `standardizePrompt` for every provider, so
+         * this used to kill the next turn — an error chunk reading "An error
+         * occurred." and an assistant message with no parts.
+         */
+        chat.inject([{ role: "system", content: "The user just upgraded to Pro." }]);
+      },
+      run: async ({ messages, signal }) =>
+        streamText({
+          ...chat.toStreamTextOptions(),
+          model,
+          messages,
+          abortSignal: signal,
+        }),
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "inject-system-instructions" });
+
+    try {
+      await harness.sendMessage({ id: "u1", role: "user", parts: [{ type: "text", text: "one" }] });
+      await new Promise((r) => setTimeout(r, 40));
+
+      const turn = await harness.sendMessage({
+        id: "u2",
+        role: "user",
+        parts: [{ type: "text", text: "two" }],
+      });
+      await new Promise((r) => setTimeout(r, 40));
+
+      // The turn survives.
+      const errors = turn.rawChunks.filter((c) => (c as { type?: string })?.type === "error");
+      expect(errors).toEqual([]);
+
+      // The injected context arrives as a system block, alongside the base prompt,
+      // and never as a system message inside `messages`.
+      const prompt = model.doStreamCalls.at(-1)!.prompt;
+      const systemBlocks = prompt.filter((m) => m.role === "system");
+      const asText = JSON.stringify(systemBlocks);
+
+      expect(asText).toContain("You are a helpful assistant.");
+      expect(asText).toContain("The user just upgraded to Pro.");
+
+      const nonSystem = prompt.filter((m) => m.role !== "system");
+      expect(JSON.stringify(nonSystem)).not.toContain("upgraded to Pro");
+    } finally {
+      await harness.close();
+    }
+  });
+  it("emits one system value whether or not the base block is cached", async () => {
+    /**
+     * Never an array. ai@6+ accepts `Array<SystemModelMessage>` and would let a
+     * cached base block keep its cache entry, but ai@5 rejects an array outright
+     * ("Invalid prompt: system must be a string") while accepting a single
+     * structured block — and the peer range still spans v5. So a plain base
+     * concatenates into a string, and a cached base absorbs the injection into its
+     * own content, keeping its provider options.
+     */
+    const shapes: unknown[] = [];
+
+    function agentFor(id: string, cacheControl: boolean) {
+      let injected = false;
+      return chat.agent({
+        id,
+        onBoot: async () => {
+          chat.prompt.set({
+            promptId: "base",
+            version: 1,
+            labels: ["local"],
+            text: "Base instructions.",
+            model: undefined,
+            config: undefined,
+            toAISDKTelemetry: () => ({
+              experimental_telemetry: { isEnabled: true, metadata: {} },
+            }),
+          });
+        },
+        onTurnComplete: async () => {
+          if (injected) return;
+          injected = true;
+          chat.inject([{ role: "system", content: "Amendment." }]);
+        },
+        run: async ({ messages, signal }) => {
+          const options = cacheControl
+            ? chat.toStreamTextOptions({ cacheControl: { type: "ephemeral" } })
+            : chat.toStreamTextOptions();
+          shapes.push(Array.isArray(options.system) ? "array" : typeof options.system);
+          return streamText({
+            ...options,
+            model: new MockLanguageModelV3({
+              doStream: async () => ({ stream: textStream("ok") }),
+            }),
+            messages,
+            abortSignal: signal,
+          });
+        },
+      });
+    }
+
+    for (const [id, cacheControl] of [
+      ["shape-plain", false],
+      ["shape-cached", true],
+    ] as const) {
+      const harness = mockChatAgent(agentFor(id, cacheControl), { chatId: id });
+      try {
+        await harness.sendMessage({
+          id: "u1",
+          role: "user",
+          parts: [{ type: "text", text: "one" }],
+        });
+        await new Promise((r) => setTimeout(r, 40));
+        await harness.sendMessage({
+          id: "u2",
+          role: "user",
+          parts: [{ type: "text", text: "two" }],
+        });
+        await new Promise((r) => setTimeout(r, 40));
+      } finally {
+        await harness.close();
+      }
+    }
+
+    // [plain turn 1, plain turn 2 (injected), cached turn 1, cached turn 2 (injected)]
+    expect(shapes).toEqual(["string", "string", "object", "object"]);
+  });
+
+  it("applies an injection to the next turn only, not to every later turn", async () => {
+    /**
+     * `chat.inject()` is a queue consumed at the next injection opportunity, so
+     * the instructions lane has to drain like the conversational one does. Left
+     * undrained, every later turn in the run repeats every earlier injection —
+     * the prompt grows without bound and its cached prefix changes each turn.
+     */
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({ stream: textStream("ok") }),
+    });
+
+    let injectedOnce = false;
+
+    const agent = chat.agent({
+      id: "inject-system-drains",
+      onTurnComplete: async () => {
+        if (injectedOnce) return;
+        injectedOnce = true;
+        chat.inject([{ role: "system", content: "SENTINEL-ONE-SHOT" }]);
+      },
+      run: async ({ messages, signal }) =>
+        streamText({
+          ...chat.toStreamTextOptions(),
+          model,
+          messages,
+          abortSignal: signal,
+        }),
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "inject-system-drains" });
+
+    try {
+      await harness.sendMessage({ id: "u1", role: "user", parts: [{ type: "text", text: "one" }] });
+      await new Promise((r) => setTimeout(r, 40));
+
+      await harness.sendMessage({ id: "u2", role: "user", parts: [{ type: "text", text: "two" }] });
+      await new Promise((r) => setTimeout(r, 40));
+
+      await harness.sendMessage({
+        id: "u3",
+        role: "user",
+        parts: [{ type: "text", text: "three" }],
+      });
+      await new Promise((r) => setTimeout(r, 40));
+
+      const systemOf = (i: number) =>
+        JSON.stringify(model.doStreamCalls[i]!.prompt.filter((m) => m.role === "system"));
+
+      // Turn 1 injected nothing yet, turn 2 carries it, turn 3 must not repeat it.
+      expect(systemOf(0)).not.toContain("SENTINEL-ONE-SHOT");
+      expect(systemOf(1)).toContain("SENTINEL-ONE-SHOT");
+      expect(systemOf(2)).not.toContain("SENTINEL-ONE-SHOT");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("carries the injection into every options build in the turn, not only the first", async () => {
+    /**
+     * A `run()` that builds options twice, a classifier pass and then the
+     * answer, has to see the injection in both. Consuming on read hands it to
+     * whichever call ran first and drops it from the rest, silently.
+     */
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({ stream: textStream("ok") }),
+    });
+
+    const seen: { first: boolean; second: boolean }[] = [];
+    let injectedOnce = false;
+
+    const agent = chat.agent({
+      id: "inject-system-two-builds",
+      onTurnComplete: async () => {
+        if (injectedOnce) return;
+        injectedOnce = true;
+        chat.inject([{ role: "system", content: "SENTINEL-BOTH-BUILDS" }]);
+      },
+      run: async ({ messages, signal }) => {
+        const first = chat.toStreamTextOptions();
+        const second = chat.toStreamTextOptions();
+        const has = (o: { system?: unknown }) =>
+          JSON.stringify(o.system ?? null).includes("SENTINEL-BOTH-BUILDS");
+        seen.push({ first: has(first), second: has(second) });
+        return streamText({ ...second, model, messages, abortSignal: signal });
+      },
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "inject-system-two-builds" });
+
+    try {
+      await harness.sendMessage({ id: "u1", role: "user", parts: [{ type: "text", text: "one" }] });
+      await new Promise((r) => setTimeout(r, 40));
+
+      await harness.sendMessage({ id: "u2", role: "user", parts: [{ type: "text", text: "two" }] });
+      await new Promise((r) => setTimeout(r, 40));
+
+      await harness.sendMessage({
+        id: "u3",
+        role: "user",
+        parts: [{ type: "text", text: "three" }],
+      });
+      await new Promise((r) => setTimeout(r, 40));
+
+      // Turn 1 predates the injection, turn 2 carries it in both builds, turn 3 is clear again.
+      expect(seen).toEqual([
+        { first: false, second: false },
+        { first: true, second: true },
+        { first: false, second: false },
+      ]);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("gives each turn only its own injection, over consecutive turns", async () => {
+    /**
+     * Consuming the lane has to move the blocks out of it, not mark them read in
+     * place. Left in place, an injection made during the consumed turn queues
+     * behind them and the next turn's clear destroys both: turn 1 gets its
+     * instruction and every turn after it silently gets none.
+     */
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({ stream: textStream("ok") }),
+    });
+
+    let n = 0;
+
+    const agent = chat.agent({
+      id: "inject-system-consecutive",
+      onTurnComplete: async () => {
+        n++;
+        chat.inject([{ role: "system", content: `INJECT-${n}` }]);
+      },
+      run: async ({ messages, signal }) =>
+        streamText({
+          ...chat.toStreamTextOptions(),
+          model,
+          messages,
+          abortSignal: signal,
+        }),
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "inject-system-consecutive" });
+
+    try {
+      for (const id of ["u1", "u2", "u3", "u4"]) {
+        await harness.sendMessage({ id, role: "user", parts: [{ type: "text", text: id }] });
+        await new Promise((r) => setTimeout(r, 40));
+      }
+
+      const injectionsSeenOn = (turn: number) => {
+        const system = JSON.stringify(
+          model.doStreamCalls[turn]!.prompt.filter((m) => m.role === "system")
+        );
+        return ["INJECT-1", "INJECT-2", "INJECT-3"].filter((key) => system.includes(key));
+      };
+
+      // Turn 0 predates any injection; after that each turn carries exactly the
+      // one injected at the end of the turn before it.
+      expect(injectionsSeenOn(0)).toEqual([]);
+      expect(injectionsSeenOn(1)).toEqual(["INJECT-1"]);
+      expect(injectionsSeenOn(2)).toEqual(["INJECT-2"]);
+      expect(injectionsSeenOn(3)).toEqual(["INJECT-3"]);
+    } finally {
+      await harness.close();
+    }
+  });
+});

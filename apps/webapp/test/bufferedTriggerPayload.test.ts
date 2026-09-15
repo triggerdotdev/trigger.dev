@@ -90,7 +90,7 @@ describe("buildBufferedTriggerPayload", () => {
     expect(buildBufferedTriggerPayload(baseInput).parentRunFriendlyId).toBeNull();
     expect(
       buildBufferedTriggerPayload({ ...baseInput, parentRunFriendlyId: "run_parent" })
-        .parentRunFriendlyId,
+        .parentRunFriendlyId
     ).toBe("run_parent");
   });
 });

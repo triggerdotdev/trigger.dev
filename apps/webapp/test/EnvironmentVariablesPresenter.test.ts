@@ -11,9 +11,7 @@ vi.mock("~/db.server", () => ({
     fnOrOptions?: ((tx: unknown) => Promise<unknown>) | unknown
   ) => {
     const fn =
-      typeof nameOrFn === "string"
-        ? (fnOrOptions as (tx: unknown) => Promise<unknown>)
-        : nameOrFn;
+      typeof nameOrFn === "string" ? (fnOrOptions as (tx: unknown) => Promise<unknown>) : nameOrFn;
 
     return prismaClient.$transaction(fn);
   },
@@ -31,44 +29,52 @@ import {
 vi.setConfig({ testTimeout: 60_000 });
 
 describe("EnvironmentVariablesPresenter", () => {
-  postgresTest("keeps secret values redacted while returning non-secret values", async ({ prisma }) => {
-    const { user, organization, project, projectSlug } = await createTestOrgProjectWithMember(prisma);
-    const production = await createRuntimeEnvironment(prisma, {
-      projectId: project.id,
-      organizationId: organization.id,
-      type: "PRODUCTION",
-    });
+  postgresTest(
+    "keeps secret values redacted while returning non-secret values",
+    async ({ prisma }) => {
+      const { user, organization, project, projectSlug } =
+        await createTestOrgProjectWithMember(prisma);
+      const production = await createRuntimeEnvironment(prisma, {
+        projectId: project.id,
+        organizationId: organization.id,
+        type: "PRODUCTION",
+      });
 
-    const repository = new EnvironmentVariablesRepository(prisma, prisma);
+      const repository = new EnvironmentVariablesRepository(prisma, prisma);
 
-    await createEnvironmentVariable(repository, project.id, {
-      environmentId: production.id,
-      key: "SECRET_VAR",
-      value: "super-secret",
-      isSecret: true,
-      userId: user.id,
-    });
-    await createEnvironmentVariable(repository, project.id, {
-      environmentId: production.id,
-      key: "PLAIN_VAR",
-      value: "plain-value",
-      isSecret: false,
-      userId: user.id,
-    });
+      await createEnvironmentVariable(repository, project.id, {
+        environmentId: production.id,
+        key: "SECRET_VAR",
+        value: "super-secret",
+        isSecret: true,
+        userId: user.id,
+      });
+      await createEnvironmentVariable(repository, project.id, {
+        environmentId: production.id,
+        key: "PLAIN_VAR",
+        value: "plain-value",
+        isSecret: false,
+        userId: user.id,
+      });
 
-    const result = await new EnvironmentVariablesPresenter(prisma, prisma).call({
-      userId: user.id,
-      projectSlug,
-    });
+      const result = await new EnvironmentVariablesPresenter(prisma, prisma).call({
+        userId: user.id,
+        projectSlug,
+      });
 
-    const secretVariable = result.environmentVariables.find((variable) => variable.key === "SECRET_VAR");
-    const nonSecretVariable = result.environmentVariables.find((variable) => variable.key === "PLAIN_VAR");
+      const secretVariable = result.environmentVariables.find(
+        (variable) => variable.key === "SECRET_VAR"
+      );
+      const nonSecretVariable = result.environmentVariables.find(
+        (variable) => variable.key === "PLAIN_VAR"
+      );
 
-    expect(secretVariable).toBeDefined();
-    expect(nonSecretVariable).toBeDefined();
-    expect(secretVariable!.value).toBe("");
-    expect(nonSecretVariable!.value).toBe("plain-value");
-  });
+      expect(secretVariable).toBeDefined();
+      expect(nonSecretVariable).toBeDefined();
+      expect(secretVariable!.value).toBe("");
+      expect(nonSecretVariable!.value).toBe("plain-value");
+    }
+  );
 
   postgresTest(
     "returns values for active environments (including branch environments) and excludes archived branch environments",

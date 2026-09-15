@@ -1,7 +1,8 @@
 import { CacheError } from "@unkey/cache";
 import type { Entry, Store } from "@unkey/cache/stores";
 import { Err, Ok, type Result } from "@unkey/error";
-import { createRedisClient, Redis, RedisOptions } from "@internal/redis";
+import type { Redis, RedisOptions } from "@internal/redis";
+import { createRedisClient } from "@internal/redis";
 
 export type RedisCacheStoreConfig = {
   connection: RedisOptions;
@@ -9,9 +10,10 @@ export type RedisCacheStoreConfig = {
   useModernCacheKeyBuilder?: boolean;
 };
 
-export class RedisCacheStore<TNamespace extends string, TValue = any>
-  implements Store<TNamespace, TValue>
-{
+export class RedisCacheStore<TNamespace extends string, TValue = any> implements Store<
+  TNamespace,
+  TValue
+> {
   public readonly name = "redis";
   private readonly redis: Redis;
 

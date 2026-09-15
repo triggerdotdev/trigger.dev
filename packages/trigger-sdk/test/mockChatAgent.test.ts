@@ -8,7 +8,7 @@ import { locals } from "@trigger.dev/core/v3";
 import { simulateReadableStream, streamText, tool, validateUIMessages } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
-import { z } from "zod";
+import { z } from "zod/v4";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -205,9 +205,7 @@ describe("mockChatAgent", () => {
         // `upsertIncomingMessage` does.
         if (trigger === "submit-message" && incomingMessages.length > 0) {
           const newMsg = incomingMessages[incomingMessages.length - 1]!;
-          const exists = newMsg.id
-            ? stored.some((m) => m.id === newMsg.id)
-            : false;
+          const exists = newMsg.id ? stored.some((m) => m.id === newMsg.id) : false;
           if (!exists) stored.push(newMsg);
         }
         return [...stored];
@@ -308,7 +306,12 @@ describe("mockChatAgent", () => {
         });
       },
       run: async ({ messages, signal }) => {
-        return streamText({ model, messages, tools: { askUser: askUserTool }, abortSignal: signal });
+        return streamText({
+          model,
+          messages,
+          tools: { askUser: askUserTool },
+          abortSignal: signal,
+        });
       },
     });
 
@@ -404,9 +407,7 @@ describe("mockChatAgent", () => {
       hydrateMessages: async () => [dbAssistant as any],
       onTurnComplete: async ({ uiMessages }) => {
         const head = uiMessages.find((m: any) => m.id === HEAD_ID);
-        mergedToolPart = (head?.parts ?? []).find(
-          (p: any) => p?.toolCallId === TC
-        );
+        mergedToolPart = (head?.parts ?? []).find((p: any) => p?.toolCallId === TC);
       },
       run: async ({ messages, signal }) => {
         return streamText({
@@ -482,9 +483,7 @@ describe("mockChatAgent", () => {
       hydrateMessages: async () => [dbAssistant as any],
       onTurnComplete: async ({ uiMessages }) => {
         const head = uiMessages.find((m: any) => m.id === HEAD_ID);
-        mergedToolPart = (head?.parts ?? []).find(
-          (p: any) => p?.toolCallId === TC
-        );
+        mergedToolPart = (head?.parts ?? []).find((p: any) => p?.toolCallId === TC);
       },
       run: async ({ messages, signal }) => {
         return streamText({
@@ -560,9 +559,7 @@ describe("mockChatAgent", () => {
       hydrateMessages: async () => [dbAssistant as any],
       onTurnComplete: async ({ uiMessages }) => {
         const head = uiMessages.find((m: any) => m.id === HEAD_ID);
-        mergedToolPart = (head?.parts ?? []).find(
-          (p: any) => p?.toolCallId === TC
-        );
+        mergedToolPart = (head?.parts ?? []).find((p: any) => p?.toolCallId === TC);
       },
       run: async ({ messages, signal }) => {
         return streamText({
@@ -675,9 +672,7 @@ describe("mockChatAgent", () => {
         });
         // Recommended pattern: validate only user messages, since HITL
         // continuations carry slim assistants the AI SDK schema rejects.
-        const userMessages = messages.filter(
-          (m: any) => m.role === "user"
-        );
+        const userMessages = messages.filter((m: any) => m.role === "user");
         if (userMessages.length > 0) {
           await validateUIMessages({
             messages: userMessages,
@@ -824,9 +819,7 @@ describe("mockChatAgent", () => {
       await harness.sendMessage(userMessage("hi"));
       await new Promise((r) => setTimeout(r, 50));
 
-      const turn1Assistant = turnsSeen.at(-1)?.uiMessages.find(
-        (m: any) => m.role === "assistant"
-      );
+      const turn1Assistant = turnsSeen.at(-1)?.uiMessages.find((m: any) => m.role === "assistant");
       expect(turn1Assistant).toBeTruthy();
       const HEAD_ID = turn1Assistant!.id;
 
@@ -848,9 +841,7 @@ describe("mockChatAgent", () => {
 
       const turn2 = turnsSeen.at(-1);
       const head = turn2!.uiMessages.find((m: any) => m.id === HEAD_ID);
-      const toolPart = (head?.parts ?? []).find(
-        (p: any) => p?.toolCallId === TC
-      );
+      const toolPart = (head?.parts ?? []).find((p: any) => p?.toolCallId === TC);
       expect(toolPart?.state).toBe("output-available");
       expect(toolPart?.output).toEqual({ color: "blue" });
       // Snapshot's `input` survived the merge.
@@ -962,30 +953,31 @@ describe("mockChatAgent", () => {
     }
   });
 
-  it("actions returning a stream pipe the response without firing turn hooks", async () => {
+  it("actions returning chat.turn() run a turn on the edited history", async () => {
     const onTurnStart = vi.fn();
     const onTurnComplete = vi.fn();
-    const actionModel = new MockLanguageModelV3({
-      doStream: async () => ({ stream: textStream("regenerated") }),
-    });
-    const turnModel = new MockLanguageModelV3({
-      doStream: async () => ({ stream: textStream("normal-response") }),
+    let calls = 0;
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({
+        stream: textStream(calls++ === 0 ? "normal-response" : "regenerated"),
+      }),
     });
 
     const agent = chat.agent({
-      id: "mockChatAgent.actions.stream",
+      id: "mockChatAgent.actions.turn",
       actionSchema: z.object({ type: z.literal("regenerate") }),
       onTurnStart,
       onTurnComplete,
-      onAction: async ({ messages }) => {
-        return streamText({ model: actionModel, messages });
+      onAction: async () => {
+        chat.history.slice(0, -1);
+        return chat.turn();
       },
       run: async ({ messages, signal }) => {
-        return streamText({ model: turnModel, messages, abortSignal: signal });
+        return streamText({ model, messages, abortSignal: signal });
       },
     });
 
-    const harness = mockChatAgent(agent, { chatId: "test-stream-action" });
+    const harness = mockChatAgent(agent, { chatId: "test-turn-action" });
     try {
       await harness.sendMessage(userMessage("hi"));
       await new Promise((r) => setTimeout(r, 50));
@@ -995,11 +987,11 @@ describe("mockChatAgent", () => {
       const actionTurn = await harness.sendAction({ type: "regenerate" });
       await new Promise((r) => setTimeout(r, 50));
 
-      // No turn hooks fired during the action.
-      expect(onTurnStart.mock.calls.length).toBe(baselineTurnStart);
-      expect(onTurnComplete.mock.calls.length).toBe(baselineTurnComplete);
+      // It is a turn: each hook fired once more.
+      expect(onTurnStart.mock.calls.length).toBe(baselineTurnStart + 1);
+      expect(onTurnComplete.mock.calls.length).toBe(baselineTurnComplete + 1);
 
-      // Action's streamText output landed on the response.
+      // And the turn's answer is what streamed back for the action.
       const text = actionTurn.chunks
         .filter((c) => c.type === "text-delta")
         .map((c) => (c as { delta: string }).delta)
@@ -1038,9 +1030,7 @@ describe("mockChatAgent", () => {
       // No additional model call; console.warn fired with our marker text.
       expect(runSpy.mock.calls.length).toBe(baselineRun);
       expect(
-        warnSpy.mock.calls.some((args) =>
-          (args[0] as string).includes("no `onAction` handler")
-        )
+        warnSpy.mock.calls.some((args) => (args[0] as string).includes("no `onAction` handler"))
       ).toBe(true);
 
       const sawTurnComplete = actionTurn.rawChunks.some(
@@ -1885,15 +1875,14 @@ describe("mockChatAgent", () => {
         await new Promise((r) => setTimeout(r, 50));
         const snap = harness.getSnapshot();
         expect(snap).toBeDefined();
-        expect(snap!.version).toBe(1);
+        expect(snap!.version).toBe(2);
         // The snapshot reflects the post-turn accumulator: 1 user + 1 assistant.
-        const roles = snap!.messages.map((m) => m.role);
+        const roles = snap!.messages.map((e) => e.message.role);
         expect(roles).toEqual(["user", "assistant"]);
-        // `lastInEventId` stays undefined here: TestSessionStreamManager
-        // deliberately has no seq numbers, so the committed `.in` cursor
-        // the production write site reads is undefined in harness runs.
-        // The cursor round-trip is covered by the live smoke instead.
-        expect(snap!.lastInEventId).toBeUndefined();
+        // TestSessionStreamManager assigns the same zero-based sequence
+        // numbers as the durable channel, so the committed input cursor is
+        // represented in snapshots produced by the harness too.
+        expect(snap!.lastInEventId).toBe("0");
       } finally {
         await harness.close();
       }
@@ -1985,11 +1974,11 @@ describe("mockChatAgent", () => {
       const model = new MockLanguageModelV3({
         doStream: async () => ({ stream: textStream("post-handover") }),
       });
-      let messagesAtChatStart: any[] = [];
+      let _messagesAtChatStart: any[] = [];
       const agent = chat.agent({
         id: "mockChatAgent.headstart.slim",
         onChatStart: async ({ messages }) => {
-          messagesAtChatStart = messages;
+          _messagesAtChatStart = messages;
         },
         run: async ({ messages, signal }) => streamText({ model, messages, abortSignal: signal }),
       });
@@ -2061,8 +2050,7 @@ describe("mockChatAgent", () => {
         id: "onChatStart-gate.fresh-baseline",
         onChatStart,
         onTurnStart,
-        run: async ({ messages, signal }) =>
-          streamText({ model, messages, abortSignal: signal }),
+        run: async ({ messages, signal }) => streamText({ model, messages, abortSignal: signal }),
       });
       const harness = mockChatAgent(agent, { chatId: "fresh-baseline" });
       try {
@@ -2089,8 +2077,7 @@ describe("mockChatAgent", () => {
         hydrateMessages: async ({ incomingMessages }) => incomingMessages,
         onChatStart,
         onTurnStart,
-        run: async ({ messages, signal }) =>
-          streamText({ model, messages, abortSignal: signal }),
+        run: async ({ messages, signal }) => streamText({ model, messages, abortSignal: signal }),
       });
       const harness = mockChatAgent(agent, {
         chatId: "continuation-skip",
@@ -2124,8 +2111,7 @@ describe("mockChatAgent", () => {
         hydrateMessages: async ({ incomingMessages }) => incomingMessages,
         onChatStart,
         onTurnStart,
-        run: async ({ messages, signal }) =>
-          streamText({ model, messages, abortSignal: signal }),
+        run: async ({ messages, signal }) => streamText({ model, messages, abortSignal: signal }),
       });
       const harness = mockChatAgent(agent, {
         chatId: "oom-retry-skip",

@@ -10,12 +10,20 @@ export function mapRunToLiveFields(run: ListedRun) {
     status: run.status,
     updatedAt: run.updatedAt.toISOString(),
     startedAt: startedAt?.toISOString(),
-    finishedAt: hasFinished ? run.completedAt?.toISOString() ?? run.updatedAt.toISOString() : undefined,
+    finishedAt: hasFinished
+      ? (run.completedAt?.toISOString() ?? run.updatedAt.toISOString())
+      : undefined,
     hasFinished,
     isCancellable: isCancellableRunStatus(run.status),
     isPending: isPendingRunStatus(run.status),
     usageDurationMs: Number(run.usageDurationMs),
     costInCents: run.costInCents,
     baseCostInCents: run.baseCostInCents,
+    metadata: run.metadata,
+    metadataType: run.metadataType,
+    payload: run.payload,
+    payloadType: run.payloadType,
+    output: run.output,
+    outputType: run.outputType,
   };
 }

@@ -5,11 +5,12 @@ import {
   RunEngineVersionSchema,
   TriggerTaskRequestBody,
 } from "@trigger.dev/core/v3";
-import { TaskRun } from "@trigger.dev/database";
+import type { TaskRun } from "@trigger.dev/database";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
-import { ApiAuthenticationResultSuccess, getOneTimeUseToken } from "~/services/apiAuth.server";
+import type { ApiAuthenticationResultSuccess } from "~/services/apiAuth.server";
+import { getOneTimeUseToken } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { extractJwtSigningSecretKey } from "~/services/realtime/jwtAuth.server";
 import { determineRealtimeStreamsVersion } from "~/services/realtime/v1StreamsGlobal.server";
@@ -19,7 +20,10 @@ import {
   handleRequestIdempotency,
   saveRequestIdempotency,
 } from "~/utils/requestIdempotency.server";
+import { scopeRequestIdempotencyHeader } from "~/utils/requestIdempotencyKey";
+import { canWriteParentRun } from "~/utils/parentRunAuthorization.server";
 import { sanitizeTriggerSource } from "~/utils/triggerSource";
+import { runStore } from "~/v3/runStore.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { OutOfEntitlementError, TriggerTaskService } from "~/v3/services/triggerTask.server";
 
@@ -49,7 +53,7 @@ const { action, loader } = createActionApiRoute(
   {
     headers: HeadersSchema,
     params: ParamsSchema,
-    body: TriggerTaskRequestBody,
+    body: z.compile(TriggerTaskRequestBody),
     allowJWT: true,
     maxContentLength: env.TASK_PAYLOAD_MAXIMUM_SIZE,
     authorization: {
@@ -58,7 +62,7 @@ const { action, loader } = createActionApiRoute(
     },
     corsStrategy: "all",
   },
-  async ({ body, headers, params, authentication }) => {
+  async ({ body, headers, params, authentication, ability }) => {
     const {
       "idempotency-key": idempotencyKey,
       "idempotency-key-ttl": idempotencyKeyTTL,
@@ -67,24 +71,42 @@ const { action, loader } = createActionApiRoute(
       traceparent,
       tracestate,
       "x-trigger-worker": isFromWorker,
-      "x-trigger-client": triggerClient,
+      "x-trigger-client": _triggerClient,
       "x-trigger-engine-version": engineVersion,
       "x-trigger-request-idempotency-key": requestIdempotencyKey,
       "x-trigger-realtime-streams-version": realtimeStreamsVersion,
       "x-trigger-source": triggerSourceHeader,
     } = headers;
 
-    const cachedResponse = await handleRequestIdempotency(requestIdempotencyKey, {
+    if (
+      !(await canWriteParentRun(
+        ability,
+        authentication.environment.id,
+        authentication.environment.organizationId,
+        body.options?.parentRunId
+      ))
+    ) {
+      return json({ error: "Unauthorized" }, { status: 403 });
+    }
+
+    const scopedIdempotencyKey = scopeRequestIdempotencyHeader(requestIdempotencyKey, [
+      authentication.environment.id,
+      params.taskId,
+    ]);
+    const cachedResponse = await handleRequestIdempotency(scopedIdempotencyKey, {
       requestType: "trigger",
       findCachedEntity: async (cachedRequestId) => {
-        return await prisma.taskRun.findFirst({
-          where: {
+        return await runStore.findRun(
+          {
             id: cachedRequestId,
           },
-          select: {
-            friendlyId: true,
+          {
+            select: {
+              friendlyId: true,
+            },
           },
-        });
+          prisma
+        );
       },
       buildResponse: (cachedRun) => ({
         id: cachedRun.friendlyId,
@@ -122,9 +144,12 @@ const { action, loader } = createActionApiRoute(
           spanParentAsLink: spanParentAsLink === 1,
           oneTimeUseToken,
           realtimeStreamsVersion: determineRealtimeStreamsVersion(
-            realtimeStreamsVersion ?? undefined
+            realtimeStreamsVersion ?? undefined,
+            authentication.environment.organization.streamBasinName
           ),
-          triggerSource: isFromWorker ? "sdk" : sanitizeTriggerSource(triggerSourceHeader) ?? "api",
+          triggerSource: isFromWorker
+            ? "sdk"
+            : (sanitizeTriggerSource(triggerSourceHeader) ?? "api"),
           triggerAction: "trigger",
         },
         engineVersion ?? undefined
@@ -146,7 +171,7 @@ const { action, loader } = createActionApiRoute(
       // materialisation: once the run lands in PG, normal request-
       // idempotency from that point forward works as usual.
       if (!result.isMollified) {
-        await saveRequestIdempotency(requestIdempotencyKey, "trigger", result.run.id);
+        await saveRequestIdempotency(scopedIdempotencyKey, "trigger", result.run.id);
       }
 
       const $responseHeaders = await responseHeaders(result.run, authentication);

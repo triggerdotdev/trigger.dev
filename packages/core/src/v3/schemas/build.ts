@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v4";
 import { ConfigManifest } from "./config.js";
 import {
   PromptManifest,
@@ -6,6 +6,7 @@ import {
   SkillManifest,
   TaskFile,
   TaskManifest,
+  WebhookManifest,
 } from "./schemas.js";
 
 export const BuildExternal = z.object({
@@ -19,7 +20,20 @@ export const BuildTarget = z.enum(["dev", "deploy", "unmanaged"]);
 
 export type BuildTarget = z.infer<typeof BuildTarget>;
 
-export const BuildRuntime = z.enum(["node", "node-22", "bun"]);
+export const ConfigRuntime = z.enum([
+  "node",
+  "node-22",
+  "node-24",
+  "node-26",
+  // Deprecated aliases, kept for backwards compatibility. Use "node-24"/"node-26" instead.
+  "experimental-node-24",
+  "experimental-node-26",
+  "bun",
+]);
+
+export type ConfigRuntime = z.infer<typeof ConfigRuntime>;
+
+export const BuildRuntime = z.enum(["node", "node-22", "node-24", "node-26", "bun"]);
 
 export type BuildRuntime = z.infer<typeof BuildRuntime>;
 
@@ -34,6 +48,7 @@ export const BuildManifest = z.object({
   config: ConfigManifest,
   files: z.array(TaskFile),
   sources: z.record(
+    z.string(),
     z.object({
       contents: z.string(),
       contentHash: z.string(),
@@ -49,16 +64,18 @@ export const BuildManifest = z.object({
   configPath: z.string(),
   externals: BuildExternal.array().optional(),
   build: z.object({
-    env: z.record(z.string()).optional(),
+    env: z.record(z.string(), z.string()).optional(),
     commands: z.array(z.string()).optional(),
   }),
   customConditions: z.array(z.string()).optional(),
   deploy: z.object({
-    env: z.record(z.string()).optional(),
+    env: z.record(z.string(), z.string()).optional(),
     sync: z
       .object({
-        env: z.record(z.string()).optional(),
-        parentEnv: z.record(z.string()).optional(),
+        env: z.record(z.string(), z.string()).optional(),
+        parentEnv: z.record(z.string(), z.string()).optional(),
+        secretEnv: z.record(z.string(), z.string()).optional(),
+        secretParentEnv: z.record(z.string(), z.string()).optional(),
       })
       .optional(),
   }),
@@ -75,7 +92,7 @@ export const BuildManifest = z.object({
     })
     .optional(),
   /** Maps output file paths to their content hashes for deduplication during dev */
-  outputHashes: z.record(z.string()).optional(),
+  outputHashes: z.record(z.string(), z.string()).optional(),
   /** Skills discovered and bundled into `.trigger/skills/{id}/` under `outputPath`. */
   skills: SkillManifest.array().optional(),
 });
@@ -96,6 +113,8 @@ export const WorkerManifest = z.object({
   tasks: TaskManifest.array(),
   prompts: PromptManifest.array().optional(),
   skills: SkillManifest.array().optional(),
+  webhooks: WebhookManifest.array().optional(), // NEW
+  unclaimedSessionWebhooks: z.array(z.string()).optional(), // session.webhook descriptors no agent listed
   queues: QueueManifest.array().optional(),
   workerEntryPoint: z.string(),
   controllerEntryPoint: z.string().optional(),
@@ -104,7 +123,7 @@ export const WorkerManifest = z.object({
   runtime: BuildRuntime,
   runtimeVersion: z.string().optional(),
   customConditions: z.array(z.string()).optional(),
-  timings: z.record(z.number()).optional(),
+  timings: z.record(z.string(), z.number()).optional(),
   processKeepAlive: z
     .object({
       enabled: z.boolean(),

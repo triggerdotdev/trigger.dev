@@ -1,5 +1,6 @@
 import { BookOpenIcon, MagnifyingGlassIcon } from "@heroicons/react/20/solid";
-import { type MetaFunction, Outlet, useNavigation, useParams } from "@remix-run/react";
+import { Outlet, useParams } from "@remix-run/react";
+
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { TestHasNoTasks } from "~/components/BlankStatePanels";
@@ -36,14 +37,19 @@ import { type TaskListItem, TestPresenter } from "~/presenters/v3/TestPresenter.
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { docsPath, EnvironmentParamSchema, v3TestTaskPath } from "~/utils/pathBuilder";
+import { testAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
+import type { Handle } from "~/utils/handle";
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Test | Trigger.dev`,
-    },
-  ];
+const TASK_FILTER_KEYS = ["taskIdentifier", "friendlyId", "id", "filePath", "triggerSource"];
+
+export const handle: Handle = {
+  agentPageContext: (data) => testAgentPageContext(data),
 };
+
+import { pageMeta } from "~/utils/pageTitle";
+
+export const meta = pageMeta("Test");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -85,9 +91,15 @@ export default function Page() {
       <NavBar>
         <PageTitle title="Test" />
         <PageAccessories>
-          <LinkButton variant={"docs/small"} LeadingIcon={BookOpenIcon} to={docsPath("/run-tests")}>
-            Test docs
-          </LinkButton>
+          <WhenAgentUnavailable>
+            <LinkButton
+              variant={"docs/small"}
+              LeadingIcon={BookOpenIcon}
+              to={docsPath("/run-tests")}
+            >
+              Test docs
+            </LinkButton>
+          </WhenAgentUnavailable>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
@@ -95,7 +107,13 @@ export default function Page() {
           <MainCenteredContainer className="max-w-md">
             <TestHasNoTasks />
           </MainCenteredContainer>
+        ) : taskParam ? (
+          // Task selected via URL → skip the picker; the child route owns the page.
+          <Outlet key={taskParam} />
         ) : (
+          // No task in URL: show the picker as a fallback so users landing on
+          // /test (e.g. from the runs blank state with multiple task filters)
+          // can still choose one.
           <div className={cn("grid h-full max-h-full grid-cols-1")}>
             <ResizablePanelGroup orientation="horizontal" className="h-full max-h-full">
               <ResizablePanel id="test-selector" min="200px" default="20%">
@@ -122,7 +140,7 @@ function TaskSelector({
 }) {
   const { filterText, setFilterText, filteredItems } = useFuzzyFilter<TaskListItem>({
     items: tasks,
-    keys: ["taskIdentifier", "friendlyId", "id", "filePath", "triggerSource"],
+    keys: TASK_FILTER_KEYS,
   });
   const hasTaskInEnvironment = activeTaskIdentifier
     ? tasks.some((t) => t.taskIdentifier === activeTaskIdentifier)
@@ -205,7 +223,10 @@ function TaskRow({ task }: { task: TaskListItem }) {
       >
         <div className="flex items-center gap-1.5">
           <TaskTriggerSourceIcon source={task.triggerSource} />
-          <Paragraph variant="extra-small" className="text-text-dimmed">
+          <Paragraph
+            variant="extra-small"
+            className="text-text-dimmed group-hover/table-row:text-text-bright"
+          >
             {task.taskIdentifier}
           </Paragraph>
         </div>

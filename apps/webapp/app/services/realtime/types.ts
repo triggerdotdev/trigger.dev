@@ -30,16 +30,19 @@ export interface StreamIngestor {
 
   getLastChunkIndex(runId: string, streamId: string, clientId: string): Promise<number>;
 
-  readRecords(
-    runId: string,
-    streamId: string,
-    afterSeqNum?: number
-  ): Promise<StreamRecord[]>;
+  readRecords(runId: string, streamId: string, afterSeqNum?: number): Promise<StreamRecord[]>;
 }
 
 export type StreamResponseOptions = {
   timeoutInSeconds?: number;
   lastEventId?: string;
+  /**
+   * Where a fresh subscription (no `lastEventId`) starts reading. `"latest"`
+   * starts at the current tail so the subscriber sees only records appended
+   * after it connects; `"beginning"` (the default when unset) replays history.
+   * Ignored when `lastEventId` is set.
+   */
+  startFrom?: "beginning" | "latest";
   /**
    * Session-stream-only. When `true`, the responder MAY peek the tail
    * of `.out` and short-circuit to `wait=0` + `X-Session-Settled: true`

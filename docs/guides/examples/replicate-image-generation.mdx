@@ -6,7 +6,7 @@ description: "Learn how to generate images from source image URLs using Replicat
 
 ## Overview
 
-This example demonstrates how to use Trigger.dev to generate images from source image URLs using [Replicate](https://replicate.com/), the [nano-banana-image-to-image](https://replicate.com/meta/nano-banana-image-to-image) model.
+This example demonstrates how to use Trigger.dev to generate images from source image URLs using [Replicate](https://replicate.com/), the [nano-banana](https://replicate.com/google/nano-banana) model.
 
 ## Task code
 
@@ -96,7 +96,7 @@ export const generateImageAndUploadToR2 = task({
 
 ## Environment variables
 
-You will need to set the following environment variables:
+Create a named **Trigger only** API key in the Trigger.dev environment your app uses, then set the following environment variables:
 
 ```
 TRIGGER_SECRET_KEY=<your-trigger-secret-key>

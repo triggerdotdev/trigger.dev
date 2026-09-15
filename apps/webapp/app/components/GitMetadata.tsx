@@ -14,11 +14,7 @@ export function GitMetadata({ git }: { git?: GitMetaLinks | null }) {
   );
 }
 
-export function GitMetadataBranch({
-  git,
-}: {
-  git: Pick<GitMetaLinks, "branchUrl" | "branchName">;
-}) {
+function GitMetadataBranch({ git }: { git: Pick<GitMetaLinks, "branchUrl" | "branchName"> }) {
   return (
     <SimpleTooltip
       button={
@@ -28,7 +24,7 @@ export function GitMetadataBranch({
           leadingIconClassName="group-hover/table-row:text-text-bright"
           iconSpacing="gap-x-1"
           to={git.branchUrl}
-          className="pl-1 duration-0 [&_span]:duration-0 [&_span]:group-hover/table-row:text-text-bright"
+          className="pl-1 duration-0 [&_span]:duration-0 group-hover/table-row:[&_span]:text-text-bright"
         >
           {git.branchName}
         </LinkButton>
@@ -38,7 +34,7 @@ export function GitMetadataBranch({
   );
 }
 
-export function GitMetadataCommit({
+function GitMetadataCommit({
   git,
 }: {
   git: Pick<GitMetaLinks, "commitUrl" | "shortSha" | "commitMessage">;
@@ -52,7 +48,7 @@ export function GitMetadataCommit({
           LeadingIcon={<GitCommitIcon className="size-4" />}
           leadingIconClassName="group-hover/table-row:text-text-bright"
           iconSpacing="gap-x-1"
-          className="pl-1 duration-0 [&_span]:duration-0 [&_span]:group-hover/table-row:text-text-bright"
+          className="pl-1 duration-0 [&_span]:duration-0 group-hover/table-row:[&_span]:text-text-bright"
         >
           {`${git.shortSha} / ${git.commitMessage}`}
         </LinkButton>
@@ -62,7 +58,7 @@ export function GitMetadataCommit({
   );
 }
 
-export function GitMetadataPullRequest({
+function GitMetadataPullRequest({
   git,
 }: {
   git: Pick<GitMetaLinks, "pullRequestUrl" | "pullRequestNumber" | "pullRequestTitle">;
@@ -78,7 +74,7 @@ export function GitMetadataPullRequest({
           LeadingIcon={<GitPullRequestIcon className="size-4" />}
           leadingIconClassName="group-hover/table-row:text-text-bright"
           iconSpacing="gap-x-1"
-          className="pl-1 duration-0 [&_span]:duration-0 [&_span]:group-hover/table-row:text-text-bright"
+          className="pl-1 duration-0 [&_span]:duration-0 group-hover/table-row:[&_span]:text-text-bright"
         >
           #{git.pullRequestNumber} {git.pullRequestTitle}
         </LinkButton>

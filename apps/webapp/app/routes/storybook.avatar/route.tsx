@@ -1,3 +1,4 @@
+import { ComponentNames } from "../storybook/StoryKit";
 import {
   Avatar,
   avatarIcons,
@@ -15,6 +16,9 @@ const avatars: IconAvatar[] = Object.entries(avatarIcons).map(([iconName], index
 export default function Story() {
   return (
     <div className="flex h-full gap-12 bg-black p-12">
+      <div className="px-4 pt-4">
+        <ComponentNames names={["Avatar.tsx"]} />
+      </div>
       {/* Left grid - size-8 */}
       <div className="flex-1">
         <h2 className="mb-4 text-lg font-semibold text-white">Size 8</h2>

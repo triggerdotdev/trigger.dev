@@ -1,9 +1,15 @@
-import { conform, useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
+import {
+  getFormProps,
+  getSelectProps,
+  getInputProps,
+  getTextareaProps,
+  useForm,
+} from "@conform-to/react";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { InformationCircleIcon, ArrowUpCircleIcon } from "@heroicons/react/20/solid";
 import { EnvelopeIcon, ShieldCheckIcon } from "@heroicons/react/24/solid";
 import { Form, useActionData, useLocation, useNavigation, useSearchParams } from "@remix-run/react";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { type FeedbackType, feedbackTypes, schema } from "~/routes/resources.feedback";
 import { Button } from "./primitives/Buttons";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "./primitives/Dialog";
@@ -21,24 +27,37 @@ import { TextLink } from "./primitives/TextLink";
 import { DialogClose } from "@radix-ui/react-dialog";
 
 type FeedbackProps = {
-  button: ReactNode;
+  button?: ReactNode;
   defaultValue?: FeedbackType;
   onOpenChange?: (open: boolean) => void;
-};
+} &
+  // Controlled mode is all-or-none: pass both open + setOpen to host the dialog outside a popover
+  // (so the popover closing can't unmount the form mid-submit and cancel the feedback POST), or
+  // neither for the self-managed, button-triggered dialog. Passing only one is a broken half-state.
+  ({ open?: never; setOpen?: never } | { open: boolean; setOpen: (open: boolean) => void });
 
-export function Feedback({ button, defaultValue = "bug", onOpenChange }: FeedbackProps) {
-  const [open, setOpen] = useState(false);
+export function Feedback({
+  button,
+  defaultValue = "bug",
+  onOpenChange,
+  open: openProp,
+  setOpen: setOpenProp,
+}: FeedbackProps) {
+  const [openState, setOpenState] = useState(false);
+  // Controlled when the caller passes open/setOpen (hosted outside a popover); otherwise self-managed.
+  const open = openProp ?? openState;
+  const setOpen = setOpenProp ?? setOpenState;
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const lastSubmission = useActionData();
   const navigation = useNavigation();
   const [type, setType] = useState<FeedbackType>(defaultValue);
 
-  const [form, { path, feedbackType, message }] = useForm({
+  const [form, fields] = useForm({
     id: "accept-invite",
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission as any,
     onValidate({ formData }) {
-      return parse(formData, { schema });
+      return parseWithZod(formData, { schema });
     },
     shouldRevalidate: "onInput",
   });
@@ -47,17 +66,17 @@ export function Feedback({ button, defaultValue = "bug", onOpenChange }: Feedbac
     if (
       navigation.formAction === "/resources/feedback" &&
       navigation.state === "loading" &&
-      form.error === undefined &&
-      form.errors.length === 0
+      Object.keys(form.allErrors).length === 0
     ) {
       setOpen(false);
     }
-  }, [navigation, form]);
+  }, [navigation.formAction, navigation.state, form.allErrors, setOpen]);
 
   // Handle URL param functionality
   useEffect(() => {
     const open = searchParams.get("feedbackPanel");
     if (open) {
+      // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes local state after an external or lifecycle change.
       setType(open as FeedbackType);
       setOpen(true);
       // Clone instead of mutating in place
@@ -65,7 +84,19 @@ export function Feedback({ button, defaultValue = "bug", onOpenChange }: Feedbac
       next.delete("feedbackPanel");
       setSearchParams(next);
     }
-  }, [searchParams]);
+  }, [searchParams, setOpen, setSearchParams]);
+
+  // Reset the topic to the default once the dialog closes, so reopening always starts fresh. The
+  // dialog is now persistently mounted (hosted outside the popover), so without this it would keep
+  // the previously chosen topic selected and risk filing feedback under the wrong category. Keyed
+  // on the close transition (not just `!open`) so the ?feedbackPanel= open path isn't clobbered.
+  const wasOpen = useRef(open);
+  useEffect(() => {
+    if (wasOpen.current && !open) {
+      setType(defaultValue);
+    }
+    wasOpen.current = open;
+  }, [open, defaultValue]);
 
   const handleOpenChange = (value: boolean) => {
     setOpen(value);
@@ -74,12 +105,12 @@ export function Feedback({ button, defaultValue = "bug", onOpenChange }: Feedbac
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>{button}</DialogTrigger>
+      {button ? <DialogTrigger asChild>{button}</DialogTrigger> : null}
       <DialogContent>
         <DialogHeader>Contact us</DialogHeader>
         <div className="mt-2 flex flex-col gap-4">
           <div className="flex items-center gap-4">
-            <Icon icon={EnvelopeIcon} className="size-10 min-w-[2.5rem] text-blue-500" />
+            <Icon icon={EnvelopeIcon} className="size-10 min-w-10 text-blue-500" />
             <Paragraph variant="base/bright">
               How can we help? We read every message and will respond as quickly as we can.
             </Paragraph>
@@ -90,9 +121,17 @@ export function Feedback({ button, defaultValue = "bug", onOpenChange }: Feedbac
             type === "concurrency" ||
             type === "hipaa"
           ) && <hr className="border-grid-dimmed" />}
-          <Form method="post" action="/resources/feedback" {...form.props} className="w-full">
+          <Form
+            method="post"
+            action="/resources/feedback"
+            {...getFormProps(form)}
+            className="w-full"
+          >
             <Fieldset className="max-w-full gap-y-3">
-              <input value={location.pathname} {...conform.input(path, { type: "hidden" })} />
+              <input
+                value={location.pathname}
+                {...getInputProps(fields.path, { type: "hidden", value: false })}
+              />
               <InputGroup className="max-w-full">
                 {type === "feature" && (
                   <InfoPanel
@@ -149,7 +188,7 @@ export function Feedback({ button, defaultValue = "bug", onOpenChange }: Feedbac
                   </InfoPanel>
                 )}
                 <Select
-                  {...conform.select(feedbackType)}
+                  {...getSelectProps(fields.feedbackType)}
                   variant="tertiary/medium"
                   value={type}
                   defaultValue={type}
@@ -164,14 +203,14 @@ export function Feedback({ button, defaultValue = "bug", onOpenChange }: Feedbac
                     </SelectItem>
                   ))}
                 </Select>
-                <FormError id={feedbackType.errorId}>{feedbackType.error}</FormError>
+                <FormError id={fields.feedbackType.errorId}>{fields.feedbackType.errors}</FormError>
               </InputGroup>
               <InputGroup className="max-w-full">
                 <Label>Message</Label>
-                <TextArea {...conform.textarea(message)} />
-                <FormError id={message.errorId}>{message.error}</FormError>
+                <TextArea {...getTextareaProps(fields.message)} />
+                <FormError id={fields.message.errorId}>{fields.message.errors}</FormError>
               </InputGroup>
-              <FormError>{form.error}</FormError>
+              <FormError>{form.errors}</FormError>
               <FormButtons
                 confirmButton={
                   <Button type="submit" variant="primary/medium">

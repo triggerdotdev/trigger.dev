@@ -97,6 +97,24 @@ describe("idempotencyKey length validation", () => {
 
       expect(result.success).toBe(true);
     });
+
+    it("accepts a non-empty task identifier declaration", () => {
+      const result = CreateBatchRequestBody.safeParse({
+        runCount: 2,
+        taskIdentifiers: ["task-a", "task-b"],
+      });
+
+      expect(result.success).toBe(true);
+    });
+
+    it("rejects an empty task identifier declaration", () => {
+      const result = CreateBatchRequestBody.safeParse({
+        runCount: 1,
+        taskIdentifiers: [],
+      });
+
+      expect(result.success).toBe(false);
+    });
   });
 
   describe("CreateWaitpointTokenRequestBody", () => {

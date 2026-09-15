@@ -10,16 +10,13 @@ import {
   resolveSessionWithWriterFallback,
 } from "~/services/realtime/sessions.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
+import { stripClientWebhookActionSource } from "~/services/realtime/sanitizeSessionInput.server";
 import {
   claimSessionStreamPart,
-  drainSessionStreamWaitpoints,
   releaseSessionStreamPart,
 } from "~/services/sessionStreamWaitpointCache.server";
-import {
-  anyResource,
-  createActionApiRoute,
-} from "~/services/routeBuilders/apiBuilder.server";
-import { engine } from "~/v3/runEngine.server";
+import { completeSessionStreamWaitpoints } from "~/services/realtime/sessionChannelAppend.server";
+import { anyResource, createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
 
 const ParamsSchema = z.object({
@@ -83,14 +80,19 @@ const { action, loader } = createActionApiRoute(
 
     if (session.closedAt) {
       return json(
-        { ok: false, error: "Cannot append to a closed session" },
-        { status: 400 }
+        {
+          ok: false,
+          error: "Cannot append to a closed session",
+          code: "session_closed",
+          closedReason: session.closedReason,
+        },
+        { status: 409 }
       );
     }
 
     if (session.expiresAt && session.expiresAt.getTime() < Date.now()) {
       return json(
-        { ok: false, error: "Cannot append to an expired session" },
+        { ok: false, error: "Cannot append to an expired session", code: "session_expired" },
         { status: 400 }
       );
     }
@@ -129,7 +131,7 @@ const { action, loader } = createActionApiRoute(
     // durable and the next append will retry the ensure step. Don't
     // surface the error to the caller; the SSE tail just won't deliver
     // it until a run boots.
-    const [ensureError] = await tryCatch(
+    const [ensureError, ensureResult] = await tryCatch(
       ensureRunForSession({
         session,
         environment: authentication.environment,
@@ -146,7 +148,11 @@ const { action, loader } = createActionApiRoute(
 
     const addressingKey = canonicalSessionAddressingKey(session, params.session);
 
-    const part = await request.text();
+    let part = await request.text();
+    if (params.io === "in") {
+      part = stripClientWebhookActionSource(part);
+    }
+
     const clientPartId = request.headers.get("X-Part-Id");
     const partId = clientPartId ?? nanoid(7);
 
@@ -165,10 +171,12 @@ const { action, loader } = createActionApiRoute(
         )
       : true;
 
+    let appendSeq: number | undefined;
     if (wonClaim) {
-      const [appendError] = await tryCatch(
+      const [appendError, seq] = await tryCatch(
         realtimeStream.appendPartToSessionStream(part, partId, addressingKey, params.io)
       );
+      appendSeq = seq ?? undefined;
 
       if (appendError) {
         if (clientPartId) {
@@ -197,47 +205,22 @@ const { action, loader } = createActionApiRoute(
       }
     }
 
-    // Fire any run-scoped waitpoints registered against this channel. Best
-    // effort — a failure here must not fail the append (the record is
-    // durable in S2; the SSE tail will still deliver it). Waitpoints are
-    // keyed on the canonical addressing key the agent registered with via
-    // `sessions.open(...).in.wait()`, so writers and readers converge
-    // regardless of which URL form they used.
-    const [drainError, waitpointIds] = await tryCatch(
-      drainSessionStreamWaitpoints(authentication.environment.id, addressingKey, params.io)
+    await completeSessionStreamWaitpoints(
+      authentication.environment.id,
+      addressingKey,
+      params.io,
+      part
     );
-    if (drainError) {
-      logger.error("Failed to drain session stream waitpoints", {
-        addressingKey,
-        io: params.io,
-        error: drainError,
-      });
-    } else if (waitpointIds && waitpointIds.length > 0) {
-      await Promise.all(
-        waitpointIds.map(async (waitpointId) => {
-          const [completeError] = await tryCatch(
-            engine.completeWaitpoint({
-              id: waitpointId,
-              output: {
-                value: part,
-                type: "application/json",
-                isError: false,
-              },
-            })
-          );
-          if (completeError) {
-            logger.error("Failed to complete session stream waitpoint", {
-              addressingKey,
-              io: params.io,
-              waitpointId,
-              error: completeError,
-            });
-          }
-        })
-      );
-    }
 
-    return json({ ok: true }, { status: 200 });
+    // `seq` lets the client correlate this send to the turn that consumes it.
+    return json(
+      {
+        ok: true,
+        seq: appendSeq,
+        ...(ensureResult?.pendingVersion ? { pendingVersion: true } : {}),
+      },
+      { status: 200 }
+    );
   }
 );
 

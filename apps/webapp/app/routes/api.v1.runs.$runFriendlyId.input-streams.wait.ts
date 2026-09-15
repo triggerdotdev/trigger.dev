@@ -6,6 +6,7 @@ import {
 } from "@trigger.dev/core/v3";
 import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import { $replica } from "~/db.server";
+import { runStore } from "~/v3/runStore.server";
 import { createWaitpointTag, MAX_TAGS_PER_WAITPOINT } from "~/models/waitpointTag.server";
 import {
   deleteInputStreamWaitpoint,
@@ -32,18 +33,23 @@ const { action, loader } = createActionApiRoute(
   },
   async ({ authentication, body, params }) => {
     try {
-      const run = await $replica.taskRun.findFirst({
-        where: {
-          friendlyId: params.runFriendlyId,
-          runtimeEnvironmentId: authentication.environment.id,
-        },
+      const where = {
+        friendlyId: params.runFriendlyId,
+        runtimeEnvironmentId: authentication.environment.id,
+      };
+      const args = {
         select: {
           id: true,
           friendlyId: true,
           realtimeStreamsVersion: true,
           streamBasinName: true,
         },
-      });
+      };
+      // Replica lag can null out a live run; a spurious 404 fails the .wait() registration on a run
+      // that exists. Re-read the owning primary on a replica miss.
+      const run =
+        (await runStore.findRun(where, args, $replica)) ??
+        (await runStore.findRunOnPrimary(where, args));
 
       if (!run) {
         return json({ error: "Run not found" }, { status: 404 });
@@ -74,8 +80,10 @@ const { action, loader } = createActionApiRoute(
         }
       }
 
-      // Step 1: Create the waitpoint
+      // Create the waitpoint. Co-locate it with the owning run (run-ops split) so a run-ops id
+      // run's input-stream waitpoint lands on the run's DB and its block edge resolves.
       const result = await engine.createManualWaitpoint({
+        runId: run.id,
         environmentId: authentication.environment.id,
         projectId: authentication.environment.projectId,
         idempotencyKey: body.idempotencyKey,
@@ -84,7 +92,7 @@ const { action, loader } = createActionApiRoute(
         tags: bodyTags,
       });
 
-      // Step 2: Cache the mapping in Redis for fast lookup from .send()
+      // Cache the mapping in Redis for fast lookup from .send()
       const ttlMs = timeout ? timeout.getTime() - Date.now() : undefined;
       await setInputStreamWaitpoint(
         run.friendlyId,
@@ -93,7 +101,7 @@ const { action, loader } = createActionApiRoute(
         ttlMs && ttlMs > 0 ? ttlMs : undefined
       );
 
-      // Step 3: Check if data was already sent to this input stream (race condition handling).
+      // Check if data was already sent to this input stream (race condition handling).
       // If .send() landed before .wait(), the data is in the S2 stream but no waitpoint
       // existed to complete. We check from the client's last known position.
       if (!result.isCached) {

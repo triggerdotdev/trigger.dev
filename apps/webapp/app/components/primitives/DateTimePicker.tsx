@@ -77,14 +77,14 @@ export function DateTimePicker({
   return (
     <div className={cn("flex items-center gap-2", className)}>
       {showInlineLabel && (
-        <span className="w-6 shrink-0 text-right text-xxs text-charcoal-500">{label}</span>
+        <span className="w-6 shrink-0 text-right text-xxs text-text-faint">{label}</span>
       )}
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <button
             type="button"
             className={cn(
-              "flex h-[1.8rem] w-full items-center justify-between gap-2 whitespace-nowrap rounded border border-charcoal-650 bg-charcoal-750 px-2 text-xs tabular-nums transition hover:border-charcoal-600",
+              "flex h-[1.8rem] w-full items-center justify-between gap-2 whitespace-nowrap rounded border border-border-bright bg-background-hover px-2 text-xs tabular-nums transition hover:border-border-bright",
               value ? "text-text-bright" : "text-text-dimmed"
             )}
           >
@@ -107,9 +107,9 @@ export function DateTimePicker({
         value={value ? timeValue : ""}
         onChange={handleTimeChange}
         className={cn(
-          "h-[1.8rem] rounded border border-charcoal-650 bg-charcoal-750 px-2 text-xs tabular-nums transition hover:border-charcoal-600",
+          "h-[1.8rem] rounded border border-border-bright bg-background-hover px-2 text-xs tabular-nums transition hover:border-border-bright",
           value ? "text-text-bright" : "text-text-dimmed",
-          "focus:border-charcoal-500 focus:outline-none",
+          "focus:border-border-brightest focus:outline-hidden",
           "[&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
         )}
         aria-label={`${label} time`}

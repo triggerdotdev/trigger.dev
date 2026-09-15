@@ -1,6 +1,8 @@
-import { type BatchTaskRunStatus } from "@trigger.dev/database";
-import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
+import { type BatchTaskRunStatus, type Prisma } from "@trigger.dev/database";
+import { type PrismaClientOrTransaction } from "~/db.server";
+import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { engine } from "~/v3/runEngine.server";
+import { runStore as defaultRunStore } from "~/v3/runStore.server";
 import { BasePresenter } from "./basePresenter.server";
 
 type BatchPresenterOptions = {
@@ -9,62 +11,58 @@ type BatchPresenterOptions = {
   userId?: string;
 };
 
-export type BatchPresenterData = Awaited<ReturnType<BatchPresenter["call"]>>;
+const BATCH_INCLUDE = {
+  errors: {
+    select: {
+      id: true,
+      index: true,
+      taskIdentifier: true,
+      error: true,
+      errorCode: true,
+      createdAt: true,
+    },
+    orderBy: {
+      index: "asc",
+    },
+  },
+} satisfies Prisma.BatchTaskRunInclude;
+
+type BatchPresenterDeps = {
+  resolveDisplayableEnvironment?: typeof findDisplayableEnvironment;
+};
 
 export class BatchPresenter extends BasePresenter {
+  constructor(
+    _prisma?: PrismaClientOrTransaction,
+    _replica?: PrismaClientOrTransaction,
+    private readonly deps: BatchPresenterDeps = {},
+    private readonly runStore = defaultRunStore
+  ) {
+    super(_prisma, _replica);
+  }
+
   public async call({ environmentId, batchId, userId }: BatchPresenterOptions) {
-    const batch = await this._replica.batchTaskRun.findFirst({
-      select: {
-        id: true,
-        friendlyId: true,
-        status: true,
-        runCount: true,
-        batchVersion: true,
-        createdAt: true,
-        updatedAt: true,
-        completedAt: true,
-        processingStartedAt: true,
-        processingCompletedAt: true,
-        successfulRunCount: true,
-        failedRunCount: true,
-        idempotencyKey: true,
-        runtimeEnvironment: {
-          select: {
-            id: true,
-            type: true,
-            slug: true,
-            orgMember: {
-              select: {
-                user: {
-                  select: {
-                    id: true,
-                    name: true,
-                    displayName: true,
-                  },
-                },
-              },
-            },
-          },
-        },
-        errors: {
-          select: {
-            id: true,
-            index: true,
-            taskIdentifier: true,
-            error: true,
-            errorCode: true,
-            createdAt: true,
-          },
-          orderBy: {
-            index: "asc",
-          },
-        },
-      },
-      where: {
-        runtimeEnvironmentId: environmentId,
-        friendlyId: batchId,
-      },
-    });
+    // The BatchTaskRun (run-ops) is read through the run store, which routes by residency. The
+    // runtimeEnvironment (control-plane) is resolved separately because the cross-seam FK is
+    // dropped, so the batch row cannot single-SQL join to control-plane RuntimeEnvironment.
+    let batch = await this.runStore.findBatchTaskRunByFriendlyId(
+      batchId,
+      environmentId,
+      { include: BATCH_INCLUDE },
+      this._replica
+    );
+
+    // Read-your-writes: findBatchTaskRunByFriendlyId defaults to (and here reads) the replica, so a
+    // batch created within the replica's apply window returns null under lag. Re-read from the owning
+    // primary on a miss so a live batch's detail page never spuriously 404s ("Batch not found").
+    if (!batch) {
+      batch = await this.runStore.findBatchTaskRunByFriendlyId(
+        batchId,
+        environmentId,
+        { include: BATCH_INCLUDE },
+        this._prisma
+      );
+    }
 
     if (!batch) {
       throw new Error("Batch not found");
@@ -85,6 +83,8 @@ export class BatchPresenter extends BasePresenter {
         liveFailureCount = liveProgress.failureCount;
       }
     }
+
+    const resolveEnv = this.deps.resolveDisplayableEnvironment ?? findDisplayableEnvironment;
 
     return {
       id: batch.id,
@@ -107,7 +107,7 @@ export class BatchPresenter extends BasePresenter {
       successfulRunCount: liveSuccessCount,
       failedRunCount: liveFailureCount,
       idempotencyKey: batch.idempotencyKey,
-      environment: displayableEnvironment(batch.runtimeEnvironment, userId),
+      environment: await resolveEnv(environmentId, userId),
       errors: batch.errors.map((error) => ({
         id: error.id,
         index: error.index,
@@ -119,4 +119,3 @@ export class BatchPresenter extends BasePresenter {
     };
   }
 }
-

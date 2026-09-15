@@ -77,8 +77,53 @@ npx trigger.dev@latest deploy [path]
   Turn off syncing environment variables with the Trigger.dev instance.
 </ParamField>
 
+<ParamField body="External id" type="--external-id">
+  Attach your own identifier to this deployment — a commit SHA, release tag or CI run id, up to 128
+  characters. Your app can then send the same id when triggering, and runs are pinned to this
+  deployment. See [version skew protection](/deployment/version-skew-protection).
+
+  Repeating an id that is already deployed doesn't build again: the CLI reports the existing version,
+  sets the same outputs, and exits successfully. Repeating an id that has a build in flight is an
+  error. An id whose build failed rebuilds normally.
+
+  The short-circuit is keyed on the id, not on the build inputs — so redeploying the same id after
+  changing a synced environment variable produces no new build.
+</ParamField>
+
+<ParamField body="Force" type="--force">
+  Start a new build for an `--external-id` that already has one. Non-destructive with respect to
+  deployments that already succeeded — both remain and the newer version wins. If a build for that
+  id is still in flight, `--force` **cancels** it first, so one id never has two live builds. A
+  cancelled build usually stops within seconds, but one running on another machine can keep going
+  briefly before it notices. Requires `--external-id`.
+</ParamField>
+
+<ParamField body="Native build" type="--native-build">
+  Use the native build server to install, bundle and build your project.
+</ParamField>
+
+<ParamField body="Local bundle" type="--local-bundle">
+  Install and bundle on your machine, then build the image on the build server from the uploaded
+  bundle. Requires `--native-build`. Use it if you prefer dependencies to be installed on your
+  machine rather than on the build server.
+</ParamField>
+
+<ParamField body="Detach" type="--detach">
+  Exit once the build is queued instead of streaming the build logs. The deployment continues on
+  the build server. Requires `--native-build`.
+</ParamField>
+
+<ParamField body="Depot build" type="--depot-build">
+  Build the image with Depot, the default build provider.
+</ParamField>
+
 <ParamField body="Local build" type="--local-build">
   Force building the deployment image locally using your local Docker. This is automatic when self-hosting.
+</ParamField>
+
+<ParamField body="Build logs" type="--build-logs">
+  How build logs are shown: `compact` (default, a single updating line) or `full` (every log line).
+  CI and piped output always use `full`.
 </ParamField>
 
 ### Common options

@@ -4,7 +4,7 @@ import {
   CreateArtifactRequestBody,
   tryCatch,
 } from "@trigger.dev/core/v3";
-import { authenticateRequest } from "~/services/apiAuth.server";
+import { authenticateApiKeyWithScope } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { ArtifactsService } from "~/v3/services/artifacts.server";
 
@@ -14,16 +14,18 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   try {
-    const authenticationResult = await authenticateRequest(request, {
-      apiKey: true,
-      organizationAccessToken: false,
-      personalAccessToken: false,
+    // Artifact uploads are part of the deploy flow (deployment context archive).
+    const authResult = await authenticateApiKeyWithScope(request, {
+      action: "write",
+      resource: { type: "deployments" },
     });
 
-    if (!authenticationResult || !authenticationResult.result.ok) {
+    if (!authResult.ok) {
       logger.info("Invalid or missing api key", { url: request.url });
-      return json({ error: "Invalid or Missing API key" }, { status: 401 });
+      return json({ error: authResult.error }, { status: authResult.status });
     }
+
+    const authenticationResult = { result: authResult.authentication };
 
     const [, rawBody] = await tryCatch(request.json());
     const body = CreateArtifactRequestBody.safeParse(rawBody ?? {});
@@ -61,6 +63,9 @@ export async function action({ request }: ActionFunctionArgs) {
               switch (body.data.type) {
                 case "deployment_context":
                   errorMessage = `Artifact size (${sizeMB} MB) exceeds the allowed limit of ${limitMB} MB. Make sure you are in the correct directory of your Trigger.dev project. Reach out to us if you are seeing this error consistently.`;
+                  break;
+                case "deployment_bundle":
+                  errorMessage = `Bundle size (${sizeMB} MB) exceeds the allowed limit of ${limitMB} MB. Reach out to us if you are seeing this error consistently.`;
                   break;
                 default:
                   body.data.type satisfies never;

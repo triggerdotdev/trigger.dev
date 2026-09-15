@@ -1,4 +1,10 @@
-import { type Prisma, type PrismaClient } from "@trigger.dev/database";
+import {
+  type Prisma,
+  type PrismaClient,
+  type PrismaClientOrTransaction,
+  boundedIn,
+} from "@trigger.dev/database";
+import type { RunStore } from "@internal/run-store";
 import { BoundedTtlCache } from "./boundedTtlCache";
 import { RESERVED_COLUMNS, type RealtimeRunRow } from "./electricStreamProtocol.server";
 
@@ -9,7 +15,7 @@ import { RESERVED_COLUMNS, type RealtimeRunRow } from "./electricStreamProtocol.
  */
 
 /** The TaskRun columns the realtime feed projects (mirrors DEFAULT_ELECTRIC_COLUMNS). */
-export const RUN_HYDRATOR_SELECT = {
+const RUN_HYDRATOR_SELECT = {
   id: true,
   taskIdentifier: true,
   createdAt: true,
@@ -77,8 +83,12 @@ export interface RunListResolver {
 }
 
 export type RunHydratorOptions = {
-  /** A read-replica Prisma client (`$replica`). Always Postgres. */
-  replica: Pick<PrismaClient, "taskRun">;
+  /** The Prisma client handed to the RunStore as the read client. Always Postgres. A branded
+   * replica (`$replica`) keeps routed reads on each store's replica; an unbranded writer
+   * (`prisma`) escalates them to each store's own primary. */
+  readClient: Pick<PrismaClient, "taskRun">;
+  /** RunStore the reads are routed through. */
+  runStore: RunStore;
   /** Read-through cache TTL (ms) collapsing duplicate refetches for the same run. Set 0 to disable. Defaults to 250ms. */
   cacheTtlMs?: number;
   /** Hard cap on cache entries before expired entries are swept. */
@@ -88,7 +98,7 @@ export type RunHydratorOptions = {
 const DEFAULT_CACHE_TTL_MS = 250;
 const DEFAULT_MAX_CACHE_ENTRIES = 5_000;
 
-/** Hydrates runs by id from the read replica, projected to the realtime columns; concurrent same-run refetches are single-flighted + short-TTL cached. */
+/** Hydrates runs by id through the runStore seam (split routing lives in the store, below this file), projected to the realtime columns; concurrent same-run refetches are single-flighted + short-TTL cached. */
 export class RunHydrator {
   readonly #inflight = new Map<string, Promise<RealtimeRunRow | null>>();
   readonly #cache: BoundedTtlCache<RealtimeRunRow | null>;
@@ -139,24 +149,28 @@ export class RunHydrator {
     if (ids.length === 0) {
       return [];
     }
-    const rows = await this.options.replica.taskRun.findMany({
-      where: {
-        runtimeEnvironmentId: environmentId,
-        id: { in: ids },
+    const rows = await this.options.runStore.findRuns(
+      {
+        where: {
+          runtimeEnvironmentId: environmentId,
+          id: { in: boundedIn(ids) },
+        },
+        select: buildHydratorSelect(skipColumns),
       },
-      select: buildHydratorSelect(skipColumns),
-    });
+      this.options.readClient as PrismaClientOrTransaction
+    );
     return rows as unknown as RealtimeRunRow[];
   }
 
   async #fetch(environmentId: string, runId: string): Promise<RealtimeRunRow | null> {
-    const run = await this.options.replica.taskRun.findFirst({
-      where: {
+    const run = await this.options.runStore.findRun(
+      {
         id: runId,
         runtimeEnvironmentId: environmentId,
       },
-      select: RUN_HYDRATOR_SELECT,
-    });
+      { select: RUN_HYDRATOR_SELECT },
+      this.options.readClient as PrismaClientOrTransaction
+    );
 
     return (run ?? null) as RealtimeRunRow | null;
   }

@@ -16,7 +16,6 @@ import { runFriendlyStatus, type RunFriendlyStatus } from "@trigger.dev/core/v3"
 import assertNever from "assert-never";
 import { HourglassIcon } from "lucide-react";
 import { TimedOutIcon } from "~/assets/icons/TimedOutIcon";
-import { Callout } from "~/components/primitives/Callout";
 import { Spinner } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";
 
@@ -111,45 +110,13 @@ export function TaskRunStatusCombo({
   );
 }
 
-const statusReasonsToDescription: Record<string, string> = {
-  NO_DEPLOYMENT: "No deployment or deployment image reference found for deployed run",
-  NO_WORKER: "No worker found for run",
-  TASK_NEVER_REGISTERED: "Task never registered",
-  QUEUE_NOT_FOUND: "Queue not found",
-  TASK_NOT_IN_LATEST: "Task not in latest version",
-  BACKGROUND_WORKER_MISMATCH: "Background worker mismatch",
-};
-
-export function TaskRunStatusReason({
-  status,
-  statusReason,
-}: {
-  status: TaskRunStatus;
-  statusReason?: string;
-}) {
-  if (status !== "PENDING_VERSION") {
-    return null;
-  }
-
-  if (!statusReason) {
-    return null;
-  }
-
-  const description = statusReasonsToDescription[statusReason];
-
-  if (!description) {
-    return null;
-  }
-
+function TaskRunStatusLabel({ status }: { status: TaskRunStatus }) {
+  // system-mono-label: System themes uncolor the label (see tailwind.css)
   return (
-    <Callout to="https://trigger.dev/docs" variant="warning" className="text-sm">
-      {description}
-    </Callout>
+    <span className={cn("system-mono-label", runStatusClassNameColor(status))}>
+      {runStatusTitle(status)}
+    </span>
   );
-}
-
-export function TaskRunStatusLabel({ status }: { status: TaskRunStatus }) {
-  return <span className={runStatusClassNameColor(status)}>{runStatusTitle(status)}</span>;
 }
 
 export function TaskRunStatusIcon({
@@ -204,7 +171,7 @@ export function runStatusClassNameColor(status: TaskRunStatus): string {
   switch (status) {
     case "PENDING":
     case "DELAYED":
-      return "text-charcoal-500";
+      return "text-text-faint";
     case "PENDING_VERSION":
     case "WAITING_FOR_DEPLOY":
       return "text-amber-500";
@@ -213,12 +180,12 @@ export function runStatusClassNameColor(status: TaskRunStatus): string {
     case "DEQUEUED":
       return "text-pending";
     case "WAITING_TO_RESUME":
-      return "text-charcoal-500";
+      return "text-text-faint";
     case "PAUSED":
       return "text-amber-300";
     case "CANCELED":
     case "EXPIRED":
-      return "text-charcoal-500";
+      return "text-text-faint";
     case "INTERRUPTED":
       return "text-error";
     case "COMPLETED_SUCCESSFULLY":
@@ -290,40 +257,41 @@ export const runStatusTitleFromStatus: Record<TaskRunStatus, RunFriendlyStatus> 
 const titlesStatusesArray = Object.entries(runStatusTitleFromStatus);
 
 /**
- * Hex color for each TaskRunStatus, mirroring `runStatusClassNameColor` but as
- * concrete hex values for non-CSS contexts (e.g. chart series colors).
+ * Chart series color for each TaskRunStatus, mirroring `runStatusClassNameColor`.
+ * Values are CSS variables (defined in tailwind.css) so they follow the theme;
+ * only usable in CSS contexts (SVG attributes, chart config styles).
  */
-const RUN_STATUS_HEX_COLORS: Record<TaskRunStatus, string> = {
-  PENDING: "#5F6570", // charcoal-500
-  DELAYED: "#6B7580", // charcoal ~450
-  PENDING_VERSION: "#f59e0b", // amber-500
-  WAITING_FOR_DEPLOY: "#d97706", // amber-600
-  EXECUTING: "#3b82f6", // blue-500
-  RETRYING_AFTER_FAILURE: "#2f6fec", // blue ~550
-  DEQUEUED: "#4D8EF5", // blue ~475
-  WAITING_TO_RESUME: "#555D67", // charcoal ~550
-  PAUSED: "#fbbf24", // amber-400
-  CANCELED: "#78828C", // charcoal ~400
-  EXPIRED: "#848D96", // charcoal ~350
-  INTERRUPTED: "#D52C4D", // rose — evenly spaced (error)
-  COMPLETED_SUCCESSFULLY: "#28BF5C", // mint-500 (success)
-  COMPLETED_WITH_ERRORS: "#DE405C", // rose — evenly spaced (error)
-  SYSTEM_FAILURE: "#E7536C", // rose — evenly spaced (error)
-  CRASHED: "#cc193d", // rose — darkest (error)
-  TIMED_OUT: "#F0667B", // rose — lightest (error)
+const RUN_STATUS_CHART_COLORS: Record<TaskRunStatus, string> = {
+  PENDING: "var(--color-run-pending)",
+  DELAYED: "var(--color-run-delayed)",
+  PENDING_VERSION: "var(--color-run-pending-version)",
+  WAITING_FOR_DEPLOY: "var(--color-run-waiting-for-deploy)",
+  EXECUTING: "var(--color-run-executing)",
+  RETRYING_AFTER_FAILURE: "var(--color-run-retrying-after-failure)",
+  DEQUEUED: "var(--color-run-dequeued)",
+  WAITING_TO_RESUME: "var(--color-run-waiting-to-resume)",
+  PAUSED: "var(--color-run-paused)",
+  CANCELED: "var(--color-run-canceled)",
+  EXPIRED: "var(--color-run-expired)",
+  INTERRUPTED: "var(--color-run-interrupted)",
+  COMPLETED_SUCCESSFULLY: "var(--color-run-completed-successfully)",
+  COMPLETED_WITH_ERRORS: "var(--color-run-completed-with-errors)",
+  SYSTEM_FAILURE: "var(--color-run-system-failure)",
+  CRASHED: "var(--color-run-crashed)",
+  TIMED_OUT: "var(--color-run-timed-out)",
 };
 
 /**
- * Get the hex color for a run status value. Accepts either a raw TaskRunStatus
+ * Get the chart color for a run status value. Accepts either a raw TaskRunStatus
  * (e.g. "COMPLETED_SUCCESSFULLY") or a friendly name (e.g. "Completed").
  * Returns `undefined` when the value is not a recognised status.
  */
-export function getRunStatusHexColor(value: string): string | undefined {
+export function getRunStatusChartColor(value: string): string | undefined {
   if (isTaskRunStatus(value)) {
-    return RUN_STATUS_HEX_COLORS[value];
+    return RUN_STATUS_CHART_COLORS[value];
   }
   if (isRunFriendlyStatus(value)) {
-    return RUN_STATUS_HEX_COLORS[runStatusFromFriendlyTitle(value)];
+    return RUN_STATUS_CHART_COLORS[runStatusFromFriendlyTitle(value)];
   }
   return undefined;
 }

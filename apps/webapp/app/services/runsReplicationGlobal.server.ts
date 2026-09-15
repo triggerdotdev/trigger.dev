@@ -1,11 +1,15 @@
-import { RunsReplicationService } from "./runsReplicationService.server";
+import type { RunsReplicationService } from "./runsReplicationService.server";
 
 const GLOBAL_RUNS_REPLICATION_KEY = Symbol.for("dev.trigger.ts.runs-replication");
 const GLOBAL_TCP_MONITOR_KEY = Symbol.for("dev.trigger.ts.tcp-monitor");
+const GLOBAL_RUNS_REPLICATION_SOURCES_KEY = Symbol.for("dev.trigger.ts.runs-replication-sources");
+
+export type ConfiguredSource = { id: string; slotName: string; originGeneration: number };
 
 type RunsReplicationGlobal = {
   [GLOBAL_RUNS_REPLICATION_KEY]?: RunsReplicationService;
   [GLOBAL_TCP_MONITOR_KEY]?: NodeJS.Timeout;
+  [GLOBAL_RUNS_REPLICATION_SOURCES_KEY]?: ConfiguredSource[];
 };
 
 const _globalThis = typeof globalThis === "object" ? globalThis : global;
@@ -23,14 +27,10 @@ export function unregisterRunsReplicationGlobal() {
   delete _global[GLOBAL_RUNS_REPLICATION_KEY];
 }
 
-export function getTcpMonitorGlobal(): NodeJS.Timeout | undefined {
-  return _global[GLOBAL_TCP_MONITOR_KEY];
+export function getRunsReplicationConfiguredSources(): ConfiguredSource[] | undefined {
+  return _global[GLOBAL_RUNS_REPLICATION_SOURCES_KEY];
 }
 
-export function setTcpMonitorGlobal(timeout: NodeJS.Timeout) {
-  _global[GLOBAL_TCP_MONITOR_KEY] = timeout;
-}
-
-export function unregisterTcpMonitorGlobal() {
-  delete _global[GLOBAL_TCP_MONITOR_KEY];
+export function setRunsReplicationConfiguredSources(sources: ConfiguredSource[]) {
+  _global[GLOBAL_RUNS_REPLICATION_SOURCES_KEY] = sources;
 }
