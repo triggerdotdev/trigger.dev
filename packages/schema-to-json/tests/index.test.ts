@@ -110,6 +110,15 @@ describe("schemaToJsonSchema", () => {
         "Undefined cannot be represented in JSON Schema"
       );
     });
+
+    it("represents dates as ISO date-time strings instead of throwing", () => {
+      const schema = z.object({ from: z.date() });
+      const result = schemaToJsonSchema(schema);
+      expect((result?.jsonSchema.properties as Record<string, unknown>).from).toMatchObject({
+        type: "string",
+        format: "date-time",
+      });
+    });
   });
 
   it("preserves explicitly required metadata on current optional schemas", () => {
