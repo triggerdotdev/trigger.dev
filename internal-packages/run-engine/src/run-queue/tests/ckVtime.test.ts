@@ -1660,6 +1660,56 @@ describe("CK virtual-time (SFQ) dequeue", () => {
     }
   });
 
+  redisTest("TTL expiry hands the worker the run's snapshotRoute", async ({ redisContainer }) => {
+    // The sweep reads the message before deleting it so the worker can resolve residency from
+    // the route the run was born with. The vtime build lost that read for a while, because it
+    // was a copy taken before the route existed, and nothing here noticed: every other
+    // assertion in this file is about ckIndex and ckVtime bookkeeping.
+    const queue = createQueue(redisContainer);
+    try {
+      const route = { kind: "s2", version: 3 };
+      await queue.enqueueMessage({
+        env: authenticatedEnvDev,
+        message: makeMessage({
+          runId: "r-route",
+          concurrencyKey: "route",
+          timestamp: Date.now() - 100_000,
+          snapshotRoute: route,
+        }),
+        workerQueue: authenticatedEnvDev.id,
+        skipDequeueProcessing: true,
+      });
+
+      const v = variantName("route");
+      const shard = testOptions.keys.masterQueueShardForEnvironment(authenticatedEnvDev.id, 2);
+      const ttlQueueKey = testOptions.keys.ttlQueueKeyForShard(shard);
+      await queue.redis.zadd(
+        ttlQueueKey,
+        Date.now() - 1000,
+        `${v}|r-route|${authenticatedEnvDev.organization.id}`
+      );
+
+      await queue.redis.expireTtlRunsVtimeTracked(
+        ttlQueueKey,
+        "runqueue:test:",
+        Date.now().toString(),
+        "10",
+        "2",
+        "ttlworker",
+        // The script uses this verbatim, so prefix it here to match what ioredis prefixes on read.
+        "runqueue:test:ttlworkeritems",
+        "30000",
+        "86400"
+      );
+
+      const serialized = await queue.redis.hget("ttlworkeritems", "r-route");
+      expect(serialized).not.toBeNull();
+      expect(JSON.parse(serialized!).item.snapshotRoute).toEqual(route);
+    } finally {
+      await queue.quit();
+    }
+  });
+
   redisTest(
     "flag off creates no vtime keys and matches head-timestamp order",
     async ({ redisContainer }) => {
