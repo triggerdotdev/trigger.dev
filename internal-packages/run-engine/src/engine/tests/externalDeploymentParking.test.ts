@@ -373,7 +373,9 @@ describe("RunEngine external deployment parking", () => {
     "pins to the highest deployed version holding the id, even when an older build of that id finalizes last",
     async ({ prisma, redisOptions }) => {
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
-      const engine = createEngine(prisma, redisOptions);
+      const engine = createEngine(prisma, redisOptions, {
+        worker: { redis: redisOptions, disabled: true },
+      });
 
       try {
         const taskIdentifier = "test-task";
