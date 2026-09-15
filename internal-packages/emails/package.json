@@ -20,6 +20,7 @@
     "zod": "4.5.4"
   },
   "devDependencies": {
+    "@react-email/ui": "6.5.0",
     "@types/nodemailer": "^8.0.0",
     "@types/react": "18.2.69",
     "@types/react-dom": "18.2.7",

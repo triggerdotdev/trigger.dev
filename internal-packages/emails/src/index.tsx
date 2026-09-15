@@ -24,6 +24,9 @@ import MfaDisabledEmail, { MfaDisabledEmailSchema } from "../emails/mfa-disabled
 import BulkActionCompletedEmail, {
   BulkActionCompletedEmailSchema,
 } from "../emails/bulk-action-complete";
+import NodeRuntimeDeprecationEmail, {
+  NodeRuntimeDeprecationEmailSchema,
+} from "../emails/node-runtime-deprecation";
 
 export { type MailTransportOptions };
 
@@ -43,6 +46,7 @@ export const DeliverEmailSchema = z
     MfaEnabledEmailSchema,
     MfaDisabledEmailSchema,
     BulkActionCompletedEmailSchema,
+    NodeRuntimeDeprecationEmailSchema,
   ])
   .and(z.object({ to: z.string() }));
 
@@ -168,6 +172,12 @@ export class EmailClient {
         return {
           subject: `Bulk action finished`,
           component: <BulkActionCompletedEmail {...data} />,
+        };
+      }
+      case "node-runtime-deprecation": {
+        return {
+          subject: `[${data.organization}] ${data.project} deployed using deprecated Node.js 21`,
+          component: <NodeRuntimeDeprecationEmail {...data} />,
         };
       }
     }

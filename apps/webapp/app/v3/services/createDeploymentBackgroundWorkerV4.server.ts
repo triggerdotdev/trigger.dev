@@ -1,5 +1,5 @@
 import type { CreateBackgroundWorkerRequestBody } from "@trigger.dev/core/v3";
-import { logger, tryCatch } from "@trigger.dev/core/v3";
+import { logger, needsNodeRuntimeUpdate, tryCatch } from "@trigger.dev/core/v3";
 import {
   Prisma,
   type BackgroundWorker,
@@ -21,6 +21,8 @@ import { TimeoutDeploymentService } from "./timeoutDeployment.server";
 import { recordDeploymentFinished } from "./recordDeploymentFinished.server";
 import { env } from "~/env.server";
 import { webhookPrisma } from "~/db.server";
+import { scheduleNodeRuntimeDeprecationEmail } from "./nodeRuntimeDeprecationEmail.server";
+import { DeploymentService } from "./deployment.server";
 
 export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
   private readonly _taskMetaCache: TaskMetadataCache;
@@ -288,6 +290,36 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
         "Indexing timed out",
         new Date(Date.now() + env.DEPLOY_TIMEOUT_MS)
       );
+
+      if (needsNodeRuntimeUpdate(body.metadata.runtime, body.metadata.runtimeVersion)) {
+        await new DeploymentService(this._prisma, this._replica)
+          .appendToEventLog(environment.project, deployment, [
+            {
+              type: "log",
+              data: {
+                level: "warn",
+                message:
+                  'This deployment uses Node.js 21, which is deprecated. Set runtime: "node-24" in trigger.config.ts and deploy again.',
+              },
+            },
+          ])
+          .orTee((error) => {
+            logger.error("Failed to append Node.js runtime deprecation warning", {
+              error,
+              deploymentId: deployment.id,
+              environmentId: environment.id,
+              projectId: environment.projectId,
+            });
+          });
+
+        await scheduleNodeRuntimeDeprecationEmail({
+          prisma: this._prisma,
+          deployment,
+          environment,
+          runtime: body.metadata.runtime,
+          runtimeVersion: body.metadata.runtimeVersion,
+        });
+      }
 
       return backgroundWorker;
     });

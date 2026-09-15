@@ -2,6 +2,7 @@ import { intro, log, outro } from "@clack/prompts";
 import {
   EXTERNAL_DEPLOYMENT_ID_MAX_LENGTH,
   getBranch,
+  needsNodeRuntimeUpdate,
   prepareDeploymentError,
   tryCatch,
 } from "@trigger.dev/core/v3";
@@ -50,6 +51,7 @@ import {
 import { loadConfig } from "../config.js";
 import { authenticateForDeploy, userIdForDeploy } from "../deploy/auth.js";
 import { buildImage } from "../deploy/buildImage.js";
+import { resolveDeploymentRuntime } from "../deploy/runtime.js";
 import {
   checkLogsForErrors,
   checkLogsForWarnings,
@@ -485,8 +487,17 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     throw new Error("Failed to get project client");
   }
 
-  if (!resolvedConfig.runtimeWasExplicit && projectClient.defaultRuntime) {
-    resolvedConfig.runtime = projectClient.defaultRuntime;
+  resolvedConfig.runtime = resolveDeploymentRuntime({
+    configuredRuntime: resolvedConfig.runtime,
+    runtimeWasExplicit: resolvedConfig.runtimeWasExplicit,
+    projectDefaultRuntime: projectClient.defaultRuntime,
+  });
+
+  if (needsNodeRuntimeUpdate(resolvedConfig.runtime, undefined)) {
+    prettyWarning(
+      "This deployment uses Node.js 21, which is deprecated.",
+      'Set runtime: "node-24" in trigger.config.ts and deploy again.'
+    );
   }
 
   const resolvedBuildPath = await resolveServerBuildPath(
