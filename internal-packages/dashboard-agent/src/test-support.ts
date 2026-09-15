@@ -281,6 +281,26 @@ export function fakeEvalTrigger(): { trigger: DashboardAgentEvalTrigger; calls: 
   };
 }
 
+/**
+ * Waits until `calls` has at least `count` entries, with a generous deadline.
+ * Use this instead of a fixed setTimeout after sendMessage when asserting evals,
+ * because onTurnComplete fires after the turn-complete chunk and the gap is not
+ * bounded at 30 ms under load.
+ */
+export async function waitForEvals(
+  calls: unknown[],
+  count: number,
+  timeoutMs = 5_000
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (calls.length < count) {
+    if (Date.now() > deadline) {
+      throw new Error(`timed out waiting for ${count} eval(s); got ${calls.length}`);
+    }
+    await new Promise((r) => setTimeout(r, 10));
+  }
+}
+
 /** Stands in for the org opt-out check, so no test depends on a network call. */
 export function fakeEvalPolicy(allowed = true): DashboardAgentEvalPolicyCheck {
   return async () => allowed;

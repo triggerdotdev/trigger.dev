@@ -26,6 +26,7 @@ import {
   fakeEvalPolicy,
   fakeEvalTrigger,
   fakeStore,
+  waitForEvals,
   finish,
   mockModel,
   savedPuts,
@@ -429,8 +430,7 @@ describe("watch wake narration", () => {
       await harness.sendAction(FAILED_RUN_WAKE);
       settlementDown = false;
       await harness.sendMessage(userMessage("what happened?"));
-      // onTurnComplete enqueues after the turn-complete chunk, so give it a tick.
-      await new Promise((r) => setTimeout(r, 30));
+      await waitForEvals(evals, 1);
 
       // The wake ran as a bounded small-model call; the typed turn ran uncapped.
       expect(calls[0]).toEqual({ tools: 0, maxOutputTokens: 300 });
