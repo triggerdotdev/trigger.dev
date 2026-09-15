@@ -141,6 +141,258 @@ const QUEUE_METRICS_CK_DEQUEUE_GAUGE_LUA = createMetricsGaugeComputeLua({
 });
 
 /** Injected queue-metrics stream emitter; all calls are no-ops when metrics are disabled. */
+// Insertion points the virtual-time variants add to the ck scripts. The flag-off build of
+// each script passes none of them, so there is one copy of the shared Lua rather than two
+// that can drift apart.
+type CkVtimeParts = Partial<Record<string, string>>;
+
+// Shared by the ck dead-letter command and its virtual-time variant. Called with no parts it
+// renders the flag-off script exactly, so that build stays identical to the one in production.
+const ckDeadLetterLua = (v: CkVtimeParts) => `
+-- Keys:
+local masterQueueKey = KEYS[1]
+local messageKey = KEYS[2]
+local messageQueue = KEYS[3]
+local queueCurrentConcurrencyKey = KEYS[4]
+local envCurrentConcurrencyKey = KEYS[5]
+local queueCurrentDequeuedKey = KEYS[6]
+local envCurrentDequeuedKey = KEYS[7]
+local envQueueKey = KEYS[8]
+local deadLetterQueueKey = KEYS[9]
+local ckIndexKey = KEYS[10]
+local lengthCounterKey = KEYS[11]
+local runningCounterKey = KEYS[12]${v.keys ?? ""}
+
+-- Args:
+local messageId = ARGV[1]
+local messageQueueName = ARGV[2]
+local ckWildcardName = ARGV[3]${v.args ?? ""}
+
+local function decrFloored(key)
+  if tonumber(redis.call('GET', key) or '0') > 0 then
+    redis.call('DECR', key)
+  end
+end
+
+-- Remove the message from the CK-specific queue. ZREM may be a no-op if the
+-- message was already moved to currentConcurrency; only decr when it actually
+-- removes something.
+local removedFromZset = redis.call('ZREM', messageQueue, messageId)
+redis.call('ZREM', envQueueKey, messageId)
+if removedFromZset == 1 then
+  decrFloored(lengthCounterKey)
+end
+
+-- Rebalance CK index
+local earliest = redis.call('ZRANGE', messageQueue, 0, 0, 'WITHSCORES')
+if #earliest == 0 then
+  redis.call('ZREM', ckIndexKey, messageQueueName)${v.drainPark ?? ""}
+else
+  redis.call('ZADD', ckIndexKey, earliest[2], messageQueueName)
+end
+
+-- Rebalance master queue with ck:* member
+local earliestIdx = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
+if #earliestIdx == 0 then
+  redis.call('ZREM', masterQueueKey, ckWildcardName)
+else
+  redis.call('ZADD', masterQueueKey, earliestIdx[2], ckWildcardName)
+end
+
+-- Remove old-format entry from master queue (transition cleanup). Skipped when the
+-- variant name IS the wildcard: a concurrency key of '*' produces a queue key identical
+-- to the wildcard member, so an unguarded ZREM here deletes the entry the rebalance just
+-- wrote and strands every concurrency key on this base queue.
+if messageQueueName ~= ckWildcardName then
+  redis.call('ZREM', masterQueueKey, messageQueueName)
+end
+
+-- Add the message to the dead letter queue
+redis.call('ZADD', deadLetterQueueKey, tonumber(redis.call('TIME')[1]), messageId)
+
+-- Update the concurrency keys. DECR runningCounter only when SREM
+-- currentDequeued actually removed an entry.
+redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+local removedFromDequeued = redis.call('SREM', queueCurrentDequeuedKey, messageId)
+redis.call('SREM', envCurrentDequeuedKey, messageId)
+if removedFromDequeued == 1 then
+  decrFloored(runningCounterKey)
+end
+`;
+
+// Shared by the ck ack command and its virtual-time variant.
+const ckAcknowledgeLua = (v: CkVtimeParts) => `
+-- Keys:
+local masterQueueKey = KEYS[1]
+local messageKey = KEYS[2]
+local messageQueueKey = KEYS[3]
+local queueCurrentConcurrencyKey = KEYS[4]
+local envCurrentConcurrencyKey = KEYS[5]
+local queueCurrentDequeuedKey = KEYS[6]
+local envCurrentDequeuedKey = KEYS[7]
+local envQueueKey = KEYS[8]
+local workerQueueKey = KEYS[9]
+local ckIndexKey = KEYS[10]
+local lengthCounterKey = KEYS[11]
+local runningCounterKey = KEYS[12]${v.keys ?? ""}
+
+-- Args:
+local messageId = ARGV[1]
+local messageQueueName = ARGV[2]
+local messageKeyValue = ARGV[3]
+local removeFromWorkerQueue = ARGV[4]
+local ckWildcardName = ARGV[5]${v.args ?? ""}
+
+local function decrFloored(key)
+  if tonumber(redis.call('GET', key) or '0') > 0 then
+    redis.call('DECR', key)
+  end
+end
+
+-- Remove the message from the message key
+redis.call('DEL', messageKey)
+
+-- Remove the message from the CK-specific queue. The ZREM is defensive — by
+-- ack time the message is normally in currentConcurrency, not the zset — but
+-- if it does remove something, the counter was tracking that entry so decr.
+local removedFromZset = redis.call('ZREM', messageQueueKey, messageId)
+redis.call('ZREM', envQueueKey, messageId)
+if removedFromZset == 1 then
+  decrFloored(lengthCounterKey)
+end
+
+-- Rebalance CK index
+local earliestInCkQueue = redis.call('ZRANGE', messageQueueKey, 0, 0, 'WITHSCORES')
+if #earliestInCkQueue == 0 then
+  redis.call('ZREM', ckIndexKey, messageQueueName)${v.drainPark ?? ""}
+else
+  redis.call('ZADD', ckIndexKey, earliestInCkQueue[2], messageQueueName)
+end
+
+-- Rebalance master queue with ck:* member
+local earliestInCkIndex = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
+if #earliestInCkIndex == 0 then
+  redis.call('ZREM', masterQueueKey, ckWildcardName)
+else
+  redis.call('ZADD', masterQueueKey, earliestInCkIndex[2], ckWildcardName)
+end
+
+-- Remove old-format entry from master queue (transition cleanup). Skipped when the
+-- variant name IS the wildcard: a concurrency key of '*' produces a queue key identical
+-- to the wildcard member, so an unguarded ZREM here deletes the entry the rebalance just
+-- wrote and strands every concurrency key on this base queue.
+if messageQueueName ~= ckWildcardName then
+  redis.call('ZREM', masterQueueKey, messageQueueName)
+end
+
+-- Update the concurrency keys. DECR runningCounter only when SREM
+-- currentDequeued actually removed an entry (the message was in flight).
+redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+local removedFromDequeued = redis.call('SREM', queueCurrentDequeuedKey, messageId)
+redis.call('SREM', envCurrentDequeuedKey, messageId)
+if removedFromDequeued == 1 then
+  decrFloored(runningCounterKey)
+end
+
+-- Remove the message from the worker queue
+if removeFromWorkerQueue == '1' then
+  redis.call('LREM', workerQueueKey, 0, messageKeyValue)
+end
+`;
+
+// Shared by the ck nack command and its virtual-time variant.
+const ckNackLua = (v: CkVtimeParts) => `
+-- Keys:
+local masterQueueKey = KEYS[1]
+local messageKey = KEYS[2]
+local messageQueueKey = KEYS[3]
+local queueCurrentConcurrencyKey = KEYS[4]
+local envCurrentConcurrencyKey = KEYS[5]
+local queueCurrentDequeuedKey = KEYS[6]
+local envCurrentDequeuedKey = KEYS[7]
+local envQueueKey = KEYS[8]
+local ckIndexKey = KEYS[9]
+local lengthCounterKey = KEYS[10]
+local runningCounterKey = KEYS[11]${v.keys ?? ""}
+
+-- Args:
+local messageId = ARGV[1]
+local messageQueueName = ARGV[2]
+local messageData = ARGV[3]
+local messageScore = tonumber(ARGV[4])
+local ckWildcardName = ARGV[5]
+-- keyPrefix for prepending to variant names stored as values in ckIndex (lazy-init only)
+local keyPrefix = ARGV[6]
+-- TTL (seconds) applied to counter lazy-init SETs
+local counterTtl = ARGV[7]${v.args ?? ""}
+
+local function decrFloored(key)
+  if tonumber(redis.call('GET', key) or '0') > 0 then
+    redis.call('DECR', key)
+  end
+end
+
+-- Update the message data
+redis.call('SET', messageKey, messageData)
+
+-- Update the concurrency keys. nack only DECRs runningCounter, never INCRs it,
+-- so we skip the eager lazy-init here (unlike releaseConcurrencyTracked, which
+-- mirrors the same DECR pattern with init). A post-TTL nack's floored DECR
+-- no-ops; the next dequeueMessageFromKeyTracked reseeds from current state.
+redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+local removedFromDequeued = redis.call('SREM', queueCurrentDequeuedKey, messageId)
+redis.call('SREM', envCurrentDequeuedKey, messageId)
+if removedFromDequeued == 1 then
+  decrFloored(runningCounterKey)
+end
+
+-- Lazy-init lengthCounter if missing (e.g. expired via 24h TTL). nack re-queues a
+-- message, which means lengthCounter must be present before we INCR. Without this,
+-- a nack after counter expiry would create the counter at 1 and stay drifted until
+-- next reset.
+if redis.call('EXISTS', lengthCounterKey) == 0 then
+  local total = 0
+  local variants = redis.call('ZRANGE', ckIndexKey, 0, -1)
+  for _, v in ipairs(variants) do
+    total = total + tonumber(redis.call('ZCARD', keyPrefix .. v) or '0')
+  end
+  redis.call('SET', lengthCounterKey, total, 'EX', counterTtl)
+end
+
+-- Enqueue the message back into the CK-specific queue. INCR lengthCounter only if
+-- it's a new entry (ZADD returns 1).
+local added = redis.call('ZADD', messageQueueKey, messageScore, messageId)
+redis.call('ZADD', envQueueKey, messageScore, messageId)
+if added == 1 then
+  redis.call('INCR', lengthCounterKey)
+end
+
+-- Rebalance CK index
+local earliest = redis.call('ZRANGE', messageQueueKey, 0, 0, 'WITHSCORES')
+if #earliest > 0 then
+  redis.call('ZADD', ckIndexKey, earliest[2], messageQueueName)
+end
+${v.register ?? ""}
+-- Rebalance master queue with ck:* member
+local earliestIdx = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
+if #earliestIdx == 0 then
+  redis.call('ZREM', masterQueueKey, ckWildcardName)
+else
+  redis.call('ZADD', masterQueueKey, earliestIdx[2], ckWildcardName)
+end
+
+-- Remove old-format entry from master queue (transition cleanup). Skipped when the
+-- variant name IS the wildcard: a concurrency key of '*' produces a queue key identical
+-- to the wildcard member, so an unguarded ZREM here deletes the entry the rebalance just
+-- wrote and strands every concurrency key on this base queue.
+if messageQueueName ~= ckWildcardName then
+  redis.call('ZREM', masterQueueKey, messageQueueName)
+end
+`;
+
 export interface RunQueueMetricsEmitter {
   enabledSync(): boolean;
   /** enabled AND sampled-in; gates high-frequency sampled emissions (the Lua gauge). */
@@ -6286,136 +6538,18 @@ redis.call('SREM', envCurrentDequeuedKey, messageId)
     // removed something).
     this.redis.defineCommand("acknowledgeMessageCkTracked", {
       numberOfKeys: 12,
-      lua: `
--- Keys:
-local masterQueueKey = KEYS[1]
-local messageKey = KEYS[2]
-local messageQueueKey = KEYS[3]
-local queueCurrentConcurrencyKey = KEYS[4]
-local envCurrentConcurrencyKey = KEYS[5]
-local queueCurrentDequeuedKey = KEYS[6]
-local envCurrentDequeuedKey = KEYS[7]
-local envQueueKey = KEYS[8]
-local workerQueueKey = KEYS[9]
-local ckIndexKey = KEYS[10]
-local lengthCounterKey = KEYS[11]
-local runningCounterKey = KEYS[12]
-
--- Args:
-local messageId = ARGV[1]
-local messageQueueName = ARGV[2]
-local messageKeyValue = ARGV[3]
-local removeFromWorkerQueue = ARGV[4]
-local ckWildcardName = ARGV[5]
-
-local function decrFloored(key)
-  if tonumber(redis.call('GET', key) or '0') > 0 then
-    redis.call('DECR', key)
-  end
-end
-
--- Remove the message from the message key
-redis.call('DEL', messageKey)
-
--- Remove the message from the CK-specific queue. The ZREM is defensive — by
--- ack time the message is normally in currentConcurrency, not the zset — but
--- if it does remove something, the counter was tracking that entry so decr.
-local removedFromZset = redis.call('ZREM', messageQueueKey, messageId)
-redis.call('ZREM', envQueueKey, messageId)
-if removedFromZset == 1 then
-  decrFloored(lengthCounterKey)
-end
-
--- Rebalance CK index
-local earliestInCkQueue = redis.call('ZRANGE', messageQueueKey, 0, 0, 'WITHSCORES')
-if #earliestInCkQueue == 0 then
-  redis.call('ZREM', ckIndexKey, messageQueueName)
-else
-  redis.call('ZADD', ckIndexKey, earliestInCkQueue[2], messageQueueName)
-end
-
--- Rebalance master queue with ck:* member
-local earliestInCkIndex = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
-if #earliestInCkIndex == 0 then
-  redis.call('ZREM', masterQueueKey, ckWildcardName)
-else
-  redis.call('ZADD', masterQueueKey, earliestInCkIndex[2], ckWildcardName)
-end
-
--- Remove old-format entry from master queue (transition cleanup). Skipped when the
--- variant name IS the wildcard: a concurrency key of '*' produces a queue key identical
--- to the wildcard member, so an unguarded ZREM here deletes the entry the rebalance just
--- wrote and strands every concurrency key on this base queue.
-if messageQueueName ~= ckWildcardName then
-  redis.call('ZREM', masterQueueKey, messageQueueName)
-end
-
--- Update the concurrency keys. DECR runningCounter only when SREM
--- currentDequeued actually removed an entry (the message was in flight).
-redis.call('SREM', queueCurrentConcurrencyKey, messageId)
-redis.call('SREM', envCurrentConcurrencyKey, messageId)
-local removedFromDequeued = redis.call('SREM', queueCurrentDequeuedKey, messageId)
-redis.call('SREM', envCurrentDequeuedKey, messageId)
-if removedFromDequeued == 1 then
-  decrFloored(runningCounterKey)
-end
-
--- Remove the message from the worker queue
-if removeFromWorkerQueue == '1' then
-  redis.call('LREM', workerQueueKey, 0, messageKeyValue)
-end
-`,
+      lua: ckAcknowledgeLua({}),
     });
 
     this.redis.defineCommand("acknowledgeMessageCkVtimeTracked", {
       numberOfKeys: 14,
-      lua: `
--- Keys:
-local masterQueueKey = KEYS[1]
-local messageKey = KEYS[2]
-local messageQueueKey = KEYS[3]
-local queueCurrentConcurrencyKey = KEYS[4]
-local envCurrentConcurrencyKey = KEYS[5]
-local queueCurrentDequeuedKey = KEYS[6]
-local envCurrentDequeuedKey = KEYS[7]
-local envQueueKey = KEYS[8]
-local workerQueueKey = KEYS[9]
-local ckIndexKey = KEYS[10]
-local lengthCounterKey = KEYS[11]
-local runningCounterKey = KEYS[12]
+      lua: ckAcknowledgeLua({
+        keys: `
 local ckVtimeKey = KEYS[13]
-local ckVtimeIdleKey = KEYS[14]
-
--- Args:
-local messageId = ARGV[1]
-local messageQueueName = ARGV[2]
-local messageKeyValue = ARGV[3]
-local removeFromWorkerQueue = ARGV[4]
-local ckWildcardName = ARGV[5]
-local stateTtl = tonumber(ARGV[6] or '86400')
-
-local function decrFloored(key)
-  if tonumber(redis.call('GET', key) or '0') > 0 then
-    redis.call('DECR', key)
-  end
-end
-
--- Remove the message from the message key
-redis.call('DEL', messageKey)
-
--- Remove the message from the CK-specific queue. The ZREM is defensive — by
--- ack time the message is normally in currentConcurrency, not the zset — but
--- if it does remove something, the counter was tracking that entry so decr.
-local removedFromZset = redis.call('ZREM', messageQueueKey, messageId)
-redis.call('ZREM', envQueueKey, messageId)
-if removedFromZset == 1 then
-  decrFloored(lengthCounterKey)
-end
-
--- Rebalance CK index
-local earliestInCkQueue = redis.call('ZRANGE', messageQueueKey, 0, 0, 'WITHSCORES')
-if #earliestInCkQueue == 0 then
-  redis.call('ZREM', ckIndexKey, messageQueueName)
+local ckVtimeIdleKey = KEYS[14]`,
+        args: `
+local stateTtl = tonumber(ARGV[6] or '86400')`,
+        drainPark: `
   -- Park the tag before the variant leaves the fair order, so its next enqueue
   -- re-registers with the credit it earned rather than at the floor. Unconditional: there
   -- is no floor key here, and the dequeue reaps at or below the floor on its next serve.
@@ -6424,42 +6558,8 @@ if #earliestInCkQueue == 0 then
     redis.call('ZADD', ckVtimeIdleKey, idleTag, messageQueueName)
     redis.call('EXPIRE', ckVtimeIdleKey, stateTtl)
   end
-  redis.call('ZREM', ckVtimeKey, messageQueueName)
-else
-  redis.call('ZADD', ckIndexKey, earliestInCkQueue[2], messageQueueName)
-end
-
--- Rebalance master queue with ck:* member
-local earliestInCkIndex = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
-if #earliestInCkIndex == 0 then
-  redis.call('ZREM', masterQueueKey, ckWildcardName)
-else
-  redis.call('ZADD', masterQueueKey, earliestInCkIndex[2], ckWildcardName)
-end
-
--- Remove old-format entry from master queue (transition cleanup). Skipped when the
--- variant name IS the wildcard: a concurrency key of '*' produces a queue key identical
--- to the wildcard member, so an unguarded ZREM here deletes the entry the rebalance just
--- wrote and strands every concurrency key on this base queue.
-if messageQueueName ~= ckWildcardName then
-  redis.call('ZREM', masterQueueKey, messageQueueName)
-end
-
--- Update the concurrency keys. DECR runningCounter only when SREM
--- currentDequeued actually removed an entry (the message was in flight).
-redis.call('SREM', queueCurrentConcurrencyKey, messageId)
-redis.call('SREM', envCurrentConcurrencyKey, messageId)
-local removedFromDequeued = redis.call('SREM', queueCurrentDequeuedKey, messageId)
-redis.call('SREM', envCurrentDequeuedKey, messageId)
-if removedFromDequeued == 1 then
-  decrFloored(runningCounterKey)
-end
-
--- Remove the message from the worker queue
-if removeFromWorkerQueue == '1' then
-  redis.call('LREM', workerQueueKey, 0, messageKeyValue)
-end
-`,
+  redis.call('ZREM', ckVtimeKey, messageQueueName)`,
+      }),
     });
 
     // Tracked variant: same as nackMessageCk. SREM currentDequeued may DECR
@@ -6467,95 +6567,7 @@ end
     // lengthCounter only when ZADD reported a new entry.
     this.redis.defineCommand("nackMessageCkTracked", {
       numberOfKeys: 11,
-      lua: `
--- Keys:
-local masterQueueKey = KEYS[1]
-local messageKey = KEYS[2]
-local messageQueueKey = KEYS[3]
-local queueCurrentConcurrencyKey = KEYS[4]
-local envCurrentConcurrencyKey = KEYS[5]
-local queueCurrentDequeuedKey = KEYS[6]
-local envCurrentDequeuedKey = KEYS[7]
-local envQueueKey = KEYS[8]
-local ckIndexKey = KEYS[9]
-local lengthCounterKey = KEYS[10]
-local runningCounterKey = KEYS[11]
-
--- Args:
-local messageId = ARGV[1]
-local messageQueueName = ARGV[2]
-local messageData = ARGV[3]
-local messageScore = tonumber(ARGV[4])
-local ckWildcardName = ARGV[5]
--- keyPrefix for prepending to variant names stored as values in ckIndex (lazy-init only)
-local keyPrefix = ARGV[6]
--- TTL (seconds) applied to counter lazy-init SETs
-local counterTtl = ARGV[7]
-
-local function decrFloored(key)
-  if tonumber(redis.call('GET', key) or '0') > 0 then
-    redis.call('DECR', key)
-  end
-end
-
--- Update the message data
-redis.call('SET', messageKey, messageData)
-
--- Update the concurrency keys. nack only DECRs runningCounter, never INCRs it,
--- so we skip the eager lazy-init here (unlike releaseConcurrencyTracked, which
--- mirrors the same DECR pattern with init). A post-TTL nack's floored DECR
--- no-ops; the next dequeueMessageFromKeyTracked reseeds from current state.
-redis.call('SREM', queueCurrentConcurrencyKey, messageId)
-redis.call('SREM', envCurrentConcurrencyKey, messageId)
-local removedFromDequeued = redis.call('SREM', queueCurrentDequeuedKey, messageId)
-redis.call('SREM', envCurrentDequeuedKey, messageId)
-if removedFromDequeued == 1 then
-  decrFloored(runningCounterKey)
-end
-
--- Lazy-init lengthCounter if missing (e.g. expired via 24h TTL). nack re-queues a
--- message, which means lengthCounter must be present before we INCR. Without this,
--- a nack after counter expiry would create the counter at 1 and stay drifted until
--- next reset.
-if redis.call('EXISTS', lengthCounterKey) == 0 then
-  local total = 0
-  local variants = redis.call('ZRANGE', ckIndexKey, 0, -1)
-  for _, v in ipairs(variants) do
-    total = total + tonumber(redis.call('ZCARD', keyPrefix .. v) or '0')
-  end
-  redis.call('SET', lengthCounterKey, total, 'EX', counterTtl)
-end
-
--- Enqueue the message back into the CK-specific queue. INCR lengthCounter only if
--- it's a new entry (ZADD returns 1).
-local added = redis.call('ZADD', messageQueueKey, messageScore, messageId)
-redis.call('ZADD', envQueueKey, messageScore, messageId)
-if added == 1 then
-  redis.call('INCR', lengthCounterKey)
-end
-
--- Rebalance CK index
-local earliest = redis.call('ZRANGE', messageQueueKey, 0, 0, 'WITHSCORES')
-if #earliest > 0 then
-  redis.call('ZADD', ckIndexKey, earliest[2], messageQueueName)
-end
-
--- Rebalance master queue with ck:* member
-local earliestIdx = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
-if #earliestIdx == 0 then
-  redis.call('ZREM', masterQueueKey, ckWildcardName)
-else
-  redis.call('ZADD', masterQueueKey, earliestIdx[2], ckWildcardName)
-end
-
--- Remove old-format entry from master queue (transition cleanup). Skipped when the
--- variant name IS the wildcard: a concurrency key of '*' produces a queue key identical
--- to the wildcard member, so an unguarded ZREM here deletes the entry the rebalance just
--- wrote and strands every concurrency key on this base queue.
-if messageQueueName ~= ckWildcardName then
-  redis.call('ZREM', masterQueueKey, messageQueueName)
-end
-`,
+      lua: ckNackLua({}),
     });
 
     // Vtime variant of nackMessageCkTracked (feature-flagged via
@@ -6564,88 +6576,19 @@ end
     // that a nack revives rejoins the fair order.
     this.redis.defineCommand("nackMessageCkVtimeTracked", {
       numberOfKeys: 14,
-      lua: `
--- Keys:
-local masterQueueKey = KEYS[1]
-local messageKey = KEYS[2]
-local messageQueueKey = KEYS[3]
-local queueCurrentConcurrencyKey = KEYS[4]
-local envCurrentConcurrencyKey = KEYS[5]
-local queueCurrentDequeuedKey = KEYS[6]
-local envCurrentDequeuedKey = KEYS[7]
-local envQueueKey = KEYS[8]
-local ckIndexKey = KEYS[9]
-local lengthCounterKey = KEYS[10]
-local runningCounterKey = KEYS[11]
+      lua: ckNackLua({
+        keys: `
 -- Virtual-time keys (KEYS 12-13)
 local ckVtimeKey = KEYS[12]
 local ckVtimeFloorKey = KEYS[13]
-local ckVtimeIdleKey = KEYS[14]
-
--- Args:
-local messageId = ARGV[1]
-local messageQueueName = ARGV[2]
-local messageData = ARGV[3]
-local messageScore = tonumber(ARGV[4])
-local ckWildcardName = ARGV[5]
--- keyPrefix for prepending to variant names stored as values in ckIndex (lazy-init only)
-local keyPrefix = ARGV[6]
--- TTL (seconds) applied to counter lazy-init SETs
-local counterTtl = ARGV[7]
+local ckVtimeIdleKey = KEYS[14]`,
+        args: `
 -- TTL (seconds) applied to ckVtime on registration
 local stateTtl = ARGV[8]
 -- Arrival stacking (only read when this call registers a brand-new variant)
 local quantum = tonumber(ARGV[9] or '1')
-local arrivalCap = tonumber(ARGV[10] or '4294967296')
-
-local function decrFloored(key)
-  if tonumber(redis.call('GET', key) or '0') > 0 then
-    redis.call('DECR', key)
-  end
-end
-
--- Update the message data
-redis.call('SET', messageKey, messageData)
-
--- Update the concurrency keys. nack only DECRs runningCounter, never INCRs it,
--- so we skip the eager lazy-init here (unlike releaseConcurrencyTracked, which
--- mirrors the same DECR pattern with init). A post-TTL nack's floored DECR
--- no-ops; the next dequeueMessageFromKeyTracked reseeds from current state.
-redis.call('SREM', queueCurrentConcurrencyKey, messageId)
-redis.call('SREM', envCurrentConcurrencyKey, messageId)
-local removedFromDequeued = redis.call('SREM', queueCurrentDequeuedKey, messageId)
-redis.call('SREM', envCurrentDequeuedKey, messageId)
-if removedFromDequeued == 1 then
-  decrFloored(runningCounterKey)
-end
-
--- Lazy-init lengthCounter if missing (e.g. expired via 24h TTL). nack re-queues a
--- message, which means lengthCounter must be present before we INCR. Without this,
--- a nack after counter expiry would create the counter at 1 and stay drifted until
--- next reset.
-if redis.call('EXISTS', lengthCounterKey) == 0 then
-  local total = 0
-  local variants = redis.call('ZRANGE', ckIndexKey, 0, -1)
-  for _, v in ipairs(variants) do
-    total = total + tonumber(redis.call('ZCARD', keyPrefix .. v) or '0')
-  end
-  redis.call('SET', lengthCounterKey, total, 'EX', counterTtl)
-end
-
--- Enqueue the message back into the CK-specific queue. INCR lengthCounter only if
--- it's a new entry (ZADD returns 1).
-local added = redis.call('ZADD', messageQueueKey, messageScore, messageId)
-redis.call('ZADD', envQueueKey, messageScore, messageId)
-if added == 1 then
-  redis.call('INCR', lengthCounterKey)
-end
-
--- Rebalance CK index
-local earliest = redis.call('ZRANGE', messageQueueKey, 0, 0, 'WITHSCORES')
-if #earliest > 0 then
-  redis.call('ZADD', ckIndexKey, earliest[2], messageQueueName)
-end
-
+local arrivalCap = tonumber(ARGV[10] or '4294967296')`,
+        register: `
 -- Register this variant in the virtual-time index. NX means an already-advanced tag is
 -- never rewound. A returning variant starts at max(floor, remembered idle tag): a nack
 -- after the variant drained would otherwise hand back full credit at the floor, which is
@@ -6689,187 +6632,34 @@ if redis.call('ZADD', ckVtimeKey, 'NX', vfloor, messageQueueName) == 1 then
 end
 redis.call('EXPIRE', ckVtimeKey, stateTtl)
 redis.call('EXPIRE', ckVtimeFloorKey, stateTtl)
-
--- Rebalance master queue with ck:* member
-local earliestIdx = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
-if #earliestIdx == 0 then
-  redis.call('ZREM', masterQueueKey, ckWildcardName)
-else
-  redis.call('ZADD', masterQueueKey, earliestIdx[2], ckWildcardName)
-end
-
--- Remove old-format entry from master queue (transition cleanup). Skipped when the
--- variant name IS the wildcard: a concurrency key of '*' produces a queue key identical
--- to the wildcard member, so an unguarded ZREM here deletes the entry the rebalance just
--- wrote and strands every concurrency key on this base queue.
-if messageQueueName ~= ckWildcardName then
-  redis.call('ZREM', masterQueueKey, messageQueueName)
-end
 `,
+      }),
     });
 
     // Tracked variant: same as moveToDeadLetterQueueCk. ZREM may DECR
     // lengthCounter (defensive); SREM currentDequeued may DECR runningCounter.
     this.redis.defineCommand("moveToDeadLetterQueueCkTracked", {
       numberOfKeys: 12,
-      lua: `
--- Keys:
-local masterQueueKey = KEYS[1]
-local messageKey = KEYS[2]
-local messageQueue = KEYS[3]
-local queueCurrentConcurrencyKey = KEYS[4]
-local envCurrentConcurrencyKey = KEYS[5]
-local queueCurrentDequeuedKey = KEYS[6]
-local envCurrentDequeuedKey = KEYS[7]
-local envQueueKey = KEYS[8]
-local deadLetterQueueKey = KEYS[9]
-local ckIndexKey = KEYS[10]
-local lengthCounterKey = KEYS[11]
-local runningCounterKey = KEYS[12]
-
--- Args:
-local messageId = ARGV[1]
-local messageQueueName = ARGV[2]
-local ckWildcardName = ARGV[3]
-
-local function decrFloored(key)
-  if tonumber(redis.call('GET', key) or '0') > 0 then
-    redis.call('DECR', key)
-  end
-end
-
--- Remove the message from the CK-specific queue. ZREM may be a no-op if the
--- message was already moved to currentConcurrency; only decr when it actually
--- removes something.
-local removedFromZset = redis.call('ZREM', messageQueue, messageId)
-redis.call('ZREM', envQueueKey, messageId)
-if removedFromZset == 1 then
-  decrFloored(lengthCounterKey)
-end
-
--- Rebalance CK index
-local earliest = redis.call('ZRANGE', messageQueue, 0, 0, 'WITHSCORES')
-if #earliest == 0 then
-  redis.call('ZREM', ckIndexKey, messageQueueName)
-else
-  redis.call('ZADD', ckIndexKey, earliest[2], messageQueueName)
-end
-
--- Rebalance master queue with ck:* member
-local earliestIdx = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
-if #earliestIdx == 0 then
-  redis.call('ZREM', masterQueueKey, ckWildcardName)
-else
-  redis.call('ZADD', masterQueueKey, earliestIdx[2], ckWildcardName)
-end
-
--- Remove old-format entry from master queue (transition cleanup). Skipped when the
--- variant name IS the wildcard: a concurrency key of '*' produces a queue key identical
--- to the wildcard member, so an unguarded ZREM here deletes the entry the rebalance just
--- wrote and strands every concurrency key on this base queue.
-if messageQueueName ~= ckWildcardName then
-  redis.call('ZREM', masterQueueKey, messageQueueName)
-end
-
--- Add the message to the dead letter queue
-redis.call('ZADD', deadLetterQueueKey, tonumber(redis.call('TIME')[1]), messageId)
-
--- Update the concurrency keys. DECR runningCounter only when SREM
--- currentDequeued actually removed an entry.
-redis.call('SREM', queueCurrentConcurrencyKey, messageId)
-redis.call('SREM', envCurrentConcurrencyKey, messageId)
-local removedFromDequeued = redis.call('SREM', queueCurrentDequeuedKey, messageId)
-redis.call('SREM', envCurrentDequeuedKey, messageId)
-if removedFromDequeued == 1 then
-  decrFloored(runningCounterKey)
-end
-`,
+      lua: ckDeadLetterLua({}),
     });
 
     this.redis.defineCommand("moveToDeadLetterQueueCkVtimeTracked", {
       numberOfKeys: 14,
-      lua: `
--- Keys:
-local masterQueueKey = KEYS[1]
-local messageKey = KEYS[2]
-local messageQueue = KEYS[3]
-local queueCurrentConcurrencyKey = KEYS[4]
-local envCurrentConcurrencyKey = KEYS[5]
-local queueCurrentDequeuedKey = KEYS[6]
-local envCurrentDequeuedKey = KEYS[7]
-local envQueueKey = KEYS[8]
-local deadLetterQueueKey = KEYS[9]
-local ckIndexKey = KEYS[10]
-local lengthCounterKey = KEYS[11]
-local runningCounterKey = KEYS[12]
+      lua: ckDeadLetterLua({
+        keys: `
 local ckVtimeKey = KEYS[13]
-local ckVtimeIdleKey = KEYS[14]
-
--- Args:
-local messageId = ARGV[1]
-local messageQueueName = ARGV[2]
-local ckWildcardName = ARGV[3]
-local stateTtl = tonumber(ARGV[4] or '86400')
-
-local function decrFloored(key)
-  if tonumber(redis.call('GET', key) or '0') > 0 then
-    redis.call('DECR', key)
-  end
-end
-
--- Remove the message from the CK-specific queue. ZREM may be a no-op if the
--- message was already moved to currentConcurrency; only decr when it actually
--- removes something.
-local removedFromZset = redis.call('ZREM', messageQueue, messageId)
-redis.call('ZREM', envQueueKey, messageId)
-if removedFromZset == 1 then
-  decrFloored(lengthCounterKey)
-end
-
--- Rebalance CK index
-local earliest = redis.call('ZRANGE', messageQueue, 0, 0, 'WITHSCORES')
-if #earliest == 0 then
-  redis.call('ZREM', ckIndexKey, messageQueueName)
+local ckVtimeIdleKey = KEYS[14]`,
+        args: `
+local stateTtl = tonumber(ARGV[4] or '86400')`,
+        drainPark: `
   -- Park the tag before the variant leaves the fair order, same rule as the ack path.
   local idleTag = redis.call('ZSCORE', ckVtimeKey, messageQueueName)
   if idleTag then
     redis.call('ZADD', ckVtimeIdleKey, idleTag, messageQueueName)
     redis.call('EXPIRE', ckVtimeIdleKey, stateTtl)
   end
-  redis.call('ZREM', ckVtimeKey, messageQueueName)
-else
-  redis.call('ZADD', ckIndexKey, earliest[2], messageQueueName)
-end
-
--- Rebalance master queue with ck:* member
-local earliestIdx = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
-if #earliestIdx == 0 then
-  redis.call('ZREM', masterQueueKey, ckWildcardName)
-else
-  redis.call('ZADD', masterQueueKey, earliestIdx[2], ckWildcardName)
-end
-
--- Remove old-format entry from master queue (transition cleanup). Skipped when the
--- variant name IS the wildcard: a concurrency key of '*' produces a queue key identical
--- to the wildcard member, so an unguarded ZREM here deletes the entry the rebalance just
--- wrote and strands every concurrency key on this base queue.
-if messageQueueName ~= ckWildcardName then
-  redis.call('ZREM', masterQueueKey, messageQueueName)
-end
-
--- Add the message to the dead letter queue
-redis.call('ZADD', deadLetterQueueKey, tonumber(redis.call('TIME')[1]), messageId)
-
--- Update the concurrency keys. DECR runningCounter only when SREM
--- currentDequeued actually removed an entry.
-redis.call('SREM', queueCurrentConcurrencyKey, messageId)
-redis.call('SREM', envCurrentConcurrencyKey, messageId)
-local removedFromDequeued = redis.call('SREM', queueCurrentDequeuedKey, messageId)
-redis.call('SREM', envCurrentDequeuedKey, messageId)
-if removedFromDequeued == 1 then
-  decrFloored(runningCounterKey)
-end
-`,
+  redis.call('ZREM', ckVtimeKey, messageQueueName)`,
+      }),
     });
 
     this.redis.defineCommand("releaseConcurrency", {
