@@ -7,11 +7,8 @@ import {
   type QueryTasks,
   type QueryVersions,
 } from "~/v3/services/aiRunFilterService.server";
-import dotenv from "dotenv";
 import { wrapAISDKModel } from "evalite/ai-sdk";
 import { openai } from "@ai-sdk/openai";
-
-dotenv.config({ path: "../../.env" });
 
 const queryTags: QueryTags = {
   query: async (search) => {

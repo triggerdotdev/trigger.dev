@@ -4,6 +4,7 @@
 
 **/.cache
 **/.env
+**/.env.*
 **/.next
 **/.output
 **/.trigger

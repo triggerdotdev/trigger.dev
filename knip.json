@@ -7,9 +7,6 @@
       "ignoreDependencies": ["agentcrumbs", "eslint", "lefthook"],
       "ignoreBinaries": ["infisical", "prisma"]
     },
-    "apps/supervisor": {
-      "ignoreUnresolved": ["dotenv/config"]
-    },
     "apps/webapp": {
       "entry": [
         "evalite.config.ts",
@@ -17,6 +14,7 @@
         "evals/**/*.eval.ts",
         "memory-leak-detector.js",
         "prisma/populate.ts",
+        "seed*.{ts,mts}",
         "scripts/**/*.{js,mjs,cjs,ts,mts,cts}",
         "test/**/*.producer.ts",
         "test/bench/analyzeProfile.ts",

@@ -2,11 +2,8 @@ import { evalite } from "evalite";
 import { Levenshtein } from "autoevals";
 import { AIQueryService } from "~/v3/services/aiQueryService.server";
 import { runsSchema } from "~/v3/querySchemas";
-import dotenv from "dotenv";
 import { wrapAISDKModel } from "evalite/ai-sdk";
 import { openai } from "@ai-sdk/openai";
-
-dotenv.config({ path: "../../.env" });
 
 // Helper to normalize queries for comparison
 function normalizeQuery(query: string): string {

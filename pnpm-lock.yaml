@@ -153,6 +153,9 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
+      varlock:
+        specifier: 1.18.0
+        version: 1.18.0
       vitest:
         specifier: 4.1.7
         version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/coverage-v8@4.1.7)(jsdom@30.0.1)(vite@6.4.3(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.1)(tsx@3.12.2)(yaml@2.9.0))
@@ -8363,6 +8366,24 @@ packages:
   '@vanilla-extract/private@1.0.3':
     resolution: {integrity: sha512-17kVyLq3ePTKOkveHxXuIJZtGYs+cSoev7BlP+Lf4916qfDhk/HBjvlYDe8egrea7LNPHKwSZJK/bzZC+Q6AwQ==}
 
+  '@varlock/native-helper-darwin@1.18.0':
+    resolution: {integrity: sha512-O/Wn7G97N9RhdHrMNmDJtqH86+1vCKTzkThW7ICghvBtJslWAY4tpfDb32/AIh8OHOkIoHHmQ90ak6uovbZ2rw==}
+    os: [darwin]
+
+  '@varlock/native-helper-linux-arm64@1.18.0':
+    resolution: {integrity: sha512-oPEh5bFtBoRQlsLS0uou7vmuT3OeO0u6rvaNRuQO6P76b0hUSv/ZiNOEpUtS/e+iyJKIhl/0O1MrPq28Rxo9BQ==}
+    cpu: [arm64]
+    os: [linux]
+
+  '@varlock/native-helper-linux-x64@1.18.0':
+    resolution: {integrity: sha512-eUz2vLIMAKwiTMXfJDbJxIgV1D/GAUH6oKHde7i0kr4F+JpbduRblwbI8Qe1XF3DeEB/OBEJrtvhu0gp6t5d/g==}
+    cpu: [x64]
+    os: [linux]
+
+  '@varlock/native-helper-win32-x64@1.18.0':
+    resolution: {integrity: sha512-L95F5rrZtA6Fn1zjR2iIGBCHg+mA8tIylQOSo5TBZfAx0FlWd38jgwewm6b/nfYKeGrx/R6pSlSMDDuj1WsUMg==}
+    os: [win32, linux]
+
   '@vercel/oidc@3.1.0':
     resolution: {integrity: sha512-Fw28YZpRnA3cAHHDlkt7xQHiJ0fcL+NRcIqsocZQUSmbzeIKRpwttJjik5ZGanXP+vlA4SbTg+AbA3bP363l+w==}
     engines: {node: '>= 20'}
@@ -15040,6 +15061,11 @@ packages:
 
   validate.io-function@1.0.2:
     resolution: {integrity: sha512-LlFybRJEriSuBnUhQyG5bwglhh50EpTL2ul23MPIuR1odjO7XaMLFV8vHGwp7AZciFxtYOeiSCT5st+XSPONiQ==}
+
+  varlock@1.18.0:
+    resolution: {integrity: sha512-wGf3OuFwPXL/yxEu1yhao0pNhof1ubbpo8guQML6w3n4Rp2DLGH2PZFGgmwVmNiqULRntat7+0MEJLK2V0zIXw==}
+    engines: {bun: '>=1.3.3', node: '>=22.3.0'}
+    hasBin: true
 
   vary@1.1.2:
     resolution: {integrity: sha512-BNGbWLfd0eUPabhkXUVm0j8uuvREyTh5ovRa/dyow/BqAbZJyC+5fU+IzQOzmAKzYqYRAISoRhdQr3eIZ/PXqg==}
@@ -22853,6 +22879,18 @@ snapshots:
       - terser
 
   '@vanilla-extract/private@1.0.3': {}
+
+  '@varlock/native-helper-darwin@1.18.0':
+    optional: true
+
+  '@varlock/native-helper-linux-arm64@1.18.0':
+    optional: true
+
+  '@varlock/native-helper-linux-x64@1.18.0':
+    optional: true
+
+  '@varlock/native-helper-win32-x64@1.18.0':
+    optional: true
 
   '@vercel/oidc@3.1.0': {}
 
@@ -30669,6 +30707,13 @@ snapshots:
   validate.io-array@1.0.6: {}
 
   validate.io-function@1.0.2: {}
+
+  varlock@1.18.0:
+    optionalDependencies:
+      '@varlock/native-helper-darwin': 1.18.0
+      '@varlock/native-helper-linux-arm64': 1.18.0
+      '@varlock/native-helper-linux-x64': 1.18.0
+      '@varlock/native-helper-win32-x64': 1.18.0
 
   vary@1.1.2: {}
 

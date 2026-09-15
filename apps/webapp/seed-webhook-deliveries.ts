@@ -1,4 +1,3 @@
-import "dotenv/config";
 import { randomBytes, createHash } from "node:crypto";
 import { nanoid } from "nanoid";
 import { prisma, webhookPrisma } from "./app/db.server";

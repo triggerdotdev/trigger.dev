@@ -117,5 +117,5 @@ After editing the migration file, apply the migration:
 
 ```bash
 cd internal-packages/database
-pnpm run db:migrate:deploy && pnpm run generate
+pnpm run db:migrate:local && pnpm run generate
 ```

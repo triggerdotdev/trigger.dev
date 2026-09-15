@@ -37,6 +37,7 @@ yarn-error.log*
 .env.*
 .docker/*.env
 !.env.example
+!.env.schema
 
 # turbo
 .turbo

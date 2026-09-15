@@ -6,7 +6,9 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "dev": "tsx --require dotenv/config --watch src/index.ts || (echo '!! Remember to run: nvm use'; exit 1)",
+    "dev": "varlock run --inject vars -- tsx --watch src/index.ts",
+    "env": "varlock run --inject vars --",
+    "env:check": "varlock load --agent",
     "start": "node dist/index.js",
     "test:run": "vitest --no-file-parallelism --run",
     "test:watch": "vitest --no-file-parallelism",

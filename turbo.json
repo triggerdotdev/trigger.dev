@@ -19,6 +19,9 @@
     "db:migrate:deploy": {
       "cache": false
     },
+    "db:migrate:local": {
+      "cache": false
+    },
     "webapp#db:seed": {
       "cache": false,
       "dependsOn": ["webapp#build"]
@@ -79,7 +82,14 @@
       "cache": false
     }
   },
-  "globalDependencies": [".env"],
+  "globalDependencies": [
+    ".env",
+    ".env.*",
+    "apps/*/.env",
+    "apps/*/.env.*",
+    "internal-packages/*/.env",
+    "internal-packages/*/.env.*"
+  ],
   "globalEnv": [
     "NODE_ENV",
     "REMIX_APP_PORT",

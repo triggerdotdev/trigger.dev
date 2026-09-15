@@ -31,7 +31,7 @@ branch are tagged into a release periodically.
 
 - [Node.js](https://nodejs.org/en) version 24.18.0
 - [pnpm package manager](https://pnpm.io/installation) version 10.33.2
-- [Docker](https://www.docker.com/get-started/)
+- [Docker](https://www.docker.com/get-started/) (Compose 2.24.4 or newer for `dev:docker`)
 - [protobuf](https://github.com/protocolbuffers/protobuf)
 
 ### Setup
@@ -57,11 +57,12 @@ branch are tagged into a release periodically.
    ```
    pnpm i
    ```
-6. Create your `.env` file
+6. Create your local overrides file. [Varlock](https://varlock.dev/) loads the checked-in local defaults from `.env.schema`.
    ```
-   cp .env.example .env
+   cp .env.example .env.local
+   pnpm run env:check
    ```
-7. Open it and generate a new value for `ENCRYPTION_KEY`:
+7. Open `.env.local` and add a new value for `ENCRYPTION_KEY`:
 
    `ENCRYPTION_KEY` is used to two-way encrypt OAuth access tokens and so you'll probably want to actually generate a unique value, and it must be a random 16 byte hex string. You can generate one with the following command:
 
@@ -92,6 +93,37 @@ branch are tagged into a release periodically.
     pnpm run db:seed
     ```
 12. Run the app. See the section below.
+
+## Local environment configuration
+
+Local dev, seed, test, and database commands use Varlock before starting the process. The root `.env.schema` holds the local stack defaults; app and database schemas import shared configuration, including dependencies used in `${VAR}` references. Database commands use Varlock's `--filter` to resolve and inject only their connection settings; helper variables remain available for resolution without being injected. Libraries that use their caller's configuration don't need a schema.
+
+- Put shared overrides and credentials in root `.env.local`. Put app-only overrides in that app's `.env.local`.
+- Existing `.env` files still work. There is no need to copy or recreate the old `.env` symlinks. Prefer renaming the root `.env` to `.env.local` when you migrate; don't overwrite an existing `.env.local`.
+- Precedence is: schema defaults → root `.env` → root `.env.local` → package `.env` → package `.env.local` → exported environment variables. `${VAR}` references are expanded by Varlock.
+- An empty assignment is not an explicit clearing override: Varlock falls back to lower-priority definitions. Optional items with no value are omitted from the child environment rather than injected as empty strings.
+- Restart the command after changing configuration; the CLI loads it once at startup.
+- Real credentials must never go in `.env.schema`. New variables are sensitive by default; mark only known non-secret settings `@sensitive=false`. `env:check` uses agent-safe, redacted output.
+
+```sh
+pnpm run env:check
+pnpm --filter webapp run env:check
+pnpm --filter @trigger.dev/database run env:check
+# Run an ad-hoc script with that package's configuration:
+pnpm --filter webapp run env tsx scripts/my-script.ts
+```
+
+To run the supervisor, copy `apps/supervisor/.env.example` to `apps/supervisor/.env.local` and set `TRIGGER_WORKER_TOKEN`. Its shared secret and local API origin are imported from the root configuration.
+
+`pnpm run docker` and `docker:full` resolve only Compose settings, such as project names, container prefixes, host ports, and volume names. The `docker:stop`, `docker:full:stop`, and `dev:docker:stop` commands use the same scope: an invalid application setting does not prevent shutdown, while configuration needed to select and render the Compose stack must still be valid.
+
+For `dev:docker`, configuration is loaded from `apps/webapp`, including its local overrides, and passed to Compose through stdin; the Compose file's container-specific URLs still take precedence. No resolved secrets file is written. Local env files and schemas are excluded from image build contexts.
+
+The dedicated run-ops database is opt-in: set `RUN_OPS_DATABASE_URL` in root `.env.local` only when using the `runops` profile in `docker/docker-compose.yml`. Its local URL is shown in `.env.example`. The separate `dev:docker` stack has no run-ops database and explicitly clears this URL, including values from existing `.env` files.
+
+Use `db:migrate:local` (or root `pnpm run db:migrate`) for local migrations. `db:migrate:deploy` and production startup commands intentionally use **only injected environment variables**, without Varlock or local defaults. Existing runtime validation stays in place. Builds are also unchanged; if a local build needs your configuration, use `pnpm run env pnpm run build --filter webapp`.
+
+This does not change how the published CLI loads customer `.env` files, dashboard env-file imports, or the self-hosting Compose configuration. No secret-provider plugin is required: a secret manager can continue injecting environment variables, which override local values.
 
 ## Running
 
@@ -205,7 +237,7 @@ pnpm exec trigger dev --log-level debug
 4. Run the migration:
 
    ```
-   pnpm run db:migrate:deploy
+   pnpm run db:migrate:local
    pnpm run generate
    ```
 
@@ -333,4 +365,4 @@ The process running on port `3030` should be destroyed.
 
 ### Running two clones side by side (worktree, branch experiment)
 
-The default `pnpm run docker` uses the project name `triggerdotdev-docker` and the standard host ports (5432, 6379, 3060, 4566, 8123, 9000, 9005, 9006). To stand up a second instance in another clone without clashing, set a different `COMPOSE_PROJECT_NAME` and the offset host ports in that clone's `.env`. The "Running multiple instances side by side" block in `.env.example` lists every overridable env var with its default for reference; uncomment the lines you need and update `DATABASE_URL` / `CLICKHOUSE_URL` / `REDIS_PORT` / `APP_ORIGIN` / `LOGIN_ORIGIN` / `ELECTRIC_ORIGIN` / `REALTIME_STREAMS_S2_ENDPOINT` to match.
+The default `pnpm run docker` uses the project name `triggerdotdev-docker` and the standard host ports (5432, 6379, 3060, 4566, 8123, 9000, 9005, 9006). To stand up a second instance in another clone without clashing, set a different `COMPOSE_PROJECT_NAME` and the offset host ports in that clone's `.env.local`. The "Running multiple instances side by side" block in `.env.schema` lists the port overrides with their defaults for reference; copy the lines you need into `.env.local` and update `DATABASE_URL` / `CLICKHOUSE_URL` / `REDIS_PORT` / `APP_ORIGIN` / `LOGIN_ORIGIN` / `ELECTRIC_ORIGIN` / `REALTIME_STREAMS_S2_ENDPOINT` to match.

@@ -41,7 +41,7 @@ export default defineConfig({
     ],
     globals: true,
     pool: "forks",
-    setupFiles: ["./test/setup.ts"], // load apps/webapp/.env
+    setupFiles: ["./test/setup.ts"], // test fallbacks and isolation
   },
   // @ts-ignore
   plugins: [tsconfigPaths({ projects: ["./tsconfig.json"] })],

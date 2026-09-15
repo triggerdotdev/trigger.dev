@@ -32,7 +32,7 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS "JobRun_eventId_idx" ON "JobRun" ("event
 
 4. Don’t apply the Prisma migration locally yet. This is a good opportunity to test the flow.
 5. Manually apply the index to your database, by running the index command.
-6. Then locally run `pnpm run db:migrate:deploy`
+6. Then locally run `pnpm run db:migrate:local`
 
 #### Before deploying
 

@@ -35,7 +35,7 @@ New code should always target V2.
    - Various `TaskRun` indexes (unless you added them)
 4. Apply migration:
    ```bash
-   pnpm run db:migrate:deploy && pnpm run generate
+   pnpm run db:migrate:local && pnpm run generate
    ```
 
 ## Index Migration Rules

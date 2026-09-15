@@ -1,12 +1,6 @@
-// Load apps/webapp/.env into process.env so env.server's top-level
-// EnvironmentSchema.parse(process.env) succeeds in vitest workers.
-import { config } from "dotenv";
-import path from "node:path";
 import { vi } from "vitest";
 import type * as IORedisModule from "ioredis";
 import type * as TaskMetadataCacheModule from "~/services/taskMetadataCache.server";
-
-config({ path: path.resolve(__dirname, "../.env") });
 
 // CI has no .env and no REDIS_HOST/REDIS_PORT, so import-time guards like
 // autoIncrementCounter.server.ts throw and their suites fail to collect. Default
