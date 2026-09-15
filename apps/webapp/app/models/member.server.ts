@@ -182,7 +182,11 @@ export async function inviteMembers({
     try {
       const invite = await prisma.orgMemberInvite.create({
         data: {
-          email,
+          // Store folded. The @@unique([organizationId, email]) backstop is
+          // case-sensitive, so it only catches a concurrent duplicate if every
+          // row for an address is written the same way — this keeps that true
+          // regardless of what a caller passes in.
+          email: folded,
           token: tokenGenerator(),
           organizationId: org.id,
           inviterId: userId,

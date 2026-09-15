@@ -237,4 +237,48 @@ describe("invite email casing", () => {
       expect(after).toBe(before);
     }
   );
+  postgresTest(
+    "inviteMembers stores addresses folded so the unique constraint can backstop",
+    { timeout: 60_000 },
+    async ({ prisma }) => {
+      prismaHolder.client = prisma;
+      const { inviteMembers } = await import("../app/models/member.server");
+
+      const suffix = randomHex(8);
+      const owner = await prisma.user.create({
+        data: { email: `owner-${suffix}@example.test`, authenticationMethod: "MAGIC_LINK" },
+      });
+      const organization = await prisma.organization.create({
+        data: {
+          title: `invite-fold-org-${suffix}`,
+          slug: `invite-fold-org-${suffix}`,
+          isActivated: true,
+          members: { create: { userId: owner.id, role: "ADMIN" } },
+        },
+      });
+
+      // Called directly with mixed case, i.e. not relying on a route to
+      // normalise first, since the constraint is the last line of defence.
+      const first = await inviteMembers({
+        slug: organization.slug,
+        emails: [`Fresh-${suffix}@Example.Test`],
+        userId: owner.id,
+      });
+      expect(first.created).toHaveLength(1);
+      expect(first.created[0].email).toBe(`fresh-${suffix}@example.test`);
+
+      // A differently cased variant must not become a second row.
+      const second = await inviteMembers({
+        slug: organization.slug,
+        emails: [`FRESH-${suffix}@EXAMPLE.TEST`],
+        userId: owner.id,
+      });
+      expect(second.created).toHaveLength(0);
+
+      const rows = await prisma.orgMemberInvite.count({
+        where: { organizationId: organization.id },
+      });
+      expect(rows).toBe(1);
+    }
+  );
 });
