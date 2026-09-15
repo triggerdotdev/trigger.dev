@@ -8,11 +8,10 @@ import type {
   HostBearerAuthResult,
   RbacResource,
 } from "@trigger.dev/rbac";
-import { authFeatureControls } from "~/services/authFeatureControls.server";
 import { rbac } from "~/services/rbac.server";
 import { singleton } from "~/utils/singleton";
 
-type ApiAuthResult = "success" | "invalid" | "forbidden" | "disabled" | "error";
+type ApiAuthResult = "success" | "invalid" | "forbidden" | "error";
 
 const telemetry = singleton("apiAuthTelemetry", () => {
   const meter = getMeter("api-auth");
@@ -23,17 +22,6 @@ const telemetry = singleton("apiAuthTelemetry", () => {
     description: "Environment bearer authentication duration",
     unit: "ms",
   });
-
-  meter
-    .createObservableGauge("api_auth.rollout_mode", {
-      description: "Active API authentication rollout modes",
-    })
-    .addCallback((result) => {
-      result.observe(1, {
-        control: "additional_key_lookup",
-        mode: authFeatureControls.additionalApiKeyLookupEnabled() ? "enabled" : "disabled",
-      });
-    });
 
   return { attempts, duration };
 });
@@ -54,13 +42,7 @@ export async function authenticateBearerWithTelemetry(
     final = {
       credentialKind: resolution.credentialKind,
       lookupPath: resolution.lookupPath,
-      result: result.ok
-        ? "success"
-        : resolution.lookupPath === "additional_skipped"
-          ? "disabled"
-          : result.status === 403
-            ? "forbidden"
-            : "invalid",
+      result: result.ok ? "success" : result.status === 403 ? "forbidden" : "invalid",
     };
     recordAuthAttempt("rbac", final.credentialKind, final.lookupPath, final.result);
     return result;
@@ -102,27 +84,22 @@ export async function observeLegacyBearerAuthentication<T extends { ok: boolean 
 ): Promise<T> {
   const startedAt = performance.now();
   const classified = classifyCredential(request, true);
-  const lookupPath: BearerLookupPath =
-    classified.credentialKind === "additional_api_key" &&
-    !authFeatureControls.additionalApiKeyLookupEnabled()
-      ? "additional_skipped"
-      : classified.lookupPath;
   let result: ApiAuthResult = "error";
 
   try {
     const value = await operation();
-    result = value?.ok ? "success" : lookupPath === "additional_skipped" ? "disabled" : "invalid";
-    recordAuthAttempt("legacy", classified.credentialKind, lookupPath, result);
+    result = value?.ok ? "success" : "invalid";
+    recordAuthAttempt("legacy", classified.credentialKind, classified.lookupPath, result);
     return value;
   } catch (error) {
-    recordAuthAttempt("legacy", classified.credentialKind, lookupPath, result);
+    recordAuthAttempt("legacy", classified.credentialKind, classified.lookupPath, result);
     throw error;
   } finally {
     telemetry.duration.record(performance.now() - startedAt, {
       resolver: "legacy",
       credential_kind: classified.credentialKind,
       result,
-      lookup_path: lookupPath,
+      lookup_path: classified.lookupPath,
     });
   }
 }

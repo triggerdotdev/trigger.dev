@@ -29,7 +29,6 @@ export type BearerLookupPath =
   | "root_current"
   | "root_rotated"
   | "additional"
-  | "additional_skipped"
   | "jwt_current"
   | "jwt_rotated"
   | "legacy_public"
@@ -71,10 +70,7 @@ export class BearerCredentialResolver {
   private readonly prisma: PrismaClient;
   private readonly replica: PrismaClient;
 
-  constructor(
-    clients: BearerCredentialClients,
-    private readonly additionalApiKeyLookupEnabled: () => boolean = () => true
-  ) {
+  constructor(clients: BearerCredentialClients) {
     this.prisma = clients.primary;
     this.replica = clients.replica;
   }
@@ -210,18 +206,6 @@ export class BearerCredentialResolver {
     const branchName = sanitizeBranchName(request.headers.get("x-trigger-branch"));
 
     if (isAdditionalApiKey(rawToken)) {
-      if (!this.additionalApiKeyLookupEnabled()) {
-        return {
-          ok: false,
-          status: 401,
-          error: "Invalid API key",
-          resolution: {
-            credentialKind: "additional_api_key",
-            lookupPath: "additional_skipped",
-          },
-        };
-      }
-
       return this.resolveAdditionalKey(rawToken, branchName, options?.allowPreviewParent);
     }
 

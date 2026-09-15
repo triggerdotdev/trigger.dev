@@ -50,7 +50,6 @@ function resolvePrismaClients(input: PrismaInput): FallbackPrismaClients {
 export type FallbackOptions = {
   // Platform secret for verifying delegated user-actor tokens (tr_uat_).
   userActorSecret?: string;
-  additionalApiKeyLookupEnabled?: () => boolean;
 };
 
 export class RoleBaseAccessFallback {
@@ -79,7 +78,7 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
     this.prisma = clients.primary;
     this.replica = clients.replica;
     this.userActorSecret = options?.userActorSecret;
-    this.bearer = new BearerCredentialResolver(clients, options?.additionalApiKeyLookupEnabled);
+    this.bearer = new BearerCredentialResolver(clients);
   }
 
   async isUsingPlugin(): Promise<boolean> {

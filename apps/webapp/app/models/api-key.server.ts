@@ -8,7 +8,6 @@ import { customAlphabet } from "nanoid";
 import { MAX_API_KEY_TASK_IDENTIFIERS } from "~/consts";
 import { $transaction, boundedIn, prisma } from "~/db.server";
 import { RuntimeEnvironmentType } from "~/database-types";
-import { canIssueAdditionalApiKeys } from "~/services/additionalApiKeyIssuance.server";
 import { apiKeyTelemetry, type ApiKeyTelemetry } from "~/services/apiKeyTelemetry.server";
 import { rbac } from "~/services/rbac.server";
 import { generateAdditionalApiKey, generateRootApiKey } from "~/utils/apiKeys";
@@ -225,15 +224,10 @@ export async function createEnvironmentApiKey(
   {
     prismaClient = prisma,
     rbacController = rbac,
-    issuanceAllowed,
     telemetryRecorder = apiKeyTelemetry,
   }: {
-    prismaClient?: Pick<
-      PrismaClient,
-      "apiKey" | "featureFlag" | "organization" | "runtimeEnvironment" | "taskIdentifier"
-    >;
+    prismaClient?: Pick<PrismaClient, "apiKey" | "runtimeEnvironment" | "taskIdentifier">;
     rbacController?: Pick<HostRbacController, "prepareApiKeyPolicy">;
-    issuanceAllowed?: (organizationId: string) => Promise<boolean>;
     telemetryRecorder?: ApiKeyTelemetry;
   } = {}
 ) {
@@ -247,13 +241,6 @@ export async function createEnvironmentApiKey(
 
   if (!environment) {
     throw new Error("Environment not found");
-  }
-
-  const canIssue =
-    issuanceAllowed ??
-    ((organizationId) => canIssueAdditionalApiKeys(organizationId, prismaClient));
-  if (!(await canIssue(environment.organizationId))) {
-    throw new Error("Creating additional API keys is not enabled.");
   }
 
   if (expiresAt && expiresAt.getTime() <= Date.now()) {
