@@ -87,7 +87,7 @@ export const TriggerTaskInput = CommonProjectsInput.extend({
         .optional(),
       delay: z
         .string()
-        .or(z.coerce.date())
+        .or(z.iso.datetime())
         .describe("The delay before the task run is executed")
         .optional(),
       idempotencyKey: z.string().describe("The idempotency key to use for the task run").optional(),
