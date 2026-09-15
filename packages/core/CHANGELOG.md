@@ -1,5 +1,11 @@
 # internal-platform
 
+## 4.6.1
+
+### Patch Changes
+
+- Show schedule policy warnings during development and deployment, and present Free plan schedule limits without internal stack traces. ([`723fde4a8`](https://github.com/triggerdotdev/trigger.dev/commit/723fde4a86b8b57ba7b037a04a7147c45f5287b8))
+
 ## 4.6.0
 
 ### Minor Changes
