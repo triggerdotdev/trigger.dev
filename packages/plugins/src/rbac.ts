@@ -152,19 +152,22 @@ export interface RbacAbility {
  * drift, and the difference would silently change what a token grants.
  */
 function parseScope(scope: string): { action: string; type?: string; id?: string } | undefined {
-  // Only the first two colons are delimiters — everything after the
-  // second colon is the resource id (which may itself contain colons,
-  // e.g. user-provided tags like "env:staging"). Naive
-  // `split(":")` + 3-tuple destructuring truncates such ids.
-  const parts = scope.split(":");
-  const action = parts[0];
+  const firstDelimiter = scope.indexOf(":");
+  const action = firstDelimiter === -1 ? scope : scope.slice(0, firstDelimiter);
   if (!action) return undefined;
+  if (firstDelimiter === -1) return { action };
 
-  return {
-    action,
-    type: parts[1] || undefined,
-    id: parts.length > 2 ? parts.slice(2).join(":") || undefined : undefined,
-  };
+  const secondDelimiter = scope.indexOf(":", firstDelimiter + 1);
+  const type = scope.slice(
+    firstDelimiter + 1,
+    secondDelimiter === -1 ? undefined : secondDelimiter
+  );
+  if (secondDelimiter === -1) return { action, type: type || undefined };
+
+  const id = scope.slice(secondDelimiter + 1);
+  if (!id.trim()) return undefined;
+
+  return { action, type: type || undefined, id };
 }
 
 /** Only exact bare `admin` represents unrestricted access. */
@@ -217,33 +220,65 @@ export function buildScope(
   type: RbacScopeResourceType,
   id?: string
 ): string {
-  return id ? `${action}:${type}:${id}` : `${action}:${type}`;
+  if (id !== undefined && !id.trim()) {
+    throw new Error("Scope resource IDs must not be empty");
+  }
+
+  return id === undefined ? `${action}:${type}` : `${action}:${type}:${id}`;
 }
 
-export function buildJwtAbility(scopes: string[]): RbacAbility {
-  const matches = (action: string, r: RbacResource): boolean =>
-    scopes.some((scope) => {
-      const parsed = parseScope(scope);
-      if (!parsed) return false;
+type ScopeTarget = true | Set<string>;
 
-      // Bare `admin` is the universal wildcard. `admin:<type>` is *not* —
-      // it falls through to normal matching as action="admin" against
-      // resources of that type. Treating `admin:<anything>` as universal
-      // would silently broaden any such tokens beyond the narrow,
-      // route-listed grant they had before scope-based abilities.
-      if (parsed.action === "admin" && !parsed.type) return true;
-      if (parsed.action !== action && parsed.action !== "*") return false;
-      if (parsed.type === "all") return true;
-      if (parsed.type !== r.type) return false;
-      if (!parsed.id) return true;
-      return parsed.id === r.id;
-    });
+export function buildJwtAbility(scopes: string[]): RbacAbility {
+  const allResourceActions = new Set<string>();
+  const targetsByAction = new Map<string, Map<string, ScopeTarget>>();
+  let grantsFullAccess = false;
+
+  for (const scope of scopes) {
+    const parsed = parseScope(scope);
+    if (!parsed) continue;
+
+    if (parsed.action === "admin" && !parsed.type) {
+      grantsFullAccess = true;
+      continue;
+    }
+    if (!parsed.type) continue;
+    if (parsed.type === "all") {
+      allResourceActions.add(parsed.action);
+      continue;
+    }
+
+    let targetsByType = targetsByAction.get(parsed.action);
+    if (!targetsByType) {
+      targetsByType = new Map();
+      targetsByAction.set(parsed.action, targetsByType);
+    }
+
+    const target = targetsByType.get(parsed.type);
+    if (parsed.id === undefined) {
+      targetsByType.set(parsed.type, true);
+    } else if (target !== true) {
+      const ids = target ?? new Set<string>();
+      ids.add(parsed.id);
+      targetsByType.set(parsed.type, ids);
+    }
+  }
+
+  const matchesAction = (action: string, resource: RbacResource): boolean => {
+    if (allResourceActions.has(action)) return true;
+
+    const target = targetsByAction.get(action)?.get(resource.type);
+    if (target === true) return true;
+    return resource.id !== undefined && target?.has(resource.id) === true;
+  };
+
+  const matches = (action: string, resource: RbacResource): boolean =>
+    grantsFullAccess || matchesAction(action, resource) || matchesAction("*", resource);
+
   return {
     can(action: string, resource: RbacResource | RbacResource[]): boolean {
-      // Array form means "any element passes → authorized", matching the
-      // legacy multi-key authorization semantic.
       return Array.isArray(resource)
-        ? resource.some((r) => matches(action, r))
+        ? resource.some((candidate) => matches(action, candidate))
         : matches(action, resource);
     },
     canSuper(): boolean {

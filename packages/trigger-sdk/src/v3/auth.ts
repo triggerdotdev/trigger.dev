@@ -488,10 +488,10 @@ function flattenScopes(permissions: PublicTokenPermissions): string[] {
         for (const [property, value] of Object.entries(properties)) {
           if (Array.isArray(value)) {
             for (const item of value) {
-              flattenedPermissions.push(`${action}:${property}:${item}`);
+              flattenedPermissions.push(scopeWithResourceId(action, property, item));
             }
           } else if (typeof value === "string") {
-            flattenedPermissions.push(`${action}:${property}:${value}`);
+            flattenedPermissions.push(scopeWithResourceId(action, property, value));
           } else if (typeof value === "boolean" && value) {
             flattenedPermissions.push(`${action}:${property}`);
           }
@@ -501,4 +501,12 @@ function flattenScopes(permissions: PublicTokenPermissions): string[] {
   }
 
   return flattenedPermissions;
+}
+
+function scopeWithResourceId(action: string, resource: string, id: string): string {
+  if (!id.trim()) {
+    throw new Error("Public token scope resource IDs must not be empty");
+  }
+
+  return `${action}:${resource}:${id}`;
 }

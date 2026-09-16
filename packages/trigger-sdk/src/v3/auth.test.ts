@@ -99,6 +99,25 @@ describe("public token API key routing", () => {
     ]);
   });
 
+  it.each(["", "   "])("rejects an explicitly empty resource ID", async (runId) => {
+    const key = "tr_prod_0123456789abcdefghijklmn";
+    const promise = apiClientManager.runWithConfig({ baseURL: baseUrl, accessToken: key }, () =>
+      auth.createPublicToken({ scopes: { read: { runs: [runId] } } })
+    );
+
+    await expect(promise).rejects.toThrow("Public token scope resource IDs must not be empty");
+    expect(requests).toEqual([]);
+  });
+
+  it("preserves nonempty resource IDs exactly", async () => {
+    const key = "tr_prod_sk_0123456789abcdefghijklmn";
+    await apiClientManager.runWithConfig({ baseURL: baseUrl, accessToken: key }, () =>
+      auth.createPublicToken({ scopes: { read: { tags: [" env:staging "] } } })
+    );
+
+    expect(requests[0]?.body).toEqual({ scopes: ["read:tags: env:staging "] });
+  });
+
   it("keeps root key self-minting unchanged", async () => {
     const key = "tr_prod_0123456789abcdefghijklmn";
     const token = await apiClientManager.runWithConfig({ baseURL: baseUrl, accessToken: key }, () =>

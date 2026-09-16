@@ -1,3 +1,4 @@
+import { buildScope } from "@trigger.dev/plugins";
 import { describe, it, expect } from "vitest";
 import {
   permissiveAbility,
@@ -60,15 +61,40 @@ describe("buildJwtAbility", () => {
     expect(ability.can("read", { type: "runs" })).toBe(false);
   });
 
+  it.each(["read:runs:", "read:runs:   "])(
+    "rejects an explicitly empty resource ID in %s",
+    (scope) => {
+      const ability = buildJwtAbility([scope]);
+      expect(ability.can("read", { type: "runs", id: "run_abc" })).toBe(false);
+      expect(ability.can("read", { type: "runs" })).toBe(false);
+    }
+  );
+
   it("preserves colons in the resource id (everything after the 2nd colon)", () => {
-    // Resource ids can contain colons (e.g. user-provided tags like
-    // `env:staging`). The naive `[a, b, c] = scope.split(":")` form
-    // truncated `read:tags:env:staging` → scopeId="env" and silently
-    // mis-matched. Regression coverage for the multi-colon id path.
     const ability = buildJwtAbility(["read:tags:env:staging"]);
     expect(ability.can("read", { type: "tags", id: "env:staging" })).toBe(true);
     expect(ability.can("read", { type: "tags", id: "env" })).toBe(false);
     expect(ability.can("read", { type: "tags", id: "env:prod" })).toBe(false);
+  });
+
+  it("preserves meaningful whitespace around resource ids", () => {
+    const ability = buildJwtAbility(["read:tags: env:staging "]);
+    expect(ability.can("read", { type: "tags", id: " env:staging " })).toBe(true);
+    expect(ability.can("read", { type: "tags", id: "env:staging" })).toBe(false);
+  });
+
+  it("preserves wildcard actions and ignores resource condition fields", () => {
+    const ability = buildJwtAbility(["*:runs:run_abc"]);
+    const resource = {
+      type: "runs",
+      id: "run_abc",
+      projectId: "proj_123",
+      environmentId: "env_123",
+    };
+
+    expect(ability.can("read", resource)).toBe(true);
+    expect(ability.can("write", resource)).toBe(true);
+    expect(ability.can("read", { ...resource, id: "run_other" })).toBe(false);
   });
 
   it("allows any read with read:all scope", () => {
@@ -121,6 +147,32 @@ describe("buildJwtAbility", () => {
   it("denies wrong action with general resource scope", () => {
     const ability = buildJwtAbility(["read:runs"]);
     expect(ability.can("write", { type: "runs" })).toBe(false);
+  });
+
+  it("does not revisit the supplied scope set during repeated checks", () => {
+    const rawScopes = Array.from({ length: 300 }, (_, index) => `read:runs:allowed_${index}`);
+    let scopeReads = 0;
+    const scopes = new Proxy(rawScopes, {
+      get(target, property, receiver) {
+        if (typeof property === "string" && /^\d+$/.test(property)) {
+          scopeReads++;
+        }
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    const ability = buildJwtAbility(scopes);
+    const readsAfterConstruction = scopeReads;
+    const childAliases = Array.from({ length: 13 }, (_, index) => ({
+      type: "runs",
+      id: `denied_${index}`,
+    }));
+
+    for (let child = 0; child < 50; child++) {
+      expect(ability.can("read", childAliases)).toBe(false);
+    }
+
+    expect(readsAfterConstruction).toBeGreaterThan(0);
+    expect(scopeReads).toBe(readsAfterConstruction);
   });
 });
 
@@ -189,10 +241,24 @@ describe("scopesWithinAbility", () => {
   });
 
   it("rejects malformed scopes for restricted abilities", () => {
-    expect(scopesWithinAbility(["read"], buildJwtAbility(["read:all"]))).toEqual({
+    expect(
+      scopesWithinAbility(["read", "read:runs:", "read:tags:   "], buildJwtAbility(["read:all"]))
+    ).toEqual({
       ok: false,
-      deniedScopes: ["read"],
+      deniedScopes: ["read", "read:runs:", "read:tags:   "],
     });
+  });
+});
+
+describe("buildScope", () => {
+  it("distinguishes an absent ID from an explicitly empty ID", () => {
+    expect(buildScope("read", "runs")).toBe("read:runs");
+    expect(() => buildScope("read", "runs", "")).toThrow("Scope resource IDs must not be empty");
+    expect(() => buildScope("read", "runs", "   ")).toThrow("Scope resource IDs must not be empty");
+  });
+
+  it("preserves nonempty IDs exactly", () => {
+    expect(buildScope("read", "tags", " env:staging ")).toBe("read:tags: env:staging ");
   });
 });
 

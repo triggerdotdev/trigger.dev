@@ -9,6 +9,7 @@ import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.server";
 import { buildSyntheticSpanDetailBody } from "~/v3/mollifier/syntheticApiResponses.server";
 import { runStore } from "~/v3/runStore.server";
+import { canReadRunWithAliases } from "~/utils/runReadAuthorization";
 
 const ParamsSchema = z.object({
   runId: z.string(),
@@ -79,7 +80,7 @@ export const loader = createLoaderApiRoute(
       },
     },
   },
-  async ({ params, resource: resolved, authentication }) => {
+  async ({ params, resource: resolved, authentication, ability }) => {
     if (resolved.source === "buffer") {
       // Buffered runs have exactly one valid spanId — the queued span the
       // mollifier gate recorded at trigger time, which becomes the run's
@@ -126,6 +127,8 @@ export const loader = createLoaderApiRoute(
         select: {
           friendlyId: true,
           taskIdentifier: true,
+          runTags: true,
+          batchId: true,
           status: true,
           createdAt: true,
         },
@@ -135,6 +138,10 @@ export const loader = createLoaderApiRoute(
         },
       },
       $replica
+    );
+
+    const authorizedTriggeredRuns = triggeredRuns.filter((run) =>
+      canReadRunWithAliases(ability, run)
     );
 
     const properties =
@@ -182,8 +189,8 @@ export const loader = createLoaderApiRoute(
             }
           : undefined,
         triggeredRuns:
-          triggeredRuns.length > 0
-            ? triggeredRuns.map((r) => ({
+          authorizedTriggeredRuns.length > 0
+            ? authorizedTriggeredRuns.map((r) => ({
                 runId: r.friendlyId,
                 taskIdentifier: r.taskIdentifier,
                 status: r.status,

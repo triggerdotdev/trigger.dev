@@ -5,7 +5,6 @@ import { regenerateApiKey, RootApiKeyNotVisibleError } from "~/models/api-key.se
 import {
   authenticatedEnvironmentForAuthentication,
   authenticateRequest,
-  branchNameFromRequest,
 } from "~/services/apiAuth.server";
 import { authorizePatEnvironmentAccess } from "~/services/environmentVariableApiAccess.server";
 import { logger } from "~/services/logger.server";
@@ -39,11 +38,15 @@ export async function action({ request, params }: ActionFunctionArgs) {
       return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
     }
 
+    if (request.headers.has("x-trigger-branch")) {
+      return json({ error: "Branch-scoped key rotation is not supported" }, { status: 400 });
+    }
+
     const environment = await authenticatedEnvironmentForAuthentication(
       authenticationResult,
       projectRef,
       env,
-      branchNameFromRequest(request)
+      undefined
     );
 
     // Rotating the key requires env-tier write:apiKeys — same gate the
