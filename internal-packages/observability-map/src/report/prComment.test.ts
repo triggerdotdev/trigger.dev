@@ -31,6 +31,18 @@ describe("renderPrComment", () => {
     expect(renderPrComment(head, head).split("\n")[0]).toBe("<!-- observability-map-report -->");
   });
 
+  it("shows the score gauge image for a measured head", () => {
+    const head = buildReport([scanFile("api.v1.a.ts", brokenSource)!], []);
+    const out = renderPrComment(head, null);
+    expect(out).toContain(`static-scorecard-assets/gauge-${head.global}.png`);
+    expect(out).toContain('width="120" height="120"');
+    expect(out).toContain(`score ${head.global} out of 100`);
+    // The gauge replaces the bold headline; it must not also print alongside it.
+    expect(out).not.toContain(`**${head.global}/100**`);
+    // The measured-count detail stays.
+    expect(out).toContain(`over ${head.measured} measured of`);
+  });
+
   it("says the comparison is unavailable when base is null", () => {
     const head = buildReport([scanFile("api.v1.a.ts", brokenSource)!], []);
     const out = renderPrComment(head, null);

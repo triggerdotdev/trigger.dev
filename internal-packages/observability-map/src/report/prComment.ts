@@ -13,6 +13,28 @@ import {
 const MARKER = "<!-- observability-map-report -->";
 
 /**
+ * Pre-generated score gauges (`gauge-0.png` .. `gauge-100.png`), a donut for each whole-number score,
+ * served from the static-scorecard-assets repo over GitHub Pages. Pages so the images are publicly
+ * fetchable while that repo stays private, and PNG because Pages serves it `image/png`, which GitHub
+ * renders through camo; an inline `<svg>` is stripped from a comment and would not render.
+ */
+const GAUGE_BASE = "https://triggerdotdev.github.io/static-scorecard-assets";
+
+/**
+ * The gauge image line, empty when the head has no numeric score. Shown at 120px from a 2x source,
+ * and `<img>` rather than `![]()` so it can be sized. The score is still in the alt text and in the
+ * scoreLine beneath it.
+ */
+function gaugeLine(head: MapReport): string[] {
+  if (head.global === null) return [];
+  return [
+    `<img src="${GAUGE_BASE}/gauge-${head.global}.png" width="120" height="120" ` +
+      `alt="Observability map score ${head.global} out of 100">`,
+    "",
+  ];
+}
+
+/**
  * The commit a comment was rendered for. Data rather than something the renderers read for themselves,
  * so they stay pure and a run with no commit context renders the same comment without the line.
  */
@@ -62,10 +84,12 @@ const MAX_DELEGATED_ROUTES = 15;
 const failingIds = (e: ScoredEntry) => scoredFailures(e).map((c) => c.id);
 
 function scoreLine(head: MapReport, base: MapReport | null): string {
+  // No `N/100` here when measured: the gauge above the line already shows it, and printing it twice
+  // is what this line used to do. The measured-count and base comparison stay.
   const headline =
     head.global === null
       ? `not measured over ${head.measured} measured of ${head.entries.length} entry points`
-      : `**${head.global}/100** over ${head.measured} measured of ${head.entries.length} entry points`;
+      : `over ${head.measured} measured of ${head.entries.length} entry points`;
 
   if (!base) return headline;
   // Head first: when this side has no score the headline already says so, and naming the base as the
@@ -302,6 +326,7 @@ export function renderPrComment(
     "## Observability map",
     "",
     ...commitLines(commit),
+    ...gaugeLine(head),
     scoreLine(head, base),
     "",
   ];
