@@ -13,7 +13,7 @@ const SearchParamsSchema = z.object({
  * Endpoint to handle Vercel integration configuration request coming from marketplace
  */
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  await requireUserId(request);
+  const userId = await requireUserId(request);
   const url = new URL(request.url);
   const searchParams = Object.fromEntries(url.searchParams);
 
@@ -28,8 +28,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         path: ["installationId"],
         equals: configurationId,
       },
+      organization: {
+        members: {
+          some: { userId },
+        },
+      },
     },
-    include: {
+    select: {
       organization: {
         select: {
           slug: true,

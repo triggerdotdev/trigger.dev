@@ -58,6 +58,7 @@ import {
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
+import { env } from "~/env.server";
 import { GitHubSettingsPresenter } from "~/presenters/v3/GitHubSettingsPresenter.server";
 import { logger } from "~/services/logger.server";
 import { triggerInitialDeployment } from "~/services/platform.v3.server";
@@ -73,6 +74,7 @@ import {
   v3ProjectSettingsIntegrationsPath,
 } from "~/utils/pathBuilder";
 import { type BranchTrackingConfig } from "~/v3/github";
+import { sanitizeGitHubSettingsRedirect } from "~/v3/github/githubSettingsRedirect.server";
 
 // ============================================================================
 // Types
@@ -238,10 +240,13 @@ export const action = dashboardAction(
 
     const { projectId, organizationId } = membershipResultOrFail.value;
     const { action: actionType } = submission.value;
+    const redirectUrl =
+      sanitizeGitHubSettingsRedirect(submission.value.redirectUrl, env.APP_ORIGIN) ??
+      v3ProjectSettingsIntegrationsPath({ slug: organizationSlug }, project, environment);
 
     // Handle connect-repo action
     if (actionType === "connect-repo") {
-      const { repositoryId, installationId, redirectUrl } = submission.value;
+      const { repositoryId, installationId } = submission.value;
 
       const resultOrFail = await projectSettingsService.connectGitHubRepo(
         projectId,
@@ -306,8 +311,6 @@ export const action = dashboardAction(
 
     // Handle disconnect-repo action
     if (actionType === "disconnect-repo") {
-      const { redirectUrl } = submission.value;
-
       const resultOrFail = await projectSettingsService.disconnectGitHubRepo(projectId);
 
       if (resultOrFail.isOk()) {
@@ -330,8 +333,7 @@ export const action = dashboardAction(
 
     // Handle update-git-settings action
     if (actionType === "update-git-settings") {
-      const { productionBranch, stagingBranch, previewDeploymentsEnabled, redirectUrl } =
-        submission.value;
+      const { productionBranch, stagingBranch, previewDeploymentsEnabled } = submission.value;
 
       const resultOrFail = await projectSettingsService.updateGitSettings(
         projectId,

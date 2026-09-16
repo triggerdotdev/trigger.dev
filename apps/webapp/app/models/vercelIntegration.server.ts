@@ -27,6 +27,7 @@ import {
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { isReservedForExternalSync } from "~/v3/environmentVariableRules.server";
 import { boundedIn } from "@trigger.dev/database";
+import { toVercelApiError, type VercelApiError } from "~/v3/vercel/vercelApiError";
 import {
   callVercelWithRecovery,
   wrapVercelCallWithRecovery,
@@ -120,70 +121,7 @@ function extractCreateProjectEnvFailures(response: unknown): string[] {
 // Error handling
 // ---------------------------------------------------------------------------
 
-export type VercelApiError = {
-  message: string;
-  authInvalid: boolean;
-};
-
-const VercelErrorSchema = z.union([
-  z.object({ status: z.number() }),
-  z.object({ response: z.object({ status: z.number() }) }),
-  z.object({ statusCode: z.number() }),
-]);
-
-function extractVercelErrorStatus(error: unknown): number | null {
-  if (error && typeof error === "object" && "status" in error) {
-    const parsed = VercelErrorSchema.safeParse(error);
-    if (parsed.success && "status" in parsed.data) {
-      return parsed.data.status;
-    }
-  }
-
-  if (error && typeof error === "object" && "response" in error) {
-    const parsed = VercelErrorSchema.safeParse(error);
-    if (parsed.success && "response" in parsed.data) {
-      return parsed.data.response.status;
-    }
-  }
-
-  if (error && typeof error === "object" && "statusCode" in error) {
-    const parsed = VercelErrorSchema.safeParse(error);
-    if (parsed.success && "statusCode" in parsed.data) {
-      return parsed.data.statusCode;
-    }
-  }
-
-  if (typeof error === "string") {
-    if (error.includes("401")) return 401;
-    if (error.includes("403")) return 403;
-  }
-
-  return null;
-}
-
-function isVercelAuthError(error: unknown): boolean {
-  const status = extractVercelErrorStatus(error);
-  return status === 401 || status === 403;
-}
-
-function toVercelApiError(error: unknown): VercelApiError {
-  if (isVercelApiErrorShape(error)) return error;
-  return {
-    message: error instanceof Error ? error.message : "Unknown error",
-    authInvalid: isVercelAuthError(error),
-  };
-}
-
-function isVercelApiErrorShape(error: unknown): error is VercelApiError {
-  return (
-    error !== null &&
-    typeof error === "object" &&
-    "message" in error &&
-    "authInvalid" in error &&
-    typeof (error as VercelApiError).message === "string" &&
-    typeof (error as VercelApiError).authInvalid === "boolean"
-  );
-}
+export type { VercelApiError } from "~/v3/vercel/vercelApiError";
 // ---------------------------------------------------------------------------
 // Schemas & token types
 // ---------------------------------------------------------------------------
@@ -597,7 +535,10 @@ export class VercelIntegrationRepository {
       logger.warn("Failed to decrypt Vercel env var", {
         projectId,
         envVarKey: env.key,
-        error: result.error instanceof Error ? result.error.message : String(result.error),
+        error: result.error.message,
+        errorType: result.error.errorType,
+        status: result.error.status,
+        authInvalid: result.error.authInvalid,
       });
       return null;
     }
@@ -784,10 +725,10 @@ export class VercelIntegrationRepository {
                 projectId,
                 envId,
                 envKey,
-                error:
-                  getResult.error instanceof Error
-                    ? getResult.error.message
-                    : String(getResult.error),
+                error: getResult.error.message,
+                errorType: getResult.error.errorType,
+                status: getResult.error.status,
+                authInvalid: getResult.error.authInvalid,
               });
               return null;
             })
@@ -2096,7 +2037,7 @@ export class VercelIntegrationRepository {
         )
           .map(() => ({ authInvalid: false }))
           .orElse((error) => {
-            const isAuthError = isVercelAuthError(error);
+            const isAuthError = toVercelApiError(error).authInvalid;
             logger.error("Failed to uninstall Vercel integration", {
               installationId,
               error: error instanceof Error ? error.message : "Unknown error",

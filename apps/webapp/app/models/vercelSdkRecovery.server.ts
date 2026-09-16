@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { ResultAsync, okAsync, errAsync } from "neverthrow";
 import { logger } from "~/services/logger.server";
-import type { VercelApiError } from "./vercelIntegration.server";
+import { toVercelApiError, type VercelApiError } from "~/v3/vercel/vercelApiError";
+import { vercelErrorLogMetadata } from "~/v3/vercel/vercelErrorLogMetadata";
 
 // ---------------------------------------------------------------------------
 // Recovery utilities for Vercel SDK validation errors
@@ -67,8 +68,7 @@ function recoverFromVercelSdkError<T>(
 
   logger.warn("Recovered data from Vercel SDK validation error", {
     context: options?.context,
-    errorMessage: error instanceof Error ? error.message : String(error),
-    errorType: error?.constructor?.name,
+    ...vercelErrorLogMetadata(error),
   });
 
   return result.data;
@@ -80,17 +80,26 @@ function recoverFromVercelSdkError<T>(
  * On success: returns the SDK result as-is.
  * On error: attempts recovery via rawValue + schema validation (validation errors only).
  */
+export type VercelSdkCallError = VercelApiError & {
+  errorType: string;
+  status?: number;
+};
+
 export function callVercelWithRecovery<T>(
   sdkCall: Promise<T>,
   schema: z.ZodType<any>,
   options?: { context?: string }
-): ResultAsync<T, unknown> {
+): ResultAsync<T, VercelSdkCallError> {
   return ResultAsync.fromPromise(sdkCall, (error) => error).orElse((error) => {
     const recovered = recoverFromVercelSdkError<T>(error, schema, options);
     if (recovered !== undefined) {
       return okAsync(recovered);
     }
-    return errAsync(error);
+
+    return errAsync({
+      ...toVercelApiError(error),
+      ...vercelErrorLogMetadata(error),
+    });
   });
 }
 
@@ -109,8 +118,13 @@ export function wrapVercelCallWithRecovery<T>(
 ): ResultAsync<T, VercelApiError> {
   return callVercelWithRecovery(promise, schema, { context: message }).mapErr((error) => {
     const apiError = toError(error);
-    logger.error(message, { ...context, error, authInvalid: apiError.authInvalid });
-    return apiError;
+    logger.error(message, {
+      ...context,
+      errorType: error.errorType,
+      ...(error.status === undefined ? {} : { status: error.status }),
+      authInvalid: apiError.authInvalid,
+    });
+    return { message, authInvalid: apiError.authInvalid };
   });
 }
 
