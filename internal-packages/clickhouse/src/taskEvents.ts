@@ -258,11 +258,7 @@ export function insertTaskEventsV2(
     table: "trigger_dev.task_events_v2",
     columns: TASK_EVENT_V2_INSERT_COLUMNS,
     settings: {
-      enable_json_type: 1,
-      type_json_skip_duplicated_paths: 1,
-      input_format_json_infer_array_of_dynamic_from_array_of_different_types: 1,
       input_format_json_throw_on_bad_escape_sequence: 0,
-      input_format_json_use_string_type_for_ambiguous_paths_in_named_tuples_inference_from_objects: 1,
       ...settings,
     },
   });

@@ -39,17 +39,12 @@ function readAttributesText(ch: ClickHouse) {
   return ch.reader.query({
     name: "read-task-event-attributes",
     query: `SELECT attributes_text,
-      toJSONString(attributes) AS attributes_json,
       toUInt8(inserted_at > toDateTime64('2020-01-01 00:00:00', 3)) AS has_inserted_at
     FROM trigger_dev.task_events_v2
     WHERE environment_id = {environmentId: String}
       AND span_id = {spanId: String}`,
     params: z.object({ environmentId: z.string(), spanId: z.string() }),
-    schema: z.object({
-      attributes_text: z.string(),
-      attributes_json: z.string(),
-      has_inserted_at: z.number(),
-    }),
+    schema: z.object({ attributes_text: z.string(), has_inserted_at: z.number() }),
   });
 }
 
@@ -93,24 +88,24 @@ describe("task events v2", () => {
       expect(rows).toEqual([
         {
           attributes_text: '{"z":1,"a":"hello","nested":{"enabled":true}}',
-          // The JSON column is no longer written; only the text is stored.
-          attributes_json: "{}",
           has_inserted_at: 1,
         },
       ]);
     }
   );
 
-  clickhouseTest("attributes_text is a plain stored column", async ({ clickhouseContainer }) => {
-    const ch = new ClickHouse({ url: clickhouseContainer.getConnectionUrl(), name: "test" });
+  clickhouseTest(
+    "attributes_text is the only attributes column",
+    async ({ clickhouseContainer }) => {
+      const ch = new ClickHouse({ url: clickhouseContainer.getConnectionUrl(), name: "test" });
 
-    const [columnError, columns] = await readColumnKinds(ch)({});
-    expect(columnError).toBeNull();
-    expect(columns).toEqual([
-      { name: "attributes", default_kind: "", default_expression: "" },
-      { name: "attributes_text", default_kind: "", default_expression: "" },
-    ]);
-  });
+      const [columnError, columns] = await readColumnKinds(ch)({});
+      expect(columnError).toBeNull();
+      expect(columns).toEqual([
+        { name: "attributes_text", default_kind: "", default_expression: "" },
+      ]);
+    }
+  );
 
   clickhouseTest("has no attributes text indexes", async ({ clickhouseContainer }) => {
     const ch = new ClickHouse({ url: clickhouseContainer.getConnectionUrl(), name: "test" });
