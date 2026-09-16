@@ -35,6 +35,8 @@ const Env = z.object({
   TRIGGER_WORKLOAD_CONTROLLER_ID: z.string().default(`controller_${randomUUID()}`),
   TRIGGER_ENV_ID: z.string(),
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url(),
+  // Forward the run-scoped exporter credentials so child processes can export spans to the run.
+  OTEL_EXPORTER_OTLP_HEADERS: z.string().optional(),
   TRIGGER_WARM_START_URL: z.string().optional(),
   TRIGGER_WARM_START_CONNECTION_TIMEOUT_MS: z.coerce.number().default(30_000),
   TRIGGER_WARM_START_KEEPALIVE_MS: z.coerce.number().default(300_000),
@@ -98,6 +100,9 @@ export class RunnerEnv {
   }
   get OTEL_EXPORTER_OTLP_ENDPOINT() {
     return this.env.OTEL_EXPORTER_OTLP_ENDPOINT;
+  }
+  get OTEL_EXPORTER_OTLP_HEADERS() {
+    return this.env.OTEL_EXPORTER_OTLP_HEADERS;
   }
   get TRIGGER_CONTENT_HASH() {
     return this.env.TRIGGER_CONTENT_HASH;
@@ -261,6 +266,7 @@ export class RunnerEnv {
       NODE_ENV: this.NODE_ENV,
       NODE_EXTRA_CA_CERTS: this.NODE_EXTRA_CA_CERTS,
       OTEL_EXPORTER_OTLP_ENDPOINT: this.OTEL_EXPORTER_OTLP_ENDPOINT,
+      OTEL_EXPORTER_OTLP_HEADERS: this.OTEL_EXPORTER_OTLP_HEADERS,
       TRIGGER_OTEL_EXPORTER_OTLP_ENDPOINT: this.OTEL_EXPORTER_OTLP_ENDPOINT,
       UV_USE_IO_URING: this.UV_USE_IO_URING,
     };
