@@ -28,6 +28,11 @@ export const GUARDS = new Set([
   "authenticateApiRequestWithPersonalAccessToken",
   "authenticateApiRequestWithOrganizationAccessToken",
   "authenticateApiKey",
+  // Scoped and private API-key entry points in the same `apiAuth.server.ts`, each returning a
+  // `{ ok }` result like `authenticateApiRequestWithFailure` above rather than throwing.
+  "authenticateApiKeyWithScope",
+  "authenticateApiKeyRequest",
+  "authenticateRequestWithScopedApiKey",
   "authenticateAuthorizationHeader",
   "authenticateOrganizationAccessToken",
   "authenticatePersonalAccessToken",

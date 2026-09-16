@@ -1024,6 +1024,33 @@ describe("auth-boundary", () => {
     expect(r.status).toBe("pass");
   });
 
+  // All three scoped and private API-key helpers on the allowlist, so dropping any one of the names
+  // is caught here rather than only by the tree scan.
+  it.each([
+    [
+      "authenticateApiKeyWithScope",
+      'authenticateApiKeyWithScope(request, { action: "read", resource: { type: "envvars" } })',
+    ],
+    ["authenticateApiKeyRequest", "authenticateApiKeyRequest(request)"],
+    [
+      "authenticateRequestWithScopedApiKey",
+      "authenticateRequestWithScopedApiKey(request, { personalAccessToken: true, organizationAccessToken: true, apiKey })",
+    ],
+  ])("passes a sensitive route guarded by %s", (name, call) => {
+    const r = run(
+      "auth-boundary",
+      "api.v1.projects.$projectRef.envvars.ts",
+      `import { ${name} } from "~/services/apiAuth.server";
+       import { prisma } from "~/db.server";
+       export async function loader({ request }) {
+         const auth = await ${call};
+         if (!auth.ok) throw new Response(null, { status: 401 });
+         return prisma.environmentVariable.findMany();
+       }`
+    );
+    expect(r.status).toBe("pass");
+  });
+
   it("fails a sensitive route with no guard", () => {
     const r = run(
       "auth-boundary",
