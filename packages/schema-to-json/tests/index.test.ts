@@ -52,6 +52,23 @@ describe("schemaToJsonSchema", () => {
       });
     });
 
+    it("should convert a Zod 4 object schema with a date field", () => {
+      const schema = z4.object({
+        when: z4.date(),
+      });
+
+      const result = schemaToJsonSchema(schema);
+
+      expect(result).toBeDefined();
+      expect(result?.jsonSchema).toMatchObject({
+        type: "object",
+        properties: {
+          when: { type: "string", format: "date-time" },
+        },
+        required: ["when"],
+      });
+    });
+
     it("should convert a Zod schema with optional fields", () => {
       const schema = z3.object({
         id: z3.string(),

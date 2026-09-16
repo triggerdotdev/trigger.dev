@@ -156,8 +156,17 @@ function convertZod4Schema(schema: any, options?: ConversionOptions): JSONSchema
     target: "draft-7",
     io: "output",
     reused: useReferences ? "ref" : "inline",
+    // Dates (and other unrepresentable types) throw by default, which fails the
+    // whole conversion. Fall back to `any` and handle dates in override instead.
+    unrepresentable: "any",
     override: ({ zodSchema, jsonSchema }) => {
       const def = zodSchema._zod.def;
+      if (def.type === "date") {
+        jsonSchema.type = "string";
+        jsonSchema.format = "date-time";
+        return;
+      }
+
       if (def.type === "undefined") {
         throw new Error("Undefined cannot be represented in JSON Schema");
       }
