@@ -609,14 +609,6 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
 
   // ---------- Internals: S2 REST ----------
   private async s2Append(stream: string, body: S2AppendInput): Promise<S2AppendAck> {
-    // POST /v1/streams/{stream}/records (JSON).
-    //
-    // Retries transient failures (network errors and 5xx) up to 3 times with
-    // exponential backoff. Undici's "fetch failed" errors observed locally
-    // are pre-connection (DNS/TCP) so the request never reaches S2, making
-    // retry safe — the alternative is a 500 surfacing to the SDK transport,
-    // which then retries the whole `/in/append` round-trip and pollutes
-    // logs. 4xx are not retried (genuine client errors).
     const url = `${this.baseUrl}/streams/${encodeURIComponent(stream)}/records`;
     const init: RequestInit = {
       method: "POST",
@@ -629,8 +621,8 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
       body: JSON.stringify(body),
     };
 
-    const maxAttempts = 3;
-    const backoffsMs = [100, 250, 600];
+    const maxAttempts = 5;
+    const backoffsMs = [500, 1000, 1500, 2000];
     let lastError: unknown;
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -647,15 +639,17 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
         if (res.ok) {
           return (await res.json()) as S2AppendAck;
         }
-        await cancelResponseBody(res);
-        const httpError = new Error(`S2 append failed: ${res.status} ${res.statusText}`);
-        if (res.status >= 400 && res.status < 500) {
-          // 4xx — caller-side problem (auth, malformed body, closed stream).
-          // Retrying won't help.
-          throw httpError;
+        if (res.status === 409) {
+          const text = await res.text().catch(() => "");
+          lastError = new Error(`S2 append failed: 409 ${res.statusText} ${text}`.trim());
+        } else {
+          await cancelResponseBody(res);
+          const httpError = new Error(`S2 append failed: ${res.status} ${res.statusText}`);
+          if (res.status >= 400 && res.status < 500) {
+            throw httpError;
+          }
+          lastError = httpError;
         }
-        // 5xx — retryable.
-        lastError = httpError;
       }
 
       const isLastAttempt = attempt === maxAttempts - 1;

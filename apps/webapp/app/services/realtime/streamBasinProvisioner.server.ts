@@ -105,7 +105,11 @@ async function reconfigureBasinForOrg(orgId: string, retention: string): Promise
   });
   if (!org?.streamBasinName) return;
 
-  await s2ReconfigureBasin(org.streamBasinName, { accessToken, retentionPolicy: retention });
+  await s2ReconfigureBasin(org.streamBasinName, {
+    accessToken,
+    retentionPolicy: retention,
+    deleteOnEmptyMinAge: env.REALTIME_STREAMS_BASIN_DELETE_ON_EMPTY_MIN_AGE,
+  });
 
   logger.info("[streamBasinProvisioner] reconfigured basin retention", {
     orgId,
@@ -219,6 +223,7 @@ async function s2CreateBasin(name: string, opts: CreateBasinOptions): Promise<vo
 type ReconfigureBasinOptions = {
   accessToken: string;
   retentionPolicy: string;
+  deleteOnEmptyMinAge: string;
 };
 
 async function s2ReconfigureBasin(name: string, opts: ReconfigureBasinOptions): Promise<void> {
@@ -226,6 +231,7 @@ async function s2ReconfigureBasin(name: string, opts: ReconfigureBasinOptions): 
   const body = {
     default_stream_config: {
       retention_policy: { age: parseDuration(opts.retentionPolicy) },
+      delete_on_empty: { min_age_secs: parseDuration(opts.deleteOnEmptyMinAge) },
     },
   };
 

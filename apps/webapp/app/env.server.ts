@@ -2523,7 +2523,7 @@ const EnvironmentSchema = z
     REALTIME_STREAMS_BASIN_NAME_ENV: z.string().default("dev"),
     REALTIME_STREAMS_BASIN_DEFAULT_RETENTION: durationString().default("30d"),
     REALTIME_STREAMS_BASIN_STORAGE_CLASS: z.enum(["express", "standard"]).default("express"),
-    REALTIME_STREAMS_BASIN_DELETE_ON_EMPTY_MIN_AGE: durationString().default("1h"),
+    REALTIME_STREAMS_BASIN_DELETE_ON_EMPTY_MIN_AGE: durationString().default("30d"),
     REALTIME_STREAMS_DEFAULT_VERSION: z.enum(["v1", "v2"]).default("v1"),
     WAIT_UNTIL_TIMEOUT_MS: z.coerce.number().int().default(600_000),
 
