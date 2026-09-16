@@ -780,6 +780,12 @@ function getEventsClickhouseClient(): ClickHouse {
   return defaultEventsClickhouseClient;
 }
 
+const logsSearchDualWriteOrganizationIds = new Set(
+  env.LOGS_SEARCH_DUAL_WRITE_ORGANIZATION_IDS.split(",")
+    .map((organizationId) => organizationId.trim())
+    .filter(Boolean)
+);
+
 function buildEventRepository(store: string, clickhouse: ClickHouse): ClickhouseEventRepository {
   switch (store) {
     case "clickhouse": {
@@ -806,6 +812,10 @@ function buildEventRepository(store: string, clickhouse: ClickHouse): Clickhouse
         otlpMetricsBatchSize: env.METRICS_CLICKHOUSE_BATCH_SIZE,
         otlpMetricsFlushInterval: env.METRICS_CLICKHOUSE_FLUSH_INTERVAL_MS,
         otlpMetricsMaxConcurrency: env.METRICS_CLICKHOUSE_MAX_CONCURRENCY,
+        logsSearchDualWriteActive: "off",
+        logsSearchDualWriteOrganizationIds,
+        logsSearchDualWriteMaxConcurrency: env.LOGS_SEARCH_DUAL_WRITE_MAX_CONCURRENCY,
+        logsSearchDualWriteMaxPending: env.LOGS_SEARCH_DUAL_WRITE_MAX_PENDING,
         version: "v1",
       });
     }
@@ -833,6 +843,10 @@ function buildEventRepository(store: string, clickhouse: ClickHouse): Clickhouse
         otlpMetricsBatchSize: env.METRICS_CLICKHOUSE_BATCH_SIZE,
         otlpMetricsFlushInterval: env.METRICS_CLICKHOUSE_FLUSH_INTERVAL_MS,
         otlpMetricsMaxConcurrency: env.METRICS_CLICKHOUSE_MAX_CONCURRENCY,
+        logsSearchDualWriteActive: env.LOGS_SEARCH_DUAL_WRITE_ACTIVE,
+        logsSearchDualWriteOrganizationIds,
+        logsSearchDualWriteMaxConcurrency: env.LOGS_SEARCH_DUAL_WRITE_MAX_CONCURRENCY,
+        logsSearchDualWriteMaxPending: env.LOGS_SEARCH_DUAL_WRITE_MAX_PENDING,
         version: "v2",
       });
     }

@@ -1,336 +1,235 @@
 import { clickhouseTest } from "@internal/testcontainers";
-import { randomUUID } from "node:crypto";
+import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { ClickHouse } from "./index.js";
+import {
+  boundedUtf8,
+  buildSearchText,
+  isTaskEventSearchEligible,
+  toTaskEventSearchV2Row,
+} from "./taskEventsSearch.js";
+import type { TaskEventV2Input } from "./taskEvents.js";
 
-const ORG = "org_logs_search";
-const PROJECT = "project_logs_search";
-const ENVIRONMENT = "env_logs_search";
-const LIMITS = {
-  maxExecutionTimeSeconds: 30,
-  maxRowsToRead: 1_000_000,
-  maxMemoryUsage: 500_000_000,
-  maxThreads: 1,
-};
+const ORGANIZATION_ID = "org_logs_search";
 
-function clickhouseDate(value: Date) {
-  return value.toISOString().replace("T", " ").replace("Z", "");
+function formatNanoseconds(value: bigint): string {
+  return `${value / 1_000_000_000n}.${(value % 1_000_000_000n).toString().padStart(9, "0")}`;
 }
 
-function event(now: Date, overrides: Record<string, unknown> = {}) {
-  const start = clickhouseDate(now);
+function event(overrides: Partial<TaskEventV2Input> = {}): TaskEventV2Input {
+  const now = BigInt(Date.parse("2026-09-14T10:00:00.000Z")) * 1_000_000n;
+
   return {
-    environment_id: ENVIRONMENT,
-    organization_id: ORG,
-    project_id: PROJECT,
+    environment_id: "env_logs_search",
+    organization_id: ORGANIZATION_ID,
+    project_id: "project_logs_search",
     task_identifier: "search-task",
     run_id: "run_logs_search",
-    start_time: start,
+    start_time: formatNanoseconds(now),
     duration: "1000000",
     trace_id: "trace_logs_search",
-    span_id: `span_${randomUUID()}`,
+    span_id: "span_logs_search",
     parent_span_id: "",
     message: "TypeError: Zahlungsübersicht failed, retrying /api/orders/42",
     kind: "LOG_ERROR",
     status: "ERROR",
     attributes: {
       request_id: "req_123",
-      status_code: 500,
-      retryable: true,
       error: { message: "Payment failed, retrying" },
     },
     metadata: "{}",
-    expires_at: clickhouseDate(new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000)),
-    inserted_at: start,
+    expires_at: "2026-12-13 10:00:00.000",
     ...overrides,
   };
 }
 
-async function project(ch: ClickHouse, start: Date, end: Date) {
-  const [error, result] = await ch.taskEventsSearch.projectV2Window({ start, end }, LIMITS);
-  expect(error).toBeNull();
-  expect(result?.query_id).toEqual(expect.any(String));
-  return result!;
-}
+describe("task events search eligibility", () => {
+  it("matches the search table predicates", () => {
+    expect(isTaskEventSearchEligible(event())).toBe(true);
+    expect(isTaskEventSearchEligible(event({ trace_id: "" }))).toBe(false);
+    expect(isTaskEventSearchEligible(event({ kind: "DEBUG_EVENT" }))).toBe(false);
+    expect(isTaskEventSearchEligible(event({ status: "PARTIAL" }))).toBe(false);
+    expect(isTaskEventSearchEligible(event({ kind: "ANCESTOR_OVERRIDE" }))).toBe(false);
+    expect(isTaskEventSearchEligible(event({ message: "trigger.dev/start" }))).toBe(false);
+  });
 
-function searchRows(ch: ClickHouse) {
-  const builder = ch.taskEventsSearch.logsListQueryBuilder();
-  builder.where("organization_id = {organizationId: String}", { organizationId: ORG });
-  builder.orderBy(
-    "triggered_timestamp DESC, trace_id DESC, span_id DESC, projection_fingerprint DESC"
-  );
-  builder.limit(50);
-  return builder.execute();
-}
+  it("only drops span events whose attributes serialize to an empty object", () => {
+    expect(isTaskEventSearchEligible(event({ kind: "SPAN_EVENT", attributes: {} }))).toBe(false);
+    expect(isTaskEventSearchEligible(event({ kind: "SPAN_EVENT", attributes: null }))).toBe(false);
+    expect(isTaskEventSearchEligible(event({ kind: "SPAN_EVENT", attributes: undefined }))).toBe(
+      false
+    );
+    expect(
+      isTaskEventSearchEligible(event({ kind: "SPAN_EVENT", attributes: { a: undefined } }))
+    ).toBe(false);
+    expect(isTaskEventSearchEligible(event({ kind: "SPAN_EVENT", attributes: { a: 1 } }))).toBe(
+      true
+    );
+    expect(isTaskEventSearchEligible(event({ kind: "SPAN_EVENT", attributes: [] }))).toBe(true);
+  });
+});
 
-describe("task events search v2", () => {
-  clickhouseTest(
-    "projects bounded normalized text outside the source insert path",
-    async ({ clickhouseContainer }) => {
-      const ch = new ClickHouse({ url: clickhouseContainer.getConnectionUrl(), name: "test" });
-      const now = new Date("2026-08-14T10:10:30.000Z");
-      const start = new Date(now.getTime() - 30_000);
-      const end = new Date(now.getTime() + 30_000);
-      const [insertError] = await ch.taskEventsV2.insert([event(now)]);
-      expect(insertError).toBeNull();
+describe("task events search mapping", () => {
+  it("maps normalized text, errors, and completion timestamps", () => {
+    const now = new Date("2026-09-14T10:00:10.000Z");
+    const row = toTaskEventSearchV2Row(event(), now);
 
-      const [beforeError, beforeRows] = await searchRows(ch);
-      expect(beforeError).toBeNull();
-      expect(beforeRows).toHaveLength(0);
+    expect(row.error_message).toBe("Payment failed, retrying");
+    expect(row.search_text).toContain("typeerror:zahlungsübersicht failed retrying /api/orders/42");
+    expect(row.search_text).toContain("request_id:req_123");
+    expect(row.triggered_timestamp).toBe("1789380000.001000000");
+    expect(row.inserted_at).toBe("2026-09-14 10:00:10.000");
+    expect(row).not.toHaveProperty("projection_fingerprint");
+  });
 
-      const schemaQuery = ch.reader.query({
-        name: "read-search-v2-schema",
-        query: `SELECT name, type FROM system.data_skipping_indices
-          WHERE database = 'trigger_dev' AND table = 'task_events_v2'
-            AND name = 'idx_inserted_at_projector'`,
-        schema: z.object({ name: z.string(), type: z.string() }),
-      });
-      const [schemaError, indexes] = await schemaQuery({});
-      expect(schemaError).toBeNull();
-      expect(indexes).toEqual([{ name: "idx_inserted_at_projector", type: "minmax" }]);
+  it("uses a source insertion timestamp and clamps completion timestamps", () => {
+    const now = new Date("2026-09-14T10:00:10.000Z");
+    const row = toTaskEventSearchV2Row(
+      event({
+        duration: "18446744073709551615",
+        inserted_at: "2026-09-14 09:59:59.123",
+      }),
+      now
+    );
 
-      const tableQuery = ch.reader.query({
-        name: "read-search-v2-table-engine",
-        query: `SELECT name, engine, partition_key FROM system.tables
-          WHERE database = 'trigger_dev'
-            AND name IN ('task_events_search_mv_v2', 'task_events_search_v2')
-          ORDER BY name`,
-        schema: z.object({ name: z.string(), engine: z.string(), partition_key: z.string() }),
-      });
-      const [tableError, tables] = await tableQuery({});
-      expect(tableError).toBeNull();
-      expect(tables).toEqual([
-        {
-          name: "task_events_search_v2",
-          engine: "ReplacingMergeTree",
-          partition_key: "toDate(inserted_at)",
+    expect(row.inserted_at).toBe("2026-09-14 09:59:59.123");
+    expect(row.triggered_timestamp).toBe("1789380299.123000000");
+  });
+
+  it("bounds multibyte fields as valid UTF-8", () => {
+    const boundary = `${"x".repeat(2044)}€tail`;
+    const row = toTaskEventSearchV2Row(
+      event({
+        message: boundary,
+        attributes: {
+          value: "€".repeat(3000),
+          error: { message: boundary },
         },
-      ]);
+      }),
+      new Date("2026-09-14T10:00:10.000Z")
+    );
 
-      const firstProjection = await project(ch, start, end);
-      const retryProjection = await project(ch, start, end);
-      expect(Number(firstProjection.summary?.written_rows)).toBe(1);
-      expect(Number(retryProjection.summary?.written_rows)).toBe(1);
+    expect(Buffer.byteLength(row.error_message)).toBeLessThanOrEqual(2048);
+    expect(Buffer.byteLength(row.search_text)).toBeLessThanOrEqual(8192);
+    expect(Buffer.from(row.error_message).toString("utf8")).toBe(row.error_message);
+    expect(Buffer.from(row.search_text).toString("utf8")).toBe(row.search_text);
+    expect(Buffer.byteLength(boundedUtf8("€".repeat(3000), 6140))).toBeLessThanOrEqual(6143);
+  });
 
-      const insertWithDefaultFingerprint = ch.writer.command({
-        name: "copy-search-v2-row-with-default-fingerprint",
-        query: `INSERT INTO trigger_dev.task_events_search_v2
-          (environment_id, organization_id, project_id, triggered_timestamp, trace_id, span_id,
-           run_id, task_identifier, start_time, inserted_at, message, error_message, search_text,
-           kind, status, duration, parent_span_id)
-          SELECT
-            environment_id, organization_id, project_id, triggered_timestamp, trace_id, span_id,
-            run_id, task_identifier, start_time, inserted_at, message, error_message, search_text,
-            kind, status, duration, parent_span_id
-          FROM trigger_dev.task_events_search_v2
-          WHERE organization_id = {organizationId: String}
-          LIMIT 1`,
-        params: z.object({ organizationId: z.string() }),
-      });
-      const [defaultInsertError] = await insertWithDefaultFingerprint({ organizationId: ORG });
-      expect(defaultInsertError).toBeNull();
+  it("does not throw on unexpected error attribute shapes", () => {
+    expect(
+      toTaskEventSearchV2Row(event({ attributes: { error: "nope" } }), new Date()).error_message
+    ).toBe("");
+    expect(
+      toTaskEventSearchV2Row(event({ attributes: { error: { message: 123 } } }), new Date())
+        .error_message
+    ).toBe("");
+  });
+});
 
-      const [preMergeReadError, preMergeRows] = await searchRows(ch);
-      expect(preMergeReadError).toBeNull();
-      expect([1, 2, 3]).toContain(preMergeRows?.length);
-      const rawQuery = ch.reader.query({
-        name: "count-raw-search-v2-fixture",
-        query: `SELECT count() AS count FROM trigger_dev.task_events_search_v2
-          WHERE organization_id = {organizationId: String}`,
-        params: z.object({ organizationId: z.string() }),
-        schema: z.object({ count: z.number() }),
-      });
-      let [rawError, rawRows] = await rawQuery({ organizationId: ORG });
-      expect(rawError).toBeNull();
-      expect([1, 2, 3]).toContain(rawRows?.[0].count);
-
-      const optimize = ch.writer.command({
-        name: "merge-search-v2-retry-fixture",
-        query: "OPTIMIZE TABLE trigger_dev.task_events_search_v2 FINAL",
-      });
-      const [optimizeError] = await optimize({});
-      expect(optimizeError).toBeNull();
-      [rawError, rawRows] = await rawQuery({ organizationId: ORG });
-      expect(rawError).toBeNull();
-      expect(rawRows?.[0].count).toBe(1);
-      const [readError, rows] = await searchRows(ch);
-      expect(readError).toBeNull();
-      expect(rows).toHaveLength(1);
-
-      expect(rows?.[0].message.toLowerCase()).toContain(
-        "typeerror: zahlungsübersicht failed, retrying /api/orders/42"
-      );
-      expect(rows?.[0].error_message).toBe("Payment failed, retrying");
-
-      const searchDataQuery = ch.reader.query({
-        name: "read-search-v2-indexed-data",
-        query: `SELECT search_text, error_message
-          FROM trigger_dev.task_events_search_v2
-          WHERE organization_id = {organizationId: String}
-          LIMIT 1`,
-        params: z.object({ organizationId: z.string() }),
-        schema: z.object({ search_text: z.string(), error_message: z.string() }),
-      });
-      const [searchDataError, searchData] = await searchDataQuery({ organizationId: ORG });
-      expect(searchDataError).toBeNull();
-      expect(searchData).toHaveLength(1);
-      expect(searchData?.[0].search_text).toContain(
-        "typeerror:zahlungsübersicht failed retrying /api/orders/42"
-      );
-      expect(searchData?.[0].search_text).toContain("status_code:500");
-      expect(searchData?.[0].search_text).toContain("retryable:true");
-
-      await ch.close();
-    }
-  );
-
+describe("task events search ClickHouse integration", () => {
   clickhouseTest(
-    "deduplicates preview and finalized copies without collapsing distinct span rows",
+    "inserts rows and deduplicates retries by token",
     async ({ clickhouseContainer }) => {
       const ch = new ClickHouse({ url: clickhouseContainer.getConnectionUrl(), name: "test" });
-      const insertedAt = new Date("2026-08-14T10:10:30.000Z");
-      const sharedIdentity = {
-        trace_id: "trace_shared",
-        span_id: "span_shared",
-        run_id: "run_shared",
-        start_time: clickhouseDate(insertedAt),
-        inserted_at: clickhouseDate(insertedAt),
-      };
-      const [insertError] = await ch.taskEventsV2.insert([
-        event(insertedAt, {
-          ...sharedIdentity,
-          message: "first message",
-        }),
-        event(insertedAt, {
-          ...sharedIdentity,
-          message: "second message",
-        }),
-      ]);
-      expect(insertError).toBeNull();
-
-      await project(ch, insertedAt, new Date(insertedAt.getTime() + 5_000));
-      await project(ch, new Date("2026-08-14T10:10:00.000Z"), new Date("2026-08-14T10:11:00.000Z"));
-
-      const optimize = ch.writer.command({
-        name: "merge-search-v2-preview-finalized-fixture",
-        query: "OPTIMIZE TABLE trigger_dev.task_events_search_v2 FINAL",
+      const enableLocalDeduplication = ch.writer.command({
+        name: "enable-local-search-table-deduplication",
+        query: `ALTER TABLE trigger_dev.task_events_search_v2
+          MODIFY SETTING non_replicated_deduplication_window = 1000`,
       });
-      const [optimizeError] = await optimize({});
-      expect(optimizeError).toBeNull();
+      const [settingError] = await enableLocalDeduplication({});
+      expect(settingError).toBeNull();
 
-      const fingerprintQuery = ch.reader.query({
-        name: "read-search-v2-shared-identity-fingerprints",
-        query: `SELECT
-            count() AS count,
-            uniqExact(projection_fingerprint) AS fingerprints,
-            uniqExact(triggered_timestamp) AS triggered_timestamps
-          FROM trigger_dev.task_events_search_v2
-          WHERE organization_id = {organizationId: String}`,
-        params: z.object({ organizationId: z.string() }),
-        schema: z.object({
-          count: z.number(),
-          fingerprints: z.number(),
-          triggered_timestamps: z.number(),
-        }),
-      });
-      const [fingerprintError, counts] = await fingerprintQuery({ organizationId: ORG });
-      expect(fingerprintError).toBeNull();
-      expect(counts).toEqual([{ count: 2, fingerprints: 2, triggered_timestamps: 1 }]);
-
-      await ch.close();
-    }
-  );
-
-  clickhouseTest(
-    "uses half-open windows and deterministically clamps future timestamps",
-    async ({ clickhouseContainer }) => {
-      const ch = new ClickHouse({ url: clickhouseContainer.getConnectionUrl(), name: "test" });
-      const boundary = new Date("2026-08-14T11:01:00.000Z");
-      const first = new Date(boundary.getTime() - 60_000);
-      const second = boundary;
-      const end = new Date(boundary.getTime() + 60_000);
-      const splitUtf8Boundary = `${"x".repeat(2044)}€tail`;
-      const [insertError] = await ch.taskEventsV2.insert([
-        event(first, {
-          span_id: "span_first",
-          duration: "18446744073709551615",
-          message: splitUtf8Boundary,
-          attributes: {
-            prefix: "kept-token",
-            payload: "x".repeat(100_000),
-            error: { message: splitUtf8Boundary },
+      const row = toTaskEventSearchV2Row(event(), new Date("2026-09-14T10:00:10.000Z"));
+      const options = {
+        params: {
+          clickhouse_settings: {
+            async_insert: 0 as const,
+            insert_deduplication_token: "logs-search-retry-token",
           },
-        }),
-        event(second, { span_id: "span_second" }),
-      ]);
-      expect(insertError).toBeNull();
+        },
+      };
 
-      await project(ch, first, boundary);
-      let [readError, rows] = await searchRows(ch);
-      expect(readError).toBeNull();
-      expect(rows).toHaveLength(1);
-      const lengthQuery = ch.reader.query({
-        name: "read-search-v2-length",
-        query: `SELECT
-            length(search_text) AS search_length,
-            length(error_message) AS error_message_length,
-            isValidUTF8(search_text) AS search_text_is_valid_utf8,
-            isValidUTF8(error_message) AS error_message_is_valid_utf8
-          FROM trigger_dev.task_events_search_v2
-          WHERE organization_id = {organizationId: String}
-          LIMIT 1`,
-        params: z.object({ organizationId: z.string() }),
-        schema: z.object({
-          search_length: z.number(),
-          error_message_length: z.number(),
-          search_text_is_valid_utf8: z.number(),
-          error_message_is_valid_utf8: z.number(),
-        }),
-      });
-      const [lengthError, lengths] = await lengthQuery({ organizationId: ORG });
-      expect(lengthError).toBeNull();
-      expect(lengths?.[0].search_length).toBeLessThanOrEqual(8192);
-      expect(lengths?.[0].error_message_length).toBeLessThanOrEqual(2048);
-      expect(lengths?.[0].search_text_is_valid_utf8).toBe(1);
-      expect(lengths?.[0].error_message_is_valid_utf8).toBe(1);
-      expect(rows?.[0].triggered_timestamp).toBeDefined();
-      expect(new Date(`${rows?.[0].triggered_timestamp}Z`).getTime()).toBe(
-        first.getTime() + 5 * 60_000
-      );
-
-      await project(ch, boundary, end);
-      [readError, rows] = await searchRows(ch);
-      expect(readError).toBeNull();
-      expect(rows).toHaveLength(2);
-
-      const cursor = rows?.[0];
-      expect(cursor?.projection_fingerprint_string).toEqual(expect.any(String));
-      const nextPageBuilder = ch.taskEventsSearch.logsListQueryBuilder();
-      nextPageBuilder.where("organization_id = {organizationId: String}", {
-        organizationId: ORG,
-      });
-      nextPageBuilder.where(
-        `(triggered_timestamp < {cursorTriggeredTimestamp: String}
-          OR (triggered_timestamp = {cursorTriggeredTimestamp: String} AND trace_id < {cursorTraceId: String})
-          OR (triggered_timestamp = {cursorTriggeredTimestamp: String} AND trace_id = {cursorTraceId: String} AND span_id < {cursorSpanId: String})
-          OR (triggered_timestamp = {cursorTriggeredTimestamp: String} AND trace_id = {cursorTraceId: String} AND span_id = {cursorSpanId: String} AND projection_fingerprint < {cursorProjectionFingerprint: UInt128}))`,
-        {
-          cursorTriggeredTimestamp: cursor!.triggered_timestamp,
-          cursorTraceId: cursor!.trace_id,
-          cursorSpanId: cursor!.span_id,
-          cursorProjectionFingerprint: cursor!.projection_fingerprint_string!,
+      try {
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const [error] = await ch.taskEventsSearch.insert(row, options);
+          expect(error).toBeNull();
         }
-      );
-      nextPageBuilder.orderBy(
-        "triggered_timestamp DESC, trace_id DESC, span_id DESC, projection_fingerprint DESC"
-      );
-      nextPageBuilder.limit(50);
-      const [nextPageError, nextPage] = await nextPageBuilder.execute();
-      expect(nextPageError).toBeNull();
-      expect(nextPage).toHaveLength(1);
-      expect(nextPage?.[0].span_id).not.toBe(cursor?.span_id);
 
-      await ch.close();
+        const query = ch.reader.query({
+          name: "read-inserted-search-row",
+          query: `SELECT
+          count() AS count,
+          countIf(inserted_at > toDateTime64('2020-01-01', 3)) AS timestamps,
+          countIf(projection_fingerprint != 0) AS fingerprints
+        FROM trigger_dev.task_events_search_v2
+        WHERE organization_id = {organizationId: String}`,
+          params: z.object({ organizationId: z.string() }),
+          schema: z.object({
+            count: z.coerce.number(),
+            timestamps: z.coerce.number(),
+            fingerprints: z.coerce.number(),
+          }),
+        });
+        const [queryError, rows] = await query({ organizationId: ORGANIZATION_ID });
+
+        expect(queryError).toBeNull();
+        expect(rows).toEqual([{ count: 1, timestamps: 1, fingerprints: 1 }]);
+      } finally {
+        await ch.close();
+      }
+    }
+  );
+
+  clickhouseTest(
+    "matches the ClickHouse normalization expression",
+    async ({ clickhouseContainer }) => {
+      const ch = new ClickHouse({ url: clickhouseContainer.getConnectionUrl(), name: "test" });
+      const normalize = ch.reader.query({
+        name: "normalize-search-text-in-clickhouse",
+        query: `SELECT toValidUTF8(substring(
+        replaceRegexpAll(
+          replaceRegexpAll(
+            lowerUTF8(concat(
+              toValidUTF8(substring({message: String}, 1, 2045)),
+              ' ',
+              replaceAll(
+                toValidUTF8(substring({attributesText: String}, 1, 6140)),
+                '\\\\/',
+                '/'
+              )
+            )),
+            '[^\\\\p{L}\\\\p{N}_./:@+-]+',
+            ' '
+          ),
+          '\\\\s*:\\\\s*',
+          ':'
+        ),
+        1,
+        8189
+      )) AS search_text`,
+        params: z.object({ message: z.string(), attributesText: z.string() }),
+        schema: z.object({ search_text: z.string() }),
+      });
+      const cases = [
+        ["TypeError: Zahlungsübersicht failed", '{"status_code": 500}'],
+        ["I İ ı İSTANBUL ΟΣ", '{"path":"\\/api\\/orders"}'],
+        [`${"x".repeat(2044)}€tail`, JSON.stringify({ value: "€".repeat(3000) })],
+        ...Array.from({ length: 20 }, (_, index) => [
+          `Fuzz ${index}: /api/items/${index} !@#$%^&*() 日本語`,
+          JSON.stringify({ index, value: `value_${index}`, enabled: index % 2 === 0 }),
+        ]),
+      ];
+
+      try {
+        for (const [message, attributesText] of cases) {
+          const [error, rows] = await normalize({ message, attributesText });
+          expect(error).toBeNull();
+          expect(rows?.[0]?.search_text).toBe(buildSearchText(message, attributesText));
+        }
+      } finally {
+        await ch.close();
+      }
     }
   );
 });

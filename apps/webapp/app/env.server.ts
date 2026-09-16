@@ -2245,6 +2245,11 @@ const EnvironmentSchema = z
       .default(1_500_000_000),
     LOGS_SEARCH_PROJECTOR_MAX_THREADS: z.coerce.number().int().min(1).max(8).default(2),
 
+    LOGS_SEARCH_DUAL_WRITE_ACTIVE: z.enum(["off", "by-id", "on"]).default("off"),
+    LOGS_SEARCH_DUAL_WRITE_ORGANIZATION_IDS: z.string().default(""),
+    LOGS_SEARCH_DUAL_WRITE_MAX_CONCURRENCY: z.coerce.number().int().min(1).max(10).default(2),
+    LOGS_SEARCH_DUAL_WRITE_MAX_PENDING: z.coerce.number().int().min(1).max(100).default(4),
+
     // Logs list pagination tuning.
     LOGS_LIST_DEFAULT_PAGE_SIZE: z.coerce.number().int().positive().default(50),
     LOGS_LIST_MAX_PAGE_SIZE: z.coerce.number().int().positive().default(100),

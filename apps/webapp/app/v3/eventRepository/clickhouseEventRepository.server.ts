@@ -1,15 +1,17 @@
-import type {
-  ClickHouse,
-  ClickHouseSettings,
-  LlmMetricsV1Input,
-  MetricsV1Input,
-  TaskEventDetailedSummaryV1Result,
-  TaskEventDetailsV1Result,
-  TaskEventSummaryV1Result,
-  TaskEventV1Input,
-  TaskEventV2Input,
+import {
+  toTaskEventSearchV2RowIfEligible,
+  type ClickHouse,
+  type ClickHouseSettings,
+  type LlmMetricsV1Input,
+  type MetricsV1Input,
+  type TaskEventDetailedSummaryV1Result,
+  type TaskEventDetailsV1Result,
+  type TaskEventSummaryV1Result,
+  type TaskEventV1Input,
+  type TaskEventV2Input,
+  type TaskEventSearchV2Input,
 } from "@internal/clickhouse";
-import type { Attributes, Counter, Meter, Tracer } from "@internal/tracing";
+import type { Attributes, Counter, Histogram, Meter, Tracer } from "@internal/tracing";
 import { getMeter, startSpan, trace } from "@internal/tracing";
 
 import { createJsonErrorObject } from "@trigger.dev/core/v3/errors";
@@ -30,9 +32,12 @@ import {
   PRIMARY_VARIANT,
 } from "@trigger.dev/core/v3/schemas";
 import { SemanticInternalAttributes } from "@trigger.dev/core/v3/semanticInternalAttributes";
+import pLimit from "p-limit";
+import { performance } from "node:perf_hooks";
 import { unflattenAttributes } from "@trigger.dev/core/v3/utils/flattenAttributes";
 import type { TaskEventLevel } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
+import { signalsEmitter } from "~/services/signals.server";
 import { DynamicFlushScheduler } from "../dynamicFlushScheduler.server";
 import { tracePubSub } from "../services/tracePubSub.server";
 import type { TaskEventStoreTable } from "../taskEventStore.server";
@@ -72,6 +77,27 @@ import {
   landedNothing,
 } from "./sanitizeRowsOnParseError.server";
 
+const LOGS_SEARCH_MAPPING_YIELD_BUDGET_MS = 5;
+
+export function logsSearchRolloutSelectedRowCount(
+  active: "off" | "by-id" | "on",
+  organizationIds: ReadonlySet<string>,
+  events: Pick<TaskEventV2Input, "organization_id">[]
+): number {
+  if (active === "on") {
+    return events.length;
+  }
+
+  if (active === "by-id") {
+    return events.reduce(
+      (count, event) => count + (organizationIds.has(event.organization_id) ? 1 : 0),
+      0
+    );
+  }
+
+  return 0;
+}
+
 export type ClickhouseEventRepositoryConfig = {
   clickhouse: ClickHouse;
   batchSize?: number;
@@ -107,6 +133,10 @@ export type ClickhouseEventRepositoryConfig = {
   otlpMetricsMaxConcurrency?: number;
   /** Inject a meter for self-observability; defaults to the global provider. */
   meter?: Meter;
+  logsSearchDualWriteActive?: "off" | "by-id" | "on";
+  logsSearchDualWriteOrganizationIds?: ReadonlySet<string>;
+  logsSearchDualWriteMaxConcurrency?: number;
+  logsSearchDualWriteMaxPending?: number;
 };
 
 /**
@@ -148,6 +178,20 @@ export class ClickhouseEventRepository implements IEventRepository {
   private _permanentlyDroppedRows = 0;
   private readonly _rowsDroppedCounter: Counter;
 
+  private readonly _logsSearchLimiter: ReturnType<typeof pLimit>;
+  private readonly _logsSearchActive: "off" | "by-id" | "on";
+  private readonly _logsSearchOrganizationIds: ReadonlySet<string>;
+  private readonly _logsSearchMaxPending: number;
+  private _acceptLogsSearchWrites = true;
+  private readonly _logsSearchMappingLimiter = pLimit(1);
+  private _logsSearchShutdownPromise: Promise<void> | undefined;
+  private readonly _logsSearchRowsEligibleCounter: Counter;
+  private readonly _logsSearchRowsLandedCounter: Counter;
+  private readonly _logsSearchRowsDroppedCounter: Counter;
+  private readonly _logsSearchBatchesCounter: Counter;
+  private readonly _logsSearchFlushDurationHistogram: Histogram;
+  private readonly _logsSearchMetricAttributes = { table: "task_events_search_v2" };
+
   constructor(config: ClickhouseEventRepositoryConfig) {
     this._clickhouse = config.clickhouse;
     this._config = config;
@@ -169,6 +213,43 @@ export class ClickhouseEventRepository implements IEventRepository {
         "Rows skipped as un-ingestable, as a lower bound: these tables' materialized views make the exact count underivable from ClickHouse's insert summary",
       unit: "rows",
     });
+
+    this._logsSearchLimiter = pLimit(config.logsSearchDualWriteMaxConcurrency ?? 2);
+    this._logsSearchActive = config.logsSearchDualWriteActive ?? "off";
+    this._logsSearchOrganizationIds = config.logsSearchDualWriteOrganizationIds ?? new Set();
+    this._logsSearchMaxPending = config.logsSearchDualWriteMaxPending ?? 4;
+    this._logsSearchRowsEligibleCounter = meter.createCounter(
+      "logs_search.dual_write.rows_eligible",
+      { unit: "rows" }
+    );
+    this._logsSearchRowsLandedCounter = meter.createCounter("logs_search.dual_write.rows_landed", {
+      unit: "rows",
+    });
+    this._logsSearchRowsDroppedCounter = meter.createCounter(
+      "logs_search.dual_write.rows_dropped",
+      { unit: "rows" }
+    );
+    this._logsSearchBatchesCounter = meter.createCounter("logs_search.dual_write.batches", {
+      unit: "batches",
+    });
+    this._logsSearchFlushDurationHistogram = meter.createHistogram(
+      "logs_search.dual_write.flush_duration_ms",
+      { unit: "ms" }
+    );
+    // Per-stage active + pending; the sum across stages is what the admission check compares
+    // against capacity.
+    meter
+      .createObservableGauge("logs_search.dual_write.limiter_pending", { unit: "batches" })
+      .addCallback((result) => {
+        result.observe(
+          this._logsSearchMappingLimiter.activeCount + this._logsSearchMappingLimiter.pendingCount,
+          { ...this._logsSearchMetricAttributes, stage: "mapping" }
+        );
+        result.observe(this._logsSearchLimiter.activeCount + this._logsSearchLimiter.pendingCount, {
+          ...this._logsSearchMetricAttributes,
+          stage: "insert",
+        });
+      });
 
     this._flushScheduler = new DynamicFlushScheduler({
       name: `task_events_${this._version}`,
@@ -208,6 +289,11 @@ export class ClickhouseEventRepository implements IEventRepository {
       maxConcurrency: config.otlpMetricsMaxConcurrency ?? 3,
       loadSheddingEnabled: false,
     });
+
+    if (this._logsSearchActive !== "off" && this._version === "v2") {
+      signalsEmitter.on("SIGTERM", () => void this.#shutdownLogsSearchWrites());
+      signalsEmitter.on("SIGINT", () => void this.#shutdownLogsSearchWrites());
+    }
   }
 
   get version() {
@@ -342,7 +428,233 @@ export class ClickhouseEventRepository implements IEventRepository {
       });
 
       this.#publishToRedis(events);
+
+      if (this._logsSearchActive !== "off" && this._version === "v2") {
+        if (outcome.kind === "recovered") {
+          const selectedRows = logsSearchRolloutSelectedRowCount(
+            this._logsSearchActive,
+            this._logsSearchOrganizationIds,
+            events as TaskEventV2Input[]
+          );
+          if (selectedRows > 0) {
+            this.#recordLogsSearchDrop(selectedRows, "source_recovered");
+          }
+          return;
+        }
+
+        try {
+          this.#dualWriteSearch(flushId, events as TaskEventV2Input[]);
+        } catch (error) {
+          logger.error("Unexpected logs search dual-write scheduling failure", {
+            flushId,
+            rows: events.length,
+            error,
+          });
+        }
+      }
     });
+  }
+
+  #dualWriteSearch(flushId: string, events: TaskEventV2Input[]): void {
+    if (
+      this._logsSearchActive === "by-id" &&
+      !events.some((event) => this._logsSearchOrganizationIds.has(event.organization_id))
+    ) {
+      return;
+    }
+
+    const selectedRows = () =>
+      logsSearchRolloutSelectedRowCount(
+        this._logsSearchActive,
+        this._logsSearchOrganizationIds,
+        events
+      );
+
+    if (!this._acceptLogsSearchWrites) {
+      this.#recordLogsSearchDrop(selectedRows(), "shutdown");
+      return;
+    }
+
+    if (this.#logsSearchLimiterFull()) {
+      this.#recordLogsSearchDrop(selectedRows(), "limiter_full");
+      return;
+    }
+
+    void this.#mapAndEnqueueLogsSearchRows(flushId, events).catch((error) => {
+      logger.error("Unexpected logs search dual-write failure", {
+        flushId,
+        rows: events.length,
+        error,
+      });
+    });
+  }
+
+  // Mapping batches count toward limiter capacity so a burst of flushes cannot pile up
+  // unbounded CPU work (and retained source batches) ahead of the limiter.
+  #logsSearchLimiterFull(): boolean {
+    return (
+      this._logsSearchLimiter.activeCount +
+        this._logsSearchLimiter.pendingCount +
+        this._logsSearchMappingLimiter.activeCount +
+        this._logsSearchMappingLimiter.pendingCount >=
+      this._logsSearchLimiter.concurrency + this._logsSearchMaxPending
+    );
+  }
+
+  async #mapAndEnqueueLogsSearchRows(flushId: string, events: TaskEventV2Input[]): Promise<void> {
+    let rows: TaskEventSearchV2Input[];
+
+    try {
+      rows = await this._logsSearchMappingLimiter(() => this.#mapLogsSearchRows(events));
+    } catch (error) {
+      logger.error("Logs search dual-write mapping failed", {
+        flushId,
+        rows: events.length,
+        error,
+      });
+      const selectedRows = logsSearchRolloutSelectedRowCount(
+        this._logsSearchActive,
+        this._logsSearchOrganizationIds,
+        events
+      );
+      if (selectedRows > 0) {
+        this.#recordLogsSearchDrop(selectedRows, "mapping_failed");
+      }
+      return;
+    }
+
+    if (rows.length === 0) return;
+
+    if (!this._acceptLogsSearchWrites) {
+      this.#recordLogsSearchDrop(rows.length, "shutdown");
+      return;
+    }
+
+    if (
+      this._logsSearchLimiter.activeCount >= this._logsSearchLimiter.concurrency &&
+      this._logsSearchLimiter.pendingCount >= this._logsSearchMaxPending
+    ) {
+      this.#recordLogsSearchDrop(rows.length, "limiter_full");
+      return;
+    }
+
+    this._logsSearchRowsEligibleCounter.add(rows.length, this._logsSearchMetricAttributes);
+    await this._logsSearchLimiter(() => this.#insertLogsSearchRows(flushId, rows));
+  }
+
+  // Runs under a concurrency-1 limiter and yields on a time budget, checked after every event,
+  // so the event-loop block is bounded by budget + one event regardless of payload size or
+  // how many batches are waiting.
+  async #mapLogsSearchRows(events: TaskEventV2Input[]): Promise<TaskEventSearchV2Input[]> {
+    const now = new Date();
+    const rows: TaskEventSearchV2Input[] = [];
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    let sliceStartedAt = performance.now();
+
+    for (const event of events) {
+      if (
+        this._logsSearchActive === "on" ||
+        this._logsSearchOrganizationIds.has(event.organization_id)
+      ) {
+        const row = toTaskEventSearchV2RowIfEligible(event, now);
+        if (row) rows.push(row);
+      }
+
+      if (performance.now() - sliceStartedAt >= LOGS_SEARCH_MAPPING_YIELD_BUDGET_MS) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        sliceStartedAt = performance.now();
+      }
+    }
+
+    return rows;
+  }
+
+  async #insertLogsSearchRows(flushId: string, rows: TaskEventSearchV2Input[]): Promise<void> {
+    const startedAt = Date.now();
+    let lastError: { clickhouseErrorType?: string } | undefined;
+
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const [error] = await this._clickhouse.taskEventsSearch.insert(rows, {
+        params: {
+          clickhouse_settings: {
+            async_insert: 0,
+            insert_deduplication_token: flushId,
+          },
+        },
+      });
+
+      if (!error) {
+        this._logsSearchRowsLandedCounter.add(rows.length, this._logsSearchMetricAttributes);
+        this._logsSearchBatchesCounter.add(1, {
+          ...this._logsSearchMetricAttributes,
+          outcome: attempt === 1 ? "ok" : "retried_ok",
+        });
+        this._logsSearchFlushDurationHistogram.record(
+          Date.now() - startedAt,
+          this._logsSearchMetricAttributes
+        );
+        return;
+      }
+
+      lastError = error;
+      if (attempt === 1) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+    }
+
+    this._logsSearchBatchesCounter.add(1, {
+      ...this._logsSearchMetricAttributes,
+      outcome: "failed",
+    });
+    this._logsSearchRowsDroppedCounter.add(rows.length, {
+      ...this._logsSearchMetricAttributes,
+      reason: "insert_failed",
+    });
+    this._logsSearchFlushDurationHistogram.record(
+      Date.now() - startedAt,
+      this._logsSearchMetricAttributes
+    );
+    logger.error("Logs search dual-write insert failed", {
+      flushId,
+      rows: rows.length,
+      clickhouseErrorType: lastError?.clickhouseErrorType,
+    });
+  }
+
+  #recordLogsSearchDrop(
+    rows: number,
+    reason: "limiter_full" | "shutdown" | "source_recovered" | "mapping_failed"
+  ): void {
+    this._logsSearchRowsDroppedCounter.add(rows, {
+      ...this._logsSearchMetricAttributes,
+      reason,
+    });
+    this._logsSearchBatchesCounter.add(1, {
+      ...this._logsSearchMetricAttributes,
+      outcome: "dropped",
+    });
+  }
+
+  async #shutdownLogsSearchWrites(): Promise<void> {
+    if (this._logsSearchShutdownPromise) {
+      return this._logsSearchShutdownPromise;
+    }
+
+    this._acceptLogsSearchWrites = false;
+    this._logsSearchShutdownPromise = (async () => {
+      const deadline = Date.now() + 5_000;
+      while (
+        (this._logsSearchLimiter.activeCount > 0 ||
+          this._logsSearchLimiter.pendingCount > 0 ||
+          this._logsSearchMappingLimiter.activeCount > 0 ||
+          this._logsSearchMappingLimiter.pendingCount > 0) &&
+        Date.now() < deadline
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+    })();
+
+    return this._logsSearchShutdownPromise;
   }
 
   async #flushLlmMetricsBatch(flushId: string, rows: LlmMetricsV1Input[]) {

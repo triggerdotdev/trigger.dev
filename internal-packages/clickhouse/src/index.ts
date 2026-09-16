@@ -31,6 +31,7 @@ import {
   getLogDetailQueryBuilderV2,
   getLogsSearchListQueryBuilder,
 } from "./taskEvents.js";
+import { insertTaskEventsSearchV2 } from "./taskEventsSearch.js";
 import { projectTaskEventsSearchV2Window } from "./taskEventsSearchProjector.js";
 import { insertMetrics } from "./metrics.js";
 import { insertLlmMetrics } from "./llmMetrics.js";
@@ -82,6 +83,7 @@ import type { Agent as HttpsAgent } from "https";
 
 export type * from "./taskRuns.js";
 export type * from "./taskEvents.js";
+export * from "./taskEventsSearch.js";
 export * from "./taskEventsSearchProjector.js";
 export type * from "./metrics.js";
 export type * from "./llmMetrics.js";
@@ -347,6 +349,7 @@ export class ClickHouse {
 
   get taskEventsSearch() {
     return {
+      insert: insertTaskEventsSearchV2(this.writer),
       logsListQueryBuilder: getLogsSearchListQueryBuilder(this.reader),
       projectV2Window: projectTaskEventsSearchV2Window(this.writer),
     };

@@ -1,3 +1,5 @@
+import { normalizeSearchText } from "@trigger.dev/core/utils";
+
 export const MIN_LOGS_SEARCH_LENGTH = 3;
 export const LOGS_SEARCH_RETRY_OVERFETCH_FACTOR = 4;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -56,11 +58,6 @@ export function escapeClickHouseLike(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
 }
 
-// Must match the scheduled ClickHouse projector normalization.
 export function normalizeLogsSearchTerm(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}_./:@+-]+/gu, " ")
-    .replace(/\s*:\s*/g, ":")
-    .trim();
+  return normalizeSearchText(value).trim();
 }
