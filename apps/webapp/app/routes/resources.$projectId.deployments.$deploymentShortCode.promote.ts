@@ -5,6 +5,7 @@ import { $replica, prisma } from "~/db.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { logger } from "~/services/logger.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
+import { sanitizeRedirectPath } from "~/utils";
 import { ChangeCurrentDeploymentService } from "~/v3/services/changeCurrentDeployment.server";
 
 export const promoteSchema = z.object({
@@ -43,6 +44,8 @@ export const action = dashboardAction(
       return json(submission.reply());
     }
 
+    const redirectUrl = sanitizeRedirectPath(submission.value.redirectUrl);
+
     try {
       const project = await prisma.project.findFirst({
         where: {
@@ -58,7 +61,7 @@ export const action = dashboardAction(
       });
 
       if (!project) {
-        return redirectWithErrorMessage(submission.value.redirectUrl, request, "Project not found");
+        return redirectWithErrorMessage(redirectUrl, request, "Project not found");
       }
 
       const deployment = await prisma.workerDeployment.findFirst({
@@ -69,18 +72,14 @@ export const action = dashboardAction(
       });
 
       if (!deployment) {
-        return redirectWithErrorMessage(
-          submission.value.redirectUrl,
-          request,
-          "Deployment not found"
-        );
+        return redirectWithErrorMessage(redirectUrl, request, "Deployment not found");
       }
 
       const promoteService = new ChangeCurrentDeploymentService();
       await promoteService.call(deployment, "promote");
 
       return redirectWithSuccessMessage(
-        submission.value.redirectUrl,
+        redirectUrl,
         request,
         `Promoted deployment version ${deployment.version} to current.`
       );

@@ -58,6 +58,7 @@ import { RUNS_BULK_INSPECTOR_UI_SEARCH_PARAMS } from "~/routes/_app.orgs.$organi
 import { logger } from "~/services/logger.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { checkPermissions } from "~/services/routeBuilders/permissions.server";
+import { sanitizeRedirectPath } from "~/utils";
 import { cn } from "~/utils/cn";
 import { EnvironmentParamSchema, v3BulkActionPath } from "~/utils/pathBuilder";
 import { BulkActionService } from "~/v3/services/bulk/BulkActionV2.server";
@@ -187,6 +188,8 @@ export const action = dashboardAction(
       return redirectWithErrorMessage("/", request, "Invalid bulk action");
     }
 
+    const failedRedirect = sanitizeRedirectPath(submission.value.failedRedirect);
+
     // "Don't override" keeps each run's original region — drop it so it isn't
     // stored as a real override.
     if (submission.value.region === REPLAY_REGION_NO_OVERRIDE_VALUE) {
@@ -222,7 +225,7 @@ export const action = dashboardAction(
       });
 
       return redirectWithErrorMessage(
-        submission.value.failedRedirect,
+        failedRedirect,
         request,
         `Failed to create bulk action: ${error.message}`
       );

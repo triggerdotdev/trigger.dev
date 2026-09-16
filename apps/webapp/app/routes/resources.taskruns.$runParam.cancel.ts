@@ -9,6 +9,7 @@ import { CancelTaskRunService } from "~/v3/services/cancelTaskRun.server";
 import { getMollifierBuffer } from "~/v3/mollifier/mollifierBuffer.server";
 import { runStore } from "~/v3/runStore.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
+import { sanitizeRedirectPath } from "~/utils";
 
 export const cancelSchema = z.object({
   redirectUrl: z.string(),
@@ -75,6 +76,8 @@ export const action = dashboardAction(
       return json(submission.reply());
     }
 
+    const redirectUrl = sanitizeRedirectPath(submission.value.redirectUrl);
+
     try {
       // Keyed by friendlyId only so the store routes to the owning run-ops DB.
       // The project-scope + membership auth is a control-plane concern resolved
@@ -116,7 +119,7 @@ export const action = dashboardAction(
       if (taskRun && authorized) {
         const cancelRunService = new CancelTaskRunService();
         await cancelRunService.call(taskRun);
-        return redirectWithSuccessMessage(submission.value.redirectUrl, request, `Canceled run`);
+        return redirectWithSuccessMessage(redirectUrl, request, `Canceled run`);
       }
 
       // PG miss — try the mollifier buffer (customer cancelled a buffered run
@@ -146,7 +149,7 @@ export const action = dashboardAction(
         cancelReason: "Canceled by user",
       });
       if (result === "applied_to_snapshot") {
-        return redirectWithSuccessMessage(submission.value.redirectUrl, request, `Canceled run`);
+        return redirectWithSuccessMessage(redirectUrl, request, `Canceled run`);
       }
       // "not_found" or "busy" — both indicate the drainer raced us between
       // the getEntry check above and mutateSnapshot. On "not_found" the
@@ -155,7 +158,7 @@ export const action = dashboardAction(
       // retry — by then the PG row exists and the regular cancel path at
       // the top of this action takes over.
       return redirectWithErrorMessage(
-        submission.value.redirectUrl,
+        redirectUrl,
         request,
         "Run is materialising — retry in a moment"
       );
@@ -169,14 +172,14 @@ export const action = dashboardAction(
           },
         });
         return redirectWithErrorMessage(
-          submission.value.redirectUrl,
+          redirectUrl,
           request,
           `Failed to cancel run, ${error.message}`
         );
       } else {
         logger.error("Failed to cancel run", { error });
         return redirectWithErrorMessage(
-          submission.value.redirectUrl,
+          redirectUrl,
           request,
           `Failed to cancel run, ${JSON.stringify(error)}`
         );

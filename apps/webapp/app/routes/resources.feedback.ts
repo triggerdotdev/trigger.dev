@@ -4,6 +4,7 @@ import { uiComponent } from "@team-plain/ui-components";
 import { z } from "zod";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { requireUser } from "~/services/session.server";
+import { sanitizeRedirectPath } from "~/utils";
 import { sendToPlain } from "~/utils/plain.server";
 
 export const feedbackTypes = {
@@ -77,6 +78,7 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   const inquiry = feedbackTypes[submission.value.feedbackType as FeedbackType];
+  const redirectPath = sanitizeRedirectPath(submission.value.path);
   try {
     await sendToPlain({
       userId: user.id,
@@ -110,7 +112,7 @@ export async function action({ request }: ActionFunctionArgs) {
     });
 
     return redirectWithSuccessMessage(
-      submission.value.path,
+      redirectPath,
       request,
       "Thanks for your feedback! We'll get back to you soon."
     );

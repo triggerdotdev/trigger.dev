@@ -24,28 +24,11 @@ import { logger } from "~/services/logger.server";
 import { decryptSecret } from "~/services/secrets/secretStore.server";
 import { subtle } from "crypto";
 import { generateErrorGroupWebhookPayload } from "./errorGroupWebhook.server";
+import {
+  buildErrorGroupSlackMessage,
+  type ErrorAlertPayload,
+} from "./errorGroupSlackMessage.server";
 import { safeWebhookFetch } from "./safeWebhookFetch.server";
-
-type ErrorAlertClassification = "new_issue" | "regression" | "unignored";
-
-interface ErrorAlertPayload {
-  channelId: string;
-  projectId: string;
-  classification: ErrorAlertClassification;
-  error: {
-    fingerprint: string;
-    environmentId: string;
-    environmentSlug: string;
-    environmentName: string;
-    taskIdentifier: string;
-    errorType: string;
-    errorMessage: string;
-    sampleStackTrace: string;
-    firstSeen: string;
-    lastSeen: string;
-    occurrenceCount: number;
-  };
-}
 
 class SkipRetryError extends Error {}
 
@@ -106,17 +89,6 @@ export class DeliverErrorGroupAlertService {
     error: ErrorAlertPayload["error"]
   ): string {
     return `${env.APP_ORIGIN}${v3ErrorPath(organization, project, { slug: error.environmentSlug }, { fingerprint: error.fingerprint })}`;
-  }
-
-  #classificationLabel(classification: ErrorAlertClassification): string {
-    switch (classification) {
-      case "new_issue":
-        return "New error";
-      case "regression":
-        return "Regression";
-      case "unignored":
-        return "Error resurfaced";
-    }
   }
 
   async #sendEmail(
@@ -193,7 +165,7 @@ export class DeliverErrorGroupAlertService {
       return;
     }
 
-    const message = this.#buildErrorGroupSlackMessage(payload, errorLink, channel.project.name);
+    const message = buildErrorGroupSlackMessage(payload, errorLink, channel.project.name);
 
     await this.#postSlackMessage(integration, {
       channel: slackProperties.data.channelId,
@@ -307,110 +279,6 @@ export class DeliverErrorGroupAlertService {
       }
       throw error;
     }
-  }
-
-  #buildErrorGroupSlackMessage(
-    payload: ErrorAlertPayload,
-    errorLink: string,
-    projectName: string
-  ): { text: string; blocks: object[]; attachments: object[] } {
-    const label = this.#classificationLabel(payload.classification);
-    const errorType = payload.error.errorType || "Error";
-    const task = payload.error.taskIdentifier;
-    const envName = payload.error.environmentName;
-
-    return {
-      text: `${label}: ${errorType} in ${task} [${envName}]`,
-      blocks: [
-        {
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: `*${label} in ${task} [${envName}]*`,
-          },
-        },
-      ],
-      attachments: [
-        {
-          color: "danger",
-          blocks: [
-            {
-              type: "section",
-              text: {
-                type: "mrkdwn",
-                text: this.#wrapInCodeBlock(
-                  payload.error.sampleStackTrace || payload.error.errorMessage
-                ),
-              },
-            },
-            {
-              type: "section",
-              fields: [
-                {
-                  type: "mrkdwn",
-                  text: `*Task:*\n${task}`,
-                },
-                {
-                  type: "mrkdwn",
-                  text: `*Environment:*\n${envName}`,
-                },
-                {
-                  type: "mrkdwn",
-                  text: `*Project:*\n${projectName}`,
-                },
-                {
-                  type: "mrkdwn",
-                  text: `*Occurrences:*\n${payload.error.occurrenceCount}`,
-                },
-                {
-                  type: "mrkdwn",
-                  text: `*Last seen:*\n${this.#formatTimestamp(new Date(Number(payload.error.lastSeen)))}`,
-                },
-              ],
-            },
-            {
-              type: "actions",
-              elements: [
-                {
-                  type: "button",
-                  text: { type: "plain_text", text: "Investigate" },
-                  url: errorLink,
-                  style: "primary",
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    };
-  }
-
-  #wrapInCodeBlock(text: string, maxLength = 3000) {
-    const wrapperLength = 6; // ``` prefix + ``` suffix
-    const truncationSuffix = "\n\n...truncated — check dashboard for full error";
-    const innerMax = maxLength - wrapperLength;
-
-    const truncated =
-      text.length > innerMax
-        ? text.slice(0, innerMax - truncationSuffix.length) + truncationSuffix
-        : text;
-    return `\`\`\`${truncated}\`\`\``;
-  }
-
-  #formatTimestamp(date: Date): string {
-    const unix = Math.floor(date.getTime() / 1000);
-    const fallback =
-      new Intl.DateTimeFormat("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: true,
-        timeZone: "UTC",
-      }).format(date) + " UTC";
-    return `<!date^${unix}^{date_short_pretty} {time_secs}|${fallback}>`;
   }
 }
 

@@ -307,17 +307,9 @@ export class AIRunFilterService {
         environmentId,
       });
 
-      // If it's a schema validation error, provide more specific feedback
-      if (error instanceof Error && error.message.includes("schema")) {
-        return {
-          success: false,
-          error: error.message,
-        };
-      }
-
       return {
         success: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: "Unable to create filters",
       };
     }
   }

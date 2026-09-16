@@ -6,6 +6,7 @@ import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/m
 import { resolveSessionByIdOrExternalId } from "~/services/realtime/sessions.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
+import { sanitizeRedirectPath } from "~/utils";
 
 export const closeSessionSchema = z.object({
   redirectUrl: z.string(),
@@ -28,7 +29,8 @@ export const action: ActionFunction = async ({ request, params }) => {
     return json(submission.reply());
   }
 
-  const { redirectUrl, environmentId, reason } = submission.value;
+  const { environmentId, reason } = submission.value;
+  const redirectUrl = sanitizeRedirectPath(submission.value.redirectUrl);
   const trimmedReason = reason?.trim();
   const closedReason =
     trimmedReason && trimmedReason.length > 0 ? trimmedReason : "closed-from-dashboard";

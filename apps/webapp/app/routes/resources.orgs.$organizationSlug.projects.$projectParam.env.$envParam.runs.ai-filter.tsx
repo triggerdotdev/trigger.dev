@@ -154,7 +154,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const [error, result] = await tryCatch(service.call(text, environment.id));
   if (error) {
-    return json({ success: false, error: error.message }, { status: 400 });
+    return json({ success: false, error: "Unable to create filters" }, { status: 400 });
   }
 
   return json(result);

@@ -2,11 +2,18 @@ import { isRunFriendlyId } from "./run-id";
 
 export type DiagnosisActionInput = { kind: string; target: string; label: string };
 
-export type PlannedDiagnosisAction = {
-  kind: "view_run" | "docs";
-  label: string;
-  to: string;
-};
+export type PlannedDiagnosisAction =
+  | {
+      kind: "view_run";
+      label: string;
+      to: string;
+    }
+  | {
+      kind: "docs";
+      label: string;
+      to: string;
+      destinationHost: string;
+    };
 
 /**
  * An action whose destination can't be resolved is dropped, never rendered as a
@@ -29,7 +36,14 @@ export function planDiagnosisActions(
     }
     if (action.kind === "docs") {
       const to = resolve.docsUrl(action.target);
-      if (to) planned.push({ kind: "docs", label: action.label, to });
+      if (!to) continue;
+
+      try {
+        const destinationHost = new URL(to).hostname;
+        if (destinationHost) {
+          planned.push({ kind: "docs", label: action.label, to, destinationHost });
+        }
+      } catch {}
     }
   }
 

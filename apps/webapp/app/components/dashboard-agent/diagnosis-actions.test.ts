@@ -27,7 +27,12 @@ describe("planDiagnosisActions", () => {
 
   it("drops only the unresolvable action, keeping the rest", () => {
     expect(planDiagnosisActions([viewRun, docs], withoutContext)).toEqual([
-      { kind: "docs", label: "Read the docs", to: docs.target },
+      {
+        kind: "docs",
+        label: "Read the docs",
+        to: docs.target,
+        destinationHost: "trigger.dev",
+      },
     ]);
   });
 
@@ -37,8 +42,33 @@ describe("planDiagnosisActions", () => {
     );
   });
 
+  it("derives the displayed host from the resolved destination", () => {
+    expect(
+      planDiagnosisActions(
+        [{ ...docs, target: "https://example.com/help", label: "trigger.dev documentation" }],
+        resolve
+      )
+    ).toEqual([
+      {
+        kind: "docs",
+        label: "trigger.dev documentation",
+        to: "https://example.com/help",
+        destinationHost: "example.com",
+      },
+    ]);
+  });
+
   it("drops a docs action with an unsafe target", () => {
     expect(planDiagnosisActions([{ ...docs, target: "javascript:alert(1)" }], resolve)).toEqual([]);
+  });
+
+  it("drops a docs action when its resolved destination has no hostname", () => {
+    expect(
+      planDiagnosisActions([docs], {
+        ...resolve,
+        docsUrl: () => "blob:https://trigger.dev/id",
+      })
+    ).toEqual([]);
   });
 
   it("drops an action kind it does not know", () => {

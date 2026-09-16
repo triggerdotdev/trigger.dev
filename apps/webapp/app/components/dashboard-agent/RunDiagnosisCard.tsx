@@ -12,10 +12,8 @@ import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { useOptionalProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
 import { v3RunPath } from "~/utils/pathBuilder";
-import { planDiagnosisActions } from "./diagnosis-actions";
+import { planDiagnosisActions, type PlannedDiagnosisAction } from "./diagnosis-actions";
 import { isRunFriendlyId } from "./run-id";
-
-// No markup comes from the model, so only outbound URLs need checking.
 
 function Em({ children }: { children: React.ReactNode }) {
   return <span className="font-semibold text-text-bright">{children}</span>;
@@ -129,6 +127,23 @@ function EvidenceReference({ reference }: { reference: string }) {
   return <span className="font-mono text-xs text-text-dimmed">{reference}</span>;
 }
 
+export function DiagnosisDocsAction({
+  action,
+}: {
+  action: Extract<PlannedDiagnosisAction, { kind: "docs" }>;
+}) {
+  return (
+    <LinkButton to={action.to} variant="docs/small" LeadingIcon={BookOpenIcon}>
+      <bdi dir="auto" className="block min-w-0 max-w-[24ch] truncate">
+        {action.label}
+      </bdi>
+      <bdi dir="ltr" className="shrink-0 text-text-dimmed">
+        ({action.destinationHost})
+      </bdi>
+    </LinkButton>
+  );
+}
+
 function DiagnosisActions({ actions }: { actions: NonNullable<DiagnosisBlock["actions"]> }) {
   const runPath = useRunPathResolver();
   const planned = planDiagnosisActions(actions, {
@@ -141,9 +156,7 @@ function DiagnosisActions({ actions }: { actions: NonNullable<DiagnosisBlock["ac
     <div className="flex flex-wrap gap-2 pt-2">
       {planned.map((action, i) =>
         action.kind === "docs" ? (
-          <LinkButton key={i} to={action.to} variant="docs/small" LeadingIcon={BookOpenIcon}>
-            {action.label}
-          </LinkButton>
+          <DiagnosisDocsAction key={i} action={action} />
         ) : (
           <LinkButton key={i} to={action.to} variant="primary/small">
             {action.label}

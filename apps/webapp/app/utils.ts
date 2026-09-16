@@ -36,7 +36,9 @@ export function sanitizeRedirectPath(
     return defaultRedirect;
   }
 
-  if (!path.startsWith("/") || path.startsWith("//")) {
+  const pathnameEnd = path.search(/[?#]/);
+  const rawPathname = pathnameEnd === -1 ? path : path.slice(0, pathnameEnd);
+  if (!path.startsWith("/") || path.startsWith("//") || rawPathname.includes("\\")) {
     return defaultRedirect;
   }
 

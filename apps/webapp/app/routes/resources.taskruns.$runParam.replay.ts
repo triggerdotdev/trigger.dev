@@ -10,6 +10,7 @@ import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { logger } from "~/services/logger.server";
 import { requireUser } from "~/services/session.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
+import { sanitizeRedirectPath } from "~/utils";
 import { sortEnvironments } from "~/utils/environmentSort";
 import { v3RunSpanPath } from "~/utils/pathBuilder";
 import { ReplayTaskRunService } from "~/v3/services/replayTaskRun.server";
@@ -325,6 +326,8 @@ export const action = dashboardAction(
       return json(submission.reply());
     }
 
+    const failedRedirect = sanitizeRedirectPath(submission.value.failedRedirect);
+
     try {
       // Run-ops read keyed by friendlyId only; membership auth is re-checked on the
       // control plane below, keyed off the resolved run's projectId.
@@ -372,11 +375,7 @@ export const action = dashboardAction(
             select: { id: true },
           });
           if (!member) {
-            return redirectWithErrorMessage(
-              submission.value.failedRedirect,
-              request,
-              "Run not found"
-            );
+            return redirectWithErrorMessage(failedRedirect, request, "Run not found");
           }
           const synthetic = await findRunByIdWithMollifierFallback({
             runId: runParam,
@@ -401,7 +400,7 @@ export const action = dashboardAction(
       }
 
       if (!taskRun) {
-        return redirectWithErrorMessage(submission.value.failedRedirect, request, "Run not found");
+        return redirectWithErrorMessage(failedRedirect, request, "Run not found");
       }
 
       // A replay can target a different environment, but only within the source
@@ -421,11 +420,7 @@ export const action = dashboardAction(
           select: { id: true },
         });
         if (!overrideEnvironment) {
-          return redirectWithErrorMessage(
-            submission.value.failedRedirect,
-            request,
-            "Environment not found"
-          );
+          return redirectWithErrorMessage(failedRedirect, request, "Environment not found");
         }
       }
 
@@ -451,11 +446,7 @@ export const action = dashboardAction(
       });
 
       if (!newRun) {
-        return redirectWithErrorMessage(
-          submission.value.failedRedirect,
-          request,
-          "Failed to replay run"
-        );
+        return redirectWithErrorMessage(failedRedirect, request, "Failed to replay run");
       }
 
       const runPath = v3RunSpanPath(
@@ -486,15 +477,11 @@ export const action = dashboardAction(
             stack: error.stack,
           },
         });
-        return redirectWithErrorMessage(submission.value.failedRedirect, request, error.message);
+        return redirectWithErrorMessage(failedRedirect, request, error.message);
       }
 
       logger.error("Failed to replay run", { error });
-      return redirectWithErrorMessage(
-        submission.value.failedRedirect,
-        request,
-        JSON.stringify(error)
-      );
+      return redirectWithErrorMessage(failedRedirect, request, JSON.stringify(error));
     }
   }
 );
