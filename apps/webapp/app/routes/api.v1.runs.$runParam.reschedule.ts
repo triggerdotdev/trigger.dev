@@ -161,11 +161,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
     if (unroutable) {
       logger.warn("Unroutable run id on reschedule", {
         error: error instanceof Error ? error.message : error,
+        environmentId: env.id,
       });
       return unroutable;
     }
 
-    logger.error("Failed to reschedule run", { error });
+    logger.error("Failed to reschedule run", { error, environmentId: env.id });
     return json({ error: "Something went wrong, please try again." }, { status: 500 });
   }
 }

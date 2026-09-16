@@ -42,7 +42,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     return json({ isConnected });
   } catch (error) {
     if (error instanceof Response) throw error;
-    logger.error("Failed to load dev status", { error });
+    logger.error("Failed to load dev status", { error, projectRef: params.projectRef });
     return json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

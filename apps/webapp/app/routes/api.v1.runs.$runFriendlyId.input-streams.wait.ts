@@ -149,7 +149,10 @@ const { action, loader } = createActionApiRoute(
         return json({ error: error.message }, { status: 422 });
       }
 
-      logger.error("Failed to create input-stream waitpoint", { error });
+      logger.error("Failed to create input-stream waitpoint", {
+        error,
+        environmentId: authentication.environment.id,
+      });
       return json({ error: "Something went wrong" }, { status: 500 });
     }
   }

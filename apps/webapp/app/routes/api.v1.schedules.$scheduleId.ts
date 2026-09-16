@@ -72,7 +72,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
             { status: error.code === "P2025" ? 404 : 422 }
           );
         } else {
-          logger.error("Failed to delete schedule", { error });
+          logger.error("Failed to delete schedule", {
+            error,
+            environmentId: authenticationResult.environment.id,
+          });
           return json({ error: "Something went wrong, please try again." }, { status: 500 });
         }
       }
@@ -140,7 +143,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
           return json({ error: error.message }, { status: 422 });
         }
 
-        logger.error("Failed to upsert schedule", { error });
+        logger.error("Failed to upsert schedule", {
+          error,
+          environmentId: authenticationResult.environment.id,
+        });
         return json({ error: "Something went wrong, please try again." }, { status: 500 });
       }
     }

@@ -211,7 +211,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ token: jwt, environmentId: runtimeEnv.id });
   } catch (error) {
     if (error instanceof Response) throw error;
-    logger.error("Failed to generate env JWT", { error });
+    logger.error("Failed to generate env JWT", { error, projectRef: params.projectRef });
     return json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

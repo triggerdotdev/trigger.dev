@@ -141,7 +141,10 @@ export const action = dashboardAction(
             });
           }
         } catch (e) {
-          logger.error("Failed to submit to Plain the unsubscribe reason", { error: e });
+          logger.error("Failed to submit to Plain the unsubscribe reason", {
+            error: e,
+            organizationSlug,
+          });
         }
         payload = {
           type: "free" as const,

@@ -73,22 +73,34 @@ export async function action({ request, params }: ActionFunctionArgs) {
       // expression, etc.). The handler returns 4xx with the message; system
       // handles it gracefully, no alert needed.
       if (e instanceof SchedulePlanLimitError) {
-        logger.warn("Failed to create background worker", { error: e.message });
+        logger.warn("Failed to create background worker", {
+          error: e.message,
+          environmentId: authenticatedEnv.id,
+        });
         return json(
           { error: { code: "schedule_plan_limit", message: e.message } },
           { status: e.status ?? 422 }
         );
       }
       if (e instanceof ServiceValidationError) {
-        logger.warn("Failed to create background worker", { error: e.message });
+        logger.warn("Failed to create background worker", {
+          error: e.message,
+          environmentId: authenticatedEnv.id,
+        });
         return json({ error: e.message }, { status: e.status ?? 400 });
       }
       if (e instanceof CreateDeclarativeScheduleError) {
-        logger.warn("Failed to create background worker", { error: e.message });
+        logger.warn("Failed to create background worker", {
+          error: e.message,
+          environmentId: authenticatedEnv.id,
+        });
         return json({ error: e.message }, { status: 400 });
       }
 
-      logger.error("Failed to create background worker", { error: e });
+      logger.error("Failed to create background worker", {
+        error: e,
+        environmentId: authenticatedEnv.id,
+      });
 
       return json({ error: "Failed to create background worker" }, { status: 500 });
     }

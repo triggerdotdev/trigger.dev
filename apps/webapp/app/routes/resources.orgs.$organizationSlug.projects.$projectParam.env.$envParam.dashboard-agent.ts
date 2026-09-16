@@ -207,7 +207,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       try {
         browserSession = { ...session, publicAccessToken: await mintDashboardAgentToken(chatId) };
       } catch (error) {
-        logger.error("Dashboard agent chat read could not mint a browser token", { chatId, error });
+        logger.error("Dashboard agent chat read could not mint a browser token", {
+          chatId,
+          error,
+          organizationSlug,
+        });
       }
     }
     return json({ messages, session: browserSession });
@@ -444,6 +448,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           logger.error("Failed to remove a dashboard agent chat whose start failed", {
             chatId,
             error: cleanupError,
+            organizationSlug,
           });
         });
         throw error;
@@ -464,7 +469,11 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         // The start resolved, so the session is live and a head start is already streaming into
         // it. Deleting the chat here would hide a running agent; the client can ask for a token
         // again through the `token` intent.
-        logger.error("Dashboard agent chat started but its token mint failed", { chatId, error });
+        logger.error("Dashboard agent chat started but its token mint failed", {
+          chatId,
+          error,
+          organizationSlug,
+        });
         return json(
           { error: "The dashboard agent started but couldn't be opened. Try opening it again." },
           { status: 500 }
@@ -472,7 +481,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       }
       return json({ chatId, publicAccessToken, headStarted });
     } catch (error) {
-      logger.error("Failed to create dashboard agent chat", { chatId, error });
+      logger.error("Failed to create dashboard agent chat", { chatId, error, organizationSlug });
       return json(
         { error: "The dashboard agent couldn't start. Please try again in a moment." },
         { status: 500 }
@@ -668,7 +677,11 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           },
         });
       } catch (error) {
-        logger.error("Failed to start dashboard agent session", { chatId, error });
+        logger.error("Failed to start dashboard agent session", {
+          chatId,
+          error,
+          organizationSlug,
+        });
         return json(
           { error: "The dashboard agent couldn't start. Please try again in a moment." },
           { status: 500 }
@@ -679,7 +692,11 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         return json({ publicAccessToken: await mintDashboardAgentToken(chatId) });
       } catch (error) {
         // The session is live and idles out on its own if the client never comes back.
-        logger.error("Dashboard agent chat resumed but its token mint failed", { chatId, error });
+        logger.error("Dashboard agent chat resumed but its token mint failed", {
+          chatId,
+          error,
+          organizationSlug,
+        });
         return json(
           { error: "The dashboard agent started but couldn't be opened. Try opening it again." },
           { status: 500 }

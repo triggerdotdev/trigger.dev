@@ -245,6 +245,7 @@ export const action = dashboardAction(
             const errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
             logger.error("Organization could not be deleted", {
               error: errorMessage,
+              organizationSlug,
             });
             return redirectWithErrorMessage(
               organizationSettingsPath({ slug: organizationSlug }),

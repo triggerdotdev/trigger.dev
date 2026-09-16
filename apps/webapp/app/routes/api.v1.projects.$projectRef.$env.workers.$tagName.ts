@@ -122,7 +122,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     return json(response);
   } catch (error) {
     if (error instanceof Response) throw error;
-    logger.error("Failed to load worker by tag", { error });
+    logger.error("Failed to load worker by tag", { error, projectRef: params.projectRef });
     return json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

@@ -73,7 +73,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     if (error instanceof RootApiKeyNotVisibleError) {
       return json({ error: error.message }, { status: 409 });
     }
-    logger.error("Failed to regenerate API key", { error });
+    logger.error("Failed to regenerate API key", { error, projectRef });
     return json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

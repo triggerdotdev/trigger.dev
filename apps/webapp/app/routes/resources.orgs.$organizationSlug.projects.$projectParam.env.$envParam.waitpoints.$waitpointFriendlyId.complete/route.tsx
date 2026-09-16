@@ -201,7 +201,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       }
     }
   } catch (error: any) {
-    logger.error("Failed to complete waitpoint", error);
+    logger.error("Failed to complete waitpoint", { error, organizationSlug });
 
     const errorMessage = `Something went wrong. Please try again.`;
     return redirectWithErrorMessage(

@@ -91,10 +91,11 @@ export const action = dashboardAction(
             message: error.message,
             stack: error.stack,
           },
+          projectId,
         });
         return json(submission.reply({ formErrors: [error.message] }));
       } else {
-        logger.error("Failed to promote deployment", { error });
+        logger.error("Failed to promote deployment", { error, projectId });
         return json(submission.reply({ formErrors: [JSON.stringify(error)] }));
       }
     }

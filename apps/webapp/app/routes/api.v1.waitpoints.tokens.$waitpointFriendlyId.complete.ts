@@ -97,6 +97,7 @@ const { action, loader } = createActionApiRoute(
         logger.warn("Unroutable waitpoint id on token completion", {
           waitpointFriendlyId: params.waitpointFriendlyId,
           error: error instanceof Error ? error.message : error,
+          environmentId: authentication.environment.id,
         });
         throw unroutable;
       }
@@ -106,6 +107,7 @@ const { action, loader } = createActionApiRoute(
           error instanceof Error
             ? { name: error.name, message: error.message, stack: error.stack }
             : error,
+        environmentId: authentication.environment.id,
       });
       throw json({ error: "Failed to complete waitpoint token" }, { status: 500 });
     }

@@ -69,10 +69,11 @@ export const action: ActionFunction = async ({ request, params }) => {
           message: error.message,
           stack: error.stack,
         },
+        userId,
       });
       return redirectWithErrorMessage(safeRedirectUrl, request, error.message);
     } else {
-      logger.error("Failed to check batch completion", { error });
+      logger.error("Failed to check batch completion", { error, userId });
       return redirectWithErrorMessage(safeRedirectUrl, request, "Unknown error");
     }
   }

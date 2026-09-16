@@ -253,7 +253,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
           };
         }
       } catch (error) {
-        logger.warn("Queue list metrics unavailable, rendering without them", { error });
+        logger.warn("Queue list metrics unavailable, rendering without them", {
+          error,
+          organizationSlug: params.organizationSlug,
+        });
       }
     }
 
@@ -264,7 +267,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       try {
         allocation = await new QueueAllocationPresenter().call({ environment });
       } catch (error) {
-        logger.warn("Queue allocation summary unavailable, rendering without it", { error });
+        logger.warn("Queue allocation summary unavailable, rendering without it", {
+          error,
+          organizationSlug: params.organizationSlug,
+        });
       }
     }
 

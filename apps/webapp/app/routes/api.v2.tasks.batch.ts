@@ -169,11 +169,17 @@ const { action, loader } = createActionApiRoute(
       // entitlements exhausted). The handler returns 422 with the message;
       // system handles it gracefully, no alert needed.
       if (error instanceof ServiceValidationError) {
-        logger.warn("Batch trigger error", { error: error.message });
+        logger.warn("Batch trigger error", {
+          error: error.message,
+          environmentId: authentication.environment.id,
+        });
         return json({ error: error.message }, { status: 422 });
       }
       if (error instanceof OutOfEntitlementError) {
-        logger.warn("Batch trigger error", { error: error.message });
+        logger.warn("Batch trigger error", {
+          error: error.message,
+          environmentId: authentication.environment.id,
+        });
         return json({ error: error.message }, { status: 422 });
       }
 
@@ -182,6 +188,7 @@ const { action, loader } = createActionApiRoute(
           message: (error as Error).message,
           stack: (error as Error).stack,
         },
+        environmentId: authentication.environment.id,
       });
 
       if (error instanceof Error) {

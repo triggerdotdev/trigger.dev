@@ -80,7 +80,12 @@ const { action } = createActionApiRoute(
       if (error instanceof Response) {
         throw error;
       }
-      logger.error("Failed to wait for waitpoint", { runId, waitpointId, error });
+      logger.error("Failed to wait for waitpoint", {
+        runId,
+        waitpointId,
+        error,
+        environmentId: authentication.environment.id,
+      });
       throw json({ error: "Failed to wait for waitpoint token" }, { status: 500 });
     }
   }

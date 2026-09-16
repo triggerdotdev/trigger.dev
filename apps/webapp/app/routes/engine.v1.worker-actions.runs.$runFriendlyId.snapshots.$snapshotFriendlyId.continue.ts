@@ -75,6 +75,7 @@ export const loader = createLoaderWorkerApiRoute(
         runFriendlyId,
         snapshotFriendlyId,
         error,
+        environmentId,
       });
 
       // A Prisma infrastructure error (e.g. P1001 "Can't reach database

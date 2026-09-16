@@ -44,6 +44,7 @@ const route = createActionApiRoute(
           error instanceof Error
             ? { name: error.name, message: error.message, stack: error.stack }
             : String(error),
+        environmentId: authentication.environment.id,
       });
 
       return json({ error: "Internal Server Error" }, { status: 500 });

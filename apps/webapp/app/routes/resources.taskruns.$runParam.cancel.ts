@@ -170,6 +170,7 @@ export const action = dashboardAction(
             message: error.message,
             stack: error.stack,
           },
+          userId: user.id,
         });
         return redirectWithErrorMessage(
           redirectUrl,
@@ -177,7 +178,7 @@ export const action = dashboardAction(
           `Failed to cancel run, ${error.message}`
         );
       } else {
-        logger.error("Failed to cancel run", { error });
+        logger.error("Failed to cancel run", { error, userId: user.id });
         return redirectWithErrorMessage(
           redirectUrl,
           request,

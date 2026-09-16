@@ -72,7 +72,7 @@ export async function action({ request }: ActionFunctionArgs) {
       }
     }
   } catch (error) {
-    logger.error("Failed to update favorites", { error: String(error) });
+    logger.error("Failed to update favorites", { error: String(error), userId: user.id });
     return json({ success: false, error: "Failed to save preferences" }, { status: 500 });
   }
 

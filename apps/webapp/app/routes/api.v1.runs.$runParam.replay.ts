@@ -151,10 +151,15 @@ const { action } = createActionApiRoute(
             stack: error.stack,
           },
           run: runParam,
+          environmentId: authentication.environment.id,
         });
         return json({ error: clientSafeErrorMessage(error) }, { status: 400 });
       } else {
-        logger.error("Failed to replay run", { error: JSON.stringify(error), run: runParam });
+        logger.error("Failed to replay run", {
+          error: JSON.stringify(error),
+          run: runParam,
+          environmentId: authentication.environment.id,
+        });
         return json({ error: JSON.stringify(error) }, { status: 400 });
       }
     }

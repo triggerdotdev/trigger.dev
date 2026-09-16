@@ -153,6 +153,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       taskParam,
       error: error instanceof Error ? error.message : error,
       stack: error instanceof Error ? error.stack : undefined,
+      organizationSlug,
     });
 
     return redirectWithErrorMessage(
@@ -202,7 +203,10 @@ export const action: ActionFunction = async ({ request, params }) => {
           formAction,
         });
       } catch (e) {
-        logger.error("Failed to create template", { error: e instanceof Error ? e.message : e });
+        logger.error("Failed to create template", {
+          error: e instanceof Error ? e.message : e,
+          organizationSlug,
+        });
         return redirectBackWithErrorMessage(request, "Failed to create template");
       }
     }
@@ -226,7 +230,10 @@ export const action: ActionFunction = async ({ request, params }) => {
           formAction,
         });
       } catch (e) {
-        logger.error("Failed to delete template", { error: e instanceof Error ? e.message : e });
+        logger.error("Failed to delete template", {
+          error: e instanceof Error ? e.message : e,
+          organizationSlug,
+        });
         return redirectBackWithErrorMessage(request, "Failed to delete template");
       }
     }
@@ -275,7 +282,10 @@ export const action: ActionFunction = async ({ request, params }) => {
           );
         }
 
-        logger.error("Failed to start a test run", { error: e instanceof Error ? e.message : e });
+        logger.error("Failed to start a test run", {
+          error: e instanceof Error ? e.message : e,
+          organizationSlug,
+        });
 
         return redirectBackWithErrorMessage(
           request,

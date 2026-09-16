@@ -46,11 +46,15 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     if (unroutable) {
       logger.warn("Unroutable run id on run result", {
         error: error instanceof Error ? error.message : error,
+        environmentId: authenticationResult.environment.id,
       });
       return unroutable;
     }
 
-    logger.error("Failed to load run result", { error });
+    logger.error("Failed to load run result", {
+      error,
+      environmentId: authenticationResult.environment.id,
+    });
     return json({ error: "Something went wrong, please try again." }, { status: 500 });
   }
 }

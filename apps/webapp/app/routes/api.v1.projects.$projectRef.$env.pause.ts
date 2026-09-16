@@ -68,7 +68,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ paused: true, state: result.state });
   } catch (error) {
     if (error instanceof Response) throw error;
-    logger.error("Failed to pause environment", { error });
+    logger.error("Failed to pause environment", { error, projectRef });
     return json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

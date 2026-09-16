@@ -107,10 +107,11 @@ async function resetIdempotencyKeyAction({
           message: error.message,
           stack: error.stack,
         },
+        organizationSlug,
       });
       return jsonWithErrorMessage({}, request, `Failed to reset idempotency key: ${error.message}`);
     } else {
-      logger.error("Failed to reset idempotency key", { error });
+      logger.error("Failed to reset idempotency key", { error, organizationSlug });
       return jsonWithErrorMessage(
         {},
         request,

@@ -141,6 +141,7 @@ const { action, loader } = createActionApiRoute(
       logger.error("Failed end-and-continue", {
         sessionId: session.id,
         error,
+        environmentId: authentication.environment.id,
       });
       return json({ error: "Failed to swap session run" }, { status: 500 });
     }

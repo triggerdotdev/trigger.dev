@@ -259,7 +259,7 @@ async function getRunsListFromTableState({
 
     return runsList;
   } catch (error) {
-    logger.error("Error loading runs list from tableState:", { error });
+    logger.error("Error loading runs list from tableState:", { error, organizationSlug });
     return null;
   }
 }

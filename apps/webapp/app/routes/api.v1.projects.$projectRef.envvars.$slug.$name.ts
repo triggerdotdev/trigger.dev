@@ -115,7 +115,7 @@ export async function action({ params, request }: ActionFunctionArgs) {
     }
   } catch (error) {
     if (error instanceof Response) throw error;
-    logger.error("Failed to update environment variable", { error });
+    logger.error("Failed to update environment variable", { error, projectRef: params.projectRef });
     return json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
@@ -188,7 +188,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     });
   } catch (error) {
     if (error instanceof Response) throw error;
-    logger.error("Failed to get environment variable", { error });
+    logger.error("Failed to get environment variable", { error, projectRef: params.projectRef });
     return json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

@@ -127,7 +127,10 @@ export const loader = dashboardLoader(
           ability.can("write", { type: "deployments", envType: "PREVIEW" }),
       });
     } catch (error) {
-      logger.error("Error loading preview branches page", { error });
+      logger.error("Error loading preview branches page", {
+        error,
+        organizationSlug: params.organizationSlug,
+      });
       throw new Response(undefined, {
         status: 400,
         statusText: "Something went wrong, if this problem persists please contact support.",

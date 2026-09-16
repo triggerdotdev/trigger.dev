@@ -178,6 +178,7 @@ const { action, loader } = createActionApiRoute(
             io: body.io,
             waitpointId: WaitpointId.toFriendlyId(result.waitpoint.id),
             error,
+            environmentId: authentication.environment.id,
           });
         }
       }
@@ -192,7 +193,10 @@ const { action, loader } = createActionApiRoute(
       }
       // Don't forward raw internal error messages (could leak Prisma/engine
       // details). Log server-side and return a generic 500.
-      logger.error("Failed to create session-stream waitpoint", { error });
+      logger.error("Failed to create session-stream waitpoint", {
+        error,
+        environmentId: authentication.environment.id,
+      });
       return json({ error: "Something went wrong" }, { status: 500 });
     }
   }

@@ -62,7 +62,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
       return json({ error: error.message }, { status: 400 });
     }
 
-    logger.error("Error finalizing deployment", { error });
+    logger.error("Error finalizing deployment", {
+      error,
+      environmentId: authenticatedEnv.id,
+    });
     return json({ error: "Internal server error" }, { status: 500 });
   }
 }

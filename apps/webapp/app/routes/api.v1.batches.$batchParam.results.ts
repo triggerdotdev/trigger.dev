@@ -47,11 +47,15 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       if (unroutable) {
         logger.warn("Unroutable batch id on batch results", {
           error: error instanceof Error ? error.message : error,
+          environmentId: authenticationResult.environment.id,
         });
         return unroutable;
       }
 
-      logger.error("Failed to load batch results", { error });
+      logger.error("Failed to load batch results", {
+        error,
+        environmentId: authenticationResult.environment.id,
+      });
       return json({ error: "Something went wrong, please try again." }, { status: 500 });
     }
   } catch (error) {

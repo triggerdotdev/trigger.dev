@@ -186,7 +186,11 @@ export async function action({ request, params }: ActionFunctionArgs) {
           environmentId: runtimeEnv.id,
         });
       } catch (error) {
-        logger.error("Dashboard agent in-proxy could not mint a token", { error, upstreamPath });
+        logger.error("Dashboard agent in-proxy could not mint a token", {
+          error,
+          upstreamPath,
+          organizationSlug,
+        });
         return json({ error: "The dashboard agent couldn't send that message." }, { status: 500 });
       }
 
@@ -236,7 +240,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       headers: { "content-type": upstream.headers.get("content-type") ?? "application/json" },
     });
   } catch (error) {
-    logger.error("Dashboard agent in-proxy failed", { error, upstreamPath });
+    logger.error("Dashboard agent in-proxy failed", { error, upstreamPath, organizationSlug });
     return json({ error: "The dashboard agent couldn't reach the run." }, { status: 502 });
   }
 }

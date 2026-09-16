@@ -39,7 +39,10 @@ const { action } = createActionApiRoute(
         return json({ error: error.message }, { status: error.status ?? 400 });
       }
 
-      logger.error("Failed to abort API bulk action", { error });
+      logger.error("Failed to abort API bulk action", {
+        error,
+        environmentId: authentication.environment.id,
+      });
       return json({ error: "Failed to abort bulk action" }, { status: 500 });
     }
   }

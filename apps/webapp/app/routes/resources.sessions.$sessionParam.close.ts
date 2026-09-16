@@ -77,6 +77,7 @@ export const action: ActionFunction = async ({ request, params }) => {
     if (error instanceof Error) {
       logger.error("Failed to close session", {
         error: { name: error.name, message: error.message, stack: error.stack },
+        environmentId,
       });
       return redirectWithErrorMessage(
         redirectUrl,
@@ -84,7 +85,7 @@ export const action: ActionFunction = async ({ request, params }) => {
         `Failed to close session, ${error.message}`
       );
     }
-    logger.error("Failed to close session", { error });
+    logger.error("Failed to close session", { error, environmentId });
     return redirectWithErrorMessage(
       redirectUrl,
       request,

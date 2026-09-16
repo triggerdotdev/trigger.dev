@@ -116,7 +116,11 @@ export async function action({ request, params }: ActionFunctionArgs) {
     // in the streamed body). The handler returns 4xx with the message;
     // system handles it gracefully, no alert needed.
     if (error instanceof ServiceValidationError) {
-      logger.warn("Stream batch items error", { batchId, error: error.message });
+      logger.warn("Stream batch items error", {
+        batchId,
+        error: error.message,
+        environmentId: authResult.environment.id,
+      });
       return json({ error: error.message }, { status: 422 });
     }
 
@@ -124,6 +128,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       logger.warn("Stream batch items error: invalid JSON", {
         batchId,
         error: error.message,
+        environmentId: authResult.environment.id,
       });
       return json({ error: error.message }, { status: 400 });
     }
@@ -134,6 +139,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         message: (error as Error).message,
         stack: (error as Error).stack,
       },
+      environmentId: authResult.environment.id,
     });
 
     return json({ error: "Something went wrong" }, { status: 500 });

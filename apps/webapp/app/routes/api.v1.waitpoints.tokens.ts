@@ -135,7 +135,10 @@ const { action } = createActionApiRoute(
         return json({ error: error.message }, { status: 422 });
       }
 
-      logger.error("Failed to create waitpoint token", { error });
+      logger.error("Failed to create waitpoint token", {
+        error,
+        environmentId: authentication.environment.id,
+      });
       return json({ error: "Something went wrong" }, { status: 500 });
     }
   }

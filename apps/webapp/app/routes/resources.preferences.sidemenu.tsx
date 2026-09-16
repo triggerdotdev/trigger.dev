@@ -99,7 +99,10 @@ export async function action({ request }: ActionFunctionArgs) {
         return json({ success: false, error: "Failed to save preferences" }, { status: 500 });
       }
     } catch (error) {
-      logger.error("Failed to save sidebar customization", { error: String(error) });
+      logger.error("Failed to save sidebar customization", {
+        error: String(error),
+        userId: user.id,
+      });
       return json({ success: false, error: "Failed to save preferences" }, { status: 500 });
     }
     return json({ success: true });

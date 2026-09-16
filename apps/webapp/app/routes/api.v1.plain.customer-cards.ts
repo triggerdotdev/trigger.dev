@@ -453,6 +453,7 @@ export async function action({ request }: ActionFunctionArgs) {
     logger.error("Error processing Plain customer card request", {
       error: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,
+      userId: parsed.data.customer.externalId,
     });
     return json({ error: "Internal server error" }, { status: 500 });
   }

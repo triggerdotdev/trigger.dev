@@ -99,7 +99,7 @@ export const action = createActionPATApiRoute(
           inviteLink: `${env.LOGIN_ORIGIN}${acceptInvitePath(invite.token)}`,
         });
       } catch (error) {
-        logger.error("Failed to send invite email", { error });
+        logger.error("Failed to send invite email", { error, orgParam: params.orgParam });
       }
     }
 

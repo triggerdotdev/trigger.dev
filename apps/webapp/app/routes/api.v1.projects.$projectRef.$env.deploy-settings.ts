@@ -64,7 +64,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       );
   } catch (error) {
     if (error instanceof Response) throw error;
-    logger.error("Failed to resolve deploy settings", { error });
+    logger.error("Failed to resolve deploy settings", { error, projectRef: params.projectRef });
     return json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

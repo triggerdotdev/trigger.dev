@@ -119,7 +119,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     );
   } catch (error: any) {
     if (!(error instanceof ServiceValidationError)) {
-      logger.error("Failed to create schedule", error);
+      logger.error("Failed to create schedule", { error, organizationSlug });
     }
 
     const errorMessage =

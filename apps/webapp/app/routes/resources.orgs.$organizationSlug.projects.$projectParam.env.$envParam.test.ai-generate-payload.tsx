@@ -239,6 +239,7 @@ async function getTaskSourceCode(
   } catch (error) {
     logger.error("[AI payload] Failed to retrieve task source code", {
       taskIdentifier,
+      environmentId,
       error: error instanceof Error ? error.message : String(error),
     });
     return "Failed to retrieve task source code.";

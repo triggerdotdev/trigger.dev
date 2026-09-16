@@ -80,7 +80,10 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     return json({ ...snapshot, version, dirty });
   } catch (error) {
     if (error instanceof Response) throw error;
-    logger.error("Failed to resolve dashboard agent repo snapshot", { error });
+    logger.error("Failed to resolve dashboard agent repo snapshot", {
+      error,
+      projectRef: params.projectRef,
+    });
     return json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

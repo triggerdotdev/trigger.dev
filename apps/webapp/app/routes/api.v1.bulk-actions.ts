@@ -76,7 +76,10 @@ const { action } = createActionApiRoute(
         );
       }
 
-      logger.error("Failed to create API bulk action", { error });
+      logger.error("Failed to create API bulk action", {
+        error,
+        environmentId: authentication.environment.id,
+      });
       return json({ error: "Failed to create bulk action" }, { status: 500 });
     }
   }

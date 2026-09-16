@@ -82,7 +82,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
         if (error instanceof ServiceValidationError) {
           errorMessage = { error: error.message };
         } else {
-          logger.error("Error finalizing deployment", { error });
+          logger.error("Error finalizing deployment", {
+            error,
+            environmentId: authenticatedEnv.id,
+          });
           errorMessage = { error: "Internal server error" };
         }
 
@@ -98,7 +101,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
       return json({ error: error.message }, { status: 400 });
     }
 
-    logger.error("Error finalizing deployment", { error });
+    logger.error("Error finalizing deployment", {
+      error,
+      environmentId: authenticatedEnv.id,
+    });
     return json({ error: "Internal server error" }, { status: 500 });
   }
 }

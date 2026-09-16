@@ -87,10 +87,11 @@ export const action = dashboardAction(
             message: error.message,
             stack: error.stack,
           },
+          projectId,
         });
         return json(submission.reply({ formErrors: [error.message] }));
       } else {
-        logger.error("Failed to roll back deployment", { error });
+        logger.error("Failed to roll back deployment", { error, projectId });
         return json(submission.reply({ formErrors: [JSON.stringify(error)] }));
       }
     }

@@ -81,7 +81,10 @@ export const loader = dashboardLoader(
           ability.can("write", { type: "deployments", envType: "DEVELOPMENT" }),
       });
     } catch (error) {
-      logger.error("Error loading dev branches page", { error });
+      logger.error("Error loading dev branches page", {
+        error,
+        organizationSlug: params.organizationSlug,
+      });
       throw new Response(undefined, {
         status: 400,
         statusText: "Something went wrong, if this problem persists please contact support.",

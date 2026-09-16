@@ -142,11 +142,15 @@ export async function action({ request, params }: ActionFunctionArgs) {
     if (unroutable) {
       logger.warn("Unroutable run id on run tags", {
         error: error instanceof Error ? error.message : error,
+        environmentId: authenticationResult.environment.id,
       });
       return unroutable;
     }
 
-    logger.error("Failed to add run tags", { error });
+    logger.error("Failed to add run tags", {
+      error,
+      environmentId: authenticationResult.environment.id,
+    });
     return json({ error: "Something went wrong, please try again." }, { status: 500 });
   }
 }

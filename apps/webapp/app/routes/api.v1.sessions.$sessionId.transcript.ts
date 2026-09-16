@@ -78,6 +78,7 @@ export const loader = createLoaderApiRoute(
         logger.warn("transcript endpoint: ranged read failed, falling back to full read", {
           sessionId: session.friendlyId,
           error: error instanceof Error ? error.message : String(error),
+          environmentId: authentication.environment.id,
         });
       }
     }
@@ -100,6 +101,7 @@ export const loader = createLoaderApiRoute(
       logger.error("transcript endpoint: snapshot read failed", {
         sessionId: session.friendlyId,
         error: error instanceof Error ? error.message : String(error),
+        environmentId: authentication.environment.id,
       });
       return json({ error: "Failed to read transcript" }, { status: 502 });
     }

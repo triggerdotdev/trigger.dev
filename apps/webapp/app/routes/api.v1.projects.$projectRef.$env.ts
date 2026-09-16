@@ -72,7 +72,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     return json(result);
   } catch (error) {
     if (error instanceof Response) throw error;
-    logger.error("Failed to load project env", { error });
+    logger.error("Failed to load project env", { error, projectRef });
     return json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

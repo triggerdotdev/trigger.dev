@@ -136,7 +136,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       ]);
     } catch (error) {
       // The dashboard must load even when the agent's store doesn't answer.
-      logger.error("Failed to read dashboard agent wake activity", { error });
+      logger.error("Failed to read dashboard agent wake activity", { error, organizationSlug });
     }
   }
 

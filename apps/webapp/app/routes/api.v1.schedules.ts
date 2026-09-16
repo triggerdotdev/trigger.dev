@@ -82,7 +82,10 @@ export async function action({ request }: ActionFunctionArgs) {
       return json({ error: error.message }, { status: 422 });
     }
 
-    logger.error("Failed to create schedule", { error });
+    logger.error("Failed to create schedule", {
+      error,
+      environmentId: authenticationResult.environment.id,
+    });
     return json({ error: "Something went wrong, please try again." }, { status: 500 });
   }
 }

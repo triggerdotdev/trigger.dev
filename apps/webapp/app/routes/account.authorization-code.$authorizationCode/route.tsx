@@ -81,7 +81,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       return typedjson({ success: false as const, error: error.message, source, clientName });
     }
 
-    logger.error(JSON.stringify(error));
+    logger.error(JSON.stringify(error), { userId });
     throw new Response(undefined, {
       status: 400,
       statusText: "Something went wrong, if this problem persists please contact support.",

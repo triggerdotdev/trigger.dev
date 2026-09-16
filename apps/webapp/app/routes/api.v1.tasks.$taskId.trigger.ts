@@ -199,7 +199,10 @@ const { action, loader } = createActionApiRoute(
         return json({ error: error.message }, { status: 422 });
       }
 
-      logger.error("Trigger task failed", { error });
+      logger.error("Trigger task failed", {
+        error,
+        environmentId: authentication.environment.id,
+      });
       return json({ error: "Something went wrong" }, { status: 500 });
     }
   }

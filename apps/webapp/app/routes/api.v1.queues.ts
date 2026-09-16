@@ -61,7 +61,10 @@ export const loader = createLoaderApiRoute(
         return json({ error: error.message }, { status: 422 });
       }
 
-      logger.error("Failed to list queues", { error });
+      logger.error("Failed to list queues", {
+        error,
+        environmentId: authentication.environment.id,
+      });
       return json({ error: "Something went wrong, please try again." }, { status: 500 });
     }
   }

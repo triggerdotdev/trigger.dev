@@ -47,7 +47,11 @@ export const loader = createLoaderApiRoute(
 
       return reportResponse(vm, searchParams.format);
     } catch (error) {
-      logger.error("Failed to render report", { error, key: params.key });
+      logger.error("Failed to render report", {
+        error,
+        key: params.key,
+        environmentId: authentication.environment.id,
+      });
       return json({ error: "Something went wrong, please try again." }, { status: 500 });
     }
   }

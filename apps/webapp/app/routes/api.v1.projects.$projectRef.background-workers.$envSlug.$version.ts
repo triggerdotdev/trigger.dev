@@ -92,7 +92,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     });
   } catch (error) {
     if (error instanceof Response) throw error;
-    logger.error("Failed to load background worker", { error });
+    logger.error("Failed to load background worker", { error, projectRef: params.projectRef });
     return json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

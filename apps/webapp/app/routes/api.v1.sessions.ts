@@ -269,7 +269,10 @@ const { action } = createActionApiRoute(
       if (error instanceof ServiceValidationError) {
         return json({ error: error.message }, { status: 422 });
       }
-      logger.error("Failed to create session", { error });
+      logger.error("Failed to create session", {
+        error,
+        environmentId: authentication.environment.id,
+      });
       return json({ error: "Something went wrong" }, { status: 500 });
     }
   }

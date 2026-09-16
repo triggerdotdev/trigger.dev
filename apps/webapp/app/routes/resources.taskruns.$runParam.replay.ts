@@ -476,11 +476,12 @@ export const action = dashboardAction(
             message: error.message,
             stack: error.stack,
           },
+          userId: user.id,
         });
         return redirectWithErrorMessage(failedRedirect, request, error.message);
       }
 
-      logger.error("Failed to replay run", { error });
+      logger.error("Failed to replay run", { error, userId: user.id });
       return redirectWithErrorMessage(failedRedirect, request, JSON.stringify(error));
     }
   }

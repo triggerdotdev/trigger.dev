@@ -92,12 +92,15 @@ export async function action({ request, params }: ActionFunctionArgs) {
         return json({ error: error.message }, { status: 422 });
       }
 
-      logger.error("Failed to create alert channel", { error });
+      logger.error("Failed to create alert channel", { error, projectRef });
       return json({ error: "Something went wrong, please try again." }, { status: 500 });
     }
   } catch (error) {
     if (error instanceof Response) throw error;
-    logger.error("Failed to create alert channel (outer)", { error });
+    logger.error("Failed to create alert channel (outer)", {
+      error,
+      projectRef: params.projectRef,
+    });
     return json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
