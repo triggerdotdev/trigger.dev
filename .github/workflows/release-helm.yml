@@ -161,5 +161,6 @@ jobs:
           files: |
             /tmp/${{ env.CHART_NAME }}-${{ steps.version.outputs.version }}.tgz
           token: ${{ secrets.GITHUB_TOKEN }}
-          draft: true
-          prerelease: true
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.version, '-') }}
+          make_latest: "false"
