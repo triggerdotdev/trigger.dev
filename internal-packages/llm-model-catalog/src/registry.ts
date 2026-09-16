@@ -11,6 +11,9 @@ type CompiledPattern = {
   model: LlmModelWithPricing;
 };
 
+const EXACT_MATCH_CACHE_MAX_ENTRIES = 1_000;
+const EXACT_MATCH_CACHE_MAX_KEY_LENGTH = 512;
+
 // Convert POSIX-style (?i) inline flag to JS RegExp 'i' flag
 function compilePattern(pattern: string): RegExp {
   if (pattern.startsWith("(?i)")) {
@@ -22,9 +25,6 @@ function compilePattern(pattern: string): RegExp {
 export class ModelPricingRegistry {
   private _prisma?: PrismaClient | PrismaReplicaClient;
   private _patterns: CompiledPattern[] = [];
-  // TODO: When we add project-based models (users adding their own), this cache grows unbounded
-  // between reloads. Fine-tuned model IDs (e.g. "ft:gpt-3.5-turbo:org:name:id") create unique
-  // entries per model string. Consider adding an LRU cap or size limit at that point.
   private _exactMatchCache: Map<string, LlmModelWithPricing | null> = new Map();
   private _loaded = false;
   private _readyResolve!: () => void;
@@ -133,14 +133,13 @@ export class ModelPricingRegistry {
   match(responseModel: string): LlmModelWithPricing | null {
     if (!this._loaded) return null;
 
-    // Check exact match cache
-    const cached = this._exactMatchCache.get(responseModel);
+    const cached = this.getCachedMatch(responseModel);
     if (cached !== undefined) return cached;
 
     // Iterate compiled regex patterns
     for (const { regex, model } of this._patterns) {
       if (regex.test(responseModel)) {
-        this._exactMatchCache.set(responseModel, model);
+        this.cacheMatch(responseModel, model);
         return model;
       }
     }
@@ -151,15 +150,38 @@ export class ModelPricingRegistry {
       const stripped = responseModel.split("/").slice(1).join("/");
       for (const { regex, model } of this._patterns) {
         if (regex.test(stripped)) {
-          this._exactMatchCache.set(responseModel, model);
+          this.cacheMatch(responseModel, model);
           return model;
         }
       }
     }
 
-    // Cache miss
-    this._exactMatchCache.set(responseModel, null);
+    this.cacheMatch(responseModel, null);
     return null;
+  }
+
+  private getCachedMatch(responseModel: string): LlmModelWithPricing | null | undefined {
+    if (responseModel.length > EXACT_MATCH_CACHE_MAX_KEY_LENGTH) return undefined;
+
+    const cached = this._exactMatchCache.get(responseModel);
+    if (cached === undefined) return undefined;
+
+    this._exactMatchCache.delete(responseModel);
+    this._exactMatchCache.set(responseModel, cached);
+    return cached;
+  }
+
+  private cacheMatch(responseModel: string, model: LlmModelWithPricing | null): void {
+    if (responseModel.length > EXACT_MATCH_CACHE_MAX_KEY_LENGTH) return;
+
+    if (this._exactMatchCache.has(responseModel)) {
+      this._exactMatchCache.delete(responseModel);
+    } else if (this._exactMatchCache.size >= EXACT_MATCH_CACHE_MAX_ENTRIES) {
+      const oldest = this._exactMatchCache.keys().next().value;
+      if (oldest !== undefined) this._exactMatchCache.delete(oldest);
+    }
+
+    this._exactMatchCache.set(responseModel, model);
   }
 
   calculateCost(responseModel: string, usageDetails: Record<string, number>): LlmCostResult | null {

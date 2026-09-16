@@ -12,7 +12,7 @@ import type { Server as IoServer } from "socket.io";
 import type { WebSocketServer } from "ws";
 import type { RateLimitMiddleware } from "~/services/apiRateLimit.server";
 import { type RunWithHttpContextFunction } from "~/services/httpAsyncStorage.server";
-import { sanitizeHttpUrl } from "./app/utils/sanitizeHttpUrl";
+import { getRouterPath, pathHasPrefix, sanitizeHttpUrl } from "./app/utils/sanitizeHttpUrl";
 import cluster from "node:cluster";
 import os from "node:os";
 
@@ -235,10 +235,9 @@ async function startServer() {
 
     if (process.env.DASHBOARD_AND_API_DISABLED !== "true") {
       if (process.env.ALLOW_ONLY_REALTIME_API === "true") {
-        // Block all requests that do not start with /realtime
         app.use((req, res, next) => {
-          // Make sure /healthcheck is still accessible
-          if (!req.url.startsWith("/realtime") && req.url !== "/healthcheck") {
+          const pathname = getRouterPath(req);
+          if (pathname !== "/healthcheck" && (!pathname || !pathHasPrefix(pathname, "/realtime"))) {
             res.status(404).send("Not Found");
             return;
           }
@@ -319,41 +318,41 @@ async function startServer() {
     socketIo?.io.attach(server);
     server.removeAllListeners("upgrade"); // prevent duplicate upgrades from listeners created by io.attach()
 
-    server.on("upgrade", async (req, socket, head) => {
+    server.on("upgrade", (req, socket, head) => {
       console.log(`Attemping to upgrade connection at url ${req.url}`);
 
       socket.on("error", (err) => {
         console.error("Connection upgrade error:", err);
       });
 
-      const url = new URL(req.url ?? "", "http://localhost");
+      try {
+        const pathname = getRouterPath(req);
 
-      // Upgrade socket.io connection
-      if (url.pathname.startsWith("/socket.io/")) {
-        console.log(`Socket.io client connected, upgrading their connection...`);
+        if (pathname && pathHasPrefix(pathname, "/socket.io")) {
+          console.log(`Socket.io client connected, upgrading their connection...`);
 
-        // https://github.com/socketio/socket.io/issues/4693
-        (socketIo!.io.engine as EngineServer).handleUpgrade(req, socket, head);
-        return;
+          // https://github.com/socketio/socket.io/issues/4693
+          (socketIo!.io.engine as EngineServer).handleUpgrade(req, socket, head);
+          return;
+        }
+
+        if (pathname !== "/ws") {
+          console.warn(
+            `Rejected upgrade request: path must be /ws, got ${pathname ?? "<invalid>"}`
+          );
+          socket.destroy();
+          return;
+        }
+
+        console.log(`Client connected, upgrading their connection...`);
+
+        wss?.handleUpgrade(req, socket, head, (ws) => {
+          wss?.emit("connection", ws, req);
+        });
+      } catch (error) {
+        console.error("Connection upgrade handler failed:", error);
+        socket.destroy();
       }
-
-      // Only upgrade the connecting if the path is `/ws`
-      if (url.pathname !== "/ws") {
-        // Setting the socket.destroy() error param causes an error event to be emitted which needs to be handled with socket.on("error") to prevent uncaught exceptions.
-        socket.destroy(
-          new Error(
-            "Cannot connect because of invalid path: Please include `/ws` in the path of your upgrade request."
-          )
-        );
-        return;
-      }
-
-      console.log(`Client connected, upgrading their connection...`);
-
-      // Handle the WebSocket connection
-      wss?.handleUpgrade(req, socket, head, (ws) => {
-        wss?.emit("connection", ws, req);
-      });
     });
   } else {
     console.log(`✅ app ready (skipping http server)`);

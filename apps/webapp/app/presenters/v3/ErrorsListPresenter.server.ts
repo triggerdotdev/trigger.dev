@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { type ClickHouse, msToClickHouseInterval } from "@internal/clickhouse";
-import { TimeGranularity } from "~/utils/timeGranularity";
+import { isBoundedChartRange, TimeGranularity } from "~/utils/timeGranularity";
 
 const errorsListGranularity = new TimeGranularity([
   { max: "2h", granularity: "1m" },
@@ -358,6 +358,9 @@ export class ErrorsListPresenter extends BasePresenter {
     }
 
     const granularityMs = errorsListGranularity.getTimeGranularityMs(from, to);
+    if (!isBoundedChartRange(from, to, granularityMs)) {
+      return { data: {} };
+    }
     const intervalExpr = msToClickHouseInterval(granularityMs);
 
     const queryBuilder = this.clickhouse.errors.createOccurrencesQueryBuilder(intervalExpr);

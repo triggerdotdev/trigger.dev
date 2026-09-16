@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TimeGranularity } from "~/utils/timeGranularity";
+import { isBoundedChartRange, TimeGranularity } from "~/utils/timeGranularity";
 
 const SECOND = 1_000;
 const MINUTE = 60 * SECOND;
@@ -56,5 +56,25 @@ describe("TimeGranularity", () => {
 
   it("throws when constructed with an empty array", () => {
     expect(() => new TimeGranularity([])).toThrow("at least one bracket");
+  });
+});
+
+describe("isBoundedChartRange", () => {
+  const day = 24 * 60 * 60 * 1000;
+  const now = Date.parse("2026-08-08T00:00:00Z");
+
+  it("accepts an ordinary window", () => {
+    expect(isBoundedChartRange(new Date(now - 7 * day), new Date(now), 2 * 60 * 60 * 1000)).toBe(
+      true
+    );
+  });
+
+  it.each([
+    ["NaN from", new Date(Number.NaN), new Date(now)],
+    ["inverted", new Date(now), new Date(now - 1000)],
+    ["extreme past", new Date(-8.64e15), new Date(now)],
+    ["extreme future", new Date(now), new Date(8.64e15)],
+  ])("rejects %s before allocation", (_label, from, to) => {
+    expect(isBoundedChartRange(from, to, 30 * day)).toBe(false);
   });
 });

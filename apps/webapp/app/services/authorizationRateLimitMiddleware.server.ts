@@ -6,6 +6,7 @@ import type { Request as ExpressRequest, Response as ExpressResponse, NextFuncti
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { RedisWithClusterOptions } from "~/redis.server";
+import { getRouterPath } from "~/utils/sanitizeHttpUrl";
 import { logger } from "./logger.server";
 import type { Duration, Limiter } from "./rateLimiter.server";
 import { createRedisRateLimitClient, RateLimiter } from "./rateLimiter.server";
@@ -229,9 +230,10 @@ export function authorizationRateLimitMiddleware({
       return next();
     }
 
-    //first check if any of the pathMatchers match the request path
-    const path = req.path;
+    // Use the same normalized pathname that the application router receives.
+    const path = getRouterPath(req);
     if (
+      !path ||
       !pathMatchers.some((matcher) =>
         matcher instanceof RegExp ? matcher.test(path) : path === matcher
       )

@@ -59,3 +59,21 @@ export class TimeGranularity {
     return this.parsed[this.parsed.length - 1].granularityMs;
   }
 }
+
+const MAX_CHART_BUCKETS = 10_000;
+
+/**
+ * Rejects user-supplied chart ranges before they reach a query or a bucket
+ * loop: non-finite or inverted dates, or a span that would generate an
+ * unbounded number of buckets at the chosen granularity.
+ */
+export function isBoundedChartRange(from: Date, to: Date, granularityMs: number): boolean {
+  const fromMs = from.getTime();
+  const toMs = to.getTime();
+  return (
+    Number.isFinite(fromMs) &&
+    Number.isFinite(toMs) &&
+    fromMs <= toMs &&
+    (toMs - fromMs) / granularityMs <= MAX_CHART_BUCKETS
+  );
+}

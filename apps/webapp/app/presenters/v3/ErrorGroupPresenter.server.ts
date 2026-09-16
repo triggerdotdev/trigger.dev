@@ -1,5 +1,5 @@
 import { type ClickHouse, msToClickHouseInterval } from "@internal/clickhouse";
-import { TimeGranularity } from "~/utils/timeGranularity";
+import { isBoundedChartRange, TimeGranularity } from "~/utils/timeGranularity";
 import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
 import { type ErrorGroupStatus, type PrismaClientOrTransaction } from "@trigger.dev/database";
 import { timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
@@ -187,6 +187,9 @@ export class ErrorGroupPresenter extends BasePresenter {
     versions: string[];
   }> {
     const granularityMs = errorGroupGranularity.getTimeGranularityMs(from, to);
+    if (!isBoundedChartRange(from, to, granularityMs)) {
+      return { data: [], versions: [] };
+    }
     const intervalExpr = msToClickHouseInterval(granularityMs);
 
     const queryBuilder =

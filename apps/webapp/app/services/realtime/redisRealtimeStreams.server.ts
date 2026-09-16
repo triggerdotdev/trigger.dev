@@ -22,6 +22,17 @@ type StreamChunk =
   | { type: "data"; redisId: string; data: string }
   | { type: "legacy-data"; redisId: string; data: string };
 
+function formatSseDataEvent(redisId: string, data: string): string {
+  const withoutDelimiterCarriageReturn = data.endsWith("\r") ? data.slice(0, -1) : data;
+  const normalized = withoutDelimiterCarriageReturn.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const dataFields = normalized
+    .split("\n")
+    .map((part) => `data: ${part}`)
+    .join("\n");
+
+  return `id: ${redisId}\n${dataFields}\n\n`;
+}
+
 // Class implementing both interfaces
 export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
   private logger: Logger;
@@ -277,8 +288,7 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
             if (chunk.type === "ping") {
               controller.enqueue(`: ping\n\n`);
             } else if ((chunk.type === "data" || chunk.type === "legacy-data") && chunk.line) {
-              // Use Redis stream ID as SSE event ID
-              controller.enqueue(`id: ${chunk.redisId}\ndata: ${chunk.line}\n\n`);
+              controller.enqueue(formatSseDataEvent(chunk.redisId, chunk.line));
             }
           },
         })
