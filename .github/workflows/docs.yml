@@ -5,10 +5,12 @@ on:
     branches:
       - main
     paths:
+      - ".github/workflows/docs.yml"
       - "docs/**"
   pull_request:
     types: [opened, synchronize, reopened]
     paths:
+      - ".github/workflows/docs.yml"
       - "docs/**"
 
 concurrency:
@@ -30,15 +32,22 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: 📦 Cache npm
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.npm
-          key: |
-            ${{ runner.os }}-mintlify
-          restore-keys: |
-            ${{ runner.os }}-mintlify
+      - name: 📦 Install Mintlify
+        working-directory: ${{ runner.temp }}
+        env:
+          COREPACK_HOME: ${{ runner.temp }}/mintlify-corepack
+          NPM_CONFIG_CACHE: ${{ runner.temp }}/mintlify-npm-cache
+          NPM_CONFIG_GLOBALCONFIG: /dev/null
+          NPM_CONFIG_USERCONFIG: /dev/null
+          PNPM_HOME: ${{ runner.temp }}/mintlify-pnpm
+        run: |
+          mkdir -p "$RUNNER_TEMP/mintlify-tool"
+          printf '{"private":true}\n' >"$RUNNER_TEMP/mintlify-tool/package.json"
+          corepack pnpm@10.33.2 --dir "$RUNNER_TEMP/mintlify-tool" add \
+            --save-exact \
+            --store-dir "$RUNNER_TEMP/mintlify-pnpm-store" \
+            --registry=https://registry.npmjs.org/ \
+            mintlify@4.0.393
 
       - name: 🔗 Check for broken links
-        run: npx mintlify@4.0.393 broken-links
+        run: '"$RUNNER_TEMP/mintlify-tool/node_modules/.bin/mintlify" broken-links'

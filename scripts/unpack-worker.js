@@ -32,14 +32,30 @@ try {
 
   const id = data.id;
 
+  // The id becomes the extraction root, so it must be a single path component.
+  if (
+    typeof id !== "string" ||
+    id.length === 0 ||
+    id === "." ||
+    id === ".." ||
+    id.includes("/") ||
+    id.includes("\\") ||
+    id.includes("\0")
+  ) {
+    throw new Error(`Unsafe worker id: ${id}`);
+  }
+
   console.log(`Extracting files for: ${id} to ${destDir}`);
 
   destDir = path.join(destDir, id);
 
   console.log(`Extracting files to: ${destDir}`);
 
+  // Resolve the extraction root once so we can keep every file inside it.
+  const extractionRoot = path.resolve(destDir);
+
   // Create the destination directory if it doesn't exist
-  fs.mkdirSync(destDir, { recursive: true });
+  fs.mkdirSync(extractionRoot, { recursive: true });
 
   // Process each item in the array
   const sourceFiles = data.metadata.sourceFiles;
@@ -49,7 +65,12 @@ try {
     const decompressedContent = decompressContent(file.contents);
 
     // Combine destination directory with file path
-    const fullPath = path.join(destDir, file.filePath);
+    const fullPath = path.resolve(extractionRoot, file.filePath);
+
+    // Reject any path that escapes the extraction root (zip-slip via ../ etc.)
+    if (fullPath !== extractionRoot && !fullPath.startsWith(extractionRoot + path.sep)) {
+      throw new Error(`Refusing to write outside destination: ${file.filePath}`);
+    }
 
     // Create directory structure if it doesn't exist
     const dirPath = path.dirname(fullPath);
@@ -61,7 +82,7 @@ try {
     console.log(`Created file: ${fullPath}`);
   });
 
-  console.log(`\nAll files have been extracted to: ${destDir}`);
+  console.log(`\nAll files have been extracted to: ${extractionRoot}`);
 } catch (error) {
   console.error(error);
   process.exit(1);

@@ -6,6 +6,7 @@
 # everyone out, or break an already-initialised datastore volume - so rotation is
 # opt-in only, via --force (which WILL break existing data/sessions).
 set -eu
+umask 077
 
 FORCE=0
 for arg in "$@"; do
@@ -34,6 +35,11 @@ gen() { openssl rand -hex 16; }
 if [ ! -f "$env_file" ]; then
     cp "$env_example" "$env_file"
     echo "Created $(basename "$env_file") from $(basename "$env_example")"
+fi
+chmod 600 "$env_file"
+
+if [ -f "$htpasswd_file" ]; then
+    chmod 600 "$htpasswd_file"
 fi
 
 sed_inplace() {
@@ -97,7 +103,9 @@ if [ "$FORCE" -eq 1 ] || [ -z "$(current_value DOCKER_REGISTRY_PASSWORD)" ]; the
         echo "ERROR: docker is required to hash the registry password (bcrypt). Install docker and re-run." >&2
         exit 1
     fi
-    docker run --rm httpd:2 htpasswd -Bbn "$registry_user" "$registry_pass" >"$htpasswd_file"
+    printf '%s\n' "$registry_pass" \
+        | docker run --rm -i httpd:2 htpasswd -Bni "$registry_user" >"$htpasswd_file"
+    chmod 600 "$htpasswd_file"
     set_var DOCKER_REGISTRY_PASSWORD "$registry_pass"
     echo "Generated DOCKER_REGISTRY_PASSWORD (and wrote $(basename "$htpasswd_file"))"
     generated=$((generated + 1))
