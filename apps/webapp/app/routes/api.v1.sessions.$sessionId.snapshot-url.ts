@@ -16,7 +16,6 @@ const ParamsSchema = z.object({
 
 const routeConfig = {
   params: ParamsSchema,
-  allowJWT: true,
   corsStrategy: "all" as const,
   findResource: async (
     params: z.infer<typeof ParamsSchema>,
@@ -44,6 +43,7 @@ const route = createActionApiRoute(
   {
     ...routeConfig,
     method: "PUT",
+    allowJWT: false,
     authorization: {
       action: "write",
       resource: (params, _, __, ___, session) => sessionResource(params.sessionId, session),
