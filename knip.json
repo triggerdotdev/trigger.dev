@@ -29,9 +29,6 @@
       "entry": ["trigger.config.ts", "src/investigation-sweep.ts", "src/maintenance.ts"],
       "ignoreBinaries": ["rg"]
     },
-    "internal-packages/emails": {
-      "ignoreDependencies": ["@react-email/ui"]
-    },
     "internal-packages/observability-map": {
       "entry": ["src/index.ts", "fixtures/**/*.{js,mjs,cjs,ts,mts,cts,tsx}"]
     },

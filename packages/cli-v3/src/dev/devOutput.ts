@@ -30,6 +30,7 @@ import {
 import type { EventBusEventArgs } from "../utilities/eventBus.js";
 import { eventBus } from "../utilities/eventBus.js";
 import { logger } from "../utilities/logger.js";
+import { formatScheduleWarnings } from "../utilities/scheduleWarnings.js";
 import type { Socket } from "socket.io-client";
 import { BundleError } from "../build/bundle.js";
 import { analyzeWorker } from "../utilities/analyze.js";
@@ -83,10 +84,7 @@ export function startDevOutput(options: DevOutputOptions) {
     analyzeWorker(worker, options.args.analyze, options.args.disableWarnings);
 
     if (!options.args.disableWarnings && worker.warnings.length > 0) {
-      prettyWarning(
-        "Schedule policy applied",
-        worker.warnings.map((warning) => warning.message).join("\n")
-      );
+      prettyWarning("Schedule policy applied", formatScheduleWarnings(worker.warnings));
     }
 
     const logParts: string[] = [];

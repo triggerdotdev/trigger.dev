@@ -8,6 +8,7 @@ import { CliApiClient } from "../apiClient.js";
 import { indexWorkerManifest } from "../indexing/indexWorkerManifest.js";
 import { writeJSONFile } from "../utilities/fileSystem.js";
 import { resolveSourceFiles } from "../utilities/sourceFiles.js";
+import { formatScheduleWarnings } from "../utilities/scheduleWarnings.js";
 
 async function loadBuildManifest() {
   const manifestContents = await readFile("./build.json", "utf-8");
@@ -133,9 +134,7 @@ async function indexDeployment({
 
     const scheduleWarnings = createResponse.data.warnings ?? [];
     if (scheduleWarnings.length > 0) {
-      console.warn(
-        `Schedule policy applied: ${scheduleWarnings.map((warning) => warning.message).join("; ")}`
-      );
+      console.warn(`Schedule policy applied: ${formatScheduleWarnings(scheduleWarnings, "; ")}`);
     }
 
     console.log(
