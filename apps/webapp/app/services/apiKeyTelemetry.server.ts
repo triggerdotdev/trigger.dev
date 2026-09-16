@@ -14,6 +14,7 @@ export type PublicTokenMintResult = "success" | "rejected" | "error";
 export type PublicTokenMintReason =
   | "none"
   | "invalid_body"
+  | "revoked_key"
   | "scope_not_allowed"
   | "invalid_expiration"
   | "expiration_not_future"

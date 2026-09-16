@@ -74,13 +74,17 @@ function telemetryRecorder(): ApiKeyTelemetry {
 
 describe("POST /api/v1/auth/public-tokens", () => {
   it("lets root and unrestricted additional keys mint arbitrary scopes", async () => {
+    const graceWindowLookup = vi.fn().mockResolvedValue(false);
+
     for (const controller of [
       controllerWithAbility(permissiveAbility, "root"),
       controllerWithAbility(permissiveAbility, "additional"),
     ]) {
       const response = await handlePublicTokenRequest(
         request({ scopes: ["read:runs", "custom:resources:value"] }),
-        controller
+        controller,
+        telemetryRecorder(),
+        graceWindowLookup
       );
       expect(response.status).toBe(200);
 
@@ -94,6 +98,40 @@ describe("POST /api/v1/auth/public-tokens", () => {
         scopes: ["read:runs", "custom:resources:value"],
       });
     }
+
+    expect(graceWindowLookup).toHaveBeenCalledTimes(1);
+    expect(graceWindowLookup).toHaveBeenCalledWith("tr_prod_test");
+  });
+
+  it("rejects root keys in their rotation grace window", async () => {
+    const telemetry = telemetryRecorder();
+    const graceWindowLookup = vi.fn().mockResolvedValue(true);
+    const response = await handlePublicTokenRequest(
+      request({ scopes: ["read:runs"] }),
+      controllerWithAbility(permissiveAbility, "root"),
+      telemetry,
+      graceWindowLookup
+    );
+
+    expect(response.status).toBe(401);
+    await expect(responseJson(response)).resolves.toEqual({ error: "Invalid API key" });
+    expect(graceWindowLookup).toHaveBeenCalledTimes(1);
+    expect(graceWindowLookup).toHaveBeenCalledWith("tr_prod_test");
+    expect(telemetry.recordPublicTokenMint).toHaveBeenCalledTimes(1);
+    expect(telemetry.recordPublicTokenMint).toHaveBeenCalledWith("rejected", "revoked_key");
+  });
+
+  it("does not apply the root rotation check to additional keys", async () => {
+    const graceWindowLookup = vi.fn().mockResolvedValue(true);
+    const response = await handlePublicTokenRequest(
+      request({ scopes: ["read:runs"] }),
+      controllerWithAbility(permissiveAbility, "additional"),
+      telemetryRecorder(),
+      graceWindowLookup
+    );
+
+    expect(response.status).toBe(200);
+    expect(graceWindowLookup).not.toHaveBeenCalled();
   });
 
   it("records successful and rejected mint outcomes", async () => {
