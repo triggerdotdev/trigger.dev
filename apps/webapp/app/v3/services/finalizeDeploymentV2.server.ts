@@ -66,13 +66,28 @@ export class FinalizeDeploymentV2Service extends BaseService {
       throw new ServiceValidationError("Worker deployment is not in DEPLOYING status");
     }
 
+    const deploymentDiagnostics = {
+      id: deployment.id,
+      friendlyId: id,
+      status: deployment.status,
+      version: deployment.version,
+      imageReference: deployment.imageReference,
+      type: deployment.type,
+    };
+    const finalizeOptions = {
+      skipPromotion: body.skipPromotion,
+      imageDigest: body.imageDigest,
+      skipPushToRegistry: body.skipPushToRegistry,
+    };
+
     const finalizeService = new FinalizeDeploymentService();
 
     // If remote builds are not enabled, skip image push and go straight to template + finalize
     if (!remoteBuildsEnabled() || body.skipPushToRegistry) {
       if (body.skipPushToRegistry) {
         logger.debug("Skipping push to registry during deployment finalization", {
-          deployment,
+          deployment: deploymentDiagnostics,
+          finalizeOptions,
         });
       }
 
@@ -117,7 +132,10 @@ export class FinalizeDeploymentV2Service extends BaseService {
       throw new ServiceValidationError("Missing image reference");
     }
 
-    logger.debug("Pushing image to registry", { id, deployment, body });
+    logger.debug("Pushing image to registry", {
+      deployment: deploymentDiagnostics,
+      finalizeOptions,
+    });
 
     const pushResult = await executePushToRegistry(
       {
@@ -142,9 +160,8 @@ export class FinalizeDeploymentV2Service extends BaseService {
     }
 
     logger.debug("Image pushed to registry", {
-      id,
-      deployment,
-      body,
+      deployment: deploymentDiagnostics,
+      finalizeOptions,
       pushedImage: pushResult.image,
     });
 

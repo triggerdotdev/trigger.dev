@@ -12,7 +12,7 @@ import type {
 import { SeverityNumber, Span_SpanKind, Status_StatusCode } from "@trigger.dev/otlp-importer";
 import type { MetricsV1Input } from "@internal/clickhouse";
 import { generateSpanId } from "./eventRepository/common.server";
-import { unwrapWorkerIdInMetadata } from "./workerIdUnwrap.server";
+import { unwrapWorkerId, unwrapWorkerIdInMetadata } from "./workerIdUnwrap.server";
 import type {
   CreatableEventKind,
   CreatableEventStatus,
@@ -303,7 +303,9 @@ export function convertMetricsToClickhouseRows(
     runId: resourceProperties.runId,
     attemptNumber: resourceProperties.attemptNumber,
     machineId: extractStringAttribute(resourceAttributes, SemanticInternalAttributes.MACHINE_ID),
-    workerId: extractStringAttribute(resourceAttributes, SemanticInternalAttributes.WORKER_ID),
+    workerId: unwrapWorkerId(
+      extractStringAttribute(resourceAttributes, SemanticInternalAttributes.WORKER_ID)
+    ),
     workerVersion: extractStringAttribute(
       resourceAttributes,
       SemanticInternalAttributes.WORKER_VERSION
@@ -417,7 +419,7 @@ function resolveDataPointContext(
     extractStringAttribute(dpAttributes, SemanticInternalAttributes.MACHINE_ID);
   const workerId =
     resourceCtx.workerId ??
-    extractStringAttribute(dpAttributes, SemanticInternalAttributes.WORKER_ID);
+    unwrapWorkerId(extractStringAttribute(dpAttributes, SemanticInternalAttributes.WORKER_ID));
   const workerVersion =
     resourceCtx.workerVersion ??
     extractStringAttribute(dpAttributes, SemanticInternalAttributes.WORKER_VERSION);

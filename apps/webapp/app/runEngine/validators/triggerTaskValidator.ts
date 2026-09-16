@@ -76,7 +76,8 @@ export class DefaultTriggerTaskValidator implements TriggerTaskValidator {
     // Check if the parent run is in a final state
     if (isFinalRunStatus(parentRun.status)) {
       logger.debug("Parent run is in a terminal state", {
-        parentRun,
+        parentRunId: parentRun.friendlyId,
+        status: parentRun.status,
       });
 
       return {

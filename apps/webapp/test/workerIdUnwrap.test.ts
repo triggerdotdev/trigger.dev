@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { mintWorkloadDeploymentToken, SemanticInternalAttributes } from "@trigger.dev/core/v3";
+import type { ResourceMetrics } from "@trigger.dev/otlp-importer";
+import { convertMetricsToClickhouseRows } from "~/v3/otlpTransform.server";
 import { unwrapWorkerId, unwrapWorkerIdInMetadata } from "~/v3/workerIdUnwrap.server";
 
 const EXP = Math.floor(Date.UTC(2032, 0, 1) / 1000);
@@ -41,6 +43,45 @@ describe("unwrapWorkerId", () => {
     const token = await mint("deployment_memo");
     expect(unwrapWorkerId(token)).toBe("deployment_memo");
     expect(unwrapWorkerId(token)).toBe("deployment_memo");
+  });
+});
+
+describe("metric worker IDs", () => {
+  it("stores the deployment friendly ID instead of a worker token", async () => {
+    const token = await mint("deployment_metric");
+    const resourceMetrics = {
+      resource: {
+        attributes: [
+          {
+            key: SemanticInternalAttributes.WORKER_ID,
+            value: { stringValue: token },
+          },
+        ],
+      },
+      scopeMetrics: [
+        {
+          metrics: [
+            {
+              name: "test.metric",
+              gauge: {
+                dataPoints: [
+                  {
+                    asDouble: 1,
+                    timeUnixNano: 0n,
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    } as unknown as ResourceMetrics;
+
+    const [row] = convertMetricsToClickhouseRows(resourceMetrics, 1024);
+
+    expect(row?.attributes).toEqual({
+      trigger: { worker_id: "deployment_metric" },
+    });
   });
 });
 

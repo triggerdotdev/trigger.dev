@@ -11,7 +11,6 @@ import { fileURLToPath } from "node:url";
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 const expand = (value) => value?.replace(/\$\{(\w+)\}/g, (_, k) => process.env[k] ?? "");
-const redact = (url) => url.replace(/:\/\/[^@]*@/, "://***@");
 
 const subcommand = process.argv[2] === "status" ? "status" : "deploy";
 
@@ -26,9 +25,7 @@ if (!databaseUrl) {
   process.exit(0);
 }
 
-console.log(
-  `Running \`prisma migrate ${subcommand}\` against the run-ops database (${redact(databaseUrl)})`
-);
+console.log(`Running \`prisma migrate ${subcommand}\` against the configured run-ops database`);
 
 const result = spawnSync("prisma", ["migrate", subcommand, "--schema", "prisma/schema.prisma"], {
   cwd: packageRoot,

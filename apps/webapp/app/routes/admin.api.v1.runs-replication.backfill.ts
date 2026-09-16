@@ -53,7 +53,14 @@ export async function action({ request }: ActionFunctionArgs) {
       }))
     );
 
-    logger.info("Backfilled runs", { runs });
+    logger.info("Backfilled runs", {
+      runCount: runs.length,
+      runs: runs.map((run) => ({
+        id: run.id,
+        friendlyId: run.friendlyId,
+        status: run.status,
+      })),
+    });
 
     return json({
       success: true,
