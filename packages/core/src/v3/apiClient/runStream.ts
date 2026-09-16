@@ -743,7 +743,10 @@ export type RunSubscriptionOptions = RunShapeStreamOptions & {
 
 export class RunSubscription<TRunTypes extends AnyRunTypes> {
   private stream: AsyncIterableStream<RunShape<TRunTypes>>;
-  private packetCache = new Map<string, any>();
+  private packetCache = new Map<
+    string,
+    { data: string | undefined; dataType: string; value: any }
+  >();
   private _closeOnComplete: boolean;
   private _isRunComplete = false;
 
@@ -874,14 +877,27 @@ export class RunSubscription<TRunTypes extends AnyRunTypes> {
           return;
         }
 
-        const cachedResult = this.packetCache.get(`${row.friendlyId}/${key}`);
+        const cacheKey = `${row.friendlyId}/${key}`;
+        const cachedResult = this.packetCache.get(cacheKey);
 
-        if (typeof cachedResult !== "undefined") {
-          return cachedResult;
+        if (
+          cachedResult &&
+          cachedResult.data === packet.data &&
+          cachedResult.dataType === packet.dataType
+        ) {
+          return cachedResult.value;
         }
 
-        const result = await conditionallyImportAndParsePacket(packet, this.options.client);
-        this.packetCache.set(`${row.friendlyId}/${key}`, result);
+        const field = key as "payload" | "output";
+        const result = await conditionallyImportAndParsePacket(packet, this.options.client, {
+          runId: row.friendlyId,
+          field,
+        });
+        this.packetCache.set(cacheKey, {
+          data: packet.data,
+          dataType: packet.dataType,
+          value: result,
+        });
 
         return result;
       })

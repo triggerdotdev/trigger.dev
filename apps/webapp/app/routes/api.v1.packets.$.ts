@@ -2,6 +2,7 @@ import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
+import { logger } from "~/services/logger.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { generatePresignedUrl, jsonPacketPresignFailure } from "~/v3/objectStore.server";
 
@@ -50,6 +51,15 @@ export const loader = createLoaderApiRoute(
   },
   async ({ params, authentication }) => {
     const filename = params["*"];
+
+    // Public tokens should use /api/v1/runs/:runId/packets/:field, which authorizes
+    // against the owning run. Access here is kept for clients on older SDKs.
+    if (authentication.type === "PUBLIC_JWT") {
+      logger.info("Legacy packet download with public token", {
+        environmentId: authentication.environment.id,
+        projectId: authentication.environment.projectId,
+      });
+    }
 
     const signed = await generatePresignedUrl(
       authentication.environment.project.externalRef,

@@ -95,7 +95,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
     const itemsIterator = await authorizedBatchItemStream(
       streamToAsyncIterable(parsedStream),
       authResult.ability,
-      batchId
+      batchId,
+      authResult.subject.type !== "publicJWT"
     );
 
     // Process the stream

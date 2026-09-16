@@ -49,6 +49,13 @@ const { action, loader } = createActionApiRoute(
     corsStrategy: "all",
   },
   async ({ body, headers, params, authentication, ability }) => {
+    if (
+      authentication.type !== "PRIVATE" &&
+      body.items.some((item) => item.options?.payloadType === "application/store")
+    ) {
+      return json({ error: "Stored payloads require a private API key" }, { status: 403 });
+    }
+
     if (!body.items.length) {
       return json({ error: "Batch cannot be triggered with no items" }, { status: 400 });
     }

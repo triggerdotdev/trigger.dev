@@ -686,6 +686,35 @@ export class ApiClient {
     );
   }
 
+  /**
+   * Presigned GET URL for a run's stored payload or output, authorized against the run.
+   * Falls back to the legacy packet route on servers that predate this endpoint.
+   */
+  async getRunPacketUrl(
+    runId: string,
+    field: "payload" | "output",
+    path: string,
+    requestOptions?: ZodFetchOptions
+  ) {
+    try {
+      return await zodfetch(
+        CreateUploadPayloadUrlResponseBody,
+        `${this.baseUrl}/api/v1/runs/${encodeURIComponent(runId)}/packets/${field}`,
+        {
+          method: "GET",
+          headers: this.#getHeaders(false),
+        },
+        mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+      );
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) {
+        return await this.getPayloadUrl(path, requestOptions);
+      }
+
+      throw error;
+    }
+  }
+
   /** Presigned PUT URL for a `chat.agent` session snapshot. */
   createChatSnapshotUploadUrl(sessionId: string, requestOptions?: ZodFetchOptions) {
     return zodfetch(

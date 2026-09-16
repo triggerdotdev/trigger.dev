@@ -353,6 +353,60 @@ describe("ioSerialization", () => {
     });
   });
 
+  describe("run packet downloads", () => {
+    it("falls back to the legacy packet route when the scoped route is absent", async () => {
+      const requests: string[] = [];
+      const server = await createTestHttpServer({
+        defineRoutes(router) {
+          router.get("/api/v1/runs/:runId/packets/:field", ({ req }) => {
+            requests.push(req.url);
+            return Response.json({ error: "Not found" }, { status: 404 });
+          });
+          router.get("/api/v1/packets/:path", ({ req }) => {
+            requests.push(req.url);
+            return Response.json({ presignedUrl: "https://example.com/packet" });
+          });
+        },
+      });
+
+      try {
+        const client = new ApiClient(server.http.url().origin, "tr-passed");
+        const result = await client.getRunPacketUrl("run_123", "payload", "run_123/payload.json");
+
+        expect(result).toEqual({ presignedUrl: "https://example.com/packet" });
+        expect(requests).toHaveLength(2);
+      } finally {
+        await server.close();
+      }
+    });
+
+    it("does not fall back after an authorization failure", async () => {
+      let legacyRequests = 0;
+      const server = await createTestHttpServer({
+        defineRoutes(router) {
+          router.get("/api/v1/runs/:runId/packets/:field", () => {
+            return Response.json({ error: "Forbidden" }, { status: 403 });
+          });
+          router.get("/api/v1/packets/:path", () => {
+            legacyRequests++;
+            return Response.json({ presignedUrl: "https://example.com/packet" });
+          });
+        },
+      });
+
+      try {
+        const client = new ApiClient(server.http.url().origin, "tr-passed");
+
+        await expect(
+          client.getRunPacketUrl("run_123", "payload", "run_123/payload.json")
+        ).rejects.toMatchObject({ status: 403 });
+        expect(legacyRequests).toBe(0);
+      } finally {
+        await server.close();
+      }
+    });
+  });
+
   describe("conditionallyExportPacket", () => {
     // A payload large enough to exceed OFFLOAD_IO_PACKET_LENGTH_LIMIT (128KB) so it offloads.
     const largePayload = "x".repeat(200_000);

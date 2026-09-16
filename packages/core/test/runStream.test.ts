@@ -4,6 +4,7 @@ import type {
   StreamSubscription,
   StreamSubscriptionFactory,
 } from "../src/v3/apiClient/runStream.js";
+import type { ApiClient } from "../src/v3/apiClient/index.js";
 import { RunSubscription, SSEStreamSubscription } from "../src/v3/apiClient/runStream.js";
 import type { SubscribeRunRawShape } from "../src/v3/schemas/api.js";
 
@@ -163,6 +164,57 @@ describe("RunSubscription", () => {
       payload: { test: "payload" },
       output: { test: "output" },
     });
+  });
+
+  it("authorizes stored payloads and outputs through their run", async () => {
+    const getRunPacketUrl = vi.fn(async (_runId: string, field: "payload" | "output") => ({
+      presignedUrl: `data:application/json,${encodeURIComponent(
+        JSON.stringify({ source: field })
+      )}`,
+    }));
+    const getPayloadUrl = vi.fn();
+    const client = { getRunPacketUrl, getPayloadUrl } as unknown as ApiClient;
+    const shapes: SubscribeRunRawShape[] = [
+      {
+        id: "123",
+        friendlyId: "run_123",
+        taskIdentifier: "test-task",
+        status: "COMPLETED_SUCCESSFULLY",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        completedAt: new Date(),
+        number: 1,
+        usageDurationMs: 100,
+        costInCents: 0,
+        baseCostInCents: 0,
+        isTest: false,
+        runTags: [],
+        payload: "run_123/payload.json",
+        payloadType: "application/store",
+        output: "run_123-1/output.json",
+        outputType: "application/store",
+        realtimeStreams: [],
+      },
+    ];
+
+    const subscription = new RunSubscription({
+      runShapeStream: createTestShapeStream(shapes),
+      stopRunShapeStream: () => {},
+      streamFactory: new TestStreamSubscriptionFactory(),
+      closeOnComplete: true,
+      abortController: new AbortController(),
+      client,
+    });
+
+    const results = await convertAsyncIterableToArray(subscription);
+
+    expect(results[0]).toMatchObject({
+      payload: { source: "payload" },
+      output: { source: "output" },
+    });
+    expect(getRunPacketUrl).toHaveBeenCalledWith("run_123", "payload", "run_123/payload.json");
+    expect(getRunPacketUrl).toHaveBeenCalledWith("run_123", "output", "run_123-1/output.json");
+    expect(getPayloadUrl).not.toHaveBeenCalled();
   });
 
   it("should keep stream open when closeOnComplete is false", async () => {

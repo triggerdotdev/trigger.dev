@@ -63,6 +63,10 @@ const { action, loader } = createActionApiRoute(
     corsStrategy: "all",
   },
   async ({ body, headers, params, authentication, ability }) => {
+    if (authentication.type !== "PRIVATE" && body.options?.payloadType === "application/store") {
+      return json({ error: "Stored payloads require a private API key" }, { status: 403 });
+    }
+
     const {
       "idempotency-key": idempotencyKey,
       "idempotency-key-ttl": idempotencyKeyTTL,

@@ -70,6 +70,120 @@ describe("API bearer auth — baseline behavior", () => {
   });
 });
 
+describe("Packet download authorization", () => {
+  // The auth harness has no object store. Reaching its configuration error proves that
+  // resource lookup and authorization passed and the handler attempted to presign.
+  const objectStoreError = {
+    error: "Failed to generate presigned URL: Object store is not configured for protocol: default",
+  };
+
+  async function seedStoredRuns() {
+    const seed = await seedTestEnvironment(server.prisma);
+    const first = await seedTestRun(server.prisma, {
+      environmentId: seed.environment.id,
+      projectId: seed.project.id,
+    });
+    const second = await seedTestRun(server.prisma, {
+      environmentId: seed.environment.id,
+      projectId: seed.project.id,
+    });
+
+    await Promise.all([
+      server.prisma.taskRun.update({
+        where: { id: first.run.id },
+        data: {
+          payload: `${first.runFriendlyId}/payload.json`,
+          payloadType: "application/store",
+          output: `${first.runFriendlyId}-1/output.json`,
+          outputType: "application/store",
+        },
+      }),
+      server.prisma.taskRun.update({
+        where: { id: second.run.id },
+        data: {
+          payload: `${second.runFriendlyId}/payload.json`,
+          payloadType: "application/store",
+        },
+      }),
+    ]);
+
+    return { ...seed, first, second };
+  }
+
+  it("authorizes run packet downloads against the token's run scope", async () => {
+    const { environment, first, second } = await seedStoredRuns();
+    const firstJwt = await generateTestJWT(environment, {
+      scopes: [`read:runs:${first.runFriendlyId}`],
+    });
+    const secondJwt = await generateTestJWT(environment, {
+      scopes: [`read:runs:${second.runFriendlyId}`],
+    });
+    const asFirst = { headers: { Authorization: `Bearer ${firstJwt}` } };
+    const asSecond = { headers: { Authorization: `Bearer ${secondJwt}` } };
+
+    const ownPayload = await server.webapp.fetch(
+      `/api/v1/runs/${first.runFriendlyId}/packets/payload`,
+      asFirst
+    );
+    const ownOutput = await server.webapp.fetch(
+      `/api/v1/runs/${first.runFriendlyId}/packets/output`,
+      asFirst
+    );
+    const otherRun = await server.webapp.fetch(
+      `/api/v1/runs/${second.runFriendlyId}/packets/payload`,
+      asFirst
+    );
+    const inlineOutput = await server.webapp.fetch(
+      `/api/v1/runs/${second.runFriendlyId}/packets/output`,
+      asSecond
+    );
+
+    expect(ownPayload.status).toBe(500);
+    expect(await ownPayload.json()).toEqual(objectStoreError);
+    expect(ownOutput.status).toBe(500);
+    expect(await ownOutput.json()).toEqual(objectStoreError);
+    expect(otherRun.status).toBe(403);
+    expect(inlineOutput.status).toBe(404);
+  });
+
+  it("rejects stored-payload pointers from public JWTs on trigger", async () => {
+    const { environment } = await seedTestEnvironment(server.prisma);
+    const jwt = await generateTestJWT(environment, { scopes: ["write:tasks:test-task"] });
+
+    const res = await server.webapp.fetch("/api/v1/tasks/test-task/trigger", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        payload: "run_victim/payload.json",
+        options: { payloadType: "application/store" },
+      }),
+    });
+
+    expect(res.status).toBe(403);
+  });
+
+  it("rejects stored-payload pointers from public JWTs on batch trigger", async () => {
+    const { environment } = await seedTestEnvironment(server.prisma);
+    const jwt = await generateTestJWT(environment, { scopes: ["write:tasks:test-task"] });
+
+    const res = await server.webapp.fetch("/api/v2/tasks/batch", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items: [
+          {
+            task: "test-task",
+            payload: "run_victim/payload.json",
+            options: { payloadType: "application/store" },
+          },
+        ],
+      }),
+    });
+
+    expect(res.status).toBe(403);
+  });
+});
+
 describe("JWT bearer auth — baseline behavior", () => {
   it("valid JWT on JWT-enabled route: auth passes", async () => {
     const { environment } = await seedTestEnvironment(server.prisma);

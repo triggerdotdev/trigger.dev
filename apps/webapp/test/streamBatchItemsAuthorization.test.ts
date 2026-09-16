@@ -45,6 +45,21 @@ describe("streaming batch item authorization", () => {
     ).resolves.toHaveLength(2);
   });
 
+  it("rejects stored packet pointers from delegated batch credentials", async () => {
+    const ability = withActionAliases(buildJwtAbility(["write:batch:batch_123"]));
+    async function* storedPayloadItem() {
+      yield {
+        task: "task-a",
+        payload: "run_victim/payload.json",
+        options: { payloadType: "application/store" },
+      };
+    }
+
+    await expect(
+      collect(authorizeBatchItems(storedPayloadItem(), ability, "batch_123", false))
+    ).rejects.toThrow();
+  });
+
   it("does not delegate batch-wide writes from selected-task credentials", () => {
     const ability = withActionAliases(buildJwtAbility(["batchTrigger:tasks:task-a"]));
 

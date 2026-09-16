@@ -24,6 +24,11 @@ export type ParsePacketOptions = {
   filteredKeys?: string[];
 };
 
+export type RunPacketContext = {
+  runId: string;
+  field: "payload" | "output";
+};
+
 export async function parsePacket(value: IOPacket, options?: ParsePacketOptions): Promise<any> {
   if (!value.data) {
     return undefined;
@@ -75,9 +80,10 @@ export async function parsePacketAsJson(
 
 export async function conditionallyImportAndParsePacket(
   value: IOPacket,
-  client?: ApiClient
+  client?: ApiClient,
+  runPacket?: RunPacketContext
 ): Promise<any> {
-  const importedPacket = await conditionallyImportPacket(value, undefined, client);
+  const importedPacket = await conditionallyImportPacket(value, undefined, client, runPacket);
 
   return await parsePacket(importedPacket);
 }
@@ -220,19 +226,20 @@ async function exportPacket(
 export async function conditionallyImportPacket(
   packet: IOPacket,
   tracer?: TriggerTracer,
-  client?: ApiClient
+  client?: ApiClient,
+  runPacket?: RunPacketContext
 ): Promise<IOPacket> {
   if (packet.dataType !== "application/store") {
     return packet;
   }
 
   if (!tracer) {
-    return await importPacket(packet, undefined, client);
+    return await importPacket(packet, undefined, client, runPacket);
   } else {
     const result = await tracer.startActiveSpan(
       "store.downloadPayload",
       async (span) => {
-        return await importPacket(packet, span, client);
+        return await importPacket(packet, span, client, runPacket);
       },
       {
         attributes: {
@@ -270,7 +277,12 @@ export async function resolvePresignedPacketUrl(
   }
 }
 
-async function importPacket(packet: IOPacket, span?: Span, client?: ApiClient): Promise<IOPacket> {
+async function importPacket(
+  packet: IOPacket,
+  span?: Span,
+  client?: ApiClient,
+  runPacket?: RunPacketContext
+): Promise<IOPacket> {
   if (!packet.data) {
     return packet;
   }
@@ -281,7 +293,9 @@ async function importPacket(packet: IOPacket, span?: Span, client?: ApiClient): 
     return packet;
   }
 
-  const presignedResponse = await $client.getPayloadUrl(packet.data);
+  const presignedResponse = runPacket
+    ? await $client.getRunPacketUrl(runPacket.runId, runPacket.field, packet.data)
+    : await $client.getPayloadUrl(packet.data);
 
   const response = await zodfetch(z.any(), presignedResponse.presignedUrl, undefined, {
     retry: ioRetryOptions,
