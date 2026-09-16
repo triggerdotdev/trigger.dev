@@ -11,7 +11,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ success: false }, { status: 400 });
   }
 
-  await recordNotificationClicked({ notificationId, userId });
+  const recorded = await recordNotificationClicked({ notificationId, userId });
+  if (!recorded) {
+    return json({ success: false }, { status: 404 });
+  }
 
   return json({ success: true });
 }

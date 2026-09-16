@@ -421,12 +421,15 @@ export async function findEnvironmentById(id: string): Promise<AuthenticatedEnvi
 export async function findEnvironmentBySlug(
   projectId: string,
   envSlug: string,
-  userId: string
+  userId: string,
+  db: PrismaClientOrTransaction = $replica
 ): Promise<AuthenticatedEnvironment | null> {
-  const environment = await $replica.runtimeEnvironment.findFirst({
+  const environment = await db.runtimeEnvironment.findFirst({
     where: {
-      projectId: projectId,
+      projectId,
       slug: envSlug,
+      project: { deletedAt: null },
+      organization: { deletedAt: null },
       OR: [
         {
           type: {

@@ -519,10 +519,9 @@ export function UpsertScheduleForm({
                           {environmentTitle(environment, environment.userName)}
                         </span>
                       }
-                      defaultChecked={
-                        schedule?.instances.find((i) => i.environmentId === environment.id) !==
-                        undefined
-                      }
+                      defaultChecked={schedule?.environments.some(
+                        (scheduledEnvironment) => scheduledEnvironment.id === environment.id
+                      )}
                       variant="button"
                     />
                   ))

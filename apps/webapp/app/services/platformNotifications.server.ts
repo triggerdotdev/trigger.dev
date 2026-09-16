@@ -225,18 +225,50 @@ function compareNotifications(
 
 // --- Write: upsert interaction ---
 
-async function upsertInteraction({
-  notificationId,
-  userId,
-  onUpdate,
-  onCreate,
-}: {
-  notificationId: string;
-  userId: string;
-  onUpdate: Record<string, unknown>;
-  onCreate: Record<string, unknown>;
-}) {
-  await prisma.platformNotificationInteraction.upsert({
+async function upsertInteraction(
+  {
+    notificationId,
+    userId,
+    onUpdate,
+    onCreate,
+  }: {
+    notificationId: string;
+    userId: string;
+    onUpdate: Record<string, unknown>;
+    onCreate: Record<string, unknown>;
+  },
+  db: PrismaClientOrTransaction
+) {
+  const notification = await db.platformNotification.findFirst({
+    where: {
+      id: notificationId,
+      surface: "WEBAPP",
+      isDraft: false,
+      startsAt: { lte: new Date() },
+      OR: [
+        { scope: "GLOBAL" },
+        { scope: "USER", userId },
+        {
+          scope: "ORGANIZATION",
+          organization: { deletedAt: null, members: { some: { userId } } },
+        },
+        {
+          scope: "PROJECT",
+          project: {
+            deletedAt: null,
+            organization: { deletedAt: null, members: { some: { userId } } },
+          },
+        },
+      ],
+    },
+    select: { id: true },
+  });
+
+  if (!notification) {
+    return false;
+  }
+
+  await db.platformNotificationInteraction.upsert({
     where: { notificationId_userId: { notificationId, userId } },
     update: onUpdate,
     create: {
@@ -247,53 +279,73 @@ async function upsertInteraction({
       ...onCreate,
     },
   });
+
+  return true;
 }
 
-export async function recordNotificationSeen({
-  notificationId,
-  userId,
-}: {
-  notificationId: string;
-  userId: string;
-}) {
-  return upsertInteraction({
+export async function recordNotificationSeen(
+  {
     notificationId,
     userId,
-    onUpdate: { showCount: { increment: 1 } },
-    onCreate: {},
-  });
+  }: {
+    notificationId: string;
+    userId: string;
+  },
+  db: PrismaClientOrTransaction = prisma
+) {
+  return upsertInteraction(
+    {
+      notificationId,
+      userId,
+      onUpdate: { showCount: { increment: 1 } },
+      onCreate: {},
+    },
+    db
+  );
 }
 
-export async function dismissNotification({
-  notificationId,
-  userId,
-}: {
-  notificationId: string;
-  userId: string;
-}) {
+export async function dismissNotification(
+  {
+    notificationId,
+    userId,
+  }: {
+    notificationId: string;
+    userId: string;
+  },
+  db: PrismaClientOrTransaction = prisma
+) {
   const now = new Date();
-  return upsertInteraction({
-    notificationId,
-    userId,
-    onUpdate: { webappDismissedAt: now },
-    onCreate: { webappDismissedAt: now },
-  });
+  return upsertInteraction(
+    {
+      notificationId,
+      userId,
+      onUpdate: { webappDismissedAt: now },
+      onCreate: { webappDismissedAt: now },
+    },
+    db
+  );
 }
 
-export async function recordNotificationClicked({
-  notificationId,
-  userId,
-}: {
-  notificationId: string;
-  userId: string;
-}) {
-  const now = new Date();
-  return upsertInteraction({
+export async function recordNotificationClicked(
+  {
     notificationId,
     userId,
-    onUpdate: { webappClickedAt: now },
-    onCreate: { webappClickedAt: now },
-  });
+  }: {
+    notificationId: string;
+    userId: string;
+  },
+  db: PrismaClientOrTransaction = prisma
+) {
+  const now = new Date();
+  return upsertInteraction(
+    {
+      notificationId,
+      userId,
+      onUpdate: { webappClickedAt: now },
+      onCreate: { webappClickedAt: now },
+    },
+    db
+  );
 }
 
 // --- Membership verification ---

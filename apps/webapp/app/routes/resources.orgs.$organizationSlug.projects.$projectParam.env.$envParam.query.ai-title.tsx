@@ -13,10 +13,10 @@ import { AIQueryTitleService } from "~/v3/services/aiQueryTitleService.server";
 
 // `/resources/*` isn't covered by the global apiRateLimiter (`/api/*` only),
 // so this endpoint needs its own per-route limiter and length cap.
-const MAX_QUERY_LENGTH = 10_000;
+const QuerySchema = z.string().min(1, "Query is required").max(10_000);
 
 const RequestSchema = z.object({
-  query: z.string().min(1, "Query is required").max(MAX_QUERY_LENGTH),
+  query: QuerySchema,
   queryId: z.string().optional(),
 });
 
@@ -74,10 +74,35 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
 
   const { query, queryId } = submission.data;
+  let queryToTitle = query;
+
+  if (queryId) {
+    const storedQuery = await prisma.customerQuery.findFirst({
+      where: { id: queryId, organizationId: project.organizationId, userId },
+      select: { query: true },
+    });
+
+    if (!storedQuery) {
+      return json(
+        { success: false as const, error: "Query not found", title: null },
+        { status: 404 }
+      );
+    }
+
+    const authoritativeQuery = QuerySchema.safeParse(storedQuery.query);
+    if (!authoritativeQuery.success) {
+      return json(
+        { success: false as const, error: "Invalid request data", title: null },
+        { status: 400 }
+      );
+    }
+
+    queryToTitle = authoritativeQuery.data;
+  }
 
   const service = new AIQueryTitleService(openai(env.AI_RUN_FILTER_MODEL ?? "gpt-4o-mini"));
 
-  const result = await service.generateTitle(query);
+  const result = await service.generateTitle(queryToTitle);
 
   if (!result.success) {
     return json({ success: false as const, error: result.error, title: null }, { status: 500 });
@@ -88,10 +113,17 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   // If a queryId was provided, update the CustomerQuery record with the title
   if (queryId) {
-    await prisma.customerQuery.update({
-      where: { id: queryId, organizationId: project.organizationId },
+    const updated = await prisma.customerQuery.updateMany({
+      where: { id: queryId, organizationId: project.organizationId, userId },
       data: { title },
     });
+
+    if (updated.count === 0) {
+      return json(
+        { success: false as const, error: "Query not found", title: null },
+        { status: 404 }
+      );
+    }
   }
 
   return json({ success: true as const, title, error: null });

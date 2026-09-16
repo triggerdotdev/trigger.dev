@@ -66,7 +66,9 @@ export class EditSchedulePresenter {
       },
       where: {
         slug: projectSlug,
+        deletedAt: null,
         organization: {
+          deletedAt: null,
           members: {
             some: {
               userId,
@@ -76,7 +78,12 @@ export class EditSchedulePresenter {
       },
     });
 
-    const environment = await findEnvironmentBySlug(project.id, environmentSlug, userId);
+    const environment = await findEnvironmentBySlug(
+      project.id,
+      environmentSlug,
+      userId,
+      this.#prismaClient
+    );
     if (!environment) {
       throw new ServiceValidationError("No matching environment for project", 404);
     }
@@ -120,6 +127,7 @@ export class EditSchedulePresenter {
       possibleTimezones: getTimezones(),
       schedule: await this.#getExistingSchedule(
         friendlyId,
+        project.id,
         possibleEnvironments,
         project.organizationId,
         project.organization.featureFlags
@@ -131,7 +139,7 @@ export class EditSchedulePresenter {
   async #getNewSchedulePolicy(organizationId: string, featureFlags: unknown) {
     const [defaultWindowDurationSeconds, freeSchedulePolicy] = await Promise.all([
       resolveNewScheduleDefaultWindowSeconds(this.#prismaClient, organizationId),
-      resolveFreeSchedulePolicyContext({ id: organizationId, featureFlags }),
+      resolveFreeSchedulePolicyContext(this.#prismaClient, { id: organizationId, featureFlags }),
     ]);
 
     return {
@@ -142,6 +150,7 @@ export class EditSchedulePresenter {
 
   async #getExistingSchedule(
     scheduleId: string | undefined,
+    projectId: string,
     possibleEnvironments: Environment[],
     organizationId: string,
     featureFlags: unknown
@@ -174,29 +183,37 @@ export class EditSchedulePresenter {
       },
       where: {
         friendlyId: scheduleId,
+        projectId,
       },
     });
 
     if (!schedule) {
-      return undefined;
+      throw new Response(null, { status: 404 });
     }
 
     const minimumWindowDurationSeconds =
       schedule.minimumWindowDurationSeconds === null
         ? null
         : resolveMinimumWindowOnUpdate(
-            await resolveFreeSchedulePolicyContext({ id: organizationId, featureFlags }),
+            await resolveFreeSchedulePolicyContext(this.#prismaClient, {
+              id: organizationId,
+              featureFlags,
+            }),
             schedule.minimumWindowDurationSeconds
           ).minimumWindowDurationSeconds;
+    const { instances, ...scheduleFields } = schedule;
 
     return {
-      ...schedule,
+      ...scheduleFields,
       minimumWindowDurationSeconds,
       cron: schedule.generatorExpression,
       // The form shows only the user-configured value; a blank field lets a captured default
       // surface through the placeholder copy rather than appearing as a typed value.
       window: formatScheduleWindow(schedule),
-      environments: schedule.instances.flatMap((instance) => {
+      // Whether this schedule carries a captured default, so the form copy can say "clearing
+      // returns to the 60-minute default" only for the new cohort, never for a grandfathered row.
+      hasCapturedDefaultWindow: schedule.defaultWindowDurationSeconds !== null,
+      environments: instances.flatMap((instance) => {
         const environment = possibleEnvironments.find((env) => env.id === instance.environmentId);
         if (!environment) {
           logger.error(

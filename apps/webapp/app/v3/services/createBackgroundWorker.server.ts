@@ -986,7 +986,7 @@ async function prepareDeclarativeSchedules(
     : null;
   const policy =
     hasNewSchedules || hasRestrictedSchedules
-      ? await resolveFreeSchedulePolicyContext({
+      ? await resolveFreeSchedulePolicyContext(prisma, {
           id: environment.organizationId,
           featureFlags: environment.organization.featureFlags,
         })

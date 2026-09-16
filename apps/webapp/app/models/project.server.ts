@@ -1,4 +1,4 @@
-import type { Prisma, Project } from "@trigger.dev/database";
+import type { Prisma, PrismaClientOrTransaction, Project } from "@trigger.dev/database";
 import { customAlphabet, nanoid } from "nanoid";
 import slug from "slug";
 import { $replica, prisma } from "~/db.server";
@@ -146,13 +146,20 @@ export async function createProject(
   return project;
 }
 
-export async function findProjectBySlug(orgSlug: string, projectSlug: string, userId: string) {
+export async function findProjectBySlug(
+  orgSlug: string,
+  projectSlug: string,
+  userId: string,
+  db: PrismaClientOrTransaction = $replica
+) {
   // Find the project scoped to the organization, making sure the user belongs to that org
-  return await $replica.project.findFirst({
+  return await db.project.findFirst({
     where: {
       slug: projectSlug,
+      deletedAt: null,
       organization: {
         slug: orgSlug,
+        deletedAt: null,
         members: { some: { userId } },
       },
     },
@@ -166,13 +173,16 @@ export async function findProjectBySlug(orgSlug: string, projectSlug: string, us
 export async function findProjectWithOrgFlagsBySlug(
   orgSlug: string,
   projectSlug: string,
-  userId: string
+  userId: string,
+  db: PrismaClientOrTransaction = $replica
 ) {
-  return await $replica.project.findFirst({
+  return await db.project.findFirst({
     where: {
       slug: projectSlug,
+      deletedAt: null,
       organization: {
         slug: orgSlug,
+        deletedAt: null,
         members: { some: { userId } },
       },
     },
@@ -180,12 +190,18 @@ export async function findProjectWithOrgFlagsBySlug(
   });
 }
 
-export async function findProjectByRef(externalRef: string, userId: string) {
+export async function findProjectByRef(
+  externalRef: string,
+  userId: string,
+  db: PrismaClientOrTransaction = $replica
+) {
   // Find the project scoped to the organization, making sure the user belongs to that org
-  return await $replica.project.findFirst({
+  return await db.project.findFirst({
     where: {
       externalRef,
+      deletedAt: null,
       organization: {
+        deletedAt: null,
         members: { some: { userId } },
       },
     },

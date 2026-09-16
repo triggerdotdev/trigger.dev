@@ -11,7 +11,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ success: false }, { status: 400 });
   }
 
-  await dismissNotification({ notificationId, userId });
+  const recorded = await dismissNotification({ notificationId, userId });
+  if (!recorded) {
+    return json({ success: false }, { status: 404 });
+  }
 
   return json({ success: true });
 }

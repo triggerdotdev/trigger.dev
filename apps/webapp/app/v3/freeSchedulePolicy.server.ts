@@ -1,6 +1,7 @@
 import { metrics } from "@opentelemetry/api";
-import { flag } from "~/v3/featureFlags.server";
+import { makeFlag } from "~/v3/featureFlags.server";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
+import { type PrismaClientOrTransaction } from "~/db.server";
 import { getCurrentPlan, isBillingConfigured } from "~/services/platform.v3.server";
 import { ServiceValidationError } from "./services/baseService.server";
 import {
@@ -33,10 +34,13 @@ const cronRejectionCounter = meter.createCounter("free_schedule_policy.cron_reje
 });
 
 /** Resolve once per request or sync: getCurrentPlan is an uncached remote call. */
-export async function resolveFreeSchedulePolicyContext(organization: {
-  id: string;
-  featureFlags: unknown;
-}): Promise<FreeSchedulePolicyContext> {
+export async function resolveFreeSchedulePolicyContext(
+  prisma: PrismaClientOrTransaction,
+  organization: {
+    id: string;
+    featureFlags: unknown;
+  }
+): Promise<FreeSchedulePolicyContext> {
   const overrides =
     organization.featureFlags &&
     typeof organization.featureFlags === "object" &&
@@ -44,7 +48,7 @@ export async function resolveFreeSchedulePolicyContext(organization: {
       ? (organization.featureFlags as Record<string, unknown>)
       : undefined;
 
-  const flagEnabled = await flag({
+  const flagEnabled = await makeFlag(prisma)({
     key: FEATURE_FLAG.freeScheduleMinimumWindowEnabled,
     defaultValue: false,
     overrides,

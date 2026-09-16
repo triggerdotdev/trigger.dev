@@ -3,15 +3,22 @@ import { type Prisma, type PrismaClient } from "@trigger.dev/database";
 import { describe, expect, it, vi } from "vitest";
 import {
   createDraftPlatformNotification,
+  dismissNotification,
   getActivePlatformNotifications,
   getAdminNotificationsList,
   getNextCliNotification,
   getRecentChangelogs,
   publishDraftPlatformNotification,
+  recordNotificationClicked,
+  recordNotificationSeen,
   updateDraftPlatformNotification,
 } from "~/services/platformNotifications.server";
 import { CreatePlatformNotificationSchema } from "~/services/platformNotificationSchemas";
 import { isCliVersionEligible } from "~/services/platformNotificationVersionTargeting";
+import {
+  createTestOrgProjectWithMember,
+  createTestUser,
+} from "./fixtures/environmentVariablesFixtures";
 
 // Container provisioning on the first draft tests can exceed the 5s default.
 vi.setConfig({ testTimeout: 60_000 });
@@ -162,6 +169,104 @@ async function seedNotification(
     select: { id: true, friendlyId: true },
   });
 }
+
+describe("platform notification interaction access", () => {
+  postgresTest(
+    "records interactions only for notifications visible to the stored scope",
+    async ({ prisma }) => {
+      const owner = await createTestOrgProjectWithMember(prisma);
+      const other = await createTestOrgProjectWithMember(prisma);
+      const otherUser = await createTestUser(prisma);
+      const now = new Date();
+      const base = {
+        title: `admin_${suffix()}`,
+        payload: webappCardPayload("visible"),
+        surface: "WEBAPP" as const,
+        startsAt: new Date(now.getTime() - HOUR_MS),
+        endsAt: new Date(now.getTime() + HOUR_MS),
+      };
+
+      const global = await prisma.platformNotification.create({
+        data: { ...base, scope: "GLOBAL" },
+      });
+      const user = await prisma.platformNotification.create({
+        data: { ...base, scope: "USER", userId: owner.user.id },
+      });
+      const organization = await prisma.platformNotification.create({
+        data: { ...base, scope: "ORGANIZATION", organizationId: owner.organization.id },
+      });
+      const project = await prisma.platformNotification.create({
+        data: { ...base, scope: "PROJECT", projectId: owner.project.id },
+      });
+
+      const foreignProject = await prisma.platformNotification.create({
+        data: { ...base, scope: "PROJECT", projectId: other.project.id },
+      });
+      const foreignUser = await prisma.platformNotification.create({
+        data: { ...base, scope: "USER", userId: otherUser.id },
+      });
+      const draft = await prisma.platformNotification.create({
+        data: { ...base, scope: "GLOBAL", isDraft: true },
+      });
+      const future = await prisma.platformNotification.create({
+        data: { ...base, scope: "GLOBAL", startsAt: new Date(now.getTime() + HOUR_MS) },
+      });
+
+      const ownerId = owner.user.id;
+      expect(
+        await recordNotificationSeen({ notificationId: global.id, userId: ownerId }, prisma)
+      ).toBe(true);
+      expect(await dismissNotification({ notificationId: user.id, userId: ownerId }, prisma)).toBe(
+        true
+      );
+      expect(
+        await recordNotificationClicked(
+          { notificationId: organization.id, userId: ownerId },
+          prisma
+        )
+      ).toBe(true);
+      expect(
+        await recordNotificationSeen({ notificationId: project.id, userId: ownerId }, prisma)
+      ).toBe(true);
+
+      for (const denied of [foreignProject, foreignUser, draft, future]) {
+        expect(
+          await recordNotificationSeen({ notificationId: denied.id, userId: ownerId }, prisma)
+        ).toBe(false);
+      }
+
+      expect(
+        await prisma.platformNotificationInteraction.count({ where: { userId: ownerId } })
+      ).toBe(4);
+    }
+  );
+
+  postgresTest(
+    "allows late interactions with an authorized historical changelog",
+    async ({ prisma }) => {
+      const owner = await createTestOrgProjectWithMember(prisma);
+      const notification = await prisma.platformNotification.create({
+        data: {
+          title: `admin_${suffix()}`,
+          payload: changelogPayload("historical"),
+          surface: "WEBAPP",
+          scope: "PROJECT",
+          projectId: owner.project.id,
+          startsAt: new Date(Date.now() - 2 * HOUR_MS),
+          endsAt: new Date(Date.now() - HOUR_MS),
+          archivedAt: new Date(),
+        },
+      });
+
+      expect(
+        await recordNotificationClicked(
+          { notificationId: notification.id, userId: owner.user.id },
+          prisma
+        )
+      ).toBe(true);
+    }
+  );
+});
 
 describe("platform notification drafts are hidden from users", () => {
   postgresTest("getActivePlatformNotifications excludes drafts", async ({ prisma }) => {

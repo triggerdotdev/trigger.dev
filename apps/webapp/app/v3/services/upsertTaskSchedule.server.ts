@@ -56,7 +56,7 @@ export class UpsertTaskScheduleService extends BaseService {
       throw new ServiceValidationError("Project not found");
     }
 
-    const policy = await resolveFreeSchedulePolicyContext({
+    const policy = await resolveFreeSchedulePolicyContext(this._prisma, {
       id: project.organizationId,
       featureFlags: project.organization.featureFlags,
     });
