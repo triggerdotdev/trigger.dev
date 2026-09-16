@@ -2373,6 +2373,19 @@ export class RunAttemptSystem {
       name: truncateString(error.name, 1024),
       message: truncateString(error.message, 1024 * 16), // 16kb
       stackTrace: truncateString(error.stackTrace, 1024 * 16), // 16kb
+      /** Causes are supplementary and there can be several, so they share a much
+       *  smaller budget than the error that was actually thrown. */
+      ...(error.causes?.length
+        ? {
+            causes: error.causes.slice(0, 5).map((cause) => ({
+              name: cause.name ? truncateString(cause.name, 1024) : undefined,
+              message: truncateString(cause.message, 1024 * 2), // 2kb
+              stackTrace: cause.stackTrace
+                ? truncateString(cause.stackTrace, 1024 * 4) // 4kb
+                : undefined,
+            })),
+          }
+        : {}),
     };
   }
 

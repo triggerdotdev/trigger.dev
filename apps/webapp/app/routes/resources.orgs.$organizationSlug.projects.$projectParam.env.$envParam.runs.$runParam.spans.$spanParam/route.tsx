@@ -7,18 +7,13 @@ import {
   ClipboardDocumentIcon,
   ClockIcon,
   CloudArrowDownIcon,
-  EnvelopeIcon,
   ExclamationTriangleIcon,
   KeyIcon,
   QueueListIcon,
   SignalIcon,
 } from "@heroicons/react/20/solid";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import {
-  formatDurationMilliseconds,
-  type TaskRunError,
-  taskRunErrorEnhancer,
-} from "@trigger.dev/core/v3";
+import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import { assertNever } from "assert-never";
 import { type ReactNode, useEffect } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
@@ -27,8 +22,8 @@ import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { QueuesIcon } from "~/assets/icons/QueuesIcon";
 import { AdminDebugRun } from "~/components/admin/debugRun";
 import { CodeBlock } from "~/components/code/CodeBlock";
+import { RunError } from "~/components/runs/v3/RunError";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
-import { Feedback } from "~/components/Feedback";
 import { MachineLabelCombo } from "~/components/MachineLabelCombo";
 import { MachineTooltipInfo } from "~/components/MachineTooltipInfo";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -1561,75 +1556,6 @@ function TraceExportMenuItems({ runParam }: { runParam: string }) {
   );
 }
 
-function RunError({ error }: { error: TaskRunError }) {
-  const enhancedError = taskRunErrorEnhancer(error);
-
-  switch (enhancedError.type) {
-    case "STRING_ERROR":
-      return (
-        <div className="flex flex-col gap-2 rounded-sm border border-rose-500/50 px-3 pb-3 pt-2">
-          <Header3 className="text-rose-500">Error</Header3>
-          <Callout variant="error">{enhancedError.raw}</Callout>
-        </div>
-      );
-    case "CUSTOM_ERROR": {
-      return (
-        <div className="flex flex-col gap-2 rounded-sm border border-rose-500/50 px-3 pb-3 pt-2">
-          <CodeBlock
-            showCopyButton={false}
-            showLineNumbers={false}
-            code={enhancedError.raw}
-            maxLines={20}
-          />
-        </div>
-      );
-    }
-    case "BUILT_IN_ERROR":
-    case "INTERNAL_ERROR": {
-      const name = "name" in enhancedError ? enhancedError.name : enhancedError.code;
-      return (
-        <div className="flex flex-col gap-2 rounded-sm border border-rose-500/50 px-3 pb-3 pt-2">
-          <Header3 className="text-rose-500">{name}</Header3>
-          {enhancedError.message && (
-            <Callout variant="error">
-              <pre className="text-wrap font-sans text-sm font-normal text-rose-500 dark:text-rose-200 [word-break:break-word]">
-                {enhancedError.message}
-              </pre>
-            </Callout>
-          )}
-          {enhancedError.link &&
-            (enhancedError.link.magic === "CONTACT_FORM" ? (
-              <Feedback
-                button={
-                  <Button
-                    variant="tertiary/medium"
-                    LeadingIcon={EnvelopeIcon}
-                    leadingIconClassName="text-blue-400"
-                    fullWidth
-                    textAlignLeft
-                  >
-                    {enhancedError.link.name}
-                  </Button>
-                }
-              />
-            ) : (
-              <Callout variant="docs" to={enhancedError.link.href}>
-                {enhancedError.link.name}
-              </Callout>
-            ))}
-          {enhancedError.stackTrace && (
-            <CodeBlock
-              showCopyButton={false}
-              showLineNumbers={false}
-              code={enhancedError.stackTrace}
-              maxLines={20}
-            />
-          )}
-        </div>
-      );
-    }
-  }
-}
 function SpanEntity({ span }: { span: Span }) {
   const isAdmin = useHasAdminAccess();
 

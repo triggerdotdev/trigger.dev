@@ -6,6 +6,10 @@ import {
   sanitizeError,
   shouldRetryError,
   shouldLookupRetrySettings,
+  createErrorTaskError,
+  createJsonErrorObject,
+  formatErrorCauses,
+  taskRunErrorEnhancer,
 } from "../src/v3/errors.js";
 import type { TaskRunError } from "../src/v3/schemas/common.js";
 
@@ -280,5 +284,400 @@ describe("shouldRetryError + shouldLookupRetrySettings", () => {
   it("still does not retry OOM kills (handled by the separate machine-bump path)", () => {
     expect(shouldRetryError(internal("TASK_PROCESS_OOM_KILLED"))).toBe(false);
     expect(shouldRetryError(internal("TASK_PROCESS_MAYBE_OOM_KILLED"))).toBe(false);
+  });
+});
+
+describe("parseError cause chains", () => {
+  const builtIn = (error: unknown) => {
+    const parsed = parseError(error);
+    if (parsed.type !== "BUILT_IN_ERROR") {
+      throw new Error(`expected BUILT_IN_ERROR, got ${parsed.type}`);
+    }
+    return parsed;
+  };
+
+  it("omits causes when there is no cause", () => {
+    expect(builtIn(new Error("boom")).causes).toBeUndefined();
+  });
+
+  it("captures a single Error cause", () => {
+    const cause = new Error("the real problem");
+    cause.name = "TypeError";
+
+    const parsed = builtIn(new Error("A more specific error occurred", { cause }));
+
+    expect(parsed.message).toBe("A more specific error occurred");
+    expect(parsed.causes).toHaveLength(1);
+    expect(parsed.causes![0]!.name).toBe("TypeError");
+    expect(parsed.causes![0]!.message).toBe("the real problem");
+    expect(parsed.causes![0]!.stackTrace).toContain("the real problem");
+  });
+
+  it("flattens a nested chain outermost first", () => {
+    const root = new Error("root");
+    const middle = new Error("middle", { cause: root });
+    const outer = new Error("outer", { cause: middle });
+
+    expect(builtIn(outer).causes!.map((c) => c.message)).toEqual(["middle", "root"]);
+  });
+
+  it("caps the chain at 5 causes", () => {
+    let error = new Error("cause-0");
+    for (let i = 1; i <= 10; i++) {
+      error = new Error(`cause-${i}`, { cause: error });
+    }
+
+    expect(builtIn(error).causes).toHaveLength(5);
+  });
+
+  it("stops on a cyclic cause chain", () => {
+    const a: Error & { cause?: unknown } = new Error("a");
+    const b: Error & { cause?: unknown } = new Error("b", { cause: a });
+    a.cause = b;
+
+    const causes = builtIn(b).causes!;
+    expect(causes.map((c) => c.message)).toEqual(["a"]);
+  });
+
+  it("self-referencing cause does not loop", () => {
+    const a: Error & { cause?: unknown } = new Error("a");
+    a.cause = a;
+
+    expect(builtIn(a).causes).toBeUndefined();
+  });
+
+  it("serializes a string cause", () => {
+    const causes = builtIn(new Error("wrapped", { cause: "just a string" })).causes!;
+
+    expect(causes).toHaveLength(1);
+    expect(causes[0]!.message).toBe("just a string");
+    expect(causes[0]!.name).toBeUndefined();
+  });
+
+  it("serializes a plain-object cause as JSON", () => {
+    const causes = builtIn(new Error("wrapped", { cause: { code: "ENOENT" } })).causes!;
+
+    expect(causes[0]!.message).toBe(JSON.stringify({ code: "ENOENT" }));
+  });
+
+  it("survives a cause that cannot be stringified", () => {
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+
+    const causes = builtIn(new Error("wrapped", { cause: circular })).causes!;
+
+    expect(causes).toHaveLength(1);
+    expect(causes[0]!.message).toBe("[object Object]");
+  });
+
+  it("survives a cause that can be neither serialized nor coerced", () => {
+    const hostile: Record<string, unknown> = Object.create(null);
+    hostile.self = hostile;
+
+    const causes = builtIn(new Error("wrapped", { cause: hostile })).causes!;
+
+    expect(causes).toHaveLength(1);
+    expect(causes[0]!.message).toBe("[unserializable object cause]");
+  });
+
+  it("survives a cause whose toJSON and toString both throw", () => {
+    const hostile = {
+      toJSON() {
+        throw new Error("no json");
+      },
+      toString() {
+        throw new Error("no string");
+      },
+    };
+
+    const causes = builtIn(new Error("wrapped", { cause: hostile })).causes!;
+
+    expect(causes).toHaveLength(1);
+    expect(causes[0]!.message).toBe("[unserializable object cause]");
+  });
+
+  it("survives a cause whose prototype cannot be read", () => {
+    const hostile = new Proxy(
+      {},
+      {
+        getPrototypeOf() {
+          throw new Error("no prototype for you");
+        },
+      }
+    );
+
+    expect(() => parseError(new Error("wrapped", { cause: hostile }))).not.toThrow();
+  });
+
+  it("survives a revoked Proxy cause", () => {
+    const { proxy, revoke } = Proxy.revocable({}, {});
+    revoke();
+
+    expect(() => parseError(new Error("wrapped", { cause: proxy }))).not.toThrow();
+  });
+
+  it("survives a Proxy cause that wraps an Error and throws on every get", () => {
+    const hostile = new Proxy(new Error("real"), {
+      get() {
+        throw new Error("no reads for you");
+      },
+    });
+
+    const causes = builtIn(new Error("wrapped", { cause: hostile })).causes!;
+
+    expect(causes).toHaveLength(1);
+    expect(causes[0]!.message).toBe("[unserializable object cause]");
+  });
+
+  it("keeps the causes already collected when a deeper link is hostile", () => {
+    const { proxy, revoke } = Proxy.revocable({}, {});
+    revoke();
+
+    const inner = new Error("inner", { cause: proxy });
+    const causes = builtIn(new Error("outer", { cause: inner })).causes!;
+
+    expect(causes[0]!.message).toBe("inner");
+  });
+
+  it("drops a cause that carries nothing to show", () => {
+    expect(builtIn(new Error("wrapped", { cause: "" })).causes).toBeUndefined();
+  });
+
+  it("keeps a symbol cause, which JSON.stringify drops", () => {
+    const causes = builtIn(new Error("wrapped", { cause: Symbol("boom") })).causes!;
+
+    expect(causes[0]!.message).toBe("Symbol(boom)");
+  });
+
+  it("ignores a null cause", () => {
+    expect(builtIn(new Error("wrapped", { cause: null })).causes).toBeUndefined();
+  });
+
+  it("gives cause stacks a tighter frame budget than the thrown error", () => {
+    const cause = new Error("deep");
+    cause.stack = buildStack(["Error: deep"], 100);
+    const outer = new Error("outer", { cause });
+    outer.stack = buildStack(["Error: outer"], 100);
+
+    const parsed = builtIn(outer);
+    const frames = (stack: string) =>
+      stack.split("\n").filter((l) => l.trimStart().startsWith("at ")).length;
+
+    expect(frames(parsed.stackTrace)).toBe(50);
+    expect(frames(parsed.causes![0]!.stackTrace!)).toBe(10);
+    expect(parsed.causes![0]!.stackTrace).toContain("frames omitted");
+  });
+
+  it("truncates an oversized cause name", () => {
+    const cause = new Error("inner");
+    cause.name = "N".repeat(5000);
+
+    const causes = builtIn(new Error("wrapped", { cause })).causes!;
+
+    expect(causes[0]!.name!.length).toBe(256);
+  });
+
+  it("truncates oversized cause messages", () => {
+    const cause = new Error("x".repeat(5000));
+    const causes = builtIn(new Error("wrapped", { cause })).causes!;
+
+    expect(causes[0]!.message.length).toBeLessThan(1100);
+    expect(causes[0]!.message).toContain("...[truncated]");
+  });
+});
+
+describe("sanitizeError cause chains", () => {
+  it("strips null bytes and keeps the chain", () => {
+    const result = sanitizeError({
+      type: "BUILT_IN_ERROR",
+      name: "Error",
+      message: "outer",
+      stackTrace: "Error: outer\n    at fn (/path.ts:1:1)",
+      causes: [{ name: "Type\0Error", message: "in\0ner", stackTrace: "TypeError: in\0ner" }],
+    });
+
+    if (result.type !== "BUILT_IN_ERROR") throw new Error("wrong type");
+    expect(result.causes).toHaveLength(1);
+    expect(result.causes![0]!.name).toBe("TypeError");
+    expect(result.causes![0]!.message).toBe("inner");
+    expect(result.causes![0]!.stackTrace).not.toContain("\0");
+  });
+
+  it("leaves causes absent when there were none", () => {
+    const result = sanitizeError({
+      type: "BUILT_IN_ERROR",
+      name: "Error",
+      message: "outer",
+      stackTrace: "",
+    });
+
+    if (result.type !== "BUILT_IN_ERROR") throw new Error("wrong type");
+    expect("causes" in result).toBe(false);
+  });
+
+  it("truncates an oversized cause name on stored rows too", () => {
+    const result = sanitizeError({
+      type: "BUILT_IN_ERROR",
+      name: "Error",
+      message: "outer",
+      stackTrace: "",
+      causes: [{ name: "N".repeat(5000), message: "inner" }],
+    });
+
+    if (result.type !== "BUILT_IN_ERROR") throw new Error("wrong type");
+    expect(result.causes![0]!.name!.length).toBe(256);
+  });
+
+  it("caps an oversized stored chain", () => {
+    const result = sanitizeError({
+      type: "BUILT_IN_ERROR",
+      name: "Error",
+      message: "outer",
+      stackTrace: "",
+      causes: Array.from({ length: 20 }, (_, i) => ({ message: `cause-${i}` })),
+    });
+
+    if (result.type !== "BUILT_IN_ERROR") throw new Error("wrong type");
+    expect(result.causes).toHaveLength(5);
+  });
+});
+
+describe("createErrorTaskError cause chains", () => {
+  it("round-trips a cause chain back onto a native Error", () => {
+    const original = new Error("outer", { cause: new Error("inner", { cause: "root" }) });
+    const rebuilt = createErrorTaskError(parseError(original)) as Error & { cause?: any };
+
+    expect(rebuilt.message).toBe("outer");
+    expect(rebuilt.cause).toBeInstanceOf(Error);
+    expect(rebuilt.cause.message).toBe("inner");
+    expect(rebuilt.cause.cause).toBeInstanceOf(Error);
+    expect(rebuilt.cause.cause.message).toBe("root");
+    expect(rebuilt.cause.cause.cause).toBeUndefined();
+  });
+
+  it("installs no cause property at all when there is no chain", () => {
+    const rebuilt = createErrorTaskError(parseError(new Error("outer"))) as Error;
+
+    expect("cause" in rebuilt).toBe(false);
+  });
+
+  it("installs no cause property for a stored empty chain", () => {
+    const rebuilt = createErrorTaskError({
+      type: "BUILT_IN_ERROR",
+      name: "Error",
+      message: "outer",
+      stackTrace: "",
+      causes: [],
+    }) as Error;
+
+    expect("cause" in rebuilt).toBe(false);
+  });
+});
+
+describe("taskRunErrorEnhancer cause chains", () => {
+  const withCauses = (name: string, message: string): TaskRunError => ({
+    type: "BUILT_IN_ERROR",
+    name,
+    message,
+    stackTrace: "",
+    causes: [{ name: "TypeError", message: "inner" }],
+  });
+
+  it("keeps causes through the deadlock rewrite, the one built-in to built-in branch", () => {
+    const enhanced = taskRunErrorEnhancer(
+      withCauses("TriggerApiError", "Deadlock detected: two runs waiting")
+    );
+
+    expect(enhanced.type).toBe("BUILT_IN_ERROR");
+    if (enhanced.type !== "BUILT_IN_ERROR") throw new Error("wrong type");
+    expect(enhanced.name).toBe("Concurrency Deadlock Error");
+    expect(enhanced.causes).toEqual([{ name: "TypeError", message: "inner" }]);
+  });
+
+  it("keeps causes when the enhancer passes an error through untouched", () => {
+    const enhanced = taskRunErrorEnhancer(withCauses("Error", "just a normal failure"));
+
+    if (enhanced.type !== "BUILT_IN_ERROR") throw new Error("wrong type");
+    expect(enhanced.causes).toEqual([{ name: "TypeError", message: "inner" }]);
+  });
+
+  it("serializes the deadlock rewrite with its causes intact", () => {
+    const serialized = createJsonErrorObject(
+      withCauses("TriggerApiError", "Deadlock detected: two runs waiting")
+    );
+
+    expect(serialized.causes).toEqual([{ name: "TypeError", message: "inner" }]);
+  });
+});
+
+describe("createJsonErrorObject cause chains", () => {
+  it("includes causes in the serialized error", () => {
+    const serialized = createJsonErrorObject(
+      parseError(new Error("outer", { cause: new Error("inner") }))
+    );
+
+    expect(serialized.causes).toHaveLength(1);
+    expect(serialized.causes![0]!.message).toBe("inner");
+  });
+
+  it("omits causes when there are none", () => {
+    expect(createJsonErrorObject(parseError(new Error("outer"))).causes).toBeUndefined();
+  });
+});
+
+describe("createErrorFromCauses stacks", () => {
+  it("does not fabricate a stack pointing into the runtime", () => {
+    const rebuilt = createErrorTaskError({
+      type: "BUILT_IN_ERROR",
+      name: "Error",
+      message: "outer",
+      stackTrace: "Error: outer",
+      causes: [{ message: "a string cause" }],
+    }) as Error & { cause: Error };
+
+    expect(rebuilt.cause.stack).toBe("a string cause");
+    expect(rebuilt.cause.stack).not.toContain("    at ");
+  });
+
+  it("keeps a stored cause stack verbatim", () => {
+    const rebuilt = createErrorTaskError({
+      type: "BUILT_IN_ERROR",
+      name: "Error",
+      message: "outer",
+      stackTrace: "Error: outer",
+      causes: [{ name: "TypeError", message: "inner", stackTrace: "TypeError: inner\n    at fn" }],
+    }) as Error & { cause: Error };
+
+    expect(rebuilt.cause.name).toBe("TypeError");
+    expect(rebuilt.cause.stack).toBe("TypeError: inner\n    at fn");
+  });
+});
+
+describe("formatErrorCauses", () => {
+  it("returns an empty string for no causes", () => {
+    expect(formatErrorCauses(undefined)).toBe("");
+    expect(formatErrorCauses([])).toBe("");
+  });
+
+  it("renders one line per cause by default", () => {
+    expect(
+      formatErrorCauses([
+        { name: "TypeError", message: "inner", stackTrace: "TypeError: inner\n    at fn" },
+        { message: "root" },
+      ])
+    ).toBe("\nCaused by: TypeError: inner\nCaused by: root");
+  });
+
+  it("emits nothing for a cause that carries no name or message", () => {
+    expect(formatErrorCauses([{ message: "" }])).toBe("");
+    expect(formatErrorCauses([{ message: "" }, { message: "real" }])).toBe("\nCaused by: real");
+  });
+
+  it("renders full frames when asked", () => {
+    expect(
+      formatErrorCauses([{ name: "TypeError", message: "inner", stackTrace: "TypeError: inner" }], {
+        stackTrace: true,
+      })
+    ).toBe("\n\nCaused by: TypeError: inner");
   });
 });

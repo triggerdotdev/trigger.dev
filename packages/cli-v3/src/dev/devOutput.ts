@@ -4,6 +4,7 @@ import type { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import {
   createTaskMetadataFailedErrorStack,
   DuplicateTaskIdsError,
+  formatErrorCauses,
   TaskIndexingImportError,
   TaskMetadataParseError,
 } from "@trigger.dev/core/v3/errors";
@@ -296,7 +297,8 @@ function formatErrorLog(error: TaskRunError) {
       return `\n\n${chalkError("X Error:")} ${error.raw}\n`;
     }
     case "BUILT_IN_ERROR": {
-      return `\n\n${error.stackTrace.replace(/^Error: /, chalkError("X Error: "))}\n`;
+      const stackTrace = error.stackTrace.replace(/^Error: /, chalkError("X Error: "));
+      return `\n\n${stackTrace}${formatErrorCauses(error.causes, { stackTrace: true })}\n`;
     }
   }
 }

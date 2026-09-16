@@ -27,6 +27,15 @@ export const AlertRunEmailSchema = z.object({
     message: z.string(),
     name: z.string().optional(),
     stackTrace: z.string().optional(),
+    causes: z
+      .array(
+        z.object({
+          name: z.string().optional(),
+          message: z.string(),
+          stackTrace: z.string().optional(),
+        })
+      )
+      .optional(),
   }),
   runLink: z.string().url(),
   organization: z.string(),
@@ -85,6 +94,16 @@ export default function Email(props: AlertRunEmailProps) {
           {error.stackTrace && (
             <CodeBlock code={error.stackTrace} theme={dracula} lineNumbers language="log" />
           )}
+          {error.causes?.map((cause, index) => (
+            <React.Fragment key={index}>
+              <Text style={paragraphLight}>
+                Caused by: {[cause.name, cause.message].filter(Boolean).join(": ")}
+              </Text>
+              {cause.stackTrace && (
+                <CodeBlock code={cause.stackTrace} theme={dracula} lineNumbers language="log" />
+              )}
+            </React.Fragment>
+          ))}
           <Link
             href={runLink}
             target="_blank"

@@ -118,6 +118,7 @@ const sections: StorySection[] = [
     title: "Runs & logs",
     items: [
       { name: "Run statuses", slug: "run-statuses" },
+      { name: "Run error", slug: "run-error" },
       { name: "Log levels", slug: "log-levels" },
       { name: "Dates & timers", slug: "dates-timers" },
       { name: "Environment label", slug: "environment-label" },

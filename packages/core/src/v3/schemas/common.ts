@@ -147,11 +147,24 @@ export type MachinePreset = z.infer<typeof MachinePreset>;
 
 export type MachinePresetResources = Pick<MachinePreset, "memory" | "cpu">;
 
+/**
+ * One link in a thrown error's `cause` chain, flattened outermost-first.
+ * A cause is not necessarily an Error, so only `message` is guaranteed.
+ */
+export const TaskRunErrorCause = z.object({
+  name: z.string().optional(),
+  message: z.string(),
+  stackTrace: z.string().optional(),
+});
+
+export type TaskRunErrorCause = z.infer<typeof TaskRunErrorCause>;
+
 export const TaskRunBuiltInError = z.object({
   type: z.literal("BUILT_IN_ERROR"),
   name: z.string(),
   message: z.string(),
   stackTrace: z.string(),
+  causes: z.array(TaskRunErrorCause).optional(),
 });
 
 export type TaskRunBuiltInError = z.infer<typeof TaskRunBuiltInError>;
@@ -579,6 +592,7 @@ export const SerializedError = z.object({
   message: z.string(),
   name: z.string().optional(),
   stackTrace: z.string().optional(),
+  causes: z.array(TaskRunErrorCause).optional(),
 });
 
 export type SerializedError = z.infer<typeof SerializedError>;

@@ -1,4 +1,5 @@
-import type { AnyRunShape } from "@trigger.dev/core/v3";
+import type { AnyRunShape, TaskRunErrorCause } from "@trigger.dev/core/v3";
+import { formatErrorCauses } from "@trigger.dev/core/v3/errors";
 import type {
   ListRunResponseItem,
   RetrieveRunResponse,
@@ -8,6 +9,12 @@ import type {
 import type { CursorPageResponse } from "@trigger.dev/core/v3/zodfetch";
 
 const DEFAULT_MAX_TRACE_LINES = 500;
+
+/** Reuse the shared renderer so MCP cannot drift from the other surfaces,
+ *  including its skipping of causes that carry nothing to show. */
+function causeLines(causes: TaskRunErrorCause[] | undefined): string[] {
+  return formatErrorCauses(causes).split("\n").filter(Boolean);
+}
 
 export function formatRun(run: RetrieveRunResponse): string {
   const lines: string[] = [];
@@ -50,6 +57,7 @@ export function formatRun(run: RetrieveRunResponse): string {
   // Error information
   if (run.error) {
     lines.push(`Error: ${run.error.name || "Error"}: ${run.error.message}`);
+    lines.push(...causeLines(run.error.causes));
     if (run.error.stackTrace) {
       lines.push(`Stack: ${run.error.stackTrace.split("\n")[0]}`); // First line only
     }
@@ -115,6 +123,7 @@ export function formatRunShape(run: AnyRunShape): string {
 
   if (run.error) {
     lines.push(`Error: ${run.error.name || "Error"}: ${run.error.message}`);
+    lines.push(...causeLines(run.error.causes));
   }
 
   if (run.metadata) {

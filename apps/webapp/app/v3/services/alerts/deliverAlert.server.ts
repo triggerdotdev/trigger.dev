@@ -9,6 +9,8 @@ import {
 import {
   type RunStatus,
   createJsonErrorObject,
+  formatErrorCauses,
+  type SerializedError,
   type DeploymentFailedWebhook,
   type DeploymentSuccessWebhook,
   isOOMRunError,
@@ -850,7 +852,7 @@ export class DeliverAlertService extends BaseService {
                 type: "section",
                 text: {
                   type: "mrkdwn",
-                  text: this.#wrapInCodeBlock(error.stackTrace ?? error.message),
+                  text: this.#wrapInCodeBlock(this.#slackErrorText(error)),
                 },
               },
               this.#buildRunQuoteBlock(
@@ -1353,6 +1355,15 @@ export class DeliverAlertService extends BaseService {
       type: "CUSTOM_ERROR",
       raw: "No error on run",
     };
+  }
+
+  /** Slack truncates from the end, so the cause chain goes directly under the error
+   *  line, above the frames. Compact form only: full cause stacks would eat the
+   *  budget they are trying to fit inside. */
+  #slackErrorText(error: SerializedError) {
+    const [errorLine, ...frames] = (error.stackTrace ?? error.message).split("\n");
+
+    return [`${errorLine}${formatErrorCauses(error.causes)}`, ...frames].join("\n");
   }
 
   #wrapInCodeBlock(text: string, maxLength = 3000) {

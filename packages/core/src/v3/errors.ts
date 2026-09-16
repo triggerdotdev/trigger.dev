@@ -2,7 +2,12 @@ import type { z } from "zod/v4";
 import type { DeploymentErrorData } from "./schemas/api.js";
 import type { WorkerManifest } from "./schemas/build.js";
 import { ImportTaskFileErrors } from "./schemas/build.js";
-import type { SerializedError, TaskRunError, TaskRunInternalError } from "./schemas/common.js";
+import type {
+  SerializedError,
+  TaskRunError,
+  TaskRunErrorCause,
+  TaskRunInternalError,
+} from "./schemas/common.js";
 import { TaskRunErrorCodes } from "./schemas/common.js";
 import { TaskMetadataFailedToParseData } from "./schemas/messages.js";
 import { links } from "./links.js";
@@ -156,12 +161,27 @@ const MAX_STACK_FRAMES = 50;
 const KEEP_TOP_FRAMES = 5;
 const MAX_STACK_LINE_LENGTH = 1024;
 const MAX_MESSAGE_LENGTH = 1_000;
+const MAX_ERROR_CAUSES = 5;
+/** Causes are supplementary, and there can be MAX_ERROR_CAUSES of them, so they get a
+ *  much tighter frame budget than the error that was actually thrown. */
+const MAX_CAUSE_STACK_FRAMES = 10;
+/** An error name is a class name in practice, so anything longer is junk that
+ *  would otherwise ride along untruncated, once per cause. */
+const MAX_ERROR_NAME_LENGTH = 256;
+
+function truncateName(name: string | undefined): string | undefined {
+  if (!name) return undefined;
+  return name.length > MAX_ERROR_NAME_LENGTH ? name.slice(0, MAX_ERROR_NAME_LENGTH) : name;
+}
 
 /** Truncate a stack trace to at most MAX_STACK_FRAMES frames, keeping
  *  the top (closest to throw) and bottom (entry points) frames.
  *  Individual lines (including message lines) are capped at MAX_STACK_LINE_LENGTH
  *  to prevent OOM from huge error messages embedded in the stack. */
-export function truncateStack(stack: string | undefined): string {
+export function truncateStack(
+  stack: string | undefined,
+  maxFrames: number = MAX_STACK_FRAMES
+): string {
   if (!stack) return "";
 
   const lines = stack.split("\n");
@@ -182,18 +202,19 @@ export function truncateStack(stack: string | undefined): string {
     }
   }
 
-  if (frameLines.length <= MAX_STACK_FRAMES) {
+  if (frameLines.length <= maxFrames) {
     return [...messageLines, ...frameLines].join("\n");
   }
 
-  const keepBottom = MAX_STACK_FRAMES - KEEP_TOP_FRAMES;
-  const omitted = frameLines.length - MAX_STACK_FRAMES;
+  const keepTop = Math.min(KEEP_TOP_FRAMES, maxFrames);
+  const keepBottom = maxFrames - keepTop;
+  const omitted = frameLines.length - maxFrames;
 
   return [
     ...messageLines,
-    ...frameLines.slice(0, KEEP_TOP_FRAMES),
+    ...frameLines.slice(0, keepTop),
     `    ... ${omitted} frames omitted ...`,
-    ...frameLines.slice(-keepBottom),
+    ...(keepBottom > 0 ? frameLines.slice(-keepBottom) : []),
   ].join("\n");
 }
 
@@ -202,6 +223,124 @@ export function truncateMessage(message: string | undefined): string {
   return message.length > MAX_MESSAGE_LENGTH
     ? message.slice(0, MAX_MESSAGE_LENGTH) + "...[truncated]"
     : message;
+}
+
+/** Serialize one `cause` value. A cause is arbitrary user data, so every step here
+ *  can throw: `instanceof` and property reads run Proxy traps, and JSON.stringify
+ *  and String both throw on some values. Losing a cause is acceptable; throwing
+ *  would lose the whole error report. Returns undefined for a cause that carries
+ *  nothing worth rendering. */
+function serializeErrorCause(cause: unknown): TaskRunErrorCause | undefined {
+  try {
+    if (cause instanceof Error) {
+      const name = truncateName(cause.name);
+      const message = truncateMessage(cause.message);
+      const stackTrace = truncateStack(cause.stack, MAX_CAUSE_STACK_FRAMES) || undefined;
+
+      return name || message || stackTrace ? { name, message, stackTrace } : undefined;
+    }
+
+    if (typeof cause === "string") {
+      return cause ? { message: truncateMessage(cause) } : undefined;
+    }
+
+    try {
+      const json = JSON.stringify(cause);
+
+      if (json !== undefined) {
+        return { message: truncateMessage(json) };
+      }
+    } catch (_e) {
+      /** fall through to the coercion attempt */
+    }
+
+    return { message: truncateMessage(String(cause)) };
+  } catch (_e) {
+    return { message: `[unserializable ${typeof cause} cause]` };
+  }
+}
+
+/** Reading `.cause` runs `instanceof` and a property get, either of which can throw
+ *  on a hostile or revoked Proxy. Stop the walk instead of aborting the report. */
+function readErrorCause(value: unknown): unknown {
+  try {
+    return value instanceof Error ? (value as { cause?: unknown }).cause : undefined;
+  } catch (_e) {
+    return undefined;
+  }
+}
+
+/** Flatten an error's `cause` chain, outermost first. Bounded by MAX_ERROR_CAUSES
+ *  and guarded against cycles, since a cause chain is attacker- (or accident-) shaped. */
+function extractErrorCauses(error: Error): TaskRunErrorCause[] | undefined {
+  const causes: TaskRunErrorCause[] = [];
+  const seen = new Set<unknown>([error]);
+
+  let current: unknown = readErrorCause(error);
+
+  /** Every link visited counts against the cap, including ones that serialize to
+   *  nothing, so a chain of empty causes cannot extend the walk. */
+  for (let i = 0; i < MAX_ERROR_CAUSES && current !== undefined && current !== null; i++) {
+    if (typeof current === "object") {
+      if (seen.has(current)) {
+        break;
+      }
+      seen.add(current);
+    }
+
+    const cause = serializeErrorCause(current);
+
+    if (cause) {
+      causes.push(cause);
+    }
+
+    current = readErrorCause(current);
+  }
+
+  return causes.length > 0 ? causes : undefined;
+}
+
+/** Rebuild a native `cause` chain from the flattened form, innermost first. */
+export function createErrorFromCauses(causes: TaskRunErrorCause[]): Error | undefined {
+  let current: Error | undefined;
+
+  for (let i = causes.length - 1; i >= 0; i--) {
+    const cause = causes[i]!;
+    const error: Error = new Error(cause.message, current ? { cause: current } : undefined);
+
+    if (cause.name) {
+      error.name = cause.name;
+    }
+
+    error.stack = cause.stackTrace || [cause.name, cause.message].filter(Boolean).join(": ");
+
+    current = error;
+  }
+
+  return current;
+}
+
+/** Render a flattened cause chain the way Node prints one. `stackTrace` opts into the
+ *  full frames; without it each cause is a single "Caused by:" line. */
+export function formatErrorCauses(
+  causes: TaskRunErrorCause[] | undefined,
+  options?: { stackTrace?: boolean }
+): string {
+  if (!causes || causes.length === 0) {
+    return "";
+  }
+
+  return causes
+    .map((cause) => {
+      if (options?.stackTrace && cause.stackTrace) {
+        return `\n\nCaused by: ${cause.stackTrace}`;
+      }
+
+      const label = [cause.name, cause.message].filter(Boolean).join(": ");
+
+      return label ? `\nCaused by: ${label}` : "";
+    })
+    .join("");
 }
 
 export function parseError(error: unknown): TaskRunError {
@@ -215,11 +354,14 @@ export function parseError(error: unknown): TaskRunError {
   }
 
   if (error instanceof Error) {
+    const causes = extractErrorCauses(error);
+
     return {
       type: "BUILT_IN_ERROR",
       name: error.name,
       message: truncateMessage(error.message),
       stackTrace: truncateStack(error.stack),
+      ...(causes ? { causes } : {}),
     };
   }
 
@@ -246,7 +388,8 @@ export function parseError(error: unknown): TaskRunError {
 export function createErrorTaskError(error: TaskRunError): any {
   switch (error.type) {
     case "BUILT_IN_ERROR": {
-      const e = new Error(error.message);
+      const cause = error.causes?.length ? createErrorFromCauses(error.causes) : undefined;
+      const e = new Error(error.message, cause ? { cause } : undefined);
 
       e.name = error.name;
       e.stack = error.stackTrace;
@@ -278,6 +421,7 @@ export function createJsonErrorObject(error: TaskRunError): SerializedError {
         name: enhancedError.name,
         message: enhancedError.message,
         stackTrace: enhancedError.stackTrace,
+        ...(enhancedError.causes?.length ? { causes: enhancedError.causes } : {}),
       };
     }
     case "STRING_ERROR": {
@@ -298,15 +442,34 @@ export function createJsonErrorObject(error: TaskRunError): SerializedError {
   }
 }
 
+function sanitizeErrorCauses(
+  causes: TaskRunErrorCause[] | undefined
+): TaskRunErrorCause[] | undefined {
+  if (!causes || causes.length === 0) {
+    return undefined;
+  }
+
+  return causes.slice(0, MAX_ERROR_CAUSES).map((cause) => ({
+    name: truncateName(cause.name?.replace(/\0/g, "")),
+    message: truncateMessage(cause.message?.replace(/\0/g, "")),
+    stackTrace: cause.stackTrace
+      ? truncateStack(cause.stackTrace.replace(/\0/g, ""), MAX_CAUSE_STACK_FRAMES) || undefined
+      : undefined,
+  }));
+}
+
 // Removes null characters and truncates oversized fields to prevent OOM
 export function sanitizeError(error: TaskRunError): TaskRunError {
   switch (error.type) {
     case "BUILT_IN_ERROR": {
+      const causes = sanitizeErrorCauses(error.causes);
+
       return {
         type: "BUILT_IN_ERROR",
         message: truncateMessage(error.message?.replace(/\0/g, "")),
         name: error.name?.replace(/\0/g, ""),
         stackTrace: truncateStack(error.stackTrace?.replace(/\0/g, "")),
+        ...(causes ? { causes } : {}),
       };
     }
     case "STRING_ERROR": {
@@ -876,6 +1039,7 @@ export function taskRunErrorEnhancer(error: TaskRunError): EnhanceError<TaskRunE
             name: "Concurrency Deadlock Error",
             message: error.message,
             stackTrace: "",
+            ...(error.causes?.length ? { causes: error.causes } : {}),
             link: {
               name: "Read the docs",
               href: links.docs.concurrency.deadlock,
@@ -1213,7 +1377,7 @@ export function taskRunErrorToString(error: TaskRunError): string {
       return `Internal error [${error.code}]${error.message ? `: ${error.message}` : ""}`;
     }
     case "BUILT_IN_ERROR": {
-      return `${error.name}: ${error.message}`;
+      return `${error.name}: ${error.message}${formatErrorCauses(error.causes)}`;
     }
     case "STRING_ERROR": {
       return error.raw;

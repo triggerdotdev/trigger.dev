@@ -1,5 +1,6 @@
 import type { Attributes } from "@opentelemetry/api";
 import { RandomIdGenerator } from "@opentelemetry/sdk-trace-base";
+import { formatErrorCauses } from "@trigger.dev/core/v3/errors";
 import { parseTraceparent } from "@trigger.dev/core/v3/isomorphic";
 import type {
   ExceptionEventProperties,
@@ -118,8 +119,10 @@ export function createExceptionPropertiesFromError(error: TaskRunError): Excepti
     case "BUILT_IN_ERROR": {
       return {
         type: error.name,
-        message: error.message,
-        stacktrace: error.stackTrace,
+        message: `${error.message}${formatErrorCauses(error.causes)}`,
+        stacktrace: `${error.stackTrace}${formatErrorCauses(error.causes, {
+          stackTrace: true,
+        })}`,
       };
     }
     case "CUSTOM_ERROR": {

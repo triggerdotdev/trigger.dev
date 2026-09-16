@@ -14,6 +14,7 @@ import {
   conditionallyExportPacket,
   conditionallyImportPacket,
   convertToolParametersToSchema,
+  createErrorFromCauses,
   createErrorTaskError,
   defaultRetryOptions,
   flattenIdempotencyKey,
@@ -2746,13 +2747,19 @@ async function triggerAndSubscribe_internal<TIdentifier extends string, TPayload
             // INTERNAL_ERROR, STRING_ERROR) via the completion message and
             // passes it through `createErrorTaskError` to preserve the
             // discriminator. `subscribeToRun` only surfaces a
-            // `SerializedError` (`{ name, message, stackTrace }`) because
-            // `createJsonErrorObject` strips the discriminator before the
-            // record hits the realtime stream. We can't reconstruct the
+            // `SerializedError` (`{ name, message, stackTrace, causes }`)
+            // because `createJsonErrorObject` strips the discriminator before
+            // the record hits the realtime stream. We can't reconstruct the
             // discriminator here without lossy guessing — callers that
             // need exact error-type matching should use `triggerAndWait`
-            // instead; subscribers get message + name only.
-            const error = new Error(run.error?.message ?? `Task ${id} failed (${run.status})`);
+            // instead; subscribers get message, name and the cause chain.
+            const cause = run.error?.causes?.length
+              ? createErrorFromCauses(run.error.causes)
+              : undefined;
+            const error = new Error(
+              run.error?.message ?? `Task ${id} failed (${run.status})`,
+              cause ? { cause } : undefined
+            );
             if (run.error?.name) error.name = run.error.name;
 
             return {
