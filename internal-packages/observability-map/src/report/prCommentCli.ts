@@ -61,13 +61,15 @@ function commitFrom(args: string[]): CommitContext | undefined {
  * Empty output means "post nothing". `--existing-comment` is how the workflow says a comment from an
  * earlier push is already there, so with the delta gone that comment is replaced with a resolved state
  * rather than left standing. `--scan-failed` and `--resolved` take no report at all, for a head scan
- * that produced nothing to read and for a run where the watched paths did not move.
+ * that produced nothing to read and for a run where the watched paths did not move. `--force` posts the
+ * full report even with no delta, which is how the workflow honours a label asking for one on demand.
  */
 export function main(argv: string[], io: Io = processIo): number {
   const args = argv.slice(2);
   const scanFailed = args.includes("--scan-failed");
   const resolved = args.includes("--resolved");
   const existingComment = args.includes("--existing-comment");
+  const force = args.includes("--force");
   const positional = args.filter((a) => !a.startsWith("--"));
   const headPath = positional[0];
   const basePath = positional[1];
@@ -120,7 +122,7 @@ export function main(argv: string[], io: Io = processIo): number {
     return 1;
   }
 
-  if (hasDelta(head, base)) {
+  if (force || hasDelta(head, base)) {
     write(`${renderPrComment(head, base, commit)}\n`);
     return 0;
   }

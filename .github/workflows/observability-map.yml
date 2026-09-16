@@ -8,14 +8,18 @@ on:
   # than that empty diff, because a pull request touching a route and other files, whose author
   # reverts the route change and keeps the rest, still has a non-empty diff that no longer matches.
   # The gating moved into the jobs below instead, where it can read whether a comment exists.
+  # `labeled` is here so adding the force label posts a report on demand without waiting for a push;
+  # the other types are the ordinary route-change path.
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, labeled]
   # The corpus job below is gated to this package's own paths, so a scheduled run is what still
   # scans the tree as it drifts. Nightly rather than per route pull request: a new route can make a
   # known laundering shape start paying, but that is a property of the tree accumulating, not of any
   # one pull request, and it does not need catching within five minutes of the merge.
   schedule:
-    - cron: "0 3 * * *"
+    # Off the top of the hour on purpose: GitHub delays and drops more scheduled runs at :00 under
+    # load, and this nightly is the only tree-drift backstop and has no failure notification.
+    - cron: "17 3 * * *"
   workflow_dispatch:
 
 concurrency:
@@ -46,8 +50,11 @@ jobs:
       # The corpus job's gate. Narrower than the report's on purpose: what the corpus measures is
       # the tool's resistance to laundering, which only an edit to the tool can weaken.
       package: ${{ steps.filter.outputs.package }}
-      # The report job's gate, the union: a route change moves the report as well.
-      report: ${{ steps.filter.outputs.package == 'true' || steps.filter.outputs.routes == 'true' }}
+      # The report job's gate, the union: a route change moves the report as well, and the force label
+      # asks for one when nothing did.
+      report: ${{ steps.filter.outputs.package == 'true' || steps.filter.outputs.routes == 'true' || contains(github.event.pull_request.labels.*.name, 'observability-map') }}
+      # The force label, read once here so the render step posts the full report even at zero delta.
+      forced: ${{ contains(github.event.pull_request.labels.*.name, 'observability-map') }}
       # The id of a marker comment an earlier push left, empty if there is none, and the one source
       # both the render and upsert steps read it from.
       comment: ${{ steps.comment.outputs.id }}
@@ -307,6 +314,7 @@ jobs:
         env:
           SCANNED: ${{ needs.changes.outputs.report }}
           EXISTING_COMMENT: ${{ needs.changes.outputs.comment }}
+          FORCED: ${{ needs.changes.outputs.forced }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           COMPARE_URL: ${{ github.server_url }}/${{ github.repository }}/compare/${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}
         run: |
@@ -355,6 +363,10 @@ jobs:
           flags=()
           if [ -n "$EXISTING_COMMENT" ]; then
             flags=(--existing-comment)
+          fi
+          # The force label posts the full report even when nothing moved.
+          if [ "$FORCED" = "true" ]; then
+            flags+=(--force)
           fi
 
           if ! emit /tmp/head.json "$base" "${flags[@]}"; then

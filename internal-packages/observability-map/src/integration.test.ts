@@ -193,6 +193,31 @@ describe.skipIf(!REPORT_PRESENT)(
 );
 
 /**
+ * The force label posts a report on demand, for a pull request that moved nothing and so would
+ * otherwise get no comment. Text checks over the workflow, the same as the reconcile wiring above.
+ */
+describe.skipIf(!REPORT_PRESENT)("the report workflow honours the force label", () => {
+  it("also starts on a labeled pull request, not only on a push", () => {
+    const trigger = withoutComments(read(REPORT).split("\non:\n")[1]!.split("\nconcurrency:")[0]!);
+    expect(trigger).toContain("labeled");
+  });
+
+  it("reads the observability-map label into a forced output and the report gate", () => {
+    const changes = withoutComments(gate("changes"));
+    expect(changes).toContain("forced:");
+    const label = "contains(github.event.pull_request.labels.*.name, 'observability-map')";
+    expect(changes).toContain(label);
+    expect(gate("report")).toContain("needs.changes.outputs.report == 'true'");
+  });
+
+  it("passes --force to the renderer only when the label forced the run", () => {
+    const render = steps(job("report")).find((step) => step.startsWith("📝 Render comment"))!;
+    expect(render).toContain("FORCED: ${{ needs.changes.outputs.forced }}");
+    expect(render).toMatch(/FORCED" = "true" \]; then\s+flags\+=\(--force\)/);
+  });
+});
+
+/**
  * Asserts the shape that cannot have the stdout-capture bug rather than the pnpm version that happens
  * not to. Why: INTERNALS.md, "Tests, timeouts and CI".
  */

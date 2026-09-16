@@ -80,6 +80,26 @@ describe("prCommentCli", () => {
     }
   });
 
+  // The force label's path: a report on demand even when nothing moved, where the delta path posts
+  // nothing, and a report rather than a resolved state even when a comment already exists.
+  it("posts the full report with --force even when nothing moved", () => {
+    expect(run(unchangedPath, unchangedPath).out).toBe("");
+    const r = run(unchangedPath, unchangedPath, "--force");
+    expect(r.code).toBe(0);
+    expect(r.out.split("\n")[0]).toBe("<!-- observability-map-report -->");
+    expect(r.out).not.toContain("moves the report any more");
+  });
+
+  it("renders a report, not a resolved state, when --force meets an existing comment", () => {
+    expect(run(unchangedPath, unchangedPath, "--existing-comment").out).toContain(
+      "moves the report any more"
+    );
+    const r = run(unchangedPath, unchangedPath, "--existing-comment", "--force");
+    expect(r.code).toBe(0);
+    expect(r.out.split("\n")[0]).toBe("<!-- observability-map-report -->");
+    expect(r.out).not.toContain("moves the report any more");
+  });
+
   it("prints the stale-report comment for --scan-failed without reading any file", () => {
     const r = run("--scan-failed");
     expect(r.code).toBe(0);

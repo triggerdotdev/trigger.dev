@@ -977,11 +977,21 @@ function rootCall(call: ts.CallExpression): ts.CallExpression {
  * The handler functions passed to a builder call. Only the root call of a chain is read: a
  * callback given to a decorator further along the chain (`.withCors(cb)`) is not the route body.
  */
-function collectHandlerFunctions(call: ts.CallExpression, out: EntryFunction[]): void {
+function collectHandlerFunctions(
+  call: ts.CallExpression,
+  out: EntryFunction[],
+  locals: LocalDeclarations,
+  seen: Set<string>
+): void {
   for (const arg of rootCall(call).arguments) {
     const unwrapped = unwrap(arg);
     if (isEntryFunction(unwrapped)) out.push(unwrapped);
     else if (ts.isObjectLiteralExpression(unwrapped)) collectNamedHandlers(unwrapped, out);
+    // A handler handed to the builder by name (`dashboardAction(options, handler)`), resolved back
+    // through `locals` like the alias export below.
+    else if (ts.isIdentifier(unwrapped)) {
+      for (const fn of resolveLocal(unwrapped.text, locals, seen).functions) out.push(fn);
+    }
   }
 }
 
@@ -1031,7 +1041,7 @@ function analyzeInitializer(
 
   if (ts.isCallExpression(target)) {
     const functions: EntryFunction[] = [];
-    collectHandlerFunctions(target, functions);
+    collectHandlerFunctions(target, functions, locals, seen);
     return {
       callee: rootCalleeName(target),
       functions,

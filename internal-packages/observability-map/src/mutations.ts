@@ -145,8 +145,9 @@ function rootCall(call: ts.CallExpression): ts.CallExpression {
 }
 
 /**
- * The handler functions an export's initializer resolves to. `locals` is consulted for the two indirect
- * spellings, `export const action = route.action` and `export const action = handleThing`; `seen` stops
+ * The handler functions an export's initializer resolves to. `locals` is consulted for the indirect
+ * spellings: `export const action = route.action`, the alias `export const action = handleThing`, and a
+ * handler passed to a builder by name (`dashboardAction(options, handleThing)`); `seen` stops
  * `const a = b; const b = a`.
  */
 function fromInitializer(
@@ -165,6 +166,8 @@ function fromInitializer(
       const unwrapped = unwrap(arg);
       if (isEntryFunction(unwrapped)) out.push(unwrapped);
       else if (ts.isObjectLiteralExpression(unwrapped)) collectNamedHandlers(unwrapped, out);
+      // A handler given to the builder by name, resolved through `locals` like the alias case below.
+      else if (ts.isIdentifier(unwrapped)) fromInitializer(unwrapped, out, locals, seen);
     }
     return;
   }
