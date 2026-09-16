@@ -68,15 +68,19 @@ export type S2RealtimeStreamsOptions = {
   }>;
 };
 
-// Ops the issued S2 access token is scoped to. `trim` is a distinct op
-// from `append` even though trim records are appended like any other —
-// without it, `AppendRecord.trim()` 403s with "Operation not permitted".
-// `chat.agent`'s per-turn trim chain depends on it.
-//
-// The fingerprint folds the ops list into the cache key, so any future
-// scope change auto-invalidates pre-deploy cached tokens.
-const S2_TOKEN_OPS = ["append", "create-stream", "trim"] as const;
-const S2_TOKEN_OPS_FINGERPRINT = [...S2_TOKEN_OPS].sort().join(",");
+const S2_APPEND_TOKEN_OPS = ["append", "create-stream"] as const;
+const S2_SESSION_OUT_TOKEN_OPS = [...S2_APPEND_TOKEN_OPS, "trim"] as const;
+const S2_TOKEN_CACHE_VERSION = "v2";
+
+type S2TokenOperation = (typeof S2_SESSION_OUT_TOKEN_OPS)[number];
+type S2TokenStreamScope =
+  | { kind: "exact"; value: string; autoPrefixStreams: false }
+  | { kind: "prefix"; value: string; autoPrefixStreams: true };
+
+type S2TokenScope = {
+  operations: readonly S2TokenOperation[];
+  stream: S2TokenStreamScope;
+};
 
 /**
  * Placeholder handed back as the S2 access token when `skipAccessTokens` is set
@@ -164,10 +168,12 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     runId: string,
     streamId: string
   ): Promise<{ responseHeaders?: Record<string, string> }> {
-    return this.#initializeStreamByName(
-      this.toStreamName(runId, streamId),
-      `/runs/${runId}/${streamId}`
-    );
+    const prefixedName = this.toStreamName(runId, streamId);
+    // Run writers use the relative-name contract shipped by older SDKs.
+    return this.#initializeStreamByName(prefixedName, `/runs/${runId}/${streamId}`, {
+      operations: S2_APPEND_TOKEN_OPS,
+      stream: { kind: "prefix", value: this.streamPrefix, autoPrefixStreams: true },
+    });
   }
 
   /**
@@ -179,24 +185,27 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     io: "out" | "in",
     channel?: string
   ): Promise<{ responseHeaders?: Record<string, string> }> {
-    return this.#initializeStreamByName(
-      this.toSessionStreamName(friendlyId, io, channel),
-      this.#sessionStreamRelativeName(friendlyId, io, channel)
-    );
+    const streamName = this.toSessionStreamName(friendlyId, io, channel);
+    // Exact scopes cannot use S2 auto-prefixing, so clients receive the full name.
+    return this.#initializeStreamByName(streamName, streamName, {
+      operations: io === "out" ? S2_SESSION_OUT_TOKEN_OPS : S2_APPEND_TOKEN_OPS,
+      stream: { kind: "exact", value: streamName, autoPrefixStreams: false },
+    });
   }
 
   async #initializeStreamByName(
     prefixedName: string,
-    relativeName: string
+    clientStreamName: string,
+    tokenScope: S2TokenScope
   ): Promise<{ responseHeaders?: Record<string, string> }> {
     const accessToken = this.skipAccessTokens
       ? this.token || SKIP_ACCESS_TOKENS_SENTINEL
-      : await this.getS2AccessToken(randomUUID());
+      : await this.getS2AccessToken(randomUUID(), tokenScope);
 
     return {
       responseHeaders: {
         "X-S2-Access-Token": accessToken,
-        "X-S2-Stream-Name": this.skipAccessTokens ? prefixedName : relativeName,
+        "X-S2-Stream-Name": this.skipAccessTokens ? prefixedName : clientStreamName,
         "X-S2-Basin": this.basin,
         "X-S2-Flush-Interval-Ms": this.flushIntervalMs.toString(),
         "X-S2-Max-Retries": this.maxRetries.toString(),
@@ -231,8 +240,6 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
   }
 
   async #appendPartByName(part: string, partId: string, s2Stream: string): Promise<number> {
-    this.logger.debug(`S2 appending to stream`, { part, stream: s2Stream });
-
     const recordBody = JSON.stringify({ data: part, id: partId });
     const meteredBytes = Buffer.byteLength(recordBody, "utf8") + S2_RECORD_BASE_OVERHEAD_BYTES;
     if (meteredBytes > S2_MAX_METERED_BYTES) {
@@ -242,8 +249,6 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     const result = await this.s2Append(s2Stream, {
       records: [{ body: recordBody }],
     });
-
-    this.logger.debug(`S2 append result`, { result });
 
     return result.start.seq_num;
   }
@@ -305,8 +310,8 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
 
       if (!res.ok) {
         if (res.status === 404) return names;
-        const text = await res.text().catch(() => "");
-        throw new Error(`S2 listStreams failed: ${res.status} ${res.statusText} ${text}`);
+        await cancelResponseBody(res);
+        throw new Error(`S2 listStreams failed: ${res.status} ${res.statusText}`);
       }
 
       const body = (await res.json()) as {
@@ -351,8 +356,8 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
       if (res.status === 404) {
         return [];
       }
-      const text = await res.text().catch(() => "");
-      throw new Error(`S2 readRecords failed: ${res.status} ${res.statusText} ${text}`);
+      await cancelResponseBody(res);
+      throw new Error(`S2 readRecords failed: ${res.status} ${res.statusText}`);
     }
 
     // Parse the SSE response body to extract records
@@ -527,8 +532,8 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
           "S2-Basin": this.basin,
         },
       });
-    } catch (err) {
-      this.logger.warn("S2 peek last record: fetch failed", { err, stream: s2Stream });
+    } catch {
+      this.logger.warn("S2 peek last record: fetch failed");
       return false;
     }
 
@@ -536,12 +541,10 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
       // 404: stream has never been written to. 416: range not
       // satisfiable (empty stream). Both mean "nothing to peek."
       if (res.status === 404 || res.status === 416) return false;
-      const text = await res.text().catch(() => "");
+      await cancelResponseBody(res);
       this.logger.warn("S2 peek last record failed", {
         status: res.status,
         statusText: res.statusText,
-        text,
-        stream: s2Stream,
       });
       return false;
     }
@@ -562,8 +565,8 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
         }>;
       };
       records = json.records ?? [];
-    } catch (err) {
-      this.logger.warn("S2 peek last record: parse failed", { err, stream: s2Stream });
+    } catch {
+      this.logger.warn("S2 peek last record: parse failed");
       return false;
     }
 
@@ -590,12 +593,6 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     const startSeq = this.parseLastEventId(options?.lastEventId);
 
     const tailFromLatest = startSeq == null && options?.startFrom === "latest";
-
-    this.logger.info(`S2 streaming records from stream`, {
-      stream: s2Stream,
-      startSeq,
-      tailFromLatest,
-    });
 
     // Request SSE stream from S2 and return it directly
     const s2Response = await this.s2StreamRecords(s2Stream, {
@@ -650,8 +647,8 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
         if (res.ok) {
           return (await res.json()) as S2AppendAck;
         }
-        const text = await res.text().catch(() => "");
-        const httpError = new Error(`S2 append failed: ${res.status} ${res.statusText} ${text}`);
+        await cancelResponseBody(res);
+        const httpError = new Error(`S2 append failed: ${res.status} ${res.statusText}`);
         if (res.status >= 400 && res.status < 500) {
           // 4xx — caller-side problem (auth, malformed body, closed stream).
           // Retrying won't help.
@@ -665,7 +662,6 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
       const diagnostics = describeFetchError(lastError);
       if (isLastAttempt) {
         this.logger.error("S2 append failed after retries", {
-          stream,
           attempts: maxAttempts,
           ...diagnostics,
         });
@@ -673,7 +669,6 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
       }
 
       this.logger.warn("S2 append transient failure, retrying", {
-        stream,
         attempt: attempt + 1,
         nextDelayMs: backoffsMs[attempt],
         ...diagnostics,
@@ -684,18 +679,21 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }
 
-  private async getS2AccessToken(id: string): Promise<string> {
+  private async getS2AccessToken(id: string, tokenScope: S2TokenScope): Promise<string> {
     if (!this.cache) {
-      return this.s2IssueAccessToken(id);
+      return this.s2IssueAccessToken(id, tokenScope);
     }
 
-    // Cache key includes basin so per-org basins never collide on
-    // cached tokens, and the ops fingerprint so a scope change in code
-    // (e.g. adding `trim` in #3644) auto-invalidates pre-deploy entries
-    // instead of returning stale tokens for up to 24h.
-    const cacheKey = `${this.basin}:${this.streamPrefix}:${S2_TOKEN_OPS_FINGERPRINT}`;
+    const cacheKey = JSON.stringify([
+      S2_TOKEN_CACHE_VERSION,
+      this.basin,
+      tokenScope.stream.kind,
+      tokenScope.stream.value,
+      [...tokenScope.operations].sort(),
+      tokenScope.stream.autoPrefixStreams,
+    ]);
     const result = await this.cache.accessToken.swr(cacheKey, async () => {
-      return this.s2IssueAccessToken(id);
+      return this.s2IssueAccessToken(id, tokenScope);
     });
 
     if (!result.val) {
@@ -705,7 +703,12 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     return result.val;
   }
 
-  private async s2IssueAccessToken(id: string): Promise<string> {
+  private async s2IssueAccessToken(id: string, tokenScope: S2TokenScope): Promise<string> {
+    const streams =
+      tokenScope.stream.kind === "exact"
+        ? { exact: tokenScope.stream.value }
+        : { prefix: tokenScope.stream.value };
+
     // POST /v1/access-tokens
     const res = await fetch(`${this.accountUrl}/access-tokens`, {
       method: "POST",
@@ -719,19 +722,17 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
           basins: {
             exact: this.basin,
           },
-          ops: [...S2_TOKEN_OPS],
-          streams: {
-            prefix: this.streamPrefix,
-          },
+          ops: [...tokenScope.operations],
+          streams,
         },
         expires_at: new Date(Date.now() + this.accessTokenExpirationInMs).toISOString(),
-        auto_prefix_streams: true,
+        auto_prefix_streams: tokenScope.stream.autoPrefixStreams,
       }),
     });
 
     if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`S2 issue access token failed: ${res.status} ${res.statusText} ${text}`);
+      await cancelResponseBody(res);
+      throw new Error(`S2 issue access token failed: ${res.status} ${res.statusText}`);
     }
     const data = (await res.json()) as S2IssueAccessTokenResponse;
     return data.access_token;
@@ -766,8 +767,8 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     });
 
     if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`S2 stream failed: ${res.status} ${res.statusText} ${text}`);
+      await cancelResponseBody(res);
+      throw new Error(`S2 stream failed: ${res.status} ${res.statusText}`);
     }
 
     const headers = new Headers(res.headers);
@@ -788,6 +789,12 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     const n = Number(digits);
     return Number.isFinite(n) && n >= 0 ? n + 1 : undefined;
   }
+}
+
+async function cancelResponseBody(response: Response): Promise<void> {
+  try {
+    await response.body?.cancel();
+  } catch {}
 }
 
 // Pulls the underlying network error out of undici's generic "fetch failed".
