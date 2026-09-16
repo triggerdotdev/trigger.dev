@@ -1,5 +1,11 @@
 # internal-platform
 
+## 4.6.2
+
+### Patch Changes
+
+- Authorize stored realtime payload and output downloads against their owning run. Large packet hydration continues to work for run-, task-, tag-, and batch-scoped public tokens without permitting arbitrary packet reads. ([`76031b0a1`](https://github.com/triggerdotdev/trigger.dev/commit/76031b0a1e808edf8c0b42644d9184f8ace205b1))
+
 ## 4.6.1
 
 ### Patch Changes

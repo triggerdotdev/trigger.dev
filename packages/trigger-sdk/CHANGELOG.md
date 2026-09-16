@@ -1,5 +1,15 @@
 # @trigger.dev/sdk
 
+## 4.6.2
+
+### Patch Changes
+
+- Show warm idle time and durable waits separately in chat agent traces. Durable waits now open the waitpoint inspector while waiting and after completion. Message span names are shorter, and repeated session IDs no longer crowd message-wait and default output-stream spans. ([`0754931cc`](https://github.com/triggerdotdev/trigger.dev/commit/0754931cca708fc7334470b81c0f446afed7ef0a))
+- chat.agent: the between-turns compaction check now receives the last step's token usage (the context the model actually held) instead of the turn's sum over every tool-calling step, so a single tool-using turn no longer compacts a short conversation. The summed figure is still available as `turnUsage` on the event. A head-start handover whose pending tool call completes under the same message id now replaces its spliced partial in the model lane directly instead of falling back to a full reconversion. ([`04c837569`](https://github.com/triggerdotdev/trigger.dev/commit/04c8375696bacab65ad7bb2d9cf2b9df616b1343))
+- Validate resource IDs when creating scoped public tokens. Explicitly empty IDs are now rejected instead of being interpreted as type-wide permissions. ([`22f8fb2b5`](https://github.com/triggerdotdev/trigger.dev/commit/22f8fb2b5b1d05ac1741facb87873454b7805eac))
+- Updated dependencies:
+  - `@trigger.dev/core@4.6.2`
+
 ## 4.6.1
 
 ### Patch Changes
