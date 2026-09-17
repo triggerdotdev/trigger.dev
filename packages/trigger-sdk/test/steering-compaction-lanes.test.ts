@@ -2,7 +2,7 @@ import { mockChatAgent } from "../src/v3/test/index.js";
 
 import { sessionStreams } from "@trigger.dev/core/v3";
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
-import { simulateReadableStream, stepCountIs, streamText, tool } from "ai";
+import { convertToModelMessages, simulateReadableStream, stepCountIs, streamText, tool } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -103,7 +103,7 @@ describe("chat.agent steering with compaction in the same turn", () => {
       execute: async () => {
         toolEntered = true;
         await toolGate.promise;
-        return "ok";
+        return "COMPACTED_TOOL_SENTINEL";
       },
     });
 
@@ -123,10 +123,18 @@ describe("chat.agent steering with compaction in the same turn", () => {
       },
     });
 
+    const completedTurns: { messages: string; newMessages: string; fullDelta: string }[] = [];
     let compacted = 0;
     const agent = chat.agent({
       id: "steer-compaction",
       pendingMessages: { shouldInject: () => true },
+      onTurnComplete: async ({ messages, newMessages, newUIMessages }) => {
+        completedTurns.push({
+          messages: JSON.stringify(messages),
+          newMessages: JSON.stringify(newMessages),
+          fullDelta: JSON.stringify(await convertToModelMessages(newUIMessages)),
+        });
+      },
       compaction: {
         // Compact once, at the first step boundary of turn 1.
         shouldCompact: () => compacted === 0,
@@ -170,6 +178,18 @@ describe("chat.agent steering with compaction in the same turn", () => {
       // ...instead of the message the summary replaced. This is the assertion a
       // rebuild-based reconciliation fails.
       expect(turn2).not.toContain("EARLY-SENTINEL");
+      // The current turn's tool response was summarized too. Keeping the old
+      // user message out is insufficient if completion re-appends every step.
+      expect(allPrompts[1]).not.toContain("COMPACTED_TOOL_SENTINEL");
+      expect(turn2Raw).not.toContain("COMPACTED_TOOL_SENTINEL");
+      expect(turn2Raw).not.toContain('"toolCallId":"tc-1"');
+
+      // Append-only history consumers still receive the complete turn delta.
+      expect(completedTurns[0]?.messages).not.toContain("COMPACTED_TOOL_SENTINEL");
+      expect(completedTurns[0]?.newMessages).toContain("COMPACTED_TOOL_SENTINEL");
+      expect(completedTurns[0]?.newMessages).toContain('"toolCallId":"tc-1"');
+      expect(completedTurns[0]?.newMessages).toContain("done");
+      expect(completedTurns[0]?.newMessages).toEqual(completedTurns[0]?.fullDelta);
     } finally {
       toolGate.resolve();
       await harness.close();

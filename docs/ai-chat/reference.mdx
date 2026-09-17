@@ -299,14 +299,16 @@ Passed to the `onTurnStart` callback.
 
 Passed to the `onTurnComplete` callback.
 
+Same-ID approval and handover continuations include a full replacement assistant response. Persist `messages` for future model context, or upsert `newUIMessages` by message ID for the visible conversation. `newMessages` includes steps summarized during the turn and is not an append-only delta for these continuations.
+
 | Field                | Type                              | Description                                          |
 | -------------------- | --------------------------------- | ---------------------------------------------------- |
 | `ctx`                | `TaskRunContext`                  | Full task run context — see [Task context](#task-context-ctx) |
 | `chatId`             | `string`                          | Chat session ID                                      |
 | `messages`           | `ModelMessage[]`                  | Full accumulated conversation (model format)         |
 | `uiMessages`         | `UIMessage[]`                     | Full accumulated conversation (UI format)            |
-| `newMessages`        | `ModelMessage[]`                  | Only this turn's messages (model format)             |
-| `newUIMessages`      | `UIMessage[]`                     | Only this turn's messages (UI format)                |
+| `newMessages`        | `ModelMessage[]`                  | This turn's model messages, including full same-ID replacement responses |
+| `newUIMessages`      | `UIMessage[]`                     | New or updated UI messages; upsert by message ID |
 | `responseMessage`    | `UIMessage \| undefined`          | The assistant's response for this turn               |
 | `rawResponseMessage` | `UIMessage \| undefined`          | Raw response before abort cleanup                    |
 | `turn`               | `number`                          | Turn number (0-indexed)                              |

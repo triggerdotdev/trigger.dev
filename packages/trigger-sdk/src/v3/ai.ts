@@ -93,6 +93,7 @@ import {
   type TranscriptStorage,
   type TranscriptStorageContext,
 } from "./transcriptStorage.js";
+import { responseAfterCompaction } from "./compactionResponse.js";
 
 let transcriptStorageOverride: TranscriptStorage<unknown> | undefined;
 
@@ -3357,6 +3358,8 @@ const chatOverrideModelMessagesKey = locals.create<ModelMessage[]>("chat.overrid
 interface CompactionState {
   summary: string;
   baseResponseMessageCount: number;
+  /** Completed steps summarized this turn; unlike message counts, matches UI step markers. */
+  baseResponseStepCount: number;
 }
 
 /** @internal */
@@ -4173,6 +4176,7 @@ async function chatCompact(
           locals.set(chatCompactionStateKey, {
             summary,
             baseResponseMessageCount: currentStep.response.messages.length,
+            baseResponseStepCount: steps.length,
           });
 
           // Set model-only override — UI messages stay intact for persistence.
@@ -5903,13 +5907,17 @@ export type TurnCompleteEvent<TClientData = unknown, TUIM extends UIMessage = UI
    */
   uiMessages: TUIM[];
   /**
-   * Only the new model messages from this turn (user message(s) + assistant response).
-   * Useful for appending to an existing conversation record.
+   * Model messages for this turn's user message(s) and complete assistant response,
+   * including steps summarized during the turn. Same-ID approval and handover
+   * continuations include the full replacement response, so these are not always
+   * an append-only delta. Persist `messages` for future model context, or upsert
+   * `newUIMessages` by ID for the visible conversation.
    */
   newMessages: ModelMessage[];
   /**
-   * Only the new UI messages from this turn (user message(s) + assistant response).
-   * Useful for inserting individual message records instead of overwriting the full history.
+   * New or updated UI messages from this turn (user message(s) + assistant response).
+   * Upsert by message ID: approval and handover continuations can replace an
+   * existing assistant message.
    */
   newUIMessages: TUIM[];
   /** The assistant's response for this turn, with aborted parts cleaned up when `stopped` is true. Undefined if `pipeChat` was used manually. */
@@ -9425,6 +9433,14 @@ function chatAgent<
                   // Check if compaction set a model-only override (preserves UI messages).
                   // Apply compactUIMessages/compactModelMessages callbacks if configured.
                   const modelOnlyOverride = locals.get(chatOverrideModelMessagesKey);
+                  const responseCompaction = modelOnlyOverride
+                    ? locals.get(chatCompactionStateKey)
+                    : undefined;
+                  // Capture the original assistant before compactUIMessages can remove it.
+                  const originalResponse =
+                    responseCompaction && capturedResponseMessage
+                      ? accumulatedUIMessages.find((m) => m.id === capturedResponseMessage?.id)
+                      : undefined;
                   if (modelOnlyOverride) {
                     const compactionSummary = locals.get(chatCompactionStateKey)?.summary ?? "";
                     const taskCompactionConfig = locals.get(chatAgentCompactionKey);
@@ -9529,10 +9545,37 @@ function chatAgent<
                       // rationale (TRI-9137).
                       recordToolCallIdsFromMessage(capturedResponseMessage);
                       try {
+                        const responseForModel = responseAfterCompaction(
+                          capturedResponseMessage,
+                          responseCompaction?.baseResponseStepCount,
+                          originalResponse
+                        );
+                        // Preserve the complete persistence response, including same-ID
+                        // replacements whose old tool parts can contain new results.
+                        // Convert prefix and suffix separately so each tool output is
+                        // converted once, while only the suffix enters model context.
+                        const responsePrefixMessages = responseCompaction
+                          ? await toModelMessages([
+                              stripProviderMetadata({
+                                ...capturedResponseMessage,
+                                parts: capturedResponseMessage.parts.slice(
+                                  0,
+                                  capturedResponseMessage.parts.length -
+                                    responseForModel.parts.length
+                                ),
+                              }),
+                            ])
+                          : [];
                         const responseModelMessages = await toModelMessages([
-                          stripProviderMetadata(capturedResponseMessage),
+                          stripProviderMetadata(responseForModel),
                         ]);
-                        if (existingIdx !== -1) {
+                        if (responseCompaction) {
+                          // The summary already replaced the original response, including
+                          // a same-ID approval/handover prefix. Replacing its old model run
+                          // would miss and fall back to the full, uncompacted UI history.
+                          accumulatedMessages.push(...responseModelMessages);
+                          locals.set(chatHandoverSplicedRunKey, undefined);
+                        } else if (existingIdx !== -1) {
                           const spliced = locals.get(chatHandoverSplicedRunKey);
                           const splicedRun =
                             spliced && previousAtIdx && spliced.id === previousAtIdx.id
@@ -9559,7 +9602,10 @@ function chatAgent<
                         } else {
                           accumulatedMessages.push(...responseModelMessages);
                         }
-                        turnNewModelMessages.push(...responseModelMessages);
+                        turnNewModelMessages.push(
+                          ...responsePrefixMessages,
+                          ...responseModelMessages
+                        );
                       } catch {
                         // Conversion failed — skip accumulation for this turn
                       }

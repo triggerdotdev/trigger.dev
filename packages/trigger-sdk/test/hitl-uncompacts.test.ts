@@ -1,7 +1,7 @@
 import { mockChatAgent } from "../src/v3/test/index.js";
 
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
-import { simulateReadableStream, streamText, tool } from "ai";
+import { convertToModelMessages, simulateReadableStream, streamText, tool } from "ai";
 import type { UIMessage } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import { describe, expect, it } from "vitest";
@@ -155,4 +155,129 @@ describe("a tool-approval turn after compaction", () => {
       await harness.close();
     }
   });
+});
+
+describe("same-ID approval response persistence", () => {
+  it.each([false, true])(
+    "keeps the complete replacement response with inner compaction=%s",
+    { timeout: 30_000 },
+    async (compact) => {
+      const prompts: string[] = [];
+      const turns: {
+        uiMessages: UIMessage[];
+        newMessages: unknown;
+        fullReplacement: unknown;
+      }[] = [];
+      let step = 0;
+      const model = new MockLanguageModelV3({
+        doStream: async ({ prompt }) => {
+          prompts.push(JSON.stringify(prompt));
+          const n = step++;
+          const chunks =
+            n === 0
+              ? approvalToolCall("tc-approval")
+              : n === 1
+                ? [
+                    {
+                      type: "tool-call" as const,
+                      toolCallId: "tc-current",
+                      toolName: "lookup",
+                      input: "{}",
+                    },
+                    {
+                      type: "finish" as const,
+                      finishReason: { unified: "tool-calls" as const, raw: "tool-calls" },
+                      usage: USAGE,
+                    },
+                  ]
+                : textChunks(`answer-${n}`);
+          return { stream: simulateReadableStream({ chunks }) };
+        },
+      });
+      const agent = chat.agent({
+        id: `approval-response-persistence-${compact}`,
+        ...(compact
+          ? {
+              compaction: {
+                shouldCompact: ({ source, turn }) => source === "inner" && turn === 1,
+                summarize: async () => "APPROVAL_SUMMARY",
+              },
+            }
+          : {}),
+        onTurnComplete: async ({ uiMessages, newMessages, newUIMessages }) => {
+          turns.push({
+            uiMessages: structuredClone(uiMessages),
+            newMessages: structuredClone(newMessages),
+            fullReplacement: await convertToModelMessages(newUIMessages, {
+              ignoreIncompleteToolCalls: true,
+            }),
+          });
+        },
+        run: async ({ messages, signal }) =>
+          streamText({
+            model,
+            messages,
+            abortSignal: signal,
+            tools: {
+              risky: tool({
+                inputSchema: z.object({ what: z.string() }),
+                needsApproval: true,
+                execute: async () => "NEW_APPROVAL_RESULT",
+              }),
+              lookup: tool({
+                inputSchema: z.object({}),
+                execute: async () => "CURRENT_STEP_RESULT",
+              }),
+            },
+            ...chat.toStreamTextOptions(),
+            stopWhen: ({ steps }) => steps.length >= 5,
+          }),
+      });
+      const harness = mockChatAgent(agent, { chatId: `approval-response-persistence-${compact}` });
+      try {
+        await harness.sendMessage(userMessage("approve this", "u-1"));
+        await waitFor(() => turns.length >= 1, "approval request hook");
+        const original = turns[0]!.uiMessages.at(-1)!;
+        const approval = original.parts.find((p) => p.type === "tool-risky") as {
+          toolCallId: string;
+          approval: { id: string };
+        };
+        await harness.sendMessage({
+          id: original.id,
+          role: "assistant",
+          parts: [
+            {
+              type: "tool-risky",
+              toolCallId: approval.toolCallId,
+              state: "approval-responded",
+              approval: { id: approval.approval.id, approved: true },
+            },
+          ],
+        } as unknown as UIMessage);
+        await waitFor(() => turns.length >= 2, "approval continuation hook");
+        const continued = turns[1]!;
+        expect(continued.uiMessages.at(-1)!.id).toBe(original.id);
+        // Continuations replace the original assistant. Its old tool part now
+        // holds a new result, so dropping the original parts would lose it.
+        expect(JSON.stringify(turns[0]!.newMessages)).not.toContain("NEW_APPROVAL_RESULT");
+        expect(JSON.stringify(continued.newMessages)).toContain("NEW_APPROVAL_RESULT");
+        expect(JSON.stringify(continued.newMessages)).toContain("CURRENT_STEP_RESULT");
+        expect(JSON.stringify(continued.newMessages)).toContain("answer-2");
+        expect(continued.newMessages).toEqual(continued.fullReplacement);
+        await harness.sendMessage(userMessage("follow up", "u-2"));
+        const next = prompts.at(-1)!;
+        if (compact) {
+          expect(next).toContain("APPROVAL_SUMMARY");
+          expect(next).not.toContain("NEW_APPROVAL_RESULT");
+          expect(next).not.toContain("CURRENT_STEP_RESULT");
+        } else {
+          expect(next).toContain("NEW_APPROVAL_RESULT");
+          expect(next).toContain("CURRENT_STEP_RESULT");
+        }
+        expect(next).toContain("answer-2");
+      } finally {
+        await harness.close();
+      }
+    }
+  );
 });
