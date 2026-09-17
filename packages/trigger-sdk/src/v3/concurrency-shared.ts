@@ -11,7 +11,7 @@
 export function triggerConcurrencyBody(concurrency: string | string[] | undefined): {
   concurrency?: string[];
 } {
-  if (!concurrency) {
+  if (concurrency === undefined) {
     return {};
   }
   const limits = Array.isArray(concurrency) ? concurrency : [concurrency];

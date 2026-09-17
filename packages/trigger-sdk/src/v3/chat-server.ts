@@ -545,7 +545,7 @@ async function openHandoverSession(opts: {
     },
     ...(opts.triggerConfig?.machine ? { machine: opts.triggerConfig.machine } : {}),
     ...(opts.triggerConfig?.queue ? { queue: opts.triggerConfig.queue } : {}),
-    ...(opts.triggerConfig?.concurrency
+    ...(opts.triggerConfig?.concurrency !== undefined
       ? triggerConcurrencyBody(opts.triggerConfig.concurrency)
       : {}),
     ...(opts.triggerConfig?.concurrencyKey !== undefined

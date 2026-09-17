@@ -11822,7 +11822,7 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
       ...(options?.triggerConfig?.queue || params.triggerConfig?.queue
         ? { queue: params.triggerConfig?.queue ?? options?.triggerConfig?.queue }
         : {}),
-      ...(concurrency ? triggerConcurrencyBody(concurrency) : {}),
+      ...(concurrency !== undefined ? triggerConcurrencyBody(concurrency) : {}),
       ...(concurrencyKey !== undefined ? { concurrencyKey } : {}),
       tags,
       ...(maxAttempts !== undefined ? { maxAttempts } : {}),

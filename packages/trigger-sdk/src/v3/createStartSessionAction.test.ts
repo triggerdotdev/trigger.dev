@@ -211,6 +211,27 @@ describe("chat.createStartSessionAction — runtime", () => {
     expect(lastStartBody).toBeUndefined();
   });
 
+  it("rejects an empty-string concurrency instead of silently dropping it", async () => {
+    installStartFixture();
+
+    const emptyDefault = chat.createStartSessionAction("fake-chat", {
+      triggerConfig: { concurrency: "" as unknown as string[] },
+    });
+    await expect(emptyDefault({ chatId: "chat-empty-limit" })).rejects.toThrow(
+      /non-empty strings/
+    );
+
+    const emptyPerCall = chat.createStartSessionAction("fake-chat");
+    await expect(
+      emptyPerCall({
+        chatId: "chat-empty-limit-2",
+        triggerConfig: { concurrency: "" as unknown as string[] },
+      })
+    ).rejects.toThrow(/non-empty strings/);
+
+    expect(lastStartBody).toBeUndefined();
+  });
+
   it("server-mints override tokens for additional API keys", async () => {
     const requests: Array<{ url: string; body: unknown }> = [];
     const start = chat.createStartSessionAction("fake-chat", {
