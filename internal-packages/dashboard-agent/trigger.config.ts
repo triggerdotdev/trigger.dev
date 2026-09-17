@@ -15,6 +15,7 @@ import { aptGet } from "@trigger.dev/build/extensions/core";
  */
 export default defineConfig({
   project: process.env.TRIGGER_DASHBOARD_AGENT_PROJECT_REF ?? "",
+  runtime: "node-24",
   dirs: ["./src"],
   // Keep test + eval files out of the task index. They import vitest, which
   // throws at registration. Setting this replaces the built-in defaults, so the
