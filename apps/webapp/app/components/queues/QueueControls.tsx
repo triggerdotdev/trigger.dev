@@ -239,17 +239,24 @@ export function QueueOverrideConcurrencyButton({
     totalValue !== "" && (!Number.isInteger(totalNumber) || totalNumber < 1 || totalOverCap);
 
   /** Cross-field check on the pair that would be in effect after submit: a blank field keeps
-   * its current value. A per-key limit above the total could never be reached, so it's a
-   * mistake worth blocking. */
+   * its current value. A per-key limit above the total could never be reached, so creating
+   * that state is blocked. The API treats the bounds independently, so a pair that already
+   * conflicts stays editable: improvements submit with a notice instead of being trapped. */
   const resultingPerKey = perKeyValue !== "" ? perKeyNumber : queue.limits.perKey.current;
   const resultingTotal = totalValue !== "" ? totalNumber : (queue.limits.total?.current ?? null);
-  const boundsConflict =
+  const resultingConflict =
     hasTotal &&
     !perKeyInvalid &&
     !totalInvalid &&
     resultingPerKey !== null &&
     resultingTotal !== null &&
     resultingPerKey > resultingTotal;
+  const currentConflict =
+    hasTotal &&
+    queue.limits.perKey.current !== null &&
+    queue.limits.total != null &&
+    queue.limits.perKey.current > queue.limits.total.current;
+  const boundsConflict = resultingConflict && !currentConflict;
 
   const submitDisabled = hasTotal
     ? isLoading ||
@@ -421,6 +428,11 @@ export function QueueOverrideConcurrencyButton({
                     The per-key limit ({resultingPerKey}) can't exceed the total limit (
                     {resultingTotal}).
                   </FormError>
+                ) : resultingConflict ? (
+                  <Hint className="text-warning">
+                    The per-key limit ({resultingPerKey}) still exceeds the total limit (
+                    {resultingTotal}), so only the total applies.
+                  </Hint>
                 ) : null}
               </>
             ) : (
