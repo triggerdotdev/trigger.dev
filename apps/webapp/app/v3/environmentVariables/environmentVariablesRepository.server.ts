@@ -88,9 +88,11 @@ export type EnvironmentVariableValueRow = {
 /**
  * The single code path that removes value rows together with their secret store entries and
  * secret references, in a fixed number of statements for any number of rows. A variable left
- * with no values afterwards is removed as well; under READ COMMITTED a value created for that
- * variable at the same moment can still be swept away with it, a pre-existing window that this
- * narrows but does not close.
+ * with no values afterwards is removed as well. The affected variable rows are locked FOR UPDATE
+ * first: inserting a value takes a FOR KEY SHARE lock on its variable row, which conflicts with
+ * FOR UPDATE, so an in-flight insert makes the lock wait and the emptiness check then sees the
+ * new value, while an insert that starts later waits for the commit and recreates the variable
+ * through its upsert.
  */
 export async function deleteEnvironmentVariableValueRows(
   tx: PrismaClientOrTransaction,
@@ -140,9 +142,13 @@ export async function deleteEnvironmentVariableValueRows(
     },
   });
 
+  const variableIds = boundedIn(deleted.map((row) => row.variableId));
+  await tx.$queryRaw<{ id: string }[]>`
+    SELECT "id" FROM "EnvironmentVariable" WHERE "id" IN (${Prisma.join(variableIds)}) FOR UPDATE
+  `;
   await tx.environmentVariable.deleteMany({
     where: {
-      id: { in: boundedIn(deleted.map((row) => row.variableId)) },
+      id: { in: boundedIn(variableIds) },
       values: { none: {} },
     },
   });
@@ -1081,7 +1087,8 @@ export class EnvironmentVariablesRepository implements Repository {
           },
         });
 
-        const rows: EnvironmentVariableValueRow[] = [];
+        let rows: EnvironmentVariableValueRow[] = [];
+        const parentValueIdByVariable = new Map<string, string>();
         for (const variable of variables) {
           const own = variable.values.find((v) => v.environmentId === options.environmentId);
           if (!own) {
@@ -1090,11 +1097,14 @@ export class EnvironmentVariablesRepository implements Repository {
           if (options.onlyWrittenBy && !isSameUpdater(own.lastUpdatedBy, options.onlyWrittenBy)) {
             continue;
           }
-          if (
-            parentEnvironmentId &&
-            !variable.values.some((v) => v.environmentId === parentEnvironmentId)
-          ) {
-            continue;
+          if (parentEnvironmentId) {
+            const parentValue = variable.values.find(
+              (v) => v.environmentId === parentEnvironmentId
+            );
+            if (!parentValue) {
+              continue;
+            }
+            parentValueIdByVariable.set(variable.id, parentValue.id);
           }
           rows.push({
             id: own.id,
@@ -1103,6 +1113,19 @@ export class EnvironmentVariablesRepository implements Repository {
             environmentId: options.environmentId,
             key: variable.key,
             secretReferenceKey: own.valueReference?.key,
+          });
+        }
+
+        if (parentEnvironmentId && rows.length > 0) {
+          const lockedParentValues = await tx.$queryRaw<{ id: string }[]>`
+            SELECT "id" FROM "EnvironmentVariableValue"
+            WHERE "id" IN (${Prisma.join(boundedIn(Array.from(parentValueIdByVariable.values())))})
+            FOR UPDATE
+          `;
+          const lockedIds = new Set(lockedParentValues.map((value) => value.id));
+          rows = rows.filter((row) => {
+            const parentValueId = parentValueIdByVariable.get(row.variableId);
+            return parentValueId !== undefined && lockedIds.has(parentValueId);
           });
         }
 

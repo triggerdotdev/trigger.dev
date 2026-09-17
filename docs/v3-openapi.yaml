@@ -2248,7 +2248,7 @@ paths:
                       type: string
                   skipped:
                     type: array
-                    description: Keys that were left untouched, because the environment had no value for them, a filter excluded them, or their value changed while the delete ran. A skip caused by a concurrent change is transient and a retry can delete the key.
+                    description: Keys that were left untouched, because the environment had no value for them, a filter excluded them, or their value changed while the delete ran. A skip caused by a concurrent change is transient and a retry can delete the key. The delete is idempotent, so a retry of a request whose first attempt committed reports the keys that attempt deleted as skipped.
                     items:
                       type: string
                 required: ["deleted", "skipped"]

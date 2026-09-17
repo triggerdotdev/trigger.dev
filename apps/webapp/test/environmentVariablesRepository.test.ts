@@ -1093,4 +1093,60 @@ describe("EnvironmentVariablesRepository value deletes", () => {
       { key: "D", value: "d" },
     ]);
   });
+
+  postgresTest(
+    "onlyShadowingParent skips a key whose parent value was removed beforehand",
+    async ({ prisma }) => {
+      const { project, parent, branch, repository, write, ownKeys } =
+        await createBranchWithParent(prisma);
+      await write(branch.id, { SHARED: "branch-copy", STILL_SHARED: "branch-copy" }, vercel);
+      await write(parent.id, { SHARED: "root", STILL_SHARED: "root" }, vercel);
+      await prisma.environmentVariableValue.deleteMany({
+        where: { environmentId: parent.id, variable: { key: "SHARED" } },
+      });
+
+      expect(
+        await repository.deleteValues(project.id, {
+          environmentId: branch.id,
+          keys: ["SHARED", "STILL_SHARED"],
+          onlyShadowingParent: true,
+        })
+      ).toEqual({ deleted: ["STILL_SHARED"], skipped: ["SHARED"] });
+      expect(await ownKeys(branch.id)).toEqual(["SHARED"]);
+    }
+  );
+
+  postgresTest(
+    "onlyShadowingParent skips a key whose parent value is being removed",
+    async ({ prisma }) => {
+      const { project, parent, branch, repository, write, ownKeys } =
+        await createBranchWithParent(prisma);
+      await write(branch.id, { SHARED: "branch-copy" }, vercel);
+      await write(parent.id, { SHARED: "root" }, vercel);
+      const parentValue = await prisma.environmentVariableValue.findFirstOrThrow({
+        where: { environmentId: parent.id },
+      });
+
+      let releaseDeleter: () => void = () => {};
+      const deleterHoldsRow = new Promise<void>((resolve) => {
+        releaseDeleter = resolve;
+      });
+      const deleter = prisma.$transaction(async (tx) => {
+        await tx.environmentVariableValue.delete({ where: { id: parentValue.id } });
+        await deleterHoldsRow;
+      });
+      const bulk = repository.deleteValues(project.id, {
+        environmentId: branch.id,
+        keys: ["SHARED"],
+        onlyShadowingParent: true,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      releaseDeleter();
+      await deleter;
+
+      expect(await bulk).toEqual({ deleted: [], skipped: ["SHARED"] });
+      expect(await ownKeys(branch.id)).toEqual(["SHARED"]);
+      expect(await ownKeys(parent.id)).toEqual([]);
+    }
+  );
 });

@@ -1643,7 +1643,9 @@ export const BulkDeleteEnvironmentVariablesResponseBody = z.object({
   deleted: z.array(z.string()),
   /**
    * Keys left untouched: the environment had no value for them, a filter excluded them, or their
-   * value changed while the delete ran. A skip caused by a concurrent change is transient.
+   * value changed while the delete ran. A skip caused by a concurrent change is transient. The
+   * delete is idempotent, so a retry of a request whose first attempt committed reports the keys
+   * that attempt deleted as skipped.
    */
   skipped: z.array(z.string()),
 });
