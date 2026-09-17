@@ -142,7 +142,7 @@ export const handle: Handle = {
   agentPageContext: (data) => queuesAgentPageContext(data),
 };
 
-export const meta = pageMeta("Queues");
+export const meta = pageMeta("Concurrency");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
