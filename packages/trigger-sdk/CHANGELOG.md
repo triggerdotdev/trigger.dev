@@ -1,5 +1,21 @@
 # @trigger.dev/sdk
 
+## 4.6.3
+
+### Patch Changes
+
+- Thrown error `cause` chains are now captured and shown. When a task throws an error that wraps another one, the run's error in the dashboard, the CLI dev output, and failure alerts all carry the chain instead of only the outermost message. ([`4f36f614b`](https://github.com/triggerdotdev/trigger.dev/commit/4f36f614b7937f9419900bef4080c42cd34b292b))
+
+  ```ts
+  throw new Error("Could not sync the customer", { cause: originalError });
+  ```
+
+  The chain is flattened outermost first, capped at five causes, and cycle safe. It also rides on the `error` of API and realtime run records as a `causes` array, and `triggerAndWait` and `triggerAndSubscribe` rebuild it as a native `cause` on the error they hand back, so `err.cause` works in your own catch blocks.
+
+- Keep summarized assistant steps and tool results out of future `chat.agent()` model context after inner compaction, while preserving the full visible conversation. ([`fc77bfc9a`](https://github.com/triggerdotdev/trigger.dev/commit/fc77bfc9a2005159b64f0f51777f4ab8e79ba6a9))
+- Updated dependencies:
+  - `@trigger.dev/core@4.6.3`
+
 ## 4.6.2
 
 ### Patch Changes

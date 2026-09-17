@@ -1,5 +1,23 @@
 # trigger.dev
 
+## 4.6.3
+
+### Patch Changes
+
+- Show how to override the default cron window in schedule policy warnings. ([`630eb75d1`](https://github.com/triggerdotdev/trigger.dev/commit/630eb75d1a83a1474d45f155780147ba90cda8e8))
+- Thrown error `cause` chains are now captured and shown. When a task throws an error that wraps another one, the run's error in the dashboard, the CLI dev output, and failure alerts all carry the chain instead of only the outermost message. ([`4f36f614b`](https://github.com/triggerdotdev/trigger.dev/commit/4f36f614b7937f9419900bef4080c42cd34b292b))
+
+  ```ts
+  throw new Error("Could not sync the customer", { cause: originalError });
+  ```
+
+  The chain is flattened outermost first, capped at five causes, and cycle safe. It also rides on the `error` of API and realtime run records as a `causes` array, and `triggerAndWait` and `triggerAndSubscribe` rebuild it as a native `cause` on the error they hand back, so `err.cause` works in your own catch blocks.
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.6.3`
+  - `@trigger.dev/build@4.6.3`
+  - `@trigger.dev/schema-to-json@4.6.3`
+
 ## 4.6.2
 
 ### Patch Changes
