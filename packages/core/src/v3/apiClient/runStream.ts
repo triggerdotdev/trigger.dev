@@ -273,8 +273,7 @@ export class SSEStreamSubscription implements StreamSubscription {
       // the connection is established, force a reconnect. Catches
       // silent-dead-socket cases (mobile OS killed the TCP socket but
       // the read just blocks). Disabled (`0`) by default; opt in
-      // explicitly. Servers that emit periodic keepalive comments
-      // reset the timer naturally.
+      // explicitly. Only decoded records reset the timer.
       stallTimeoutMs?: number;
       // HTTP statuses that should NOT be retried — fail the stream
       // permanently. Defaults cover the permanent client-error set:
@@ -461,7 +460,6 @@ export class SSEStreamSubscription implements StreamSubscription {
 
       const streamVersion = response.headers.get("X-Stream-Version") ?? "v1";
       this.sessionSettled = response.headers.get("X-Session-Settled") === "true";
-      this.retryCount = 0; // reset on success
       armStall();
 
       // Dedup window for record ids. Bounded with FIFO eviction so a
@@ -576,8 +574,10 @@ export class SSEStreamSubscription implements StreamSubscription {
             return;
           }
 
-          armStall(); // any chunk (including server keepalives) resets the silence timer
+          armStall(); // Each decoded record resets the silence timer.
           this.authRefreshed = false;
+          // Headers alone do not establish stream recovery.
+          this.retryCount = 0;
           controller.enqueue(value);
         }
       } catch (error) {
@@ -645,7 +645,11 @@ export class SSEStreamSubscription implements StreamSubscription {
     }
 
     if (this.retryCount >= this.maxRetries) {
-      const finalError = error || new Error("Max retries reached");
+      // Internal timeouts are failures, not caller cancellation.
+      const finalError =
+        error?.name === "AbortError"
+          ? new Error("Stream connection retries exhausted")
+          : error || new Error("Max retries reached");
       controller.error(finalError);
       this.options.onError?.(finalError);
       return;
