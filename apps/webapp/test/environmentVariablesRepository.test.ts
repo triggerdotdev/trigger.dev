@@ -257,3 +257,112 @@ describe("EnvironmentVariablesRepository.getVariableValuesForKeys", () => {
     }
   );
 });
+
+describe("EnvironmentVariablesRepository.editValue", () => {
+  postgresTest(
+    "permanently marks an existing value as secret while updating its value",
+    async ({ prisma }) => {
+      const { user, organization, project } = await createTestOrgProjectWithMember(prisma);
+      const environment = await createRuntimeEnvironment(prisma, {
+        projectId: project.id,
+        organizationId: organization.id,
+        type: "PRODUCTION",
+      });
+      const repository = new EnvironmentVariablesRepository(prisma, prisma);
+
+      await createEnvironmentVariable(repository, project.id, {
+        environmentId: environment.id,
+        key: "BECOMES_SECRET",
+        value: "plain-value",
+        userId: user.id,
+      });
+
+      const variable = await prisma.environmentVariable.findFirstOrThrow({
+        where: { projectId: project.id, key: "BECOMES_SECRET" },
+        include: { values: { where: { environmentId: environment.id } } },
+      });
+      const originalVersion = variable.values[0]!.version;
+
+      const result = await repository.editValue(project.id, {
+        id: variable.id,
+        environmentId: environment.id,
+        value: "new-secret-value",
+        isSecret: true,
+        lastUpdatedBy: { type: "user", userId: user.id },
+      });
+
+      expect(result).toEqual({ success: true });
+
+      const updatedValue = await prisma.environmentVariableValue.findUniqueOrThrow({
+        where: {
+          variableId_environmentId: {
+            variableId: variable.id,
+            environmentId: environment.id,
+          },
+        },
+      });
+      expect(updatedValue.isSecret).toBe(true);
+      expect(updatedValue.version).toBe(originalVersion + 1);
+
+      const unredacted = await repository.getEnvironment(project.id, environment.id);
+      expect(unredacted).toEqual([
+        expect.objectContaining({ key: "BECOMES_SECRET", value: "new-secret-value" }),
+      ]);
+
+      const redacted = await repository.getEnvironmentWithRedactedSecrets(
+        project.id,
+        environment.id
+      );
+      expect(redacted).toEqual([
+        expect.objectContaining({ key: "BECOMES_SECRET", value: "<redacted>", isSecret: true }),
+      ]);
+    }
+  );
+
+  postgresTest("does not change an existing secret value back to plaintext", async ({ prisma }) => {
+    const { user, organization, project } = await createTestOrgProjectWithMember(prisma);
+    const environment = await createRuntimeEnvironment(prisma, {
+      projectId: project.id,
+      organizationId: organization.id,
+      type: "PRODUCTION",
+    });
+    const repository = new EnvironmentVariablesRepository(prisma, prisma);
+
+    await createEnvironmentVariable(repository, project.id, {
+      environmentId: environment.id,
+      key: "STAYS_SECRET",
+      value: "original-secret",
+      isSecret: true,
+      userId: user.id,
+    });
+
+    const variable = await prisma.environmentVariable.findFirstOrThrow({
+      where: { projectId: project.id, key: "STAYS_SECRET" },
+    });
+
+    const result = await repository.editValue(project.id, {
+      id: variable.id,
+      environmentId: environment.id,
+      value: "updated-secret",
+      isSecret: false,
+      lastUpdatedBy: { type: "user", userId: user.id },
+    });
+
+    expect(result).toEqual({ success: true });
+
+    const updatedValue = await prisma.environmentVariableValue.findUniqueOrThrow({
+      where: {
+        variableId_environmentId: {
+          variableId: variable.id,
+          environmentId: environment.id,
+        },
+      },
+    });
+    expect(updatedValue.isSecret).toBe(true);
+
+    const unredacted = await repository.getEnvironment(project.id, environment.id);
+    expect(unredacted).toEqual([
+      expect.objectContaining({ key: "STAYS_SECRET", value: "updated-secret" }),
+    ]);
+  });
+});
