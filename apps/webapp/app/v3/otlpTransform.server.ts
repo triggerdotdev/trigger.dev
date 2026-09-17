@@ -97,7 +97,7 @@ export function convertLogsToCreateableEvents(
       .map((log) => {
         const logLevel = logLevelToEventLevel(log.severityNumber);
 
-        if (!log.traceId || !log.spanId) {
+        if (!log.traceId?.length || !log.spanId?.length) {
           return;
         }
 
@@ -199,7 +199,7 @@ export function convertSpansToCreateableEvents(
       .map((span) => {
         const isPartial = isPartialSpan(span);
 
-        if (!span.traceId || !span.spanId) {
+        if (!span.traceId?.length || !span.spanId?.length) {
           return;
         }
 
