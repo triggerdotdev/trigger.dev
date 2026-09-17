@@ -7,6 +7,7 @@ import type { QueueLimits } from "~/components/queues/queue-limits";
 import { Button, type ButtonVariant } from "~/components/primitives/Buttons";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
+import { FormError } from "~/components/primitives/FormError";
 import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
@@ -237,8 +238,25 @@ export function QueueOverrideConcurrencyButton({
   const totalInvalid =
     totalValue !== "" && (!Number.isInteger(totalNumber) || totalNumber < 1 || totalOverCap);
 
+  /** Cross-field check on the pair that would be in effect after submit: a blank field keeps
+   * its current value. A per-key limit above the total could never be reached, so it's a
+   * mistake worth blocking. */
+  const resultingPerKey = perKeyValue !== "" ? perKeyNumber : queue.limits.perKey.current;
+  const resultingTotal = totalValue !== "" ? totalNumber : (queue.limits.total?.current ?? null);
+  const boundsConflict =
+    hasTotal &&
+    !perKeyInvalid &&
+    !totalInvalid &&
+    resultingPerKey !== null &&
+    resultingTotal !== null &&
+    resultingPerKey > resultingTotal;
+
   const submitDisabled = hasTotal
-    ? isLoading || perKeyInvalid || totalInvalid || (perKeyValue === "" && totalValue === "")
+    ? isLoading ||
+      perKeyInvalid ||
+      totalInvalid ||
+      boundsConflict ||
+      (perKeyValue === "" && totalValue === "")
     : isLoading || (mode === "percent" ? !percentValid : !concurrencyLimit || limitOverCap);
 
   const iconLabel = isOverridden ? "Edit override" : "Override limit";
@@ -398,6 +416,12 @@ export function QueueOverrideConcurrencyButton({
                         }`}
                   </Hint>
                 </InputGroup>
+                {boundsConflict ? (
+                  <FormError>
+                    The per-key limit ({resultingPerKey}) can't exceed the total limit (
+                    {resultingTotal}).
+                  </FormError>
+                ) : null}
               </>
             ) : (
               <InputGroup fullWidth>
