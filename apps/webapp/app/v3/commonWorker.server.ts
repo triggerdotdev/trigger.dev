@@ -28,6 +28,9 @@ import { PerformTaskRunAlertsService } from "./services/alerts/performTaskRunAle
 import { BatchTriggerV3Service } from "./services/batchTriggerV3.server";
 import { TimeoutDeploymentService } from "./services/timeoutDeployment.server";
 import { BulkActionService } from "./services/bulk/BulkActionV2.server";
+import { prisma } from "~/db.server";
+import { sweepPreviewAutoArchives } from "~/services/previewAutoArchive.server";
+import { controlPlaneResolver } from "./runOpsMigration/controlPlaneResolver.server";
 
 function initializeWorker() {
   const redisOptions = {
@@ -51,6 +54,13 @@ function initializeWorker() {
     name: "common-worker",
     redisOptions,
     catalog: {
+      "previewBranches.autoArchiveSweep": {
+        schema: CronSchema,
+        cron: "* * * * *",
+        jitterInMs: 10_000,
+        visibilityTimeoutMs: 60_000,
+        retry: { maxAttempts: 3 },
+      },
       scheduleEmail: {
         schema: DeliverEmailSchema,
         visibilityTimeoutMs: 60_000,
@@ -194,6 +204,11 @@ function initializeWorker() {
     shutdownTimeoutMs: env.COMMON_WORKER_SHUTDOWN_TIMEOUT_MS,
     logger: new Logger("CommonWorker", env.COMMON_WORKER_LOG_LEVEL),
     jobs: {
+      "previewBranches.autoArchiveSweep": async () => {
+        await sweepPreviewAutoArchives(prisma, (ids) => {
+          for (const id of ids) controlPlaneResolver.invalidateEnvironment(id);
+        });
+      },
       scheduleEmail: async ({ payload }) => {
         await sendEmail(payload);
       },

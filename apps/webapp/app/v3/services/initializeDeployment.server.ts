@@ -392,6 +392,11 @@ export class InitializeDeploymentService extends BaseService {
             triggeredVia: payload.triggeredVia ?? undefined,
             startedAt: initialStatus === "BUILDING" ? new Date() : undefined,
           };
+        },
+        {
+          archiveGuard: {
+            type: environment.type,
+          },
         }
       );
 

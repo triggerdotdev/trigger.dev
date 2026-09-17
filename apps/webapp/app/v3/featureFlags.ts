@@ -8,6 +8,7 @@ export const FEATURE_FLAG = {
   hasQueryAccess: "hasQueryAccess",
   hasLogsPageAccess: "hasLogsPageAccess",
   hasWebhooksAccess: "hasWebhooksAccess",
+  previewAutoArchiveEnabled: "previewAutoArchiveEnabled",
   hasAiAccess: "hasAiAccess",
   hasDashboardAgentAccess: "hasDashboardAgentAccess",
   dashboardAgentTurnEvalsEnabled: "dashboardAgentTurnEvalsEnabled",
@@ -56,6 +57,8 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.hasQueryAccess]: z.coerce.boolean(),
   [FEATURE_FLAG.hasLogsPageAccess]: z.coerce.boolean(),
   [FEATURE_FLAG.hasWebhooksAccess]: z.coerce.boolean(),
+  // Opt-in rollout; organization overrides the global default. Unset means off.
+  [FEATURE_FLAG.previewAutoArchiveEnabled]: z.boolean(),
   [FEATURE_FLAG.hasAiAccess]: z.coerce.boolean(),
   // Gates the in-dashboard AI agent panel. Controllable globally and per-org
   // (org wins). Defaults off via DASHBOARD_AGENT_ENABLED.

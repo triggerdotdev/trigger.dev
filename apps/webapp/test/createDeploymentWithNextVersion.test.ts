@@ -39,6 +39,38 @@ async function seedEnvironment(prisma: PrismaClient) {
 }
 
 describe("createDeploymentWithNextVersion", () => {
+  containerTest("non-preview deployments use only the original queries", async ({ prisma }) => {
+    const { project, environment } = await seedEnvironment(prisma);
+    const operations: string[] = [];
+    const observed = prisma.$extends({
+      query: {
+        $allOperations: async ({ model, operation, args, query }) => {
+          operations.push(`${model ?? "raw"}.${operation}`);
+          return query(args);
+        },
+      },
+    });
+    for (const type of ["PRODUCTION", "STAGING", "DEVELOPMENT"] as const) {
+      operations.length = 0;
+      await createDeploymentWithNextVersion(
+        observed as unknown as PrismaClient,
+        environment.id,
+        () => ({
+          projectId: project.id,
+          friendlyId: `dark_${type}_${environment.id}`,
+          shortCode: `dark_${type}`,
+          contentHash: "dark",
+        }),
+        {
+          archiveGuard: {
+            type,
+          },
+        }
+      );
+      expect(operations).toEqual(["WorkerDeployment.findFirst", "WorkerDeployment.create"]);
+    }
+  });
+
   containerTest(
     "assigns unique sequential versions for concurrent calls in the same environment",
     async ({ prisma }) => {

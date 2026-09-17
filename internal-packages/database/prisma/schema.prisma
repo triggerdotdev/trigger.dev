@@ -336,6 +336,14 @@ model RuntimeEnvironment {
   parentEnvironmentId     String?
   childEnvironments       RuntimeEnvironment[] @relation("parentEnvironment")
 
+  /// Only configured on the PREVIEW root. Null disables automatic archiving.
+  previewAutoArchiveAfterDays        Int?
+  previewAutoArchiveExcludedBranches String[]  @default([])
+  /// Durable per-project cleanup progress. Null next-check disables scheduling.
+  previewAutoArchiveNextCheckAt      DateTime?
+  previewAutoArchiveCursorCreatedAt  DateTime?
+  previewAutoArchiveCursorId         String?
+
   // This is GitMeta type
   git Json?
 

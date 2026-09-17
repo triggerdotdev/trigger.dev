@@ -3,9 +3,12 @@ import {
   type Prisma,
   type PrismaClientOrTransaction,
   type WorkerDeployment,
+  type RuntimeEnvironmentType,
 } from "@trigger.dev/database";
 import { setTimeout as sleep } from "node:timers/promises";
 import { logger } from "~/services/logger.server";
+import { $transaction } from "~/db.server";
+import { ServiceValidationError } from "../common.server";
 import { calculateNextBuildVersion } from "../../utils/calculateNextBuildVersion";
 
 export type CreateDeploymentData = Omit<
@@ -16,6 +19,7 @@ export type CreateDeploymentData = Omit<
 export type CreateDeploymentWithNextVersionOptions = {
   maxRetries?: number;
   jitterMs?: { min: number; max: number };
+  archiveGuard?: { type: RuntimeEnvironmentType };
 };
 
 const DEFAULT_MAX_RETRIES = 5;
@@ -67,9 +71,36 @@ export async function createDeploymentWithNextVersion(
     const data = await buildData(version);
 
     try {
-      return await prisma.workerDeployment.create({
-        data: { ...data, environmentId, version },
-      });
+      // Non-preview deployments keep the original query path, including no flag lookup.
+      if (options.archiveGuard?.type !== "PREVIEW") {
+        return await prisma.workerDeployment.create({ data: { ...data, environmentId, version } });
+      }
+      // All previews lock, even with rollout disabled: flags can change during preparation.
+      // Build data (including registry calls) above, outside the short lock. The archive
+      // sweep takes this same lock before checking deployment activity.
+      const deployment = await $transaction(
+        prisma,
+        "createDeploymentWithBranchLock",
+        async (tx) => {
+          // Prisma reads cannot request FOR UPDATE. Hold the same environment row lock
+          // as archiving until the deployment is inserted, so checking archivedAt and
+          // creating a deployment cannot race with an archive. Wait for any current owner
+          // here: unlike cleanup, a deployment must inspect the result rather than skip it.
+          const environments = await tx.$queryRaw<Array<{ archivedAt: Date | null }>>`
+          SELECT "archivedAt" FROM "RuntimeEnvironment" WHERE id = ${environmentId} FOR UPDATE
+        `;
+          if (!environments.length || environments[0].archivedAt) {
+            throw new ServiceValidationError(
+              "This branch has been archived. Deploy again to create a fresh preview branch.",
+              409
+            );
+          }
+          return tx.workerDeployment.create({ data: { ...data, environmentId, version } });
+        },
+        { isolationLevel: "ReadCommitted", timeout: 5_000, maxWait: 1_000 }
+      );
+      if (!deployment) throw new Error("Failed to create deployment");
+      return deployment;
     } catch (error) {
       if (!isUniqueConstraintError(error, ["environmentId", "version"])) {
         throw error;

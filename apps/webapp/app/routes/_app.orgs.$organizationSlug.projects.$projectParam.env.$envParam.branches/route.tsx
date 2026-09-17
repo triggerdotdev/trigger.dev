@@ -1,3 +1,4 @@
+import { AutoArchiveSettings } from "~/routes/resources.branches.auto-archive";
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod/v4";
 import { ArrowUpCircleIcon, CheckIcon, EnvelopeIcon, PlusIcon } from "@heroicons/react/20/solid";
@@ -6,7 +7,7 @@ import { DialogClose } from "@radix-ui/react-dialog";
 import { useFetcher, useSearchParams } from "@remix-run/react";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core/v3";
-import { useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { SearchInput } from "~/components/primitives/SearchInput";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -223,6 +224,7 @@ export default function Page() {
     hasBranches,
     canPurchaseBranches,
     canManageBranches,
+    autoArchiveAvailable,
     extraBranches,
     branchPricing,
     maxBranchQuota,
@@ -321,6 +323,21 @@ export default function Page() {
       </NavBar>
       <PageBody scrollable={false}>
         <div className="grid max-h-full min-h-full grid-rows-[auto_1fr_auto]">
+          <div className="flex items-center justify-between gap-x-1.5 p-2">
+            <BranchFilters>
+              {autoArchiveAvailable && (
+                <AutoArchiveSettings
+                  environment={branchableEnvironment}
+                  canManage={canManageBranches}
+                />
+              )}
+            </BranchFilters>
+            <PaginationControls
+              currentPage={currentPage}
+              totalPages={totalPages}
+              showPageNumbers={false}
+            />
+          </div>
           {!hasBranches ? (
             <MainCenteredContainer className="max-w-md">
               <BranchesNoBranches
@@ -333,21 +350,18 @@ export default function Page() {
             </MainCenteredContainer>
           ) : (
             <>
-              <div className="flex items-center justify-between gap-x-1.5 p-2">
-                <BranchFilters />
-                <PaginationControls
-                  currentPage={currentPage}
-                  totalPages={totalPages}
-                  showPageNumbers={false}
-                />
-              </div>
-
               <div className="grid max-h-full min-h-full grid-rows-[1fr] overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHeaderCell>Branch</TableHeaderCell>
                       <TableHeaderCell>Created</TableHeaderCell>
+                      {autoArchiveAvailable && (
+                        <>
+                          <TableHeaderCell>Last deployment</TableHeaderCell>
+                          <TableHeaderCell>Auto-archive</TableHeaderCell>
+                        </>
+                      )}
                       <TableHeaderCell>Git</TableHeaderCell>
                       <TableHeaderCell>Archived</TableHeaderCell>
                       <TableHeaderCell>
@@ -357,7 +371,7 @@ export default function Page() {
                   </TableHeader>
                   <TableBody>
                     {branches.length === 0 ? (
-                      <TableBlankRow colSpan={5}>
+                      <TableBlankRow colSpan={autoArchiveAvailable ? 7 : 5}>
                         <Paragraph>There are no matches for your filters</Paragraph>
                       </TableBlankRow>
                     ) : (
@@ -383,6 +397,33 @@ export default function Page() {
                             <TableCell className={cellClass}>
                               <DateTime date={branch.createdAt} />
                             </TableCell>
+                            {autoArchiveAvailable && (
+                              <>
+                                <TableCell className={cellClass}>
+                                  {branch.lastDeploymentAt ? (
+                                    <DateTime date={branch.lastDeploymentAt} />
+                                  ) : (
+                                    "Never"
+                                  )}
+                                </TableCell>
+                                <TableCell className={cellClass}>
+                                  {branch.archivedAt ? (
+                                    "–"
+                                  ) : !branch.autoArchive ? (
+                                    "Disabled"
+                                  ) : branch.autoArchive.status === "protected" ? (
+                                    "Never"
+                                  ) : branch.autoArchive.status === "inProgress" ? (
+                                    "Deployment in progress"
+                                  ) : (
+                                    <DateTime
+                                      includeTime={false}
+                                      date={branch.autoArchive.archiveAt}
+                                    />
+                                  )}
+                                </TableCell>
+                              </>
+                            )}
                             <TableCell className={cellClass}>
                               <div className="-ml-1 flex items-center">
                                 <GitMetadata git={branch.git} />
@@ -526,7 +567,7 @@ export default function Page() {
   );
 }
 
-export function BranchFilters() {
+export function BranchFilters({ children }: { children?: ReactNode }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const { showArchived } = BranchesOptions.parse(Object.fromEntries(searchParams.entries()));
 
@@ -546,14 +587,17 @@ export function BranchFilters() {
   );
 
   return (
-    <div className="flex w-full items-center justify-between gap-2">
+    <div className="flex w-full flex-wrap items-center justify-between gap-2">
       <SearchInput placeholder="Search branch name…" resetParams={["page"]} />
-      <Switch
-        checked={showArchived ?? false}
-        onCheckedChange={handleArchivedChange}
-        label="Show archived"
-        variant="secondary/small"
-      />
+      <div className="ml-auto flex flex-wrap items-center gap-2">
+        <Switch
+          checked={showArchived ?? false}
+          onCheckedChange={handleArchivedChange}
+          label="Show archived"
+          variant="secondary/small"
+        />
+        {children}
+      </div>
     </div>
   );
 }

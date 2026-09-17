@@ -19,6 +19,7 @@ export default defineConfig({
       "app/runEngine/concerns/**/*.test.ts",
       "app/runEngine/services/**/*.test.ts",
       "app/services/realtime/**/*.test.ts",
+      "app/services/previewAutoArchive.server.test.ts",
       "app/services/clickhouse/**/*.test.ts",
       "app/utils/**/*.test.ts",
       "app/hooks/**/*.test.ts",

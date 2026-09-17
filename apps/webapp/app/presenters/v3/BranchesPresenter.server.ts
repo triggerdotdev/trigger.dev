@@ -1,3 +1,8 @@
+import { classifyPreviewBranch } from "~/utils/previewAutoArchive";
+import {
+  previewBranchActivity,
+  isPreviewAutoArchiveEnabled,
+} from "~/services/previewAutoArchive.server";
 import { GitMeta } from "@trigger.dev/core/v3";
 import { DEFAULT_DEV_BRANCH } from "@trigger.dev/core/v3/utils/gitBranch";
 import { type RuntimeEnvironmentType } from "@trigger.dev/database";
@@ -103,10 +108,12 @@ export class BranchesPresenter {
     projectSlug: Project["slug"];
     env: BranchableEnvironmentToken;
   } & Options) {
+    const envType = toBranchableEnvironmentType(env);
     const project = await this.#prismaClient.project.findFirst({
       select: {
         id: true,
         organizationId: true,
+        ...(envType === "PREVIEW" ? { organization: { select: { featureFlags: true } } } : {}),
       },
       where: {
         slug: projectSlug,
@@ -124,11 +131,18 @@ export class BranchesPresenter {
       throw new Error("Project not found");
     }
 
-    const envType = toBranchableEnvironmentType(env);
+    const autoArchiveAvailable =
+      envType === "PREVIEW" &&
+      (await isPreviewAutoArchiveEnabled(
+        this.#prismaClient,
+        project.organization?.featureFlags ?? null
+      ));
 
     const branchableEnvironment = await this.#prismaClient.runtimeEnvironment.findFirst({
       select: {
         id: true,
+        previewAutoArchiveAfterDays: true,
+        previewAutoArchiveExcludedBranches: true,
       },
       where: {
         projectId: project.id,
@@ -149,6 +163,7 @@ export class BranchesPresenter {
       }
       return {
         branchableEnvironment: null,
+        autoArchiveAvailable,
         currentPage: page,
         totalPages: 0,
         hasBranches: false,
@@ -235,10 +250,30 @@ export class BranchesPresenter {
       },
     });
 
+    const archiveActivity = autoArchiveAvailable
+      ? await previewBranchActivity(
+          this.#prismaClient,
+          branches.map(({ id }) => id)
+        )
+      : new Map<string, { lastDeploymentAt: Date | null; inProgress: boolean }>();
+
+    const excluded = new Set(branchableEnvironment.previewAutoArchiveExcludedBranches);
+    const archiveNow = new Date();
     const branchesFiltered = branches
       .filter((branch) => envType === "DEVELOPMENT" || branch.branchName !== null)
       .map((branch) => ({
         ...branch,
+        lastDeploymentAt: archiveActivity.get(branch.id)?.lastDeploymentAt ?? null,
+        autoArchive:
+          autoArchiveAvailable && branchableEnvironment.previewAutoArchiveAfterDays !== null
+            ? classifyPreviewBranch(
+                branch,
+                archiveActivity.get(branch.id)!,
+                branchableEnvironment.previewAutoArchiveAfterDays,
+                excluded,
+                archiveNow
+              )
+            : null,
         git: processGitMetadata(branch.git),
         branchName: branch.branchName ?? DEFAULT_DEV_BRANCH,
       }));
@@ -252,6 +287,7 @@ export class BranchesPresenter {
 
     return {
       branchableEnvironment,
+      autoArchiveAvailable,
       currentPage: page,
       totalPages: Math.ceil(visibleCount / BRANCHES_PER_PAGE),
       hasBranches: totalBranches > 0,
