@@ -3,4 +3,4 @@
 "@trigger.dev/sdk": patch
 ---
 
-Chat streams now stop after five failed connection retries and report a terminal error instead of remaining active indefinitely. Internal timeout exhaustion reports an error, while caller cancellation still closes cleanly. Watch subscriptions continue to retry without a fixed limit.
+Chat streams now report an error after five retries of a connected stream that sends no records. Network failures and browser wakeups retain automatic recovery. Healthy tool calls with no records for about six minutes also reach this silence limit. Watch subscriptions remain unlimited, and caller cancellation still closes cleanly.

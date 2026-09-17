@@ -219,6 +219,7 @@ export class SSEStreamSubscription implements StreamSubscription {
   private lastEventId: string | undefined;
   private from: "beginning" | "latest";
   private retryCount = 0;
+  private stallCount = 0;
   private maxRetries: number;
   private retryDelayMs: number;
   private maxRetryDelayMs: number;
@@ -275,6 +276,9 @@ export class SSEStreamSubscription implements StreamSubscription {
       // the read just blocks). Disabled (`0`) by default; opt in
       // explicitly. Only decoded records reset the timer.
       stallTimeoutMs?: number;
+      // Reconnects after stall timeouts before the stream errors.
+      // Only decoded records restore this budget. Defaults to Infinity.
+      maxStallRetries?: number;
       // HTTP statuses that should NOT be retried — fail the stream
       // permanently. Defaults cover the permanent client-error set:
       // `400` (bad request), `404` (stream gone), `409` (conflict),
@@ -402,7 +406,11 @@ export class SSEStreamSubscription implements StreamSubscription {
     const armStall = () => {
       if (this.stallTimeoutMs <= 0) return;
       clearTimeout(stallTimer);
-      stallTimer = setTimeout(() => this.internalAbort?.abort(), this.stallTimeoutMs);
+      stallTimer = setTimeout(() => {
+        if (!this.internalAbort || this.internalAbort.signal.aborted) return;
+        this.stallCount++;
+        this.internalAbort.abort();
+      }, this.stallTimeoutMs);
     };
 
     // Idempotent — both the catch (before recursion) and the finally
@@ -578,6 +586,7 @@ export class SSEStreamSubscription implements StreamSubscription {
           this.authRefreshed = false;
           // Headers alone do not establish stream recovery.
           this.retryCount = 0;
+          this.stallCount = 0;
           controller.enqueue(value);
         }
       } catch (error) {
@@ -644,7 +653,10 @@ export class SSEStreamSubscription implements StreamSubscription {
       return;
     }
 
-    if (this.retryCount >= this.maxRetries) {
+    if (
+      this.retryCount >= this.maxRetries ||
+      this.stallCount > (this.options.maxStallRetries ?? Infinity)
+    ) {
       // Internal timeouts are failures, not caller cancellation.
       const finalError =
         error?.name === "AbortError"

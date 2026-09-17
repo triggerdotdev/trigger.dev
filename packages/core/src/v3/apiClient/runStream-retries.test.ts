@@ -8,6 +8,7 @@ describe("SSE retry exhaustion", () => {
   let abort: AbortController;
   let attempts: number;
   let respond: (response: ServerResponse) => void;
+  let subscription: SSEStreamSubscription;
 
   beforeEach(async () => {
     attempts = 0;
@@ -28,16 +29,22 @@ describe("SSE retry exhaustion", () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   });
 
-  async function open(options: { fetchTimeoutMs?: number; stallTimeoutMs?: number } = {}) {
-    return (
-      await new SSEStreamSubscription(url, {
-        signal: abort.signal,
-        maxRetries: 2,
-        retryDelayMs: 1,
-        retryJitter: 0,
-        ...options,
-      }).subscribe()
-    ).getReader();
+  async function open(
+    options: {
+      fetchTimeoutMs?: number;
+      stallTimeoutMs?: number;
+      maxRetries?: number;
+      maxStallRetries?: number;
+    } = {}
+  ) {
+    subscription = new SSEStreamSubscription(url, {
+      signal: abort.signal,
+      maxRetries: 2,
+      retryDelayMs: 1,
+      retryJitter: 0,
+      ...options,
+    });
+    return (await subscription.subscribe()).getReader();
   }
 
   it.each(["fetch", "stall"] as const)(
@@ -74,7 +81,7 @@ describe("SSE retry exhaustion", () => {
       });
       response.write(payload);
     };
-    const reader = await open({ stallTimeoutMs: 100 });
+    const reader = await open({ stallTimeoutMs: 100, maxRetries: Infinity, maxStallRetries: 2 });
 
     await expect(reader.read()).rejects.toThrow("Stream connection retries exhausted");
     expect(attempts).toBe(3);
@@ -102,5 +109,80 @@ describe("SSE retry exhaustion", () => {
 
     expect(await reader.read()).toEqual({ done: true, value: undefined });
     expect(attempts).toBe(1);
+  });
+
+  it("limits silent stalls without a general retry limit", async () => {
+    respond = (response) => {
+      response.writeHead(200, { "Content-Type": "text/event-stream" });
+      response.flushHeaders();
+    };
+    const reader = await open({ stallTimeoutMs: 100, maxRetries: Infinity, maxStallRetries: 2 });
+
+    await expect(reader.read()).rejects.toThrow("Stream connection retries exhausted");
+    expect(attempts).toBe(3);
+  });
+
+  it("restores the stall budget only after a decoded record", async () => {
+    respond = (response) => {
+      response.writeHead(200, { "Content-Type": "text/event-stream" });
+      response.flushHeaders();
+      if (attempts === 3) response.write('id: 1\ndata: {"hello":1}\n\n');
+    };
+    const reader = await open({ stallTimeoutMs: 100, maxRetries: Infinity, maxStallRetries: 2 });
+
+    expect(await reader.read()).toMatchObject({ done: false, value: { chunk: { hello: 1 } } });
+    await expect(reader.read()).rejects.toThrow("Stream connection retries exhausted");
+    expect(attempts).toBe(5);
+  });
+
+  it.each(["http", "fetch", "body", "wake"] as const)(
+    "does not charge %s failures to the stall budget",
+    async (failure) => {
+      respond = (response) => {
+        if (attempts === 5) {
+          response.writeHead(200, { "Content-Type": "text/event-stream" });
+          response.end('id: 1\ndata: {"hello":1}\n\n');
+        } else if (failure === "http") {
+          response.writeHead(503).end();
+        } else if (failure !== "fetch") {
+          response.writeHead(200, { "Content-Type": "text/event-stream" });
+          response.write(": keepalive\n\n");
+          setTimeout(() => {
+            if (failure === "wake") subscription.forceReconnect();
+            else response.destroy();
+          }, 10);
+        }
+      };
+      const reader = await open({
+        maxRetries: Infinity,
+        maxStallRetries: 0,
+        fetchTimeoutMs: 100,
+        stallTimeoutMs: 1_000,
+      });
+
+      expect(await reader.read()).toMatchObject({ done: false, value: { chunk: { hello: 1 } } });
+      expect(attempts).toBe(5);
+    }
+  );
+
+  it("retains the stall budget across connection failures and wakeups", async () => {
+    respond = (response) => {
+      if (attempts === 2) {
+        response.writeHead(503).end();
+      } else if (attempts !== 4) {
+        response.writeHead(200, { "Content-Type": "text/event-stream" });
+        response.flushHeaders();
+        if (attempts === 3) setTimeout(() => subscription.forceReconnect(), 10);
+      }
+    };
+    const reader = await open({
+      maxRetries: Infinity,
+      maxStallRetries: 1,
+      fetchTimeoutMs: 100,
+      stallTimeoutMs: 100,
+    });
+
+    await expect(reader.read()).rejects.toThrow("Stream connection retries exhausted");
+    expect(attempts).toBe(5);
   });
 });

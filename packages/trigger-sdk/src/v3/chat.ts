@@ -2092,9 +2092,12 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             lastEventId: state.lastEventId,
             // Reconnect if no decoded record arrives for 60 seconds.
             stallTimeoutMs: 60_000,
-            // Normal chat streams must reach a terminal error. Watch subscriptions stay open.
-            maxRetries: this.watchMode ? Infinity : 5,
-            retryDelayMs: this.watchMode ? undefined : 1_000,
+            // Bound connected silence while preserving recovery from network failures.
+            ...(!this.watchMode && {
+              maxStallRetries: 5,
+              retryDelayMs: 1_000,
+              maxRetryDelayMs: 5_000,
+            }),
             fetchClient: sseFetchClient,
           });
           currentSubscription = subscription;
@@ -2152,11 +2155,6 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             !currentSubscription?.sessionSettled &&
             !combinedSignal.aborted
           ) {
-            // Clear + persist before throwing so the surfaced error leaves
-            // consistent state — otherwise a reload sees isStreaming: true
-            // and reopens a doomed subscription.
-            state.isStreaming = false;
-            this.notifySessionChange(chatId, state);
             throw new Error(
               "Chat stream ended before the turn completed (reconnect budget exhausted)."
             );

@@ -48,43 +48,38 @@ describe("Chat subscription retry exhaustion", () => {
     expect(events.filter((event) => event.type === "stream-error")).toHaveLength(1);
   });
 
-  it("limits failed connections and reports a terminal stream error", async () => {
-    respond = (response) => response.writeHead(503).end();
-    const stream = await transport.reconnectToStream({ chatId: "chat" });
-    if (!stream) throw new Error("Expected a resumed stream");
+  it.each([false, true])(
+    "recovers after six connection failures (watch: %s)",
+    async (watch) => {
+      transport.dispose();
+      transport = createChatTransport({
+        task: "chat-task",
+        baseURL,
+        watch,
+        sessions: { chat: { publicAccessToken: "test-token", isStreaming: true } },
+        accessToken: () => "test-token",
+        onEvent: (event) => events.push(event),
+      });
+      respond = (response) => {
+        if (attempts <= 6) {
+          response.writeHead(503).end();
+          return;
+        }
+        response.writeHead(200, { "Content-Type": "text/event-stream" });
+        response.write('id: 1\ndata: {"type":"start","messageId":"assistant"}\n\n');
+      };
+      const stream = await transport.reconnectToStream({ chatId: "chat" });
+      if (!stream) throw new Error("Expected a resumed stream");
+      const reader = stream.getReader();
 
-    await expect(stream.getReader().read()).rejects.toMatchObject({ status: 503 });
-    expect(attempts).toBe(6);
-    expect(transport.getSession("chat")?.isStreaming).toBe(false);
-    expect(await transport.reconnectToStream({ chatId: "chat" })).toBeNull();
-    expect(events.filter((event) => event.type === "stream-error")).toHaveLength(1);
-  }, 25_000);
-
-  it("preserves unlimited retries for watch subscriptions", async () => {
-    transport.dispose();
-    transport = createChatTransport({
-      task: "chat-task",
-      baseURL,
-      watch: true,
-      sessions: { chat: { publicAccessToken: "test-token", isStreaming: true } },
-      accessToken: () => "test-token",
-    });
-    respond = (response) => {
-      if (attempts <= 6) {
-        response.writeHead(503).end();
-        return;
-      }
-      response.writeHead(200, { "Content-Type": "text/event-stream" });
-      response.write('id: 1\ndata: {"type":"start","messageId":"assistant"}\n\n');
-    };
-    const stream = await transport.reconnectToStream({ chatId: "chat" });
-    if (!stream) throw new Error("Expected a resumed stream");
-    const reader = stream.getReader();
-
-    expect(await reader.read()).toMatchObject({ done: false, value: { type: "start" } });
-    expect(attempts).toBe(7);
-    await reader.cancel();
-  }, 12_000);
+      expect(await reader.read()).toMatchObject({ done: false, value: { type: "start" } });
+      expect(attempts).toBe(7);
+      expect(transport.getSession("chat")?.isStreaming).toBe(true);
+      expect(events.filter((event) => event.type === "stream-error")).toHaveLength(0);
+      await reader.cancel();
+    },
+    30_000
+  );
 
   it.each(["resolve", "reject"] as const)(
     "keeps the new stream after a late token refresh: %s",
