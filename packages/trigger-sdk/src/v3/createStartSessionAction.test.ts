@@ -217,9 +217,7 @@ describe("chat.createStartSessionAction — runtime", () => {
     const emptyDefault = chat.createStartSessionAction("fake-chat", {
       triggerConfig: { concurrency: "" as unknown as string[] },
     });
-    await expect(emptyDefault({ chatId: "chat-empty-limit" })).rejects.toThrow(
-      /non-empty strings/
-    );
+    await expect(emptyDefault({ chatId: "chat-empty-limit" })).rejects.toThrow(/non-empty strings/);
 
     const emptyPerCall = chat.createStartSessionAction("fake-chat");
     await expect(
