@@ -485,6 +485,8 @@ export class EnvironmentVariablesRepository implements Repository {
 
     try {
       await $transaction(this.prismaClient, "edit env var", async (tx) => {
+        await lockEnvironmentVariableRows(tx, [options.id]);
+
         const secretStore = getSecretStore("DATABASE", {
           prismaClient: tx,
         });
