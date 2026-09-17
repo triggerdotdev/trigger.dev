@@ -83,7 +83,7 @@ describe("SSE retry exhaustion", () => {
     };
     const reader = await open({ stallTimeoutMs: 100, maxRetries: Infinity, maxStallRetries: 2 });
 
-    await expect(reader.read()).rejects.toThrow("Stream connection retries exhausted");
+    await expect(reader.read()).rejects.toThrow("Stream stalled: no records received");
     expect(attempts).toBe(3);
   });
 
@@ -118,7 +118,7 @@ describe("SSE retry exhaustion", () => {
     };
     const reader = await open({ stallTimeoutMs: 100, maxRetries: Infinity, maxStallRetries: 2 });
 
-    await expect(reader.read()).rejects.toThrow("Stream connection retries exhausted");
+    await expect(reader.read()).rejects.toThrow("Stream stalled: no records received");
     expect(attempts).toBe(3);
   });
 
@@ -131,7 +131,7 @@ describe("SSE retry exhaustion", () => {
     const reader = await open({ stallTimeoutMs: 100, maxRetries: Infinity, maxStallRetries: 2 });
 
     expect(await reader.read()).toMatchObject({ done: false, value: { chunk: { hello: 1 } } });
-    await expect(reader.read()).rejects.toThrow("Stream connection retries exhausted");
+    await expect(reader.read()).rejects.toThrow("Stream stalled: no records received");
     expect(attempts).toBe(5);
   });
 
@@ -182,7 +182,7 @@ describe("SSE retry exhaustion", () => {
       stallTimeoutMs: 100,
     });
 
-    await expect(reader.read()).rejects.toThrow("Stream connection retries exhausted");
+    await expect(reader.read()).rejects.toThrow("Stream stalled: no records received");
     expect(attempts).toBe(5);
   });
 });

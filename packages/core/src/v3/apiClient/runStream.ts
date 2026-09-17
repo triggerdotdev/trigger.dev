@@ -221,6 +221,7 @@ export class SSEStreamSubscription implements StreamSubscription {
   private retryCount = 0;
   private stallCount = 0;
   private maxRetries: number;
+  private maxStallRetries: number;
   private retryDelayMs: number;
   private maxRetryDelayMs: number;
   private retryJitter: number;
@@ -296,6 +297,7 @@ export class SSEStreamSubscription implements StreamSubscription {
     this.lastEventId = options.lastEventId;
     this.from = options.from ?? "beginning";
     this.maxRetries = options.maxRetries ?? Infinity;
+    this.maxStallRetries = options.maxStallRetries ?? Infinity;
     this.retryDelayMs = options.retryDelayMs ?? 100;
     this.maxRetryDelayMs = options.maxRetryDelayMs ?? 5000;
     this.retryJitter = options.retryJitter ?? 0.5;
@@ -653,13 +655,12 @@ export class SSEStreamSubscription implements StreamSubscription {
       return;
     }
 
-    if (
-      this.retryCount >= this.maxRetries ||
-      this.stallCount > (this.options.maxStallRetries ?? Infinity)
-    ) {
+    const stallsExhausted = this.stallCount > this.maxStallRetries;
+    if (this.retryCount >= this.maxRetries || stallsExhausted) {
       // Internal timeouts are failures, not caller cancellation.
-      const finalError =
-        error?.name === "AbortError"
+      const finalError = stallsExhausted
+        ? new Error("Stream stalled: no records received")
+        : error?.name === "AbortError"
           ? new Error("Stream connection retries exhausted")
           : error || new Error("Max retries reached");
       controller.error(finalError);
