@@ -86,9 +86,9 @@ export type EnvironmentVariableValueRow = {
 };
 
 /**
- * Locks the given variable rows for the rest of the transaction. Every delete path takes this
- * lock before touching any value row, the same variable-then-value order `create` uses through
- * its variable upsert, so a concurrent import and a delete never wait on each other in a cycle.
+ * Locks the given variable rows for the rest of the transaction. Every writer of value rows
+ * calls this before touching any value row, so all of them take locks in the same
+ * variable-then-value order and no two can wait on each other in a cycle.
  */
 async function lockEnvironmentVariableRows(tx: PrismaClientOrTransaction, variableIds: string[]) {
   if (variableIds.length === 0) {
@@ -107,8 +107,9 @@ async function lockEnvironmentVariableRows(tx: PrismaClientOrTransaction, variab
  * with no values afterwards is removed as well. The affected variable rows are locked FOR UPDATE
  * before anything else: inserting a value takes a FOR KEY SHARE lock on its variable row, which
  * conflicts with FOR UPDATE, so an in-flight insert makes the lock wait and the emptiness check
- * then sees the new value, while an insert that starts later waits for the commit and recreates
- * the variable through its upsert.
+ * then sees the new value. An insert that starts later waits for the commit and then either
+ * recreates the variable or fails its foreign key check and fails the import for that key, in
+ * both cases without losing data.
  */
 export async function deleteEnvironmentVariableValueRows(
   tx: PrismaClientOrTransaction,
@@ -313,6 +314,8 @@ export class EnvironmentVariablesRepository implements Repository {
             },
             update: {},
           });
+
+          await lockEnvironmentVariableRows(tx, [environmentVariable.id]);
 
           const secretStore = getSecretStore("DATABASE", {
             prismaClient: tx,
@@ -631,6 +634,8 @@ export class EnvironmentVariablesRepository implements Repository {
 
     try {
       await $transaction(this.prismaClient, "edit env var value", async (tx) => {
+        await lockEnvironmentVariableRows(tx, [options.id]);
+
         const secretStore = getSecretStore("DATABASE", {
           prismaClient: tx,
         });

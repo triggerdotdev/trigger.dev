@@ -1131,17 +1131,28 @@ describe("EnvironmentVariablesRepository value deletes", () => {
       const deleterHoldsRow = new Promise<void>((resolve) => {
         releaseDeleter = resolve;
       });
+      let markRowDeleted: () => void = () => {};
+      const rowDeleted = new Promise<void>((resolve) => {
+        markRowDeleted = resolve;
+      });
       const deleter = prisma.$transaction(async (tx) => {
         await tx.environmentVariableValue.delete({ where: { id: parentValue.id } });
+        markRowDeleted();
         await deleterHoldsRow;
       });
+      await rowDeleted;
+
       const bulk = repository.deleteValues(project.id, {
         environmentId: branch.id,
         keys: ["SHARED"],
         onlyShadowingParent: true,
       });
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      releaseDeleter();
+      bulk.catch(() => undefined);
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      } finally {
+        releaseDeleter();
+      }
       await deleter;
 
       expect(await bulk).toEqual({ deleted: [], skipped: ["SHARED"] });
