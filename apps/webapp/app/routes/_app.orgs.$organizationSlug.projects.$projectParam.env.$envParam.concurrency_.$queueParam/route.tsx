@@ -496,7 +496,7 @@ function OverviewCharts({
             info={
               <>
                 Runs in flight across ALL concurrency keys (
-                <ColorSwatch color={COLORS.running} />) versus the queue's combined limit (
+                <ColorSwatch color={COLORS.running} />) versus the queue's total limit (
                 <ColorSwatch color={COLORS.limit} />
                 ).
               </>

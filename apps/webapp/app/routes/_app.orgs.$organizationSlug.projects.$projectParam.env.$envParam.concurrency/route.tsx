@@ -2233,9 +2233,11 @@ const limitTooltip = (
       How many runs can execute at once.{" "}
     </Paragraph>
     <Paragraph variant="extra-small" spacing>
-      <InlineCode variant="extra-extra-small">1 (20)</InlineCode> means 1 run per concurrency key,
-      but at most 20 runs across all keys. Set using{" "}
-      <InlineCode variant="extra-extra-small">combinedConcurrencyLimit</InlineCode> in your code.
+      <InlineCode variant="extra-extra-small">1 per key (3)</InlineCode> means 1 run per
+      concurrency key, but at most 3 runs across all keys.{" "}
+      <InlineCode variant="extra-extra-small">2 total</InlineCode> caps every run of the queue,
+      keyed or not. Set using the <InlineCode variant="extra-extra-small">concurrency</InlineCode>{" "}
+      option in your code.
     </Paragraph>
   </>
 );
