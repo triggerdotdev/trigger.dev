@@ -251,12 +251,16 @@ export function QueueOverrideConcurrencyButton({
     resultingPerKey !== null &&
     resultingTotal !== null &&
     resultingPerKey > resultingTotal;
-  const currentConflict =
-    hasTotal &&
-    queue.limits.perKey.current !== null &&
-    queue.limits.total != null &&
-    queue.limits.perKey.current > queue.limits.total.current;
-  const boundsConflict = resultingConflict && !currentConflict;
+  const currentConflictGap =
+    hasTotal && queue.limits.perKey.current !== null && queue.limits.total != null
+      ? queue.limits.perKey.current - queue.limits.total.current
+      : 0;
+  const resultingConflictGap =
+    resultingConflict && resultingPerKey !== null && resultingTotal !== null
+      ? resultingPerKey - resultingTotal
+      : 0;
+  const boundsConflict =
+    resultingConflict && !(currentConflictGap > 0 && resultingConflictGap < currentConflictGap);
 
   const submitDisabled = hasTotal
     ? isLoading ||
