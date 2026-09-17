@@ -11801,7 +11801,10 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
       params.clientData !== undefined ? { metadata: params.clientData } : {};
     const maxAttempts = params.triggerConfig?.maxAttempts ?? options?.triggerConfig?.maxAttempts;
     const maxDuration = params.triggerConfig?.maxDuration ?? options?.triggerConfig?.maxDuration;
-    const concurrency = params.triggerConfig?.concurrency ?? options?.triggerConfig?.concurrency;
+    const concurrency =
+      params.triggerConfig?.concurrency !== undefined
+        ? params.triggerConfig.concurrency
+        : options?.triggerConfig?.concurrency;
     const concurrencyKey =
       params.triggerConfig?.concurrencyKey ?? options?.triggerConfig?.concurrencyKey;
     const idleTimeoutInSeconds =

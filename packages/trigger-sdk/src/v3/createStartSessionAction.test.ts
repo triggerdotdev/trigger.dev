@@ -229,6 +229,16 @@ describe("chat.createStartSessionAction — runtime", () => {
       })
     ).rejects.toThrow(/non-empty strings/);
 
+    const nullPerCall = chat.createStartSessionAction("fake-chat", {
+      triggerConfig: { concurrency: ["chats"] },
+    });
+    await expect(
+      nullPerCall({
+        chatId: "chat-null-limit",
+        triggerConfig: { concurrency: null as unknown as string[] },
+      })
+    ).rejects.toThrow(/non-empty strings/);
+
     expect(lastStartBody).toBeUndefined();
   });
 
