@@ -103,6 +103,7 @@ async function indexDeployment({
         tasks: workerManifest.tasks,
         prompts: workerManifest.prompts,
         queues: workerManifest.queues,
+        concurrencyLimits: workerManifest.concurrencyLimits,
         sourceFiles,
         runtime: workerManifest.runtime,
         runtimeVersion: workerManifest.runtimeVersion,
