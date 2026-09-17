@@ -187,12 +187,11 @@ export function QueueOverrideConcurrencyButton({
    * and a blank field leaves that bound unchanged. Rows without a total keep the classic
    * single-limit dialog (with the percent toggle). */
   const hasTotal = queue.limits.total != null;
-  const [perKeyValue, setPerKeyValue] = useState<string>(
-    queue.limits.perKey.current?.toString() ?? ""
-  );
-  const [totalValue, setTotalValue] = useState<string>(
-    queue.limits.total?.current?.toString() ?? ""
-  );
+  /** Both fields start blank so blank-means-unchanged holds: a prefilled value would submit
+   * as an explicit override of the current value, pinning it against future code changes.
+   * The current values show as placeholders instead. */
+  const [perKeyValue, setPerKeyValue] = useState<string>("");
+  const [totalValue, setTotalValue] = useState<string>("");
 
   const isOverridden = hasTotal
     ? !!queue.limits.perKey.overriddenAt || !!queue.limits.total?.overriddenAt
@@ -233,7 +232,10 @@ export function QueueOverrideConcurrencyButton({
   const perKeyInvalid =
     perKeyValue !== "" && (!Number.isInteger(perKeyNumber) || perKeyNumber < 0 || perKeyOverCap);
   const totalNumber = Number(totalValue);
-  const totalInvalid = totalValue !== "" && (!Number.isInteger(totalNumber) || totalNumber < 1);
+  const totalOverCap =
+    totalValue !== "" && Number.isFinite(totalNumber) && totalNumber > environmentConcurrencyLimit;
+  const totalInvalid =
+    totalValue !== "" && (!Number.isInteger(totalNumber) || totalNumber < 1 || totalOverCap);
 
   const submitDisabled = hasTotal
     ? isLoading || perKeyInvalid || totalInvalid || (perKeyValue === "" && totalValue === "")
@@ -307,8 +309,9 @@ export function QueueOverrideConcurrencyButton({
           {hasTotal ? (
             isOverridden ? (
               <Paragraph variant="small">
-                This queue's limits are currently overridden. You can update the override or remove
-                it to restore the limits set in code.
+                This queue's limits are currently overridden. Fill a field to change that limit
+                (blank fields stay unchanged), or remove the override to restore the limits set in
+                code.
               </Paragraph>
             ) : (
               <Paragraph variant="small">
@@ -370,14 +373,17 @@ export function QueueOverrideConcurrencyButton({
                     name="totalLimit"
                     id="totalLimit"
                     min="1"
+                    max={environmentConcurrencyLimit}
                     value={totalValue}
                     onChange={(e) => setTotalValue(e.target.value)}
                     placeholder={queue.limits.total?.current.toString()}
                   />
                   <Hint className={totalInvalid ? "text-warning tabular-nums" : "tabular-nums"}>
                     {totalInvalid
-                      ? "Enter a whole number of 1 or more."
-                      : `The most concurrent runs across all keys together, capped at run time by the environment limit of ${environmentConcurrencyLimit}.${
+                      ? totalOverCap
+                        ? `Can't exceed the environment limit of ${environmentConcurrencyLimit}.`
+                        : "Enter a whole number of 1 or more."
+                      : `The most concurrent runs across all keys together. It can't exceed the environment limit of ${environmentConcurrencyLimit}.${
                           typeof queue.limits.total?.base === "number"
                             ? ` Set to ${queue.limits.total.base} in code.`
                             : ""

@@ -91,20 +91,26 @@ export async function handleQueueMutationAction({
         }
 
         const perKey = perKeyRaw === null ? null : parseInt(perKeyRaw, 10);
-        if (perKey !== null && (isNaN(perKey) || perKey < 0)) {
+        if (
+          perKey !== null &&
+          (isNaN(perKey) || perKey < 0 || perKey > environment.maximumConcurrencyLimit)
+        ) {
           return redirectWithErrorMessage(
             redirectPath,
             request,
-            "Per-key limit must be a valid number"
+            `Per-key limit must be a number between 0 and the environment limit of ${environment.maximumConcurrencyLimit}`
           );
         }
 
         const total = totalRaw === null ? null : parseInt(totalRaw, 10);
-        if (total !== null && (isNaN(total) || total < 1)) {
+        if (
+          total !== null &&
+          (isNaN(total) || total < 1 || total > environment.maximumConcurrencyLimit)
+        ) {
           return redirectWithErrorMessage(
             redirectPath,
             request,
-            "Total limit must be a number of 1 or more"
+            `Total limit must be a number between 1 and the environment limit of ${environment.maximumConcurrencyLimit}`
           );
         }
 
@@ -138,7 +144,13 @@ export async function handleQueueMutationAction({
               "message" in error && typeof error.message === "string"
                 ? error.message
                 : "Failed to override the total limit";
-            return redirectWithErrorMessage(redirectPath, request, message);
+            return redirectWithErrorMessage(
+              redirectPath,
+              request,
+              perKey !== null
+                ? `The per-key limit was overridden, but the total limit failed: ${message}`
+                : message
+            );
           }
         }
 
@@ -222,12 +234,14 @@ export async function handleQueueMutationAction({
         return redirectWithErrorMessage(redirectPath, request, "Queue ID is required");
       }
 
+      const isBoundsScope = formData.get("scope") === "bounds";
+
       const result = await concurrencySystem.queues.resetConcurrencyLimit(
         environment,
         friendlyId.toString()
       );
 
-      if (!result.isOk()) {
+      if (!result.isOk() && !(isBoundsScope && result.error.type === "queue_not_overridden")) {
         return redirectWithErrorMessage(
           redirectPath,
           request,
@@ -235,12 +249,12 @@ export async function handleQueueMutationAction({
         );
       }
 
-      if (formData.get("scope") === "bounds") {
+      if (isBoundsScope) {
         const totalResult = await concurrencySystem.queues.resetTotalConcurrencyLimit(
           environment,
           friendlyId.toString()
         );
-        if (!totalResult.isOk()) {
+        if (!totalResult.isOk() && totalResult.error.type !== "queue_not_overridden") {
           return redirectWithErrorMessage(
             redirectPath,
             request,
