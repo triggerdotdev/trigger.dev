@@ -90,27 +90,27 @@ export async function handleQueueMutationAction({
           );
         }
 
-        const perKey = perKeyRaw === null ? null : parseInt(perKeyRaw, 10);
+        const perKey = perKeyRaw === null ? null : Number(perKeyRaw);
         if (
           perKey !== null &&
-          (isNaN(perKey) || perKey < 0 || perKey > environment.maximumConcurrencyLimit)
+          (!Number.isInteger(perKey) || perKey < 0 || perKey > environment.maximumConcurrencyLimit)
         ) {
           return redirectWithErrorMessage(
             redirectPath,
             request,
-            `Per-key limit must be a number between 0 and the environment limit of ${environment.maximumConcurrencyLimit}`
+            `Per-key limit must be a whole number between 0 and the environment limit of ${environment.maximumConcurrencyLimit}`
           );
         }
 
-        const total = totalRaw === null ? null : parseInt(totalRaw, 10);
+        const total = totalRaw === null ? null : Number(totalRaw);
         if (
           total !== null &&
-          (isNaN(total) || total < 1 || total > environment.maximumConcurrencyLimit)
+          (!Number.isInteger(total) || total < 1 || total > environment.maximumConcurrencyLimit)
         ) {
           return redirectWithErrorMessage(
             redirectPath,
             request,
-            `Total limit must be a number between 1 and the environment limit of ${environment.maximumConcurrencyLimit}`
+            `Total limit must be a whole number between 1 and the environment limit of ${environment.maximumConcurrencyLimit}`
           );
         }
 
@@ -258,7 +258,9 @@ export async function handleQueueMutationAction({
           return redirectWithErrorMessage(
             redirectPath,
             request,
-            "The per-key limit was reset, but resetting the total limit failed"
+            result.isOk()
+              ? "The per-key limit was reset, but resetting the total limit failed"
+              : "Failed to reset the total limit"
           );
         }
       }

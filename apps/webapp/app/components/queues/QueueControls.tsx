@@ -243,8 +243,16 @@ export function QueueOverrideConcurrencyButton({
 
   const iconLabel = isOverridden ? "Edit override" : "Override limit";
 
+  const handleOpenChange = (open: boolean) => {
+    if (open) {
+      setPerKeyValue("");
+      setTotalValue("");
+    }
+    setIsOpen(open);
+  };
+
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       {trigger === "icon" ? (
         <TooltipProvider disableHoverableContent={true}>
           <Tooltip>
