@@ -80,19 +80,21 @@ export type EnvironmentVariableValueRow = {
   /** When set, the row is only removed if it still has this version. */
   version?: number;
   variableId: string;
+  environmentId: string;
   key: string;
   secretReferenceKey?: string;
 };
 
 /**
- * The single code path that removes value rows of one environment together with their secret
- * store entries and secret references, using a fixed number of statements for any number of
- * rows. A variable left with no values afterwards is removed as well.
+ * The single code path that removes value rows together with their secret store entries and
+ * secret references, in a fixed number of statements for any number of rows. A variable left
+ * with no values afterwards is removed as well; under READ COMMITTED a value created for that
+ * variable at the same moment can still be swept away with it, a pre-existing window that this
+ * narrows but does not close.
  */
 export async function deleteEnvironmentVariableValueRows(
   tx: PrismaClientOrTransaction,
   projectId: string,
-  environmentId: string,
   rows: EnvironmentVariableValueRow[]
 ): Promise<{ deleted: EnvironmentVariableValueRow[]; skipped: EnvironmentVariableValueRow[] }> {
   if (rows.length === 0) {
@@ -101,7 +103,7 @@ export async function deleteEnvironmentVariableValueRows(
 
   const removed = await tx.environmentVariableValue.deleteMany({
     where: {
-      OR: rows.map((row) =>
+      OR: boundedIn(rows).map((row) =>
         row.version === undefined ? { id: row.id } : { id: row.id, version: row.version }
       ),
     },
@@ -132,22 +134,18 @@ export async function deleteEnvironmentVariableValueRows(
 
   await tx.secretStore.deleteMany({
     where: {
-      key: { in: boundedIn(deleted.map((row) => secretKey(projectId, environmentId, row.key))) },
+      key: {
+        in: boundedIn(deleted.map((row) => secretKey(projectId, row.environmentId, row.key))),
+      },
     },
   });
 
-  const emptied = await tx.environmentVariable.findMany({
+  await tx.environmentVariable.deleteMany({
     where: {
       id: { in: boundedIn(deleted.map((row) => row.variableId)) },
       values: { none: {} },
     },
-    select: { id: true },
   });
-  if (emptied.length > 0) {
-    await tx.environmentVariable.deleteMany({
-      where: { id: { in: boundedIn(emptied.map((variable) => variable.id)) } },
-    });
-  }
 
   return { deleted, skipped };
 }
@@ -1010,10 +1008,11 @@ export class EnvironmentVariablesRepository implements Repository {
 
     try {
       await $transaction(this.prismaClient, "delete env var value", async (tx) => {
-        await deleteEnvironmentVariableValueRows(tx, projectId, options.environmentId, [
+        await deleteEnvironmentVariableValueRows(tx, projectId, [
           {
             id: value.id,
             variableId: environmentVariable.id,
+            environmentId: options.environmentId,
             key: environmentVariable.key,
             secretReferenceKey: value.valueReference?.key,
           },
@@ -1101,17 +1100,13 @@ export class EnvironmentVariablesRepository implements Repository {
             id: own.id,
             version: own.version,
             variableId: variable.id,
+            environmentId: options.environmentId,
             key: variable.key,
             secretReferenceKey: own.valueReference?.key,
           });
         }
 
-        const { deleted } = await deleteEnvironmentVariableValueRows(
-          tx,
-          projectId,
-          options.environmentId,
-          rows
-        );
+        const { deleted } = await deleteEnvironmentVariableValueRows(tx, projectId, rows);
         return deleted.map((row) => row.key);
       }
     );

@@ -765,7 +765,7 @@ postgresTest(
   }
 );
 
-describe("EnvironmentVariablesRepository.deleteValues", () => {
+describe("EnvironmentVariablesRepository value deletes", () => {
   const vercel = { type: "integration" as const, integration: "vercel" };
 
   async function createBranchWithParent(
@@ -954,12 +954,13 @@ describe("EnvironmentVariablesRepository.deleteValues", () => {
         id: value.id,
         version: value.variable.key === "STALE" ? value.version + 1 : value.version,
         variableId: value.variableId,
+        environmentId: branch.id,
         key: value.variable.key,
         secretReferenceKey: value.valueReference?.key,
       }));
 
       const result = await prisma.$transaction((tx) =>
-        deleteEnvironmentVariableValueRows(tx, project.id, branch.id, rows)
+        deleteEnvironmentVariableValueRows(tx, project.id, rows)
       );
 
       expect(result.deleted.map((r) => r.key)).toEqual(["FRESH"]);
@@ -993,5 +994,88 @@ describe("EnvironmentVariablesRepository.deleteValues", () => {
       })
     ).toEqual({ deleted: [], skipped: ["SHARED"] });
     expect(await theirs.ownKeys(theirs.branch.id)).toEqual(["SHARED"]);
+  });
+  postgresTest("skips duplicate keys and keys whose row is already gone", async ({ prisma }) => {
+    const { project, branch, repository, write, ownKeys } = await createBranchWithParent(prisma);
+    await write(branch.id, { GONE: "g", KEPT: "k" }, vercel);
+    await prisma.environmentVariableValue.deleteMany({
+      where: { environmentId: branch.id, variable: { key: "GONE" } },
+    });
+
+    expect(
+      await repository.deleteValues(project.id, {
+        environmentId: branch.id,
+        keys: ["GONE", "GONE", "KEPT", "KEPT", "NEVER"],
+      })
+    ).toEqual({ deleted: ["KEPT"], skipped: ["GONE", "NEVER"] });
+    expect(await ownKeys(branch.id)).toEqual([]);
+  });
+
+  postgresTest(
+    "deleteValue removes the variable with its last value and its secret rows",
+    async ({ prisma }) => {
+      const { project, branch, repository, write, variableKeys, secretRows } =
+        await createBranchWithParent(prisma);
+      await write(branch.id, { ONLY: "o", OTHER: "x" }, vercel);
+      const variable = await prisma.environmentVariable.findFirstOrThrow({
+        where: { projectId: project.id, key: "ONLY" },
+      });
+
+      expect(
+        await repository.deleteValue(project.id, { id: variable.id, environmentId: branch.id })
+      ).toEqual({ success: true });
+      expect(await variableKeys()).toEqual(["OTHER"]);
+      expect(await secretRows(branch.id)).toEqual({ store: ["OTHER"], references: ["OTHER"] });
+      expect(
+        await repository.deleteValue(project.id, { id: variable.id, environmentId: branch.id })
+      ).toEqual({ success: false, error: "Environment variable not found" });
+    }
+  );
+
+  postgresTest(
+    "deleteValue keeps the value the variable has in another environment",
+    async ({ prisma }) => {
+      const { project, parent, branch, repository, write, ownKeys, variableKeys, secretRows } =
+        await createBranchWithParent(prisma);
+      await write(branch.id, { BOTH: "branch" }, vercel);
+      await write(parent.id, { BOTH: "root" }, vercel);
+      const variable = await prisma.environmentVariable.findFirstOrThrow({
+        where: { projectId: project.id, key: "BOTH" },
+      });
+
+      expect(
+        await repository.deleteValue(project.id, { id: variable.id, environmentId: branch.id })
+      ).toEqual({ success: true });
+      expect(await variableKeys()).toEqual(["BOTH"]);
+      expect(await ownKeys(branch.id)).toEqual([]);
+      expect(await ownKeys(parent.id)).toEqual(["BOTH"]);
+      expect(await secretRows(branch.id)).toEqual({ store: [], references: [] });
+      expect(await secretRows(parent.id)).toEqual({ store: ["BOTH"], references: ["BOTH"] });
+      expect(await repository.getEnvironmentVariables(project.id, branch.id, parent.id)).toEqual([
+        { key: "BOTH", value: "root" },
+      ]);
+      expect(
+        await repository.deleteValue(project.id, { id: variable.id, environmentId: branch.id })
+      ).toEqual({ success: false, error: "Environment variable value not found" });
+    }
+  );
+
+  postgresTest("deleteValue handles a value without a secret reference", async ({ prisma }) => {
+    const { project, branch, repository, write, variableKeys, secretRows } =
+      await createBranchWithParent(prisma);
+    await write(branch.id, { UNLINKED: "u" }, vercel);
+    const variable = await prisma.environmentVariable.findFirstOrThrow({
+      where: { projectId: project.id, key: "UNLINKED" },
+    });
+    await prisma.environmentVariableValue.updateMany({
+      where: { variableId: variable.id, environmentId: branch.id },
+      data: { valueReferenceId: null },
+    });
+
+    expect(
+      await repository.deleteValue(project.id, { id: variable.id, environmentId: branch.id })
+    ).toEqual({ success: true });
+    expect(await variableKeys()).toEqual([]);
+    expect((await secretRows(branch.id)).store).toEqual([]);
   });
 });
