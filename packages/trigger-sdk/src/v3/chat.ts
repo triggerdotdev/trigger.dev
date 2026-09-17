@@ -2090,10 +2090,14 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             signal: combinedSignal,
             timeoutInSeconds: this.streamTimeoutSeconds,
             lastEventId: state.lastEventId,
-            // Catch silent-dead-socket: if no chunk (or server
-            // keepalive) arrives in 60s, force reconnect. Sized
-            // generously over typical agent thinking pauses.
+            // Reconnect if no decoded record arrives for 60 seconds.
             stallTimeoutMs: 60_000,
+            // Bound connected silence while preserving recovery from network failures.
+            ...(!this.watchMode && {
+              maxStallRetries: 5,
+              retryDelayMs: 1_000,
+              maxRetryDelayMs: 5_000,
+            }),
             fetchClient: sseFetchClient,
           });
           currentSubscription = subscription;
@@ -2151,11 +2155,6 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             !currentSubscription?.sessionSettled &&
             !combinedSignal.aborted
           ) {
-            // Clear + persist before throwing so the surfaced error leaves
-            // consistent state — otherwise a reload sees isStreaming: true
-            // and reopens a doomed subscription.
-            state.isStreaming = false;
-            this.notifySessionChange(chatId, state);
             throw new Error(
               "Chat stream ended before the turn completed (reconnect budget exhausted)."
             );
@@ -2163,7 +2162,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
           // Settled close, or the turn is gone — tell the UI instead of
           // leaving it spinning on a stream nobody will finish.
-          if (state.isStreaming) {
+          if (state.isStreaming && this.activeStreams.get(chatId) === internalAbort) {
             state.isStreaming = false;
             this.notifySessionChange(chatId, state);
           }
@@ -2440,6 +2439,11 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             return;
           }
           const errorStatus = (error as { status?: unknown }).status;
+          // A superseded stream cannot settle the replacement stream.
+          if (this.activeStreams.get(chatId) === internalAbort) {
+            state.isStreaming = false;
+            this.notifySessionChange(chatId, state);
+          }
           this.emitEvent({
             type: "stream-error",
             chatId,

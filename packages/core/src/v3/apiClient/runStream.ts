@@ -219,7 +219,9 @@ export class SSEStreamSubscription implements StreamSubscription {
   private lastEventId: string | undefined;
   private from: "beginning" | "latest";
   private retryCount = 0;
+  private stallCount = 0;
   private maxRetries: number;
+  private maxStallRetries: number;
   private retryDelayMs: number;
   private maxRetryDelayMs: number;
   private retryJitter: number;
@@ -273,9 +275,11 @@ export class SSEStreamSubscription implements StreamSubscription {
       // the connection is established, force a reconnect. Catches
       // silent-dead-socket cases (mobile OS killed the TCP socket but
       // the read just blocks). Disabled (`0`) by default; opt in
-      // explicitly. Servers that emit periodic keepalive comments
-      // reset the timer naturally.
+      // explicitly. Only decoded records reset the timer.
       stallTimeoutMs?: number;
+      // Reconnects after stall timeouts before the stream errors.
+      // Only decoded records restore this budget. Defaults to Infinity.
+      maxStallRetries?: number;
       // HTTP statuses that should NOT be retried — fail the stream
       // permanently. Defaults cover the permanent client-error set:
       // `400` (bad request), `404` (stream gone), `409` (conflict),
@@ -293,6 +297,7 @@ export class SSEStreamSubscription implements StreamSubscription {
     this.lastEventId = options.lastEventId;
     this.from = options.from ?? "beginning";
     this.maxRetries = options.maxRetries ?? Infinity;
+    this.maxStallRetries = options.maxStallRetries ?? Infinity;
     this.retryDelayMs = options.retryDelayMs ?? 100;
     this.maxRetryDelayMs = options.maxRetryDelayMs ?? 5000;
     this.retryJitter = options.retryJitter ?? 0.5;
@@ -403,7 +408,11 @@ export class SSEStreamSubscription implements StreamSubscription {
     const armStall = () => {
       if (this.stallTimeoutMs <= 0) return;
       clearTimeout(stallTimer);
-      stallTimer = setTimeout(() => this.internalAbort?.abort(), this.stallTimeoutMs);
+      stallTimer = setTimeout(() => {
+        if (!this.internalAbort || this.internalAbort.signal.aborted) return;
+        this.stallCount++;
+        this.internalAbort.abort();
+      }, this.stallTimeoutMs);
     };
 
     // Idempotent — both the catch (before recursion) and the finally
@@ -461,7 +470,6 @@ export class SSEStreamSubscription implements StreamSubscription {
 
       const streamVersion = response.headers.get("X-Stream-Version") ?? "v1";
       this.sessionSettled = response.headers.get("X-Session-Settled") === "true";
-      this.retryCount = 0; // reset on success
       armStall();
 
       // Dedup window for record ids. Bounded with FIFO eviction so a
@@ -576,8 +584,11 @@ export class SSEStreamSubscription implements StreamSubscription {
             return;
           }
 
-          armStall(); // any chunk (including server keepalives) resets the silence timer
+          armStall(); // Each decoded record resets the silence timer.
           this.authRefreshed = false;
+          // Headers alone do not establish stream recovery.
+          this.retryCount = 0;
+          this.stallCount = 0;
           controller.enqueue(value);
         }
       } catch (error) {
@@ -644,8 +655,14 @@ export class SSEStreamSubscription implements StreamSubscription {
       return;
     }
 
-    if (this.retryCount >= this.maxRetries) {
-      const finalError = error || new Error("Max retries reached");
+    const stallsExhausted = this.stallCount > this.maxStallRetries;
+    if (this.retryCount >= this.maxRetries || stallsExhausted) {
+      // Internal timeouts are failures, not caller cancellation.
+      const finalError = stallsExhausted
+        ? new Error("Stream stalled: no records received")
+        : error?.name === "AbortError"
+          ? new Error("Stream connection retries exhausted")
+          : error || new Error("Max retries reached");
       controller.error(finalError);
       this.options.onError?.(finalError);
       return;
