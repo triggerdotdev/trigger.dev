@@ -35,7 +35,11 @@ export type BulkDeleteEnvironmentVariablesParams = {
   keys: string[];
   /** Only delete values that were last written by this source. */
   onlyWrittenBy?: EnvironmentVariableSource;
-  /** Only delete values on a branch whose key also has a value on the parent environment. */
+  /**
+   * Only delete values whose key also has a value on the parent environment. Takes effect only
+   * when the request addresses a preview branch (`x-trigger-branch` header or the API client's
+   * `previewBranch` option); on an environment with no parent every key is skipped.
+   */
   onlyShadowingParent?: boolean;
 };
 

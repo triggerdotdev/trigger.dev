@@ -2192,7 +2192,7 @@ paths:
     post:
       operationId: bulk_delete_project_envvars_v1
       summary: Bulk delete environment variables
-      description: Delete up to 1000 environment variables from a specific project and environment in one request. Keys that have no value in the environment, or that the filters exclude, are returned as skipped.
+      description: Delete up to 1000 environment variables from a specific project and environment in one request. Keys that have no value in the environment, that the filters exclude, or whose value changed while the delete ran are returned as skipped.
       requestBody:
         required: true
         content:
@@ -2230,7 +2230,7 @@ paths:
                       required: ["type", "integration"]
                 onlyShadowingParent:
                   type: boolean
-                  description: On a preview branch, only delete values whose key also has a value on the parent environment, so the branch falls back to the shared value.
+                  description: Only delete values whose key also has a value on the parent environment, so the branch falls back to the shared value. Takes effect only when the request addresses a preview branch, via the `x-trigger-branch` header or the SDK client's `previewBranch` option; on an environment with no parent every key is skipped.
                   default: false
               required: ["keys"]
       responses:
@@ -2248,7 +2248,7 @@ paths:
                       type: string
                   skipped:
                     type: array
-                    description: Keys that were left untouched, because the environment had no value for them or a filter excluded them.
+                    description: Keys that were left untouched, because the environment had no value for them, a filter excluded them, or their value changed while the delete ran. A skip caused by a concurrent change is transient and a retry can delete the key.
                     items:
                       type: string
                 required: ["deleted", "skipped"]

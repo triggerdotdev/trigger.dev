@@ -1626,7 +1626,11 @@ export const BulkDeleteEnvironmentVariablesRequestBody = z.object({
   keys: z.array(z.string().min(1).max(256)).min(1).max(1000),
   /** Only remove values last written by this source. */
   onlyWrittenBy: EnvironmentVariableSource.optional(),
-  /** Only remove values whose key also has a value on the parent environment. */
+  /**
+   * Only remove values whose key also has a value on the parent environment. Takes effect only
+   * when the request addresses a preview branch (`x-trigger-branch` header or the API client's
+   * `previewBranch` option); on an environment with no parent every key is skipped.
+   */
   onlyShadowingParent: z.boolean().optional(),
 });
 
@@ -1635,7 +1639,12 @@ export type BulkDeleteEnvironmentVariablesRequestBody = z.infer<
 >;
 
 export const BulkDeleteEnvironmentVariablesResponseBody = z.object({
+  /** Keys whose value was removed from the environment. */
   deleted: z.array(z.string()),
+  /**
+   * Keys left untouched: the environment had no value for them, a filter excluded them, or their
+   * value changed while the delete ran. A skip caused by a concurrent change is transient.
+   */
   skipped: z.array(z.string()),
 });
 

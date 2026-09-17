@@ -1078,4 +1078,19 @@ describe("EnvironmentVariablesRepository value deletes", () => {
     expect(await variableKeys()).toEqual([]);
     expect((await secretRows(branch.id)).store).toEqual([]);
   });
+
+  postgresTest("deletes three of four keys through a padded row list", async ({ prisma }) => {
+    const { project, branch, repository, write, ownKeys, secretRows } =
+      await createBranchWithParent(prisma);
+    await write(branch.id, { A: "a", B: "b", C: "c", D: "d" }, vercel);
+
+    expect(
+      await repository.deleteValues(project.id, { environmentId: branch.id, keys: ["A", "B", "C"] })
+    ).toEqual({ deleted: ["A", "B", "C"], skipped: [] });
+    expect(await ownKeys(branch.id)).toEqual(["D"]);
+    expect(await secretRows(branch.id)).toEqual({ store: ["D"], references: ["D"] });
+    expect(await repository.getEnvironmentVariables(project.id, branch.id)).toEqual([
+      { key: "D", value: "d" },
+    ]);
+  });
 });
