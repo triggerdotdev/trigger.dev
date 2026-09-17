@@ -956,28 +956,28 @@ function QueuesWithMetricsView() {
                         {queue.concurrencyVersion === "V2" &&
                         queue.limits.perKey.current == null &&
                         queue.limits.total?.current != null ? (
-                          <>
+                          <span>
                             {Math.min(queue.limits.total.current, environment.concurrencyLimit)}
                             <span className="ml-1 text-text-dimmed group-hover/table-row:text-text-bright">
                               total
                             </span>
-                          </>
+                          </span>
                         ) : queue.concurrencyVersion === "V2" &&
                           queue.limits.perKey.current != null ? (
-                          <>
+                          <span>
                             {limit}
                             <span className="ml-1 text-text-dimmed group-hover/table-row:text-text-bright">
                               per key
                             </span>
-                          </>
+                          </span>
                         ) : queue.concurrencyLimitOverridePercent !== null ? (
-                          <>
+                          <span>
                             {limit}
                             <span className="ml-1 text-text-dimmed group-hover/table-row:text-text-bright">
                               ({formatOverridePercent(queue.concurrencyLimitOverridePercent)}
                               %)
                             </span>
-                          </>
+                          </span>
                         ) : (
                           limit
                         )}
