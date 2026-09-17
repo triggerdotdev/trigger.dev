@@ -7,6 +7,7 @@ import {
   boundedIn,
   Prisma,
   type PrismaClient,
+  type PrismaClientOrTransaction,
   type RuntimeEnvironmentType,
 } from "@trigger.dev/database";
 import { z } from "zod";
@@ -24,9 +25,13 @@ import {
   type CreateResult,
   type DeleteEnvironmentVariable,
   type DeleteEnvironmentVariableValue,
+  type DeleteEnvironmentVariableValues,
+  type DeleteEnvironmentVariableValuesResult,
   type EditEnvironmentVariable,
   type EditEnvironmentVariableValue,
   type EnvironmentVariable,
+  type EnvironmentVariableUpdater,
+  EnvironmentVariableUpdaterSchema,
   type EnvironmentVariableWithSecret,
   type ProjectEnvironmentVariable,
   type Repository,
@@ -55,6 +60,97 @@ function parseSecretKey(key: string) {
 }
 
 const SecretValue = z.object({ secret: z.string() });
+
+function isSameUpdater(stored: unknown, source: EnvironmentVariableUpdater): boolean {
+  const parsed = EnvironmentVariableUpdaterSchema.safeParse(stored);
+  if (!parsed.success) {
+    return false;
+  }
+  if (parsed.data.type === "user" && source.type === "user") {
+    return parsed.data.userId === source.userId;
+  }
+  if (parsed.data.type === "integration" && source.type === "integration") {
+    return parsed.data.integration === source.integration;
+  }
+  return false;
+}
+
+export type EnvironmentVariableValueRow = {
+  id: string;
+  /** When set, the row is only removed if it still has this version. */
+  version?: number;
+  variableId: string;
+  key: string;
+  secretReferenceKey?: string;
+};
+
+/**
+ * The single code path that removes value rows of one environment together with their secret
+ * store entries and secret references, using a fixed number of statements for any number of
+ * rows. A variable left with no values afterwards is removed as well.
+ */
+export async function deleteEnvironmentVariableValueRows(
+  tx: PrismaClientOrTransaction,
+  projectId: string,
+  environmentId: string,
+  rows: EnvironmentVariableValueRow[]
+): Promise<{ deleted: EnvironmentVariableValueRow[]; skipped: EnvironmentVariableValueRow[] }> {
+  if (rows.length === 0) {
+    return { deleted: [], skipped: [] };
+  }
+
+  const removed = await tx.environmentVariableValue.deleteMany({
+    where: {
+      OR: rows.map((row) =>
+        row.version === undefined ? { id: row.id } : { id: row.id, version: row.version }
+      ),
+    },
+  });
+
+  let deleted = rows;
+  let skipped: EnvironmentVariableValueRow[] = [];
+  if (removed.count < rows.length) {
+    const survivors = await tx.environmentVariableValue.findMany({
+      where: { id: { in: boundedIn(rows.map((row) => row.id)) } },
+      select: { id: true },
+    });
+    const survivorIds = new Set(survivors.map((value) => value.id));
+    deleted = rows.filter((row) => !survivorIds.has(row.id));
+    skipped = rows.filter((row) => survivorIds.has(row.id));
+  }
+
+  if (deleted.length === 0) {
+    return { deleted, skipped };
+  }
+
+  const referenceKeys = deleted.flatMap((row) =>
+    row.secretReferenceKey ? [row.secretReferenceKey] : []
+  );
+  if (referenceKeys.length > 0) {
+    await tx.secretReference.deleteMany({ where: { key: { in: boundedIn(referenceKeys) } } });
+  }
+
+  await tx.secretStore.deleteMany({
+    where: {
+      key: { in: boundedIn(deleted.map((row) => secretKey(projectId, environmentId, row.key))) },
+    },
+  });
+
+  const emptied = await tx.environmentVariable.findMany({
+    where: {
+      id: { in: boundedIn(deleted.map((row) => row.variableId)) },
+      values: { none: {} },
+    },
+    select: { id: true },
+  });
+  if (emptied.length > 0) {
+    await tx.environmentVariable.deleteMany({
+      where: { id: { in: boundedIn(emptied.map((variable) => variable.id)) } },
+    });
+  }
+
+  return { deleted, skipped };
+}
 
 export class EnvironmentVariablesRepository implements Repository {
   constructor(
@@ -870,11 +966,7 @@ export class EnvironmentVariablesRepository implements Repository {
         deletedAt: null,
       },
       select: {
-        environments: {
-          select: {
-            id: true,
-          },
-        },
+        id: true,
       },
     });
 
@@ -887,9 +979,11 @@ export class EnvironmentVariablesRepository implements Repository {
         id: true,
         key: true,
         values: {
+          where: {
+            environmentId: options.environmentId,
+          },
           select: {
             id: true,
-            environmentId: true,
             valueReference: {
               select: {
                 key: true,
@@ -900,6 +994,7 @@ export class EnvironmentVariablesRepository implements Repository {
       },
       where: {
         id: options.id,
+        projectId,
       },
     });
 
@@ -907,39 +1002,22 @@ export class EnvironmentVariablesRepository implements Repository {
       return { success: false as const, error: "Environment variable not found" };
     }
 
-    const value = environmentVariable.values.find((v) => v.environmentId === options.environmentId);
+    const value = environmentVariable.values[0];
 
     if (!value) {
       return { success: false as const, error: "Environment variable value not found" };
     }
 
-    // If this is the last value, delete the whole variable
-    if (environmentVariable.values.length === 1) {
-      return this.delete(projectId, { id: options.id });
-    }
-
     try {
       await $transaction(this.prismaClient, "delete env var value", async (tx) => {
-        const secretStore = getSecretStore("DATABASE", {
-          prismaClient: tx,
-        });
-
-        const key = secretKey(projectId, options.environmentId, environmentVariable.key);
-        await secretStore.deleteSecret(key);
-
-        if (value.valueReference) {
-          await tx.secretReference.delete({
-            where: {
-              key: value.valueReference.key,
-            },
-          });
-        }
-
-        await tx.environmentVariableValue.delete({
-          where: {
+        await deleteEnvironmentVariableValueRows(tx, projectId, options.environmentId, [
+          {
             id: value.id,
+            variableId: environmentVariable.id,
+            key: environmentVariable.key,
+            secretReferenceKey: value.valueReference?.key,
           },
-        });
+        ]);
       });
 
       return {
@@ -951,6 +1029,98 @@ export class EnvironmentVariablesRepository implements Repository {
         error: error instanceof Error ? error.message : "Something went wrong",
       };
     }
+  }
+
+  async deleteValues(
+    projectId: string,
+    options: DeleteEnvironmentVariableValues
+  ): Promise<DeleteEnvironmentVariableValuesResult> {
+    const keys = Array.from(new Set(options.keys));
+    if (keys.length === 0) {
+      return { deleted: [], skipped: [] };
+    }
+
+    const deletedKeys = await $transaction(
+      this.prismaClient,
+      "delete env var values",
+      async (tx) => {
+        let parentEnvironmentId: string | undefined;
+        if (options.onlyShadowingParent) {
+          const environment = await tx.runtimeEnvironment.findFirst({
+            where: { id: options.environmentId, projectId },
+            select: { parentEnvironmentId: true },
+          });
+          parentEnvironmentId = environment?.parentEnvironmentId ?? undefined;
+          if (!parentEnvironmentId) {
+            return [];
+          }
+        }
+
+        const environmentIds = parentEnvironmentId
+          ? [options.environmentId, parentEnvironmentId]
+          : [options.environmentId];
+
+        const variables = await tx.environmentVariable.findMany({
+          where: {
+            projectId,
+            key: { in: boundedIn(keys) },
+            project: { deletedAt: null },
+          },
+          select: {
+            id: true,
+            key: true,
+            values: {
+              where: { environmentId: { in: boundedIn(environmentIds) } },
+              select: {
+                id: true,
+                version: true,
+                environmentId: true,
+                lastUpdatedBy: true,
+                valueReference: { select: { key: true } },
+              },
+            },
+          },
+        });
+
+        const rows: EnvironmentVariableValueRow[] = [];
+        for (const variable of variables) {
+          const own = variable.values.find((v) => v.environmentId === options.environmentId);
+          if (!own) {
+            continue;
+          }
+          if (options.onlyWrittenBy && !isSameUpdater(own.lastUpdatedBy, options.onlyWrittenBy)) {
+            continue;
+          }
+          if (
+            parentEnvironmentId &&
+            !variable.values.some((v) => v.environmentId === parentEnvironmentId)
+          ) {
+            continue;
+          }
+          rows.push({
+            id: own.id,
+            version: own.version,
+            variableId: variable.id,
+            key: variable.key,
+            secretReferenceKey: own.valueReference?.key,
+          });
+        }
+
+        const { deleted } = await deleteEnvironmentVariableValueRows(
+          tx,
+          projectId,
+          options.environmentId,
+          rows
+        );
+        return deleted.map((row) => row.key);
+      }
+    );
+
+    const deleted = new Set(deletedKeys ?? []);
+    return {
+      deleted: keys.filter((key) => deleted.has(key)),
+      skipped: keys.filter((key) => !deleted.has(key)),
+    };
   }
 }
 

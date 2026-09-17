@@ -64,6 +64,7 @@ export async function createRuntimeEnvironment(
     apiKey?: string;
     rootApiKeyHiddenAt?: Date | null;
     slug?: string;
+    parentEnvironmentId?: string;
   }
 ) {
   const slug = options.slug ?? uniqueId("env");
@@ -73,6 +74,7 @@ export async function createRuntimeEnvironment(
       type: options.type,
       projectId: options.projectId,
       organizationId: options.organizationId,
+      parentEnvironmentId: options.parentEnvironmentId ?? null,
       orgMemberId: options.orgMemberId ?? null,
       rootApiKeyHiddenAt: options.rootApiKeyHiddenAt ?? null,
       apiKey: options.apiKey ?? uniqueId("api"),

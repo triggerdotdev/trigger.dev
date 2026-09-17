@@ -19,7 +19,10 @@ vi.mock("~/db.server", () => ({
 
 import { postgresTest } from "@internal/testcontainers";
 import { emptyEnvironmentVariableValuesEnabled } from "~/v3/environmentVariables/emptyValuesFlag.server";
-import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
+import {
+  deleteEnvironmentVariableValueRows,
+  EnvironmentVariablesRepository,
+} from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import {
   createEnvironmentVariable,
   createRuntimeEnvironment,
@@ -761,3 +764,234 @@ postgresTest(
     ).toBe(false);
   }
 );
+
+describe("EnvironmentVariablesRepository.deleteValues", () => {
+  const vercel = { type: "integration" as const, integration: "vercel" };
+
+  async function createBranchWithParent(
+    prisma: Parameters<typeof createBaseOrgProjectWithMember>[0]
+  ) {
+    const { user, organization, project } = await createTestOrgProjectWithMember(prisma);
+    const parent = await createRuntimeEnvironment(prisma, {
+      projectId: project.id,
+      organizationId: organization.id,
+      type: "PREVIEW",
+    });
+    const branch = await createRuntimeEnvironment(prisma, {
+      projectId: project.id,
+      organizationId: organization.id,
+      type: "PREVIEW",
+      parentEnvironmentId: parent.id,
+    });
+    const repository = new EnvironmentVariablesRepository(prisma, prisma);
+
+    const write = async (
+      environmentId: string,
+      variables: Record<string, string>,
+      lastUpdatedBy?: Parameters<typeof repository.create>[1]["lastUpdatedBy"]
+    ) => {
+      const result = await repository.create(project.id, {
+        override: true,
+        environmentIds: [environmentId],
+        variables: Object.entries(variables).map(([key, value]) => ({ key, value })),
+        lastUpdatedBy,
+      });
+      expect(result.success).toBe(true);
+    };
+
+    const ownKeys = async (environmentId: string) => {
+      const values = await prisma.environmentVariableValue.findMany({
+        where: { environmentId, variable: { projectId: project.id } },
+        select: { variable: { select: { key: true } } },
+      });
+      return values.map((v) => v.variable.key).sort();
+    };
+
+    const variableKeys = async () =>
+      (await prisma.environmentVariable.findMany({ where: { projectId: project.id } }))
+        .map((v) => v.key)
+        .sort();
+
+    const secretRows = async (environmentId: string) => {
+      const prefix = `environmentvariable:${project.id}:${environmentId}:`;
+      const store = await prisma.secretStore.findMany({ where: { key: { startsWith: prefix } } });
+      const references = await prisma.secretReference.findMany({
+        where: { key: { startsWith: prefix } },
+      });
+      return {
+        store: store.map((s) => s.key.slice(prefix.length)).sort(),
+        references: references.map((r) => r.key.slice(prefix.length)).sort(),
+      };
+    };
+
+    return { user, project, parent, branch, repository, write, ownKeys, variableKeys, secretRows };
+  }
+
+  postgresTest("removes several values with their secrets and references", async ({ prisma }) => {
+    const { project, branch, repository, write, ownKeys, variableKeys, secretRows } =
+      await createBranchWithParent(prisma);
+    await write(branch.id, { A: "a", B: "b", C: "c" }, vercel);
+
+    const result = await repository.deleteValues(project.id, {
+      environmentId: branch.id,
+      keys: ["A", "B", "A", "MISSING"],
+    });
+
+    expect(result).toEqual({ deleted: ["A", "B"], skipped: ["MISSING"] });
+    expect(await ownKeys(branch.id)).toEqual(["C"]);
+    expect(await variableKeys()).toEqual(["C"]);
+    expect(await secretRows(branch.id)).toEqual({ store: ["C"], references: ["C"] });
+    expect(await repository.getEnvironmentVariables(project.id, branch.id)).toEqual([
+      { key: "C", value: "c" },
+    ]);
+  });
+
+  postgresTest("onlyWrittenBy keeps values last written by anyone else", async ({ prisma }) => {
+    const { user, project, branch, repository, write, ownKeys } =
+      await createBranchWithParent(prisma);
+    const other = await prisma.user.create({
+      data: { email: `${branch.id}@test.com`, authenticationMethod: "MAGIC_LINK" },
+    });
+    await write(branch.id, { MINE: "m" }, vercel);
+    await write(branch.id, { BY_OTHER: "o" }, { type: "integration", integration: "other" });
+    await write(branch.id, { BY_NOBODY: "n" });
+    await write(branch.id, { BY_ME: "u" }, { type: "user", userId: user.id });
+    await write(branch.id, { BY_THEM: "t" }, { type: "user", userId: other.id });
+    const keys = ["MINE", "BY_OTHER", "BY_NOBODY", "BY_ME", "BY_THEM"];
+
+    expect(
+      await repository.deleteValues(project.id, {
+        environmentId: branch.id,
+        keys,
+        onlyWrittenBy: vercel,
+      })
+    ).toEqual({ deleted: ["MINE"], skipped: ["BY_OTHER", "BY_NOBODY", "BY_ME", "BY_THEM"] });
+    expect(
+      await repository.deleteValues(project.id, {
+        environmentId: branch.id,
+        keys,
+        onlyWrittenBy: { type: "user", userId: user.id },
+      })
+    ).toEqual({ deleted: ["BY_ME"], skipped: ["MINE", "BY_OTHER", "BY_NOBODY", "BY_THEM"] });
+    expect(await ownKeys(branch.id)).toEqual(["BY_NOBODY", "BY_OTHER", "BY_THEM"]);
+  });
+
+  postgresTest(
+    "onlyShadowingParent removes only values the parent also holds",
+    async ({ prisma }) => {
+      const { project, parent, branch, repository, write, ownKeys, variableKeys } =
+        await createBranchWithParent(prisma);
+      await write(branch.id, { SHARED: "branch-copy", BRANCH_ONLY: "branch" }, vercel);
+      await write(parent.id, { SHARED: "root", PARENT_ONLY: "root" }, vercel);
+
+      const result = await repository.deleteValues(project.id, {
+        environmentId: branch.id,
+        keys: ["SHARED", "BRANCH_ONLY", "PARENT_ONLY"],
+        onlyShadowingParent: true,
+      });
+
+      expect(result).toEqual({ deleted: ["SHARED"], skipped: ["BRANCH_ONLY", "PARENT_ONLY"] });
+      expect(await ownKeys(branch.id)).toEqual(["BRANCH_ONLY"]);
+      expect(await ownKeys(parent.id)).toEqual(["PARENT_ONLY", "SHARED"]);
+      expect(await variableKeys()).toEqual(["BRANCH_ONLY", "PARENT_ONLY", "SHARED"]);
+      expect(
+        Object.fromEntries(
+          (await repository.getEnvironmentVariables(project.id, branch.id, parent.id)).map(
+            ({ key, value }) => [key, value]
+          )
+        )
+      ).toEqual({ SHARED: "root", BRANCH_ONLY: "branch", PARENT_ONLY: "root" });
+
+      expect(
+        await repository.deleteValues(project.id, {
+          environmentId: parent.id,
+          keys: ["PARENT_ONLY"],
+          onlyShadowingParent: true,
+        })
+      ).toEqual({ deleted: [], skipped: ["PARENT_ONLY"] });
+      expect(await ownKeys(parent.id)).toEqual(["PARENT_ONLY", "SHARED"]);
+    }
+  );
+
+  postgresTest(
+    "removes a variable with its last value but keeps one the parent still uses",
+    async ({ prisma }) => {
+      const { project, parent, branch, repository, write, variableKeys } =
+        await createBranchWithParent(prisma);
+      await write(branch.id, { LAST: "l", BOTH: "b" }, vercel);
+      await write(parent.id, { BOTH: "root" }, vercel);
+
+      expect(
+        await repository.deleteValues(project.id, {
+          environmentId: branch.id,
+          keys: ["LAST", "BOTH"],
+        })
+      ).toEqual({ deleted: ["LAST", "BOTH"], skipped: [] });
+      expect(await variableKeys()).toEqual(["BOTH"]);
+      expect(await repository.getEnvironmentVariables(project.id, parent.id)).toEqual([
+        { key: "BOTH", value: "root" },
+      ]);
+    }
+  );
+
+  postgresTest(
+    "skips a value whose version changed and cleans nothing for it",
+    async ({ prisma }) => {
+      const { project, branch, repository, write, ownKeys, secretRows, variableKeys } =
+        await createBranchWithParent(prisma);
+      await write(branch.id, { STALE: "s", FRESH: "f" }, vercel);
+      const values = await prisma.environmentVariableValue.findMany({
+        where: { environmentId: branch.id },
+        select: {
+          id: true,
+          version: true,
+          variableId: true,
+          variable: { select: { key: true } },
+          valueReference: { select: { key: true } },
+        },
+      });
+      const rows = values.map((value) => ({
+        id: value.id,
+        version: value.variable.key === "STALE" ? value.version + 1 : value.version,
+        variableId: value.variableId,
+        key: value.variable.key,
+        secretReferenceKey: value.valueReference?.key,
+      }));
+
+      const result = await prisma.$transaction((tx) =>
+        deleteEnvironmentVariableValueRows(tx, project.id, branch.id, rows)
+      );
+
+      expect(result.deleted.map((r) => r.key)).toEqual(["FRESH"]);
+      expect(result.skipped.map((r) => r.key)).toEqual(["STALE"]);
+      expect(await ownKeys(branch.id)).toEqual(["STALE"]);
+      expect(await variableKeys()).toEqual(["STALE"]);
+      expect(await secretRows(branch.id)).toEqual({ store: ["STALE"], references: ["STALE"] });
+      expect(await repository.getEnvironmentVariables(project.id, branch.id)).toEqual([
+        { key: "STALE", value: "s" },
+      ]);
+    }
+  );
+
+  postgresTest("does not reach into another project's variables", async ({ prisma }) => {
+    const mine = await createBranchWithParent(prisma);
+    const theirs = await createBranchWithParent(prisma);
+    await theirs.write(theirs.branch.id, { SHARED: "b" }, vercel);
+    await theirs.write(theirs.parent.id, { SHARED: "root" }, vercel);
+
+    expect(
+      await mine.repository.deleteValues(mine.project.id, {
+        environmentId: theirs.branch.id,
+        keys: ["SHARED"],
+      })
+    ).toEqual({ deleted: [], skipped: ["SHARED"] });
+    expect(
+      await mine.repository.deleteValues(mine.project.id, {
+        environmentId: theirs.branch.id,
+        keys: ["SHARED"],
+        onlyShadowingParent: true,
+      })
+    ).toEqual({ deleted: [], skipped: ["SHARED"] });
+    expect(await theirs.ownKeys(theirs.branch.id)).toEqual(["SHARED"]);
+  });
+});

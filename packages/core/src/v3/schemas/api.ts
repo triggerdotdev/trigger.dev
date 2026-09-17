@@ -1602,20 +1602,45 @@ export type UpdateEnvironmentVariableRequestBody = z.infer<
   typeof UpdateEnvironmentVariableRequestBody
 >;
 
+export const EnvironmentVariableSource = discriminatedUnion("type", [
+  z.object({ type: z.literal("user"), userId: z.string() }),
+  z.object({ type: z.literal("integration"), integration: z.string() }),
+]);
+
+export type EnvironmentVariableSource = z.infer<typeof EnvironmentVariableSource>;
+
 export const ImportEnvironmentVariablesRequestBody = z.object({
   variables: z.record(z.string(), z.string()),
   parentVariables: z.record(z.string(), z.string()).optional(),
   override: z.boolean().optional(),
   // When omitted, variables default to non-secret (the DB default is false).
   isSecret: z.boolean().optional(),
-  source: discriminatedUnion("type", [
-    z.object({ type: z.literal("user"), userId: z.string() }),
-    z.object({ type: z.literal("integration"), integration: z.string() }),
-  ]).optional(),
+  source: EnvironmentVariableSource.optional(),
 });
 
 export type ImportEnvironmentVariablesRequestBody = z.infer<
   typeof ImportEnvironmentVariablesRequestBody
+>;
+
+export const BulkDeleteEnvironmentVariablesRequestBody = z.object({
+  keys: z.array(z.string()).min(1).max(1000),
+  /** Only remove values last written by this source. */
+  onlyWrittenBy: EnvironmentVariableSource.optional(),
+  /** Only remove values whose key also has a value on the parent environment. */
+  onlyShadowingParent: z.boolean().optional(),
+});
+
+export type BulkDeleteEnvironmentVariablesRequestBody = z.infer<
+  typeof BulkDeleteEnvironmentVariablesRequestBody
+>;
+
+export const BulkDeleteEnvironmentVariablesResponseBody = z.object({
+  deleted: z.array(z.string()),
+  skipped: z.array(z.string()),
+});
+
+export type BulkDeleteEnvironmentVariablesResponseBody = z.infer<
+  typeof BulkDeleteEnvironmentVariablesResponseBody
 >;
 
 export const EnvironmentVariableResponseBody = z.object({
