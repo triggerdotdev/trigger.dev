@@ -100,6 +100,8 @@ export function logsSearchRolloutSelectedRowCount(
 
 export type ClickhouseEventRepositoryConfig = {
   clickhouse: ClickHouse;
+  /** Destination for logs-search dual writes; defaults to `clickhouse`. */
+  logsSearchClickhouse?: ClickHouse;
   batchSize?: number;
   flushInterval?: number;
   insertStrategy?: "insert" | "insert_async";
@@ -145,6 +147,7 @@ export type ClickhouseEventRepositoryConfig = {
  */
 export class ClickhouseEventRepository implements IEventRepository {
   private _clickhouse: ClickHouse;
+  private _logsSearchClickhouse: ClickHouse;
   private _config: ClickhouseEventRepositoryConfig;
   private readonly _flushScheduler: DynamicFlushScheduler<TaskEventV1Input | TaskEventV2Input>;
   private readonly _llmMetricsFlushScheduler: DynamicFlushScheduler<LlmMetricsV1Input>;
@@ -194,6 +197,7 @@ export class ClickhouseEventRepository implements IEventRepository {
 
   constructor(config: ClickhouseEventRepositoryConfig) {
     this._clickhouse = config.clickhouse;
+    this._logsSearchClickhouse = config.logsSearchClickhouse ?? config.clickhouse;
     this._config = config;
     this._tracer = config.tracer ?? trace.getTracer("clickhouseEventRepo", "0.0.1");
     this._version = config.version ?? "v1";
@@ -574,7 +578,7 @@ export class ClickhouseEventRepository implements IEventRepository {
     let lastError: { clickhouseErrorType?: string } | undefined;
 
     for (let attempt = 1; attempt <= 2; attempt++) {
-      const [error] = await this._clickhouse.taskEventsSearch.insert(rows, {
+      const [error] = await this._logsSearchClickhouse.taskEventsSearch.insert(rows, {
         params: {
           clickhouse_settings: {
             async_insert: 0,

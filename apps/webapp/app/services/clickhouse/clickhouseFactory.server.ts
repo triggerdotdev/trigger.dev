@@ -38,7 +38,7 @@ const defaultLogsClickhouseClient = singleton(
 );
 
 function initializeLogsSearchProjectorClickhouseClient() {
-  const url = new URL(env.LOGS_CLICKHOUSE_URL ?? env.CLICKHOUSE_URL);
+  const url = new URL(env.LOGS_SEARCH_WRITER_CLICKHOUSE_URL ?? env.CLICKHOUSE_URL);
   url.searchParams.delete("secure");
 
   return new ClickHouse({
@@ -80,7 +80,9 @@ function getLogsListClickhouseSettings() {
 }
 
 function initializeLogsClickhouseClient() {
-  const url = new URL(env.LOGS_CLICKHOUSE_URL ?? env.CLICKHOUSE_READER_URL ?? env.CLICKHOUSE_URL);
+  const url = new URL(
+    env.LOGS_SEARCH_READER_CLICKHOUSE_URL ?? env.CLICKHOUSE_READER_URL ?? env.CLICKHOUSE_URL
+  );
   url.searchParams.delete("secure");
 
   return new ClickHouse({
@@ -466,6 +468,39 @@ function initializeEventsClickhouseClient(): ClickHouse {
   });
 }
 
+/**
+ * Logs-search dual-write destination (`LOGS_SEARCH_WRITER_CLICKHOUSE_URL`). Shares storage with the
+ * events warehouse; a separate service keeps the extra insert stream off the events writer.
+ * Undefined when unset, in which case the dual writer uses the events client.
+ */
+const defaultLogsSearchClickhouseClient = singleton(
+  "logsSearchClickhouseClient",
+  initializeLogsSearchClickhouseClient
+);
+
+function initializeLogsSearchClickhouseClient(): ClickHouse | undefined {
+  if (!env.LOGS_SEARCH_WRITER_CLICKHOUSE_URL) {
+    return undefined;
+  }
+
+  const url = new URL(env.LOGS_SEARCH_WRITER_CLICKHOUSE_URL);
+  url.searchParams.delete("secure");
+
+  return new ClickHouse({
+    name: "logs-search-writer",
+    url: url.toString(),
+    keepAlive: {
+      enabled: env.EVENTS_CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
+      idleSocketTtl: env.EVENTS_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
+    },
+    logLevel: env.EVENTS_CLICKHOUSE_LOG_LEVEL,
+    compression: {
+      request: env.EVENTS_CLICKHOUSE_COMPRESSION_REQUEST === "1",
+    },
+    maxOpenConnections: env.LOGS_SEARCH_DUAL_WRITE_MAX_CONCURRENCY,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -732,7 +767,11 @@ export class ClickhouseFactory {
       let defaultRepo = this._eventRepositoryCache.get(defaultKey);
       if (!defaultRepo) {
         const eventsClickhouse = getEventsClickhouseClient();
-        defaultRepo = buildEventRepository(store, eventsClickhouse);
+        defaultRepo = buildEventRepository(
+          store,
+          eventsClickhouse,
+          defaultLogsSearchClickhouseClient
+        );
         this._eventRepositoryCache.set(defaultKey, defaultRepo);
       }
       return { key: defaultKey, repository: defaultRepo };
@@ -786,11 +825,16 @@ const logsSearchDualWriteOrganizationIds = new Set(
     .filter(Boolean)
 );
 
-function buildEventRepository(store: string, clickhouse: ClickHouse): ClickhouseEventRepository {
+function buildEventRepository(
+  store: string,
+  clickhouse: ClickHouse,
+  logsSearchClickhouse?: ClickHouse
+): ClickhouseEventRepository {
   switch (store) {
     case "clickhouse": {
       return new ClickhouseEventRepository({
         clickhouse,
+        logsSearchClickhouse,
         batchSize: env.EVENTS_CLICKHOUSE_BATCH_SIZE,
         flushInterval: env.EVENTS_CLICKHOUSE_FLUSH_INTERVAL_MS,
         maximumTraceSummaryViewCount: clampToEmergencySpanCap(
@@ -822,6 +866,7 @@ function buildEventRepository(store: string, clickhouse: ClickHouse): Clickhouse
     case "clickhouse_v2": {
       return new ClickhouseEventRepository({
         clickhouse: clickhouse,
+        logsSearchClickhouse,
         batchSize: env.EVENTS_CLICKHOUSE_BATCH_SIZE,
         flushInterval: env.EVENTS_CLICKHOUSE_FLUSH_INTERVAL_MS,
         maximumTraceSummaryViewCount: clampToEmergencySpanCap(
