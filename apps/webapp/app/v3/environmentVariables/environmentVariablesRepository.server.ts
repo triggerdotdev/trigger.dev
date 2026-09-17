@@ -86,13 +86,29 @@ export type EnvironmentVariableValueRow = {
 };
 
 /**
+ * Locks the given variable rows for the rest of the transaction. Every delete path takes this
+ * lock before touching any value row, the same variable-then-value order `create` uses through
+ * its variable upsert, so a concurrent import and a delete never wait on each other in a cycle.
+ */
+async function lockEnvironmentVariableRows(tx: PrismaClientOrTransaction, variableIds: string[]) {
+  if (variableIds.length === 0) {
+    return;
+  }
+  await tx.$queryRaw<{ id: string }[]>`
+    SELECT "id" FROM "EnvironmentVariable"
+    WHERE "id" IN (${Prisma.join(boundedIn(variableIds))})
+    FOR UPDATE
+  `;
+}
+
+/**
  * The single code path that removes value rows together with their secret store entries and
  * secret references, in a fixed number of statements for any number of rows. A variable left
  * with no values afterwards is removed as well. The affected variable rows are locked FOR UPDATE
- * first: inserting a value takes a FOR KEY SHARE lock on its variable row, which conflicts with
- * FOR UPDATE, so an in-flight insert makes the lock wait and the emptiness check then sees the
- * new value, while an insert that starts later waits for the commit and recreates the variable
- * through its upsert.
+ * before anything else: inserting a value takes a FOR KEY SHARE lock on its variable row, which
+ * conflicts with FOR UPDATE, so an in-flight insert makes the lock wait and the emptiness check
+ * then sees the new value, while an insert that starts later waits for the commit and recreates
+ * the variable through its upsert.
  */
 export async function deleteEnvironmentVariableValueRows(
   tx: PrismaClientOrTransaction,
@@ -102,6 +118,11 @@ export async function deleteEnvironmentVariableValueRows(
   if (rows.length === 0) {
     return { deleted: [], skipped: [] };
   }
+
+  await lockEnvironmentVariableRows(
+    tx,
+    rows.map((row) => row.variableId)
+  );
 
   const removed = await tx.environmentVariableValue.deleteMany({
     where: {
@@ -142,13 +163,9 @@ export async function deleteEnvironmentVariableValueRows(
     },
   });
 
-  const variableIds = boundedIn(deleted.map((row) => row.variableId));
-  await tx.$queryRaw<{ id: string }[]>`
-    SELECT "id" FROM "EnvironmentVariable" WHERE "id" IN (${Prisma.join(variableIds)}) FOR UPDATE
-  `;
   await tx.environmentVariable.deleteMany({
     where: {
-      id: { in: boundedIn(variableIds) },
+      id: { in: boundedIn(deleted.map((row) => row.variableId)) },
       values: { none: {} },
     },
   });
@@ -1117,6 +1134,10 @@ export class EnvironmentVariablesRepository implements Repository {
         }
 
         if (parentEnvironmentId && rows.length > 0) {
+          await lockEnvironmentVariableRows(
+            tx,
+            rows.map((row) => row.variableId)
+          );
           const lockedParentValues = await tx.$queryRaw<{ id: string }[]>`
             SELECT "id" FROM "EnvironmentVariableValue"
             WHERE "id" IN (${Prisma.join(boundedIn(Array.from(parentValueIdByVariable.values())))})
