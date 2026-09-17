@@ -22,7 +22,7 @@ import type { CliApiClient } from "../apiClient.js";
 import { TaskRunProcess } from "../executions/taskRunProcess.js";
 import { assertExhaustive } from "../utilities/assertExhaustive.js";
 import { logger } from "../utilities/logger.js";
-import { sanitizeEnvVars } from "../utilities/sanitizeEnvVars.js";
+import { buildDevRunEnv } from "../utilities/sanitizeEnvVars.js";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
 import type { BackgroundWorker } from "../dev/backgroundWorker.js";
@@ -631,6 +631,13 @@ export class DevRunController {
     // doesn't force-kill a healthy reused process on RETRY_IMMEDIATELY.
     this.discardProcessOnReturn = false;
 
+    const runEnv = buildDevRunEnv({
+      resolvedEnvVars: envVars,
+      processEnv: this.opts.worker.params.processEnv,
+      envOverrides: this.opts.worker.params.envOverrides,
+      projectRef: execution.project.ref,
+    });
+
     // Get process from pool instead of creating new one
     const { taskRunProcess, isReused } = await this.opts.taskRunProcessPool.getProcess(
       this.opts.worker.manifest,
@@ -642,6 +649,8 @@ export class DevRunController {
       },
       execution.machine,
       {
+        // Config imports in a new process run before its first IPC message.
+        ...runEnv,
         TRIGGER_WORKER_MANIFEST_PATH: join(this.opts.worker.build.outputPath, "index.json"),
         RUN_WORKER_SHOW_LOGS: this.opts.logLevel === "debug" ? "true" : "false",
         TRIGGER_WORKER_VERSION: this.opts.worker.serverWorker?.version,
@@ -690,11 +699,7 @@ export class DevRunController {
           metrics,
         },
         messageId: run.friendlyId,
-        env: {
-          ...sanitizeEnvVars(envVars ?? {}),
-          ...sanitizeEnvVars(this.opts.worker.params.env),
-          TRIGGER_PROJECT_REF: execution.project.ref,
-        },
+        env: runEnv,
       },
       isReused
     );

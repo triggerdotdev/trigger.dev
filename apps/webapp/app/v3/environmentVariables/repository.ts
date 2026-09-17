@@ -47,7 +47,6 @@ export const EditEnvironmentVariable = z.object({
       value: z.string(),
     })
   ),
-  keepEmptyValues: z.boolean().optional(),
   lastUpdatedBy: EnvironmentVariableUpdaterSchema.optional(),
 });
 export type EditEnvironmentVariable = z.infer<typeof EditEnvironmentVariable>;
@@ -64,10 +63,15 @@ export const DeleteEnvironmentVariableValue = z.object({
 });
 export type DeleteEnvironmentVariableValue = z.infer<typeof DeleteEnvironmentVariableValue>;
 
+// Forms preserve explicit empty strings through their custom coercion.
+// A missing field is still invalid.
+export const EnvironmentVariableValue = z.string();
+
 export const EditEnvironmentVariableValue = z.object({
   id: z.string(),
   environmentId: z.string(),
-  value: z.string(),
+  value: EnvironmentVariableValue,
+  setEmptyValue: z.literal("true").optional(),
   lastUpdatedBy: EnvironmentVariableUpdaterSchema.optional(),
 });
 export type EditEnvironmentVariableValue = z.infer<typeof EditEnvironmentVariableValue>;

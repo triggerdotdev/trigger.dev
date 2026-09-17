@@ -1,5 +1,28 @@
 import { resolveDotEnvVars } from "./dotEnv.js";
-import { sanitizeEnvVars } from "./sanitizeEnvVars.js";
+import { buildDevRunEnv, sanitizeEnvVars } from "./sanitizeEnvVars.js";
+
+export function resolveDevEnvVars({
+  envFile,
+  projectEnv,
+  overrides,
+  projectRef,
+}: {
+  envFile?: string;
+  projectEnv: Record<string, string>;
+  overrides: Record<string, string>;
+  projectRef: string;
+}) {
+  const processEnv = sanitizeEnvVars(gatherProcessEnv());
+  const envOverrides = {
+    ...sanitizeEnvVars(resolveDotEnvVars(undefined, envFile)),
+    ...overrides,
+  };
+  return {
+    processEnv,
+    envOverrides,
+    env: buildDevRunEnv({ resolvedEnvVars: projectEnv, processEnv, envOverrides, projectRef }),
+  };
+}
 
 export function resolveLocalEnvVars(
   envFile?: string,

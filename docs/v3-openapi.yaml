@@ -5503,6 +5503,7 @@ components:
       properties:
         value:
           type: string
+          description: The value to store. An empty string is valid and is stored as-is, not treated as a deletion.
           example: slack_123456
       required: ["value"]
     EnvVar:

@@ -35,7 +35,7 @@ import { DevRunController } from "../entryPoints/dev-run-controller.js";
 import { cliLink, prettyError } from "../utilities/cliOutput.js";
 import { devBranchPathSegment } from "../utilities/devBranch.js";
 import { eventBus } from "../utilities/eventBus.js";
-import { resolveLocalEnvVars } from "../utilities/localEnvVars.js";
+import { resolveDevEnvVars } from "../utilities/localEnvVars.js";
 import { logger } from "../utilities/logger.js";
 import { resolveSourceFiles } from "../utilities/sourceFiles.js";
 import { getTmpRoot } from "../utilities/tempDirectories.js";
@@ -121,7 +121,7 @@ class DevSupervisor implements WorkerRuntime {
     this.runLimiter = pLimit(maxConcurrentRuns);
 
     // Initialize the task run process pool
-    const env = await this.#getEnvVars();
+    const { processEnv, envOverrides } = await this.#getEnvVars();
 
     const processKeepAlive =
       this.options.config.processKeepAlive ?? this.options.config.experimental_processKeepAlive;
@@ -148,7 +148,8 @@ class DevSupervisor implements WorkerRuntime {
     }
 
     this.taskRunProcessPool = new TaskRunProcessPool({
-      env,
+      // Project values are supplied fresh when each run obtains a process.
+      env: { ...processEnv, ...envOverrides },
       cwd: this.options.config.workingDir,
       enableProcessReuse,
       maxPoolSize,
@@ -335,10 +336,10 @@ class DevSupervisor implements WorkerRuntime {
       return;
     }
 
-    const env = await this.#getEnvVars();
+    const envVars = await this.#getEnvVars();
 
     const backgroundWorker = new BackgroundWorker(manifest, metafile, {
-      env,
+      ...envVars,
       cwd: this.options.config.workingDir,
       stop,
     });
@@ -656,7 +657,7 @@ class DevSupervisor implements WorkerRuntime {
     }
   }
 
-  async #getEnvVars(): Promise<Record<string, string>> {
+  async #getEnvVars() {
     const environmentVariablesResponse = await this.options.client.getEnvironmentVariables(
       this.options.config.project
     );
@@ -665,17 +666,20 @@ class DevSupervisor implements WorkerRuntime {
       ","
     );
 
-    return {
-      ...resolveLocalEnvVars(
-        this.options.args.envFile,
-        environmentVariablesResponse.success ? environmentVariablesResponse.data.variables : {}
-      ),
-      NODE_ENV: "development",
-      TRIGGER_API_URL: this.options.client.apiURL,
-      TRIGGER_SECRET_KEY: this.options.client.accessToken!,
-      OTEL_EXPORTER_OTLP_COMPRESSION: "none",
-      OTEL_IMPORT_HOOK_INCLUDES,
-    };
+    return resolveDevEnvVars({
+      envFile: this.options.args.envFile,
+      projectEnv: environmentVariablesResponse.success
+        ? environmentVariablesResponse.data.variables
+        : {},
+      projectRef: this.options.config.project,
+      overrides: {
+        NODE_ENV: "development",
+        TRIGGER_API_URL: this.options.client.apiURL,
+        TRIGGER_SECRET_KEY: this.options.client.accessToken!,
+        OTEL_EXPORTER_OTLP_COMPRESSION: "none",
+        OTEL_IMPORT_HOOK_INCLUDES,
+      },
+    });
   }
 
   async #registerWorker(worker: BackgroundWorker) {

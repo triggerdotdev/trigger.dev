@@ -1,5 +1,6 @@
+import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod/v4";
+import { parseEnvironmentVariableForm } from "~/v3/environmentVariables/forms";
 import {
   BookOpenIcon,
   InformationCircleIcon,
@@ -108,6 +109,7 @@ export type MaskedEnvironmentVariable = EnvironmentVariableWithSetValues & {
 };
 
 export type EnvironmentVariablesPageLoaderData = {
+  allowEmptyEnvironmentVariableValues: boolean;
   environmentVariables: MaskedEnvironmentVariable[];
   environments: EnvironmentVariablesEnvironment[];
   hasStaging: boolean;
@@ -142,13 +144,19 @@ export const loader = dashboardLoader(
 
     try {
       const presenter = new EnvironmentVariablesPresenter();
-      const { environmentVariables, environments, hasStaging, vercelIntegration, pagination } =
-        await presenter.call({
-          userId: user.id,
-          projectSlug: projectParam,
-          page: searchParams.page,
-          search: searchParams.search,
-        });
+      const {
+        environmentVariables,
+        environments,
+        hasStaging,
+        vercelIntegration,
+        pagination,
+        allowEmptyEnvironmentVariableValues,
+      } = await presenter.call({
+        userId: user.id,
+        projectSlug: projectParam,
+        page: searchParams.page,
+        search: searchParams.search,
+      });
 
       const accessibleEnvironmentIds = environments
         .filter((env) => ability.can("read", { type: "envvars", envType: env.type }))
@@ -178,6 +186,7 @@ export const loader = dashboardLoader(
 
       return typedjson({
         environmentVariables: masked,
+        allowEmptyEnvironmentVariableValues,
         environments,
         hasStaging,
         vercelIntegration,
@@ -232,7 +241,7 @@ export const action = dashboardAction(
     }
 
     const formData = await request.formData();
-    const submission = parseWithZod(formData, { schema });
+    const submission = parseEnvironmentVariableForm(formData, schema);
 
     if (submission.status !== "success") {
       return json(submission.reply());
@@ -808,6 +817,10 @@ function EditEnvironmentVariablePanel({
   revealAll: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const { allowEmptyEnvironmentVariableValues } =
+    useTypedLoaderData<EnvironmentVariablesPageLoaderData>();
+  const [emptyValueSelected, setEmptyValueSelected] = useState(false);
+  const [draftValue, setDraftValue] = useState(variable.value);
   const fetcher = useFetcher<typeof action>();
   const lastSubmission = fetcher.data as any;
 
@@ -826,13 +839,22 @@ function EditEnvironmentVariablePanel({
     // TODO: type this
     lastResult: lastSubmission as any,
     onValidate({ formData }) {
-      return parseWithZod(formData, { schema });
+      return parseEnvironmentVariableForm(formData, schema, allowEmptyEnvironmentVariableValues);
     },
     shouldRevalidate: "onSubmit",
   });
 
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        setIsOpen(open);
+        if (open) {
+          setEmptyValueSelected(false);
+          setDraftValue(variable.value);
+        }
+      }}
+    >
       <DialogTrigger asChild>
         <Button variant="small-menu-item" LeadingIcon={PencilSquareIcon} fullWidth textAlignLeft />
       </DialogTrigger>
@@ -861,13 +883,26 @@ function EditEnvironmentVariablePanel({
             <InputGroup fullWidth>
               <Label>Value</Label>
               <Input
-                {...getInputProps(value, { type: "text" })}
+                {...getInputProps(value, { type: "text", value: false })}
                 placeholder={variable.isSecret ? "Set new secret value" : "Not set"}
-                defaultValue={variable.value}
+                value={emptyValueSelected ? "" : draftValue}
+                onChange={(event) => setDraftValue(event.currentTarget.value)}
+                disabled={emptyValueSelected}
                 type={"text"}
                 autoComplete="off"
               />
+              {emptyValueSelected && <input type="hidden" name={value.name} value="" />}
               <FormError id={value.errorId}>{value.errors}</FormError>
+              {variable.isSecret && allowEmptyEnvironmentVariableValues && (
+                <CheckboxWithLabel
+                  name="setEmptyValue"
+                  value="true"
+                  variant="description"
+                  label="Set to an empty string"
+                  description="Replaces the secret with an empty string and keeps the variable."
+                  onChange={setEmptyValueSelected}
+                />
+              )}
             </InputGroup>
 
             <FormError>{form.errors}</FormError>
@@ -909,7 +944,7 @@ function DeleteEnvironmentVariableButton({
     // TODO: type this
     lastResult: lastSubmission as any,
     onValidate({ formData }) {
-      return parseWithZod(formData, { schema });
+      return parseEnvironmentVariableForm(formData, schema);
     },
     shouldRevalidate: "onSubmit",
   });

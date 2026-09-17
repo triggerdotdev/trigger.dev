@@ -1,3 +1,4 @@
+import { emptyEnvironmentVariableValuesEnabled } from "~/v3/environmentVariables/emptyValuesFlag.server";
 import type { PrismaClient, PrismaReplicaClient } from "~/db.server";
 import { $replica, prisma } from "~/db.server";
 import type { Project } from "~/models/project.server";
@@ -39,6 +40,7 @@ export class EnvironmentVariablesPresenter {
     const project = await this.#replicaClient.project.findFirst({
       select: {
         id: true,
+        organization: { select: { featureFlags: true } },
       },
       where: {
         slug: projectSlug,
@@ -176,6 +178,10 @@ export class EnvironmentVariablesPresenter {
     }
 
     return {
+      allowEmptyEnvironmentVariableValues: await emptyEnvironmentVariableValuesEnabled(
+        project.organization.featureFlags,
+        this.#prismaClient
+      ),
       environmentVariables: environmentVariables.flatMap((environmentVariable) => {
         return sortedEnvironments.flatMap((env) => {
           const valueRecord = environmentVariable.values.find((v) => v.environmentId === env.id);

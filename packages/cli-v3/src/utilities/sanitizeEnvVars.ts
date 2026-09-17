@@ -22,3 +22,26 @@ export const sanitizeEnvVars = (
     )
   ) as Record<string, string>;
 };
+
+/**
+ * Keep machine defaults, fresh project values, and local overrides separate.
+ * The worker's merged startup environment must not override fresh project values.
+ */
+export const buildDevRunEnv = ({
+  resolvedEnvVars,
+  processEnv,
+  envOverrides,
+  projectRef,
+}: {
+  resolvedEnvVars: Record<string, string> | undefined;
+  processEnv: Record<string, string>;
+  envOverrides: Record<string, string>;
+  projectRef: string;
+}): Record<string, string> => {
+  return {
+    ...processEnv,
+    ...(resolvedEnvVars ?? {}),
+    ...envOverrides,
+    TRIGGER_PROJECT_REF: projectRef,
+  };
+};

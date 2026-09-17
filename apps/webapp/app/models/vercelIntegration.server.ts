@@ -1,3 +1,11 @@
+import { emptyEnvironmentVariableValuesEnabledForProject } from "~/v3/environmentVariables/emptyValuesFlag.server";
+import {
+  normalizeTarget,
+  isVercelSecretType,
+  toVercelEnvironmentVariableValue,
+  resolveVercelSharedValue,
+  mergeVercelEnvironmentVariableValues,
+} from "~/v3/vercel/environmentVariableValues";
 import pLimit from "p-limit";
 import { Vercel } from "@vercel/sdk";
 import type {
@@ -37,12 +45,6 @@ import {
 // ---------------------------------------------------------------------------
 // Pure helpers
 // ---------------------------------------------------------------------------
-
-function normalizeTarget(target: string[] | string | undefined): string[] {
-  if (Array.isArray(target)) return target.filter(Boolean);
-  if (typeof target === "string") return [target];
-  return [];
-}
 
 function readProjectEnvs(
   response: unknown,
@@ -84,10 +86,6 @@ function hasVercelEnvVarForTarget(envs: ResponseBodyEnvs[], key: string, target:
     if (normalizeTarget(env.target).includes(target)) return true;
     return (env.customEnvironmentIds ?? []).includes(target);
   });
-}
-
-function isVercelSecretType(type: string): boolean {
-  return type === "secret" || type === "sensitive";
 }
 
 export type CreateEnvVarsIfAbsentResult = {
@@ -224,19 +222,6 @@ function toVercelCustomEnvironment({
   branchMatcher,
 }: GetV9ProjectsIdOrNameCustomEnvironmentsEnvironments): VercelCustomEnvironment {
   return { id, slug, description, branchMatcher };
-}
-
-function toVercelEnvironmentVariableValue(
-  env: ResponseBodyEnvs
-): VercelEnvironmentVariableValue | null {
-  if (!env.value) return null;
-  return {
-    key: env.key,
-    value: env.value,
-    target: normalizeTarget(env.target),
-    type: env.type,
-    isSecret: isVercelSecretType(env.type),
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -474,7 +459,8 @@ export class VercelIntegrationRepository {
     teamId?: string | null,
     target?: string,
     /** If provided, only include keys that pass this filter */
-    shouldIncludeKey?: (key: string) => boolean
+    shouldIncludeKey?: (key: string) => boolean,
+    allowEmptyValues = true
   ): ResultAsync<VercelEnvironmentVariableValue[], VercelApiError> {
     return wrapVercelCallWithRecovery(
       client.projects.filterProjectEnvs({
@@ -499,7 +485,9 @@ export class VercelIntegrationRepository {
       return ResultAsync.fromPromise(
         Promise.all(
           filteredEnvs.map((env) =>
-            concurrencyLimit(() => this.#resolveEnvVarValue(client, projectId, teamId, env))
+            concurrencyLimit(() =>
+              this.#resolveEnvVarValue(client, projectId, teamId, env, allowEmptyValues)
+            )
           )
         ),
         (error) => toVercelApiError(error)
@@ -511,12 +499,13 @@ export class VercelIntegrationRepository {
     client: Vercel,
     projectId: string,
     teamId: string | null | undefined,
-    env: ResponseBodyEnvs
+    env: ResponseBodyEnvs,
+    allowEmptyValues: boolean
   ): Promise<VercelEnvironmentVariableValue | null> {
     // Non-encrypted vars: use value from list response if present
     if (env.type !== "encrypted" || !env.id) {
       if (env.value === undefined || env.value === null) return null;
-      return toVercelEnvironmentVariableValue(env);
+      return toVercelEnvironmentVariableValue(env, allowEmptyValues);
     }
 
     // Encrypted vars: fetch decrypted value via individual endpoint
@@ -545,7 +534,8 @@ export class VercelIntegrationRepository {
 
     // API returns union: ResponseBody1 has no value, ResponseBody2/3 have value
     const decryptedValue = (result.value as { value?: string }).value;
-    if (typeof decryptedValue !== "string") return null;
+    if (typeof decryptedValue !== "string" || (!allowEmptyValues && decryptedValue.trim() === ""))
+      return null;
 
     return {
       key: env.key,
@@ -653,7 +643,8 @@ export class VercelIntegrationRepository {
     client: Vercel,
     accessToken: string,
     teamId: string,
-    projectId?: string // Optional: filter by project
+    projectId?: string,
+    allowEmptyValues = true
   ): ResultAsync<
     Array<{
       key: string;
@@ -684,53 +675,43 @@ export class VercelIntegrationRepository {
 
               if (isSecret) return null;
 
-              const listValue = env.value;
-              const applyToAllCustomEnvs = env.applyToAllCustomEnvironments;
+              const value = await resolveVercelSharedValue(
+                env.value,
+                async () => {
+                  const getResult = await callVercelWithRecovery(
+                    client.environment.getSharedEnvVar({ id: envId, teamId }),
+                    VercelSchemas.getSharedEnvVar,
+                    { context: "getSharedEnvVar" }
+                  );
 
-              if (listValue) {
-                return {
-                  key: envKey,
-                  value: listValue,
-                  target: normalizeTarget(env.target),
-                  type,
-                  isSecret,
-                  applyToAllCustomEnvironments: applyToAllCustomEnvs,
-                };
-              }
+                  if (getResult.isOk()) {
+                    return getResult.value.value ?? null;
+                  }
 
-              // Try to get the decrypted value for this shared env var
-              const getResult = await callVercelWithRecovery(
-                client.environment.getSharedEnvVar({
-                  id: envId,
-                  teamId,
-                }),
-                VercelSchemas.getSharedEnvVar,
-                { context: "getSharedEnvVar" }
+                  logger.warn("Failed to get decrypted value for shared env var", {
+                    teamId,
+                    projectId,
+                    envId,
+                    envKey,
+                    error: getResult.error.message,
+                    errorType: getResult.error.errorType,
+                    status: getResult.error.status,
+                    authInvalid: getResult.error.authInvalid,
+                  });
+                  return null;
+                },
+                allowEmptyValues
               );
+              if (value === null) return null;
 
-              if (getResult.isOk()) {
-                if (!getResult.value.value) return null;
-                return {
-                  key: envKey,
-                  value: getResult.value.value,
-                  target: normalizeTarget(env.target),
-                  type,
-                  isSecret,
-                  applyToAllCustomEnvironments: applyToAllCustomEnvs,
-                };
-              }
-
-              logger.warn("Failed to get decrypted value for shared env var", {
-                teamId,
-                projectId,
-                envId,
-                envKey,
-                error: getResult.error.message,
-                errorType: getResult.error.errorType,
-                status: getResult.error.status,
-                authInvalid: getResult.error.authInvalid,
-              });
-              return null;
+              return {
+                key: envKey,
+                value,
+                target: normalizeTarget(env.target),
+                type,
+                isSecret,
+                applyToAllCustomEnvironments: env.applyToAllCustomEnvironments,
+              };
             })
           )
         ),
@@ -1334,6 +1315,9 @@ export class VercelIntegrationRepository {
           }
 
           const envVarRepository = new EnvironmentVariablesRepository();
+          const allowEmptyValues = await emptyEnvironmentVariableValuesEnabledForProject(
+            params.projectId
+          );
 
           // Fetch shared env vars once (they apply across all targets)
           let sharedEnvVars: Array<{
@@ -1350,7 +1334,8 @@ export class VercelIntegrationRepository {
               client,
               accessToken,
               params.teamId,
-              params.vercelProjectId
+              params.vercelProjectId,
+              allowEmptyValues
             );
             sharedEnvVars = sharedResult.unwrapOr([]);
           }
@@ -1373,7 +1358,8 @@ export class VercelIntegrationRepository {
                   params.vercelProjectId,
                   params.teamId,
                   mapping.vercelTarget,
-                  shouldIncludeKey
+                  shouldIncludeKey,
+                  allowEmptyValues
                 );
 
                 if (envVarsResult.isErr()) {
@@ -1399,11 +1385,10 @@ export class VercelIntegrationRepository {
                   return matchesTarget || matchesCustomEnv;
                 });
 
-                const projectEnvVarKeys = new Set(projectEnvVars.map((v) => v.key));
-                const sharedEnvVarsToAdd = filteredSharedEnvVars.filter(
-                  (v) => !projectEnvVarKeys.has(v.key)
+                const mergedEnvVars = mergeVercelEnvironmentVariableValues(
+                  projectEnvVars,
+                  filteredSharedEnvVars
                 );
-                const mergedEnvVars = [...projectEnvVars, ...sharedEnvVarsToAdd];
 
                 if (mergedEnvVars.length === 0) {
                   return;

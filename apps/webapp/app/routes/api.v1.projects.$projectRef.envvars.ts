@@ -1,5 +1,6 @@
 import { type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
+import { emptyEnvironmentVariableValuesEnabled } from "~/v3/environmentVariables/emptyValuesFlag.server";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { authenticateApiKeyWithScope } from "~/services/apiAuth.server";
@@ -31,6 +32,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   const { projectRef } = parsedParams.data;
 
   const project = await prisma.project.findFirst({
+    include: { organization: { select: { featureFlags: true } } },
     where: {
       externalRef: projectRef,
       environments: {
@@ -66,6 +68,9 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   );
 
   return json({
+    allowEmptyEnvironmentVariableValues: await emptyEnvironmentVariableValuesEnabled(
+      project.organization.featureFlags
+    ),
     variables: environmentVariablesForApiKeyResponse(variables, authenticationResult.apiKey),
   });
 }

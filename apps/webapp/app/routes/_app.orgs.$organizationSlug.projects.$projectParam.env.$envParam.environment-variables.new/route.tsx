@@ -1,5 +1,9 @@
 import { getFormProps, useForm, type FieldMetadata, type FormMetadata } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod/v4";
+import {
+  emptyEnvironmentVariableValuesEnabled,
+  EMPTY_ENV_VALUES_DISABLED,
+} from "~/v3/environmentVariables/emptyValuesFlag.server";
+import { parseEnvironmentVariableForm } from "~/v3/environmentVariables/forms";
 import {
   LockClosedIcon,
   LockOpenIcon,
@@ -54,7 +58,10 @@ import {
   v3EnvironmentVariablesPath,
 } from "~/utils/pathBuilder";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
-import { EnvironmentVariableKey } from "~/v3/environmentVariables/repository";
+import {
+  EnvironmentVariableKey,
+  EnvironmentVariableValue,
+} from "~/v3/environmentVariables/repository";
 import { findUnauthorizedEnvironmentId } from "~/v3/writableEnvironments";
 import { pageMeta } from "~/utils/pageTitle";
 
@@ -62,7 +69,7 @@ export const meta = pageMeta("New environment variable");
 
 const Variable = z.object({
   key: EnvironmentVariableKey,
-  value: z.string().nonempty("Value is required"),
+  value: EnvironmentVariableValue,
 });
 
 type Variable = z.infer<typeof Variable>;
@@ -121,7 +128,7 @@ export const action = dashboardAction(
     }
 
     const formData = await request.formData();
-    const submission = parseWithZod(formData, { schema });
+    const submission = parseEnvironmentVariableForm(formData, schema);
 
     if (submission.status !== "success") {
       return json(submission.reply());
@@ -162,6 +169,7 @@ export const action = dashboardAction(
       },
       select: {
         id: true,
+        organization: { select: { featureFlags: true } },
       },
     });
     if (!project) {
@@ -191,6 +199,13 @@ export const action = dashboardAction(
           },
         })
       );
+    }
+
+    if (
+      submission.value.variables.some((v) => v.value.trim() === "") &&
+      !(await emptyEnvironmentVariableValuesEnabled(project.organization.featureFlags))
+    ) {
+      return json(submission.reply({ formErrors: [EMPTY_ENV_VALUES_DISABLED] }));
     }
 
     const repository = new EnvironmentVariablesRepository(prisma);
@@ -238,7 +253,8 @@ export default function Page() {
     parentData,
     "Environment variables page loader data must be defined when rendering the create dialog"
   );
-  const { environments, hasStaging, writableEnvironmentIds } = parentData;
+  const { environments, hasStaging, writableEnvironmentIds, allowEmptyEnvironmentVariableValues } =
+    parentData;
   // Creating a variable is a write, so gate the targets on write access.
   const writableEnvironmentIdSet = new Set(writableEnvironmentIds);
   const lastSubmission = useActionData();
@@ -266,7 +282,7 @@ export default function Page() {
     // TODO: type this
     lastResult: lastSubmission as any,
     onValidate({ formData }) {
-      return parseWithZod(formData, { schema });
+      return parseEnvironmentVariableForm(formData, schema, allowEmptyEnvironmentVariableValues);
     },
     shouldRevalidate: "onSubmit",
     defaultValue: {

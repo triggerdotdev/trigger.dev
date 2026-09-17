@@ -650,6 +650,7 @@ export const RescheduleRunRequestBody = z.object({
 export type RescheduleRunRequestBody = z.infer<typeof RescheduleRunRequestBody>;
 
 export const GetEnvironmentVariablesResponseBody = z.object({
+  allowEmptyEnvironmentVariableValues: z.boolean().optional(),
   variables: z.record(z.string(), z.string()),
 });
 

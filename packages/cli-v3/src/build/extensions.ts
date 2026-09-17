@@ -16,6 +16,7 @@ import { spinner } from "../utilities/windows.js";
 export interface InternalBuildContext extends BuildContext {
   getLayers(): BuildLayer[];
   clearLayers(): void;
+  readonly allowEmptyEnvironmentVariableValues: boolean;
   getPlugins(): RegisteredPlugin[];
   appendExtension(extension: BuildExtension): void;
   prependExtension(extension: BuildExtension): void;
@@ -57,7 +58,7 @@ export async function notifyExtensionOnBuildComplete(
 export function createBuildContext(
   target: BuildTarget,
   config: ResolvedConfig,
-  options?: { logger?: BuildLogger }
+  options?: { logger?: BuildLogger; allowEmptyEnvironmentVariableValues?: boolean }
 ): InternalBuildContext {
   const layers: BuildLayer[] = [];
   const registeredPlugins: RegisteredPlugin[] = [];
@@ -77,6 +78,7 @@ export function createBuildContext(
 
   return {
     target,
+    allowEmptyEnvironmentVariableValues: options?.allowEmptyEnvironmentVariableValues === true,
     config: config,
     workingDir: config.workingDir,
     addLayer(layer) {
@@ -123,7 +125,7 @@ function applyContextLayersToManifest(
   manifest: BuildManifest
 ): BuildManifest {
   for (const layer of context.getLayers()) {
-    manifest = applyLayerToManifest(layer, manifest);
+    manifest = applyLayerToManifest(layer, manifest, context.allowEmptyEnvironmentVariableValues);
   }
 
   context.clearLayers();
@@ -131,7 +133,18 @@ function applyContextLayersToManifest(
   return manifest;
 }
 
-function applyLayerToManifest(layer: BuildLayer, manifest: BuildManifest): BuildManifest {
+function shouldSyncEnvironmentVariableValue(
+  value: string | null | undefined,
+  allowEmptyValues: boolean
+): value is string {
+  return value !== undefined && value !== null && (value !== "" || allowEmptyValues);
+}
+
+function applyLayerToManifest(
+  layer: BuildLayer,
+  manifest: BuildManifest,
+  allowEmptyValues: boolean
+): BuildManifest {
   let $manifest = { ...manifest };
 
   if (layer.commands) {
@@ -151,7 +164,7 @@ function applyLayerToManifest(layer: BuildLayer, manifest: BuildManifest): Build
     $manifest.deploy.sync.parentEnv ??= {};
 
     for (const [key, value] of Object.entries(layer.deploy.env)) {
-      if (!value) {
+      if (!shouldSyncEnvironmentVariableValue(value, allowEmptyValues)) {
         continue;
       }
 
@@ -171,7 +184,7 @@ function applyLayerToManifest(layer: BuildLayer, manifest: BuildManifest): Build
     $manifest.deploy.sync.parentEnv ??= {};
 
     for (const [key, value] of Object.entries(layer.deploy.parentEnv)) {
-      if (!value) {
+      if (!shouldSyncEnvironmentVariableValue(value, allowEmptyValues)) {
         continue;
       }
 
@@ -191,7 +204,7 @@ function applyLayerToManifest(layer: BuildLayer, manifest: BuildManifest): Build
     $manifest.deploy.sync.secretEnv ??= {};
 
     for (const [key, value] of Object.entries(layer.deploy.secretEnv)) {
-      if (!value) {
+      if (!shouldSyncEnvironmentVariableValue(value, allowEmptyValues)) {
         continue;
       }
 
@@ -211,7 +224,7 @@ function applyLayerToManifest(layer: BuildLayer, manifest: BuildManifest): Build
     $manifest.deploy.sync.secretParentEnv ??= {};
 
     for (const [key, value] of Object.entries(layer.deploy.secretParentEnv)) {
-      if (!value) {
+      if (!shouldSyncEnvironmentVariableValue(value, allowEmptyValues)) {
         continue;
       }
 

@@ -48,6 +48,7 @@ export type BuildWorkerOptions = {
   resolvedConfig: ResolvedConfig;
   listener?: BuildWorkerEventListener;
   envVars?: Record<string, string>;
+  allowEmptyEnvironmentVariableValues?: boolean;
   rewritePaths?: boolean;
   forcedExternals?: string[];
   plain?: boolean;
@@ -66,6 +67,7 @@ export async function buildWorker(options: BuildWorkerOptions) {
     options.forcedExternals
   );
   const buildContext = createBuildContext(options.target, resolvedConfig, {
+    allowEmptyEnvironmentVariableValues: options.allowEmptyEnvironmentVariableValues,
     logger: options.plain
       ? {
           debug: (...args) => console.log(...args),

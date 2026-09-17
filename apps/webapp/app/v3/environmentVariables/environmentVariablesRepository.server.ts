@@ -1,3 +1,7 @@
+import {
+  EMPTY_ENV_VALUES_DISABLED,
+  emptyEnvironmentVariableValuesEnabled,
+} from "./emptyValuesFlag.server";
 import type { AuthenticatedEnvironment } from "@trigger.dev/core/v3/auth/environment";
 import {
   boundedIn,
@@ -59,12 +63,17 @@ export class EnvironmentVariablesRepository implements Repository {
   ) {}
 
   async create(projectId: string, options: CreateEnvironmentVariables): Promise<CreateResult> {
+    if (options.environmentIds.length === 0) {
+      return { success: false as const, error: "At least one environment is required" };
+    }
+
     const project = await this.prismaClient.project.findFirst({
       where: {
         id: projectId,
         deletedAt: null,
       },
       select: {
+        organization: { select: { featureFlags: true } },
         environments: {
           select: {
             id: true,
@@ -106,8 +115,25 @@ export class EnvironmentVariablesRepository implements Repository {
     let values = removeBlacklistedVariables(options.variables);
     const removedBlacklisted = values.length !== options.variables.length;
 
-    //get rid of empty variables
-    values = values.filter((v) => v.key.trim() !== "" && v.value.trim() !== "");
+    //get rid of variables with an empty key (an empty value is a valid value)
+    values = values.filter((v) => v.key.trim() !== "");
+    if (
+      values.some((v) => v.value.trim() === "") &&
+      !(await emptyEnvironmentVariableValuesEnabled(
+        project.organization.featureFlags,
+        this.prismaClient
+      ))
+    ) {
+      values = values.filter((v) => v.value.trim() !== "");
+      // Automated sync must remain a no-op when every supplied value is disabled.
+      if (
+        values.length === 0 &&
+        options.lastUpdatedBy?.type === "integration" &&
+        !removedBlacklisted
+      ) {
+        return { success: true as const };
+      }
+    }
     if (values.length === 0) {
       return {
         success: false as const,
@@ -295,6 +321,7 @@ export class EnvironmentVariablesRepository implements Repository {
         deletedAt: null,
       },
       select: {
+        organization: { select: { featureFlags: true } },
         environments: {
           select: {
             id: true,
@@ -313,22 +340,18 @@ export class EnvironmentVariablesRepository implements Repository {
       return { success: false as const, error: `Environment not found` };
     }
 
-    //get rid of empty strings
-    let values = options.values.filter((v) => v.value.trim() !== "");
-
-    //add in empty values for environments that don't have a value
-    const environmentIds = project.environments.map((e) => e.id);
-
-    if (!options.keepEmptyValues) {
-      for (const environmentId of environmentIds) {
-        if (!values.some((v) => v.environmentId === environmentId)) {
-          values.push({
-            environmentId,
-            value: "",
-          });
-        }
-      }
+    // An empty string is a valid, distinct value stored verbatim, never
+    // treated as "absent" or "delete". Removal is a separate operation.
+    if (
+      options.values.some((v) => v.value.trim() === "") &&
+      !(await emptyEnvironmentVariableValuesEnabled(
+        project.organization.featureFlags,
+        this.prismaClient
+      ))
+    ) {
+      return { success: false as const, error: EMPTY_ENV_VALUES_DISABLED };
     }
+    const values = options.values;
 
     const environmentVariable = await this.prismaClient.environmentVariable.findFirst({
       select: {
@@ -360,41 +383,23 @@ export class EnvironmentVariablesRepository implements Repository {
           });
 
           if (existingValue && existingValue.valueReferenceId) {
-            if (value.value === "") {
-              //delete the value
-              await secretStore.deleteSecret(key);
-              await tx.secretReference.delete({
-                where: {
-                  id: existingValue.valueReferenceId,
+            await secretStore.setSecret<{ secret: string }>(key, {
+              secret: value.value,
+            });
+            await tx.environmentVariableValue.update({
+              where: {
+                variableId_environmentId: {
+                  variableId: environmentVariable.id,
+                  environmentId: value.environmentId,
                 },
-              });
-              await tx.environmentVariableValue.delete({
-                where: {
-                  variableId_environmentId: {
-                    variableId: environmentVariable.id,
-                    environmentId: value.environmentId,
-                  },
+              },
+              data: {
+                version: {
+                  increment: 1,
                 },
-              });
-            } else {
-              await secretStore.setSecret<{ secret: string }>(key, {
-                secret: value.value,
-              });
-              await tx.environmentVariableValue.update({
-                where: {
-                  variableId_environmentId: {
-                    variableId: environmentVariable.id,
-                    environmentId: value.environmentId,
-                  },
-                },
-                data: {
-                  version: {
-                    increment: 1,
-                  },
-                  lastUpdatedBy: options.lastUpdatedBy ? options.lastUpdatedBy : undefined,
-                },
-              });
-            }
+                lastUpdatedBy: options.lastUpdatedBy ? options.lastUpdatedBy : undefined,
+              },
+            });
             continue;
           }
 
@@ -440,6 +445,7 @@ export class EnvironmentVariablesRepository implements Repository {
         deletedAt: null,
       },
       select: {
+        organization: { select: { featureFlags: true } },
         environments: {
           select: {
             id: true,
@@ -466,6 +472,7 @@ export class EnvironmentVariablesRepository implements Repository {
           },
           select: {
             valueReferenceId: true,
+            isSecret: true,
           },
         },
       },
@@ -482,6 +489,27 @@ export class EnvironmentVariablesRepository implements Repository {
       return { success: false as const, error: "Environment variable value not found" };
     }
 
+    const value = options.setEmptyValue === "true" ? "" : options.value;
+    if (
+      value.trim() === "" &&
+      !(await emptyEnvironmentVariableValuesEnabled(
+        project.organization.featureFlags,
+        this.prismaClient
+      ))
+    ) {
+      return { success: false as const, error: EMPTY_ENV_VALUES_DISABLED };
+    }
+    if (
+      environmentVariable.values[0].isSecret &&
+      value === "" &&
+      options.setEmptyValue !== "true"
+    ) {
+      return {
+        success: false as const,
+        error: 'Enter a new secret value or select "Set to an empty string".',
+      };
+    }
+
     try {
       await $transaction(this.prismaClient, "edit env var value", async (tx) => {
         const secretStore = getSecretStore("DATABASE", {
@@ -490,7 +518,7 @@ export class EnvironmentVariablesRepository implements Repository {
 
         const key = secretKey(projectId, options.environmentId, environmentVariable.key);
         await secretStore.setSecret<{ secret: string }>(key, {
-          secret: options.value,
+          secret: value,
         });
 
         await tx.environmentVariableValue.update({

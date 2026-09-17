@@ -103,7 +103,6 @@ export async function action({ params, request }: ActionFunctionArgs) {
             },
           ],
           id: variable.id,
-          keepEmptyValues: true,
         });
 
         if (result.success) {

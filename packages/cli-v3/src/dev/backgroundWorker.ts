@@ -14,6 +14,8 @@ import type { Metafile } from "esbuild";
 
 export type BackgroundWorkerOptions = {
   env: Record<string, string>;
+  processEnv: Record<string, string>;
+  envOverrides: Record<string, string>;
   cwd: string;
   stop: () => void;
 };

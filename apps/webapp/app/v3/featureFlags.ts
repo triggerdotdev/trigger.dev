@@ -2,6 +2,7 @@ import { z } from "zod";
 import { DeployBuildPath } from "@trigger.dev/core/v3";
 
 export const FEATURE_FLAG = {
+  allowEmptyEnvironmentVariableValues: "allowEmptyEnvironmentVariableValues",
   defaultWorkerInstanceGroupId: "defaultWorkerInstanceGroupId",
   taskEventRepository: "taskEventRepository",
   hasQueryAccess: "hasQueryAccess",
@@ -49,6 +50,7 @@ export const FEATURE_FLAG = {
 } as const;
 
 export const FeatureFlagCatalog = {
+  [FEATURE_FLAG.allowEmptyEnvironmentVariableValues]: z.boolean(),
   [FEATURE_FLAG.defaultWorkerInstanceGroupId]: z.string(),
   [FEATURE_FLAG.taskEventRepository]: z.enum(["clickhouse", "clickhouse_v2", "postgres"]),
   [FEATURE_FLAG.hasQueryAccess]: z.coerce.boolean(),

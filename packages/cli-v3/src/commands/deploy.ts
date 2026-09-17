@@ -557,6 +557,8 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       resolvedConfig,
       rewritePaths: true,
       envVars: serverEnvVars.success ? serverEnvVars.data.variables : {},
+      allowEmptyEnvironmentVariableValues:
+        serverEnvVars.success && serverEnvVars.data.allowEmptyEnvironmentVariableValues === true,
       forcedExternals,
       plain: options.plain,
       listener: {
@@ -1604,6 +1606,8 @@ async function handleLocalBundleDeploy({
       resolvedConfig: config,
       rewritePaths: true,
       envVars: serverEnvVars.success ? serverEnvVars.data.variables : {},
+      allowEmptyEnvironmentVariableValues:
+        serverEnvVars.success && serverEnvVars.data.allowEmptyEnvironmentVariableValues === true,
       forcedExternals,
       plain: options.plain,
       listener: {
