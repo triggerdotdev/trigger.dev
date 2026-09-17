@@ -6,7 +6,7 @@ export const EnvironmentVariableKey = z
   .nonempty("Key is required")
   .regex(/^\w+$/, "Keys can only use alphanumeric characters and underscores");
 
-const EnvironmentVariableUpdaterSchema = z.discriminatedUnion("type", [
+export const EnvironmentVariableUpdaterSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("user"),
     userId: z.string(),
@@ -62,6 +62,18 @@ export const DeleteEnvironmentVariableValue = z.object({
   environmentId: z.string(),
 });
 export type DeleteEnvironmentVariableValue = z.infer<typeof DeleteEnvironmentVariableValue>;
+
+export type DeleteEnvironmentVariableValues = {
+  environmentId: string;
+  keys: string[];
+  onlyWrittenBy?: EnvironmentVariableUpdater;
+  onlyShadowingParent?: boolean;
+};
+
+export type DeleteEnvironmentVariableValuesResult = {
+  deleted: string[];
+  skipped: string[];
+};
 
 // Forms preserve explicit empty strings through their custom coercion.
 // A missing field is still invalid.
@@ -140,4 +152,15 @@ export interface Repository {
   ): Promise<EnvironmentVariable[]>;
   delete(projectId: string, options: DeleteEnvironmentVariable): Promise<Result>;
   deleteValue(projectId: string, options: DeleteEnvironmentVariableValue): Promise<Result>;
+  /**
+   * Remove the environment's own values for `keys` in one transaction. A key is skipped when the
+   * environment holds no value for it, when `onlyWrittenBy` is set and the value was last written
+   * by someone else, when `onlyShadowingParent` is set and the parent environment holds no value
+   * for it, or when the value changed while the delete was running. A variable left with no
+   * values is removed entirely.
+   */
+  deleteValues(
+    projectId: string,
+    options: DeleteEnvironmentVariableValues
+  ): Promise<DeleteEnvironmentVariableValuesResult>;
 }

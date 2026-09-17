@@ -1602,20 +1602,56 @@ export type UpdateEnvironmentVariableRequestBody = z.infer<
   typeof UpdateEnvironmentVariableRequestBody
 >;
 
+export const EnvironmentVariableSource = discriminatedUnion("type", [
+  z.object({ type: z.literal("user"), userId: z.string() }),
+  z.object({ type: z.literal("integration"), integration: z.string() }),
+]);
+
+export type EnvironmentVariableSource = z.infer<typeof EnvironmentVariableSource>;
+
 export const ImportEnvironmentVariablesRequestBody = z.object({
   variables: z.record(z.string(), z.string()),
   parentVariables: z.record(z.string(), z.string()).optional(),
   override: z.boolean().optional(),
   // When omitted, variables default to non-secret (the DB default is false).
   isSecret: z.boolean().optional(),
-  source: discriminatedUnion("type", [
-    z.object({ type: z.literal("user"), userId: z.string() }),
-    z.object({ type: z.literal("integration"), integration: z.string() }),
-  ]).optional(),
+  source: EnvironmentVariableSource.optional(),
 });
 
 export type ImportEnvironmentVariablesRequestBody = z.infer<
   typeof ImportEnvironmentVariablesRequestBody
+>;
+
+export const BulkDeleteEnvironmentVariablesRequestBody = z.object({
+  keys: z.array(z.string().min(1).max(256)).min(1).max(1000),
+  /** Only remove values last written by this source. */
+  onlyWrittenBy: EnvironmentVariableSource.optional(),
+  /**
+   * Only remove values whose key also has a value on the parent environment. Takes effect only
+   * when the request addresses a preview branch (`x-trigger-branch` header or the API client's
+   * `previewBranch` option); on an environment with no parent every key is skipped.
+   */
+  onlyShadowingParent: z.boolean().optional(),
+});
+
+export type BulkDeleteEnvironmentVariablesRequestBody = z.infer<
+  typeof BulkDeleteEnvironmentVariablesRequestBody
+>;
+
+export const BulkDeleteEnvironmentVariablesResponseBody = z.object({
+  /** Keys whose value was removed from the environment. */
+  deleted: z.array(z.string()),
+  /**
+   * Keys left untouched: the environment had no value for them, a filter excluded them, or their
+   * value changed while the delete ran. A skip caused by a concurrent change is transient. The
+   * delete is idempotent, so a retry of a request whose first attempt committed reports the keys
+   * that attempt deleted as skipped.
+   */
+  skipped: z.array(z.string()),
+});
+
+export type BulkDeleteEnvironmentVariablesResponseBody = z.infer<
+  typeof BulkDeleteEnvironmentVariablesResponseBody
 >;
 
 export const EnvironmentVariableResponseBody = z.object({
