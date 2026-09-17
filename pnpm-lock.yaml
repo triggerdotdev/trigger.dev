@@ -872,6 +872,9 @@ importers:
       jsdom:
         specifier: ^30.0.1
         version: 30.0.1
+      socket.io-client:
+        specifier: 4.7.5
+        version: 4.7.5(bufferutil@4.0.9)(supports-color@10.0.0)
       supertest:
         specifier: ^7.0.0
         version: 7.0.0

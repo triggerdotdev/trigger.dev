@@ -1,5 +1,4 @@
 import type { EventBusEventArgs } from "@internal/run-engine";
-import { createAdapter } from "@socket.io/redis-adapter";
 import { RunId } from "@trigger.dev/core/v3/isomorphic";
 import type {
   WorkerClientToServerEvents,
@@ -13,6 +12,11 @@ import { env } from "~/env.server";
 import { authenticateApiRequestWithFailure } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
+import {
+  createLazySocketIoAdapter,
+  withTimeout,
+  type LazySocketIoAdapter,
+} from "./lazySocketIoAdapter.server";
 import { recordRunDebugLog } from "./eventRepository/index.server";
 import { engine } from "./runEngine.server";
 import { WorkerGroupTokenService } from "./services/worker/workerGroupTokenService.server";
@@ -20,7 +24,11 @@ import { WorkerGroupTokenService } from "./services/worker/workerGroupTokenServi
 export const socketIo = singleton("socketIo", initalizeIoServer);
 
 function initalizeIoServer() {
-  const io = initializeSocketIOServerInstance();
+  const { io, lazyAdapter } = initializeSocketIOServerInstance();
+
+  if (lazyAdapter) {
+    io.use(activateNamespaceMiddleware(lazyAdapter, "/"));
+  }
 
   io.on("connection", (socket) => {
     logger.log(`[socket.io][${socket.id}] connection at url: ${socket.request.url}`);
@@ -28,6 +36,7 @@ function initalizeIoServer() {
 
   const workerNamespace = createWorkerNamespace({
     io,
+    lazyAdapter,
     namespace: "/worker",
     authenticate: async (request) => {
       const tokenService = new WorkerGroupTokenService();
@@ -40,6 +49,7 @@ function initalizeIoServer() {
   });
   const devWorkerNamespace = createWorkerNamespace({
     io,
+    lazyAdapter,
     namespace: "/dev-worker",
     authenticate: async (request) => {
       const authentication = await authenticateApiRequestWithFailure(request);
@@ -73,17 +83,19 @@ function initializeSocketIOServerInstance() {
     });
     const subClient = pubClient.duplicate();
 
-    const io = new Server({
-      adapter: createAdapter(pubClient, subClient, {
-        key: "tr:socket.io:",
-        publishOnSpecificResponseChannel: true,
-      }),
+    const lazyAdapter = createLazySocketIoAdapter(pubClient, subClient, {
+      key: "tr:socket.io:",
+      publishOnSpecificResponseChannel: true,
     });
 
-    return io;
+    const io = new Server({
+      adapter: lazyAdapter.adapter,
+    });
+
+    return { io, lazyAdapter };
   }
 
-  return new Server();
+  return { io: new Server(), lazyAdapter: undefined };
 }
 
 function headersFromHandshake(handshake: Socket["handshake"]) {
@@ -97,12 +109,48 @@ function headersFromHandshake(handshake: Socket["handshake"]) {
   return headers;
 }
 
+/**
+ * Bounds how long a handshake waits for the Redis subscriptions to land. The
+ * Redis client's own offline queue and retry budget would otherwise hold the
+ * handshake open for an unpredictable stretch during a Redis blip.
+ */
+const NAMESPACE_ACTIVATION_TIMEOUT_MS = 5_000;
+
+/**
+ * Opens the namespace's Redis subscriptions before the handshake completes, so
+ * a socket cannot join a room while this process is still unsubscribed. A
+ * failure or timeout rejects the connection rather than accepting one that
+ * would silently miss notifications; the client reconnects and the run's
+ * snapshot poll covers the gap. The activation itself keeps going, so a slow
+ * one still benefits the next connection.
+ */
+function activateNamespaceMiddleware(lazyAdapter: LazySocketIoAdapter, namespace: string) {
+  return async (_socket: Socket, next: (err?: Error) => void) => {
+    try {
+      await withTimeout(
+        lazyAdapter.activate(namespace),
+        NAMESPACE_ACTIVATION_TIMEOUT_MS,
+        `socket.io namespace ${namespace} did not subscribe within ${NAMESPACE_ACTIVATION_TIMEOUT_MS}ms`
+      );
+      next();
+    } catch (error) {
+      logger.error("Failed to open socket.io Redis subscriptions", {
+        namespace,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      next(error instanceof Error ? error : new Error("socket.io subscribe failed"));
+    }
+  };
+}
+
 function createWorkerNamespace({
   io,
+  lazyAdapter,
   namespace,
   authenticate,
 }: {
   io: Server;
+  lazyAdapter: LazySocketIoAdapter | undefined;
   namespace: string;
   authenticate: (request: Request) => Promise<boolean>;
 }) {
@@ -141,6 +189,10 @@ function createWorkerNamespace({
       socket.disconnect(true);
     }
   });
+
+  if (lazyAdapter) {
+    worker.use(activateNamespaceMiddleware(lazyAdapter, namespace));
+  }
 
   worker.on("connection", async (socket) => {
     logger.debug("worker connected", { namespace, socketId: socket.id });
