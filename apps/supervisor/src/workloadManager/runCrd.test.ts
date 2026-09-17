@@ -227,3 +227,173 @@ describe("runnerTokenSecretName", () => {
     );
   });
 });
+
+/**
+ * Ties every shared workload-manager create-option to the Runner that the
+ * run-crd producer builds, so a new per-run option cannot be added and quietly
+ * dropped. It is the class of drift that lost TRIGGER_SNAPSHOT_ROUTE: the field
+ * was optional, three pod backends set it, and runCrd never did, which the type
+ * checker was happy with.
+ *
+ * The property, stated once: every create-option field either changes the
+ * Runner `runnerBodyFor` builds, or is listed in RUN_CRD_EXCLUDED with a reason.
+ * Optionality is not an excuse; a silent drop is. It is checked by behaviour,
+ * not by scanning source: for each field the test sets a probe value and asks
+ * whether the built Runner changes. A comment, a log line, or a reference from
+ * another method cannot fool that, where a textual `opts.<field>` scan could.
+ */
+describe("run-crd carries every shared create-option or excludes it on purpose", () => {
+  /**
+   * Every key of WorkloadManagerCreateOptions. Adding a field to the interface
+   * without adding it here is a compile error (see the exhaustiveness assertion
+   * below): a new option is acknowledged here or the build breaks.
+   */
+  const CREATE_OPTION_KEYS = [
+    "image",
+    "machine",
+    "version",
+    "nextAttemptNumber",
+    "dequeuedAt",
+    "placementTags",
+    "dequeueResponseMs",
+    "pollingIntervalMs",
+    "warmStartCheckMs",
+    "envId",
+    "envType",
+    "orgId",
+    "projectId",
+    "deploymentFriendlyId",
+    "deploymentVersion",
+    "runtime",
+    "deploymentToken",
+    "runId",
+    "runFriendlyId",
+    "snapshotId",
+    "snapshotFriendlyId",
+    "snapshotRoute",
+    "traceContext",
+    "annotations",
+    "hasPrivateLink",
+  ] as const satisfies readonly (keyof WorkloadManagerCreateOptions)[];
+
+  type ListedKey = (typeof CREATE_OPTION_KEYS)[number];
+  type MissingKey = Exclude<keyof WorkloadManagerCreateOptions, ListedKey>;
+  const KEYS_ARE_EXHAUSTIVE: [MissingKey] extends [never] ? true : ["unlisted keys", MissingKey] =
+    true;
+
+  /**
+   * Create-option fields that do not change the Runner `runnerBodyFor` builds,
+   * each with the reason it is not a spec field. Every such field must appear
+   * here, so not carrying one is always a decision on the record rather than an
+   * omission the type checker allowed. Some of these still shape creation by
+   * another route, the runner's name or its token Secret; they just are not
+   * values in the spec.
+   *
+   * snapshotRoute is superseded transport rather than a gap to fill: snapshot
+   * routing is becoming server-owned, so the runner-facing route is being
+   * removed rather than built into the Runner. This entry, the field on the
+   * create options, and the pod backends that set it come out together when that
+   * lands.
+   */
+  const RUN_CRD_EXCLUDED: Partial<Record<ListedKey, string>> = {
+    snapshotRoute:
+      "Superseded transport, not a run-crd gap: snapshot routing is becoming server-owned (a run's residency is decided from its stored state, not a runner-provided field), so the runner-facing route is being removed rather than built into the Runner. This entry, the field, and the pod backends that set it come out together when that lands.",
+    nextAttemptNumber:
+      "Not a spec field: it selects the runner's name via getRunnerId, so the attempt lives in the object's name rather than in the spec runnerBodyFor builds.",
+    deploymentToken:
+      "Not a spec field: it is written to a per-runner Secret and referenced by name (deployment.token), so the raw token is never a value in the spec.",
+    snapshotId: "Internal id; the bootstrap snapshot is identified by its friendly id.",
+    runId: "Internal id; the runner is named for, and reported against, the run's friendly id.",
+    version: "The deployment version is carried instead; nothing reads this alias.",
+    traceContext:
+      "Span context for the pod path's own emission; runnerBodyFor does not build it in.",
+    dequeueResponseMs: "Producer-side timing for the wide event; not built into the Runner.",
+    pollingIntervalMs: "Producer-side timing for the wide event; not built into the Runner.",
+    warmStartCheckMs: "Producer-side timing for the wide event; not built into the Runner.",
+  };
+
+  /**
+   * A value for each field that differs from createOptions()'s baseline, so a
+   * field the producer builds in makes the Runner change and one it ignores
+   * leaves it identical. Total over the keys, so a new option forces a probe
+   * here too.
+   */
+  const PROBES: Record<ListedKey, Partial<WorkloadManagerCreateOptions>> = {
+    image: { image: `registry.example.com/other/worker:2@sha256:${"1".repeat(64)}` },
+    machine: { machine: { name: "micro", cpu: 0.25, memory: 0.25, centsPerMs: 0 } },
+    version: { version: "99.9.9" },
+    nextAttemptNumber: { nextAttemptNumber: 5 },
+    dequeuedAt: { dequeuedAt: new Date("2026-01-01T00:00:00.000Z") },
+    placementTags: { placementTags: [{ key: "pool", values: ["spot"] }] },
+    dequeueResponseMs: { dequeueResponseMs: 999 },
+    pollingIntervalMs: { pollingIntervalMs: 999 },
+    warmStartCheckMs: { warmStartCheckMs: 999 },
+    envId: { envId: "env_other" },
+    envType: { envType: "STAGING" },
+    orgId: { orgId: "org_other" },
+    projectId: { projectId: "proj_other" },
+    deploymentFriendlyId: { deploymentFriendlyId: "deployment_other" },
+    deploymentVersion: { deploymentVersion: "99.9.9" },
+    runtime: { runtime: "bun" },
+    deploymentToken: { deploymentToken: "tok_probe" },
+    runId: { runId: "run_other_internal" },
+    runFriendlyId: { runFriendlyId: "run_other" },
+    snapshotId: { snapshotId: "snapshot_other_internal" },
+    snapshotFriendlyId: { snapshotFriendlyId: "snapshot_other" },
+    snapshotRoute: {
+      snapshotRoute: { version: 1, residency: "redis-primary", organizationId: "org_abc" },
+    },
+    traceContext: { traceContext: { traceparent: "00-probe-probe-01" } },
+    annotations: {
+      annotations: {
+        triggerSource: "schedule",
+        triggerAction: "trigger",
+        rootTriggerSource: "schedule",
+      },
+    },
+    hasPrivateLink: { hasPrivateLink: true },
+  };
+
+  const excluded = new Set(Object.keys(RUN_CRD_EXCLUDED) as ListedKey[]);
+  const baseline = JSON.stringify(runnerBodyFor(createOptions(), meta));
+
+  /** True when setting the field's probe changes the Runner runnerBodyFor builds. */
+  function changesRunner(field: ListedKey): boolean {
+    return JSON.stringify(runnerBodyFor(createOptions(PROBES[field]), meta)) !== baseline;
+  }
+
+  it("lists every create option, so a new field cannot slip past this test", () => {
+    // Fails to compile, not just at runtime, when a key is missing above.
+    expect(KEYS_ARE_EXHAUSTIVE).toBe(true);
+  });
+
+  it("gives each field a probe that sets only that field", () => {
+    // changesRunner reports any output difference, so a probe that also moved a
+    // second option could pass without its own field being built in. Pinning
+    // each probe to a single key keeps a difference attributable to that field.
+    for (const field of CREATE_OPTION_KEYS) {
+      expect(Object.keys(PROBES[field]), `PROBES.${field} must set only ${field}`).toEqual([field]);
+    }
+  });
+
+  it("builds every non-excluded create option into the Runner", () => {
+    const dropped = CREATE_OPTION_KEYS.filter((f) => !excluded.has(f) && !changesRunner(f));
+    expect(
+      dropped,
+      `runnerBodyFor ignores create-options it neither builds in nor excludes: ${
+        dropped.join(", ") || "(none)"
+      }. Build each into the Runner, or declare it in RUN_CRD_EXCLUDED with a reason. ` +
+        `Optionality is not an excuse for a silent drop.`
+    ).toEqual([]);
+  });
+
+  it("excludes only options the Runner genuinely does not carry", () => {
+    // An excluded field that changes the Runner means the exclusion is a lie:
+    // the field is built in after all and its reason is stale.
+    const carried = [...excluded].filter((f) => changesRunner(f)).sort();
+    expect(
+      carried,
+      `RUN_CRD_EXCLUDED lists options runnerBodyFor does build in: ${carried.join(", ")}`
+    ).toEqual([]);
+  });
+});
