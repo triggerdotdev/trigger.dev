@@ -14,14 +14,18 @@ on:
 jobs:
   unitTests:
     name: "🧪 Unit Tests: Internal"
-    # Single big machine instead of a 12-job matrix: the internal suites are serial
-    # (fileParallelism: false) and container-wait-bound, so 12 in-machine shard processes
-    # fit comfortably in 32 vCPUs while paying the setup cost (install, prisma generate,
-    # image pulls) once instead of 12 times.
+    # Two Docker daemons and disks, with twelve serial test processes per runner.
+    # Global shard indices ensure every file runs exactly once across both machines.
+    strategy:
+      fail-fast: false
+      matrix:
+        machine: [1, 2]
     runs-on: warp-ubuntu-latest-x64-32x
     env:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      SHARD_TOTAL: 12
+      MACHINE_INDEX: ${{ matrix.machine }}
+      SHARDS_PER_MACHINE: 12
+      SHARD_TOTAL: 24
     steps:
       - name: 🔧 Disable IPv6
         run: |
@@ -104,24 +108,32 @@ jobs:
         run: pnpm run generate
 
       - name: 🏗️ Build test dependencies
-        # Build once up-front so the parallel shard runs below (turbo --only) never race
-        # to build or cache-restore the same outputs concurrently.
+        # Build once up-front so shard processes never race to build or
+        # cache-restore the same outputs concurrently.
         run: pnpm exec turbo run build --filter "@internal/*..."
 
-      - name: 🧪 Run Internal Unit Tests (${{ env.SHARD_TOTAL }} in-machine shards)
+      - name: 🧪 Run Internal Unit Tests (machine ${{ matrix.machine }}/2)
         run: |
-          # Same shard partitioning as the old 12-job matrix (DurationShardingSequencer
-          # keys off --shard=i/N), but as parallel local processes. --only skips the
-          # ^build dependency handled by the step above.
+          # Each process discovers all internal projects, then takes its globally
+          # balanced share of files. Keep one test file active per process.
+          first=$(( (MACHINE_INDEX - 1) * SHARDS_PER_MACHINE + 1 ))
+          last=$(( MACHINE_INDEX * SHARDS_PER_MACHINE ))
           status=0
           declare -a pids
-          for i in $(seq 1 "$SHARD_TOTAL"); do
-            pnpm exec turbo run test --only --concurrency=1 --filter "@internal/*" -- \
-              --run --reporter=default --reporter=blob --shard="$i/$SHARD_TOTAL" --passWithNoTests \
-              > "/tmp/internal-shard-$i.log" 2>&1 &
+          for i in $(seq "$first" "$last"); do
+            (
+              started=$SECONDS
+              result=0
+              pnpm exec vitest run --config vitest.internal.config.ts \
+                --sequence.concurrent=false --reporter=default --reporter=blob \
+                --shard="$i/$SHARD_TOTAL" --passWithNoTests \
+                > "/tmp/internal-shard-$i.log" 2>&1 || result=$?
+              echo "::notice::internal shard $i/$SHARD_TOTAL finished in $((SECONDS - started))s (exit $result)"
+              exit "$result"
+            ) &
             pids[i]=$!
           done
-          for i in $(seq 1 "$SHARD_TOTAL"); do
+          for i in $(seq "$first" "$last"); do
             if ! wait "${pids[i]}"; then
               status=1
               echo "::error::internal unit test shard $i/$SHARD_TOTAL failed"
@@ -132,13 +144,67 @@ jobs:
           done
           exit "$status"
 
-      - name: Gather all reports
+      - name: Upload blob reports
         if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: internal-blob-report-${{ matrix.machine }}
+          path: .vitest-reports/*
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+
+  merge-reports:
+    name: "📊 Merge Internal Reports"
+    if: ${{ !cancelled() }}
+    needs: [unitTests]
+    runs-on: warp-ubuntu-latest-x64-2x
+    steps:
+      - name: ⬇️ Checkout repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: ⎔ Setup pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: 10.33.2
+
+      - name: ⎔ Setup node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.18.0
+
+      - name: Download blob reports
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: .vitest-reports
+          pattern: internal-blob-report-*
+          merge-multiple: true
+
+      - name: Check all shard reports are present
         run: |
-          mkdir -p .vitest-reports
-          find . -type f -path '*/.vitest-reports/blob-*.json' \
-            -exec bash -c 'src="$1"; basename=$(basename "$src"); pkg=$(dirname "$src" | sed "s|^\./||;s|/\.vitest-reports$||;s|/|_|g"); cp "$src" ".vitest-reports/${pkg}-${basename}"' _ {} \;
+          for i in $(seq 1 24); do
+            test -s ".vitest-reports/blob-$i-24.json"
+          done
 
       - name: 📊 Merge reports
+        run: >-
+          pnpm dlx vitest@4.1.7 run --config vitest.internal-reports.config.mjs --merge-reports
+          --reporter=default --reporter=json --outputFile.json=internal-test-results.json
+
+      - name: Validate merged test timings
+        run: |
+          cp test-timings.json "$RUNNER_TEMP/checked-test-timings.json"
+          node internal-packages/testcontainers/scripts/update-test-timings.mjs \
+            internal-test-results.json "$RUNNER_TEMP/checked-test-timings.json"
+
+      - name: Upload internal test timings
         if: ${{ !cancelled() }}
-        run: pnpm dlx vitest@4.1.7 run --merge-reports --pass-with-no-tests
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: internal-test-results
+          path: internal-test-results.json
+          if-no-files-found: error
+          retention-days: 14

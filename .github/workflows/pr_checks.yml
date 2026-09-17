@@ -2,7 +2,7 @@ name: 🤖 PR Checks
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, ready_for_review]
   merge_group:
 
 concurrency:
@@ -91,6 +91,10 @@ jobs:
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
               - 'turbo.json'
+              - 'vitest.internal.config.ts'
+              - 'vitest.internal-reports.config.mjs'
+              - 'internal-test-projects.mts'
+              - 'test-timings.json'
             # The whole webapp app tree, not just its routes, and that is the whole reason this
             # filter exists. Two tests in @internal/observability-map read it: integration.test.ts
             # scans the live route tree, and webappSymbols.test.ts walks all of apps/webapp/app and
@@ -110,8 +114,8 @@ jobs:
             # Deliberately NOT here: this package's own paths, and packages/plugins/src and
             # internal-packages/rbac/src, the other two trees webappSymbols.test.ts reads.
             # `internal` above already matches `internal-packages/**` and the shared packages, and
-            # `unit-tests-internal.yml` runs `turbo run test --filter "@internal/*"`, which picks up
-            # @internal/observability-map and runs the same vitest suite. Listing them here as well
+            # `unit-tests-internal.yml` loads every @internal/* test project through
+            # vitest.internal.config.ts, including the same observability-map suite. Listing them here as well
             # ran the suite twice on every PR touching them, which was this filter's own doing.
             #
             # Also deliberately NOT here: pr_checks.yml, package.json, pnpm-lock.yaml,

@@ -3,7 +3,11 @@
   "tags": ["-knipignore"],
   "workspaces": {
     ".": {
-      "entry": ["scripts/**/*.{js,mjs,cjs,ts,mts,cts}"],
+      "entry": [
+        "scripts/**/*.{js,mjs,cjs,ts,mts,cts}",
+        "vitest.internal.config.ts",
+        "vitest.internal-reports.config.mjs"
+      ],
       "ignoreDependencies": ["agentcrumbs", "eslint", "lefthook"],
       "ignoreBinaries": ["infisical", "prisma"]
     },

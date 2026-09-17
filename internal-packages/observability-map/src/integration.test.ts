@@ -9,6 +9,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import internalTestConfig from "../../../vitest.internal.config.js";
 import { isScannableFile, scanDirectory, scanFile } from "./scan.js";
 import { buildReport } from "./score.js";
 import { SCORED_CHECK_IDS } from "./checks/index.js";
@@ -306,7 +307,10 @@ describe("the package's tests are wired into the gate", () => {
     const internal = text.split("            internal:")[1]!.split("            obsmap:")[0]!;
     expect(internal).toContain(`'${PATH_PREFIX}internal-packages/**'`);
     expect(internal).not.toContain(`!${PATH_PREFIX}internal-packages/observability-map`);
-    expect(read(resolve(WORKFLOWS, "unit-tests-internal.yml"))).toContain('--filter "@internal/*"');
+    expect(read(resolve(WORKFLOWS, "unit-tests-internal.yml"))).toContain(
+      "--config vitest.internal.config.ts"
+    );
+    expect(internalTestConfig.test?.projects).toContain(resolve(__dirname, ".."));
   });
 
   // The test above only checks the package's own source path, a different overlap that was already

@@ -56,8 +56,15 @@ function median(nums) {
 // It's a rotation of the bin->shard mapping, so coverage stays exact (each file runs once).
 function packageOffset(specs, count) {
   if (specs.length === 0) return 0;
-  const rel = path.relative(REPO_ROOT, specs[0].moduleId);
-  const key = rel.split(path.sep).slice(0, 2).join("/");
+  const keys = new Set(
+    specs.map((spec) =>
+      path.relative(REPO_ROOT, spec.moduleId).split(path.sep).slice(0, 2).join("/")
+    )
+  );
+  // A multi-project run is already balanced globally. Its mapping must not depend
+  // on which package happened to finish discovering files first.
+  if (keys.size !== 1) return 0;
+  const [key] = keys;
   // FNV-1a - spreads similar sibling package names (e.g. internal-packages/*) far better than a
   // simple polynomial hash mod count, which collided run-engine + schedule-engine onto one shard.
   let h = 2166136261;
