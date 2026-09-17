@@ -1,6 +1,8 @@
 import type {
   ApiPromise,
   ApiRequestOptions,
+  BulkDeleteEnvironmentVariablesParams,
+  BulkDeleteEnvironmentVariablesResponseBody,
   CreateEnvironmentVariableParams,
   EnvironmentVariableResponseBody,
   EnvironmentVariableWithSecret,
@@ -15,7 +17,11 @@ import {
 } from "@trigger.dev/core/v3";
 import { tracer } from "./tracer.js";
 
-export type { CreateEnvironmentVariableParams, ImportEnvironmentVariablesParams };
+export type {
+  BulkDeleteEnvironmentVariablesParams,
+  CreateEnvironmentVariableParams,
+  ImportEnvironmentVariablesParams,
+};
 
 export function upload(
   projectRef: string,
@@ -276,6 +282,72 @@ export function del(
   const apiClient = apiClientManager.clientOrThrow();
 
   return apiClient.deleteEnvVar($projectRef, $slug, $name, $requestOptions);
+}
+
+export function bulkDelete(
+  projectRef: string,
+  slug: string,
+  params: BulkDeleteEnvironmentVariablesParams,
+  requestOptions?: ApiRequestOptions
+): ApiPromise<BulkDeleteEnvironmentVariablesResponseBody>;
+export function bulkDelete(
+  params: BulkDeleteEnvironmentVariablesParams,
+  requestOptions?: ApiRequestOptions
+): ApiPromise<BulkDeleteEnvironmentVariablesResponseBody>;
+export function bulkDelete(
+  projectRefOrParams: string | BulkDeleteEnvironmentVariablesParams,
+  slugOrRequestOptions?: string | ApiRequestOptions,
+  params?: BulkDeleteEnvironmentVariablesParams,
+  requestOptions?: ApiRequestOptions
+): ApiPromise<BulkDeleteEnvironmentVariablesResponseBody> {
+  let $projectRef: string;
+  let $params: BulkDeleteEnvironmentVariablesParams;
+  let $slug: string;
+  const $requestOptions = overloadRequestOptions(
+    "bulkDelete",
+    slugOrRequestOptions,
+    requestOptions
+  );
+
+  if (taskContext.ctx) {
+    if (typeof projectRefOrParams === "string") {
+      $projectRef = projectRefOrParams;
+      $slug =
+        typeof slugOrRequestOptions === "string"
+          ? slugOrRequestOptions
+          : taskContext.ctx.environment.slug;
+
+      if (!params) {
+        throw new Error("params is required");
+      }
+
+      $params = params;
+    } else {
+      $params = projectRefOrParams;
+      $projectRef = taskContext.ctx.project.ref;
+      $slug = taskContext.ctx.environment.slug;
+    }
+  } else {
+    if (typeof projectRefOrParams !== "string") {
+      throw new Error("projectRef is required");
+    }
+
+    if (!slugOrRequestOptions || typeof slugOrRequestOptions !== "string") {
+      throw new Error("slug is required");
+    }
+
+    if (!params) {
+      throw new Error("params is required");
+    }
+
+    $projectRef = projectRefOrParams;
+    $slug = slugOrRequestOptions;
+    $params = params;
+  }
+
+  const apiClient = apiClientManager.clientOrThrow();
+
+  return apiClient.bulkDeleteEnvVars($projectRef, $slug, $params, $requestOptions);
 }
 
 export function update(

@@ -2185,6 +2185,124 @@ paths:
               override: false
             });
 
+  "/api/v1/projects/{projectRef}/envvars/{env}/bulk-delete":
+    parameters:
+      - $ref: "#/components/parameters/projectRef"
+      - $ref: "#/components/parameters/env"
+    post:
+      operationId: bulk_delete_project_envvars_v1
+      summary: Bulk delete environment variables
+      description: Delete up to 1000 environment variables from a specific project and environment in one request. Keys that have no value in the environment, or that the filters exclude, are returned as skipped.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                keys:
+                  type: array
+                  description: The names of the variables to delete from this environment.
+                  minItems: 1
+                  maxItems: 1000
+                  items:
+                    type: string
+                    minLength: 1
+                    maxLength: 256
+                onlyWrittenBy:
+                  description: Only delete values that were last written by this source.
+                  oneOf:
+                    - type: object
+                      properties:
+                        type:
+                          type: string
+                          enum: ["user"]
+                        userId:
+                          type: string
+                      required: ["type", "userId"]
+                    - type: object
+                      properties:
+                        type:
+                          type: string
+                          enum: ["integration"]
+                        integration:
+                          type: string
+                      required: ["type", "integration"]
+                onlyShadowingParent:
+                  type: boolean
+                  description: On a preview branch, only delete values whose key also has a value on the parent environment, so the branch falls back to the shared value.
+                  default: false
+              required: ["keys"]
+      responses:
+        "200":
+          description: The request completed. Each requested key appears in either `deleted` or `skipped`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: array
+                    description: Keys whose value was removed from the environment.
+                    items:
+                      type: string
+                  skipped:
+                    type: array
+                    description: Keys that were left untouched, because the environment had no value for them or a filter excluded them.
+                    items:
+                      type: string
+                required: ["deleted", "skipped"]
+        "400":
+          description: Invalid request parameters or body
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+        "404":
+          description: Resource not found
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+      tags:
+        - envvars
+      security:
+        - secretKey: []
+        - personalAccessToken: []
+      x-codeSamples:
+        - lang: typescript
+          label: Outside of a task
+          source: |-
+            import { envvars } from "@trigger.dev/sdk";
+
+            const result = await envvars.bulkDelete("proj_yubjwjsfkxnylobaqvqz", "dev", {
+              keys: ["SLACK_API_KEY", "STRIPE_SECRET_KEY"],
+            });
+
+            console.log(result.deleted, result.skipped);
+        - lang: typescript
+          label: Inside a task
+          source: |-
+            import { envvars, task } from "@trigger.dev/sdk";
+
+            export const myTask = task({
+              id: "my-task",
+              run: async () => {
+                // projectRef and env are automatically inferred from the task context
+                const result = await envvars.bulkDelete({
+                  keys: ["SLACK_API_KEY", "STRIPE_SECRET_KEY"],
+                });
+
+                console.log(result.deleted, result.skipped);
+              }
+            })
+
   "/api/v1/projects/{projectRef}/envvars/{env}/{name}":
     parameters:
       - $ref: "#/components/parameters/projectRef"

@@ -65,7 +65,10 @@ export {
 } from "./deployments.js";
 export * as envvars from "./envvars.js";
 export * as queues from "./queues.js";
-export type { ImportEnvironmentVariablesParams } from "./envvars.js";
+export type {
+  BulkDeleteEnvironmentVariablesParams,
+  ImportEnvironmentVariablesParams,
+} from "./envvars.js";
 
 export { configure, auth } from "./auth.js";
 export { TriggerClient, type TriggerClientConfig } from "./triggerClient.js";

@@ -1623,7 +1623,7 @@ export type ImportEnvironmentVariablesRequestBody = z.infer<
 >;
 
 export const BulkDeleteEnvironmentVariablesRequestBody = z.object({
-  keys: z.array(z.string()).min(1).max(1000),
+  keys: z.array(z.string().min(1).max(256)).min(1).max(1000),
   /** Only remove values last written by this source. */
   onlyWrittenBy: EnvironmentVariableSource.optional(),
   /** Only remove values whose key also has a value on the parent environment. */

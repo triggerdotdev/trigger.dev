@@ -410,7 +410,8 @@
               "management/envvars/create",
               "management/envvars/retrieve",
               "management/envvars/update",
-              "management/envvars/delete"
+              "management/envvars/delete",
+              "management/envvars/bulk-delete"
             ]
           },
           {

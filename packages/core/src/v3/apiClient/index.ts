@@ -53,6 +53,7 @@ import {
   CreateUploadPayloadUrlResponseBody,
   SessionTranscriptResponseBody,
   CreateWaitpointTokenResponseBody,
+  BulkDeleteEnvironmentVariablesResponseBody,
   CreatedSessionResponseBody,
   DeletedScheduleObject,
   EndAndContinueSessionResponseBody,
@@ -129,6 +130,7 @@ import {
   STREAM_START_HEADER,
 } from "./runStream.js";
 import type {
+  BulkDeleteEnvironmentVariablesParams,
   CreateBulkActionOptions,
   CreateEnvironmentVariableParams,
   ImportEnvironmentVariablesParams,
@@ -154,6 +156,7 @@ export type CreateBatchApiResponse = Prettify<
 >;
 
 export type {
+  BulkDeleteEnvironmentVariablesParams,
   CreateBulkActionOptions,
   CreateEnvironmentVariableParams,
   ImportEnvironmentVariablesParams,
@@ -1182,6 +1185,24 @@ export class ApiClient {
       {
         method: "DELETE",
         headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  bulkDeleteEnvVars(
+    projectRef: string,
+    slug: string,
+    body: BulkDeleteEnvironmentVariablesParams,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      BulkDeleteEnvironmentVariablesResponseBody,
+      `${this.baseUrl}/api/v1/projects/${projectRef}/envvars/${slug}/bulk-delete`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );

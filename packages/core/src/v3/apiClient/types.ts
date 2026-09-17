@@ -1,4 +1,5 @@
 import type {
+  EnvironmentVariableSource,
   MachinePresetName,
   QueueTypeName,
   RunStatus,
@@ -28,6 +29,15 @@ export interface CreateEnvironmentVariableParams {
 export interface UpdateEnvironmentVariableParams {
   value: string;
 }
+
+export type BulkDeleteEnvironmentVariablesParams = {
+  /** The variables to delete from the environment, up to 1000 per call. */
+  keys: string[];
+  /** Only delete values that were last written by this source. */
+  onlyWrittenBy?: EnvironmentVariableSource;
+  /** Only delete values on a branch whose key also has a value on the parent environment. */
+  onlyShadowingParent?: boolean;
+};
 
 export interface ListRunsQueryParams extends CursorPageParams {
   status?: Array<RunStatus> | RunStatus;
