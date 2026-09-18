@@ -18,3 +18,15 @@ export function discriminatedUnion<const Types extends readonly [z.ZodTypeAny, .
     options as any
   ) as CompatibleZodDiscriminatedUnion<Types>;
 }
+
+/**
+ * Same declaration-compat trick for `z.preprocess`: newer Zod 4 releases
+ * declare its result as `ZodPreprocess`, which older `zod/v4` permalinks do
+ * not export. Erase it to the portable `ZodType` shape in declarations.
+ */
+export function preprocess<T extends z.ZodTypeAny>(
+  fn: (value: unknown) => unknown,
+  schema: T
+): z.ZodType<z.output<T>, unknown> {
+  return z.preprocess(fn, schema) as unknown as z.ZodType<z.output<T>, unknown>;
+}

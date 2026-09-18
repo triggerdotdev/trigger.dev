@@ -43,7 +43,7 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { formatNumber } from "~/utils/numberFormatter";
 import {
-  concurrencyPath,
+  concurrencyLimitsPath,
   docsPath,
   EnvironmentParamSchema,
   organizationBillingPath,
@@ -153,7 +153,7 @@ export default function Page() {
 
             {/* Concurrency Section */}
             <ConcurrencySection
-              concurrencyPath={concurrencyPath(organization, project, environment)}
+              concurrencyLimitsPath={concurrencyLimitsPath(organization, project, environment)}
             />
 
             {/* Rate Limits Section */}
@@ -231,7 +231,7 @@ function CurrentPlanSection({
   );
 }
 
-function ConcurrencySection({ concurrencyPath }: { concurrencyPath: string }) {
+function ConcurrencySection({ concurrencyLimitsPath }: { concurrencyLimitsPath: string }) {
   return (
     <div className="flex flex-col gap-3">
       <Header2 className="flex items-center gap-1.5">
@@ -247,7 +247,7 @@ function ConcurrencySection({ concurrencyPath }: { concurrencyPath: string }) {
           <TableRow>
             <TableCell className="w-full text-sm">Concurrency</TableCell>
             <TableCell alignment="right">
-              <LinkButton to={concurrencyPath} variant="secondary/small">
+              <LinkButton to={concurrencyLimitsPath} variant="secondary/small">
                 Manage concurrency
               </LinkButton>
             </TableCell>

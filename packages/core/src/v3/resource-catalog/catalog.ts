@@ -7,6 +7,7 @@ import type {
   WebhookManifest,
   WebhookMetadata,
   WorkerManifest,
+  ConcurrencyLimitManifest,
 } from "../schemas/index.js";
 import type {
   PromptMetadataWithFunctions,
@@ -27,6 +28,8 @@ export interface ResourceCatalog {
   registerWorkerManifest(workerManifest: WorkerManifest): void;
   registerQueueMetadata(queue: QueueManifest): void;
   listQueueManifests(): Array<QueueManifest>;
+  registerConcurrencyLimitMetadata(limit: ConcurrencyLimitManifest): void;
+  listConcurrencyLimitManifests(): Array<ConcurrencyLimitManifest>;
   getTaskSchema(id: string): TaskSchema | undefined;
   registerPromptMetadata(prompt: PromptMetadataWithFunctions): void;
   listPromptManifests(): Array<PromptManifest>;

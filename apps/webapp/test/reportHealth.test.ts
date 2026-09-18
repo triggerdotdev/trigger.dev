@@ -94,8 +94,8 @@ describe("health cause tree (Golden A — env limit saturation)", () => {
 
   it("footer = raise the limit (self-serve) + docs + do-nothing (drains)", () => {
     expect(vm.footer).toEqual([
-      { code: "raise_env_limit", link: "concurrency" },
-      { code: "concurrency_docs", link: "concurrency" },
+      { code: "raise_env_limit", link: "concurrency-limits" },
+      { code: "concurrency_docs", link: "concurrency-limits" },
       { code: "do_nothing_drains", value: 2.3 },
     ]);
   });

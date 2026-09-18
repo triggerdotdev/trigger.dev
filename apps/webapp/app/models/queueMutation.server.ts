@@ -62,10 +62,107 @@ export async function handleQueueMutationAction({
     }
     case "queue-override": {
       const friendlyId = formData.get("friendlyId");
-      const mode = formData.get("mode") === "percent" ? "percent" : "absolute";
+      const mode =
+        formData.get("mode") === "percent"
+          ? "percent"
+          : formData.get("mode") === "bounds"
+            ? "bounds"
+            : "absolute";
 
       if (!friendlyId) {
         return redirectWithErrorMessage(redirectPath, request, "Queue ID is required");
+      }
+
+      if (mode === "bounds") {
+        const user = await getUserById(userId);
+        if (!user) {
+          return redirectWithErrorMessage(redirectPath, request, "User not found");
+        }
+
+        const perKeyRaw = formData.get("perKeyLimit")?.toString().trim() || null;
+        const totalRaw = formData.get("totalLimit")?.toString().trim() || null;
+
+        if (perKeyRaw === null && totalRaw === null) {
+          return redirectWithErrorMessage(
+            redirectPath,
+            request,
+            "Enter a per-key limit, a total limit, or both"
+          );
+        }
+
+        const perKey = perKeyRaw === null ? null : Number(perKeyRaw);
+        if (
+          perKey !== null &&
+          (!Number.isInteger(perKey) || perKey < 0 || perKey > environment.maximumConcurrencyLimit)
+        ) {
+          return redirectWithErrorMessage(
+            redirectPath,
+            request,
+            `Per-key limit must be a whole number between 0 and the environment limit of ${environment.maximumConcurrencyLimit}`
+          );
+        }
+
+        const total = totalRaw === null ? null : Number(totalRaw);
+        if (
+          total !== null &&
+          (!Number.isInteger(total) || total < 1 || total > environment.maximumConcurrencyLimit)
+        ) {
+          return redirectWithErrorMessage(
+            redirectPath,
+            request,
+            `Total limit must be a whole number between 1 and the environment limit of ${environment.maximumConcurrencyLimit}`
+          );
+        }
+
+        if (perKey !== null) {
+          const result = await concurrencySystem.queues.overrideQueueConcurrencyLimit(
+            environment,
+            friendlyId.toString(),
+            { limit: perKey },
+            user
+          );
+          if (!result.isOk()) {
+            const error = result.error;
+            const message =
+              "message" in error && typeof error.message === "string"
+                ? error.message
+                : "Failed to override the per-key limit";
+            return redirectWithErrorMessage(redirectPath, request, message);
+          }
+        }
+
+        if (total !== null) {
+          const result = await concurrencySystem.queues.overrideTotalConcurrencyLimit(
+            environment,
+            friendlyId.toString(),
+            total,
+            user
+          );
+          if (!result.isOk()) {
+            const error = result.error;
+            const message =
+              "message" in error && typeof error.message === "string"
+                ? error.message
+                : "Failed to override the total limit";
+            return redirectWithErrorMessage(
+              redirectPath,
+              request,
+              perKey !== null
+                ? `The per-key limit was overridden, but the total limit failed: ${message}`
+                : message
+            );
+          }
+        }
+
+        return redirectWithSuccessMessage(
+          redirectPath,
+          request,
+          perKey !== null && total !== null
+            ? "Per-key and total limits overridden"
+            : perKey !== null
+              ? "Per-key limit overridden"
+              : "Total limit overridden"
+        );
       }
 
       // The dialog submits either a `percent` of the environment limit or an absolute `limit`,
@@ -137,17 +234,35 @@ export async function handleQueueMutationAction({
         return redirectWithErrorMessage(redirectPath, request, "Queue ID is required");
       }
 
+      const isBoundsScope = formData.get("scope") === "bounds";
+
       const result = await concurrencySystem.queues.resetConcurrencyLimit(
         environment,
         friendlyId.toString()
       );
 
-      if (!result.isOk()) {
+      if (!result.isOk() && !(isBoundsScope && result.error.type === "queue_not_overridden")) {
         return redirectWithErrorMessage(
           redirectPath,
           request,
           "Failed to reset queue concurrency limit"
         );
+      }
+
+      if (isBoundsScope) {
+        const totalResult = await concurrencySystem.queues.resetTotalConcurrencyLimit(
+          environment,
+          friendlyId.toString()
+        );
+        if (!totalResult.isOk() && totalResult.error.type !== "queue_not_overridden") {
+          return redirectWithErrorMessage(
+            redirectPath,
+            request,
+            result.isOk()
+              ? "The per-key limit was reset, but resetting the total limit failed"
+              : "Failed to reset the total limit"
+          );
+        }
       }
 
       return redirectWithSuccessMessage(redirectPath, request, "Queue concurrency limit reset");

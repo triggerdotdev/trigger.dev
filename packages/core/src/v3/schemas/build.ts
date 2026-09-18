@@ -7,6 +7,7 @@ import {
   TaskFile,
   TaskManifest,
   WebhookManifest,
+  ConcurrencyLimitManifest,
 } from "./schemas.js";
 
 export const BuildExternal = z.object({
@@ -116,6 +117,7 @@ export const WorkerManifest = z.object({
   webhooks: WebhookManifest.array().optional(), // NEW
   unclaimedSessionWebhooks: z.array(z.string()).optional(), // session.webhook descriptors no agent listed
   queues: QueueManifest.array().optional(),
+  concurrencyLimits: ConcurrencyLimitManifest.array().optional(),
   workerEntryPoint: z.string(),
   controllerEntryPoint: z.string().optional(),
   loaderEntryPoint: z.string().optional(),

@@ -1,12 +1,13 @@
 import { AdjustmentsHorizontalIcon, PauseIcon, PlayIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, useNavigation } from "@remix-run/react";
-import type { QueueItem } from "@trigger.dev/core/v3/schemas";
 import { useEffect, useState } from "react";
 import { cn } from "~/utils/cn";
+import type { QueueLimits } from "~/components/queues/queue-limits";
 import { Button, type ButtonVariant } from "~/components/primitives/Buttons";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
+import { FormError } from "~/components/primitives/FormError";
 import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
@@ -172,7 +173,12 @@ export function QueueOverrideConcurrencyButton({
   trigger,
   disabled = false,
 }: {
-  queue: QueueItem & { concurrencyLimitOverridePercent: number | null };
+  queue: {
+    id: string;
+    name: string;
+    limits: QueueLimits;
+    concurrencyLimitOverridePercent: number | null;
+  };
   environmentConcurrencyLimit: number;
   /** How to render the dialog trigger. "menu-item" (default) is a PopoverMenuItem for row menus;
    * "button" is a standalone labeled button; "icon" is an icon-only button with the label in a
@@ -186,14 +192,26 @@ export function QueueOverrideConcurrencyButton({
     queue.concurrencyLimitOverridePercent !== null ? "percent" : "absolute"
   );
   const [concurrencyLimit, setConcurrencyLimit] = useState<string>(
-    queue.concurrencyLimit?.toString() ?? environmentConcurrencyLimit.toString()
+    queue.limits.perKey.current?.toString() ?? environmentConcurrencyLimit.toString()
   );
   const [percent, setPercent] = useState<string>(
     queue.concurrencyLimitOverridePercent?.toString() ?? "100"
   );
 
-  const isOverridden = !!queue.concurrency?.overriddenAt;
-  const currentLimit = queue.concurrencyLimit ?? environmentConcurrencyLimit;
+  /** A row with a total bound gets the two-field dialog: each bound is overridden on its own
+   * and a blank field leaves that bound unchanged. Rows without a total keep the classic
+   * single-limit dialog (with the percent toggle). */
+  const hasTotal = queue.limits.total != null;
+  /** Both fields start blank so blank-means-unchanged holds: a prefilled value would submit
+   * as an explicit override of the current value, pinning it against future code changes.
+   * The current values show as placeholders instead. */
+  const [perKeyValue, setPerKeyValue] = useState<string>("");
+  const [totalValue, setTotalValue] = useState<string>("");
+
+  const isOverridden = hasTotal
+    ? !!queue.limits.perKey.overriddenAt || !!queue.limits.total?.overriddenAt
+    : !!queue.limits.perKey.overriddenAt;
+  const currentLimit = queue.limits.perKey.current ?? environmentConcurrencyLimit;
 
   useEffect(() => {
     if (navigation.state === "loading" || navigation.state === "idle") {
@@ -221,15 +239,65 @@ export function QueueOverrideConcurrencyButton({
   const limitNumber = Number(concurrencyLimit);
   const limitOverCap = Number.isFinite(limitNumber) && limitNumber > environmentConcurrencyLimit;
 
+  const perKeyNumber = Number(perKeyValue);
+  const perKeyOverCap =
+    perKeyValue !== "" &&
+    Number.isFinite(perKeyNumber) &&
+    perKeyNumber > environmentConcurrencyLimit;
+  const perKeyInvalid =
+    perKeyValue !== "" && (!Number.isInteger(perKeyNumber) || perKeyNumber < 0 || perKeyOverCap);
+  const totalNumber = Number(totalValue);
+  const totalOverCap =
+    totalValue !== "" && Number.isFinite(totalNumber) && totalNumber > environmentConcurrencyLimit;
+  const totalInvalid =
+    totalValue !== "" && (!Number.isInteger(totalNumber) || totalNumber < 1 || totalOverCap);
+
+  /** Cross-field check on the pair that would be in effect after submit: a blank field keeps
+   * its current value. A per-key limit above the total could never be reached, so creating
+   * that state is blocked. The API treats the bounds independently, so a pair that already
+   * conflicts stays editable: improvements submit with a notice instead of being trapped. */
+  const resultingPerKey = perKeyValue !== "" ? perKeyNumber : queue.limits.perKey.current;
+  const resultingTotal = totalValue !== "" ? totalNumber : (queue.limits.total?.current ?? null);
+  const resultingConflict =
+    hasTotal &&
+    !perKeyInvalid &&
+    !totalInvalid &&
+    resultingPerKey !== null &&
+    resultingTotal !== null &&
+    resultingPerKey > resultingTotal;
+  const currentConflictGap =
+    hasTotal && queue.limits.perKey.current !== null && queue.limits.total != null
+      ? queue.limits.perKey.current - queue.limits.total.current
+      : 0;
+  const resultingConflictGap =
+    resultingConflict && resultingPerKey !== null && resultingTotal !== null
+      ? resultingPerKey - resultingTotal
+      : 0;
+  const boundsConflict =
+    resultingConflict && !(currentConflictGap > 0 && resultingConflictGap < currentConflictGap);
+
   const submitDisabled =
     disabled ||
-    isLoading ||
-    (mode === "percent" ? !percentValid : !concurrencyLimit || limitOverCap);
+    (hasTotal
+      ? isLoading ||
+        perKeyInvalid ||
+        totalInvalid ||
+        boundsConflict ||
+        (perKeyValue === "" && totalValue === "")
+      : isLoading || (mode === "percent" ? !percentValid : !concurrencyLimit || limitOverCap));
 
   const iconLabel = isOverridden ? "Edit override" : "Override limit";
 
+  const handleOpenChange = (open: boolean) => {
+    if (open) {
+      setPerKeyValue("");
+      setTotalValue("");
+    }
+    setIsOpen(open);
+  };
+
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       {trigger === "icon" ? (
         <TooltipProvider disableHoverableContent={true}>
           <Tooltip>
@@ -276,7 +344,9 @@ export function QueueOverrideConcurrencyButton({
             <TooltipContent side="bottom" className="max-w-[230px] text-xs">
               {disabled
                 ? "You don't have permission to manage queues"
-                : "Give this queue its own concurrency limit instead of the environment default. Set it as a number or a percentage of the environment limit."}
+                : hasTotal
+                  ? "Override this queue's per-key and total concurrency limits."
+                  : "Give this queue its own concurrency limit instead of the environment default. Set it as a number or a percentage of the environment limit."}
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -300,13 +370,27 @@ export function QueueOverrideConcurrencyButton({
           {isOverridden ? "Edit concurrency override" : "Override concurrency limit"}
         </DialogHeader>
         <div className="flex flex-col gap-3 pt-3">
-          {isOverridden ? (
+          {hasTotal ? (
+            isOverridden ? (
+              <Paragraph variant="small">
+                This queue's limits are currently overridden. Fill a field to change that limit
+                (blank fields stay unchanged), or remove the override to restore the limits set in
+                code.
+              </Paragraph>
+            ) : (
+              <Paragraph variant="small">
+                Override this queue's limits. Per key caps each concurrency key's pool, and total
+                caps runs across all keys together. Leave a field blank to keep that limit
+                unchanged.
+              </Paragraph>
+            )
+          ) : isOverridden ? (
             <Paragraph variant="small">
               This queue's concurrency limit is currently overridden to {currentLimit}.
-              {typeof queue.concurrency?.base === "number" &&
-                ` The original limit set in code was ${queue.concurrency.base}.`}{" "}
+              {typeof queue.limits.perKey.base === "number" &&
+                ` The original limit set in code was ${queue.limits.perKey.base}.`}{" "}
               You can update the override or remove it to restore the{" "}
-              {typeof queue.concurrency?.base === "number"
+              {typeof queue.limits.perKey.base === "number"
                 ? "limit set in code"
                 : "environment concurrency limit"}
               .
@@ -314,73 +398,137 @@ export function QueueOverrideConcurrencyButton({
           ) : (
             <Paragraph variant="small">
               Override this queue's concurrency limit. The current limit is {currentLimit}, which is
-              set {queue.concurrencyLimit !== null ? "in code" : "by the environment"}.
+              set {queue.limits.perKey.current !== null ? "in code" : "by the environment"}.
             </Paragraph>
           )}
           <Form method="post" onSubmit={() => setIsOpen(false)} className="space-y-3">
             <input type="hidden" name="friendlyId" value={queue.id} />
-            <input type="hidden" name="mode" value={mode} />
-            <InputGroup fullWidth>
-              <Label htmlFor={mode === "percent" ? "percent" : "concurrencyLimit"}>
-                Concurrency limit
-              </Label>
-              <div className="flex items-center gap-2">
-                <div className="flex-1">
-                  {mode === "percent" ? (
-                    <Input
-                      type="number"
-                      name="percent"
-                      id="percent"
-                      min="1"
-                      max="100"
-                      step="0.01"
-                      value={percent}
-                      onChange={(e) => setPercent(e.target.value)}
-                      placeholder="100"
-                      autoFocus
-                      accessory={<span className="pr-1 text-text-dimmed">%</span>}
-                    />
-                  ) : (
-                    <Input
-                      type="number"
-                      name="concurrencyLimit"
-                      id="concurrencyLimit"
-                      min="0"
-                      max={environmentConcurrencyLimit}
-                      value={concurrencyLimit}
-                      onChange={(e) => setConcurrencyLimit(e.target.value)}
-                      placeholder={currentLimit.toString()}
-                      autoFocus
-                    />
-                  )}
+            <input type="hidden" name="mode" value={hasTotal ? "bounds" : mode} />
+            {hasTotal ? (
+              <>
+                <input type="hidden" name="scope" value="bounds" />
+                <InputGroup fullWidth>
+                  <Label htmlFor="perKeyLimit">Per-key limit</Label>
+                  <Input
+                    type="number"
+                    name="perKeyLimit"
+                    id="perKeyLimit"
+                    min="0"
+                    max={environmentConcurrencyLimit}
+                    value={perKeyValue}
+                    onChange={(e) => setPerKeyValue(e.target.value)}
+                    placeholder={queue.limits.perKey.current?.toString() ?? "No per-key limit"}
+                    autoFocus
+                  />
+                  <Hint className={perKeyOverCap ? "text-warning tabular-nums" : "tabular-nums"}>
+                    {perKeyOverCap
+                      ? `Can't exceed the environment limit of ${environmentConcurrencyLimit}.`
+                      : `The most concurrent runs each concurrency key can use at once.${
+                          typeof queue.limits.perKey.base === "number"
+                            ? ` Set to ${queue.limits.perKey.base} in code.`
+                            : ""
+                        }`}
+                  </Hint>
+                </InputGroup>
+                <InputGroup fullWidth>
+                  <Label htmlFor="totalLimit">Total limit</Label>
+                  <Input
+                    type="number"
+                    name="totalLimit"
+                    id="totalLimit"
+                    min="1"
+                    max={environmentConcurrencyLimit}
+                    value={totalValue}
+                    onChange={(e) => setTotalValue(e.target.value)}
+                    placeholder={queue.limits.total?.current.toString()}
+                  />
+                  <Hint className={totalInvalid ? "text-warning tabular-nums" : "tabular-nums"}>
+                    {totalInvalid
+                      ? totalOverCap
+                        ? `Can't exceed the environment limit of ${environmentConcurrencyLimit}.`
+                        : "Enter a whole number of 1 or more."
+                      : `The most concurrent runs across all keys together. It can't exceed the environment limit of ${environmentConcurrencyLimit}.${
+                          typeof queue.limits.total?.base === "number"
+                            ? ` Set to ${queue.limits.total.base} in code.`
+                            : ""
+                        }`}
+                  </Hint>
+                </InputGroup>
+                {boundsConflict ? (
+                  <FormError>
+                    The per-key limit ({resultingPerKey}) can't exceed the total limit (
+                    {resultingTotal}).
+                  </FormError>
+                ) : resultingConflict ? (
+                  <Hint className="text-warning">
+                    The per-key limit ({resultingPerKey}) still exceeds the total limit (
+                    {resultingTotal}), so only the total applies.
+                  </Hint>
+                ) : null}
+              </>
+            ) : (
+              <InputGroup fullWidth>
+                <Label htmlFor={mode === "percent" ? "percent" : "concurrencyLimit"}>
+                  Concurrency limit
+                </Label>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    {mode === "percent" ? (
+                      <Input
+                        type="number"
+                        name="percent"
+                        id="percent"
+                        min="1"
+                        max="100"
+                        step="0.01"
+                        value={percent}
+                        onChange={(e) => setPercent(e.target.value)}
+                        placeholder="100"
+                        autoFocus
+                        accessory={<span className="pr-1 text-text-dimmed">%</span>}
+                      />
+                    ) : (
+                      <Input
+                        type="number"
+                        name="concurrencyLimit"
+                        id="concurrencyLimit"
+                        min="0"
+                        max={environmentConcurrencyLimit}
+                        value={concurrencyLimit}
+                        onChange={(e) => setConcurrencyLimit(e.target.value)}
+                        placeholder={currentLimit.toString()}
+                        autoFocus
+                      />
+                    )}
+                  </div>
+                  <SegmentedControl
+                    name="unit"
+                    value={mode}
+                    className="h-8"
+                    options={[
+                      { label: "Number", value: "absolute" },
+                      { label: "Percent", value: "percent" },
+                    ]}
+                    onChange={(value) => setMode(value === "percent" ? "percent" : "absolute")}
+                  />
                 </div>
-                <SegmentedControl
-                  name="unit"
-                  value={mode}
-                  className="h-8"
-                  options={[
-                    { label: "Number", value: "absolute" },
-                    { label: "Percent", value: "percent" },
-                  ]}
-                  onChange={(value) => setMode(value === "percent" ? "percent" : "absolute")}
-                />
-              </div>
-              {mode === "percent" ? (
-                <Hint className="tabular-nums">
-                  {materializedFromPercent !== null
-                    ? `${percentNumber}% = ${materializedFromPercent} concurrent ${
-                        materializedFromPercent === 1 ? "run" : "runs"
-                      } of the environment's ${environmentConcurrencyLimit}. Recalculates automatically when the environment limit changes.`
-                    : "Enter a percentage between 1 and 100."}
-                </Hint>
-              ) : (
-                <Hint className={limitOverCap ? "text-warning tabular-nums" : "tabular-nums"}>
-                  {limitOverCap
-                    ? `Can't exceed the environment limit of ${environmentConcurrencyLimit}.`
-                    : `The most concurrent runs this queue can use at once. It can't exceed the environment limit of ${environmentConcurrencyLimit}.`}
-                </Hint>
-              )}
-            </InputGroup>
+                {mode === "percent" ? (
+                  <Hint className="tabular-nums">
+                    {materializedFromPercent !== null
+                      ? `${percentNumber}% = ${materializedFromPercent} concurrent ${
+                          materializedFromPercent === 1 ? "run" : "runs"
+                        } of the environment's ${environmentConcurrencyLimit}. Recalculates automatically when the environment limit changes.`
+                      : "Enter a percentage between 1 and 100."}
+                  </Hint>
+                ) : (
+                  <Hint className={limitOverCap ? "text-warning tabular-nums" : "tabular-nums"}>
+                    {limitOverCap
+                      ? `Can't exceed the environment limit of ${environmentConcurrencyLimit}.`
+                      : `The most concurrent runs this queue can use at once. It can't exceed the environment limit of ${environmentConcurrencyLimit}.`}
+                  </Hint>
+                )}
+              </InputGroup>
+            )}
 
             <FormButtons
               defaultAction={{

@@ -52,7 +52,7 @@ import {
 } from "./unread-counts";
 import { AgentPanelColumn, type DashboardAgentMode, type DragHandleProps } from "./panel-layout";
 import { markerAfterActiveChat, markerAfterActivity } from "./thinking-marker";
-import { concurrencyPath } from "~/utils/pathBuilder";
+import { concurrencyLimitsPath } from "~/utils/pathBuilder";
 import { scopeMatchesPath, sessionPathFor } from "./agent-scope";
 
 function serializePageContext(pageContext: AgentPageContext): string | undefined {
@@ -149,7 +149,7 @@ export function DashboardAgentPanel({
   const entityId = agentPageEntityId(pageContext, location.pathname);
 
   const pagePaths = useMemo<Record<string, string>>(
-    () => ({ raise_env_limit: concurrencyPath(organization, project, environment) }),
+    () => ({ raise_env_limit: concurrencyLimitsPath(organization, project, environment) }),
     [organization, project, environment]
   );
 

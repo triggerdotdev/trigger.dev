@@ -19,7 +19,7 @@ import { resolveTriggerUrisInOrganization } from "~/services/resolveTriggerUriIn
 import {
   v3DeploymentVersionPath,
   v3ErrorPath,
-  v3QueuesPath,
+  concurrencyPath,
   v3RunPath,
   v3RunSpanPath,
 } from "~/utils/pathBuilder";
@@ -73,7 +73,7 @@ describe("resolveTriggerUri", () => {
     const uri = formatTriggerUri({ kind: "queue", ...uriScope, name: "task/send email" });
     expect(resolveTriggerUri(scope, uri)).toEqual({
       label: "task/send email",
-      url: `${v3QueuesPath(org, project, env)}?query=task%2Fsend%20email`,
+      url: `${concurrencyPath(org, project, env)}?query=task%2Fsend%20email`,
     });
   });
 

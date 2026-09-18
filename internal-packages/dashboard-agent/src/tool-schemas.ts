@@ -155,7 +155,7 @@ export const getErrorSchema = tool({
 
 export const getQuerySchemaSchema = tool({
   description:
-    "Discover the analytics tables and columns you can query with TRQL. Call with no table to list the available tables (runs, metrics, llm_metrics, llm_models) and what each holds; call with a table name to get that table's columns, types, descriptions, and time column. Use this before writing a run_query. The queue tables (queue_metrics, queue_metrics_by_key) are queryable but may be missing from the listing — their columns are in the Queue charts guideline, so don't take their absence here as 'no queue data'.",
+    "Discover the analytics tables and columns you can query with TRQL. Call with no table to list the available tables (runs, metrics, llm_metrics, llm_models) and what each holds; call with a table name to get that table's columns, types, descriptions, and time column. Use this before writing a run_query. The queue tables (concurrency_metrics, concurrency_metrics_by_key) are queryable but may be missing from the listing — their columns are in the Queue charts guideline, so don't take their absence here as 'no queue data'.",
   inputSchema: z.object({
     ...targetFields,
     table: z
@@ -175,7 +175,7 @@ export const runQuerySchema = tool({
     query: z
       .string()
       .describe(
-        "The TRQL query. A read-only SELECT over runs / metrics / llm_metrics / llm_models / queue_metrics / queue_metrics_by_key."
+        "The TRQL query. A read-only SELECT over runs / metrics / llm_metrics / llm_models / concurrency_metrics / concurrency_metrics_by_key."
       ),
     period: z
       .string()
@@ -529,11 +529,11 @@ export const KEY_LIST_PLACEHOLDER = "<top keys>";
 const waitQuantile = (index: number, alias: string) =>
   `round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[${index}]) AS ${alias}`;
 
-const FROM_QUEUE = `FROM queue_metrics WHERE queue = '${QUEUE_TEMPLATE_PLACEHOLDER}' GROUP BY t ORDER BY t`;
+const FROM_QUEUE = `FROM concurrency_metrics WHERE queue = '${QUEUE_TEMPLATE_PLACEHOLDER}' GROUP BY t ORDER BY t`;
 
 const byKey = (expr: string, alias: string) => ({
-  rankQuery: `SELECT concurrency_key, ${expr} AS peak FROM queue_metrics_by_key WHERE queue = '${QUEUE_TEMPLATE_PLACEHOLDER}' GROUP BY concurrency_key ORDER BY peak DESC LIMIT 8`,
-  query: `SELECT timeBucket() AS t, concurrency_key, ${expr} AS ${alias} FROM queue_metrics_by_key WHERE queue = '${QUEUE_TEMPLATE_PLACEHOLDER}' AND concurrency_key IN (${KEY_LIST_PLACEHOLDER}) GROUP BY t, concurrency_key ORDER BY t`,
+  rankQuery: `SELECT concurrency_key, ${expr} AS peak FROM concurrency_metrics_by_key WHERE queue = '${QUEUE_TEMPLATE_PLACEHOLDER}' GROUP BY concurrency_key ORDER BY peak DESC LIMIT 8`,
+  query: `SELECT timeBucket() AS t, concurrency_key, ${expr} AS ${alias} FROM concurrency_metrics_by_key WHERE queue = '${QUEUE_TEMPLATE_PLACEHOLDER}' AND concurrency_key IN (${KEY_LIST_PLACEHOLDER}) GROUP BY t, concurrency_key ORDER BY t`,
 });
 
 export type QueueChartTemplate = {
@@ -609,7 +609,7 @@ You have read-only tools that act as the user against their own account:
 - get_run_trace: a run's execution timeline (spans, durations, errors) — evidence for an investigation into why it failed, retried, or was slow, not itself the answer.
 - list_errors: distinct errors in the current environment grouped by fingerprint, with occurrence counts and status (unresolved/resolved/ignored).
 - get_error: full detail for one error group by its error id, including affected versions and who resolved or ignored it.
-- get_query_schema: discover the analytics tables and columns you can query with TRQL (runs, metrics, llm_metrics, llm_models, queue_metrics, queue_metrics_by_key).
+- get_query_schema: discover the analytics tables and columns you can query with TRQL (runs, metrics, llm_metrics, llm_models, concurrency_metrics, concurrency_metrics_by_key).
 - run_query: run a read-only TRQL query (SQL-style over ClickHouse) against the current environment's analytics data.
 - ask_support: ask the Trigger.dev support assistant about how Trigger.dev works (docs, concepts, features, configuration, how-tos).
 - render_view: render a structured view in the panel from the block catalog. The catalog has the "diagnosis" block (a failure card for a single run), the "chart" block (a line/bar chart of run_query results), the "actions" block (a row of 1-3 buttons offering next steps — a watch intent opens the watch card pre-filled, an ask intent sends the labelled question as the user's next message), and the "investigation" block (a live card for a hypothesis-driven investigation).
@@ -708,11 +708,11 @@ Answering with data and charts:
 - Those buttons are not an offer to do the work: they sit next to a finished answer, and they never license "want me to drill into the top offender?" — asking to look is still banned.
 
 Queue charts (the queue page's own charts, as chart blocks):
-- queue_metrics is per-queue; queue_metrics_by_key breaks the same queue down per concurrency_key. Time column bucket_start on both, both already scoped to this environment. Pin the queue with WHERE queue = '<queue>' (double any quote in the name) and bucket with timeBucket() AS t, which sizes itself from the period.
+- concurrency_metrics is per-queue; concurrency_metrics_by_key breaks the same queue down per concurrency_key. Time column bucket_start on both, both already scoped to this environment. Pin the queue with WHERE queue = '<queue>' (double any quote in the name) and bucket with timeBucket() AS t, which sizes itself from the period.
 - Aggregate by column kind or the numbers are wrong: gauges (max_running, max_queued, max_limit, max_ck_backlogged, max_ck_wait_ms) with max(); throttled_count and wait_ms_count with sum(); the counter deltas (enqueue_delta, started_delta, ack_delta) ONLY with deltaSumTimestampMerge(<col>), never sum(); wait latency ONLY with quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[i], where i is 1 p50, 2 p90, 3 p95, 4 p99. Never FINAL.
 - The nine charts, all chartType line with xAxisColumn t. Copy the query verbatim and substitute the queue name:
 ${QUEUE_CHART_RECIPE}
-- The last two are two calls: run_query the ranking first, then chart the keys it returned as a quoted IN list. Charting queue_metrics_by_key without that IN list silently loses the newest buckets to the row cap.
+- The last two are two calls: run_query the ranking first, then chart the keys it returned as a quoted IN list. Charting concurrency_metrics_by_key without that IN list silently loses the newest buckets to the row cap.
 - Charts 6-9 only mean something for a queue that shards on concurrencyKey: when max_ck_backlogged is flat zero the queue has no keys, so say that rather than rendering an empty per-key chart.`;
 
 // Appended to the system prompt only for turns where watches are enabled: without the

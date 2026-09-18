@@ -98,7 +98,7 @@ import {
   v3EditSchedulePath,
   v3EnvironmentPath,
   v3NewSchedulePath,
-  v3QueuePath,
+  concurrencyQueuePath,
   v3RunsPath,
   v3SchedulePath,
   v3SchedulesAddOnPath,
@@ -266,7 +266,9 @@ export default function Page() {
     taskIdentifier: task.slug,
   });
   const queuePath = task.queue
-    ? v3QueuePath(organization, project, environment, { friendlyId: task.queue.friendlyId })
+    ? concurrencyQueuePath(organization, project, environment, {
+        friendlyId: task.queue.friendlyId,
+      })
     : undefined;
 
   const filters: TaskRunListSearchFilters = useMemo(() => ({ tasks: [task.slug] }), [task.slug]);

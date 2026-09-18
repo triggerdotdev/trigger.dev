@@ -57,11 +57,20 @@ export class PauseQueueService extends BaseService {
         },
       });
 
+      /**
+       * Resume syncs from the row the update returned, never the pre-update
+       * snapshot, so a limit changed by a concurrent deploy is not resurrected.
+       * A declared limit of zero is a real limit and must be written, not removed.
+       */
       if (action === "paused") {
         await updateQueueConcurrencyLimits(environment, queue.name, 0);
       } else {
-        if (queue.concurrencyLimit) {
-          await updateQueueConcurrencyLimits(environment, queue.name, queue.concurrencyLimit);
+        if (typeof updatedQueue.concurrencyLimit === "number") {
+          await updateQueueConcurrencyLimits(
+            environment,
+            queue.name,
+            updatedQueue.concurrencyLimit
+          );
         } else {
           await removeQueueConcurrencyLimits(environment, queue.name);
         }
@@ -85,6 +94,7 @@ export class PauseQueueService extends BaseService {
           friendlyId: updatedQueue.friendlyId,
           name: updatedQueue.name,
           type: updatedQueue.type,
+          version: updatedQueue.concurrencyVersion,
           running: results[1]?.[updatedQueue.name] ?? 0,
           queued: results[0]?.[updatedQueue.name] ?? 0,
           concurrencyLimit: updatedQueue.concurrencyLimit ?? null,

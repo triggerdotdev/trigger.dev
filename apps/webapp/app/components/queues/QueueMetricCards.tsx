@@ -91,6 +91,12 @@ type QueueMetricChartProps = {
    * are config values that existed all along, so carry the first value backward instead.
    */
   carryBackfill?: string[];
+  /**
+   * Column that marks a bucket as genuinely sampled. When set, carryBackfill only
+   * overwrites buckets where this column is absent or zero, so history from before
+   * a config value existed keeps its truthful gap instead of inheriting the value.
+   */
+  carryBackfillGuard?: string;
   /** Show the series legend below the chart (use for multi-series charts). */
   showLegend?: boolean;
   /**
@@ -130,6 +136,7 @@ export function QueueMetricChart({
   defaultPeriod,
   warningOverlay,
   carryBackfill,
+  carryBackfillGuard,
   thresholdStroke,
   onHasDataChange,
   minBucketSeconds,
@@ -155,6 +162,7 @@ export function QueueMetricChart({
       valueFormat={valueFormat}
       warningOverlay={warningOverlay}
       carryBackfill={carryBackfill}
+      carryBackfillGuard={carryBackfillGuard}
       thresholdStroke={thresholdStroke}
       onHasDataChange={onHasDataChange}
       sampleCountColumn={sampleCountColumn}
@@ -239,7 +247,7 @@ export function QueueSidebarStats({
   };
 
   const { rows, showLoading } = useQueueMetric(
-    `SELECT max(max_queued) AS peak_queued,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS worst_p95\nFROM queue_metrics`,
+    `SELECT max(max_queued) AS peak_queued,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS worst_p95\nFROM concurrency_metrics`,
     { ids, timeRange, queueName, defaultPeriod }
   );
   const row = rows[0];

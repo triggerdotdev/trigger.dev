@@ -7,6 +7,7 @@ import type {
   WebhookManifest,
   WebhookMetadata,
   WorkerManifest,
+  ConcurrencyLimitManifest,
 } from "../schemas/index.js";
 import {
   type PromptMetadataWithFunctions,
@@ -69,6 +70,12 @@ export class NoopResourceCatalog implements ResourceCatalog {
   }
 
   listQueueManifests(): Array<QueueManifest> {
+    return [];
+  }
+
+  registerConcurrencyLimitMetadata(limit: ConcurrencyLimitManifest): void {}
+
+  listConcurrencyLimitManifests(): Array<ConcurrencyLimitManifest> {
     return [];
   }
 

@@ -24,6 +24,9 @@ const constants = {
   CK_INDEX_PART: "ckIndex",
   LENGTH_COUNTER_PART: "lengthCounter",
   RUNNING_COUNTER_PART: "runningCounter",
+  GROUP_CONCURRENCY_PART: "groupConcurrency",
+  TOTAL_CONCURRENCY_LIMIT_PART: "totalConcurrency",
+  GATE_QUEUED_COUNTER_PART: "gateQueuedCounter",
 } as const;
 
 export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
@@ -336,6 +339,42 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
 
   queueRunningCounterKeyFromQueue(queue: string): string {
     return `${this.baseQueueKeyFromQueue(queue)}:${constants.RUNNING_COUNTER_PART}`;
+  }
+
+  /**
+   * SET of in-flight messageIds across ALL concurrency-key variants of a base queue.
+   * SCARD of this set is the queue's total running count, gated by the total
+   * concurrency limit. Lives at the base queue so every ck variant shares it.
+   */
+  queueGroupConcurrencyKey(env: RunQueueKeyProducerEnvironment, queue: string): string {
+    return `${this.queueKey(env, queue)}:${constants.GROUP_CONCURRENCY_PART}`;
+  }
+
+  queueGroupConcurrencyKeyFromQueue(queue: string): string {
+    return `${this.baseQueueKeyFromQueue(queue)}:${constants.GROUP_CONCURRENCY_PART}`;
+  }
+
+  /**
+   * Counter of queued runs holding this queue as a gate: runs that are not
+   * executing, are queued, and must clear this gate to execute. Maintained
+   * exactly like the CK length counter: incremented per gate on enqueue,
+   * decremented on admit and on every queued-removal path.
+   */
+  gateQueuedCounterKey(env: RunQueueKeyProducerEnvironment, queue: string): string {
+    return `${this.queueKey(env, queue)}:${constants.GATE_QUEUED_COUNTER_PART}`;
+  }
+
+  /**
+   * String key holding the queue's total concurrency limit (the cap across all
+   * concurrency-key variants). Absent = no total cap. Readers clamp to the
+   * environment limit; the raw requested value is what's stored.
+   */
+  queueTotalConcurrencyLimitKey(env: RunQueueKeyProducerEnvironment, queue: string): string {
+    return `${this.queueKey(env, queue)}:${constants.TOTAL_CONCURRENCY_LIMIT_PART}`;
+  }
+
+  queueTotalConcurrencyLimitKeyFromQueue(queue: string): string {
+    return `${this.baseQueueKeyFromQueue(queue)}:${constants.TOTAL_CONCURRENCY_LIMIT_PART}`;
   }
 
   isCkWildcard(queue: string): boolean {

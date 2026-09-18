@@ -4,7 +4,7 @@ import { loadHealthInput } from "./health/health-data";
 import { type ReportViewModel } from "./report-view-model";
 
 /** A query table a report may read. Same table names the query API authorizes against. */
-export type ReportQueryTable = "runs" | "env_metrics" | "queue_metrics";
+export type ReportQueryTable = "runs" | "env_metrics" | "concurrency_metrics";
 
 export type ReportLoader<TInput> = {
   /** Authorization metadata: the route derives its per-table JWT scope check from this. */
@@ -19,7 +19,7 @@ function defineReport<TInput>(loader: ReportLoader<TInput>): ReportLoader<unknow
 
 export const REPORT_REGISTRY: Record<string, ReportLoader<unknown>> = {
   health: defineReport({
-    tables: ["runs", "env_metrics", "queue_metrics"],
+    tables: ["runs", "env_metrics", "concurrency_metrics"],
     load: (env, period) => loadHealthInput(env, period),
     interpret: interpretHealth,
   }),

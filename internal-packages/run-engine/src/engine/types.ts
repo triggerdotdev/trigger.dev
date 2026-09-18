@@ -23,6 +23,7 @@ import type { workerCatalog } from "./workerCatalog.js";
 import { type BillingPlan } from "./billingCache.js";
 import type { DRRConfig } from "../batch-queue/types.js";
 import type { PendingVersionRunIdLookup } from "./services/pendingVersionLookup.js";
+import type { QueueGate } from "../run-queue/types.js";
 
 /**
  * Structural mirror of the webapp's CrossSeamGuardDecision
@@ -91,6 +92,10 @@ export type RunEngineOptions = {
     defaultEnvConcurrency?: number;
     defaultEnvConcurrencyBurstFactor?: number;
     logLevel?: LogLevel;
+    /** Enforce per-queue total concurrency limits across concurrency-key variants. See RunQueueOptions.totalConcurrencyEnabled. */
+    totalConcurrencyEnabled?: boolean;
+    /** Enforce the gates carried in message payloads. See RunQueueOptions.gatesEnabled. */
+    gatesEnabled?: boolean;
     /** Optional queue-metrics emitter; enables gauge + counter emission from the RunQueue. */
     queueMetrics?: RunQueueMetricsEmitter;
     queueSelectionStrategyOptions?: Pick<
@@ -332,6 +337,9 @@ export type TriggerParams = {
   sdkVersion?: string;
   cliVersion?: string;
   concurrencyKey?: string;
+  /** Other queues this run must also hold a concurrency slot in while executing. At
+   * most four: three requested gates plus the task's anonymous inline-limit gate. */
+  gates?: QueueGate[];
   workerQueue?: string;
   region?: string;
   /** When true, the run queue may push directly to the worker queue if concurrency is available.

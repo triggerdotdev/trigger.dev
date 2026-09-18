@@ -111,7 +111,7 @@ describe("the head-start and agent prefixes are the same prefix", () => {
   // learns they exist and how to aggregate them.
   it("carries the queue chart recipe", () => {
     expect(DASHBOARD_AGENT_SYSTEM_PROMPT).toContain("Queue charts");
-    for (const table of ["queue_metrics", "queue_metrics_by_key"]) {
+    for (const table of ["concurrency_metrics", "concurrency_metrics_by_key"]) {
       expect(DASHBOARD_AGENT_SYSTEM_PROMPT).toContain(table);
       expect(dashboardAgentToolSchemas.get_query_schema.description).toContain(table);
     }
@@ -130,8 +130,8 @@ describe("the head-start and agent prefixes are the same prefix", () => {
  * drift. The snapshot below is the itemised diff a reviewer reads.
  */
 const PREFIX_BUDGET = {
-  assistant: { chars: 85_200, estimatedTokens: 21_300, tools: 25, promptChars: 33_900 },
-  code: { chars: 92_400, estimatedTokens: 23_100, tools: 29, promptChars: 36_700 },
+  assistant: { chars: 85_300, estimatedTokens: 21_350, tools: 25, promptChars: 34_000 },
+  code: { chars: 92_500, estimatedTokens: 23_150, tools: 29, promptChars: 36_700 },
 } as const;
 
 // Measured with watches on: the biggest prefix a turn can hand the provider.

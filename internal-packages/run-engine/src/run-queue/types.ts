@@ -2,6 +2,19 @@ import { z } from "zod";
 import { RuntimeEnvironmentType } from "@trigger.dev/database";
 import type { MinimalAuthenticatedEnvironment } from "../shared/index.js";
 
+/**
+ * A gate is another declared queue this run must also hold a concurrency slot in
+ * while it executes. The run waits in its own queue; each gate contributes an
+ * extra admit condition (the gate queue's per-key limit, and its total limit when
+ * the entry is keyed) and an extra slot held until release. `queue` is the bare
+ * queue name; the org/project/env scope comes from the run's own payload.
+ */
+export const QueueGate = z.object({
+  queue: z.string().min(1).max(128),
+  concurrencyKey: z.string().min(1).max(128).optional(),
+});
+export type QueueGate = z.infer<typeof QueueGate>;
+
 export const InputPayload = z.object({
   runId: z.string(),
   /** Deprecated: not read on the V2 dequeue path; will stop being written in a follow-up. Optional to keep new readers compatible with old payloads that still include it, and vice versa. */
@@ -23,6 +36,9 @@ export const InputPayload = z.object({
   // residency so a poll-lagging consumer honors its true residency. Opaque (`z.unknown`) so it
   // survives serialize while an old consumer strips it — mixed-version safe. Validated at consumption.
   snapshotRoute: z.unknown().optional(),
+  /** Additional queues this run must also hold a slot in while executing. At most
+   * four: three requested gates plus the task's anonymous inline-limit gate. */
+  gates: QueueGate.array().max(4).optional(),
 });
 export type InputPayload = z.infer<typeof InputPayload>;
 
@@ -97,6 +113,11 @@ export interface RunQueueKeyProducer {
     queue: string,
     concurrencyKey?: string
   ): string;
+  queueGroupConcurrencyKey(env: RunQueueKeyProducerEnvironment, queue: string): string;
+  queueGroupConcurrencyKeyFromQueue(queue: string): string;
+  queueTotalConcurrencyLimitKey(env: RunQueueKeyProducerEnvironment, queue: string): string;
+  queueTotalConcurrencyLimitKeyFromQueue(queue: string): string;
+  gateQueuedCounterKey(env: RunQueueKeyProducerEnvironment, queue: string): string;
 
   //env oncurrency
   envCurrentConcurrencyKey(env: EnvDescriptor): string;

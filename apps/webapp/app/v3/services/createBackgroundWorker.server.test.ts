@@ -214,6 +214,7 @@ describe("worker task creation", () => {
             triggerSource: "STANDARD",
             queueId: queue.id,
             queueName: queue.name,
+            gates: null,
           },
         ],
         [
@@ -223,6 +224,7 @@ describe("worker task creation", () => {
             triggerSource: "STANDARD",
             queueId: queue.id,
             queueName: queue.name,
+            gates: null,
           },
         ],
       ]);
@@ -242,6 +244,61 @@ describe("worker task creation", () => {
       });
       expect(afterRetry.id).toBe(created.id);
       expect(afterRetry.description).toBe(created.description);
+    }
+  );
+
+  containerTest(
+    "a named limit colliding with a legacy queue in the limit/ namespace fails the deploy instead of repurposing the row",
+    async ({ prisma }) => {
+      const { project, devEnv } = await seedProjectWithEnvs(prisma);
+      const worker = await prisma.backgroundWorker.create({
+        data: {
+          friendlyId: `worker_${devEnv.id}`,
+          contentHash: "limit-collision-content",
+          version: "20260811.1",
+          metadata: {},
+          projectId: project.id,
+          runtimeEnvironmentId: devEnv.id,
+        },
+      });
+      /** Slashes were historically legal in user queue names, so a QUEUE-role row can
+       * already occupy the reserved name a declared limit would materialize under. */
+      const legacyQueue = await prisma.taskQueue.create({
+        data: {
+          friendlyId: `queue_${devEnv.id}_legacy`,
+          name: "limit/openai",
+          type: "NAMED",
+          version: "V2",
+          concurrencyLimit: 7,
+          projectId: project.id,
+          runtimeEnvironmentId: devEnv.id,
+        },
+      });
+      const environment = { ...asEnv(devEnv), project } as AuthenticatedEnvironment;
+
+      const metadata = {
+        contentHash: "limit-collision-content",
+        tasks: [
+          {
+            id: "collision-task",
+            filePath: "src/trigger/collision-task.ts",
+            exportName: "collisionTask",
+            concurrency: { limits: ["openai"] },
+          },
+        ],
+        concurrencyLimits: [{ name: "openai", total: 5 }],
+      } as unknown as BackgroundWorkerMetadata;
+
+      await expect(
+        prisma.$transaction((tx) => createWorkerResources(metadata, worker, environment, tx))
+      ).rejects.toThrow(/collides with an existing queue/);
+
+      const untouched = await prisma.taskQueue.findFirstOrThrow({
+        where: { id: legacyQueue.id },
+      });
+      expect(untouched.role).toBe("QUEUE");
+      expect(untouched.concurrencyLimit).toBe(7);
+      expect(untouched.totalConcurrencyLimit).toBeNull();
     }
   );
 });

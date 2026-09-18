@@ -98,16 +98,14 @@ For more information read [the retrying guide](/errors-retrying).
 
 It's also worth mentioning that you can [retry a block of code](/errors-retrying) inside your tasks as well.
 
-### `queue` options
+### `queue` and `concurrency` options
 
-Queues allow you to control the concurrency of your tasks. This allows you to have one-at-a-time execution and parallel executions. There are also more advanced techniques like having different concurrencies for different sets of your users. For more information read [the concurrency & queues guide](/queue-concurrency).
+Queues control the order your runs execute in, and concurrency limits control how many execute at once: one-at-a-time execution, parallel executions, and more advanced techniques like separate concurrency for different sets of your users. For more information read the [Queues](/queues) and [Concurrency](/concurrency) guides.
 
 ```ts /trigger/one-at-a-time.ts
 export const oneAtATime = task({
   id: "one-at-a-time",
-  queue: {
-    concurrencyLimit: 1,
-  },
+  concurrency: { total: 1 },
   run: async (payload: any, { ctx }) => {
     //...
   },
