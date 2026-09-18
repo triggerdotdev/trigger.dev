@@ -94,6 +94,13 @@ import {
   type TranscriptStorageContext,
 } from "./transcriptStorage.js";
 import { responseAfterCompaction } from "./compactionResponse.js";
+import { ManagedChatResponse, createOrderedChatWriter } from "./managedChatResponse.js";
+import {
+  convertSteeredMessages,
+  retainStepMessages,
+  steeringMarkers,
+  type SteeringInjection,
+} from "./steeringContext.js";
 
 let transcriptStorageOverride: TranscriptStorage<unknown> | undefined;
 
@@ -170,17 +177,24 @@ const METADATA_KEY = "tool.execute.options";
  * `ignoreIncompleteToolCalls: true` to prevent failures from
  * stopped/aborted conversations with partial tool parts.
  */
-function toModelMessages(messages: UIMessage[]): Promise<ModelMessage[]> {
+function toModelMessages(messages: UIMessage[], context?: UIMessage[]): Promise<ModelMessage[]> {
   // Pass the resolved per-turn `tools` (if any) so the AI SDK can look up each
   // tool's `toModelOutput` and re-apply it to prior-turn tool results. Without
   // `tools` it falls back to JSON-stringifying the raw output (TRI-10149). The
   // conditional spread keeps the options object byte-identical to the no-tools
   // path when nothing was declared.
   const tools = locals.get(chatResolvedToolsKey);
-  return convertToModelMessages(messages, {
-    ignoreIncompleteToolCalls: true,
-    ...(tools ? { tools } : {}),
-  });
+  return convertSteeredMessages(
+    messages,
+    async (batch) =>
+      convertToModelMessages(batch, {
+        ignoreIncompleteToolCalls: true,
+        ...(tools ? { tools } : {}),
+      }),
+    locals.get(chatSteeringInjectionsKey) ?? new Map(),
+    context ?? locals.get(chatCurrentUIMessagesKey) ?? messages,
+    context !== undefined || locals.get(chatCurrentUIMessagesKey) !== undefined
+  );
 }
 
 export type ToolCallExecutionOptions = {
@@ -1308,7 +1322,7 @@ const chatStream: RealtimeDefinedStream<UIMessageChunk> = {
  * `onTurnComplete`'s `responseMessage` and `uiMessages`.
  *
  * Non-transient data chunks (`type` starts with `data-`, no `transient: true`)
- * are queued for accumulation into the assistant response message.
+ * are accumulated in emission order into the assistant response message.
  * Transient or non-data chunks are streamed only (same as `chat.stream`).
  *
  * @example
@@ -1326,15 +1340,7 @@ const chatResponse = {
    * response message; everything else is stream-only.
    */
   write(part: UIMessageChunk): void {
-    queueResponsePart(part);
-    const { waitUntilComplete } = chatStream.writer({
-      spanName: "chat.response.write",
-      collapsed: true,
-      execute: ({ write }) => {
-        write(part);
-      },
-    });
-    waitUntilComplete().catch(() => {});
+    managedResponse().writeData(part);
   },
 };
 
@@ -1374,57 +1380,16 @@ export type ChatWriter = {
  * @internal
  */
 function createLazyChatWriter(): { writer: ChatWriter; flush: () => Promise<void> } {
-  let writeImpl: ((part: UIMessageChunk) => void) | null = null;
-  let mergeImpl: ((stream: ReadableStream<UIMessageChunk>) => void) | null = null;
-  let waitPromise: (() => Promise<unknown>) | null = null;
-  let resolveExecute: (() => void) | null = null;
-  let started = false;
-  const bufferedParts: UIMessageChunk[] = [];
-  const bufferedStreams: ReadableStream<UIMessageChunk>[] = [];
-
-  function ensureInitialized() {
-    if (started) return;
-    started = true;
-
-    const executePromise = new Promise<void>((resolve) => {
-      resolveExecute = resolve;
-    });
-
-    const { waitUntilComplete } = chatStream.writer({
-      collapsed: true,
-      spanName: "callback writer",
-      execute: ({ write, merge }) => {
-        writeImpl = write;
-        mergeImpl = merge;
-        for (const part of bufferedParts.splice(0)) write(part);
-        for (const stream of bufferedStreams.splice(0)) merge(stream);
-        return executePromise;
-      },
-    });
-    waitPromise = waitUntilComplete;
-  }
-
-  return {
-    writer: {
-      write(part: UIMessageChunk) {
-        ensureInitialized();
-        queueResponsePart(part);
-        if (writeImpl) writeImpl(part);
-        else bufferedParts.push(part);
-      },
-      merge(stream: ReadableStream<UIMessageChunk>) {
-        ensureInitialized();
-        if (mergeImpl) mergeImpl(stream);
-        else bufferedStreams.push(stream);
-      },
-    },
-    async flush() {
-      if (resolveExecute) {
-        resolveExecute(); // Signal execute to complete
-        await waitPromise!(); // Wait for stream to finish piping
-      }
-    },
-  };
+  return createOrderedChatWriter(
+    () => (locals.get(chatManagedResponseActiveKey) ? managedResponse() : undefined),
+    async (stream) => {
+      const { waitUntilComplete } = chatStream.pipe(stream, {
+        collapsed: true,
+        spanName: "callback writer",
+      });
+      await waitUntilComplete();
+    }
+  );
 }
 
 /**
@@ -3703,29 +3668,21 @@ const chatPendingSteerKey = locals.create<PendingSteer[]>("chat.pendingSteer");
 type PendingSteer = { ui: UIMessage; model: ModelMessage[] };
 /** @internal — IDs of messages that were successfully injected via prepareStep */
 const chatInjectedMessageIdsKey = locals.create<Set<string>>("chat.injectedMessageIds");
-/** @internal — non-transient data parts queued via chat.response or writer.write() for accumulation into the response message */
-const chatResponsePartsKey = locals.create<unknown[]>("chat.responseParts");
+const chatManagedResponseKey = locals.create<ManagedChatResponse>("chat.managedResponse");
+const chatManagedResponseActiveKey = locals.create<boolean>("chat.managedResponseActive");
+const chatSteeringInjectionsKey =
+  locals.create<Map<string, SteeringInjection>>("chat.steeringInjections");
 
-/**
- * Check if a chunk is a non-transient data part that should persist to the response message.
- * @internal
- */
-function isNonTransientDataPart(part: unknown): boolean {
-  if (typeof part !== "object" || part === null) return false;
-  const p = part as Record<string, unknown>;
-  return typeof p.type === "string" && p.type.startsWith("data-") && p.transient !== true;
-}
-
-/**
- * Queue a chunk for accumulation into the response message (if it's a non-transient data part).
- * Called by `chat.response.write()` and `ChatWriter.write()`.
- * @internal
- */
-function queueResponsePart(part: unknown): void {
-  if (!isNonTransientDataPart(part)) return;
-  const parts = locals.get(chatResponsePartsKey) ?? [];
-  parts.push(part);
-  locals.set(chatResponsePartsKey, parts);
+function managedResponse(): ManagedChatResponse {
+  let response = locals.get(chatManagedResponseKey);
+  if (!response || response.isClosed) {
+    response = new ManagedChatResponse(async (stream) => {
+      const { waitUntilComplete } = chatStream.pipe(stream, { spanName: "managed chat response" });
+      await waitUntilComplete();
+    });
+    locals.set(chatManagedResponseKey, response);
+  }
+  return response;
 }
 
 /**
@@ -4334,6 +4291,7 @@ async function drainSteeringQueue(
   steps: CompactionStep[],
   queueOverride?: SteeringQueueEntry[]
 ): Promise<DrainedSteering> {
+  if (steps.length === 0) managedResponse().beginGeneration();
   const queue = queueOverride ?? locals.get(chatSteeringQueueKey);
   if (!queue || queue.length === 0) return EMPTY_DRAIN;
 
@@ -4472,30 +4430,24 @@ async function drainSteeringQueue(
         locals.set(chatPendingSteerKey, pendingSteer);
       }
 
-      // Write injection confirmation chunk to the stream so the frontend
-      // knows which messages were injected and where in the response.
       if (injected.length > 0) {
-        try {
-          const { waitUntilComplete } = chatStream.writer({
-            collapsed: true,
-            execute: ({ write }) => {
-              write({
-                type: PENDING_MESSAGE_INJECTED_TYPE,
-                id: generateMessageId(),
-                data: {
-                  messageIds: claimedUIMessages.map((m) => m.id),
-                  messages: claimedUIMessages.map((m) => ({
-                    id: m.id,
-                    text: textOfUIMessage(m),
-                  })),
-                },
-              });
-            },
-          });
-          await waitUntilComplete();
-        } catch {
-          /* non-fatal — stream write failed */
-        }
+        const id = generateMessageId();
+        const messageIds = claimedUIMessages.map((m) => m.id);
+        const injections = locals.get(chatSteeringInjectionsKey) ?? new Map();
+        injections.set(id, { id, messageIds, messages: injected });
+        locals.set(chatSteeringInjectionsKey, injections);
+        const response = managedResponse();
+        // prepareStep can run ahead of the UI consumer. Admit the marker only
+        // once the actual preceding finish-step chunk has entered this stream.
+        response.afterStep(steps.length);
+        response.writeData({
+          type: PENDING_MESSAGE_INJECTED_TYPE,
+          id,
+          data: {
+            messageIds,
+            messages: claimedUIMessages.map((m) => ({ id: m.id, text: textOfUIMessage(m) })),
+          },
+        });
       }
 
       // Fire onInjected callback
@@ -4975,19 +4927,22 @@ function buildManagedStreamTextOptions(
     ...rest
   } = options as Record<string, any>;
 
-  const managed = toStreamTextOptions({
-    registry,
-    system: (callerSystem as ToStreamTextOptionsOptions["system"]) ?? agentSystem,
-    cacheControl,
-    systemProviderOptions,
-    /**
-     * A call site that names `tools` replaces the agent's set rather than
-     * adding to it, so narrowing the tools for one call still works. Omitting
-     * `tools` falls back to the agent's, which is what an `onAction`
-     * regenerate needs: without it a regenerated answer can call nothing.
-     */
-    tools: (tools ?? agentTools) as Record<string, Tool> | undefined,
-  });
+  const managed = toStreamTextOptions(
+    {
+      registry,
+      system: (callerSystem as ToStreamTextOptionsOptions["system"]) ?? agentSystem,
+      cacheControl,
+      systemProviderOptions,
+      /**
+       * A call site that names `tools` replaces the agent's set rather than
+       * adding to it, so narrowing the tools for one call still works. Omitting
+       * `tools` falls back to the agent's, which is what an `onAction`
+       * regenerate needs: without it a regenerated answer can call nothing.
+       */
+      tools: (tools ?? agentTools) as Record<string, Tool> | undefined,
+    },
+    false
+  );
 
   const promptSystem = locals.get(chatPromptKey)?.text;
 
@@ -5023,6 +4978,9 @@ function buildManagedStreamTextOptions(
     };
   }
 
+  if (typeof managed.prepareStep === "function") {
+    managed.prepareStep = retainStepMessages(managed.prepareStep as any);
+  }
   return { ...managed, ...rest };
 }
 
@@ -5050,7 +5008,10 @@ function createBoundStreamText(
   return bound as unknown as AiStreamTextFn;
 }
 
-function toStreamTextOptions(options?: ToStreamTextOptionsOptions): Record<string, unknown> {
+function toStreamTextOptions(
+  options?: ToStreamTextOptionsOptions,
+  retain = true
+): Record<string, unknown> {
   const agentDefaults = locals.get(chatAgentManagedConfigKey);
   if (agentDefaults) {
     options = {
@@ -5289,6 +5250,9 @@ function toStreamTextOptions(options?: ToStreamTextOptionsOptions): Record<strin
     };
   }
 
+  if (retain && typeof result.prepareStep === "function") {
+    result.prepareStep = retainStepMessages(result.prepareStep as any);
+  }
   return result;
 }
 
@@ -5503,7 +5467,8 @@ function isReadableStream(value: unknown): value is ReadableStream<unknown> {
  */
 async function pipeChat(
   source: UIMessageStreamable | AsyncIterable<unknown> | ReadableStream<unknown>,
-  options?: PipeChatOptions
+  options?: PipeChatOptions,
+  capture?: { originalMessages?: UIMessage[] }
 ): Promise<void> {
   locals.set(chatPipeCountKey, (locals.get(chatPipeCountKey) ?? 0) + 1);
 
@@ -5537,11 +5502,23 @@ async function pipeChat(
   // accepts opaque UIMessageStreamable / raw iterables whose element
   // type we don't know at compile time. Cast — runtime behaviour is
   // identical (bytes go to session.out either way).
-  const { waitUntilComplete } = chatStream.pipe(
-    stream as ReadableStream<UIMessageChunk> | AsyncIterable<UIMessageChunk>,
-    pipeOptions
-  );
-  await waitUntilComplete();
+  if (capture) {
+    const response = managedResponse();
+    response.seed(capture.originalMessages);
+    await response.pipe(
+      stream as ReadableStream<UIMessageChunk> | AsyncIterable<UIMessageChunk>,
+      options?.signal
+    );
+  } else {
+    // Raw/manual pipes intentionally do not feed the managed capture. Never
+    // leave injection events waiting for finish-step chunks it cannot see.
+    managedResponse().useRawPipe();
+    const { waitUntilComplete } = chatStream.pipe(
+      stream as ReadableStream<UIMessageChunk> | AsyncIterable<UIMessageChunk>,
+      pipeOptions
+    );
+    await waitUntilComplete();
+  }
 }
 
 /**
@@ -7270,15 +7247,20 @@ function chatAgent<
       const reconcilePendingSteer = (options?: {
         /** This turn's model delta, as `onTurnComplete.newMessages` reports it. */
         turnNew?: ModelMessage[];
+        response?: UIMessage;
       }): PendingSteer[] => {
         const pending = locals.get(chatPendingSteerKey);
         if (!pending || pending.length === 0) return [];
         locals.set(chatPendingSteerKey, []);
-        for (const entry of pending) {
+        const inlineIds = new Set(
+          steeringMarkers(options?.response ? [options.response] : []).flatMap((m) => m.messageIds)
+        );
+        const standalone = pending.filter((entry) => !inlineIds.has(entry.ui.id));
+        for (const entry of standalone) {
           accumulatedMessages.push(...entry.model);
           options?.turnNew?.push(...entry.model);
         }
-        return pending;
+        return standalone;
       };
 
       // Accumulated UI messages for persistence. Mirrors the model accumulator
@@ -7396,8 +7378,13 @@ function chatAgent<
         });
         const throughId = opts.messages.at(-1)?.id ?? "";
         const queued = locals.get(chatBackgroundQueueKey) ?? [];
+        const transcriptIds = new Set(opts.messages.map((message) => message.id));
+        const markerIds = new Set(steeringMarkers(opts.messages).map((marker) => marker.id));
+        const steering = [...(locals.get(chatSteeringInjectionsKey)?.values() ?? [])].filter(
+          (entry) => markerIds.has(entry.id) || entry.messageIds.some((id) => transcriptIds.has(id))
+        );
         const runtimeState: TranscriptRuntimeState | null =
-          laneCompacted || laneInjections.length > 0 || queued.length > 0
+          laneCompacted || laneInjections.length > 0 || queued.length > 0 || steering.length > 0
             ? {
                 v: 1,
                 ...(laneCompacted
@@ -7410,6 +7397,7 @@ function chatAgent<
                   : {}),
                 ...(laneInjections.length > 0 ? { injections: laneInjections } : {}),
                 ...(queued.length > 0 ? { queued: [...queued] } : {}),
+                ...(steering.length > 0 ? { steering } : {}),
               }
             : null;
         if (runtimeState !== null || persistedStateSet) {
@@ -7936,6 +7924,11 @@ function chatAgent<
           }
           try {
             const bootRuntimeState = parseTranscriptRuntimeState(bootTranscriptState);
+            locals.set(
+              chatSteeringInjectionsKey,
+              new Map((bootRuntimeState?.steering ?? []).map((entry) => [entry.id, entry]))
+            );
+            locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
             const restored = await restoreModelLane(
               accumulatedUIMessages,
               bootRuntimeState,
@@ -8480,7 +8473,9 @@ function chatAgent<
                 locals.set(chatCompactionStateKey, undefined);
                 locals.set(chatSteeringQueueKey, []);
                 locals.set(chatPendingBackgroundKey, []);
-                locals.set(chatResponsePartsKey, []);
+                await locals.get(chatManagedResponseKey)?.close();
+                locals.set(chatManagedResponseKey, undefined);
+                locals.set(chatManagedResponseActiveKey, true);
                 // NOTE: chatBackgroundQueueKey is NOT reset here — messages injected
                 // by deferred work from the previous turn's onTurnComplete need to
                 // survive into the next turn. The queue is drained before run().
@@ -8664,7 +8659,7 @@ function chatAgent<
                     if (actionOverride) {
                       locals.set(chatOverrideMessagesKey, undefined);
                       accumulatedUIMessages = [...actionOverride] as TUIMessage[];
-                      accumulatedMessages = await toModelMessages(actionOverride);
+                      accumulatedMessages = await toModelMessages(actionOverride, actionOverride);
                       laneCompacted = false;
                       laneInjections = [];
                       locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
@@ -8849,7 +8844,10 @@ function chatAgent<
                       ) {
                         accumulatedUIMessages.pop();
                       }
-                      accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+                      accumulatedMessages = await toModelMessages(
+                        accumulatedUIMessages,
+                        accumulatedUIMessages
+                      );
                       laneCompacted = false;
                       laneInjections = [];
                     } else if (cleanedUIMessages.length > 0) {
@@ -8904,7 +8902,10 @@ function chatAgent<
                           logger.warn(
                             "chat.agent: replaced message not found at the model lane tail; reconverting the lane"
                           );
-                          accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+                          accumulatedMessages = await toModelMessages(
+                            accumulatedUIMessages,
+                            accumulatedUIMessages
+                          );
                           laneCompacted = false;
                           laneInjections = [];
                         }
@@ -9144,7 +9145,10 @@ function chatAgent<
                         if (turnStartOverride) {
                           locals.set(chatOverrideMessagesKey, undefined);
                           accumulatedUIMessages = [...turnStartOverride] as TUIMessage[];
-                          accumulatedMessages = await toModelMessages(turnStartOverride);
+                          accumulatedMessages = await toModelMessages(
+                            turnStartOverride,
+                            turnStartOverride
+                          );
                           laneCompacted = false;
                           laneInjections = [];
                           locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
@@ -9233,6 +9237,7 @@ function chatAgent<
                         capturedResponseMessage = lastUI;
                         capturedFinishReason = "stop";
                       }
+                      managedResponse().seed(accumulatedUIMessages);
                       // Don't call userRun. Don't pipe. Skip directly
                       // to the post-turn flow below.
                     } else {
@@ -9305,10 +9310,14 @@ function chatAgent<
                           resolveOnFinish!();
                         },
                       });
-                      await pipeChat(tapUIMessageChunks(uiStream, turnBufferedChunks), {
-                        signal: combinedSignal,
-                        spanName: "stream response",
-                      });
+                      await pipeChat(
+                        tapUIMessageChunks(uiStream, turnBufferedChunks),
+                        {
+                          signal: combinedSignal,
+                          spanName: "stream response",
+                        },
+                        { originalMessages: isActionTurn ? undefined : accumulatedUIMessages }
+                      );
                     }
                   } catch (error) {
                     // Handle AbortError from streamText gracefully
@@ -9334,6 +9343,12 @@ function chatAgent<
                       new Promise<void>((r) => setTimeout(r, 2_000)),
                     ]);
                   }
+
+                  capturedResponseMessage =
+                    ((await locals.get(chatManagedResponseKey)?.snapshot()) as
+                      | TUIMessage
+                      | undefined) ?? capturedResponseMessage;
+                  if (capturedResponseMessage) capturedPartialResponse = capturedResponseMessage;
 
                   // Capture token usage from the streamText result (if available).
                   // totalUsage is a PromiseLike that resolves after the stream is consumed.
@@ -9484,6 +9499,7 @@ function chatAgent<
                   const steerTailThisTurn =
                     reconcilePendingSteer({
                       turnNew: turnNewModelMessages,
+                      response: capturedResponseMessage,
                     }).reduce((n, e) => n + e.model.length, 0) + reconcilePendingBackground();
 
                   // Append the assistant's response (partial or complete) to the accumulator.
@@ -9506,15 +9522,6 @@ function chatAgent<
                         ...capturedResponseMessage,
                         id: generateMessageId(),
                       };
-                    }
-                    // Append any non-transient data parts queued via chat.response or writer.write()
-                    const queuedParts = locals.get(chatResponsePartsKey);
-                    if (queuedParts && queuedParts.length > 0) {
-                      capturedResponseMessage = {
-                        ...capturedResponseMessage,
-                        parts: [...capturedResponseMessage.parts, ...queuedParts],
-                      } as TUIMessage;
-                      locals.set(chatResponsePartsKey, []);
                     }
                     const responseHasContent = capturedResponseMessage.parts.some(
                       (part) => part.type !== "step-start"
@@ -9596,7 +9603,10 @@ function chatAgent<
                             logger.warn(
                               "chat.agent: replaced response not found at the model lane tail; reconverting the lane"
                             );
-                            accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+                            accumulatedMessages = await toModelMessages(
+                              accumulatedUIMessages,
+                              accumulatedUIMessages
+                            );
                             laneCompacted = false;
                             laneInjections = [];
                           }
@@ -9614,23 +9624,6 @@ function chatAgent<
                       responseWasSkipped = true;
                     }
                   }
-                  // If there's no captured response (manual pipe mode) but there are
-                  // queued data parts, create a minimal response message to hold them.
-                  if (!capturedResponseMessage) {
-                    const remainingParts = locals.get(chatResponsePartsKey);
-                    if (remainingParts && remainingParts.length > 0) {
-                      capturedResponseMessage = {
-                        id: generateMessageId(),
-                        role: "assistant" as const,
-                        parts: [...remainingParts],
-                      } as TUIMessage;
-                      locals.set(chatResponsePartsKey, []);
-                      accumulatedUIMessages.push(capturedResponseMessage);
-                      turnNewUIMessages.push(capturedResponseMessage);
-                      locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
-                    }
-                  }
-
                   if (capturedResponseMessage) {
                     responseCommitted = true;
                     capturedPartialResponse = capturedResponseMessage;
@@ -9817,6 +9810,8 @@ function chatAgent<
                     finishReason: capturedFinishReason,
                   };
 
+                  const beforeHookRevision = locals.get(chatManagedResponseKey)?.revision ?? 0;
+                  let beforeHookHistoryEdited = false;
                   // Fire onBeforeTurnComplete — stream is still open so the hook
                   // can write custom chunks to the frontend (e.g. compaction progress).
                   if (onBeforeTurnComplete) {
@@ -9830,9 +9825,10 @@ function chatAgent<
                         // Check if the hook replaced messages (compaction or chat.history)
                         const override = locals.get(chatOverrideMessagesKey);
                         if (override) {
+                          beforeHookHistoryEdited = true;
                           locals.set(chatOverrideMessagesKey, undefined);
                           accumulatedUIMessages = [...override] as TUIMessage[];
-                          accumulatedMessages = await toModelMessages(override);
+                          accumulatedMessages = await toModelMessages(override, override);
                           laneCompacted = false;
                           laneInjections = [];
                           locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
@@ -9852,36 +9848,38 @@ function chatAgent<
                     );
                   }
 
-                  // Drain any late response parts added during onBeforeTurnComplete
-                  const lateParts = locals.get(chatResponsePartsKey);
-                  if (lateParts && lateParts.length > 0 && capturedResponseMessage) {
-                    const idx = accumulatedUIMessages.findIndex(
-                      (m) => m.id === capturedResponseMessage!.id
+                  const editedResponse =
+                    beforeHookHistoryEdited && capturedResponseMessage
+                      ? accumulatedUIMessages.find(
+                          (message) => message.id === capturedResponseMessage?.id
+                        )
+                      : undefined;
+                  const finalManagedResponse = await locals
+                    .get(chatManagedResponseKey)
+                    ?.snapshot(
+                      editedResponse
+                        ? { message: editedResponse, from: beforeHookRevision }
+                        : undefined
                     );
-                    if (idx !== -1) {
-                      const msg = accumulatedUIMessages[idx]!;
-                      accumulatedUIMessages[idx] = {
-                        ...msg,
-                        parts: [...(msg.parts ?? []), ...lateParts],
-                      } as TUIMessage;
-                      capturedResponseMessage = accumulatedUIMessages[idx] as TUIMessage;
-                      capturedPartialResponse = capturedResponseMessage;
-                      turnCompleteEvent.responseMessage = capturedResponseMessage;
-                      turnCompleteEvent.uiMessages = accumulatedUIMessages;
-                      locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
-                    } else if (responseWasSkipped) {
-                      capturedResponseMessage = {
-                        ...capturedResponseMessage,
-                        parts: [...(capturedResponseMessage.parts ?? []), ...lateParts],
-                      } as TUIMessage;
-                      accumulatedUIMessages.push(capturedResponseMessage);
-                      turnNewUIMessages.push(capturedResponseMessage);
-                      capturedPartialResponse = capturedResponseMessage;
-                      turnCompleteEvent.responseMessage = capturedResponseMessage;
+                  if (finalManagedResponse?.parts.some((part) => part.type !== "step-start")) {
+                    const idx = accumulatedUIMessages.findIndex(
+                      (m) => m.id === finalManagedResponse.id
+                    );
+                    const finalized = (
+                      wasStopped ? cleanupAbortedParts(finalManagedResponse) : finalManagedResponse
+                    ) as TUIMessage;
+                    if (idx !== -1 || responseWasSkipped || !capturedResponseMessage) {
+                      if (idx !== -1) accumulatedUIMessages[idx] = finalized;
+                      else accumulatedUIMessages.push(finalized);
+                      const deltaIdx = turnNewUIMessages.findIndex((m) => m.id === finalized.id);
+                      if (deltaIdx !== -1) turnNewUIMessages[deltaIdx] = finalized;
+                      else turnNewUIMessages.push(finalized);
+                      capturedResponseMessage = finalized;
+                      capturedPartialResponse = finalized;
+                      turnCompleteEvent.responseMessage = finalized;
                       turnCompleteEvent.uiMessages = accumulatedUIMessages;
                       locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                     }
-                    locals.set(chatResponsePartsKey, []);
                   }
 
                   settleRecoveredTurn(currentWirePayload);
@@ -9907,7 +9905,10 @@ function chatAgent<
                         if (turnCompleteOverride) {
                           locals.set(chatOverrideMessagesKey, undefined);
                           accumulatedUIMessages = [...turnCompleteOverride] as TUIMessage[];
-                          accumulatedMessages = await toModelMessages(turnCompleteOverride);
+                          accumulatedMessages = await toModelMessages(
+                            turnCompleteOverride,
+                            turnCompleteOverride
+                          );
                           laneCompacted = false;
                           laneInjections = [];
                           locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
@@ -10187,6 +10188,7 @@ function chatAgent<
                 : accumulatedUIMessages;
 
             let partialResponse: TUIMessage | undefined =
+              ((await locals.get(chatManagedResponseKey)?.snapshot()) as TUIMessage | undefined) ??
               capturedPartialResponse ??
               ((await assemblePartialFromChunks(turnBufferedChunks)) as TUIMessage | undefined);
             if (partialResponse) {
@@ -10196,22 +10198,17 @@ function chatAgent<
             let partialIdx = partialResponse?.id
               ? erroredUIMessages.findIndex((m) => m.id === partialResponse!.id)
               : -1;
-            if (partialResponse && capturedPartialResponse === undefined && partialIdx !== -1) {
+            if (
+              partialResponse &&
+              capturedPartialResponse === undefined &&
+              !locals.get(chatManagedResponseKey)?.continues(partialResponse.id) &&
+              partialIdx !== -1
+            ) {
               partialResponse = undefined;
               partialIdx = -1;
             }
             if (partialResponse && !partialResponse.id) {
               partialResponse = { ...partialResponse, id: generateMessageId() } as TUIMessage;
-            }
-            if (partialResponse && !responseCommitted) {
-              const queuedParts = locals.get(chatResponsePartsKey);
-              if (queuedParts && queuedParts.length > 0) {
-                partialResponse = {
-                  ...partialResponse,
-                  parts: [...partialResponse.parts, ...(queuedParts as UIMessage["parts"])],
-                } as TUIMessage;
-                locals.set(chatResponsePartsKey, []);
-              }
             }
             const includePartial = partialResponse != null && !responseCommitted;
             // What the stream left behind, by content. After `onTurnComplete` the
@@ -10250,7 +10247,7 @@ function chatAgent<
 
             let erroredNewModelMessages: ModelMessage[] = [];
 
-            const reconciledSteer = reconcilePendingSteer();
+            const reconciledSteer = reconcilePendingSteer({ response: partialResponse });
             const backgroundTailThisTurn = reconcilePendingBackground();
 
             if (!responseCommitted) {
@@ -10262,17 +10259,9 @@ function chatAgent<
                    * the model received it (what `prepare` produced), matching the
                    * lane. The wire message and partial are converted as before.
                    */
-                  const steerModelById = new Map(
-                    reconciledSteer.map((e) => [e.ui.id, e.model] as const)
+                  erroredNewModelMessages = await toModelMessages(
+                    erroredNewUIMessages.map(stripProviderMetadata)
                   );
-                  for (const m of erroredNewUIMessages) {
-                    const recorded = steerModelById.get(m.id);
-                    if (recorded) erroredNewModelMessages.push(...recorded);
-                    else
-                      erroredNewModelMessages.push(
-                        ...(await toModelMessages([stripProviderMetadata(m)]))
-                      );
-                  }
                 }
                 if (erroredUIMessagesWithPartial !== accumulatedUIMessages) {
                   if (partialIdx === -1) {
@@ -10294,7 +10283,10 @@ function chatAgent<
                       logger.warn(
                         "chat.agent: replaced partial not found at the model lane tail; reconverting the lane"
                       );
-                      accumulatedMessages = await toModelMessages(erroredUIMessagesWithPartial);
+                      accumulatedMessages = await toModelMessages(
+                        erroredUIMessagesWithPartial,
+                        erroredUIMessagesWithPartial
+                      );
                       laneCompacted = false;
                       laneInjections = [];
                     }
@@ -10355,7 +10347,10 @@ function chatAgent<
                       // Convert first: a rejected conversion (a tool's `toModelOutput`
                       // can throw) must leave every lane on the history it had.
                       const overrideUIMessages = [...errorTurnOverride] as TUIMessage[];
-                      const overrideModelMessages = await toModelMessages(errorTurnOverride);
+                      const overrideModelMessages = await toModelMessages(
+                        errorTurnOverride,
+                        errorTurnOverride
+                      );
                       erroredUIMessagesWithPartial = overrideUIMessages;
                       accumulatedUIMessages = overrideUIMessages;
                       accumulatedMessages = overrideModelMessages;
@@ -10465,6 +10460,11 @@ function chatAgent<
             // Continue to next iteration of the for loop
           } finally {
             turnMsgSub?.off();
+            locals.set(chatManagedResponseActiveKey, false);
+            await locals
+              .get(chatManagedResponseKey)
+              ?.close()
+              .catch(() => {});
           }
         }
       } finally {
@@ -11786,10 +11786,14 @@ async function pipeChatAndCapture(
   let status: PipeAndCaptureResult["status"] = "complete";
   let error: unknown;
   try {
-    await pipeChat(tappedStream, {
-      signal: options?.signal,
-      spanName: options?.spanName ?? "stream response",
-    });
+    await pipeChat(
+      tappedStream,
+      {
+        signal: options?.signal,
+        spanName: options?.spanName ?? "stream response",
+      },
+      { originalMessages: options?.originalMessages }
+    );
     // The pipe can drain cleanly on a stop — the source stream just ends
     // early — so classify by the signal rather than relying on a throw.
     if (options?.signal?.aborted) {
@@ -11816,6 +11820,8 @@ async function pipeChatAndCapture(
     captured = await assemblePartialFromChunks(bufferedChunks);
   }
 
+  captured = (await locals.get(chatManagedResponseKey)?.snapshot()) ?? captured;
+  if (!locals.get(chatTurnContextKey)) await locals.get(chatManagedResponseKey)?.close();
   return {
     message: captured,
     status,
@@ -11850,6 +11856,7 @@ class ChatMessageAccumulator {
   private _handoverRun?: { id: string; run: ModelMessage[] };
   private _pendingMessages?: PendingMessagesOptions;
   private _steeringQueue: SteeringQueueEntry[] = [];
+  private _pendingSteer: PendingSteer[] = [];
 
   constructor(options?: {
     compaction?: ChatAgentCompactionOptions;
@@ -11939,6 +11946,17 @@ class ChatMessageAccumulator {
   }
 
   async addResponse(response: UIMessage): Promise<void> {
+    const inlineIds = new Set(steeringMarkers([response]).flatMap((m) => m.messageIds));
+    for (const entry of this._pendingSteer.splice(0)) {
+      if (!inlineIds.has(entry.ui.id)) continue;
+      // absorbSteering is public and updates context immediately. Move just
+      // those exact appended objects into the response's chronological run;
+      // never rebuild a possibly compacted lane from the UI transcript.
+      for (const message of entry.model) {
+        const index = this.modelMessages.lastIndexOf(message);
+        if (index !== -1) this.modelMessages.splice(index, 1);
+      }
+    }
     if (!response.id) {
       response = { ...response, id: generateMessageId() };
     }
@@ -12016,9 +12034,10 @@ class ChatMessageAccumulator {
     this.uiMessages.push(...fresh);
     // Record what the model received. Only when the whole batch is new is
     // `injected` known to describe exactly these messages.
-    this.modelMessages.push(
-      ...(injected && fresh.length === claimed.length ? injected : await toModelMessages(fresh))
-    );
+    const model =
+      injected && fresh.length === claimed.length ? injected : await toModelMessages(fresh);
+    this.modelMessages.push(...model);
+    for (const ui of fresh) this._pendingSteer.push({ ui, model: modelFormOf(ui, fresh, model) });
   }
 
   /**
@@ -12045,36 +12064,38 @@ class ChatMessageAccumulator {
     const pm = this._pendingMessages;
     const queue = this._steeringQueue;
 
-    return async ({ messages, steps }) => {
-      let resultMessages: ModelMessage[] | undefined;
+    return retainStepMessages(
+      async ({ messages, steps }: { messages: ModelMessage[]; steps: CompactionStep[] }) => {
+        let resultMessages: ModelMessage[] | undefined;
 
-      // 1. Compaction
-      if (comp) {
-        const result = await chatCompact(messages, steps, {
-          shouldCompact: comp.shouldCompact,
-          summarize: (msgs) => comp.summarize({ messages: msgs, source: "inner" }),
-        });
-        if (result.type !== "skipped") {
-          resultMessages = result.messages;
+        // 1. Compaction
+        if (comp) {
+          const result = await chatCompact(messages, steps, {
+            shouldCompact: comp.shouldCompact,
+            summarize: (msgs) => comp.summarize({ messages: msgs, source: "inner" }),
+          });
+          if (result.type !== "skipped") {
+            resultMessages = result.messages;
+          }
         }
-      }
 
-      // 2. Pending message injection
-      if (pm && queue.length > 0) {
-        const { injected, claimed } = await drainSteeringQueue(
-          pm,
-          resultMessages ?? messages,
-          steps,
-          queue
-        );
-        await this.absorbSteering(claimed, injected);
-        if (injected.length > 0) {
-          resultMessages = [...(resultMessages ?? messages), ...injected];
+        // 2. Pending message injection
+        if (pm) {
+          const { injected, claimed } = await drainSteeringQueue(
+            pm,
+            resultMessages ?? messages,
+            steps,
+            queue
+          );
+          await this.absorbSteering(claimed, injected);
+          if (injected.length > 0) {
+            resultMessages = [...(resultMessages ?? messages), ...injected];
+          }
         }
-      }
 
-      return resultMessages ? { messages: resultMessages } : undefined;
-    };
+        return resultMessages ? { messages: resultMessages } : undefined;
+      }
+    );
   }
 
   /**
@@ -12530,7 +12551,9 @@ function createChatSession<TClientData = unknown>(
           stop.reset();
 
           // Reset per-turn state
-          locals.set(chatResponsePartsKey, []);
+          await locals.get(chatManagedResponseKey)?.close();
+          locals.set(chatManagedResponseKey, undefined);
+          locals.set(chatManagedResponseActiveKey, true);
           // Set up steering queue and pending messages config in locals
           // so toStreamTextOptions() auto-injects prepareStep for steering
           const turnSteeringQueue: SteeringQueueEntry[] = [];
@@ -12694,11 +12717,6 @@ function createChatSession<TClientData = unknown>(
                 if (captured.status === "error") {
                   if (captured.message) {
                     const partial = cleanupAbortedParts(captured.message);
-                    const queuedParts = locals.get(chatResponsePartsKey);
-                    if (queuedParts && queuedParts.length > 0) {
-                      (partial as any).parts = [...(partial.parts ?? []), ...queuedParts];
-                      locals.set(chatResponsePartsKey, []);
-                    }
                     await accumulator.addResponse(partial);
                   }
                   throw captured.error;
@@ -12715,24 +12733,7 @@ function createChatSession<TClientData = unknown>(
                   stop.signal.aborted && !runSignal.aborted
                     ? cleanupAbortedParts(response)
                     : response;
-                // Append any non-transient data parts queued via chat.response or writer.write()
-                const queuedParts = locals.get(chatResponsePartsKey);
-                if (queuedParts && queuedParts.length > 0) {
-                  (cleaned as any).parts = [...(cleaned.parts ?? []), ...queuedParts];
-                  locals.set(chatResponsePartsKey, []);
-                }
                 await accumulator.addResponse(cleaned);
-              } else {
-                // No response (manual pipe mode) but there are queued data parts
-                const queuedParts = locals.get(chatResponsePartsKey);
-                if (queuedParts && queuedParts.length > 0) {
-                  await accumulator.addResponse({
-                    id: generateMessageId(),
-                    role: "assistant" as const,
-                    parts: queuedParts as UIMessage["parts"],
-                  });
-                  locals.set(chatResponsePartsKey, []);
-                }
               }
 
               // Capture token usage from the streamText result. Race with a 2s
@@ -12830,15 +12831,6 @@ function createChatSession<TClientData = unknown>(
             },
 
             async addResponse(response: UIMessage) {
-              // Append any non-transient data parts queued via chat.response or writer.write()
-              const queuedParts = locals.get(chatResponsePartsKey);
-              if (queuedParts && queuedParts.length > 0) {
-                response = {
-                  ...response,
-                  parts: [...(response.parts ?? []), ...(queuedParts as UIMessage["parts"])],
-                };
-                locals.set(chatResponsePartsKey, []);
-              }
               await accumulator.addResponse(response);
             },
 
@@ -12852,41 +12844,43 @@ function createChatSession<TClientData = unknown>(
               const hasPending = !!sessionPendingMessages;
               if (!hasCompaction && !hasPending) return undefined;
 
-              return async ({
-                messages: stepMsgs,
-                steps,
-              }: {
-                messages: ModelMessage[];
-                steps: CompactionStep[];
-              }) => {
-                let resultMessages: ModelMessage[] | undefined;
+              return retainStepMessages(
+                async ({
+                  messages: stepMsgs,
+                  steps,
+                }: {
+                  messages: ModelMessage[];
+                  steps: CompactionStep[];
+                }) => {
+                  let resultMessages: ModelMessage[] | undefined;
 
-                if (sessionCompaction) {
-                  const compactResult = await chatCompact(stepMsgs, steps, {
-                    shouldCompact: sessionCompaction.shouldCompact,
-                    summarize: (msgs) =>
-                      sessionCompaction.summarize({ messages: msgs, source: "inner" }),
-                  });
-                  if (compactResult.type !== "skipped") {
-                    resultMessages = compactResult.messages;
+                  if (sessionCompaction) {
+                    const compactResult = await chatCompact(stepMsgs, steps, {
+                      shouldCompact: sessionCompaction.shouldCompact,
+                      summarize: (msgs) =>
+                        sessionCompaction.summarize({ messages: msgs, source: "inner" }),
+                    });
+                    if (compactResult.type !== "skipped") {
+                      resultMessages = compactResult.messages;
+                    }
                   }
-                }
 
-                if (sessionPendingMessages) {
-                  const { injected, claimed } = await drainSteeringQueue(
-                    sessionPendingMessages,
-                    resultMessages ?? stepMsgs,
-                    steps,
-                    turnSteeringQueue
-                  );
-                  await accumulator.absorbSteering(claimed, injected);
-                  if (injected.length > 0) {
-                    resultMessages = [...(resultMessages ?? stepMsgs), ...injected];
+                  if (sessionPendingMessages) {
+                    const { injected, claimed } = await drainSteeringQueue(
+                      sessionPendingMessages,
+                      resultMessages ?? stepMsgs,
+                      steps,
+                      turnSteeringQueue
+                    );
+                    await accumulator.absorbSteering(claimed, injected);
+                    if (injected.length > 0) {
+                      resultMessages = [...(resultMessages ?? stepMsgs), ...injected];
+                    }
                   }
-                }
 
-                return resultMessages ? { messages: resultMessages } : undefined;
-              };
+                  return resultMessages ? { messages: resultMessages } : undefined;
+                }
+              );
             },
           };
 
@@ -13797,6 +13791,9 @@ async function writeTurnCompleteChunk(
   _chatId?: string,
   publicAccessToken?: string
 ): Promise<StreamWriteResult> {
+  locals.set(chatManagedResponseActiveKey, false);
+  const response = locals.get(chatManagedResponseKey);
+  if (response) await response.close();
   const session = getChatSession();
 
   // A handover-prepare boot claims the handover kinds so a signal arriving
