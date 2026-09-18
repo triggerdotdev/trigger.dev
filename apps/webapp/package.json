@@ -18,6 +18,7 @@
     "typecheck": "cross-env NODE_OPTIONS=\"--max-old-space-size=8192\" tsc --noEmit -p ./tsconfig.check.json",
     "guard:runops-legacy": "cross-env NODE_OPTIONS=\"--max-old-space-size=8192\" tsx ./scripts/runOpsLegacyGuard.ts",
     "guard:fk-cascade-index": "tsx ./scripts/fkCascadeIndexGuard.ts",
+    "guard:migrations": "tsx ./scripts/migrationSafetyGuard.ts --cutoff 20260918",
     "env:check": "varlock load --agent",
     "env": "varlock run --inject vars --",
     "db:seed": "varlock run --inject vars -- tsx seed.ts",
