@@ -1,9 +1,15 @@
 -- CreateEnum
-CREATE TYPE "TaskQueueConcurrencyVersion" AS ENUM ('V1', 'V2');
+DO $$ BEGIN
+  CREATE TYPE "TaskQueueConcurrencyVersion" AS ENUM ('V1', 'V2');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- CreateEnum
-CREATE TYPE "TaskQueueRole" AS ENUM ('QUEUE', 'LIMIT');
+DO $$ BEGIN
+  CREATE TYPE "TaskQueueRole" AS ENUM ('QUEUE', 'LIMIT');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- AlterTable
-ALTER TABLE "TaskQueue" ADD COLUMN "concurrencyVersion" "TaskQueueConcurrencyVersion" NOT NULL DEFAULT 'V1',
-ADD COLUMN "role" "TaskQueueRole" NOT NULL DEFAULT 'QUEUE';
+ALTER TABLE "TaskQueue" ADD COLUMN IF NOT EXISTS "concurrencyVersion" "TaskQueueConcurrencyVersion" NOT NULL DEFAULT 'V1',
+ADD COLUMN IF NOT EXISTS "role" "TaskQueueRole" NOT NULL DEFAULT 'QUEUE';

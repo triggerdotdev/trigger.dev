@@ -1,2 +1,2 @@
 -- AlterTable
-ALTER TABLE "TaskQueue" ADD COLUMN "totalConcurrencyLimit" INTEGER;
+ALTER TABLE "TaskQueue" ADD COLUMN IF NOT EXISTS "totalConcurrencyLimit" INTEGER;

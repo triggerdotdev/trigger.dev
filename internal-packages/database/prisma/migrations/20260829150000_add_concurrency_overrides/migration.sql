@@ -1,4 +1,4 @@
 -- AlterTable
-ALTER TABLE "TaskQueue" ADD COLUMN "totalConcurrencyLimitOverriddenAt" TIMESTAMP(3);
-ALTER TABLE "TaskQueue" ADD COLUMN "totalConcurrencyLimitOverriddenBy" TEXT;
-ALTER TABLE "TaskQueue" ADD COLUMN "totalConcurrencyLimitBase" INTEGER;
+ALTER TABLE "TaskQueue" ADD COLUMN IF NOT EXISTS "totalConcurrencyLimitOverriddenAt" TIMESTAMP(3);
+ALTER TABLE "TaskQueue" ADD COLUMN IF NOT EXISTS "totalConcurrencyLimitOverriddenBy" TEXT;
+ALTER TABLE "TaskQueue" ADD COLUMN IF NOT EXISTS "totalConcurrencyLimitBase" INTEGER;
