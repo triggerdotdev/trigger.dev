@@ -354,7 +354,9 @@ See [Stop generation](/ai-chat/backend#stop-generation) in the backend docs for 
 
 ## Tool approvals
 
-The AI SDK supports tools that require human approval before execution. To use this with `chat.agent`, define a tool with `needsApproval: true` on the backend, then handle the approval UI and configure `sendAutomaticallyWhen` on the frontend.
+AI SDK 6 and later support `needsApproval: true` on tools with an `execute` function. The approval request appears before `execute` runs. Approving the call runs it on the next turn; denying it skips execution.
+
+To collect a selection from search results, use a tool without `execute` and supply its result with `addToolOutput`. See [Choose from tool results](/ai-chat/patterns/human-in-the-loop#choose-from-tool-results).
 
 ### Backend: define an approval-required tool
 
@@ -377,7 +379,7 @@ const sendEmail = tool({
 });
 ```
 
-Pass the tool to `streamText` in your `run` function as usual. When the model calls the tool, `chat.agent` streams a `tool-approval-request` chunk. The turn completes and the run waits for the next message.
+Declare the tool on the agent and pass it to the `streamText` supplied to your `run` function. When the model calls the tool, `chat.agent` streams a `tool-approval-request` chunk. The turn completes and the run waits for the next message.
 
 ### Frontend: approval UI
 
@@ -387,9 +389,14 @@ Destructure `addToolApprovalResponse` from `useChat` and wire it to your approva
 
 ```tsx
 import { useChat } from "@ai-sdk/react";
-import { lastAssistantMessageIsCompleteWithApprovalResponses } from "ai";
+import {
+  isToolUIPart,
+  lastAssistantMessageIsCompleteWithApprovalResponses,
+  type ChatTransport,
+  type UIMessage,
+} from "ai";
 
-function Chat({ chatId, transport }) {
+function Chat({ chatId, transport }: { chatId: string; transport: ChatTransport<UIMessage> }) {
   const { messages, sendMessage, addToolApprovalResponse, status } = useChat({
     id: chatId,
     transport,
@@ -408,7 +415,7 @@ function Chat({ chatId, transport }) {
     <div>
       {messages.map((msg) =>
         msg.parts.map((part, i) => {
-          if (part.state === "approval-requested") {
+          if (isToolUIPart(part) && part.state === "approval-requested") {
             return (
               <div key={i}>
                 <p>Tool "{part.type}" wants to run with input:</p>

@@ -1,52 +1,49 @@
 ---
 title: "Human-in-the-loop"
 sidebarTitle: "Human-in-the-loop"
-description: "Pause the agent mid-response to ask the user a clarifying question, then resume with their answer."
+description: "Ask users to choose an option or approve a tool call, then continue the agent with their response."
 ---
 
-Some turns need to stop and ask the user something before they can finish — picking between options, confirming a destructive action, or clarifying an ambiguous request. The AI SDK calls this **human-in-the-loop** (HITL), and the building block is a tool with no `execute` function.
+**A chat agent can wait for a user to supply a tool result or approve a tool before it runs.** Choose the pattern based on what the user needs to provide:
 
-When the LLM calls a tool that has no `execute`, `streamText` ends with the tool call still pending. The turn completes cleanly, the frontend renders UI to collect the answer, and when the user responds, a new turn resumes with the answer merged into the same assistant message.
+| User interaction | Tool definition | Frontend response |
+| --- | --- | --- |
+| Answer a question or choose a candidate | Omit `execute` | `addToolOutput` supplies the result |
+| Approve or deny an action with known inputs | Set `needsApproval: true` and keep `execute` | `addToolApprovalResponse` authorizes or denies execution |
+
+The examples below use AI SDK 6 or later and build on the [Quick start](/ai-chat/quick-start), including its session and token server actions. For approve/deny buttons, see [Approve a tool before execution](#approve-a-tool-before-execution).
 
 ## How it works
 
-```
-Turn N:
-  User message → run()
-  LLM streams text → calls askUser tool (no execute)
-  streamText ends with tool-call in `input-available` state
-  onTurnComplete fires (finishReason = "tool-calls")
-  Agent suspends (compute freed) — maxDuration does not tick while paused
+When the model calls a tool without `execute`, `streamText` finishes with a pending tool call. Your frontend renders the question. Calling `addToolOutput` supplies the answer, and `sendAutomaticallyWhen` starts the next turn.
 
-Frontend:
-  Renders question + option buttons from tool input
-  User clicks → addToolOutput({ tool, toolCallId, output })
-  sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls
-  → sendMessage() fires next turn
-
-Turn N+1:
-  hydrateMessages / accumulator sees the updated assistant message
-  run() is called, LLM continues from the tool result
-  onTurnComplete fires (finishReason = "stop", responseMessage is the FULL merged message)
+```mermaid
+sequenceDiagram
+  participant Agent
+  participant UI as Your frontend
+  participant User
+  Agent->>UI: askUser tool call (input-available)
+  UI->>User: Show question and options
+  User->>UI: Choose an option
+  UI->>Agent: addToolOutput + automatic send
+  Agent->>UI: Continue with the answer
 ```
 
-The AI SDK's `toUIMessageStream` automatically reuses the assistant message ID across the pause (we pass `originalMessages` internally), so `responseMessage` in the post-resume `onTurnComplete` is the **full merged message** — the original text, the completed tool call, and any follow-up content — not just the new parts.
+The assistant message keeps its ID across the pause. After resuming, `onTurnComplete` receives the full merged `responseMessage`, including the question, tool result, and follow-up text.
 
 ## Duration and cost while paused
 
-A pause doesn't hold compute. After the model calls a no-execute tool, the turn finishes and the run stays warm for `idleTimeoutInSeconds` (default 30s), then **suspends** and frees its compute, the same way [`wait.for`](/wait-for) does. The user's `addToolOutput` wakes it back up.
+After the turn finishes, the run stays active for `idleTimeoutInSeconds` (30 seconds by default), then suspends and releases compute. Set it to `0` to suspend immediately. The active idle window counts toward compute usage and [`maxDuration`](/runs/max-duration); suspended time doesn't.
 
-Because the run is suspended while it waits, the human's thinking time is not billed and does **not** count against [`maxDuration`](/runs/max-duration). `maxDuration` measures active CPU time and excludes suspended waitpoint time, exactly like `wait.for`, so a user can take minutes, hours, or days to answer without the run hitting `maxDuration`. The only time that counts is each turn's actual compute plus the short warm window before each suspend.
-
-You don't need to raise `maxDuration` or end the run to support long human waits. How long a single suspended pause stays open is governed by the run's suspend timeout, not `maxDuration`; if a wait outlives it the run ends, and the next `addToolOutput` boots a fresh continuation that picks up the resolved tool result.
+[`turnTimeout`](/ai-chat/reference#chatagent) controls how long a run waits for the next message (default `"1h"`). When it expires, the run ends. A later answer starts a continuation run that restores the conversation from [transcript storage](/ai-chat/transcript-storage). Raising `maxDuration` isn't necessary for time spent suspended.
 
 ## Backend: define the tool
 
-A HITL tool has an `inputSchema` describing what the model can ask, but **no `execute` function**. When the LLM calls it, `streamText` returns control to your agent.
+Define an `inputSchema` for the question and omit `execute` so the frontend can supply the answer. When the model calls `askUser`, `streamText` returns control to your agent.
 
 ```ts trigger/my-chat.ts
-import { chat } from "@trigger.dev/sdk/ai";
-import { streamText, tool, stepCountIs } from "ai";
+import { chat, type InferChatUIMessageFromTools } from "@trigger.dev/sdk/ai";
+import { tool, stepCountIs } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 
@@ -67,14 +64,17 @@ const askUser = tool({
       .min(2)
       .max(4),
   }),
-  // No execute function — streamText ends, the frontend supplies the output
-  // via addToolOutput, and the next turn continues from the result.
+  outputSchema: z.object({ optionId: z.string(), label: z.string() }),
+  // The frontend supplies the result with addToolOutput.
 });
 
-export const myChat = chat.agent({
+const tools = { askUser };
+export type ChatMessage = InferChatUIMessageFromTools<typeof tools>;
+
+export const myChat = chat.withUIMessage<ChatMessage>().agent({
   id: "my-chat",
-  tools: { askUser },
-  run: async ({ messages, tools, signal }) => {
+  tools,
+  run: async ({ messages, tools, signal, streamText }) => {
     return streamText({
       model: anthropic("claude-sonnet-4-5"),
       messages,
@@ -90,190 +90,192 @@ Declaring `tools` on the config (and reading them back from the payload) is the 
 
 ## Frontend: render the question and collect the answer
 
-Two pieces on the client:
+Render the question when its tool part reaches `input-available`. Use the AI SDK's [`lastAssistantMessageIsCompleteWithToolCalls`](https://ai-sdk.dev/docs/ai-sdk-ui/chatbot-tool-usage) helper to submit the answer automatically once every pending tool call has a result.
 
-1. **UI for the pending tool call** — render when the tool part is in `input-available` state, i.e. the LLM has called the tool but there's no output yet.
-2. **Auto-send on resolution** — use `sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls` so answering kicks off the next turn without the user having to hit "send."
+```tsx app/components/chat.tsx
+"use client";
 
-```tsx
-import { useChat, lastAssistantMessageIsCompleteWithToolCalls } from "@ai-sdk/react";
+import { useChat } from "@ai-sdk/react";
+import { lastAssistantMessageIsCompleteWithToolCalls } from "ai";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
+import { mintChatAccessToken, startChatSession } from "@/app/actions";
+import type { ChatMessage, myChat } from "@/trigger/my-chat";
 
-function ChatView({ chatId }: { chatId: string }) {
-  const transport = useTriggerChatTransport({
+export function ChatView({ chatId }: { chatId: string }) {
+  const transport = useTriggerChatTransport<typeof myChat>({
     task: "my-chat",
     accessToken: ({ chatId }) => mintChatAccessToken(chatId),
     startSession: ({ chatId, clientData }) =>
       startChatSession({ chatId, clientData }),
   });
-  const { messages, sendMessage, addToolOutput } = useChat({
+  const { messages, sendMessage, addToolOutput, status } = useChat<ChatMessage>({
     id: chatId,
     transport,
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
   });
+  const busy = status === "submitted" || status === "streaming";
 
   return (
     <>
-      {messages.map((m) =>
-        m.parts.map((part, i) => {
-          if (part.type === "tool-askUser" && part.state === "input-available") {
-            return (
-              <AskUserCard
-                key={i}
-                question={part.input.question}
-                options={part.input.options}
-                onAnswer={(opt) =>
-                  addToolOutput({
-                    tool: "askUser",
-                    toolCallId: part.toolCallId,
-                    output: { optionId: opt.id, label: opt.label },
-                  })
-                }
-              />
-            );
-          }
-          if (part.type === "text") return <Markdown key={i}>{part.text}</Markdown>;
-          return null;
-        })
-      )}
+      {messages.map((message) => (
+        <div key={message.id}>
+          {message.parts.map((part, i) => {
+            if (part.type === "tool-askUser" && part.state === "input-available") {
+              return (
+                <fieldset key={part.toolCallId} disabled={busy}>
+                  <legend>{part.input.question}</legend>
+                  {part.input.options.map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() =>
+                        addToolOutput({
+                          tool: "askUser",
+                          toolCallId: part.toolCallId,
+                          output: { optionId: option.id, label: option.label },
+                        })
+                      }
+                    >
+                      {option.label}
+                      {option.description && <span> {option.description}</span>}
+                    </button>
+                  ))}
+                </fieldset>
+              );
+            }
+            if (part.type === "text") return <p key={i}>{part.text}</p>;
+            return null;
+          })}
+        </div>
+      ))}
+      <button disabled={busy} onClick={() => sendMessage({ text: "Help me choose a database." })}>
+        Start a conversation
+      </button>
     </>
   );
 }
 ```
 
-`addToolOutput` patches the assistant message locally with `state: "output-available"` and fills in `output`. `lastAssistantMessageIsCompleteWithToolCalls` detects that every pending tool call now has a result, and `useChat` fires a new `sendMessage` — the backend picks it up as the next turn.
+`addToolOutput` patches the assistant message locally with `state: "output-available"` and fills in `output`. `lastAssistantMessageIsCompleteWithToolCalls` detects that every pending tool call now has a result, and `useChat` fires a new `sendMessage`. The backend picks it up as the next turn.
+
+## Choose from tool results
+
+When a tool returns several candidates, run the search first, then ask the user to choose one before taking action. For example, a search might find several matching contacts, files, or brands.
+
+Keep the search, selection, and action as separate tool calls:
+
+1. A search tool with `execute` returns candidates and saves them under a `searchId`.
+2. A selection tool without `execute` asks the frontend to show those candidates.
+3. An action tool with `execute` uses the selected ID after checking it on the server.
+
+```ts trigger/tools/select-result.ts
+import { tool } from "ai";
+import { z } from "zod";
+
+export const selectResult = tool({
+  description:
+    "Ask the user to choose from a completed search. " +
+    "Copy searchId from the search result and wait for their answer.",
+  inputSchema: z.object({ searchId: z.string() }),
+  outputSchema: z.object({ selectedId: z.string().nullable() }),
+});
+```
+
+Render this tool's `input-available` part using the same approach as `askUser` above. Load the candidates from the saved search, display their original labels, and call `addToolOutput` with the selected ID. Return `{ selectedId: null }` for a "None of these" option. If a search has no results, ask for a different query before requesting a selection.
+
+Save search results durably and scope them to the authorized conversation so the picker still works after a reload or continuation. Use stable candidate IDs; names can be ambiguous.
+
+Before executing the action, read the completed selection from `chat.history`, validate its output, and check that the requested ID matches the user's answer and belongs to that saved search. A null answer must prevent the action. Enforce these checks in server code; tool descriptions alone don't enforce the choice.
+
+Use the selection's `toolCallId`, scoped to the chat, as the action's idempotency key. That keeps retries of the same choice from creating duplicate work, even if the model makes another action call. If the next step must be the action, use `prepareStep` to set `toolChoice` on the first model step after a valid selection.
+
+You can also require approval on the action tool. The selection supplies an input; the approval confirms whether to execute with that input.
+
+## Approve a tool before execution
+
+With **AI SDK 6 or later**, set `needsApproval: true` on a tool that has an `execute` function. The SDK requests approval before calling `execute`. Approving the call runs it on the next turn; denying it skips execution.
+
+```ts trigger/tools/send-email.ts
+import { tool } from "ai";
+import { z } from "zod";
+import { sendEmail } from "@/lib/email";
+
+export const sendEmailTool = tool({
+  description: "Send an email after the user approves.",
+  inputSchema: z.object({ to: z.string(), subject: z.string(), body: z.string() }),
+  needsApproval: true,
+  execute: async (input) => sendEmail(input),
+});
+```
+
+`sendEmail` is your application's email function. Keep authorization and idempotency checks there. Declare the tool on the agent and pass it to the `streamText` supplied to `run`, as in the question example.
+
+On the frontend, render approve/deny buttons for `approval-requested` parts. Call `addToolApprovalResponse` with `part.approval.id` and the `approved` boolean, and use `lastAssistantMessageIsCompleteWithApprovalResponses` for automatic submission. The [frontend approval example](/ai-chat/frontend#tool-approvals) shows the full wiring.
+
+For conditional approval, [`needsApproval` also accepts a function](https://ai-sdk.dev/docs/ai-sdk-core/tools-and-tool-calling#dynamic-approval) that checks the tool input. Approval happens before `execute`, so a tool that searches inside `execute` can't use that approval prompt to display its search results. Run the search first, collect the selection, then call the action tool.
+
+If your agent uses both questions and approvals, combine the helpers:
+
+```ts app/components/chat.tsx
+import {
+  lastAssistantMessageIsCompleteWithApprovalResponses,
+  lastAssistantMessageIsCompleteWithToolCalls,
+  type UIMessage,
+} from "ai";
+
+export function sendAutomaticallyWhen({ messages }: { messages: UIMessage[] }) {
+  return (
+    lastAssistantMessageIsCompleteWithToolCalls({ messages }) ||
+    lastAssistantMessageIsCompleteWithApprovalResponses({ messages })
+  );
+}
+```
 
 ## Detecting a paused turn in `onTurnComplete`
 
-Two ways to detect "this turn paused for user input" vs "this turn finished normally":
+Use `chat.history.getPendingToolCalls()` to find unanswered tool calls on the latest assistant message:
 
-### Via `finishReason` (recommended)
-
-The AI SDK's finish reason is surfaced on every `onTurnComplete` event. If the model stopped on tool calls, it's `"tool-calls"`:
-
-```ts
-onTurnComplete: async ({ finishReason, responseMessage }) => {
-  if (finishReason === "tool-calls") {
-    // Turn paused — assistant message has pending tool call(s)
-    const pending = responseMessage?.parts.filter(
-      (p) => p.type.startsWith("tool-") && p.state === "input-available"
-    );
-    // Persist as a checkpoint / partial turn
-  } else {
-    // finishReason === "stop" — normal completion
-    // Persist as a completed turn
+```ts trigger/my-chat.ts
+onTurnComplete: async ({ stopped }) => {
+  if (stopped) return;
+  const pending = chat.history.getPendingToolCalls();
+  if (pending.length > 0) {
+    console.log("Waiting for user input", pending);
   }
-};
+},
 ```
 
-<Note>
-  `finishReason` is only undefined for manual `chat.pipe()` flows or aborted streams. For the common `run() → return streamText(...)` pattern it's always populated.
-</Note>
+Each entry contains `toolCallId`, `toolName`, and `messageId`. Approval requests use a separate state: inspect `responseMessage.parts` for `approval-requested` when tracking approvals.
 
-### Via response parts
-
-If you need more nuance (e.g. which specific tool is pending), use `chat.history.getPendingToolCalls()`:
-
-```ts
-const pending = chat.history.getPendingToolCalls();
-// [{ toolCallId, toolName, messageId }]
-```
-
-The result reflects the most recent assistant message: the one waiting on `addToolOutput`. Use it from `onAction` to gate fresh user turns ("can't send a new message while a HITL is open"), or from `onTurnComplete` to decide what to persist.
-
-Both `finishReason === "tool-calls"` and `chat.history.getPendingToolCalls().length > 0` are equivalent in practice. Use `finishReason` for dispatch, the helper for detail.
+`finishReason === "tool-calls"` describes why the model stopped. It can also occur when a step limit ends a loop of server-executed tools, so check the tool states before treating it as a human pause. Check `stopped` separately for interrupted turns.
 
 ### Acting once per net-new tool result
 
-When the user's `addToolOutput` round-trips a tool answer back to the agent, the wire message carries the resolved tool part. If you want to fire side-effects (audit log, billing, notifications) exactly once per resolved tool call, do it in `hydrateMessages` before the runtime merges. `chat.history.extractNewToolResults(message)` returns only the parts whose `toolCallId` isn't already resolved on the chain:
+`chat.history.extractNewToolResults(message)` returns resolved tool parts whose `toolCallId` isn't already resolved in the current history. Call it before the incoming message is merged. By `onTurnComplete`, the result is already in history and the helper returns `[]`.
 
-```ts
-hydrateMessages: async ({ incomingMessages }) => {
-  for (const msg of incomingMessages) {
-    if (msg.role !== "assistant") continue;
-    for (const r of chat.history.extractNewToolResults(msg)) {
-      await auditLog.record({
-        toolCallId: r.toolCallId,
-        toolName: r.toolName,
-        output: r.output,
-        errorText: r.errorText, // set only for output-error parts
-      });
-    }
-  }
-  return incomingMessages;
-},
-```
-
-`extractNewToolResults` compares against the current `chat.history`. By the time `onTurnComplete` fires, the chain already contains `responseMessage`, so the helper returns `[]` there. Use it where the message is from outside the accumulator: `hydrateMessages`, `onAction` if the action carries a message, or any custom pre-merge code path.
+This filters results against the current transcript; durable side effects still need an idempotency key. Use `chatId` and `toolCallId` to deduplicate a sync or audit write across retries. See [Tool result auditing](/ai-chat/patterns/tool-result-auditing) for existing `hydrateMessages` integrations.
 
 ## Persistence: one message vs one record per pause
 
-Because the AI SDK reuses the assistant message ID across the pause, the "same turn" from the user's perspective maps to **two `onTurnComplete` firings** on the server — but both receive a `responseMessage` with the **same `id`**, and the second firing's `responseMessage` contains the fully merged content.
+The default [transcript storage](/ai-chat/transcript-storage) saves the pending call and its resolved result. Use a storage adapter if you need the conversation in your own database.
 
-Two common persistence patterns:
-
-### Overwrite on every turn (simplest)
-
-Just store the latest `uiMessages` array on every `onTurnComplete`. The paused-turn write is overwritten by the resume-turn write; the final DB state has the full merged message.
-
-```ts
-onTurnComplete: async ({ chatId, uiMessages }) => {
-  await db.chat.update({
-    where: { id: chatId },
-    data: { messages: uiMessages },
-  });
-},
-```
-
-Use this unless you specifically need an audit trail.
-
-### Checkpoint nodes (immutable history)
-
-For apps that want every pause point recorded as its own immutable snapshot (branching, replay, diff review), save a checkpoint when paused and a sibling when complete:
-
-```ts
-onTurnComplete: async ({ chatId, responseMessage, finishReason, uiMessages }) => {
-  if (!responseMessage) return;
-
-  if (finishReason === "tool-calls") {
-    // Paused — save a checkpoint
-    await db.turnCheckpoint.create({
-      data: {
-        chatId,
-        messageId: responseMessage.id,
-        parts: responseMessage.parts,
-        kind: "partial",
-      },
-    });
-  } else {
-    // Completed — save a sibling with the merged full message
-    await db.turnCheckpoint.create({
-      data: {
-        chatId,
-        messageId: responseMessage.id,
-        parts: responseMessage.parts,
-        kind: "final",
-      },
-    });
-  }
-
-  // Always update the canonical chat record for `hydrateMessages` to load
-  await db.chat.update({
-    where: { id: chatId },
-    data: { messages: uiMessages },
-  });
-};
-```
-
-Both writes see `responseMessage.id` as the same value — they're checkpoints of the same logical message. Grouping by `messageId` + ordering by `createdAt` gives you the progression.
+The pause and continuation share the assistant message ID. Upsert by `message.id` so the resolved message replaces the pending version. For an audit trail, keep separate snapshots alongside that canonical message and record whether it has pending questions, approval requests, or a stopped response.
 
 ## Multi-pause turns
 
-A single logical turn can pause more than once — the LLM asks question A, gets the answer, thinks, then asks question B before finishing. Each pause fires its own `onTurnComplete` with `finishReason === "tool-calls"`; only the last firing has `finishReason === "stop"`. The checkpoint pattern above handles this naturally — each pause adds a new checkpoint sharing the same `responseMessage.id`.
+A conversation can ask another question after receiving an answer. Each pause and continuation fires `onTurnComplete`; inspect the message's tool states at each callback. The merged assistant message includes the answers collected so far.
 
-## Gotchas
+## Verify the flow
 
-- **Don't set an `execute` function on the HITL tool.** If it has one, `streamText` will call it immediately instead of handing control back.
-- **The frontend must use `sendAutomaticallyWhen`.** Without it, the user has to press Enter after answering — `addToolOutput` updates local state but doesn't fire a new turn by itself.
-- **Don't mutate `responseMessage` in `onTurnComplete`.** It's the captured snapshot. To add custom parts, use `chat.response.append()` in `onBeforeTurnComplete` (while the stream is open).
-- **Stop handling.** If the user stops the run while a pause is active (`chat.stop()` on the transport), `onTurnComplete` fires with `stopped: true` and `finishReason` reflecting the last successful step. Treat stopped paused turns the same as stopped normal turns.
+Send a request that needs clarification. Confirm that the question appears, choose an option, and check that the agent continues without another click on Send. The question's tool part should change from `input-available` to `output-available`.
+
+For a selection from search results, check that only the selected item is used. Choosing "None of these" must leave the action unexecuted. Reload a pending selection and confirm that the same candidates appear.
+
+For an approval tool, deny the first request and confirm that `execute` doesn't run. Approve a fresh request and confirm that it runs with the displayed inputs.
+
+## Common mistakes
+
+- Give question tools no `execute` function. For tools that execute after approval, keep `execute` and set `needsApproval`.
+- `addToolOutput` updates local state. Configure `sendAutomaticallyWhen` or explicitly send the updated message to start the next turn.
+- Only show interactive controls for pending calls, and disable them while a request is streaming or submitted.
+- To add custom response parts, use `chat.response.append()` in `onBeforeTurnComplete` while the stream is open. Treat `responseMessage` in `onTurnComplete` as a snapshot.
