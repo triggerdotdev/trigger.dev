@@ -5,6 +5,7 @@ import type {
   WebhookUrlSecretConfig,
   WebhookVerifierConfig,
 } from "@trigger.dev/core/v3";
+import { webhookProviderConfigs } from "@trigger.dev/core/webhooks";
 import { describe, expect, it } from "vitest";
 import { verify } from "../verification/index.js";
 import { signWithVerifierConfig } from "./index.js";
@@ -134,6 +135,159 @@ describe("signWithVerifierConfig round-trips through the verifier", () => {
       };
       expect(roundTrip(config, "the-shared-secret").ok, `placement=${placement}`).toBe(true);
     }
+  });
+
+  it("linear: refreshBodyTimestamp re-signs a recorded body as of now, so it verifies on the current clock", () => {
+    const linear = webhookProviderConfigs.linear.config();
+    const recorded = new TextEncoder().encode(
+      JSON.stringify({ action: "create", type: "Comment", webhookTimestamp: 1751380338084 })
+    );
+    const secret = "lin_wh_secret";
+
+    const stale = signWithVerifierConfig({
+      config: linear,
+      secret,
+      rawBody: recorded,
+      url: INGRESS_URL,
+      nowMs: NOW,
+    });
+    if (!stale.ok) throw new Error(stale.error);
+    const staleVerdict = verify(
+      { kind: "config", config: linear },
+      { rawBytes: stale.body, headers: stale.headers, url: stale.url, secret, nowMs: NOW }
+    );
+    expect(staleVerdict.ok).toBe(false);
+    if (!staleVerdict.ok) expect(staleVerdict.error).toMatch(/timestamp/i);
+
+    const fresh = signWithVerifierConfig({
+      config: linear,
+      secret,
+      rawBody: recorded,
+      url: INGRESS_URL,
+      nowMs: NOW,
+      refreshBodyTimestamp: true,
+    });
+    if (!fresh.ok) throw new Error(fresh.error);
+    const body = JSON.parse(new TextDecoder().decode(fresh.body));
+    expect(body.webhookTimestamp).toBe(NOW);
+    expect(body.type).toBe("Comment");
+    const freshVerdict = verify(
+      { kind: "config", config: linear },
+      { rawBytes: fresh.body, headers: fresh.headers, url: fresh.url, secret, nowMs: NOW }
+    );
+    expect(freshVerdict.ok).toBe(true);
+  });
+
+  it.each(["1751380338084", 1751380338084])(
+    "refreshBodyTimestamp preserves the existing scalar type: %j",
+    (timestamp) => {
+      const config = webhookProviderConfigs.linear.config();
+      const signed = signWithVerifierConfig({
+        config,
+        secret: "secret",
+        rawBody: new TextEncoder().encode(JSON.stringify({ webhookTimestamp: timestamp })),
+        url: INGRESS_URL,
+        nowMs: NOW,
+        refreshBodyTimestamp: true,
+      });
+      if (!signed.ok) throw new Error(signed.error);
+      expect(JSON.parse(new TextDecoder().decode(signed.body)).webhookTimestamp).toBe(
+        typeof timestamp === "string" ? String(NOW) : NOW
+      );
+      expect(
+        verify(
+          { kind: "config", config },
+          {
+            rawBytes: signed.body,
+            headers: signed.headers,
+            url: signed.url,
+            secret: "secret",
+            nowMs: NOW,
+          }
+        ).ok
+      ).toBe(true);
+    }
+  );
+
+  it.each([{}, { webhookTimestamp: null }, { webhookTimestamp: {} }])(
+    "refreshBodyTimestamp leaves missing or non-scalar timestamps unchanged: %j",
+    (body) => {
+      const rawBody = new TextEncoder().encode(JSON.stringify(body));
+      const signed = signWithVerifierConfig({
+        config: webhookProviderConfigs.linear.config(),
+        secret: "secret",
+        rawBody,
+        url: INGRESS_URL,
+        nowMs: NOW,
+        refreshBodyTimestamp: true,
+      });
+      if (!signed.ok) throw new Error(signed.error);
+      expect(signed.body).toEqual(rawBody);
+    }
+  );
+
+  it("linear: the idempotency key comes from the signed bytes, so a replay with a different delivery header dedupes", () => {
+    const linear = webhookProviderConfigs.linear.config();
+    const body = new TextEncoder().encode(
+      JSON.stringify({ action: "create", type: "Comment", webhookTimestamp: NOW })
+    );
+    const secret = "lin_wh_secret";
+    const signed = signWithVerifierConfig({
+      config: linear,
+      secret,
+      rawBody: body,
+      url: INGRESS_URL,
+      nowMs: NOW,
+    });
+    if (!signed.ok) throw new Error(signed.error);
+    const first = verify(
+      { kind: "config", config: linear },
+      {
+        rawBytes: signed.body,
+        headers: { ...signed.headers, "linear-delivery": "a" },
+        url: signed.url,
+        secret,
+        nowMs: NOW,
+      }
+    );
+    const replay = verify(
+      { kind: "config", config: linear },
+      {
+        rawBytes: signed.body,
+        headers: { ...signed.headers, "linear-delivery": "b" },
+        url: signed.url,
+        secret,
+        nowMs: NOW,
+      }
+    );
+    expect(first.ok && replay.ok).toBe(true);
+    if (first.ok && replay.ok) expect(replay.idempotencyKey).toBe(first.idempotencyKey);
+  });
+
+  it("refreshBodyTimestamp never writes through the prototype chain", () => {
+    const original = Object.prototype.toString;
+    const config: WebhookHmacConfig = {
+      ...webhookProviderConfigs.linear.config(),
+      timestamp: {
+        source: { from: "body", path: "__proto__.toString" },
+        unit: "milliseconds",
+        toleranceSeconds: 60,
+      },
+    } as WebhookHmacConfig;
+    const body = new TextEncoder().encode(JSON.stringify({ webhookTimestamp: 1 }));
+    const signed = signWithVerifierConfig({
+      config,
+      secret: "s",
+      rawBody: body,
+      url: INGRESS_URL,
+      nowMs: NOW,
+      refreshBodyTimestamp: true,
+    });
+    expect(signed.ok).toBe(true);
+    if (signed.ok)
+      expect(new TextDecoder().decode(signed.body)).toBe(JSON.stringify({ webhookTimestamp: 1 }));
+    expect(Object.prototype.toString).toBe(original);
+    expect({}.toString()).toBe("[object Object]");
   });
 
   it("url-secret query verifies", () => {

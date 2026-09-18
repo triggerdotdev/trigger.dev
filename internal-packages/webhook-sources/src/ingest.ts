@@ -11,7 +11,14 @@ import { type SampleRecord } from "./sampleRecord.js";
 
 const BASE = "https://samples.hookdeck.com";
 const SNAPSHOT_DATE = "2026-07";
-const PRESET_PROVIDERS = new Set(["stripe", "github", "svix", "square", "discord"]);
+const PRESET_PROVIDERS = new Set([
+  "stripe",
+  "github",
+  "svix",
+  "standard-webhooks",
+  "square",
+  "discord",
+]);
 
 const HEADER_DENYLIST = new Set([
   "content-type",

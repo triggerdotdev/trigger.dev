@@ -172,6 +172,7 @@ type DatasourceLabel =
   | "run-ops-writer"
   | "run-ops-replica"
   | "webhook-writer"
+  | "webhook-partitions"
   | "webhook-replica";
 
 function tagDatasource<T extends PrismaClient>(datasource: DatasourceLabel, client: T): T {
@@ -251,6 +252,26 @@ export const webhookPrisma: WebhookDatabase = singleton("webhookPrisma", () => {
         url: env.WEBHOOK_DATABASE_URL,
         clientType: "webhook-writer",
         connectionLimit: env.WEBHOOK_DATABASE_CONNECTION_LIMIT ?? env.DATABASE_CONNECTION_LIMIT,
+      })
+    )
+  );
+});
+
+/**
+ * Partition DDL can use a direct connection and an owner role while delivery queries use a
+ * pooled app role. Unset reuses the writer, preserving single-connection installations.
+ */
+export const webhookPartitionPrisma: WebhookDatabase = singleton("webhookPartitionPrisma", () => {
+  if (!env.WEBHOOK_DATABASE_DIRECT_URL) {
+    return webhookPrisma;
+  }
+  return captureInfrastructureErrors(
+    tagDatasource(
+      "webhook-partitions",
+      buildWriterClient({
+        url: env.WEBHOOK_DATABASE_DIRECT_URL,
+        clientType: "webhook-partitions",
+        connectionLimit: 1,
       })
     )
   );

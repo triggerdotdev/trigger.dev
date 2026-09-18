@@ -1,7 +1,7 @@
 import { type SampleRecord } from "../sampleRecord.js";
 
 /**
- * OpenAI samples. OpenAI signs webhooks with Svix, so `presetId: "svix"` keeps them under the
+ * OpenAI samples. OpenAI signs webhooks with Svix under the Standard Webhooks `webhook-*` header names, so `presetId: "standard-webhooks"` keeps them under the
  * round-trip guarantee. Every event is a thin envelope (`id`, `object: "event"`, `created_at`,
  * `type`, `data`) where `data` carries only the resource id (or, for the Realtime SIP event, the
  * call id + SIP headers) - integrators call back the relevant API with that id to fetch full state.
@@ -10,7 +10,7 @@ export const samples: SampleRecord[] = [
   {
     provider: "openai",
     providerLabel: "OpenAI",
-    presetId: "svix",
+    presetId: "standard-webhooks",
     eventType: "batch.completed",
     name: "Batch completed",
     description:
@@ -30,7 +30,7 @@ export const samples: SampleRecord[] = [
   {
     provider: "openai",
     providerLabel: "OpenAI",
-    presetId: "svix",
+    presetId: "standard-webhooks",
     eventType: "batch.failed",
     name: "Batch failed",
     description:
@@ -50,7 +50,7 @@ export const samples: SampleRecord[] = [
   {
     provider: "openai",
     providerLabel: "OpenAI",
-    presetId: "svix",
+    presetId: "standard-webhooks",
     eventType: "fine_tuning.job.succeeded",
     name: "Fine-tuning job succeeded",
     description:
@@ -70,7 +70,7 @@ export const samples: SampleRecord[] = [
   {
     provider: "openai",
     providerLabel: "OpenAI",
-    presetId: "svix",
+    presetId: "standard-webhooks",
     eventType: "response.completed",
     name: "Response completed",
     description:
@@ -90,7 +90,7 @@ export const samples: SampleRecord[] = [
   {
     provider: "openai",
     providerLabel: "OpenAI",
-    presetId: "svix",
+    presetId: "standard-webhooks",
     eventType: "eval.run.succeeded",
     name: "Eval run succeeded",
     description:
@@ -110,7 +110,7 @@ export const samples: SampleRecord[] = [
   {
     provider: "openai",
     providerLabel: "OpenAI",
-    presetId: "svix",
+    presetId: "standard-webhooks",
     eventType: "realtime.call.incoming",
     name: "Incoming Realtime SIP call",
     description:

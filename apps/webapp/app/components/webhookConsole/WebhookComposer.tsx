@@ -19,6 +19,7 @@ import {
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { cn } from "~/utils/cn";
+import type { WebhookHandshakeConfig } from "@trigger.dev/core/v3";
 import type { WebhookSendResult } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.webhooks.endpoints.$endpointParam.send";
 import { AIPayloadTabContent } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.test.tasks.$taskParam/AIPayloadTabContent";
 import { ReplaySourcePicker } from "./ReplaySourcePicker";
@@ -33,7 +34,7 @@ type WebhookComposerEndpoint = {
   ingressUrl: string;
   scheme: "hmac" | "shared-secret" | "url-secret" | "asymmetric";
   hasSigningSecret: boolean;
-  handshake: { matchPath: string; matchValue: string; respondPath: string } | null;
+  handshake: WebhookHandshakeConfig | null;
 };
 
 export type WebhookComposerProps = {
@@ -369,7 +370,7 @@ export function WebhookComposer({
               variant="tertiary/small"
               onClick={() => sendHandshake()}
               disabled={isSending || !endpoint}
-              tooltip="Send a signed handshake and assert the endpoint echoes the challenge"
+              tooltip="Send a signed handshake and check the endpoint answers it (echoing the challenge, or a bodiless status)"
             >
               Send handshake
             </Button>
@@ -477,12 +478,12 @@ function setPath(target: Record<string, unknown>, path: string, value: unknown) 
 }
 
 function buildHandshakeBody(
-  handshake: { matchPath: string; matchValue: string; respondPath: string },
+  handshake: WebhookHandshakeConfig,
   challenge: string
 ): Record<string, unknown> {
   const body: Record<string, unknown> = {};
   setPath(body, handshake.matchPath, handshake.matchValue);
-  setPath(body, handshake.respondPath, challenge);
+  if (handshake.respondPath) setPath(body, handshake.respondPath, challenge);
   return body;
 }
 
@@ -542,7 +543,8 @@ function ResultStrip({
   const status = result.success ? result.httpStatus : undefined;
   const handshake = result.success && result.handshake;
   const deduplicated = result.success && result.deduplicated;
-  const ok = result.success && status === 200 && !deduplicated;
+  const ok =
+    result.success && status !== undefined && status >= 200 && status < 300 && !deduplicated;
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
@@ -562,7 +564,7 @@ function ResultStrip({
             ? "Handshake"
             : deduplicated
               ? "Deduplicated"
-              : result.success
+              : result.httpStatus !== undefined
                 ? `HTTP ${result.httpStatus}`
                 : "Failed"}
         </span>
@@ -584,12 +586,15 @@ function ResultStrip({
           Identical payload was deduplicated to the original delivery. Vary it to send a new one.
         </Hint>
       ) : null}
-      <CodeBlock
-        code={result.success ? result.responseBody : result.error}
-        language="json"
-        showLineNumbers={false}
-        maxLines={8}
-      />
+      {!result.success ? <Hint>{result.error}</Hint> : null}
+      {result.responseBody !== undefined ? (
+        <CodeBlock
+          code={result.responseBody}
+          language="json"
+          showLineNumbers={false}
+          maxLines={8}
+        />
+      ) : null}
     </div>
   );
 }

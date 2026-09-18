@@ -5,7 +5,7 @@ export const entry: ProviderRegistryEntry = {
   label: "Replicate",
   category: "ai-platform",
   docsUrl: "https://replicate.com/docs/topics/webhooks/verify-webhook",
-  preset: "svix",
+  preset: "standard-webhooks",
   secretProvisioning: "provider",
   eventTypeSource: { from: "body", path: "status" },
   sampleSource: "handauthored",

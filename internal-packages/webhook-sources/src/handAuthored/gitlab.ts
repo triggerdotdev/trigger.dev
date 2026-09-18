@@ -6,14 +6,14 @@ import { type SampleRecord } from "../sampleRecord.js";
  * GitLab also offers an opt-in "signing token" mode that follows the Standard Webhooks spec exactly:
  * `webhook-id` / `webhook-timestamp` / `webhook-signature` headers, HMAC-SHA256 base64 over
  * `{id}.{timestamp}.{body}`, secret prefixed `whsec_`. That mode matches our `svix` preset, so these
- * samples are tagged `presetId: "svix"` and cover event types not already present in the hookdeck set
+ * samples are tagged `presetId: "standard-webhooks"` and cover event types not already present in the hookdeck set
  * (Merge Request Hook, Pipeline Hook, Job Hook).
  */
 export const samples: SampleRecord[] = [
   {
     provider: "gitlab",
     providerLabel: "GitLab",
-    presetId: "svix",
+    presetId: "standard-webhooks",
     eventType: "Merge Request Hook",
     name: "Merge request opened",
     description: "A merge request is opened against the target branch.",
@@ -106,7 +106,7 @@ export const samples: SampleRecord[] = [
   {
     provider: "gitlab",
     providerLabel: "GitLab",
-    presetId: "svix",
+    presetId: "standard-webhooks",
     eventType: "Pipeline Hook",
     name: "Pipeline succeeded",
     description: "A CI/CD pipeline finishes with an overall success status.",
@@ -194,7 +194,7 @@ export const samples: SampleRecord[] = [
   {
     provider: "gitlab",
     providerLabel: "GitLab",
-    presetId: "svix",
+    presetId: "standard-webhooks",
     eventType: "Job Hook",
     name: "Job created",
     description: "An individual CI/CD job within a pipeline changes state.",

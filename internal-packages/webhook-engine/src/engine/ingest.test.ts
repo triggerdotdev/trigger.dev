@@ -1,4 +1,4 @@
-import { createHmac, randomBytes } from "node:crypto";
+import { createHmac, generateKeyPairSync, randomBytes, sign as cryptoSign } from "node:crypto";
 import {
   containerTestWithIsolatedRedisNoClickhouse,
   createStandalonePostgresContainer,
@@ -148,10 +148,12 @@ function buildEngine(
     workerDisabled?: boolean;
     endpointCacheTtlMs?: number;
     resolveSigningSecret?: (key: string) => Promise<string | undefined>;
+    resolveVerifyToken?: (endpointId: string) => Promise<string | undefined>;
     deliverToSession?: DeliverWebhookToSessionCallback;
   }
 ) {
   return new WebhookEngine({
+    resolveVerifyToken: over?.resolveVerifyToken,
     prisma,
     redis: redisOptions,
     worker: { concurrency: 1, pollIntervalMs: 50, disabled: over?.workerDisabled },
@@ -336,12 +338,279 @@ containerTestWithIsolatedRedisNoClickhouse(
       });
 
       expect(result.outcome).toBe("handshake");
-      if (result.outcome === "handshake") expect(result.body).toBe("chal_xyz");
+      if (result.outcome === "handshake") {
+        expect(result.body).toBe("chal_xyz");
+        expect(result.status).toBe(200);
+      }
 
       const count = await prisma.webhookDelivery.count({
         where: { webhookEndpointId: endpoint.id },
       });
       expect(count).toBe(0);
+    } finally {
+      await engine.quit();
+    }
+  }
+);
+
+containerTestWithIsolatedRedisNoClickhouse(
+  "an Ed25519 PING handshake answers 204 with no body, events carry the declared 204/401 contract",
+  async ({ prisma, redisOptions }) => {
+    const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+    const der = publicKey.export({ type: "spki", format: "der" });
+    const rawPublicKeyHex = Buffer.from(der.subarray(der.length - 32)).toString("hex");
+    const endpoint = await prisma.webhookEndpoint.create({
+      data: {
+        friendlyId: WebhookEndpointId.generate().friendlyId,
+        opaqueId: `op_${randomBytes(12).toString("hex")}`,
+        organizationId: "org_test",
+        projectId: "proj_test",
+        runtimeEnvironmentId: "env_test",
+        environmentType: "PRODUCTION",
+        source: "discord",
+        handlerWebhookId: "handle-discord",
+        routingTarget: { type: "task", taskId: "handle-discord-task" },
+        verifierArtifact: {
+          kind: "preset",
+          preset: "discord",
+          config: {
+            scheme: "asymmetric",
+            algorithm: "ed25519",
+            encoding: "hex",
+            signatureHeader: "x-signature-ed25519",
+            signature: {},
+            timestamp: { source: { from: "header", name: "x-signature-timestamp" } },
+            signingString: { template: "{timestamp}{body}" },
+            publicKeyEncoding: "raw-hex",
+          },
+          handshake: { matchPath: "type", matchValue: "0", respondStatus: 204 },
+          response: { acceptedStatus: 204, rejectedStatus: 401 },
+        },
+        signingSecretKey: SECRET_KEY,
+        status: "ACTIVE",
+      },
+    });
+    const { triggerTask } = makeTriggerTaskStub();
+    const engine = buildEngine(prisma, redisOptions, triggerTask, {
+      resolveSigningSecret: async (key) => (key === SECRET_KEY ? rawPublicKeyHex : undefined),
+    });
+    const send = (body: string, tamper = false) => {
+      const ts = String(Math.floor(Date.now() / 1000));
+      const sig = cryptoSign(null, Buffer.from(`${ts}${body}`), privateKey).toString("hex");
+      return engine.ingest({
+        opaqueId: endpoint.opaqueId,
+        rawBytes: new TextEncoder().encode(body),
+        headers: {
+          "x-signature-ed25519": tamper ? sig.replace(/^../, "00") : sig,
+          "x-signature-timestamp": ts,
+        },
+        url: `https://api.example.com/webhooks/v1/ingest/${endpoint.opaqueId}`,
+      });
+    };
+
+    try {
+      const ping = await send(JSON.stringify({ version: 1, application_id: "app_1", type: 0 }));
+      expect(ping).toMatchObject({ outcome: "handshake", status: 204, body: "" });
+      expect(
+        await prisma.webhookDelivery.count({ where: { webhookEndpointId: endpoint.id } })
+      ).toBe(0);
+
+      const event = await send(
+        JSON.stringify({
+          version: 1,
+          application_id: "app_1",
+          type: 1,
+          event: { type: "APPLICATION_AUTHORIZED", timestamp: "2026-09-14T00:00:00Z", data: {} },
+        })
+      );
+      expect(event.outcome).toBe("accepted");
+      if (event.outcome === "accepted") {
+        expect(event.response).toEqual({ acceptedStatus: 204, rejectedStatus: 401 });
+      }
+      expect(
+        await prisma.webhookDelivery.count({ where: { webhookEndpointId: endpoint.id } })
+      ).toBe(1);
+
+      const bad = await send(JSON.stringify({ version: 1, type: 0 }), true);
+      expect(bad.outcome).toBe("verification_failed");
+      if (bad.outcome === "verification_failed") {
+        expect(bad.response).toEqual({ acceptedStatus: 204, rejectedStatus: 401 });
+      }
+    } finally {
+      await engine.quit();
+    }
+  }
+);
+
+containerTestWithIsolatedRedisNoClickhouse(
+  "a GET verification echoes the challenge when the token matches the secret, and records nothing",
+  async ({ prisma, redisOptions }) => {
+    const endpoint = await prisma.webhookEndpoint.create({
+      data: {
+        friendlyId: WebhookEndpointId.generate().friendlyId,
+        opaqueId: `op_${randomBytes(12).toString("hex")}`,
+        organizationId: "org_test",
+        projectId: "proj_test",
+        runtimeEnvironmentId: "env_test",
+        environmentType: "PRODUCTION",
+        source: "whatsapp",
+        handlerWebhookId: "handle-whatsapp",
+        routingTarget: { type: "task", taskId: "unused" },
+        verifierArtifact: {
+          kind: "config",
+          config: VERIFIER_CONFIG,
+          getHandshake: {
+            matchParam: "hub.mode",
+            matchValue: "subscribe",
+            tokenParam: "hub.verify_token",
+            challengeParam: "hub.challenge",
+          },
+        },
+        signingSecretKey: SECRET_KEY,
+        status: "ACTIVE",
+      },
+    });
+    const plain = await createEndpoint(prisma);
+    const { triggerTask } = makeTriggerTaskStub();
+    const VERIFY_TOKEN = "whvt_integration_verify_token";
+    const engine = buildEngine(prisma, redisOptions, triggerTask, {
+      resolveVerifyToken: async (endpointId) =>
+        endpointId === endpoint.id ? VERIFY_TOKEN : undefined,
+    });
+    const query = (over: Record<string, string> = {}) => ({
+      "hub.mode": "subscribe",
+      "hub.verify_token": VERIFY_TOKEN,
+      "hub.challenge": "1158201444",
+      ...over,
+    });
+
+    try {
+      expect(await engine.rejectUnsupportedMethod(endpoint.opaqueId)).toEqual({
+        outcome: "method_not_allowed",
+        allowedMethods: ["GET", "HEAD", "POST"],
+      });
+      expect(await engine.rejectUnsupportedMethod(plain.opaqueId)).toEqual({
+        outcome: "method_not_allowed",
+        allowedMethods: ["POST"],
+      });
+      expect(await engine.rejectUnsupportedMethod("op_nope")).toEqual({
+        outcome: "endpoint_not_found",
+      });
+
+      const ok = await engine.verifyGetHandshake({ opaqueId: endpoint.opaqueId, query: query() });
+      expect(ok).toMatchObject({ outcome: "handshake", status: 200, body: "1158201444" });
+
+      const badToken = await engine.verifyGetHandshake({
+        opaqueId: endpoint.opaqueId,
+        query: query({ "hub.verify_token": "guess" }),
+      });
+      expect(badToken.outcome).toBe("verification_failed");
+
+      const signingSecretIsNotAToken = await engine.verifyGetHandshake({
+        opaqueId: endpoint.opaqueId,
+        query: query({ "hub.verify_token": SECRET }),
+      });
+      expect(signingSecretIsNotAToken.outcome).toBe("verification_failed");
+
+      const noTokenEngine = buildEngine(prisma, redisOptions, triggerTask);
+      try {
+        const unset = await noTokenEngine.verifyGetHandshake({
+          opaqueId: endpoint.opaqueId,
+          query: query(),
+        });
+        expect(unset).toMatchObject({
+          outcome: "verification_failed",
+          error: "verify token not set",
+        });
+      } finally {
+        await noTokenEngine.quit();
+      }
+
+      const badMode = await engine.verifyGetHandshake({
+        opaqueId: endpoint.opaqueId,
+        query: query({ "hub.mode": "unsubscribe" }),
+      });
+      expect(badMode.outcome).toBe("verification_failed");
+
+      const noHandshake = await engine.verifyGetHandshake({
+        opaqueId: plain.opaqueId,
+        query: query(),
+      });
+      expect(noHandshake.outcome).toBe("method_not_allowed");
+
+      const noSigningSecret = await prisma.webhookEndpoint.create({
+        data: {
+          friendlyId: WebhookEndpointId.generate().friendlyId,
+          opaqueId: `op_${randomBytes(12).toString("hex")}`,
+          organizationId: "org_test",
+          projectId: "proj_test",
+          runtimeEnvironmentId: "env_test",
+          environmentType: "PRODUCTION",
+          source: "whatsapp",
+          handlerWebhookId: "handle-whatsapp-fresh",
+          routingTarget: { type: "task", taskId: "unused" },
+          verifierArtifact: {
+            kind: "config",
+            config: VERIFIER_CONFIG,
+            getHandshake: { tokenParam: "hub.verify_token", challengeParam: "hub.challenge" },
+          },
+          signingSecretKey: null,
+          status: "ACTIVE",
+        },
+      });
+      expect(await engine.rejectUnsupportedMethod(noSigningSecret.opaqueId)).toEqual({
+        outcome: "method_not_allowed",
+        allowedMethods: ["GET", "HEAD", "POST"],
+      });
+      await prisma.webhookEndpoint.update({
+        where: { id: plain.id },
+        data: { status: "INACTIVE" },
+      });
+      expect(await engine.rejectUnsupportedMethod(plain.opaqueId)).toEqual({
+        outcome: "endpoint_inactive",
+      });
+
+      const freshEngine = buildEngine(prisma, redisOptions, triggerTask, {
+        resolveVerifyToken: async (endpointId) =>
+          endpointId === noSigningSecret.id ? VERIFY_TOKEN : undefined,
+      });
+      try {
+        const beforeSecret = await freshEngine.verifyGetHandshake({
+          opaqueId: noSigningSecret.opaqueId,
+          query: query(),
+        });
+        expect(beforeSecret).toMatchObject({
+          outcome: "handshake",
+          status: 200,
+          body: "1158201444",
+        });
+      } finally {
+        await freshEngine.quit();
+      }
+
+      const unknown = await engine.verifyGetHandshake({ opaqueId: "op_nope", query: query() });
+      expect(unknown.outcome).toBe("endpoint_not_found");
+
+      await prisma.webhookEndpoint.update({
+        where: { id: plain.id },
+        data: { status: "ACTIVE", verifierArtifact: { kind: "invalid" } },
+      });
+      expect(await engine.rejectUnsupportedMethod(plain.opaqueId)).toEqual({
+        outcome: "method_not_allowed",
+        allowedMethods: ["POST"],
+      });
+      expect(await engine.verifyGetHandshake({ opaqueId: plain.opaqueId, query: query() })).toEqual(
+        {
+          outcome: "verification_failed",
+          error: "corrupt verifier artifact",
+        }
+      );
+
+      expect(
+        await prisma.webhookDelivery.count({
+          where: { webhookEndpointId: { in: [endpoint.id, plain.id] } },
+        })
+      ).toBe(0);
     } finally {
       await engine.quit();
     }
@@ -807,6 +1076,41 @@ containerTestWithIsolatedRedisNoClickhouse(
         where: { id: simulated.deliveryId },
       });
       expect(delivery?.status).toBe("FILTERED");
+      expect(calls).toHaveLength(0);
+    } finally {
+      await engine.quit();
+    }
+  }
+);
+
+containerTestWithIsolatedRedisNoClickhouse(
+  "missing signing credentials preserve the endpoint response contract without recording deliveries",
+  async ({ prisma, redisOptions }) => {
+    const endpoint = await createEndpoint(prisma);
+    const { triggerTask, calls } = makeTriggerTaskStub();
+    const engine = buildEngine(prisma, redisOptions, triggerTask, { workerDisabled: true });
+    try {
+      for (const signingSecretKey of [null, "unresolved-secret-key"]) {
+        for (const rejectedStatus of [undefined, 400, 401, 403]) {
+          const response = rejectedStatus === undefined ? undefined : { rejectedStatus };
+          await prisma.webhookEndpoint.update({
+            where: { id: endpoint.id },
+            data: {
+              signingSecretKey,
+              verifierArtifact: {
+                kind: "config",
+                config: VERIFIER_CONFIG,
+                ...(response ? { response } : {}),
+              },
+            },
+          });
+          expect(await engine.ingest(signedInput("missing-secret", endpoint.opaqueId))).toEqual({
+            outcome: "secret_missing",
+            response,
+          });
+        }
+      }
+      expect(await prisma.webhookDelivery.count()).toBe(0);
       expect(calls).toHaveLength(0);
     } finally {
       await engine.quit();

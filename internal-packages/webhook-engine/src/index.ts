@@ -1,3 +1,4 @@
+export { bootstrapPartitions } from "./engine/partitions.js";
 export { WebhookEngine } from "./engine/index.js";
 export { parseFilter, FilterParseError } from "./engine/filter/index.js";
 export { signWithVerifierConfig } from "./engine/signing/index.js";

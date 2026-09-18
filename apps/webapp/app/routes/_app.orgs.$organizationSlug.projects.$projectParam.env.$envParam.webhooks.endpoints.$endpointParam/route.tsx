@@ -51,6 +51,7 @@ import { docsPath, EnvironmentParamSchema, v3WebhookTaskPath } from "~/utils/pat
 import { parseFiniteInt } from "~/utils/searchParams";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
 import { flag } from "~/v3/featureFlags.server";
+import { webhookVerifyTokenKey } from "~/v3/webhookEngine.server";
 
 const EndpointParamSchema = EnvironmentParamSchema.extend({
   endpointParam: z.string(),
@@ -112,6 +113,19 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const routing = WebhookRoutingTarget.safeParse(endpoint.routingTarget);
   const verifier = WebhookVerifierArtifact.safeParse(endpoint.verifierArtifact);
 
+  const getHandshake =
+    verifier.success && "getHandshake" in verifier.data ? verifier.data.getHandshake : undefined;
+  const hasVerifyToken = getHandshake
+    ? Boolean(
+        (
+          await getSecretStore("DATABASE", { prismaClient: prisma }).getSecret(
+            VerifyTokenSchema,
+            webhookVerifyTokenKey(endpoint.id)
+          )
+        )?.token
+      )
+    : false;
+
   const url = new URL(request.url);
   const periodParam = url.searchParams.get("period") ?? undefined;
   const from = parseFiniteInt(url.searchParams.get("from"));
@@ -142,6 +156,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     ingestUrl,
     routing: routing.success ? routing.data : null,
     verifier: verifier.success ? verifier.data : null,
+    hasVerifyToken,
     deliveriesList,
   });
 };
@@ -150,6 +165,8 @@ const SetSecretSchema = z.object({
   intent: z.literal("set-secret"),
   secret: z.string().trim().min(1, "A signing secret is required"),
 });
+
+const VerifyTokenSchema = z.object({ token: z.string() });
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
   const { project, environment, endpointParam } = await requireWebhookAccess(request, params);
@@ -197,6 +214,21 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     return { success: true as const, generatedSecret: secret };
   }
 
+  if (intent === "generate-verify-token") {
+    const verifier = WebhookVerifierArtifact.safeParse(endpoint.verifierArtifact);
+    const getHandshake =
+      verifier.success && "getHandshake" in verifier.data ? verifier.data.getHandshake : undefined;
+    if (!getHandshake) {
+      return {
+        success: false as const,
+        error: "This endpoint's source does not verify its URL with a GET request.",
+      };
+    }
+    const token = `whvt_${randomBytes(24).toString("hex")}`;
+    await secretStore.setSecret(webhookVerifyTokenKey(endpoint.id), { token });
+    return { success: true as const, generatedVerifyToken: token };
+  }
+
   // Set/Rotate (paste a provider-supplied secret).
   const submission = SetSecretSchema.safeParse(Object.fromEntries(formData));
   if (!submission.success) {
@@ -212,7 +244,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 };
 
 export default function Page() {
-  const { endpoint, ingestUrl, routing, verifier, deliveriesList } =
+  const { endpoint, ingestUrl, routing, verifier, hasVerifyToken, deliveriesList } =
     useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
@@ -297,6 +329,7 @@ export default function Page() {
               ingestUrl={ingestUrl}
               routing={routing}
               verifier={verifier}
+              hasVerifyToken={hasVerifyToken}
               handlerPath={handlerPath}
             />
           </ResizablePanel>
@@ -313,10 +346,12 @@ function EndpointSidebar({
   ingestUrl,
   routing,
   verifier,
+  hasVerifyToken,
   handlerPath,
 }: {
   endpoint: WebhookEndpointDetail;
   ingestUrl: string;
+  hasVerifyToken: boolean;
   routing: LoaderData["routing"];
   verifier: LoaderData["verifier"];
   handlerPath: string;
@@ -336,6 +371,8 @@ function EndpointSidebar({
   const canGenerate =
     scheme !== "asymmetric" &&
     (endpoint.secretProvisioning === "integrator" || endpoint.secretProvisioning === "either");
+  const getHandshake =
+    verifier && verifier.kind !== "bundle" ? (verifier.getHandshake ?? undefined) : undefined;
 
   return (
     <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
@@ -381,6 +418,30 @@ function EndpointSidebar({
                 </div>
               </Property.Value>
             </Property.Item>
+            {getHandshake ? (
+              <Property.Item>
+                <Property.Label>Verify token</Property.Label>
+                <Property.Value>
+                  <div className="flex flex-col items-start gap-1.5">
+                    {hasVerifyToken ? (
+                      <span className="flex items-center gap-1.5">
+                        <span className="size-2 rounded-full bg-success" />
+                        <span>Set</span>
+                      </span>
+                    ) : (
+                      <span className="text-warning">
+                        Not set, the provider cannot verify this URL yet
+                      </span>
+                    )}
+                    <GenerateVerifyTokenDialog hasVerifyToken={hasVerifyToken} />
+                    <Hint>
+                      The provider sends a GET with <code>{getHandshake.tokenParam}</code> when you
+                      save the URL; it must carry this token.
+                    </Hint>
+                  </div>
+                </Property.Value>
+              </Property.Item>
+            ) : null}
           </Property.Table>
           <ProviderSetup verifier={verifier} source={endpoint.source} />
         </section>
@@ -723,6 +784,109 @@ function GenerateSecretDialog({ hasSigningSecret }: { hasSigningSecret: boolean 
               </Button>
               <Button type="submit" variant="primary/small" disabled={isSubmitting}>
                 {isSubmitting ? "Generating…" : "Generate secret"}
+              </Button>
+            </div>
+          </fetcher.Form>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * The GET verification token (Meta's `hub.verify_token`) is its own credential, separate from the
+ * signing secret: minted server-side, stored encrypted, revealed once for the provider's Verify
+ * Token field. Regenerating replaces it and the URL must be re-verified in the provider.
+ */
+function GenerateVerifyTokenDialog({ hasVerifyToken }: { hasVerifyToken: boolean }) {
+  const fetcher = useFetcher<typeof action>();
+  const [open, setOpen] = useState(false);
+  const [dismissedToken, setDismissedToken] = useState<string | undefined>(undefined);
+  const [attempted, setAttempted] = useState(false);
+  const isSubmitting = fetcher.state !== "idle";
+
+  /**
+   * The fetcher keeps its last action data for the life of the component, so closing the dialog
+   * remembers which token was already revealed. A reopen then starts on the form again, and only a
+   * newly generated token (which never repeats) is shown.
+   */
+  const latestToken =
+    fetcher.data && "generatedVerifyToken" in fetcher.data
+      ? fetcher.data.generatedVerifyToken
+      : undefined;
+  const generated =
+    latestToken !== undefined && latestToken !== dismissedToken ? latestToken : undefined;
+
+  const onOpenChange = (next: boolean) => {
+    setOpen(next);
+    if (!next) {
+      setDismissedToken(latestToken);
+      setAttempted(false);
+    }
+  };
+  const failure =
+    attempted && fetcher.state === "idle" && fetcher.data && !fetcher.data.success
+      ? fetcher.data
+      : undefined;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogTrigger asChild>
+        <Button variant="secondary/small" LeadingIcon={SparklesIcon}>
+          {hasVerifyToken ? "Regenerate verify token" : "Generate verify token"}
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          {hasVerifyToken ? "Regenerate verify token" : "Generate verify token"}
+        </DialogHeader>
+        {generated ? (
+          <div className="flex flex-col gap-3 pt-2">
+            <Paragraph variant="small" className="text-warning">
+              Copy this now. It won't be shown again.
+            </Paragraph>
+            <ClipboardField value={generated} variant="secondary/medium" />
+            <Hint>
+              Paste this into the provider's Verify Token field when you save the webhook URL. It is
+              separate from the signing secret.
+            </Hint>
+            <div className="flex justify-end">
+              <Button type="button" variant="primary/small" onClick={() => onOpenChange(false)}>
+                Done
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <fetcher.Form
+            method="post"
+            className="flex flex-col gap-3 pt-2"
+            onSubmit={() => setAttempted(true)}
+          >
+            <input type="hidden" name="intent" value="generate-verify-token" />
+            <Paragraph variant="small" className="text-text-dimmed">
+              The provider verifies this URL with a GET request carrying a verify token. Trigger.dev
+              generates the token, stores it encrypted, and shows it once so you can paste it into
+              the provider.
+              {hasVerifyToken
+                ? " Regenerating replaces the current token; re-verify the URL in the provider afterwards."
+                : ""}
+            </Paragraph>
+            {failure ? (
+              <Paragraph variant="small" className="text-error">
+                {failure.error}
+              </Paragraph>
+            ) : null}
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="tertiary/small"
+                onClick={() => onOpenChange(false)}
+                disabled={isSubmitting}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary/small" disabled={isSubmitting}>
+                {isSubmitting ? "Generating…" : "Generate verify token"}
               </Button>
             </div>
           </fetcher.Form>

@@ -376,6 +376,8 @@ const EnvironmentSchema = z
     // Webhook feature data-plane DB (WebhookEndpoint + WebhookDelivery). Unset -> the webhook
     // clients reuse the main prisma / $replica, so this is connection-neutral until you split.
     WEBHOOK_DATABASE_URL: z.string().optional(),
+    // Direct connection with ownership privileges for bootstrap and partition maintenance.
+    WEBHOOK_DATABASE_DIRECT_URL: z.string().optional(),
     WEBHOOK_DATABASE_READ_REPLICA_URL: z.string().optional(),
     WEBHOOK_DATABASE_CONNECTION_LIMIT: z.coerce.number().int().optional(),
     SESSION_SECRET: z.string().min(1).refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE),

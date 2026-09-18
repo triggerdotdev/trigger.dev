@@ -12,7 +12,7 @@ type Row = [
   docsUrl: string,
 ];
 
-const PRESETS = new Set(["stripe", "github", "svix", "square", "discord"]);
+const PRESETS = new Set(["stripe", "github", "svix", "standard-webhooks", "square", "discord"]);
 
 const DOD: Record<string, string[]> = {
   "first-class": ["registryEntry", "samples", "roundTrip", "producer"],
@@ -24,7 +24,7 @@ const rows: Row[] = [
     "openai",
     "OpenAI",
     "ai-platform",
-    "svix",
+    "standard-webhooks",
     "standard-webhooks",
     "high",
     "handauthored",
@@ -44,7 +44,7 @@ const rows: Row[] = [
     "replicate",
     "Replicate",
     "ai-platform",
-    "svix",
+    "standard-webhooks",
     "standard-webhooks",
     "medium",
     "handauthored",
@@ -54,7 +54,7 @@ const rows: Row[] = [
     "recall-ai",
     "Recall.ai",
     "ai-platform",
-    "svix",
+    "standard-webhooks",
     "standard-webhooks",
     "medium",
     "handauthored",
@@ -94,7 +94,7 @@ const rows: Row[] = [
     "gitlab",
     "GitLab",
     "source-control",
-    "svix",
+    "standard-webhooks",
     "standard-webhooks",
     "high",
     "hookdeck",

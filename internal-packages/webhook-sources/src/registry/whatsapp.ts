@@ -14,7 +14,7 @@ export const entry: ProviderRegistryEntry = {
   category: "communication",
   docsUrl: "https://developers.facebook.com/docs/whatsapp/cloud-api/guides/set-up-webhooks/",
   preset: "github",
-  secretProvisioning: "integrator",
+  secretProvisioning: "provider",
   eventTypeSource: { from: "body", path: "entry.0.changes.0.field" },
   sampleSource: "handauthored",
 };

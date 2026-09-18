@@ -69,21 +69,58 @@ export async function partitionExists(prisma: WebhookDatabase, name: string): Pr
   return r[0]?.oid != null;
 }
 
+/** A same-named table is usable only if it is attached with this exact UTC range. */
+async function assertPartitionMatches(prisma: WebhookDatabase, b: Bucket): Promise<void> {
+  const [partition] = await prisma.$queryRawUnsafe<{ valid: boolean }[]>(
+    `SELECT EXISTS (
+      SELECT 1 FROM pg_class c
+      JOIN pg_inherits i ON i.inhrelid = c.oid
+      WHERE c.oid = to_regclass($1)
+        AND i.inhparent = to_regclass($2)
+        AND NOT i.inhdetachpending
+        AND pg_get_expr(c.relpartbound, c.oid) =
+          format('FOR VALUES FROM (%L) TO (%L)', $3::timestamp, $4::timestamp)
+    ) AS valid`,
+    `"${safeName(b.name)}"`,
+    PARENT_DDL,
+    b.lo.toISOString(),
+    b.hi.toISOString()
+  );
+  if (!partition?.valid) {
+    throw new Error(`${b.name} is not attached to ${PARENT_NAME} with the expected UTC bounds`);
+  }
+}
+
 /**
  * Create one dated child as a true PARTITION OF the parent (inherits the parent indexes, no
  * validating scan). There is no DEFAULT partition, so the lookahead window MUST stay ahead of
  * ingest: an insert whose createdAt has no matching child errors instead of landing in a default.
+ *
+ * Safe to run when the cron overlaps an admin bootstrap or another maintenance pass:
+ * the winner's CREATE succeeds and reports "created"; a loser's CREATE errors, is re-checked against
+ * the catalog and reported as "exists" instead of failing the whole ensure pass.
  */
 export async function createPartition(
   prisma: WebhookDatabase,
   b: Bucket
 ): Promise<"created" | "exists"> {
-  if (await partitionExists(prisma, b.name)) return "exists";
+  if (await partitionExists(prisma, b.name)) {
+    await assertPartitionMatches(prisma, b);
+    return "exists";
+  }
   const name = `"${safeName(b.name)}"`;
-  await prisma.$executeRawUnsafe(
-    `CREATE TABLE ${name} PARTITION OF ${PARENT_DDL} ` +
-      `FOR VALUES FROM ('${b.lo.toISOString()}') TO ('${b.hi.toISOString()}')`
-  );
+  try {
+    await prisma.$executeRawUnsafe(
+      `CREATE TABLE ${name} PARTITION OF ${PARENT_DDL} ` +
+        `FOR VALUES FROM ('${b.lo.toISOString()}') TO ('${b.hi.toISOString()}')`
+    );
+  } catch (error) {
+    if (await partitionExists(prisma, b.name)) {
+      await assertPartitionMatches(prisma, b);
+      return "exists";
+    }
+    throw error;
+  }
   return "created";
 }
 
@@ -155,21 +192,36 @@ export type EnsureResult = {
   deferred: string[]; // children we couldn't detach/drop this run; retried next run
 };
 
-export async function ensurePartitions(
+/** Create the initial window without running retention. Safe to repeat before enabling ingress. */
+export async function bootstrapPartitions(
   prisma: WebhookDatabase,
   opts: EnsureOptions
-): Promise<EnsureResult> {
+): Promise<Pick<EnsureResult, "created" | "existing">> {
   const today = floorDayUTC(opts.now);
   const start = addDays(today, -opts.retentionDays);
   const end = addDays(today, opts.lookaheadDays);
 
-  const result: EnsureResult = { created: [], dropped: [], existing: [], deferred: [] };
+  const result: Pick<EnsureResult, "created" | "existing"> = { created: [], existing: [] };
 
   for (const b of dayBuckets(start, end)) {
     const outcome = await createPartition(prisma, b);
     if (outcome === "created") result.created.push(b.name);
     else result.existing.push(b.name);
   }
+
+  return result;
+}
+
+export async function ensurePartitions(
+  prisma: WebhookDatabase,
+  opts: EnsureOptions
+): Promise<EnsureResult> {
+  const start = addDays(floorDayUTC(opts.now), -opts.retentionDays);
+  const result: EnsureResult = {
+    ...(await bootstrapPartitions(prisma, opts)),
+    dropped: [],
+    deferred: [],
+  };
 
   // Finish any detach a prior run left half-done, then concurrently detach + drop each dated child
   // whose whole range is older than the retention window. CONCURRENTLY keeps ingest unblocked; a
