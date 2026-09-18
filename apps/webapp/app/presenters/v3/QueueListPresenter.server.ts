@@ -7,9 +7,16 @@ import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstan
 import { logger } from "~/services/logger.server";
 import { engine } from "~/v3/runEngine.server";
 import { BasePresenter } from "./basePresenter.server";
-import { toQueueItem } from "./QueueRetrievePresenter.server";
+import { toQueueItem, toQueueLimits } from "./QueueRetrievePresenter.server";
+import type { QueueLimits } from "~/components/queues/queue-limits";
 
-type QueueListEngine = Pick<RunEngine, "lengthOfQueues" | "currentConcurrencyOfQueues">;
+type QueueListEngine = Pick<
+  RunEngine,
+  | "lengthOfQueues"
+  | "currentConcurrencyOfQueues"
+  | "totalConcurrencyOfQueues"
+  | "gateQueuedCountOfQueues"
+>;
 
 export const QUEUE_LIST_DEFAULT_ITEMS_PER_PAGE = 25;
 const MAX_ITEMS_PER_PAGE = 100;
@@ -34,8 +41,13 @@ const queueListSelect = {
   concurrencyLimitOverriddenAt: true,
   concurrencyLimitOverriddenBy: true,
   concurrencyLimitOverridePercent: true,
+  totalConcurrencyLimit: true,
+  totalConcurrencyLimitBase: true,
+  totalConcurrencyLimitOverriddenAt: true,
   type: true,
   paused: true,
+  role: true,
+  concurrencyVersion: true,
 } satisfies Prisma.TaskQueueSelect;
 
 type QueueListRow = Prisma.TaskQueueGetPayload<{ select: typeof queueListSelect }>;
@@ -44,6 +56,12 @@ type QueueListRow = Prisma.TaskQueueGetPayload<{ select: typeof queueListSelect 
 // schema (that's a public contract), so we surface it as an extra field on the list item.
 type QueueListItem = ReturnType<typeof toQueueItem> & {
   concurrencyLimitOverridePercent: number | null;
+  /** "queue" rows wait and order runs; "limit" rows are named concurrency limits. */
+  kind: "queue" | "limit";
+  /** V2 rows hold the new perKey/total vocabulary in their limit columns. */
+  concurrencyVersion: "V1" | "V2";
+  /** The row's configured bounds, dashboard-only (the public shape hides them on V2). */
+  limits: QueueLimits;
 };
 
 type QueueListPagination =
@@ -64,20 +82,48 @@ function formatClickhouseDateTime(date: Date): string {
 function buildQueueListWhere(
   environmentId: string,
   query: string | undefined,
-  type: "task" | "custom" | undefined
+  type: "task" | "custom" | undefined,
+  includeLimits: boolean
 ): Prisma.TaskQueueWhereInput {
   const trimmedQuery = query?.trim();
 
-  return {
+  const common = {
     runtimeEnvironmentId: environmentId,
-    version: "V2",
+    version: "V2" as const,
     name: trimmedQuery
       ? {
           contains: trimmedQuery,
-          mode: "insensitive",
+          mode: "insensitive" as const,
         }
       : undefined,
     type: type ? typeToDBQueueType[type] : undefined,
+  };
+
+  /** Only the dashboard interleaves named limits, and the type filter names queue
+   * shapes, so either condition scopes the list to queue rows; the public queues
+   * API always stays queue-only. Boundless rows in the anonymous limit/task/
+   * namespace are retired (their inline limit moved onto the task's own queue)
+   * and stay hidden; boundless NAMED limits are real uncapped rows and show. */
+  if (includeLimits && !type) {
+    return {
+      ...common,
+      OR: [
+        { role: "QUEUE" as const },
+        {
+          role: "LIMIT" as const,
+          OR: [
+            { name: { not: { startsWith: "limit/task/" } } },
+            { concurrencyLimit: { not: null } },
+            { totalConcurrencyLimit: { not: null } },
+          ],
+        },
+      ],
+    };
+  }
+
+  return {
+    ...common,
+    role: "QUEUE" as const,
   };
 }
 
@@ -102,6 +148,7 @@ export class QueueListPresenter extends BasePresenter {
     page,
     type,
     sort = "name",
+    includeLimits = false,
   }: {
     environment: AuthenticatedEnvironment;
     query?: string;
@@ -109,13 +156,21 @@ export class QueueListPresenter extends BasePresenter {
     perPage?: number;
     type?: "task" | "custom";
     sort?: QueueListSort;
+    includeLimits?: boolean;
   }): Promise<QueueListResult> {
     const hasFilters = Boolean(query?.trim()) || type !== undefined;
 
     if (sort !== "name") {
       // Ranking is additive: any failure or unsupported input falls back to name order.
       try {
-        const ranked = await this.getRankedQueues(environment, query, page, type, sort);
+        const ranked = await this.getRankedQueues(
+          environment,
+          query,
+          page,
+          type,
+          sort,
+          includeLimits
+        );
         if (ranked) {
           return ranked;
         }
@@ -125,7 +180,13 @@ export class QueueListPresenter extends BasePresenter {
     }
 
     if (hasFilters) {
-      const { queues, hasMore } = await this.getFilteredQueues(environment, query, page, type);
+      const { queues, hasMore } = await this.getFilteredQueues(
+        environment,
+        query,
+        page,
+        type,
+        includeLimits
+      );
 
       return {
         queues,
@@ -139,11 +200,11 @@ export class QueueListPresenter extends BasePresenter {
     }
 
     const totalQueues = await this._replica.taskQueue.count({
-      where: buildQueueListWhere(environment.id, query, type),
+      where: buildQueueListWhere(environment.id, query, type, includeLimits),
     });
 
     return {
-      queues: await this.getUnfilteredQueues(environment, page, type),
+      queues: await this.getUnfilteredQueues(environment, page, type, includeLimits),
       pagination: {
         mode: "unfiltered" as const,
         currentPage: page,
@@ -164,7 +225,8 @@ export class QueueListPresenter extends BasePresenter {
     query: string | undefined,
     page: number,
     type: "task" | "custom" | undefined,
-    sort: Exclude<QueueListSort, "name">
+    sort: Exclude<QueueListSort, "name">,
+    includeLimits: boolean
   ) {
     if (type !== undefined) {
       return null;
@@ -213,7 +275,7 @@ export class QueueListPresenter extends BasePresenter {
       return null;
     }
 
-    const where = buildQueueListWhere(environment.id, query, type);
+    const where = buildQueueListWhere(environment.id, query, type, includeLimits);
     const totalQueues = await this._replica.taskQueue.count({ where });
 
     let rankedPageQueues: QueueListRow[] = [];
@@ -284,10 +346,11 @@ export class QueueListPresenter extends BasePresenter {
     environment: AuthenticatedEnvironment,
     query: string | undefined,
     page: number,
-    type: "task" | "custom" | undefined
+    type: "task" | "custom" | undefined,
+    includeLimits: boolean
   ) {
     const queues = await this._replica.taskQueue.findMany({
-      where: buildQueueListWhere(environment.id, query, type),
+      where: buildQueueListWhere(environment.id, query, type, includeLimits),
       select: queueListSelect,
       orderBy: {
         orderableName: "asc",
@@ -307,10 +370,11 @@ export class QueueListPresenter extends BasePresenter {
   private async getUnfilteredQueues(
     environment: AuthenticatedEnvironment,
     page: number,
-    type: "task" | "custom" | undefined
+    type: "task" | "custom" | undefined,
+    includeLimits: boolean
   ) {
     const queues = await this._replica.taskQueue.findMany({
-      where: buildQueueListWhere(environment.id, undefined, type),
+      where: buildQueueListWhere(environment.id, undefined, type, includeLimits),
       select: queueListSelect,
       orderBy: {
         orderableName: "asc",
@@ -333,20 +397,49 @@ export class QueueListPresenter extends BasePresenter {
       concurrencyLimitOverriddenAt: Date | null;
       concurrencyLimitOverriddenBy: string | null;
       concurrencyLimitOverridePercent: Prisma.Decimal | null;
+      totalConcurrencyLimit: number | null;
+      totalConcurrencyLimitBase: number | null;
+      totalConcurrencyLimitOverriddenAt: Date | null;
       type: TaskQueueType;
       paused: boolean;
+      role: "QUEUE" | "LIMIT";
+      concurrencyVersion: "V1" | "V2";
     }[]
   ): Promise<QueueListItem[]> {
-    const [queuedByQueue, runningByQueue] = await Promise.all([
-      this.engineClient.lengthOfQueues(
-        environment,
-        queues.map((q) => q.name)
-      ),
-      this.engineClient.currentConcurrencyOfQueues(
-        environment,
-        queues.map((q) => q.name)
-      ),
-    ]);
+    const queueRows = queues.filter((q) => q.role === "QUEUE");
+    const limitRows = queues.filter((q) => q.role === "LIMIT");
+    /**
+     * Queue rows read their zset length and home concurrency; limit rows read the
+     * group set (every holder, keyed or keyless) as running and the per-gate queued
+     * counter as queued. The group read also serves queue rows with a total cap.
+     */
+    const rowsWithGroupRead = [
+      ...queueRows.filter((q) => q.totalConcurrencyLimit !== null),
+      ...limitRows,
+    ];
+    const [queuedByQueue, runningByQueue, totalRunningByQueue, gateQueuedByQueue] =
+      await Promise.all([
+        this.engineClient.lengthOfQueues(
+          environment,
+          queueRows.map((q) => q.name)
+        ),
+        this.engineClient.currentConcurrencyOfQueues(
+          environment,
+          queueRows.map((q) => q.name)
+        ),
+        rowsWithGroupRead.length > 0
+          ? this.engineClient.totalConcurrencyOfQueues(
+              environment,
+              rowsWithGroupRead.map((q) => q.name)
+            )
+          : Promise.resolve({} as Record<string, number>),
+        limitRows.length > 0
+          ? this.engineClient.gateQueuedCountOfQueues(
+              environment,
+              limitRows.map((q) => q.name)
+            )
+          : Promise.resolve({} as Record<string, number>),
+      ]);
 
     // Manually "join" the overridden users because there is no way to implement the relationship
     // in prisma without adding a foreign key constraint
@@ -359,26 +452,45 @@ export class QueueListPresenter extends BasePresenter {
 
     const overriddenByMap = new Map(overriddenByUsers.map((u) => [u.id, u]));
 
-    return queues.map((queue) => ({
-      ...toQueueItem({
-        friendlyId: queue.friendlyId,
-        name: queue.name,
-        type: queue.type,
-        running: runningByQueue[queue.name] ?? 0,
-        queued: queuedByQueue[queue.name] ?? 0,
-        concurrencyLimit: queue.concurrencyLimit ?? null,
-        concurrencyLimitBase: queue.concurrencyLimitBase ?? null,
-        concurrencyLimitOverriddenAt: queue.concurrencyLimitOverriddenAt ?? null,
-        concurrencyLimitOverriddenBy: queue.concurrencyLimitOverriddenBy
-          ? (overriddenByMap.get(queue.concurrencyLimitOverriddenBy) ?? null)
-          : null,
-        paused: queue.paused,
-      }),
-      // Prisma returns Decimal; the client only needs a plain number (null for absolute overrides).
-      concurrencyLimitOverridePercent:
-        queue.concurrencyLimitOverridePercent !== null
-          ? Number(queue.concurrencyLimitOverridePercent)
-          : null,
-    }));
+    return queues.map((queue) => {
+      const overriddenByUser = queue.concurrencyLimitOverriddenBy
+        ? (overriddenByMap.get(queue.concurrencyLimitOverriddenBy) ?? null)
+        : null;
+      return {
+        ...toQueueItem({
+          friendlyId: queue.friendlyId,
+          name: queue.name,
+          type: queue.type,
+          version: queue.concurrencyVersion,
+          running:
+            queue.role === "LIMIT"
+              ? (totalRunningByQueue[queue.name] ?? 0)
+              : (runningByQueue[queue.name] ?? 0),
+          queued:
+            queue.role === "LIMIT"
+              ? (gateQueuedByQueue[queue.name] ?? 0)
+              : (queuedByQueue[queue.name] ?? 0),
+          concurrencyLimit: queue.concurrencyLimit ?? null,
+          concurrencyLimitBase: queue.concurrencyLimitBase ?? null,
+          concurrencyLimitOverriddenAt: queue.concurrencyLimitOverriddenAt ?? null,
+          concurrencyLimitOverriddenBy: overriddenByUser,
+          paused: queue.paused,
+        }),
+        // Prisma returns Decimal; the client only needs a plain number (null for absolute overrides).
+        concurrencyLimitOverridePercent:
+          queue.concurrencyLimitOverridePercent !== null
+            ? Number(queue.concurrencyLimitOverridePercent)
+            : null,
+        kind: queue.role === "LIMIT" ? ("limit" as const) : ("queue" as const),
+        concurrencyVersion: queue.concurrencyVersion,
+        limits: toQueueLimits(queue, {
+          totalRunning:
+            queue.totalConcurrencyLimit !== null ? (totalRunningByQueue[queue.name] ?? 0) : null,
+          overriddenByName: overriddenByUser
+            ? (overriddenByUser.displayName ?? overriddenByUser.name ?? null)
+            : null,
+        }),
+      };
+    });
   }
 }

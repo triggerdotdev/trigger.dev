@@ -73,10 +73,22 @@ export function useTaskTrigger<TTask extends AnyTask>(
 
     const payloadPacket = await stringifyIO(payload);
 
+    const queueName = options?.queue;
+    const concurrency = options?.concurrency
+      ? Array.isArray(options.concurrency)
+        ? options.concurrency
+        : [options.concurrency]
+      : undefined;
+
+    if (concurrency && concurrency.length > 2) {
+      throw new Error("The concurrency option accepts at most two named limits.");
+    }
+
     const handle = await apiClient.triggerTask(id, {
       payload: payloadPacket.data,
       options: {
-        queue: options?.queue ? { name: options.queue } : undefined,
+        queue: queueName ? { name: queueName } : undefined,
+        concurrency,
         concurrencyKey: options?.concurrencyKey,
         payloadType: payloadPacket.dataType,
         idempotencyKey: await makeIdempotencyKey(options?.idempotencyKey),

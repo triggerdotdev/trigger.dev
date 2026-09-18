@@ -192,6 +192,7 @@ await sendMessageInCatalog(
       prompts: convertPromptSchemasToJsonSchemas(resourceCatalog.listPromptManifests()),
       skills: resourceCatalog.listSkillManifests(),
       queues: resourceCatalog.listQueueManifests(),
+      concurrencyLimits: resourceCatalog.listConcurrencyLimitManifests(),
       configPath: buildManifest.configPath,
       runtime: buildManifest.runtime,
       runtimeVersion: detectRuntimeVersion(),

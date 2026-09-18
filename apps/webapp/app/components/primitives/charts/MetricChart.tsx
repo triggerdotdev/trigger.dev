@@ -41,6 +41,8 @@ type MetricChartProps = {
    * are config values that existed all along, so carry the first value backward instead.
    */
   carryBackfill?: string[];
+  /** Column that, when positive on a bucket, exempts it from the carryBackfill overwrite. */
+  carryBackfillGuard?: string;
   /**
    * Line only. Recolour a series' stroke above a threshold with a gradient split (colour only
    * above the line). `value` sets a constant threshold; `valueFromSeries` reads a (roughly
@@ -78,13 +80,22 @@ export function MetricChart({
   timeRange,
   warningOverlay,
   carryBackfill,
+  carryBackfillGuard,
   thresholdStroke,
   onHasDataChange,
   sampleCountColumn,
 }: MetricChartProps) {
   const { points, xKind: resolvedXKind } = useMemo(
-    () => buildMetricPoints(rows, { series, xColumn, xKind, carryBackfill, sampleCountColumn }),
-    [rows, series, xColumn, xKind, carryBackfill, sampleCountColumn]
+    () =>
+      buildMetricPoints(rows, {
+        series,
+        xColumn,
+        xKind,
+        carryBackfill,
+        carryBackfillGuard,
+        sampleCountColumn,
+      }),
+    [rows, series, xColumn, xKind, carryBackfill, carryBackfillGuard, sampleCountColumn]
   );
 
   const chartConfig = useMemo(() => {

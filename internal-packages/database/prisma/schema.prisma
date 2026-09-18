@@ -751,6 +751,9 @@ model BackgroundWorkerTask {
   queueConfig   Json?
   retryConfig   Json?
   machineConfig Json?
+  /// Gates declared on the task: other queues its runs must also hold a concurrency
+  /// slot in while executing. Shape: [{ queue: string, concurrencyKey?: string }]
+  gates         Json?
 
   queueId String?
   queue   TaskQueue? @relation(fields: [queueId], references: [id], onDelete: SetNull, onUpdate: Cascade)
@@ -1116,6 +1119,10 @@ model TaskRun {
   priorityMs Int @default(0)
 
   concurrencyKey String?
+
+  /// Gates for this run: other queues it must also hold a concurrency slot in while
+  /// executing. Shape: [{ queue: string, concurrencyKey?: string }]
+  gates Json?
 
   delayUntil        DateTime?
   queuedAt          DateTime?
@@ -1966,6 +1973,13 @@ model TaskQueue {
   version       TaskQueueVersion @default(V1)
   orderableName String?
 
+  /// How the queue's concurrency was declared: V1 = legacy concurrencyLimit semantics
+  /// (per key when keyed, whole queue otherwise), V2 = the explicit perKey/total shape.
+  concurrencyVersion TaskQueueConcurrencyVersion @default(V1)
+  /// QUEUE rows are real queues; LIMIT rows back named concurrency limits and are
+  /// excluded from every queue-facing surface.
+  role               TaskQueueRole               @default(QUEUE)
+
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String
 
@@ -1984,6 +1998,15 @@ model TaskQueue {
   /// percentage (the source of truth). The absolute concurrencyLimit is materialized from it.
   /// Decimal(5,2) allows fractional percentages like 12.50% (0.01–100.00).
   concurrencyLimitOverridePercent Decimal?  @db.Decimal(5, 2)
+  /// Caps total concurrent runs across ALL concurrencyKey values of this queue
+  /// (concurrencyLimit applies per key value). Null = no total cap.
+  totalConcurrencyLimit             Int?
+  /// When the total concurrency limit was overridden
+  totalConcurrencyLimitOverriddenAt DateTime?
+  /// Who overrode the total concurrency limit (null when overridden via the API)
+  totalConcurrencyLimitOverriddenBy String?
+  /// If totalConcurrencyLimit is overridden, the declared value it reverts to on reset
+  totalConcurrencyLimitBase         Int?
   rateLimit                       Json?
 
   paused Boolean @default(false)
@@ -1995,8 +2018,10 @@ model TaskQueue {
   tasks    BackgroundWorkerTask[]
   workers  BackgroundWorker[]
 
+
   @@unique([runtimeEnvironmentId, name])
 }
+
 
 enum TaskQueueType {
   VIRTUAL
@@ -2006,6 +2031,16 @@ enum TaskQueueType {
 enum TaskQueueVersion {
   V1
   V2
+}
+
+enum TaskQueueConcurrencyVersion {
+  V1
+  V2
+}
+
+enum TaskQueueRole {
+  QUEUE
+  LIMIT
 }
 
 model BatchTaskRun {

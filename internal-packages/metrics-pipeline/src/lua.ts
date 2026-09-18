@@ -17,6 +17,10 @@ export type GaugeComputeLuaParams = {
   // CK-health extras (both or neither): appended as an optional gauge tail, gauge[8]/gauge[9].
   ckBacklogged?: string;
   ckMaxWaitMs?: string;
+  // Total-concurrency extras (both or neither, and only with the CK extras): appended as
+  // gauge[10]/gauge[11]. totalLimit is the RAW stored limit (0 = none); readers clamp.
+  totalRunning?: string;
+  totalLimit?: string;
 };
 
 // Computes an op=gauge snapshot into the enclosing script's `__qm_g` local (a flat
@@ -26,11 +30,21 @@ export type GaugeComputeLuaParams = {
 export function createMetricsGaugeComputeLua(params: GaugeComputeLuaParams): string {
   const throttled = params.throttledExpr ?? "__cc >= __lim and __ql > 0";
   const hasCk = params.ckBacklogged != null && params.ckMaxWaitMs != null;
-  const gauge = hasCk
+  const hasTotal = params.totalRunning != null && params.totalLimit != null;
+  if (hasTotal && !hasCk) {
+    throw new Error("gauge totalRunning/totalLimit extras require the CK extras");
+  }
+  const gauge = hasTotal
     ? `    local __ckq = tonumber(${params.ckBacklogged}) or 0
     local __ckw = tonumber(${params.ckMaxWaitMs}) or 0
+    local __tcc = tonumber(${params.totalRunning}) or 0
+    local __tlim = tonumber(${params.totalLimit}) or 0
+    __qm_g = {__ql, __cc, __lim, __eql, __ec, __elim, __thr, __ckq, __ckw, __tcc, __tlim}`
+    : hasCk
+      ? `    local __ckq = tonumber(${params.ckBacklogged}) or 0
+    local __ckw = tonumber(${params.ckMaxWaitMs}) or 0
     __qm_g = {__ql, __cc, __lim, __eql, __ec, __elim, __thr, __ckq, __ckw}`
-    : `    __qm_g = {__ql, __cc, __lim, __eql, __ec, __elim, __thr}`;
+      : `    __qm_g = {__ql, __cc, __lim, __eql, __ec, __elim, __thr}`;
 
   return `
 if ${params.enabledArg} then

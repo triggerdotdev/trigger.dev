@@ -58,12 +58,22 @@ export type BuildMetricPointsOptions = {
   /** Defaults to `time` when every x is a datetime or epoch number, `category` otherwise. */
   xKind?: MetricXKind;
   carryBackfill?: string[];
+  /** Column that, when positive on a bucket, exempts it from the carryBackfill overwrite:
+   * the bucket has a real sampled value, so an earlier bucket's carry must not clobber it. */
+  carryBackfillGuard?: string;
   sampleCountColumn?: string;
 };
 
 export function buildMetricPoints(
   rows: MetricChartRow[],
-  { series, xColumn = "t", xKind, carryBackfill, sampleCountColumn }: BuildMetricPointsOptions
+  {
+    series,
+    xColumn = "t",
+    xKind,
+    carryBackfill,
+    carryBackfillGuard,
+    sampleCountColumn,
+  }: BuildMetricPointsOptions
 ): { points: MetricPoint[]; xKind: MetricXKind } {
   // Rows built by seriesFromRows already carry the coordinate under the reserved key.
   const xOf = (row: MetricChartRow) => (METRIC_X_KEY in row ? row[METRIC_X_KEY] : row[xColumn]);
@@ -79,6 +89,9 @@ export function buildMetricPoints(
       const value = r[s.key];
       // A bucket with no value for this series is a gap, not a zero.
       point[s.key] = hasSamples && value != null ? toNumber(value) : null;
+    }
+    if (carryBackfillGuard) {
+      point[carryBackfillGuard] = toNumber(r[carryBackfillGuard]);
     }
     // Set last, so a series key colliding with the reserved key can't displace the coordinate.
     point[METRIC_X_KEY] = kind === "time" ? (timeValueMs(xOf(r)) ?? NaN) : String(xOf(r) ?? "");
@@ -99,7 +112,10 @@ export function buildMetricPoints(
       const first = points.findIndex((p) => toNumber(p[key]) > 0);
       if (first > 0) {
         const value = points[first]![key]!;
-        for (let i = 0; i < first; i++) points[i]![key] = value;
+        for (let i = 0; i < first; i++) {
+          if (carryBackfillGuard && toNumber(points[i]![carryBackfillGuard]) > 0) continue;
+          points[i]![key] = value;
+        }
       }
     }
   }

@@ -189,7 +189,18 @@ describe("chat.agent steering with compaction in the same turn", () => {
       expect(completedTurns[0]?.newMessages).toContain("COMPACTED_TOOL_SENTINEL");
       expect(completedTurns[0]?.newMessages).toContain('"toolCallId":"tc-1"');
       expect(completedTurns[0]?.newMessages).toContain("done");
-      expect(completedTurns[0]?.newMessages).toEqual(completedTurns[0]?.fullDelta);
+      // UI storage keeps one assistant; model deltas split it at the durable
+      // injection marker. The same content now has its actual causal order.
+      const delta = JSON.parse(completedTurns[0]!.newMessages);
+      expect(delta.map((m: { role: string }) => m.role)).toEqual([
+        "user",
+        "assistant",
+        "tool",
+        "user",
+        "assistant",
+      ]);
+      expect(delta).toHaveLength(JSON.parse(completedTurns[0]!.fullDelta).length);
+      expect(JSON.stringify(delta[3])).toContain("steer-me");
     } finally {
       toolGate.resolve();
       await harness.close();

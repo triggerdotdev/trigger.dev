@@ -50,6 +50,7 @@
  * `ai.ts` statically imports `agentSkillsRuntime` (which uses `node:`
  * builtins unfit for some serverless runtimes) and the heavy task
  * runtime. Allowed imports: `./ai-shared.js`, `./chat-client.js`,
+ * `./concurrency-shared.js` (dependency-free validation helpers),
  * `@trigger.dev/core/v3` (api client), `ai` (types + lightweight
  * helpers like `stepCountIs` / `convertToModelMessages`).
  */
@@ -79,6 +80,7 @@ import type {
 } from "ai";
 import type { ChatInputChunk, ChatTaskWirePayload } from "./ai-shared.js";
 import { chatRunTags } from "./ai-shared.js";
+import { triggerConcurrencyBody } from "./concurrency-shared.js";
 import { withResolvedExternalDeploymentId } from "./externalDeploymentId.js";
 import type { SessionTriggerConfigInput } from "./sessions.js";
 
@@ -627,6 +629,12 @@ async function openHandoverSession(opts: {
     },
     ...(opts.triggerConfig?.machine ? { machine: opts.triggerConfig.machine } : {}),
     ...(opts.triggerConfig?.queue ? { queue: opts.triggerConfig.queue } : {}),
+    ...(opts.triggerConfig?.concurrency !== undefined
+      ? triggerConcurrencyBody(opts.triggerConfig.concurrency)
+      : {}),
+    ...(opts.triggerConfig?.concurrencyKey !== undefined
+      ? { concurrencyKey: opts.triggerConfig.concurrencyKey }
+      : {}),
     tags,
     ...(opts.triggerConfig?.maxAttempts !== undefined
       ? { maxAttempts: opts.triggerConfig.maxAttempts }

@@ -225,6 +225,8 @@ export class RunEngine {
       queueSelectionStrategy: new FairQueueSelectionStrategy(queueSelectionStrategyOptions),
       defaultEnvConcurrency: options.queue?.defaultEnvConcurrency ?? 10,
       defaultEnvConcurrencyBurstFactor: options.queue?.defaultEnvConcurrencyBurstFactor,
+      totalConcurrencyEnabled: options.queue?.totalConcurrencyEnabled,
+      gatesEnabled: options.queue?.gatesEnabled,
       logger: new Logger("RunQueue", options.queue?.logLevel ?? "info"),
       redis: { ...options.queue.redis, keyPrefix: `${options.queue.redis.keyPrefix}runqueue:` },
       retryOptions: options.queue?.retryOptions,
@@ -883,6 +885,7 @@ export class RunEngine {
       sdkVersion,
       cliVersion,
       concurrencyKey,
+      gates,
       workerQueue,
       region,
       enableFastPath,
@@ -1064,6 +1067,7 @@ export class RunEngine {
                 sdkVersion,
                 cliVersion,
                 concurrencyKey,
+                gates,
                 queue,
                 lockedQueueId,
                 workerQueue,
@@ -1828,6 +1832,27 @@ export class RunEngine {
     queues: string[]
   ): Promise<Record<string, number>> {
     return this.runQueue.currentConcurrencyOfQueues(environment, queues);
+  }
+
+  async totalConcurrencyOfQueues(
+    environment: MinimalAuthenticatedEnvironment,
+    queues: string[]
+  ): Promise<Record<string, number>> {
+    return this.runQueue.totalConcurrencyOfQueues(environment, queues);
+  }
+
+  async totalConcurrencyLimitsOfQueues(
+    environment: MinimalAuthenticatedEnvironment,
+    queues: string[]
+  ): Promise<Record<string, number | undefined>> {
+    return this.runQueue.totalConcurrencyLimitsOfQueues(environment, queues);
+  }
+
+  async gateQueuedCountOfQueues(
+    environment: MinimalAuthenticatedEnvironment,
+    queues: string[]
+  ): Promise<Record<string, number>> {
+    return this.runQueue.gateQueuedCountOfQueues(environment, queues);
   }
 
   async concurrencyKeyBreakdown(
@@ -3108,6 +3133,7 @@ export class RunEngine {
             {
               select: {
                 queue: true,
+                concurrencyKey: true,
               },
             },
             this.prisma
@@ -3129,6 +3155,7 @@ export class RunEngine {
             runId,
             orgId: latestSnapshot.organizationId,
             queue: taskRun.queue,
+            concurrencyKey: taskRun.concurrencyKey ?? undefined,
             env: {
               id: latestSnapshot.environmentId,
               type: latestSnapshot.environmentType,

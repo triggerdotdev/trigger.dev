@@ -394,6 +394,7 @@ class DevSupervisor implements WorkerRuntime {
         tasks: backgroundWorker.manifest.tasks,
         prompts: backgroundWorker.manifest.prompts,
         queues: backgroundWorker.manifest.queues,
+        concurrencyLimits: backgroundWorker.manifest.concurrencyLimits,
         contentHash: manifest.contentHash,
         sourceFiles,
         runtime: backgroundWorker.manifest.runtime,

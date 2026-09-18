@@ -31,5 +31,9 @@ export function responseAfterCompaction<T extends UIMessage>(
       break;
     }
   }
+  // Injection/data events following the last summarized step precede the
+  // next step-start. They happened after compaction and belong to the suffix,
+  // including a stop before that next step ever started.
+  while (start > 0 && response.parts[start - 1]?.type.startsWith("data-")) start--;
   return { ...response, parts: response.parts.slice(start) };
 }

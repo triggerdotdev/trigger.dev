@@ -21,10 +21,10 @@ import { useOptionalProject, useProject } from "~/hooks/useProject";
 import { useShowSelfServe } from "~/hooks/useShowSelfServe";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import {
+  concurrencyPath,
   organizationProjectsPath,
   v3BillingLimitsPath,
   v3BillingPath,
-  v3QueuesPath,
 } from "~/utils/pathBuilder";
 import { ENVIRONMENT_PAUSE_SOURCE_BILLING_LIMIT } from "~/utils/environmentPauseSource";
 
@@ -71,7 +71,7 @@ export function OrgBanner() {
     showSelfServe,
   });
 
-  const hideQueuesButton = location.pathname.endsWith("/queues");
+  const hideConcurrencyButton = location.pathname.endsWith("/concurrency");
   const hideBillingLimitBanner = location.pathname.endsWith("/settings/billing-limits");
 
   switch (bannerKind) {
@@ -89,7 +89,7 @@ export function OrgBanner() {
       return isArchived ? (
         <ArchivedEnvironmentBanner />
       ) : (
-        <PausedEnvironmentBanner hideButton={hideQueuesButton} />
+        <PausedEnvironmentBanner hideButton={hideConcurrencyButton} />
       );
     default:
       return null;
@@ -303,7 +303,7 @@ function PausedEnvironmentBanner({ hideButton }: { hideButton: boolean }) {
         hideButton ? undefined : (
           <LinkButton
             variant="tertiary/small"
-            to={v3QueuesPath(organization, project, environment)}
+            to={concurrencyPath(organization, project, environment)}
           >
             Manage
           </LinkButton>

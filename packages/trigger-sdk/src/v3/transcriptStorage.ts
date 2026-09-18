@@ -6,6 +6,7 @@ import {
 } from "@trigger.dev/core/v3";
 import type { ModelMessage, UIMessage } from "ai";
 import { readChatSnapshot, writeChatSnapshot } from "./chatSnapshotIo.js";
+import { steeringMarkers, type SteeringInjection } from "./steeringContext.js";
 
 /**
  * One change to a transcript. Ops address messages by id; position is the
@@ -328,7 +329,8 @@ export function snapshotTranscriptStorage(): TranscriptStorage<unknown> {
         messages: entries,
         state: normalizeRuntimeStateForWindow(
           changeset.transcript.state,
-          entries.map((entry) => entry.id)
+          entries.map((entry) => entry.message),
+          changeset.transcript.entries.map((entry) => entry.id)
         ),
         lastOutEventId: changeset.cursors?.lastOutEventId,
         lastInEventId: changeset.cursors?.lastInEventId,
@@ -443,6 +445,8 @@ export type TranscriptRuntimeState = {
   v: 1;
   compaction?: { modelMessages: ModelMessage[]; throughId: string };
   injections?: ModelLaneInjection[];
+  /** Prepared steering model forms; boundaries live in the corresponding UI markers. */
+  steering?: SteeringInjection[];
   /** `chat.inject` messages queued but not yet drained into a turn when the save happened. */
   queued?: ModelMessage[];
 };
@@ -494,12 +498,20 @@ export function trimTranscriptForSnapshot<TEntry extends { id: string }>(
  */
 export function normalizeRuntimeStateForWindow(
   state: unknown,
-  windowIds: Iterable<string>
+  window: Iterable<string | UIMessage>,
+  originalIds: Iterable<string> = []
 ): unknown {
   const runtimeState = parseTranscriptRuntimeState(state);
   if (!runtimeState) return state;
 
-  const ids = new Set(windowIds);
+  const retained = [...window];
+  const ids = new Set(retained.map((entry) => (typeof entry === "string" ? entry : entry.id)));
+  const markerIds = new Set(
+    steeringMarkers(retained.filter((entry): entry is UIMessage => typeof entry !== "string")).map(
+      (marker) => marker.id
+    )
+  );
+  const previousIds = new Set(originalIds);
   const compaction = runtimeState.compaction;
   const watermarkOutside =
     compaction !== undefined && compaction.throughId !== "" && !ids.has(compaction.throughId);
@@ -508,7 +520,31 @@ export function normalizeRuntimeStateForWindow(
     (injection) => injection.afterId === "" || ids.has(injection.afterId)
   );
 
-  if (!watermarkOutside && injections?.length === runtimeState.injections?.length) {
+  let steeringChanged = false;
+  const steering = runtimeState.steering?.flatMap((entry) => {
+    if (!markerIds.has(entry.id) && !entry.messageIds.some((id) => ids.has(id))) {
+      steeringChanged = true;
+      return [];
+    }
+    // Preserve prepared input when its boundary survives the window cutoff.
+    // Record only IDs actually trimmed from this save, so an earlier explicit
+    // history deletion cannot become a retention exception on the next boot.
+    const trimmedMessageIds = entry.messageIds.filter(
+      (id) => !ids.has(id) && (previousIds.has(id) || entry.trimmedMessageIds?.includes(id))
+    );
+    if (
+      trimmedMessageIds.length === (entry.trimmedMessageIds?.length ?? 0) &&
+      trimmedMessageIds.every((id, index) => id === entry.trimmedMessageIds?.[index])
+    )
+      return [entry];
+    steeringChanged = true;
+    return [{ ...entry, trimmedMessageIds }];
+  });
+  if (
+    !watermarkOutside &&
+    injections?.length === runtimeState.injections?.length &&
+    !steeringChanged
+  ) {
     return state;
   }
 
@@ -523,6 +559,7 @@ export function normalizeRuntimeStateForWindow(
         }
       : {}),
     ...(injections ? { injections } : {}),
+    ...(steering ? { steering } : {}),
   };
 }
 
@@ -548,6 +585,32 @@ export function parseTranscriptRuntimeState(value: unknown): TranscriptRuntimeSt
       const inj = entry as Record<string, unknown> | null;
       return inj && typeof inj.afterId === "string" && Array.isArray(inj.messages)
         ? [{ afterId: inj.afterId, messages: inj.messages as ModelMessage[] }]
+        : [];
+    });
+  }
+  if (Array.isArray(record.steering)) {
+    out.steering = record.steering.flatMap((entry: unknown) => {
+      if (!entry || typeof entry !== "object") return [];
+      const value = entry as Record<string, unknown>;
+      return typeof value.id === "string" &&
+        Array.isArray(value.messageIds) &&
+        value.messageIds.every((id) => typeof id === "string") &&
+        Array.isArray(value.messages)
+        ? [
+            {
+              id: value.id,
+              messageIds: value.messageIds as string[],
+              messages: value.messages as ModelMessage[],
+              ...(Array.isArray(value.trimmedMessageIds)
+                ? {
+                    trimmedMessageIds: value.trimmedMessageIds.filter(
+                      (id): id is string =>
+                        typeof id === "string" && (value.messageIds as string[]).includes(id)
+                    ),
+                  }
+                : {}),
+            },
+          ]
         : [];
     });
   }

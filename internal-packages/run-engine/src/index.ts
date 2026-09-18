@@ -115,3 +115,4 @@ export {
 } from "./engine/waitpointCoordinator/keys.js";
 export { createCompletedWaitpointResolver } from "./engine/systems/completedWaitpointResolver.js";
 export { enhanceExecutionSnapshotWithWaitpoints } from "./engine/systems/executionSnapshotSystem.js";
+export { parseGates, type ParsedGate } from "./engine/gateParsing.js";

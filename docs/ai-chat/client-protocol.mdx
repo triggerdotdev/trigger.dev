@@ -206,6 +206,8 @@ Pick `"preload"` when the UI has rendered but the user hasn't typed (warms the a
 | `expiresAt` | `string` (ISO date) | Retention cap. |
 | `triggerConfig.machine` | `string` | Machine preset (`micro`, `small-1x`, …) for every run. |
 | `triggerConfig.queue` | `string` | Queue name. |
+| `triggerConfig.concurrency` | `string[]` | Up to two [named concurrency limits](/concurrency#sharing-a-limit-between-tasks) every run holds, replacing the task's declared named limits. |
+| `triggerConfig.concurrencyKey` | `string` | Scopes every run of this session to its own pool under each `perKey` bound it holds. Never defaulted — pass one (e.g. your chat or tenant ID) to isolate sessions from each other. |
 | `triggerConfig.tags` | `string[]` | Tags applied to every run (in addition to session-level `tags`). |
 | `triggerConfig.maxAttempts` | `number` | Per-run retry cap (1–10). |
 | `triggerConfig.maxDuration` | `number` | Per-run wall-clock cap, seconds. |

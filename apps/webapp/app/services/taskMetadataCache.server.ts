@@ -1,6 +1,9 @@
 import type { Redis, Result, Callback } from "ioredis";
+import { parseGates } from "@internal/run-engine";
 import type { TaskTriggerSource } from "@trigger.dev/database";
 import { logger } from "./logger.server";
+
+export type TaskMetadataGate = { queue: string; concurrencyKey?: string };
 
 export type TaskMetadataEntry = {
   slug: string;
@@ -8,6 +11,8 @@ export type TaskMetadataEntry = {
   triggerSource: TaskTriggerSource;
   queueId: string | null;
   queueName: string;
+  /** Task-declared gates, applied to every trigger that does not override them. */
+  gates: TaskMetadataGate[] | null;
 };
 
 export interface TaskMetadataCache {
@@ -52,11 +57,21 @@ export type RedisTaskMetadataCacheOptions = {
   byWorkerTtlSeconds?: number;
 };
 
+/**
+ * BackgroundWorkerTask.gates is an untyped Json column; keep only well-shaped
+ * entries so a malformed value can never fail a trigger.
+ */
+export function parseTaskGates(gates: unknown): TaskMetadataGate[] | null {
+  const parsed = parseGates(gates);
+  return parsed.length > 0 ? parsed : null;
+}
+
 type EncodedEntry = {
   t: string | null;
   k: TaskTriggerSource;
   q: string | null;
   n: string;
+  g?: TaskMetadataGate[] | null;
 };
 
 function encode(entry: TaskMetadataEntry): string {
@@ -65,6 +80,7 @@ function encode(entry: TaskMetadataEntry): string {
     k: entry.triggerSource,
     q: entry.queueId,
     n: entry.queueName,
+    g: entry.gates,
   };
   return JSON.stringify(payload);
 }
@@ -78,6 +94,7 @@ function decode(slug: string, raw: string): TaskMetadataEntry | null {
       triggerSource: parsed.k,
       queueId: parsed.q,
       queueName: parsed.n,
+      gates: parseTaskGates(parsed.g ?? null),
     };
   } catch (error) {
     logger.error("Failed to decode task metadata cache entry", { slug, error });

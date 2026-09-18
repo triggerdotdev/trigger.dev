@@ -23,7 +23,12 @@ import {
   Namespace,
 } from "@internal/cache";
 import { singleton } from "~/utils/singleton";
-import type { TaskMetadataCache, TaskMetadataEntry } from "~/services/taskMetadataCache.server";
+import {
+  parseTaskGates,
+  type TaskMetadataCache,
+  type TaskMetadataEntry,
+  type TaskMetadataGate,
+} from "~/services/taskMetadataCache.server";
 import { taskMetadataCacheInstance } from "~/services/taskMetadataCacheInstance.server";
 import {
   recordTaskMetaResolve,
@@ -95,6 +100,7 @@ export class DefaultQueueManager implements QueueManager {
     let lockedQueueId: string | undefined;
     let taskTtl: string | null | undefined;
     let taskKind: string | undefined;
+    let taskGates: TaskMetadataGate[] | null | undefined;
 
     // Determine queue name based on lockToVersion and provided options
     if (lockedBackgroundWorker) {
@@ -146,6 +152,7 @@ export class DefaultQueueManager implements QueueManager {
           taskTtl = lockedMeta?.ttl ?? undefined;
         }
         taskKind = lockedMeta?.triggerSource;
+        taskGates = lockedMeta?.gates;
       } else {
         // No queue override - resolve default queue + TTL + triggerSource via cache,
         // falling back to a single BackgroundWorkerTask lookup on miss.
@@ -184,6 +191,7 @@ export class DefaultQueueManager implements QueueManager {
         queueName = lockedMeta.queueName;
         lockedQueueId = lockedMeta.queueId ?? undefined;
         taskKind = lockedMeta.triggerSource;
+        taskGates = lockedMeta.gates;
       }
     } else {
       // Task is not locked to a specific version, use regular logic
@@ -199,6 +207,7 @@ export class DefaultQueueManager implements QueueManager {
       queueName = taskInfo.queueName;
       taskTtl = taskInfo.taskTtl;
       taskKind = taskInfo.taskKind;
+      taskGates = taskInfo.taskGates;
     }
 
     // Sanitize the final determined queue name once
@@ -211,17 +220,87 @@ export class DefaultQueueManager implements QueueManager {
       queueName = sanitizedQueueName;
     }
 
+    const triggerLimits = request.body.options?.concurrency;
+
+    for (const name of triggerLimits ?? []) {
+      if (!/^[a-zA-Z0-9_-]{1,122}$/.test(name)) {
+        throw new ServiceValidationError(
+          `Invalid concurrency limit name "${name}": names are 1-122 characters using only letters, numbers, underscores and hyphens.`
+        );
+      }
+    }
+
+    /**
+     * Trigger-time names replace the task's declared NAMED limits only. The task's
+     * inline limit rides in its stored gates as an anonymous "limit/task/" gate and
+     * always applies, so it is carried over into the replacement (an empty array
+     * clears the named limits but keeps the inline one).
+     */
+    const inlineTaskGates = (taskGates ?? []).filter((gate) =>
+      gate.queue.startsWith("limit/task/")
+    );
+    const concurrencyGates = triggerLimits
+      ? [
+          ...inlineTaskGates,
+          ...triggerLimits.map((name): { queue: string; concurrencyKey?: string } => ({
+            queue: `limit/${name}`,
+          })),
+        ]
+      : undefined;
+
+    /**
+     * The raw gates option replaces stored gates the same way concurrency does, so
+     * it also carries the inline gate over; a replay resending the stored gates
+     * collapses back to the original set through the dedupe below.
+     */
+    const rawGates = request.body.options?.gates;
+    const requestedGates =
+      concurrencyGates ??
+      (rawGates ? [...inlineTaskGates, ...rawGates] : undefined) ??
+      taskGates ??
+      undefined;
+
+    const seenGates = new Set<string>();
+    const gates = requestedGates?.flatMap((gate) => {
+      const sanitized = sanitizeQueueName(gate.queue);
+      if (!sanitized) {
+        return [];
+      }
+      const dedupeKey = `${sanitized} ${gate.concurrencyKey ?? ""}`;
+      if (seenGates.has(dedupeKey)) {
+        return [];
+      }
+      seenGates.add(dedupeKey);
+      return [{ queue: sanitized, concurrencyKey: gate.concurrencyKey }];
+    });
+
+    /**
+     * Unreachable through the public schemas (three requested gates plus one inline
+     * gate is the ceiling), kept as a backstop so an overflowing set can never be
+     * silently truncated downstream. Replays of three-gate runs against a task that
+     * later gained an inline limit resolve to four and stay valid.
+     */
+    if (gates && gates.length > 4) {
+      throw new ServiceValidationError(
+        `A run can hold at most four gates; this request resolves to ${gates.length}.`
+      );
+    }
+
     return {
       queueName,
       lockedQueueId,
       taskTtl,
       taskKind,
+      gates: gates && gates.length > 0 ? gates : undefined,
     };
   }
 
-  private async getTaskQueueInfo(
-    request: TriggerTaskRequest
-  ): Promise<{ queueName: string; taskTtl?: string | null; taskKind?: string | undefined }> {
+  private async getTaskQueueInfo(request: TriggerTaskRequest): Promise<{
+    queueName: string;
+    taskTtl?: string | null;
+    taskKind?: string | undefined;
+    taskGates?: TaskMetadataGate[] | null;
+  }> {
     const { taskId, environment, body } = request;
     const { queue } = body.options ?? {};
 
@@ -243,6 +322,7 @@ export class DefaultQueueManager implements QueueManager {
         queueName: overriddenQueueName,
         taskTtl: meta?.ttl ?? undefined,
         taskKind: meta?.triggerSource,
+        taskGates: meta?.gates,
       };
     }
 
@@ -259,10 +339,20 @@ export class DefaultQueueManager implements QueueManager {
         taskId,
         environmentId: environment.id,
       });
-      return { queueName: defaultQueueName, taskTtl: meta.ttl, taskKind: meta.triggerSource };
+      return {
+        queueName: defaultQueueName,
+        taskTtl: meta.ttl,
+        taskKind: meta.triggerSource,
+        taskGates: meta.gates,
+      };
     }
 
-    return { queueName: meta.queueName, taskTtl: meta.ttl, taskKind: meta.triggerSource };
+    return {
+      queueName: meta.queueName,
+      taskTtl: meta.ttl,
+      taskKind: meta.triggerSource,
+      taskGates: meta.gates,
+    };
   }
 
   /**
@@ -320,6 +410,7 @@ export class DefaultQueueManager implements QueueManager {
       triggerSource: row.triggerSource,
       queueId: row.queue?.id ?? null,
       queueName: row.queue?.name ?? "",
+      gates: parseTaskGates(row.gates),
     };
 
     // Fire-and-forget back-fill — `setByWorker` upserts the single field and
@@ -340,6 +431,7 @@ export class DefaultQueueManager implements QueueManager {
       select: {
         ttl: true,
         triggerSource: true,
+        gates: true,
         queue: { select: { id: true, name: true } },
       },
     });
@@ -378,6 +470,7 @@ export class DefaultQueueManager implements QueueManager {
       select: {
         ttl: true,
         triggerSource: true,
+        gates: true,
         queue: { select: { id: true, name: true } },
       },
     });
@@ -395,6 +488,7 @@ export class DefaultQueueManager implements QueueManager {
       triggerSource: row.triggerSource,
       queueId: row.queue?.id ?? null,
       queueName: row.queue?.name ?? "",
+      gates: parseTaskGates(row.gates),
     };
 
     // Fire-and-forget back-fill — atomically upserts the slug into both
