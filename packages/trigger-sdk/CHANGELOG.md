@@ -1,5 +1,44 @@
 # @trigger.dev/sdk
 
+## 4.7.0
+
+### Minor Changes
+
+- Chat agents can now scope concurrency per session. Pass `concurrencyKey` (for example, your chat ID or tenant ID) and trigger-time named limits via `triggerConfig.concurrency` when starting a chat session, from `chat.createStartSessionAction`, the `AgentChat` client, or a handover. Keys are never defaulted, so a session without one shares the task's keyless pool. ([`ea9758117`](https://github.com/triggerdotdev/trigger.dev/commit/ea9758117bc4abb3e2d09deeab36d5c113c8496c))
+
+  ```ts
+  const start = chat.createStartSessionAction("support-chat", {
+    triggerConfig: { concurrencyKey: user.id },
+  });
+  ```
+
+- Control a task's concurrency with the new `concurrency` option, and share limits across tasks with named concurrency limits. An inline shape caps the task itself; `concurrencyLimit()` declares a limit any task can hold (up to two named limits per task), and a trigger call can switch a run's named limits with its own `concurrency` option. ([`ea9758117`](https://github.com/triggerdotdev/trigger.dev/commit/ea9758117bc4abb3e2d09deeab36d5c113c8496c))
+
+  ```ts
+  import { concurrencyLimit, task } from "@trigger.dev/sdk";
+
+  export const openaiLimit = concurrencyLimit({ name: "openai", total: 25 });
+
+  export const generateSummary = task({
+    id: "generate-summary",
+    concurrency: [{ perKey: 1, total: 5 }, openaiLimit],
+    run: async (payload) => {},
+  });
+  ```
+
+  `perKey` caps each `concurrencyKey` pool and `total` caps across everything, keys or not. The queue-level `concurrencyLimit` option keeps working unchanged and is deprecated in favor of `concurrency`. Enforcement happens server-side; servers without support accept the option but do not enforce it yet.
+
+  Manage limits at runtime with the new `concurrencyLimits` namespace: `list()` and `retrieve(name)` report each limit's bounds plus its live `running` and `queued` counts, `override(name, { perKey, total })` changes only the given bounds (overriding `total` to `0` pauses the limit), and `reset(name)` restores the declared values.
+
+  Queue reads (`queues.list()` and `queues.retrieve()`) now report a `version` that discriminates the shape: `V1` queues keep today's fields (their own `concurrencyLimit` and its override state), while `V2` queues (tasks declared with `concurrency`) carry no queue-level concurrency, since their limits are read and overridden through `concurrencyLimits` (a task's inline limit under its derived `task/<task-id>` name). Existing reads keep compiling: a `V2` queue reports `concurrencyLimit` as null and `concurrency` as undefined.
+
+### Patch Changes
+
+- Chat streams now report `Stream stalled: no records received` after five retries of a connected stream that sends no records. Network failures and browser wakeups retain automatic recovery. Healthy tool calls with no records for about six minutes also reach this silence limit. Watch subscriptions remain unlimited, and caller cancellation still closes cleanly. ([#4949](https://github.com/triggerdotdev/trigger.dev/pull/4949))
+- Steering messages now remain in context across agent steps and keep their original position in saved conversations, including custom response data written between steps. ([`5619acf26`](https://github.com/triggerdotdev/trigger.dev/commit/5619acf266f6cd5fa1370cabf48e2da7ec468383))
+- Updated dependencies:
+  - `@trigger.dev/core@4.7.0`
+
 ## 4.6.3
 
 ### Patch Changes
