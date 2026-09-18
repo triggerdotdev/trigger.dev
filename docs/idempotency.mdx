@@ -44,7 +44,7 @@ An idempotency key stops a task from being *triggered* twice. It does not stop t
 
 This matters most for payments. A refund issued directly inside a retryable task is issued again on every retry, even when the retry is caused by an unrelated failure later in the same function. Moving the refund into a child task and triggering it with an idempotency key does not close the gap either: the child is triggered once, but its own `run()` can retry after the provider has accepted the request. Only the provider can deduplicate its own API call.
 
-Pass the provider's idempotency key on every call that must happen at most once. Derive it from a value that stays the same across retries, such as an ID from your payload:
+Pass the provider's idempotency key on every call that must happen at most once. Derive it from a value that stays the same across every attempt of the run. The run ID, `ctx.run.id`, always qualifies: retries are attempts of the same run, so the ID does not change between them. This is the same value the default `run` scope mixes into a Trigger.dev idempotency key.
 
 ```ts /trigger/refund-order.ts
 import { idempotencyKeys, task } from "@trigger.dev/sdk";
@@ -56,19 +56,21 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 export const refundOrder = task({
   id: "refund-order",
   retry: { maxAttempts: 3 },
-  run: async (payload: { orderId: string; paymentIntentId: string; amount: number }) => {
-    // Stripe returns the original refund for a repeated key instead of creating a second one
+  run: async (payload: { orderId: string; paymentIntentId: string; amount: number }, { ctx }) => {
+    // The run ID is stable across retries, so Stripe returns the original refund instead of creating a second one
     await stripe.refunds.create(
       { payment_intent: payload.paymentIntentId, amount: payload.amount },
-      { idempotencyKey: `refund-${payload.orderId}` }
+      { idempotencyKey: `refund-${ctx.run.id}` }
     );
 
-    // The Trigger.dev key deduplicates the trigger, so a retry does not create a second email run
-    const idempotencyKey = await idempotencyKeys.create(`refund-email-${payload.orderId}`);
+    // The Trigger.dev key is run-scoped by default, so a retry does not create a second email run
+    const idempotencyKey = await idempotencyKeys.create("refund-email");
     await sendRefundEmail.trigger({ orderId: payload.orderId }, { idempotencyKey });
   },
 });
 ```
+
+The run ID protects against retries of one run. If the same task can be triggered more than once for the same order, either trigger it with a Trigger.dev idempotency key so repeated triggers resolve to the same run and the same run ID, or key the provider call on a business ID from your payload instead, such as `refund-${payload.orderId}`, which deduplicates across separate runs too.
 
 Use a Trigger.dev idempotency key to stop a retry triggering a task twice, and the provider's idempotency key to stop a retry calling the provider twice. For a side effect with no idempotency support, record that you performed it in your own database and check that record before performing it again.
 
