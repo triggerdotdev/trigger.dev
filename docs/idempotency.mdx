@@ -3,7 +3,9 @@ title: "Idempotency"
 description: "An API call or operation is idempotent if it has the same result when called more than once."
 ---
 
-We currently support idempotency at the task level, meaning that if you trigger a task with the same `idempotencyKey` twice, the second request will not create a new task run. Instead, the original run's handle is returned, allowing you to track the existing run's progress.
+**Idempotency keys deduplicate task triggers.** If you trigger a task with the same `idempotencyKey` twice, the second request does not create a new run. It returns the original run's handle, so you can track the existing run's progress.
+
+The key applies to the trigger call and nothing else. It deduplicates `trigger()`, `triggerAndWait()`, and `batchTrigger()`; it does not make the code inside a task's `run()` function idempotent. See [Side effects inside `run()`](#side-effects-inside-run) for what that means when a task calls an external API.
 
 ## Why use idempotency keys?
 
@@ -31,10 +33,44 @@ sequenceDiagram
 
 Other common use cases include:
 
-- **Preventing duplicate emails** - Ensure a confirmation email is only sent once, even if the parent task retries
-- **Avoiding double-charging customers** - Prevent duplicate payment processing during retries
-- **One-time setup tasks** - Ensure initialization or migration tasks only run once
-- **Deduplicating webhook processing** - Handle the same webhook event only once, even if it's delivered multiple times
+- **Preventing duplicate emails** - Trigger the email task once, even if the parent task retries
+- **Avoiding double-charging customers** - Trigger the payment task once, even if the parent task retries. The payment API call itself still needs the provider's own idempotency key, see [Side effects inside `run()`](#side-effects-inside-run)
+- **One-time setup tasks** - Trigger initialization or migration tasks once
+- **Deduplicating webhook processing** - Trigger the handler task once per webhook event, even if the event is delivered multiple times
+
+## Side effects inside `run()`
+
+An idempotency key stops a task from being *triggered* twice. It does not stop the code inside that task from *running* twice. When a run retries, `run()` executes again from the top, and every API call, database write, or email inside it happens again unless that operation is itself idempotent.
+
+This matters most for payments. A refund issued directly inside a retryable task is issued again on every retry, even when the retry is caused by an unrelated failure later in the same function. Moving the refund into a child task and triggering it with an idempotency key does not close the gap either: the child is triggered once, but its own `run()` can retry after the provider has accepted the request. Only the provider can deduplicate its own API call.
+
+Pass the provider's idempotency key on every call that must happen at most once. Derive it from a value that stays the same across retries, such as an ID from your payload:
+
+```ts /trigger/refund-order.ts
+import { idempotencyKeys, task } from "@trigger.dev/sdk";
+import Stripe from "stripe";
+import { sendRefundEmail } from "./send-refund-email";
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+
+export const refundOrder = task({
+  id: "refund-order",
+  retry: { maxAttempts: 3 },
+  run: async (payload: { orderId: string; paymentIntentId: string; amount: number }) => {
+    // Stripe returns the original refund for a repeated key instead of creating a second one
+    await stripe.refunds.create(
+      { payment_intent: payload.paymentIntentId, amount: payload.amount },
+      { idempotencyKey: `refund-${payload.orderId}` }
+    );
+
+    // The Trigger.dev key deduplicates the trigger, so a retry does not create a second email run
+    const idempotencyKey = await idempotencyKeys.create(`refund-email-${payload.orderId}`);
+    await sendRefundEmail.trigger({ orderId: payload.orderId }, { idempotencyKey });
+  },
+});
+```
+
+Use a Trigger.dev idempotency key to stop a retry triggering a task twice, and the provider's idempotency key to stop a retry calling the provider twice. For a side effect with no idempotency support, record that you performed it in your own database and check that record before performing it again.
 
 ## `idempotencyKey` option
 
