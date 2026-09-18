@@ -24,6 +24,7 @@ export default defineConfig({
       "app/utils/**/*.test.ts",
       "app/hooks/**/*.test.ts",
       "app/components/code/**/*.test.ts",
+      "app/components/deployments/**/*.test.ts",
       "app/components/runs/**/*.test.ts",
       "app/components/dashboard-agent/**/*.test.ts",
       "app/components/queues/**/*.test.ts",

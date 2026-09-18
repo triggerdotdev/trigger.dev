@@ -872,6 +872,9 @@ importers:
       jsdom:
         specifier: ^30.0.1
         version: 30.0.1
+      react-router-dom:
+        specifier: 6.30.4
+        version: 6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       socket.io-client:
         specifier: 4.7.5
         version: 4.7.5(bufferutil@4.0.9)(supports-color@10.0.0)
@@ -1898,7 +1901,7 @@ importers:
         version: 6.0.1
       tsdown:
         specifier: 0.22.10
-        version: 0.22.10(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.21.3)(tsx@4.22.4)(typescript@7.0.2)
+        version: 0.22.10(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.21.3)(tsx@4.22.4)(typescript@7.0.2)(unrun@0.3.1)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -2012,7 +2015,7 @@ importers:
         version: 6.0.1
       tsdown:
         specifier: 0.22.10
-        version: 0.22.10(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.21.3)(tsx@4.17.0)(typescript@7.0.2)
+        version: 0.22.10(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.21.3)(tsx@4.17.0)(typescript@7.0.2)(unrun@0.3.1)
       tsx:
         specifier: 4.17.0
         version: 4.17.0
@@ -14956,6 +14959,16 @@ packages:
   unpipe@1.0.0:
     resolution: {integrity: sha512-pjy2bYhSsufwWlKwPc+l3cN7+wuJlK6uz0YdJEOlQDbl6jo/YlPi4mb8agUkVC8BF7V8NuzeyPNqRksA3hztKQ==}
     engines: {node: '>= 0.8'}
+
+  unrun@0.3.1:
+    resolution: {integrity: sha512-onIck/oNnCaytwths1ZVp1LK2Gq2hPoyFhiHebObuUXqR3S0uHuLLaBK8K6mRRgV7Ptip8AnNvaUsgzwWwBZuA==}
+    engines: {node: ^22.13.0 || >=24.0.0}
+    hasBin: true
+    peerDependencies:
+      synckit: ^0.11.11
+    peerDependenciesMeta:
+      synckit:
+        optional: true
 
   update-browserslist-db@1.2.3:
     resolution: {integrity: sha512-Js0m9cx+qOgDxo0eMiFGEueWztz+d4+M3rGlmKPT+T4IS/jP4ylw3Nwpu6cpTTP8R1MAC1kF4VbdLt3ARf209w==}
@@ -30244,7 +30257,7 @@ snapshots:
       minimist: 1.2.8
       strip-bom: 3.0.0
 
-  tsdown@0.22.10(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.21.3)(tsx@4.17.0)(typescript@7.0.2):
+  tsdown@0.22.10(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.21.3)(tsx@4.17.0)(typescript@7.0.2)(unrun@0.3.1):
     dependencies:
       ansis: 4.3.1
       cac: 7.0.0
@@ -30265,13 +30278,14 @@ snapshots:
       '@arethetypeswrong/core': 0.18.5
       tsx: 4.17.0
       typescript: 7.0.2
+      unrun: 0.3.1
     transitivePeerDependencies:
       - '@typescript/native-preview'
       - '@volar/typescript'
       - oxc-resolver
       - vue-tsc
 
-  tsdown@0.22.10(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.21.3)(tsx@4.22.4)(typescript@7.0.2):
+  tsdown@0.22.10(@arethetypeswrong/core@0.18.5)(oxc-resolver@11.21.3)(tsx@4.22.4)(typescript@7.0.2)(unrun@0.3.1):
     dependencies:
       ansis: 4.3.1
       cac: 7.0.0
@@ -30292,6 +30306,7 @@ snapshots:
       '@arethetypeswrong/core': 0.18.5
       tsx: 4.22.4
       typescript: 7.0.2
+      unrun: 0.3.1
     transitivePeerDependencies:
       - '@typescript/native-preview'
       - '@volar/typescript'
@@ -30627,6 +30642,11 @@ snapshots:
   universalify@2.0.0: {}
 
   unpipe@1.0.0: {}
+
+  unrun@0.3.1:
+    dependencies:
+      rolldown: 1.2.0
+    optional: true
 
   update-browserslist-db@1.2.3(browserslist@4.28.1):
     dependencies:

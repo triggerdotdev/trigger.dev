@@ -1188,11 +1188,13 @@ export async function getPrivateLinkRegions(
   return result;
 }
 
+export type TriggerDeploymentResult = { ok: true } | { ok: false; reason: "error" };
+
 export async function triggerInitialDeployment(
   projectId: string,
-  options: { environment: "preview" | "prod" | "staging" }
-): Promise<void> {
-  if (!client) return;
+  options: { environment: "preview" | "prod" | "staging"; branch?: string }
+): Promise<TriggerDeploymentResult> {
+  if (!client) return { ok: false, reason: "error" };
 
   const [error, result] = await tryCatch(client.triggerInitialDeployment(projectId, options));
 
@@ -1202,7 +1204,7 @@ export async function triggerInitialDeployment(
       environment: options.environment,
       error,
     });
-    return;
+    return { ok: false, reason: "error" };
   }
 
   if (!result.success) {
@@ -1211,7 +1213,10 @@ export async function triggerInitialDeployment(
       environment: options.environment,
       error: result.error,
     });
+    return { ok: false, reason: "error" };
   }
+
+  return { ok: true };
 }
 
 export type {

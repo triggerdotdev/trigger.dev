@@ -209,6 +209,10 @@ LIMIT ${pageSize} OFFSET ${pageSize * (page - 1)};`;
         : undefined;
 
     return {
+      projectId: project.id,
+      organizationId: environment.organizationId,
+      environmentId: environment.id,
+      environmentType: environment.type,
       currentPage: page,
       totalPages: Math.ceil(totalCount / pageSize),
       hasVercelIntegration,

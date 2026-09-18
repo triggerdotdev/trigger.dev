@@ -1,3 +1,7 @@
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
+import { rbac } from "~/services/rbac.server";
+import { checkPermissions } from "~/services/routeBuilders/permissions.server";
+import { resolveDeploymentOnboardingUi } from "~/v3/services/deploymentOnboardingUi.server";
 import {
   ArrowPathIcon,
   ArrowUturnLeftIcon,
@@ -60,14 +64,11 @@ import {
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import {
   type DeploymentListItem,
   DeploymentListPresenter,
 } from "~/presenters/v3/DeploymentListPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { rbac } from "~/services/rbac.server";
-import { checkPermissions } from "~/services/routeBuilders/permissions.server";
 import { titleCase } from "~/utils";
 import { cn } from "~/utils/cn";
 import {
@@ -141,8 +142,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
     const autoReloadPollIntervalMs = env.DEPLOYMENTS_AUTORELOAD_POLL_INTERVAL_MS;
 
-    // Display flag for the rollback/promote/cancel controls — the action
-    // routes enforce write:deployments independently. Permissive in OSS.
+    // Preserve the existing org-scoped display checks for rollback/promote/cancel.
     const orgId = await resolveOrgIdFromSlug(organizationSlug);
     const deploymentAuth = orgId
       ? await rbac.authenticateSession(request, { userId, organizationId: orgId })
@@ -154,11 +154,26 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
           }).canWriteDeployments
         : true;
 
+    const onboarding = await resolveDeploymentOnboardingUi({
+      request,
+      userId,
+      organizationSlug,
+      projectSlug: projectParam,
+      environmentSlug: envParam,
+      organizationId: result.organizationId,
+      projectId: result.projectId,
+      environmentId: result.environmentId,
+      environmentType: result.environmentType,
+      url: new URL(request.url),
+      deploymentParam: params.deploymentParam,
+    });
+
     return typedjson({
       ...result,
+      ...onboarding,
+      canWriteDeployments,
       selectedDeployment,
       autoReloadPollIntervalMs,
-      canWriteDeployments,
     });
   } catch (error) {
     console.error(error);
@@ -183,6 +198,12 @@ export default function Page() {
     autoReloadPollIntervalMs,
     hasVercelIntegration,
     canWriteDeployments,
+    canDeployNow,
+    deployNowEnabled,
+    isPlatformConfigured,
+    showGitHubOnboarding,
+    onboardingDetails,
+    atomicVercelUrl,
   } = useTypedLoaderData<typeof loader>();
   const hasDeployments = totalPages > 0;
 
@@ -232,7 +253,7 @@ export default function Page() {
       <PageBody scrollable={false}>
         <ResizablePanelGroup orientation="horizontal" className="h-full max-h-full">
           <ResizablePanel id="deployments-main" min="100px" className="max-h-full">
-            {hasDeployments ? (
+            {hasDeployments && !showGitHubOnboarding ? (
               <div className="flex h-full max-h-full flex-col">
                 <Table containerClassName="border-t-0 grow">
                   <TableHeader>
@@ -424,12 +445,25 @@ export default function Page() {
                 </div>
               </div>
             ) : environment.type === "DEVELOPMENT" ? (
-              <MainCenteredContainer className="max-w-prose">
-                <DeploymentsNoneDev />
+              <MainCenteredContainer
+                className={cn("max-w-prose", deployNowEnabled && "w-[calc(100%_-_3rem)]")}
+              >
+                <DeploymentsNoneDev enhanced={deployNowEnabled} />
               </MainCenteredContainer>
             ) : (
-              <MainCenteredContainer className="max-w-prose">
-                <DeploymentsNone />
+              <MainCenteredContainer
+                className={cn("max-w-prose", showGitHubOnboarding && "w-[calc(100%_-_3rem)]")}
+              >
+                <DeploymentsNone
+                  showGitHubOnboarding={showGitHubOnboarding}
+                  onboardingDetails={onboardingDetails}
+                  connectedGithubRepository={connectedGithubRepository}
+                  environmentGitHubBranch={environmentGitHubBranch}
+                  deployNowEnabled={deployNowEnabled}
+                  isPlatformConfigured={isPlatformConfigured}
+                  canDeployNow={canDeployNow}
+                  atomicVercelUrl={atomicVercelUrl}
+                />
               </MainCenteredContainer>
             )}
           </ResizablePanel>

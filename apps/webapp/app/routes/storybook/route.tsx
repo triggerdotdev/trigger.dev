@@ -126,7 +126,10 @@ const sections: StorySection[] = [
   },
   {
     title: "Settings",
-    items: [{ name: "Settings rows", slug: "settings-rows" }],
+    items: [
+      { name: "Settings rows", slug: "settings-rows" },
+      { name: "Deployment onboarding", slug: "deployment-onboarding" },
+    ],
   },
   {
     title: "Trigger Agent",

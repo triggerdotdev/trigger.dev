@@ -48,6 +48,7 @@ export const FEATURE_FLAG = {
   deployBuildPathProduction: "deployBuildPathProduction",
   scheduleDefaultWindowEnabled: "scheduleDefaultWindowEnabled",
   freeScheduleMinimumWindowEnabled: "freeScheduleMinimumWindowEnabled",
+  deployNowEnabled: "deployNowEnabled",
 } as const;
 
 export const FeatureFlagCatalog = {
@@ -166,6 +167,9 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.deployBuildPathProduction]: DeployBuildPath,
   [FEATURE_FLAG.scheduleDefaultWindowEnabled]: z.boolean(),
   [FEATURE_FLAG.freeScheduleMinimumWindowEnabled]: z.boolean(),
+  // Strict z.boolean() (not z.coerce.boolean()): coercion reads the string
+  // "false" as true, which would enable an off-by-default gate.
+  [FEATURE_FLAG.deployNowEnabled]: z.boolean(),
 };
 
 export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;

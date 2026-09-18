@@ -256,6 +256,7 @@
     "esbuild": "^0.15.10",
     "evalite": "1.0.0-beta.16",
     "jsdom": "^30.0.1",
+    "react-router-dom": "6.30.4",
     "socket.io-client": "4.7.5",
     "supertest": "^7.0.0",
     "tailwind-scrollbar": "^4.0.2",

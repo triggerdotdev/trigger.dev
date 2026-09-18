@@ -6,7 +6,11 @@ import type { PrismaClient } from "@trigger.dev/database";
 import { postgresTest } from "@internal/testcontainers";
 import { describe, expect, it, vi } from "vitest";
 import type { PrismaClientOrTransaction } from "~/db.server";
-import { FEATURE_FLAG, hasUnreadableTurnEvalsOverride } from "~/v3/featureFlags";
+import {
+  FEATURE_FLAG,
+  FeatureFlagCatalog,
+  hasUnreadableTurnEvalsOverride,
+} from "~/v3/featureFlags";
 import { makeFlag, makeSetFlag } from "~/v3/featureFlags.server";
 
 vi.setConfig({ testTimeout: 60_000 });
@@ -115,5 +119,15 @@ describe("hasUnreadableTurnEvalsOverride", () => {
     expect(hasUnreadableTurnEvalsOverride({ [KEY]: "true" })).toBe(true);
     expect(hasUnreadableTurnEvalsOverride({ [KEY]: 0 })).toBe(true);
     expect(hasUnreadableTurnEvalsOverride({ [KEY]: null })).toBe(true);
+  });
+});
+
+describe("deployNowEnabled flag", () => {
+  it("is registered as a strict boolean flag", () => {
+    expect(FEATURE_FLAG.deployNowEnabled).toBe("deployNowEnabled");
+    const schema = FeatureFlagCatalog[FEATURE_FLAG.deployNowEnabled];
+    expect(schema.safeParse(true).success).toBe(true);
+    // strict boolean: the string "false" must NOT coerce to a boolean
+    expect(schema.safeParse("false").success).toBe(false);
   });
 });
