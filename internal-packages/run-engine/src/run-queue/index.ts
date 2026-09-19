@@ -950,7 +950,9 @@ ${QUEUE_METRICS_CK_ENQUEUE_GAUGE_LUA}
 return __qmret(0)
       `;
 
-// Shared by the ck TTL sweep and its virtual-time variant.
+// Used only by the ck TTL sweep's virtual-time variant. INTERIM: the flag-off
+// expireTtlRunsTracked carries main's inline gated version; queue-gate release is not yet
+// threaded through this vtime template (follow-up, alongside the vtime dequeue).
 const ckExpireTtlLua = (v: CkParts<"args" | "drain">) => `
 local ttlQueueKey = KEYS[1]
 local keyPrefix = ARGV[1]
