@@ -1,7 +1,7 @@
 import { type ActionFunctionArgs, type SerializeFrom, json } from "@remix-run/server-runtime";
 import { useFetcher } from "@remix-run/react";
 import { useEffect, useRef, useState } from "react";
-import { Cog6ToothIcon } from "@heroicons/react/20/solid";
+import { Cog6ToothIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { prisma } from "~/db.server";
 import { requireUserId } from "~/services/session.server";
 import { rbac } from "~/services/rbac.server";
@@ -12,14 +12,26 @@ import {
 } from "~/services/previewAutoArchive.server";
 import { PreviewAutoArchivePolicy } from "~/utils/previewAutoArchive";
 import { Button } from "~/components/primitives/Buttons";
-import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "~/components/primitives/Dialog";
 import { Input } from "~/components/primitives/Input";
-import { TextArea } from "~/components/primitives/TextArea";
-import { Label } from "~/components/primitives/Label";
+import { Fieldset } from "~/components/primitives/Fieldset";
+import { InputGroup } from "~/components/primitives/InputGroup";
+import { Hint } from "~/components/primitives/Hint";
+import { Label, labelVariants } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { FormError } from "~/components/primitives/FormError";
 import { Switch } from "~/components/primitives/Switch";
 import { readBoundedBodyText } from "~/utils/boundedRequestBody.server";
+
+import { trail } from "agentcrumbs"; // @crumbs
+const crumb = trail("webapp"); // @crumbs
 
 export async function action({ request }: ActionFunctionArgs) {
   const userId = await requireUserId(request);
@@ -46,7 +58,7 @@ export async function action({ request }: ActionFunctionArgs) {
     return json(
       {
         ok: false,
-        error: "Enter 1–365 days and up to 100 valid branch names, one per line.",
+        error: "Enter 1–365 days and up to 100 valid branch names.",
       } as const,
       { status: 400 }
     );
@@ -137,61 +149,43 @@ export function AutoArchiveSettings({
   canManage: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const fetcher = useFetcher<typeof action>();
-  const toggleRef = useRef<HTMLButtonElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const enabled = environment.previewAutoArchiveAfterDays !== null;
-
-  function handleToggle(checked: boolean) {
-    if (checked) {
-      setOpen(true);
-    } else {
-      fetcher.submit(
-        {
-          environmentId: environment.id,
-          intent: "save",
-          excludedBranches: environment.previewAutoArchiveExcludedBranches.join("\n"),
-        },
-        { method: "post", action: "/resources/branches/auto-archive" }
-      );
-    }
-  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <div className="flex shrink-0 flex-col gap-1">
-        <div className="flex items-center gap-1.5">
-          <Switch
-            ref={toggleRef}
-            label="Auto-archive"
+      {enabled ? (
+        <DialogTrigger asChild>
+          <Button
+            ref={triggerRef}
             variant="secondary/small"
-            checked={enabled}
-            onCheckedChange={handleToggle}
-            disabled={!canManage || fetcher.state !== "idle"}
-          />
-          {enabled && (
-            <DialogTrigger asChild>
-              <Button
-                variant="secondary/small"
-                LeadingIcon={Cog6ToothIcon}
-                aria-label="Auto-archive settings"
-                className="shrink-0 whitespace-nowrap"
-                disabled={!canManage || fetcher.state !== "idle"}
-              >
-                Settings
-              </Button>
-            </DialogTrigger>
-          )}
-        </div>
-        {fetcher.data && !fetcher.data.ok && <FormError>{fetcher.data.error}</FormError>}
-      </div>
+            LeadingIcon={Cog6ToothIcon}
+            className="shrink-0 whitespace-nowrap"
+            disabled={!canManage}
+          >
+            Manage auto-archive
+          </Button>
+        </DialogTrigger>
+      ) : (
+        <Switch
+          ref={triggerRef}
+          label="Auto-archive"
+          variant="secondary/small"
+          checked={false}
+          onCheckedChange={() => setOpen(true)}
+          disabled={!canManage}
+        />
+      )}
       <DialogContent
         className="max-h-[90vh] overflow-y-auto"
         onCloseAutoFocus={(event) => {
           event.preventDefault();
-          toggleRef.current?.focus();
+          triggerRef.current?.focus();
         }}
       >
-        <DialogHeader>Auto-archive preview branches</DialogHeader>
+        <DialogHeader>
+          <DialogTitle>Auto-archive preview branches</DialogTitle>
+        </DialogHeader>
         {open && <AutoArchiveForm environment={environment} onSaved={() => setOpen(false)} />}
       </DialogContent>
     </Dialog>
@@ -216,9 +210,40 @@ function AutoArchiveForm({
   }>({ pending: false });
   const [requestedKey, setRequestedKey] = useState<string | null>(null);
   const [days, setDays] = useState(String(environment.previewAutoArchiveAfterDays ?? 14));
-  const [excluded, setExcluded] = useState(
-    environment.previewAutoArchiveExcludedBranches.join("\n")
+  const [excludedRows, setExcludedRows] = useState(() =>
+    [...environment.previewAutoArchiveExcludedBranches, ""].map((name, id) => ({ id, name }))
   );
+  const nextRowId = useRef(excludedRows.length);
+  const excluded = excludedRows.map(({ name }) => name).join("\n");
+  const enabled = environment.previewAutoArchiveAfterDays !== null;
+
+  function updateExcludedBranch(id: number, name: string) {
+    const rows = excludedRows.map((row) => (row.id === id ? { ...row, name } : row));
+    if (rows.every((row) => row.name.trim() !== "") && rows.length < 100) {
+      rows.push({ id: nextRowId.current++, name: "" });
+    }
+    setExcludedRows(rows);
+  }
+
+  function removeExcludedBranch(id: number) {
+    const rows = excludedRows.filter((row) => row.id !== id);
+    if (rows.length === 0 || rows.every((row) => row.name.trim() !== "")) {
+      rows.push({ id: nextRowId.current++, name: "" });
+    }
+    setExcludedRows(rows);
+  }
+
+  function disableAutoArchive() {
+    crumb("disable preview auto-archive", { environmentId: environment.id }); // @crumbs
+    fetcher.submit(
+      {
+        environmentId: environment.id,
+        intent: "save",
+        excludedBranches: environment.previewAutoArchiveExcludedBranches.join("\n"),
+      },
+      { method: "post", action: "/resources/branches/auto-archive" }
+    );
+  }
   const policyKey = JSON.stringify({
     days: Number(days),
     excludedBranches: [
@@ -283,89 +308,136 @@ function AutoArchiveForm({
     >
       <input type="hidden" name="environmentId" value={environment.id} />
       <input type="hidden" name="enabled" value="on" />
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="archive-days">Days without a deployment</Label>
-        <Input
-          id="archive-days"
-          name="days"
-          type="number"
-          min={1}
-          max={365}
-          required
-          disabled={busy}
-          value={days}
-          onChange={(event) => setDays(event.target.value)}
-        />
-      </div>
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="archive-exclusions">Protected branches</Label>
-        <TextArea
-          id="archive-exclusions"
-          name="excludedBranches"
-          rows={3}
-          maxLength={25_600}
-          placeholder="staging"
-          disabled={busy}
-          value={excluded}
-          onChange={(event) => setExcluded(event.target.value)}
-        />
-        <Paragraph>Exact branch names, one per line.</Paragraph>
-      </div>
-      <section
-        className="min-h-36 max-h-48 overflow-y-auto rounded border border-grid-bright p-3"
-        aria-label="Archive preview"
-        aria-live="polite"
-        aria-busy={valid && !reviewed && preview.pending}
-      >
-        <Paragraph className="mb-2 text-text-bright">Preview</Paragraph>
-        {!valid ? (
-          <Paragraph>Enter 1–365 days and valid branch names to see the preview.</Paragraph>
-        ) : reviewed && preview.data?.ok ? (
-          <div className="space-y-2 text-sm text-text-dimmed">
-            <ul className="list-disc space-y-1 pl-4">
-              <li className={preview.data.count > 0 ? "text-amber-400" : undefined}>
-                {preview.data.partial ? "At least " : ""}
-                {preview.data.count} {preview.data.count === 1 ? "branch is" : "branches are"} ready
-                to archive now.
-                {preview.data.count > 0 &&
-                  " Saving will make these branches eligible for the next cleanup check."}
-              </li>
-              <li>
-                {preview.data.partial ? "At least " : ""}
-                {preview.data.scheduled}{" "}
-                {preview.data.scheduled === 1 ? "branch will" : "branches will"} archive later if no
-                new deployments occur.
-              </li>
-              <li>
-                {preview.data.partial ? "At least " : ""}
-                {preview.data.protectedBranches.length} protected{" "}
-                {preview.data.protectedBranches.length === 1 ? "branch will" : "branches will"} be
-                ignored.
-              </li>
-              {preview.data.inProgress > 0 && (
+      <input type="hidden" name="excludedBranches" value={excluded} />
+      <Fieldset>
+        <InputGroup fullWidth>
+          <Label htmlFor="archive-days">Automatically archive preview branches after</Label>
+          <Input
+            id="archive-days"
+            name="days"
+            type="number"
+            min={1}
+            max={365}
+            required
+            disabled={busy}
+            value={days}
+            onChange={(event) => setDays(event.target.value)}
+            className="min-w-0"
+            accessory={<span className="text-sm text-text-bright">days</span>}
+            aria-describedby="archive-days-description"
+          />
+          <div id="archive-days-description">
+            <Hint>Since the last deployment, or branch creation if never deployed.</Hint>
+          </div>
+        </InputGroup>
+        <InputGroup fullWidth>
+          <Label htmlFor={`archive-exclusion-${excludedRows[0].id}`} required={false}>
+            Branches to keep
+          </Label>
+          {excludedRows.map((row, index) => (
+            <div key={row.id} className="flex items-center gap-2">
+              <Input
+                id={`archive-exclusion-${row.id}`}
+                aria-label={`Branch to keep ${index + 1}`}
+                aria-describedby="archive-exclusions-description"
+                maxLength={255}
+                placeholder={index === 0 ? "Branch name, e.g. staging" : "Add another branch"}
+                disabled={busy}
+                value={row.name}
+                onChange={(event) => updateExcludedBranch(row.id, event.target.value)}
+              />
+              {(row.name !== "" || index < excludedRows.length - 1) && (
+                <Button
+                  type="button"
+                  variant="secondary/medium"
+                  LeadingIcon={TrashIcon}
+                  aria-label={`Remove branch ${row.name || index + 1}`}
+                  disabled={busy}
+                  onClick={() => removeExcludedBranch(row.id)}
+                />
+              )}
+            </div>
+          ))}
+          <div id="archive-exclusions-description">
+            <Hint>
+              Never auto-archive these branches. Use exact names; wildcards aren’t supported.
+            </Hint>
+          </div>
+        </InputGroup>
+        <section
+          className="max-h-48 overflow-y-auto"
+          aria-labelledby="archive-preview-title"
+          aria-live="polite"
+          aria-busy={valid && !reviewed && preview.pending}
+        >
+          <h3 id="archive-preview-title" className={`${labelVariants.medium.text} mb-2`}>
+            Preview
+          </h3>
+          {!valid ? (
+            <Paragraph>Enter 1–365 days and valid branch names to see the preview.</Paragraph>
+          ) : reviewed && preview.data?.ok ? (
+            <div className="space-y-2 text-sm text-text-dimmed">
+              <ul className="list-disc space-y-1 pl-4">
+                <li className={preview.data.count > 0 ? "text-amber-400" : undefined}>
+                  {preview.data.partial ? "At least " : ""}
+                  {preview.data.count} {preview.data.count === 1 ? "branch is" : "branches are"}{" "}
+                  ready to archive now.
+                  {preview.data.count > 0 &&
+                    " Saving will make these branches eligible for the next cleanup check."}
+                </li>
                 <li>
                   {preview.data.partial ? "At least " : ""}
-                  {preview.data.inProgress}{" "}
-                  {preview.data.inProgress === 1 ? "branch has" : "branches have"} a deployment in
-                  progress and will be skipped.
+                  {preview.data.scheduled}{" "}
+                  {preview.data.scheduled === 1 ? "branch will" : "branches will"} archive later if
+                  no new deployments occur.
                 </li>
+                <li>
+                  {preview.data.partial ? "At least " : ""}
+                  {preview.data.protectedBranches.length} protected{" "}
+                  {preview.data.protectedBranches.length === 1 ? "branch will" : "branches will"} be
+                  ignored.
+                </li>
+                {preview.data.inProgress > 0 && (
+                  <li>
+                    {preview.data.partial ? "At least " : ""}
+                    {preview.data.inProgress}{" "}
+                    {preview.data.inProgress === 1 ? "branch has" : "branches have"} a deployment in
+                    progress and will be skipped.
+                  </li>
+                )}
+              </ul>
+              {preview.data.protectedBranches.length > 0 && (
+                <p className="break-words">
+                  Protected: {preview.data.protectedBranches.join(", ")}
+                </p>
               )}
-            </ul>
-            {preview.data.protectedBranches.length > 0 && (
-              <p className="break-words">Protected: {preview.data.protectedBranches.join(", ")}</p>
-            )}
-            {preview.data.partial && (
-              <p>Preview limited to the first 1,000 branches. Cleanup checks all branches.</p>
-            )}
-          </div>
-        ) : requestedKey === policyKey && !preview.pending && preview.data && !preview.data.ok ? (
-          <FormError>{preview.data.error}</FormError>
-        ) : (
-          <Paragraph>Checking branches…</Paragraph>
-        )}
-      </section>
+              {preview.data.partial && (
+                <p>Preview limited to the first 1,000 branches. Cleanup checks all branches.</p>
+              )}
+            </div>
+          ) : requestedKey === policyKey && !preview.pending && preview.data && !preview.data.ok ? (
+            <FormError>{preview.data.error}</FormError>
+          ) : (
+            <Paragraph>Checking branches…</Paragraph>
+          )}
+        </section>
+      </Fieldset>
       {fetcher.data && !fetcher.data.ok && <FormError>{fetcher.data.error}</FormError>}
-      <div className="flex justify-end gap-2">
+      <DialogFooter>
+        {enabled ? (
+          <Button
+            type="button"
+            variant="secondary/medium"
+            disabled={busy}
+            onClick={disableAutoArchive}
+          >
+            Disable auto-archiving
+          </Button>
+        ) : (
+          <Button type="button" variant="secondary/medium" disabled={busy} onClick={onSaved}>
+            Cancel
+          </Button>
+        )}
         <Button
           type="submit"
           name="intent"
@@ -375,7 +447,7 @@ function AutoArchiveForm({
         >
           Save settings
         </Button>
-      </div>
+      </DialogFooter>
     </fetcher.Form>
   );
 }
