@@ -1529,11 +1529,13 @@ describe("CK virtual-time (SFQ) dequeue", () => {
           ckIndexKey,
           testOptions.keys.queueLengthCounterKeyFromQueue(ghostVariant),
           testOptions.keys.queueRunningCounterKeyFromQueue(ghostVariant),
+          testOptions.keys.queueGroupConcurrencyKeyFromQueue(ghostVariant),
           "r-ghost",
           ghostVariant,
           "",
           "0",
-          testOptions.keys.toCkWildcard(ghostVariant)
+          testOptions.keys.toCkWildcard(ghostVariant),
+          "runqueue:test:"
         );
 
         // Stranded, which is the state an older instance leaves behind.
@@ -1592,11 +1594,13 @@ describe("CK virtual-time (SFQ) dequeue", () => {
           ckIndexKey,
           testOptions.keys.queueLengthCounterKeyFromQueue(v),
           testOptions.keys.queueRunningCounterKeyFromQueue(v),
+          testOptions.keys.queueGroupConcurrencyKeyFromQueue(v),
           ckVtimeKey,
           testOptions.keys.ckVtimeIdleKeyFromQueue(v),
           "r-dlq",
           v,
           testOptions.keys.toCkWildcard(v),
+          "runqueue:test:",
           "86400"
         );
 
