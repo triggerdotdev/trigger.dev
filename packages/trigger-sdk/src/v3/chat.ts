@@ -45,6 +45,7 @@ function byteLength(body: string): number {
   return new TextEncoder().encode(body).byteLength;
 }
 import { ChatTabCoordinator } from "./chat-tab-coordinator.js";
+import type { TranscriptCursors } from "./transcriptStorage.js";
 import {
   MAX_EOF_RESUBSCRIBES,
   slimSubmitMessageForWire,
@@ -710,36 +711,11 @@ export type TriggerChatTransportOptions<TClientData = unknown> = {
  * `end-and-continue`, etc.
  * @internal
  */
-type ChatSessionState = {
-  /** Session-scoped PAT — `read:sessions:{chatId} + write:sessions:{chatId}`. */
-  publicAccessToken: string;
-  /** Last SSE event ID — used to resume the stream without replaying old events. */
-  lastEventId?: string;
-  /** `.in` append sequence used to filter stale turn boundaries after reconnecting. */
-  activeInputSeq?: number;
-  /**
-   * Set when the stream was aborted mid-turn (stop). Skip chunks until the
-   * stopped turn's trigger:turn-complete — survives a reconnect and a retry
-   * send, so the stopped turn's tail never renders into the new turn.
-   */
-  skipToTurnComplete?: boolean;
-  /** `.in` seq of the turn the gate supersedes; only its boundary (or a later one) clears the gate. */
-  supersededInputSeq?: number;
-  requiresTranscriptReload?: boolean;
-  transcriptRecoveryInputSeq?: number;
+type ChatSessionState = ChatSessionPersistedState & {
   /** Identifies the stopped boundary for pending Stop acknowledgments. Never persisted. */
   stoppedBoundary?: symbol;
-  /** Whether the agent is currently streaming a response. Set on first chunk, cleared on turn-complete. */
-  isStreaming?: boolean;
-  /** Set once the outstanding turn is declared dead: a later stop must not gate the next turn on it. */
-  outstandingTurnAbandoned?: boolean;
   /** Identifies the latest transcript load for this blocked session. Never persisted. */
   transcriptRecovery?: symbol;
-  skipSettledPeek?: boolean;
-  /** Set once the session is closed. Terminal — sends and reconnects stop. */
-  closed?: boolean;
-  /** The reason the session was closed, when one was given. */
-  closedReason?: string;
 };
 
 /**
@@ -821,20 +797,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
     if (options.sessions) {
       for (const [chatId, session] of Object.entries(options.sessions)) {
-        this.sessions.set(chatId, {
-          publicAccessToken: session.publicAccessToken,
-          lastEventId: session.lastEventId,
-          activeInputSeq: session.activeInputSeq,
-          isStreaming: session.isStreaming,
-          skipToTurnComplete: session.skipToTurnComplete,
-          supersededInputSeq: session.supersededInputSeq,
-          requiresTranscriptReload: session.requiresTranscriptReload,
-          transcriptRecoveryInputSeq: session.transcriptRecoveryInputSeq,
-          outstandingTurnAbandoned: session.outstandingTurnAbandoned,
-          skipSettledPeek: session.skipSettledPeek,
-          closed: session.closed,
-          closedReason: session.closedReason,
-        });
+        this.sessions.set(chatId, this.toPersisted(session));
       }
     }
   }
@@ -1492,22 +1455,12 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   };
 
   setSession(chatId: string, session: ChatSessionPersistedState): void {
-    this.sessions.set(
-      chatId,
-      this.applyPendingResumeCursor(chatId, {
-        publicAccessToken: session.publicAccessToken,
-        lastEventId: session.lastEventId,
-        activeInputSeq: session.activeInputSeq,
-        isStreaming: session.isStreaming,
-        skipToTurnComplete: session.skipToTurnComplete,
-        supersededInputSeq: session.supersededInputSeq,
-        requiresTranscriptReload: session.requiresTranscriptReload,
-        transcriptRecoveryInputSeq: session.transcriptRecoveryInputSeq,
-        outstandingTurnAbandoned: session.outstandingTurnAbandoned,
-        skipSettledPeek: session.skipSettledPeek,
-      })
-    );
-    this.notifySessionChange(chatId, this.toPersisted(this.sessions.get(chatId)!));
+    const state = this.toPersisted(session);
+    // Explicit session replacement resets the closed state, unlike constructor hydration.
+    state.closed = undefined;
+    state.closedReason = undefined;
+    this.sessions.set(chatId, this.applyPendingResumeCursor(chatId, state));
+    this.notifySessionChange(chatId, state);
   }
 
   /**
@@ -1523,7 +1476,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     if (existing?.publicAccessToken) {
       if (existing.lastEventId === undefined) {
         existing.lastEventId = lastEventId;
-        this.notifySessionChange(chatId, this.toPersisted(existing));
+        this.notifySessionChange(chatId, existing);
       }
       this.pendingResumeCursors.delete(chatId);
       return;
@@ -1535,10 +1488,11 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
    * Capture recovery before a fresh transcript load starts. The returned callback
    * accepts a newer saved cursor once, with input evidence for the stopped boundary.
    * Ordinary transcript loads do not reset session state.
+   * Stale recovery returns false. Missing or invalid recovery evidence throws an error.
    */
   prepareTranscriptRecovery = (
     chatId: string
-  ): ((lastEventId: string | undefined, lastInEventId?: string) => boolean) | undefined => {
+  ): ((cursors: TranscriptCursors | undefined) => boolean) | undefined => {
     const state = this.sessions.get(chatId);
     if (!state?.requiresTranscriptReload || state.closed) return undefined;
 
@@ -1552,7 +1506,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       transcriptRecoveryInputSeq,
     } = state;
     const stoppedInputSeq = supersededInputSeq ?? transcriptRecoveryInputSeq;
-    return (loadedEventId, loadedInEventId) => {
+    return (cursors) => {
       if (state.transcriptRecovery !== token) return false;
       state.transcriptRecovery = undefined;
       if (
@@ -1564,15 +1518,33 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
         state.activeInputSeq !== activeInputSeq ||
         state.skipToTurnComplete !== skipToTurnComplete ||
         state.supersededInputSeq !== supersededInputSeq ||
-        state.transcriptRecoveryInputSeq !== transcriptRecoveryInputSeq ||
+        state.transcriptRecoveryInputSeq !== transcriptRecoveryInputSeq
+      ) {
+        return false;
+      }
+      if (
         stoppedInputSeq === undefined ||
         !Number.isSafeInteger(stoppedInputSeq) ||
-        stoppedInputSeq < 0 ||
+        stoppedInputSeq < 0
+      ) {
+        throw new Error(
+          "Transcript recovery requires a stopped input sequence. Stop the chat again, then reload its transcript."
+        );
+      }
+      const loadedEventId = cursors?.lastOutEventId;
+      const loadedInEventId = cursors?.lastInEventId;
+      if (
         loadedInEventId === undefined ||
         !/^\d+$/.test(loadedInEventId) ||
-        BigInt(loadedInEventId) < BigInt(stoppedInputSeq) ||
         loadedEventId === undefined ||
-        !/^\d+$/.test(loadedEventId) ||
+        !/^\d+$/.test(loadedEventId)
+      ) {
+        throw new Error(
+          "Transcript recovery requires numeric input and output cursors. Return both cursors from the transcript loader."
+        );
+      }
+      if (
+        BigInt(loadedInEventId) < BigInt(stoppedInputSeq) ||
         (lastEventId !== undefined &&
           (!/^\d+$/.test(lastEventId) || BigInt(loadedEventId) <= BigInt(lastEventId)))
       ) {
@@ -2327,6 +2299,9 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
         };
 
         let eofResubscribes = 0;
+        const emptyRecoveryError = new Error(
+          "Chat recovery received no output before the poll ended. Reconnect to resume the accepted message."
+        );
 
         const resumeAfterEof = async () => {
           // Watch mode is a standing subscription: it outlives turn-complete
@@ -2356,6 +2331,16 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             throw new Error(
               "Chat stream ended before the turn completed (reconnect budget exhausted)."
             );
+          }
+
+          if (
+            !this.watchMode &&
+            state.skipSettledPeek &&
+            state.isStreaming === undefined &&
+            !currentSubscription?.sessionSettled &&
+            !combinedSignal.aborted
+          ) {
+            throw emptyRecoveryError;
           }
 
           // A passive abort closes this view, not the remote turn. Only a
@@ -2651,7 +2636,8 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
           }
           const errorStatus = (error as { status?: unknown }).status;
           // A superseded stream cannot settle the replacement stream.
-          if (this.activeStreams.get(chatId) === internalAbort) {
+          // An empty recovery poll retains unknown state so reconnect can resume the accepted message.
+          if (this.activeStreams.get(chatId) === internalAbort && error !== emptyRecoveryError) {
             state.isStreaming = false;
             this.notifySessionChange(chatId, state);
           }

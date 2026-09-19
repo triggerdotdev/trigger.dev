@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   TriggerChatTransport,
   type ChatSessionPersistedState,
+  type ChatTransportEvent,
   type TriggerChatTransportOptions,
 } from "./chat.js";
 
@@ -505,7 +506,7 @@ describe("Stop with a successor response", () => {
     await hydrateBlockedSession("constructor");
     const recover = transport.prepareTranscriptRecovery("chat");
     if (!recover) throw new Error("Expected transcript recovery");
-    expect(recover("5", "9")).toBe(false);
+    expect(recover({ lastOutEventId: "5", lastInEventId: "9" })).toBe(false);
     await expect(send()).rejects.toThrow("Stopped chat response cannot be matched");
     expect(inputSeq).toBe(13);
   });
@@ -542,11 +543,11 @@ describe("Stop with a successor response", () => {
       if (hydrate === "setSession") transport.setSession("chat", session);
       const stale = transport.prepareTranscriptRecovery("chat");
       if (!stale) throw new Error("Expected transcript recovery");
-      expect(stale("5", "9")).toBe(false);
+      expect(stale({ lastOutEventId: "5", lastInEventId: "9" })).toBe(false);
       await expect(send()).rejects.toThrow("Stopped chat response cannot be matched");
       const fresh = transport.prepareTranscriptRecovery("chat");
       if (!fresh) throw new Error("Expected transcript recovery");
-      expect(fresh("11", "10")).toBe(true);
+      expect(fresh({ lastOutEventId: "11", lastInEventId: "10" })).toBe(true);
       const next = await transport.reconnectToStream({ chatId: "chat" });
       if (!next) throw new Error("Expected a resumed stream");
       await vi.waitFor(() => expect(outputs).toHaveLength(2));
@@ -575,7 +576,7 @@ describe("Stop with a successor response", () => {
       }
       const recover = transport.prepareTranscriptRecovery("chat");
       if (!recover) throw new Error("Expected transcript recovery");
-      expect(recover("17", "11")).toBe(true);
+      expect(recover({ lastOutEventId: "17", lastInEventId: "11" })).toBe(true);
       const next = await send();
       emit([...reply(18), complete(23, 13)]);
       await expect(readText(next)).resolves.toBe("New response");
@@ -597,8 +598,15 @@ describe("Stop with a successor response", () => {
     expect(await stopped).toBe(true);
     const recover = transport.prepareTranscriptRecovery("chat");
     if (!recover) throw new Error("Expected transcript recovery");
-    expect(recover("17", "11")).toBe(false);
+    expect(() => recover({ lastOutEventId: "17", lastInEventId: "11" })).toThrow(
+      "Transcript recovery requires a stopped input sequence"
+    );
     await expect(send()).rejects.toThrow("Stopped chat response cannot be matched");
+    holdStop = false;
+    expect(await transport.stopGeneration("chat")).toBe(true);
+    expect(
+      transport.prepareTranscriptRecovery("chat")?.({ lastOutEventId: "17", lastInEventId: "11" })
+    ).toBe(true);
   });
 
   it("accepts a sequence-free response without a stopped boundary", async () => {
@@ -632,7 +640,7 @@ describe("Stop with a successor response", () => {
       await hydrateBlockedSession(hydrate);
       const recover = transport.prepareTranscriptRecovery("chat");
       if (!recover) throw new Error("Expected transcript recovery");
-      expect(recover("11", "11")).toBe(true);
+      expect(recover({ lastOutEventId: "11", lastInEventId: "11" })).toBe(true);
       transport.seedResumeCursor("chat", "11");
       expect(saved).toMatchObject({
         lastEventId: "11",
@@ -658,7 +666,13 @@ describe("Stop with a successor response", () => {
       await hydrateBlockedSession("constructor");
       const recover = transport.prepareTranscriptRecovery("chat");
       if (!recover) throw new Error("Expected transcript recovery");
-      expect(recover(cursor, "11")).toBe(false);
+      if (cursor === undefined) {
+        expect(() => recover({ lastOutEventId: cursor, lastInEventId: "11" })).toThrow(
+          "Transcript recovery requires numeric input and output cursors"
+        );
+      } else {
+        expect(recover({ lastOutEventId: cursor, lastInEventId: "11" })).toBe(false);
+      }
       await expect(send()).rejects.toThrow("Stopped chat response cannot be matched");
       await expect(transport.sendAction("chat", { type: "undo" })).rejects.toThrow(
         "Stopped chat response cannot be matched"
@@ -685,7 +699,7 @@ describe("Stop with a successor response", () => {
       await hydrateBlockedSession("constructor");
       const recover = transport.prepareTranscriptRecovery("chat");
       if (!recover) throw new Error("Expected transcript recovery");
-      expect(recover("11", "11")).toBe(true);
+      expect(recover({ lastOutEventId: "11", lastInEventId: "11" })).toBe(true);
       if (hydrate !== "none") {
         const session = transport.getSession("chat");
         if (!session) throw new Error("Expected persisted state");
@@ -707,16 +721,21 @@ describe("Stop with a successor response", () => {
     }
   );
 
-  it("retains unknown recovery state after a bounded empty response", async () => {
+  it("reports an empty recovery poll and reconnects without another append", async () => {
     await hydrateBlockedSession("constructor");
     const recover = transport.prepareTranscriptRecovery("chat");
     if (!recover) throw new Error("Expected transcript recovery");
-    expect(recover("11", "11")).toBe(true);
+    expect(recover({ lastOutEventId: "11", lastInEventId: "11" })).toBe(true);
+    const events: ChatTransportEvent[] = [];
+    transport.setOnEvent((event) => events.push(event));
     resumeAfterStoppedCheckpoint = true;
     emptyRecoveredOutput = true;
     const resumed = await transport.reconnectToStream({ chatId: "chat" });
     if (!resumed) throw new Error("Expected a resumed stream");
-    await expect(readText(resumed)).resolves.toBe("");
+    await expect(readText(resumed)).rejects.toThrow(
+      "Chat recovery received no output before the poll ended. Reconnect to resume the accepted message."
+    );
+    expect(events.filter((event) => event.type === "stream-error")).toHaveLength(1);
     const request = outputHeaders.at(-1);
     if (!request) throw new Error("Expected a stream request");
     expect(request.peek).toBe(false);
@@ -742,13 +761,127 @@ describe("Stop with a successor response", () => {
     holdStop = true;
     const stopped = transport.stopGeneration("chat");
     await vi.waitFor(() => expect(pendingStop).toBeDefined());
-    expect(recover("11", "11")).toBe(false);
+    expect(recover({ lastOutEventId: "11", lastInEventId: "11" })).toBe(false);
     await expect(send()).rejects.toThrow("Stopped chat response cannot be matched");
     const pending = pendingStop!;
     appendResponse(pending.response, pending.seq);
     expect(await stopped).toBe(true);
     expect(inputSeq).toBe(14);
     expect(transport.getSession("chat")).toMatchObject({ requiresTranscriptReload: true });
+  });
+
+  it.each(["abort", "stop"] as const)("closes recovery quietly after %s", async (operation) => {
+    await hydrateBlockedSession("constructor");
+    expect(
+      transport.prepareTranscriptRecovery("chat")?.({ lastOutEventId: "11", lastInEventId: "11" })
+    ).toBe(true);
+    const events: ChatTransportEvent[] = [];
+    transport.setOnEvent((event) => events.push(event));
+    const abort = new AbortController();
+    const resumed = await transport.reconnectToStream({
+      chatId: "chat",
+      abortSignal: abort.signal,
+    });
+    if (!resumed) throw new Error("Expected a resumed stream");
+    const result = readText(resumed);
+    await vi.waitFor(() => expect(outputs).toHaveLength(2));
+    if (operation === "abort") abort.abort();
+    else await transport.stopGeneration("chat");
+    await expect(result).resolves.toBe("");
+    expect(events.filter((event) => event.type === "stream-error")).toEqual([]);
+    if (operation === "abort") {
+      expect(transport.getSession("chat")).toMatchObject({
+        isStreaming: undefined,
+        skipSettledPeek: true,
+      });
+      expect(inputSeq).toBe(13);
+    } else {
+      expect(transport.getSession("chat")).toMatchObject({
+        isStreaming: false,
+        skipToTurnComplete: true,
+      });
+      expect(inputSeq).toBe(14);
+    }
+  });
+
+  it("closes an empty settled recovery without an error", async () => {
+    await hydrateBlockedSession("constructor");
+    expect(
+      transport.prepareTranscriptRecovery("chat")?.({ lastOutEventId: "11", lastInEventId: "11" })
+    ).toBe(true);
+    const events: ChatTransportEvent[] = [];
+    transport.setOnEvent((event) => events.push(event));
+    settled = true;
+    emptyRecoveredOutput = true;
+    const resumed = await transport.reconnectToStream({ chatId: "chat" });
+    if (!resumed) throw new Error("Expected a resumed stream");
+    await expect(readText(resumed)).resolves.toBe("");
+    expect(events.filter((event) => event.type === "stream-error")).toEqual([]);
+    expect(transport.getSession("chat")?.isStreaming).toBe(false);
+    expect(inputSeq).toBe(13);
+  });
+
+  it("reconnects a watch after an empty recovery response", async () => {
+    await hydrateBlockedSession("constructor");
+    expect(
+      transport.prepareTranscriptRecovery("chat")?.({ lastOutEventId: "11", lastInEventId: "11" })
+    ).toBe(true);
+    const session = transport.getSession("chat")!;
+    transport.dispose();
+    const events: ChatTransportEvent[] = [];
+    transport = createTransport(session, { watch: true, onEvent: (event) => events.push(event) });
+    emptyRecoveredOutput = true;
+    const resumed = await transport.reconnectToStream({ chatId: "chat" });
+    if (!resumed) throw new Error("Expected a resumed stream");
+    const result = readWatchedTurn(resumed);
+    await vi.waitFor(() => expect(outputs.length).toBeGreaterThanOrEqual(2));
+    emptyRecoveredOutput = false;
+    resumeAfterStoppedCheckpoint = true;
+    await expect(result).resolves.toBe("New response");
+    expect(events.filter((event) => event.type === "stream-error")).toEqual([]);
+    expect(inputSeq).toBe(13);
+  });
+
+  it("uses the active-turn retry policy after recovery receives data", async () => {
+    await hydrateBlockedSession("constructor");
+    expect(
+      transport.prepareTranscriptRecovery("chat")?.({ lastOutEventId: "11", lastInEventId: "11" })
+    ).toBe(true);
+    const events: ChatTransportEvent[] = [];
+    transport.setOnEvent((event) => events.push(event));
+    const resumed = await transport.reconnectToStream({ chatId: "chat" });
+    if (!resumed) throw new Error("Expected a resumed stream");
+    const reader = resumed.getReader();
+    await vi.waitFor(() => expect(outputs).toHaveLength(2));
+    emit([chunk(12, { type: "start", messageId: "new" })]);
+    await expect(reader.read()).resolves.toMatchObject({ value: { type: "start" } });
+    outputs.at(-1)!.end();
+    await vi.waitFor(() => expect(outputs).toHaveLength(3));
+    emit([...reply(12).slice(1), complete(17, 12)]);
+    while (!(await reader.read()).done) {}
+    expect(events.filter((event) => event.type === "stream-error")).toEqual([]);
+    expect(transport.getSession("chat")?.isStreaming).toBe(false);
+    expect(inputSeq).toBe(13);
+  });
+
+  it("does not let a replaced recovery stream settle the new response", async () => {
+    await hydrateBlockedSession("constructor");
+    expect(
+      transport.prepareTranscriptRecovery("chat")?.({ lastOutEventId: "11", lastInEventId: "11" })
+    ).toBe(true);
+    const events: ChatTransportEvent[] = [];
+    transport.setOnEvent((event) => events.push(event));
+    const resumed = await transport.reconnectToStream({ chatId: "chat" });
+    if (!resumed) throw new Error("Expected a resumed stream");
+    const oldResult = readText(resumed);
+    await vi.waitFor(() => expect(outputs).toHaveLength(2));
+    const replacement = await send();
+    await expect(oldResult).resolves.toBe("");
+    expect(transport.getSession("chat")?.isStreaming).toBe(true);
+    emit([...reply(12), complete(17, 13)]);
+    await expect(readText(replacement)).resolves.toBe("New response");
+    expect(events.filter((event) => event.type === "stream-error")).toEqual([]);
+    expect(inputSeq).toBe(14);
   });
 
   it.each(["constructor", "setSession"] as const)(
