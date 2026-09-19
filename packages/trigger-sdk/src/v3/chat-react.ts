@@ -65,6 +65,8 @@ export type UseLoadTranscriptOptions = {
    * the loaded transcript, so the live subscription opens just past the
    * persisted history instead of replaying it. Only applies once the
    * transport knows the session (from `sessions` or after `start`).
+   * For a blocked session, a fresh load with a newer saved cursor also clears
+   * the transcript reload requirement. A stale result leaves sends blocked.
    */
   transport?: TriggerChatTransport;
   /** Page size passed to the action. */
@@ -77,14 +79,17 @@ export type UseLoadTranscriptOptions = {
  * history. Applied to the session now if it exists, otherwise held by the
  * transport until the session is created, so a load that resolves before the
  * session exists still moves the cursor. A no-op when the transcript carries
- * no cursor. Returns whether a cursor was provided.
+ * no cursor. A captured recovery callback replaces ordinary cursor seeding.
+ * Returns whether the cursor was accepted.
  */
 export function seedTranscriptCursor(
   transport: Pick<TriggerChatTransport, "seedResumeCursor">,
   chatId: string,
-  cursors: { lastOutEventId?: string } | undefined
+  cursors: { lastOutEventId?: string } | undefined,
+  completeRecovery?: (lastEventId: string | undefined) => boolean
 ): boolean {
   const lastEventId = cursors?.lastOutEventId;
+  if (completeRecovery) return completeRecovery(lastEventId);
   if (!lastEventId) return false;
   transport.seedResumeCursor(chatId, lastEventId);
   return true;
@@ -130,8 +135,7 @@ export function useLoadTranscript<TUIMessage extends UIMessage = UIMessage>(
 
   const loadRef = useRef(load);
   loadRef.current = load;
-  const transportRef = useRef(options?.transport);
-  transportRef.current = options?.transport;
+  const transport = options?.transport;
   const limit = options?.limit;
 
   useEffect(() => {
@@ -140,13 +144,17 @@ export function useLoadTranscript<TUIMessage extends UIMessage = UIMessage>(
       return;
     }
     let cancelled = false;
+    const completeRecovery = transport?.prepareTranscriptRecovery(chatId);
     setState({ chatId, messages: [], isLoading: true, error: undefined, nextCursor: undefined });
     loadRef
       .current({ chatId, ...(limit !== undefined ? { limit } : {}) })
       .then((result) => {
         if (cancelled) return;
-        if (transportRef.current) {
-          seedTranscriptCursor(transportRef.current, chatId, result.cursors);
+        if (transport) {
+          const seeded = seedTranscriptCursor(transport, chatId, result.cursors, completeRecovery);
+          if (completeRecovery && !seeded) {
+            throw new Error("The loaded transcript is not current. Reload the chat again.");
+          }
         }
         setState({
           chatId,
@@ -164,7 +172,7 @@ export function useLoadTranscript<TUIMessage extends UIMessage = UIMessage>(
     return () => {
       cancelled = true;
     };
-  }, [chatId, limit]);
+  }, [chatId, limit, transport]);
 
   return {
     messages: state.chatId === chatId ? state.messages : [],

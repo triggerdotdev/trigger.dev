@@ -56,15 +56,31 @@ async function readText(stream: ReadableStream<UIMessageChunk>): Promise<string>
   return text;
 }
 
+function readWatchedTurn(stream: ReadableStream<UIMessageChunk>): Promise<string> {
+  return readText(
+    stream.pipeThrough(
+      new TransformStream<UIMessageChunk, UIMessageChunk>({
+        transform(value, controller) {
+          controller.enqueue(value);
+          if (value.type === "finish") controller.terminate();
+        },
+      })
+    )
+  );
+}
+
 describe("Stop with a successor response", () => {
   let server: Server;
   let baseURL: string;
   let transport: TriggerChatTransport;
   let outputs: ServerResponse[];
+  let outputHeaders: { peek: boolean; timeout: number }[];
   let inputSeq: number;
   let holdStop: boolean;
   let stopStatus: number;
   let settled: boolean;
+  let resumeAfterStoppedCheckpoint: boolean;
+  let emptyRecoveredOutput: boolean;
   let includeSequence: boolean;
   let pendingStop: { response: ServerResponse; seq: number } | undefined;
   let saved: ChatSessionPersistedState | null;
@@ -93,10 +109,13 @@ describe("Stop with a successor response", () => {
 
   beforeEach(async () => {
     outputs = [];
+    outputHeaders = [];
     inputSeq = 10;
     holdStop = false;
     stopStatus = 200;
     settled = false;
+    resumeAfterStoppedCheckpoint = false;
+    emptyRecoveredOutput = false;
     includeSequence = true;
     pendingStop = undefined;
     saved = null;
@@ -115,13 +134,26 @@ describe("Stop with a successor response", () => {
         }
         return;
       }
+      const stoppedCheckpointPeek =
+        resumeAfterStoppedCheckpoint && request.headers["x-peek-settled"] !== undefined;
+      outputHeaders.push({
+        peek: request.headers["x-peek-settled"] !== undefined,
+        timeout: Number(request.headers["timeout-seconds"]),
+      });
       response.writeHead(200, {
         "Content-Type": "text/event-stream",
         "X-Stream-Version": "v2",
-        "X-Session-Settled": String(settled),
+        "X-Session-Settled": String(settled || stoppedCheckpointPeek),
       });
       response.flushHeaders();
       outputs.push(response);
+      if (stoppedCheckpointPeek || emptyRecoveredOutput) {
+        response.end();
+      } else if (resumeAfterStoppedCheckpoint) {
+        response.write(
+          `event: batch\ndata: ${JSON.stringify({ records: [...reply(12), complete(17, 12)] })}\n\n`
+        );
+      }
     });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const address = server.address();
@@ -162,6 +194,25 @@ describe("Stop with a successor response", () => {
       ...reply(6),
       complete(11, newInput),
     ];
+  }
+
+  async function hydrateBlockedSession(hydrate: "constructor" | "setSession") {
+    const first = await send();
+    const reader = first.getReader();
+    emit([chunk(1, { type: "start", messageId: "old" })]);
+    await reader.read();
+    await transport.stopGeneration("chat");
+    includeSequence = false;
+    await expect(send()).rejects.toThrow("Stopped chat response cannot be matched");
+    const session = transport.getSession("chat");
+    if (!session) throw new Error("Expected persisted state");
+    expect(session).toMatchObject({ requiresTranscriptReload: true, lastEventId: "1" });
+    transport.dispose();
+    transport = createTransport(
+      hydrate === "constructor" ? session : { publicAccessToken: "test-token" }
+    );
+    if (hydrate === "setSession") transport.setSession("chat", session);
+    includeSequence = true;
   }
 
   it.each([false, true])(
@@ -211,6 +262,81 @@ describe("Stop with a successor response", () => {
       await expect(readText(next)).resolves.toBe("New response");
     }
   );
+
+  it.each([false, true])(
+    "discards stopped output before the first resumed record (abort first: %s)",
+    async (abortFirst) => {
+      transport.setSession("chat", { publicAccessToken: "test-token", lastEventId: "1" });
+      const abort = new AbortController();
+      const resumed = await transport.reconnectToStream({
+        chatId: "chat",
+        abortSignal: abort.signal,
+      });
+      if (!resumed) throw new Error("Expected a resumed stream");
+      await vi.waitFor(() => expect(outputs).toHaveLength(1));
+      const reader = resumed.getReader();
+      if (abortFirst) {
+        abort.abort();
+        expect((await reader.read()).done).toBe(true);
+      }
+      await transport.stopGeneration("chat");
+      const next = await send();
+      emit(oldTailAndReply(10, 11));
+      await expect(readText(next)).resolves.toBe("New response");
+      expect(transport.getSession("chat")?.skipToTurnComplete).toBe(false);
+    }
+  );
+
+  it("does not gate a response after an empty settled resume", async () => {
+    settled = true;
+    transport.setSession("chat", { publicAccessToken: "test-token", lastEventId: "1" });
+    const resumed = await transport.reconnectToStream({ chatId: "chat" });
+    if (!resumed) throw new Error("Expected a resumed stream");
+    await vi.waitFor(() => expect(outputs).toHaveLength(1));
+    outputs[0]!.end();
+    await expect(readText(resumed)).resolves.toBe("");
+    await transport.stopGeneration("chat");
+    settled = false;
+    const next = await send();
+    emit([...reply(2), complete(7, 11)]);
+    await expect(readText(next)).resolves.toBe("New response");
+  });
+
+  it("does not gate a response after Stop on a known idle watch", async () => {
+    transport.dispose();
+    transport = createTransport(
+      { publicAccessToken: "test-token", lastEventId: "1", isStreaming: false },
+      { watch: true }
+    );
+    const resumed = await transport.reconnectToStream({ chatId: "chat" });
+    if (!resumed) throw new Error("Expected a watch stream");
+    await vi.waitFor(() => expect(outputs).toHaveLength(1));
+    await transport.stopGeneration("chat");
+    const next = await send();
+    emit([...reply(2), complete(7, 11)]);
+    await expect(readWatchedTurn(next)).resolves.toBe("New response");
+  });
+
+  it("does not gate a response after a passive watch abort with unknown turn state", async () => {
+    transport.dispose();
+    transport = createTransport(
+      { publicAccessToken: "test-token", lastEventId: "1" },
+      { watch: true }
+    );
+    const abort = new AbortController();
+    const resumed = await transport.reconnectToStream({
+      chatId: "chat",
+      abortSignal: abort.signal,
+    });
+    if (!resumed) throw new Error("Expected a watch stream");
+    await vi.waitFor(() => expect(outputs).toHaveLength(1));
+    abort.abort();
+    await expect(readText(resumed)).resolves.toBe("");
+    const next = await send();
+    emit([...reply(2), complete(7, 10)]);
+    await expect(readWatchedTurn(next)).resolves.toBe("New response");
+    expect(inputSeq).toBe(11);
+  });
 
   it.each(["constructor", "setSession"] as const)(
     "retains the stopped boundary through %s hydration",
@@ -381,6 +507,176 @@ describe("Stop with a successor response", () => {
     emit([...reply(1), complete(6, 10)]);
     await expect(readText(stream)).resolves.toBe("New response");
   });
+
+  it("rejects steering before an append when transcript reload is required", async () => {
+    await send();
+    await transport.stopGeneration("chat");
+    includeSequence = false;
+    await expect(send()).rejects.toThrow("Stopped chat response cannot be matched");
+    const accepted = await transport.sendPendingMessage("chat", {
+      id: "steering-message",
+      role: "user",
+      parts: [{ type: "text", text: "Use the new instructions" }],
+    });
+    expect({ accepted, inputSeq }).toEqual({ accepted: false, inputSeq: 13 });
+  });
+
+  it.each([
+    ["constructor", "reconnect"],
+    ["constructor", "send"],
+    ["setSession", "reconnect"],
+    ["setSession", "send"],
+  ] as const)(
+    "recovers a blocked session through %s hydration and %s after a fresh transcript",
+    async (hydrate, operation) => {
+      await hydrateBlockedSession(hydrate);
+      const recover = transport.prepareTranscriptRecovery("chat");
+      if (!recover) throw new Error("Expected transcript recovery");
+      expect(recover("11")).toBe(true);
+      transport.seedResumeCursor("chat", "11");
+      expect(saved).toMatchObject({
+        lastEventId: "11",
+        requiresTranscriptReload: false,
+        skipToTurnComplete: false,
+        supersededInputSeq: undefined,
+        activeInputSeq: undefined,
+      });
+      const before = outputs.length;
+      const stream =
+        operation === "send" ? await send() : await transport.reconnectToStream({ chatId: "chat" });
+      if (!stream) throw new Error("Expected a response stream");
+      await vi.waitFor(() => expect(outputs.length).toBeGreaterThan(before));
+      emit([...reply(12), complete(17, operation === "send" ? 13 : 12)]);
+      await expect(readText(stream)).resolves.toBe("New response");
+      expect(inputSeq).toBe(operation === "send" ? 14 : 13);
+    }
+  );
+
+  it.each([undefined, "0", "1"])(
+    "retains the reload guard for a missing or stale transcript cursor (%s)",
+    async (cursor) => {
+      await hydrateBlockedSession("constructor");
+      const recover = transport.prepareTranscriptRecovery("chat");
+      if (!recover) throw new Error("Expected transcript recovery");
+      expect(recover(cursor)).toBe(false);
+      await expect(send()).rejects.toThrow("Stopped chat response cannot be matched");
+      await expect(transport.sendAction("chat", { type: "undo" })).rejects.toThrow(
+        "Stopped chat response cannot be matched"
+      );
+      expect(
+        await transport.sendPendingMessage("chat", {
+          id: "steering-message",
+          role: "user",
+          parts: [{ type: "text", text: "Use the new instructions" }],
+        })
+      ).toBe(false);
+      expect(await transport.reconnectToStream({ chatId: "chat" })).toBeNull();
+      expect(inputSeq).toBe(13);
+      expect(transport.getSession("chat")).toMatchObject({
+        lastEventId: "1",
+        requiresTranscriptReload: true,
+      });
+    }
+  );
+
+  it.each(["none", "constructor", "setSession"] as const)(
+    "resumes accepted output after a stopped checkpoint (recovery hydration: %s)",
+    async (hydrate) => {
+      await hydrateBlockedSession("constructor");
+      const recover = transport.prepareTranscriptRecovery("chat");
+      if (!recover) throw new Error("Expected transcript recovery");
+      expect(recover("11")).toBe(true);
+      if (hydrate !== "none") {
+        const session = transport.getSession("chat");
+        if (!session) throw new Error("Expected persisted state");
+        transport.dispose();
+        transport = createTransport(
+          hydrate === "constructor" ? session : { publicAccessToken: "test-token" }
+        );
+        if (hydrate === "setSession") transport.setSession("chat", session);
+      }
+      resumeAfterStoppedCheckpoint = true;
+      const resumed = await transport.reconnectToStream({ chatId: "chat" });
+      if (!resumed) throw new Error("Expected a resumed stream");
+      await expect(readText(resumed)).resolves.toBe("New response");
+      expect(inputSeq).toBe(13);
+      expect(transport.getSession("chat")).toMatchObject({
+        skipSettledPeek: false,
+        isStreaming: false,
+      });
+    }
+  );
+
+  it("retains unknown recovery state after a bounded empty response", async () => {
+    await hydrateBlockedSession("constructor");
+    const recover = transport.prepareTranscriptRecovery("chat");
+    if (!recover) throw new Error("Expected transcript recovery");
+    expect(recover("11")).toBe(true);
+    resumeAfterStoppedCheckpoint = true;
+    emptyRecoveredOutput = true;
+    const resumed = await transport.reconnectToStream({ chatId: "chat" });
+    if (!resumed) throw new Error("Expected a resumed stream");
+    await expect(readText(resumed)).resolves.toBe("");
+    const request = outputHeaders.at(-1);
+    if (!request) throw new Error("Expected a stream request");
+    expect(request.peek).toBe(false);
+    expect(request.timeout).toBeGreaterThan(0);
+    expect(request.timeout).toBeLessThanOrEqual(30);
+    expect(outputs).toHaveLength(2);
+    expect(transport.getSession("chat")).toMatchObject({
+      lastEventId: "11",
+      isStreaming: undefined,
+      skipSettledPeek: true,
+    });
+    emptyRecoveredOutput = false;
+    const next = await transport.reconnectToStream({ chatId: "chat" });
+    if (!next) throw new Error("Expected a resumed stream");
+    await expect(readText(next)).resolves.toBe("New response");
+    expect(inputSeq).toBe(13);
+  });
+
+  it("rejects captured recovery after an explicit Stop before its acknowledgment", async () => {
+    await hydrateBlockedSession("constructor");
+    const recover = transport.prepareTranscriptRecovery("chat");
+    if (!recover) throw new Error("Expected transcript recovery");
+    holdStop = true;
+    const stopped = transport.stopGeneration("chat");
+    await vi.waitFor(() => expect(pendingStop).toBeDefined());
+    expect(recover("11")).toBe(false);
+    await expect(send()).rejects.toThrow("Stopped chat response cannot be matched");
+    const pending = pendingStop!;
+    appendResponse(pending.response, pending.seq);
+    expect(await stopped).toBe(true);
+    expect(inputSeq).toBe(14);
+    expect(transport.getSession("chat")).toMatchObject({ requiresTranscriptReload: true });
+  });
+
+  it.each(["constructor", "setSession"] as const)(
+    "retains the abandoned-turn marker through %s hydration in watch mode",
+    async (hydrate) => {
+      await send();
+      transport.clearSupersedeGate("chat");
+      const session = transport.getSession("chat");
+      if (!session) throw new Error("Expected persisted state");
+      transport.dispose();
+      transport = createTransport(
+        hydrate === "constructor" ? session : { publicAccessToken: "test-token" },
+        { watch: true }
+      );
+      if (hydrate === "setSession") transport.setSession("chat", session);
+      const watched = await transport.reconnectToStream({ chatId: "chat" });
+      if (!watched) throw new Error("Expected a watch stream");
+      await vi.waitFor(() => expect(outputs).toHaveLength(2));
+      const reader = watched.getReader();
+      emit([chunk(1, { type: "start", messageId: "abandoned" })]);
+      await reader.read();
+      await transport.stopGeneration("chat");
+      const next = await send();
+      emit([...reply(2), complete(7, 12)]);
+      await expect(readWatchedTurn(next)).resolves.toBe("New response");
+      expect(session).toMatchObject({ outstandingTurnAbandoned: true });
+    }
+  );
 
   it("persists a cleared boundary without rearming the abandoned turn after hydration", async () => {
     await send();

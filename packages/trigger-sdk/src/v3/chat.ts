@@ -502,6 +502,10 @@ export type ChatSessionPersistedState = {
   supersededInputSeq?: number;
   /** A send lacks an input sequence while stopped output remains unread. Reload the transcript before another send. */
   requiresTranscriptReload?: boolean;
+  /** An abandoned turn must not restore its discard boundary after a reload. */
+  outstandingTurnAbandoned?: boolean;
+  /** A recovered transcript can precede accepted output. Wait for output instead of peeking at the previous completion. */
+  skipSettledPeek?: boolean;
   /** Set once the session is closed. Persisted so a reload doesn't retry a dead session. */
   closed?: boolean;
   /** The reason the session was closed, when one was given. */
@@ -724,6 +728,9 @@ type ChatSessionState = {
   isStreaming?: boolean;
   /** Set once the outstanding turn is declared dead: a later stop must not gate the next turn on it. */
   outstandingTurnAbandoned?: boolean;
+  /** Identifies the latest transcript load for this blocked session. Never persisted. */
+  transcriptRecovery?: symbol;
+  skipSettledPeek?: boolean;
   /** Set once the session is closed. Terminal — sends and reconnects stop. */
   closed?: boolean;
   /** The reason the session was closed, when one was given. */
@@ -817,6 +824,8 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
           skipToTurnComplete: session.skipToTurnComplete,
           supersededInputSeq: session.supersededInputSeq,
           requiresTranscriptReload: session.requiresTranscriptReload,
+          outstandingTurnAbandoned: session.outstandingTurnAbandoned,
+          skipSettledPeek: session.skipSettledPeek,
           closed: session.closed,
           closedReason: session.closedReason,
         });
@@ -989,6 +998,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     this.requireStoppedTurnCorrelation(chatId, state, inSeq);
     state.isStreaming = true;
     state.outstandingTurnAbandoned = false;
+    state.skipSettledPeek = false;
     this.notifySessionChange(chatId, state);
 
     // Owning turn: aborting this live send stops the turn the user drives.
@@ -1237,7 +1247,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     metadata?: Record<string, unknown>
   ): Promise<boolean> => {
     const state = this.sessions.get(chatId);
-    if (!state) return false;
+    if (!state || state.requiresTranscriptReload) return false;
 
     const mergedMetadata =
       this.defaultMetadata || metadata
@@ -1316,7 +1326,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       // can remain at the tail until the current turn writes its first chunk.
       // Watch mode must NOT peek: a settled peek between turns closes the
       // standing subscription, so the viewer never sees the next turn.
-      peekSettled: !this.watchMode && state.activeInputSeq === undefined,
+      peekSettled: !this.watchMode && !state.skipSettledPeek && state.activeInputSeq === undefined,
     });
   };
 
@@ -1328,13 +1338,14 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   stopGeneration = async (chatId: string): Promise<boolean> => {
     const state = this.sessions.get(chatId);
     if (!state) return false;
+    state.transcriptRecovery = undefined;
     // Close the captured turn before the request awaits. A delayed acknowledgment
     // must not change a successor's reader or stopped-output boundary.
     // Only gate when a sent turn is still outstanding. A stop at a boundary has
     // nothing to supersede, and gating it would swallow the next turn.
     if (
       !state.outstandingTurnAbandoned &&
-      (state.isStreaming || state.activeInputSeq !== undefined)
+      (state.isStreaming !== false || state.activeInputSeq !== undefined)
     ) {
       state.skipToTurnComplete = true;
       state.supersededInputSeq = state.activeInputSeq;
@@ -1385,10 +1396,12 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   clearSupersedeGate = (chatId: string): void => {
     const state = this.sessions.get(chatId);
     if (!state) return;
+    state.transcriptRecovery = undefined;
     state.skipToTurnComplete = false;
     state.supersededInputSeq = undefined;
     state.activeInputSeq = undefined;
     state.outstandingTurnAbandoned = true;
+    state.skipSettledPeek = false;
     state.isStreaming = false;
     this.notifySessionChange(chatId, state);
   };
@@ -1453,6 +1466,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     this.requireStoppedTurnCorrelation(chatId, state, inSeq);
     state.isStreaming = true;
     state.outstandingTurnAbandoned = false;
+    state.skipSettledPeek = false;
     this.notifySessionChange(chatId, state);
 
     // Owning action: aborting this send stops the turn the user drives.
@@ -1483,6 +1497,8 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
         skipToTurnComplete: session.skipToTurnComplete,
         supersededInputSeq: session.supersededInputSeq,
         requiresTranscriptReload: session.requiresTranscriptReload,
+        outstandingTurnAbandoned: session.outstandingTurnAbandoned,
+        skipSettledPeek: session.skipSettledPeek,
       })
     );
     this.notifySessionChange(chatId, this.toPersisted(this.sessions.get(chatId)!));
@@ -1507,6 +1523,54 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       return;
     }
     this.pendingResumeCursors.set(chatId, lastEventId);
+  };
+
+  /**
+   * Capture recovery before a fresh transcript load starts. The returned callback
+   * accepts a newer saved cursor once, while the blocked session remains unchanged.
+   * Ordinary transcript loads do not reset session state.
+   */
+  prepareTranscriptRecovery = (
+    chatId: string
+  ): ((lastEventId: string | undefined) => boolean) | undefined => {
+    const state = this.sessions.get(chatId);
+    if (!state?.requiresTranscriptReload || state.closed) return undefined;
+
+    const token = Symbol("transcript-recovery");
+    state.transcriptRecovery = token;
+    const { lastEventId, activeInputSeq, skipToTurnComplete, supersededInputSeq } = state;
+    return (loadedEventId) => {
+      if (state.transcriptRecovery !== token) return false;
+      state.transcriptRecovery = undefined;
+      if (
+        this.sessions.get(chatId) !== state ||
+        !state.requiresTranscriptReload ||
+        state.closed ||
+        this.activeStreams.has(chatId) ||
+        state.lastEventId !== lastEventId ||
+        state.activeInputSeq !== activeInputSeq ||
+        state.skipToTurnComplete !== skipToTurnComplete ||
+        state.supersededInputSeq !== supersededInputSeq ||
+        loadedEventId === undefined ||
+        !/^\d+$/.test(loadedEventId) ||
+        (lastEventId !== undefined &&
+          (!/^\d+$/.test(lastEventId) || BigInt(loadedEventId) <= BigInt(lastEventId)))
+      ) {
+        return false;
+      }
+
+      state.lastEventId = loadedEventId;
+      state.requiresTranscriptReload = false;
+      state.skipToTurnComplete = false;
+      state.supersededInputSeq = undefined;
+      state.activeInputSeq = undefined;
+      state.outstandingTurnAbandoned = false;
+      state.skipSettledPeek = true;
+      // The saved transcript can precede the accepted response. Resume from its checkpoint.
+      state.isStreaming = undefined;
+      this.notifySessionChange(chatId, state);
+      return true;
+    };
   };
 
   private applyPendingResumeCursor(chatId: string, state: ChatSessionState): ChatSessionState {
@@ -1655,6 +1719,9 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       controller.abort();
     }
     this.activeStreams.clear();
+    for (const state of this.sessions.values()) {
+      state.transcriptRecovery = undefined;
+    }
     this.coordinator?.dispose();
     this.coordinator = null;
   }
@@ -1683,6 +1750,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     if (!state.skipToTurnComplete || inSeq !== undefined) return;
     // The server accepted the prompt. A retry can create a duplicate turn.
     state.requiresTranscriptReload = true;
+    state.transcriptRecovery = undefined;
     state.isStreaming = false;
     this.notifySessionChange(chatId, state);
     this.assertTranscriptReady(chatId, state);
@@ -1696,6 +1764,8 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     skipToTurnComplete: state.skipToTurnComplete,
     supersededInputSeq: state.supersededInputSeq,
     requiresTranscriptReload: state.requiresTranscriptReload,
+    outstandingTurnAbandoned: state.outstandingTurnAbandoned,
+    skipSettledPeek: state.skipSettledPeek,
     closed: state.closed,
     closedReason: state.closedReason,
   });
@@ -1713,6 +1783,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     if (state.closed) return;
 
     state.closed = true;
+    state.skipSettledPeek = false;
     if (reason) state.closedReason = reason;
     state.isStreaming = false;
     state.activeInputSeq = undefined;
@@ -2012,6 +2083,9 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     state.skipToTurnComplete = false;
     state.supersededInputSeq = undefined;
     state.requiresTranscriptReload = false;
+    state.outstandingTurnAbandoned = false;
+    state.skipSettledPeek = false;
+    state.transcriptRecovery = undefined;
     this.sessions.set(chatId, state);
     this.notifySessionChange(chatId, state);
   }
@@ -2051,7 +2125,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
           // has no turn to stop: don't gate the next one, don't write a stop.
           const outstanding =
             !state.outstandingTurnAbandoned &&
-            (state.isStreaming || state.activeInputSeq !== undefined);
+            (state.isStreaming !== false || state.activeInputSeq !== undefined);
           if (
             options?.sendStopOnAbort !== false &&
             outstanding &&
@@ -2145,7 +2219,12 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               ...(options?.peekSettled ? { "X-Peek-Settled": "1" } : {}),
             },
             signal: combinedSignal,
-            timeoutInSeconds: this.streamTimeoutSeconds,
+            // A saved transcript can already include the accepted response. Bound the
+            // initial recovery poll below the stall deadline without claiming completion.
+            timeoutInSeconds:
+              state.skipSettledPeek && state.isStreaming === undefined
+                ? Math.min(this.streamTimeoutSeconds, 30)
+                : this.streamTimeoutSeconds,
             lastEventId: state.lastEventId,
             // Reconnect if no decoded record arrives for 60 seconds.
             stallTimeoutMs: 60_000,
@@ -2220,7 +2299,8 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
           // A passive abort closes this view, not the remote turn. Only a
           // settled subscription changes the turn's persisted streaming state.
           if (
-            state.isStreaming &&
+            state.isStreaming !== false &&
+            currentSubscription?.sessionSettled &&
             !combinedSignal.aborted &&
             this.activeStreams.get(chatId) === internalAbort
           ) {
@@ -2454,6 +2534,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               });
               state.activeInputSeq = undefined;
               sinceInSeq = undefined;
+              state.skipSettledPeek = false;
               state.isStreaming = false;
               this.notifySessionChange(chatId, state);
               this.coordinator?.release(chatId);

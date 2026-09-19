@@ -1438,7 +1438,10 @@ describe("TriggerChatTransport", () => {
     it("does not gate a stop with no turn outstanding", async () => {
       mockFetch([() => defaultSseResponse()]);
 
-      const transport = await armedGate("chat-idle-stop", { publicAccessToken: "p" });
+      const transport = await armedGate("chat-idle-stop", {
+        publicAccessToken: "p",
+        isStreaming: false,
+      });
 
       const stream = await send(transport, "chat-idle-stop");
 

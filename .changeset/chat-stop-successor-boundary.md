@@ -4,3 +4,4 @@
 
 Keep new chat responses intact after Stop, including slow Stop acknowledgments and page reloads.
 Sequence-free replies after Stop require a transcript reload before further messages.
+Loading a fresh transcript through `useLoadTranscript` restores blocked sessions without replaying old output.
