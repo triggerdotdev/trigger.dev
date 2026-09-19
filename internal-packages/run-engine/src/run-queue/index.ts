@@ -1488,6 +1488,19 @@ export class RunQueue {
     });
     this.logger = options.logger ?? new Logger("RunQueue", options.logLevel ?? "info");
 
+    // INTERIM: queue-gates and total-concurrency are integrated into the enqueue/ack/nack/
+    // dead-letter vtime commands but NOT yet into the vtime dequeue or TTL-expiry sweep, so
+    // with both features on those two paths under-enforce (and vtime expire would leak a
+    // group-concurrency slot). Warn loudly rather than enforce silently-wrong. Remove once
+    // the follow-up threads gates through ckDequeueLua and ckExpireTtlLua.
+    if (this.#ckVtimeEnabled && (options.gatesEnabled || options.totalConcurrencyEnabled)) {
+      this.logger.warn(
+        "RunQueue: ckVirtualTimeScheduling is enabled together with queue-gates/total-concurrency, " +
+          "but the virtual-time dequeue and TTL-expiry sweep do not yet enforce them. " +
+          "Do not enable both in production until the gate integration follow-up lands."
+      );
+    }
+
     this.workerQueueResolver = new WorkerQueueResolver({ logger: this.logger });
     this._meter = options.meter ?? getMeter("run-queue");
 
