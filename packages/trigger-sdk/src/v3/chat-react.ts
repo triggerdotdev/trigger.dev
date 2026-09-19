@@ -65,8 +65,8 @@ export type UseLoadTranscriptOptions = {
    * the loaded transcript, so the live subscription opens just past the
    * persisted history instead of replaying it. Only applies once the
    * transport knows the session (from `sessions` or after `start`).
-   * For a blocked session, a fresh load with a newer saved cursor also clears
-   * the transcript reload requirement. A stale result leaves sends blocked.
+   * A blocked session requires a newer output cursor and an input cursor that covers the stopped input.
+   * A stale result leaves sends blocked.
    */
   transport?: TriggerChatTransport;
   /** Page size passed to the action. */
@@ -85,11 +85,11 @@ export type UseLoadTranscriptOptions = {
 export function seedTranscriptCursor(
   transport: Pick<TriggerChatTransport, "seedResumeCursor">,
   chatId: string,
-  cursors: { lastOutEventId?: string } | undefined,
-  completeRecovery?: (lastEventId: string | undefined) => boolean
+  cursors: { lastOutEventId?: string; lastInEventId?: string } | undefined,
+  completeRecovery?: (lastEventId: string | undefined, lastInEventId?: string) => boolean
 ): boolean {
   const lastEventId = cursors?.lastOutEventId;
-  if (completeRecovery) return completeRecovery(lastEventId);
+  if (completeRecovery) return completeRecovery(lastEventId, cursors?.lastInEventId);
   if (!lastEventId) return false;
   transport.seedResumeCursor(chatId, lastEventId);
   return true;

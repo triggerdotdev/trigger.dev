@@ -502,6 +502,8 @@ export type ChatSessionPersistedState = {
   supersededInputSeq?: number;
   /** A send lacks an input sequence while stopped output remains unread. Reload the transcript before another send. */
   requiresTranscriptReload?: boolean;
+  /** The acknowledged Stop sequence proves a transcript covers an unknown stopped input. */
+  transcriptRecoveryInputSeq?: number;
   /** An abandoned turn must not restore its discard boundary after a reload. */
   outstandingTurnAbandoned?: boolean;
   /** A recovered transcript can precede accepted output. Wait for output instead of peeking at the previous completion. */
@@ -724,6 +726,9 @@ type ChatSessionState = {
   /** `.in` seq of the turn the gate supersedes; only its boundary (or a later one) clears the gate. */
   supersededInputSeq?: number;
   requiresTranscriptReload?: boolean;
+  transcriptRecoveryInputSeq?: number;
+  /** Identifies the stopped boundary for pending Stop acknowledgments. Never persisted. */
+  stoppedBoundary?: symbol;
   /** Whether the agent is currently streaming a response. Set on first chunk, cleared on turn-complete. */
   isStreaming?: boolean;
   /** Set once the outstanding turn is declared dead: a later stop must not gate the next turn on it. */
@@ -824,6 +829,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
           skipToTurnComplete: session.skipToTurnComplete,
           supersededInputSeq: session.supersededInputSeq,
           requiresTranscriptReload: session.requiresTranscriptReload,
+          transcriptRecoveryInputSeq: session.transcriptRecoveryInputSeq,
           outstandingTurnAbandoned: session.outstandingTurnAbandoned,
           skipSettledPeek: session.skipSettledPeek,
           closed: session.closed,
@@ -1347,9 +1353,11 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       !state.outstandingTurnAbandoned &&
       (state.isStreaming !== false || state.activeInputSeq !== undefined)
     ) {
-      state.skipToTurnComplete = true;
-      state.supersededInputSeq = state.activeInputSeq;
+      this.armStoppedBoundary(state);
     }
+    const stoppedBoundary = state.skipToTurnComplete
+      ? (state.stoppedBoundary ??= Symbol("stopped-boundary"))
+      : undefined;
 
     const activeStream = this.activeStreams.get(chatId);
     if (activeStream) {
@@ -1371,16 +1379,15 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
     const partId = crypto.randomUUID();
     const serializedBody = this.serializeInputChunk({ kind: "stop" });
-    const send = async (token: string) => {
-      await this.appendInputChunk(chatId, token, serializedBody, partId);
-    };
+    const send = (token: string) => this.appendInputChunk(chatId, token, serializedBody, partId);
     try {
-      await this.sendWithEvents(
+      const inSeq = await this.sendWithEvents(
         chatId,
         "stop",
         { partId, bodyBytes: byteLength(serializedBody) },
         () => this.callWithAuthRetry(chatId, state, send)
       );
+      this.recordStoppedInput(chatId, state, stoppedBoundary, inSeq);
       return true;
     } catch {
       // The reader already closed. Retain its unread boundary for the next send.
@@ -1396,9 +1403,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   clearSupersedeGate = (chatId: string): void => {
     const state = this.sessions.get(chatId);
     if (!state) return;
-    state.transcriptRecovery = undefined;
-    state.skipToTurnComplete = false;
-    state.supersededInputSeq = undefined;
+    this.clearStoppedBoundary(state);
     state.activeInputSeq = undefined;
     state.outstandingTurnAbandoned = true;
     state.skipSettledPeek = false;
@@ -1497,6 +1502,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
         skipToTurnComplete: session.skipToTurnComplete,
         supersededInputSeq: session.supersededInputSeq,
         requiresTranscriptReload: session.requiresTranscriptReload,
+        transcriptRecoveryInputSeq: session.transcriptRecoveryInputSeq,
         outstandingTurnAbandoned: session.outstandingTurnAbandoned,
         skipSettledPeek: session.skipSettledPeek,
       })
@@ -1527,19 +1533,26 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
   /**
    * Capture recovery before a fresh transcript load starts. The returned callback
-   * accepts a newer saved cursor once, while the blocked session remains unchanged.
+   * accepts a newer saved cursor once, with input evidence for the stopped boundary.
    * Ordinary transcript loads do not reset session state.
    */
   prepareTranscriptRecovery = (
     chatId: string
-  ): ((lastEventId: string | undefined) => boolean) | undefined => {
+  ): ((lastEventId: string | undefined, lastInEventId?: string) => boolean) | undefined => {
     const state = this.sessions.get(chatId);
     if (!state?.requiresTranscriptReload || state.closed) return undefined;
 
     const token = Symbol("transcript-recovery");
     state.transcriptRecovery = token;
-    const { lastEventId, activeInputSeq, skipToTurnComplete, supersededInputSeq } = state;
-    return (loadedEventId) => {
+    const {
+      lastEventId,
+      activeInputSeq,
+      skipToTurnComplete,
+      supersededInputSeq,
+      transcriptRecoveryInputSeq,
+    } = state;
+    const stoppedInputSeq = supersededInputSeq ?? transcriptRecoveryInputSeq;
+    return (loadedEventId, loadedInEventId) => {
       if (state.transcriptRecovery !== token) return false;
       state.transcriptRecovery = undefined;
       if (
@@ -1551,6 +1564,13 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
         state.activeInputSeq !== activeInputSeq ||
         state.skipToTurnComplete !== skipToTurnComplete ||
         state.supersededInputSeq !== supersededInputSeq ||
+        state.transcriptRecoveryInputSeq !== transcriptRecoveryInputSeq ||
+        stoppedInputSeq === undefined ||
+        !Number.isSafeInteger(stoppedInputSeq) ||
+        stoppedInputSeq < 0 ||
+        loadedInEventId === undefined ||
+        !/^\d+$/.test(loadedInEventId) ||
+        BigInt(loadedInEventId) < BigInt(stoppedInputSeq) ||
         loadedEventId === undefined ||
         !/^\d+$/.test(loadedEventId) ||
         (lastEventId !== undefined &&
@@ -1561,8 +1581,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
       state.lastEventId = loadedEventId;
       state.requiresTranscriptReload = false;
-      state.skipToTurnComplete = false;
-      state.supersededInputSeq = undefined;
+      this.clearStoppedBoundary(state);
       state.activeInputSeq = undefined;
       state.outstandingTurnAbandoned = false;
       state.skipSettledPeek = true;
@@ -1721,6 +1740,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     this.activeStreams.clear();
     for (const state of this.sessions.values()) {
       state.transcriptRecovery = undefined;
+      state.stoppedBoundary = undefined;
     }
     this.coordinator?.dispose();
     this.coordinator = null;
@@ -1729,6 +1749,48 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   // -------------------------------------------------------------------------
   // Internal helpers
   // -------------------------------------------------------------------------
+
+  private armStoppedBoundary(state: ChatSessionState): symbol {
+    state.skipToTurnComplete = true;
+    state.supersededInputSeq = state.activeInputSeq;
+    state.transcriptRecoveryInputSeq = undefined;
+    state.transcriptRecovery = undefined;
+    return (state.stoppedBoundary = Symbol("stopped-boundary"));
+  }
+
+  private clearStoppedBoundary(state: ChatSessionState): void {
+    state.skipToTurnComplete = false;
+    state.supersededInputSeq = undefined;
+    state.transcriptRecoveryInputSeq = undefined;
+    state.transcriptRecovery = undefined;
+    state.stoppedBoundary = undefined;
+  }
+
+  private recordStoppedInput(
+    chatId: string,
+    state: ChatSessionState,
+    stoppedBoundary: symbol | undefined,
+    inSeq: number | undefined
+  ): void {
+    if (
+      stoppedBoundary === undefined ||
+      state.stoppedBoundary !== stoppedBoundary ||
+      this.sessions.get(chatId) !== state ||
+      !state.skipToTurnComplete ||
+      state.closed ||
+      state.supersededInputSeq !== undefined ||
+      inSeq === undefined ||
+      !Number.isSafeInteger(inSeq) ||
+      inSeq < 0 ||
+      (state.transcriptRecoveryInputSeq !== undefined && state.transcriptRecoveryInputSeq <= inSeq)
+    ) {
+      return;
+    }
+    // Keep the Stop sequence separate from the stopped input sequence.
+    state.transcriptRecoveryInputSeq = inSeq;
+    state.transcriptRecovery = undefined;
+    this.notifySessionChange(chatId, state);
+  }
 
   private serializeInputChunk(chunk: ChatInputChunk): string {
     return JSON.stringify(chunk);
@@ -1764,6 +1826,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     skipToTurnComplete: state.skipToTurnComplete,
     supersededInputSeq: state.supersededInputSeq,
     requiresTranscriptReload: state.requiresTranscriptReload,
+    transcriptRecoveryInputSeq: state.transcriptRecoveryInputSeq,
     outstandingTurnAbandoned: state.outstandingTurnAbandoned,
     skipSettledPeek: state.skipSettledPeek,
     closed: state.closed,
@@ -1787,8 +1850,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     if (reason) state.closedReason = reason;
     state.isStreaming = false;
     state.activeInputSeq = undefined;
-    state.skipToTurnComplete = false;
-    state.supersededInputSeq = undefined;
+    this.clearStoppedBoundary(state);
 
     this.emitEvent({
       type: "session-closed",
@@ -2080,8 +2142,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     state.lastEventId = undefined;
     state.activeInputSeq = undefined;
     state.isStreaming = false;
-    state.skipToTurnComplete = false;
-    state.supersededInputSeq = undefined;
+    this.clearStoppedBoundary(state);
     state.requiresTranscriptReload = false;
     state.outstandingTurnAbandoned = false;
     state.skipSettledPeek = false;
@@ -2132,15 +2193,16 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             !internalAbort.signal.aborted &&
             this.activeStreams.get(chatId) === internalAbort
           ) {
-            state.skipToTurnComplete = true;
-            state.supersededInputSeq = state.activeInputSeq;
+            const stoppedBoundary = this.armStoppedBoundary(state);
             state.isStreaming = false;
             this.notifySessionChange(chatId, state);
             this.appendInputChunk(
               chatId,
               state.publicAccessToken,
               this.serializeInputChunk({ kind: "stop" })
-            ).catch(() => {});
+            )
+              .then((inSeq) => this.recordStoppedInput(chatId, state, stoppedBoundary, inSeq))
+              .catch(() => {});
           }
           internalAbort.abort();
         },
@@ -2436,8 +2498,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               ) {
                 continue;
               }
-              state.skipToTurnComplete = false;
-              state.supersededInputSeq = undefined;
+              this.clearStoppedBoundary(state);
               this.notifySessionChange(chatId, state);
               // This boundary is the new turn's own, so the gate swallowed its
               // output: fail the turn instead of completing an empty answer, and

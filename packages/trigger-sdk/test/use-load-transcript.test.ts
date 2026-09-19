@@ -86,7 +86,12 @@ describe("transcript recovery", () => {
     const recover = transport.prepareTranscriptRecovery("chat-1");
     expect(recover).toBeDefined();
     expect(
-      seedTranscriptCursor(transport, "chat-1", { lastOutEventId: "9007199254740993" }, recover)
+      seedTranscriptCursor(
+        transport,
+        "chat-1",
+        { lastOutEventId: "9007199254740993", lastInEventId: "4" },
+        recover
+      )
     ).toBe(true);
     expect(transport.getSession("chat-1")).toMatchObject({
       lastEventId: "9007199254740993",
@@ -99,7 +104,7 @@ describe("transcript recovery", () => {
       isStreaming: undefined,
     });
     expect(saved).toHaveLength(1);
-    expect(recover?.("9007199254740994")).toBe(false);
+    expect(recover?.("9007199254740994", "4")).toBe(false);
     expect(saved).toHaveLength(1);
   });
 
@@ -109,7 +114,9 @@ describe("transcript recovery", () => {
       const { transport, saved } = blockedTransport();
       const before = transport.getSession("chat-1");
       const recover = transport.prepareTranscriptRecovery("chat-1");
-      expect(seedTranscriptCursor(transport, "chat-1", { lastOutEventId }, recover)).toBe(false);
+      expect(
+        seedTranscriptCursor(transport, "chat-1", { lastOutEventId, lastInEventId: "4" }, recover)
+      ).toBe(false);
       expect(transport.getSession("chat-1")).toEqual(before);
       expect(saved).toEqual([]);
     }
@@ -117,13 +124,13 @@ describe("transcript recovery", () => {
 
   it("rejects a malformed persisted cursor", () => {
     const { transport } = blockedTransport({ lastEventId: "invalid" });
-    expect(transport.prepareTranscriptRecovery("chat-1")?.("9007199254740993")).toBe(false);
+    expect(transport.prepareTranscriptRecovery("chat-1")?.("9007199254740993", "4")).toBe(false);
     expect(transport.getSession("chat-1")?.requiresTranscriptReload).toBe(true);
   });
 
   it("recovers a session with no previous cursor", () => {
     const { transport } = blockedTransport({ lastEventId: undefined });
-    expect(transport.prepareTranscriptRecovery("chat-1")?.("42")).toBe(true);
+    expect(transport.prepareTranscriptRecovery("chat-1")?.("42", "4")).toBe(true);
     expect(transport.getSession("chat-1")?.lastEventId).toBe("42");
   });
 
@@ -131,16 +138,25 @@ describe("transcript recovery", () => {
     const { transport } = blockedTransport({ lastEventId: undefined });
     const stale = transport.prepareTranscriptRecovery("chat-1");
     const current = transport.prepareTranscriptRecovery("chat-1");
-    expect(seedTranscriptCursor(transport, "chat-1", { lastOutEventId: "50" }, stale)).toBe(false);
+    expect(
+      seedTranscriptCursor(transport, "chat-1", { lastOutEventId: "50", lastInEventId: "4" }, stale)
+    ).toBe(false);
     expect(transport.getSession("chat-1")?.lastEventId).toBeUndefined();
-    expect(seedTranscriptCursor(transport, "chat-1", { lastOutEventId: "42" }, current)).toBe(true);
+    expect(
+      seedTranscriptCursor(
+        transport,
+        "chat-1",
+        { lastOutEventId: "42", lastInEventId: "4" },
+        current
+      )
+    ).toBe(true);
   });
 
   it("rejects a load for a replaced session", () => {
     const { transport } = blockedTransport();
     const recover = transport.prepareTranscriptRecovery("chat-1");
     transport.setSession("chat-1", transport.getSession("chat-1")!);
-    expect(recover?.("9007199254740993")).toBe(false);
+    expect(recover?.("9007199254740993", "4")).toBe(false);
     expect(transport.getSession("chat-1")?.requiresTranscriptReload).toBe(true);
   });
 
@@ -148,7 +164,7 @@ describe("transcript recovery", () => {
     const { transport } = blockedTransport({ lastEventId: undefined });
     const recover = transport.prepareTranscriptRecovery("chat-1");
     transport.seedResumeCursor("chat-1", "42");
-    expect(recover?.("43")).toBe(false);
+    expect(recover?.("43", "4")).toBe(false);
     expect(transport.getSession("chat-1")?.requiresTranscriptReload).toBe(true);
   });
 
@@ -157,7 +173,37 @@ describe("transcript recovery", () => {
     const recover = transport.prepareTranscriptRecovery("chat-1");
     if (operation === "abandon") transport.clearSupersedeGate("chat-1");
     else transport.dispose();
-    expect(recover?.("9007199254740993")).toBe(false);
+    expect(recover?.("9007199254740993", "4")).toBe(false);
+    expect(transport.getSession("chat-1")?.requiresTranscriptReload).toBe(true);
+  });
+
+  it.each([undefined, "", "NaN", "-1", "4x", "3"])(
+    "rejects a newer output checkpoint without stopped-input evidence: %s",
+    (lastInEventId) => {
+      const { transport, saved } = blockedTransport({ lastEventId: undefined });
+      const recover = transport.prepareTranscriptRecovery("chat-1");
+      expect(
+        seedTranscriptCursor(transport, "chat-1", { lastOutEventId: "42", lastInEventId }, recover)
+      ).toBe(false);
+      expect(transport.getSession("chat-1")?.requiresTranscriptReload).toBe(true);
+      expect(saved).toEqual([]);
+    }
+  );
+
+  it("keeps recovery blocked when the stopped input is unknown", () => {
+    const { transport } = blockedTransport({
+      lastEventId: undefined,
+      supersededInputSeq: undefined,
+    });
+    const recover = transport.prepareTranscriptRecovery("chat-1");
+    expect(
+      seedTranscriptCursor(
+        transport,
+        "chat-1",
+        { lastOutEventId: "42", lastInEventId: "100" },
+        recover
+      )
+    ).toBe(false);
     expect(transport.getSession("chat-1")?.requiresTranscriptReload).toBe(true);
   });
 
