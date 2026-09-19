@@ -195,6 +195,7 @@ class ManagedSupervisor {
       this.workloadManager = new RunCrdWorkloadManager({
         ...workloadManagerOptions,
         namespace: env.KUBERNETES_NAMESPACE,
+        runtime: env.KUBERNETES_RUNNER_RUNTIME,
       });
       this.workloadManagerBackend = "run-crd";
     } else if (this.isKubernetes) {

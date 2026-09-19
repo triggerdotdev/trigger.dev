@@ -180,10 +180,18 @@ spec:
               value: {{ .Values.supervisor.config.kubernetes.forceEnabled | quote }}
             - name: KUBERNETES_RUN_CRD_ENABLED
               value: {{ .Values.supervisor.config.kubernetes.runCrdEnabled | quote }}
+            - name: KUBERNETES_RUNNER_RUNTIME
+              value: {{ .Values.supervisor.config.kubernetes.runnerRuntime | quote }}
             {{- range .Values.supervisor.extraEnvVars }}
             {{- if eq .name "KUBERNETES_RUN_CRD_ENABLED" }}
             {{- fail "Set supervisor.config.kubernetes.runCrdEnabled rather than overriding KUBERNETES_RUN_CRD_ENABLED through extraEnvVars. extraEnvVars is rendered last, so the override would win and enable the backend while the Role still lacks the two writes it needs, giving a 403 on every cold start." }}
             {{- end }}
+            {{- if eq .name "KUBERNETES_RUNNER_RUNTIME" }}
+            {{- fail "Set supervisor.config.kubernetes.runnerRuntime rather than overriding KUBERNETES_RUNNER_RUNTIME through extraEnvVars. extraEnvVars is rendered last, so the override would win and ask for a lane the chart has not checked." }}
+            {{- end }}
+            {{- end }}
+            {{- if not (has .Values.supervisor.config.kubernetes.runnerRuntime (list "container" "microvm")) }}
+            {{- fail "supervisor.config.kubernetes.runnerRuntime must be container or microvm, matching the Runner CRD's own enum. Anything else is refused by the API server at create time, which is one dequeued run lost per attempt." }}
             {{- end }}
             - name: KUBERNETES_WORKER_NODETYPE_LABEL
               value: {{ .Values.supervisor.config.kubernetes.workerNodetypeLabel | quote }}

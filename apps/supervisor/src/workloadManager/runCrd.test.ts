@@ -4,7 +4,7 @@ import { runnerBodyFor, runnerTokenSecretName } from "./runCrd.js";
 import { getRunnerId } from "../util.js";
 import type { WorkloadManagerCreateOptions } from "./types.js";
 
-const meta = { name: "runner-abc123", namespace: "v4-runs" };
+const meta = { name: "runner-abc123", namespace: "v4-runs", runtime: "container" } as const;
 
 function createOptions(
   overrides: Partial<WorkloadManagerCreateOptions> = {}
@@ -27,6 +27,31 @@ function createOptions(
     ...overrides,
   };
 }
+
+/**
+ * The isolation lane is the one spec field a cell chooses rather than derives
+ * from the run, so it is the one a refactor can quietly pin. Asserting both
+ * values, rather than that the field is carried, is what catches a literal
+ * creeping back in: a hardcoded "container" passes any test that only ever asks
+ * for a container.
+ */
+describe("runnerBodyFor carries the isolation lane it is given", () => {
+  it.each(["container", "microvm"] as const)("asks for %s", (runtime) => {
+    const body = runnerBodyFor(createOptions(), { ...meta, runtime });
+
+    expect(body.spec.runtime).toBe(runtime);
+  });
+
+  it("leaves the task runtime alone, which is a different field", () => {
+    const body = runnerBodyFor(createOptions({ runtime: "node-24" }), {
+      ...meta,
+      runtime: "microvm",
+    });
+
+    expect(body.spec.runtime).toBe("microvm");
+    expect(body.spec.taskRuntime).toBe("node-24");
+  });
+});
 
 describe("runnerBodyFor", () => {
   it("names the object after the runner and carries the required spec", () => {

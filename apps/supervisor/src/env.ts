@@ -183,6 +183,14 @@ export const Env = z
     // the pod here. The two are mutually exclusive by construction: whichever
     // one runs is the only thing that creates a workload for a cold start.
     KUBERNETES_RUN_CRD_ENABLED: BoolEnv.default(false),
+    // Which isolation lane a Runner asks for. Cell-wide rather than per run,
+    // because a cell's node pools decide what it can serve and nothing on a
+    // dequeued message can express the choice. Ignored unless the run-crd
+    // backend is the one running: the pod backends have no guest lane.
+    //
+    // Not to be confused with the task runtime (node-24, bun), which rides on
+    // the same Runner as taskRuntime and says which interpreter the task needs.
+    KUBERNETES_RUNNER_RUNTIME: z.enum(["container", "microvm"]).default("container"),
     KUBERNETES_NAMESPACE: z.string().default("default"),
     KUBERNETES_WORKER_NODETYPE_LABEL: NodeLabelValue.default("v4-worker"),
     KUBERNETES_IMAGE_PULL_SECRETS: z.string().optional(), // csv
