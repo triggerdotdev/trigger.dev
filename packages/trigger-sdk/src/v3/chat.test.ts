@@ -1577,13 +1577,13 @@ describe("TriggerChatTransport", () => {
       ]);
     });
 
-    it("keeps the gate out of the persisted session", async () => {
+    it("persists the stopped boundary", async () => {
       mockFetch([() => defaultSseResponse()]);
 
       const sessions: Record<string, unknown> = {};
       const transport = await armedGate(
         "chat-persist",
-        { publicAccessToken: "p" },
+        { publicAccessToken: "p", isStreaming: true, activeInputSeq: 5 },
         {
           onSessionChange: (chatId, session) => {
             sessions[chatId] = session;
@@ -1591,8 +1591,14 @@ describe("TriggerChatTransport", () => {
         }
       );
 
-      expect(transport.getSession("chat-persist")).not.toHaveProperty("skipToTurnComplete");
-      expect(sessions["chat-persist"]).not.toHaveProperty("skipToTurnComplete");
+      expect(transport.getSession("chat-persist")).toMatchObject({
+        skipToTurnComplete: true,
+        supersededInputSeq: 5,
+      });
+      expect(sessions["chat-persist"]).toMatchObject({
+        skipToTurnComplete: true,
+        supersededInputSeq: 5,
+      });
     });
 
     it("clears on the first turn-complete after two consecutive stops", async () => {
