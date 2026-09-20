@@ -156,10 +156,22 @@ function convertZod4Schema(schema: any, options?: ConversionOptions): JSONSchema
     target: "draft-7",
     io: "output",
     reused: useReferences ? "ref" : "inline",
+    unrepresentable: ({ zodSchema }) => {
+      const def = (zodSchema as any)._zod?.def;
+      if (def?.type === "date") {
+        return { type: "string", format: "date-time" };
+      }
+      return "throw";
+    },
     override: ({ zodSchema, jsonSchema }) => {
       const def = zodSchema._zod.def;
       if (def.type === "undefined") {
         throw new Error("Undefined cannot be represented in JSON Schema");
+      }
+
+      if (def.type === "date") {
+        jsonSchema.type = "string";
+        jsonSchema.format = "date-time";
       }
 
       if (def.type === "object" && jsonSchema.required) {

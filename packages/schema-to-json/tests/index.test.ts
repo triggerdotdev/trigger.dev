@@ -110,6 +110,45 @@ describe("schemaToJsonSchema", () => {
         "Undefined cannot be represented in JSON Schema"
       );
     });
+
+    it("converts date schemas to string with date-time format", () => {
+      const schema = z.date();
+      const result = schemaToJsonSchema(schema);
+
+      expect(result).toBeDefined();
+      expect(result?.jsonSchema).toMatchObject({
+        type: "string",
+        format: "date-time",
+      });
+    });
+
+    it("converts object with date schemas and wrappers", () => {
+      const schema = z.object({
+        createdAt: z.date(),
+        updatedAt: z.date().optional(),
+        deletedAt: z.date().nullable(),
+        history: z.array(z.date()),
+      });
+
+      const result = schemaToJsonSchema(schema);
+
+      expect(result).toBeDefined();
+      expect(result?.jsonSchema).toMatchObject({
+        type: "object",
+        properties: {
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" },
+          deletedAt: {
+            anyOf: [{ type: "string", format: "date-time" }, { type: "null" }],
+          },
+          history: {
+            type: "array",
+            items: { type: "string", format: "date-time" },
+          },
+        },
+        required: ["createdAt", "deletedAt", "history"],
+      });
+    });
   });
 
   it("preserves explicitly required metadata on current optional schemas", () => {
@@ -290,6 +329,8 @@ describe("schemaToJsonSchema", () => {
 describe("canConvertSchema", () => {
   it("should return true for supported schemas", () => {
     expect(canConvertSchema(z3.string())).toBe(true);
+    expect(canConvertSchema(z3.date())).toBe(true);
+    expect(canConvertSchema(z4.date())).toBe(true);
     expect(canConvertSchema(y.string())).toBe(true);
     expect(canConvertSchema(type("string"))).toBe(true);
     expect(canConvertSchema(Schema.String)).toBe(true);
