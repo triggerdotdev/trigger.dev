@@ -9,19 +9,21 @@ export function setGithubActionsOutputAndEnvVars({
 }) {
   // Set environment variables
   if (process.env.GITHUB_ENV) {
-    const contents = Object.entries(envVars)
-      .map(([key, value]) => `${key}=${value}`)
-      .join("\n");
+    const entries = Object.entries(envVars);
+    if (entries.length > 0) {
+      const contents = `${entries.map(([key, value]) => `${key}=${value}`).join("\n")}\n`;
 
-    appendFileSync(process.env.GITHUB_ENV, contents);
+      appendFileSync(process.env.GITHUB_ENV, contents);
+    }
   }
 
   // Set outputs
   if (process.env.GITHUB_OUTPUT) {
-    const contents = Object.entries(outputs)
-      .map(([key, value]) => `${key}=${value}`)
-      .join("\n");
+    const entries = Object.entries(outputs);
+    if (entries.length > 0) {
+      const contents = `${entries.map(([key, value]) => `${key}=${value}`).join("\n")}\n`;
 
-    appendFileSync(process.env.GITHUB_OUTPUT, contents);
+      appendFileSync(process.env.GITHUB_OUTPUT, contents);
+    }
   }
 }
