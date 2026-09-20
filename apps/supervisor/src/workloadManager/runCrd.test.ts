@@ -53,6 +53,33 @@ describe("runnerBodyFor carries the isolation lane it is given", () => {
   });
 });
 
+/**
+ * Asserted here because the type cannot: create() passes a variable, and
+ * TypeScript's excess property check only applies to object literals.
+ */
+describe("runnerBodyFor sends only what the CRD declares", () => {
+  it("takes only name and key from a wider token handle", () => {
+    const body = runnerBodyFor(createOptions(), {
+      ...meta,
+      token: { name: "runner-abc123-token-deadbeef", key: "token", uid: "uid-not-in-the-crd" } as {
+        name: string;
+        key: string;
+      },
+    });
+
+    expect(body.spec.deployment.token).toEqual({
+      name: "runner-abc123-token-deadbeef",
+      key: "token",
+    });
+  });
+
+  it("omits the token entirely when there is none", () => {
+    const body = runnerBodyFor(createOptions(), meta);
+
+    expect(body.spec.deployment).not.toHaveProperty("token");
+  });
+});
+
 describe("runnerBodyFor", () => {
   it("names the object after the runner and carries the required spec", () => {
     const body = runnerBodyFor(createOptions(), meta);

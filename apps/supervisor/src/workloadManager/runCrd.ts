@@ -296,7 +296,9 @@ export function runnerBodyFor(
       deployment: {
         friendlyID: opts.deploymentFriendlyId,
         version: opts.deploymentVersion,
-        ...(meta.token ? { token: meta.token } : {}),
+        // Field by field, not spread: the handle also carries the Secret's uid,
+        // which the spec has no field for and Strict validation rejects by name.
+        ...(meta.token ? { token: { name: meta.token.name, key: meta.token.key } } : {}),
       },
       owner: {
         envID: opts.envId,
