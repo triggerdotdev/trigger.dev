@@ -394,7 +394,7 @@ function AutoArchiveForm({
           {!valid ? (
             <Paragraph>Enter 1–365 days and valid branch names to see the preview.</Paragraph>
           ) : reviewed && preview.data?.ok ? (
-            <div className="space-y-2 text-sm text-text-dimmed">
+            <div className="space-y-2 text-sm tabular-nums text-text-dimmed">
               <ul className="list-disc space-y-1 pl-4">
                 <li className={preview.data.count > 0 ? "text-amber-400" : undefined}>
                   {preview.data.partial ? "At least " : ""}
@@ -424,11 +424,6 @@ function AutoArchiveForm({
                   </li>
                 )}
               </ul>
-              {preview.data.protectedBranches.length > 0 && (
-                <p className="break-words">
-                  Protected: {preview.data.protectedBranches.join(", ")}
-                </p>
-              )}
               {preview.data.partial && (
                 <p>Preview limited to the first 1,000 branches. Cleanup checks all branches.</p>
               )}
@@ -439,6 +434,20 @@ function AutoArchiveForm({
             <Paragraph>Checking branches…</Paragraph>
           )}
         </section>
+        {reviewed && preview.data?.ok && preview.data.protectedBranches.length > 0 && (
+          <section className="max-h-48 overflow-y-auto" aria-labelledby="protected-branches-title">
+            <h3 id="protected-branches-title" className={`${labelVariants.medium.text} mb-2`}>
+              Protected branches
+            </h3>
+            <ul className="list-disc space-y-1 pl-4 text-sm text-text-dimmed">
+              {preview.data.protectedBranches.map((branch) => (
+                <li key={branch} className="break-words">
+                  {branch}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
       </Fieldset>
       {fetcher.data && !fetcher.data.ok && <FormError>{fetcher.data.error}</FormError>}
       <DialogFooter>
