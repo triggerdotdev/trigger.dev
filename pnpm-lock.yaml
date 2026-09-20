@@ -44,7 +44,7 @@ overrides:
   protobufjs@>=7 <7.6.5: ^7.6.5
   '@grpc/grpc-js@>=1.12.0 <1.12.7': 1.12.7
   fast-xml-parser@>=4 <4.5.5: ^4.5.5
-  fast-xml-parser@>=5 <5.7.0: ^5.7.0
+  fast-xml-parser@>=5 <5.8.0: ^5.8.0
   path-to-regexp@>=0.1 <0.1.13: ^0.1.13
   ajv@>=8 <8.18.0: ^8.18.0
   socket.io-parser@>=4 <4.2.7: ^4.2.7
@@ -10541,8 +10541,8 @@ packages:
     resolution: {integrity: sha512-Yd4vkROfJf8AuJrDIVMVmYfULKmIJszVsMv7Vo71aocsKgFxpdlpSHXSaInvyYfgw2PRuObQSW2GFpVMUjxu9A==}
     hasBin: true
 
-  fast-xml-parser@5.7.1:
-    resolution: {integrity: sha512-8Cc3f8GUGUULg34pBch/KGyPLglS+OFs05deyOlY7fL2MTagYPKrVQNmR1fLF/yJ9PH5ZSTd3YDF6pnmeZU+zA==}
+  fast-xml-parser@5.8.0:
+    resolution: {integrity: sha512-6bIM7fsJxeo3uXv7OncQYsBAMPJ7V16Slahl/6M98C/i2q+vB1+4a0MtrvYwDFEUrwDSbAmeLDRXsOBwrL7yAg==}
     hasBin: true
 
   fastest-stable-stringify@2.0.2:
@@ -14294,6 +14294,9 @@ packages:
   strnum@2.2.3:
     resolution: {integrity: sha512-oKx6RUCuHfT3oyVjtnrmn19H1SiCqgJSg+54XqURKp5aCMbrXrhLjRN9TjuwMjiYstZ0MzDrHqkGZ5dFTKd+zg==}
 
+  strnum@2.3.0:
+    resolution: {integrity: sha512-ums3KNd42PGyx5xaoVTO1mjU1bH3NpY4vsrVlnv9PNGqQj8wd7rJ6nEypLrJ7z5vxK5RP0yMLo6J/Gsm62DI5Q==}
+
   strtok3@9.1.1:
     resolution: {integrity: sha512-FhwotcEqjr241ZbjFzjlIYg6c5/L/s4yBGWSMvJ9UoExiSqL+FnFA/CaeZx17WGaZMS/4SOZp8wH18jSS4R4lw==}
     engines: {node: '>=16'}
@@ -17187,7 +17190,7 @@ snapshots:
   '@aws-sdk/xml-builder@3.930.0':
     dependencies:
       '@smithy/types': 4.9.0
-      fast-xml-parser: 5.7.1
+      fast-xml-parser: 5.8.0
       tslib: 2.8.1
 
   '@aws/lambda-invoke-store@0.1.1': {}
@@ -25324,12 +25327,13 @@ snapshots:
     dependencies:
       strnum: 1.0.5
 
-  fast-xml-parser@5.7.1:
+  fast-xml-parser@5.8.0:
     dependencies:
       '@nodable/entities': 2.1.0
       fast-xml-builder: 1.2.0
       path-expression-matcher: 1.5.0
-      strnum: 2.2.3
+      strnum: 2.3.0
+      xml-naming: 0.1.0
 
   fastest-stable-stringify@2.0.2: {}
 
@@ -29898,6 +29902,8 @@ snapshots:
   strnum@1.0.5: {}
 
   strnum@2.2.3: {}
+
+  strnum@2.3.0: {}
 
   strtok3@9.1.1:
     dependencies:
