@@ -1227,7 +1227,7 @@ const EnvironmentSchema = z
     // Fractional allowed: the vtime Lua serves weighted fair-queue tags, so a sub-1 quantum
     // is a valid finer serve granularity. The weight hook is fixed at 1 today, so 1 stays the
     // default, but the schema no longer blocks the capability the engine already has.
-    RUN_ENGINE_CK_VTIME_QUANTUM: z.coerce.number().positive().default(1),
+    RUN_ENGINE_CK_VTIME_QUANTUM: z.coerce.number().finite().positive().default(1),
     RUN_ENGINE_CK_VTIME_WINDOW_MULTIPLIER: z.coerce.number().int().positive().default(3),
     RUN_ENGINE_CK_VTIME_STATE_TTL_SECONDS: z.coerce.number().int().positive().default(86400),
 

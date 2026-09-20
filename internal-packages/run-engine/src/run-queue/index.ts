@@ -1326,7 +1326,11 @@ export class RunQueue {
     // values that would freeze tags (quantum <= 0) or force an O(N) scan /
     // EX 0 error (multiplier / ttl <= 0).
     const resolvedQuantum = options.ckVirtualTimeScheduling?.quantum ?? 1;
-    this.#ckVtimeQuantum = resolvedQuantum > 0 ? resolvedQuantum : 1;
+    // Finite and > 0: a non-finite quantum (Infinity) makes every served tag Infinity, which
+    // no longer advances, collapsing fair order to lexical ties. Same freeze the <= 0 guard
+    // exists for.
+    this.#ckVtimeQuantum =
+      Number.isFinite(resolvedQuantum) && resolvedQuantum > 0 ? resolvedQuantum : 1;
     this.#ckVtimeWindowMultiplier = Math.max(
       1,
       Math.floor(options.ckVirtualTimeScheduling?.scanWindowMultiplier ?? 3)
