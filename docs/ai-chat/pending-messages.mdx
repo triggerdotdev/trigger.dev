@@ -12,7 +12,7 @@ By default (without `pendingMessages`), a message sent while the agent is respon
 
 The `pendingMessages` option enables steering instead, injecting user messages between tool-call steps via the AI SDK's `prepareStep`. Messages that arrive during streaming are queued and injected at the next step boundary. A message that is not injected becomes the next turn instead, whether that is because `shouldInject` returned `false` or because there were no more step boundaries (single-step response or final text generation). The backend handles that, so no client-side re-send is involved.
 
-Injection is what needs wiring: the `pendingMessages` options only reach `streamText` if you spread `chat.toStreamTextOptions()` (or pass `prepareStep`). Without that, nothing injects, so every mid-turn message is answered as the next turn. Deferral does not depend on it.
+Use the `streamText` passed to your agent's `run` callback. It wires up pending-message injection automatically. If you import `streamText` directly from `ai`, spread `chat.toStreamTextOptions()` into its options to connect injection.
 
 ## How it works
 
@@ -30,20 +30,32 @@ Add `pendingMessages` to your `chat.agent` configuration:
 
 ```ts
 import { chat } from "@trigger.dev/sdk/ai";
-import { stepCountIs } from "ai";
+import { stepCountIs, tool } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
+import { z } from "zod";
+import { setTimeout } from "node:timers/promises";
 
 export const myChat = chat.agent({
   id: "my-chat",
-  registry,
   pendingMessages: {
     // Only inject when there are completed steps (tool calls happened)
     shouldInject: ({ steps }) => steps.length > 0,
   },
   run: async ({ messages, signal, streamText }) => {
     return streamText({
+      model: anthropic("claude-sonnet-4-5"),
       messages,
-      tools: { /* ... */ },
+      tools: {
+        inspectDocument: tool({
+          description: "Inspect a document before summarizing it.",
+          inputSchema: z.object({ topic: z.string() }),
+          execute: async ({ topic }, { abortSignal }) => {
+            // Leave time to send a steering message in this example.
+            await setTimeout(10_000, undefined, { signal: abortSignal });
+            return { topic, findings: "The document describes a chat application." };
+          },
+        }),
+      },
       abortSignal: signal,
       stopWhen: stepCountIs(15),
     });
@@ -51,7 +63,9 @@ export const myChat = chat.agent({
 });
 ```
 
-The `prepareStep` for injection is automatically included when you spread `chat.toStreamTextOptions()`. If you provide your own `prepareStep` after the spread, it overrides the auto-injected one.
+The managed `streamText` composes your `prepareStep` callback after its own. You can add step-specific settings without disconnecting steering. With the manual `chat.toStreamTextOptions()` spread, a later `prepareStep` property replaces the spread's callback.
+
+To try it, ask the agent to inspect a document and summarize it in English. While the tool runs, send a steering message asking for French. The next model step receives that instruction, and the stream includes `data-pending-message-injected`.
 
 ### Options
 
