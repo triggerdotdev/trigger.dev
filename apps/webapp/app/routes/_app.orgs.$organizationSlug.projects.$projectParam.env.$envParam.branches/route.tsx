@@ -287,6 +287,17 @@ export default function Page() {
               Branches docs
             </LinkButton>
           </WhenAgentUnavailable>
+          {!hasBranches && limits.isAtLimit && (
+            <UpgradePanel
+              limits={limits}
+              canUpgrade={canUpgrade ?? false}
+              canPurchaseBranches={canPurchaseBranches}
+              branchPricing={branchPricing}
+              extraBranches={extraBranches}
+              maxBranchQuota={maxBranchQuota}
+              planBranchLimit={planBranchLimit}
+            />
+          )}
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
