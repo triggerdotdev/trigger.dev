@@ -66,7 +66,7 @@ import { rbac } from "~/services/rbac.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { formatCurrency, formatNumber } from "~/utils/numberFormatter";
-import { isPaidAddOnPurchase } from "~/utils/paidAddOnPermissions";
+import { requiresManageBilling } from "~/utils/paidAddOnPermissions";
 import { concurrencyLimitsPath, EnvironmentParamSchema, v3BillingPath } from "~/utils/pathBuilder";
 import { AllocateConcurrencyService } from "~/v3/services/allocateConcurrency.server";
 import { SetConcurrencyAddOnService } from "~/v3/services/setConcurrencyAddOn.server";
@@ -170,15 +170,19 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     return json(submission.reply());
   }
 
-  if (isPaidAddOnPurchase(submission.value.action)) {
+  if (requiresManageBilling(submission.value.action)) {
     const auth = await rbac.authenticateSession(request, {
       userId,
       organizationId: project.organizationId,
     });
     if (!auth.ok || !auth.ability.can("manage", { type: "billing" })) {
+      const permissionError = ["You don't have permission to manage billing."];
       return json(
         submission.reply({
-          fieldErrors: { amount: ["You don't have permission to manage billing."] },
+          fieldErrors:
+            submission.value.action === "allocate"
+              ? { environments: permissionError }
+              : { amount: permissionError },
         }),
         { status: 403 }
       );
@@ -479,7 +483,12 @@ function Upgradable({
                             variant="primary/small"
                             type="submit"
                             form="allocate"
-                            disabled={unallocated < 0 || isLoading}
+                            disabled={!canManageBilling || unallocated < 0 || isLoading}
+                            tooltip={
+                              canManageBilling
+                                ? undefined
+                                : "You don't have permission to manage billing"
+                            }
                             LeadingIcon={isLoading ? SpinnerWhite : undefined}
                           >
                             Save

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { billingMessageFromKey, billingMessages } from "./billingMessages";
-import { isPaidAddOnPurchase } from "./paidAddOnPermissions";
+import { isPaidAddOnPurchase, requiresManageBilling } from "./paidAddOnPermissions";
 
 describe("billing messages", () => {
   it("resolves known message keys and rejects arbitrary copy", () => {
@@ -18,5 +18,11 @@ describe("paid add-on permissions", () => {
     expect(isPaidAddOnPurchase("purchase")).toBe(true);
     expect(isPaidAddOnPurchase("quota-increase")).toBe(false);
     expect(isPaidAddOnPurchase("allocate")).toBe(false);
+  });
+
+  it("requires manage billing for purchases and allocations but not quota requests", () => {
+    expect(requiresManageBilling("purchase")).toBe(true);
+    expect(requiresManageBilling("allocate")).toBe(true);
+    expect(requiresManageBilling("quota-increase")).toBe(false);
   });
 });

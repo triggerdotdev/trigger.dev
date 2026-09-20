@@ -132,7 +132,8 @@ export class ConcurrencySystem {
        * against its CURRENT maximumConcurrencyLimit and syncs changed queues to the run engine.
        * Call AFTER the environment-limit DB update has committed (engine syncs must not run
        * inside an open transaction). Idempotent: unchanged queues are skipped. One failing queue
-       * is logged and skipped so the rest still converge.
+       * is logged and skipped so the rest still converge, and is counted in `failed` so callers
+       * can retry or refuse to report full convergence.
        */
       recalculatePercentLimits: async (environment: AuthenticatedEnvironment) => {
         const queues = await this.db.taskQueue.findMany({
@@ -143,6 +144,7 @@ export class ConcurrencySystem {
         });
 
         let updated = 0;
+        let failed = 0;
         for (const queue of queues) {
           try {
             const percent = queue.concurrencyLimitOverridePercent;
@@ -175,10 +177,11 @@ export class ConcurrencySystem {
               environmentId: environment.id,
               error,
             });
+            failed++;
           }
         }
 
-        return { total: queues.length, updated };
+        return { total: queues.length, updated, failed };
       },
     };
   }
