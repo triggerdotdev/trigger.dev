@@ -47,7 +47,8 @@ export async function createFileWithStore(
   // Store files by their content hash for true content-addressable storage
   const storePath = pathModule.join(storeDir, safeHash);
 
-  // Ensure build directory exists
+  // Ensure build directory and store directory exist
+  await fsModule.mkdir(storeDir, { recursive: true });
   await fsModule.mkdir(pathModule.dirname(filePath), { recursive: true });
 
   // Remove existing file at destination if it exists (hardlinks fail on existing files)
