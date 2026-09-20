@@ -306,7 +306,7 @@ export default function Page() {
                   />
                 )}
               </BranchFilters>
-              <div className="flex shrink-0 items-center gap-2">
+              <div className="flex shrink-0 items-center gap-1.5">
                 <PaginationControls
                   currentPage={currentPage}
                   totalPages={totalPages}
@@ -599,7 +599,7 @@ export function BranchFilters({ children }: { children?: ReactNode }) {
   return (
     <div className="flex w-full flex-wrap items-center justify-between gap-2">
       <SearchInput placeholder="Search branch name…" resetParams={["page"]} />
-      <div className="ml-auto flex flex-wrap items-center gap-2">
+      <div className="ml-auto flex flex-wrap items-center gap-1.5">
         <Switch
           checked={showArchived ?? false}
           onCheckedChange={handleArchivedChange}

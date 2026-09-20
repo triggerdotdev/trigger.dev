@@ -375,7 +375,8 @@ function AutoArchiveForm({
               ))}
               <div id="archive-exclusions-description">
                 <Hint>
-                  Never auto-archive these branches. Use exact names; wildcards aren’t supported.
+                  Never auto-archive these branches. Enter one exact branch name per field; no
+                  wildcards.
                 </Hint>
               </div>
             </div>
@@ -462,7 +463,7 @@ function AutoArchiveForm({
           variant="primary/medium"
           disabled={busy || !reviewed}
         >
-          Save settings
+          Save
         </Button>
       </DialogFooter>
     </fetcher.Form>
