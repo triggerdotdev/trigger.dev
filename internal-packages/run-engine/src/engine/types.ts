@@ -96,6 +96,13 @@ export type RunEngineOptions = {
     totalConcurrencyEnabled?: boolean;
     /** Enforce the gates carried in message payloads. See RunQueueOptions.gatesEnabled. */
     gatesEnabled?: boolean;
+    /** Bounds for the saturated-set reconcile. See RunQueueOptions.reconcile. */
+    reconcile?: {
+      enabled?: boolean;
+      scanCount?: number;
+      lockTtlSeconds?: number;
+      maxPassesPerDequeue?: number;
+    };
     /** Optional queue-metrics emitter; enables gauge + counter emission from the RunQueue. */
     queueMetrics?: RunQueueMetricsEmitter;
     queueSelectionStrategyOptions?: Pick<

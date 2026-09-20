@@ -8,6 +8,8 @@ import {
 import { createMetricsGaugeComputeLua } from "@internal/metrics-pipeline";
 import type {
   Attributes,
+  Counter,
+  Histogram,
   Meter,
   ObservableResult,
   Span,
@@ -82,6 +84,31 @@ const SemanticAttributes = {
  * active or observed gate never re-anchors; the Lua helper inlines the same value. */
 const GATE_QUEUED_COUNTER_TTL_SECONDS = 86400;
 
+/** Counters a dequeue script tallies for its reconcile work; positional on the reply's third slot. */
+type ReconcileCounters = {
+  passesGroup: number;
+  passesGate: number;
+  cooldown: number;
+  budgetExhausted: number;
+  scanned: number;
+  prunedGone: number;
+  prunedOrphan: number;
+  unblocked: number;
+  disabled: number;
+};
+
+/**
+ * Integer option clamped to [min, max]; anything non-finite falls back. The ceiling is an
+ * operational bound first (a scan page is walked inside one atomic script on the Redis
+ * main thread, so its size caps the stall one misconfigured pass can cause) and a format
+ * guard second: Lua's `tostring` renders anything at or above 1e15 in exponent form, which
+ * Redis rejects as an EX or COUNT argument and would fail every saturated dequeue.
+ */
+function boundedInt(value: number | undefined, fallback: number, min: number, max: number): number {
+  if (value === undefined || !Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, Math.floor(value)));
+}
+
 const QUEUE_GATES_LUA_HELPERS = `
 local function __gateKeys(gatesKeyPrefix, msg, gate)
   local base = gatesKeyPrefix .. '{org:' .. msg.orgId .. '}:proj:' .. msg.projectId .. ':env:' .. msg.environmentId .. ':queue:' .. gate.queue
@@ -96,38 +123,102 @@ local function __gateKeys(gatesKeyPrefix, msg, gate)
   return base, variant, gateKey
 end
 
-local function __gateReconcile(setKey, msgKeyPrefix, reconcileKeyPrefix)
+-- Reconcile bounds and counters for one script execution. The dequeue scripts build
+-- this from ARGV before the helper splice and thread it through the admit checks;
+-- enqueue fast paths pass nil and never reconcile. Every pass and prune is tallied
+-- here and rides back on the reply's third slot, so the caller can meter reconcile
+-- work without a single extra Redis command.
+local function __reconcileNew(enabled, scanCount, lockTtl, maxPasses)
+  return {
+    enabled = enabled,
+    scanCount = scanCount,
+    lockTtl = lockTtl,
+    remaining = maxPasses,
+    passesGroup = 0,
+    passesGate = 0,
+    cooldown = 0,
+    budgetExhausted = 0,
+    scanned = 0,
+    prunedGone = 0,
+    prunedOrphan = 0,
+    unblocked = 0,
+    disabled = 0,
+  }
+end
+
+-- Flat counter array for the reply, or false when no reconcile was attempted so the
+-- common path stays a nil slot. Positional: the TS parser reads the same order.
+local function __reconcileReply(rc)
+  if not rc then return false end
+  if rc.passesGroup + rc.passesGate + rc.cooldown + rc.budgetExhausted + rc.disabled == 0 then return false end
+  return { rc.passesGroup, rc.passesGate, rc.cooldown, rc.budgetExhausted, rc.scanned, rc.prunedGone, rc.prunedOrphan, rc.unblocked, rc.disabled }
+end
+
+-- One bounded self-heal pass over a saturated set: a single SSCAN page behind a
+-- per-set lock. A member is pruned when its message key is gone (rule 1) or when it
+-- is absent from its home currentConcurrency set (rule 2), since admits populate
+-- home and mirrors in one script and a legitimate holder is always in home. The limit
+-- argument lets the pass record whether pruning actually re-opened the set.
+local function __gateReconcile(setKey, msgKeyPrefix, reconcileKeyPrefix, rc, kind, limit)
   if not msgKeyPrefix then return end
-  if redis.call('SET', setKey .. ':reconcileLock', '1', 'NX', 'EX', '10') then
-    local cursorKey = setKey .. ':reconcileCursor'
-    local cursor = redis.call('GET', cursorKey) or '0'
-    local scanResult = redis.call('SSCAN', setKey, cursor, 'COUNT', '100')
-    redis.call('SET', cursorKey, scanResult[1], 'EX', '3600')
-    for _, memberId in ipairs(scanResult[2]) do
-      local rawMemberPayload = redis.call('GET', msgKeyPrefix .. memberId)
-      if not rawMemberPayload then
-        redis.call('SREM', setKey, memberId)
-      elseif reconcileKeyPrefix then
-        local okMember, member = pcall(cjson.decode, rawMemberPayload)
-        if okMember and type(member) == 'table' and type(member.queue) == 'string' then
-          local homeConcurrencyKey = reconcileKeyPrefix .. member.queue .. ':currentConcurrency'
-          if homeConcurrencyKey ~= setKey and redis.call('SISMEMBER', homeConcurrencyKey, memberId) == 0 then
-            redis.call('SREM', setKey, memberId)
-          end
+  rc = rc or __reconcileNew(true, 100, 10, 1000000)
+  if not rc.enabled then
+    rc.disabled = rc.disabled + 1
+    return
+  end
+  if rc.remaining <= 0 then
+    rc.budgetExhausted = rc.budgetExhausted + 1
+    return
+  end
+  -- The lock is a per-set cooldown, not a mutex: scripts are already atomic, so a held
+  -- lock means another pass ran within lockTtl and this one is deliberately skipped.
+  if not redis.call('SET', setKey .. ':reconcileLock', '1', 'NX', 'EX', tostring(rc.lockTtl)) then
+    rc.cooldown = rc.cooldown + 1
+    return
+  end
+  rc.remaining = rc.remaining - 1
+  if kind == 'group' then
+    rc.passesGroup = rc.passesGroup + 1
+  else
+    rc.passesGate = rc.passesGate + 1
+  end
+  local cursorKey = setKey .. ':reconcileCursor'
+  local cursor = redis.call('GET', cursorKey) or '0'
+  local scanResult = redis.call('SSCAN', setKey, cursor, 'COUNT', tostring(rc.scanCount))
+  redis.call('SET', cursorKey, scanResult[1], 'EX', '3600')
+  local pruned = 0
+  for _, memberId in ipairs(scanResult[2]) do
+    rc.scanned = rc.scanned + 1
+    local rawMemberPayload = redis.call('GET', msgKeyPrefix .. memberId)
+    if not rawMemberPayload then
+      redis.call('SREM', setKey, memberId)
+      rc.prunedGone = rc.prunedGone + 1
+      pruned = pruned + 1
+    elseif reconcileKeyPrefix then
+      local okMember, member = pcall(cjson.decode, rawMemberPayload)
+      if okMember and type(member) == 'table' and type(member.queue) == 'string' then
+        local homeConcurrencyKey = reconcileKeyPrefix .. member.queue .. ':currentConcurrency'
+        if homeConcurrencyKey ~= setKey and redis.call('SISMEMBER', homeConcurrencyKey, memberId) == 0 then
+          redis.call('SREM', setKey, memberId)
+          rc.prunedOrphan = rc.prunedOrphan + 1
+          pruned = pruned + 1
         end
       end
     end
   end
+  if pruned > 0 and limit and tonumber(redis.call('SCARD', setKey) or '0') < limit then
+    rc.unblocked = rc.unblocked + 1
+  end
 end
 
-local function __gatesHaveCapacity(gatesKeyPrefix, msg, messageId, envLimit, msgKeyPrefix)
+local function __gatesHaveCapacity(gatesKeyPrefix, msg, messageId, envLimit, msgKeyPrefix, rc)
   if not msg.gates then return true end
   for _, gate in ipairs(msg.gates) do
     local base, variant, gateKey = __gateKeys(gatesKeyPrefix, msg, gate)
     local occupancy = tonumber(redis.call('SCARD', variant .. ':currentConcurrency') or '0')
     local perKeyLimit = math.min(tonumber(redis.call('GET', base .. ':concurrency') or '1000000'), envLimit)
     if occupancy >= perKeyLimit and redis.call('SISMEMBER', variant .. ':currentConcurrency', messageId) == 0 then
-      __gateReconcile(variant .. ':currentConcurrency', msgKeyPrefix, gatesKeyPrefix)
+      __gateReconcile(variant .. ':currentConcurrency', msgKeyPrefix, gatesKeyPrefix, rc, 'gate', perKeyLimit)
       return false
     end
     local rawTotal = redis.call('GET', base .. ':totalConcurrency')
@@ -135,7 +226,7 @@ local function __gatesHaveCapacity(gatesKeyPrefix, msg, messageId, envLimit, msg
       local totalLimit = math.min(tonumber(rawTotal), envLimit)
       local groupKey = base .. ':groupConcurrency'
       if tonumber(redis.call('SCARD', groupKey) or '0') >= totalLimit and redis.call('SISMEMBER', groupKey, messageId) == 0 then
-        __gateReconcile(groupKey, msgKeyPrefix, gatesKeyPrefix)
+        __gateReconcile(groupKey, msgKeyPrefix, gatesKeyPrefix, rc, 'group', totalLimit)
         return false
       end
     end
@@ -381,6 +472,24 @@ export type RunQueueOptions = {
    * the total cap covering releases from builds without the mirror.
    */
   gatesEnabled?: boolean;
+  /**
+   * Bounds for the admit-time reconcile that prunes leaked members from a saturated
+   * groupConcurrency or gate set (see totalConcurrencyEnabled). Each dequeue script
+   * runs at most `maxPassesPerDequeue` passes; a pass inspects one SSCAN page of
+   * `scanCount` members and then puts the set on a `lockTtlSeconds` cooldown during
+   * which further saturated dequeues skip it, so a saturated fleet spends a tunable,
+   * bounded slice of Redis main-thread time on self-heal. The budget bounds passes,
+   * not cooldown probes: a script still issues one SET NX per saturated set it meets.
+   * `enabled: false` turns pruning off entirely: a leaked member then holds its set at
+   * the limit until removed by hand, and the skip is still counted so the saturation
+   * stays visible. Defaults: enabled, 100 members, 10s, 2 passes.
+   */
+  reconcile?: {
+    enabled?: boolean;
+    scanCount?: number;
+    lockTtlSeconds?: number;
+    maxPassesPerDequeue?: number;
+  };
   workerOptions?: {
     pollIntervalMs?: number;
     immediatePollIntervalMs?: number;
@@ -500,10 +609,24 @@ export class RunQueue {
   private _observableWorkerQueues: Set<string> = new Set();
   private _meter: Meter;
   private _queueCooloffStates: Map<string, QueueCooloffState> = new Map();
+  /** ARGV tail shared by both dequeue scripts: enabled, scanCount, lockTtl, maxPasses. */
+  private reconcileArgs: [string, string, string, string];
+  private _dequeueScriptDuration: Histogram;
+  private _reconcilePasses: Counter;
+  private _reconcileSkipped: Counter;
+  private _reconcileScanned: Counter;
+  private _reconcilePruned: Counter;
+  private _reconcileUnblocked: Counter;
 
   constructor(public readonly options: RunQueueOptions) {
     this.shardCount = options.shardCount ?? 2;
     this.counterTtlSeconds = options.counterTtlSeconds ?? 86400;
+    this.reconcileArgs = [
+      (options.reconcile?.enabled ?? true) ? "1" : "0",
+      String(boundedInt(options.reconcile?.scanCount, 100, 1, 10_000)),
+      String(boundedInt(options.reconcile?.lockTtlSeconds, 10, 1, 86_400)),
+      String(boundedInt(options.reconcile?.maxPassesPerDequeue, 2, 0, 10_000)),
+    ];
     this.retryOptions = options.retryOptions ?? defaultRetrySettings;
     this.redis = createRedisClient(options.redis, {
       onError: (error) => {
@@ -538,6 +661,40 @@ export class RunQueue {
 
     workerQueueObservableGauge.addCallback(this.#updateWorkerQueueLength.bind(this));
     masterQueueObservableGauge.addCallback(this.#updateMasterQueueLength.bind(this));
+
+    this._dequeueScriptDuration = this._meter.createHistogram("runqueue.dequeue.script.duration", {
+      description:
+        "Wall-clock latency of one dequeue Lua script execution, split by whether a reconcile pass ran",
+      unit: "ms",
+      valueType: ValueType.DOUBLE,
+    });
+    this._reconcilePasses = this._meter.createCounter("runqueue.reconcile.passes", {
+      description: "Reconcile passes over saturated concurrency sets, by set kind",
+      unit: "passes",
+      valueType: ValueType.INT,
+    });
+    this._reconcileSkipped = this._meter.createCounter("runqueue.reconcile.skipped", {
+      description:
+        "Reconcile attempts skipped, by reason: set on cooldown from a recent pass, per-script pass budget spent, or reconcile disabled",
+      unit: "attempts",
+      valueType: ValueType.INT,
+    });
+    this._reconcileScanned = this._meter.createCounter("runqueue.reconcile.scanned", {
+      description: "Concurrency set members inspected by reconcile passes",
+      unit: "members",
+      valueType: ValueType.INT,
+    });
+    this._reconcilePruned = this._meter.createCounter("runqueue.reconcile.pruned", {
+      description:
+        "Leaked members removed by reconcile, by rule (message key gone vs absent from home set)",
+      unit: "members",
+      valueType: ValueType.INT,
+    });
+    this._reconcileUnblocked = this._meter.createCounter("runqueue.reconcile.unblocked", {
+      description: "Reconcile passes whose pruning brought a saturated set back under its limit",
+      unit: "passes",
+      valueType: ValueType.INT,
+    });
 
     this.abortController = new AbortController();
 
@@ -2443,6 +2600,98 @@ export class RunQueue {
     this.options.queueMetrics?.emitGauge(queue, fields);
   }
 
+  /**
+   * Meters one dequeue script execution: wall-clock EVALSHA latency split by whether a
+   * reconcile pass ran, plus the reconcile counters the script tallied on its reply.
+   * Counters land on the run-queue meter, the span gets drill-down attributes, and any
+   * prune is logged with the queue so a leak can be traced to its source.
+   */
+  #recordDequeueScript(
+    span: Span,
+    script: "queue" | "ck",
+    queue: string,
+    startedAt: number,
+    reconcileReply: unknown
+  ): void {
+    const reconcile = this.#parseReconcileReply(reconcileReply);
+    const passes = reconcile ? reconcile.passesGroup + reconcile.passesGate : 0;
+
+    this._dequeueScriptDuration.record(performance.now() - startedAt, {
+      script,
+      reconciled: passes > 0,
+    });
+
+    if (!reconcile) return;
+
+    if (reconcile.passesGroup > 0) {
+      this._reconcilePasses.add(reconcile.passesGroup, { set_kind: "group" });
+    }
+    if (reconcile.passesGate > 0) {
+      this._reconcilePasses.add(reconcile.passesGate, { set_kind: "gate" });
+    }
+    if (reconcile.cooldown > 0) {
+      this._reconcileSkipped.add(reconcile.cooldown, { reason: "cooldown" });
+    }
+    if (reconcile.budgetExhausted > 0) {
+      this._reconcileSkipped.add(reconcile.budgetExhausted, { reason: "budget" });
+    }
+    if (reconcile.disabled > 0) {
+      this._reconcileSkipped.add(reconcile.disabled, { reason: "disabled" });
+    }
+    if (reconcile.scanned > 0) {
+      this._reconcileScanned.add(reconcile.scanned);
+    }
+    if (reconcile.prunedGone > 0) {
+      this._reconcilePruned.add(reconcile.prunedGone, { rule: "gone" });
+    }
+    if (reconcile.prunedOrphan > 0) {
+      this._reconcilePruned.add(reconcile.prunedOrphan, { rule: "orphan" });
+    }
+    if (reconcile.unblocked > 0) {
+      this._reconcileUnblocked.add(reconcile.unblocked);
+    }
+
+    const pruned = reconcile.prunedGone + reconcile.prunedOrphan;
+
+    span.setAttributes({
+      reconcile_passes: passes,
+      reconcile_cooldown: reconcile.cooldown,
+      reconcile_budget_exhausted: reconcile.budgetExhausted,
+      reconcile_disabled: reconcile.disabled,
+      reconcile_scanned: reconcile.scanned,
+      reconcile_pruned: pruned,
+      reconcile_unblocked: reconcile.unblocked,
+    });
+
+    if (pruned > 0) {
+      this.logger.warn("RunQueue reconcile pruned leaked concurrency members", {
+        queue,
+        script,
+        ...reconcile,
+        service: this.name,
+      });
+    }
+  }
+
+  #parseReconcileReply(reply: unknown): ReconcileCounters | null {
+    if (!Array.isArray(reply) || reply.length < 9) return null;
+    const at = (i: number) => {
+      const v = reply[i];
+      return typeof v === "number" ? v : Number(v) || 0;
+    };
+    return {
+      passesGroup: at(0),
+      passesGate: at(1),
+      cooldown: at(2),
+      budgetExhausted: at(3),
+      scanned: at(4),
+      prunedGone: at(5),
+      prunedOrphan: at(6),
+      unblocked: at(7),
+      disabled: at(8),
+    };
+  }
+
   #concurrencyKeyFromQueue(queue: string): string | undefined {
     const idx = queue.indexOf(":ck:");
     return idx === -1 || idx + 4 >= queue.length ? undefined : queue.slice(idx + 4);
@@ -2748,6 +2997,7 @@ export class RunQueue {
       });
 
       const metricsGaugeArg = this.#queueMetricsGaugeArg();
+      const scriptStartedAt = performance.now();
 
       const reply = await this.redis.dequeueMessagesFromQueue(
         //keys
@@ -2772,11 +3022,16 @@ export class RunQueue {
         String(maxCount),
         this.options.gatesEnabled ? "1" : "0",
         this.options.totalConcurrencyEnabled ? "1" : "0",
+        ...this.reconcileArgs,
         metricsGaugeArg
       );
 
-      // Reply is [flatMessages|null, gauge|null]: emit the gauge (read atomically inside
-      // the script, present on the throttle/empty paths too) and keep element 0 as the array.
+      /**
+       * Reply is [flatMessages|null, gauge|null, reconcile|null]: emit the gauge (read
+       * atomically inside the script, present on the throttle/empty paths too), meter the
+       * script and any reconcile work, and keep element 0 as the array.
+       */
+      this.#recordDequeueScript(span, "queue", messageQueue, scriptStartedAt, reply?.[2]);
       const gauge = reply?.[1] ?? null;
       if (gauge) this.#emitGauge(messageQueue, gauge);
       const result = reply?.[0] ?? null;
@@ -2884,6 +3139,7 @@ export class RunQueue {
       const runningCounterKey = this.keys.queueRunningCounterKeyFromQueue(ckWildcardQueue);
 
       const metricsGaugeArg = this.#queueMetricsGaugeArg();
+      const scriptStartedAt = performance.now();
 
       const reply = await this.redis.dequeueMessagesFromCkQueueTracked(
         //keys
@@ -2909,10 +3165,12 @@ export class RunQueue {
         String(maxCount),
         this.options.totalConcurrencyEnabled ? "1" : "0",
         this.options.gatesEnabled ? "1" : "0",
+        ...this.reconcileArgs,
         metricsGaugeArg
       );
 
-      // Reply is [flatMessages|null, gauge|null]; the CK aggregate gauge rides here.
+      /** Reply is [flatMessages|null, gauge|null, reconcile|null]; the CK aggregate gauge rides here. */
+      this.#recordDequeueScript(span, "ck", ckWildcardQueue, scriptStartedAt, reply?.[2]);
       const gauge = reply?.[1] ?? null;
       if (gauge) this.#emitGauge(ckWildcardQueue, gauge);
       const result = reply?.[0] ?? null;
@@ -4913,17 +5171,28 @@ local keyPrefix = ARGV[5]
 local maxCount = tonumber(ARGV[6] or '1')
 local gatesEnabled = ARGV[7] == '1'
 local totalConcurrencyEnabled = ARGV[8] == '1'
+local reconcileEnabled = ARGV[9] == '1'
+local reconcileScanCount = tonumber(ARGV[10]) or 100
+local reconcileLockTtl = tonumber(ARGV[11]) or 10
+local reconcileMaxPasses = tonumber(ARGV[12]) or 2
 ${QUEUE_METRICS_GAUGE_PRELUDE}
 ${QUEUE_GATES_LUA_HELPERS}
+local __reconcile = __reconcileNew(reconcileEnabled, reconcileScanCount, reconcileLockTtl, reconcileMaxPasses)
 -- Sample-at-return: the gauge is computed once, by the return wrapper, so every
 -- exit emits the state as of that exit (post-admission on the success path) and
--- no path pays for a sample that a later one would overwrite.
+-- no path pays for a sample that a later one would overwrite. The reconcile
+-- counters ride on the third slot of the same reply.
 local function __qmsample()
 ${QUEUE_METRICS_GAUGE_LUA}
 end
 do
   local __qmret_inner = __qmret
-  __qmret = function(r) __qmsample() return __qmret_inner(r) end
+  __qmret = function(r)
+    __qmsample()
+    local reply = __qmret_inner(r)
+    reply[3] = __reconcileReply(__reconcile)
+    return reply
+  end
 end
 
 -- Check current env concurrency against the limit
@@ -4960,7 +5229,7 @@ if totalConcurrencyEnabled then
     local totalLimit = math.min(tonumber(rawTotalLimit), envConcurrencyLimit)
     local groupCurrentConcurrency = tonumber(redis.call('SCARD', groupConcurrencyKey) or '0')
     if groupCurrentConcurrency >= totalLimit then
-      __gateReconcile(groupConcurrencyKey, messageKeyPrefix, keyPrefix)
+      __gateReconcile(groupConcurrencyKey, messageKeyPrefix, keyPrefix, __reconcile, 'group', totalLimit)
       groupCurrentConcurrency = tonumber(redis.call('SCARD', groupConcurrencyKey) or '0')
     end
     actualMaxCount = math.min(actualMaxCount, totalLimit - groupCurrentConcurrency)
@@ -5013,7 +5282,7 @@ for i = 1, #messages, 2 do
         else
             local gatesAllow = true
             if gatesEnabled then
-              gatesAllow = __gatesHaveCapacity(keyPrefix, messageData, messageId, envConcurrencyLimit, messageKeyPrefix)
+              gatesAllow = __gatesHaveCapacity(keyPrefix, messageData, messageId, envConcurrencyLimit, messageKeyPrefix, __reconcile)
             end
 
             if gatesAllow then
@@ -5252,17 +5521,28 @@ local keyPrefix = ARGV[5]
 local maxCount = tonumber(ARGV[6] or '1')
 local totalConcurrencyEnabled = ARGV[7] == '1'
 local gatesEnabled = ARGV[8] == '1'
+local reconcileEnabled = ARGV[9] == '1'
+local reconcileScanCount = tonumber(ARGV[10]) or 100
+local reconcileLockTtl = tonumber(ARGV[11]) or 10
+local reconcileMaxPasses = tonumber(ARGV[12]) or 2
 ${QUEUE_METRICS_GAUGE_PRELUDE}
 ${QUEUE_GATES_LUA_HELPERS}
+local __reconcile = __reconcileNew(reconcileEnabled, reconcileScanCount, reconcileLockTtl, reconcileMaxPasses)
 -- Sample-at-return: the gauge is computed once, by the return wrapper, so every
 -- exit emits the state as of that exit (post-admission on the success path) and
--- no path pays for a sample that a later one would overwrite.
+-- no path pays for a sample that a later one would overwrite. The reconcile
+-- counters ride on the third slot of the same reply.
 local function __qmsample()
 ${QUEUE_METRICS_CK_DEQUEUE_GAUGE_LUA}
 end
 do
   local __qmret_inner = __qmret
-  __qmret = function(r) __qmsample() return __qmret_inner(r) end
+  __qmret = function(r)
+    __qmsample()
+    local reply = __qmret_inner(r)
+    reply[3] = __reconcileReply(__reconcile)
+    return reply
+  end
 end
 
 local function decrLengthCounter()
@@ -5304,7 +5584,7 @@ if totalConcurrencyEnabled then
     -- not in flight (group membership is a strict mirror of it), so neither
     -- holds a legitimate slot. Both are pruned by the shared bounded reconcile.
     if groupCurrentConcurrency >= totalConcurrencyLimit then
-      __gateReconcile(groupConcurrencyKey, messageKeyPrefix, keyPrefix)
+      __gateReconcile(groupConcurrencyKey, messageKeyPrefix, keyPrefix, __reconcile, 'group', totalConcurrencyLimit)
       groupCurrentConcurrency = tonumber(redis.call('SCARD', groupConcurrencyKey) or '0')
     end
 
@@ -5380,7 +5660,7 @@ for _, ckQueueName in ipairs(ckQueues) do
         else
           local gatesAllow = true
           if gatesEnabled then
-            gatesAllow = __gatesHaveCapacity(keyPrefix, messageData, messageId, envConcurrencyLimit, messageKeyPrefix)
+            gatesAllow = __gatesHaveCapacity(keyPrefix, messageData, messageId, envConcurrencyLimit, messageKeyPrefix, __reconcile)
           end
           if not gatesAllow then
             blockedByGates = true
@@ -6590,9 +6870,13 @@ declare module "@internal/redis" {
       maxCount: string,
       gatesEnabled: string,
       totalConcurrencyEnabled: string,
+      reconcileEnabled: string,
+      reconcileScanCount: string,
+      reconcileLockTtlSeconds: string,
+      reconcileMaxPasses: string,
       metricsEnabled: string,
-      callback?: Callback<[string[] | null, number[] | null]>
-    ): Result<[string[] | null, number[] | null], Context>;
+      callback?: Callback<[string[] | null, number[] | null, number[] | null]>
+    ): Result<[string[] | null, number[] | null, number[] | null], Context>;
 
     dequeueMessageFromWorkerQueueNonBlocking(
       workerQueueKey: string,
@@ -6960,9 +7244,13 @@ declare module "@internal/redis" {
       maxCount: string,
       totalConcurrencyEnabled: string,
       gatesEnabled: string,
+      reconcileEnabled: string,
+      reconcileScanCount: string,
+      reconcileLockTtlSeconds: string,
+      reconcileMaxPasses: string,
       metricsEnabled: string,
-      callback?: Callback<[string[] | null, number[] | null]>
-    ): Result<[string[] | null, number[] | null], Context>;
+      callback?: Callback<[string[] | null, number[] | null, number[] | null]>
+    ): Result<[string[] | null, number[] | null, number[] | null], Context>;
 
     dequeueMessageFromKeyTracked(
       messageKey: string,
