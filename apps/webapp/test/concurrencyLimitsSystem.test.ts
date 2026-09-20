@@ -549,6 +549,138 @@ describe("ConcurrencyLimitsSystem", () => {
     }
   );
 
+  postgresTest("pause syncs per-key 0 and leaves the total key untouched", async ({ prisma }) => {
+    const { authEnv, system, row } = await seedEnvAndLimit(prisma, { perKey: 5, total: 25 });
+
+    const paused = await system.limits.pause(authEnv, "openai");
+    expect(paused.isOk()).toBe(true);
+    if (paused.isOk()) {
+      expect(paused.value.paused).toBe(true);
+      /** Pause blocks admission without touching the configured bounds. */
+      expect(paused.value.perKey).toMatchObject({ current: 5, override: null });
+      expect(paused.value.total).toMatchObject({ current: 25, override: null });
+    }
+
+    const updated = await prisma.taskQueue.findFirstOrThrow({ where: { id: row.id } });
+    expect(updated.paused).toBe(true);
+    expect(updated.concurrencyLimit).toBe(5);
+    expect(updated.totalConcurrencyLimit).toBe(25);
+
+    expect(perKeySyncMock).toHaveBeenCalledWith(authEnv, "limit/openai", 0);
+    expect(totalSyncMock).not.toHaveBeenCalled();
+    expect(totalRemoveMock).not.toHaveBeenCalled();
+
+    const retrieved = await system.limits.retrieve(authEnv, "openai");
+    expect(retrieved.isOk()).toBe(true);
+    if (retrieved.isOk()) {
+      expect(retrieved.value.paused).toBe(true);
+    }
+  });
+
+  postgresTest("resume restores the stored per-key value", async ({ prisma }) => {
+    const { authEnv, system, row } = await seedEnvAndLimit(prisma, { perKey: 5, total: 25 });
+
+    await system.limits.pause(authEnv, "openai");
+    perKeySyncMock.mockClear();
+
+    const resumed = await system.limits.resume(authEnv, "openai");
+    expect(resumed.isOk()).toBe(true);
+    if (resumed.isOk()) {
+      expect(resumed.value.paused).toBe(false);
+    }
+
+    const updated = await prisma.taskQueue.findFirstOrThrow({ where: { id: row.id } });
+    expect(updated.paused).toBe(false);
+    expect(perKeySyncMock).toHaveBeenCalledWith(authEnv, "limit/openai", 5);
+    expect(perKeyRemoveMock).not.toHaveBeenCalled();
+  });
+
+  postgresTest(
+    "resume removes the per-key engine key when the limit has no per-key bound",
+    async ({ prisma }) => {
+      const { authEnv, system } = await seedEnvAndLimit(prisma, { total: 25 });
+
+      await system.limits.pause(authEnv, "openai");
+      expect(perKeySyncMock).toHaveBeenCalledWith(authEnv, "limit/openai", 0);
+      perKeyRemoveMock.mockClear();
+
+      const resumed = await system.limits.resume(authEnv, "openai");
+      expect(resumed.isOk()).toBe(true);
+      expect(perKeyRemoveMock).toHaveBeenCalledWith(authEnv, "limit/openai");
+    }
+  );
+
+  postgresTest(
+    "overriding total while paused does not resume the per-key key",
+    async ({ prisma }) => {
+      const { authEnv, system, row } = await seedEnvAndLimit(prisma, { perKey: 5, total: 25 });
+
+      await system.limits.pause(authEnv, "openai");
+      perKeySyncMock.mockClear();
+      perKeyRemoveMock.mockClear();
+
+      const overridden = await system.limits.override(authEnv, "openai", { total: 50 });
+      expect(overridden.isOk()).toBe(true);
+      expect(totalSyncMock).toHaveBeenCalledWith(authEnv, "limit/openai", 50);
+      /** The pause IS the per-key engine value 0; the override's per-key sync must
+       * rewrite 0, never the configured value and never a removal. */
+      expect(perKeySyncMock).toHaveBeenCalledWith(authEnv, "limit/openai", 0);
+      expect(perKeySyncMock).not.toHaveBeenCalledWith(authEnv, "limit/openai", 5);
+      expect(perKeyRemoveMock).not.toHaveBeenCalled();
+
+      const updated = await prisma.taskQueue.findFirstOrThrow({ where: { id: row.id } });
+      expect(updated.paused).toBe(true);
+      expect(updated.totalConcurrencyLimit).toBe(50);
+    }
+  );
+
+  postgresTest(
+    "a pause committed during an override's engine sync is re-asserted by the freshness re-check",
+    async ({ prisma }) => {
+      const { authEnv, system, row } = await seedEnvAndLimit(prisma, { perKey: 5, total: 25 });
+
+      /**
+       * Interleave a pause between the override's persist and the settling of
+       * its engine writes: the override's own per-key write carries the
+       * configured value (its row snapshot predates the pause), so without the
+       * freshness re-check the engine would finish nonzero while the row says
+       * paused. The re-check reads the fresh paused row and rewrites 0.
+       */
+      totalSyncMock.mockImplementationOnce(async () => {
+        await prisma.taskQueue.update({ where: { id: row.id }, data: { paused: true } });
+      });
+
+      const overridden = await system.limits.override(authEnv, "openai", { total: 50 });
+      expect(overridden.isOk()).toBe(true);
+
+      expect(perKeySyncMock).toHaveBeenLastCalledWith(authEnv, "limit/openai", 0);
+      const final = await prisma.taskQueue.findFirstOrThrow({ where: { id: row.id } });
+      expect(final.paused).toBe(true);
+      expect(final.totalConcurrencyLimit).toBe(50);
+    }
+  );
+
+  postgresTest(
+    "a failed engine sync during pause compensates from the fresh row",
+    async ({ prisma }) => {
+      const { authEnv, system, row } = await seedEnvAndLimit(prisma, { perKey: 5, total: 25 });
+
+      perKeySyncMock.mockRejectedValueOnce(new Error("redis down"));
+      const failed = await system.limits.pause(authEnv, "openai");
+      expect(failed.isErr()).toBe(true);
+      if (failed.isErr()) {
+        expect(failed.error.type).toBe("sync_limit_to_engine_failed");
+      }
+
+      /** The persist already happened; compensation re-syncs the paused 0 so the
+       * engine doesn't keep admitting runs the API reports as paused. */
+      const updated = await prisma.taskQueue.findFirstOrThrow({ where: { id: row.id } });
+      expect(updated.paused).toBe(true);
+      expect(perKeySyncMock).toHaveBeenCalledTimes(2);
+      expect(perKeySyncMock).toHaveBeenLastCalledWith(authEnv, "limit/openai", 0);
+    }
+  );
+
   postgresTest(
     "current clamps to the environment limit while base keeps the declared value",
     async ({ prisma }) => {

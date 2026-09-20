@@ -395,6 +395,7 @@
             "pages": [
               "management/concurrency-limits/list",
               "management/concurrency-limits/retrieve",
+              "management/concurrency-limits/pause",
               "management/concurrency-limits/override",
               "management/concurrency-limits/reset"
             ]

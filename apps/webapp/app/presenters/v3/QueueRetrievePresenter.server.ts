@@ -7,8 +7,10 @@ import {
 } from "@trigger.dev/core/v3";
 import type { QueueLimits } from "~/components/queues/queue-limits";
 import {
+  boundedIn,
   type PrismaClientOrTransaction,
   type TaskQueue,
+  type TaskQueueRole,
   type User,
   type TaskQueueType,
 } from "@trigger.dev/database";
@@ -23,14 +25,17 @@ export type FoundQueue = Prettify<
 >;
 
 /**
- * Shared queue lookup logic used by both QueueRetrievePresenter and PauseQueueService
+ * Shared queue lookup logic used by both QueueRetrievePresenter and PauseQueueService.
+ * Resolves QUEUE rows by default; callers whose operation also applies to named
+ * concurrency limits (pause/resume) widen `roles` to include LIMIT rows.
  */
 export async function getQueue(
   prismaClient: PrismaClientOrTransaction,
   environment: AuthenticatedEnvironment,
-  queue: RetrieveQueueParam
+  queue: RetrieveQueueParam,
+  opts?: { roles?: TaskQueueRole[] }
 ) {
-  const role = "QUEUE" as const;
+  const roles = opts?.roles ?? ["QUEUE" as const];
 
   if (typeof queue === "string") {
     return joinQueueWithUser(
@@ -39,7 +44,7 @@ export async function getQueue(
         where: {
           friendlyId: queue,
           runtimeEnvironmentId: environment.id,
-          role,
+          role: { in: boundedIn(roles) },
         },
       })
     );
@@ -53,7 +58,7 @@ export async function getQueue(
       where: {
         name: queueName,
         runtimeEnvironmentId: environment.id,
-        role,
+        role: { in: boundedIn(roles) },
       },
     })
   );

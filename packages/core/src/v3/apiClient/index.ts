@@ -1808,6 +1808,25 @@ export class ApiClient {
     );
   }
 
+  pauseConcurrencyLimit(
+    name: string,
+    action: "pause" | "resume",
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      ConcurrencyLimitItem,
+      `${this.baseUrl}/api/v1/concurrency-limits/${encodeURIComponent(name)}/pause`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify({
+          action,
+        }),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
   resetConcurrencyLimit(name: string, requestOptions?: ZodFetchOptions) {
     return zodfetch(
       ConcurrencyLimitItem,

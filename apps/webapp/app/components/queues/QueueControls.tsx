@@ -36,6 +36,7 @@ export function QueuePauseResumeButton({
   iconOnly = false,
   withQueueName = false,
   disabled = false,
+  noun = "queue",
 }: {
   /** The "id" here is a friendlyId */
   queue: { id: string; name: string; paused: boolean };
@@ -48,14 +49,21 @@ export function QueuePauseResumeButton({
   /** Render the full "Pause/Resume {name} queue" label instead of the short "Pause"/"Resume". */
   withQueueName?: boolean;
   disabled?: boolean;
+  /** What the row is called in every user-facing string: named concurrency limits pause through
+   * the same actions but their dialogs must say "limit". */
+  noun?: "queue" | "limit";
 }) {
   const [isOpen, setIsOpen] = useState(false);
 
   const label = queue.paused
-    ? `Resumes the "${queue.name}" queue so its runs can be dequeued again.`
-    : `Pauses all runs from being dequeued in the "${queue.name}" queue. Any executing runs will continue to run.`;
+    ? noun === "limit"
+      ? `Resumes the "${queue.name}" limit so runs holding it can be dequeued again.`
+      : `Resumes the "${queue.name}" queue so its runs can be dequeued again.`
+    : noun === "limit"
+      ? `Pauses all runs holding the "${queue.name}" limit from being dequeued. Any executing runs will continue to run.`
+      : `Pauses all runs from being dequeued in the "${queue.name}" queue. Any executing runs will continue to run.`;
 
-  const tooltip = disabled ? "You don't have permission to manage queues" : label;
+  const tooltip = disabled ? `You don't have permission to manage ${noun}s` : label;
 
   const trigger = showTooltip ? (
     <div>
@@ -91,8 +99,8 @@ export function QueuePauseResumeButton({
                     ? undefined
                     : withQueueName
                       ? queue.paused
-                        ? "Resume this queue…"
-                        : "Pause this queue…"
+                        ? `Resume this ${noun}…`
+                        : `Pause this ${noun}…`
                       : queue.paused
                         ? "Resume"
                         : "Pause"}
@@ -113,7 +121,7 @@ export function QueuePauseResumeButton({
         leadingIconClassName={queue.paused ? "text-success" : "text-warning"}
         title={
           disabled
-            ? "You don't have permission to manage queues"
+            ? `You don't have permission to manage ${noun}s`
             : queue.paused
               ? "Resume..."
               : "Pause..."
@@ -127,12 +135,16 @@ export function QueuePauseResumeButton({
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       {trigger}
       <DialogContent>
-        <DialogHeader>{queue.paused ? "Resume queue?" : "Pause queue?"}</DialogHeader>
+        <DialogHeader>{queue.paused ? `Resume ${noun}?` : `Pause ${noun}?`}</DialogHeader>
         <div className="flex flex-col gap-3 pt-3">
           <Paragraph>
             {queue.paused
-              ? `This will allow runs to be dequeued in the "${queue.name}" queue again.`
-              : `This will pause all runs from being dequeued in the "${queue.name}" queue. Any executing runs will continue to run.`}
+              ? noun === "limit"
+                ? `This will allow runs holding the "${queue.name}" limit to be dequeued again.`
+                : `This will allow runs to be dequeued in the "${queue.name}" queue again.`
+              : noun === "limit"
+                ? `This will pause all runs holding the "${queue.name}" limit from being dequeued. Any executing runs will continue to run.`
+                : `This will pause all runs from being dequeued in the "${queue.name}" queue. Any executing runs will continue to run.`}
           </Paragraph>
           <Form method="post" onSubmit={() => setIsOpen(false)}>
             <input
@@ -141,6 +153,7 @@ export function QueuePauseResumeButton({
               value={queue.paused ? "queue-resume" : "queue-pause"}
             />
             <input type="hidden" name="friendlyId" value={queue.id} />
+            <input type="hidden" name="noun" value={noun} />
             <FormButtons
               confirmButton={
                 <Button
@@ -149,7 +162,7 @@ export function QueuePauseResumeButton({
                   variant={queue.paused ? "primary/medium" : "danger/medium"}
                   LeadingIcon={queue.paused ? PlayIcon : PauseIcon}
                 >
-                  {queue.paused ? "Resume queue" : "Pause queue"}
+                  {queue.paused ? `Resume ${noun}` : `Pause ${noun}`}
                 </Button>
               }
               cancelButton={
@@ -172,6 +185,7 @@ export function QueueOverrideConcurrencyButton({
   environmentConcurrencyLimit,
   trigger,
   disabled = false,
+  noun = "queue",
 }: {
   queue: {
     id: string;
@@ -185,6 +199,9 @@ export function QueueOverrideConcurrencyButton({
    * hover tooltip, for compact placements like the detail-page live blocks. */
   trigger?: "menu-item" | "button" | "icon";
   disabled?: boolean;
+  /** What the row is called in every user-facing string: named concurrency limits are overridden
+   * through the same actions but their dialogs must say "limit". */
+  noun?: "queue" | "limit";
 }) {
   const navigation = useNavigation();
   const [isOpen, setIsOpen] = useState(false);
@@ -316,7 +333,7 @@ export function QueueOverrideConcurrencyButton({
               </div>
             </TooltipTrigger>
             <TooltipContent side="right" className="text-xs">
-              {disabled ? "You don't have permission to manage queues" : iconLabel}
+              {disabled ? `You don't have permission to manage ${noun}s` : iconLabel}
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -343,10 +360,10 @@ export function QueueOverrideConcurrencyButton({
             </TooltipTrigger>
             <TooltipContent side="bottom" className="max-w-[230px] text-xs">
               {disabled
-                ? "You don't have permission to manage queues"
+                ? `You don't have permission to manage ${noun}s`
                 : hasTotal
-                  ? "Override this queue's per-key and total concurrency limits."
-                  : "Give this queue its own concurrency limit instead of the environment default. Set it as a number or a percentage of the environment limit."}
+                  ? `Override this ${noun}'s per-key and total concurrency limits.`
+                  : `Give this ${noun} its own concurrency limit instead of the environment default. Set it as a number or a percentage of the environment limit.`}
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -356,7 +373,7 @@ export function QueueOverrideConcurrencyButton({
             icon={AdjustmentsHorizontalIcon}
             title={
               disabled
-                ? "You don't have permission to manage queues"
+                ? `You don't have permission to manage ${noun}s`
                 : isOverridden
                   ? "Edit override…"
                   : "Override limit…"
@@ -373,20 +390,20 @@ export function QueueOverrideConcurrencyButton({
           {hasTotal ? (
             isOverridden ? (
               <Paragraph variant="small">
-                This queue's limits are currently overridden. Fill a field to change that limit
+                This {noun}'s limits are currently overridden. Fill a field to change that limit
                 (blank fields stay unchanged), or remove the override to restore the limits set in
                 code.
               </Paragraph>
             ) : (
               <Paragraph variant="small">
-                Override this queue's limits. Per key caps each concurrency key's pool, and total
+                Override this {noun}'s limits. Per key caps each concurrency key's pool, and total
                 caps runs across all keys together. Leave a field blank to keep that limit
                 unchanged.
               </Paragraph>
             )
           ) : isOverridden ? (
             <Paragraph variant="small">
-              This queue's concurrency limit is currently overridden to {currentLimit}.
+              This {noun}'s concurrency limit is currently overridden to {currentLimit}.
               {typeof queue.limits.perKey.base === "number" &&
                 ` The original limit set in code was ${queue.limits.perKey.base}.`}{" "}
               You can update the override or remove it to restore the{" "}
@@ -397,12 +414,13 @@ export function QueueOverrideConcurrencyButton({
             </Paragraph>
           ) : (
             <Paragraph variant="small">
-              Override this queue's concurrency limit. The current limit is {currentLimit}, which is
-              set {queue.limits.perKey.current !== null ? "in code" : "by the environment"}.
+              Override this {noun}'s concurrency limit. The current limit is {currentLimit}, which
+              is set {queue.limits.perKey.current !== null ? "in code" : "by the environment"}.
             </Paragraph>
           )}
           <Form method="post" onSubmit={() => setIsOpen(false)} className="space-y-3">
             <input type="hidden" name="friendlyId" value={queue.id} />
+            <input type="hidden" name="noun" value={noun} />
             <input type="hidden" name="mode" value={hasTotal ? "bounds" : mode} />
             {hasTotal ? (
               <>
@@ -524,7 +542,7 @@ export function QueueOverrideConcurrencyButton({
                   <Hint className={limitOverCap ? "text-warning tabular-nums" : "tabular-nums"}>
                     {limitOverCap
                       ? `Can't exceed the environment limit of ${environmentConcurrencyLimit}.`
-                      : `The most concurrent runs this queue can use at once. It can't exceed the environment limit of ${environmentConcurrencyLimit}.`}
+                      : `The most concurrent runs this ${noun} can use at once. It can't exceed the environment limit of ${environmentConcurrencyLimit}.`}
                   </Hint>
                 )}
               </InputGroup>

@@ -35,6 +35,9 @@ export async function handleQueueMutationAction({
     case "queue-pause":
     case "queue-resume": {
       const friendlyId = formData.get("friendlyId");
+      /** Named concurrency limits pause through these same actions; the noun only
+       * changes the user-facing messages. */
+      const noun = formData.get("noun") === "limit" ? "limit" : "queue";
       if (!friendlyId) {
         return redirectWithErrorMessage(redirectPath, request, "Queue ID is required");
       }
@@ -43,25 +46,27 @@ export async function handleQueueMutationAction({
       const result = await queueService.call(
         environment,
         friendlyId.toString(),
-        action === "queue-pause" ? "paused" : "resumed"
+        action === "queue-pause" ? "paused" : "resumed",
+        { roles: ["QUEUE", "LIMIT"] }
       );
 
       if (!result.success) {
         return redirectWithErrorMessage(
           redirectPath,
           request,
-          result.error ?? `Failed to ${action === "queue-pause" ? "pause" : "resume"} queue`
+          result.error ?? `Failed to ${action === "queue-pause" ? "pause" : "resume"} ${noun}`
         );
       }
 
       return redirectWithSuccessMessage(
         redirectPath,
         request,
-        `Queue ${action === "queue-pause" ? "paused" : "resumed"}`
+        `${noun === "limit" ? "Limit" : "Queue"} ${action === "queue-pause" ? "paused" : "resumed"}`
       );
     }
     case "queue-override": {
       const friendlyId = formData.get("friendlyId");
+      const noun = formData.get("noun") === "limit" ? "limit" : "queue";
       const mode =
         formData.get("mode") === "percent"
           ? "percent"
@@ -217,18 +222,21 @@ export async function handleQueueMutationAction({
         const message =
           "message" in error && typeof error.message === "string"
             ? error.message
-            : "Failed to override queue concurrency limit";
+            : noun === "limit"
+              ? "Failed to override the limit"
+              : "Failed to override queue concurrency limit";
         return redirectWithErrorMessage(redirectPath, request, message);
       }
 
       return redirectWithSuccessMessage(
         redirectPath,
         request,
-        "Queue concurrency limit overridden"
+        noun === "limit" ? "Limit overridden" : "Queue concurrency limit overridden"
       );
     }
     case "queue-remove-override": {
       const friendlyId = formData.get("friendlyId");
+      const noun = formData.get("noun") === "limit" ? "limit" : "queue";
 
       if (!friendlyId) {
         return redirectWithErrorMessage(redirectPath, request, "Queue ID is required");
@@ -245,7 +253,9 @@ export async function handleQueueMutationAction({
         return redirectWithErrorMessage(
           redirectPath,
           request,
-          "Failed to reset queue concurrency limit"
+          noun === "limit"
+            ? "Failed to remove the limit override"
+            : "Failed to reset queue concurrency limit"
         );
       }
 
@@ -265,7 +275,11 @@ export async function handleQueueMutationAction({
         }
       }
 
-      return redirectWithSuccessMessage(redirectPath, request, "Queue concurrency limit reset");
+      return redirectWithSuccessMessage(
+        redirectPath,
+        request,
+        noun === "limit" ? "Limit override removed" : "Queue concurrency limit reset"
+      );
     }
     default:
       return null;
