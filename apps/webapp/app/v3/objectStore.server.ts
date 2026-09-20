@@ -292,6 +292,40 @@ export async function downloadObjectRangeFromObjectStore(
   return client.getObjectRange(key, range, opts);
 }
 
+/** HEAD also recognizes zero-byte objects, which cannot satisfy a byte range. */
+export async function objectExistsInObjectStore(
+  packet: IOPacket,
+  location: { projectRef: string; envSlug: string }
+): Promise<boolean> {
+  if (packet.dataType !== "application/store" || !packet.data) {
+    throw new Error("Existence checks require a stored packet");
+  }
+  const { protocol, path } = parseStorageUri(packet.data);
+  const key = buildPacketObjectStoreKey(location.projectRef, location.envSlug, path);
+  const client = getObjectStoreClient(protocol);
+  if (!client) {
+    throw new Error(`Object store is not configured for protocol: ${protocol || "default"}`);
+  }
+  return client.objectExists(key);
+}
+
+/** Stream the stored object's bytes without decoding or parsing its contents. */
+export async function downloadObjectResponseFromObjectStore(
+  packet: IOPacket,
+  location: { projectRef: string; envSlug: string }
+): Promise<Response> {
+  if (packet.dataType !== "application/store" || !packet.data) {
+    throw new Error("Object downloads require a stored packet");
+  }
+  const { protocol, path } = parseStorageUri(packet.data);
+  const key = buildPacketObjectStoreKey(location.projectRef, location.envSlug, path);
+  const client = getObjectStoreClient(protocol);
+  if (!client) {
+    throw new Error(`Object store is not configured for protocol: ${protocol || "default"}`);
+  }
+  return client.getObjectResponse(key);
+}
+
 export async function downloadPacketFromObjectStore(
   packet: IOPacket,
   environment: AuthenticatedEnvironment
