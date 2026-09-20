@@ -1,6 +1,8 @@
 import { type ActionFunctionArgs, type SerializeFrom, json } from "@remix-run/server-runtime";
 import { useFetcher } from "@remix-run/react";
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import { motion, useReducedMotion } from "framer-motion";
+import { useMeasure } from "react-use";
 import { Cog6ToothIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { prisma } from "~/db.server";
 import { requireUserId } from "~/services/session.server";
@@ -263,9 +265,13 @@ function AutoArchiveForm({
   const valid = PreviewAutoArchivePolicy.safeParse(JSON.parse(policyKey)).success;
   const reviewed =
     valid && !preview.pending && preview.data?.ok && preview.data.policyKey === policyKey;
-  const checkingProtectedBranches =
-    valid && !reviewed && excluded.trim() !== "" && (preview.pending || requestedKey !== policyKey);
-  const protectedBranches = reviewed && preview.data?.ok ? preview.data.protectedBranches : [];
+  const previewError =
+    requestedKey === policyKey && !preview.pending && preview.data && !preview.data.ok
+      ? preview.data.error
+      : undefined;
+  const checkingPreview = valid && !reviewed && !previewError;
+  const protectedBranches =
+    valid && !previewError && preview.data?.ok ? preview.data.protectedBranches : [];
   const busy = fetcher.state !== "idle";
   useEffect(() => {
     if (!valid || busy) return;
@@ -273,7 +279,8 @@ function AutoArchiveForm({
     const timer = setTimeout(async () => {
       const policy = JSON.parse(policyKey) as { days: number; excludedBranches: string[] };
       setRequestedKey(policyKey);
-      setPreview({ pending: true });
+      // Keep the previous results and their height while refreshing the preview.
+      setPreview((previous) => ({ ...previous, pending: true }));
       try {
         // A read-only POST avoids URL-size limits for exclusions and Remix's
         // page-wide action revalidation while the user edits the form.
@@ -351,114 +358,122 @@ function AutoArchiveForm({
               Keep specific branches
             </Label>
           </div>
-          {keepSpecificBranches && (
-            <div id="archive-exclusions" className="grid gap-1.5 pl-6">
-              {excludedRows.map((row, index) => (
-                <div key={row.id} className="flex items-center gap-2">
-                  <Input
-                    id={`archive-exclusion-${row.id}`}
-                    aria-label={`Branch to keep ${index + 1}`}
-                    aria-describedby="archive-exclusions-description"
-                    maxLength={255}
-                    placeholder={index === 0 ? "Branch name, e.g. staging" : "Add another branch"}
-                    disabled={busy}
-                    value={row.name}
-                    onChange={(event) => updateExcludedBranch(row.id, event.target.value)}
-                  />
-                  {(row.name !== "" || index < excludedRows.length - 1) && (
-                    <Button
-                      type="button"
-                      variant="secondary/medium"
-                      LeadingIcon={TrashIcon}
-                      aria-label={`Remove branch ${row.name || index + 1}`}
-                      disabled={busy}
-                      onClick={() => removeExcludedBranch(row.id)}
-                    />
-                  )}
+          <AnimatedHeight>
+            <div id="archive-exclusions">
+              {keepSpecificBranches && (
+                <div className="grid gap-1.5 pl-6">
+                  {excludedRows.map((row, index) => (
+                    <div key={row.id} className="flex items-center gap-2">
+                      <Input
+                        id={`archive-exclusion-${row.id}`}
+                        aria-label={`Branch to keep ${index + 1}`}
+                        aria-describedby="archive-exclusions-description"
+                        maxLength={255}
+                        placeholder={
+                          index === 0 ? "Branch name, e.g. staging" : "Add another branch"
+                        }
+                        disabled={busy}
+                        value={row.name}
+                        onChange={(event) => updateExcludedBranch(row.id, event.target.value)}
+                      />
+                      {(row.name !== "" || index < excludedRows.length - 1) && (
+                        <Button
+                          type="button"
+                          variant="secondary/medium"
+                          LeadingIcon={TrashIcon}
+                          aria-label={`Remove branch ${row.name || index + 1}`}
+                          disabled={busy}
+                          onClick={() => removeExcludedBranch(row.id)}
+                        />
+                      )}
+                    </div>
+                  ))}
+                  <div id="archive-exclusions-description">
+                    <Hint>
+                      Never auto-archive these branches. Enter one exact branch name per field; no
+                      wildcards.
+                    </Hint>
+                  </div>
                 </div>
-              ))}
-              <div id="archive-exclusions-description">
-                <Hint>
-                  Never auto-archive these branches. Enter one exact branch name per field; no
-                  wildcards.
-                </Hint>
-              </div>
-            </div>
-          )}
-        </InputGroup>
-        <section
-          className="max-h-48 overflow-y-auto"
-          aria-labelledby="archive-preview-title"
-          aria-live="polite"
-          aria-busy={valid && !reviewed && preview.pending}
-        >
-          <h3 id="archive-preview-title" className={`${labelVariants.medium.text} mb-2`}>
-            Preview
-          </h3>
-          {!valid ? (
-            <Paragraph>Enter 1–365 days and valid branch names to see the preview.</Paragraph>
-          ) : reviewed && preview.data?.ok ? (
-            <div className="space-y-2 text-sm tabular-nums text-text-dimmed">
-              <ul className="list-disc space-y-1 pl-4">
-                <li className={preview.data.count > 0 ? "text-amber-400" : undefined}>
-                  {preview.data.partial ? "At least " : ""}
-                  {preview.data.count} {preview.data.count === 1 ? "branch is" : "branches are"}{" "}
-                  ready to archive now.
-                  {preview.data.count > 0 &&
-                    " Saving will make these branches eligible for the next cleanup check."}
-                </li>
-                <li>
-                  {preview.data.partial ? "At least " : ""}
-                  {preview.data.scheduled}{" "}
-                  {preview.data.scheduled === 1 ? "branch will" : "branches will"} archive later if
-                  no new deployments occur.
-                </li>
-                <li>
-                  {preview.data.partial ? "At least " : ""}
-                  {preview.data.protectedBranches.length} protected{" "}
-                  {preview.data.protectedBranches.length === 1 ? "branch will" : "branches will"} be
-                  ignored.
-                </li>
-                {preview.data.inProgress > 0 && (
-                  <li>
-                    {preview.data.partial ? "At least " : ""}
-                    {preview.data.inProgress}{" "}
-                    {preview.data.inProgress === 1 ? "branch has" : "branches have"} a deployment in
-                    progress and will be skipped.
-                  </li>
-                )}
-              </ul>
-              {preview.data.partial && (
-                <p>Preview limited to the first 1,000 branches. Cleanup checks all branches.</p>
               )}
             </div>
-          ) : requestedKey === policyKey && !preview.pending && preview.data && !preview.data.ok ? (
-            <FormError>{preview.data.error}</FormError>
-          ) : (
-            <Paragraph>Checking branches…</Paragraph>
-          )}
-        </section>
-        {(checkingProtectedBranches || protectedBranches.length > 0) && (
-          <section
-            className="max-h-48 overflow-y-auto"
-            aria-labelledby="protected-branches-title"
-            aria-busy={checkingProtectedBranches}
-          >
-            <h3 id="protected-branches-title" className={`${labelVariants.medium.text} mb-2`}>
-              Protected branches
-              {checkingProtectedBranches && <Spinner color="blue" className="ml-1 size-3" />}
-            </h3>
-            {!checkingProtectedBranches && (
-              <ul className="list-disc space-y-1 pl-4 text-sm text-text-dimmed">
-                {protectedBranches.map((branch) => (
-                  <li key={branch} className="break-words">
-                    {branch}
-                  </li>
-                ))}
-              </ul>
+          </AnimatedHeight>
+        </InputGroup>
+        <AnimatedHeight>
+          <div className="flex flex-col gap-5">
+            <section
+              className="max-h-48 overflow-y-auto"
+              aria-labelledby="archive-preview-title"
+              aria-live="polite"
+              aria-busy={checkingPreview}
+            >
+              <h3 id="archive-preview-title" className={`${labelVariants.medium.text} mb-2`}>
+                Preview
+                {checkingPreview && <Spinner color="blue" className="ml-1 size-3" />}
+              </h3>
+              {!valid ? (
+                <Paragraph>Enter 1–365 days and valid branch names to see the preview.</Paragraph>
+              ) : previewError ? (
+                <FormError>{previewError}</FormError>
+              ) : preview.data?.ok ? (
+                <div className="space-y-2 text-sm tabular-nums text-text-dimmed">
+                  <ul className="list-disc space-y-1 pl-4">
+                    <li className={preview.data.count > 0 ? "text-amber-400" : undefined}>
+                      {preview.data.partial ? "At least " : ""}
+                      {preview.data.count} {preview.data.count === 1 ? "branch is" : "branches are"}{" "}
+                      ready to archive now.
+                      {preview.data.count > 0 &&
+                        " Saving will make these branches eligible for the next cleanup check."}
+                    </li>
+                    <li>
+                      {preview.data.partial ? "At least " : ""}
+                      {preview.data.scheduled}{" "}
+                      {preview.data.scheduled === 1 ? "branch will" : "branches will"} archive later
+                      if no new deployments occur.
+                    </li>
+                    <li>
+                      {preview.data.partial ? "At least " : ""}
+                      {preview.data.protectedBranches.length} protected{" "}
+                      {preview.data.protectedBranches.length === 1
+                        ? "branch will"
+                        : "branches will"}{" "}
+                      be ignored.
+                    </li>
+                    {preview.data.inProgress > 0 && (
+                      <li>
+                        {preview.data.partial ? "At least " : ""}
+                        {preview.data.inProgress}{" "}
+                        {preview.data.inProgress === 1 ? "branch has" : "branches have"} a
+                        deployment in progress and will be skipped.
+                      </li>
+                    )}
+                  </ul>
+                  {preview.data.partial && (
+                    <p>Preview limited to the first 1,000 branches. Cleanup checks all branches.</p>
+                  )}
+                </div>
+              ) : null}
+            </section>
+            {protectedBranches.length > 0 && (
+              <section
+                className="max-h-48 overflow-y-auto"
+                aria-labelledby="protected-branches-title"
+                aria-busy={checkingPreview}
+              >
+                <h3 id="protected-branches-title" className={`${labelVariants.medium.text} mb-2`}>
+                  Protected branches
+                </h3>
+                <ul className="list-disc space-y-1 pl-4 text-sm text-text-dimmed">
+                  {protectedBranches.map((branch) => (
+                    <li key={branch} className="break-words">
+                      {branch}
+                    </li>
+                  ))}
+                </ul>
+              </section>
             )}
-          </section>
-        )}
+          </div>
+        </AnimatedHeight>
       </Fieldset>
       {fetcher.data && !fetcher.data.ok && <FormError>{fetcher.data.error}</FormError>}
       <DialogFooter>
@@ -487,5 +502,23 @@ function AutoArchiveForm({
         </Button>
       </DialogFooter>
     </fetcher.Form>
+  );
+}
+
+function AnimatedHeight({ children }: { children: ReactNode }) {
+  const [contentRef, { height, width }] = useMeasure<HTMLDivElement>();
+  const reduceMotion = useReducedMotion();
+
+  return (
+    <motion.div
+      initial={false}
+      animate={{ height: width > 0 ? height : "auto" }}
+      transition={{ duration: reduceMotion ? 0 : 0.2, ease: "easeInOut" }}
+      className="overflow-hidden"
+    >
+      <div ref={contentRef} className="flow-root">
+        {children}
+      </div>
+    </motion.div>
   );
 }
