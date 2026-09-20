@@ -21,6 +21,7 @@ import {
   DialogTrigger,
 } from "~/components/primitives/Dialog";
 import { Input } from "~/components/primitives/Input";
+import { Checkbox } from "~/components/primitives/Checkbox";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Hint } from "~/components/primitives/Hint";
@@ -210,11 +211,14 @@ function AutoArchiveForm({
   }>({ pending: false });
   const [requestedKey, setRequestedKey] = useState<string | null>(null);
   const [days, setDays] = useState(String(environment.previewAutoArchiveAfterDays ?? 14));
+  const [keepSpecificBranches, setKeepSpecificBranches] = useState(
+    environment.previewAutoArchiveExcludedBranches.length > 0
+  );
   const [excludedRows, setExcludedRows] = useState(() =>
     [...environment.previewAutoArchiveExcludedBranches, ""].map((name, id) => ({ id, name }))
   );
   const nextRowId = useRef(excludedRows.length);
-  const excluded = excludedRows.map(({ name }) => name).join("\n");
+  const excluded = keepSpecificBranches ? excludedRows.map(({ name }) => name).join("\n") : "";
   const enabled = environment.previewAutoArchiveAfterDays !== null;
 
   function updateExcludedBranch(id: number, name: string) {
@@ -331,38 +335,51 @@ function AutoArchiveForm({
           </div>
         </InputGroup>
         <InputGroup fullWidth>
-          <Label htmlFor={`archive-exclusion-${excludedRows[0].id}`} required={false}>
-            Branches to keep
-          </Label>
-          {excludedRows.map((row, index) => (
-            <div key={row.id} className="flex items-center gap-2">
-              <Input
-                id={`archive-exclusion-${row.id}`}
-                aria-label={`Branch to keep ${index + 1}`}
-                aria-describedby="archive-exclusions-description"
-                maxLength={255}
-                placeholder={index === 0 ? "Branch name, e.g. staging" : "Add another branch"}
-                disabled={busy}
-                value={row.name}
-                onChange={(event) => updateExcludedBranch(row.id, event.target.value)}
-              />
-              {(row.name !== "" || index < excludedRows.length - 1) && (
-                <Button
-                  type="button"
-                  variant="secondary/medium"
-                  LeadingIcon={TrashIcon}
-                  aria-label={`Remove branch ${row.name || index + 1}`}
-                  disabled={busy}
-                  onClick={() => removeExcludedBranch(row.id)}
-                />
-              )}
-            </div>
-          ))}
-          <div id="archive-exclusions-description">
-            <Hint>
-              Never auto-archive these branches. Use exact names; wildcards aren’t supported.
-            </Hint>
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="keep-specific-branches"
+              checked={keepSpecificBranches}
+              disabled={busy}
+              onChange={(event) => setKeepSpecificBranches(event.target.checked)}
+              aria-controls="archive-exclusions"
+            />
+            <Label htmlFor="keep-specific-branches" className="cursor-pointer">
+              Keep specific branches
+            </Label>
           </div>
+          {keepSpecificBranches && (
+            <div id="archive-exclusions" className="grid gap-1.5 pl-6">
+              {excludedRows.map((row, index) => (
+                <div key={row.id} className="flex items-center gap-2">
+                  <Input
+                    id={`archive-exclusion-${row.id}`}
+                    aria-label={`Branch to keep ${index + 1}`}
+                    aria-describedby="archive-exclusions-description"
+                    maxLength={255}
+                    placeholder={index === 0 ? "Branch name, e.g. staging" : "Add another branch"}
+                    disabled={busy}
+                    value={row.name}
+                    onChange={(event) => updateExcludedBranch(row.id, event.target.value)}
+                  />
+                  {(row.name !== "" || index < excludedRows.length - 1) && (
+                    <Button
+                      type="button"
+                      variant="secondary/medium"
+                      LeadingIcon={TrashIcon}
+                      aria-label={`Remove branch ${row.name || index + 1}`}
+                      disabled={busy}
+                      onClick={() => removeExcludedBranch(row.id)}
+                    />
+                  )}
+                </div>
+              ))}
+              <div id="archive-exclusions-description">
+                <Hint>
+                  Never auto-archive these branches. Use exact names; wildcards aren’t supported.
+                </Hint>
+              </div>
+            </div>
+          )}
         </InputGroup>
         <section
           className="max-h-48 overflow-y-auto"
