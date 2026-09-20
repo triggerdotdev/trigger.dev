@@ -116,45 +116,6 @@ export async function updateTriggerPackages(
 
   logger.debug("Resolved trigger deps", { triggerDependencies });
 
-  function getVersionMismatches(
-    deps: Dependency[],
-    targetVersion: string
-  ): {
-    mismatches: Dependency[];
-    isDowngrade: boolean;
-  } {
-    logger.debug("Checking for version mismatches", { deps, targetVersion });
-
-    const mismatches: Dependency[] = [];
-
-    for (const dep of deps) {
-      if (
-        dep.version === targetVersion ||
-        dep.version.startsWith("https://pkg.pr.new") ||
-        dep.version.startsWith("0.0.0")
-      ) {
-        continue;
-      }
-
-      mismatches.push(dep);
-    }
-
-    const isDowngrade = mismatches.some((dep) => {
-      const depMinVersion = semver.minVersion(dep.version);
-
-      if (!depMinVersion) {
-        return false;
-      }
-
-      return semver.gt(depMinVersion, targetVersion);
-    });
-
-    return {
-      mismatches,
-      isDowngrade,
-    };
-  }
-
   const { mismatches, isDowngrade } = getVersionMismatches(triggerDependencies, cliVersion);
 
   logger.debug("Version mismatches", { mismatches, isDowngrade });
@@ -314,13 +275,60 @@ export async function updateTriggerPackages(
   return hasOutput;
 }
 
-type Dependency = {
+export type Dependency = {
   type: "dependencies" | "devDependencies";
   name: string;
   version: string;
 };
 
-async function getTriggerDependencies(
+export function getVersionMismatches(
+  deps: Dependency[],
+  targetVersion: string
+): {
+  mismatches: Dependency[];
+  isDowngrade: boolean;
+} {
+  logger.debug("Checking for version mismatches", { deps, targetVersion });
+
+  const mismatches: Dependency[] = [];
+
+  for (const dep of deps) {
+    if (
+      dep.version === targetVersion ||
+      dep.version.startsWith("https://pkg.pr.new") ||
+      dep.version.startsWith("0.0.0")
+    ) {
+      continue;
+    }
+
+    mismatches.push(dep);
+  }
+
+  const isDowngrade = mismatches.some((dep) => {
+    if (!semver.validRange(dep.version)) {
+      return false;
+    }
+
+    try {
+      const depMinVersion = semver.minVersion(dep.version);
+
+      if (!depMinVersion) {
+        return false;
+      }
+
+      return semver.gt(depMinVersion, targetVersion);
+    } catch {
+      return false;
+    }
+  });
+
+  return {
+    mismatches,
+    isDowngrade,
+  };
+}
+
+export async function getTriggerDependencies(
   packageJson: PackageJson,
   packageJsonPath: string
 ): Promise<Dependency[]> {
@@ -332,7 +340,7 @@ async function getTriggerDependencies(
         continue;
       }
 
-      if (version.startsWith("workspace")) {
+      if (version.startsWith("workspace") || version.startsWith("catalog:")) {
         continue;
       }
 
