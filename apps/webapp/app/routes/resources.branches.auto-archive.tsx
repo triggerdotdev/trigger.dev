@@ -29,6 +29,7 @@ import { Label, labelVariants } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { FormError } from "~/components/primitives/FormError";
 import { Switch } from "~/components/primitives/Switch";
+import { Spinner } from "~/components/primitives/Spinner";
 import { readBoundedBodyText } from "~/utils/boundedRequestBody.server";
 
 import { trail } from "agentcrumbs"; // @crumbs
@@ -262,6 +263,9 @@ function AutoArchiveForm({
   const valid = PreviewAutoArchivePolicy.safeParse(JSON.parse(policyKey)).success;
   const reviewed =
     valid && !preview.pending && preview.data?.ok && preview.data.policyKey === policyKey;
+  const checkingProtectedBranches =
+    valid && !reviewed && excluded.trim() !== "" && (preview.pending || requestedKey !== policyKey);
+  const protectedBranches = reviewed && preview.data?.ok ? preview.data.protectedBranches : [];
   const busy = fetcher.state !== "idle";
   useEffect(() => {
     if (!valid || busy) return;
@@ -434,18 +438,25 @@ function AutoArchiveForm({
             <Paragraph>Checking branches…</Paragraph>
           )}
         </section>
-        {reviewed && preview.data?.ok && preview.data.protectedBranches.length > 0 && (
-          <section className="max-h-48 overflow-y-auto" aria-labelledby="protected-branches-title">
+        {(checkingProtectedBranches || protectedBranches.length > 0) && (
+          <section
+            className="max-h-48 overflow-y-auto"
+            aria-labelledby="protected-branches-title"
+            aria-busy={checkingProtectedBranches}
+          >
             <h3 id="protected-branches-title" className={`${labelVariants.medium.text} mb-2`}>
               Protected branches
+              {checkingProtectedBranches && <Spinner color="blue" className="ml-1 size-3" />}
             </h3>
-            <ul className="list-disc space-y-1 pl-4 text-sm text-text-dimmed">
-              {preview.data.protectedBranches.map((branch) => (
-                <li key={branch} className="break-words">
-                  {branch}
-                </li>
-              ))}
-            </ul>
+            {!checkingProtectedBranches && (
+              <ul className="list-disc space-y-1 pl-4 text-sm text-text-dimmed">
+                {protectedBranches.map((branch) => (
+                  <li key={branch} className="break-words">
+                    {branch}
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
         )}
       </Fieldset>
