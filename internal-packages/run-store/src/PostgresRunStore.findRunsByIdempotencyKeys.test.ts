@@ -38,6 +38,7 @@ async function createRun(
     taskIdentifier: string;
     idempotencyKey: string;
     idempotencyKeyExpiresAt?: Date;
+    status?: "PENDING" | "EXECUTING" | "CRASHED" | "SYSTEM_FAILURE";
   }
 ) {
   await prisma.taskRun.create({
@@ -46,6 +47,7 @@ async function createRun(
       taskIdentifier: params.taskIdentifier,
       idempotencyKey: params.idempotencyKey,
       idempotencyKeyExpiresAt: params.idempotencyKeyExpiresAt ?? null,
+      status: params.status ?? "PENDING",
       payload: "{}",
       payloadType: "application/json",
       runtimeEnvironmentId: params.runtimeEnvironmentId,
@@ -71,6 +73,7 @@ describe("PostgresRunStore.findRunsByIdempotencyKeys", () => {
       taskIdentifier: "task-a",
       idempotencyKey: "idem-1",
       idempotencyKeyExpiresAt: expiresAt,
+      status: "EXECUTING",
     });
     await createRun(prisma, {
       runtimeEnvironmentId: environment.id,
@@ -78,6 +81,7 @@ describe("PostgresRunStore.findRunsByIdempotencyKeys", () => {
       friendlyId: "run_a2",
       taskIdentifier: "task-a",
       idempotencyKey: "idem-2",
+      status: "CRASHED",
     });
     await createRun(prisma, {
       runtimeEnvironmentId: environment.id,
@@ -96,7 +100,9 @@ describe("PostgresRunStore.findRunsByIdempotencyKeys", () => {
     const byKey = new Map(rows.map((r) => [r.idempotencyKey, r]));
     expect(rows).toHaveLength(2);
     expect(byKey.get("idem-1")?.friendlyId).toBe("run_a1");
+    expect(byKey.get("idem-1")?.status).toBe("EXECUTING");
     expect(byKey.get("idem-2")?.friendlyId).toBe("run_a2");
+    expect(byKey.get("idem-2")?.status).toBe("CRASHED");
     expect(rows.map((r) => r.friendlyId)).not.toContain("run_b1");
     expect(byKey.get("idem-1")?.idempotencyKeyExpiresAt).toBeInstanceOf(Date);
     expect(byKey.get("idem-1")?.idempotencyKeyExpiresAt?.toISOString()).toBe(
