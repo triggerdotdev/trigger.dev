@@ -2154,6 +2154,12 @@ const EnvironmentSchema = z
     // slot and publication so the two consume independently. The source table is
     // a partitioned parent, so the publication is created with
     // publish_via_partition_root.
+    // Direct PostgreSQL connection with replication privileges. When unset, use the webhook
+    // writer URL, then DATABASE_URL; those fallbacks must also support logical replication.
+    WEBHOOK_DELIVERIES_REPLICATION_DATABASE_URL: z
+      .string()
+      .refine(isValidDatabaseUrl, "WEBHOOK_DELIVERIES_REPLICATION_DATABASE_URL is invalid")
+      .optional(),
     WEBHOOK_DELIVERIES_REPLICATION_CLICKHOUSE_URL: z.string().optional(),
     WEBHOOK_DELIVERIES_REPLICATION_ENABLED: z.string().default("0"),
     WEBHOOK_DELIVERIES_REPLICATION_SLOT_NAME: z
