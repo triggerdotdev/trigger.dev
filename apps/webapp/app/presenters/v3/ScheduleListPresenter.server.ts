@@ -6,7 +6,7 @@ import { getCurrentPlan, getPlans } from "~/services/platform.v3.server";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { formatResolvedScheduleWindow } from "~/v3/scheduleWindow.server";
-import { type ScheduleWindowSource } from "@internal/schedule-engine";
+import { calculateSchedulePhase, type ScheduleWindowSource } from "@internal/schedule-engine";
 import { CheckScheduleService } from "~/v3/services/checkSchedule.server";
 import { resolveScheduleTimings } from "~/v3/scheduleTimings.server";
 import { env } from "~/env.server";
@@ -43,6 +43,7 @@ type ScheduleListItem = {
   externalId: string | null;
   nextRun: Date;
   nextRunEffectiveAt: Date;
+  schedulePhase: number | null;
   lastRun: Date | undefined;
   active: boolean;
   environments: {
@@ -60,7 +61,7 @@ export class ScheduleListPresenter extends BasePresenter {
     environmentId,
     tasks,
     search,
-    page,
+    page = 1,
     type,
     pageSize = DEFAULT_PAGE_SIZE,
     includeLastRun = false,
@@ -141,7 +142,10 @@ export class ScheduleListPresenter extends BasePresenter {
 
     //get the latest BackgroundWorker
     const latestWorker = await findCurrentWorkerFromEnvironment(environment, this._replica);
-    if (!latestWorker) {
+
+    // Declarative schedules only exist when backed by an active deployment. If the caller
+    // specifically filtered for declarative schedules and there is no active worker, return empty.
+    if (!latestWorker && filterType === "DECLARATIVE") {
       return {
         currentPage: 1,
         totalPages: 1,
@@ -161,8 +165,13 @@ export class ScheduleListPresenter extends BasePresenter {
       };
     }
 
+    // Imperative schedules exist independently of worker deployments and must remain visible
+    // even before the first deployment or task version is deployed. When there is no active worker,
+    // only imperative schedules are returned.
+    const effectiveFilterType = !latestWorker ? "IMPERATIVE" : filterType;
+
     //get all possible scheduled tasks
-    const allIdentifiers = await getTaskIdentifiers(environmentId);
+    const allIdentifiers = await getTaskIdentifiers(environmentId, this._replica);
     const possibleTasks = allIdentifiers
       .filter((t) => t.triggerSource === "SCHEDULED" && t.isInLatestDeployment)
       .map((t) => ({ slug: t.slug }));
@@ -179,7 +188,7 @@ export class ScheduleListPresenter extends BasePresenter {
             environmentId,
           },
         },
-        type: filterType,
+        type: effectiveFilterType,
         AND: search
           ? {
               OR: [
@@ -247,7 +256,7 @@ export class ScheduleListPresenter extends BasePresenter {
             environmentId,
           },
         },
-        type: filterType,
+        type: effectiveFilterType,
         AND: search
           ? {
               OR: [
@@ -335,6 +344,13 @@ export class ScheduleListPresenter extends BasePresenter {
         lastRun,
         nextRun,
         nextRunEffectiveAt,
+        schedulePhase:
+          instances[index].schedulePhase ??
+          calculateSchedulePhase({
+            secret: env.ENCRYPTION_KEY,
+            environmentId,
+            deduplicationKey: schedule.deduplicationKey,
+          }),
         environments: schedule.instances.map((instance) => {
           const environment = project.environments.find((env) => env.id === instance.environmentId);
           if (!environment) {
