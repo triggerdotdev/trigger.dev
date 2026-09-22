@@ -31,7 +31,11 @@ import { applyDirectorySyncEffects } from "~/services/directorySyncEffects.serve
 const ENTITLED_ORG = "org_entitled";
 const UNENTITLED_ORG = "org_unentitled";
 
-function provision(organizationId: string, email = "someone@acme.com"): DirectorySyncEffect {
+function provision(
+  organizationId: string,
+  email = "someone@acme.com",
+  roleAuthoritative = false
+): DirectorySyncEffect {
   return {
     kind: "provision",
     userId: "user_1",
@@ -40,6 +44,7 @@ function provision(organizationId: string, email = "someone@acme.com"): Director
     lastName: null,
     organizationId,
     roleId: null,
+    roleAuthoritative,
   };
 }
 
@@ -165,7 +170,11 @@ describe("applyDirectorySyncEffects — SSO entitlement gate", () => {
       devEnvironmentsQueued: false,
     });
 
-    const effect = { ...provision(ENTITLED_ORG), roleId: "role_restricted" };
+    const effect = {
+      ...provision(ENTITLED_ORG),
+      roleId: "role_restricted",
+      roleAuthoritative: true,
+    };
 
     const { unqueuedUserIds } = await applyDirectorySyncEffects([effect]);
 
@@ -173,6 +182,23 @@ describe("applyDirectorySyncEffects — SSO entitlement gate", () => {
     expect(setUserRole).toHaveBeenCalledWith(
       expect.objectContaining({ roleId: "role_restricted", organizationId: ENTITLED_ORG })
     );
+  });
+
+  it("does not overwrite an existing role for a non-authoritative provision", async () => {
+    getSsoEntitlement.mockResolvedValue("entitled");
+
+    const effect = {
+      ...provision(ENTITLED_ORG),
+      roleId: "role_restricted",
+      roleAuthoritative: false,
+    };
+
+    await applyDirectorySyncEffects([effect]);
+
+    expect(ensureOrgMember).toHaveBeenCalledWith(
+      expect.objectContaining({ roleId: "role_restricted", organizationId: ENTITLED_ORG })
+    );
+    expect(setUserRole).not.toHaveBeenCalled();
   });
 
   it("reports nothing to retry when every provision was queued", async () => {

@@ -74,7 +74,11 @@ function initializeWorker() {
           data: payload.data,
         });
         if (result.isErr()) {
-          throw new Error(`account webhook processing failed: ${result.error}`);
+          const error = new Error(`account webhook processing failed: ${result.error}`);
+          if (result.error === "not_ready") {
+            Object.assign(error, { logLevel: "warn" as const });
+          }
+          throw error;
         }
         // Directory-sync events return membership effects to apply against
         // public.* tables (the plugin never writes those). A throw here
