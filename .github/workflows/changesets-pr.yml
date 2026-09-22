@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - "release/**"
     paths:
       - "packages/**"
       - ".changeset/**"
@@ -57,11 +58,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          PR_NUMBER=$(gh pr list --head changeset-release/main --json number --jq '.[0].number')
+          SOURCE_BRANCH="${GITHUB_REF_NAME}"
+          PR_BRANCH="changeset-release/${SOURCE_BRANCH}"
+          PR_NUMBER=$(gh pr list --head "$PR_BRANCH" --json number --jq '.[0].number')
           if [ -n "$PR_NUMBER" ]; then
-            git fetch origin changeset-release/main
+            git fetch origin "+${PR_BRANCH}:refs/remotes/origin/${PR_BRANCH}"
             # we arbitrarily reference the version of the cli package here; it is the same for all package releases
-            VERSION=$(git show origin/changeset-release/main:packages/cli-v3/package.json | jq -r '.version')
+            VERSION=$(git show "origin/${PR_BRANCH}:packages/cli-v3/package.json" | jq -r '.version')
             gh pr edit "$PR_NUMBER" --title "chore: release v$VERSION"
 
             # Enhance the PR body with a clean, deduplicated summary
@@ -78,16 +81,18 @@ jobs:
       # design cannot trigger downstream workflows. That leaves the required
       # "All PR Checks" status permanently Expected and the PR unmergeable.
       # The release PR only bumps package.json + lockfile + CHANGELOGs from
-      # changesets already on main, so we self-report the required check as
-      # success. If a human ever pushes to changeset-release/main, the real
-      # pr_checks.yml fires and its result overwrites this one (last write wins
-      # for the same context on the same SHA).
+      # changesets already on the source branch, so we self-report the required
+      # check as success. If a human pushes to the generated release branch, the
+      # real pr_checks.yml result overwrites this one (last write wins for the
+      # same context on the same SHA).
       - name: Self-report "All PR Checks" success on release PR
         if: steps.changesets.outputs.published != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          PR_NUMBER=$(gh pr list --head changeset-release/main --json number --jq '.[0].number')
+          SOURCE_BRANCH="${GITHUB_REF_NAME}"
+          PR_BRANCH="changeset-release/${SOURCE_BRANCH}"
+          PR_NUMBER=$(gh pr list --head "$PR_BRANCH" --json number --jq '.[0].number')
           if [ -z "$PR_NUMBER" ]; then exit 0; fi
           HEAD_SHA=$(gh pr view "$PR_NUMBER" --json headRefOid --jq '.headRefOid')
           gh api -X POST repos/${{ github.repository }}/check-runs \
@@ -96,4 +101,4 @@ jobs:
             -f status=completed \
             -f conclusion=success \
             -f 'output[title]=Auto-pass for changeset release PR' \
-            -f 'output[summary]=Required check auto-satisfied for changeset-release/main PRs. Full CI ran on the underlying commits before they landed on main.'
+            -f "output[summary]=Required check auto-satisfied for ${PR_BRANCH} PRs. Full CI ran on the underlying commits before they landed on ${SOURCE_BRANCH}."
