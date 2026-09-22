@@ -40,7 +40,6 @@ import {
 import { links } from "@trigger.dev/core/v3";
 
 const LoginCommandOptions = CommonCommandOptions.extend({
-  apiUrl: z.string(),
   browser: z.boolean().default(true),
 });
 
@@ -98,15 +97,19 @@ export type LoginOptions = {
   browser?: boolean;
 };
 
+export function resolveLoginOptions(options?: LoginOptions) {
+  return {
+    embedded: false,
+    silent: false,
+    ...options,
+    defaultApiUrl: options?.defaultApiUrl ?? CLOUD_API_URL,
+  };
+}
+
 export async function login(options?: LoginOptions): Promise<LoginResult> {
   return await tracer.startActiveSpan("login", async (span) => {
     try {
-      const opts = {
-        defaultApiUrl: CLOUD_API_URL,
-        embedded: false,
-        silent: false,
-        ...options,
-      };
+      const opts = resolveLoginOptions(options);
 
       span.setAttributes({
         "cli.config.apiUrl": opts.defaultApiUrl,
