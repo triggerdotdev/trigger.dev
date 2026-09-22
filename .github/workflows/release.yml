@@ -5,6 +5,7 @@ on:
     types: [closed]
     branches:
       - main
+      - "release/**"
   workflow_dispatch:
     inputs:
       type:
@@ -38,7 +39,7 @@ jobs:
       github.repository == 'triggerdotdev/trigger.dev' &&
       github.event_name == 'pull_request' &&
       github.event.pull_request.merged == true &&
-      github.event.pull_request.head.ref == 'changeset-release/main'
+      startsWith(github.event.pull_request.head.ref, 'changeset-release/')
     steps:
       - name: Show release summary
         env:
@@ -58,7 +59,7 @@ jobs:
       github.repository == 'triggerdotdev/trigger.dev' &&
       (
         (github.event_name == 'workflow_dispatch' && github.event.inputs.type == 'release') ||
-        (github.event_name == 'pull_request' && github.event.pull_request.merged == true && github.event.pull_request.head.ref == 'changeset-release/main')
+        (github.event_name == 'pull_request' && github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'changeset-release/'))
       )
     outputs:
       published: ${{ steps.changesets.outputs.published }}
@@ -166,7 +167,7 @@ jobs:
           gh release create "v${VERSION}" \
             --title "trigger.dev v${VERSION}" \
             --notes-file /tmp/release-body.md \
-            --target main \
+            --target "$(git rev-parse HEAD)" \
             $PRERELEASE_FLAG
 
       - name: Create and push Docker tag
