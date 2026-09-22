@@ -1435,18 +1435,21 @@ describe("TriggerChatTransport", () => {
       expect(await drainChunks(next)).toEqual(sampleChunks);
     });
 
-    it("does not gate a stop with no turn outstanding", async () => {
-      mockFetch([() => defaultSseResponse()]);
+    it.each([undefined, false])(
+      "does not gate an idle stop with isStreaming %s",
+      async (isStreaming) => {
+        mockFetch([() => defaultSseResponse()]);
 
-      const transport = await armedGate("chat-idle-stop", {
-        publicAccessToken: "p",
-        isStreaming: false,
-      });
+        const transport = await armedGate("chat-idle-stop", {
+          publicAccessToken: "p",
+          isStreaming,
+        });
 
-      const stream = await send(transport, "chat-idle-stop");
+        const stream = await send(transport, "chat-idle-stop");
 
-      expect(await drainChunks(stream)).toEqual(sampleChunks);
-    });
+        expect(await drainChunks(stream)).toEqual(sampleChunks);
+      }
+    );
 
     it("does not arm or write a stop when the abort lands after the boundary", async () => {
       const bodies: string[] = [];

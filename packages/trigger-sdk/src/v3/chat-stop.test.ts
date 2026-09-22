@@ -78,12 +78,14 @@ describe("Stop with a successor response", () => {
   let outputHeaders: { peek: boolean; timeout: number }[];
   let inputSeq: number;
   let holdStop: boolean;
+  let holdMessages: boolean;
   let stopStatus: number;
   let settled: boolean;
   let resumeAfterStoppedCheckpoint: boolean;
   let emptyRecoveredOutput: boolean;
   let includeSequence: boolean;
   let pendingStop: { response: ServerResponse; seq: number } | undefined;
+  let pendingMessages: { response: ServerResponse; seq: number }[];
   let saved: ChatSessionPersistedState | null;
 
   function createTransport(
@@ -113,12 +115,14 @@ describe("Stop with a successor response", () => {
     outputHeaders = [];
     inputSeq = 10;
     holdStop = false;
+    holdMessages = false;
     stopStatus = 200;
     settled = false;
     resumeAfterStoppedCheckpoint = false;
     emptyRecoveredOutput = false;
     includeSequence = true;
     pendingStop = undefined;
+    pendingMessages = [];
     saved = null;
     server = createServer(async (request, response) => {
       if (request.method === "POST") {
@@ -130,6 +134,8 @@ describe("Stop with a successor response", () => {
         const seq = inputSeq++;
         if (isStop && holdStop) {
           pendingStop = { response, seq };
+        } else if (!isStop && holdMessages) {
+          pendingMessages.push({ response, seq });
         } else {
           appendResponse(response, seq, isStop ? stopStatus : 200);
         }
@@ -288,6 +294,162 @@ describe("Stop with a successor response", () => {
     }
   );
 
+  it.each([
+    ["constructor", undefined],
+    ["constructor", "1"],
+    ["setSession", undefined],
+    ["setSession", "1"],
+  ] as const)("does not gate idle %s hydration with cursor %s", async (hydrate, lastEventId) => {
+    const session = { publicAccessToken: "test-token", lastEventId };
+    if (hydrate === "constructor") {
+      transport.dispose();
+      transport = createTransport(session);
+    } else {
+      transport.setSession("chat", session);
+    }
+    expect(await transport.stopGeneration("chat")).toBe(true);
+    expect(transport.getSession("chat")?.skipToTurnComplete).not.toBe(true);
+    const next = await send();
+    emit([...reply(2), complete(7, 11)]);
+    await expect(readText(next)).resolves.toBe("New response");
+    expect(inputSeq).toBe(12);
+  });
+
+  it.each([
+    ["message", "idle"],
+    ["action", "idle"],
+    ["message", "repeated Stop"],
+    ["action", "repeated Stop"],
+  ] as const)("retains Stop during a pending %s append (%s)", async (kind, state) => {
+    holdMessages = true;
+    const first = kind === "message" ? send() : transport.sendAction("chat", { type: "undo" });
+    await vi.waitFor(() => expect(pendingMessages).toHaveLength(1));
+    expect(await transport.stopGeneration("chat")).toBe(true);
+    if (state === "repeated Stop") expect(await transport.stopGeneration("chat")).toBe(true);
+    expect(transport.getSession("chat")).toMatchObject({
+      skipToTurnComplete: true,
+      transcriptRecoveryInputSeq: 11,
+    });
+    expect(transport.getSession("chat")).not.toHaveProperty("pendingInputCount");
+    holdMessages = false;
+    const pending = pendingMessages[0]!;
+    appendResponse(pending.response, pending.seq);
+    const firstStream = await first;
+    await vi.waitFor(() => expect(outputs).toHaveLength(1));
+    const firstResult = readText(firstStream);
+    const nextInput = inputSeq;
+    const next = await send();
+    await expect(firstResult).resolves.toBe("");
+    emit(oldTailAndReply(10, nextInput));
+    await expect(readText(next)).resolves.toBe("New response");
+  });
+
+  it.each(["message", "action"] as const)(
+    "retains Stop from the first %s acknowledgment event",
+    async (kind) => {
+      let stopping: Promise<boolean> | undefined;
+      let stopFirst = true;
+      transport.setOnEvent((event) => {
+        if (event.type === "message-sent" && event.source !== "stop" && stopFirst) {
+          stopFirst = false;
+          queueMicrotask(() => {
+            stopping = transport.stopGeneration("chat");
+          });
+        }
+      });
+      const first = await (kind === "message"
+        ? send()
+        : transport.sendAction("chat", { type: "undo" }));
+      await vi.waitFor(() => expect(outputs).toHaveLength(1));
+      await expect(stopping).resolves.toBe(true);
+      expect(transport.getSession("chat")?.skipToTurnComplete).toBe(true);
+      const stopped = readText(first);
+      const next = await send();
+      await expect(stopped).resolves.toBe("");
+      emit(oldTailAndReply(10, 12));
+      await expect(readText(next)).resolves.toBe("New response");
+    }
+  );
+
+  it.each(["message", "action"] as const)(
+    "clears pending activity after a failed %s append",
+    async (kind) => {
+      holdMessages = true;
+      const first = kind === "message" ? send() : transport.sendAction("chat", { type: "undo" });
+      const failed = expect(first).rejects.toThrow();
+      await vi.waitFor(() => expect(pendingMessages).toHaveLength(1));
+      const pending = pendingMessages[0]!;
+      appendResponse(pending.response, pending.seq, 400);
+      await failed;
+      holdMessages = false;
+      await transport.stopGeneration("chat");
+      expect(transport.getSession("chat")?.skipToTurnComplete).not.toBe(true);
+      const next = await send();
+      emit([...reply(2), complete(7, 12)]);
+      await expect(readText(next)).resolves.toBe("New response");
+    }
+  );
+
+  it.each([
+    ["message", "idle"],
+    ["action", "idle"],
+    ["message", "abandoned"],
+    ["action", "abandoned"],
+  ] as const)("keeps a rejected %s append idle after Stop (%s)", async (kind, state) => {
+    transport.setSession("chat", { publicAccessToken: "test-token", isStreaming: false });
+    if (state === "abandoned") transport.clearSupersedeGate("chat");
+    holdMessages = true;
+    const first = kind === "message" ? send() : transport.sendAction("chat", { type: "undo" });
+    const failed = expect(first).rejects.toThrow();
+    await vi.waitFor(() => expect(pendingMessages).toHaveLength(1));
+    await transport.stopGeneration("chat");
+    const pending = pendingMessages[0]!;
+    appendResponse(pending.response, pending.seq, 400);
+    await failed;
+    holdMessages = false;
+    expect(transport.getSession("chat")?.skipToTurnComplete).not.toBe(true);
+    const next = await send();
+    emit([...reply(2), complete(7, 12)]);
+    await expect(readText(next)).resolves.toBe("New response");
+  });
+
+  it("retains pending activity until every overlapping append finishes", async () => {
+    holdMessages = true;
+    const first = transport.sendAction("chat", { type: "first" });
+    const firstFailure = expect(first).rejects.toThrow();
+    const second = transport.sendAction("chat", { type: "second" });
+    await vi.waitFor(() => expect(pendingMessages).toHaveLength(2));
+    const rejected = pendingMessages[0]!;
+    appendResponse(rejected.response, rejected.seq, 400);
+    await firstFailure;
+    await transport.stopGeneration("chat");
+    expect(transport.getSession("chat")?.skipToTurnComplete).toBe(true);
+    holdMessages = false;
+    const accepted = pendingMessages[1]!;
+    appendResponse(accepted.response, accepted.seq);
+    const stopped = readText(await second);
+    await vi.waitFor(() => expect(outputs).toHaveLength(1));
+    const next = await send();
+    await expect(stopped).resolves.toBe("");
+    emit(oldTailAndReply(11, 13));
+    await expect(readText(next)).resolves.toBe("New response");
+  });
+
+  it("does not mark an already-canceled reconnect as an outstanding turn", async () => {
+    const abort = new AbortController();
+    abort.abort();
+    const resumed = await transport.reconnectToStream({
+      chatId: "chat",
+      abortSignal: abort.signal,
+    });
+    if (!resumed) throw new Error("Expected a resumed stream");
+    await expect(readText(resumed)).resolves.toBe("");
+    expect(await transport.stopGeneration("chat")).toBe(true);
+    const next = await send();
+    emit([...reply(2), complete(7, 11)]);
+    await expect(readText(next)).resolves.toBe("New response");
+  });
+
   it("does not gate a response after an empty settled resume", async () => {
     settled = true;
     transport.setSession("chat", { publicAccessToken: "test-token", lastEventId: "1" });
@@ -298,6 +460,25 @@ describe("Stop with a successor response", () => {
     await expect(readText(resumed)).resolves.toBe("");
     await transport.stopGeneration("chat");
     settled = false;
+    const next = await send();
+    emit([...reply(2), complete(7, 11)]);
+    await expect(readText(next)).resolves.toBe("New response");
+  });
+
+  it("does not transfer an unknown resumed turn to a replacement idle session", async () => {
+    const abort = new AbortController();
+    const resumed = await transport.reconnectToStream({
+      chatId: "chat",
+      abortSignal: abort.signal,
+    });
+    if (!resumed) throw new Error("Expected a resumed stream");
+    await vi.waitFor(() => expect(outputs).toHaveLength(1));
+    abort.abort();
+    await expect(readText(resumed)).resolves.toBe("");
+    const session = transport.getSession("chat")!;
+    expect(session).not.toHaveProperty("resumedUnknownTurn");
+    transport.setSession("chat", session);
+    await transport.stopGeneration("chat");
     const next = await send();
     emit([...reply(2), complete(7, 11)]);
     await expect(readText(next)).resolves.toBe("New response");
@@ -560,6 +741,8 @@ describe("Stop with a successor response", () => {
   it.each([false, true])(
     "retains the first Stop input through repeated Stop (delayed first acknowledgment: %s)",
     async (delayed) => {
+      await transport.reconnectToStream({ chatId: "chat" });
+      await vi.waitFor(() => expect(outputs).toHaveLength(1));
       holdStop = delayed;
       const firstStop = transport.stopGeneration("chat");
       if (delayed) await vi.waitFor(() => expect(pendingStop).toBeDefined());
@@ -768,6 +951,19 @@ describe("Stop with a successor response", () => {
     expect(await stopped).toBe(true);
     expect(inputSeq).toBe(14);
     expect(transport.getSession("chat")).toMatchObject({ requiresTranscriptReload: true });
+  });
+
+  it("retains the stopped boundary for recovered output before reconnect", async () => {
+    await hydrateBlockedSession("constructor");
+    expect(
+      transport.prepareTranscriptRecovery("chat")?.({ lastOutEventId: "11", lastInEventId: "11" })
+    ).toBe(true);
+    await transport.stopGeneration("chat");
+    expect(transport.getSession("chat")?.skipToTurnComplete).toBe(true);
+    const next = await send();
+    emit([complete(12, 12), ...reply(13), complete(18, 14)]);
+    await expect(readText(next)).resolves.toBe("New response");
+    expect(inputSeq).toBe(15);
   });
 
   it.each(["abort", "stop"] as const)("closes recovery quietly after %s", async (operation) => {
