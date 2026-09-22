@@ -7,7 +7,8 @@
   "jsPlugins": [
     "./oxlint-plugins/no-thrown-unawaited-redirect.mjs",
     "./oxlint-plugins/runops-residency.mjs",
-    "./oxlint-plugins/prisma-in-filter.mjs"
+    "./oxlint-plugins/prisma-in-filter.mjs",
+    "./oxlint-plugins/zod-imports.mjs"
   ],
   "ignorePatterns": [
     "**/dist/**",
@@ -156,6 +157,12 @@
         "react/rules-of-hooks": "error",
         "trigger-runops/no-control-plane-run-graph-access": "error",
         "trigger-runops/no-control-plane-in-runops-slot": "error"
+      }
+    },
+    {
+      "files": ["packages/core/src/**/*.ts", "packages/core/src/**/*.tsx"],
+      "rules": {
+        "trigger-zod/require-versioned-import": "error"
       }
     },
     {
