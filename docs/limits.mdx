@@ -14,11 +14,15 @@ You can view your current limits, quotas, and rate limit usage in real-time by v
 
 ## Concurrency limits
 
-| Pricing tier | Limit                |
-| :----------- | :------------------- |
-| Free         | 10 concurrent runs   |
-| Hobby        | 25 concurrent runs   |
-| Pro          | 100+ concurrent runs |
+Concurrency is allocated **per environment**, not as a single figure for the whole organization. Each plan sets a separate default for production, staging, preview and development:
+
+| Pricing tier | Production | Staging | Preview | Development |
+| :----------- | :--------- | :------ | :------ | :---------- |
+| Free         | 20         | 10      | 10      | 25          |
+| Hobby        | 50         | 25      | 25      | 25          |
+| Pro          | 200+       | 100     | 100     | 25          |
+
+These are plan defaults. The limit actually enforced for one of your environments can be higher: purchased add-on concurrency and any manual increase we have applied are both included in it. The **Concurrency** page in the dashboard (left sidebar) is authoritative for your organization — if it disagrees with the table above, the dashboard is correct.
 
 Extra concurrency above the Pro tier limit is available via the dashboard. Click the "Concurrency" page from the left sidebar when on the Pro plan to purchase more.
 
@@ -50,7 +54,13 @@ The maximum number of runs that can be queued **per queue** (not across all queu
 
 ## Maximum run TTL
 
-On Trigger.dev Cloud, all runs have an enforced maximum TTL of 14 days. Runs without an explicit TTL automatically receive the 14-day TTL; runs with a TTL longer than 14 days are clamped to 14 days. This prevents queued runs from accumulating indefinitely. If you self-host, you can configure a maximum TTL via the `RUN_ENGINE_DEFAULT_MAX_TTL` environment variable — see [Self-hosting environment variables](/self-hosting/env/webapp#run-engine).
+On Trigger.dev Cloud, all runs have an enforced maximum TTL of 14 days. Runs without an explicit TTL automatically receive the 14-day TTL; runs with a TTL longer than 14 days are clamped to 14 days. This prevents queued runs from accumulating indefinitely.
+
+**The TTL cap does not limit how far ahead you can schedule a run.** TTL governs how long a run may sit *queued* waiting for a concurrency slot. A run triggered with [`delay`](/triggering#delay) is not queued while it is delayed, and no TTL expiry is armed for it — the TTL clock only starts once the delay elapses and the run is enqueued. So scheduling a run a month out with `delay` works fine, and the 14 days then applies to how long it may wait for a slot after that month is up.
+
+There is no maximum on `delay`.
+
+If you self-host, you can configure a maximum TTL via the `RUN_ENGINE_DEFAULT_MAX_TTL` environment variable — see [Self-hosting environment variables](/self-hosting/env/webapp#run-engine).
 
 ## Schedules
 

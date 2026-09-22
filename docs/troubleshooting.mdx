@@ -163,6 +163,18 @@ You need to be on at least these minor versions:
 
 ## Runtime issues
 
+### Runs stuck in "Pending version"
+
+A run sits in **Pending version** when the version deployed to that environment doesn't contain the run's task, or doesn't contain the queue it was triggered on. The run isn't lost: unless it's pinned to a specific deployment (see the last cause below), it starts automatically once a version containing both is deployed.
+
+Usually one of:
+
+- **The task isn't in the deployed version.** It was renamed or removed, or the deploy adding it hasn't landed yet. Check the Tasks page for that environment.
+- **The queue doesn't exist in the deployed version.** Overriding `queue` at trigger time only works if a deployed task declares that queue — see [Queues](/queues).
+- **You triggered into the wrong organization, project or environment.** Check the secret key you triggered with belongs to the same place you deployed to.
+- **A later deploy removed or renamed the task or queue while the run was waiting.** Most likely with `delay`. Pin the run to a version to avoid this: `trigger(payload, { delay: "1h", version: "20260227.2" })`. See [atomic deployments](/deployment/atomic-deployment).
+- **The run is pinned to an external deployment id that hasn't arrived.** This is [version skew protection](/deployment/version-skew-protection#waiting-and-expiry), and it behaves differently: only a deployment carrying the matching id releases the run, and it expires after 1 hour if none does.
+
 ### `Environment variable not found:`
 
 Your code is deployed separately from the rest of your app(s) so you need to make sure that you set any environment variables you use in your tasks in the Trigger.dev dashboard. [Read the guide](/deploy-environment-variables).
