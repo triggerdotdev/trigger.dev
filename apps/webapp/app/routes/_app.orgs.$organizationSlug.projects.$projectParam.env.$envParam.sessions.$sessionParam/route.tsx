@@ -45,6 +45,7 @@ import {
   descriptionForTaskRunStatus,
   TaskRunStatusCombo,
 } from "~/components/runs/v3/TaskRunStatus";
+import { TranscriptDownloadButton } from "~/components/sessions/v1/TranscriptDownloadButton";
 import { CloseSessionDialog } from "~/components/sessions/v1/CloseSessionDialog";
 import { SessionStatusCombo } from "~/components/sessions/v1/SessionStatus";
 import { $replica } from "~/db.server";
@@ -946,6 +947,11 @@ function OverviewTab({
             )}
           </Property.Value>
         </Property.Item>
+        <TranscriptDownloadButton
+          key={session.friendlyId}
+          initiallyAvailable={!!session.agentView.transcriptSeed}
+          resourcePath={`/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/sessions/${encodeURIComponent(session.friendlyId)}/transcript-download`}
+        />
         {session.currentRun ? (
           <Property.Item>
             <Property.Label>Current run</Property.Label>

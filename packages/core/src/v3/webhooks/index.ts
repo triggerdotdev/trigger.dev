@@ -57,6 +57,29 @@ export function svixVerifierConfig(): WebhookHmacConfig {
   };
 }
 
+/**
+ * Standard Webhooks (https://www.standardwebhooks.com): the same scheme Svix uses, under the spec's
+ * vendor-neutral header names (`webhook-id` / `webhook-timestamp` / `webhook-signature`). Providers that
+ * implement the spec directly (Composio, OpenAI, Replicate, GitLab's signing token, and others) send
+ * these; Svix itself sends both sets.
+ */
+export function standardWebhooksVerifierConfig(): WebhookHmacConfig {
+  return {
+    scheme: "hmac",
+    algorithm: "sha256",
+    encoding: "base64",
+    signatureHeader: "webhook-signature",
+    signature: { itemSeparator: " ", fieldSeparator: ",", field: "v1" },
+    timestamp: { source: { from: "header", name: "webhook-timestamp" }, toleranceSeconds: 300 },
+    signingString: {
+      template: "{id}.{timestamp}.{body}",
+      vars: { id: { from: "header", name: "webhook-id" } },
+    },
+    secret: { encoding: "base64", stripPrefix: "whsec_" },
+    idempotencyField: { from: "header", name: "webhook-id" },
+  };
+}
+
 export function squareVerifierConfig(): WebhookHmacConfig {
   return {
     scheme: "hmac",
@@ -89,6 +112,7 @@ export const WEBHOOK_PRESET_IDS = [
   "stripe",
   "github",
   "svix",
+  "standard-webhooks",
   "square",
   "discord",
 ] as const;
@@ -110,8 +134,10 @@ function hmacVerifierConfig(opts: {
   signingTemplate?: string;
   timestamp?:
     | { from: "header"; name: string; unit?: "seconds" | "milliseconds" }
-    | { from: "signatureField"; field: string; unit?: "seconds" | "milliseconds" };
+    | { from: "signatureField"; field: string; unit?: "seconds" | "milliseconds" }
+    | { from: "body"; path: string; unit?: "seconds" | "milliseconds" };
   toleranceSeconds?: number;
+  idempotencyField?: WebhookHmacConfig["idempotencyField"];
 }): WebhookHmacConfig {
   const signature: WebhookHmacConfig["signature"] = {};
   if (opts.itemSeparator) signature.itemSeparator = opts.itemSeparator;
@@ -135,11 +161,14 @@ function hmacVerifierConfig(opts: {
       source:
         opts.timestamp.from === "header"
           ? { from: "header", name: opts.timestamp.name }
-          : { from: "signatureField", field: opts.timestamp.field },
+          : opts.timestamp.from === "body"
+            ? { from: "body", path: opts.timestamp.path }
+            : { from: "signatureField", field: opts.timestamp.field },
       ...(opts.timestamp.unit ? { unit: opts.timestamp.unit } : {}),
       ...(opts.toleranceSeconds ? { toleranceSeconds: opts.toleranceSeconds } : {}),
     };
   }
+  if (opts.idempotencyField) config.idempotencyField = opts.idempotencyField;
 
   return config;
 }
@@ -204,7 +233,12 @@ export const webhookProviderConfigs = {
   },
   linear: {
     secretProvisioning: "integrator",
-    config: () => hmacVerifierConfig({ header: "linear-signature" }),
+    config: () =>
+      hmacVerifierConfig({
+        header: "linear-signature",
+        timestamp: { from: "body", path: "webhookTimestamp", unit: "milliseconds" },
+        toleranceSeconds: 60,
+      }),
   },
   notion: {
     secretProvisioning: "provider",

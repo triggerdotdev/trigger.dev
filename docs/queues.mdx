@@ -210,6 +210,17 @@ await queues.resume({ type: "custom", name: "my-custom-queue" });
 
 ### Overriding concurrency limits
 
+<Warning>
+  `queues.overrideConcurrencyLimit` and `queues.resetConcurrencyLimit` are deprecated and only work
+  for queues on the legacy model, where the queue carried its own concurrency limit. On the current
+  model, declare concurrency with the task `concurrency` option and manage it through
+  [`concurrencyLimits`](/concurrency), e.g. `concurrencyLimits.override("task/my-task", { total: 10 })`
+  and `concurrencyLimits.reset("task/my-task")`. A legacy limit on a queue used with
+  `concurrencyKey` maps to `perKey` rather than `total`, and a limit on a custom queue shared by
+  several tasks maps to a named limit declared with `concurrencyLimit()`, again using `perKey`
+  when the queue receives keyed runs.
+</Warning>
+
 You can temporarily override a queue's concurrency limit. This is useful for scaling up or down based on demand:
 
 ```ts

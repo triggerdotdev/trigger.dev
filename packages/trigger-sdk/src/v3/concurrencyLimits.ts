@@ -80,15 +80,14 @@ export function retrieve(
 
 /**
  * Overrides a concurrency limit's bounds. Only the given fields change; the
- * declared values are kept as the base and restored by `reset`. Overriding
- * `total` to `0` blocks every run holding the limit, which is how a limit is
- * paused.
+ * declared values are kept as the base and restored by `reset`. To stop runs
+ * holding a limit, prefer `pause` (it keeps the configured bounds); overriding
+ * `total` to `0` also blocks every run holding the limit.
  *
  * @example
  *
  * ```ts
  * await concurrencyLimits.override("openai", { total: 50 });
- * await concurrencyLimits.override("openai", { total: 0 }); // pause
  * ```
  * @param name - The limit's name
  * @param override - The bounds to change (`perKey` and/or `total`)
@@ -149,4 +148,78 @@ export function reset(
   );
 
   return apiClient.resetConcurrencyLimit(name, $requestOptions);
+}
+
+/**
+ * Pauses a concurrency limit. Nothing holding the limit is admitted until it is
+ * resumed; runs already executing continue. The configured bounds are kept.
+ *
+ * @example
+ *
+ * ```ts
+ * await concurrencyLimits.pause("openai");
+ * ```
+ * @param name - The limit's name
+ * @returns The updated concurrency limit
+ */
+export function pause(
+  name: string,
+  requestOptions?: ApiRequestOptions
+): ApiPromise<ConcurrencyLimitItem> {
+  const apiClient = apiClientManager.clientOrThrow();
+
+  const $requestOptions = mergeRequestOptions(
+    {
+      tracer,
+      name: "concurrencyLimits.pause()",
+      icon: "queue",
+      attributes: {
+        ...flattenAttributes({ name }),
+        ...accessoryAttributes({
+          items: [{ text: name, variant: "normal" }],
+          style: "codepath",
+        }),
+      },
+    },
+    requestOptions
+  );
+
+  return apiClient.pauseConcurrencyLimit(name, "pause", $requestOptions);
+}
+
+/**
+ * Resumes a paused concurrency limit, so runs holding it can be admitted again
+ * under its configured bounds.
+ *
+ * @example
+ *
+ * ```ts
+ * await concurrencyLimits.resume("openai");
+ * ```
+ * @param name - The limit's name
+ * @returns The updated concurrency limit
+ */
+export function resume(
+  name: string,
+  requestOptions?: ApiRequestOptions
+): ApiPromise<ConcurrencyLimitItem> {
+  const apiClient = apiClientManager.clientOrThrow();
+
+  const $requestOptions = mergeRequestOptions(
+    {
+      tracer,
+      name: "concurrencyLimits.resume()",
+      icon: "queue",
+      attributes: {
+        ...flattenAttributes({ name }),
+        ...accessoryAttributes({
+          items: [{ text: name, variant: "normal" }],
+          style: "codepath",
+        }),
+      },
+    },
+    requestOptions
+  );
+
+  return apiClient.pauseConcurrencyLimit(name, "resume", $requestOptions);
 }

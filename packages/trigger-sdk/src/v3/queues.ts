@@ -137,6 +137,28 @@ export function pause(
 /**
  * Overrides the concurrency limit of a queue.
  *
+ * @deprecated Queue-level concurrency is the legacy model: a modern queue is only the
+ * ordered line runs wait in, and concurrency is declared on the task and managed
+ * through `concurrencyLimits`. The server rejects this call for queues on the new
+ * model. Migrate by declaring the limit and overriding it by name:
+ *
+ * ```ts
+ * export const myTask = task({
+ *   id: "my-task",
+ *   concurrency: { total: 5 },
+ *   run: async (payload) => {
+ *     // ...
+ *   },
+ * });
+ *
+ * await concurrencyLimits.override("task/my-task", { total: 10 });
+ * ```
+ *
+ * For workloads that pass a `concurrencyKey` at trigger time, declare `concurrency: { perKey: n }`
+ * instead (`total` caps all keys together). For a limit shared by several tasks, declare a named
+ * limit with `concurrencyLimit({ name, ... })`, making the same choice between `total` and
+ * `perKey`, pass it to each task's `concurrency` option, and override it by that name.
+ *
  * @param queue - The ID of the queue to override the concurrency limit, or the type and name
  * @param concurrencyLimit - The concurrency limit to override
  * @returns The updated queue state
@@ -174,6 +196,15 @@ export function overrideConcurrencyLimit(
 
 /**
  * Resets the concurrency limit of a queue to the base value.
+ *
+ * @deprecated Queue-level concurrency is the legacy model: a modern queue is only the
+ * ordered line runs wait in, and concurrency is declared on the task and managed
+ * through `concurrencyLimits`. The server rejects this call for queues on the new
+ * model. Migrate by resetting the limit by name:
+ *
+ * ```ts
+ * await concurrencyLimits.reset("task/my-task");
+ * ```
  *
  * @param queue - The ID of the queue to reset the concurrency limit, or the type and name
  * @returns The updated queue state

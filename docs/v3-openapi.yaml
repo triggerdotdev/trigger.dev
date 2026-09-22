@@ -3220,8 +3220,9 @@ paths:
       summary: Override concurrency limit
       description: |
         Override a concurrency limit's bounds. Only the given fields change; the declared
-        values are kept and restored by reset. Overriding `total` to `0` blocks every run
-        holding the limit, which is how a limit is paused.
+        values are kept and restored by reset. To stop runs holding a limit, prefer the
+        pause endpoint (it keeps the configured bounds); overriding `total` to `0` also
+        blocks every run holding the limit.
       parameters:
         - name: name
           in: path
@@ -3276,8 +3277,62 @@ paths:
             // Raise the shared cap
             await concurrencyLimits.override("openai", { total: 50 });
 
+  "/api/v1/concurrency-limits/{name}/pause":
+    post:
+      operationId: pause_concurrency_limit_v1
+      summary: Pause or resume a concurrency limit
+      description: |
+        Pause a concurrency limit to prevent runs holding it from starting, or resume a
+        paused limit. Runs that are currently executing will continue to completion, and
+        the limit's configured bounds are kept.
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The limit's name
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: ["action"]
+              properties:
+                action:
+                  type: string
+                  enum: [pause, resume]
+                  description: Whether to pause or resume the limit
+      responses:
+        "200":
+          description: Concurrency limit paused or resumed successfully
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ConcurrencyLimitObject"
+        "400":
+          description: Invalid request parameters
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Concurrency limit not found
+        "409":
+          description: The limit changed concurrently; retry the request
+      tags:
+        - concurrency-limits
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { concurrencyLimits } from "@trigger.dev/sdk";
+
             // Pause the limit
-            await concurrencyLimits.override("openai", { total: 0 });
+            await concurrencyLimits.pause("openai");
+
+            // Resume the limit
+            await concurrencyLimits.resume("openai");
 
   "/api/v1/concurrency-limits/{name}/reset":
     post:
@@ -4549,6 +4604,10 @@ components:
           type: integer
           description: Runs that are queued and must clear this limit to execute
           example: 100
+        paused:
+          type: boolean
+          description: Whether the limit is paused. A paused limit admits no runs until resumed; its configured bounds are kept.
+          example: false
     QueueObject:
       type: object
       required: ["id", "name", "type", "version", "running", "queued", "paused"]

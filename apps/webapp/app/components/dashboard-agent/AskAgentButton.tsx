@@ -1,4 +1,4 @@
-import { Button } from "~/components/primitives/Buttons";
+import { Button, type ButtonVariant } from "~/components/primitives/Buttons";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { AgentIcon, ASK_AGENT_LABEL } from "./agent-identity";
 import { requestDashboardAgent, useDashboardAgentAvailable } from "./dashboardAgentOpenRequest";
@@ -11,12 +11,14 @@ export function AskAgentButton({
   iconOnly = false,
   className,
   fallback = null,
+  variant = "small-menu-item",
 }: {
   prompt?: string;
   label?: string;
   iconOnly?: boolean;
   className?: string;
   fallback?: React.ReactNode;
+  variant?: ButtonVariant;
 }) {
   const available = useDashboardAgentAvailable();
   if (!available) return fallback;
@@ -24,9 +26,9 @@ export function AskAgentButton({
   const button = (
     <Button
       type="button"
-      variant="small-menu-item"
+      variant={variant}
       data-action="ask-agent"
-      LeadingIcon={AgentIcon}
+      LeadingIcon={variant.startsWith("ask-trigger/") ? undefined : AgentIcon}
       className={className}
       aria-label={iconOnly ? label : undefined}
       onClick={() => requestDashboardAgent(prompt)}

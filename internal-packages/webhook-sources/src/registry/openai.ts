@@ -5,7 +5,7 @@ export const entry: ProviderRegistryEntry = {
   label: "OpenAI",
   category: "ai-platform",
   docsUrl: "https://platform.openai.com/docs/guides/webhooks",
-  preset: "svix",
+  preset: "standard-webhooks",
   secretProvisioning: "provider",
   eventTypeSource: { from: "body", path: "type" },
   sampleSource: "handauthored",

@@ -1,30 +1,62 @@
-import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { readBodyWithCap } from "~/utils/readBodyWithCap.server";
 import { webhookIngressRateLimiter } from "~/services/webhookIngressRateLimit.server";
 import { webhookEngine } from "~/v3/webhookEngine.server";
+import { toWebhookHttpResponse, webhookHttpResponseFor } from "~/v3/webhookIngressResponse.server";
+
+/**
+ * Shared gate for both methods: the feature flags, the opaque id, and the per-endpoint rate limit,
+ * which runs before any database or secret work. Returns the response to send when the request is
+ * refused, or the opaque id to continue with.
+ */
+async function admit(params: { opaqueId?: string }): Promise<{ opaqueId: string } | Response> {
+  if (env.WEBHOOK_ENABLED !== "1" || env.WEBHOOK_INGRESS_ENABLED !== "1") {
+    return json({ error: "Not found" }, { status: 404 });
+  }
+  const opaqueId = params.opaqueId;
+  if (!opaqueId) return json({ error: "Not found" }, { status: 404 });
+
+  const rl = await webhookIngressRateLimiter.limit(opaqueId);
+  if (!rl.success) {
+    logger.info("webhook ingress rate limited", { opaqueId });
+    return json({ error: "Too many requests" }, { status: 429 });
+  }
+  return { opaqueId };
+}
+
+/**
+ * GET: a provider's verification of the endpoint URL (Meta's `hub.challenge` flow). The engine
+ * answers it from the endpoint's declared GET handshake, or refuses with 405 when the source
+ * declares none. Never records a delivery.
+ */
+export async function loader({ request, params }: LoaderFunctionArgs) {
+  const admitted = await admit(params);
+  if (admitted instanceof Response) return admitted;
+  const { opaqueId } = admitted;
+
+  const query: Record<string, string> = {};
+  new URL(request.url).searchParams.forEach((v, k) => (query[k] = v));
+  const result = await webhookEngine.verifyGetHandshake({ opaqueId, query });
+  if (result.outcome === "verification_failed") {
+    logger.info("webhook ingress GET handshake rejected", { opaqueId, error: result.error });
+  }
+  return toWebhookHttpResponse(webhookHttpResponseFor(result));
+}
 
 // Public, unauthenticated webhook ingress. A Remix `action` (NOT
 // createActionApiRoute, which parses JSON) so we can capture the raw bytes the
 // signature scheme verifies. The engine resolves the endpoint (and its env id +
 // type) from the globally-unique opaqueId, so this route runs no env query.
 export async function action({ request, params }: ActionFunctionArgs) {
+  const admitted = await admit(params);
+  if (admitted instanceof Response) return admitted;
+  const { opaqueId } = admitted;
+
   if (request.method !== "POST") {
-    return json({ error: "Method not allowed" }, { status: 405 });
-  }
-  if (env.WEBHOOK_ENABLED !== "1" || env.WEBHOOK_INGRESS_ENABLED !== "1") {
-    return json({ error: "Not found" }, { status: 404 });
-  }
-
-  const opaqueId = params.opaqueId;
-  if (!opaqueId) return json({ error: "Not found" }, { status: 404 });
-
-  // Per-opaqueId rate limit FIRST, before any DB or secret work.
-  const rl = await webhookIngressRateLimiter.limit(opaqueId);
-  if (!rl.success) {
-    logger.info("webhook ingress rate limited", { opaqueId });
-    return json({ error: "Too many requests" }, { status: 429 });
+    const result = await webhookEngine.rejectUnsupportedMethod(opaqueId);
+    return toWebhookHttpResponse(webhookHttpResponseFor(result));
   }
 
   // Content-Length is a cheap fast-path reject; the capped streaming read is the real enforcement
@@ -53,23 +85,19 @@ export async function action({ request, params }: ActionFunctionArgs) {
   switch (result.outcome) {
     case "accepted":
       logger.info("webhook ingress accepted", { opaqueId, deliveryId: result.deliveryId });
-      return json({ received: true, deliveryId: result.deliveryFriendlyId }, { status: 200 });
-    case "handshake":
-      // Provider handshake echo (e.g. Slack url_verification): the challenge value, plain text, 200.
-      return new Response(result.body, { status: 200, headers: { "content-type": "text/plain" } });
-    case "duplicate":
-      return json({ received: true, deliveryId: result.deliveryId }, { status: 200 });
-    case "endpoint_not_found":
-    case "endpoint_inactive":
-      return json({ error: "Not found" }, { status: 404 });
+      break;
     case "secret_missing":
       logger.warn("webhook ingress rejected: signing secret unset", { opaqueId });
-      return json({ error: "Bad request" }, { status: 400 });
+      break;
     case "verification_failed":
       logger.info("webhook ingress verification failed", { opaqueId });
-      return json({ error: "Bad request" }, { status: 400 });
+      break;
     case "enqueue_failed":
       logger.error("webhook ingress enqueue failed", { opaqueId, error: result.error });
-      return json({ error: "Internal error" }, { status: 500 });
+      break;
+    default:
+      break;
   }
+
+  return toWebhookHttpResponse(webhookHttpResponseFor(result));
 }

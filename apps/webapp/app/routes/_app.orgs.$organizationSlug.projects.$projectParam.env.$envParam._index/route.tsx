@@ -1,3 +1,5 @@
+import { env } from "~/env.server";
+import { OnboardingAutoRefresh } from "~/components/deployments/OnboardingAutoRefresh";
 import { BookOpenIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid";
 import { json } from "@remix-run/node";
 
@@ -78,6 +80,8 @@ import { useOptionalUser } from "~/hooks/useUser";
 import { prisma } from "~/db.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
+import { resolveDeploymentOnboardingUi } from "~/v3/services/deploymentOnboardingUi.server";
+import { BranchTrackingConfigSchema, getTrackedBranchForEnvironment } from "~/v3/github";
 import {
   getUsefulLinksPreference,
   setUsefulLinksPreference,
@@ -117,6 +121,11 @@ import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta("Tasks");
 
+type DeploymentOnboardingData = Awaited<ReturnType<typeof resolveDeploymentOnboardingUi>> & {
+  connectedGithubRepository?: { repository: { fullName: string; htmlUrl: string } };
+  environmentGitHubBranch?: string;
+};
+
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
@@ -146,12 +155,62 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       select: { initializedAt: true },
     });
 
+    // Deployable empty states share the deployments GitHub onboarding flow. With the flag off the
+    // page stays exactly as before: nothing beyond the activation check runs, and populated
+    // projects and development pay none of these reads.
+    let deploymentOnboarding: DeploymentOnboardingData | undefined;
+    if (items.length === 0 && environment.type !== "DEVELOPMENT") {
+      const ui = await resolveDeploymentOnboardingUi({
+        request,
+        userId,
+        organizationSlug,
+        projectSlug: projectParam,
+        environmentSlug: envParam,
+        organizationId: project.organizationId,
+        projectId: project.id,
+        environmentId: environment.id,
+        environmentType: environment.type,
+        url: new URL(request.url),
+      });
+      if (ui.showGitHubOnboarding) {
+        const repoProject = await prisma.project.findFirst({
+          where: { id: project.id },
+          select: {
+            connectedGithubRepository: {
+              select: {
+                branchTracking: true,
+                previewDeploymentsEnabled: true,
+                repository: { select: { htmlUrl: true, fullName: true } },
+              },
+            },
+          },
+        });
+        const connectedGithubRepository = repoProject?.connectedGithubRepository ?? undefined;
+        const branchTrackingOrError =
+          connectedGithubRepository &&
+          BranchTrackingConfigSchema.safeParse(connectedGithubRepository.branchTracking);
+        const environmentGitHubBranch =
+          branchTrackingOrError && branchTrackingOrError.success
+            ? getTrackedBranchForEnvironment(
+                branchTrackingOrError.data,
+                connectedGithubRepository.previewDeploymentsEnabled,
+                { type: environment.type, branchName: environment.branchName ?? undefined }
+              )
+            : undefined;
+        deploymentOnboarding = { ...ui, connectedGithubRepository, environmentGitHubBranch };
+      }
+    }
+
     return typeddefer({
       items,
       hourlyActivity,
       runningStates,
       usefulLinksPreference,
       projectInitializedAt: initialized?.initializedAt ?? null,
+      deploymentOnboarding,
+      ...(deploymentOnboarding?.showGitHubOnboarding
+        ? { onboardingPollIntervalMs: env.DEPLOYMENTS_AUTORELOAD_POLL_INTERVAL_MS }
+        : {}),
     });
   } catch (error) {
     console.error(error);
@@ -231,8 +290,15 @@ export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  const { items, hourlyActivity, runningStates, usefulLinksPreference, projectInitializedAt } =
-    useTypedLoaderData<typeof loader>();
+  const {
+    items,
+    hourlyActivity,
+    runningStates,
+    usefulLinksPreference,
+    projectInitializedAt,
+    deploymentOnboarding,
+    onboardingPollIntervalMs,
+  } = useTypedLoaderData<typeof loader>();
   const { value, values } = useSearchParams();
 
   // Live-reload on WORKER_CREATED.
@@ -392,6 +458,11 @@ export default function Page() {
                     </Table>
                   </div>
                 </div>
+              ) : deploymentOnboarding?.showGitHubOnboarding ? (
+                <MainCenteredContainer className="w-[calc(100%_-_3rem)] max-w-prose">
+                  <OnboardingAutoRefresh interval={onboardingPollIntervalMs} />
+                  <HasNoTasksDeployed environment={environment} {...deploymentOnboarding} />
+                </MainCenteredContainer>
               ) : environment.type === "DEVELOPMENT" ? (
                 <MainCenteredContainer className="max-w-prose">
                   <HasNoTasksDev initializedAt={projectInitializedAt} />

@@ -9,6 +9,7 @@ import {
   updateQueueTotalConcurrencyLimits,
 } from "../runQueue.server";
 import { engine } from "../runEngine.server";
+import { logger } from "~/services/logger.server";
 import { sanitizeQueueName } from "~/models/taskQueue.server";
 import { anonymousConcurrencyLimitQueueName } from "./concurrencyLimitNames.server";
 
@@ -36,6 +37,7 @@ type ConcurrencyLimitItem = {
   total: ConcurrencyLimitBoundValue;
   running: number;
   queued: number;
+  paused: boolean;
 };
 
 /**
@@ -147,6 +149,12 @@ export class ConcurrencyLimitsSystem {
             })).map((items) => items[0])
           );
       },
+      pause: (environment: AuthenticatedEnvironment, name: string) => {
+        return this.setLimitPaused(environment, name, true);
+      },
+      resume: (environment: AuthenticatedEnvironment, name: string) => {
+        return this.setLimitPaused(environment, name, false);
+      },
       reset: (environment: AuthenticatedEnvironment, name: string) => {
         return findLimitByName(this.db, environment, name)
           .andThen((row) =>
@@ -173,6 +181,43 @@ export class ConcurrencyLimitsSystem {
           );
       },
     };
+  }
+
+  /**
+   * Pause blocks admission without touching the configured bounds: the row's
+   * `paused` flag flips, then the per-key engine key syncs through the
+   * pause-aware write (0 while paused, the stored value — or a removal when
+   * boundless — on resume). The total key never changes: pause is entirely the
+   * per-key 0, which already blocks every key pool and the keyless pool.
+   */
+  private setLimitPaused(environment: AuthenticatedEnvironment, name: string, paused: boolean) {
+    return findLimitByName(this.db, environment, name)
+      .andThen((row) => guardedLimitUpdate(this.db, row, { paused }))
+      .andThen((row) =>
+        syncLimitPauseToEngine(environment, row)
+          .andThen(() =>
+            compensateEngineFromFreshRow(this.db, environment, row.id, {
+              alreadySynced: {
+                perKey: row.concurrencyLimit,
+                total: row.totalConcurrencyLimit,
+                paused: row.paused,
+              },
+            })
+              .orElse(() => okAsync(undefined))
+              .map(() => row)
+          )
+          .orElse((error) =>
+            compensateEngineFromFreshRow(this.db, environment, row.id)
+              .orElse(() => okAsync(undefined))
+              .andThen(() => errAsync(error))
+          )
+      )
+      .andThen((row) =>
+        fromPromise(toLimitItems(environment, [row]), (error) => ({
+          type: "other" as const,
+          cause: error,
+        })).map((items) => items[0])
+      );
   }
 }
 
@@ -330,6 +375,7 @@ async function toLimitItems(
     ),
     running: running[row.name] ?? 0,
     queued: queued[row.name] ?? 0,
+    paused: row.paused,
   }));
 }
 
@@ -395,8 +441,8 @@ function applyLimitOverride(
  * column keeps the configured value), so every per-key engine write from this
  * surface must preserve it — otherwise an override or reset that only touched
  * `total` would silently resume a queue every other surface still reports as
- * paused. Named LIMIT rows are never paused (pausing a limit is an override to
- * `{ total: 0 }`), so they always take the target branch.
+ * paused. QUEUE rows and named LIMIT rows pause the same way (queue pause and
+ * `limits.pause` both set the flag), so both take the paused branch here.
  */
 function perKeyEngineWrite(
   environment: AuthenticatedEnvironment,
@@ -437,6 +483,18 @@ function syncResetToEngine(
       : removeQueueTotalConcurrencyLimits(environment, row.name);
 
   return fromPromise(settleBothEngineWrites(perKeySync, totalSync), (error) => ({
+    type: "sync_limit_to_engine_failed" as const,
+    cause: error,
+  })).map(() => row);
+}
+
+/**
+ * Pause and resume change only the per-key engine key (0 while paused, the
+ * stored value or a removal on resume); the total key belongs to the bounds and
+ * is left exactly as configured.
+ */
+function syncLimitPauseToEngine(environment: AuthenticatedEnvironment, row: TaskQueue) {
+  return fromPromise(perKeyEngineWrite(environment, row, row.concurrencyLimit), (error) => ({
     type: "sync_limit_to_engine_failed" as const,
     cause: error,
   })).map(() => row);
@@ -565,14 +623,20 @@ function compensateEngineFromFreshRow(
         };
       }
     })(),
-    (error) => ({ type: "other" as const, cause: error })
+    (error) => {
+      /** Callers on their success path swallow this error (their own persist and
+       * sync succeeded; the next sync or deploy retries the residual), so the
+       * failure must be observable here or it is silent. */
+      logger.error("Failed to re-sync a concurrency limit from the fresh row", { error, rowId });
+      return { type: "other" as const, cause: error };
+    }
   );
 }
 
 /**
- * Pushes both engine keys from the row: the per-key limit and the total. Limit
- * rows are never paused (pausing a limit is an override to `{ total: 0 }`), so
- * both keys sync unconditionally, unlike queue rows.
+ * Pushes both engine keys from the row: the per-key limit (through the
+ * pause-aware write, so a paused row keeps 0) and the total, which pause never
+ * touches.
  */
 function syncLimitToEngine(environment: AuthenticatedEnvironment, row: TaskQueue) {
   const perKeySync = perKeyEngineWrite(environment, row, row.concurrencyLimit);

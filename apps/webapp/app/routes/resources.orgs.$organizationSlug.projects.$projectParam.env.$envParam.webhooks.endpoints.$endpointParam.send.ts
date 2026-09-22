@@ -14,6 +14,7 @@ import { webhookConsoleSendRateLimiter } from "~/services/webhookConsoleSendRate
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { webhookIngressUrl } from "~/utils/webhookIngressUrl.server";
 import { webhookEngine } from "~/v3/webhookEngine.server";
+import { webhookHttpResponseFor } from "~/v3/webhookIngressResponse.server";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
 import { flag } from "~/v3/featureFlags.server";
 
@@ -37,7 +38,14 @@ export type WebhookSendResult =
       handshake?: boolean;
       responseBody: string;
     }
-  | { success: false; error: string; notSignable?: boolean };
+  | {
+      success: false;
+      error: string;
+      notSignable?: boolean;
+      /** The status the public ingress would have answered, when the outcome maps to one. */
+      httpStatus?: number;
+      responseBody?: string;
+    };
 
 /**
  * Authenticated dashboard test-send. Session/cookie auth via requireUser; authorization via
@@ -119,7 +127,16 @@ export async function action({ request, params }: ActionFunctionArgs): Promise<W
 
   if (signatureMode === "signed") {
     if (!endpoint.hasSigningSecret) {
-      return { success: false, error: "This endpoint has no signing secret. Set one first." };
+      const answer = webhookHttpResponseFor({
+        outcome: "secret_missing",
+        response: verifier.data.response,
+      });
+      return {
+        success: false,
+        error: "This endpoint has no signing secret. Set one first.",
+        httpStatus: answer.status,
+        responseBody: answer.body ?? "",
+      };
     }
     const secretStore = getSecretStore("DATABASE", { prismaClient: prisma });
     const stored = await secretStore.getSecret(
@@ -127,7 +144,16 @@ export async function action({ request, params }: ActionFunctionArgs): Promise<W
       `webhook:signing-secret:${endpoint.id}`
     );
     if (!stored?.secret) {
-      return { success: false, error: "The signing secret could not be read." };
+      const answer = webhookHttpResponseFor({
+        outcome: "secret_missing",
+        response: verifier.data.response,
+      });
+      return {
+        success: false,
+        error: "The signing secret could not be read.",
+        httpStatus: answer.status,
+        responseBody: answer.body ?? "",
+      };
     }
     const signed = signWithVerifierConfig({
       config,
@@ -135,6 +161,9 @@ export async function action({ request, params }: ActionFunctionArgs): Promise<W
       rawBody,
       url: ingressUrl,
       headers: baseHeaders,
+      // A sample or an older payload carries a historical body timestamp; sign it as of now so the
+      // replay window judges the console's request, not the recording.
+      refreshBodyTimestamp: true,
     });
     if (!signed.ok) {
       return { success: false, error: signed.error, notSignable: signed.notSignable };
@@ -149,6 +178,7 @@ export async function action({ request, params }: ActionFunctionArgs): Promise<W
       rawBody,
       url: ingressUrl,
       headers: baseHeaders,
+      refreshBodyTimestamp: true,
     });
     if (bogus.ok) {
       ingestHeaders = bogus.headers;
@@ -179,37 +209,51 @@ export async function action({ request, params }: ActionFunctionArgs): Promise<W
   const deliveryPathFor = (friendlyId: string) =>
     `/orgs/${organizationSlug}/projects/${projectParam}/env/${envParam}/webhooks/deliveries/${friendlyId}`;
 
+  const answer = webhookHttpResponseFor(result);
+
   switch (result.outcome) {
     case "accepted": {
       const friendlyId = result.deliveryFriendlyId;
       if (shouldRedirect) throw redirect(deliveryPathFor(friendlyId));
       return {
         success: true,
-        httpStatus: 200,
+        httpStatus: answer.status,
         deliveryId: friendlyId,
-        responseBody: JSON.stringify({ received: true, deliveryId: friendlyId }),
+        responseBody: answer.body ?? "",
       };
     }
     case "handshake":
-      return { success: true, httpStatus: 200, handshake: true, responseBody: result.body };
+      return {
+        success: true,
+        httpStatus: answer.status,
+        handshake: true,
+        responseBody: answer.body ?? "",
+      };
     case "duplicate": {
       const friendlyId = result.deliveryId;
       if (shouldRedirect && friendlyId) throw redirect(deliveryPathFor(friendlyId));
       return {
         success: true,
-        httpStatus: 200,
+        httpStatus: answer.status,
         deliveryId: friendlyId,
         deduplicated: true,
-        responseBody: JSON.stringify({ received: true, deliveryId: friendlyId }),
+        responseBody: answer.body ?? "",
       };
     }
     case "verification_failed":
       return {
         success: false,
         error: result.error ?? "Signature verification failed. No delivery was recorded.",
+        httpStatus: answer.status,
+        responseBody: answer.body ?? "",
       };
     case "secret_missing":
-      return { success: false, error: "This endpoint has no signing secret. Set one first." };
+      return {
+        success: false,
+        error: "This endpoint has no signing secret. Set one first.",
+        httpStatus: answer.status,
+        responseBody: answer.body ?? "",
+      };
     case "endpoint_not_found":
     case "endpoint_inactive":
       return { success: false, error: "This endpoint is not active." };

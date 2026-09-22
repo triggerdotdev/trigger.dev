@@ -347,12 +347,13 @@ The limit object contains each bound plus live counts:
   },
   running: 14,            // Runs executing that hold this limit
   queued: 100,            // Runs queued that must clear this limit to execute
+  paused: false,          // Whether the limit is paused
 }
 ```
 
 ### Overriding a limit
 
-Overrides change only the fields you pass; the declared values are kept and restored by `reset`. Overriding `total` to `0` blocks every run holding the limit, which is how you pause a limit:
+Overrides change only the fields you pass; the declared values are kept and restored by `reset`:
 
 ```ts
 import { concurrencyLimits } from "@trigger.dev/sdk";
@@ -360,11 +361,24 @@ import { concurrencyLimits } from "@trigger.dev/sdk";
 // Raise the shared cap
 await concurrencyLimits.override("openai", { total: 50 });
 
-// Pause the limit: nothing holding it can start
-await concurrencyLimits.override("openai", { total: 0 });
-
 // Back to the values declared in your code
 await concurrencyLimits.reset("openai");
 ```
 
 Overrides survive deploys: redeploying your code keeps an active override until you reset it.
+
+### Pausing a limit
+
+Pause a limit to stop every run holding it from being dequeued; runs that are already executing continue to completion. The configured bounds are kept, and resuming restores them:
+
+```ts
+import { concurrencyLimits } from "@trigger.dev/sdk";
+
+// Pause the limit: nothing holding it can start
+await concurrencyLimits.pause("openai");
+
+// Resume the limit under its configured bounds
+await concurrencyLimits.resume("openai");
+```
+
+You can also pause and resume a limit from the Concurrency page in the dashboard, exactly like a queue. Overriding `total` to `0` also blocks every run holding the limit, but pause is the first-class way to do this and leaves your configured bounds untouched.

@@ -15,21 +15,11 @@
 import ts from "typescript-legacy-api";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { findRepoRoot } from "./lib/repoRoot";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Paths
 // ─────────────────────────────────────────────────────────────────────────────
-
-function findRepoRoot(start: string): string {
-  let dir = path.resolve(start);
-  for (;;) {
-    if (fs.existsSync(path.join(dir, "pnpm-workspace.yaml"))) return dir;
-    const parent = path.dirname(dir);
-    if (parent === dir)
-      throw new Error("Could not locate repo root (pnpm-workspace.yaml not found)");
-    dir = parent;
-  }
-}
 
 const REPO_ROOT = findRepoRoot(process.cwd());
 const WEBAPP_DIR = path.join(REPO_ROOT, "apps", "webapp");

@@ -23,7 +23,16 @@ describe("stripClientWebhookActionSource", () => {
     expect(stripClientWebhookActionSource(part)).toBe(part);
   });
 
-  it("leaves a normal message part untouched (fast path, no parse)", () => {
+  it("removes a webhook actionSource whose property name is spelled with JSON escapes", () => {
+    const forged =
+      '{"kind":"message","payload":{"chatId":"c1","trigger":"action","action\\u0053ource":"webhook","action":{"type":"refund"}}}';
+    const cleaned = JSON.parse(stripClientWebhookActionSource(forged));
+    expect(cleaned.payload.actionSource).toBeUndefined();
+    expect(cleaned.payload.action).toEqual({ type: "refund" });
+    expect(cleaned.payload.trigger).toBe("action");
+  });
+
+  it("leaves a normal message part untouched", () => {
     const part = record({ trigger: "submit-message", message: { role: "user", parts: [] } });
     expect(stripClientWebhookActionSource(part)).toBe(part);
   });

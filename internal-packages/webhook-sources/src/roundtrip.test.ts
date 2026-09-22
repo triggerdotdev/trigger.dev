@@ -3,6 +3,7 @@ import {
   discordVerifierConfig,
   githubVerifierConfig,
   squareVerifierConfig,
+  standardWebhooksVerifierConfig,
   stripeVerifierConfig,
   svixVerifierConfig,
   webhookProviderConfigs,
@@ -24,6 +25,8 @@ function configForPreset(presetId: WebhookPresetId): WebhookVerifierConfig | nul
       return githubVerifierConfig();
     case "svix":
       return svixVerifierConfig();
+    case "standard-webhooks":
+      return standardWebhooksVerifierConfig();
     case "square":
       return squareVerifierConfig();
     case "discord":
@@ -66,12 +69,14 @@ describe("verifier round-trip (sign -> verify)", () => {
       const rawBody = new TextEncoder().encode(JSON.stringify(sample.body));
       const url = "https://example.com/webhooks/v1/ingest/op_roundtrip";
 
+      // The console signs a recorded sample as of now; the round trip must hold on the real clock.
       const signed = signWithVerifierConfig({
         config,
         secret: TEST_SECRET,
         rawBody,
         url,
         headers: { ...(sample.extraHeaders ?? {}) },
+        refreshBodyTimestamp: true,
       });
 
       if (!signed.ok) {
@@ -86,6 +91,7 @@ describe("verifier round-trip (sign -> verify)", () => {
           headers: signed.headers,
           url: signed.url,
           secret: TEST_SECRET,
+          nowMs: Date.now(),
         }
       );
 

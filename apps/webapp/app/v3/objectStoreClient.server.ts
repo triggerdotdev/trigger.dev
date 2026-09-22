@@ -1,5 +1,10 @@
 import { AwsClient } from "aws4fetch";
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import {
+  GetObjectCommand,
+  HeadObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 /**
@@ -32,6 +37,8 @@ export type ObjectRange = {
 interface IObjectStoreClient {
   putObject(key: string, body: ReadableStream | string, contentType: string): Promise<string>;
   getObject(key: string): Promise<string>;
+  getObjectResponse(key: string): Promise<Response>;
+  objectExists(key: string): Promise<boolean>;
   getObjectRange(
     key: string,
     range: { suffixLength: number } | { start: number; end: number },
@@ -116,6 +123,21 @@ class Aws4FetchClient implements IObjectStoreClient {
       throw new Error(`Failed to download from object store: ${response.statusText}`);
     }
     return response.text();
+  }
+
+  async objectExists(key: string): Promise<boolean> {
+    const response = await this.awsClient.fetch(this.buildUrl(key), { method: "HEAD" });
+    if (response.status === 404) return false;
+    if (!response.ok) throw new Error(`Failed to check object store: ${response.statusText}`);
+    return true;
+  }
+
+  async getObjectResponse(key: string): Promise<Response> {
+    const response = await this.awsClient.fetch(this.buildUrl(key));
+    if (!response.ok) {
+      throw new Error(`Failed to download from object store: ${response.statusText}`);
+    }
+    return response;
   }
 
   async getObjectRange(
@@ -219,6 +241,33 @@ class AwsSdkClient implements IObjectStoreClient {
     return response.Body.transformToString();
   }
 
+  async objectExists(key: string): Promise<boolean> {
+    try {
+      await this.s3Client.send(
+        new HeadObjectCommand({ Bucket: this.config.bucket, Key: this.toS3ObjectKey(key) })
+      );
+      return true;
+    } catch (error) {
+      if ((error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode === 404)
+        return false;
+      throw error;
+    }
+  }
+
+  async getObjectResponse(key: string): Promise<Response> {
+    const response = await this.s3Client.send(
+      new GetObjectCommand({ Bucket: this.config.bucket, Key: this.toS3ObjectKey(key) })
+    );
+    if (!response.Body) {
+      throw new Error(`Empty response body from object store for key: ${key}`);
+    }
+    const headers = new Headers();
+    if (response.ContentType) headers.set("Content-Type", response.ContentType);
+    if (response.ContentLength !== undefined)
+      headers.set("Content-Length", String(response.ContentLength));
+    return new Response(response.Body.transformToWebStream(), { headers });
+  }
+
   async getObjectRange(
     key: string,
     range: { suffixLength: number } | { start: number; end: number },
@@ -317,6 +366,14 @@ export class ObjectStoreClient implements IObjectStoreClient {
 
   getObject(key: string): Promise<string> {
     return this.impl.getObject(key);
+  }
+
+  objectExists(key: string): Promise<boolean> {
+    return this.impl.objectExists(key);
+  }
+
+  getObjectResponse(key: string): Promise<Response> {
+    return this.impl.getObjectResponse(key);
   }
 
   getObjectRange(

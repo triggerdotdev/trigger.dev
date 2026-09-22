@@ -1,3 +1,12 @@
+import { deploymentOnboardingEnabled } from "~/v3/services/deploymentOnboardingEnabled.server";
+import {
+  createGitSettingsAutosave,
+  gitSettingsKey,
+  saveGitSettings,
+  type AutosaveState,
+} from "~/components/deployments/gitSettingsAutosave";
+import { GitHubBranchTracking } from "~/components/deployments/GitHubBranchTracking";
+import { GitHubOnboardingConnection } from "~/components/deployments/GitHubOnboardingConnection";
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod/v4";
 import {
@@ -15,17 +24,13 @@ import {
   useNavigate,
   useNavigation,
   useSearchParams,
+  useRevalidator,
 } from "@remix-run/react";
 import { type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { GitBranchIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
 import { z } from "zod";
-import {
-  EnvironmentIcon,
-  environmentFullTitle,
-  environmentTextClassName,
-} from "~/components/environments/EnvironmentLabel";
 import { OctoKitty } from "~/components/GitHubLoginButton";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
@@ -41,11 +46,16 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { PermissionLink } from "~/components/primitives/PermissionLink";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import {
+  SettingsRow,
   SettingsActions,
   SettingsBlock,
-  SettingsRow,
   SettingsRowDescription,
 } from "~/components/primitives/SettingsLayout";
+import {
+  EnvironmentIcon,
+  environmentFullTitle,
+  environmentTextClassName,
+} from "~/components/environments/EnvironmentLabel";
 import { Spinner, SpinnerWhite } from "~/components/primitives/Spinner";
 import { Switch } from "~/components/primitives/Switch";
 import { TextLink } from "~/components/primitives/TextLink";
@@ -62,6 +72,7 @@ import { env } from "~/env.server";
 import { GitHubSettingsPresenter } from "~/presenters/v3/GitHubSettingsPresenter.server";
 import { logger } from "~/services/logger.server";
 import { triggerInitialDeployment } from "~/services/platform.v3.server";
+import { marketplaceInitialDeploymentOptions } from "~/v3/services/marketplaceInitialDeploymentOptions.server";
 import { ProjectSettingsService } from "~/services/projectSettings.server";
 import { rbac } from "~/services/rbac.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
@@ -154,6 +165,13 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     throw new Response("Not Found", { status: 404 });
   }
 
+  if (
+    new URL(request.url).searchParams.get("onboarding") === "1" &&
+    !(await deploymentOnboardingEnabled(project.organizationId))
+  ) {
+    throw new Response("Not available", { status: 403 });
+  }
+
   const presenter = new GitHubSettingsPresenter();
   const resultOrFail = await presenter.call({
     projectId: project.id,
@@ -161,6 +179,9 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   });
 
   if (resultOrFail.isErr()) {
+    if (new URL(request.url).searchParams.get("onboarding") === "1") {
+      return typedjson({ loadError: true as const, enabled: false as const });
+    }
     throw new Response("Failed to load GitHub settings", { status: 500 });
   }
 
@@ -223,7 +244,21 @@ export const action = dashboardAction(
     const formData = await request.formData();
     const submission = parseWithZod(formData, { schema: GitHubActionSchema });
 
+    const autosave =
+      new URL(request.url).searchParams.get("autosave") === "1" &&
+      formData.get("action") === "update-git-settings";
+    if (autosave && !(await deploymentOnboardingEnabled(project.organizationId))) {
+      return json(
+        { ok: false, error: "GitHub onboarding is not available for this organization." },
+        { status: 403 }
+      );
+    }
     if (submission.status !== "success") {
+      if (autosave)
+        return json(
+          { ok: false, error: "Check your branch settings and try again." },
+          { status: 400 }
+        );
       return json(submission.reply());
     }
 
@@ -268,7 +303,9 @@ export const action = dashboardAction(
             vercelIntegration.parsedIntegrationData.onboardingOrigin === "marketplace"
           ) {
             logger.info("Marketplace flow detected, triggering initial deployment", { projectId });
-            await triggerInitialDeployment(projectId, { environment: "prod" });
+
+            const options = await marketplaceInitialDeploymentOptions(projectId, organizationId);
+            await triggerInitialDeployment(projectId, options);
           }
         } catch (error) {
           logger.error("Failed to check Vercel integration or trigger initial deployment", {
@@ -343,6 +380,7 @@ export const action = dashboardAction(
       );
 
       if (resultOrFail.isOk()) {
+        if (autosave) return json({ ok: true });
         return redirectWithMessage(
           request,
           redirectUrl,
@@ -361,6 +399,11 @@ export const action = dashboardAction(
       };
 
       const message = errorMessages[errorType];
+      if (autosave)
+        return json(
+          { ok: false, error: message ?? "Failed to update Git settings" },
+          { status: 400 }
+        );
       if (message) {
         return redirectWithMessage(request, redirectUrl, message, "error");
       }
@@ -1088,18 +1131,361 @@ function EnvironmentRowLabel({
 // Main GitHub Settings Panel Component
 // ============================================================================
 
+export function OnboardingConnectedGitHubRepoForm({
+  connectedGitHubRepo,
+  previewEnvironmentEnabled,
+  stagingEnvironmentEnabled,
+  organizationSlug,
+  projectSlug,
+  environmentSlug,
+  billingPath,
+  redirectUrl,
+  canManageGithub = true,
+  showRepositoryDetails = true,
+  onSettingsDirty,
+  onSettingsSaving,
+  autosave = false,
+}: {
+  connectedGitHubRepo: ConnectedGitHubRepo;
+  previewEnvironmentEnabled?: boolean;
+  stagingEnvironmentEnabled?: boolean;
+  organizationSlug: string;
+  projectSlug: string;
+  environmentSlug: string;
+  billingPath: string;
+  redirectUrl?: string;
+  canManageGithub?: boolean;
+  showRepositoryDetails?: boolean;
+  onSettingsDirty?: (dirty: boolean) => void;
+  onSettingsSaving?: (saving: boolean) => void;
+  autosave?: boolean;
+}) {
+  const revalidator = useRevalidator();
+  const [saveState, setSaveState] = useState<AutosaveState>({ pending: false, saving: false });
+  const autosaver = useRef<ReturnType<typeof createGitSettingsAutosave>>();
+  const lastSubmission = useActionData() as any;
+  const navigation = useNavigation();
+
+  const [gitSettingsValues, setGitSettingsValues] = useState({
+    productionBranch: connectedGitHubRepo.branchTracking?.prod?.branch || "",
+    stagingBranch: connectedGitHubRepo.branchTracking?.staging?.branch || "",
+    previewDeploymentsEnabled: connectedGitHubRepo.previewDeploymentsEnabled,
+  });
+
+  const hasGitSettingsChanges =
+    gitSettingsKey(gitSettingsValues) !==
+    gitSettingsKey({
+      productionBranch: connectedGitHubRepo.branchTracking?.prod?.branch || "",
+      stagingBranch: connectedGitHubRepo.branchTracking?.staging?.branch || "",
+      previewDeploymentsEnabled: connectedGitHubRepo.previewDeploymentsEnabled,
+    });
+
+  const [gitSettingsForm, fields] = useForm({
+    id: "update-git-settings",
+    lastResult: lastSubmission,
+    shouldRevalidate: "onSubmit",
+    onValidate({ formData }) {
+      return parseWithZod(formData, {
+        schema: UpdateGitSettingsFormSchema,
+      });
+    },
+  });
+
+  const isGitSettingsLoading =
+    navigation.formData?.get("action") === "update-git-settings" &&
+    (navigation.state === "submitting" || navigation.state === "loading");
+
+  useEffect(() => {
+    onSettingsDirty?.(hasGitSettingsChanges || isGitSettingsLoading || saveState.pending);
+  }, [onSettingsDirty, hasGitSettingsChanges, isGitSettingsLoading, saveState.pending]);
+  useEffect(() => () => onSettingsDirty?.(false), [onSettingsDirty]);
+  const showSaving = autosave && !saveState.error && (saveState.pending || hasGitSettingsChanges);
+  useEffect(() => {
+    onSettingsSaving?.(showSaving);
+  }, [onSettingsSaving, showSaving]);
+  useEffect(() => () => onSettingsSaving?.(false), [onSettingsSaving]);
+
+  useEffect(() => {
+    if (!autosave || !canManageGithub || !(saveState.pending || hasGitSettingsChanges)) return;
+    // Full-page navigation can end JS before a queued write starts. Let the browser
+    // warn about unacknowledged changes; SPA unmounts drain the controller below.
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", beforeUnload);
+    return () => window.removeEventListener("beforeunload", beforeUnload);
+  }, [autosave, canManageGithub, saveState.pending, hasGitSettingsChanges]);
+
+  const actionUrl = gitHubResourcePath(organizationSlug, projectSlug, environmentSlug);
+  const latestValues = useRef(gitSettingsValues);
+  const revalidate = useRef(revalidator.revalidate);
+  useEffect(() => {
+    latestValues.current = gitSettingsValues;
+    revalidate.current = revalidator.revalidate;
+  }, [gitSettingsValues, revalidator.revalidate]);
+  useEffect(() => {
+    if (!autosave || !canManageGithub) return;
+    let mounted = true;
+    const controller = createGitSettingsAutosave({
+      initial: latestValues.current,
+      changed: setSaveState,
+      save: async (values) => {
+        await saveGitSettings(actionUrl, values);
+        if (mounted) revalidate.current();
+      },
+    });
+    autosaver.current = controller;
+    return () => {
+      mounted = false;
+      controller.dispose();
+      autosaver.current = undefined;
+    };
+  }, [autosave, canManageGithub, actionUrl]);
+
+  return (
+    <>
+      {showRepositoryDetails && (
+        <>
+          <SettingsRow
+            title="GitHub repo"
+            action={
+              <span className="flex items-center gap-1.5 text-sm text-text-dimmed">
+                Connected
+                <CheckCircleIcon className="size-4 text-success" />
+              </span>
+            }
+          />
+
+          <SettingsRow
+            description={
+              <>
+                <span className="mr-2 inline-block size-1.5 rounded-full bg-success align-[0.15em]" />
+                {connectedGitHubRepo.repository.private ? "Private" : "Public"} repo
+                <OctoKitty className="ml-2 mr-1.5 inline size-3.5 align-text-bottom text-text-bright" />
+                <TextLink
+                  href={connectedGitHubRepo.repository.htmlUrl}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  tooltip={
+                    <span className="flex items-center gap-1 text-text-bright">
+                      View repo
+                      <ArrowUpRightIcon className="size-3.5" />
+                    </span>
+                  }
+                >
+                  {connectedGitHubRepo.repository.fullName}
+                </TextLink>{" "}
+                connected on{" "}
+                <DateTime
+                  date={connectedGitHubRepo.createdAt}
+                  includeTime={false}
+                  includeSeconds={false}
+                  showTimezone={false}
+                  showTooltip={false}
+                />
+                .
+              </>
+            }
+            action={
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button
+                    variant="secondary/small"
+                    disabled={!canManageGithub}
+                    tooltip={
+                      canManageGithub
+                        ? undefined
+                        : "You don't have permission to manage the GitHub integration"
+                    }
+                  >
+                    Disconnect
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-md">
+                  <DialogHeader>Disconnect GitHub repository</DialogHeader>
+                  <div className="flex flex-col gap-3 pt-3">
+                    <Paragraph className="mb-1">
+                      Are you sure you want to disconnect{" "}
+                      <span className="font-semibold">
+                        {connectedGitHubRepo.repository.fullName}
+                      </span>
+                      ? This will stop automatic deployments from GitHub.
+                    </Paragraph>
+                    <FormButtons
+                      confirmButton={
+                        <Form method="post" action={actionUrl}>
+                          <input type="hidden" name="action" value="disconnect-repo" />
+                          {redirectUrl && (
+                            <input type="hidden" name="redirectUrl" value={redirectUrl} />
+                          )}
+                          <Button type="submit" variant="danger/medium">
+                            Disconnect repository
+                          </Button>
+                        </Form>
+                      }
+                      cancelButton={
+                        <DialogClose asChild>
+                          <Button variant="tertiary/medium">Cancel</Button>
+                        </DialogClose>
+                      }
+                    />
+                  </div>
+                </DialogContent>
+              </Dialog>
+            }
+          />
+        </>
+      )}
+      <Form
+        method="post"
+        action={actionUrl}
+        {...getFormProps(gitSettingsForm)}
+        onSubmit={
+          autosave
+            ? (event) => {
+                event.preventDefault();
+                autosaver.current?.retry();
+              }
+            : gitSettingsForm.onSubmit
+        }
+      >
+        {autosave && <input type="hidden" name="action" value="update-git-settings" />}
+        {redirectUrl && <input type="hidden" name="redirectUrl" value={redirectUrl} />}
+
+        <GitHubBranchTracking
+          canManageGithub={canManageGithub}
+          productionInput={
+            <Input
+              disabled={!canManageGithub}
+              aria-label="Production tracking branch"
+              {...getInputProps(fields.productionBranch, { type: "text" })}
+              defaultValue={connectedGitHubRepo.branchTracking?.prod?.branch}
+              placeholder="none"
+              variant="medium"
+              className="truncate font-mono"
+              containerClassName="w-64"
+              icon={GitBranchIcon}
+              onChange={(e) => {
+                const next = { ...gitSettingsValues, productionBranch: e.target.value };
+                setGitSettingsValues(next);
+                if (autosave) {
+                  autosaver.current?.update(next);
+                }
+              }}
+            />
+          }
+          stagingInput={
+            <Input
+              disabled={!canManageGithub}
+              aria-label="Staging tracking branch"
+              {...getInputProps(fields.stagingBranch, { type: "text" })}
+              defaultValue={connectedGitHubRepo.branchTracking?.staging?.branch}
+              placeholder="none"
+              variant="medium"
+              className="truncate font-mono"
+              containerClassName="w-64"
+              icon={GitBranchIcon}
+              onChange={(e) => {
+                const next = { ...gitSettingsValues, stagingBranch: e.target.value };
+                setGitSettingsValues(next);
+                if (autosave) {
+                  autosaver.current?.update(next);
+                }
+              }}
+            />
+          }
+          previewInput={
+            <Switch
+              disabled={!canManageGithub}
+              aria-label="Enable preview deployments"
+              name="previewDeploymentsEnabled"
+              defaultChecked={connectedGitHubRepo.previewDeploymentsEnabled}
+              variant="medium"
+              onCheckedChange={(checked) => {
+                const next = { ...gitSettingsValues, previewDeploymentsEnabled: checked };
+                setGitSettingsValues(next);
+                if (autosave) {
+                  autosaver.current?.update(next);
+                }
+              }}
+            />
+          }
+          stagingEnvironmentEnabled={stagingEnvironmentEnabled}
+          previewEnvironmentEnabled={previewEnvironmentEnabled}
+          previewDeploymentsEnabled={connectedGitHubRepo.previewDeploymentsEnabled}
+          billingPath={billingPath}
+          errors={
+            <>
+              <FormError>{fields.productionBranch?.errors}</FormError>
+              <FormError>{fields.stagingBranch?.errors}</FormError>
+              <FormError>{fields.previewDeploymentsEnabled?.errors}</FormError>
+              <FormError>{gitSettingsForm.errors}</FormError>
+            </>
+          }
+          saveAction={
+            autosave ? undefined : (
+              <Button
+                type="submit"
+                name="action"
+                value="update-git-settings"
+                variant="secondary/small"
+                disabled={isGitSettingsLoading || !hasGitSettingsChanges || !canManageGithub}
+                tooltip={
+                  canManageGithub
+                    ? undefined
+                    : "You don't have permission to manage the GitHub integration"
+                }
+                LeadingIcon={isGitSettingsLoading ? Spinner : undefined}
+              >
+                Save
+              </Button>
+            )
+          }
+        />
+        {autosave && saveState.error && (
+          <div
+            className="flex items-center justify-between gap-6 border-b border-grid-dimmed py-3 text-xs"
+            role="status"
+            aria-live="polite"
+          >
+            <span className="text-error">{saveState.error}</span>
+            {saveState.error && (
+              <Button
+                type="button"
+                variant="secondary/small"
+                onClick={() => autosaver.current?.retry()}
+              >
+                Retry
+              </Button>
+            )}
+          </div>
+        )}
+      </Form>
+    </>
+  );
+}
+
+// ============================================================================
+// Main GitHub Settings Panel Component
+// ============================================================================
+
 export function GitHubSettingsPanel({
   organizationSlug,
   projectSlug,
   environmentSlug,
   billingPath,
   layout = "compact",
+  onSettingsDirty,
+  onSettingsSaving,
 }: {
   organizationSlug: string;
   projectSlug: string;
   environmentSlug: string;
   billingPath: string;
-  layout?: "settings" | "compact";
+  layout?: "settings" | "compact" | "onboarding";
+  onSettingsDirty?: (dirty: boolean) => void;
+  onSettingsSaving?: (saving: boolean) => void;
 }) {
   const fetcher = useTypedFetcher<typeof loader>();
   const { load } = fetcher;
@@ -1114,15 +1500,67 @@ export function GitHubSettingsPanel({
     return search ? `${location.pathname}?${search}` : location.pathname;
   })();
   useEffect(() => {
-    load(gitHubResourcePath(organizationSlug, projectSlug, environmentSlug));
-  }, [organizationSlug, projectSlug, environmentSlug, load]);
+    load(
+      gitHubResourcePath(organizationSlug, projectSlug, environmentSlug) +
+        (layout === "onboarding" ? "?onboarding=1" : "")
+    );
+  }, [organizationSlug, projectSlug, environmentSlug, layout, load]);
 
   const data = fetcher.data;
+  const [connectionSlow, setConnectionSlow] = useState(false);
+  useEffect(() => {
+    if (layout !== "onboarding" || data || connectionSlow) return;
+    const timer = setTimeout(() => setConnectionSlow(true), 15_000);
+    return () => clearTimeout(timer);
+  }, [layout, data, connectionSlow]);
 
+  if (data && "loadError" in data) {
+    return (
+      <GitHubOnboardingConnection
+        state="error"
+        action={
+          <Button
+            variant="secondary/small"
+            disabled={fetcher.state !== "idle"}
+            onClick={() =>
+              load(
+                gitHubResourcePath(organizationSlug, projectSlug, environmentSlug) + "?onboarding=1"
+              )
+            }
+          >
+            Try again
+          </Button>
+        }
+      />
+    );
+  }
   const canManageGithub = data?.canManageGithub ?? true;
 
   // Loading state
-  if (fetcher.state === "loading" && !data) {
+  if (!data) {
+    if (layout === "onboarding")
+      return (
+        <GitHubOnboardingConnection
+          state={connectionSlow ? "slow" : "loading"}
+          action={
+            connectionSlow && (
+              <Button
+                variant="secondary/small"
+                onClick={() => {
+                  setConnectionSlow(false);
+                  load(
+                    gitHubResourcePath(organizationSlug, projectSlug, environmentSlug) +
+                      "?onboarding=1"
+                  );
+                }}
+              >
+                Try again
+              </Button>
+            )
+          }
+        />
+      );
+    if (fetcher.state !== "loading") return null;
     return (
       <div className="flex items-center gap-2 text-text-dimmed">
         <Spinner color="blue" className="size-4" />
@@ -1133,7 +1571,75 @@ export function GitHubSettingsPanel({
 
   // GitHub app not enabled
   if (!data || !data.enabled) {
-    return null;
+    return layout === "onboarding" ? <GitHubOnboardingConnection state="unavailable" /> : null;
+  }
+
+  if (layout === "onboarding") {
+    const appInstalled = (data.installations?.length ?? 0) > 0;
+    const installParams = new URL(effectiveRedirectUrl, "https://unused.invalid");
+    installParams.searchParams.set("openGithubRepoModal", "1");
+    const installRedirect = `${installParams.pathname}${installParams.search}`;
+    return (
+      <>
+        <GitHubOnboardingConnection
+          state={data.connectedRepository ? "connected" : appInstalled ? "connect" : "install"}
+          repository={data.connectedRepository?.repository}
+          action={
+            data.connectedRepository ? (
+              <PermissionLink
+                hasPermission={canManageGithub}
+                noPermissionTooltip="You don't have permission to manage the GitHub integration"
+                variant="secondary/small"
+                to={v3ProjectSettingsIntegrationsPath(
+                  { slug: organizationSlug },
+                  { slug: projectSlug },
+                  { slug: environmentSlug }
+                )}
+              >
+                Manage
+              </PermissionLink>
+            ) : appInstalled ? (
+              <ConnectGitHubRepoModal
+                gitHubAppInstallations={data.installations ?? []}
+                organizationSlug={organizationSlug}
+                projectSlug={projectSlug}
+                environmentSlug={environmentSlug}
+                redirectUrl={effectiveRedirectUrl}
+                canManageGithub={canManageGithub}
+                buttonVariant="secondary/small"
+              />
+            ) : (
+              <PermissionLink
+                hasPermission={canManageGithub}
+                noPermissionTooltip="You don't have permission to manage the GitHub integration"
+                to={githubAppInstallPath(organizationSlug, installRedirect)}
+                variant="secondary/small"
+                LeadingIcon={OctoKitty}
+              >
+                Install GitHub app
+              </PermissionLink>
+            )
+          }
+        />
+        {data.connectedRepository && (
+          <OnboardingConnectedGitHubRepoForm
+            connectedGitHubRepo={data.connectedRepository}
+            previewEnvironmentEnabled={data.isPreviewEnvironmentEnabled}
+            stagingEnvironmentEnabled={data.isStagingEnvironmentEnabled}
+            organizationSlug={organizationSlug}
+            projectSlug={projectSlug}
+            environmentSlug={environmentSlug}
+            billingPath={billingPath}
+            redirectUrl={effectiveRedirectUrl}
+            canManageGithub={canManageGithub}
+            showRepositoryDetails={false}
+            autosave
+            onSettingsDirty={onSettingsDirty}
+            onSettingsSaving={onSettingsSaving}
+          />
+        )}
+      </>
+    );
   }
 
   // Connected repository exists - show form

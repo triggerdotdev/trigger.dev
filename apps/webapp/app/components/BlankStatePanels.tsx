@@ -1,3 +1,4 @@
+import { DeploymentOnboardingFrame } from "./deployments/DeploymentOnboardingFrame";
 import {
   BeakerIcon,
   BellAlertIcon,
@@ -7,6 +8,8 @@ import {
   QuestionMarkCircleIcon,
   Squares2X2Icon,
 } from "@heroicons/react/20/solid";
+import { useFetcher } from "@remix-run/react";
+import { useEffect } from "react";
 import { AIChatIcon } from "~/assets/icons/AIChatIcon";
 import { AIPenIcon } from "~/assets/icons/AIPenIcon";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
@@ -23,10 +26,17 @@ import { type MinimumEnvironment } from "~/presenters/SelectBestEnvironmentPrese
 import { type BranchableEnvironmentToken } from "~/utils/branchableEnvironment";
 import { NewBranchPanel } from "~/routes/resources.branches.create";
 import { GitHubSettingsPanel } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.github";
+import { deployNowPath } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.deploy-now";
+import { VercelAtomicDeploymentNotice } from "~/components/deployments/VercelAtomicDeploymentNotice";
+import { GitHubDeploymentOnboardingPanel } from "~/components/deployments/GitHubDeploymentOnboardingPanel";
+import { type DeploymentEventStream } from "~/hooks/useOnboardingDeploymentLogs";
+import { type WorkerDeploymentStatus } from "@trigger.dev/database";
 import {
   docsPath,
   v3BillingPath,
   v3CreateBulkActionPath,
+  v3DeploymentPath,
+  v3DeploymentsPath,
   v3EnvironmentPath,
   v3NewProjectAlertPath,
 } from "~/utils/pathBuilder";
@@ -38,18 +48,16 @@ import { environmentFullTitle, EnvironmentIcon } from "./environments/Environmen
 import { Feedback } from "./Feedback";
 import { EnvironmentSelector } from "./navigation/EnvironmentSelector";
 import { Button, LinkButton } from "./primitives/Buttons";
-import {
-  ClientTabs,
-  ClientTabsContent,
-  ClientTabsList,
-  ClientTabsTrigger,
-} from "./primitives/ClientTabs";
+import { ClientTabsContent } from "./primitives/ClientTabs";
 import { Header1 } from "./primitives/Headers";
 import { InfoPanel } from "./primitives/InfoPanel";
 import { Paragraph } from "./primitives/Paragraph";
+import { SpinnerWhite } from "./primitives/Spinner";
 import { StepNumber } from "./primitives/StepNumber";
 import { TextLink } from "./primitives/TextLink";
+import { useToast } from "./primitives/Toast";
 import { SimpleTooltip } from "./primitives/Tooltip";
+import { SettingsRow } from "./primitives/SettingsLayout";
 import {
   InitAgentPromptV3,
   InitCommandV3,
@@ -203,8 +211,11 @@ export function HasNoTasksDev({ initializedAt }: { initializedAt: Date | string 
   );
 }
 
-export function HasNoTasksDeployed({ environment }: { environment: MinimumEnvironment }) {
-  return <DeploymentOnboardingSteps />;
+export function HasNoTasksDeployed({
+  environment: _environment,
+  ...props
+}: { environment: MinimumEnvironment } & DeployNowProps) {
+  return <DeploymentOnboardingSteps {...props} />;
 }
 
 export function BatchesNone() {
@@ -290,43 +301,91 @@ export function TestHasNoTasks() {
   );
 }
 
-export function DeploymentsNone() {
-  return <DeploymentOnboardingSteps />;
+type OnboardingDeploymentDetails = {
+  deployment: {
+    shortCode: string;
+    status: WorkerDeploymentStatus;
+    errorData?: { message?: string } | null;
+  };
+  eventStream?: DeploymentEventStream;
+};
+
+type DeployNowProps = {
+  showGitHubOnboarding?: boolean;
+  onboardingDetails?: OnboardingDeploymentDetails;
+  connectedGithubRepository?: { repository: { fullName: string; htmlUrl: string } };
+  environmentGitHubBranch?: string;
+  deployNowEnabled?: boolean;
+  isPlatformConfigured?: boolean;
+  canDeployNow?: boolean;
+  atomicVercelUrl?: string;
+};
+
+export function DeploymentsNone(props: DeployNowProps = {}) {
+  return <DeploymentOnboardingSteps {...props} />;
 }
 
-export function DeploymentsNoneDev() {
+export function DeploymentsNoneDev({ enhanced = false }: { enhanced?: boolean } = {}) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
 
+  const switchEnvironment = (
+    <EnvironmentSelector
+      organization={organization}
+      project={project}
+      environment={environment}
+      className="w-fit border border-border-bright bg-secondary hover:border-border-brighter hover:bg-surface-control"
+    />
+  );
+
+  // The new visual is part of the flagged onboarding; with the flag off, keep the exact
+  // pre-existing development page.
+  if (!enhanced) {
+    return (
+      <>
+        <div className="mb-6 flex items-center justify-between border-b">
+          <div className="mb-2 flex items-center gap-2">
+            <EnvironmentIcon environment={environment} className="-ml-1 size-8" />
+            <Header1>Deploy your tasks</Header1>
+          </div>
+          <div className="flex items-center">
+            <AskAgentButton prompt={ASK_AGENT_DEPLOY_PROMPT} fallback={<DeployDocsLinks />} />
+          </div>
+        </div>
+        <StepNumber stepNumber="→" title="Switch to a deployed environment" />
+        <StepContentContainer className="mb-4 flex flex-col gap-4">
+          <Paragraph>
+            This is the Development environment. When you're ready to deploy your tasks, switch to a
+            different environment.
+          </Paragraph>
+          {switchEnvironment}
+        </StepContentContainer>
+      </>
+    );
+  }
+
   return (
-    <>
-      <div className="mb-6 flex items-center justify-between border-b">
-        <div className="mb-2 flex items-center gap-2">
-          <EnvironmentIcon environment={environment} className="-ml-1 size-8" />
-          <Header1>Deploy your tasks</Header1>
-        </div>
-        <div className="flex items-center">
-          {/* One entry point instead of two: the docs links were a guess at which page you
-              needed, and the agent can look at this project and answer for it. Someone with no
-              agent still gets the links. */}
-          <AskAgentButton prompt={ASK_AGENT_DEPLOY_PROMPT} fallback={<DeployDocsLinks />} />
-        </div>
-      </div>
-      <StepNumber stepNumber="→" title="Switch to a deployed environment" />
-      <StepContentContainer className="mb-4 flex flex-col gap-4">
-        <Paragraph>
-          This is the Development environment. When you're ready to deploy your tasks, switch to a
-          different environment.
-        </Paragraph>
-        <EnvironmentSelector
-          organization={organization}
-          project={project}
-          environment={environment}
-          className="w-fit border border-border-bright bg-secondary hover:border-border-brighter hover:bg-surface-control"
+    <DeploymentOnboardingFrame
+      title={environmentFullTitle(environment)}
+      heading="Deploy your tasks"
+      environment={environment}
+      tabbed={false}
+      help={
+        <AskAgentButton
+          variant="ask-trigger/small"
+          prompt={ASK_AGENT_DEPLOY_PROMPT}
+          fallback={<DeployDocsLinks />}
         />
-      </StepContentContainer>
-    </>
+      }
+    >
+      <SettingsRow
+        bordered={false}
+        title="Switch to a deployed environment"
+        description="This is the Development environment. When you're ready to deploy your tasks, switch to a different environment."
+        action={switchEnvironment}
+      />
+    </DeploymentOnboardingFrame>
   );
 }
 
@@ -629,80 +688,268 @@ export function BulkActionsNone() {
   );
 }
 
-function DeploymentOnboardingSteps() {
+function DeploymentOnboardingSteps(props: DeployNowProps = {}) {
   const environment = useEnvironment();
   const organization = useOrganization();
   const project = useProject();
 
+  const githubOnboarding = props.showGitHubOnboarding ? (
+    <GitHubDeploymentOnboardingPanel
+      key={environment.id}
+      organizationSlug={organization.slug}
+      projectSlug={project.slug}
+      environmentSlug={environment.slug}
+      previewEnvironment={environment.type === "PREVIEW"}
+      previewParent={environment.type === "PREVIEW" && !environment.branchName}
+      branch={props.connectedGithubRepository ? props.environmentGitHubBranch : undefined}
+      canDeploy={
+        !!props.isPlatformConfigured && !!props.canDeployNow && !!props.connectedGithubRepository
+      }
+      repositoryConnected={!!props.connectedGithubRepository}
+      atomicVercelUrl={props.atomicVercelUrl}
+      historyHref={`${v3DeploymentsPath(organization, project, environment)}?view=history`}
+      build={
+        props.onboardingDetails
+          ? {
+              shortCode: props.onboardingDetails.deployment.shortCode,
+              status: props.onboardingDetails.deployment.status,
+              errorMessage: props.onboardingDetails.deployment.errorData?.message,
+              href: v3DeploymentPath(
+                organization,
+                project,
+                environment,
+                props.onboardingDetails.deployment,
+                1
+              ),
+            }
+          : undefined
+      }
+      eventStream={props.onboardingDetails?.eventStream}
+      renderConnection={(onSettingsDirty, onSettingsSaving) => (
+        <GitHubSettingsPanel
+          onSettingsDirty={onSettingsDirty}
+          onSettingsSaving={onSettingsSaving}
+          organizationSlug={organization.slug}
+          projectSlug={project.slug}
+          environmentSlug={environment.slug}
+          billingPath={v3BillingPath(organization)}
+          layout="onboarding"
+        />
+      )}
+    />
+  ) : undefined;
+
   return (
     <PackageManagerProvider>
-      <div className="mb-2 flex items-center justify-between border-b">
-        <div className="mb-2 flex min-w-0 items-center gap-2">
-          <EnvironmentIcon environment={environment} className="-ml-1 size-8 shrink-0" />
-          <Header1 className="truncate">
-            Deploy your tasks to {environmentFullTitle(environment)}
-          </Header1>
-        </div>
-        <div className="flex items-center">
-          {/* One entry point instead of two: the docs links were a guess at which page you
-              needed, and the agent can look at this project and answer for it. Someone with no
-              agent still gets the links. */}
-          <AskAgentButton prompt={ASK_AGENT_DEPLOY_PROMPT} fallback={<DeployDocsLinks />} />
-        </div>
-      </div>
-      <ClientTabs defaultValue="github">
-        <ClientTabsList variant="segmented" className="mb-6">
-          <ClientTabsTrigger value={"github"} variant="segmented" layoutId="deploy-tabs">
-            GitHub
-          </ClientTabsTrigger>
-          <ClientTabsTrigger value={"cli"} variant="segmented" layoutId="deploy-tabs">
-            Manual
-          </ClientTabsTrigger>
-          <ClientTabsTrigger value={"github-actions"} variant="segmented" layoutId="deploy-tabs">
-            GitHub Actions
-          </ClientTabsTrigger>
-        </ClientTabsList>
+      <DeploymentOnboardingFrame
+        enhanced={!!githubOnboarding}
+        title={environmentFullTitle(environment)}
+        environment={environment}
+        help={
+          <AskAgentButton
+            variant={githubOnboarding ? "ask-trigger/small" : "small-menu-item"}
+            prompt={ASK_AGENT_DEPLOY_PROMPT}
+            fallback={<DeployDocsLinks />}
+          />
+        }
+      >
         <ClientTabsContent value={"github"}>
-          <StepNumber stepNumber="1" title="Connect your GitHub repository" />
-          <StepContentContainer>
-            <Paragraph spacing>
-              Deploy automatically with every push. Read the{" "}
-              <TextLink to={docsPath("github-integration")}>full guide</TextLink>.
-            </Paragraph>
-            <GitHubSettingsPanel
-              organizationSlug={organization.slug}
-              projectSlug={project.slug}
-              environmentSlug={environment.slug}
-              billingPath={v3BillingPath({ slug: organization.slug })}
-            />
-          </StepContentContainer>
+          {githubOnboarding ?? (
+            <>
+              <StepNumber stepNumber="1" title="Connect your GitHub repository" />
+              <StepContentContainer>
+                <Paragraph spacing>
+                  Deploy automatically with every push. Read the{" "}
+                  <TextLink to={docsPath("github-integration")}>full guide</TextLink>.
+                </Paragraph>
+                <GitHubSettingsPanel
+                  organizationSlug={organization.slug}
+                  projectSlug={project.slug}
+                  environmentSlug={environment.slug}
+                  billingPath={v3BillingPath({ slug: organization.slug })}
+                />
+              </StepContentContainer>
+            </>
+          )}
         </ClientTabsContent>
         <ClientTabsContent value={"cli"}>
-          <StepNumber stepNumber="1" title="Run the CLI 'deploy' command" />
-          <StepContentContainer>
-            <Paragraph spacing>
-              This will deploy your tasks to the {environmentFullTitle(environment)} environment.
-              Read the <TextLink to={docsPath("deployment/overview")}>full guide</TextLink>.
-            </Paragraph>
-            <TriggerDeployStep environment={environment} />
-          </StepContentContainer>
+          {props.atomicVercelUrl ? (
+            <VercelAtomicDeploymentNotice vercelUrl={props.atomicVercelUrl} />
+          ) : githubOnboarding ? (
+            <DeploymentMethodPanel method="manual" environment={environment} />
+          ) : (
+            <>
+              <StepNumber stepNumber="1" title="Run the CLI 'deploy' command" />
+              <StepContentContainer>
+                <Paragraph spacing>
+                  This will deploy your tasks to the {environmentFullTitle(environment)}{" "}
+                  environment. Read the{" "}
+                  <TextLink to={docsPath("deployment/overview")}>full guide</TextLink>.
+                </Paragraph>
+                <TriggerDeployStep environment={environment} />
+              </StepContentContainer>
+            </>
+          )}
         </ClientTabsContent>
         <ClientTabsContent value={"github-actions"}>
-          <StepNumber stepNumber="1" title="Deploy using GitHub Actions" />
-          <StepContentContainer>
-            <Paragraph spacing>
-              Read the <TextLink to={docsPath("github-actions")}>GitHub Actions guide</TextLink> to
-              get started.
-            </Paragraph>
-          </StepContentContainer>
+          {props.atomicVercelUrl ? (
+            <VercelAtomicDeploymentNotice vercelUrl={props.atomicVercelUrl} />
+          ) : githubOnboarding ? (
+            <DeploymentMethodPanel method="github-actions" environment={environment} />
+          ) : (
+            <>
+              <StepNumber stepNumber="1" title="Deploy using GitHub Actions" />
+              <StepContentContainer>
+                <Paragraph spacing>
+                  Read the <TextLink to={docsPath("github-actions")}>GitHub Actions guide</TextLink>{" "}
+                  to get started.
+                </Paragraph>
+              </StepContentContainer>
+            </>
+          )}
         </ClientTabsContent>
-      </ClientTabs>
+      </DeploymentOnboardingFrame>
 
-      <StepNumber stepNumber="2" title="Waiting for tasks to deploy" displaySpinner />
-      <StepContentContainer>
-        <Paragraph>This page will automatically refresh when your tasks are deployed.</Paragraph>
-      </StepContentContainer>
+      {!githubOnboarding && (
+        <>
+          <StepNumber stepNumber="2" title="Waiting for tasks to deploy" displaySpinner />
+          <StepContentContainer>
+            {props.atomicVercelUrl ? (
+              <VercelAtomicDeploymentNotice vercelUrl={props.atomicVercelUrl} />
+            ) : props.deployNowEnabled &&
+              props.isPlatformConfigured &&
+              props.canDeployNow &&
+              props.connectedGithubRepository &&
+              props.environmentGitHubBranch ? (
+              <DeployNowButton
+                branch={props.environmentGitHubBranch}
+                organizationSlug={organization.slug}
+                projectSlug={project.slug}
+                environmentSlug={environment.slug}
+              />
+            ) : (
+              <Paragraph>
+                This page will automatically refresh when your tasks are deployed.
+              </Paragraph>
+            )}
+          </StepContentContainer>
+        </>
+      )}
     </PackageManagerProvider>
+  );
+}
+
+function DeploymentMethodPanel({
+  method,
+  environment,
+}: {
+  method: "manual" | "github-actions";
+  environment: MinimumEnvironment & { branchName?: string | null };
+}) {
+  const manual = method === "manual";
+  return (
+    <div className="min-w-0">
+      <SettingsRow
+        className="flex-wrap gap-x-16 gap-y-4 [&>div:first-child]:min-w-0 [&>div:first-child]:basis-64"
+        bordered={!manual}
+        title={manual ? "Deploy your tasks" : "Set up GitHub Actions"}
+        description={
+          manual ? (
+            <>
+              {environment.type === "PREVIEW" && environment.branchName ? (
+                <>
+                  Check out <InlineCode variant="extra-small">{environment.branchName}</InlineCode>{" "}
+                  first, then run{" "}
+                </>
+              ) : (
+                "Run "
+              )}
+              <InlineCode variant="extra-small">deploy</InlineCode> in your project directory to
+              deploy to {environmentFullTitle(environment)}.
+            </>
+          ) : (
+            "Add a deployment workflow to your repository using the GitHub Actions guide."
+          )
+        }
+        action={
+          <LinkButton
+            variant="secondary/small"
+            to={docsPath(manual ? "deployment/overview" : "github-actions")}
+          >
+            {manual ? "Deployment guide" : "GitHub Actions guide"}
+          </LinkButton>
+        }
+      />
+      {manual ? (
+        <TriggerDeployStep environment={environment} />
+      ) : (
+        <SettingsRow
+          title="Deploy your tasks"
+          description={`Run your deployment workflow to deploy your tasks to ${environmentFullTitle(environment)}.`}
+          bordered={false}
+        />
+      )}
+      <SettingsRow
+        className="border-t border-grid-dimmed"
+        bordered={false}
+        title="Waiting for your first deployment"
+        description="Your deployment will appear here once it starts."
+      />
+      <div className="border-t border-grid-dimmed pt-4">
+        <Paragraph variant="extra-small">
+          You can leave this page and come back. It updates automatically.
+        </Paragraph>
+      </div>
+    </div>
+  );
+}
+
+function DeployNowButton({
+  branch,
+  organizationSlug,
+  projectSlug,
+  environmentSlug,
+}: {
+  branch: string;
+  organizationSlug: string;
+  projectSlug: string;
+  environmentSlug: string;
+}) {
+  const fetcher = useFetcher<{ ok: boolean; code?: string; vercelUrl?: string }>();
+  const isSubmitting = fetcher.state !== "idle";
+  const submitted = fetcher.data?.ok === true;
+  const toast = useToast();
+
+  useEffect(() => {
+    if (fetcher.data?.ok === false && fetcher.data.code !== "ATOMIC_PRODUCTION_REQUIRES_VERCEL") {
+      toast.error("Couldn't start the deployment. Try again.");
+    }
+  }, [fetcher.data, toast]);
+
+  if (fetcher.data?.code === "ATOMIC_PRODUCTION_REQUIRES_VERCEL" && fetcher.data.vercelUrl) {
+    return <VercelAtomicDeploymentNotice vercelUrl={fetcher.data.vercelUrl} />;
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <Paragraph>
+        Your repo is connected and tracking <InlineCode>{branch}</InlineCode>. Deploy its current
+        commit now, or wait for your next push.
+      </Paragraph>
+      <fetcher.Form
+        method="post"
+        action={deployNowPath(organizationSlug, projectSlug, environmentSlug)}
+      >
+        <Button
+          type="submit"
+          variant="primary/small"
+          disabled={isSubmitting || submitted}
+          LeadingIcon={isSubmitting || submitted ? SpinnerWhite : undefined}
+        >
+          {isSubmitting || submitted ? "Deploying…" : "Deploy now"}
+        </Button>
+      </fetcher.Form>
+    </div>
   );
 }
 

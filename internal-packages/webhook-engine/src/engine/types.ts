@@ -1,4 +1,5 @@
 import type { Logger } from "@trigger.dev/core/logger";
+import type { WebhookResponseConfig } from "@trigger.dev/core/v3";
 import type { Meter, Tracer } from "@internal/tracing";
 import type { WebhookDatabase } from "@trigger.dev/database";
 import type { RedisOptions } from "@internal/redis";
@@ -27,6 +28,8 @@ export interface WebhookEngineOptions {
   logger?: Logger;
   logLevel?: string;
   prisma: WebhookDatabase;
+  /** Direct owner connection for partition DDL. Defaults to prisma when not configured. */
+  partitionPrisma?: WebhookDatabase;
   redis: RedisOptions;
   /**
    * When true the feature is fully off: the engine skips opening its Redis clients and building the
@@ -58,6 +61,12 @@ export interface WebhookEngineOptions {
   // Q4: injected so the engine never imports the webapp SecretStore. Returns the
   // plaintext signing secret, or undefined/empty so ingest fails closed.
   resolveSigningSecret: (key: string) => Promise<string | undefined>;
+  /**
+   * The verify token a provider's GET URL verification must present (Meta's `hub.verify_token`),
+   * by endpoint id. Separate from the signing secret and generated in the dashboard; undefined
+   * or empty means no GET verification is possible yet and the handshake is refused.
+   */
+  resolveVerifyToken?: (endpointId: string) => Promise<string | undefined>;
   // Session routing: find-or-create the session on the resolved key and append the action envelope.
   deliverToSession?: DeliverWebhookToSessionCallback;
 }
@@ -102,12 +111,33 @@ export type ReplayResult =
   | { outcome: "endpoint_not_found" }
   | { outcome: "unsupported_target" }; // routing target isn't a task
 
+/** The endpoint's declared response contract, when its verifier artifact carries one. */
+type IngestResponseContract = WebhookResponseConfig | undefined;
+
+/**
+ * Outcomes of `ingest()`. The HTTP answer is the caller's: `accepted` and `duplicate` default to 200
+ * JSON, `verification_failed` and `secret_missing` to 400, unless `response` declares otherwise.
+ * A `handshake` carries its own status and text body and records no delivery; other failures map to
+ * 404, 405 or 500.
+ */
 export type IngestResult =
-  | { outcome: "accepted"; deliveryId: string; deliveryFriendlyId: string }
-  | { outcome: "handshake"; body: string } // provider handshake (Slack url_verification) -> 200 echo
-  | { outcome: "duplicate"; deliveryId?: string } // front-gate hit -> 200
-  | { outcome: "endpoint_not_found" } // -> 404
-  | { outcome: "endpoint_inactive" } // -> 404
-  | { outcome: "secret_missing" } // -> 400 (fail-closed)
-  | { outcome: "verification_failed"; error: string } // -> 400
-  | { outcome: "enqueue_failed"; error: string }; // -> 5xx (provider retries)
+  | {
+      outcome: "accepted";
+      deliveryId: string;
+      deliveryFriendlyId: string;
+      response?: IngestResponseContract;
+    }
+  | { outcome: "handshake"; body: string; status: 200 | 204; response?: IngestResponseContract }
+  | { outcome: "duplicate"; deliveryId?: string; response?: IngestResponseContract }
+  | { outcome: "endpoint_not_found" }
+  | { outcome: "endpoint_inactive" }
+  | { outcome: "secret_missing"; response?: IngestResponseContract }
+  | { outcome: "verification_failed"; error: string; response?: IngestResponseContract }
+  | { outcome: "method_not_allowed"; allowedMethods?: ("GET" | "HEAD" | "POST")[] }
+  | { outcome: "enqueue_failed"; error: string };
+
+/** A provider's GET verification request: the endpoint's opaque id and the decoded query string. */
+export type GetHandshakeInput = {
+  opaqueId: string;
+  query: Record<string, string>;
+};

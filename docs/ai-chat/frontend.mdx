@@ -139,6 +139,10 @@ Because the underlying Session row outlives individual runs, a chat you were in 
 
 If you do not keep your own copy of the conversation, load it from the agent's [transcript storage](/ai-chat/transcript-storage#reading-the-transcript) instead: `chat.createLoadTranscriptAction(storage)` on the server and `useLoadTranscript(chatId, action, { transport })` in the browser return the messages and seed the transport's resume cursor, for the default storage and your own alike.
 
+Mount the component that calls `useChat` after transcript loading finishes. Its initial `messages` and the transport's cursor must describe the same saved transcript. Transcript loading can seed the cursor before session hydration: the transport keeps it until the session is created or hydrated. Reconnecting the live stream requires a known session.
+
+To stop a generation after a reload, stop the local subscription and send the backend stop command together. See [Stop generation](#stop-generation) for the handler.
+
 ```tsx app/chat/[chatId]/ChatPage.tsx
 "use client";
 
@@ -250,11 +254,13 @@ const transport = useTriggerChatTransport<typeof myChat>({
   accessToken: ({ chatId }) => mintChatAccessToken(chatId),
   startSession: ({ chatId, clientData }) =>
       startChatSession({ chatId, clientData }),
-  clientData: { userId: currentUser.id },
+  clientData: { locale: currentLocale },
 });
 ```
 
-The transport threads `clientData` through three places automatically: into `startSession`'s `params.clientData` for the first run's `payload.metadata`, into per-turn `metadata` on every `.in/append` chunk, and live-updates if the option value changes between renders (so React-driven values like the current user work without reconstructing the transport).
+The transport threads `clientData` through three places automatically: into `startSession`'s `params.clientData` for the first run's `payload.metadata`, into per-turn `metadata` on every `.in/append` chunk, and live-updates if the option value changes between renders (so React-driven values like the selected language work without reconstructing the transport).
+
+Browser-supplied `clientData` is input, including after schema validation. Use it for preferences such as language. Derive ownership, permissions, and plan limits from authenticated server state. See [trusted edge signals](/ai-chat/patterns/trusted-edge-signals).
 
 ### Per-message metadata
 
@@ -270,26 +276,19 @@ Instead of manually parsing `clientData` with Zod in every hook, pass a `clientD
 
 ```ts
 import { chat } from "@trigger.dev/sdk/ai";
-import { streamText, stepCountIs } from "ai";
+import { stepCountIs } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 
 export const myChat = chat.agent({
   id: "my-chat",
   clientDataSchema: z.object({
-    model: z.string().optional(),
-    userId: z.string(),
+    locale: z.enum(["en", "fr"]).default("en"),
   }),
-  onChatStart: async ({ chatId, clientData }) => {
-    // clientData is typed as { model?: string; userId: string }
-    await db.chat.create({
-      data: { id: chatId, userId: clientData.userId },
-    });
-  },
-  run: async ({ messages, clientData, signal }) => {
-    // Same typed clientData — no manual parsing needed
+  run: async ({ messages, clientData, signal, streamText }) => {
     return streamText({
-      model: openai(clientData?.model ?? "gpt-4o"),
+      model: anthropic("claude-sonnet-4-5"),
+      system: clientData?.locale === "fr" ? "Reply in French." : "Reply in English.",
       messages,
       abortSignal: signal,
       stopWhen: stepCountIs(15),
@@ -317,15 +316,15 @@ Supports Zod, ArkType, Valibot, and other schema libraries supported by the SDK.
 
 Use `transport.stopGeneration(chatId)` to stop the current generation. This sends a stop signal to the running task via input streams, aborting the current `streamText` call while keeping the run alive for the next message.
 
-`stopGeneration` works in all scenarios — including after a page refresh when the stream was reconnected via `resume`. Call it alongside `useChat`'s `stop()` to also update the frontend state:
+`stopGeneration` also works after a page refresh when the stream was reconnected via `resume`. Call `useChat`'s `stop()` immediately, then send the backend stop command without waiting for the local stop to finish:
 
 ```tsx
 const { messages, sendMessage, stop: aiStop, status } = useChat({ transport });
 
 // Wrap both calls in a single stop handler
 const stop = useCallback(() => {
-  transport.stopGeneration(chatId);
   aiStop();
+  transport.stopGeneration(chatId);
 }, [transport, chatId, aiStop]);
 
 {
@@ -354,7 +353,9 @@ See [Stop generation](/ai-chat/backend#stop-generation) in the backend docs for 
 
 ## Tool approvals
 
-The AI SDK supports tools that require human approval before execution. To use this with `chat.agent`, define a tool with `needsApproval: true` on the backend, then handle the approval UI and configure `sendAutomaticallyWhen` on the frontend.
+AI SDK 6 and later support `needsApproval: true` on tools with an `execute` function. The approval request appears before `execute` runs. Approving the call runs it on the next turn; denying it skips execution.
+
+To collect a selection from search results, use a tool without `execute` and supply its result with `addToolOutput`. See [Choose from tool results](/ai-chat/patterns/human-in-the-loop#choose-from-tool-results).
 
 ### Backend: define an approval-required tool
 
@@ -377,7 +378,7 @@ const sendEmail = tool({
 });
 ```
 
-Pass the tool to `streamText` in your `run` function as usual. When the model calls the tool, `chat.agent` streams a `tool-approval-request` chunk. The turn completes and the run waits for the next message.
+Declare the tool on the agent and pass it to the `streamText` supplied to your `run` function. When the model calls the tool, `chat.agent` streams a `tool-approval-request` chunk. The turn completes and the run waits for the next message.
 
 ### Frontend: approval UI
 
@@ -387,9 +388,14 @@ Destructure `addToolApprovalResponse` from `useChat` and wire it to your approva
 
 ```tsx
 import { useChat } from "@ai-sdk/react";
-import { lastAssistantMessageIsCompleteWithApprovalResponses } from "ai";
+import {
+  isToolUIPart,
+  lastAssistantMessageIsCompleteWithApprovalResponses,
+  type ChatTransport,
+  type UIMessage,
+} from "ai";
 
-function Chat({ chatId, transport }) {
+function Chat({ chatId, transport }: { chatId: string; transport: ChatTransport<UIMessage> }) {
   const { messages, sendMessage, addToolApprovalResponse, status } = useChat({
     id: chatId,
     transport,
@@ -408,7 +414,7 @@ function Chat({ chatId, transport }) {
     <div>
       {messages.map((msg) =>
         msg.parts.map((part, i) => {
-          if (part.state === "approval-requested") {
+          if (isToolUIPart(part) && part.state === "approval-requested") {
             return (
               <div key={i}>
                 <p>Tool "{part.type}" wants to run with input:</p>

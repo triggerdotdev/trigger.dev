@@ -21,6 +21,7 @@ jobs:
       code: ${{ steps.code_filter.outputs.code }}
       typecheck_self: ${{ steps.filter.outputs.typecheck_self }}
       webapp: ${{ steps.filter.outputs.webapp == 'true' || steps.shared_packages_filter.outputs.shared_packages == 'true' }}
+      migrations: ${{ steps.filter.outputs.migrations }}
       packages: ${{ steps.filter.outputs.packages }}
       internal: ${{ steps.filter.outputs.internal == 'true' || steps.shared_packages_filter.outputs.shared_packages == 'true' }}
       obsmap: ${{ steps.filter.outputs.obsmap }}
@@ -73,6 +74,14 @@ jobs:
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
               - 'turbo.json'
+            migrations:
+              - 'internal-packages/database/prisma/migrations/**'
+              - 'internal-packages/run-ops-database/prisma/migrations/**'
+              - 'apps/webapp/scripts/migrationSafetyGuard*.ts'
+              - 'apps/webapp/scripts/lib/**'
+              - 'apps/webapp/package.json'
+              - '.github/workflows/pr_checks.yml'
+              - '.github/workflows/migration-guard.yml'
             packages:
               - 'packages/**'
               - '.github/workflows/pr_checks.yml'
@@ -181,6 +190,11 @@ jobs:
     if: needs.changes.outputs.webapp == 'true'
     uses: ./.github/workflows/fk-cascade-guard.yml
 
+  migration-guard:
+    needs: changes
+    if: needs.changes.outputs.migrations == 'true'
+    uses: ./.github/workflows/migration-guard.yml
+
   webapp:
     needs: changes
     if: needs.changes.outputs.webapp == 'true'
@@ -238,6 +252,7 @@ jobs:
       - typecheck
       - runops-guard
       - fk-cascade-guard
+      - migration-guard
       - webapp
       - e2e-webapp
       - packages

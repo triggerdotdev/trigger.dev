@@ -287,8 +287,7 @@ export default function Page() {
               Branches docs
             </LinkButton>
           </WhenAgentUnavailable>
-
-          {limits.isAtLimit ? (
+          {!hasBranches && limits.isAtLimit && (
             <UpgradePanel
               limits={limits}
               canUpgrade={canUpgrade ?? false}
@@ -298,46 +297,68 @@ export default function Page() {
               maxBranchQuota={maxBranchQuota}
               planBranchLimit={planBranchLimit}
             />
-          ) : (
-            <NewBranchPanel
-              button={
-                <Button
-                  variant="primary/small"
-                  shortcut={{ key: "n" }}
-                  LeadingIcon={PlusIcon}
-                  leadingIconClassName="text-white"
-                  fullWidth
-                  textAlignLeft
-                  disabled={!canManageBranches}
-                  tooltip={
-                    canManageBranches ? undefined : "You don't have permission to create branches."
-                  }
-                >
-                  New branch…
-                </Button>
-              }
-              env="preview"
-            />
           )}
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        <div className="grid max-h-full min-h-full grid-rows-[auto_1fr_auto]">
-          <div className="flex items-center justify-between gap-x-1.5 p-2">
-            <BranchFilters>
-              {autoArchiveAvailable && (
-                <AutoArchiveSettings
-                  environment={branchableEnvironment}
-                  canManage={canManageBranches}
+        <div
+          className={cn(
+            "grid max-h-full min-h-full",
+            hasBranches ? "grid-rows-[auto_1fr_auto]" : "grid-rows-[1fr]"
+          )}
+        >
+          {hasBranches && (
+            <div className="flex items-center justify-between gap-x-1.5 p-2">
+              <BranchFilters>
+                {autoArchiveAvailable && (
+                  <AutoArchiveSettings
+                    environment={branchableEnvironment}
+                    canManage={canManageBranches}
+                  />
+                )}
+              </BranchFilters>
+              <div className="flex shrink-0 items-center gap-1.5">
+                <PaginationControls
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  showPageNumbers={false}
                 />
-              )}
-            </BranchFilters>
-            <PaginationControls
-              currentPage={currentPage}
-              totalPages={totalPages}
-              showPageNumbers={false}
-            />
-          </div>
+                {limits.isAtLimit ? (
+                  <UpgradePanel
+                    limits={limits}
+                    canUpgrade={canUpgrade ?? false}
+                    canPurchaseBranches={canPurchaseBranches}
+                    branchPricing={branchPricing}
+                    extraBranches={extraBranches}
+                    maxBranchQuota={maxBranchQuota}
+                    planBranchLimit={planBranchLimit}
+                  />
+                ) : (
+                  <NewBranchPanel
+                    button={
+                      <Button
+                        variant="primary/small"
+                        shortcut={{ key: "n" }}
+                        LeadingIcon={PlusIcon}
+                        leadingIconClassName="text-white"
+                        fullWidth
+                        textAlignLeft
+                        disabled={!canManageBranches}
+                        tooltip={
+                          canManageBranches
+                            ? undefined
+                            : "You don't have permission to create branches."
+                        }
+                      >
+                        New branch…
+                      </Button>
+                    }
+                    env="preview"
+                  />
+                )}
+              </div>
+            </div>
+          )}
           {!hasBranches ? (
             <MainCenteredContainer className="max-w-md">
               <BranchesNoBranches
@@ -589,7 +610,7 @@ export function BranchFilters({ children }: { children?: ReactNode }) {
   return (
     <div className="flex w-full flex-wrap items-center justify-between gap-2">
       <SearchInput placeholder="Search branch name…" resetParams={["page"]} />
-      <div className="ml-auto flex flex-wrap items-center gap-2">
+      <div className="ml-auto flex flex-wrap items-center gap-1.5">
         <Switch
           checked={showArchived ?? false}
           onCheckedChange={handleArchivedChange}

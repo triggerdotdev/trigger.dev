@@ -2,7 +2,7 @@ import { WebhookEngine } from "@internal/webhook-engine";
 import type { WebhookDeliverTaskErrorType } from "@internal/webhook-engine";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { z } from "zod";
-import { prisma, webhookPrisma } from "~/db.server";
+import { prisma, webhookPartitionPrisma, webhookPrisma } from "~/db.server";
 import { env } from "~/env.server";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import { logger } from "~/services/logger.server";
@@ -32,6 +32,14 @@ export const webhookEngine = singleton("WebhookEngine", createWebhookEngine);
 // provider as { secret: string } (same shape as environment variables).
 const SigningSecretSchema = z.object({ secret: z.string() });
 
+/** The GET verification token (Meta hub.verify_token) an endpoint owner generated in the dashboard. */
+const VerifyTokenSchema = z.object({ token: z.string() });
+
+/** SecretStore key of an endpoint's verify token; shared with the endpoint detail route. */
+export function webhookVerifyTokenKey(endpointId: string): string {
+  return `webhook:verify-token:${endpointId}`;
+}
+
 function createWebhookEngine() {
   // The engine owns the webhook tables, so it runs on the webhook DB client. The signing-secret
   // store stays on the main client below (SecretStore is control-plane, not part of the split).
@@ -39,6 +47,7 @@ function createWebhookEngine() {
 
   const engine = new WebhookEngine({
     prisma: webhookPrisma,
+    partitionPrisma: webhookPartitionPrisma,
     logLevel: env.WEBHOOK_ENGINE_LOG_LEVEL,
     disabled: env.WEBHOOK_ENABLED !== "1",
     redis: {
@@ -78,6 +87,13 @@ function createWebhookEngine() {
       const value = await secretStore.getSecret(SigningSecretSchema, key);
       // Fail closed: an unset/empty secret returns undefined so ingest rejects.
       return value?.secret || undefined;
+    },
+    resolveVerifyToken: async (endpointId) => {
+      const value = await secretStore.getSecret(
+        VerifyTokenSchema,
+        webhookVerifyTokenKey(endpointId)
+      );
+      return value?.token || undefined;
     },
     triggerTask: async ({
       environmentId,

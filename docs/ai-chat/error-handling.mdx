@@ -21,6 +21,7 @@ When the model API errors mid-response (rate limits, network failures, malformed
 
 ```ts
 import { chat } from "@trigger.dev/sdk/ai";
+import { anthropic } from "@ai-sdk/anthropic";
 
 export const myChat = chat.agent({
   id: "my-chat",
@@ -36,7 +37,7 @@ export const myChat = chat.agent({
       return "Something went wrong while generating a response. Please try again.";
     },
   },
-  run: async ({ messages, signal }) => {
+  run: async ({ messages, signal, streamText }) => {
     return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
   },
 });
@@ -72,7 +73,7 @@ export const myChat = chat.agent({
     // and the agent waits for the next message
     await db.chat.update({ where: { id: chatId }, data: { messages: uiMessages } });
   },
-  run: async ({ messages, signal }) => {
+  run: async ({ messages, signal, streamText }) => {
     return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
   },
 });
@@ -101,25 +102,7 @@ onValidateMessages: async ({ messages }) => {
 
 ### Catching errors inside `run()`
 
-`run()` is your code — wrap it in try/catch for full control. This is the right place to save partial state to your DB before the error chunk goes out:
-
-```ts
-run: async ({ messages, chatId, signal }) => {
-  try {
-    return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
-  } catch (err) {
-    // Save the failed turn for debugging / undo
-    await db.failedTurn.create({
-      data: {
-        chatId,
-        error: err instanceof Error ? err.message : String(err),
-        messages,
-      },
-    });
-    throw err; // Re-throw to trigger the error chunk
-  }
-},
-```
+Catch errors from work you await inside `run()`, such as loading application data. Errors emitted after `streamText()` returns reach the response stream instead. Record those in `onTurnComplete`, which receives the partial response and the error.
 
 ## Saving error state to your DB
 
@@ -158,14 +141,14 @@ chat.agent({
       error: error.message,
     });
   },
-  run: async ({ messages, signal }) => {
-    return streamText({ ... });
+  run: async ({ messages, signal, streamText }) => {
+    return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
   },
 });
 ```
 
 <Info>
-  `chat.agent` uses `retry: { maxAttempts: 1 }` internally, so the run never retries on failure. To add run-level retries, wrap the agent in a parent task or implement your own retry logic in the frontend (re-send the message).
+  `chat.agent` defaults to one run attempt. Setting `oomMachine` enables one additional attempt on the larger machine after an out-of-memory failure. Recover from a failed turn by sending another message or calling `regenerate()`.
 </Info>
 
 ## Recovery patterns
@@ -186,22 +169,25 @@ chat.agent({
       const lastUserIdx = [...uiMessages].reverse().findIndex(m => m.role === "user");
       if (lastUserIdx !== -1) {
         const targetIdx = uiMessages.length - 1 - lastUserIdx - 1;
-        const target = uiMessages[targetIdx];
-        if (target) chat.history.rollbackTo(target.id);
+        chat.history.slice(0, targetIdx + 1);
       }
     }
   },
-  run: async ({ messages, signal }) => {
-    return streamText({ ... });
+  run: async ({ messages, signal, streamText }) => {
+    return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
   },
 });
 ```
 
 On the frontend, show an "Undo" button when an error occurs:
 
-```tsx
+```tsx app/chat/UndoButton.tsx
+import { useChatActions } from "@trigger.dev/sdk/chat/react";
+
+const { sendAction } = useChatActions({ sendMessage });
+
 {error && (
-  <button onClick={() => transport.sendAction(chatId, { type: "undo" })}>
+  <button onClick={() => sendAction({ type: "undo" })}>
     Undo and try again
   </button>
 )}
@@ -219,55 +205,39 @@ const { messages, error, regenerate } = useChat({ transport });
 )}
 ```
 
-`regenerate()` removes the last assistant response and re-sends. Combined with `onValidateMessages` or `hydrateMessages`, you can reload the canonical state from your DB before retrying.
+`regenerate()` removes the last assistant response and re-sends. If your storage implements `loadContext`, handle `trigger === "regenerate-message"` there: remove trailing assistant messages from the active branch so the model receives the last user message as its prompt.
 
 ### Pattern 3: Save partial responses
 
-When a stream errors mid-response, the `responseMessage` in `onBeforeTurnComplete` and `onTurnComplete` contains the partial output. Save it as a "draft" so the user can see what was generated before the error:
+When a stream fails or you stop a response, transcript storage preserves the partial assistant message with `final: false`. Keep that flag in your storage adapter so a reload doesn't present an incomplete answer as finished.
 
-```ts
-onBeforeTurnComplete: async ({ chatId, responseMessage, stopped }) => {
-  if (responseMessage && responseMessage.parts.length > 0) {
-    // Save partial response — user can manually accept or discard
-    await db.partialResponse.create({
-      data: {
-        chatId,
-        message: responseMessage,
-        reason: stopped ? "stopped" : "errored",
-      },
-    });
-  }
+Use `onTurnComplete` to record the outcome. Check `error` or `stopped` before classifying a response as partial:
+
+```ts trigger/chat.ts
+onTurnComplete: async ({ chatId, responseMessage, error, stopped }) => {
+  if (!responseMessage || (!error && !stopped)) return;
+
+  await db.partialResponse.upsert({
+    where: { id: responseMessage.id },
+    create: {
+      id: responseMessage.id,
+      chatId,
+      message: responseMessage,
+      reason: stopped ? "stopped" : "errored",
+    },
+    update: {
+      message: responseMessage,
+      reason: stopped ? "stopped" : "errored",
+    },
+  });
 },
 ```
 
-### Pattern 4: Fall back to a different model
+### Pattern 4: Retry with another model
 
-If the primary model errors, try a fallback model in the same turn:
+`streamText()` returns before the provider finishes streaming. A `try/catch` around that call only catches setup failures; it doesn't catch errors that arrive later in the stream.
 
-```ts
-run: async ({ messages, signal }) => {
-  try {
-    return streamText({
-      model: anthropic("claude-sonnet-4-5"),
-      messages,
-      abortSignal: signal,
-      stopWhen: stepCountIs(15),
-    });
-  } catch (err) {
-    console.warn("Primary model failed, falling back:", err);
-    return streamText({
-      model: anthropic("claude-sonnet-4-6"),
-      messages,
-      abortSignal: signal,
-      stopWhen: stepCountIs(15),
-    });
-  }
-},
-```
-
-<Note>
-  This only catches errors thrown synchronously by `streamText` setup. Errors that happen mid-stream go through `uiMessageStreamOptions.onError`, not your try/catch.
-</Note>
+For a streamed provider failure, let the failed turn finish, choose a fallback model on your server, then regenerate the response. The partial response remains available until you replace it. Check whether tools already performed side effects before retrying, and make those operations idempotent.
 
 ## What gets written to the stream on error
 
@@ -283,7 +253,7 @@ The AI SDK's `useChat` processes this and:
 
 1. Sets `useChat`'s `error` field to an `Error` with `message = errorText`
 2. Calls the user's `onError` callback (if set)
-3. Marks the turn as complete (`status` returns to `"ready"`)
+3. Sets `status` to `"error"`. Sending another message or regenerating starts a new request.
 
 ```tsx
 const { messages, error, status } = useChat({
@@ -375,13 +345,11 @@ const transport = useTriggerChatTransport({
 
 ## Run-level retries
 
-`chat.agent` uses `retry: { maxAttempts: 1 }` — the run **never retries** on unhandled failure. This is intentional: each turn is conversation-preserving, so a true run failure is severe and shouldn't silently retry (which could send duplicate API calls or mutate state twice).
+`chat.agent` defaults to `retry: { maxAttempts: 1 }`. Turn errors are handled within the conversation, so another message can succeed in the same run.
 
-To add retry-like behavior:
+If you configure `oomMachine`, the agent uses up to 2 attempts and retries an out-of-memory failure on that machine. This doesn't enable retries for ordinary provider or tool errors.
 
-- **Per-turn retries**: handle inside `run()` with try/catch and a fallback model
-- **Per-message retries**: re-send from the frontend (call `sendMessage` or `regenerate` again)
-- **Whole-run retries**: wrap `chat.agent` with a parent task that has `retry` configured, and call the agent's task internally
+Use the AI SDK's provider retry settings for transient model-call failures. After a turn has failed, let the user send another message or call `regenerate()`. Retrying a conversation can repeat tool side effects, so use idempotency keys for writes.
 
 ## Best practices
 

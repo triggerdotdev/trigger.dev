@@ -25,10 +25,32 @@ export type WebhookIdempotencyField = z.infer<typeof WebhookIdempotencyField>;
 // Where a scalar value comes from. Used for the timestamp and for signing-string template vars.
 // "signatureField" reads a field parsed out of the signature header (e.g. Stripe `t`).
 // "url" is the inbound request URL (e.g. Square signs `{url}{body}`). "constant" is a literal.
+/**
+ * A dotted path into the parsed JSON body. Segments that name the prototype chain are refused: the
+ * path is author-supplied and is followed on the server, both to read a value and, for the console's
+ * test-send, to write a fresh timestamp.
+ */
+const WebhookBodyPath = z
+  .string()
+  .min(1)
+  .refine(
+    (path) =>
+      path
+        .split(".")
+        .every(
+          (segment) =>
+            segment !== "" && !["__proto__", "constructor", "prototype"].includes(segment)
+        ),
+    {
+      message:
+        "body path segments must be non-empty and must not name __proto__, constructor or prototype",
+    }
+  );
+
 export const WebhookValueSource = discriminatedUnion("from", [
   z.object({ from: z.literal("header"), name: z.string() }),
   z.object({ from: z.literal("signatureField"), field: z.string() }),
-  z.object({ from: z.literal("body"), path: z.string() }),
+  z.object({ from: z.literal("body"), path: WebhookBodyPath }),
   z.object({ from: z.literal("url") }),
   z.object({ from: z.literal("constant"), value: z.string() }),
 ]);
@@ -146,11 +168,51 @@ export type WebhookVerifierConfig = z.infer<typeof WebhookVerifierConfig>;
 // delivery (Slack url_verification, Discord PING). Generic + data-only: if the verified body's
 // `matchPath` equals `matchValue`, ingest responds 200 with the body's `respondPath` value. ──
 export const WebhookHandshakeConfig = z.object({
-  matchPath: z.string(), // dotted path into the body, e.g. "type"
-  matchValue: z.string(), // e.g. "url_verification"
-  respondPath: z.string(), // dotted path to echo, e.g. "challenge"
+  /** Dotted path into the body, e.g. "type". Compared as a string, so a numeric 0 matches "0". */
+  matchPath: z.string(),
+  /** e.g. "url_verification", or "0" for a numeric PING type. */
+  matchValue: z.string(),
+  /** Dotted path whose value is echoed as the text body, e.g. "challenge". Unset: empty body. */
+  respondPath: z.string().optional(),
+  /** Status of the answer. Default 200; 204 always answers without a body. */
+  respondStatus: z.union([z.literal(200), z.literal(204)]).optional(),
 });
 export type WebhookHandshakeConfig = z.infer<typeof WebhookHandshakeConfig>;
+
+/**
+ * The status codes the ingress answers a provider with, for providers that require something other
+ * than 200 JSON on success and 400 on a bad signature. Data-only: the ingress reads it off the
+ * artifact and never knows which provider asked for it.
+ */
+export const WebhookResponseConfig = z.object({
+  /** Status for a recorded or deduplicated delivery. 204 sends no body. Default 200 with a JSON body. */
+  acceptedStatus: z.union([z.literal(200), z.literal(202), z.literal(204)]).optional(),
+  /** Status when signature verification fails. Default 400. */
+  rejectedStatus: z.union([z.literal(400), z.literal(401), z.literal(403)]).optional(),
+});
+export type WebhookResponseConfig = z.infer<typeof WebhookResponseConfig>;
+
+/**
+ * A provider's GET verification of the endpoint URL (Meta's `hub.*` flow): the ingress answers a GET
+ * whose `tokenParam` equals the endpoint's dedicated verify token by echoing `challengeParam` as text, and
+ * records nothing. Data-only and provider-neutral; the query parameter names are the whole contract.
+ */
+export const WebhookGetHandshakeConfig = z
+  .object({
+    /** Query parameter that must equal `matchValue` for the request to count, e.g. "hub.mode". */
+    matchParam: z.string().min(1).optional(),
+    /** e.g. "subscribe". Required when matchParam is set. */
+    matchValue: z.string().optional(),
+    /** Query parameter carrying the endpoint's dedicated verify token, not its signing secret. */
+    tokenParam: z.string().min(1),
+    /** Query parameter whose value is echoed as the plain-text 200 body. */
+    challengeParam: z.string().min(1),
+  })
+  .refine((config) => (config.matchParam === undefined) === (config.matchValue === undefined), {
+    message: "matchParam and matchValue must be supplied together",
+    path: ["matchParam"],
+  });
+export type WebhookGetHandshakeConfig = z.infer<typeof WebhookGetHandshakeConfig>;
 
 // ── Verifier artifact: data-only tagged union stored on WebhookEndpoint.verifierArtifact ──
 export const WebhookVerifierArtifact = discriminatedUnion("kind", [
@@ -158,12 +220,16 @@ export const WebhookVerifierArtifact = discriminatedUnion("kind", [
     kind: z.literal("config"),
     config: WebhookVerifierConfig,
     handshake: WebhookHandshakeConfig.optional(),
+    getHandshake: WebhookGetHandshakeConfig.optional(),
+    response: WebhookResponseConfig.optional(),
   }),
   z.object({
     kind: z.literal("preset"),
     preset: z.string(),
     config: WebhookVerifierConfig,
     handshake: WebhookHandshakeConfig.optional(),
+    getHandshake: WebhookGetHandshakeConfig.optional(),
+    response: WebhookResponseConfig.optional(),
   }),
   z.object({ kind: z.literal("bundle"), bundleUrl: z.string(), hash: z.string() }), // P3 seam
 ]);

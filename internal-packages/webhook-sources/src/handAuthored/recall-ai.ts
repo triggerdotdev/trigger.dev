@@ -2,14 +2,14 @@ import { type SampleRecord } from "../sampleRecord.js";
 
 /**
  * Recall.ai samples. Bot and recording/transcript artifact webhooks share one envelope shape
- * `{ event, data: { data: { code, sub_code, updated_at }, ...refs } }`. Recall.ai signs with Svix, so
- * `presetId: "svix"` keeps them under the round-trip guarantee.
+ * `{ event, data: { data: { code, sub_code, updated_at }, ...refs } }`. Recall.ai signs with Svix under the Standard Webhooks `webhook-*` header names, so
+ * `presetId: "standard-webhooks"` keeps them under the round-trip guarantee.
  */
 export const samples: SampleRecord[] = [
   {
     provider: "recall-ai",
     providerLabel: "Recall.ai",
-    presetId: "svix",
+    presetId: "standard-webhooks",
     eventType: "bot.status_change",
     name: "Bot recording",
     description: "A meeting bot has joined the call and started recording.",
@@ -33,7 +33,7 @@ export const samples: SampleRecord[] = [
   {
     provider: "recall-ai",
     providerLabel: "Recall.ai",
-    presetId: "svix",
+    presetId: "standard-webhooks",
     eventType: "bot.status_change",
     name: "Bot call ended by host",
     description: "The meeting host ended the call, so the bot's call has ended.",
@@ -57,7 +57,7 @@ export const samples: SampleRecord[] = [
   {
     provider: "recall-ai",
     providerLabel: "Recall.ai",
-    presetId: "svix",
+    presetId: "standard-webhooks",
     eventType: "bot.status_change",
     name: "Bot fatal error",
     description: "The bot ran into an unexpected, unrecoverable error before it could join.",
@@ -81,7 +81,7 @@ export const samples: SampleRecord[] = [
   {
     provider: "recall-ai",
     providerLabel: "Recall.ai",
-    presetId: "svix",
+    presetId: "standard-webhooks",
     eventType: "recording.done",
     name: "Recording done",
     description: "A bot's recording finished processing and is ready to fetch.",
@@ -109,7 +109,7 @@ export const samples: SampleRecord[] = [
   {
     provider: "recall-ai",
     providerLabel: "Recall.ai",
-    presetId: "svix",
+    presetId: "standard-webhooks",
     eventType: "transcript.done",
     name: "Transcript done",
     description: "A bot's transcript finished processing and is ready to fetch.",

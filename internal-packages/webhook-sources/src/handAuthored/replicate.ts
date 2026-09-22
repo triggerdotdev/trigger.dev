@@ -3,7 +3,7 @@ import { type SampleRecord } from "../sampleRecord.js";
 /**
  * Replicate samples. Replicate signs webhooks with a Standard Webhooks compatible scheme (`webhook-id`
  * / `webhook-timestamp` / `webhook-signature` headers, HMAC-SHA256 over `{id}.{timestamp}.{rawBody}`,
- * `whsec_`-prefixed secret), so `presetId: "svix"` keeps them under the round-trip guarantee. The body
+ * `whsec_`-prefixed secret), so `presetId: "standard-webhooks"` keeps them under the round-trip guarantee. The body
  * is the prediction object itself; there is no separate event envelope, so `eventType` is read from the
  * prediction's own `status` field.
  */
@@ -11,7 +11,7 @@ export const samples: SampleRecord[] = [
   {
     provider: "replicate",
     providerLabel: "Replicate",
-    presetId: "svix",
+    presetId: "standard-webhooks",
     eventType: "starting",
     name: "Prediction starting",
     description: "A prediction has been created and queued but has not started running yet.",
@@ -47,7 +47,7 @@ export const samples: SampleRecord[] = [
   {
     provider: "replicate",
     providerLabel: "Replicate",
-    presetId: "svix",
+    presetId: "standard-webhooks",
     eventType: "processing",
     name: "Prediction processing",
     description: "The model has started running; intermediate logs are streaming in.",
@@ -83,7 +83,7 @@ export const samples: SampleRecord[] = [
   {
     provider: "replicate",
     providerLabel: "Replicate",
-    presetId: "svix",
+    presetId: "standard-webhooks",
     eventType: "succeeded",
     name: "Prediction succeeded",
     description: "The prediction finished and produced output.",
@@ -119,7 +119,7 @@ export const samples: SampleRecord[] = [
   {
     provider: "replicate",
     providerLabel: "Replicate",
-    presetId: "svix",
+    presetId: "standard-webhooks",
     eventType: "failed",
     name: "Prediction failed",
     description: "The model raised an error while running and the prediction did not complete.",
@@ -155,7 +155,7 @@ export const samples: SampleRecord[] = [
   {
     provider: "replicate",
     providerLabel: "Replicate",
-    presetId: "svix",
+    presetId: "standard-webhooks",
     eventType: "canceled",
     name: "Prediction canceled",
     description: "The prediction was canceled via the cancel endpoint before it finished running.",

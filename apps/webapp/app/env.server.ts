@@ -376,6 +376,8 @@ const EnvironmentSchema = z
     // Webhook feature data-plane DB (WebhookEndpoint + WebhookDelivery). Unset -> the webhook
     // clients reuse the main prisma / $replica, so this is connection-neutral until you split.
     WEBHOOK_DATABASE_URL: z.string().optional(),
+    // Direct connection with ownership privileges for bootstrap and partition maintenance.
+    WEBHOOK_DATABASE_DIRECT_URL: z.string().optional(),
     WEBHOOK_DATABASE_READ_REPLICA_URL: z.string().optional(),
     WEBHOOK_DATABASE_CONNECTION_LIMIT: z.coerce.number().int().optional(),
     SESSION_SECRET: z.string().min(1).refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE),
@@ -1452,6 +1454,10 @@ const EnvironmentSchema = z
       .default("info"),
     RUN_ENGINE_TOTAL_CONCURRENCY_LIMITS_ENABLED: z.string().default("1"),
     RUN_ENGINE_QUEUE_GATES_ENABLED: z.string().default("0"),
+    RUN_ENGINE_QUEUE_RECONCILE_ENABLED: z.string().default("1"),
+    RUN_ENGINE_QUEUE_RECONCILE_SCAN_COUNT: z.coerce.number().int().positive().default(100),
+    RUN_ENGINE_QUEUE_RECONCILE_LOCK_TTL_SECONDS: z.coerce.number().int().positive().default(10),
+    RUN_ENGINE_QUEUE_RECONCILE_MAX_PASSES_PER_DEQUEUE: z.coerce.number().int().min(0).default(2),
     RUN_ENGINE_TREAT_PRODUCTION_EXECUTION_STALLS_AS_OOM: z.string().default("0"),
     RUN_ENGINE_READ_REPLICA_SNAPSHOTS_SINCE_ENABLED: z.string().default("0"),
     RUN_ENGINE_SNAPSHOTS_SINCE_REPLICA_RETRY_MIN_MS: z.coerce.number().int().default(50),
@@ -2158,6 +2164,12 @@ const EnvironmentSchema = z
     // slot and publication so the two consume independently. The source table is
     // a partitioned parent, so the publication is created with
     // publish_via_partition_root.
+    // Direct PostgreSQL connection with replication privileges. When unset, use the webhook
+    // writer URL, then DATABASE_URL; those fallbacks must also support logical replication.
+    WEBHOOK_DELIVERIES_REPLICATION_DATABASE_URL: z
+      .string()
+      .refine(isValidDatabaseUrl, "WEBHOOK_DELIVERIES_REPLICATION_DATABASE_URL is invalid")
+      .optional(),
     WEBHOOK_DELIVERIES_REPLICATION_CLICKHOUSE_URL: z.string().optional(),
     WEBHOOK_DELIVERIES_REPLICATION_ENABLED: z.string().default("0"),
     WEBHOOK_DELIVERIES_REPLICATION_SLOT_NAME: z

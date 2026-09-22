@@ -20,7 +20,9 @@ import { evaluateFilter, parseFilter } from "./filter/index.js";
 import { verify } from "./verification/index.js";
 import { sha256Hex } from "./verification/util.js";
 import { deriveIdempotencyKey, tryParseJson } from "./verification/derive.js";
+import { timingSafeEqual } from "node:crypto";
 import type {
+  GetHandshakeInput,
   IngestInput,
   IngestResult,
   ReplayResult,
@@ -32,6 +34,17 @@ import { evaluateSessionKeyTemplate, walkPath as resolveBodyPath } from "./sessi
 
 // The deliver job's retry budget (redis-worker DLQs after this many attempts).
 const WEBHOOK_DELIVER_MAX_ATTEMPTS = webhookWorkerCatalog["webhook.deliver"].retry.maxAttempts;
+
+/** The response contract declared on a verifier artifact, if any (bundles carry none). */
+function artifactResponseContract(artifact: WebhookVerifierArtifact) {
+  return "response" in artifact ? artifact.response : undefined;
+}
+
+function constantTimeEqual(a: string, b: string): boolean {
+  const left = Buffer.from(a, "utf8");
+  const right = Buffer.from(b, "utf8");
+  return left.length === right.length && timingSafeEqual(left, right);
+}
 
 export class WebhookEngine {
   private worker!: Worker<typeof webhookWorkerCatalog>;
@@ -167,6 +180,7 @@ export class WebhookEngine {
       if (!parsedArtifact.success) {
         return { outcome: "verification_failed", error: "corrupt verifier artifact" };
       }
+      const response = artifactResponseContract(parsedArtifact.data);
       const verdict = verify(parsedArtifact.data, {
         rawBytes: input.rawBytes,
         headers: input.headers,
@@ -174,7 +188,7 @@ export class WebhookEngine {
         secret,
       });
       if (!verdict.ok) {
-        return { outcome: "verification_failed", error: verdict.error ?? "invalid" };
+        return { outcome: "verification_failed", error: verdict.error ?? "invalid", response };
       }
 
       // Provider handshake (Slack url_verification, Discord PING): a signed request that must get a
@@ -186,7 +200,11 @@ export class WebhookEngine {
         if (String(resolveBodyPath(event, handshake.matchPath) ?? "") === handshake.matchValue) {
           return {
             outcome: "handshake",
-            body: String(resolveBodyPath(event, handshake.respondPath) ?? ""),
+            status: handshake.respondStatus ?? 200,
+            body: handshake.respondPath
+              ? String(resolveBodyPath(event, handshake.respondPath) ?? "")
+              : "",
+            response,
           };
         }
       }
@@ -253,7 +271,11 @@ export class WebhookEngine {
     );
     if (claimed !== "OK") {
       const existing = await this.frontGate.get(gateKey);
-      return { outcome: "duplicate", deliveryId: existing ?? undefined };
+      return {
+        outcome: "duplicate",
+        deliveryId: existing ?? undefined,
+        response: artifactResponseContract(artifact),
+      };
     }
 
     const { filtered, reason } = this.#evaluateFilter(
@@ -320,7 +342,86 @@ export class WebhookEngine {
       .set(gateKey, friendlyId, "EX", this.#frontGateTtlSeconds(artifact))
       .catch(() => {});
 
-    return { outcome: "accepted", deliveryId: id, deliveryFriendlyId: friendlyId };
+    return {
+      outcome: "accepted",
+      deliveryId: id,
+      deliveryFriendlyId: friendlyId,
+      response: artifactResponseContract(artifact),
+    };
+  }
+
+  /** Reject unsupported methods without resolving credentials or recording a delivery. */
+  async rejectUnsupportedMethod(opaqueId: string): Promise<IngestResult> {
+    this.#assertEnabled();
+    return startSpan(this.tracer, "webhook.unsupportedMethod", async (span) => {
+      span.setAttribute("opaqueId", opaqueId);
+      const endpoint = await this.prisma.webhookEndpoint.findFirst({
+        where: { opaqueId },
+        select: { status: true, verifierArtifact: true },
+      });
+      if (!endpoint) return { outcome: "endpoint_not_found" };
+      if (endpoint.status !== "ACTIVE") return { outcome: "endpoint_inactive" };
+
+      const artifact = WebhookVerifierArtifact.safeParse(endpoint.verifierArtifact);
+      const supportsGet =
+        artifact.success && "getHandshake" in artifact.data && !!artifact.data.getHandshake;
+      return {
+        outcome: "method_not_allowed",
+        // Remix serves HEAD through the GET loader, stripping the response body.
+        allowedMethods: supportsGet ? ["GET", "HEAD", "POST"] : ["POST"],
+      };
+    });
+  }
+
+  /**
+   * Answer a provider's GET verification of the endpoint URL (Meta's `hub.challenge` flow) without
+   * recording a delivery. The artifact's `getHandshake` names the query parameters: the token must
+   * equal the endpoint's verify token (a dedicated credential, resolved through the injected port,
+   * not the signing secret) and the challenge is echoed as text. The endpoint only has to exist and
+   * be active; the signing secret is a separate credential for POST deliveries and may not be set
+   * yet when the provider verifies the URL. An endpoint whose artifact declares no GET handshake
+   * answers `method_not_allowed`, as before.
+   */
+  async verifyGetHandshake(input: GetHandshakeInput): Promise<IngestResult> {
+    this.#assertEnabled();
+    return startSpan(this.tracer, "webhook.getHandshake", async (span) => {
+      span.setAttribute("opaqueId", input.opaqueId);
+
+      const endpoint = await this.prisma.webhookEndpoint.findFirst({
+        where: { opaqueId: input.opaqueId },
+      });
+      if (!endpoint) return { outcome: "endpoint_not_found" };
+      if (endpoint.status !== "ACTIVE") return { outcome: "endpoint_inactive" };
+
+      const parsedArtifact = WebhookVerifierArtifact.safeParse(endpoint.verifierArtifact);
+      if (!parsedArtifact.success) {
+        return { outcome: "verification_failed", error: "corrupt verifier artifact" };
+      }
+      const getHandshake =
+        "getHandshake" in parsedArtifact.data ? parsedArtifact.data.getHandshake : undefined;
+      if (!getHandshake) return { outcome: "method_not_allowed" };
+
+      const response = artifactResponseContract(parsedArtifact.data);
+      if (
+        getHandshake.matchParam &&
+        input.query[getHandshake.matchParam] !== getHandshake.matchValue
+      ) {
+        return { outcome: "verification_failed", error: "handshake mode mismatch", response };
+      }
+      const expected = await this.options.resolveVerifyToken?.(endpoint.id);
+      if (!expected) {
+        return { outcome: "verification_failed", error: "verify token not set", response };
+      }
+      const token = input.query[getHandshake.tokenParam];
+      if (!token || !constantTimeEqual(token, expected)) {
+        return { outcome: "verification_failed", error: "handshake token mismatch", response };
+      }
+      const challenge = input.query[getHandshake.challengeParam];
+      if (challenge === undefined) {
+        return { outcome: "verification_failed", error: "handshake challenge missing", response };
+      }
+      return { outcome: "handshake", status: 200, body: challenge, response };
+    });
   }
 
   /**
@@ -347,7 +448,11 @@ export class WebhookEngine {
 
       const parsed = tryParseJson(input.rawBytes);
       if (parsed.error || parsed.parsedEvent === undefined) {
-        return { outcome: "verification_failed", error: parsed.error ?? "body is not valid JSON" };
+        return {
+          outcome: "verification_failed",
+          error: parsed.error ?? "body is not valid JSON",
+          response: artifactResponseContract(parsedArtifact.data),
+        };
       }
 
       return this.#recordAndRoute({
@@ -447,7 +552,16 @@ export class WebhookEngine {
     const secret = endpoint.signingSecretKey
       ? await this.options.resolveSigningSecret(endpoint.signingSecretKey)
       : undefined;
-    if (!secret) return { ok: false, result: { outcome: "secret_missing" } };
+    if (!secret) {
+      const artifact = WebhookVerifierArtifact.safeParse(endpoint.verifierArtifact);
+      return {
+        ok: false,
+        result: {
+          outcome: "secret_missing",
+          response: artifact.success ? artifactResponseContract(artifact.data) : undefined,
+        },
+      };
+    }
 
     // Parse the stored AST once per cache load. A corrupt AST fails open (route all) rather than
     // blocking delivery — a filter bug must never silently swallow real webhooks.
@@ -750,7 +864,7 @@ export class WebhookEngine {
   ) {
     return startSpan(this.tracer, "ensurePartitions", async (span) => {
       this.ensurePartitionsCounter.add(1);
-      const result = await ensurePartitions(this.prisma, {
+      const result = await ensurePartitions(this.options.partitionPrisma ?? this.prisma, {
         now: new Date(),
         lookaheadDays: this.options.partitions?.lookaheadDays ?? 10, // 7..14
         retentionDays: this.options.partitions?.retentionDays ?? 7,

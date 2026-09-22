@@ -307,6 +307,19 @@ supervisor:
       # the create 404s without them. Also grants the two writes the backend
       # needs, a Secret for the deployment token and the Runner itself.
       runCrdEnabled: false
+      # Which isolation lane a Runner asks for: "container", or "microvm" for a
+      # Firecracker guest. Only read when runCrdEnabled is on, since the pod
+      # backends have no guest lane. Cell-wide rather than per run, because the
+      # node pools decide what can be served.
+      #
+      # A guest needs a RuntimeClass and a runtime handler on the node; the
+      # operator treats an unset microVM.runtimeClassName as an error rather
+      # than falling back to a container, so a half-installed cluster fails the
+      # Runner instead of quietly running the workload unisolated.
+      #
+      # Not to be confused with the task runtime (node-24, bun), which rides on
+      # the same Runner and says which interpreter the task needs.
+      runnerRuntime: container
     podCleaner:
       enabled: true
       batchSize: 100
