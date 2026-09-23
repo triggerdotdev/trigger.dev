@@ -63,6 +63,23 @@ describe("generateContainerfile", () => {
   });
 
   it.each(["node", "bun"] as BuildRuntime[])(
+    "runs the indexer in exec form so entry paths with spaces survive on %s",
+    async (runtime) => {
+      const indexScript = "/app/Documents/Trigger Demo/index.mjs";
+      const containerfile = await generateContainerfile({
+        runtime,
+        build: {},
+        image: undefined,
+        indexScript,
+        entrypoint: "entrypoint.js",
+      });
+
+      expect(containerfile).toContain(`"${indexScript}" ]`);
+      expect(containerfile).not.toMatch(/^RUN (node|bun run) \//m);
+    }
+  );
+
+  it.each(["node", "bun"] as BuildRuntime[])(
     "runs no package installation for uncustomized projects on %s",
     async (runtime) => {
       const containerfile = await generateContainerfile({
