@@ -1,5 +1,13 @@
 # @trigger.dev/schema-to-json
 
+## 4.7.0
+
+### Patch Changes
+
+- Convert Zod 4 `z.date()` fields to date-time strings in JSON Schema without weakening validation for other unsupported types. This prevents MCP tool discovery from failing when a tool input schema contains a date. ([`f8babdf9b`](https://github.com/triggerdotdev/trigger.dev/commit/f8babdf9b0376c4c7c7fa235048a075862fdccfd))
+- Updated dependencies:
+  - `@trigger.dev/core@4.7.0`
+
 ## 4.6.3
 
 ### Patch Changes
