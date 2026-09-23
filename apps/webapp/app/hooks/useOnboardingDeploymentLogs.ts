@@ -3,6 +3,7 @@ import { S2, S2Error } from "@s2-dev/streamstore";
 import { DeploymentEventFromString } from "@trigger.dev/core/v3/schemas";
 import type { WorkerDeploymentStatus } from "@trigger.dev/database";
 import { useEffect, useState } from "react";
+import { classifyDeploymentLog } from "./deploymentLogFilter";
 import {
   DeploymentLogsCache,
   type DeploymentLogEntry,
@@ -86,7 +87,7 @@ export function useOnboardingDeploymentLogs(
     };
 
     const push = (entry: DeploymentLogEntry) => {
-      pending.push(entry);
+      pending.push(classifyDeploymentLog(entry));
       flushTimer ??= setTimeout(flush, 0);
     };
 

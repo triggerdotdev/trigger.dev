@@ -5,13 +5,25 @@ import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { type RuntimeEnvironmentType, type WorkerDeploymentStatus } from "@trigger.dev/database";
 import { type PrismaClient, prisma } from "~/db.server";
+import { findGitHubBranch } from "~/services/gitHub.server";
 import { triggerInitialDeployment } from "~/services/platform.v3.server";
 import { atomicProductionDeploymentUrl } from "./atomicProductionDeployment.server";
 
 export type DeployNowResult =
   | { ok: true }
   | { ok: false; reason: "atomicProduction"; vercelUrl: string }
-  | { ok: false; reason: "alreadyInFlight" | "unsupportedEnvironment" | "error" };
+  | {
+      ok: false;
+      reason: "alreadyInFlight" | "unsupportedEnvironment" | "branchNotFound" | "error";
+    };
+
+type DeployNowOptions = {
+  projectId: string;
+  environmentId: string;
+  environmentType: RuntimeEnvironmentType;
+  branch: string;
+  repository?: { installationId: number; fullName: string };
+};
 
 const NON_TERMINAL_STATUSES: WorkerDeploymentStatus[] = [
   "PENDING",
@@ -39,20 +51,24 @@ export class TriggerDeployNowService {
   #trigger: typeof triggerInitialDeployment;
   #prisma: PrismaClient;
   #lockPool: Pool;
+  #findBranch: typeof findGitHubBranch;
 
   constructor();
   constructor(
     triggerFn: typeof triggerInitialDeployment,
     prismaClient: PrismaClient,
-    lockPool: Pool
+    lockPool: Pool,
+    findBranch?: typeof findGitHubBranch
   );
   constructor(
     triggerFn: typeof triggerInitialDeployment = triggerInitialDeployment,
     prismaClient: PrismaClient = prisma,
-    lockPool?: Pool
+    lockPool?: Pool,
+    findBranch: typeof findGitHubBranch = findGitHubBranch
   ) {
     this.#trigger = triggerFn;
     this.#prisma = prismaClient;
+    this.#findBranch = findBranch;
     if (prismaClient !== prisma && !lockPool) {
       throw new Error("An injected Prisma client requires its matching deployment lock pool");
     }
@@ -79,12 +95,7 @@ export class TriggerDeployNowService {
       });
   }
 
-  async call(opts: {
-    projectId: string;
-    environmentId: string;
-    environmentType: RuntimeEnvironmentType;
-    branch: string;
-  }): Promise<DeployNowResult> {
+  async call(opts: DeployNowOptions): Promise<DeployNowResult> {
     try {
       return await this.#call(opts);
     } catch (error) {
@@ -97,12 +108,7 @@ export class TriggerDeployNowService {
     }
   }
 
-  async #call(opts: {
-    projectId: string;
-    environmentId: string;
-    environmentType: RuntimeEnvironmentType;
-    branch: string;
-  }): Promise<DeployNowResult> {
+  async #call(opts: DeployNowOptions): Promise<DeployNowResult> {
     const environment = mapEnvironmentType(opts.environmentType);
     if (!environment) {
       return { ok: false, reason: "unsupportedEnvironment" };
@@ -114,6 +120,26 @@ export class TriggerDeployNowService {
       this.#prisma
     );
     if (vercelUrl) return { ok: false, reason: "atomicProduction", vercelUrl };
+
+    // The platform can't build a branch GitHub doesn't have (e.g. a preview branch
+    // created from the CLI). Only a definite "missing" blocks; lost repository access
+    // or a failed lookup falls through so the platform reports it as before.
+    if (opts.repository) {
+      const presence = await this.#findBranch(
+        opts.repository.installationId,
+        opts.repository.fullName,
+        opts.branch
+      );
+      if (presence.isOk() && presence.value === "missing") {
+        return { ok: false, reason: "branchNotFound" };
+      }
+      if (presence.isErr() || presence.value === "repository_inaccessible") {
+        logger.warn("Deploy now branch lookup inconclusive", {
+          projectId: opts.projectId,
+          result: presence.isOk() ? presence.value : presence.error,
+        });
+      }
+    }
 
     // Use a dedicated transaction connection rather than Prisma's timed interactive
     // transaction: its timeout could release the lock while the HTTP call continues.

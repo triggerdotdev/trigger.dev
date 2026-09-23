@@ -18,6 +18,7 @@ import type { DeploymentLogEntry } from "~/components/runs/v3/deploymentLogsCach
 import { Button } from "~/components/primitives/Buttons";
 import { SpinnerWhite } from "~/components/primitives/Spinner";
 import { StoryPage, StorySection } from "../storybook/StoryKit";
+import { classifyDeploymentLog } from "~/hooks/deploymentLogFilter";
 
 const repository = {
   fullName: "triggerdotdev/customer-tasks",
@@ -56,6 +57,7 @@ type Scenario = {
   settingsError?: boolean;
   githubDenied?: boolean;
   atomicProduction?: boolean;
+  cacheMiss?: boolean;
   detail?:
     | "manage"
     | "production"
@@ -86,6 +88,11 @@ export const scenarios: Scenario[] = [
     title: "Request failed · try again",
     error: "Couldn't start the deployment. Try again, or deploy using the CLI.",
   },
+  {
+    title: "Branch missing on GitHub",
+    error:
+      'The branch "feature/login" doesn\'t exist in triggerdotdev/customer-tasks. Push it to GitHub, then deploy.',
+  },
   { title: "Queued · waiting for build logs", status: "PENDING" },
   { title: "Installing", status: "INSTALLING" },
   { title: "Building", status: "BUILDING" },
@@ -96,7 +103,8 @@ export const scenarios: Scenario[] = [
   { title: "Build failed · agent unavailable", status: "FAILED", noAgent: true },
   { title: "Canceled", status: "CANCELED" },
   { title: "Timed out", status: "TIMED_OUT" },
-  { title: "Successful · returns to deployment history", status: "DEPLOYED" },
+  { title: "Successful · stays until you navigate", status: "DEPLOYED" },
+  { title: "First build · registry cache miss", status: "DEPLOYED", cacheMiss: true },
   { title: "Long repository and branch names", long: true },
   { title: "GitHub unavailable · use another tab", connection: "unavailable" },
   { title: "Manage permission tooltip", detail: "manage" },
@@ -173,7 +181,18 @@ export function ScenarioView({ scenario }: { scenario: Scenario }) {
         ]
       : scenario.status === "PENDING"
         ? []
-        : buildLogs;
+        : scenario.cacheMiss
+          ? [
+              buildLogs[0],
+              classifyDeploymentLog({
+                timestamp: new Date("2026-09-15T10:32:01Z"),
+                level: "error",
+                message:
+                  "#11 ERROR: failed to configure registry cache importer: registry.example.com/proj_abc:cache: not found",
+              }),
+              ...buildLogs.slice(1),
+            ]
+          : buildLogs;
   return (
     <DeploymentOnboardingFrame
       title="Production"

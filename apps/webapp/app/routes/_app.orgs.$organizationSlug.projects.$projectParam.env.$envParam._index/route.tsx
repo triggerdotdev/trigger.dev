@@ -81,6 +81,7 @@ import { prisma } from "~/db.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { resolveDeploymentOnboardingUi } from "~/v3/services/deploymentOnboardingUi.server";
+import { deploymentOnboardingEnabled } from "~/v3/services/deploymentOnboardingEnabled.server";
 import { BranchTrackingConfigSchema, getTrackedBranchForEnvironment } from "~/v3/github";
 import {
   getUsefulLinksPreference,
@@ -98,10 +99,12 @@ import {
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { formatNumberCompact } from "~/utils/numberFormatter";
+import { useLatchedDeploymentOnboarding } from "~/hooks/useLatchedDeploymentOnboarding";
 import {
   docsPath,
   EnvironmentParamSchema,
   v3AgentTaskPath,
+  v3DeploymentPath,
   v3PlaygroundAgentPath,
   v3RunsPath,
   v3ScheduledTaskPath,
@@ -154,6 +157,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       where: { id: project.id },
       select: { initializedAt: true },
     });
+
+    const devOnboardingEnhanced =
+      items.length === 0 && environment.type === "DEVELOPMENT"
+        ? await deploymentOnboardingEnabled(project.organizationId)
+        : false;
 
     // Deployable empty states share the deployments GitHub onboarding flow. With the flag off the
     // page stays exactly as before: nothing beyond the activation check runs, and populated
@@ -208,6 +216,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       usefulLinksPreference,
       projectInitializedAt: initialized?.initializedAt ?? null,
       deploymentOnboarding,
+      devOnboardingEnhanced,
       ...(deploymentOnboarding?.showGitHubOnboarding
         ? { onboardingPollIntervalMs: env.DEPLOYMENTS_AUTORELOAD_POLL_INTERVAL_MS }
         : {}),
@@ -297,6 +306,7 @@ export default function Page() {
     usefulLinksPreference,
     projectInitializedAt,
     deploymentOnboarding,
+    devOnboardingEnhanced,
     onboardingPollIntervalMs,
   } = useTypedLoaderData<typeof loader>();
   const { value, values } = useSearchParams();
@@ -354,7 +364,13 @@ export default function Page() {
     return filteredItems.filter((item) => selectedTypes.has(item.kind));
   }, [filteredItems, selectedTypes]);
 
-  const hasItems = items.length > 0;
+  const { onboarding: latchedOnboarding, latched: onboardingLatched } =
+    useLatchedDeploymentOnboarding(deploymentOnboarding, {
+      deploymentPath: (shortCode) =>
+        v3DeploymentPath(organization, project, environment, { shortCode }, 0),
+      pollIntervalMs: onboardingPollIntervalMs,
+    });
+  const hasItems = items.length > 0 && !onboardingLatched;
 
   // Client-side pagination — presenter returns all tasks; we slice + clamp here.
   const totalPages = Math.max(1, Math.ceil(visibleItems.length / PAGE_SIZE));
@@ -458,14 +474,24 @@ export default function Page() {
                     </Table>
                   </div>
                 </div>
-              ) : deploymentOnboarding?.showGitHubOnboarding ? (
-                <MainCenteredContainer className="w-[calc(100%_-_3rem)] max-w-prose">
-                  <OnboardingAutoRefresh interval={onboardingPollIntervalMs} />
-                  <HasNoTasksDeployed environment={environment} {...deploymentOnboarding} />
+              ) : latchedOnboarding?.showGitHubOnboarding ? (
+                <MainCenteredContainer
+                  variant="centered"
+                  className="w-[calc(100%_-_3rem)] max-w-prose"
+                >
+                  {!onboardingLatched && (
+                    <OnboardingAutoRefresh interval={onboardingPollIntervalMs} />
+                  )}
+                  <HasNoTasksDeployed environment={environment} {...latchedOnboarding} />
                 </MainCenteredContainer>
               ) : environment.type === "DEVELOPMENT" ? (
-                <MainCenteredContainer className="max-w-prose">
-                  <HasNoTasksDev initializedAt={projectInitializedAt} />
+                <MainCenteredContainer
+                  className={cn("max-w-prose", devOnboardingEnhanced && "w-[calc(100%_-_3rem)]")}
+                >
+                  <HasNoTasksDev
+                    initializedAt={projectInitializedAt}
+                    enhanced={devOnboardingEnhanced}
+                  />
                 </MainCenteredContainer>
               ) : (
                 <MainCenteredContainer className="max-w-prose">

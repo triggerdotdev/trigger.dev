@@ -1,5 +1,6 @@
 import { Pool } from "pg";
 import { postgresTest } from "@internal/testcontainers";
+import { errAsync, okAsync } from "neverthrow";
 import { describe, expect, vi } from "vitest";
 import { TriggerDeployNowService } from "./triggerDeployNow.server";
 
@@ -116,6 +117,76 @@ describe("TriggerDeployNowService", () => {
 
       expect(result).toEqual({ ok: true });
       expect(triggerFn).toHaveBeenCalledOnce();
+    }
+  );
+
+  deploymentTest(
+    "reports a missing branch without calling the platform",
+    async ({ prisma, lockPool }) => {
+      const { project, env } = await seedEnvironment(prisma);
+      const triggerFn = vi.fn(async () => ({ ok: true as const }));
+      const branchExists = vi.fn(() => okAsync("missing" as const));
+      const service = new TriggerDeployNowService(triggerFn, prisma, lockPool, branchExists);
+
+      const result = await service.call({
+        projectId: project.id,
+        environmentId: env.id,
+        environmentType: "PREVIEW",
+        branch: "test",
+        repository: { installationId: 42, fullName: "acme/app" },
+      });
+
+      expect(result).toEqual({ ok: false, reason: "branchNotFound" });
+      expect(branchExists).toHaveBeenCalledWith(42, "acme/app", "test");
+      expect(triggerFn).not.toHaveBeenCalled();
+    }
+  );
+
+  deploymentTest(
+    "still triggers when the repository isn't visible to the installation",
+    async ({ prisma, lockPool }) => {
+      const { project, env } = await seedEnvironment(prisma);
+      const triggerFn = vi.fn(async () => ({ ok: true as const }));
+      const branchExists = vi.fn(() => okAsync("repository_inaccessible" as const));
+      const service = new TriggerDeployNowService(triggerFn, prisma, lockPool, branchExists);
+
+      const result = await service.call({
+        projectId: project.id,
+        environmentId: env.id,
+        environmentType: "PREVIEW",
+        branch: "main",
+        repository: { installationId: 42, fullName: "acme/app" },
+      });
+
+      expect(result).toEqual({ ok: true });
+      expect(triggerFn).toHaveBeenCalledWith(project.id, {
+        environment: "preview",
+        branch: "main",
+      });
+    }
+  );
+
+  deploymentTest(
+    "still triggers when the branch lookup itself fails",
+    async ({ prisma, lockPool }) => {
+      const { project, env } = await seedEnvironment(prisma);
+      const triggerFn = vi.fn(async () => ({ ok: true as const }));
+      const branchExists = vi.fn(() => errAsync({ type: "other" as const }));
+      const service = new TriggerDeployNowService(triggerFn, prisma, lockPool, branchExists);
+
+      const result = await service.call({
+        projectId: project.id,
+        environmentId: env.id,
+        environmentType: "PREVIEW",
+        branch: "test",
+        repository: { installationId: 42, fullName: "acme/app" },
+      });
+
+      expect(result).toEqual({ ok: true });
+      expect(triggerFn).toHaveBeenCalledWith(project.id, {
+        environment: "preview",
+        branch: "test",
+      });
     }
   );
 
