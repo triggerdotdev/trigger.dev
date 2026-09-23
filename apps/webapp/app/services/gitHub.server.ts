@@ -4,6 +4,7 @@ import { prisma } from "~/db.server";
 import { logger } from "./logger.server";
 import { errAsync, fromPromise, okAsync, type ResultAsync } from "neverthrow";
 import { tryCatch } from "@trigger.dev/core/utils";
+import { type BranchPresence, resolveBranchPresence } from "~/utils/gitHubBranchPresence";
 import {
   getAuthenticatedGitHubLogin,
   verifyGitHubAppInstallationAccess,
@@ -200,6 +201,31 @@ async function fetchInstallationRepositories(octokit: Octokit, installationId: n
     private: repo.private,
     defaultBranch: repo.default_branch,
   }));
+}
+
+/**
+ * Like checkGitHubBranchExists, but tells a missing branch apart from lost repository access.
+ */
+export function findGitHubBranch(
+  installationId: number,
+  fullRepoName: string,
+  branch: string
+): ResultAsync<BranchPresence, { type: "other" | "github_app_not_enabled"; cause?: unknown }> {
+  if (!githubApp) {
+    return errAsync({ type: "github_app_not_enabled" as const });
+  }
+  const app = githubApp;
+  const [owner, repo] = fullRepoName.split("/");
+
+  return fromPromise(
+    app.getInstallationOctokit(installationId).then((octokit) =>
+      resolveBranchPresence(
+        () => octokit.rest.repos.getBranch({ owner, repo, branch }),
+        () => octokit.rest.repos.get({ owner, repo })
+      )
+    ),
+    (cause) => ({ type: "other" as const, cause })
+  );
 }
 
 /**

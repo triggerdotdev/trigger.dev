@@ -4,6 +4,7 @@ import {
   BellAlertIcon,
   BookOpenIcon,
   ChatBubbleLeftRightIcon,
+  CheckIcon,
   PlusIcon,
   QuestionMarkCircleIcon,
   Squares2X2Icon,
@@ -116,10 +117,17 @@ function DeployDocsLinks() {
   );
 }
 
-export function HasNoTasksDev({ initializedAt }: { initializedAt: Date | string | null }) {
+export function HasNoTasksDev({
+  initializedAt,
+  enhanced = false,
+}: {
+  initializedAt: Date | string | null;
+  enhanced?: boolean;
+}) {
   const { isConnected } = useDevPresence();
   const initialized = !!initializedAt;
   const devConnected = isConnected === true;
+  const complete = <CheckIcon className="size-5 text-success" aria-label="Complete" />;
 
   return (
     <PackageManagerProvider>
@@ -163,49 +171,88 @@ export function HasNoTasksDev({ initializedAt }: { initializedAt: Date | string 
             </div>
           </>
         )}
-        <StepNumber
-          stepNumber="1"
-          title={initialized ? "Project initialized" : "Initialize your project"}
-          complete={initialized}
-        />
-        <StepContentContainer>
-          {initialized ? (
-            <Paragraph>
-              Your project is initialized. Your tasks live in the{" "}
-              <InlineCode variant="small">trigger</InlineCode> directory.
-            </Paragraph>
-          ) : (
-            <>
-              <InitCommandV3 />
-              <Paragraph spacing>
-                Run this in an existing project. You'll notice a new folder called{" "}
-                <InlineCode variant="small">trigger</InlineCode> with a few example tasks to help
-                you get started.
-              </Paragraph>
-            </>
-          )}
-        </StepContentContainer>
-        <StepNumber
-          stepNumber="2"
-          title={devConnected ? "Dev server connected" : "Start the dev server"}
-          complete={devConnected}
-        />
-        <StepContentContainer>
-          {devConnected ? (
-            <Paragraph>
-              Your dev server is connected. Your tasks will appear here automatically as soon as
-              they register.
-            </Paragraph>
-          ) : (
-            <>
-              <TriggerDevStepV3 />
-              <Paragraph spacing>
-                Keep this running while you develop. Once your tasks register, this page updates
-                automatically.
-              </Paragraph>
-            </>
-          )}
-        </StepContentContainer>
+        {enhanced ? (
+          <div>
+            <SettingsRow
+              bordered={false}
+              title={initialized ? "Project initialized" : "Initialize your project"}
+              description={
+                initialized ? (
+                  <>
+                    Your project is initialized. Your tasks live in the{" "}
+                    <InlineCode variant="extra-small">trigger</InlineCode> directory.
+                  </>
+                ) : (
+                  <>
+                    Run this in an existing project. You'll notice a new folder called{" "}
+                    <InlineCode variant="extra-small">trigger</InlineCode> with a few example tasks
+                    to help you get started.
+                  </>
+                )
+              }
+              action={initialized ? complete : undefined}
+            />
+            {!initialized && <InitCommandV3 />}
+            <SettingsRow
+              className="border-t border-grid-dimmed"
+              bordered={false}
+              title={devConnected ? "Dev server connected" : "Start the dev server"}
+              description={
+                devConnected
+                  ? "Your dev server is connected. Your tasks will appear here automatically as soon as they register."
+                  : "Keep this running while you develop. Once your tasks register, this page updates automatically."
+              }
+              action={devConnected ? complete : undefined}
+            />
+            {!devConnected && <TriggerDevStepV3 />}
+          </div>
+        ) : (
+          <>
+            <StepNumber
+              stepNumber="1"
+              title={initialized ? "Project initialized" : "Initialize your project"}
+              complete={initialized}
+            />
+            <StepContentContainer>
+              {initialized ? (
+                <Paragraph>
+                  Your project is initialized. Your tasks live in the{" "}
+                  <InlineCode variant="small">trigger</InlineCode> directory.
+                </Paragraph>
+              ) : (
+                <>
+                  <InitCommandV3 />
+                  <Paragraph spacing>
+                    Run this in an existing project. You'll notice a new folder called{" "}
+                    <InlineCode variant="small">trigger</InlineCode> with a few example tasks to
+                    help you get started.
+                  </Paragraph>
+                </>
+              )}
+            </StepContentContainer>
+            <StepNumber
+              stepNumber="2"
+              title={devConnected ? "Dev server connected" : "Start the dev server"}
+              complete={devConnected}
+            />
+            <StepContentContainer>
+              {devConnected ? (
+                <Paragraph>
+                  Your dev server is connected. Your tasks will appear here automatically as soon as
+                  they register.
+                </Paragraph>
+              ) : (
+                <>
+                  <TriggerDevStepV3 />
+                  <Paragraph spacing>
+                    Keep this running while you develop. Once your tasks register, this page updates
+                    automatically.
+                  </Paragraph>
+                </>
+              )}
+            </StepContentContainer>
+          </>
+        )}
       </div>
     </PackageManagerProvider>
   );

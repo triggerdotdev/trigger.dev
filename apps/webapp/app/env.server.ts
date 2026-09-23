@@ -773,6 +773,25 @@ const EnvironmentSchema = z
     API_RATE_LIMIT_REJECTION_LOGS_ENABLED: z.string().default("1"),
     API_RATE_LIMIT_LIMITER_LOGS_ENABLED: z.string().default("0"),
 
+    API_RATE_LIMIT_METRICS_ENABLED: z.enum(["0", "1", "allowlist"]).default("0"),
+    API_RATE_LIMIT_METRICS_BUCKET_SECONDS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .multipleOf(10)
+      .refine((seconds) => 60 % seconds === 0 || seconds % 60 === 0, {
+        message: "must divide or be a multiple of 60 so buckets align to minute boundaries",
+      })
+      .default(10),
+    API_RATE_LIMIT_METRICS_FLUSH_INTERVAL_MS: z.coerce.number().int().positive().default(10_000),
+    API_RATE_LIMIT_METRICS_MAX_ENTRIES: z.coerce.number().int().positive().default(10_000),
+    API_RATE_LIMIT_METRICS_WAIT_FOR_ASYNC_INSERT: z.string().default("0"),
+    API_RATE_LIMIT_METRICS_INSERT_BUSY_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(10_000),
+
     API_RATE_LIMIT_JWT_WINDOW: z.string().default("1m"),
     API_RATE_LIMIT_JWT_TOKENS: z.coerce.number().int().default(60),
 
@@ -1223,6 +1242,16 @@ const EnvironmentSchema = z
     RUN_ENGINE_TTL_CONSUMERS_DISABLED: BoolEnv.default(false),
     RUN_ENGINE_TTL_WORKER_BATCH_MAX_WAIT_MS: z.coerce.number().int().default(5_000),
 
+    // Fair (virtual-time) ordering across concurrency-key variants of a base queue.
+    // Off by default; when off the run queue behaves exactly as before.
+    RUN_ENGINE_CK_VTIME_SCHEDULING_ENABLED: BoolEnv.default(false),
+    // Fractional allowed: the vtime Lua serves weighted fair-queue tags, so a sub-1 quantum
+    // is a valid finer serve granularity. The weight hook is fixed at 1 today, so 1 stays the
+    // default, but the schema no longer blocks the capability the engine already has.
+    RUN_ENGINE_CK_VTIME_QUANTUM: z.coerce.number().finite().positive().default(1),
+    RUN_ENGINE_CK_VTIME_WINDOW_MULTIPLIER: z.coerce.number().int().positive().default(3),
+    RUN_ENGINE_CK_VTIME_STATE_TTL_SECONDS: z.coerce.number().int().positive().default(86400),
+
     /** Optional maximum TTL for all runs (e.g. "14d"). If set, runs without an explicit TTL
      *  will use this as their TTL, and runs with a TTL larger than this will be clamped. */
     RUN_ENGINE_DEFAULT_MAX_TTL: z.string().optional(),
@@ -1444,6 +1473,10 @@ const EnvironmentSchema = z
       .default("info"),
     RUN_ENGINE_TOTAL_CONCURRENCY_LIMITS_ENABLED: z.string().default("1"),
     RUN_ENGINE_QUEUE_GATES_ENABLED: z.string().default("0"),
+    RUN_ENGINE_QUEUE_RECONCILE_ENABLED: z.string().default("1"),
+    RUN_ENGINE_QUEUE_RECONCILE_SCAN_COUNT: z.coerce.number().int().positive().default(100),
+    RUN_ENGINE_QUEUE_RECONCILE_LOCK_TTL_SECONDS: z.coerce.number().int().positive().default(10),
+    RUN_ENGINE_QUEUE_RECONCILE_MAX_PASSES_PER_DEQUEUE: z.coerce.number().int().min(0).default(2),
     RUN_ENGINE_TREAT_PRODUCTION_EXECUTION_STALLS_AS_OOM: z.string().default("0"),
     RUN_ENGINE_READ_REPLICA_SNAPSHOTS_SINCE_ENABLED: z.string().default("0"),
     RUN_ENGINE_SNAPSHOTS_SINCE_REPLICA_RETRY_MIN_MS: z.coerce.number().int().default(50),
@@ -2150,6 +2183,12 @@ const EnvironmentSchema = z
     // slot and publication so the two consume independently. The source table is
     // a partitioned parent, so the publication is created with
     // publish_via_partition_root.
+    // Direct PostgreSQL connection with replication privileges. When unset, use the webhook
+    // writer URL, then DATABASE_URL; those fallbacks must also support logical replication.
+    WEBHOOK_DELIVERIES_REPLICATION_DATABASE_URL: z
+      .string()
+      .refine(isValidDatabaseUrl, "WEBHOOK_DELIVERIES_REPLICATION_DATABASE_URL is invalid")
+      .optional(),
     WEBHOOK_DELIVERIES_REPLICATION_CLICKHOUSE_URL: z.string().optional(),
     WEBHOOK_DELIVERIES_REPLICATION_ENABLED: z.string().default("0"),
     WEBHOOK_DELIVERIES_REPLICATION_SLOT_NAME: z

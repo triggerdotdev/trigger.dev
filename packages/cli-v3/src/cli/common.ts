@@ -3,7 +3,6 @@ import type { Command } from "commander";
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
 import { BundleError } from "../build/bundle.js";
-import { CLOUD_API_URL } from "../consts.js";
 import { chalkError } from "../utilities/cliOutput.js";
 import { formatCommandError } from "../utilities/commandError.js";
 import { readAuthConfigCurrentProfileName } from "../utilities/configFiles.js";
@@ -22,7 +21,7 @@ export type CommonCommandOptions = z.infer<typeof CommonCommandOptions>;
 export function commonOptions(command: Command) {
   return command
     .option("--profile <profile>", "The login profile to use", readAuthConfigCurrentProfileName())
-    .option("-a, --api-url <value>", "Override the API URL", CLOUD_API_URL)
+    .option("-a, --api-url <value>", "Override the API URL")
     .option(
       "-l, --log-level <level>",
       "The CLI log level to use (debug, info, log, warn, error, none). This does not effect the log level of your trigger.dev tasks.",

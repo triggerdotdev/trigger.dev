@@ -24,8 +24,9 @@ function initializeWebhookDeliveriesReplicationInstance() {
 
   const service = new WebhookDeliveriesReplicationService({
     clickhouseFactory,
-    // Follows the webhook writer DB (where WebhookDelivery physically lives once split).
-    pgConnectionUrl: env.WEBHOOK_DATABASE_URL ?? DATABASE_URL,
+    // Replication needs a direct connection even when webhook queries use a pooler.
+    pgConnectionUrl:
+      env.WEBHOOK_DELIVERIES_REPLICATION_DATABASE_URL ?? env.WEBHOOK_DATABASE_URL ?? DATABASE_URL,
     serviceName: "webhook-deliveries-replication",
     slotName: env.WEBHOOK_DELIVERIES_REPLICATION_SLOT_NAME,
     publicationName: env.WEBHOOK_DELIVERIES_REPLICATION_PUBLICATION_NAME,

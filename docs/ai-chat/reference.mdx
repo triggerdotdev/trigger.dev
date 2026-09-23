@@ -836,9 +836,27 @@ See [Stop generation](/ai-chat/frontend#stop-generation) for full details.
 
 Send a custom action to the agent, outside `useChat`. Actions wake the agent from suspension and fire `onAction`. An action that returns `chat.turn()` is followed by a turn; its answer arrives on the returned stream, which the caller must read. From a `useChat` app, send actions as requests instead (`sendMessage(undefined, { body: { action } })` or the `useChatActions` hook) so `useChat` renders the answer.
 
-```ts
-transport.sendAction(chatId: string, action: unknown): Promise<ReadableStream<UIMessageChunk>>
+```typescript
+transport.sendAction(
+  chatId: string,
+  action: unknown,
+  options?: ChatActionOptions
+): Promise<ReadableStream<UIMessageChunk>>
 ```
+
+`ChatActionOptions` and `ChatActionSettlement` are exported from `@trigger.dev/sdk/chat`.
+
+| Option | Type | Description |
+| --- | --- | --- |
+| `abortSignal` | `AbortSignal` | Cancel the action's response subscription and send a stop signal for an outstanding turn. |
+| `metadata` | `Record<string, unknown>` | Per-action metadata merged over the transport's `clientData`. |
+| `onSettled` | `(settlement: ChatActionSettlement) => void` | Called at most once when this subscription accepts a turn-complete record confirming the action's input was processed. |
+
+`onSettled` receives `{ inputSeq, sessionInEventId, lastEventId? }`: the action's input append sequence, the committed input cursor, and the output cursor of the completion record. It runs before the returned stream closes, or continues in watch mode. Settlement confirms input processing, not application-level success; read the response chunks for the action's result. Synchronous callback exceptions do not interrupt the stream.
+
+<Note>
+The callback does not run after cancellation, stream closure without a matching completion, missing or invalid cursors, or an error because a previous stop caused the action's output to be discarded. In that last case, the action's own completion can arrive while its response stream still throws an output-lost error. A missing callback does not prove the action was unprocessed: reconcile persisted state or make the action idempotent before retrying.
+</Note>
 
 For managed `chat.agent()` tasks, the action payload is validated against the agent's `actionSchema` on the backend. Raw `chat.customAgent()` tasks receive it as `unknown` and must validate it themselves.
 

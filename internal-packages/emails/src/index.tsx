@@ -176,7 +176,7 @@ export class EmailClient {
       }
       case "node-runtime-deprecation": {
         return {
-          subject: `[${data.organization}] ${data.project} deployed using deprecated Node.js 21`,
+          subject: `[${data.organization}] ${data.project} deployed using deprecated Node 21`,
           component: <NodeRuntimeDeprecationEmail {...data} />,
         };
       }

@@ -91,6 +91,7 @@ export const handle: Handle = {
 };
 import { pageMeta } from "~/utils/pageTitle";
 import { TextLink } from "~/components/primitives/TextLink";
+import { useLatchedDeploymentOnboarding } from "~/hooks/useLatchedDeploymentOnboarding";
 
 export const meta = pageMeta("Deployments");
 
@@ -201,8 +202,8 @@ export default function Page() {
     canDeployNow,
     deployNowEnabled,
     isPlatformConfigured,
-    showGitHubOnboarding,
-    onboardingDetails,
+    showGitHubOnboarding: loaderShowsGitHubOnboarding,
+    onboardingDetails: loaderOnboardingDetails,
     atomicVercelUrl,
   } = useTypedLoaderData<typeof loader>();
   const hasDeployments = totalPages > 0;
@@ -212,6 +213,20 @@ export default function Page() {
   const navigate = useNavigate();
 
   useAutoRevalidate({ interval: autoReloadPollIntervalMs, onFocus: true });
+
+  const { onboarding } = useLatchedDeploymentOnboarding(
+    {
+      showGitHubOnboarding: loaderShowsGitHubOnboarding,
+      onboardingDetails: loaderOnboardingDetails,
+    },
+    {
+      deploymentPath: (shortCode) =>
+        v3DeploymentPath(organization, project, environment, { shortCode }, 0),
+      pollIntervalMs: autoReloadPollIntervalMs,
+    }
+  );
+  const showGitHubOnboarding = !!onboarding?.showGitHubOnboarding;
+  const onboardingDetails = onboarding?.onboardingDetails;
 
   const selectedDeploymentShortCode = selectedDeployment?.shortCode;
 
@@ -452,6 +467,7 @@ export default function Page() {
               </MainCenteredContainer>
             ) : (
               <MainCenteredContainer
+                variant={showGitHubOnboarding ? "centered" : "default"}
                 className={cn("max-w-prose", showGitHubOnboarding && "w-[calc(100%_-_3rem)]")}
               >
                 <DeploymentsNone

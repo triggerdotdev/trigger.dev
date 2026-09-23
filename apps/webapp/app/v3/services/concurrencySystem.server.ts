@@ -76,6 +76,7 @@ export class ConcurrencySystem {
             overrideQueueConcurrencyLimit(this.db, environment, queue, override, overriddenBy)
           )
           .andThen((queue) => syncQueueConcurrencyToEngine(environment, queue))
+          .andThen((queue) => healAfterSync(this.db, environment, queue))
           .andThen((queue) => getQueueStats(environment, queue));
       },
       resetConcurrencyLimit: (
@@ -87,6 +88,7 @@ export class ConcurrencySystem {
           .andThen((queue) => guardQueueVersion(queue, opts))
           .andThen((queue) => resetQueueConcurrencyLimit(this.db, queue))
           .andThen((queue) => syncQueueConcurrencyToEngine(environment, queue))
+          .andThen((queue) => healAfterSync(this.db, environment, queue))
           .andThen((queue) => getQueueStats(environment, queue));
       },
       overrideTotalConcurrencyLimit: (
@@ -106,6 +108,7 @@ export class ConcurrencySystem {
             )
           )
           .andThen((queue) => syncQueueTotalConcurrencyToEngine(environment, queue))
+          .andThen((queue) => healAfterSync(this.db, environment, queue))
           .andThen((queue) => getQueueStats(environment, queue));
       },
       resetTotalConcurrencyLimit: (environment: AuthenticatedEnvironment, queue: QueueInput) => {
@@ -121,6 +124,7 @@ export class ConcurrencySystem {
             )
           )
           .andThen((queue) => syncQueueTotalConcurrencyToEngine(environment, queue))
+          .andThen((queue) => healAfterSync(this.db, environment, queue))
           .andThen((queue) => getQueueStats(environment, queue));
       },
       /**
@@ -128,7 +132,8 @@ export class ConcurrencySystem {
        * against its CURRENT maximumConcurrencyLimit and syncs changed queues to the run engine.
        * Call AFTER the environment-limit DB update has committed (engine syncs must not run
        * inside an open transaction). Idempotent: unchanged queues are skipped. One failing queue
-       * is logged and skipped so the rest still converge.
+       * is logged and skipped so the rest still converge, and is counted in `failed` so callers
+       * can retry or refuse to report full convergence.
        */
       recalculatePercentLimits: async (environment: AuthenticatedEnvironment) => {
         const queues = await this.db.taskQueue.findMany({
@@ -139,6 +144,7 @@ export class ConcurrencySystem {
         });
 
         let updated = 0;
+        let failed = 0;
         for (const queue of queues) {
           try {
             const percent = queue.concurrencyLimitOverridePercent;
@@ -171,10 +177,11 @@ export class ConcurrencySystem {
               environmentId: environment.id,
               error,
             });
+            failed++;
           }
         }
 
-        return { total: queues.length, updated };
+        return { total: queues.length, updated, failed };
       },
     };
   }
@@ -211,6 +218,14 @@ function guardQueueVersion(queue: TaskQueue, opts: QueueMutationOpts | undefined
   return okAsync(queue);
 }
 
+/**
+ * Friendly ids resolve LIMIT rows as well as QUEUE rows: the dashboard's
+ * concurrency page reuses the queue override/reset actions for its limit rows,
+ * and every write here is pause-aware for both roles. The public v1-only queue
+ * endpoints stay queue-only through `guardQueueVersion` (LIMIT rows are all
+ * V2); name resolution below stays QUEUE-only because names are the public
+ * queue address.
+ */
 function findQueueByFriendlyId(
   db: PrismaClientOrTransaction,
   environment: AuthenticatedEnvironment,
@@ -221,7 +236,7 @@ function findQueueByFriendlyId(
       where: {
         runtimeEnvironmentId: environment.id,
         friendlyId,
-        role: "QUEUE",
+        role: { in: ["QUEUE", "LIMIT"] },
       },
     }),
     (error) => ({
@@ -564,6 +579,88 @@ function syncQueueTotalConcurrencyToEngine(
     type: "sync_queue_concurrency_to_engine_failed" as const,
     cause: error,
   })).andThen(() => okAsync(queue));
+}
+
+type SyncedQueueValues = { perKey: number | null; total: number | null; paused: boolean };
+
+/**
+ * Success-path freshness re-check for the queue mutations, mirroring the limits
+ * system's compensateEngineFromFreshRow: a concurrent writer (a pause or resume,
+ * another override or reset, a deploy) can commit between this mutation's persist
+ * and the landing of its engine write, leaving the engine holding this mutation's
+ * value while the row says otherwise (a paused row with a nonzero per-key key is
+ * the dangerous case). Re-reading and re-syncing pause-aware until the persisted
+ * values hold still converges, because every actor persists before its own sync.
+ * An unchanged row costs one read and no engine writes. Heal failures are logged,
+ * never surfaced: the primary mutation succeeded and the next sync or deploy
+ * retries the residual.
+ */
+function healAfterSync(
+  db: PrismaClientOrTransaction,
+  environment: AuthenticatedEnvironment,
+  queue: TaskQueue
+) {
+  return healQueueEngineFromRow(db, environment, queue.id, {
+    alreadySynced: {
+      perKey: queue.concurrencyLimit,
+      total: queue.totalConcurrencyLimit,
+      paused: queue.paused,
+    },
+  })
+    .orElse(() => okAsync(undefined))
+    .map(() => queue);
+}
+
+function healQueueEngineFromRow(
+  db: PrismaClientOrTransaction,
+  environment: AuthenticatedEnvironment,
+  queueId: string,
+  options?: { alreadySynced?: SyncedQueueValues }
+) {
+  return fromPromise(
+    (async () => {
+      let lastSynced: SyncedQueueValues | null = options?.alreadySynced ?? null;
+      for (let i = 0; i < 3; i++) {
+        const fresh = await db.taskQueue.findFirst({ where: { id: queueId } });
+        if (
+          !fresh ||
+          (lastSynced !== null &&
+            fresh.concurrencyLimit === lastSynced.perKey &&
+            fresh.totalConcurrencyLimit === lastSynced.total &&
+            fresh.paused === lastSynced.paused)
+        ) {
+          return;
+        }
+        const perKeySync = fresh.paused
+          ? updateQueueConcurrencyLimits(environment, fresh.name, 0)
+          : typeof fresh.concurrencyLimit === "number"
+            ? updateQueueConcurrencyLimits(environment, fresh.name, fresh.concurrencyLimit)
+            : removeQueueConcurrencyLimits(environment, fresh.name);
+        const totalSync =
+          typeof fresh.totalConcurrencyLimit === "number"
+            ? updateQueueTotalConcurrencyLimits(
+                environment,
+                fresh.name,
+                fresh.totalConcurrencyLimit
+              )
+            : removeQueueTotalConcurrencyLimits(environment, fresh.name);
+        const results = await Promise.allSettled([perKeySync, totalSync]);
+        const failed = results.find((result) => result.status === "rejected");
+        if (failed && failed.status === "rejected") {
+          throw failed.reason;
+        }
+        lastSynced = {
+          perKey: fresh.concurrencyLimit,
+          total: fresh.totalConcurrencyLimit,
+          paused: fresh.paused,
+        };
+      }
+    })().catch((error) => {
+      logger.error("Failed to re-sync queue concurrency from the fresh row", { error, queueId });
+      throw error;
+    }),
+    (error) => ({ type: "other" as const, cause: error })
+  );
 }
 
 function getQueueStats(environment: AuthenticatedEnvironment, queue: TaskQueue) {

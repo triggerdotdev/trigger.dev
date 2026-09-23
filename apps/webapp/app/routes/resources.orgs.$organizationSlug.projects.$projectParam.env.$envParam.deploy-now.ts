@@ -47,7 +47,13 @@ export const action = dashboardAction(
     // Resolve the tracked branch for this environment.
     const connectedRepo = await prisma.connectedGithubRepository.findFirst({
       where: { projectId: project.id },
-      select: { branchTracking: true, previewDeploymentsEnabled: true },
+      select: {
+        branchTracking: true,
+        previewDeploymentsEnabled: true,
+        repository: {
+          select: { fullName: true, installation: { select: { appInstallationId: true } } },
+        },
+      },
     });
     const branchTracking = connectedRepo
       ? BranchTrackingConfigSchema.safeParse(connectedRepo.branchTracking)
@@ -74,6 +80,12 @@ export const action = dashboardAction(
       environmentId: environment.id,
       environmentType: environment.type,
       branch,
+      repository: connectedRepo
+        ? {
+            installationId: Number(connectedRepo.repository.installation.appInstallationId),
+            fullName: connectedRepo.repository.fullName,
+          }
+        : undefined,
     });
 
     if (!result.ok) {
@@ -87,6 +99,16 @@ export const action = dashboardAction(
             vercelUrl: result.vercelUrl,
           },
           { status: 409 }
+        );
+      }
+      if (result.reason === "branchNotFound") {
+        return json(
+          {
+            ok: false,
+            code: "BRANCH_NOT_FOUND",
+            error: `The branch "${branch}" doesn't exist in ${connectedRepo?.repository.fullName ?? "the connected repository"}. Push it to GitHub, then deploy.`,
+          },
+          { status: 422 }
         );
       }
       if (result.reason === "error") {

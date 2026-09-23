@@ -14,6 +14,7 @@ import { getProjectClient } from "../utilities/session.js";
 import { login } from "./login.js";
 import { createGitMeta } from "../utilities/gitMeta.js";
 import { getBranch } from "@trigger.dev/core/v3";
+import { authenticateForDeploy } from "../deploy/auth.js";
 
 const PromoteCommandOptions = CommonCommandOptions.extend({
   projectRef: z.string().optional(),
@@ -70,10 +71,12 @@ async function _promoteCommand(version: string, options: PromoteCommandOptions) 
 
   intro(`Promoting version ${version}`);
 
-  const authorization = await login({
-    embedded: true,
-    defaultApiUrl: options.apiUrl,
+  const authorization = await authenticateForDeploy({
+    accessToken: process.env.TRIGGER_ACCESS_TOKEN,
+    apiUrl: process.env.TRIGGER_API_URL ?? options.apiUrl,
     profile: options.profile,
+    silent: false,
+    login,
   });
 
   if (!authorization.ok) {

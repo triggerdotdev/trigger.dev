@@ -168,10 +168,8 @@ export const loader = dashboardLoader(
     const status = statusResult.isOk() ? statusResult.value : EMPTY_SSO_STATUS;
     const directorySync = dsyncResult.isOk() ? dsyncResult.value : EMPTY_DIRECTORY_SYNC_STATUS;
 
-    // JIT can't grant Owner (reserved), and non-assignable/plan-gated roles
-    // are filtered out.
     const assignable = new Set(assignableIds);
-    const jitRoles = allRoles.filter((r) => r.name !== "Owner" && assignable.has(r.id));
+    const jitRoles = allRoles.filter((r) => assignable.has(r.id));
 
     return typedjson({
       status,
@@ -810,7 +808,7 @@ function ActiveConnectionState({
         />
         <SettingsRow
           title="Default role for new users"
-          description="Assigned to users created by just-in-time provisioning. Owner can't be granted automatically."
+          description="Assigned to users created by just-in-time provisioning."
           action={
             <Select<string, Role>
               value={draftJitRoleId}
@@ -1085,7 +1083,11 @@ function DirectorySyncSection({
                         setDraftGroupRoles((prev) => ({ ...prev, [group.groupId]: v }))
                       }
                       items={[
-                        { id: NULL_ROLE_VALUE, name: "No access", description: "" },
+                        {
+                          id: NULL_ROLE_VALUE,
+                          name: "Inherit",
+                          description: "Uses the Default role for unmapped users",
+                        },
                         ...jitRoles,
                       ]}
                       variant="secondary/small"
@@ -1094,7 +1096,7 @@ function DirectorySyncSection({
                       placement="bottom-end"
                       text={(v) =>
                         v === NULL_ROLE_VALUE
-                          ? "No access"
+                          ? "Inherit"
                           : (jitRoles.find((r) => r.id === v)?.name ?? "Select a role")
                       }
                     >

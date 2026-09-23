@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v4";
 
 /**
  * A run's versioned storage route (control metadata, never a TRES column), stamped on the queue message

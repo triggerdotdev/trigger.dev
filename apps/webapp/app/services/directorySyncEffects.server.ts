@@ -88,9 +88,7 @@ async function applyEffect(effect: DirectorySyncEffect): Promise<string | null> 
         source: "directory_sync",
       });
 
-      // Directory owns the role: overwrite even an existing member
-      // (ensureOrgMember only sets it on create).
-      if (effect.roleId) {
+      if (effect.roleId && effect.roleAuthoritative) {
         const result = await rbac.setUserRole({
           userId,
           organizationId: effect.organizationId,

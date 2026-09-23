@@ -7,6 +7,14 @@ We support receiving alerts for the following events:
 - Run fails
 - Deployment fails
 - Deployment succeeds
+- A new error group appears, regresses, or is unignored
+
+The first three are created from the **Alerts** page. The fourth — an **Error group** alert — is created from the **Errors** page instead, but appears in the same Alerts table once created. It behaves quite differently from a run failure alert; see [Error group alerts](#error-group-alerts) below.
+
+<Note>
+  If you want to be told about **every** run that fails, choose a **run fails** alert. An Error group
+  alert will not do this — it deliberately stays quiet once it has alerted on a given error.
+</Note>
 
 ## How to setup alerts
 
@@ -35,6 +43,37 @@ Click on the triple dot menu on the right side of the table row and select "Disa
 
 </Steps>
 
+
+## Error group alerts
+
+Error group alerts are **issue-based**, not run-based. They are created from the **Errors** page in the dashboard (the "Configure alerts…" button), not from the New alert modal on the Alerts page. Once created they show up in the Alerts table alongside your other alerts, labelled "Error group".
+
+An error group is one distinct error — the same error from many runs is a single group, with a status of **Unresolved**, **Resolved** or **Ignored** that you set from the Errors page.
+
+### When an error group alert fires
+
+The alert only fires when a group's status *changes* in one of these three ways:
+
+| Trigger | Meaning |
+| :------ | :------ |
+| New issue | The error has been seen for the first time. |
+| Regression | The group was marked **Resolved**, and the error has occurred again since. |
+| Unignored | The group was **Ignored**, and the ignore condition you set has been breached. |
+
+### Why it goes quiet
+
+This is the part that surprises people, so it is worth stating plainly:
+
+**An Unresolved error group does not alert.** After an error group alert fires, the group is set to Unresolved, and it stays silent no matter how many more times that error occurs. It will only alert again once you mark it **Resolved** (and it then recurs) or **Ignored** (and the ignore condition is breached).
+
+This is intentional — one persistently broken task should not flood your Slack channel with a message per failed run. But it means an Error group alert is not a substitute for a run failure alert. If a task has been failing in production for days and you have had no notification, check whether the only alert you have configured is an Error group alert whose group is sitting at Unresolved.
+
+### Which alert type should I use?
+
+- **"Tell me about every run that fails"** → a **run fails** alert, from the Alerts page. It fires for every run that fails once its retries are exhausted.
+- **"Tell me when something new breaks"** → an **Error group** alert, from the Errors page.
+
+The two are complementary, and many teams want both.
 
 ## Alert webhooks
 
@@ -67,6 +106,10 @@ export async function action({ request }: ActionFunctionArgs) {
       }
       case "alert.deployment.failed": {
         console.log("[Webhook Internal Test] Deployment failed alert webhook received", { event });
+        break;
+      }
+      case "alert.error": {
+        console.log("[Webhook Internal Test] Error group alert webhook received", { event });
         break;
       }
       default: {
@@ -112,7 +155,7 @@ When you create a webhook alert, you'll receive different payloads depending on 
 </ParamField>
 
 <ParamField path="type" type="string">
-  The type of alert webhook. One of: `alert.run.failed`, `alert.deployment.success`, or `alert.deployment.failed`
+  The type of alert webhook. One of: `alert.run.failed`, `alert.deployment.success`, `alert.deployment.failed`, or `alert.error`
 </ParamField>
 
 ### Run Failed Alert
@@ -383,3 +426,83 @@ This webhook is sent when a deployment fails. The payload is available on the `o
   Project name
 </ParamField>
 
+
+### Error Group Alert
+
+This webhook is sent for an [error group alert](#error-group-alerts). The payload is available on the `object` property:
+
+<ParamField path="object.classification" type="string">
+  Why the alert fired. One of: `new_issue`, `regression`, `unignored`
+</ParamField>
+
+<ParamField path="object.error.fingerprint" type="string">
+  Identifier for the error group
+</ParamField>
+
+<ParamField path="object.error.type" type="string">
+  Error type
+</ParamField>
+
+<ParamField path="object.error.message" type="string">
+  Error message
+</ParamField>
+
+<ParamField path="object.error.stackTrace" type="string">
+  Sample stack trace, if available
+</ParamField>
+
+<ParamField path="object.error.firstSeen" type="string">
+  When the error was first seen
+</ParamField>
+
+<ParamField path="object.error.lastSeen" type="string">
+  When the error was last seen
+</ParamField>
+
+<ParamField path="object.error.occurrenceCount" type="number">
+  Number of occurrences
+</ParamField>
+
+<ParamField path="object.error.taskIdentifier" type="string">
+  Task the error occurred in
+</ParamField>
+
+<ParamField path="object.environment.id" type="string">
+  Environment ID
+</ParamField>
+
+<ParamField path="object.environment.name" type="string">
+  Environment name
+</ParamField>
+
+<ParamField path="object.organization.id" type="string">
+  Organization ID
+</ParamField>
+
+<ParamField path="object.organization.slug" type="string">
+  Organization slug
+</ParamField>
+
+<ParamField path="object.organization.name" type="string">
+  Organization name
+</ParamField>
+
+<ParamField path="object.project.id" type="string">
+  Project ID
+</ParamField>
+
+<ParamField path="object.project.ref" type="string">
+  Project reference
+</ParamField>
+
+<ParamField path="object.project.slug" type="string">
+  Project slug
+</ParamField>
+
+<ParamField path="object.project.name" type="string">
+  Project name
+</ParamField>
+
+<ParamField path="object.dashboardUrl" type="string">
+  URL to view the error in the dashboard
+</ParamField>

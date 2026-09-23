@@ -172,8 +172,16 @@ describe("findEnvironmentByApiKey — PREVIEW (regression guard)", () => {
       const rootScope = await resolvePrivateApiKeyRateLimitScope(previewParent.apiKey, prisma);
       const additionalScope = await resolvePrivateApiKeyRateLimitScope(additional, prisma);
 
-      expect(rootScope?.environmentId).toBe(previewParent.id);
-      expect(additionalScope?.environmentId).toBe(previewParent.id);
+      expect(rootScope).toMatchObject({
+        environmentId: previewParent.id,
+        organizationId: organization.id,
+        projectId: project.id,
+      });
+      expect(additionalScope).toMatchObject({
+        environmentId: previewParent.id,
+        organizationId: organization.id,
+        projectId: project.id,
+      });
     }
   );
 });
@@ -399,4 +407,29 @@ describe("findEnvironmentByApiKey — additional keys", () => {
 
     await expect(resolvePrivateApiKeyRateLimitScope(additional, prisma)).resolves.toBeNull();
   });
+
+  postgresTest(
+    "rate limit scope resolves a recently revoked root key to its environment",
+    async ({ prisma }) => {
+      const { organization, project } = await createTestOrgProjectWithMember(prisma);
+      const environment = await createEnv(prisma, project.id, organization.id, {
+        type: "PRODUCTION",
+      });
+      const revoked = `tr_prod_${uniqueId("revoked")}`;
+
+      await prisma.revokedApiKey.create({
+        data: {
+          apiKey: revoked,
+          runtimeEnvironmentId: environment.id,
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+        },
+      });
+
+      await expect(resolvePrivateApiKeyRateLimitScope(revoked, prisma)).resolves.toMatchObject({
+        environmentId: environment.id,
+        organizationId: organization.id,
+        projectId: project.id,
+      });
+    }
+  );
 });

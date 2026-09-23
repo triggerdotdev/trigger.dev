@@ -9,7 +9,11 @@ import {
 } from "~/hooks/useOnboardingDeploymentLogs";
 import { deployNowPath } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.deploy-now";
 import { OnboardingDeploymentLogs } from "./OnboardingDeploymentLogs";
-import { GitHubDeploymentOnboarding, type OnboardingBuild } from "./GitHubDeploymentOnboarding";
+import {
+  deployNowRequestError,
+  GitHubDeploymentOnboarding,
+  type OnboardingBuild,
+} from "./GitHubDeploymentOnboarding";
 
 export function GitHubDeploymentOnboardingPanel({
   renderConnection,
@@ -49,7 +53,7 @@ export function GitHubDeploymentOnboardingPanel({
   });
   const [settingsDirty, setSettingsDirty] = useState(false);
   const [settingsSaving, setSettingsSaving] = useState(false);
-  const fetcher = useFetcher<{ ok: boolean; code?: string; vercelUrl?: string }>();
+  const fetcher = useFetcher<{ ok: boolean; code?: string; error?: string; vercelUrl?: string }>();
   const revalidator = useRevalidator();
   const [delayed, setDelayed] = useState(false);
   const submitting = fetcher.state !== "idle";
@@ -80,7 +84,7 @@ export function GitHubDeploymentOnboardingPanel({
       historyHref={build ? historyHref : undefined}
       requestError={
         fetcher.data?.ok === false && !submitting && !build
-          ? "Couldn't start the deployment. Try again."
+          ? deployNowRequestError(fetcher.data)
           : undefined
       }
       deployAction={

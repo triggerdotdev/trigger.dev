@@ -19,9 +19,20 @@ const TOKEN_KEY = "token";
 
 type OwnerReference = { apiVersion: string; kind: string; name: string; uid: string };
 
+/** The isolation lane a Runner asks for, which is the CRD's own enum. */
+export type RunnerRuntime = "container" | "microvm";
+
 export type RunCrdWorkloadManagerOptions = WorkloadManagerOptions & {
   /** Passed in, not read from env, so the translation below is testable alone. */
   namespace: string;
+  /**
+   * Cell-wide, because a cell's node pools decide what it can serve and nothing
+   * on a dequeued message can express a per-run choice. A guest asked for on a
+   * cell with no RuntimeClass fails the Runner rather than falling back, which
+   * is the operator's decision and the right one: a run silently served by the
+   * wrong isolation is worse than one that does not start.
+   */
+  runtime: RunnerRuntime;
 };
 
 /**
@@ -35,10 +46,12 @@ export class RunCrdWorkloadManager implements WorkloadManager {
   private readonly logger = new SimpleStructuredLogger("run-crd-workload-provider");
   private readonly k8s: K8sApi;
   private readonly namespace: string;
+  private readonly runtime: RunnerRuntime;
 
   constructor(opts: RunCrdWorkloadManagerOptions) {
     this.k8s = createK8sApi();
     this.namespace = opts.namespace;
+    this.runtime = opts.runtime;
   }
 
   async create(opts: WorkloadManagerCreateOptions) {
@@ -46,7 +59,12 @@ export class RunCrdWorkloadManager implements WorkloadManager {
 
     const token = await this.ensureRunnerToken(opts, runnerId);
 
-    const body = runnerBodyFor(opts, { name: runnerId, namespace: this.namespace, token });
+    const body = runnerBodyFor(opts, {
+      name: runnerId,
+      namespace: this.namespace,
+      runtime: this.runtime,
+      token,
+    });
 
     this.logger.verbose("[RunCrdWorkloadManager] Creating runner", { runnerId, body });
 
@@ -253,7 +271,12 @@ function uidOf(created: unknown): string | undefined {
  */
 export function runnerBodyFor(
   opts: WorkloadManagerCreateOptions,
-  meta: { name: string; namespace: string; token?: { name: string; key: string } }
+  meta: {
+    name: string;
+    namespace: string;
+    runtime: RunnerRuntime;
+    token?: { name: string; key: string };
+  }
 ) {
   return {
     apiVersion: `${GROUP}/${VERSION}`,
@@ -264,7 +287,7 @@ export function runnerBodyFor(
       namespace: meta.namespace,
     },
     spec: {
-      runtime: "container",
+      runtime: meta.runtime,
       // As built, digest and all: the operator owns stripping and rewriting, so
       // they cannot both apply.
       image: opts.image,
@@ -273,7 +296,9 @@ export function runnerBodyFor(
       deployment: {
         friendlyID: opts.deploymentFriendlyId,
         version: opts.deploymentVersion,
-        ...(meta.token ? { token: meta.token } : {}),
+        // Field by field, not spread: the handle also carries the Secret's uid,
+        // which the spec has no field for and Strict validation rejects by name.
+        ...(meta.token ? { token: { name: meta.token.name, key: meta.token.key } } : {}),
       },
       owner: {
         envID: opts.envId,

@@ -8,6 +8,12 @@ import { LinkButton } from "~/components/primitives/Buttons";
 import { Spinner } from "~/components/primitives/Spinner";
 import { VercelAtomicDeploymentNotice } from "./VercelAtomicDeploymentNotice";
 
+export function deployNowRequestError(data: { code?: string; error?: string }): string {
+  // Retrying can't fix a missing branch, so say what the user has to do instead.
+  if (data.code === "BRANCH_NOT_FOUND" && data.error) return data.error;
+  return "Couldn't start the deployment. Try again.";
+}
+
 const statusTitles: Record<WorkerDeploymentStatus, string> = {
   PENDING: "Your deployment is queued",
   INSTALLING: "Installing dependencies",

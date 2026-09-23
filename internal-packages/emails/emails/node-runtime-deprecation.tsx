@@ -45,13 +45,13 @@ export default function Email(props: NodeRuntimeDeprecationEmailProps) {
   return (
     <Html>
       <Head />
-      <Preview>{`${project} deployed using deprecated Node.js 21`}</Preview>
+      <Preview>{`${project} deployed using deprecated Node 21`}</Preview>
       <Body style={main}>
         <Container style={container}>
           <Text style={h1}>This deployment uses deprecated Node 21</Text>
           <Text style={paragraphLight}>
-            This deployment was built using Node {runtimeVersion}. From 5 October, new deployments
-            on Node 21 will start to fail.
+            This deployment was built using Node {runtimeVersion}. From 5 October, deployments that
+            would otherwise use Node 21 will start using Node 24 instead.
           </Text>
           <Text style={paragraphLight}>
             Organization: <strong>{organization}</strong>
@@ -66,21 +66,11 @@ export default function Email(props: NodeRuntimeDeprecationEmailProps) {
             View deployment
           </Link>
 
-          <Text style={sectionHeading}>Check all affected projects</Text>
+          <Text style={sectionHeading}>Upgrade now</Text>
           <Text style={paragraphLight}>
-            Go to your{" "}
-            <Link href={projectsLink} target="_blank" style={anchor}>
-              Projects settings
-            </Link>{" "}
-            to see which projects need updating.
-          </Text>
-          <Text style={paragraphLight}>You can also use the latest version of the CLI:</Text>
-          <Text style={code}>npx trigger.dev@latest projects list --needs-update</Text>
-
-          <Text style={sectionHeading}>How to upgrade</Text>
-          <Text style={paragraphLight}>
-            Edit <strong>trigger.config.ts</strong> in each project and set the{" "}
-            <strong>runtime</strong> field:
+            If you want to upgrade and test the change before then, edit{" "}
+            <strong>trigger.config.ts</strong>, set the <strong>runtime</strong> field, and deploy
+            again:
           </Text>
           <Text style={code}>{'runtime: "node-24"'}</Text>
           <Text style={{ ...paragraphLight, marginBottom: "50px" }}>

@@ -1090,9 +1090,45 @@ function QueuesWithMetricsView() {
                         />
                       </TableCell>
                       {isLimit ? (
-                        <TableCell isSticky alignment="right">
-                          {""}
-                        </TableCell>
+                        <TableCellMenu
+                          isSticky
+                          visibleButtons={
+                            queue.paused && (
+                              <QueuePauseResumeButton
+                                queue={{ id: queue.id, name: displayName, paused: queue.paused }}
+                                noun="limit"
+                                disabled={!canWriteTasks}
+                              />
+                            )
+                          }
+                          hiddenButtons={
+                            !queue.paused && (
+                              <QueuePauseResumeButton
+                                queue={{ id: queue.id, name: displayName, paused: queue.paused }}
+                                noun="limit"
+                                disabled={!canWriteTasks}
+                              />
+                            )
+                          }
+                          popoverContent={
+                            <>
+                              <QueuePauseResumeButton
+                                queue={{ id: queue.id, name: displayName, paused: queue.paused }}
+                                noun="limit"
+                                variant="minimal/small"
+                                fullWidth
+                                showTooltip={false}
+                                disabled={!canWriteTasks}
+                              />
+                              <QueueOverrideConcurrencyButton
+                                queue={queue}
+                                noun="limit"
+                                environmentConcurrencyLimit={environment.concurrencyLimit}
+                                disabled={!canWriteTasks}
+                              />
+                            </>
+                          }
+                        />
                       ) : (
                         <TableCellMenu
                           isSticky
@@ -2026,6 +2062,10 @@ function ClassicQueuesView() {
                     const queueFilterableName = `${queue.type === "task" ? "task/" : ""}${
                       queue.name
                     }`;
+                    const displayName =
+                      isLimit && queue.name.startsWith("limit/")
+                        ? queue.name.slice("limit/".length)
+                        : queue.name;
                     return (
                       <TableRow key={queue.name}>
                         <TableCell>
@@ -2160,9 +2200,45 @@ function ClassicQueuesView() {
                           )}
                         </TableCell>
                         {isLimit ? (
-                          <TableCell isSticky alignment="right">
-                            {""}
-                          </TableCell>
+                          <TableCellMenu
+                            isSticky
+                            visibleButtons={
+                              queue.paused && (
+                                <QueuePauseResumeButton
+                                  queue={{ id: queue.id, name: displayName, paused: queue.paused }}
+                                  noun="limit"
+                                  disabled={!canWriteTasks}
+                                />
+                              )
+                            }
+                            hiddenButtons={
+                              !queue.paused && (
+                                <QueuePauseResumeButton
+                                  queue={{ id: queue.id, name: displayName, paused: queue.paused }}
+                                  noun="limit"
+                                  disabled={!canWriteTasks}
+                                />
+                              )
+                            }
+                            popoverContent={
+                              <>
+                                <QueuePauseResumeButton
+                                  queue={{ id: queue.id, name: displayName, paused: queue.paused }}
+                                  noun="limit"
+                                  variant="minimal/small"
+                                  fullWidth
+                                  showTooltip={false}
+                                  disabled={!canWriteTasks}
+                                />
+                                <QueueOverrideConcurrencyButton
+                                  queue={queue}
+                                  noun="limit"
+                                  environmentConcurrencyLimit={environment.concurrencyLimit}
+                                  disabled={!canWriteTasks}
+                                />
+                              </>
+                            }
+                          />
                         ) : (
                           <TableCellMenu
                             isSticky

@@ -10,7 +10,7 @@ import { LocaleContextProvider } from "~/components/primitives/LocaleProvider";
 import { expect, it } from "vitest";
 import { ShortcutsProvider } from "~/components/primitives/ShortcutsProvider";
 import { OperatingSystemContextProvider } from "~/components/primitives/OperatingSystemProvider";
-import { GitHubDeploymentOnboarding } from "./GitHubDeploymentOnboarding";
+import { deployNowRequestError, GitHubDeploymentOnboarding } from "./GitHubDeploymentOnboarding";
 import { OnboardingDeploymentLogs } from "./OnboardingDeploymentLogs";
 
 function render(node: React.ReactNode) {
@@ -275,4 +275,12 @@ it("keeps the legacy connected-repository form on its original layout and explic
       expect((html.match(/ disabled=""/g) ?? []).length).toBeGreaterThanOrEqual(2);
     expect(html.includes(">Save<")).toBe(true);
   }
+});
+
+it("tells the user a missing branch has to be pushed instead of asking them to retry", () => {
+  const missing = 'The branch "test" doesn\'t exist in acme/app. Push it to GitHub, then deploy.';
+  expect(deployNowRequestError({ code: "BRANCH_NOT_FOUND", error: missing })).toBe(missing);
+  expect(deployNowRequestError({ error: "Couldn't start the deploy" })).toBe(
+    "Couldn't start the deployment. Try again."
+  );
 });

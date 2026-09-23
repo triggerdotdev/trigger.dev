@@ -227,6 +227,7 @@ export class RunEngine {
       defaultEnvConcurrencyBurstFactor: options.queue?.defaultEnvConcurrencyBurstFactor,
       totalConcurrencyEnabled: options.queue?.totalConcurrencyEnabled,
       gatesEnabled: options.queue?.gatesEnabled,
+      reconcile: options.queue?.reconcile,
       logger: new Logger("RunQueue", options.queue?.logLevel ?? "info"),
       redis: { ...options.queue.redis, keyPrefix: `${options.queue.redis.keyPrefix}runqueue:` },
       retryOptions: options.queue?.retryOptions,
@@ -262,6 +263,7 @@ export class RunEngine {
             workerItemsSuffix: "ttl-worker:{queue:ttl-expiration:}items",
             visibilityTimeoutMs: options.queue?.ttlSystem?.visibilityTimeoutMs ?? 30_000,
           },
+      ckVirtualTimeScheduling: options.queue?.ckVirtualTimeScheduling,
     });
 
     this.worker = new Worker({

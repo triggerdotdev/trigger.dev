@@ -156,6 +156,9 @@ export const ConcurrencyLimitItem = z.object({
   running: z.number(),
   /** Runs that are queued and must clear this limit to execute. */
   queued: z.number(),
+  /** Whether the limit is paused. A paused limit admits no runs until resumed;
+   * its configured bounds are kept. Older servers omit the field. */
+  paused: z.boolean().default(false),
 });
 
 export type ConcurrencyLimitItem = z.infer<typeof ConcurrencyLimitItem>;

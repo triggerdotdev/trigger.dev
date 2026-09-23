@@ -16,7 +16,7 @@ import {
 } from "@trigger.dev/redis-worker";
 import type { ControlPlaneResolver } from "./controlPlaneResolver.js";
 import type { FairQueueSelectionStrategyOptions } from "../run-queue/fairQueueSelectionStrategy.js";
-import type { RunQueueMetricsEmitter } from "../run-queue/index.js";
+import type { RunQueueMetricsEmitter, RunQueueOptions } from "../run-queue/index.js";
 import type { MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import type { LockRetryConfig } from "./locking.js";
 import type { workerCatalog } from "./workerCatalog.js";
@@ -96,6 +96,13 @@ export type RunEngineOptions = {
     totalConcurrencyEnabled?: boolean;
     /** Enforce the gates carried in message payloads. See RunQueueOptions.gatesEnabled. */
     gatesEnabled?: boolean;
+    /** Bounds for the saturated-set reconcile. See RunQueueOptions.reconcile. */
+    reconcile?: {
+      enabled?: boolean;
+      scanCount?: number;
+      lockTtlSeconds?: number;
+      maxPassesPerDequeue?: number;
+    };
     /** Optional queue-metrics emitter; enables gauge + counter emission from the RunQueue. */
     queueMetrics?: RunQueueMetricsEmitter;
     queueSelectionStrategyOptions?: Pick<
@@ -131,6 +138,9 @@ export type RunEngineOptions = {
       /** Max time (ms) to wait for more items before flushing a batch (default: 5000) */
       batchMaxWaitMs?: number;
     };
+    /** Fair (virtual-time) ordering across concurrency-key variants of a base queue.
+     *  Passed through to RunQueue; off by default (undefined = today's behaviour). */
+    ckVirtualTimeScheduling?: RunQueueOptions["ckVirtualTimeScheduling"];
   };
   runLock: {
     redis: RedisOptions;

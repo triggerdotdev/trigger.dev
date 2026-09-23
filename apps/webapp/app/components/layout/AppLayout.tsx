@@ -65,19 +65,26 @@ export function MainCenteredContainer({
 }: {
   children: React.ReactNode;
   className?: string;
-  variant?: "default" | "onboarding";
+  variant?: "default" | "onboarding" | "centered";
 }) {
   return (
     <div
       className={cn(
         "h-full w-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control",
-        variant === "onboarding" && "flex flex-col p-4 lg:p-0"
+        variant === "onboarding" && "flex flex-col p-4 lg:p-0",
+        variant === "centered" && "flex flex-col"
       )}
     >
       <div
         className={cn(
           "mx-auto max-w-xs p-1",
-          variant === "onboarding" ? "m-auto lg:mx-auto lg:mb-0 lg:mt-[22vh]" : "mt-6 md:mt-[22vh]",
+          variant === "onboarding"
+            ? "m-auto lg:mx-auto lg:mb-0 lg:mt-[22vh]"
+            : variant === "centered"
+              ? // Auto margins center the block when it fits and collapse to 0 when it
+                // overflows, so tall content scrolls from the top instead of clipping.
+                "my-auto py-6"
+              : "mt-6 md:mt-[22vh]",
           className
         )}
       >

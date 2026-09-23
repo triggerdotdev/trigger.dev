@@ -1,12 +1,14 @@
 import * as z3 from "zod/v3";
 import * as z4 from "zod/v4";
 import * as zFloor from "zod-v3-floor/v4";
+import * as zFloorCore from "zod-v3-floor/v4/core";
 import * as y from "yup";
 // @ts-ignore
 import { type } from "arktype";
 import { Schema } from "effect";
 import { Type } from "@sinclair/typebox";
 import { schemaToJsonSchema, canConvertSchema } from "../src/index.js";
+import { convertZod4Schema } from "../src/zod4.js";
 
 describe("schemaToJsonSchema", () => {
   describe("Zod schemas", () => {
@@ -108,6 +110,58 @@ describe("schemaToJsonSchema", () => {
     it("rejects undefined union alternatives instead of treating them as null", () => {
       expect(() => schemaToJsonSchema(z.union([z.string(), z.undefined()]))).toThrow(
         "Undefined cannot be represented in JSON Schema"
+      );
+    });
+
+    it("converts dates to date-time strings", () => {
+      const schema = z.object({
+        createdAt: z.date(),
+        updatedAt: z.date().optional(),
+        deletedAt: z.date().nullable(),
+        history: z.array(z.date()),
+      });
+
+      expect(schemaToJsonSchema(schema)?.jsonSchema).toMatchObject({
+        type: "object",
+        properties: {
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" },
+          deletedAt: {
+            anyOf: [{ type: "string", format: "date-time" }, { type: "null" }],
+          },
+          history: {
+            type: "array",
+            items: { type: "string", format: "date-time" },
+          },
+        },
+        required: ["createdAt", "deletedAt", "history"],
+      });
+    });
+  });
+
+  describe("legacy Zod 4 JSON Schema conversion", () => {
+    const convert = (schema: zFloor.ZodType) => convertZod4Schema(schema, undefined, zFloorCore);
+
+    it("converts dates without relaxing other unrepresentable types", () => {
+      expect(convert(zFloor.object({ when: zFloor.date() }))).toMatchObject({
+        type: "object",
+        properties: {
+          when: { type: "string", format: "date-time" },
+        },
+        required: ["when"],
+      });
+    });
+
+    it("continues to reject unrepresentable types", () => {
+      expect(() => convert(zFloor.bigint())).toThrow("BigInt cannot be represented in JSON Schema");
+      expect(() => convert(zFloor.symbol())).toThrow(
+        "Symbols cannot be represented in JSON Schema"
+      );
+      expect(() => convert(zFloor.transform((value) => value))).toThrow(
+        "Transforms cannot be represented in JSON Schema"
+      );
+      expect(() => convert(zFloor.literal(undefined))).toThrow(
+        "Literal `undefined` cannot be represented in JSON Schema"
       );
     });
   });

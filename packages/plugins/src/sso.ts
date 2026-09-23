@@ -99,17 +99,6 @@ export type DirectorySyncStatus = {
   groups: ReadonlyArray<DirectoryGroupMapping>;
 };
 
-// A host-actionable membership mutation derived from a directory-sync event.
-// The plugin owns all `enterprise.*` writes; these effects describe the
-// `public.*` (User / OrgMember / role / token) writes the host must perform —
-// the plugin never touches those tables. The host worker applies them
-// idempotently.
-//
-// - `provision`:   ensure the User exists (create when `userId === null`),
-//                  ensure the OrgMember exists, and set its role.
-// - `deprovision`: remove the membership (guarded against last-Owner), force
-//                  logout, and revoke tokens per host policy.
-// - `set_role`:    overwrite the member's role (directory-authoritative).
 export type DirectorySyncEffect =
   | {
       kind: "provision";
@@ -119,6 +108,7 @@ export type DirectorySyncEffect =
       lastName: string | null;
       organizationId: string;
       roleId: string | null;
+      roleAuthoritative: boolean;
     }
   | { kind: "deprovision"; userId: string; organizationId: string }
   | { kind: "set_role"; userId: string; organizationId: string; roleId: string };
@@ -147,10 +137,7 @@ export type SsoPortalError = "idp_org_unavailable" | "internal";
 // session is NOT an error: it's a successful result of `{ valid: false }`.
 export type SsoValidateError = "internal";
 
-// Inbound webhook handling. `invalid_signature` → reject (4xx, no retry);
-// `feature_disabled` → no plugin installed (host returns 404); `internal`
-// → transient, the host returns 5xx so the provider retries.
-export type SsoWebhookError = "invalid_signature" | "feature_disabled" | "internal";
+export type SsoWebhookError = "invalid_signature" | "feature_disabled" | "internal" | "not_ready";
 
 // A verified, JSON-serializable inbound event. Vendor-neutral envelope —
 // `event` is the provider's event-type string, `data` its opaque payload.

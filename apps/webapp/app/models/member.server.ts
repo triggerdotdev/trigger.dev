@@ -101,7 +101,17 @@ export async function getTeamMembersAndInvites({
     return null;
   }
 
-  return { members: org.members, invites: org.invites };
+  // Prisma can't express "order by name, falling back to email when unset"
+  // case-insensitively in a single nested orderBy, so sort in JS here.
+  const byDisplayName = (a: string, b: string) =>
+    a.localeCompare(b, undefined, { sensitivity: "base" });
+
+  const members = [...org.members].sort((a, b) =>
+    byDisplayName(a.user.name ?? a.user.email, b.user.name ?? b.user.email)
+  );
+  const invites = [...org.invites].sort((a, b) => byDisplayName(a.email, b.email));
+
+  return { members, invites };
 }
 
 export async function inviteMembers({

@@ -443,6 +443,7 @@ Only use explicit \`toStartOfHour\`/\`toStartOfDay\` etc. if the user specifical
 - Filter by run: WHERE run_id = 'run_abc123'
 - Filter by task: WHERE task_identifier = 'my-task'
 - Available metric names: process.cpu.utilization, process.cpu.time, process.memory.usage, system.memory.usage, system.memory.utilization, system.network.io, system.network.dropped, system.network.errors, nodejs.event_loop.utilization, nodejs.event_loop.delay.p95, nodejs.event_loop.delay.max, nodejs.heap.used, nodejs.heap.total
+- API rate limit usage (per environment, no run/task attributes): api.rate_limit.allowed, api.rate_limit.denied (aggregate with sum(); attempts = allowed + denied), api.rate_limit.remaining_min (aggregate with min()), api.rate_limit.limit.per_second and api.rate_limit.limit.burst (aggregate with max(); multiply per_second by the bucket width in seconds for the limit line)
 - Use \`metric_value\` — the metric's observed value
 - Use prettyFormat(expr, 'bytes') to tell the UI to format values as bytes (e.g., "1.50 GiB") — keeps values numeric for charts
 - Use prettyFormat(expr, 'percent') for percentage values
@@ -578,6 +579,7 @@ LIMIT 1000
 ### Common Metrics Patterns
 - Filter by metric: WHERE metric_name = 'process.cpu.utilization'
 - Available metric names: process.cpu.utilization, process.cpu.time, process.memory.usage, system.memory.usage, system.memory.utilization, system.network.io, system.network.dropped, system.network.errors, nodejs.event_loop.utilization, nodejs.event_loop.delay.p50, nodejs.event_loop.delay.p99, nodejs.event_loop.delay.max, nodejs.heap.used, nodejs.heap.total
+- API rate limit usage (per environment, no run/task attributes): api.rate_limit.allowed, api.rate_limit.denied (aggregate with sum(); attempts = allowed + denied), api.rate_limit.remaining_min (aggregate with min()), api.rate_limit.limit.per_second and api.rate_limit.limit.burst (aggregate with max(); multiply per_second by the bucket width in seconds for the limit line)
 - Use \`metric_value\` — the metric's observed value
 - Use prettyFormat(expr, 'bytes') for memory metrics (including nodejs.heap.*), prettyFormat(expr, 'percent') for CPU utilization
 - prettyFormat does NOT change the SQL — it only adds a display hint for the UI

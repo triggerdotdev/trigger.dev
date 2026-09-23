@@ -1,280 +1,145 @@
 ---
 title: "Branching conversations"
 sidebarTitle: "Branching conversations"
-description: "Build ChatGPT-style conversation trees with edit, regenerate, undo, and branch switching using hydrateMessages, chat.history, and actions."
+description: "Persist an active conversation branch and use transcript storage and actions to switch the agent's context."
 ---
 
-Most chat UIs treat conversations as linear sequences. But real conversations branch — users edit previous messages, regenerate responses, undo exchanges, and explore alternative paths. This pattern shows how to build a branching conversation system using `hydrateMessages`, `chat.history`, and custom actions.
+Keep an explicit active branch for each chat. Use your storage adapter's `loadContext` to give the model that branch, and use actions to fork or switch it.
 
-## Data model
+A fork copies the conversation up to a selected message. Later messages belong to that branch only. For example, one branch can keep Oslo as a destination while another changes it to Tokyo.
 
-The standard approach (used by ChatGPT, Open WebUI, LibreChat, and others) stores messages as a tree with parent pointers:
+## Store the active branch
 
-```ts
-// Each message is a node in the tree
-type ChatNode = {
-  id: string;
-  chatId: string;
-  parentId: string | null; // null for root
-  role: "user" | "assistant";
-  message: UIMessage; // the full AI SDK message
-  createdAt: Date;
+Your database needs a chat record with an `activeBranchId`, plus messages for each branch. You can store each branch as a snapshot or use parent pointers to share message prefixes. Persist the selected branch explicitly; choosing the newest leaf loses the selection when someone switches to an older branch.
+
+Keep the transcript's `final` flags, opaque runtime state, and stream cursors. A partial assistant response must stay partial after a reload. See [transcript storage](/ai-chat/transcript-storage) for the adapter contract and pagination helpers.
+
+The examples below use application helpers from `@/lib/branches`. Implement them against your database with these guarantees:
+
+| Helper | Behavior |
+| --- | --- |
+| `readActiveMessages(chatId)` | Return the selected branch in message order. |
+| `forkBranch(chatId, messageId)` | Copy the active prefix through the selected message, create a branch, and select it in one transaction. Reject messages outside this chat. |
+| `selectBranch(chatId, branchId)` | Select an existing branch belonging to this chat. |
+| `branchStorage.load` | Return the active transcript, runtime state, final flags, and resume cursors. |
+| `branchStorage.save` | Save the supplied transcript to the active branch and retain the supplied runtime state and cursors. |
+
+Make repeated saves idempotent by message ID. Serialize branch changes with transcript writes so a turn can't save its response into a different branch.
+
+## Load the selected context
+
+A storage adapter with `loadContext` owns the model's context on every turn and action. Include incoming user messages in the selected branch. Handle regeneration explicitly by removing trailing assistant messages before returning the context.
+
+```ts lib/branch-storage.ts
+import type { UIMessage } from "ai";
+import type {
+  LoadContextEvent,
+  TranscriptScope,
+  TranscriptStorage,
+} from "@trigger.dev/sdk/ai";
+import { branchStorage, readActiveMessages } from "@/lib/branches";
+
+export const storage: TranscriptStorage = {
+  ...branchStorage,
+  async loadContext<T extends UIMessage>(
+    { chatId }: TranscriptScope,
+    event: LoadContextEvent<unknown, T>
+  ): Promise<T[]> {
+    const messages = [...(await readActiveMessages(chatId))] as T[];
+
+    if (event.trigger === "regenerate-message") {
+      while (messages.length && messages.at(-1)!.role !== "user") {
+        messages.pop();
+      }
+    }
+
+    for (const incoming of event.incomingMessages) {
+      if (incoming.role === "user" && !messages.some((m) => m.id === incoming.id)) {
+        messages.push(incoming);
+      }
+    }
+
+    return messages;
+  },
 };
 ```
 
-A conversation is a tree of nodes. The **active branch** is resolved by walking from a leaf node up through `parentId` pointers to the root, then reversing:
+This pattern supports plain user messages. For tools that wait for browser results or approval, retain the canonical assistant message in your returned context. The SDK merges incoming tool-result state into that message by ID.
 
-```
-root
-├── user: "Hello"
-│   └── assistant: "Hi there!"
-│       ├── user: "What's the weather?" ← branch A
-│       │   └── assistant: "It's sunny!"
-│       └── user: "Tell me a joke" ← branch B (active)
-│           └── assistant: "Why did the..."
-```
+`loadContext` also receives `previousMessages`, including any tail recovered from the session stream. If your database missed a save, reconcile that tail with the active branch before returning context. Recovery needs to preserve branch ownership; appending every recovered message to whichever branch is selected can mix conversations.
 
-Switching branches means changing which leaf is "active" — the same tree, different path.
+## Fork and switch through actions
 
-## Backend setup
+Perform branch changes in `onAction` and update `chat.history` to match the selected branch. Returning without `chat.turn()` completes the action without asking the model for a response. The runtime still calls `storage.save` with reason `action`.
 
-### Store: tree operations
-
-Define helpers that read and write the node tree. Adapt to your database:
-
-```ts
-// Resolve the active path: walk from leaf to root, reverse
-async function getActiveBranch(chatId: string): Promise<UIMessage[]> {
-  const nodes = await db.chatNode.findMany({ where: { chatId } });
-  const byId = new Map(nodes.map((n) => [n.id, n]));
-
-  // Find active leaf (most recently created leaf node)
-  const childIds = new Set(nodes.map((n) => n.parentId).filter(Boolean));
-  const leaves = nodes.filter((n) => !childIds.has(n.id));
-  const activeLeaf = leaves.sort((a, b) => b.createdAt - a.createdAt)[0];
-  if (!activeLeaf) return [];
-
-  // Walk to root
-  const path: UIMessage[] = [];
-  let current: ChatNode | undefined = activeLeaf;
-  while (current) {
-    path.unshift(current.message);
-    current = current.parentId ? byId.get(current.parentId) : undefined;
-  }
-  return path;
-}
-
-// Append a message as a child of the current leaf
-async function appendMessage(chatId: string, message: UIMessage): Promise<void> {
-  const branch = await getActiveBranch(chatId);
-  const parentId = branch.length > 0 ? branch[branch.length - 1]!.id : null;
-
-  await db.chatNode.create({
-    data: { id: message.id, chatId, parentId, role: message.role, message, createdAt: new Date() },
-  });
-}
-```
-
-### Agent: hydration + actions
-
-```ts
+```ts trigger/chat.ts
 import { chat } from "@trigger.dev/sdk/ai";
-import { streamText, stepCountIs } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
+import { storage } from "@/lib/branch-storage";
+import { forkBranch, selectBranch, readActiveMessages } from "@/lib/branches";
 
 export const myChat = chat.agent({
   id: "branching-chat",
-
-  // Load the active branch from the DB on every turn.
-  // The frontend's message array is ignored — the tree is the source of truth.
-  hydrateMessages: async ({ chatId, trigger, incomingMessages }) => {
-    if (trigger === "submit-message" && incomingMessages.length > 0) {
-      await appendMessage(chatId, incomingMessages[incomingMessages.length - 1]!);
-    }
-    return getActiveBranch(chatId);
-  },
-
+  storage,
   actionSchema: z.discriminatedUnion("type", [
-    // Edit a previous user message — creates a sibling node in the tree
-    z.object({ type: z.literal("edit"), messageId: z.string(), text: z.string() }),
-    // Switch to a different branch by selecting a leaf node
-    z.object({ type: z.literal("switch-branch"), leafId: z.string() }),
-    // Undo the last user + assistant exchange
-    z.object({ type: z.literal("undo") }),
+    z.object({ type: z.literal("fork"), messageId: z.string() }),
+    z.object({ type: z.literal("switch"), branchId: z.string() }),
   ]),
-
-  onAction: async ({ action, chatId }) => {
-    switch (action.type) {
-      case "edit": {
-        // Find the original message's parent, create a sibling with new content
-        const original = await db.chatNode.findUnique({ where: { id: action.messageId } });
-        if (!original) break;
-
-        const newId = generateId();
-        await db.chatNode.create({
-          data: {
-            id: newId,
-            chatId,
-            parentId: original.parentId, // same parent = sibling
-            role: "user",
-            message: { id: newId, role: "user", parts: [{ type: "text", text: action.text }] },
-            createdAt: new Date(),
-          },
-        });
-        // Active branch now resolves through the new sibling (most recent leaf)
-        break;
-      }
-
-      case "switch-branch": {
-        // Mark this leaf as the most recently accessed so getActiveBranch picks it
-        await db.chatNode.update({
-          where: { id: action.leafId },
-          data: { createdAt: new Date() },
-        });
-        break;
-      }
-
-      case "undo": {
-        // Remove the last two nodes (user + assistant) from the active branch
-        const branch = await getActiveBranch(chatId);
-        if (branch.length >= 2) {
-          const lastTwo = branch.slice(-2);
-          await db.chatNode.deleteMany({
-            where: { id: { in: lastTwo.map((m) => m.id) } },
-          });
-        }
-        break;
-      }
+  onAction: async ({ chatId, action }) => {
+    if (action.type === "fork") {
+      await forkBranch(chatId, action.messageId);
+    } else {
+      await selectBranch(chatId, action.branchId);
     }
 
-    // Reload the (now modified) active branch into the accumulator
-    const updated = await getActiveBranch(chatId);
-    chat.history.set(updated);
+    chat.history.set(await readActiveMessages(chatId));
   },
-
-  onTurnComplete: async ({ chatId, responseMessage }) => {
-    // Persist the assistant's response as a new node
-    if (responseMessage) {
-      await appendMessage(chatId, responseMessage);
-    }
-  },
-
-  run: async ({ messages, signal }) => {
+  run: async ({ messages, signal, streamText }) => {
     return streamText({
       model: anthropic("claude-sonnet-4-5"),
       messages,
       abortSignal: signal,
-      stopWhen: stepCountIs(15),
     });
   },
 });
 ```
 
-## Frontend
+Wait for a response to finish before forking or switching. Start with forks at completed assistant messages. Forking inside an unresolved tool exchange needs a policy for pending tool calls and already-performed side effects.
 
-### Sending actions
+## Update the frontend after the action
 
-Wire up edit, undo, and branch switching to the transport:
+Use `useChatActions` with `useChat`'s `sendMessage`. It consumes the action's response stream and keeps request state in the chat hook. After the action completes, reload the selected transcript so the visible messages match the next model call.
 
-```tsx
-function MessageActions({ message, chatId }: { message: UIMessage; chatId: string }) {
-  const transport = useTransport();
-  const [editing, setEditing] = useState(false);
-  const [editText, setEditText] = useState("");
+```tsx app/chat/BranchPicker.tsx
+import { useChat } from "@ai-sdk/react";
+import { useChatActions } from "@trigger.dev/sdk/chat/react";
+import { loadTranscript } from "@/app/actions";
 
-  if (message.role !== "user") return null;
+// Inside your chat component, with its existing chatId and transport:
+const { sendMessage, setMessages, status } = useChat({ id: chatId, transport });
+const { sendAction } = useChatActions({ sendMessage });
+const busy = status === "submitted" || status === "streaming";
 
-  return (
-    <div>
-      {editing ? (
-        <form onSubmit={() => {
-          transport.sendAction(chatId, { type: "edit", messageId: message.id, text: editText });
-          setEditing(false);
-        }}>
-          <input value={editText} onChange={(e) => setEditText(e.target.value)} />
-          <button type="submit">Save</button>
-        </form>
-      ) : (
-        <button onClick={() => { setEditText(getMessageText(message)); setEditing(true); }}>
-          Edit
-        </button>
-      )}
-    </div>
-  );
+async function switchBranch(branchId: string) {
+  await sendAction({ type: "switch", branchId });
+  const transcript = await loadTranscript({ chatId });
+  setMessages(transcript.messages);
 }
+
+<button disabled={busy} onClick={() => switchBranch(branch.id)}>
+  {branch.label}
+</button>
 ```
 
-### Branch navigation
+Authenticate `loadTranscript` and check ownership before reading the chat. Validate branch IDs on the server even when the frontend only offers branches from that chat. If you use `transport.sendAction` directly, consume its returned stream before sending another message.
 
-To show the `< 2/3 >` sibling switcher, query the tree for siblings at each fork point. This is a frontend concern — the backend exposes the data, the UI navigates it.
+## Check branch isolation
 
-```tsx
-function BranchSwitcher({ message, chatId, siblings }: {
-  message: UIMessage;
-  chatId: string;
-  siblings: { id: string; createdAt: string }[];
-}) {
-  const transport = useTransport();
-  if (siblings.length <= 1) return null;
+1. Tell the agent the destination is Oslo and wait for the response.
+2. Fork at that response, then change the destination to Tokyo.
+3. Switch to the original branch and ask for the destination. It should answer Oslo.
+4. Switch to the fork and ask again. It should answer Tokyo.
+5. Reload the page and repeat the checks. The selected branch and its messages should survive the reload.
 
-  const currentIndex = siblings.findIndex((s) => s.id === message.id);
-
-  return (
-    <div>
-      <button
-        disabled={currentIndex === 0}
-        onClick={() => {
-          // Find the leaf of the previous sibling's subtree
-          transport.sendAction(chatId, {
-            type: "switch-branch",
-            leafId: siblings[currentIndex - 1]!.id,
-          });
-        }}
-      >
-        &lt;
-      </button>
-      <span>{currentIndex + 1}/{siblings.length}</span>
-      <button
-        disabled={currentIndex === siblings.length - 1}
-        onClick={() => {
-          transport.sendAction(chatId, {
-            type: "switch-branch",
-            leafId: siblings[currentIndex + 1]!.id,
-          });
-        }}
-      >
-        &gt;
-      </button>
-    </div>
-  );
-}
-```
-
-<Note>
-  The sibling data (which messages share the same parent) needs to come from your database — query it when loading the chat or include it as client data. The agent only returns the active branch via `hydrateMessages`.
-</Note>
-
-## How it works
-
-| Operation | What happens |
-|-----------|-------------|
-| **Send message** | `hydrateMessages` appends the new message as a child of the current leaf, returns the active path |
-| **Edit message** | `onAction` creates a sibling node with the same parent. The new node becomes the latest leaf, so `hydrateMessages` resolves through it. LLM responds to the edited history |
-| **Regenerate** | Same as edit — create a new assistant sibling. The AI SDK's `regenerate()` handles this via `trigger: "regenerate-message"` |
-| **Undo** | `onAction` removes the last two nodes. `chat.history.set()` updates the accumulator. LLM responds to the earlier state |
-| **Switch branch** | `onAction` updates which leaf is "active". `hydrateMessages` loads the new path. LLM responds to the switched context |
-
-## Design notes
-
-- **Messages are immutable** — edits create siblings, not mutations. This preserves full history for analytics and auditing.
-- **The tree lives in your database** — the agent loads a linear path from it via `hydrateMessages`. The agent itself doesn't know about the tree structure.
-- **`hydrateMessages` + `onAction` + `chat.history`** are the three primitives. Hydration loads the active path, actions modify the tree, and `chat.history.set()` syncs the accumulator after tree modifications.
-- **Frontend owns navigation** — the `< 2/3 >` UI, sibling queries, and branch switching triggers are client-side concerns. The backend just processes actions and returns responses.
-
-## See also
-
-- [`hydrateMessages`](/ai-chat/lifecycle-hooks#hydratemessages) — backend-controlled message history
-- [Actions](/ai-chat/actions) — custom actions with `actionSchema` and `onAction`
-- [`chat.history`](/ai-chat/backend#chat-history) — imperative history mutations
-- [Database persistence](/ai-chat/patterns/database-persistence) — basic persistence pattern (linear)
+Also test regeneration, repeated storage saves, and continuation in a fresh run. An in-memory branch choice can pass the first four steps and still disappear when the worker restarts.

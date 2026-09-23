@@ -28,9 +28,14 @@ vi.mock("~/runEngine/concerns/batchStreamGrantsInstance.server", () => ({
 vi.mock("~/services/apiAuth.server", () => ({
   authenticateAuthorizationHeader: mocks.authenticateAuthorizationHeader,
 }));
+vi.mock("~/services/apiRateLimitMetrics.server", () => ({
+  recordApiRateLimitObservation: vi.fn(),
+  initApiRateLimitMetrics: vi.fn(),
+}));
 
 import {
   jwtActorRateLimitIdentifier,
+  readApiRateLimitMetricsFlag,
   resolveApiRateLimitOverride,
 } from "~/services/apiRateLimit.server";
 
@@ -100,5 +105,90 @@ describe("resolveApiRateLimitOverride — PUBLIC_JWT branch", () => {
 
     expect(override?.identifier).toBeUndefined();
     expect(override?.config).toBeDefined();
+  });
+});
+
+/**
+ * Only private-key (`tr_`) buckets carry a tenant: that is the per-environment bucket the
+ * documented limit refers to, so it is the only one that feeds the rate limit metrics.
+ */
+describe("resolveApiRateLimitOverride — tenant", () => {
+  beforeEach(() => {
+    mocks.authenticateAuthorizationHeader.mockReset();
+    mocks.resolvePrivateApiKeyRateLimitScope.mockReset();
+  });
+
+  it("attaches the environment's tenant on the private-key branch", async () => {
+    const config = { type: "fixedWindow", window: "1m", tokens: 10 };
+    mocks.resolvePrivateApiKeyRateLimitScope.mockResolvedValue({
+      environmentId: "env_1",
+      organizationId: "org_1",
+      projectId: "proj_1",
+      apiRateLimiterConfig: config,
+      featureFlags: null,
+    });
+
+    const override = await resolveApiRateLimitOverride("Bearer tr_prod_sk_abcdefghijklmnop");
+
+    expect(mocks.authenticateAuthorizationHeader).not.toHaveBeenCalled();
+    expect(override).toEqual({
+      config,
+      identifier: "env_1",
+      tenant: {
+        organizationId: "org_1",
+        projectId: "proj_1",
+        environmentId: "env_1",
+        metricsEnabled: false,
+      },
+    });
+  });
+
+  it("carries the organization's metrics opt-in flag on the tenant", async () => {
+    mocks.resolvePrivateApiKeyRateLimitScope.mockResolvedValue({
+      environmentId: "env_1",
+      organizationId: "org_1",
+      projectId: "proj_1",
+      apiRateLimiterConfig: null,
+      featureFlags: { apiRateLimitMetricsEnabled: true, hasQueryAccess: true },
+    });
+
+    const override = await resolveApiRateLimitOverride("Bearer tr_prod_sk_abcdefghijklmnop");
+
+    expect(override?.tenant?.metricsEnabled).toBe(true);
+  });
+
+  it("returns no override for an unknown private key", async () => {
+    mocks.resolvePrivateApiKeyRateLimitScope.mockResolvedValue(null);
+
+    const override = await resolveApiRateLimitOverride("Bearer tr_prod_sk_unknown");
+
+    expect(override).toBeUndefined();
+  });
+
+  it("attaches no tenant on the PUBLIC_JWT branch", async () => {
+    mocks.authenticateAuthorizationHeader.mockResolvedValue({
+      ok: true,
+      type: "PUBLIC_JWT",
+      environment: { id: "env_777" },
+      actor: { sub: "usr_555" },
+    });
+
+    const override = await resolveApiRateLimitOverride("Bearer eyJ.delegated.jwt");
+
+    expect(override?.identifier).toBe("jwt-actor:env_777:usr_555");
+    expect(override?.tenant).toBeUndefined();
+  });
+});
+
+describe("readApiRateLimitMetricsFlag", () => {
+  it("is on only for an explicit boolean true in the organization override", () => {
+    expect(readApiRateLimitMetricsFlag({ apiRateLimitMetricsEnabled: true })).toBe(true);
+    expect(readApiRateLimitMetricsFlag({ apiRateLimitMetricsEnabled: false })).toBe(false);
+    expect(readApiRateLimitMetricsFlag({ apiRateLimitMetricsEnabled: "true" })).toBe(false);
+    expect(readApiRateLimitMetricsFlag({ hasQueryAccess: true })).toBe(false);
+    expect(readApiRateLimitMetricsFlag(null)).toBe(false);
+    expect(readApiRateLimitMetricsFlag(undefined)).toBe(false);
+    expect(readApiRateLimitMetricsFlag("garbage")).toBe(false);
+    expect(readApiRateLimitMetricsFlag([])).toBe(false);
   });
 });

@@ -91,4 +91,83 @@ describe("schema composition compatibility", () => {
       resource: { id: "my-webhook" },
     });
   });
+
+  it.each([
+    { name: "zod", v3: require.resolve("zod/v3"), v4: require.resolve("zod/v4") },
+    {
+      name: "zod-v3-floor",
+      v3: require.resolve("zod-v3-floor/v3"),
+      v4: require.resolve("zod-v3-floor/v4"),
+    },
+  ])("parses run engine worker schemas with $name and a Zod 3 root", async ({ v3, v4 }) => {
+    // The warm-start client parses DequeuedMessage inside the deployed runner, where the root
+    // "zod" import resolves to whatever the user's project installed. A leaf schema built on the
+    // Zod 3 API and composed into a Zod 4 object throws on every parse, not just on bad input.
+    const result = await build({
+      stdin: {
+        contents: `
+          import { DequeuedMessage } from "./src/v3/schemas/runEngine.ts";
+          import { WorkerApiRunAttemptStartRequestBody } from "./src/v3/runEngineWorker/supervisor/schemas.ts";
+
+          const snapshotRoute = { version: 1, residency: "postgres", organizationId: "org_1" };
+
+          export const parsed = {
+            dequeued: DequeuedMessage.parse({
+              version: "1",
+              snapshotRoute,
+              dequeuedAt: "2026-01-01T00:00:00.000Z",
+              snapshot: {
+                id: "snapshot_1",
+                friendlyId: "snapshot_1",
+                executionStatus: "PENDING_EXECUTING",
+                description: "Run was dequeued for execution",
+                createdAt: "2026-01-01T00:00:00.000Z",
+              },
+              completedWaitpoints: [],
+              backgroundWorker: { id: "worker_1", friendlyId: "worker_1", version: "20260101.1" },
+              deployment: { id: "deployment_1", friendlyId: "deployment_1" },
+              run: {
+                id: "run_1",
+                friendlyId: "run_1",
+                isTest: false,
+                machine: { name: "small-1x", cpu: 0.5, memory: 0.5, centsPerMs: 0 },
+                attemptNumber: 1,
+                masterQueue: "main",
+                traceContext: {},
+              },
+              environment: { id: "env_1", type: "PRODUCTION" },
+              organization: { id: "org_1" },
+              project: { id: "proj_1" },
+            }),
+            attemptStart: WorkerApiRunAttemptStartRequestBody.parse({ isWarmStart: true, snapshotRoute }),
+          };
+        `,
+        loader: "ts",
+        resolveDir: packageRoot,
+      },
+      bundle: true,
+      format: "esm",
+      platform: "node",
+      target: "node20",
+      write: false,
+      plugins: [
+        {
+          name: "resolve-root-zod-to-v3",
+          setup(build) {
+            build.onResolve({ filter: /^zod$/ }, () => ({ path: v3 }));
+            build.onResolve({ filter: /^zod\/v4$/ }, () => ({ path: v4 }));
+          },
+        },
+      ],
+    });
+
+    const bundledModule = await import(
+      `data:text/javascript;base64,${Buffer.from(result.outputFiles[0]!.text).toString("base64")}`
+    );
+
+    expect(bundledModule.parsed).toMatchObject({
+      dequeued: { run: { id: "run_1" }, snapshotRoute: { residency: "postgres" } },
+      attemptStart: { isWarmStart: true, snapshotRoute: { residency: "postgres" } },
+    });
+  });
 });

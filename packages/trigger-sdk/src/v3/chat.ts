@@ -222,6 +222,35 @@ export type ChatTransportSendSource =
   | "stop"
   | "head-start";
 
+/** The input boundary that settled a particular `sendAction` call. */
+export type ChatActionSettlement = {
+  /** Sequence returned by this action's input append. */
+  inputSeq: number;
+  /** Committed input cursor from the turn-complete record, at or after `inputSeq`. */
+  sessionInEventId: string;
+  /** Output cursor of the turn-complete record. */
+  lastEventId?: string;
+};
+
+export type ChatActionOptions = {
+  abortSignal?: AbortSignal;
+  /** Per-action metadata merged over the transport's clientData. */
+  metadata?: Record<string, unknown>;
+  /**
+   * Called at most once when the subscription accepts a turn-complete record
+   * confirming this action's input was processed, before the returned stream
+   * closes (or continues in watch mode). Not called after cancellation, stream
+   * closure without a matching record, missing/invalid cursors, or a stream
+   * error because the stop/supersede gate discarded this action's output.
+   * The action may have been processed even if this callback never runs:
+   * reconcile persisted state or use idempotent actions before retrying.
+   * Settlement does not imply application-level success: inspect the response
+   * chunks for the action's result. Synchronous callback exceptions are ignored
+   * so they do not interrupt the stream.
+   */
+  onSettled?: (settlement: ChatActionSettlement) => void;
+};
+
 /**
  * Lifecycle events emitted through the transport's `onEvent` callback.
  *
@@ -1422,7 +1451,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   sendAction = async (
     chatId: string,
     action: unknown,
-    options?: { abortSignal?: AbortSignal; metadata?: Record<string, unknown> }
+    options?: ChatActionOptions
   ): Promise<ReadableStream<UIMessageChunk>> => {
     options?.abortSignal?.throwIfAborted();
     if (this.coordinator?.isReadOnly(chatId)) {
@@ -1491,6 +1520,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
         return this.subscribeToSessionStream(state, options?.abortSignal, chatId, {
           sinceInSeq: inSeq,
           sendStopOnAbort: true,
+          onSettled: options?.onSettled,
         });
       },
       options?.abortSignal
@@ -2291,9 +2321,11 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       resumed?: boolean;
       /** `.in` seq of the send that opened this stream; skip turn-completes below it (earlier turns). */
       sinceInSeq?: number;
+      onSettled?: ChatActionOptions["onSettled"];
     }
   ): ReadableStream<UIMessageChunk> {
     const internalAbort = new AbortController();
+    let didSettle = false;
     this.activeStreams.set(chatId, internalAbort);
     const combinedSignal = abortSignal
       ? AbortSignal.any([abortSignal, internalAbort.signal])
@@ -2691,6 +2723,8 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             }
 
             if (controlValue === TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) {
+              const sessionInEventId = headerValue(value.headers, SESSION_IN_EVENT_ID_HEADER);
+              const lastEventId = value.id || undefined;
               // Skip a turn-complete from an earlier turn (committed `.in` cursor
               // below this send's seq), e.g. an undo action that raced this send.
               if (sinceInSeq !== undefined) {
@@ -2735,6 +2769,33 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               this.coordinator?.broadcastSession(chatId, {
                 lastEventId: state.lastEventId,
               });
+
+              // Use this subscription's original append, never mutable session state.
+              const inputSeq = options?.sinceInSeq;
+              const settledSeq =
+                sessionInEventId !== undefined &&
+                sessionInEventId.length > 0 &&
+                !/\D/.test(sessionInEventId)
+                  ? Number(sessionInEventId)
+                  : NaN;
+              if (
+                !didSettle &&
+                !combinedSignal.aborted &&
+                this.activeStreams.get(chatId) === internalAbort &&
+                inputSeq !== undefined &&
+                Number.isSafeInteger(inputSeq) &&
+                inputSeq >= 0 &&
+                sessionInEventId !== undefined &&
+                Number.isSafeInteger(settledSeq) &&
+                settledSeq >= inputSeq
+              ) {
+                didSettle = true;
+                try {
+                  options?.onSettled?.({ inputSeq, sessionInEventId, lastEventId });
+                } catch {
+                  // An observer must not turn a completed action into a stream error.
+                }
+              }
 
               // Re-arm per-turn events for watch mode's next turn.
               sawFirstChunk = false;
