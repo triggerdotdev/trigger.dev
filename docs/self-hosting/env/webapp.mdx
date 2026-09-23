@@ -78,6 +78,12 @@ mode: "wide"
 | `API_RATE_LIMIT_LIMITER_LOGS_ENABLED`            | No       | 0                     | API rate limit limiter logs.                                                                                       |
 | `API_RATE_LIMIT_JWT_WINDOW`                      | No       | 1m                    | API rate limit JWT window.                                                                                         |
 | `API_RATE_LIMIT_JWT_TOKENS`                      | No       | 60                    | API rate limit JWT tokens.                                                                                         |
+| `API_RATE_LIMIT_METRICS_ENABLED`                 | No       | 0                     | Record API rate limit usage into the `metrics` table: `1` for everyone, `allowlist` for flagged organizations.     |
+| `API_RATE_LIMIT_METRICS_BUCKET_SECONDS`          | No       | 10                    | Aggregation bucket width for API rate limit metrics: 10, 20, 30 or a multiple of 60.                               |
+| `API_RATE_LIMIT_METRICS_FLUSH_INTERVAL_MS`       | No       | 10000                 | How often aggregated API rate limit metrics are flushed to ClickHouse.                                             |
+| `API_RATE_LIMIT_METRICS_MAX_ENTRIES`             | No       | 10000                 | Cap on distinct (environment, bucket) entries held between flushes.                                                |
+| `API_RATE_LIMIT_METRICS_WAIT_FOR_ASYNC_INSERT`   | No       | 0                     | Wait for ClickHouse to write each async insert of API rate limit metrics, surfacing write failures.                |
+| `API_RATE_LIMIT_METRICS_INSERT_BUSY_TIMEOUT_MS`  | No       | 10000                 | How long ClickHouse buffers API rate limit metric inserts before writing a part.                                   |
 | `DEPLOYMENT_RATE_LIMIT_REFILL_INTERVAL`          | No       | 10s                   | Deployment endpoints rate limit refill interval.                                                                   |
 | `DEPLOYMENT_RATE_LIMIT_MAX`                      | No       | 1500                  | Deployment endpoints rate limit max.                                                                               |
 | `DEPLOYMENT_RATE_LIMIT_REFILL_RATE`              | No       | 500                   | Deployment endpoints rate limit refill rate.                                                                       |

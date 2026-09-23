@@ -53,9 +53,30 @@ export const RateLimiterConfig = z.discriminatedUnion("type", [
 
 export type RateLimiterConfig = z.infer<typeof RateLimiterConfig>;
 
+export const RateLimitTenant = z.object({
+  organizationId: z.string(),
+  projectId: z.string(),
+  environmentId: z.string(),
+  /** The organization's apiRateLimitMetricsEnabled feature flag, resolved with the limit. */
+  metricsEnabled: z.boolean().default(false),
+});
+
+export type RateLimitTenant = z.infer<typeof RateLimitTenant>;
+
+export type RateLimitObservation = {
+  identifier: string;
+  tenant?: RateLimitTenant;
+  config: RateLimiterConfig;
+  success: boolean;
+  limit: number;
+  remaining: number;
+  reset: number;
+};
+
 type RateLimitOverride = {
   config?: unknown;
   identifier?: string;
+  tenant?: RateLimitTenant;
 };
 
 type LimitConfigOverrideFunction = (
@@ -86,12 +107,18 @@ type Options = {
     rejections?: boolean;
     limiter?: boolean;
   };
+  /**
+   * Called synchronously with the outcome of every limit() decision, allow and deny alike.
+   * Must be cheap; exceptions are caught and logged so it can never affect the response.
+   */
+  onResult?: (observation: RateLimitObservation) => void;
 };
 
 type ResolvedRateLimit = {
   config: RateLimiterConfig;
   // Bucket key to use, or undefined to fall back to the hashed Authorization header.
   identifier?: string;
+  tenant?: RateLimitTenant;
 };
 
 async function resolveRateLimit(
@@ -128,9 +155,10 @@ async function resolveRateLimit(
     }
 
     const identifier = override.identifier;
+    const tenant = override.tenant;
 
     if (!override.config) {
-      return { config: defaultLimiter, identifier } satisfies ResolvedRateLimit;
+      return { config: defaultLimiter, identifier, tenant } satisfies ResolvedRateLimit;
     }
 
     const parsedOverride = RateLimiterConfig.safeParse(override.config);
@@ -141,7 +169,7 @@ async function resolveRateLimit(
         errors: parsedOverride.error.issues,
       });
 
-      return { config: defaultLimiter, identifier } satisfies ResolvedRateLimit;
+      return { config: defaultLimiter, identifier, tenant } satisfies ResolvedRateLimit;
     }
 
     if (logsEnabled && parsedOverride.data) {
@@ -152,7 +180,7 @@ async function resolveRateLimit(
       });
     }
 
-    return { config: parsedOverride.data, identifier } satisfies ResolvedRateLimit;
+    return { config: parsedOverride.data, identifier, tenant } satisfies ResolvedRateLimit;
   });
 
   // Defensive read: the cache is keyed on a shared Redis namespace, so during a
@@ -163,10 +191,12 @@ async function resolveRateLimit(
   // this is belt-and-suspenders.
   const cached = cacheResult.val;
   const parsedConfig = RateLimiterConfig.safeParse(cached?.config);
+  const parsedTenant = RateLimitTenant.safeParse(cached?.tenant);
 
   return {
     config: parsedConfig.success ? parsedConfig.data : defaultLimiter,
     identifier: typeof cached?.identifier === "string" ? cached.identifier : undefined,
+    tenant: parsedTenant.success ? parsedTenant.data : undefined,
   };
 }
 
@@ -196,6 +226,7 @@ export function authorizationRateLimitMiddleware({
   },
   limiterCache,
   limiterConfigOverride,
+  onResult,
 }: Options) {
   const ctx = new DefaultStatefulContext();
   const memory = createLRUMemoryStore(limiterCache?.maxItems ?? 1000);
@@ -204,7 +235,7 @@ export function authorizationRateLimitMiddleware({
       // Versioned namespace: the cached value shape is part of this key. Bump
       // the version whenever ResolvedRateLimit changes so a rolling deploy never
       // reads entries written in a previous shape (and vice versa).
-      keyPrefix: `cache:${keyPrefix}:rate-limit-cache:v2:`,
+      keyPrefix: `cache:${keyPrefix}:rate-limit-cache:v3:`,
       ...redis,
     },
   });
@@ -305,7 +336,11 @@ export function authorizationRateLimitMiddleware({
     hash.update(authorizationValue);
     const hashedAuthorizationValue = hash.digest("hex");
 
-    const { config: limiterConfig, identifier } = await resolveRateLimit(
+    const {
+      config: limiterConfig,
+      identifier,
+      tenant,
+    } = await resolveRateLimit(
       authorizationValue,
       hashedAuthorizationValue,
       defaultLimiter,
@@ -327,6 +362,24 @@ export function authorizationRateLimitMiddleware({
     });
 
     const { success, limit, reset, remaining } = await rateLimiter.limit(rateLimitIdentifier);
+
+    if (onResult) {
+      try {
+        onResult({
+          identifier: rateLimitIdentifier,
+          tenant,
+          config: limiterConfig,
+          success,
+          limit,
+          remaining,
+          reset,
+        });
+      } catch (error) {
+        logger.error(`RateLimiter (${keyPrefix}): onResult threw`, {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
 
     const $remaining = Math.max(0, remaining); // remaining can be negative if the user has exceeded the limit, so clamp it to 0
 

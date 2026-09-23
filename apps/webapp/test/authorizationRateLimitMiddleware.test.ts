@@ -14,7 +14,10 @@ vi.mock("./logger.server", () => ({
 import type { Express } from "express";
 import express from "express";
 import request from "supertest";
-import { authorizationRateLimitMiddleware } from "../app/services/authorizationRateLimitMiddleware.server.js";
+import {
+  authorizationRateLimitMiddleware,
+  type RateLimitObservation,
+} from "../app/services/authorizationRateLimitMiddleware.server.js";
 
 describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", () => {
   let app: Express;
@@ -254,6 +257,133 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", 
     const second = await request(app).get("/api/test").set("Authorization", "Bearer token-b");
     expect(second.status).toBe(200);
   });
+
+  redisTest(
+    "should report every decision to onResult with the override's tenant",
+    async ({ redisOptions }) => {
+      const observations: RateLimitObservation[] = [];
+      const tenant = {
+        organizationId: "org_1",
+        projectId: "proj_1",
+        environmentId: "env_1",
+        metricsEnabled: true,
+      };
+      const rateLimitMiddleware = authorizationRateLimitMiddleware({
+        redis: { ...redisOptions, tlsDisabled: true },
+        keyPrefix: "test-on-result",
+        defaultLimiter: {
+          type: "tokenBucket",
+          refillRate: 1,
+          interval: "1m",
+          maxTokens: 1,
+        },
+        pathMatchers: [/^\/api/],
+        limiterConfigOverride: async () => ({ identifier: "env_1", tenant }),
+        onResult: (observation) => {
+          observations.push(observation);
+        },
+      });
+
+      app.use(rateLimitMiddleware);
+      app.get("/api/test", (req, res) => res.status(200).json({ message: "Success" }));
+
+      const allowed = await request(app)
+        .get("/api/test")
+        .set("Authorization", "Bearer tr_prod_sk_on_result");
+      expect(allowed.status).toBe(200);
+      expect(observations).toHaveLength(1);
+      expect(observations[0]).toMatchObject({
+        identifier: "env_1",
+        tenant,
+        config: { type: "tokenBucket", refillRate: 1, interval: "1m", maxTokens: 1 },
+        success: true,
+        limit: 1,
+      });
+      expect(typeof observations[0]!.remaining).toBe("number");
+      expect(typeof observations[0]!.reset).toBe("number");
+
+      const denied = await request(app)
+        .get("/api/test")
+        .set("Authorization", "Bearer tr_prod_sk_on_result");
+      expect(denied.status).toBe(429);
+      expect(observations).toHaveLength(2);
+      expect(observations[1]).toMatchObject({ identifier: "env_1", tenant, success: false });
+    }
+  );
+
+  redisTest(
+    "should leave the response untouched when onResult throws",
+    async ({ redisOptions }) => {
+      let calls = 0;
+      const rateLimitMiddleware = authorizationRateLimitMiddleware({
+        redis: { ...redisOptions, tlsDisabled: true },
+        keyPrefix: "test-on-result-throws",
+        defaultLimiter: {
+          type: "tokenBucket",
+          refillRate: 1,
+          interval: "1m",
+          maxTokens: 1,
+        },
+        pathMatchers: [/^\/api/],
+        onResult: () => {
+          calls++;
+          throw new Error("observer exploded");
+        },
+      });
+
+      app.use(rateLimitMiddleware);
+      app.get("/api/test", (req, res) => res.status(200).json({ message: "Success" }));
+
+      const first = await request(app).get("/api/test").set("Authorization", "Bearer token-a");
+      expect(first.status).toBe(200);
+      expect(first.body).toEqual({ message: "Success" });
+      expect(first.headers["x-ratelimit-limit"]).toBe("1");
+
+      const second = await request(app).get("/api/test").set("Authorization", "Bearer token-a");
+      expect(second.status).toBe(429);
+      expect(second.body).toHaveProperty("title", "Rate Limit Exceeded");
+      expect(calls).toBe(2);
+    }
+  );
+
+  redisTest(
+    "should not call onResult for requests the limiter never decides on",
+    async ({ redisOptions }) => {
+      let calls = 0;
+      const rateLimitMiddleware = authorizationRateLimitMiddleware({
+        redis: { ...redisOptions, tlsDisabled: true },
+        keyPrefix: "test-on-result-skips",
+        defaultLimiter: {
+          type: "tokenBucket",
+          refillRate: 10,
+          interval: "1m",
+          maxTokens: 100,
+        },
+        pathMatchers: [/^\/api/],
+        pathWhiteList: ["/api/whitelist"],
+        onResult: () => {
+          calls++;
+        },
+      });
+
+      app.use(rateLimitMiddleware);
+      app.get("/api/whitelist", (req, res) => res.status(200).json({ message: "Whitelisted" }));
+      app.get("/not-api", (req, res) => res.status(200).json({ message: "Unmatched" }));
+      app.options("/api/test", (req, res) => res.status(204).end());
+      app.get("/api/test", (req, res) => res.status(200).json({ message: "Success" }));
+
+      await request(app).get("/api/whitelist").set("Authorization", "Bearer token-a");
+      await request(app).get("/not-api").set("Authorization", "Bearer token-a");
+      await request(app).options("/api/test").set("Authorization", "Bearer token-a");
+      const unauthenticated = await request(app).get("/api/test");
+      expect(unauthenticated.status).toBe(401);
+      expect(calls).toBe(0);
+
+      const decided = await request(app).get("/api/test").set("Authorization", "Bearer token-a");
+      expect(decided.status).toBe(200);
+      expect(calls).toBe(1);
+    }
+  );
 
   describe("Advanced Cases", () => {
     // 1. Test different rate limit configurations

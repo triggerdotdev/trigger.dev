@@ -3,9 +3,14 @@ import { env } from "~/env.server";
 import { resolvePrivateApiKeyRateLimitScope } from "~/models/runtimeEnvironment.server";
 import { batchStreamGrants } from "~/runEngine/concerns/batchStreamGrantsInstance.server";
 import { authenticateAuthorizationHeader } from "./apiAuth.server";
-import { authorizationRateLimitMiddleware } from "./authorizationRateLimitMiddleware.server";
+import { recordApiRateLimitObservation } from "./apiRateLimitMetrics.server";
+import {
+  authorizationRateLimitMiddleware,
+  type RateLimitTenant,
+} from "./authorizationRateLimitMiddleware.server";
 import { deploymentApiPaths } from "./deploymentApiPaths.server";
 import type { Duration } from "./rateLimiter.server";
+import { FEATURE_FLAG, FeatureFlagCatalog } from "~/v3/featureFlags";
 
 const BATCH_STREAM_ITEMS_PATH = /^\/api\/v3\/batches\/([^/]+)\/items$/;
 
@@ -17,12 +22,23 @@ export function jwtActorRateLimitIdentifier(environmentId: string, actorSub: str
   return `jwt-actor:${environmentId}:${actorSub}`;
 }
 
+/** The organization override for the metrics opt-in flag; anything unparseable reads as off. */
+export function readApiRateLimitMetricsFlag(featureFlags: unknown): boolean {
+  if (!featureFlags || typeof featureFlags !== "object" || Array.isArray(featureFlags)) {
+    return false;
+  }
+  const parsed = FeatureFlagCatalog[FEATURE_FLAG.apiRateLimitMetricsEnabled].safeParse(
+    (featureFlags as Record<string, unknown>)[FEATURE_FLAG.apiRateLimitMetricsEnabled]
+  );
+  return parsed.success ? parsed.data : false;
+}
+
 // The per-request bucket decision for the API limiter. Exported so the branch below
 // (a delegated JWT keys on env+acting-user, everything else keeps its prior key) is
 // testable without standing up the middleware and its Redis.
 export async function resolveApiRateLimitOverride(
   authorizationValue: string
-): Promise<{ config?: unknown; identifier?: string } | undefined> {
+): Promise<{ config?: unknown; identifier?: string; tenant?: RateLimitTenant } | undefined> {
   const rawApiKey = authorizationValue.replace(/^Bearer /, "");
 
   if (rawApiKey.startsWith("tr_")) {
@@ -35,6 +51,12 @@ export async function resolveApiRateLimitOverride(
     return {
       config: scope.apiRateLimiterConfig,
       identifier: scope.environmentId,
+      tenant: {
+        organizationId: scope.organizationId,
+        projectId: scope.projectId,
+        environmentId: scope.environmentId,
+        metricsEnabled: readApiRateLimitMetricsFlag(scope.featureFlags),
+      },
     };
   }
 
@@ -98,6 +120,7 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
     maxItems: 1000,
   },
   limiterConfigOverride: resolveApiRateLimitOverride,
+  onResult: recordApiRateLimitObservation,
   pathMatchers: [/^\/api/],
   // Allow /api/v1/tasks/:id/callback/:secret
   pathWhiteList: [

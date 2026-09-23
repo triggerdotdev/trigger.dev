@@ -773,6 +773,25 @@ const EnvironmentSchema = z
     API_RATE_LIMIT_REJECTION_LOGS_ENABLED: z.string().default("1"),
     API_RATE_LIMIT_LIMITER_LOGS_ENABLED: z.string().default("0"),
 
+    API_RATE_LIMIT_METRICS_ENABLED: z.enum(["0", "1", "allowlist"]).default("0"),
+    API_RATE_LIMIT_METRICS_BUCKET_SECONDS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .multipleOf(10)
+      .refine((seconds) => 60 % seconds === 0 || seconds % 60 === 0, {
+        message: "must divide or be a multiple of 60 so buckets align to minute boundaries",
+      })
+      .default(10),
+    API_RATE_LIMIT_METRICS_FLUSH_INTERVAL_MS: z.coerce.number().int().positive().default(10_000),
+    API_RATE_LIMIT_METRICS_MAX_ENTRIES: z.coerce.number().int().positive().default(10_000),
+    API_RATE_LIMIT_METRICS_WAIT_FOR_ASYNC_INSERT: z.string().default("0"),
+    API_RATE_LIMIT_METRICS_INSERT_BUSY_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(10_000),
+
     API_RATE_LIMIT_JWT_WINDOW: z.string().default("1m"),
     API_RATE_LIMIT_JWT_TOKENS: z.coerce.number().int().default(60),
 

@@ -293,7 +293,10 @@ export async function findEnvironmentByApiKeyWithResolution(
 
 export type PrivateApiKeyRateLimitScope = {
   environmentId: string;
+  organizationId: string;
+  projectId: string;
   apiRateLimiterConfig: unknown;
+  featureFlags: unknown;
 };
 
 export async function resolvePrivateApiKeyRateLimitScope(
@@ -313,8 +316,10 @@ export async function resolvePrivateApiKeyRateLimitScope(
         runtimeEnvironment: {
           select: {
             id: true,
+            organizationId: true,
+            projectId: true,
             project: { select: { deletedAt: true } },
-            organization: { select: { apiRateLimiterConfig: true } },
+            organization: { select: { apiRateLimiterConfig: true, featureFlags: true } },
           },
         },
       },
@@ -326,7 +331,10 @@ export async function resolvePrivateApiKeyRateLimitScope(
 
     return {
       environmentId: match.runtimeEnvironment.id,
+      organizationId: match.runtimeEnvironment.organizationId,
+      projectId: match.runtimeEnvironment.projectId,
       apiRateLimiterConfig: match.runtimeEnvironment.organization.apiRateLimiterConfig,
+      featureFlags: match.runtimeEnvironment.organization.featureFlags,
     };
   }
 
@@ -334,8 +342,10 @@ export async function resolvePrivateApiKeyRateLimitScope(
     where: { apiKey },
     select: {
       id: true,
+      organizationId: true,
+      projectId: true,
       project: { select: { deletedAt: true } },
-      organization: { select: { apiRateLimiterConfig: true } },
+      organization: { select: { apiRateLimiterConfig: true, featureFlags: true } },
     },
   });
 
@@ -346,7 +356,10 @@ export async function resolvePrivateApiKeyRateLimitScope(
 
     return {
       environmentId: environment.id,
+      organizationId: environment.organizationId,
+      projectId: environment.projectId,
       apiRateLimiterConfig: environment.organization.apiRateLimiterConfig,
+      featureFlags: environment.organization.featureFlags,
     };
   }
 
@@ -356,8 +369,10 @@ export async function resolvePrivateApiKeyRateLimitScope(
       runtimeEnvironment: {
         select: {
           id: true,
+          organizationId: true,
+          projectId: true,
           project: { select: { deletedAt: true } },
-          organization: { select: { apiRateLimiterConfig: true } },
+          organization: { select: { apiRateLimiterConfig: true, featureFlags: true } },
         },
       },
     },
@@ -370,7 +385,10 @@ export async function resolvePrivateApiKeyRateLimitScope(
 
   return {
     environmentId: revokedEnvironment.id,
+    organizationId: revokedEnvironment.organizationId,
+    projectId: revokedEnvironment.projectId,
     apiRateLimiterConfig: revokedEnvironment.organization.apiRateLimiterConfig,
+    featureFlags: revokedEnvironment.organization.featureFlags,
   };
 }
 

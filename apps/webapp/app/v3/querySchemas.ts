@@ -454,7 +454,8 @@ export const runsSchema: TableSchema = {
 const metricsSchema: TableSchema = {
   name: "metrics",
   clickhouseName: "trigger_dev.metrics_v1",
-  description: "Host and runtime metrics collected during task execution",
+  description:
+    "Host and runtime metrics collected during task execution, plus platform metrics such as API rate limit usage",
   timeConstraint: "bucket_start",
   tenantColumns: {
     organizationId: "organization_id",
@@ -482,7 +483,8 @@ const metricsSchema: TableSchema = {
     metric_name: {
       name: "metric_name",
       ...column("LowCardinality(String)", {
-        description: "The name of the metric (e.g. process.cpu.utilization, system.memory.usage)",
+        description:
+          "The name of the metric (e.g. process.cpu.utilization, system.memory.usage, or api.rate_limit.allowed / api.rate_limit.denied / api.rate_limit.remaining_min / api.rate_limit.limit.per_second / api.rate_limit.limit.burst for API rate limit usage)",
         example: "process.cpu.utilization",
         coreColumn: true,
       }),
@@ -499,7 +501,8 @@ const metricsSchema: TableSchema = {
       name: "machine_id",
       clickhouseName: "metric_subject",
       ...column("String", {
-        description: "The machine ID that produced this metric",
+        description:
+          "The machine ID that produced this metric. Empty for platform metrics such as api.rate_limit.*",
         example: "machine-abc123",
       }),
     },

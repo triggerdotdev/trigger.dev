@@ -49,6 +49,7 @@ export const FEATURE_FLAG = {
   scheduleDefaultWindowEnabled: "scheduleDefaultWindowEnabled",
   freeScheduleMinimumWindowEnabled: "freeScheduleMinimumWindowEnabled",
   deployNowEnabled: "deployNowEnabled",
+  apiRateLimitMetricsEnabled: "apiRateLimitMetricsEnabled",
 } as const;
 
 export const FeatureFlagCatalog = {
@@ -60,6 +61,12 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.hasWebhooksAccess]: z.coerce.boolean(),
   // Opt-in rollout; organization overrides the global default. Unset means off.
   [FEATURE_FLAG.previewAutoArchiveEnabled]: z.boolean(),
+  /**
+   * Opts an organization into API rate limit metrics while the webapp runs with
+   * API_RATE_LIMIT_METRICS_ENABLED=allowlist. Read from the organization override only, on the
+   * cached rate-limit resolution path, so a flip takes effect within that cache's lifetime.
+   */
+  [FEATURE_FLAG.apiRateLimitMetricsEnabled]: z.boolean(),
   [FEATURE_FLAG.hasAiAccess]: z.coerce.boolean(),
   // Gates the in-dashboard AI agent panel. Controllable globally and per-org
   // (org wins). Defaults off via DASHBOARD_AGENT_ENABLED.
@@ -183,6 +190,7 @@ export const GLOBAL_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.taskEventRepository,
   FEATURE_FLAG.runOpsMintShard,
   FEATURE_FLAG.runOpsMintShardEnvPins,
+  FEATURE_FLAG.apiRateLimitMetricsEnabled,
   // Grace stamps are computed server-side. An editable control here would discard what it saves.
   FEATURE_FLAG.runOpsMintKindPrev,
   FEATURE_FLAG.runOpsMintKindFlippedAt,
