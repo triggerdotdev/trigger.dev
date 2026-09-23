@@ -1,5 +1,16 @@
 # trigger.dev
 
+## 4.7.0
+
+### Patch Changes
+
+- Fix stale and empty project environment values in `trigger dev`, and support empty values in `syncEnvVars()`. ([`f384e8334`](https://github.com/triggerdotdev/trigger.dev/commit/f384e8334a8eca3266ecb33e5fae7d1fbf148d59))
+- Authenticate `trigger promote` with environment API keys supplied through `TRIGGER_ACCESS_TOKEN`. Environment API key commands now use the saved profile API URL when no explicit override is provided. ([`562c9433a`](https://github.com/triggerdotdev/trigger.dev/commit/562c9433a3f70da46eb5e8b213f22f98dcc1d164))
+- Updated dependencies:
+  - `@trigger.dev/schema-to-json@4.7.0`
+  - `@trigger.dev/core@4.7.0`
+  - `@trigger.dev/build@4.7.0`
+
 ## 4.6.3
 
 ### Patch Changes

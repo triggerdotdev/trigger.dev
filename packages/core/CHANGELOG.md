@@ -1,5 +1,53 @@
 # internal-platform
 
+## 4.7.0
+
+### Minor Changes
+
+- Chat agents can now scope concurrency per session. Pass `concurrencyKey` (for example, your chat ID or tenant ID) and trigger-time named limits via `triggerConfig.concurrency` when starting a chat session, from `chat.createStartSessionAction`, the `AgentChat` client, or a handover. Keys are never defaulted, so a session without one shares the task's keyless pool. ([`ea9758117`](https://github.com/triggerdotdev/trigger.dev/commit/ea9758117bc4abb3e2d09deeab36d5c113c8496c))
+
+  ```ts
+  const start = chat.createStartSessionAction("support-chat", {
+    triggerConfig: { concurrencyKey: user.id },
+  });
+  ```
+
+- Concurrency limits can now be paused and resumed, just like queues: `concurrencyLimits.pause(name)` stops every run holding the limit from being dequeued while keeping its configured bounds, and `concurrencyLimits.resume(name)` starts them again. ([`fa94febb6`](https://github.com/triggerdotdev/trigger.dev/commit/fa94febb6ee1f8ebd288698535b6b7ccaf3aa038))
+
+  ```ts
+  import { concurrencyLimits } from "@trigger.dev/sdk";
+
+  await concurrencyLimits.pause("openai");
+  await concurrencyLimits.resume("openai");
+  ```
+
+- Control a task's concurrency with the new `concurrency` option, and share limits across tasks with named concurrency limits. An inline shape caps the task itself; `concurrencyLimit()` declares a limit any task can hold (up to two named limits per task), and a trigger call can switch a run's named limits with its own `concurrency` option. ([`ea9758117`](https://github.com/triggerdotdev/trigger.dev/commit/ea9758117bc4abb3e2d09deeab36d5c113c8496c))
+
+  ```ts
+  import { concurrencyLimit, task } from "@trigger.dev/sdk";
+
+  export const openaiLimit = concurrencyLimit({ name: "openai", total: 25 });
+
+  export const generateSummary = task({
+    id: "generate-summary",
+    concurrency: [{ perKey: 1, total: 5 }, openaiLimit],
+    run: async (payload) => {},
+  });
+  ```
+
+  `perKey` caps each `concurrencyKey` pool and `total` caps across everything, keys or not. The queue-level `concurrencyLimit` option keeps working unchanged and is deprecated in favor of `concurrency`. Enforcement happens server-side; servers without support accept the option but do not enforce it yet.
+
+  Manage limits at runtime with the new `concurrencyLimits` namespace: `list()` and `retrieve(name)` report each limit's bounds plus its live `running` and `queued` counts, `override(name, { perKey, total })` changes only the given bounds (overriding `total` to `0` pauses the limit), and `reset(name)` restores the declared values.
+
+  Queue reads (`queues.list()` and `queues.retrieve()`) now report a `version` that discriminates the shape: `V1` queues keep today's fields (their own `concurrencyLimit` and its override state), while `V2` queues (tasks declared with `concurrency`) carry no queue-level concurrency, since their limits are read and overridden through `concurrencyLimits` (a task's inline limit under its derived `task/<task-id>` name). Existing reads keep compiling: a `V2` queue reports `concurrencyLimit` as null and `concurrency` as undefined.
+
+### Patch Changes
+
+- Fix stale and empty project environment values in `trigger dev`, and support empty values in `syncEnvVars()`. ([`f384e8334`](https://github.com/triggerdotdev/trigger.dev/commit/f384e8334a8eca3266ecb33e5fae7d1fbf148d59))
+- Chat streams now report `Stream stalled: no records received` after five retries of a connected stream that sends no records. Network failures and browser wakeups retain automatic recovery. Healthy tool calls with no records for about six minutes also reach this silence limit. Watch subscriptions remain unlimited, and caller cancellation still closes cleanly. ([#4949](https://github.com/triggerdotdev/trigger.dev/pull/4949))
+- Fixes warm starts silently failing for deployments built with 4.6.0 to 4.6.3 in projects that resolve `zod` to a 3.x release. The runner could not parse the run handed to it by the warm-start service and exited, leaving the run waiting until the platform redrove it a few minutes later and started it cold. Redeploy to pick up the fix. ([#4972](https://github.com/triggerdotdev/trigger.dev/pull/4972))
+- Webhook verifier artifacts can now declare the provider's response contract as data: a handshake `respondStatus`, the status codes returned for accepted deliveries and rejected signatures, and a GET verification flow (`getHandshake`) for providers that confirm a callback URL with a challenge. HMAC verifiers can read the timestamp from a body field, which the Linear provider config uses for its replay window, and the dashboard's test-send re-signs a recorded sample as of now so it passes that window. ([`5f54fb27f`](https://github.com/triggerdotdev/trigger.dev/commit/5f54fb27fe9c42ddca2905a8d9d4ab9e0d086a29))
+
 ## 4.6.3
 
 ### Patch Changes
