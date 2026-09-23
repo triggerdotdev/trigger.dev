@@ -80,6 +80,7 @@ describe("Stop with a successor response", () => {
   let holdStop: boolean;
   let holdMessages: boolean;
   let stopStatus: number;
+  let messageStatus: number;
   let settled: boolean;
   let resumeAfterStoppedCheckpoint: boolean;
   let emptyRecoveredOutput: boolean;
@@ -117,6 +118,7 @@ describe("Stop with a successor response", () => {
     holdStop = false;
     holdMessages = false;
     stopStatus = 200;
+    messageStatus = 200;
     settled = false;
     resumeAfterStoppedCheckpoint = false;
     emptyRecoveredOutput = false;
@@ -137,7 +139,7 @@ describe("Stop with a successor response", () => {
         } else if (!isStop && holdMessages) {
           pendingMessages.push({ response, seq });
         } else {
-          appendResponse(response, seq, isStop ? stopStatus : 200);
+          appendResponse(response, seq, isStop ? stopStatus : messageStatus);
         }
         return;
       }
@@ -318,9 +320,17 @@ describe("Stop with a successor response", () => {
   it.each([
     ["message", "idle"],
     ["action", "idle"],
+    ["message", "known idle"],
+    ["action", "known idle"],
+    ["message", "abandoned"],
+    ["action", "abandoned"],
     ["message", "repeated Stop"],
     ["action", "repeated Stop"],
   ] as const)("retains Stop during a pending %s append (%s)", async (kind, state) => {
+    if (state === "known idle" || state === "abandoned") {
+      transport.setSession("chat", { publicAccessToken: "test-token", isStreaming: false });
+    }
+    if (state === "abandoned") transport.clearSupersedeGate("chat");
     holdMessages = true;
     const first = kind === "message" ? send() : transport.sendAction("chat", { type: "undo" });
     await vi.waitFor(() => expect(pendingMessages).toHaveLength(1));
@@ -331,6 +341,8 @@ describe("Stop with a successor response", () => {
       transcriptRecoveryInputSeq: 11,
     });
     expect(transport.getSession("chat")).not.toHaveProperty("pendingInputCount");
+    expect(transport.getSession("chat")).not.toHaveProperty("pendingInputs");
+    expect(transport.getSession("chat")).not.toHaveProperty("pendingInputStop");
     holdMessages = false;
     const pending = pendingMessages[0]!;
     appendResponse(pending.response, pending.seq);
@@ -433,6 +445,93 @@ describe("Stop with a successor response", () => {
     await expect(stopped).resolves.toBe("");
     emit(oldTailAndReply(11, 13));
     await expect(readText(next)).resolves.toBe("New response");
+  });
+
+  it("clears a pending Stop boundary only after every captured append rejects", async () => {
+    transport.setSession("chat", { publicAccessToken: "test-token", isStreaming: false });
+    holdMessages = true;
+    const first = transport.sendAction("chat", { type: "first" });
+    const second = transport.sendAction("chat", { type: "second" });
+    const firstFailure = expect(first).rejects.toThrow();
+    const secondFailure = expect(second).rejects.toThrow();
+    await vi.waitFor(() => expect(pendingMessages).toHaveLength(2));
+    await transport.stopGeneration("chat");
+    const firstInput = pendingMessages[0]!;
+    appendResponse(firstInput.response, firstInput.seq, 400);
+    await firstFailure;
+    expect(transport.getSession("chat")?.skipToTurnComplete).toBe(true);
+    const secondInput = pendingMessages[1]!;
+    appendResponse(secondInput.response, secondInput.seq, 400);
+    await secondFailure;
+    expect(transport.getSession("chat")?.skipToTurnComplete).toBe(false);
+    expect(saved?.skipToTurnComplete).toBe(false);
+    holdMessages = false;
+    const next = await send();
+    emit([...reply(2), complete(7, 13)]);
+    await expect(readText(next)).resolves.toBe("New response");
+  });
+
+  it.each([408, 499, 500, "disconnect"] as const)(
+    "retains a pending Stop boundary after an uncertain append failure (%s)",
+    async (failure) => {
+      transport.setSession("chat", { publicAccessToken: "test-token", isStreaming: false });
+      holdMessages = true;
+      const first = transport.sendAction("chat", { type: "first" });
+      const firstFailure = expect(first).rejects.toThrow();
+      await vi.waitFor(() => expect(pendingMessages).toHaveLength(1));
+      await transport.stopGeneration("chat");
+      const pending = pendingMessages[0]!;
+      if (failure === "disconnect") pending.response.destroy();
+      else appendResponse(pending.response, pending.seq, failure);
+      await firstFailure;
+      expect(transport.getSession("chat")?.skipToTurnComplete).toBe(true);
+      expect(saved?.skipToTurnComplete).toBe(true);
+    }
+  );
+
+  it("keeps successor acceptance separate from a rejected stopped append", async () => {
+    transport.setSession("chat", { publicAccessToken: "test-token", isStreaming: false });
+    holdMessages = true;
+    const first = transport.sendAction("chat", { type: "first" });
+    const firstFailure = expect(first).rejects.toThrow();
+    await vi.waitFor(() => expect(pendingMessages).toHaveLength(1));
+    await transport.stopGeneration("chat");
+    const next = send();
+    await vi.waitFor(() => expect(pendingMessages).toHaveLength(2));
+    const successor = pendingMessages[1]!;
+    appendResponse(successor.response, successor.seq);
+    const nextStream = await next;
+    const rejected = pendingMessages[0]!;
+    appendResponse(rejected.response, rejected.seq, 400);
+    await firstFailure;
+    expect(transport.getSession("chat")?.skipToTurnComplete).toBe(false);
+    emit([...reply(2), complete(7, successor.seq)]);
+    await expect(readText(nextStream)).resolves.toBe("New response");
+  });
+
+  it("retains recovery after a successor already loses gated output", async () => {
+    transport.setSession("chat", { publicAccessToken: "test-token", isStreaming: false });
+    holdMessages = true;
+    const first = transport.sendAction("chat", { type: "first" });
+    const firstFailure = expect(first).rejects.toThrow();
+    await vi.waitFor(() => expect(pendingMessages).toHaveLength(1));
+    await transport.stopGeneration("chat");
+    const next = send();
+    await vi.waitFor(() => expect(pendingMessages).toHaveLength(2));
+    const successor = pendingMessages[1]!;
+    appendResponse(successor.response, successor.seq);
+    const nextStream = await next;
+    const nextFailure = expect(readText(nextStream)).rejects.toThrow(
+      "The previous turn's output was lost"
+    );
+    emit(reply(1).slice(0, 2));
+    await vi.waitFor(() => expect(transport.getSession("chat")?.lastEventId).toBe("2"));
+    const rejected = pendingMessages[0]!;
+    appendResponse(rejected.response, rejected.seq, 400);
+    await firstFailure;
+    expect(transport.getSession("chat")?.skipToTurnComplete).toBe(true);
+    emit([...reply(1).slice(2), complete(6, successor.seq)]);
+    await nextFailure;
   });
 
   it("does not mark an already-canceled reconnect as an outstanding turn", async () => {
@@ -590,22 +689,25 @@ describe("Stop with a successor response", () => {
       { publicAccessToken: "test-token" },
       {
         startSession: async () => {
-          stopStatus = 200;
+          messageStatus = 200;
           return { publicAccessToken: "replacement-token" };
         },
       }
     );
     await send();
-    stopStatus = 404;
     expect(await transport.stopGeneration("chat")).toBe(true);
+    messageStatus = 404;
+    const recreated = await send();
     expect(saved).toMatchObject({
       skipToTurnComplete: false,
       supersededInputSeq: undefined,
-      activeInputSeq: undefined,
+      activeInputSeq: 13,
     });
+    emit([...reply(1), complete(6, 13)]);
+    await expect(readText(recreated)).resolves.toBe("New response");
     await transport.stopGeneration("chat");
     const next = await send();
-    emit([...reply(1), complete(6, 14)]);
+    emit([...reply(7), complete(12, 15)]);
     await expect(readText(next)).resolves.toBe("New response");
   });
 
@@ -680,6 +782,35 @@ describe("Stop with a successor response", () => {
       const afterReload = await send();
       emit([...reply(12), complete(17, 13)]);
       await expect(readText(afterReload)).resolves.toBe("New response");
+    }
+  );
+
+  it.each(["message", "action"] as const)(
+    "blocks an overlapping numbered %s after a sequence-free accepted append",
+    async (kind) => {
+      await send();
+      await transport.stopGeneration("chat");
+      holdMessages = true;
+      const first = kind === "message" ? send() : transport.sendAction("chat", { type: "first" });
+      const second = kind === "message" ? send() : transport.sendAction("chat", { type: "second" });
+      const reloadError = "Stopped chat response cannot be matched";
+      const firstFailure = expect(first).rejects.toThrow(reloadError);
+      const secondFailure = expect(second).rejects.toThrow(reloadError);
+      await vi.waitFor(() => expect(pendingMessages).toHaveLength(2));
+      const sequenceFree = pendingMessages[0]!;
+      includeSequence = false;
+      appendResponse(sequenceFree.response, sequenceFree.seq);
+      await firstFailure;
+      const blockedState = transport.getSession("chat");
+      expect(blockedState?.activeInputSeq).toBeUndefined();
+      const numbered = pendingMessages[1]!;
+      includeSequence = true;
+      appendResponse(numbered.response, numbered.seq);
+      await secondFailure;
+      expect(transport.getSession("chat")).toEqual(blockedState);
+      expect(saved).toMatchObject({ requiresTranscriptReload: true, isStreaming: false });
+      expect(outputs).toHaveLength(1);
+      expect(await transport.reconnectToStream({ chatId: "chat" })).toBeNull();
     }
   );
 
