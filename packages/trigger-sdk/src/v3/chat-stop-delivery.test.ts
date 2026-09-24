@@ -2,6 +2,7 @@ import { createServer, type Server, type ServerResponse } from "node:http";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   TriggerChatTransport,
+  type ChatTransportEndpointContext,
   type ChatTransportEvent,
   type TriggerChatTransportOptions,
 } from "./chat.js";
@@ -31,6 +32,7 @@ describe("Stop delivery outcomes", () => {
   let inputs: InputRequest[];
   let outputs: ServerResponse[];
   let events: ChatTransportEvent[];
+  let fetchContexts: ChatTransportEndpointContext[];
   let respond: (input: InputRequest) => void;
   let inputSeq: number;
 
@@ -41,6 +43,10 @@ describe("Stop delivery outcomes", () => {
       accessToken: () => "test-token",
       sessions: { chat: { publicAccessToken: "test-token", lastEventId: "1" } },
       onEvent: (event) => events.push(event),
+      fetch: (url, init, context) => {
+        fetchContexts.push({ ...context });
+        return globalThis.fetch(url, init);
+      },
       ...options,
     });
   }
@@ -55,6 +61,7 @@ describe("Stop delivery outcomes", () => {
     inputs = [];
     outputs = [];
     events = [];
+    fetchContexts = [];
     inputSeq = 10;
     respond = (input) => appendResponse(input);
     server = createServer(async (request, response) => {
@@ -128,6 +135,7 @@ describe("Stop delivery outcomes", () => {
       await expect(stop(throwOnError)).resolves.toBe(true);
       expect(inputs).toHaveLength(1);
       expect(inputs[0]?.kind).toBe("stop");
+      expect(fetchContexts).toEqual([{ endpoint: "in", chatId: "chat", inputKind: "stop" }]);
       expect(sendFailures()).toHaveLength(0);
     }
   );
@@ -198,6 +206,10 @@ describe("Stop delivery outcomes", () => {
       expect(inputs.map((input) => input.authorization)).toEqual([
         "Bearer test-token",
         "Bearer fresh-token",
+      ]);
+      expect(fetchContexts).toEqual([
+        { endpoint: "in", chatId: "chat", inputKind: "stop" },
+        { endpoint: "in", chatId: "chat", inputKind: "stop" },
       ]);
       expect(sendFailures()).toHaveLength(0);
     }
@@ -312,6 +324,29 @@ describe("Stop delivery outcomes", () => {
         });
       }
       expect(inputs.filter((input) => input.kind === "stop")).toHaveLength(1);
+    }
+  );
+
+  it.each(["message", "action"] as const)(
+    "identifies %s input and consumer Stop without an output input kind",
+    async (kind) => {
+      const abort = new AbortController();
+      const reader = (await send(kind, abort.signal)).getReader();
+      await vi.waitFor(() => expect(outputs).toHaveLength(1));
+      expect(fetchContexts).toEqual([
+        { endpoint: "in", chatId: "chat", inputKind: "message" },
+        { endpoint: "out", chatId: "chat" },
+      ]);
+      abort.abort();
+      await expect(reader.read()).resolves.toEqual({ done: true, value: undefined });
+      await vi.waitFor(() =>
+        expect(inputs.map((input) => input.kind)).toEqual(["message", "stop"])
+      );
+      expect(fetchContexts).toEqual([
+        { endpoint: "in", chatId: "chat", inputKind: "message" },
+        { endpoint: "out", chatId: "chat" },
+        { endpoint: "in", chatId: "chat", inputKind: "stop" },
+      ]);
     }
   );
 

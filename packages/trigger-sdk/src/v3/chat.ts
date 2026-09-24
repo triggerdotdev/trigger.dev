@@ -190,6 +190,8 @@ export type ChatTransportEndpoint = "in" | "out";
 export type ChatTransportEndpointContext = {
   endpoint: ChatTransportEndpoint;
   chatId: string;
+  /** Input control kind before serialization. Output requests omit this field. */
+  inputKind?: "message" | "stop";
 };
 
 /** Resolver form of `baseURL` — return the base for the given endpoint. */
@@ -1407,7 +1409,8 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
     const partId = crypto.randomUUID();
     const serializedBody = this.serializeInputChunk({ kind: "stop" });
-    const send = (token: string) => this.appendInputChunk(chatId, token, serializedBody, partId);
+    const send = (token: string) =>
+      this.appendInputChunk(chatId, token, serializedBody, partId, "stop");
     try {
       const inSeq = await this.sendWithEvents(
         chatId,
@@ -2147,9 +2150,10 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     chatId: string,
     token: string,
     body: string,
-    partId?: string
+    partId?: string,
+    inputKind: "message" | "stop" = "message"
   ): Promise<number | undefined> {
-    const ctx: ChatTransportEndpointContext = { endpoint: "in", chatId };
+    const ctx: ChatTransportEndpointContext = { endpoint: "in", chatId, inputKind };
     const url = `${this.resolveBaseURL(ctx)}/realtime/v1/sessions/${encodeURIComponent(chatId)}/in/append`;
     // extraHeaders first so the fixed headers below win — a transport-wide
     // X-Part-Id must not override the per-append idempotency key.
@@ -2349,7 +2353,9 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             this.appendInputChunk(
               chatId,
               state.publicAccessToken,
-              this.serializeInputChunk({ kind: "stop" })
+              this.serializeInputChunk({ kind: "stop" }),
+              undefined,
+              "stop"
             )
               .then((inSeq) => this.recordStoppedInput(chatId, state, stoppedBoundary, inSeq))
               .catch(() => {});
