@@ -109,7 +109,7 @@ function RuntimeUpdateBanner() {
         </LinkButton>
       }
     >
-      At least one of your projects uses Node 21: deployments will fail from 5 October.
+      At least one of your projects uses Node 21: new deployments from 5 October will switch to using Node 24.
     </AnimatedOrgBannerBar>
   );
 }
