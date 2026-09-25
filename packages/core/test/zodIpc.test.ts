@@ -1,80 +1,43 @@
-import { EventEmitter } from "node:events";
-import { describe, expect, it } from "vitest";
-import { z } from "zod/v4";
+import { fork, type ChildProcess } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { afterEach, describe, expect, it } from "vitest";
 import { ZodIpcConnection } from "../src/v3/zodIpc.js";
+import { ChildToParent, ParentToChild } from "./fixtures/zodIpcCatalog.js";
 
-// A pair of in-memory endpoints that serialize packets the same way Node's default
-// ("json") IPC serialization does, so keys with `undefined` values are dropped in transit.
-function createIpcPair() {
-  const parentEvents = new EventEmitter();
-  const childEvents = new EventEmitter();
+const childPath = fileURLToPath(new URL("./fixtures/zodIpcChild.ts", import.meta.url));
 
-  const endpoint = (inbox: EventEmitter, outbox: EventEmitter) => ({
-    connected: true,
-    send: (message: unknown) => {
-      const serialized = JSON.stringify(message);
-      setImmediate(() => outbox.emit("message", JSON.parse(serialized)));
-      return true;
-    },
-    on: (event: "message", listener: (message: any) => void) => {
-      inbox.on(event, listener);
-    },
-  });
+let child: ChildProcess | undefined;
 
-  return {
-    parent: endpoint(parentEvents, childEvents),
-    child: endpoint(childEvents, parentEvents),
-  };
-}
+afterEach(() => {
+  child?.kill();
+  child = undefined;
+});
 
-const ParentToChild = {
-  FLUSH: {
-    message: z.object({ timeoutInMs: z.number() }),
-    callback: z.void(),
-  },
-  PING: {
-    message: z.object({ value: z.string() }),
-    callback: z.object({ echoed: z.string() }),
-  },
-};
+// Node's default IPC serialization is JSON, so an ack with `message: undefined`
+// arrives without the `message` key, exactly as it does between a worker and its task run process.
+function forkChild() {
+  child = fork(childPath, { execArgv: ["--import", "tsx"], stdio: "inherit" });
 
-const ChildToParent = {};
-
-function createConnections() {
-  const { parent, child } = createIpcPair();
-
-  const parentConnection = new ZodIpcConnection({
+  return new ZodIpcConnection({
     listenSchema: ChildToParent,
     emitSchema: ParentToChild,
-    process: parent,
-  });
-
-  new ZodIpcConnection({
-    listenSchema: ParentToChild,
-    emitSchema: ChildToParent,
     process: child,
-    handlers: {
-      FLUSH: async () => {},
-      PING: async ({ value }) => ({ echoed: value }),
-    },
   });
-
-  return parentConnection;
 }
 
 describe("ZodIpcConnection", () => {
-  it("resolves sendWithAck for a void callback after the ack crosses a JSON boundary", async () => {
-    const connection = createConnections();
+  it("resolves sendWithAck for a void callback", async () => {
+    const connection = forkChild();
 
-    await expect(connection.sendWithAck("FLUSH", { timeoutInMs: 1000 }, 1000)).resolves.toBe(
+    await expect(connection.sendWithAck("FLUSH", { timeoutInMs: 1000 }, 2000)).resolves.toBe(
       undefined
     );
   });
 
   it("resolves sendWithAck with the callback payload", async () => {
-    const connection = createConnections();
+    const connection = forkChild();
 
-    await expect(connection.sendWithAck("PING", { value: "hello" }, 1000)).resolves.toEqual({
+    await expect(connection.sendWithAck("PING", { value: "hello" }, 2000)).resolves.toEqual({
       echoed: "hello",
     });
   });
