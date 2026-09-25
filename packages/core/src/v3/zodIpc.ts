@@ -124,7 +124,9 @@ const Packet = discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("ACK"),
-    message: z.any(),
+    // Optional: a void callback acks with `message: undefined`, and `process.send`
+    // drops undefined keys when serializing, so the key is absent on arrival.
+    message: z.any().optional(),
     id: z.number(),
   }),
   z.object({
