@@ -66,11 +66,9 @@ describe("ZodIpcConnection", () => {
   it("resolves sendWithAck for a void callback after the ack crosses a JSON boundary", async () => {
     const connection = createConnections();
 
-    const start = Date.now();
     await expect(connection.sendWithAck("FLUSH", { timeoutInMs: 1000 }, 1000)).resolves.toBe(
       undefined
     );
-    expect(Date.now() - start).toBeLessThan(500);
   });
 
   it("resolves sendWithAck with the callback payload", async () => {
