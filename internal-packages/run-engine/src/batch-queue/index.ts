@@ -59,6 +59,9 @@ const ENV_CONCURRENCY_KEY_PREFIX = "batch:env_concurrency";
 // then all messages are routed to this queue for BatchQueue's own consumer loop.
 const BATCH_WORKER_QUEUE_ID = "batch-worker-queue";
 
+/** How long a claimed batch item stays invisible before the reclaim loop takes it back. */
+const BATCH_ITEM_VISIBILITY_TIMEOUT_MS = 60_000;
+
 export class BatchQueue {
   private fairQueue: FairQueue<typeof BatchItemPayloadSchema>;
   private workerQueueManager: WorkerQueueManager;
@@ -67,6 +70,8 @@ export class BatchQueue {
   private tracer?: Tracer;
   private concurrencyRedis: Redis;
   private defaultConcurrency: number;
+  private heartbeatIntervalMs: number;
+  private visibilityTimeoutMs: number;
   private maxAttempts: number;
 
   private processItemCallback?: ProcessBatchItemCallback;
@@ -95,6 +100,8 @@ export class BatchQueue {
     this.logger = options.logger ?? new Logger("BatchQueue", options.logLevel ?? "info");
     this.tracer = options.tracer;
     this.defaultConcurrency = options.defaultConcurrency ?? 10;
+    this.visibilityTimeoutMs = options.visibilityTimeoutMs ?? BATCH_ITEM_VISIBILITY_TIMEOUT_MS;
+    this.heartbeatIntervalMs = Math.max(50, Math.floor(this.visibilityTimeoutMs / 3));
     this.maxAttempts = options.retry?.maxAttempts ?? 1;
     this.abortController = new AbortController();
     this.workerQueueBlockingTimeoutSeconds = options.workerQueueBlockingTimeoutSeconds ?? 10;
@@ -154,7 +161,8 @@ export class BatchQueue {
       shardCount: options.shardCount ?? 1,
       consumerCount: options.consumerCount,
       consumerIntervalMs: options.consumerIntervalMs,
-      visibilityTimeoutMs: 60_000, // 1 minute for batch item processing
+      visibilityTimeoutMs: this.visibilityTimeoutMs,
+      heartbeatIntervalMs: this.visibilityTimeoutMs,
       startConsumers: false, // We control when to start
       cooloff: {
         enabled: false,
@@ -752,6 +760,44 @@ export class BatchQueue {
   // Private - Message Handling
   // ============================================================================
 
+  /**
+   * Keep extending a message's visibility deadline while its callback runs, so an item
+   * slower than the visibility timeout is not redelivered and executed a second time.
+   *
+   * `lostLease` reports that an extend found no in-flight entry, which means the item was
+   * reclaimed and is now back on the queue. It is a best-effort signal, not a fence: the
+   * in-flight member is keyed only by message and queue id, so once another consumer
+   * re-claims the item the member exists again and an extend from this consumer succeeds.
+   * Distinguishing owners would need a per-claim token in the member.
+   */
+  #startHeartbeat(
+    messageId: string,
+    queueId: string
+  ): { stop: () => void; lostLease: () => boolean } {
+    let lostLease = false;
+
+    const interval = setInterval(() => {
+      this.fairQueue
+        .heartbeatMessage(messageId, queueId)
+        .then((stillOwned) => {
+          if (!stillOwned) {
+            lostLease = true;
+          }
+        })
+        .catch((error) => {
+          this.logger.debug("Batch item heartbeat failed", {
+            messageId,
+            queueId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
+    }, this.heartbeatIntervalMs);
+
+    interval.unref?.();
+
+    return { stop: () => clearInterval(interval), lostLease: () => lostLease };
+  }
+
   async #handleMessage(consumerId: string, messageId: string, queueId: string): Promise<void> {
     // Get message data from FairQueue's in-flight storage
     const storedMessage = await this.fairQueue.getMessageData(messageId, queueId);
@@ -820,9 +866,10 @@ export class BatchQueue {
       let processedCount: number;
 
       try {
-        const result = await this.#startSpan(
-          "BatchQueue.processItemCallback",
-          async (innerSpan) => {
+        const heartbeat = this.#startHeartbeat(messageId, queueId);
+        let result: Awaited<ReturnType<ProcessBatchItemCallback>>;
+        try {
+          result = await this.#startSpan("BatchQueue.processItemCallback", async (innerSpan) => {
             innerSpan?.setAttributes({
               "batch.id": batchId,
               "batch.itemIndex": itemIndex,
@@ -837,8 +884,20 @@ export class BatchQueue {
               attempt,
               isFinalAttempt,
             });
-          }
-        );
+          });
+        } finally {
+          heartbeat.stop();
+        }
+
+        if (heartbeat.lostLease()) {
+          this.logger.warn("Discarding batch item result, another consumer now owns it", {
+            batchId,
+            itemIndex,
+            messageId,
+            attempt,
+          });
+          return;
+        }
 
         if (result.success) {
           span?.setAttribute("batch.result", "success");
