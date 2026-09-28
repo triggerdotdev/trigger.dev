@@ -17,7 +17,7 @@ export class MinIOContainer extends GenericContainer {
   private region = "us-east-1";
 
   constructor(
-    image = "quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e"
+    image = "chainguard/minio:latest@sha256:6a1d0b45c8669726bba580ced0bfa4cb9fdeed1ed636dfabd81d1577beb6937b"
   ) {
     super(image);
     this.withExposedPorts(MINIO_PORT);
@@ -49,13 +49,14 @@ export class MinIOContainer extends GenericContainer {
 
     const startedContainer = await super.start();
 
-    // Create the "packets" bucket using MinIO client
     await x(
       "docker",
       [
         "exec",
         startedContainer.getId(),
         "mc",
+        "--config-dir",
+        "/tmp/.mc",
         "alias",
         "set",
         "local",
@@ -66,9 +67,19 @@ export class MinIOContainer extends GenericContainer {
       { throwOnError: true }
     );
 
-    await x("docker", ["exec", startedContainer.getId(), "mc", "mb", "local/packets"], {
-      throwOnError: true,
-    });
+    await x(
+      "docker",
+      [
+        "exec",
+        startedContainer.getId(),
+        "mc",
+        "--config-dir",
+        "/tmp/.mc",
+        "mb",
+        "local/packets",
+      ],
+      { throwOnError: true }
+    );
 
     return new StartedMinIOContainer(
       startedContainer,
@@ -123,14 +134,35 @@ export class StartedMinIOContainer extends AbstractStartedContainer {
   public async resetBucket(bucket = "packets"): Promise<void> {
     await x(
       "docker",
-      ["exec", this.getId(), "mc", "rm", "--recursive", "--force", `local/${bucket}`],
+      [
+        "exec",
+        this.getId(),
+        "mc",
+        "--config-dir",
+        "/tmp/.mc",
+        "rm",
+        "--recursive",
+        "--force",
+        `local/${bucket}`,
+      ],
       {
         throwOnError: false,
       }
     );
-    await x("docker", ["exec", this.getId(), "mc", "mb", "--ignore-existing", `local/${bucket}`], {
-      throwOnError: true,
-    });
+    await x(
+      "docker",
+      [
+        "exec",
+        this.getId(),
+        "mc",
+        "--config-dir",
+        "/tmp/.mc",
+        "mb",
+        "--ignore-existing",
+        `local/${bucket}`,
+      ],
+      { throwOnError: true }
+    );
   }
 
   /**
