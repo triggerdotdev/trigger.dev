@@ -66,6 +66,7 @@ import type {
 // ESM-only `ai@7` (see ../imports/ai-runtime.ts).
 import { type Attributes, trace } from "@opentelemetry/api";
 import { traceSessionIdle } from "./sessionTracing.js";
+import { waitForChatRouteAfterIdle } from "./chatRouteWait.js";
 import {
   tool as aiTool,
   convertToModelMessages,
@@ -1780,31 +1781,21 @@ async function waitOnChatRoute<T>(
       if (options.onSuspend) await options.onSuspend();
 
       span.setAttribute("wait.resolved", "suspended");
-      while (true) {
-        /**
-         * The floor doubles as the wake cursor: the server completes the
-         * waitpoint immediately if anything sits after this sequence, so a
-         * floor that has advanced past an unread record parks a waitpoint
-         * nothing will complete. Recorded on the span so a run that never woke
-         * can be diagnosed from its trace alone.
-         */
-        const wakeFrom = router.resumeFloor();
-        span.setAttribute("wait.lastSeqNum", wakeFrom ?? -1);
-        const wake = await session.in.awaitWake({
-          timeout: options.timeout,
-          lastSeqNum: wakeFrom,
-        });
-        if (!wake.ok) {
-          span.recordException(wake.error);
-          return { ok: false as const, error: wake.error };
-        }
+      const result = await waitForChatRouteAfterIdle(router, route, {
+        timeout: options.timeout,
+        wake: async (timeout, lastSeqNum) => {
+          span.setAttribute("wait.lastSeqNum", lastSeqNum ?? -1);
+          return session.in.awaitWake({ timeout, lastSeqNum });
+        },
+      });
 
-        const record = await router.next(route);
-        if (!record) continue;
-
-        if (options.onResume) await options.onResume();
-        return { ok: true as const, output: record.data as T, record };
+      if (!result.ok) {
+        span.recordException(result.error);
+        return result;
       }
+
+      if (options.onResume) await options.onResume();
+      return { ok: true as const, output: result.record.data as T, record: result.record };
     },
     {
       attributes: {
