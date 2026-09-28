@@ -76,12 +76,12 @@ export async function readRunForEventOrThrow<S extends Prisma.TaskRunSelect>(
  * on a single run-ops DB. Length classification is INVALID here: a batch id may
  * be a run-ops id (cut-over orgs) or a cuid (and cuid-shaped ids can be backfilled
  * onto NEW), so id-shape does not reliably indicate the row's actual residency.
- * The existence probe is the correct signal.
+ * The existence probe uses the writer because batch finalization is a read-after-write
+ * path and a lagging replica can incorrectly route a NEW batch to LEGACY.
  */
 export async function resolveBatchRunOpsWriter(
   batchId: string,
   deps: {
-    newReplica: RunOpsPrismaClient;
     newWriter: RunOpsPrismaClient;
     legacyWriter: RunOpsPrismaClient;
     shards?: ReadonlyArray<{ key: string; writer: RunOpsPrismaClient }>;
@@ -101,7 +101,7 @@ export async function resolveBatchRunOpsWriter(
     return shard.writer;
   }
 
-  const onNew = await deps.newReplica.batchTaskRun.findFirst({
+  const onNew = await deps.newWriter.batchTaskRun.findFirst({
     where: { id: batchId },
     select: { id: true },
   });
@@ -119,7 +119,6 @@ export const QUEUE_SIZE_LIMIT_EXCEEDED_ERROR_CODE = "QUEUE_SIZE_LIMIT_EXCEEDED";
 
 export type BatchCompletionDeps = {
   splitEnabled: boolean;
-  newReplica: RunOpsPrismaClient;
   newWriter: RunOpsPrismaClient;
   legacyWriter: RunOpsPrismaClient;
   shards?: ReadonlyArray<{ key: string; writer: RunOpsPrismaClient }>;
@@ -150,7 +149,6 @@ export async function handleBatchCompletion(
 
   // Always probe residency — never special-case on splitEnabled (see commit msg).
   const runOpsWriter = await resolveBatchRunOpsWriter(batchId, {
-    newReplica: deps.newReplica,
     newWriter: deps.newWriter,
     legacyWriter: deps.legacyWriter,
     shards: deps.shards,

@@ -113,7 +113,8 @@ class CountingPostgresRunStore extends PostgresRunStore {
 async function driveBatchToAllChildrenComplete(
   engine: RunEngine,
   prisma: PrismaClient,
-  friendlyPrefix: string
+  friendlyPrefix: string,
+  completeChildren = true
 ) {
   const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
   const parentTask = "parent-task";
@@ -183,7 +184,7 @@ async function driveBatchToAllChildrenComplete(
       queue: `task/${childTask}`,
       isTest: false,
       tags: [],
-      resumeParentOnCompletion: true,
+      resumeParentOnCompletion: completeChildren,
       parentTaskRunId: parentRun.id,
       batch: { id: batch.id, index: 0 },
     },
@@ -206,38 +207,40 @@ async function driveBatchToAllChildrenComplete(
       queue: `task/${childTask}`,
       isTest: false,
       tags: [],
-      resumeParentOnCompletion: true,
+      resumeParentOnCompletion: completeChildren,
       parentTaskRunId: parentRun.id,
       batch: { id: batch.id, index: 1 },
     },
     prisma
   );
 
-  for (const child of [child1, child2]) {
-    await setTimeout(500);
-    const dequeued = await engine.dequeueFromWorkerQueue({
-      consumerId: "test_consumer",
-      workerQueue: "main",
-    });
-    const match = dequeued.find((d) => d.run.id === child.id) ?? dequeued[0];
-    assertNonNullable(match);
-    const attempt = await engine.startRunAttempt({
-      runId: match.run.id,
-      snapshotId: match.snapshot.id,
-    });
-    await engine.completeRunAttempt({
-      runId: attempt.run.id,
-      snapshotId: attempt.snapshot.id,
-      completion: {
-        id: attempt.run.id,
-        ok: true,
-        output: '{"foo":"bar"}',
-        outputType: "application/json",
-      },
-    });
-  }
+  if (completeChildren) {
+    for (const child of [child1, child2]) {
+      await setTimeout(500);
+      const dequeued = await engine.dequeueFromWorkerQueue({
+        consumerId: "test_consumer",
+        workerQueue: "main",
+      });
+      const match = dequeued.find((d) => d.run.id === child.id) ?? dequeued[0];
+      assertNonNullable(match);
+      const attempt = await engine.startRunAttempt({
+        runId: match.run.id,
+        snapshotId: match.snapshot.id,
+      });
+      await engine.completeRunAttempt({
+        runId: attempt.run.id,
+        snapshotId: attempt.snapshot.id,
+        completion: {
+          id: attempt.run.id,
+          ok: true,
+          output: '{"foo":"bar"}',
+          outputType: "application/json",
+        },
+      });
+    }
 
-  await setTimeout(500);
+    await setTimeout(500);
+  }
 
   return { environment, batch, parentRun, child1, child2 };
 }
@@ -299,6 +302,57 @@ describe("RunEngine #tryCompleteBatch store routing", () => {
         });
         expect(remainingParentWaitpoints.length).toBe(0);
 
+        const parentExecution = await engine.getRunExecutionData({ runId: parentRun.id });
+        assertNonNullable(parentExecution);
+        expect(parentExecution.snapshot.executionStatus).not.toBe("EXECUTING_WITH_WAITPOINTS");
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "retries waitpoint completion for a completed batch whose parent was not resumed",
+    async ({ prisma, redisOptions }) => {
+      const engine = new RunEngine(createEngineOptions(redisOptions, prisma));
+
+      try {
+        const { batch, parentRun } = await driveBatchToAllChildrenComplete(
+          engine,
+          prisma,
+          "run_batch_completion_recovery",
+          false
+        );
+
+        const waitpoint = await prisma.waitpoint.findFirstOrThrow({
+          where: { completedByBatchId: batch.id },
+        });
+        expect(waitpoint.status).toBe("PENDING");
+        expect(
+          await prisma.taskRunWaitpoint.count({
+            where: { taskRunId: parentRun.id, waitpointId: waitpoint.id },
+          })
+        ).toBe(1);
+
+        await prisma.batchTaskRun.update({
+          where: { id: batch.id },
+          data: { status: "COMPLETED", resumedAt: null },
+        });
+
+        await engine.batchSystem.performCompleteBatch({ batchId: batch.id });
+
+        const recoveredBatch = await prisma.batchTaskRun.findFirstOrThrow({
+          where: { id: batch.id },
+        });
+        expect(recoveredBatch.resumedAt).not.toBeNull();
+
+        const recoveredWaitpoint = await prisma.waitpoint.findFirstOrThrow({
+          where: { id: waitpoint.id },
+        });
+        expect(recoveredWaitpoint.status).toBe("COMPLETED");
+
+        await setTimeout(1_000);
+        expect(await prisma.taskRunWaitpoint.count({ where: { taskRunId: parentRun.id } })).toBe(0);
         const parentExecution = await engine.getRunExecutionData({ runId: parentRun.id });
         assertNonNullable(parentExecution);
         expect(parentExecution.snapshot.executionStatus).not.toBe("EXECUTING_WITH_WAITPOINTS");

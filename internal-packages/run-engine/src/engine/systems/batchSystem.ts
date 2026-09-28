@@ -170,7 +170,17 @@ export class BatchSystem {
       }
 
       if (batch.status === "COMPLETED") {
-        this.$.logger.debug("#tryCompleteBatch: Batch already completed", { batchId });
+        if (batch.resumedAt) {
+          this.$.logger.debug("#tryCompleteBatch: Batch already completed and resumed", {
+            batchId,
+          });
+          return;
+        }
+
+        this.$.logger.debug("#tryCompleteBatch: Batch completed before its parent resumed", {
+          batchId,
+        });
+        await this.#resumeBatchParent(batchId);
         return;
       }
 
@@ -230,33 +240,40 @@ export class BatchSystem {
           return;
         }
 
-        //get waitpoint (if there is one)
-        const waitpoint = await this.$.runStore.findWaitpoint(
-          {
-            where: {
-              completedByBatchId: batchId,
-            },
-          },
-          this.$.prisma
-        );
-
-        if (!waitpoint) {
-          this.$.logger.debug(
-            "RunEngine.unblockRunForBatch(): Waitpoint not found. This is ok, because only batchTriggerAndWait has waitpoints",
-            {
-              batchId,
-            }
-          );
-          return;
-        }
-
-        await this.waitpointSystem.completeWaitpoint({
-          id: waitpoint.id,
-          output: { value: "Batch waitpoint completed", isError: false },
-        });
+        await this.#resumeBatchParent(batchId);
       } else {
         this.$.logger.debug("#tryCompleteBatch: Not all runs are completed", { batchId });
       }
     });
+  }
+
+  async #resumeBatchParent(batchId: string): Promise<void> {
+    const waitpoint = await this.$.runStore.findWaitpoint(
+      {
+        where: { completedByBatchId: batchId },
+      },
+      this.$.prisma
+    );
+
+    if (!waitpoint) {
+      this.$.logger.debug(
+        "RunEngine.unblockRunForBatch(): Waitpoint not found. This is ok, because only batchTriggerAndWait has waitpoints",
+        { batchId }
+      );
+      return;
+    }
+
+    await this.waitpointSystem.completeWaitpoint({
+      id: waitpoint.id,
+      output: { value: "Batch waitpoint completed", isError: false },
+    });
+
+    await this.$.runStore.updateManyBatchTaskRun(
+      {
+        where: { id: batchId, resumedAt: null },
+        data: { resumedAt: new Date() },
+      },
+      this.$.prisma
+    );
   }
 }

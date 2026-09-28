@@ -9,7 +9,6 @@ import {
   runOpsNewReplica,
   runOpsLegacyReplica,
   runOpsNewPrismaClient,
-  runOpsNewReplicaClient,
   runOpsLegacyPrismaClient,
   runOpsShardHandles,
 } from "~/db.server";
@@ -1060,7 +1059,6 @@ export function setupBatchQueueCallbacks() {
   engine.setBatchCompletionCallback(async (result: CompleteBatchResult) => {
     await handleBatchCompletion(result, {
       splitEnabled: await splitEnabledPromise,
-      newReplica: runOpsNewReplicaClient,
       newWriter: runOpsNewPrismaClient,
       legacyWriter: runOpsLegacyPrismaClient,
       shards: runOpsShardHandles,

@@ -117,7 +117,6 @@ async function seedBatch(
 function makeBatchDeps(
   overrides: {
     splitEnabled?: boolean;
-    newReplica?: PrismaClient;
     newWriter?: PrismaClient;
     legacyWriter?: PrismaClient;
     legacyReplica?: PrismaClient;
@@ -127,7 +126,6 @@ function makeBatchDeps(
   const tryCompleteBatchCalls: string[] = [];
   return {
     splitEnabled: overrides.splitEnabled ?? false,
-    newReplica: (overrides.newReplica ?? single)!,
     newWriter: (overrides.newWriter ?? single)!,
     legacyWriter: (overrides.legacyWriter ?? single)!,
     tryCompleteBatch: async (batchId: string) => {
@@ -508,7 +506,6 @@ describe("runEngineHandlers batch residency routing", () => {
       const shards = [{ key: "a", writer: prisma14 }] as const;
 
       const writer = await resolveBatchRunOpsWriter(gen2BatchId, {
-        newReplica: prisma17,
         newWriter: prisma17,
         legacyWriter: prisma17,
         shards: shards as never,
@@ -526,7 +523,6 @@ describe("runEngineHandlers batch residency routing", () => {
         },
         {
           splitEnabled: true,
-          newReplica: prisma17,
           newWriter: prisma17,
           legacyWriter: prisma17,
           shards: shards as never,
@@ -555,13 +551,6 @@ describe("runEngineHandlers batch residency routing", () => {
     const shardWriter = {} as never;
 
     const writer = await resolveBatchRunOpsWriter(`${"a".repeat(24)}a2`, {
-      newReplica: {
-        batchTaskRun: {
-          findFirst: async () => {
-            throw new Error("a gen-2 batch id must never probe the NEW store");
-          },
-        },
-      } as never,
       newWriter: {} as never,
       legacyWriter: {} as never,
       shards: [{ key: "a", writer: shardWriter as never }],
@@ -573,7 +562,6 @@ describe("runEngineHandlers batch residency routing", () => {
   it("an unconfigured shard key fails loud rather than writing elsewhere", async () => {
     await expect(
       resolveBatchRunOpsWriter(`${"a".repeat(24)}z2`, {
-        newReplica: {} as never,
         newWriter: {} as never,
         legacyWriter: {} as never,
         shards: [{ key: "a", writer: {} as never }],
@@ -581,7 +569,7 @@ describe("runEngineHandlers batch residency routing", () => {
     ).rejects.toThrow(/shard/i);
   });
 
-  // True single-DB invariant: the topology's cpFallback makes newReplica and
+  // True single-DB invariant: the topology's cpFallback makes newWriter and
   // legacyWriter the SAME control-plane client, so the probe always resolves to
   // that one client regardless of where length-classification would guess.
   containerTest("true single-DB resolves to the single client", async ({ prisma }) => {
@@ -594,7 +582,6 @@ describe("runEngineHandlers batch residency routing", () => {
     });
 
     const writer = await resolveBatchRunOpsWriter(batchId, {
-      newReplica: prisma,
       newWriter: prisma,
       legacyWriter: prisma,
     });
@@ -616,7 +603,6 @@ describe("runEngineHandlers batch residency routing", () => {
 
       // The probe misses on new (the new DB has no such batch) and resolves the legacy writer.
       const writer = await resolveBatchRunOpsWriter(batchId, {
-        newReplica: prisma17,
         newWriter: prisma17,
         legacyWriter: prisma14,
       });
@@ -624,7 +610,6 @@ describe("runEngineHandlers batch residency routing", () => {
 
       const deps: BatchCompletionDeps = {
         splitEnabled: true,
-        newReplica: prisma17,
         newWriter: prisma17,
         legacyWriter: prisma14,
         tryCompleteBatch: async () => {},
@@ -674,7 +659,6 @@ describe("runEngineHandlers batch residency routing", () => {
 
       const deps: BatchCompletionDeps = {
         splitEnabled: false,
-        newReplica: prisma17,
         newWriter: prisma17,
         legacyWriter: prisma14,
         tryCompleteBatch: async () => {},
@@ -721,7 +705,6 @@ describe("runEngineHandlers batch residency routing", () => {
       });
 
       const writer = await resolveBatchRunOpsWriter(batchId, {
-        newReplica: prisma17,
         newWriter: prisma17,
         legacyWriter: prisma14,
       });
@@ -729,7 +712,6 @@ describe("runEngineHandlers batch residency routing", () => {
 
       const deps: BatchCompletionDeps = {
         splitEnabled: true,
-        newReplica: prisma17,
         newWriter: prisma17,
         legacyWriter: prisma14,
         tryCompleteBatch: async () => {},
