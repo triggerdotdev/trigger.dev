@@ -1487,175 +1487,219 @@ export async function syncDeclarativeSchedules(
   environment: AuthenticatedEnvironment,
   prisma: PrismaClientOrTransaction,
   engine: Pick<typeof scheduleEngine, "registerNextTaskScheduleInstance"> = scheduleEngine,
-  prepared?: Awaited<ReturnType<typeof prepareDeclarativeSchedules>>
+  prepared?: Awaited<ReturnType<typeof prepareDeclarativeSchedules>>,
+  quotaLimit?: number
 ) {
-  const {
-    existingDeclarativeSchedules,
-    preparedTasks,
-    defaultWindowDurationSeconds,
-    warnings = [],
-  } = prepared ?? (await prepareDeclarativeSchedules(tasks, environment, prisma));
+  let { existingDeclarativeSchedules, preparedTasks, defaultWindowDurationSeconds, warnings } =
+    prepared ?? (await prepareDeclarativeSchedules(tasks, environment, prisma));
 
-  //start out by assuming they're all missing
-  const missingSchedules = new Set<string>(
-    existingDeclarativeSchedules.map((schedule) => schedule.id)
-  );
+  let missingSchedules = new Set(existingDeclarativeSchedules.map((schedule) => schedule.id));
+  const declaredTaskIds = new Set(preparedTasks.map(({ task }) => task.id));
+  let quotaExclusions = {
+    environmentId: environment.id,
+    scheduleIds: existingDeclarativeSchedules
+      .filter((schedule) => !declaredTaskIds.has(schedule.taskIdentifier))
+      .map((schedule) => schedule.id),
+  };
 
-  const checkSchedule = new CheckScheduleService(prisma);
+  const validate = async (db: PrismaClientOrTransaction) => {
+    const checkSchedule = new CheckScheduleService(db);
+    let pendingCreations = 0;
+    for (const { task, existingSchedule } of preparedTasks) {
+      await checkSchedule.call(
+        environment.projectId,
+        {
+          cron: task.schedule.cron,
+          timezone: task.schedule.timezone,
+          taskIdentifier: task.id,
+          friendlyId: existingSchedule?.friendlyId,
+          window: task.schedule.window,
+        },
+        [environment.id],
+        quotaExclusions,
+        pendingCreations,
+        quotaLimit
+      );
+      if (!existingSchedule && environment.type !== "DEVELOPMENT") pendingCreations++;
+    }
+    return pendingCreations;
+  };
+  const pendingCreations = await validate(prisma);
 
-  // Resource and quota checks must stay after worker resources exist and between schedule writes.
-  for (const { task, existingSchedule, minimumWindowDurationSeconds } of preparedTasks) {
-    //this throws errors if the schedule is invalid
-    await checkSchedule.call(
-      environment.projectId,
-      {
-        cron: task.schedule.cron,
-        timezone: task.schedule.timezone,
-        taskIdentifier: task.id,
-        friendlyId: existingSchedule?.friendlyId,
-        window: task.schedule.window,
-      },
-      [environment.id]
+  const registrations: Array<{ instanceId: string; preserveExistingJob?: boolean }> = [];
+  const transactional =
+    quotaExclusions.scheduleIds.length > 0 && pendingCreations > 0 && "$transaction" in prisma;
+  const apply = async (db: PrismaClientOrTransaction) => {
+    for (const { task, existingSchedule, minimumWindowDurationSeconds } of preparedTasks) {
+      const normalizedWindow = normalizeScheduleWindow(task.schedule.window);
+
+      if (existingSchedule) {
+        // Compare effective windows so equivalent explicit/default values preserve the pending job.
+        const previousWindow = resolveScheduleWindow({
+          windowDurationSeconds: existingSchedule.windowDurationSeconds,
+          windowPercentage: existingSchedule.windowPercentage,
+          defaultWindowDurationSeconds: existingSchedule.defaultWindowDurationSeconds,
+        }).window;
+        const nextWindow = resolveScheduleWindow({
+          windowDurationSeconds: normalizedWindow.windowDurationSeconds,
+          windowPercentage: normalizedWindow.windowPercentage,
+          defaultWindowDurationSeconds: existingSchedule.defaultWindowDurationSeconds,
+        }).window;
+        const timingChanged =
+          existingSchedule.generatorExpression !== task.schedule.cron ||
+          existingSchedule.timezone !== task.schedule.timezone ||
+          !scheduleWindowsEqual(previousWindow, nextWindow) ||
+          // Clearing the minimum changes the effective range.
+          existingSchedule.minimumWindowDurationSeconds !== minimumWindowDurationSeconds;
+        const persistedValuesChanged =
+          existingSchedule.generatorExpression !== task.schedule.cron ||
+          existingSchedule.timezone !== task.schedule.timezone ||
+          existingSchedule.windowDurationSeconds !== normalizedWindow.windowDurationSeconds ||
+          existingSchedule.windowPercentage !== normalizedWindow.windowPercentage ||
+          existingSchedule.minimumWindowDurationSeconds !== minimumWindowDurationSeconds;
+        const schedule = persistedValuesChanged
+          ? await db.taskSchedule.update({
+              where: {
+                id: existingSchedule.id,
+              },
+              data: {
+                generatorExpression: task.schedule.cron,
+                generatorDescription: cronstrue.toString(task.schedule.cron),
+                timezone: task.schedule.timezone,
+                minimumWindowDurationSeconds,
+                ...normalizedWindow,
+              },
+              include: {
+                instances: true,
+              },
+            })
+          : existingSchedule;
+
+        missingSchedules.delete(existingSchedule.id);
+        const instances = timingChanged
+          ? schedule.instances
+          : schedule.instances.filter((instance) => instance.environmentId === environment.id);
+        if (instances.length === 0) {
+          throw new CreateDeclarativeScheduleError(
+            `Missing instance for declarative schedule ${schedule.id}`
+          );
+        }
+        for (const instance of instances) {
+          const registration = { instanceId: instance.id, preserveExistingJob: !timingChanged };
+          if (transactional) registrations.push(registration);
+          else await engine.registerNextTaskScheduleInstance(registration);
+        }
+      } else {
+        const newSchedule = await db.taskSchedule.create({
+          data: {
+            friendlyId: generateFriendlyId("sched"),
+            projectId: environment.projectId,
+            taskIdentifier: task.id,
+            generatorExpression: task.schedule.cron,
+            generatorDescription: cronstrue.toString(task.schedule.cron),
+            timezone: task.schedule.timezone,
+            type: "DECLARATIVE",
+            minimumWindowDurationSeconds,
+            ...normalizedWindow,
+            defaultWindowDurationSeconds,
+            instances: {
+              create: [
+                {
+                  environmentId: environment.id,
+                  projectId: environment.projectId,
+                },
+              ],
+            },
+          },
+          include: {
+            instances: true,
+          },
+        });
+
+        const instance = newSchedule.instances.at(0);
+
+        if (instance) {
+          const registration = { instanceId: instance.id };
+          if (transactional) registrations.push(registration);
+          else await engine.registerNextTaskScheduleInstance(registration);
+        } else {
+          throw new CreateDeclarativeScheduleError(
+            `Missing instance for declarative schedule ${newSchedule.id}`
+          );
+        }
+      }
+    }
+
+    //Delete instances for this environment
+    //Delete schedules that have no instances left
+    const potentiallyDeletableSchedules = existingDeclarativeSchedules.filter((schedule) =>
+      missingSchedules.has(schedule.id)
     );
 
-    const normalizedWindow = normalizeScheduleWindow(task.schedule.window);
+    const scheduleIdsToDelete: string[] = [];
+    const scheduleIdsToDetachFromEnvironment: string[] = [];
 
-    if (existingSchedule) {
-      // Compare effective windows so equivalent explicit/default values preserve the pending job.
-      const previousWindow = resolveScheduleWindow({
-        windowDurationSeconds: existingSchedule.windowDurationSeconds,
-        windowPercentage: existingSchedule.windowPercentage,
-        defaultWindowDurationSeconds: existingSchedule.defaultWindowDurationSeconds,
-      }).window;
-      const nextWindow = resolveScheduleWindow({
-        windowDurationSeconds: normalizedWindow.windowDurationSeconds,
-        windowPercentage: normalizedWindow.windowPercentage,
-        defaultWindowDurationSeconds: existingSchedule.defaultWindowDurationSeconds,
-      }).window;
-      const timingChanged =
-        existingSchedule.generatorExpression !== task.schedule.cron ||
-        existingSchedule.timezone !== task.schedule.timezone ||
-        !scheduleWindowsEqual(previousWindow, nextWindow) ||
-        // Clearing the minimum changes the effective range.
-        existingSchedule.minimumWindowDurationSeconds !== minimumWindowDurationSeconds;
-      const persistedValuesChanged =
-        existingSchedule.generatorExpression !== task.schedule.cron ||
-        existingSchedule.timezone !== task.schedule.timezone ||
-        existingSchedule.windowDurationSeconds !== normalizedWindow.windowDurationSeconds ||
-        existingSchedule.windowPercentage !== normalizedWindow.windowPercentage ||
-        existingSchedule.minimumWindowDurationSeconds !== minimumWindowDurationSeconds;
-      const schedule = persistedValuesChanged
-        ? await prisma.taskSchedule.update({
-            where: {
-              id: existingSchedule.id,
-            },
-            data: {
-              generatorExpression: task.schedule.cron,
-              generatorDescription: cronstrue.toString(task.schedule.cron),
-              timezone: task.schedule.timezone,
-              minimumWindowDurationSeconds,
-              ...normalizedWindow,
-            },
-            include: {
-              instances: true,
-            },
-          })
-        : existingSchedule;
+    for (const schedule of potentiallyDeletableSchedules) {
+      const canDeleteSchedule =
+        schedule.instances.length === 0 ||
+        schedule.instances.every((instance) => instance.environmentId === environment.id);
 
-      missingSchedules.delete(existingSchedule.id);
-      const instances = timingChanged
-        ? schedule.instances
-        : schedule.instances.filter((instance) => instance.environmentId === environment.id);
-      if (instances.length === 0) {
-        throw new CreateDeclarativeScheduleError(
-          `Missing instance for declarative schedule ${schedule.id}`
-        );
+      if (canDeleteSchedule) {
+        scheduleIdsToDelete.push(schedule.id);
+      } else if (schedule.instances.some((instance) => instance.environmentId === environment.id)) {
+        scheduleIdsToDetachFromEnvironment.push(schedule.id);
       }
-      for (const instance of instances) {
-        await engine.registerNextTaskScheduleInstance({
-          instanceId: instance.id,
-          preserveExistingJob: !timingChanged,
-        });
-      }
-    } else {
-      const newSchedule = await prisma.taskSchedule.create({
-        data: {
-          friendlyId: generateFriendlyId("sched"),
-          projectId: environment.projectId,
-          taskIdentifier: task.id,
-          generatorExpression: task.schedule.cron,
-          generatorDescription: cronstrue.toString(task.schedule.cron),
-          timezone: task.schedule.timezone,
-          type: "DECLARATIVE",
-          minimumWindowDurationSeconds,
-          ...normalizedWindow,
-          defaultWindowDurationSeconds,
-          instances: {
-            create: [
-              {
-                environmentId: environment.id,
-                projectId: environment.projectId,
-              },
-            ],
+    }
+
+    if (scheduleIdsToDelete.length > 0) {
+      await db.taskSchedule.deleteMany({
+        where: {
+          id: {
+            in: boundedIn(scheduleIdsToDelete),
           },
         },
-        include: {
-          instances: true,
+      });
+    }
+
+    if (scheduleIdsToDetachFromEnvironment.length > 0) {
+      await db.taskScheduleInstance.deleteMany({
+        where: {
+          taskScheduleId: {
+            in: boundedIn(scheduleIdsToDetachFromEnvironment),
+          },
+          environmentId: environment.id,
         },
       });
-
-      const instance = newSchedule.instances.at(0);
-
-      if (instance) {
-        await engine.registerNextTaskScheduleInstance({ instanceId: instance.id });
-      } else {
-        throw new CreateDeclarativeScheduleError(
-          `Missing instance for declarative schedule ${newSchedule.id}`
-        );
-      }
     }
-  }
+  };
 
-  //Delete instances for this environment
-  //Delete schedules that have no instances left
-  const potentiallyDeletableSchedules = existingDeclarativeSchedules.filter((schedule) =>
-    missingSchedules.has(schedule.id)
-  );
-
-  const scheduleIdsToDelete: string[] = [];
-  const scheduleIdsToDetachFromEnvironment: string[] = [];
-
-  for (const schedule of potentiallyDeletableSchedules) {
-    const canDeleteSchedule =
-      schedule.instances.length === 0 ||
-      schedule.instances.every((instance) => instance.environmentId === environment.id);
-
-    if (canDeleteSchedule) {
-      scheduleIdsToDelete.push(schedule.id);
-    } else if (schedule.instances.some((instance) => instance.environmentId === environment.id)) {
-      scheduleIdsToDetachFromEnvironment.push(schedule.id);
-    }
-  }
-
-  if (scheduleIdsToDelete.length > 0) {
-    await prisma.taskSchedule.deleteMany({
-      where: {
-        id: {
-          in: boundedIn(scheduleIdsToDelete),
-        },
+  if (transactional) {
+    await $transaction(
+      prisma,
+      "syncDeclarativeSchedules",
+      async (tx) => {
+        await tx.$queryRaw`SELECT id FROM "Project" WHERE id = ${environment.projectId} FOR UPDATE`;
+        ({ existingDeclarativeSchedules, preparedTasks, defaultWindowDurationSeconds, warnings } =
+          await prepareDeclarativeSchedules(tasks, environment, tx));
+        missingSchedules = new Set(existingDeclarativeSchedules.map((schedule) => schedule.id));
+        const declaredTaskIds = new Set(preparedTasks.map(({ task }) => task.id));
+        quotaExclusions = {
+          environmentId: environment.id,
+          scheduleIds: existingDeclarativeSchedules
+            .filter((schedule) => !declaredTaskIds.has(schedule.taskIdentifier))
+            .map((schedule) => schedule.id),
+        };
+        await validate(tx);
+        await apply(tx);
       },
-    });
+      { timeout: 120_000 }
+    );
+  } else {
+    await apply(prisma);
   }
 
-  if (scheduleIdsToDetachFromEnvironment.length > 0) {
-    await prisma.taskScheduleInstance.deleteMany({
-      where: {
-        taskScheduleId: {
-          in: boundedIn(scheduleIdsToDetachFromEnvironment),
-        },
-        environmentId: environment.id,
-      },
-    });
+  for (const registration of registrations) {
+    await engine.registerNextTaskScheduleInstance(registration);
   }
 
   return warnings;

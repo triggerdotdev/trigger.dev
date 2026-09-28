@@ -17,7 +17,14 @@ type Schedule = {
 };
 
 export class CheckScheduleService extends BaseService {
-  public async call(projectId: string, schedule: Schedule, environmentIds: string[]) {
+  public async call(
+    projectId: string,
+    schedule: Schedule,
+    environmentIds: string[],
+    quotaExclusions?: { environmentId: string; scheduleIds: string[] },
+    pendingCreations = 0,
+    quotaLimit?: number
+  ) {
     //validate the cron expression
     try {
       CronPattern.parse(schedule.cron);
@@ -115,15 +122,18 @@ export class CheckScheduleService extends BaseService {
 
     //if creating a schedule, check they're under the limits
     if (!schedule.friendlyId) {
-      const limit = await getLimit(project.organizationId, "schedules", 100_000_000);
+      const limit =
+        quotaLimit ?? (await getLimit(project.organizationId, "schedules", 100_000_000));
       const schedulesCount = await CheckScheduleService.getUsedSchedulesCount({
         prisma: this._prisma,
         projectId,
+        quotaExclusions,
       });
 
-      if (schedulesCount >= limit) {
+      const projectedCount = schedulesCount + pendingCreations;
+      if (projectedCount >= limit) {
         throw new ServiceValidationError(
-          `You have created ${schedulesCount}/${limit} schedules so you'll need to increase your limits or delete some schedules.`
+          `You have created ${projectedCount}/${limit} schedules so you'll need to increase your limits or delete some schedules.`
         );
       }
     }
@@ -132,14 +142,24 @@ export class CheckScheduleService extends BaseService {
   static async getUsedSchedulesCount({
     prisma,
     projectId,
+    quotaExclusions,
   }: {
     prisma: PrismaClientOrTransaction;
     projectId: string;
+    quotaExclusions?: { environmentId: string; scheduleIds: string[] };
   }) {
     return await prisma.taskScheduleInstance.count({
       where: {
         projectId,
         active: true,
+        ...(quotaExclusions?.scheduleIds.length
+          ? {
+              NOT: {
+                environmentId: quotaExclusions.environmentId,
+                taskScheduleId: { in: boundedIn(quotaExclusions.scheduleIds) },
+              },
+            }
+          : {}),
         environment: {
           projectId,
           type: {

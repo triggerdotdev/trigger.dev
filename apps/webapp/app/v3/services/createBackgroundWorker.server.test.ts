@@ -499,6 +499,268 @@ describe("syncDeclarativeSchedules registration", () => {
   });
 });
 
+describe("syncDeclarativeSchedules quota", () => {
+  containerTest(
+    "replaces a schedule at the limit without deleting it before validation",
+    async ({ prisma, redisOptions }) => {
+      const { project, prodEnv } = await seedProjectWithEnvs(prisma);
+      const old = await makeDeclarativeSchedule(prisma, project.id, [prodEnv.id], "old-task");
+      await seedScheduledTask(prisma, project.id, prodEnv.id);
+      const engine = createTestScheduleEngine(prisma, redisOptions);
+
+      try {
+        await expect(
+          syncDeclarativeSchedules(
+            declarativeTasks({ cron: "not-a-cron", timezone: "UTC" }),
+            noWorker,
+            asEnv(prodEnv),
+            prisma,
+            engine,
+            undefined,
+            1
+          )
+        ).rejects.toThrow("Invalid cron expression");
+        expect(await prisma.taskSchedule.findUnique({ where: { id: old.id } })).not.toBeNull();
+
+        await syncDeclarativeSchedules(
+          declarativeTasks({ cron: "0 * * * *", timezone: "UTC" }),
+          noWorker,
+          asEnv(prodEnv),
+          prisma,
+          engine,
+          undefined,
+          1
+        );
+
+        expect(await prisma.taskSchedule.findUnique({ where: { id: old.id } })).toBeNull();
+        expect(
+          await prisma.taskSchedule.findFirst({
+            where: { projectId: project.id, taskIdentifier: "my-task" },
+          })
+        ).not.toBeNull();
+        expect(await prisma.taskScheduleInstance.count({ where: { projectId: project.id } })).toBe(
+          1
+        );
+        const created = await prisma.taskSchedule.findFirstOrThrow({
+          where: { projectId: project.id, taskIdentifier: "my-task" },
+          include: { instances: true },
+        });
+        expect(await engine.getJob(scheduleJobId(created.instances[0].id))).toBeDefined();
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "rejects a later invalid schedule before writing an earlier replacement",
+    async ({ prisma }) => {
+      const { project, prodEnv } = await seedProjectWithEnvs(prisma);
+      const old = await makeDeclarativeSchedule(prisma, project.id, [prodEnv.id], "old-task");
+      await seedScheduledTask(prisma, project.id, prodEnv.id);
+      const worker = await prisma.backgroundWorker.findFirstOrThrow({
+        where: { projectId: project.id },
+      });
+      await prisma.backgroundWorkerTask.create({
+        data: {
+          friendlyId: `task_other_${prodEnv.id}`,
+          slug: "other-task",
+          filePath: "src/trigger/other-task.ts",
+          workerId: worker.id,
+          projectId: project.id,
+          runtimeEnvironmentId: prodEnv.id,
+          triggerSource: "SCHEDULED",
+        },
+      });
+      const tasks = [
+        { id: "my-task", schedule: { cron: "0 * * * *", timezone: "UTC" } },
+        { id: "other-task", schedule: { cron: "0 * * * *", timezone: "Not/A_Timezone" } },
+      ] as TasksArg;
+
+      await expect(
+        syncDeclarativeSchedules(tasks, noWorker, asEnv(prodEnv), prisma, undefined, undefined, 1)
+      ).rejects.toThrow("Invalid IANA timezone");
+      expect(await prisma.taskSchedule.findUnique({ where: { id: old.id } })).not.toBeNull();
+      expect(await prisma.taskSchedule.count({ where: { projectId: project.id } })).toBe(1);
+
+      tasks[1].schedule.timezone = "UTC";
+      await expect(
+        syncDeclarativeSchedules(tasks, noWorker, asEnv(prodEnv), prisma, undefined, undefined, 1)
+      ).rejects.toThrow("You have created 1/1 schedules");
+      expect(await prisma.taskSchedule.count({ where: { projectId: project.id } })).toBe(1);
+    }
+  );
+
+  containerTest(
+    "does not count development schedules toward projected quota",
+    async ({ prisma, redisOptions }) => {
+      const { project, devEnv } = await seedProjectWithEnvs(prisma);
+      await seedScheduledTask(prisma, project.id, devEnv.id);
+      const worker = await prisma.backgroundWorker.findFirstOrThrow({
+        where: { projectId: project.id },
+      });
+      await prisma.backgroundWorkerTask.create({
+        data: {
+          friendlyId: `task_other_${devEnv.id}`,
+          slug: "other-task",
+          filePath: "src/trigger/other-task.ts",
+          workerId: worker.id,
+          projectId: project.id,
+          runtimeEnvironmentId: devEnv.id,
+          triggerSource: "SCHEDULED",
+        },
+      });
+      const engine = createTestScheduleEngine(prisma, redisOptions);
+      try {
+        await syncDeclarativeSchedules(
+          [
+            { id: "my-task", schedule: { cron: "0 * * * *", timezone: "UTC" } },
+            { id: "other-task", schedule: { cron: "0 * * * *", timezone: "UTC" } },
+          ] as TasksArg,
+          noWorker,
+          asEnv(devEnv),
+          prisma,
+          engine,
+          undefined,
+          1
+        );
+        expect(await prisma.taskScheduleInstance.count({ where: { projectId: project.id } })).toBe(
+          2
+        );
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "serializes concurrent replacements at the limit",
+    async ({ prisma, redisOptions }) => {
+      const { project, prodEnv } = await seedProjectWithEnvs(prisma);
+      await makeDeclarativeSchedule(prisma, project.id, [prodEnv.id], "old-task");
+      await seedScheduledTask(prisma, project.id, prodEnv.id);
+      const worker = await prisma.backgroundWorker.findFirstOrThrow({
+        where: { projectId: project.id },
+      });
+      await prisma.backgroundWorkerTask.create({
+        data: {
+          friendlyId: `task_other_${prodEnv.id}`,
+          slug: "other-task",
+          filePath: "src/trigger/other-task.ts",
+          workerId: worker.id,
+          projectId: project.id,
+          runtimeEnvironmentId: prodEnv.id,
+          triggerSource: "SCHEDULED",
+        },
+      });
+      const engine = createTestScheduleEngine(prisma, redisOptions);
+      try {
+        const results = await Promise.allSettled(
+          ["my-task", "other-task"].map((id) =>
+            syncDeclarativeSchedules(
+              [{ id, schedule: { cron: "0 * * * *", timezone: "UTC" } }] as TasksArg,
+              noWorker,
+              asEnv(prodEnv),
+              prisma,
+              engine,
+              undefined,
+              1
+            )
+          )
+        );
+        expect(results.some((result) => result.status === "fulfilled")).toBe(true);
+        expect(await prisma.taskScheduleInstance.count({ where: { projectId: project.id } })).toBe(
+          1
+        );
+        expect(
+          await prisma.taskSchedule.findFirstOrThrow({ where: { projectId: project.id } })
+        ).toMatchObject({
+          type: "DECLARATIVE",
+        });
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "concurrent replacements with spare quota leave only the last declaration",
+    async ({ prisma, redisOptions }) => {
+      const { project, prodEnv } = await seedProjectWithEnvs(prisma);
+      await makeDeclarativeSchedule(prisma, project.id, [prodEnv.id], "old-task");
+      await seedScheduledTask(prisma, project.id, prodEnv.id);
+      const worker = await prisma.backgroundWorker.findFirstOrThrow({
+        where: { projectId: project.id },
+      });
+      await prisma.backgroundWorkerTask.create({
+        data: {
+          friendlyId: `task_other_${prodEnv.id}`,
+          slug: "other-task",
+          filePath: "src/trigger/other-task.ts",
+          workerId: worker.id,
+          projectId: project.id,
+          runtimeEnvironmentId: prodEnv.id,
+          triggerSource: "SCHEDULED",
+        },
+      });
+      const engine = createTestScheduleEngine(prisma, redisOptions);
+      try {
+        await Promise.all(
+          ["my-task", "other-task"].map((id) =>
+            syncDeclarativeSchedules(
+              [{ id, schedule: { cron: "0 * * * *", timezone: "UTC" } }] as TasksArg,
+              noWorker,
+              asEnv(prodEnv),
+              prisma,
+              engine,
+              undefined,
+              2
+            )
+          )
+        );
+        const schedules = await prisma.taskSchedule.findMany({
+          where: { projectId: project.id },
+          select: { taskIdentifier: true },
+        });
+        expect(schedules).toHaveLength(1);
+        expect(["my-task", "other-task"]).toContain(schedules[0].taskIdentifier);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest("does not borrow quota from another environment's instance", async ({ prisma }) => {
+    const { project, prodEnv, devEnv } = await seedProjectWithEnvs(prisma);
+    await prisma.runtimeEnvironment.update({
+      where: { id: devEnv.id },
+      data: { type: "PRODUCTION" },
+    });
+    const old = await makeDeclarativeSchedule(
+      prisma,
+      project.id,
+      [prodEnv.id, devEnv.id],
+      "old-task"
+    );
+    await seedScheduledTask(prisma, project.id, prodEnv.id);
+
+    await expect(
+      syncDeclarativeSchedules(
+        declarativeTasks({ cron: "0 * * * *", timezone: "UTC" }),
+        noWorker,
+        asEnv(prodEnv),
+        prisma,
+        undefined,
+        undefined,
+        1
+      )
+    ).rejects.toThrow("You have created 1/1 schedules");
+
+    expect(await prisma.taskSchedule.findUnique({ where: { id: old.id } })).not.toBeNull();
+    expect(await prisma.taskScheduleInstance.count({ where: { projectId: project.id } })).toBe(2);
+  });
+});
+
 describe("syncDeclarativeSchedules deletion path", () => {
   containerTest(
     "does not issue any instance delete when the env owns no instance of the missing schedules",
