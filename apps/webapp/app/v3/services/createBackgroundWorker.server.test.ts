@@ -394,6 +394,7 @@ describe("syncDeclarativeSchedules registration", () => {
     async ({ prisma, redisOptions }) => {
       const { project, prodEnv } = await seedProjectWithEnvs(prisma);
       const schedule = await makeDeclarativeSchedule(prisma, project.id, [prodEnv.id]);
+      const updatedAt = schedule.updatedAt;
       await seedScheduledTask(prisma, project.id, prodEnv.id);
       const engine = createTestScheduleEngine(prisma, redisOptions);
 
@@ -412,6 +413,12 @@ describe("syncDeclarativeSchedules registration", () => {
 
         expect(before).toBeDefined();
         expect(await engine.getJob(jobId)).toEqual(before);
+        expect(
+          await prisma.taskSchedule.findUniqueOrThrow({
+            where: { id: schedule.id },
+            select: { updatedAt: true },
+          })
+        ).toEqual({ updatedAt });
       } finally {
         await engine.quit();
       }

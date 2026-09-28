@@ -88,7 +88,10 @@ export function resolveScheduleTimings(
   { phaseSecret, includeLastRun, now = new Date() }: ResolveScheduleTimingsOptions
 ): ScheduleTiming[] {
   const nominalCache = new Map<string, Date[]>();
-  const previousCache = new Map<string, Date | undefined>();
+  const previousCache = new Map<
+    string,
+    { latestNominal: Date; previousNominal?: Date } | undefined
+  >();
 
   return inputs.map((input) => {
     const window: NormalizedScheduleWindow | undefined = resolveScheduleWindow({
@@ -134,51 +137,80 @@ export function resolveScheduleTimings(
     return {
       nextRun: nominalAt,
       nextRunEffectiveAt: effectiveAt,
-      lastRun: includeLastRun ? resolveLastRun(input, now, previousCache) : undefined,
+      lastRun: includeLastRun
+        ? resolveLastRun(input, now, nominalAt, phase, window, previousCache)
+        : undefined,
     };
   });
 }
 
 /**
- * Approximates "last run" from the cron's previous slot.
+ * Approximates "last run" from the most recent effective schedule time.
  *
- * Skips inactive schedules — the previous slot reflects what *would* have
- * fired. Skips slots that predate `updatedAt`: any config change (cron edited,
- * timezone changed, deactivate/reactivate) bumps `updatedAt`, and a slot from
- * before the most recent change didn't fire under the current configuration.
- *
- * `cron-parser` throws on malformed expressions, so this degrades to undefined
- * per row rather than failing the whole list. Best-effort by design; the runs
- * page is the source of truth.
+ * Skips inactive schedules and effective times that predate `updatedAt`. Best-effort by design;
+ * the runs page is the source of truth.
  */
 function resolveLastRun(
   input: ScheduleTimingInput,
   now: Date,
-  cache: Map<string, Date | undefined>
+  nextNominal: Date,
+  phase: number,
+  window: NormalizedScheduleWindow | undefined,
+  cache: Map<string, { latestNominal: Date; previousNominal?: Date } | undefined>
 ): Date | undefined {
   if (!input.active) {
     return undefined;
   }
 
   const key = cacheKey(input.cron, input.timezone);
+  let nominalTimes = cache.get(key);
 
-  let previous: Date | undefined;
-  if (cache.has(key)) {
-    previous = cache.get(key);
-  } else {
+  if (!cache.has(key)) {
     try {
-      previous = previousScheduledTimestamp(input.cron, input.timezone, now);
+      nominalTimes = {
+        latestNominal: previousScheduledTimestamp(
+          input.cron,
+          input.timezone,
+          new Date(now.getTime() + 1)
+        ),
+      };
     } catch {
-      previous = undefined;
+      nominalTimes = undefined;
     }
-    cache.set(key, previous);
+    cache.set(key, nominalTimes);
   }
 
-  if (!previous) {
+  if (!nominalTimes) {
     return undefined;
   }
 
-  return previous.getTime() > input.updatedAt.getTime() ? previous : undefined;
+  const latestEffective = calculateEffectiveScheduleTime({
+    nominalAt: nominalTimes.latestNominal,
+    nextNominalAt: nextNominal,
+    schedulePhase: phase,
+    window,
+    minimumWindowDurationSeconds: input.minimumWindowDurationSeconds,
+  }).effectiveAt;
+  if (latestEffective.getTime() <= now.getTime()) {
+    return latestEffective.getTime() > input.updatedAt.getTime() ? latestEffective : undefined;
+  }
+
+  if (!nominalTimes.previousNominal) {
+    nominalTimes.previousNominal = previousScheduledTimestamp(
+      input.cron,
+      input.timezone,
+      nominalTimes.latestNominal
+    );
+  }
+  const previousEffective = calculateEffectiveScheduleTime({
+    nominalAt: nominalTimes.previousNominal,
+    nextNominalAt: nominalTimes.latestNominal,
+    schedulePhase: phase,
+    window,
+    minimumWindowDurationSeconds: input.minimumWindowDurationSeconds,
+  }).effectiveAt;
+
+  return previousEffective.getTime() > input.updatedAt.getTime() ? previousEffective : undefined;
 }
 
 /**

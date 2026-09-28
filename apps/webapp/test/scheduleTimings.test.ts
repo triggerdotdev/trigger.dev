@@ -4,9 +4,9 @@ import {
   SCHEDULE_PHASE_DENOMINATOR,
   calculateEffectiveScheduleTime,
   calculateSchedulePhase,
+  resolveScheduleWindow,
 } from "@internal/schedule-engine";
 import { CronPattern } from "~/v3/schedules";
-import { type NormalizedScheduleWindow } from "@trigger.dev/core/v3";
 import { parseExpression } from "cron-parser";
 import { describe, expect, it } from "vitest";
 import {
@@ -77,24 +77,48 @@ function referenceResolve(
         deduplicationKey: input.deduplicationKey,
       });
 
-    const window: NormalizedScheduleWindow | undefined =
-      input.windowPercentage !== null
-        ? { type: "percentage", percentage: input.windowPercentage }
-        : input.windowDurationSeconds !== null
-          ? { type: "duration", durationSeconds: input.windowDurationSeconds }
-          : undefined;
+    const window = resolveScheduleWindow({
+      windowDurationSeconds: input.windowDurationSeconds,
+      windowPercentage: input.windowPercentage,
+      defaultWindowDurationSeconds: input.defaultWindowDurationSeconds,
+    }).window;
 
     const { effectiveAt } = calculateEffectiveScheduleTime({
       nominalAt: nominalTimes[0],
       nextNominalAt: nominalTimes[1],
       schedulePhase: phase,
       window,
+      minimumWindowDurationSeconds: input.minimumWindowDurationSeconds,
     });
 
     let lastRun: Date | undefined;
     if (includeLastRun && input.active) {
       try {
-        const previous = previousScheduledTimestamp(input.cron, input.timezone, now);
+        const latestNominal = previousScheduledTimestamp(
+          input.cron,
+          input.timezone,
+          new Date(now.getTime() + 1)
+        );
+        const previousNominal = previousScheduledTimestamp(
+          input.cron,
+          input.timezone,
+          latestNominal
+        );
+        const latestEffective = calculateEffectiveScheduleTime({
+          nominalAt: latestNominal,
+          nextNominalAt: nominalTimes[0],
+          schedulePhase: phase,
+          window,
+          minimumWindowDurationSeconds: input.minimumWindowDurationSeconds,
+        }).effectiveAt;
+        const previousEffective = calculateEffectiveScheduleTime({
+          nominalAt: previousNominal,
+          nextNominalAt: latestNominal,
+          schedulePhase: phase,
+          window,
+          minimumWindowDurationSeconds: input.minimumWindowDurationSeconds,
+        }).effectiveAt;
+        const previous = latestEffective <= now ? latestEffective : previousEffective;
         lastRun = previous.getTime() > input.updatedAt.getTime() ? previous : undefined;
       } catch {
         lastRun = undefined;
@@ -255,15 +279,24 @@ describe("resolveScheduleTimings", () => {
   });
 
   it("skips lastRun when the previous slot predates the last config change", () => {
-    const [stale] = resolveScheduleTimings([input({ cron: "0 0 * * *", updatedAt: now })], {
-      phaseSecret: PHASE_SECRET,
-      includeLastRun: true,
-      now,
-    });
+    const [stale] = resolveScheduleTimings(
+      [input({ cron: "0 0 * * *", schedulePhase: 0, updatedAt: now })],
+      {
+        phaseSecret: PHASE_SECRET,
+        includeLastRun: true,
+        now,
+      }
+    );
     expect(stale.lastRun).toBeUndefined();
 
     const [fresh] = resolveScheduleTimings(
-      [input({ cron: "0 0 * * *", updatedAt: new Date("2020-01-01T00:00:00.000Z") })],
+      [
+        input({
+          cron: "0 0 * * *",
+          schedulePhase: 0,
+          updatedAt: new Date("2020-01-01T00:00:00.000Z"),
+        }),
+      ],
       { phaseSecret: PHASE_SECRET, includeLastRun: true, now }
     );
     expect(fresh.lastRun).toEqual(new Date("2024-06-15T00:00:00.000Z"));
@@ -282,13 +315,63 @@ describe("resolveScheduleTimings", () => {
   });
 
   it("resolves lastRun for a valid expression", () => {
-    const [valid] = resolveScheduleTimings([input({ cron: "0 0 * * *" })], {
+    const [valid] = resolveScheduleTimings([input({ cron: "0 0 * * *", schedulePhase: 0 })], {
       phaseSecret: PHASE_SECRET,
       includeLastRun: true,
       now,
     });
 
     expect(valid.lastRun).toEqual(new Date("2024-06-15T00:00:00.000Z"));
+  });
+
+  it("resolves lastRun from the most recent effective window time", () => {
+    const [beforeCurrentWindow] = resolveScheduleTimings(
+      [
+        input({
+          cron: "0 * * * *",
+          schedulePhase: SCHEDULE_PHASE_DENOMINATOR / 2,
+          windowPercentage: 100,
+        }),
+      ],
+      {
+        phaseSecret: PHASE_SECRET,
+        includeLastRun: true,
+        now,
+      }
+    );
+    const [afterCurrentWindow] = resolveScheduleTimings(
+      [
+        input({
+          cron: "0 * * * *",
+          schedulePhase: SCHEDULE_PHASE_DENOMINATOR / 2,
+          windowPercentage: 100,
+        }),
+      ],
+      {
+        phaseSecret: PHASE_SECRET,
+        includeLastRun: true,
+        now: new Date("2024-06-15T09:40:00.000Z"),
+      }
+    );
+
+    expect(beforeCurrentWindow.lastRun).toEqual(new Date("2024-06-15T08:30:00.000Z"));
+    expect(afterCurrentWindow.lastRun).toEqual(new Date("2024-06-15T09:30:00.000Z"));
+  });
+
+  it("compares updatedAt with the effective window time", () => {
+    const [timing] = resolveScheduleTimings(
+      [
+        input({
+          cron: "0 * * * *",
+          schedulePhase: SCHEDULE_PHASE_DENOMINATOR / 2,
+          windowPercentage: 100,
+          updatedAt: new Date("2024-06-15T08:15:00.000Z"),
+        }),
+      ],
+      { phaseSecret: PHASE_SECRET, includeLastRun: true, now }
+    );
+
+    expect(timing.lastRun).toEqual(new Date("2024-06-15T08:30:00.000Z"));
   });
 
   it("honours a caller-supplied schedulePhase over the derived one", () => {

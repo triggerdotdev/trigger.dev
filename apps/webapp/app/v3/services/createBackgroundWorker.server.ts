@@ -1399,6 +1399,7 @@ async function prepareDeclarativeSchedules(
       minimumWindowDurationSeconds: true,
       instances: {
         select: {
+          id: true,
           environmentId: true,
         },
       },
@@ -1537,21 +1538,29 @@ export async function syncDeclarativeSchedules(
         !scheduleWindowsEqual(previousWindow, nextWindow) ||
         // Clearing the minimum changes the effective range.
         existingSchedule.minimumWindowDurationSeconds !== minimumWindowDurationSeconds;
-      const schedule = await prisma.taskSchedule.update({
-        where: {
-          id: existingSchedule.id,
-        },
-        data: {
-          generatorExpression: task.schedule.cron,
-          generatorDescription: cronstrue.toString(task.schedule.cron),
-          timezone: task.schedule.timezone,
-          minimumWindowDurationSeconds,
-          ...normalizedWindow,
-        },
-        include: {
-          instances: true,
-        },
-      });
+      const persistedValuesChanged =
+        existingSchedule.generatorExpression !== task.schedule.cron ||
+        existingSchedule.timezone !== task.schedule.timezone ||
+        existingSchedule.windowDurationSeconds !== normalizedWindow.windowDurationSeconds ||
+        existingSchedule.windowPercentage !== normalizedWindow.windowPercentage ||
+        existingSchedule.minimumWindowDurationSeconds !== minimumWindowDurationSeconds;
+      const schedule = persistedValuesChanged
+        ? await prisma.taskSchedule.update({
+            where: {
+              id: existingSchedule.id,
+            },
+            data: {
+              generatorExpression: task.schedule.cron,
+              generatorDescription: cronstrue.toString(task.schedule.cron),
+              timezone: task.schedule.timezone,
+              minimumWindowDurationSeconds,
+              ...normalizedWindow,
+            },
+            include: {
+              instances: true,
+            },
+          })
+        : existingSchedule;
 
       missingSchedules.delete(existingSchedule.id);
       const instances = timingChanged
