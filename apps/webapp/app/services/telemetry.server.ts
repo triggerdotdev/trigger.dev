@@ -1,12 +1,28 @@
 import { PostHog } from "posthog-node";
+import { z } from "zod";
 import { env } from "~/env.server";
 import type { MatchedOrganization } from "~/hooks/useOrganizations";
 import type { Organization } from "~/models/organization.server";
 import type { Project } from "~/models/project.server";
 import type { User } from "~/models/user.server";
+import { extractDomain } from "~/utils/favicon";
+import { featuresForUrl } from "~/features.server";
 import { singleton } from "~/utils/singleton";
 import { enqueueAttioUserSync } from "./attio.server";
 import { loopsClient } from "./loops.server";
+
+const OrgOnboardingDataSchema = z.object({ companyUrl: z.string().optional() });
+
+// Cloud-only telemetry. Self-hosted installs must keep sending exactly what
+// they did before, so new events are gated on this rather than expanding what
+// self-hosters emit. Derived from APP_ORIGIN so it works without a request.
+const IS_MANAGED_CLOUD = (() => {
+  try {
+    return featuresForUrl(new URL(env.APP_ORIGIN)).isManagedCloud;
+  } catch {
+    return false;
+  }
+})();
 
 type Options = {
   postHogApiKey?: string;
@@ -85,6 +101,37 @@ class Telemetry {
         });
       }
     },
+    onboardingDetailsSubmitted: ({
+      userId,
+      referralSource,
+      referralSourceOther,
+      role,
+    }: {
+      userId: string;
+      referralSource?: string;
+      referralSourceOther?: string;
+      role?: string;
+    }) => {
+      if (this.#posthogClient === undefined) return;
+      if (!IS_MANAGED_CLOUD) return;
+
+      const properties: Record<string, any> = {};
+      if (referralSource) {
+        properties.referral_source_self_reported = referralSource;
+      }
+      if (referralSource === "Other" && referralSourceOther) {
+        properties.referral_source_other = referralSourceOther;
+      }
+      if (role) {
+        properties.role = role;
+      }
+      this.#capture({
+        userId,
+        event: "onboarding details submitted",
+        eventProperties: properties,
+        userProperties: properties,
+      });
+    },
   };
 
   organization = {
@@ -99,16 +146,33 @@ class Telemetry {
         },
       });
     },
-    new: ({
-      userId,
-      organization,
-      organizationCount,
-    }: {
-      userId: string;
-      organization: Organization;
-      organizationCount: number;
-    }) => {
+    new: ({ userId, organization }: { userId: string; organization: Organization }) => {
       if (this.#posthogClient === undefined) return;
+      if (!IS_MANAGED_CLOUD) return;
+
+      const companyProperties: Record<string, string> = {};
+      const onboardingData = OrgOnboardingDataSchema.safeParse(organization.onboardingData);
+      const companyDomain =
+        onboardingData.success && onboardingData.data.companyUrl
+          ? extractDomain(onboardingData.data.companyUrl)
+          : null;
+      if (companyDomain) {
+        companyProperties.company_domain = companyDomain;
+      }
+      if (organization.companySize) {
+        companyProperties.company_size = organization.companySize;
+      }
+
+      this.#posthogClient.groupIdentify({
+        groupType: "organization",
+        groupKey: organization.id,
+        properties: {
+          name: organization.title,
+          slug: organization.slug,
+          ...companyProperties,
+        },
+      });
+
       this.#capture({
         userId,
         event: "organization created",
@@ -119,9 +183,7 @@ class Telemetry {
           title: organization.title,
           createdAt: organization.createdAt,
           updatedAt: organization.updatedAt,
-        },
-        userProperties: {
-          organizationCount: organizationCount,
+          ...companyProperties,
         },
       });
     },
@@ -154,10 +216,12 @@ class Telemetry {
       project: Project;
     }) => {
       if (this.#posthogClient === undefined) return;
+      if (!IS_MANAGED_CLOUD) return;
       this.#capture({
         userId,
         event: "project created",
         organizationId,
+        projectId: project.id,
         eventProperties: {
           id: project.id,
 

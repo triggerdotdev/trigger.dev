@@ -28,6 +28,13 @@ export const usePostHog = (
       ui_host: uiHost,
       cross_subdomain_cookie: true,
       opt_in_site_apps: true,
+      person_profiles: "always",
+      persistence: "cookie",
+      capture_heatmaps: false,
+      capture_dead_clicks: false,
+      capture_exceptions: false,
+      capture_performance: { web_vitals: false },
+      disable_conversations: true,
       debug,
       loaded: function (posthog) {
         if (logging) console.log("PostHog loaded");

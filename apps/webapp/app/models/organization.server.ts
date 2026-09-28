@@ -28,6 +28,7 @@ import {
 import { buildDefaultBillingAlerts } from "~/services/billingAlertsDefaults.server";
 import { enqueueAttioWorkspaceSync } from "~/services/attio.server";
 import { logger } from "~/services/logger.server";
+import { telemetry } from "~/services/telemetry.server";
 import {
   applyBillingLimitPauseAfterEnvCreate,
   getInitialEnvPauseStateForBillingLimit,
@@ -161,6 +162,8 @@ export async function createOrganization(
     createdAt: organization.createdAt,
     adminUserId: userId,
   });
+
+  telemetry.organization.new({ userId, organization });
 
   // Awaited so the seed can't land after the user's first alert edit.
   await seedDefaultBillingAlerts(organization.id);

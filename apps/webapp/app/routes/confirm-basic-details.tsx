@@ -27,6 +27,7 @@ import { useUser } from "~/hooks/useUser";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { updateUser } from "~/models/user.server";
 import { requireUserId } from "~/services/session.server";
+import { telemetry } from "~/services/telemetry.server";
 import { emailSchema, MAX_EMAIL_LENGTH } from "~/utils/emailValidation";
 import { rootPath } from "~/utils/pathBuilder";
 import { getVercelInstallParams } from "~/v3/vercel";
@@ -175,6 +176,13 @@ export const action: ActionFunction = async ({ request }) => {
       email: submission.value.email,
       referralSource: referralSourceForLegacy,
       onboardingData: Object.keys(onboardingData).length > 0 ? onboardingData : undefined,
+    });
+
+    telemetry.user.onboardingDetailsSubmitted({
+      userId,
+      referralSource: submission.value.referralSource,
+      referralSourceOther: submission.value.referralSourceOther,
+      role: submission.value.role,
     });
 
     const vercelParams = getVercelInstallParams(request);

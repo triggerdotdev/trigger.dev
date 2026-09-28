@@ -3,6 +3,7 @@ import { customAlphabet, nanoid } from "nanoid";
 import slug from "slug";
 import { $replica, prisma } from "~/db.server";
 import { projectCreated } from "~/services/projectCreated.server";
+import { telemetry } from "~/services/telemetry.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
 import {
   type Organization,
@@ -142,6 +143,8 @@ export async function createProject(
   }
 
   await projectCreated(organization, project);
+
+  telemetry.project.new({ userId, organizationId: organization.id, project });
 
   return project;
 }
