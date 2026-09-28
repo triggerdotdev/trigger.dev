@@ -144,12 +144,13 @@ services:
   # routes to it when the OBJECT_STORE_* env vars are set (see .env.example).
   minio:
     container_name: ${CONTAINER_PREFIX:-}minio
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    image: chainguard/minio:latest@sha256:6a1d0b45c8669726bba580ced0bfa4cb9fdeed1ed636dfabd81d1577beb6937b
     restart: always
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
+      MC_HOST_local: http://minioadmin:minioadmin@localhost:9000
     volumes:
       - minio-data:/data
     ports:
@@ -158,25 +159,22 @@ services:
     networks:
       - app_network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ["CMD", "mc", "ready", "local"]
       interval: 5s
       timeout: 5s
       retries: 5
       start_period: 5s
 
   minio-init:
-    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
+    image: chainguard/minio-client:latest@sha256:b2bd7824d23d3e3b15bedd7e87fbc3be29d2e213307b4f901e4a1d92356dc20f
     depends_on:
       minio:
         condition: service_healthy
     networks:
       - app_network
-    entrypoint: /bin/sh
-    command:
-      - -c
-      - |
-        mc alias set local http://minio:9000 minioadmin minioadmin
-        mc mb -p local/packets || true
+    environment:
+      MC_HOST_local: http://minioadmin:minioadmin@minio:9000
+    command: ["mb", "--ignore-existing", "local/packets"]
     restart: "no"
 
   electric:
