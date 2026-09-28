@@ -45,8 +45,16 @@ export function downloadTranscript(
 
 export function isTranscriptNotFound(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
-  const { name, $metadata } = error as { name?: string; $metadata?: { httpStatusCode?: number } };
+  const { name, $metadata, status } = error as {
+    name?: string;
+    $metadata?: { httpStatusCode?: number };
+    status?: unknown;
+  };
   if (name === "NoSuchKey" || name === "NotFound" || $metadata?.httpStatusCode === 404) return true;
+  // The aws4fetch adapter reports the HTTP status on the error. Check it first:
+  // S3-compatible stores may return an empty reason phrase, so the message alone
+  // cannot distinguish a 404 from other failures.
+  if (status === 404) return true;
   // The aws4fetch adapter currently reports the HTTP status text in its error.
   return (
     error instanceof Error &&

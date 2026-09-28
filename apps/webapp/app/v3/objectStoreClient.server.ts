@@ -58,6 +58,24 @@ export class ObjectVersionChangedError extends Error {
   }
 }
 
+/**
+ * A failed object-store download that preserves the HTTP status code.
+ * Callers must not rely on `statusText`: S3-compatible stores may return an
+ * empty reason phrase (e.g. `HTTP/1.1 404 `), which yields an empty message
+ * suffix and breaks message-based 404 detection.
+ */
+export class ObjectStoreDownloadError extends Error {
+  readonly status: number;
+  readonly statusText: string;
+
+  constructor(message: string, status: number, statusText: string) {
+    super(message);
+    this.name = "ObjectStoreDownloadError";
+    this.status = status;
+    this.statusText = statusText;
+  }
+}
+
 /** `Range` header value for a byte range or a suffix. */
 function rangeHeader(range: { suffixLength: number } | { start: number; end: number }): string {
   return "suffixLength" in range
@@ -120,7 +138,11 @@ class Aws4FetchClient implements IObjectStoreClient {
   async getObject(key: string): Promise<string> {
     const response = await this.awsClient.fetch(this.buildUrl(key));
     if (!response.ok) {
-      throw new Error(`Failed to download from object store: ${response.statusText}`);
+      throw new ObjectStoreDownloadError(
+        `Failed to download from object store: ${response.statusText}`,
+        response.status,
+        response.statusText
+      );
     }
     return response.text();
   }
@@ -135,7 +157,11 @@ class Aws4FetchClient implements IObjectStoreClient {
   async getObjectResponse(key: string): Promise<Response> {
     const response = await this.awsClient.fetch(this.buildUrl(key));
     if (!response.ok) {
-      throw new Error(`Failed to download from object store: ${response.statusText}`);
+      throw new ObjectStoreDownloadError(
+        `Failed to download from object store: ${response.statusText}`,
+        response.status,
+        response.statusText
+      );
     }
     return response;
   }
@@ -155,7 +181,11 @@ class Aws4FetchClient implements IObjectStoreClient {
       throw new ObjectVersionChangedError(key);
     }
     if (!response.ok) {
-      throw new Error(`Failed to download range from object store: ${response.statusText}`);
+      throw new ObjectStoreDownloadError(
+        `Failed to download range from object store: ${response.statusText}`,
+        response.status,
+        response.statusText
+      );
     }
     const bytes = new Uint8Array(await response.arrayBuffer());
     return {

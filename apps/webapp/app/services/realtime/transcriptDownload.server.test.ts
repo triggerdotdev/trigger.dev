@@ -1,4 +1,5 @@
 import { createServer, type Server } from "node:http";
+import { createServer as createTcpServer, type Server as TcpServer } from "node:net";
 import { once } from "node:events";
 import express from "express";
 import { sendRemixResponse } from "@remix-run/express/dist/server";
@@ -114,6 +115,34 @@ test("does not treat permission or service failures as an absent transcript", ()
   ).toBe(false);
   expect(isTranscriptNotFound({ $metadata: { httpStatusCode: 503 } })).toBe(false);
   expect(isTranscriptNotFound({ name: "NoSuchKey" })).toBe(true);
+  expect(isTranscriptNotFound({ status: 404, message: "Failed to download from object store: " })).toBe(
+    true
+  );
+});
+
+test("recognizes a 404 with an empty reason phrase as a missing transcript", async () => {
+  const server: TcpServer = createTcpServer((socket) => {
+    socket.once("data", () => {
+      socket.end("HTTP/1.1 404 \r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+    });
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Expected TCP listener");
+  const baseUrl = `http://127.0.0.1:${address.port}`;
+  try {
+    const client = ObjectStoreClient.create({
+      baseUrl,
+      accessKeyId: "test",
+      secretAccessKey: "test",
+      service: "s3",
+    });
+    await expect(client.getObjectResponse(key)).rejects.toSatisfy(isTranscriptNotFound);
+  } finally {
+    server.close();
+    await once(server, "close");
+  }
 });
 
 minioTest(
