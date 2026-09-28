@@ -892,7 +892,7 @@ ARG BUILDPLATFORM
 ENV BUILDPLATFORM=$BUILDPLATFORM TARGETPLATFORM=$TARGETPLATFORM
 
 # Run the indexer
-RUN bun run ${options.indexScript}
+RUN [ "bun", "run", "${options.indexScript}" ]
 
 # Development or production stage builds upon the base stage
 FROM base AS final
@@ -1001,7 +1001,7 @@ ARG BUILDPLATFORM
 ENV BUILDPLATFORM=$BUILDPLATFORM TARGETPLATFORM=$TARGETPLATFORM
 
 # Run the indexer
-RUN node ${options.indexScript}
+RUN [ "node", "${options.indexScript}" ]
 
 # Development or production stage builds upon the base stage
 FROM base AS final

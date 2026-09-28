@@ -22,15 +22,13 @@ import {
 import { createExternalsBuildExtension } from "./externals.js";
 import { tmpdir } from "node:os";
 import { mkdtemp, rm } from "node:fs/promises";
-import { join, relative, sep } from "node:path";
+import path, { join } from "node:path";
 import { generateContainerfile } from "../deploy/buildImage.js";
 import { writeFile } from "node:fs/promises";
 import { buildManifestToJSON } from "../utilities/buildManifest.js";
 import { logger } from "../utilities/logger.js";
 import { readPackageJSON } from "pkg-types";
 import { writeJSONFile } from "../utilities/fileSystem.js";
-import { isWindows } from "std-env";
-import { pathToFileURL } from "node:url";
 import { logBuildWorkerStart } from "./buildWorkerLogging.js";
 import { SdkVersionExtractor } from "./plugins.js";
 import { spinner } from "../utilities/windows.js";
@@ -215,17 +213,12 @@ function cleanEntryPath(entry: string): string {
   return entry.split("?")[0]!;
 }
 
-function rewriteOutputPath(destinationDir: string, filePath: string) {
-  if (isWindows) {
-    return `/app/${relative(
-      pathToFileURL(destinationDir).pathname,
-      pathToFileURL(filePath).pathname
-    )
-      .split(sep)
-      .join("/")}`;
-  } else {
-    return `/app/${relative(destinationDir, filePath)}`;
-  }
+export function rewriteOutputPath(
+  destinationDir: string,
+  filePath: string,
+  pathApi: Pick<typeof path, "relative" | "sep"> = path
+) {
+  return `/app/${pathApi.relative(destinationDir, filePath).split(pathApi.sep).join("/")}`;
 }
 
 async function writeDeployFiles({
