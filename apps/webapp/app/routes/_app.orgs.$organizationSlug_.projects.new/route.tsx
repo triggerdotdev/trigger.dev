@@ -1,6 +1,6 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod/v4";
-import { CommandLineIcon, FolderIcon } from "@heroicons/react/20/solid";
+import { FolderIcon } from "@heroicons/react/20/solid";
 import {
   json,
   redirectDocument,
@@ -8,15 +8,12 @@ import {
   type LoaderFunctionArgs,
 } from "@remix-run/node";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
-import type { Prisma } from "@trigger.dev/database";
-import React, { useEffect, useState } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { z } from "zod";
 import { BackgroundWrapper } from "~/components/BackgroundWrapper";
 import { Feedback } from "~/components/Feedback";
 import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
-import { TechnologyPicker } from "~/components/onboarding/TechnologyPicker";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Fieldset } from "~/components/primitives/Fieldset";
@@ -26,7 +23,6 @@ import { FormTitle } from "~/components/primitives/FormTitle";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
-import { Select, SelectItem } from "~/components/primitives/Select";
 
 import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
@@ -44,82 +40,6 @@ import { generateVercelOAuthState } from "~/v3/vercel/vercelOAuthState.server";
 import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta("New project");
-
-const WORKING_ON_OTHER = "Other/not sure yet";
-const GOALS_OTHER = "Other/not sure yet";
-
-const workingOnOptions = [
-  "AI agent",
-  "Media processing pipeline",
-  "Media generation with AI",
-  "Event-driven workflow",
-  "Realtime streaming",
-  "Internal tool or background job",
-  WORKING_ON_OTHER,
-] as const;
-
-const goalOptions = [
-  "Ship a production workflow",
-  "Prototype or explore",
-  "Migrate an existing system",
-  "Learn how Trigger works",
-  "Evaluate against alternatives",
-  GOALS_OTHER,
-] as const;
-
-function shuffleArray<T>(arr: T[]): T[] {
-  const shuffled = [...arr];
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-  }
-  return shuffled;
-}
-
-function renderMultiSelectValue(value: string[]) {
-  if (value.length === 0) return;
-
-  return (
-    <span className="flex min-w-0 items-center text-text-bright">
-      <span className="truncate">{value.slice(0, 2).join(", ")}</span>
-      {value.length > 2 && <span className="ml-1 flex-none">+{value.length - 2} more</span>}
-    </span>
-  );
-}
-
-function MultiSelectField({
-  value,
-  setValue,
-  items,
-  icon,
-}: {
-  value: string[];
-  setValue: (value: string[]) => void;
-  items: string[];
-  icon: React.ReactNode;
-}) {
-  return (
-    <Select<string[], string>
-      value={value}
-      setValue={setValue}
-      placeholder="Select some options"
-      variant="secondary/small"
-      dropdownIcon
-      icon={icon}
-      items={items}
-      className="h-8 min-w-0 border-0 bg-background-hover pl-2 text-sm text-text-dimmed ring-border-bright transition hover:bg-secondary hover:text-text-dimmed hover:ring-1"
-      text={renderMultiSelectValue}
-    >
-      {(items) =>
-        items.map((item) => (
-          <SelectItem key={item} value={item} checkPosition="left">
-            <span className="text-text-bright">{item}</span>
-          </SelectItem>
-        ))
-      }
-    </Select>
-  );
-}
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
@@ -171,14 +91,6 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 const schema = z.object({
   projectName: z.string().min(3, "Project name must have at least 3 characters").max(50),
   projectVersion: z.enum(["v2", "v3"]),
-  workingOn: z.string().optional(),
-  workingOnOther: z.string().optional(),
-  technologies: z.string().optional(),
-  technologiesOther: z.string().optional(),
-  goals: z.string().optional(),
-  goalsOther: z.string().optional(),
-  workingOnPositions: z.string().optional(),
-  goalsPositions: z.string().optional(),
 });
 
 export const action: ActionFunction = async ({ request, params }) => {
@@ -198,66 +110,12 @@ export const action: ActionFunction = async ({ request, params }) => {
   const configurationId = url.searchParams.get("configurationId");
   const next = url.searchParams.get("next");
 
-  const stringArraySchema = z.array(z.string());
-
-  function safeParseStringArray(value: string | undefined): string[] | undefined {
-    if (!value) return undefined;
-    try {
-      const result = stringArraySchema.safeParse(JSON.parse(value));
-      return result.success && result.data.length > 0 ? result.data : undefined;
-    } catch {
-      return undefined;
-    }
-  }
-
-  const numberArraySchema = z.array(z.number());
-  function safeParseNumberArray(value: string | undefined): number[] | undefined {
-    if (!value) return undefined;
-    try {
-      const result = numberArraySchema.safeParse(JSON.parse(value));
-      return result.success && result.data.length > 0 ? result.data : undefined;
-    } catch {
-      return undefined;
-    }
-  }
-
-  const onboardingData: Record<string, Prisma.InputJsonValue> = {};
-
-  const workingOn = safeParseStringArray(submission.value.workingOn);
-  if (workingOn) {
-    onboardingData.workingOn = workingOn;
-    const workingOnPositions = safeParseNumberArray(submission.value.workingOnPositions);
-    if (workingOnPositions) onboardingData.workingOnPositions = workingOnPositions;
-  }
-
-  if (submission.value.workingOnOther) {
-    onboardingData.workingOnOther = submission.value.workingOnOther;
-  }
-
-  const technologies = safeParseStringArray(submission.value.technologies);
-  if (technologies) onboardingData.technologies = technologies;
-
-  const technologiesOther = safeParseStringArray(submission.value.technologiesOther);
-  if (technologiesOther) onboardingData.technologiesOther = technologiesOther;
-
-  const goals = safeParseStringArray(submission.value.goals);
-  if (goals) {
-    onboardingData.goals = goals;
-    const goalsPositions = safeParseNumberArray(submission.value.goalsPositions);
-    if (goalsPositions) onboardingData.goalsPositions = goalsPositions;
-  }
-
-  if (submission.value.goalsOther) {
-    onboardingData.goalsOther = submission.value.goalsOther;
-  }
-
   try {
     const project = await createProject({
       organizationSlug: organizationSlug,
       name: submission.value.projectName,
       userId,
       version: submission.value.projectVersion,
-      onboardingData: Object.keys(onboardingData).length > 0 ? onboardingData : undefined,
     });
 
     if (code && configurationId) {
@@ -348,28 +206,6 @@ export default function Page() {
   const navigation = useNavigation();
   const isLoading = navigation.state === "submitting" || navigation.state === "loading";
 
-  const [selectedWorkingOn, setSelectedWorkingOn] = useState<string[]>([]);
-  const [workingOnOther, setWorkingOnOther] = useState("");
-  const [selectedTechnologies, setSelectedTechnologies] = useState<string[]>([]);
-  const [customTechnologies, setCustomTechnologies] = useState<string[]>([]);
-  const [selectedGoals, setSelectedGoals] = useState<string[]>([]);
-  const [goalsOther, setGoalsOther] = useState("");
-
-  const [shuffledWorkingOn, setShuffledWorkingOn] = useState<string[]>([...workingOnOptions]);
-  const [shuffledGoals, setShuffledGoals] = useState<string[]>([...goalOptions]);
-
-  useEffect(() => {
-    const nonOther = workingOnOptions.filter((o) => o !== WORKING_ON_OTHER);
-    // oxlint-disable-next-line react/set-state-in-effect -- This effect intentionally synchronizes route state after an external or lifecycle change.
-    setShuffledWorkingOn([...shuffleArray(nonOther), WORKING_ON_OTHER]);
-
-    const nonOtherGoals = goalOptions.filter((o) => o !== GOALS_OTHER);
-    setShuffledGoals([...shuffleArray(nonOtherGoals), GOALS_OTHER]);
-  }, []);
-
-  const showWorkingOnOther = selectedWorkingOn.includes(WORKING_ON_OTHER);
-  const showGoalsOther = selectedGoals.includes(GOALS_OTHER);
-
   return (
     <AppContainer className="bg-background-deep">
       <BackgroundWrapper>
@@ -413,89 +249,6 @@ export default function Page() {
                     defaultValue={"v2"}
                   />
                 )}
-
-                <div className="border-t border-grid-bright" />
-                <InputGroup>
-                  <Label>What are you working on?</Label>
-                  <input type="hidden" name="workingOn" value={JSON.stringify(selectedWorkingOn)} />
-                  <input
-                    type="hidden"
-                    name="workingOnPositions"
-                    value={JSON.stringify(
-                      selectedWorkingOn.map((v) => shuffledWorkingOn.indexOf(v) + 1)
-                    )}
-                  />
-                  <MultiSelectField
-                    value={selectedWorkingOn}
-                    setValue={setSelectedWorkingOn}
-                    items={shuffledWorkingOn}
-                    icon={<CommandLineIcon className="mr-1 size-4 text-text-dimmed" />}
-                  />
-                  {showWorkingOnOther && (
-                    <>
-                      <input type="hidden" name="workingOnOther" value={workingOnOther} />
-                      <Input
-                        type="text"
-                        variant="small"
-                        value={workingOnOther}
-                        onChange={(e) => setWorkingOnOther(e.target.value)}
-                        placeholder="Tell us what you're working on"
-                        spellCheck={false}
-                        containerClassName="h-8"
-                      />
-                    </>
-                  )}
-                </InputGroup>
-
-                <InputGroup>
-                  <Label>What technologies are you using?</Label>
-                  <input
-                    type="hidden"
-                    name="technologies"
-                    value={JSON.stringify(selectedTechnologies)}
-                  />
-                  <input
-                    type="hidden"
-                    name="technologiesOther"
-                    value={JSON.stringify(customTechnologies)}
-                  />
-                  <TechnologyPicker
-                    value={selectedTechnologies}
-                    onChange={setSelectedTechnologies}
-                    customValues={customTechnologies}
-                    onCustomValuesChange={setCustomTechnologies}
-                  />
-                </InputGroup>
-
-                <InputGroup>
-                  <Label>What are you trying to do with Trigger.dev?</Label>
-                  <input type="hidden" name="goals" value={JSON.stringify(selectedGoals)} />
-                  <input
-                    type="hidden"
-                    name="goalsPositions"
-                    value={JSON.stringify(selectedGoals.map((v) => shuffledGoals.indexOf(v) + 1))}
-                  />
-                  <MultiSelectField
-                    value={selectedGoals}
-                    setValue={setSelectedGoals}
-                    items={shuffledGoals}
-                    icon={<CommandLineIcon className="mr-1 size-4 text-text-dimmed" />}
-                  />
-                  {showGoalsOther && (
-                    <>
-                      <input type="hidden" name="goalsOther" value={goalsOther} />
-                      <Input
-                        type="text"
-                        variant="small"
-                        value={goalsOther}
-                        onChange={(e) => setGoalsOther(e.target.value)}
-                        placeholder="Tell us what you're trying to do with Trigger.dev"
-                        spellCheck={false}
-                        containerClassName="h-8"
-                      />
-                    </>
-                  )}
-                </InputGroup>
 
                 <FormButtons
                   confirmButton={
