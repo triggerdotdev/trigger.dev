@@ -69,15 +69,7 @@ export class MinIOContainer extends GenericContainer {
 
     await x(
       "docker",
-      [
-        "exec",
-        startedContainer.getId(),
-        "mc",
-        "--config-dir",
-        "/tmp/.mc",
-        "mb",
-        "local/packets",
-      ],
+      ["exec", startedContainer.getId(), "mc", "--config-dir", "/tmp/.mc", "mb", "local/packets"],
       { throwOnError: true }
     );
 
