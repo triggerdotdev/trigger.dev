@@ -471,6 +471,10 @@ export class OtlpWorkerPool {
     return this.queue.length;
   }
 
+  get aliveWorkers() {
+    return this.workers.length;
+  }
+
   // Stop taking new work, let in-flight tasks finish (bounded), then terminate every worker.
   // Terminated workers fire "exit", but reap() no-ops on an already-removed worker, and the
   // isShuttingDown guard stops any pending respawn, so shutdown is quiet.
@@ -506,6 +510,8 @@ export class OtlpWorkerPool {
   }
 }
 
+let currentPool: OtlpWorkerPool | undefined;
+
 export function getOtlpWorkerPool(
   size: number,
   pricingModels: unknown[],
@@ -514,7 +520,7 @@ export function getOtlpWorkerPool(
 ): OtlpWorkerPool {
   // singleton() stores on globalThis so the pool (and its worker threads) survive Remix HMR in dev
   // rather than leaking an orphaned pool + workers on every reload.
-  return singleton("otlpWorkerPool", () => {
+  currentPool = singleton("otlpWorkerPool", () => {
     const resolvedPath = workerPath ?? path.join(process.cwd(), "build", "otlpTransformWorker.cjs");
     const created = new OtlpWorkerPool(size, resolvedPath, pricingModels, meter);
     // Drain + terminate workers on shutdown so they aren't force-killed mid-task (which would
@@ -523,4 +529,10 @@ export function getOtlpWorkerPool(
     signalsEmitter.on("SIGINT", () => void created.shutdown());
     return created;
   });
+  return currentPool;
+}
+
+// The pool is created lazily by the first ingest request, so "no pool yet" must count as healthy.
+export function isOtlpWorkerPoolHealthy(pool = currentPool): boolean {
+  return pool === undefined || pool.aliveWorkers > 0;
 }
