@@ -1,4 +1,4 @@
-import { postgresTest } from "@internal/testcontainers";
+import { postgresBlipTest, postgresTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
 import { describe, expect, vi } from "vitest";
 import { ManageConcurrencyPresenter } from "~/presenters/v3/ManageConcurrencyPresenter.server";
@@ -175,6 +175,21 @@ describe("AllocateConcurrencyService", () => {
       expect(invalidateEnvironmentMock).toHaveBeenCalledWith(environments[0].id);
     }
   );
+
+  postgresBlipTest("allocates with the production database adapter", async ({ prisma }) => {
+    const { organization, project, environments } = await seedProjectWithEnvironments(prisma, 1);
+    getCurrentPlanMock.mockResolvedValue(planWithPurchasedConcurrency(10));
+
+    const service = new AllocateConcurrencyService(prisma);
+    const result = await service.call({
+      userId: "user_1",
+      projectId: project.id,
+      organizationId: organization.id,
+      environments: [{ id: environments[0].id, amount: 1 }],
+    });
+
+    expect(result).toEqual({ success: true });
+  });
 
   postgresTest(
     "rejects an allocation that exceeds the unallocated pool and syncs nothing",

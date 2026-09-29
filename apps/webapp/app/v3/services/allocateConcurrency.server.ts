@@ -363,7 +363,7 @@ async function computeOrgExtraAllocatedConcurrency(
   }
 
   const limitCases = Prisma.join(
-    typeLimits.map((entry) => Prisma.sql`WHEN ${entry.type}::text THEN ${entry.limit}`),
+    typeLimits.map((entry) => Prisma.sql`WHEN ${entry.type}::text THEN ${entry.limit}::integer`),
     " "
   );
   const countableTypes = Prisma.join(typeLimits.map((entry) => entry.type));
