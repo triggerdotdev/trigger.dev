@@ -74,6 +74,7 @@ import {
   validateCreateApiKeyPreset,
   type ApiKeyPreset,
 } from "~/services/apiKeyPresetValidation.server";
+import { resolveProjectAuthScope } from "~/services/projectAuthScope.server";
 import { rbac } from "~/services/rbac.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { cn } from "~/utils/cn";
@@ -133,6 +134,7 @@ export const loader = dashboardLoader(
   {
     params: EnvironmentParamSchema,
     searchParams: ApiKeySearchParams,
+    context: (params) => resolveProjectAuthScope(params.organizationSlug, params.projectParam),
   },
   async ({ params, searchParams, user, ability }) => {
     try {
@@ -184,6 +186,7 @@ export const loader = dashboardLoader(
 export const action = dashboardAction(
   {
     params: EnvironmentParamSchema,
+    context: (params) => resolveProjectAuthScope(params.organizationSlug, params.projectParam),
     // The environment tier is only known after resolving the route params,
     // so write:apiKeys is enforced in the handler before any mutation.
   },
