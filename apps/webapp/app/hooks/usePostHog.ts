@@ -53,7 +53,7 @@ export const usePostHog = (
     if (user) {
       if (logging) console.log("Identifying user", user);
       posthog.identify(user.id, { email: user.email });
-    } else {
+    } else if (posthog.get_property("$user_state") === "identified") {
       if (logging) console.log("Resetting user");
       posthog.reset();
     }
