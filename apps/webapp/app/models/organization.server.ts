@@ -27,6 +27,7 @@ import {
 } from "~/services/platform.v3.server";
 import { buildDefaultBillingAlerts } from "~/services/billingAlertsDefaults.server";
 import { enqueueAttioWorkspaceSync } from "~/services/attio.server";
+import { provisionBillingCustomerForOrg } from "~/services/billingPlugin.server";
 import { logger } from "~/services/logger.server";
 import { telemetry } from "~/services/telemetry.server";
 import {
@@ -152,6 +153,8 @@ export async function createOrganization(
       members: true,
     },
   });
+
+  await provisionBillingCustomerForOrg(organization.id);
 
   // Fire-and-forget; never blocks org creation.
   void enqueueAttioWorkspaceSync({

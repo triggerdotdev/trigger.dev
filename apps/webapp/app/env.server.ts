@@ -2617,6 +2617,10 @@ const EnvironmentSchema = z
     // and emits a `sso.revalidation.timeout` warn log — alert on an
     // elevated rate of those to catch a slow/unhealthy SSO dependency.
     SSO_SESSION_REVALIDATION_TIMEOUT_MS: z.coerce.number().int().positive().default(2000),
+
+    BILLING_PLUGIN_ENABLED: BoolEnv.default(false),
+    BILLING_FORCE_FALLBACK: BoolEnv.default(false),
+    BILLING_DATABASE_CONNECTION_LIMIT: z.coerce.number().int().default(2),
   })
   .and(GithubAppEnvSchema)
   .and(S2EnvSchema)

@@ -125,6 +125,7 @@
     "@team-plain/graphql": "^1.3.0",
     "@team-plain/ui-components": "^5.0.0",
     "@trigger.dev/companyicons": "^1.5.35",
+    "@trigger.dev/billing": "workspace:*",
     "@trigger.dev/core": "workspace:*",
     "@trigger.dev/database": "workspace:*",
     "@trigger.dev/otlp-importer": "workspace:*",

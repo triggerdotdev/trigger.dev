@@ -484,6 +484,9 @@ importers:
       '@team-plain/ui-components':
         specifier: ^5.0.0
         version: 5.0.0(@team-plain/graphql@1.3.0)
+      '@trigger.dev/billing':
+        specifier: workspace:*
+        version: link:../../internal-packages/billing
       '@trigger.dev/companyicons':
         specifier: ^1.5.35
         version: 1.5.35(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -901,6 +904,22 @@ importers:
         version: 5.1.4(typescript@7.0.2)(vite@6.4.3(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.1)(tsx@4.20.6)(yaml@2.9.0))
 
   docs: {}
+
+  internal-packages/billing:
+    dependencies:
+      '@trigger.dev/plugins':
+        specifier: workspace:*
+        version: link:../../packages/plugins
+      neverthrow:
+        specifier: ^8.2.0
+        version: 8.2.0
+    devDependencies:
+      '@types/node':
+        specifier: 24.13.3
+        version: 24.13.3
+      rimraf:
+        specifier: 6.0.1
+        version: 6.0.1
 
   internal-packages/cache:
     dependencies:

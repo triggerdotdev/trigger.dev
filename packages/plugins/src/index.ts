@@ -71,3 +71,14 @@ export type {
 } from "./sso.js";
 
 export { SSO_FLOWS } from "./sso.js";
+
+export type {
+  BillingPlugin,
+  BillingPluginConfig,
+  BillingController,
+  BillingCustomer,
+  BillingCustomerError,
+  ProvisionBillingCustomerParams,
+  ProvisionBillingCustomerResult,
+  ProvisionBillingCustomerOutcome,
+} from "./billing.js";
