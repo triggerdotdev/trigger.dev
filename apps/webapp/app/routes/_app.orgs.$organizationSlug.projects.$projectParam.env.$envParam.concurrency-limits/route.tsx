@@ -62,6 +62,7 @@ import {
   getSelfServePurchaseBlockReason,
 } from "~/services/platform.v3.server";
 import { textLinkClassName } from "~/components/primitives/TextLink";
+import { logger } from "~/services/logger.server";
 import { rbac } from "~/services/rbac.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
@@ -80,6 +81,9 @@ export const handle: Handle = {
 import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta("Manage concurrency");
+
+const LOAD_ERROR_MESSAGE = "Unable to load concurrency settings. Please try again.";
+const SAVE_ERROR_MESSAGE = "Unable to save concurrency settings. Please try again.";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -113,9 +117,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   );
 
   if (error) {
+    logger.error("Failed to load concurrency settings", {
+      error,
+      organizationId: project.organizationId,
+      projectId: project.id,
+    });
     throw new Response(undefined, {
-      status: 400,
-      statusText: error.message,
+      status: 500,
+      statusText: LOAD_ERROR_MESSAGE,
     });
   }
 
@@ -201,12 +210,16 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     );
 
     if (error) {
+      logger.error("Failed to allocate concurrency", {
+        error,
+        organizationId: project.organizationId,
+        projectId: project.id,
+      });
       return json(
         submission.reply({
-          fieldErrors: {
-            environments: [error instanceof Error ? error.message : "Unknown error"],
-          },
-        })
+          fieldErrors: { environments: [SAVE_ERROR_MESSAGE] },
+        }),
+        { status: 500 }
       );
     }
 
@@ -250,10 +263,16 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   );
 
   if (error) {
+    logger.error("Failed to update concurrency add-on", {
+      error,
+      organizationId: project.organizationId,
+      projectId: project.id,
+    });
     return json(
       submission.reply({
-        fieldErrors: { amount: [error instanceof Error ? error.message : "Unknown error"] },
-      })
+        fieldErrors: { amount: [SAVE_ERROR_MESSAGE] },
+      }),
+      { status: 500 }
     );
   }
 
