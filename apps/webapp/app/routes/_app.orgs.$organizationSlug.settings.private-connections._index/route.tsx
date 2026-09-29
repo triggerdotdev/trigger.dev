@@ -5,7 +5,7 @@ import {
   TrashIcon,
 } from "@heroicons/react/20/solid";
 import { Form, useRevalidator } from "@remix-run/react";
-import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core/utils";
 import type { PrivateLinkConnectionStatus } from "@trigger.dev/platform";
 import { useMemo, useState } from "react";
@@ -20,8 +20,11 @@ import { Header2 } from "~/components/primitives/Headers";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { prisma } from "~/db.server";
+import { rbac } from "~/services/rbac.server";
 import { useInterval } from "~/hooks/useInterval";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
+import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { logger } from "~/services/logger.server";
 import { deletePrivateLink, getPrivateLinks } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
@@ -54,6 +57,13 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     throw new Response(null, { status: 404, statusText: "Organization not found" });
   }
 
+  const sessionAuth = await rbac.authenticateSession(request, {
+    userId,
+    organizationId: organization.id,
+  });
+  const canManageConnections =
+    sessionAuth.ok && sessionAuth.ability.can("write", { type: "privateConnections" });
+
   const [error, connections] = await tryCatch(getPrivateLinks(organization.id));
   if (error) {
     logger.error("Error loading private link connections", {
@@ -65,52 +75,63 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   return typedjson({
     connections: connections?.connections ?? [],
     organizationId: organization.id,
+    canManageConnections,
   });
 }
 
-export const action = async ({ request, params }: ActionFunctionArgs) => {
-  const userId = await requireUserId(request);
-  const { organizationSlug } = OrganizationParamsSchema.parse(params);
+export const action = dashboardAction(
+  {
+    params: OrganizationParamsSchema,
+    context: async (params) => {
+      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
+      return organizationId ? { organizationId } : {};
+    },
+    authorization: { action: "write", resource: { type: "privateConnections" } },
+  },
+  async ({ request, params }) => {
+    const userId = await requireUserId(request);
+    const { organizationSlug } = params;
 
-  if (request.method !== "DELETE" && request.method !== "POST") {
-    return json({ error: "Method not allowed" }, { status: 405 });
-  }
+    if (request.method !== "DELETE" && request.method !== "POST") {
+      return json({ error: "Method not allowed" }, { status: 405 });
+    }
 
-  const formData = await request.formData();
-  const connectionId = formData.get("connectionId");
-  const intent = formData.get("intent");
+    const formData = await request.formData();
+    const connectionId = formData.get("connectionId");
+    const intent = formData.get("intent");
 
-  if (intent !== "delete" || typeof connectionId !== "string") {
-    return json({ error: "Invalid request" }, { status: 400 });
-  }
+    if (intent !== "delete" || typeof connectionId !== "string") {
+      return json({ error: "Invalid request" }, { status: 400 });
+    }
 
-  const organization = await prisma.organization.findFirst({
-    where: { slug: organizationSlug, members: { some: { userId } } },
-  });
+    const organization = await prisma.organization.findFirst({
+      where: { slug: organizationSlug, members: { some: { userId } } },
+    });
 
-  if (!organization) {
-    return redirectWithErrorMessage(
+    if (!organization) {
+      return redirectWithErrorMessage(
+        v3PrivateConnectionsPath({ slug: organizationSlug }),
+        request,
+        "Organization not found"
+      );
+    }
+
+    const [error] = await tryCatch(deletePrivateLink(organization.id, connectionId));
+    if (error) {
+      return redirectWithErrorMessage(
+        v3PrivateConnectionsPath({ slug: organizationSlug }),
+        request,
+        `Failed to delete connection: ${error.message}`
+      );
+    }
+
+    return redirectWithSuccessMessage(
       v3PrivateConnectionsPath({ slug: organizationSlug }),
       request,
-      "Organization not found"
+      "Connection deletion initiated"
     );
   }
-
-  const [error] = await tryCatch(deletePrivateLink(organization.id, connectionId));
-  if (error) {
-    return redirectWithErrorMessage(
-      v3PrivateConnectionsPath({ slug: organizationSlug }),
-      request,
-      `Failed to delete connection: ${error.message}`
-    );
-  }
-
-  return redirectWithSuccessMessage(
-    v3PrivateConnectionsPath({ slug: organizationSlug }),
-    request,
-    "Connection deletion initiated"
-  );
-};
+);
 
 const STATUS_COLORS: Record<PrivateLinkConnectionStatus, string> = {
   PENDING: "bg-amber-500/10 text-amber-700 dark:text-amber-400 system:text-warning",
@@ -153,7 +174,7 @@ function CopyButton({ value }: { value: string }) {
 const TERMINAL_STATUSES: PrivateLinkConnectionStatus[] = ["ACTIVE", "ERROR"];
 
 export default function Page() {
-  const { connections } = useTypedLoaderData<typeof loader>();
+  const { connections, canManageConnections } = useTypedLoaderData<typeof loader>();
   const plan = useCurrentPlan();
   const revalidator = useRevalidator();
 
@@ -176,6 +197,7 @@ export default function Page() {
   const hasPrivateNetworking = plan?.v3Subscription?.plan?.limits?.hasPrivateNetworking ?? false;
   const limit = plan?.v3Subscription?.plan?.limits?.privateLinkConnectionLimit ?? 2;
   const canAdd = connections.filter((c) => c.status !== "DELETING").length < limit;
+  const permissionTooltip = "You don't have permission to manage private connections";
 
   return (
     <PageContainer>
@@ -190,9 +212,16 @@ export default function Page() {
             Private connection docs
           </LinkButton>
           {hasPrivateNetworking && canAdd && (
-            <LinkButton variant="primary/small" LeadingIcon={PlusIcon} to="new">
-              Add Connection
-            </LinkButton>
+            <span title={!canManageConnections ? permissionTooltip : undefined}>
+              <LinkButton
+                variant="primary/small"
+                LeadingIcon={PlusIcon}
+                to="new"
+                disabled={!canManageConnections}
+              >
+                Add Connection
+              </LinkButton>
+            </span>
           )}
         </PageAccessories>
       </NavBar>
@@ -220,9 +249,16 @@ export default function Page() {
                   No private connections yet. Add your first connection to securely reach your AWS
                   resources from task pods.
                 </Paragraph>
-                <LinkButton variant="primary/small" LeadingIcon={PlusIcon} to="new">
-                  Add Connection
-                </LinkButton>
+                <span title={!canManageConnections ? permissionTooltip : undefined}>
+                  <LinkButton
+                    variant="primary/small"
+                    LeadingIcon={PlusIcon}
+                    to="new"
+                    disabled={!canManageConnections}
+                  >
+                    Add Connection
+                  </LinkButton>
+                </span>
               </div>
             ) : (
               <div className="flex flex-col gap-3">
@@ -238,8 +274,9 @@ export default function Page() {
                             <input type="hidden" name="intent" value="delete" />
                             <button
                               type="submit"
-                              className="text-text-dimmed transition hover:text-rose-400"
-                              title="Delete connection"
+                              disabled={!canManageConnections}
+                              className="text-text-dimmed transition hover:text-rose-400 disabled:cursor-not-allowed disabled:opacity-50"
+                              title={canManageConnections ? "Delete connection" : permissionTooltip}
                               onClick={(e) => {
                                 if (
                                   !confirm(
@@ -293,9 +330,16 @@ export default function Page() {
 
                 {canAdd && (
                   <div className="flex justify-center pt-2">
-                    <LinkButton variant="primary/small" LeadingIcon={PlusIcon} to="new">
-                      Add Connection
-                    </LinkButton>
+                    <span title={!canManageConnections ? permissionTooltip : undefined}>
+                      <LinkButton
+                        variant="primary/small"
+                        LeadingIcon={PlusIcon}
+                        to="new"
+                        disabled={!canManageConnections}
+                      >
+                        Add Connection
+                      </LinkButton>
+                    </span>
                   </div>
                 )}
 

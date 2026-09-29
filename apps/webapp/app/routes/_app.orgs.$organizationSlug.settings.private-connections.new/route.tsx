@@ -1,7 +1,7 @@
 import { getFormProps, getInputProps, getSelectProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod/v4";
 import { Form, useActionData, useParams } from "@remix-run/react";
-import { json, type ActionFunction, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { useState } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -12,6 +12,7 @@ import {
   PageContainer,
 } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { PermissionDenied } from "~/components/PermissionDenied";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
@@ -27,8 +28,11 @@ import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { canAccessPrivateConnections } from "~/v3/canAccessPrivateConnections.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
+import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import type { CreatePrivateLinkConnectionBody } from "@trigger.dev/platform";
 import { createPrivateLink, getPrivateLinkRegions } from "~/services/platform.v3.server";
+import { rbac } from "~/services/rbac.server";
 import { requireUserId } from "~/services/session.server";
 import {
   docsPath,
@@ -69,6 +73,13 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     throw new Response(null, { status: 404, statusText: "Organization not found" });
   }
 
+  const sessionAuth = await rbac.authenticateSession(request, {
+    userId,
+    organizationId: organization.id,
+  });
+  const canManageConnections =
+    sessionAuth.ok && sessionAuth.ability.can("write", { type: "privateConnections" });
+
   const [_error, regions] = await tryCatch(getPrivateLinkRegions(organization.id));
 
   const awsAccountIds = env.PRIVATE_CONNECTIONS_AWS_ACCOUNT_IDS?.split(",").filter(Boolean) ?? [];
@@ -77,6 +88,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     availableRegions: regions?.availableRegions ?? ["us-east-1", "eu-central-1"],
     activeRegions: regions?.activeRegions ?? [],
     awsAccountIds,
+    canManageConnections,
   });
 }
 
@@ -92,66 +104,76 @@ const schema = z.object({
   targetRegion: z.string().min(1, "Region is required"),
 });
 
-export const action: ActionFunction = async ({ request, params }) => {
-  const userId = await requireUserId(request);
-  const { organizationSlug } = OrganizationParamsSchema.parse(params);
+export const action = dashboardAction(
+  {
+    params: OrganizationParamsSchema,
+    context: async (params) => {
+      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
+      return organizationId ? { organizationId } : {};
+    },
+    authorization: { action: "write", resource: { type: "privateConnections" } },
+  },
+  async ({ request, params }) => {
+    const userId = await requireUserId(request);
+    const { organizationSlug } = params;
 
-  const formData = await request.formData();
-  const submission = parseWithZod(formData, { schema });
+    const formData = await request.formData();
+    const submission = parseWithZod(formData, { schema });
 
-  if (submission.status !== "success") {
-    return json(submission.reply());
-  }
+    if (submission.status !== "success") {
+      return json(submission.reply());
+    }
 
-  const organization = await prisma.organization.findFirst({
-    where: { slug: organizationSlug, members: { some: { userId } } },
-  });
+    const organization = await prisma.organization.findFirst({
+      where: { slug: organizationSlug, members: { some: { userId } } },
+    });
 
-  if (!organization) {
-    return redirectWithErrorMessage(
+    if (!organization) {
+      return redirectWithErrorMessage(
+        v3PrivateConnectionsPath({ slug: organizationSlug }),
+        request,
+        "Organization not found"
+      );
+    }
+
+    // Fetch available regions dynamically (same call the loader makes)
+    const [, fetchedRegions] = await tryCatch(getPrivateLinkRegions(organization.id));
+    const availableRegions = fetchedRegions?.availableRegions ?? ["us-east-1", "eu-central-1"];
+
+    const { targetRegion: selectedRegion, ...rest } = submission.value;
+
+    if (!availableRegions.includes(selectedRegion)) {
+      return redirectWithErrorMessage(
+        v3PrivateConnectionsPath({ slug: organizationSlug }),
+        request,
+        `Invalid region: ${selectedRegion}`
+      );
+    }
+
+    const [error] = await tryCatch(
+      createPrivateLink(organization.id, {
+        ...rest,
+        targetRegion: selectedRegion as CreatePrivateLinkConnectionBody["targetRegion"],
+      })
+    );
+
+    if (error) {
+      return redirectWithErrorMessage(
+        v3PrivateConnectionsPath({ slug: organizationSlug }),
+        request,
+        error.message
+      );
+    }
+
+    const message = "Connection created! Provisioning will begin shortly.";
+
+    return redirectWithSuccessMessage(
       v3PrivateConnectionsPath({ slug: organizationSlug }),
       request,
-      "Organization not found"
+      message
     );
   }
-
-  // Fetch available regions dynamically (same call the loader makes)
-  const [, fetchedRegions] = await tryCatch(getPrivateLinkRegions(organization.id));
-  const availableRegions = fetchedRegions?.availableRegions ?? ["us-east-1", "eu-central-1"];
-
-  const { targetRegion: selectedRegion, ...rest } = submission.value;
-
-  if (!availableRegions.includes(selectedRegion)) {
-    return redirectWithErrorMessage(
-      v3PrivateConnectionsPath({ slug: organizationSlug }),
-      request,
-      `Invalid region: ${selectedRegion}`
-    );
-  }
-
-  const [error] = await tryCatch(
-    createPrivateLink(organization.id, {
-      ...rest,
-      targetRegion: selectedRegion as CreatePrivateLinkConnectionBody["targetRegion"],
-    })
-  );
-
-  if (error) {
-    return redirectWithErrorMessage(
-      v3PrivateConnectionsPath({ slug: organizationSlug }),
-      request,
-      error.message
-    );
-  }
-
-  const message = "Connection created! Provisioning will begin shortly.";
-
-  return redirectWithSuccessMessage(
-    v3PrivateConnectionsPath({ slug: organizationSlug }),
-    request,
-    message
-  );
-};
+);
 
 type SetupMethod = "manual" | "ai" | "terraform" | "docs";
 
@@ -523,7 +545,8 @@ After creating everything, give me the VPC Endpoint Service name (it looks like 
 }
 
 export default function Page() {
-  const { availableRegions, activeRegions, awsAccountIds } = useTypedLoaderData<typeof loader>();
+  const { availableRegions, activeRegions, awsAccountIds, canManageConnections } =
+    useTypedLoaderData<typeof loader>();
   const { organizationSlug } = useParams();
   const lastSubmission = useActionData();
   const [setupMethod, setSetupMethod] = useState<SetupMethod | null>("manual");
@@ -537,6 +560,16 @@ export default function Page() {
       return parseWithZod(formData, { schema });
     },
   });
+
+  if (!canManageConnections) {
+    return (
+      <PageContainer>
+        <PageBody>
+          <PermissionDenied message="With your current role, you can't create private connections." />
+        </PageBody>
+      </PageContainer>
+    );
+  }
 
   return (
     <PageContainer>
