@@ -46,6 +46,7 @@ export type McpContextOptions = {
   profile?: string;
   devOnly?: boolean;
   readonly?: boolean;
+  skipTelemetry?: boolean;
 };
 
 export class McpContext {

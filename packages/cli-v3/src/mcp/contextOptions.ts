@@ -22,5 +22,6 @@ export function toMcpContextOptions(
     profile: options.profile,
     readonly: options.readonly,
     devOnly: options.devOnly,
+    skipTelemetry: options.skipTelemetry,
   };
 }

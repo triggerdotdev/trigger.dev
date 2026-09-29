@@ -1,6 +1,7 @@
 import type { McpContext } from "./context.js";
 import { deployTool, listDeploysTool } from "./tools/deploys.js";
 import { searchDocsTool } from "./tools/docs.js";
+import { submitFeedbackTool } from "./tools/feedback.js";
 import {
   createProjectInOrgTool,
   initializeProjectTool,
@@ -34,6 +35,7 @@ import { listAgentsTool } from "./tools/agents.js";
 import { startAgentChatTool, sendAgentMessageTool, closeAgentChatTool } from "./tools/agentChat.js";
 import { readSessionChannelTool, writeSessionChannelTool } from "./tools/sessionChannels.js";
 import { respondWithError } from "./utils.js";
+import { isTelemetryEnabled } from "./telemetry.js";
 
 /** Tool names that perform write/mutating operations. */
 const WRITE_TOOLS = new Set([
@@ -51,11 +53,13 @@ const WRITE_TOOLS = new Set([
   sendAgentMessageTool.name,
   closeAgentChatTool.name,
   writeSessionChannelTool.name,
+  submitFeedbackTool.name,
 ]);
 
 export function registerTools(context: McpContext) {
   const tools = [
     searchDocsTool,
+    submitFeedbackTool,
     listOrgsTool,
     listProjectsTool,
     createProjectInOrgTool,
@@ -100,6 +104,11 @@ export function registerTools(context: McpContext) {
   for (const tool of tools) {
     // In readonly mode, skip write tools entirely so the LLM never sees them
     if (context.options.readonly && WRITE_TOOLS.has(tool.name)) {
+      continue;
+    }
+
+    // Nothing to report to, so don't show the model a tool that can only fail.
+    if (tool.name === submitFeedbackTool.name && !isTelemetryEnabled(context.options)) {
       continue;
     }
 

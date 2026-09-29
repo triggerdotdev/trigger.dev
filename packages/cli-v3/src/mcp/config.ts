@@ -16,6 +16,12 @@ export const toolsMetadata = {
     description:
       "Search across the Trigger.dev documentation to find relevant information, code examples, API references, and guides. Use this tool when you need to answer questions about Trigger.dev, find specific documentation, understand how features work, or locate implementation details. The search returns contextual content with titles and direct links to the documentation pages",
   },
+  submit_feedback: {
+    name: "submit_feedback",
+    title: "Submit Feedback",
+    description:
+      "Report a problem with the Trigger.dev MCP server, SDK, or documentation. Use this when a tool returned a confusing error, the docs disagreed with the actual behaviour, a capability you needed was missing, or you had to work around something to finish the user's task. Describe what you were trying to do, what happened, and what you expected instead, in your own words. Never include secrets, credentials, environment variables, tokens or the user's own data - summarise and redact instead of pasting raw output. Tell the user what you reported. Do not call this more than once for the same problem.",
+  },
   list_projects: {
     name: "list_projects",
     title: "List Projects",
