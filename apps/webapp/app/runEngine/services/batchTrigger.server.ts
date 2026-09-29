@@ -7,7 +7,7 @@ import {
   parsePacket,
   TaskRunErrorCodes,
 } from "@trigger.dev/core/v3";
-import { BatchId, RunId } from "@trigger.dev/core/v3/isomorphic";
+import { BatchId } from "@trigger.dev/core/v3/isomorphic";
 import { type BatchTaskRun, Prisma } from "@trigger.dev/database";
 import { Evt } from "evt";
 import { z } from "zod";
@@ -28,6 +28,7 @@ import type { RunEngine } from "../../v3/runEngine.server";
 import { ServiceValidationError, WithRunEngine } from "../../v3/services/baseService.server";
 import { TriggerTaskService } from "../../v3/services/triggerTask.server";
 import { startActiveSpan } from "../../v3/tracer.server";
+import { resolveBatchParentRun } from "./resolveBatchParentRun.server";
 import { TriggerFailedTaskService } from "./triggerFailedTask.server";
 
 const PROCESSING_BATCH_SIZE = 50;
@@ -90,6 +91,13 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
         "call()",
         environment,
         async (span) => {
+          const parentRunInternalId = await resolveBatchParentRun({
+            runStore: this._engine.runStore,
+            environmentId: environment.id,
+            parentRunId: body.parentRunId,
+            resumeParentOnCompletion: body.resumeParentOnCompletion,
+          });
+
           const { friendlyId } = await mintBatchFriendlyId({
             environment: {
               organizationId: environment.organizationId,
@@ -112,7 +120,8 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
             payloadPacket,
             environment,
             body,
-            options
+            options,
+            parentRunInternalId
           );
 
           if (!batch) {
@@ -165,7 +174,8 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
     payloadPacket: IOPacket,
     environment: AuthenticatedEnvironment,
     body: BatchTriggerTaskV2RequestBody,
-    options: BatchTriggerTaskServiceOptions = {}
+    options: BatchTriggerTaskServiceOptions = {},
+    parentRunInternalId?: string
   ) {
     // BatchTaskRun.runtimeEnvironmentId no longer has an FK into RuntimeEnvironment;
     // validate env existence app-side (covers both create arms below).
@@ -187,9 +197,9 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
 
       this.onBatchTaskRunCreated.post(batch);
 
-      if (body.parentRunId && body.resumeParentOnCompletion) {
+      if (parentRunInternalId) {
         await this._engine.blockRunWithCreatedBatch({
-          runId: RunId.fromFriendlyId(body.parentRunId),
+          runId: parentRunInternalId,
           batchId: batch.id,
           environmentId: environment.id,
           projectId: environment.projectId,
@@ -278,9 +288,9 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
 
       this.onBatchTaskRunCreated.post(batch);
 
-      if (body.parentRunId && body.resumeParentOnCompletion) {
+      if (parentRunInternalId) {
         await this._engine.blockRunWithCreatedBatch({
-          runId: RunId.fromFriendlyId(body.parentRunId),
+          runId: parentRunInternalId,
           batchId: batch.id,
           environmentId: environment.id,
           projectId: environment.projectId,

@@ -1,6 +1,5 @@
 import type { InitializeBatchOptions } from "@internal/run-engine";
 import { type CreateBatchRequestBody, type CreateBatchResponse } from "@trigger.dev/core/v3";
-import { RunId } from "@trigger.dev/core/v3/isomorphic";
 import { type BatchTaskRun, Prisma } from "@trigger.dev/database";
 import { Evt } from "evt";
 import { prisma, type PrismaClientOrTransaction } from "~/db.server";
@@ -14,6 +13,7 @@ import { ServiceValidationError, WithRunEngine } from "../../v3/services/baseSer
 import { BatchRateLimitExceededError, getBatchLimits } from "../concerns/batchLimits.server";
 import { DefaultQueueManager } from "../concerns/queues.server";
 import { DefaultTriggerTaskValidator } from "../validators/triggerTaskValidator";
+import { resolveBatchParentRun } from "./resolveBatchParentRun.server";
 
 export type CreateBatchServiceOptions = {
   triggerVersion?: string;
@@ -101,6 +101,13 @@ export class CreateBatchService extends WithRunEngine {
           // Note: Queue size limits are validated per-queue when batch items are processed,
           // since we don't know which queues items will go to until they're streamed.
 
+          const parentRunInternalId = await resolveBatchParentRun({
+            runStore: this._engine.runStore,
+            environmentId: environment.id,
+            parentRunId: body.parentRunId,
+            resumeParentOnCompletion: body.resumeParentOnCompletion,
+          });
+
           // BatchTaskRun.runtimeEnvironmentId no longer has an FK into RuntimeEnvironment;
           // validate env existence app-side (passthrough when split is off).
           await controlPlaneResolver.assertEnvExists(environment.id);
@@ -125,14 +132,14 @@ export class CreateBatchService extends WithRunEngine {
           await batchStreamGrants.mint(environment.id, friendlyId);
 
           // Block parent run if this is a batchTriggerAndWait
-          if (body.parentRunId && body.resumeParentOnCompletion) {
+          if (parentRunInternalId) {
             await this._engine.scheduleExpireBatch({
               batchId: batch.id,
               availableAt: new Date(Date.now() + env.BATCH_SEAL_TIMEOUT_MS),
             });
 
             await this._engine.blockRunWithCreatedBatch({
-              runId: RunId.fromFriendlyId(body.parentRunId),
+              runId: parentRunInternalId,
               batchId: batch.id,
               environmentId: environment.id,
               projectId: environment.projectId,
