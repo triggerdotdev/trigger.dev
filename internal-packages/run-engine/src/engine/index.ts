@@ -15,7 +15,6 @@ import {
   type DequeuedMessage,
   type ExecutionResult,
   type RunExecutionData,
-  type StartRunAttemptResult,
   type TaskRunContext,
   type TaskRunExecutionResult,
   type TaskRunInternalError,
@@ -100,6 +99,7 @@ import {
 import { TtlSystem } from "./systems/ttlSystem.js";
 import { WaitpointSystem } from "./systems/waitpointSystem.js";
 import type {
+  EngineStartRunAttemptResult,
   EngineWorker,
   HeartbeatTimeouts,
   ReportableQueue,
@@ -1660,7 +1660,7 @@ export class RunEngine {
     // Carried from the DequeuedMessage via the worker's start-attempt request; see RunAttemptSystem.
     snapshotRoute?: SnapshotRouteWire;
     tx?: PrismaClientOrTransaction;
-  }): Promise<StartRunAttemptResult> {
+  }): Promise<EngineStartRunAttemptResult> {
     return this.runAttemptSystem.startRunAttempt({
       runId,
       snapshotId,

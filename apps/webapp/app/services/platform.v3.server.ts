@@ -16,6 +16,7 @@ import {
   type UsageResult,
   type UsageSeriesParams,
   type CurrentPlan,
+  ReportInvocationUsageResult,
 } from "@trigger.dev/platform";
 import {
   BillingLimitResultSchema,
@@ -771,25 +772,33 @@ export async function getUsageSeries(organizationId: string, params: UsageSeries
 export async function reportInvocationUsage(
   organizationId: string,
   costInCents: number,
+  jwt: string,
   additionalData?: Record<string, any>
 ) {
   if (!client) return undefined;
 
-  try {
-    const result = await client.reportInvocationUsage({
-      organizationId,
-      costInCents,
-      additionalData,
-    });
-    if (!result.success) {
-      recordPlatformFailure("reportInvocationUsage", "no_success");
-      return undefined;
-    }
-    return result;
-  } catch (_e) {
+  const [error, result] = await tryCatch(
+    client.fetch("/api/v1/usage/ingest/invocation", ReportInvocationUsageResult, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-trigger-jwt": jwt,
+      },
+      body: JSON.stringify({ organizationId, costInCents, additionalData }),
+    })
+  );
+
+  if (error) {
     recordPlatformFailure("reportInvocationUsage", "caught");
     return undefined;
   }
+
+  if (!result.success) {
+    recordPlatformFailure("reportInvocationUsage", "no_success");
+    return undefined;
+  }
+
+  return result;
 }
 
 export async function reportComputeUsage(request: Request) {

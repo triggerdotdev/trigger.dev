@@ -5,6 +5,7 @@ import type {
   MachinePreset,
   MachinePresetName,
   RetryOptions,
+  StartRunAttemptResult,
   TriggerTraceContext,
 } from "@trigger.dev/core/v3";
 import type { PrismaClient, PrismaReplicaClient, TaskRun, Waitpoint } from "@trigger.dev/database";
@@ -316,6 +317,10 @@ export type RunEngineOptions = {
   meter?: Meter;
   logger?: Logger;
   logLevel?: LogLevel;
+};
+
+export type EngineStartRunAttemptResult = StartRunAttemptResult & {
+  run: { region: string | null; workerQueue: string };
 };
 
 export type HeartbeatTimeouts = {

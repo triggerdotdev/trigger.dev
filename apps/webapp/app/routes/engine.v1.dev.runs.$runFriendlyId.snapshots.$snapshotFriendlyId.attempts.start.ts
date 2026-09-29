@@ -14,6 +14,7 @@ import { defaultMachine } from "~/services/platform.v3.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { resolveVariablesForEnvironment } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { machinePresetFromName } from "~/v3/machinePresets.server";
+import { meteringClaims } from "~/v3/utils/meteringClaims.server";
 import { engine } from "~/v3/runEngine.server";
 import { runStore } from "~/v3/runStore.server";
 
@@ -59,6 +60,11 @@ const { action } = createActionApiRoute(
         authentication.environment,
         engineResult.run.id,
         engineResult.execution.machine ?? defaultMachinePreset,
+        meteringClaims({
+          environmentType: authentication.environment.type,
+          region: run.region,
+          workerQueue: run.workerQueue,
+        }),
         engineResult.run.taskEventStore
       );
 
@@ -80,11 +86,13 @@ async function getEnvVars(
   environment: AuthenticatedEnvironment,
   runId: string,
   machinePreset: MachinePreset,
+  metering: Record<string, string>,
   taskEventStore?: string
 ): Promise<Record<string, string>> {
   const variables = await resolveVariablesForEnvironment(environment);
 
   const jwt = await generateJWTTokenForEnvironment(environment, {
+    ...metering,
     run_id: runId,
     machine_preset: machinePreset.name,
   });

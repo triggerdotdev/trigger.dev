@@ -16,7 +16,6 @@ import type {
   ExecutionResult,
   MachinePreset,
   MachinePresetName,
-  StartRunAttemptResult,
   TaskRunContext,
   TaskRunError,
   TaskRunExecution,
@@ -48,7 +47,7 @@ import {
   isInitialState,
   isPendingExecuting,
 } from "../statuses.js";
-import type { RunEngineOptions } from "../types.js";
+import type { EngineStartRunAttemptResult, RunEngineOptions } from "../types.js";
 import type { BatchSystem } from "./batchSystem.js";
 import type { DelayedRunSystem } from "./delayedRunSystem.js";
 import type {
@@ -338,7 +337,7 @@ export class RunAttemptSystem {
     // attempt's EXECUTING snapshot honors durable residency even when this pod's dial is poll-lagging.
     snapshotRoute?: SnapshotRouteWire;
     tx?: PrismaClientOrTransaction;
-  }): Promise<StartRunAttemptResult> {
+  }): Promise<EngineStartRunAttemptResult> {
     const prisma = tx ?? this.$.prisma;
 
     return startSpan(
@@ -485,6 +484,7 @@ export class RunAttemptSystem {
                     parentTaskRunId: true,
                     rootTaskRunId: true,
                     workerQueue: true,
+                    region: true,
                     taskEventStore: true,
                   },
                 },
@@ -552,6 +552,11 @@ export class RunAttemptSystem {
             throw new ServiceValidationError("Task run environment not found", 404);
           }
 
+          const machinePreset = await this.#resolveTaskRunExecutionMachinePreset(
+            taskRun.lockedById,
+            updatedRun.machinePreset
+          );
+
           this.$.eventBus.emit("runAttemptStarted", {
             time: new Date(),
             run: {
@@ -564,6 +569,9 @@ export class RunAttemptSystem {
               executedAt: updatedRun.executedAt ?? undefined,
               runTags: updatedRun.runTags,
               batchId: updatedRun.batchId,
+              region: updatedRun.region,
+              workerQueue: updatedRun.workerQueue,
+              machinePreset: machinePreset.name,
             },
             organization: {
               id: env.organizationId,
@@ -573,31 +581,27 @@ export class RunAttemptSystem {
             },
             environment: {
               id: env.id,
+              type: env.type,
             },
           });
 
           const environmentGit = safeParseGitMeta(env.git);
 
-          const [metadata, task, queue, organization, project, machinePreset, deployment] =
-            await Promise.all([
-              parsePacket({
-                data: updatedRun.metadata ?? undefined,
-                dataType: updatedRun.metadataType,
-              }),
-              this.#resolveTaskRunExecutionTask(taskRun.lockedById),
-              this.#resolveTaskRunExecutionQueue({
-                lockedQueueId: updatedRun.lockedQueueId ?? undefined,
-                queueName: updatedRun.queue,
-                runtimeEnvironmentId: env.id,
-              }),
-              this.#resolveTaskRunExecutionOrganization(env.organizationId),
-              this.#resolveTaskRunExecutionProjectByRuntimeEnvironmentId(env.id),
-              this.#resolveTaskRunExecutionMachinePreset(
-                taskRun.lockedById,
-                updatedRun.machinePreset
-              ),
-              this.#resolveTaskRunExecutionDeployment(taskRun.lockedById),
-            ]);
+          const [metadata, task, queue, organization, project, deployment] = await Promise.all([
+            parsePacket({
+              data: updatedRun.metadata ?? undefined,
+              dataType: updatedRun.metadataType,
+            }),
+            this.#resolveTaskRunExecutionTask(taskRun.lockedById),
+            this.#resolveTaskRunExecutionQueue({
+              lockedQueueId: updatedRun.lockedQueueId ?? undefined,
+              queueName: updatedRun.queue,
+              runtimeEnvironmentId: env.id,
+            }),
+            this.#resolveTaskRunExecutionOrganization(env.organizationId),
+            this.#resolveTaskRunExecutionProjectByRuntimeEnvironmentId(env.id),
+            this.#resolveTaskRunExecutionDeployment(taskRun.lockedById),
+          ]);
 
           const execution: BackwardsCompatibleTaskRunExecution = {
             attempt: {

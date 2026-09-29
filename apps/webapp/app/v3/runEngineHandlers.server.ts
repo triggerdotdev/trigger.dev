@@ -1,4 +1,4 @@
-import type { CompleteBatchResult } from "@internal/run-engine";
+import type { CompleteBatchResult, EventBusEventArgs } from "@internal/run-engine";
 import { SpanKind } from "@internal/tracing";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { createJsonErrorObject, sanitizeError, TaskRunErrorCodes } from "@trigger.dev/core/v3";
@@ -16,6 +16,7 @@ import { env } from "~/env.server";
 import { findEnvironmentById, findEnvironmentFromRun } from "~/models/runtimeEnvironment.server";
 import { TriggerFailedTaskService } from "~/runEngine/services/triggerFailedTask.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { updateMetadataService } from "~/services/metadata/updateMetadataInstance.server";
 import { reportInvocationUsage } from "~/services/platform.v3.server";
@@ -23,6 +24,7 @@ import { publishChangeRecord } from "~/services/realtime/runChangeNotifierInstan
 import { MetadataTooLargeError } from "~/utils/packets";
 import { QueueSizeLimitExceededError } from "~/v3/services/common.server";
 import { TriggerTaskService } from "~/v3/services/triggerTask.server";
+import { meteringClaims } from "~/v3/utils/meteringClaims.server";
 import { tracer } from "~/v3/tracer.server";
 import { createExceptionPropertiesFromError } from "./eventRepository/common.server";
 import { getEventRepositoryForStore, recordRunDebugLog } from "./eventRepository/index.server";
@@ -581,12 +583,16 @@ export function registerRunEngineEventBusHandlers() {
     }
   );
 
-  engine.eventBus.on("runAttemptStarted", async ({ time, run, organization }) => {
-    try {
-      if (run.attemptNumber === 1 && run.baseCostInCents > 0) {
-        await reportInvocationUsage(organization.id, run.baseCostInCents, { runId: run.id });
-      }
-    } catch (error) {
+  engine.eventBus.on("runAttemptStarted", async (event) => {
+    const { run, organization } = event;
+
+    if (run.attemptNumber !== 1 || run.baseCostInCents <= 0) {
+      return;
+    }
+
+    const [error] = await tryCatch(reportAttemptInvocationUsage(event));
+
+    if (error) {
       logger.error("[runAttemptStarted] Failed to report invocation usage", {
         error: error instanceof Error ? error.message : error,
         runId: run.id,
@@ -1099,4 +1105,26 @@ function normalizePayload(payload: unknown, payloadType?: string): unknown {
   }
 
   return payload;
+}
+
+async function reportAttemptInvocationUsage({
+  run,
+  organization,
+  project,
+  environment,
+}: EventBusEventArgs<"runAttemptStarted">[0]) {
+  const jwt = await generateJWTTokenForEnvironment(
+    { id: environment.id, organizationId: organization.id, projectId: project.id },
+    {
+      ...meteringClaims({
+        environmentType: environment.type,
+        region: run.region,
+        workerQueue: run.workerQueue,
+      }),
+      run_id: run.id,
+      machine_preset: run.machinePreset,
+    }
+  );
+
+  return reportInvocationUsage(organization.id, run.baseCostInCents, jwt, { runId: run.id });
 }

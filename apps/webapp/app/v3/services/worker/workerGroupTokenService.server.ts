@@ -37,6 +37,7 @@ import { defaultMachine } from "~/services/platform.v3.server";
 import { singleton } from "~/utils/singleton";
 import { resolveVariablesForEnvironment } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { machinePresetFromName } from "~/v3/machinePresets.server";
+import { meteringClaims } from "~/v3/utils/meteringClaims.server";
 import type { WithRunEngineOptions } from "../baseService.server";
 import { WithRunEngine } from "../baseService.server";
 
@@ -563,6 +564,11 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
           environment,
           engineResult.run.id,
           engineResult.execution.machine ?? defaultMachinePreset,
+          meteringClaims({
+            environmentType: environment.type,
+            region: engineResult.run.region,
+            workerQueue: engineResult.run.workerQueue,
+          }),
           environment.parentEnvironment ?? undefined,
           engineResult.run.taskEventStore ?? undefined
         )
@@ -712,12 +718,14 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     environment: RuntimeEnvironment,
     runId: string,
     machinePreset: MachinePreset,
+    metering: Record<string, string>,
     parentEnvironment?: RuntimeEnvironment,
     taskEventStore?: string
   ): Promise<Record<string, string>> {
     const variables = await resolveVariablesForEnvironment(environment, parentEnvironment);
 
     const jwt = await generateJWTTokenForEnvironment(environment, {
+      ...metering,
       run_id: runId,
       machine_preset: machinePreset.name,
     });

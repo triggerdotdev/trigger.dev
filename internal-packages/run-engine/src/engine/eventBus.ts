@@ -136,6 +136,9 @@ export type EventBusEvents = {
         executedAt: Date | undefined;
         runTags: string[];
         batchId: string | null;
+        region: string | null;
+        workerQueue: string;
+        machinePreset: string;
       };
       organization: {
         id: string;
@@ -145,6 +148,7 @@ export type EventBusEvents = {
       };
       environment: {
         id: string;
+        type: RuntimeEnvironmentType;
       };
     },
   ];

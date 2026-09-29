@@ -135,12 +135,18 @@ describe("RunEngine trigger()", () => {
       expect(attemptResult.run.id).toBe(run.id);
       expect(attemptResult.run.status).toBe("EXECUTING");
       expect(attemptResult.snapshot.executionStatus).toBe("EXECUTING");
+      expect(attemptResult.run.workerQueue).toBe("main");
+      expect(attemptResult.run.region).toBeNull();
 
       //attempt event
       assertNonNullable(attemptEvent);
       const attemptedEvent = attemptEvent as EventBusEventArgs<"runAttemptStarted">[0];
       expect(attemptedEvent.run.id).toBe(run.id);
       expect(attemptedEvent.run.baseCostInCents).toBe(0.0005);
+      expect(attemptedEvent.run.workerQueue).toBe("main");
+      expect(attemptedEvent.run.region).toBeNull();
+      expect(attemptedEvent.run.machinePreset).toBe(attemptResult.execution.machine.name);
+      expect(attemptedEvent.environment.type).toBe(authenticatedEnvironment.type);
 
       const executionData2 = await engine.getRunExecutionData({ runId: run.id });
       assertNonNullable(executionData2);

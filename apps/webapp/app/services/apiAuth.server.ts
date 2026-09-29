@@ -859,7 +859,7 @@ const JWT_ALGORITHM = "HS256";
 const DEFAULT_JWT_EXPIRATION_IN_MS = 1000 * 60 * 60; // 1 hour
 
 export async function generateJWTTokenForEnvironment(
-  environment: RuntimeEnvironmentForEnvRepo,
+  environment: Pick<RuntimeEnvironmentForEnvRepo, "id" | "organizationId" | "projectId">,
   payload: Record<string, string>
 ) {
   const jwt = await new SignJWT({
