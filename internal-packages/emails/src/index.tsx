@@ -8,6 +8,10 @@ import AlertDashboardAgentWatchEmail, {
 import AlertErrorGroupEmail, { AlertErrorGroupEmailSchema } from "../emails/alert-error-group";
 import AlertRunFailureEmail, { AlertRunEmailSchema } from "../emails/alert-run-failure";
 import { setGlobalBasePath } from "../emails/components/BasePath";
+import ConfirmEmailChangeEmail, {
+  ConfirmEmailChangeEmailSchema,
+} from "../emails/confirm-email-change";
+import EmailChangedEmail, { EmailChangedEmailSchema } from "../emails/email-changed";
 import AlertDeploymentFailureEmail, {
   AlertDeploymentFailureEmailSchema,
 } from "../emails/deployment-failure";
@@ -36,6 +40,8 @@ export const DeliverEmailSchema = z
       email: z.literal("magic_link"),
       magicLink: z.string().url(),
     }),
+    ConfirmEmailChangeEmailSchema,
+    EmailChangedEmailSchema,
     InviteEmailSchema,
     AlertRunEmailSchema,
     AlertAttemptEmailSchema,
@@ -105,6 +111,16 @@ export class EmailClient {
         return {
           subject: "Magic sign-in link for Trigger.dev",
           component: <MagicLinkEmail magicLink={data.magicLink} />,
+        };
+      case "confirm-email-change":
+        return {
+          subject: "Confirm your new email address for Trigger.dev",
+          component: <ConfirmEmailChangeEmail {...data} />,
+        };
+      case "email-changed":
+        return {
+          subject: "Your Trigger.dev email address was changed",
+          component: <EmailChangedEmail {...data} />,
         };
       case "invite":
         return {

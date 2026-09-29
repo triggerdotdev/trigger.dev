@@ -12,8 +12,10 @@ generator client {
 }
 
 model User {
-  id    String @id @default(cuid())
-  email String @unique
+  id           String  @id @default(cuid())
+  email        String  @unique
+  /// Address awaiting confirmation; becomes `email` only after a link sent to it is opened
+  pendingEmail String?
 
   authenticationMethod      AuthenticationMethod
   authenticationProfile     Json?

@@ -26,7 +26,8 @@ import { useFeatures } from "~/hooks/useFeatures";
 import { useUser } from "~/hooks/useUser";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { updateUser } from "~/models/user.server";
-import { requireUserId } from "~/services/session.server";
+import { normalizeEmail, requestEmailChange } from "~/services/emailChange.server";
+import { requireUser } from "~/services/session.server";
 import { telemetry } from "~/services/telemetry.server";
 import { emailSchema, MAX_EMAIL_LENGTH } from "~/utils/emailValidation";
 import { rootPath } from "~/utils/pathBuilder";
@@ -113,7 +114,8 @@ function createSchema(
 }
 
 export const action: ActionFunction = async ({ request }) => {
-  const userId = await requireUserId(request);
+  const user = await requireUser(request);
+  const userId = user.id;
   const formData = await request.formData();
 
   const formSchema = createSchema({
@@ -170,10 +172,21 @@ export const action: ActionFunction = async ({ request }) => {
         ? `Other: ${submission.value.referralSourceOther}`
         : submission.value.referralSource;
 
+    // The email is not written here: the account keeps its current address
+    // until the user opens the link sent to the new one. Requested first so a
+    // refused address leaves onboarding unconfirmed and the form comes back.
+    const newEmail = normalizeEmail(submission.value.email);
+    const emailChanged = newEmail !== normalizeEmail(user.email);
+    if (emailChanged) {
+      const result = await requestEmailChange(user, newEmail);
+      if (!result.ok) {
+        return json(submission.reply({ formErrors: [result.error] }), { status: result.status });
+      }
+    }
+
     await updateUser({
       id: userId,
       name: submission.value.name,
-      email: submission.value.email,
       referralSource: referralSourceForLegacy,
       onboardingData: Object.keys(onboardingData).length > 0 ? onboardingData : undefined,
     });
@@ -200,7 +213,13 @@ export const action: ActionFunction = async ({ request }) => {
       redirectUrl = `/orgs/new?${params.toString()}`;
     }
 
-    return redirectWithSuccessMessage(redirectUrl, request, "Your details have been updated.");
+    return redirectWithSuccessMessage(
+      redirectUrl,
+      request,
+      emailChanged
+        ? `Your details have been updated. Check ${newEmail} for a link to confirm your new email address.`
+        : "Your details have been updated."
+    );
   } catch (error: any) {
     return json({ errors: { body: error.message } }, { status: 400 });
   }
@@ -428,6 +447,7 @@ export default function Page() {
                 </>
               )}
 
+              <FormError id={form.errorId}>{form.errors}</FormError>
               <FormButtons
                 confirmButton={
                   <Button

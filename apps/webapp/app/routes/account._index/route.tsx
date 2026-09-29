@@ -62,7 +62,6 @@ import {
   THEME_OPTIONS_BY_VALUE,
   themeOptionIcon,
 } from "~/components/themeOptions";
-import { prisma } from "~/db.server";
 import { SelectBestEnvironmentPresenter } from "~/presenters/SelectBestEnvironmentPresenter.server";
 import {
   applyThemeContrast,
@@ -72,9 +71,14 @@ import {
 } from "~/hooks/useSystemThemeSync";
 import { useFeatures } from "~/hooks/useFeatures";
 import { useHasAdminAccess, useUser } from "~/hooks/useUser";
-import { updateUserEmail, updateUserMarketingEmails, updateUserName } from "~/models/user.server";
+import { updateUserMarketingEmails, updateUserName } from "~/models/user.server";
+import {
+  cancelEmailChange,
+  requestEmailChange,
+  resendEmailChange,
+} from "~/services/emailChange.server";
 import { logger } from "~/services/logger.server";
-import { type EmailOwnership, getEmailOwnership } from "~/services/ssoManagedIdentity.server";
+import { type EmailOwnership } from "~/services/ssoManagedIdentity.server";
 import {
   updateContrastPreference,
   updateIconContrastPreference,
@@ -370,27 +374,25 @@ export const action: ActionFunction = async ({ request }) => {
       );
     }
 
-    const { email } = submission.data;
+    const result = await requestEmailChange(gate.user, submission.data.email);
+    if (!result.ok) return profileUpdateError(result.error, result.status);
+    return json({ success: true as const });
+  }
 
-    const ownership = await getEmailOwnership(gate.user, email);
-    if (ownership === "idp") {
-      return profileUpdateError(
-        "Your email address is managed by your organization's identity provider.",
-        403
-      );
-    }
-    if (ownership === "unknown") {
-      return profileUpdateError(
-        "We couldn't check your single sign-on settings just now. Please try again shortly.",
-        503
-      );
-    }
-    const existingUser = await prisma.user.findFirst({ where: { email } });
-    if (existingUser && existingUser.id !== gate.user.id) {
-      return profileUpdateError("Email is already being used by a different account", 400);
-    }
+  if (formData.get("action") === "resend-email-change") {
+    const gate = await requireOwnAccountWrite(request);
+    if ("error" in gate) return gate.error;
 
-    await updateUserEmail({ id: gate.user.id, email });
+    const result = await resendEmailChange(gate.user);
+    if (!result.ok) return profileUpdateError(result.error, result.status);
+    return json({ success: true as const });
+  }
+
+  if (formData.get("action") === "cancel-email-change") {
+    const gate = await requireOwnAccountWrite(request);
+    if ("error" in gate) return gate.error;
+
+    await cancelEmailChange(gate.user.id);
     return json({ success: true as const });
   }
 
@@ -528,7 +530,7 @@ function EditEmailButton() {
   const user = useUser();
   const [isOpen, setIsOpen] = useState(false);
   const { fetcher, error, setError, isSubmitting } = useProfileFieldUpdate({
-    successMessage: "Your email address has been updated.",
+    successMessage: "Check your inbox for a link to confirm your new email address.",
     onSuccess: () => setIsOpen(false),
   });
   const ownershipFetcher = useFetcher<{ ownership: EmailOwnership }>();
@@ -601,7 +603,7 @@ function EditEmailButton() {
                   Cancel
                 </Button>
                 <Button type="submit" variant="primary/medium" disabled={isSubmitting}>
-                  {isSubmitting ? "Saving…" : "Update"}
+                  {isSubmitting ? "Sending…" : "Send confirmation link"}
                 </Button>
               </DialogFooter>
             </fetcher.Form>
@@ -609,6 +611,40 @@ function EditEmailButton() {
         </DialogContent>
       )}
     </Dialog>
+  );
+}
+
+/** Shown under the email row while a new address is waiting to be confirmed. */
+function PendingEmailChange({ pendingEmail }: { pendingEmail: string }) {
+  const resend = useProfileFieldUpdate({
+    successMessage: `We've sent another confirmation link to ${pendingEmail}.`,
+    onSuccess: () => {},
+  });
+  const cancel = useProfileFieldUpdate({
+    successMessage: "Email change cancelled.",
+    onSuccess: () => {},
+  });
+
+  return (
+    <div className="flex w-full items-center justify-between gap-4 pb-3">
+      <Paragraph variant="extra-small" className="min-w-0 break-all text-text-dimmed">
+        Confirm {pendingEmail} using the link we emailed to it.
+      </Paragraph>
+      <div className="flex flex-none items-center gap-2">
+        <resend.fetcher.Form method="post">
+          <input type="hidden" name="action" value="resend-email-change" />
+          <Button type="submit" variant="tertiary/small" disabled={resend.isSubmitting}>
+            Resend
+          </Button>
+        </resend.fetcher.Form>
+        <cancel.fetcher.Form method="post">
+          <input type="hidden" name="action" value="cancel-email-change" />
+          <Button type="submit" variant="tertiary/small" disabled={cancel.isSubmitting}>
+            Cancel
+          </Button>
+        </cancel.fetcher.Form>
+      </div>
+    </div>
   );
 }
 
@@ -988,8 +1024,8 @@ export default function Page() {
               </div>
             </div>
           </div>
-          <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
-            <div className="flex w-full items-center justify-between gap-4">
+          <div className="flex min-h-16 w-full flex-col justify-center border-b border-grid-dimmed">
+            <div className="flex w-full items-center justify-between gap-4 py-3">
               <Label>Email address</Label>
               <div className="flex min-w-0 items-center gap-3">
                 {/* break-all: an address has no spaces to wrap at, so a long one
@@ -1000,6 +1036,7 @@ export default function Page() {
                 <EditEmailButton />
               </div>
             </div>
+            {user.pendingEmail && <PendingEmailChange pendingEmail={user.pendingEmail} />}
           </div>
           <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
             <div className="flex w-full items-center justify-between gap-4">

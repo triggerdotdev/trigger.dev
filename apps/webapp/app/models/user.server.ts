@@ -368,14 +368,14 @@ export async function getUserById(id: User["id"]) {
   };
 }
 
+/** The onboarding write. Email changes go through `emailChange.server.ts` and need confirmation. */
 export function updateUser({
   id,
   name,
-  email,
   marketingEmails,
   referralSource,
   onboardingData,
-}: Pick<User, "id" | "name" | "email"> & {
+}: Pick<User, "id" | "name"> & {
   marketingEmails?: boolean;
   referralSource?: string;
   onboardingData?: Prisma.InputJsonValue;
@@ -384,7 +384,6 @@ export function updateUser({
     where: { id },
     data: {
       name,
-      email,
       marketingEmails,
       referralSource,
       onboardingData,
@@ -401,13 +400,6 @@ export function updateUserName({ id, name }: Pick<User, "id" | "name">) {
   return prisma.user.update({
     where: { id },
     data: { name },
-  });
-}
-
-export function updateUserEmail({ id, email }: Pick<User, "id" | "email">) {
-  return prisma.user.update({
-    where: { id },
-    data: { email },
   });
 }
 
