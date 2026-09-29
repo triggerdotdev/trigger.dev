@@ -16,9 +16,20 @@ export const DEFFAULT_PROFILE = "default";
 const CONFIG_FILE = "config.json";
 const OLD_CONFIG_FILE = "default.json";
 
+const PendingAuthorization = z.object({
+  authorizationCode: z.string(),
+  url: z.string().url(),
+  apiUrl: z.string().url(),
+  createdAt: z.string().datetime(),
+  name: z.string().optional(),
+});
+export type PendingAuthorization = z.infer<typeof PendingAuthorization>;
+
 const CliConfigProfileSettings = z.object({
   accessToken: z.string().optional(),
   apiUrl: z.string().optional(),
+  pendingAuthorization: PendingAuthorization.optional(),
+  pendingProfileName: z.string().optional(),
 });
 type CliConfigProfileSettings = z.infer<typeof CliConfigProfileSettings>;
 
@@ -83,6 +94,58 @@ export function writeAuthConfigProfile(
 
   config.profiles[profile] = settings;
 
+  writeAuthConfigFile(config);
+}
+
+export function writePendingAuthorization(
+  pendingAuthorization: PendingAuthorization,
+  profile: string = DEFFAULT_PROFILE
+) {
+  const config = getConfig();
+
+  const existing = config.profiles[profile];
+  config.profiles[profile] = {
+    ...existing,
+    apiUrl: existing?.accessToken ? existing.apiUrl : pendingAuthorization.apiUrl,
+    pendingAuthorization,
+  };
+
+  writeAuthConfigFile(config);
+}
+
+export function deletePendingAuthorization(profile: string = DEFFAULT_PROFILE) {
+  const config = getConfig();
+  const settings = config.profiles[profile];
+
+  if (!settings?.pendingAuthorization) {
+    return;
+  }
+
+  delete settings.pendingAuthorization;
+  writeAuthConfigFile(config);
+}
+
+export function writePendingProfileName(name: string, profile: string = DEFFAULT_PROFILE) {
+  const config = getConfig();
+  const settings = config.profiles[profile];
+
+  if (!settings) {
+    return;
+  }
+
+  settings.pendingProfileName = name;
+  writeAuthConfigFile(config);
+}
+
+export function deletePendingProfileName(profile: string = DEFFAULT_PROFILE) {
+  const config = getConfig();
+  const settings = config.profiles[profile];
+
+  if (!settings?.pendingProfileName) {
+    return;
+  }
+
+  delete settings.pendingProfileName;
   writeAuthConfigFile(config);
 }
 

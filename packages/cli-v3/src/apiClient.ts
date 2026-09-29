@@ -11,10 +11,14 @@ import type {
   TriggerTaskRequestBody,
   UpsertBranchRequestBody,
   WorkersCreateRequestBody,
+  CompleteProfileRequestBody,
+  CreateOrgRequestBody,
   CreateProjectRequestBody,
   GetJWTRequestBody,
 } from "@trigger.dev/core/v3";
 import {
+  ActivateFreePlanResponseBody,
+  CompleteProfileResponseBody,
   CreateAuthorizationCodeResponseSchema,
   CreateArtifactResponseBody,
   CreateBackgroundWorkerResponse,
@@ -41,6 +45,7 @@ import {
   WhoAmIResponseSchema,
   WorkersCreateResponseBody,
   WorkersListResponseBody,
+  CreateOrgResponseBody,
   GetOrgsResponseBody,
   GetWorkerByTagResponse,
   GetJWTResponse,
@@ -249,6 +254,48 @@ export class CliApiClient {
         "Content-Type": "application/json",
       },
     });
+  }
+
+  async createOrg(body: CreateOrgRequestBody) {
+    if (!this.accessToken) {
+      throw new Error("createOrg: No access token");
+    }
+
+    return wrapZodFetch(CreateOrgResponseBody, `${this.apiURL}/api/v1/orgs`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+  }
+
+  async completeProfile(body: CompleteProfileRequestBody) {
+    if (!this.accessToken) {
+      throw new Error("completeProfile: No access token");
+    }
+
+    return wrapZodFetch(CompleteProfileResponseBody, `${this.apiURL}/api/v1/profile/complete`, {
+      method: "POST",
+      headers: this.getHeaders(),
+      body: JSON.stringify(body),
+    });
+  }
+
+  async activateFreePlan(orgParam: string) {
+    if (!this.accessToken) {
+      throw new Error("activateFreePlan: No access token");
+    }
+
+    return wrapZodFetch(
+      ActivateFreePlanResponseBody,
+      `${this.apiURL}/api/v1/orgs/${orgParam}/activate-free-plan`,
+      {
+        method: "POST",
+        headers: this.getHeaders(),
+      }
+    );
   }
 
   async createProject(orgParam: string, body: CreateProjectRequestBody) {

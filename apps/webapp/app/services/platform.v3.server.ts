@@ -548,6 +548,36 @@ export async function getPlans() {
   }
 }
 
+export async function activateFreePlan(
+  organizationId: string,
+  userId: string,
+  opts?: { invalidateBillingCache?: (orgId: string) => void }
+): Promise<{ success: true } | { success: false; error: string }> {
+  if (!client) {
+    return { success: false, error: "Billing is not configured" };
+  }
+
+  const [error, result] = await tryCatch(client.setPlan(organizationId, { type: "free", userId }));
+
+  if (error) {
+    recordPlatformFailure("activateFreePlan", "caught");
+    return { success: false, error: error.message };
+  }
+
+  if (!result.success) {
+    recordPlatformFailure("activateFreePlan", "no_success");
+    return { success: false, error: result.error };
+  }
+
+  if (result.action !== "free_connect_required" && result.action !== "free_connected") {
+    return { success: false, error: "Unable to activate the Free plan" };
+  }
+
+  opts?.invalidateBillingCache?.(organizationId);
+  invalidatePlanDerivedCaches(organizationId);
+  return { success: true };
+}
+
 export async function setPlan(
   organization: { id: string; slug: string },
   request: Request,

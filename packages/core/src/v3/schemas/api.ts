@@ -152,6 +152,21 @@ export const CreateOrgResponseBody = z.object({
 });
 export type CreateOrgResponseBody = z.infer<typeof CreateOrgResponseBody>;
 
+export const ActivateFreePlanResponseBody = z.object({
+  plan: z.literal("free"),
+});
+export type ActivateFreePlanResponseBody = z.infer<typeof ActivateFreePlanResponseBody>;
+
+export const CompleteProfileRequestBody = z.object({
+  name: z.string().trim().min(3).max(50),
+});
+export type CompleteProfileRequestBody = z.infer<typeof CompleteProfileRequestBody>;
+
+export const CompleteProfileResponseBody = z.object({
+  updated: z.boolean(),
+});
+export type CompleteProfileResponseBody = z.infer<typeof CompleteProfileResponseBody>;
+
 export const CreateProjectRequestBody = z.object({
   name: z
     .string()

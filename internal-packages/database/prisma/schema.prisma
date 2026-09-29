@@ -280,6 +280,7 @@ model OrgMember {
   environments RuntimeEnvironment[]
 
   @@unique([organizationId, userId])
+  @@index([userId])
 }
 
 enum OrgMemberRole {

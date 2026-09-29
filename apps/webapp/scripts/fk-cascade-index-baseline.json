@@ -127,11 +127,6 @@
       "fkColumns": ["organizationIntegrationId"]
     },
     {
-      "key": "control-plane:OrgMember.user",
-      "onDelete": "Cascade",
-      "fkColumns": ["userId"]
-    },
-    {
       "key": "control-plane:OrgMemberInvite.inviter",
       "onDelete": "Cascade",
       "fkColumns": ["inviterId"]

@@ -12,13 +12,13 @@ export async function resolveOrganizationForApiUser({
 }: {
   orgParam: string;
   userId: string;
-}): Promise<{ id: string; slug: string } | null> {
+}): Promise<{ id: string; slug: string; isActivated: boolean } | null> {
   return prisma.organization.findFirst({
     where: {
       OR: [{ id: orgParam }, { slug: orgParam }],
       deletedAt: null,
       members: { some: { userId } },
     },
-    select: { id: true, slug: true },
+    select: { id: true, slug: true, isActivated: true },
   });
 }

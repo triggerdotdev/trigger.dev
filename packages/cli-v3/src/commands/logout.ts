@@ -34,7 +34,7 @@ async function logoutCommand(options: unknown) {
 async function logout(options: LogoutCommandOptions) {
   const config = readAuthConfigProfile(options.profile);
 
-  if (!config?.accessToken) {
+  if (!config) {
     logger.info(`You are already logged out [${options.profile}]`);
     return;
   }

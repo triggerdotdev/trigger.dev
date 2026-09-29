@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   authenticateUserActor: vi.fn(),
   authenticatePat: vi.fn(),
   createOrganization: vi.fn(),
+  findManyOrgMembers: vi.fn(),
   findManyProjects: vi.fn(),
   env: { SESSION_SECRET: "test-session-secret", ORG_CREATION_API_ENABLED: "1" } as {
     SESSION_SECRET: string;
@@ -26,7 +27,10 @@ vi.mock("~/services/rbac.server", () => ({
   },
 }));
 vi.mock("~/db.server", () => ({
-  prisma: { project: { findMany: mocks.findManyProjects } },
+  prisma: {
+    orgMember: { findMany: mocks.findManyOrgMembers },
+    project: { findMany: mocks.findManyProjects },
+  },
   $replica: {},
 }));
 vi.mock("~/env.server", () => ({ env: mocks.env }));
@@ -188,6 +192,8 @@ describe("creating an organization over the API", () => {
   // Creation always succeeds if it is reached, so a refusal is the gate and nothing else.
   beforeEach(() => {
     mocks.createOrganization.mockReset();
+    mocks.findManyOrgMembers.mockReset();
+    mocks.findManyOrgMembers.mockResolvedValue([]);
     mocks.createOrganization.mockResolvedValue({
       id: "org_new",
       title: "New Org",
@@ -210,6 +216,38 @@ describe("creating an organization over the API", () => {
     expect(result.status).toBe(201);
     expect(result.body.slug).toBe("new-org");
     expect(result.canCalls).toBe(0);
+    expect(mocks.findManyOrgMembers).toHaveBeenCalledWith({
+      where: {
+        userId: USER_ID,
+        organization: { deletedAt: null },
+      },
+      select: { id: true },
+      take: 25,
+    });
+  });
+
+  it("admits users with fewer than 25 organizations", async () => {
+    mocks.findManyOrgMembers.mockResolvedValue(
+      Array.from({ length: 24 }, (_, index) => ({ id: `member_${index}` }))
+    );
+
+    const result = await createOrgWithPat();
+
+    expect(result.status).toBe(201);
+    expect(mocks.createOrganization).toHaveBeenCalled();
+  });
+
+  it("directs users with 25 organizations to the dashboard", async () => {
+    mocks.findManyOrgMembers.mockResolvedValue(
+      Array.from({ length: 25 }, (_, index) => ({ id: `member_${index}` }))
+    );
+
+    const result = await createOrgWithPat();
+
+    expect(result.status).toBe(403);
+    expect(result.body.error).toContain("limited to 25 organizations");
+    expect(result.body.error).toContain("dashboard");
+    expect(mocks.createOrganization).not.toHaveBeenCalled();
   });
 
   // The env gate runs before the capability gate, so an install with the API disabled tells

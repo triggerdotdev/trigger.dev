@@ -35,31 +35,39 @@ npx trigger.dev@latest init
 Prefer `init` when you can. Do the manual steps further down when `init` does not fit
 (monorepos, an existing config to extend, or a non-interactive environment).
 
-## Two steps need the human
+## Authentication needs the human
 
-Most of setup is automatable, but two steps require a person and cannot be done
-headlessly. When you reach them, stop and ask the user to do them, then continue:
+The CLI can start account creation, but a person must verify their email and authorize
+access. In an agent session, start a resumable login instead of blocking on the CLI:
 
-1. **Authenticating the CLI.** `npx trigger.dev@latest login` opens a browser for the
-   user to sign in. If they have no account, point them to https://cloud.trigger.dev
-   (or a self-hosted instance) first. You cannot complete this for them.
-2. **The environment API key and project ref.** `TRIGGER_SECRET_KEY` and the project ref
-   (`proj_...`) come from the dashboard. Ask the user to create a named API key with
-   **Trigger only** access in their Development environment, and to pick or create the
-   project so you have its ref. `trigger init` can select the project interactively once
-   the user is logged in.
+```bash
+npx trigger.dev@latest login --email user@example.com --name "Alex Smith" --no-browser --no-wait
+```
 
-Treat these as handoffs: state exactly what you need, wait for the user, then resume.
+Give the printed URL to the user and ask them to complete sign-in and authorization.
+After they confirm, resume the saved authorization:
+
+```bash
+npx trigger.dev@latest login --no-browser
+```
+
+Do not create accounts or approve CLI access on the user's behalf. Once authenticated,
+`trigger init` can create the first organization and project without a dashboard handoff.
+A self-hosted instance may disable organization creation; if it does, ask the user to
+create the organization in its dashboard first.
 
 ## Manual setup
 
-### 1. Authenticate (human step)
+### 1. Authenticate (human authorization step)
+
+For an interactive terminal:
 
 ```bash
 npx trigger.dev@latest login
-# self-hosted:
-npx trigger.dev@latest login --api-url https://your-trigger-instance.com
 ```
+
+For an agent or headless terminal, use the resumable flow described above. Add
+`--api-url https://your-trigger-instance.com` to both commands for self-hosting.
 
 ### 2. Install the packages
 
@@ -172,10 +180,11 @@ See the manual setup docs for full Turborepo examples before scaffolding either.
 
 ## Common mistakes
 
-1. **Trying to do the human-only steps headlessly.** You cannot complete `trigger login`
-   or create and copy an environment API key for the user.
-   - Wrong: spawning `trigger login` and waiting on it to finish in an agent session.
-   - Correct: ask the user to log in, create a named Development environment API key, and paste it, then continue.
+1. **Blocking an agent session on login.** Email verification and authorization require
+   the user, but the CLI authorization itself is resumable.
+   - Wrong: spawning `trigger login` and polling indefinitely in an agent session.
+   - Correct: run `trigger login --email <email> --name <full-name> --no-browser --no-wait`,
+     give the URL to the user, then resume with `trigger login --no-browser` after they approve.
 
 2. **Mismatched CLI and SDK versions.** A `trigger.dev` CLI on a different major than
    `@trigger.dev/sdk` breaks dev/deploy.

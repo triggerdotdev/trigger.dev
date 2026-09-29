@@ -95,6 +95,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   const url = requestUrl(request);
   const redirectTo = url.searchParams.get("redirectTo");
+  const prefilledEmail = getAuthorizationEmail(redirectTo);
   const lastAuthMethod = await getLastAuthMethod(request);
 
   const notice =
@@ -152,6 +153,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
         lastAuthMethod,
         authError,
         notice,
+        prefilledEmail,
         isVercelMarketplace: redirectTo.startsWith("/vercel/callback"),
       },
       { headers }
@@ -166,10 +168,26 @@ export async function loader({ request }: LoaderFunctionArgs) {
         lastAuthMethod,
         authError,
         notice,
+        prefilledEmail,
         isVercelMarketplace: false,
       },
       { headers }
     );
+  }
+}
+
+export function getAuthorizationEmail(redirectTo: string | null) {
+  if (!redirectTo) return null;
+
+  try {
+    const redirectUrl = new URL(redirectTo, "https://trigger.dev");
+    if (!redirectUrl.pathname.startsWith("/account/authorization-code/")) return null;
+
+    const email = redirectUrl.searchParams.get("email");
+    const parsed = z.string().email().safeParse(email);
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
   }
 }
 
@@ -185,6 +203,9 @@ export default function LoginPage() {
 
   const [emailForm, emailFields] = useForm({
     id: "login-email",
+    defaultValue: {
+      email: data.prefilledEmail ?? "",
+    },
     onValidate({ formData }) {
       return parseWithZod(formData, { schema: emailSchema });
     },

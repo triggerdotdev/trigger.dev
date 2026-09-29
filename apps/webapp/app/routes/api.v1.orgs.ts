@@ -10,6 +10,8 @@ import {
 } from "~/services/routeBuilders/apiBuilder.server";
 import { extractDomain, faviconUrl } from "~/utils/favicon";
 
+const API_ORGANIZATION_LIMIT = 25;
+
 // Identity-only: lists the caller's own orgs, so no authorization gate.
 export const loader = createLoaderPATApiRoute(
   { identityOnly: true },
@@ -62,6 +64,24 @@ export const action = createActionPATApiRoute(
           code: "unauthorized",
           param: "access_token",
           type: "authorization",
+        },
+        { status: 403 }
+      );
+    }
+
+    const organizationMemberships = await prisma.orgMember.findMany({
+      where: {
+        userId: authentication.userId,
+        organization: { deletedAt: null },
+      },
+      select: { id: true },
+      take: API_ORGANIZATION_LIMIT,
+    });
+
+    if (organizationMemberships.length >= API_ORGANIZATION_LIMIT) {
+      return json(
+        {
+          error: `Organization creation through the API is limited to ${API_ORGANIZATION_LIMIT} organizations. Create additional organizations in the dashboard.`,
         },
         { status: 403 }
       );

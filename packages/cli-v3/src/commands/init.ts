@@ -34,7 +34,7 @@ import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
 import { spinner } from "../utilities/windows.js";
 import { VERSION } from "../version.js";
-import { login } from "./login.js";
+import { login, PENDING_AUTHORIZATION_ERROR } from "./login.js";
 import {
   readConfigHasSeenMCPInstallPrompt,
   writeConfigHasSeenMCPInstallPrompt,
@@ -47,6 +47,8 @@ const cliTag = cliVersion.includes("v4-beta") ? "v4-beta" : "latest";
 
 const InitCommandOptions = CommonCommandOptions.extend({
   projectRef: z.string().optional(),
+  projectName: z.string().trim().min(1).max(255).optional(),
+  orgName: z.string().trim().min(3).max(50).optional(),
   overrideConfig: z.boolean().default(false),
   tag: z.string().default(cliVersion),
   skipPackageInstall: z.boolean().default(false),
@@ -72,8 +74,11 @@ Examples:
   # Interactive setup
   $ trigger.dev init
 
-  # Non-interactive (CI / scripts)
+  # Non-interactive with an existing project
   $ trigger.dev init --yes --project-ref proj_abc123
+
+  # Bootstrap a new account non-interactively
+  $ trigger.dev init --yes --org-name "Acme" --project-name "My project"
 
   # Headless / agent (no browser)
   $ trigger.dev init --yes --project-ref proj_abc123 --no-browser
@@ -86,6 +91,8 @@ Examples:
         "-p, --project-ref <project ref>",
         "The project ref to use when initializing the project"
       )
+      .option("--project-name <name>", "The name to use when creating the first project")
+      .option("--org-name <name>", "The organization name to use for a new account")
       .option("--javascript", "Initialize the project with JavaScript instead of TypeScript", false)
       .option(
         "-t, --tag <package tag>",
@@ -103,7 +110,10 @@ Examples:
         "--pkg-args <args>",
         "Additional arguments to pass to the package manager, accepts CSV for multiple args"
       )
-      .option("-y, --yes", "Skip all prompts and use defaults (requires --project-ref)")
+      .option(
+        "-y, --yes",
+        "Skip all prompts and use defaults (requires --project-ref, or --project-name with --org-name for a new account)"
+      )
       .option(
         "--no-browser",
         "Don't automatically open the browser during login; print the URL only"
@@ -132,9 +142,8 @@ async function initCommand(dir: string, options: unknown) {
 async function _initCommand(dir: string, options: InitCommandOptions) {
   const span = trace.getSpan(context.active());
 
-  // Validate --yes flag requirements
-  if (options.yes && !options.projectRef) {
-    throw new Error("--project-ref is required when using --yes flag");
+  if (options.yes && !options.projectRef && !options.projectName) {
+    throw new Error("--project-ref or --project-name is required when using --yes flag");
   }
 
   // Refuse to run interactively when stdin isn't a TTY (CI, agent harness, etc).
@@ -142,7 +151,7 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
   // project half-initialized.
   if (!options.yes && !process.stdin.isTTY) {
     throw new Error(
-      "Interactive prompts cannot be used in non-TTY environments. Pass --yes (and --project-ref) to run non-interactively."
+      "Interactive prompts cannot be used in non-TTY environments. Pass --yes with --project-ref, or with --project-name and --org-name for a new account."
     );
   }
 
@@ -263,6 +272,8 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
       throw new Error(
         `Failed to connect to ${authorization.auth?.apiUrl}. Are you sure it's the correct URL?`
       );
+    } else if (authorization.error === PENDING_AUTHORIZATION_ERROR) {
+      throw new Error(PENDING_AUTHORIZATION_ERROR);
     } else {
       throw new Error("You must login first. Use `trigger.dev login` to login.");
     }
@@ -298,11 +309,12 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
 
   const apiClient = new CliApiClient(authorization.auth.apiUrl, authorization.auth.accessToken);
 
-  const selectedProject = await selectProject(
-    apiClient,
-    authorization.dashboardUrl,
-    options.projectRef
-  );
+  const selectedProject = await selectProject(apiClient, {
+    projectRef: options.projectRef,
+    projectName: options.projectName,
+    orgName: options.orgName,
+    nonInteractive: options.yes,
+  });
 
   span?.setAttributes({
     ...flattenAttributes(selectedProject, "cli.project"),
@@ -744,15 +756,22 @@ async function writeConfigFile(
   });
 }
 
-async function selectProject(apiClient: CliApiClient, dashboardUrl: string, projectRef?: string) {
+type SelectProjectOptions = {
+  projectRef?: string;
+  projectName?: string;
+  orgName?: string;
+  nonInteractive: boolean;
+};
+
+async function selectProject(apiClient: CliApiClient, options: SelectProjectOptions) {
   return await tracer.startActiveSpan("selectProject", async (span) => {
     try {
-      if (projectRef) {
-        const projectResponse = await apiClient.getProject(projectRef);
+      if (options.projectRef) {
+        const projectResponse = await apiClient.getProject(options.projectRef);
 
         if (!projectResponse.success) {
           log.error(
-            `--project-ref ${projectRef} is not a valid project ref. Request to fetch data resulted in: ${projectResponse.error}`
+            `--project-ref ${options.projectRef} is not a valid project ref. Request to fetch data resulted in: ${projectResponse.error}`
           );
 
           throw new SkipCommandError(projectResponse.error);
@@ -774,14 +793,20 @@ async function selectProject(apiClient: CliApiClient, dashboardUrl: string, proj
       }
 
       if (projectsResponse.data.length === 0) {
-        const newProjectLink = cliLink(
-          "Create new project",
-          `${dashboardUrl}/projects/new?version=v3`
+        const project = await createFirstProject(apiClient, options);
+
+        span.setAttributes({
+          ...flattenAttributes(project, "cli.project"),
+        });
+        span.end();
+
+        return project;
+      }
+
+      if (options.nonInteractive) {
+        throw new Error(
+          "Projects already exist for this account. Pass --project-ref when using --yes."
         );
-
-        outro(`You don't have any projects yet. ${newProjectLink}`);
-
-        throw new SkipCommandError();
       }
 
       const selectedProject = await select({
@@ -822,6 +847,139 @@ async function selectProject(apiClient: CliApiClient, dashboardUrl: string, proj
       throw e;
     }
   });
+}
+
+async function createFirstProject(apiClient: CliApiClient, options: SelectProjectOptions) {
+  const orgsResponse = await apiClient.getOrgs();
+
+  if (!orgsResponse.success) {
+    throw new Error(`Failed to get organizations: ${orgsResponse.error}`);
+  }
+
+  let orgParam: string;
+  const matchingOrgs = options.orgName
+    ? orgsResponse.data.filter((org) => org.title === options.orgName)
+    : [];
+
+  if (matchingOrgs.length > 1) {
+    throw new Error(
+      `Multiple organizations named "${options.orgName}" exist. Run init interactively without --org-name to select one.`
+    );
+  } else if (matchingOrgs.length === 1) {
+    orgParam = matchingOrgs[0]!.id;
+  } else if (options.orgName && orgsResponse.data.length > 0) {
+    throw new Error(
+      `No organization named "${options.orgName}" exists. Omit --org-name to use an existing organization, or create it first with \`trigger.dev orgs create\`.`
+    );
+  } else if (orgsResponse.data.length === 0) {
+    const orgName =
+      options.orgName ??
+      (await promptForBootstrapValue(
+        "What should the organization be called?",
+        options.nonInteractive,
+        "--org-name is required to create an organization when using --yes",
+        { label: "Organization names", minLength: 3, maxLength: 50 }
+      ));
+    const orgResponse = await apiClient.createOrg({ title: orgName });
+
+    if (!orgResponse.success) {
+      if (orgResponse.statusCode === 404) {
+        throw new Error(
+          "Organization creation is disabled on this Trigger.dev instance. Create an organization in the dashboard first."
+        );
+      }
+
+      throw new Error(`Failed to create organization: ${orgResponse.error}`);
+    }
+
+    log.success(`Created organization "${orgResponse.data.title}"`);
+    orgParam = orgResponse.data.id;
+  } else if (orgsResponse.data.length === 1) {
+    orgParam = orgsResponse.data[0]!.id;
+  } else {
+    if (options.nonInteractive) {
+      throw new Error(
+        "Multiple organizations are available. Pass --project-ref or run init interactively."
+      );
+    }
+
+    const selectedOrg = await select({
+      message: "Select an organization for the new project",
+      options: orgsResponse.data.map((org) => ({
+        value: org.id,
+        label: org.title,
+        hint: org.slug,
+      })),
+    });
+
+    if (isCancel(selectedOrg)) {
+      throw new OutroCommandError();
+    }
+
+    orgParam = selectedOrg;
+  }
+
+  const projectName =
+    options.projectName ??
+    (await promptForBootstrapValue(
+      "What should the project be called?",
+      options.nonInteractive,
+      "--project-name is required to create a project when using --yes",
+      { label: "Project names", minLength: 1, maxLength: 255 }
+    ));
+  let projectResponse = await apiClient.createProject(orgParam, { name: projectName });
+
+  if (!projectResponse.success && projectResponse.statusCode === 402) {
+    const planResponse = await apiClient.activateFreePlan(orgParam);
+
+    if (!planResponse.success) {
+      throw new Error(`Failed to activate the Free plan: ${planResponse.error}`);
+    }
+
+    log.success("Activated the Free plan");
+    projectResponse = await apiClient.createProject(orgParam, { name: projectName });
+  }
+
+  if (!projectResponse.success) {
+    throw new Error(`Failed to create project: ${projectResponse.error}`);
+  }
+
+  log.success(
+    `Created project "${projectResponse.data.name}" (${projectResponse.data.externalRef})`
+  );
+  return projectResponse.data;
+}
+
+async function promptForBootstrapValue(
+  message: string,
+  nonInteractive: boolean,
+  error: string,
+  constraints: { label: string; minLength: number; maxLength: number }
+) {
+  if (nonInteractive) {
+    throw new Error(error);
+  }
+
+  const value = await text({
+    message,
+    validate: (input) => {
+      const length = input.trim().length;
+      if (length === 0) return "Please enter a name";
+      if (length < constraints.minLength) {
+        return `${constraints.label} must be at least ${constraints.minLength} characters`;
+      }
+      if (length > constraints.maxLength) {
+        return `${constraints.label} must be ${constraints.maxLength} characters or fewer`;
+      }
+      return undefined;
+    },
+  });
+
+  if (isCancel(value)) {
+    throw new OutroCommandError();
+  }
+
+  return value.trim();
 }
 
 async function tryResolveTsConfig(cwd: string) {
