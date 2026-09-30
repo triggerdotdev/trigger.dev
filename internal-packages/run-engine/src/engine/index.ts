@@ -125,6 +125,7 @@ export class RunEngine {
   private tracer: Tracer;
   private meter: Meter;
   private snapshotsSinceReplicaMissCounter: Counter;
+  private pendingExecutingStallsCounter: Counter;
   private snapshotsSinceReplicaRetryDelay: { minMs: number; maxMs: number };
   private heartbeatTimeouts: HeartbeatTimeouts;
   private repairSnapshotTimeoutMs: number;
@@ -366,6 +367,15 @@ export class RunEngine {
       {
         description:
           "getSnapshotsSince reads where the since snapshot was not yet on the read replica, recovered via a replica retry or served from the primary",
+      }
+    );
+
+    this.pendingExecutingStallsCounter = this.meter.createCounter(
+      "run_engine.pending_executing.stalls",
+      {
+        description:
+          "PENDING_EXECUTING snapshots whose heartbeat deadline passed before the run started, by whether the run was requeued or dropped",
+        unit: "runs",
       }
     );
 
@@ -2811,6 +2821,9 @@ export class RunEngine {
         snapshotId: latestSnapshot.id,
         executionStatus: latestSnapshot.executionStatus,
         environmentType: latestSnapshot.environmentType,
+        organizationId: latestSnapshot.organizationId,
+        projectId: latestSnapshot.projectId,
+        environmentId: latestSnapshot.environmentId,
       });
 
       switch (latestSnapshot.executionStatus) {
@@ -2824,11 +2837,6 @@ export class RunEngine {
           throw new NotImplementedError("There shouldn't be a heartbeat for QUEUED_EXECUTING");
         }
         case "PENDING_EXECUTING": {
-          this.logger.log("RunEngine stalled snapshot PENDING_EXECUTING", {
-            runId,
-            snapshotId: latestSnapshot.id,
-          });
-
           //the run didn't start executing, we need to requeue it
           const run = await this.runStore.findRun({ id: runId }, prisma);
 
@@ -2846,7 +2854,7 @@ export class RunEngine {
           }
 
           //it will automatically be requeued X times depending on the queue retry settings
-          await this.runAttemptSystem.tryNackAndRequeue({
+          const { wasRequeued } = await this.runAttemptSystem.tryNackAndRequeue({
             run,
             environment: {
               id: latestSnapshot.environmentId,
@@ -2863,6 +2871,13 @@ export class RunEngine {
               message: `Trying to create an attempt failed multiple times, exceeding how many times we retry.`,
             },
             tx: prisma,
+          });
+
+          // run.planType rather than billingCache: the cache reports paid when billing is unreachable
+          this.pendingExecutingStallsCounter.add(1, {
+            outcome: wasRequeued ? "requeued" : "dropped",
+            environment_type: latestSnapshot.environmentType,
+            plan_type: run.planType ?? "unknown",
           });
           break;
         }
