@@ -120,6 +120,8 @@ describe("transport turn correlation", () => {
       lastEventId: undefined,
       activeInputSeq: 5,
       isStreaming: true,
+      outstandingTurnAbandoned: false,
+      skipSettledPeek: false,
     });
     expect(transport.getSession("c1")?.activeInputSeq).toBe(5);
     await readDeltas(stream);

@@ -175,68 +175,30 @@ describe("transport send events", () => {
 });
 
 describe("stopped turn followed by a new turn", () => {
-  /**
-   * `.out` stub that honours the `Last-Event-ID` cursor like the server does, so
-   * a resubscribe cannot replay records the reader already consumed. Legacy v1
-   * frames carry no `session-in-event-id`, so the stopped turn's boundary is
-   * indistinguishable from this turn's: the tail is dropped and the turn closes.
-   */
-  function cursoredTwoTurnTransport() {
-    const frames = [
-      { id: "1", data: `{"type":"text-delta","id":"t1","delta":"stale"}` },
-      { id: "2", data: `{"type":"trigger:turn-complete"}` },
-    ];
-
-    return makeTransport({
-      sessions: { c1: { publicAccessToken: "tok_test", isStreaming: true } },
-      fetch: async (_url, init, ctx) => {
-        if (ctx.endpoint === "in") return jsonOk();
-
-        const cursor = new Headers(init.headers).get("Last-Event-ID");
-        const from = cursor ? frames.findIndex((f) => f.id === cursor) + 1 : 0;
-        const remaining = frames.slice(from);
-        const response = sseResponse(
-          remaining.map((f) => `id: ${f.id}\ndata: ${f.data}\n\n`).join("")
-        );
-        // Nothing left to send: the session is settled, so the reader stops
-        // instead of resubscribing.
-        if (remaining.length === 0) response.headers.set("X-Session-Settled", "true");
-        return response;
-      },
-    });
-  }
-
-  it("drops the stopped turn's tail and closes the sendMessages turn", async () => {
-    const { transport, events } = cursoredTwoTurnTransport();
-
-    expect(await transport.stopGeneration("c1")).toBe(true);
-    events.length = 0;
-
-    const stream = await transport.sendMessages({
-      trigger: "submit-message",
-      chatId: "c1",
-      messageId: undefined,
-      messages: [user("after stop", "u-2")],
-      abortSignal: undefined,
-    });
-    const chunks = await readAll(stream);
-
-    expect(chunks).toEqual([]);
-    expect(events.some((e) => e.type === "turn-completed")).toBe(true);
-  });
-
-  it("drops the stopped turn's tail and closes the sendAction turn", async () => {
-    const { transport, events } = cursoredTwoTurnTransport();
-
-    expect(await transport.stopGeneration("c1")).toBe(true);
-    events.length = 0;
-
-    const stream = await transport.sendAction("c1", { type: "undo" });
-    const chunks = await readAll(stream);
-
-    expect(chunks).toEqual([]);
-    expect(events.some((e) => e.type === "turn-completed")).toBe(true);
-  });
+  it.each(["message", "action"] as const)(
+    "does not report completion for an uncorrelated %s",
+    async (kind) => {
+      const { transport, events } = makeTransport({
+        sessions: { c1: { publicAccessToken: "tok_test", isStreaming: true } },
+      });
+      expect(await transport.stopGeneration("c1")).toBe(true);
+      events.length = 0;
+      const sent =
+        kind === "action"
+          ? transport.sendAction("c1", { type: "undo" })
+          : transport.sendMessages({
+              trigger: "submit-message",
+              chatId: "c1",
+              messageId: undefined,
+              messages: [user("after stop", "u-2")],
+              abortSignal: undefined,
+            });
+      await expect(sent).rejects.toThrow("Reload the chat before sending another message");
+      expect(events.some((e) => e.type === "message-sent")).toBe(true);
+      expect(events.some((e) => e.type === "stream-connected")).toBe(false);
+      expect(events.some((e) => e.type === "turn-completed")).toBe(false);
+    }
+  );
 });
 
 describe("transport stream events", () => {
