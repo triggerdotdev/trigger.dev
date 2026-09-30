@@ -1,4 +1,10 @@
-import { ClickHouse, type TaskEventV2Input } from "@internal/clickhouse";
+import {
+  ClickHouse,
+  TASK_EVENT_SEARCH_V2_INSERT_COLUMNS,
+  toTaskEventSearchV2Row,
+  type TaskEventSearchV2Input,
+  type TaskEventV2Input,
+} from "@internal/clickhouse";
 import { clickhouseTest } from "@internal/testcontainers";
 import { describe, expect, vi } from "vitest";
 import { z } from "zod";
@@ -6,6 +12,11 @@ import {
   ClickhouseEventRepository,
   logsSearchRolloutSelectedRowCount,
 } from "~/v3/eventRepository/clickhouseEventRepository.server";
+import { insertLogsSearchRows } from "~/v3/eventRepository/insertLogsSearchRows.server";
+import {
+  INVALID_UTF16_SENTINEL,
+  insertWithBadRowSkip,
+} from "~/v3/eventRepository/sanitizeRowsOnParseError.server";
 import { latestMetrics, metricSum } from "./otlpMetrics.helpers";
 import { createInMemoryMetrics } from "./utils/tracing";
 
@@ -86,7 +97,10 @@ describe("ClickhouseEventRepository logs search dual writer", () => {
 
       try {
         const allowedEvents = Array.from({ length: 1_000 }, (_, index) =>
-          event({ span_id: `span_allowed_${index}` })
+          event({
+            span_id: `span_allowed_${index}`,
+            message: index === 500 ? "broken \uD800 escape" : "source write survives",
+          })
         );
         (repository as any).addToBatch([
           ...allowedEvents,
@@ -128,6 +142,63 @@ describe("ClickhouseEventRepository logs search dual writer", () => {
   );
 
   clickhouseTest(
+    "recovers a strict search insert without losing neighboring rows",
+    async ({ clickhouseContainer }) => {
+      const clickhouse = new ClickHouse({
+        url: clickhouseContainer.getConnectionUrl(),
+        logLevel: "error",
+      });
+      const strictInsert = clickhouse.writer.insertUnsafe<TaskEventSearchV2Input>({
+        name: "strict-search-insert",
+        table: "trigger_dev.task_events_search_v2",
+        columns: TASK_EVENT_SEARCH_V2_INSERT_COLUMNS,
+        settings: { input_format_json_throw_on_bad_escape_sequence: 1 },
+      });
+      const rows = ["clean prefix", "broken \uD800 escape", "clean suffix"].map((message, index) =>
+        toTaskEventSearchV2Row(event({ message, span_id: `span_${index}` }), new Date())
+      );
+      const readMessages = clickhouse.reader.query({
+        name: "read-recovered-search-messages",
+        query: `SELECT message FROM trigger_dev.task_events_search_v2
+          WHERE environment_id = {environmentId: String} ORDER BY span_id`,
+        params: z.object({ environmentId: z.string() }),
+        schema: z.object({ message: z.string() }),
+      });
+
+      try {
+        const [error] = await strictInsert(rows);
+        expect(error?.clickhouseErrorType).toBe("CANNOT_PARSE_ESCAPE_SEQUENCE");
+        const insert = async (batch: TaskEventSearchV2Input[]) => {
+          const [insertError, result] = await strictInsert(batch);
+          if (insertError) throw insertError;
+          return result;
+        };
+        await expect(
+          insertWithBadRowSkip({
+            rows,
+            contextLabel: "default-recovery",
+            logger: console,
+            insert,
+            insertAllowingBadRows: insert,
+          })
+        ).rejects.toMatchObject({ clickhouseErrorType: "CANNOT_PARSE_ESCAPE_SEQUENCE" });
+        const outcome = await insertLogsSearchRows(strictInsert, "strict-recovery", rows, console);
+        expect(outcome.kind).toBe("sanitized");
+        const [queryError, messages] = await readMessages({ environmentId: "env_dual_write_test" });
+        expect(queryError).toBeNull();
+        expect(messages).toEqual([
+          { message: "clean prefix" },
+          { message: INVALID_UTF16_SENTINEL },
+          { message: "clean suffix" },
+        ]);
+      } finally {
+        await clickhouse.close();
+      }
+    },
+    60_000
+  );
+
+  clickhouseTest(
     "records mapping failures as dropped search rows",
     async ({ clickhouseContainer }) => {
       const clickhouse = new ClickHouse({
@@ -154,6 +225,12 @@ describe("ClickhouseEventRepository logs search dual writer", () => {
       });
 
       try {
+        expect(
+          metricSum(await latestMetrics(metrics), "logs_search.dual_write.rows_dropped", {
+            table: "task_events_search_v2",
+            reason: "mapping_failed",
+          })
+        ).toBe(0);
         (repository as any).addToBatch([
           event({ start_time: new Date().toISOString().replace("T", " ").replace("Z", "") }),
         ]);

@@ -435,12 +435,13 @@ export async function insertWithLimitedStrip<T extends object>(params: {
  */
 async function tryInsertAllowingBadRows<T extends object>(
   insertAllowingBadRows: (rows: T[]) => Promise<unknown>,
-  rows: T[]
+  rows: T[],
+  isParseError: (error: unknown) => boolean = isClickHouseJsonParseError
 ): Promise<[unknown, undefined] | [undefined, unknown]> {
   try {
     return [undefined, await insertAllowingBadRows(rows)];
   } catch (error) {
-    if (!isClickHouseJsonParseError(error)) throw error;
+    if (!isParseError(error)) throw error;
     return [error, undefined];
   }
 }
@@ -565,14 +566,16 @@ export async function insertWithBadRowSkip<T extends object>(params: {
   insert: (rows: T[]) => Promise<unknown>;
   insertAllowingBadRows: (rows: T[]) => Promise<unknown>;
   hasMaterializedViews?: boolean;
+  isParseError?: (error: unknown) => boolean;
 }): Promise<JsonParseRecoveryOutcome> {
   const { rows, contextLabel, logger, logContext, insert, insertAllowingBadRows } = params;
   const hasMaterializedViews = params.hasMaterializedViews ?? true;
+  const isParseError = params.isParseError ?? isClickHouseJsonParseError;
 
   try {
     return { kind: "inserted", insertResult: await insert(rows) };
   } catch (firstError) {
-    if (!isClickHouseJsonParseError(firstError)) throw firstError;
+    if (!isParseError(firstError)) throw firstError;
 
     const firstMessage = errorMessage(firstError);
     const { rowsTouched, fieldsSanitized } = sanitizeRows(rows);
@@ -590,11 +593,15 @@ export async function insertWithBadRowSkip<T extends object>(params: {
       try {
         return { kind: "sanitized", insertResult: await insert(rows) };
       } catch (retryError) {
-        if (!isClickHouseJsonParseError(retryError)) throw retryError;
+        if (!isParseError(retryError)) throw retryError;
       }
     }
 
-    const [skipError, insertResult] = await tryInsertAllowingBadRows(insertAllowingBadRows, rows);
+    const [skipError, insertResult] = await tryInsertAllowingBadRows(
+      insertAllowingBadRows,
+      rows,
+      isParseError
+    );
 
     if (skipError) {
       return wholeBatchDropped({

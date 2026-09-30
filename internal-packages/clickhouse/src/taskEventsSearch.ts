@@ -120,6 +120,9 @@ export function insertTaskEventsSearchV2(
     name: "insertTaskEventsSearchV2",
     table: "trigger_dev.task_events_search_v2",
     columns: TASK_EVENT_SEARCH_V2_INSERT_COLUMNS,
+    settings: {
+      input_format_json_throw_on_bad_escape_sequence: 0,
+    },
   });
 }
 

@@ -71,6 +71,7 @@ import type {
   TraceEventOptions,
   TraceSummary,
 } from "./eventRepository.types";
+import { insertLogsSearchRows } from "./insertLogsSearchRows.server";
 import {
   insertWithBadRowSkip,
   type JsonParseRecoveryOutcome,
@@ -233,6 +234,19 @@ export class ClickhouseEventRepository implements IEventRepository {
       "logs_search.dual_write.rows_dropped",
       { unit: "rows" }
     );
+    for (const reason of [
+      "limiter_full",
+      "shutdown",
+      "source_recovered",
+      "mapping_failed",
+      "insert_failed",
+      "parse_failed",
+    ]) {
+      this._logsSearchRowsDroppedCounter.add(0, {
+        ...this._logsSearchMetricAttributes,
+        reason,
+      });
+    }
     this._logsSearchBatchesCounter = meter.createCounter("logs_search.dual_write.batches", {
       unit: "batches",
     });
@@ -575,34 +589,51 @@ export class ClickhouseEventRepository implements IEventRepository {
 
   async #insertLogsSearchRows(flushId: string, rows: TaskEventSearchV2Input[]): Promise<void> {
     const startedAt = Date.now();
-    let lastError: { clickhouseErrorType?: string } | undefined;
+    let lastError: unknown;
 
     for (let attempt = 1; attempt <= 2; attempt++) {
-      const [error] = await this._logsSearchClickhouse.taskEventsSearch.insert(rows, {
-        params: {
-          clickhouse_settings: {
-            async_insert: 0,
-            insert_deduplication_token: flushId,
-          },
-        },
-      });
-
-      if (!error) {
-        this._logsSearchRowsLandedCounter.add(rows.length, this._logsSearchMetricAttributes);
+      try {
+        const outcome = await insertLogsSearchRows(
+          this._logsSearchClickhouse.taskEventsSearch.insert,
+          flushId,
+          rows,
+          logger
+        );
+        const dropped = outcome.kind === "recovered" ? outcome.rowsDropped : 0;
+        if (dropped > 0) {
+          this._logsSearchRowsDroppedCounter.add(dropped, {
+            ...this._logsSearchMetricAttributes,
+            reason: "parse_failed",
+          });
+        }
+        if (outcome.kind !== "recovered" || outcome.rowsDroppedExact) {
+          this._logsSearchRowsLandedCounter.add(
+            rows.length - dropped,
+            this._logsSearchMetricAttributes
+          );
+        }
         this._logsSearchBatchesCounter.add(1, {
           ...this._logsSearchMetricAttributes,
-          outcome: attempt === 1 ? "ok" : "retried_ok",
+          outcome: landedNothing(outcome, rows.length)
+            ? "failed"
+            : outcome.kind === "recovered"
+              ? outcome.rowsDroppedExact
+                ? "recovered"
+                : "recovered_unknown"
+              : attempt === 1 && outcome.kind === "inserted"
+                ? "ok"
+                : "retried_ok",
         });
         this._logsSearchFlushDurationHistogram.record(
           Date.now() - startedAt,
           this._logsSearchMetricAttributes
         );
         return;
-      }
-
-      lastError = error;
-      if (attempt === 1) {
-        await new Promise((resolve) => setTimeout(resolve, 500));
+      } catch (error) {
+        lastError = error;
+        if (attempt === 1) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
       }
     }
 
@@ -621,7 +652,7 @@ export class ClickhouseEventRepository implements IEventRepository {
     logger.error("Logs search dual-write insert failed", {
       flushId,
       rows: rows.length,
-      clickhouseErrorType: lastError?.clickhouseErrorType,
+      error: lastError,
     });
   }
 

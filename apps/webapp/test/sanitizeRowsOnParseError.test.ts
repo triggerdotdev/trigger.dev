@@ -74,6 +74,18 @@ describe("isClickHouseJsonParseError", () => {
     expect(isClickHouseJsonParseError(err)).toBe(true);
   });
 
+  it("does not classify escape errors as native JSON parse errors", () => {
+    expect(
+      isClickHouseJsonParseError({ type: "CANNOT_PARSE_ESCAPE_SEQUENCE", message: "bad escape" })
+    ).toBe(false);
+    expect(
+      isClickHouseJsonParseError({
+        clickhouseErrorType: "CANNOT_PARSE_ESCAPE_SEQUENCE",
+        message: "bad escape",
+      })
+    ).toBe(false);
+  });
+
   it("returns false for unrelated errors", () => {
     expect(isClickHouseJsonParseError(new Error("Connection refused"))).toBe(false);
     expect(
