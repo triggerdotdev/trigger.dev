@@ -91,7 +91,7 @@ Scan your code before pushing with:
 pnpm run knip
 ```
 
-If there are false positives, edit ./knip.json so that it passes.
+If there are false positives, edit ./knip.ts so that it passes.
 
 ### Imports
 

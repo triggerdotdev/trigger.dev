@@ -44,7 +44,7 @@ pre-push:
           echo ""
           echo "    pnpm run knip"
           echo ""
-          echo "  then remove the unused items or update knip.json and re-push."
+          echo "  then remove the unused items or update knip.ts and re-push."
           echo ""
           exit 1
         }
