@@ -116,6 +116,15 @@ const noCachePrice: LlmModelWithPricing = {
   ],
 };
 
+/** Matches any name starting `padded-`, so only the length decides the result. */
+const anyPaddedModel: LlmModelWithPricing = {
+  ...gpt4o,
+  id: "model-padded",
+  friendlyId: "llm_model_padded",
+  modelName: "padded",
+  matchPattern: "^padded-",
+};
+
 describe("ModelPricingRegistry", () => {
   let registry: TestableRegistry;
 
@@ -158,6 +167,22 @@ describe("ModelPricingRegistry", () => {
     it("should cache misses", () => {
       expect(registry.match("unknown")).toBeNull();
       expect(registry.match("unknown")).toBeNull();
+    });
+
+    it("matches model names up to 512 characters", () => {
+      registry.loadPatterns([anyPaddedModel]);
+      const name = `padded-${"x".repeat(505)}`;
+      expect(name).toHaveLength(512);
+      expect(registry.match(name)!.modelName).toBe("padded");
+      expect(registry.calculateCost(name, { input: 1000, output: 100 })).not.toBeNull();
+    });
+
+    it("treats model names over 512 characters as unpriced", () => {
+      registry.loadPatterns([anyPaddedModel]);
+      const name = `padded-${"x".repeat(506)}`;
+      expect(name).toHaveLength(513);
+      expect(registry.match(name)).toBeNull();
+      expect(registry.calculateCost(name, { input: 1000, output: 100 })).toBeNull();
     });
   });
 

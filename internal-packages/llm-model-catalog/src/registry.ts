@@ -12,7 +12,11 @@ type CompiledPattern = {
 };
 
 const EXACT_MATCH_CACHE_MAX_ENTRIES = 1_000;
-const EXACT_MATCH_CACHE_MAX_KEY_LENGTH = 512;
+/**
+ * No real model id comes close to this. Longer names can't be cached, so matching
+ * them would run every pattern on every span; they're treated as unpriced instead.
+ */
+const MAX_MATCHABLE_MODEL_NAME_LENGTH = 512;
 
 // Convert POSIX-style (?i) inline flag to JS RegExp 'i' flag
 function compilePattern(pattern: string): RegExp {
@@ -132,6 +136,7 @@ export class ModelPricingRegistry {
 
   match(responseModel: string): LlmModelWithPricing | null {
     if (!this._loaded) return null;
+    if (responseModel.length > MAX_MATCHABLE_MODEL_NAME_LENGTH) return null;
 
     const cached = this.getCachedMatch(responseModel);
     if (cached !== undefined) return cached;
@@ -161,8 +166,6 @@ export class ModelPricingRegistry {
   }
 
   private getCachedMatch(responseModel: string): LlmModelWithPricing | null | undefined {
-    if (responseModel.length > EXACT_MATCH_CACHE_MAX_KEY_LENGTH) return undefined;
-
     const cached = this._exactMatchCache.get(responseModel);
     if (cached === undefined) return undefined;
 
@@ -172,8 +175,6 @@ export class ModelPricingRegistry {
   }
 
   private cacheMatch(responseModel: string, model: LlmModelWithPricing | null): void {
-    if (responseModel.length > EXACT_MATCH_CACHE_MAX_KEY_LENGTH) return;
-
     if (this._exactMatchCache.has(responseModel)) {
       this._exactMatchCache.delete(responseModel);
     } else if (this._exactMatchCache.size >= EXACT_MATCH_CACHE_MAX_ENTRIES) {
