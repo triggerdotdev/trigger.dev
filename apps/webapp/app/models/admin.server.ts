@@ -10,8 +10,10 @@ import {
 } from "~/services/impersonation.server";
 import { authenticator } from "~/services/auth.server";
 import { requireUser } from "~/services/session.server";
+import { SupportAccessService } from "~/services/supportAccess.server";
+import { redirectWithErrorMessage } from "~/models/message.server";
 import { extractClientIp } from "~/utils/extractClientIp.server";
-import { impersonationDestinationPath } from "~/utils/pathBuilder";
+import { impersonationDestinationPath, supportAccessRequestPath } from "~/utils/pathBuilder";
 import { env } from "~/env.server";
 
 const pageSize = 20;
@@ -22,6 +24,14 @@ export function requireAdminDashboardEnabled(): void {
   if (!env.ADMIN_DASHBOARD_ENABLED) {
     throw new Response("Not Found", { status: 404 });
   }
+}
+
+function activeApprovalSelect() {
+  return {
+    where: { status: "APPROVED" as const, expiresAt: { gt: new Date() } },
+    select: { id: true },
+    take: 1,
+  };
 }
 
 export async function adminGetUsers(userId: string, { page, search }: SearchParams) {
@@ -51,9 +61,12 @@ export async function adminGetUsers(userId: string, { page, search }: SearchPara
         select: {
           organization: {
             select: {
+              id: true,
               title: true,
               slug: true,
               deletedAt: true,
+              supportAccessMode: true,
+              supportAccessRequests: activeApprovalSelect(),
             },
           },
         },
@@ -142,6 +155,8 @@ export async function adminGetOrganizations(userId: string, { page, search }: Se
       title: true,
       isActivated: true,
       deletedAt: true,
+      supportAccessMode: true,
+      supportAccessRequests: activeApprovalSelect(),
       members: {
         select: {
           user: {
@@ -219,10 +234,15 @@ export async function adminGetOrganizations(userId: string, { page, search }: Se
   };
 }
 
+const SESSION_REFUSED = {
+  org_not_found: "That organization doesn't exist or was deleted.",
+  not_a_member: "That user isn't a member of the organization.",
+  other: "Couldn't start a Support Access session.",
+} as const;
+
 export async function redirectWithImpersonation(
   request: Request,
-  userId: string,
-  path: string,
+  target: { userId: string; organizationSlug: string; path: string },
   currentUser?: { id: string; admin: boolean },
   prismaClient: PrismaClientOrTransaction = prisma
 ) {
@@ -231,6 +251,33 @@ export async function redirectWithImpersonation(
   const user = currentUser ?? (await requireUser(request));
   if (!user.admin) {
     throw new Error("Unauthorized");
+  }
+
+  const { userId, organizationSlug, path } = target;
+
+  const supportAccess = new SupportAccessService(prismaClient);
+  const access = await supportAccess.resolveSessionAccess({ organizationSlug, userId });
+
+  if (access.isErr()) {
+    logger.warn("Cannot start Support Access session", {
+      organizationSlug,
+      targetId: userId,
+      reason: access.error.type,
+    });
+    return redirectWithErrorMessage("/admin", request, SESSION_REFUSED[access.error.type]);
+  }
+
+  if (access.value.type === "request_required") {
+    return redirect(supportAccessRequestPath(organizationSlug));
+  }
+
+  if (access.value.type === "scoped") {
+    logger.info("Starting Support Access session", {
+      adminId: user.id,
+      targetId: userId,
+      organizationSlug,
+      supportAccessRequestId: access.value.requestId,
+    });
   }
 
   const xff = request.headers.get("x-forwarded-for");
@@ -253,7 +300,10 @@ export async function redirectWithImpersonation(
     });
   }
 
-  const session = await setImpersonationId(userId, request);
+  const session = await setImpersonationId(userId, request, {
+    organizationSlugs: [organizationSlug],
+    expiresAt: access.value.type === "scoped" ? access.value.expiresAt : undefined,
+  });
 
   return redirect(path, {
     headers: { "Set-Cookie": await commitImpersonationSession(session) },
@@ -334,8 +384,11 @@ export async function startImpersonation(
 
   return redirectWithImpersonation(
     request,
-    target.userId,
-    impersonationDestinationPath(organizationSlug, path, new URL(request.url).search),
+    {
+      userId: target.userId,
+      organizationSlug,
+      path: impersonationDestinationPath(organizationSlug, path, new URL(request.url).search),
+    },
     currentUser,
     clients.write
   );

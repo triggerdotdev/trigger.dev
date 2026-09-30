@@ -15,9 +15,12 @@ import {
 } from "~/models/admin.server";
 import { logger } from "~/services/logger.server";
 import { requireUser } from "~/services/session.server";
+import { SupportAccessService } from "~/services/supportAccess.server";
+import { prisma } from "~/db.server";
 import {
   impersonationConsentPostBackPath,
   impersonationDestinationPath,
+  supportAccessRequestPath,
 } from "~/utils/pathBuilder";
 import { isSameOriginNavigation } from "~/utils/sameOriginNavigation";
 
@@ -61,7 +64,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   // for an unambiguously same-origin navigation — that is what stops a
   // cross-site navigation from silently starting impersonation. Links opened
   // from outside the app (address bar, bookmark, a link shared elsewhere) get
-  // the consent page below instead, whose "Impersonate" button posts back from
+  // the consent page below instead, whose "Start Support Access" button posts back from
   // our own page and so satisfies the same check.
   if (isSameOriginNavigation(request, env.LOGIN_ORIGIN)) {
     throw await startImpersonation(request, organizationSlug, path, user);
@@ -81,6 +84,16 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   // Read-only on purpose: nothing is written and no impersonation cookie is set
   // until the admin confirms with the POST below.
   const target = await findImpersonationTarget(organizationSlug);
+
+  if (target.success) {
+    const access = await new SupportAccessService(prisma).resolveSessionAccess({
+      organizationSlug,
+      userId: target.userId,
+    });
+    if (access.isOk() && access.value.type === "request_required") {
+      throw redirect(supportAccessRequestPath(organizationSlug));
+    }
+  }
 
   const search = new URL(request.url).search;
 
@@ -163,28 +176,28 @@ export default function Page() {
   return (
     <MainCenteredContainer className="max-w-88">
       <div className="flex flex-col gap-4">
-        <Header1>Impersonate</Header1>
+        <Header1>Support Access</Header1>
         {canImpersonate ? (
           <>
             <Paragraph>
-              Continue to impersonate a member of{" "}
+              Continue to view the dashboard as a member of{" "}
               <span className="text-text-bright">{organizationName ?? organizationSlug}</span> and
               open <span className="text-text-bright">{destinationPath}</span>.
             </Paragraph>
             <Form method="post" action={postBackPath} reloadDocument>
               <Button type="submit" variant="primary/medium" fullWidth shortcut={{ key: "enter" }}>
-                Impersonate
+                Start Support Access
               </Button>
             </Form>
             <Paragraph variant="extra-small">
               Only continue if you meant to open this link. You'll be signed in as a member of this
-              organization until you stop impersonating.
+              organization until you exit Support Access.
             </Paragraph>
           </>
         ) : (
           <Callout variant="error">
             There's no organization <span className="text-text-bright">{organizationSlug}</span>{" "}
-            with a member you can impersonate.
+            with a member you can view as.
           </Callout>
         )}
       </div>

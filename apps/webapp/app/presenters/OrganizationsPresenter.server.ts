@@ -1,6 +1,7 @@
 import type { RuntimeEnvironment, PrismaClient } from "@trigger.dev/database";
 import { redirect } from "remix-typedjson";
 import { prisma } from "~/db.server";
+import { getSupportAccessOrgSlugs } from "~/services/impersonation.server";
 import { logger } from "~/services/logger.server";
 import { type UserFromSession } from "~/services/session.server";
 import { newOrganizationPath, newProjectPath } from "~/utils/pathBuilder";
@@ -30,7 +31,7 @@ export class OrganizationsPresenter {
     environmentSlug: string | undefined;
     request: Request;
   }) {
-    const organizations = await this.#getOrganizations(user.id);
+    const organizations = await this.#visibleOrganizations(user, request);
     if (organizations.length === 0) {
       logger.info("No organizations", {
         organizationSlug,
@@ -129,6 +130,15 @@ export class OrganizationsPresenter {
     };
   }
 
+  // A Support Access session only sees its own org, so the customer's other orgs aren't listed.
+  async #visibleOrganizations(user: UserFromSession, request: Request) {
+    const organizations = await this.#getOrganizations(user.id);
+    if (!user.isImpersonating) return organizations;
+    const sessionSlugs = await getSupportAccessOrgSlugs(request);
+    if (!sessionSlugs) return organizations;
+    return organizations.filter((o) => sessionSlugs.includes(o.slug));
+  }
+
   async #getOrganizations(userId: string) {
     const orgs = await this.#prismaClient.organization.findMany({
       where: { members: { some: { userId } }, deletedAt: null },
@@ -139,6 +149,7 @@ export class OrganizationsPresenter {
         title: true,
         avatar: true,
         featureFlags: true,
+        supportAccessMode: true,
         projects: {
           where: { deletedAt: null, version: "V3" },
           select: {
@@ -164,6 +175,7 @@ export class OrganizationsPresenter {
         title: org.title,
         avatar: parseAvatar(org.avatar, defaultAvatar),
         featureFlags: combinedFlags,
+        supportAccessMode: org.supportAccessMode,
         projects: org.projects.map((project) => ({
           id: project.id,
           slug: project.slug,

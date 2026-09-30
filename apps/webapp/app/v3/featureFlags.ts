@@ -51,6 +51,7 @@ export const FEATURE_FLAG = {
   deployNowEnabled: "deployNowEnabled",
   apiRateLimitMetricsEnabled: "apiRateLimitMetricsEnabled",
   queueArchivingEnabled: "queueArchivingEnabled",
+  supportAccessSettingsEnabled: "supportAccessSettingsEnabled",
 } as const;
 
 export const FeatureFlagCatalog = {
@@ -179,6 +180,9 @@ export const FeatureFlagCatalog = {
   // "false" as true, which would enable an off-by-default gate.
   [FEATURE_FLAG.deployNowEnabled]: z.boolean(),
   [FEATURE_FLAG.queueArchivingEnabled]: z.boolean(),
+  // Shows the org Support Access settings page. Off until every webapp enforces the setting;
+  // the org override wins over the global value.
+  [FEATURE_FLAG.supportAccessSettingsEnabled]: z.boolean(),
 };
 
 export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;

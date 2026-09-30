@@ -4,6 +4,7 @@ import { ChainLinkIcon } from "~/assets/icons/ChainLinkIcon";
 import { CreditCardIcon } from "~/assets/icons/CreditCardIcon";
 import { FolderOpenIcon } from "~/assets/icons/FolderOpenIcon";
 import { PadlockIcon } from "~/assets/icons/PadlockIcon";
+import { ShieldIcon } from "~/assets/icons/ShieldIcon";
 import { UsageIcon } from "~/assets/icons/UsageIcon";
 import { RolesIcon } from "~/assets/icons/RolesIcon";
 import { SlackIcon } from "~/assets/icons/SlackIcon";
@@ -21,6 +22,7 @@ import {
   organizationSettingsPath,
   organizationSlackIntegrationPath,
   organizationSsoPath,
+  organizationSupportAccessPath,
   organizationTeamPath,
   organizationVercelIntegrationPath,
   v3BillingLimitsPath,
@@ -185,6 +187,19 @@ export function OrganizationSettingsSideMenu({
               data-action="sso"
             />
           )}
+          {/* Same rule as the page: flag on, or the org already requires requests. */}
+          {isManagedCloud &&
+            (featureFlags.supportAccessSettingsEnabled === true ||
+              organization.supportAccessMode === "REQUIRES_REQUEST") && (
+              <SideMenuItem
+                name="Support Access"
+                icon={ShieldIcon}
+                activeIconColor="text-text-bright"
+                inactiveIconColor="text-text-dimmed"
+                to={organizationSupportAccessPath(organization)}
+                data-action="support-access"
+              />
+            )}
         </div>
         <div className="flex flex-col">
           <div className="mb-1">

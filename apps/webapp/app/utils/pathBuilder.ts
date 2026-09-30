@@ -79,6 +79,17 @@ export function impersonationDestinationPath(
   return `/orgs/${organizationSlug}/${splatPath}${search}`;
 }
 
+/** The admin orgs page, filtered to one org, with its Support Access request dialog open. */
+export function supportAccessRequestPath(organizationSlug: string) {
+  const search = new URLSearchParams({ search: organizationSlug, supportAccessRequest: "1" });
+  return `/admin/orgs?${search.toString()}`;
+}
+
+/** The customer-facing Support Access settings page staff share with an org's admins. */
+export function organizationSupportAccessPath(organization: OrgForPath) {
+  return `${organizationSettingsPath(organization)}/support-access`;
+}
+
 /**
  * Where the impersonation consent page's form must POST back to.
  *

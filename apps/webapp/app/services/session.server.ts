@@ -3,7 +3,13 @@ import { getUserById } from "~/models/user.server";
 import { sanitizeRedirectPath } from "~/utils";
 import { extractClientIp } from "~/utils/extractClientIp.server";
 import { authenticator } from "./auth.server";
-import { getImpersonationId, getImpersonationState } from "./impersonation.server";
+import {
+  getImpersonationId,
+  getImpersonationState,
+  getSupportAccessDenial,
+} from "./impersonation.server";
+import { redirectWithErrorMessage } from "~/models/message.server";
+import { type SupportAccessDecision } from "~/utils/impersonationState";
 import { logger } from "./logger.server";
 import { revalidateSsoSession } from "./ssoSessionRevalidation.server";
 
@@ -58,8 +64,40 @@ function maybeAutoLogout(
   throw redirect("/logout");
 }
 
+// Pages outside a Support Access session go back to its org; data requests get a 403.
+// Never-allowed pages get a 403 too, since the session's org can redirect to them.
+async function supportAccessDenialResponse(
+  request: Request,
+  denial: Extract<SupportAccessDecision, { type: "deny" }>
+) {
+  const url = new URL(request.url);
+  const isResourceRequest = /^\/(?:resources|api)\//i.test(url.pathname);
+  const isPageNavigation =
+    request.method === "GET" && !(isResourceRequest && url.searchParams.has("_data"));
+  if (!isPageNavigation || denial.reason === "never_allowed") {
+    return new Response("Outside this Support Access session", { status: 403 });
+  }
+  const { homeSlug } = denial;
+  if (!homeSlug) return redirect("/@");
+  if (url.pathname === "/") return redirect(`/orgs/${homeSlug}`);
+  return redirectWithErrorMessage(
+    `/orgs/${homeSlug}`,
+    request,
+    "That page is outside this Support Access session."
+  );
+}
+
 export async function getUserId(request: Request): Promise<string | undefined> {
   const impersonatedUserId = await getImpersonationId(request);
+
+  if (!impersonatedUserId) {
+    const denial = await getSupportAccessDenial(request);
+    if (denial) {
+      const authUser = await authenticator.isAuthenticated(request);
+      const realUser = authUser?.userId ? await getUserById(authUser.userId) : null;
+      if (realUser?.admin) throw await supportAccessDenialResponse(request, denial);
+    }
+  }
 
   if (impersonatedUserId) {
     // Impersonating: verify the real user (the admin) is still an admin and

@@ -7,7 +7,7 @@ import { Link } from "@remix-run/react";
 import * as React from "react";
 import { DropdownIcon } from "~/assets/icons/DropdownIcon";
 import { cn } from "~/utils/cn";
-import { ButtonContent, type ButtonContentPropsType } from "./Buttons";
+import { ButtonContent, type ButtonContentPropsType, newTabRel } from "./Buttons";
 import { type RenderIcon } from "./Icon";
 import { Paragraph, type ParagraphVariant } from "./Paragraph";
 
@@ -116,7 +116,7 @@ const PopoverMenuItem = React.forwardRef<
           className={cn("group/button focus-custom", contentProps.fullWidth ? "w-full" : "")}
           onClick={onClick as any}
           target={openInNewTab ? "_blank" : undefined}
-          rel={openInNewTab ? "noopener noreferrer" : undefined}
+          rel={openInNewTab ? newTabRel(to) : undefined}
         >
           <ButtonContent {...contentProps}>{title}</ButtonContent>
         </Link>

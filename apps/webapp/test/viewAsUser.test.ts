@@ -35,7 +35,9 @@ describe("view as user flag", () => {
   it("can be turned on and back off within an impersonation session", async () => {
     const start = new Request("http://localhost:3030/orgs/acme");
 
-    const impersonating = await requestWith(await setImpersonationId("user_1", start));
+    const impersonating = await requestWith(
+      await setImpersonationId("user_1", start, { organizationSlugs: ["acme"] })
+    );
     expect(await getImpersonationId(impersonating)).toBe("user_1");
     expect(await readViewingAsUser(impersonating)).toBe(false);
 
@@ -50,7 +52,9 @@ describe("view as user flag", () => {
 
   it("is dropped when impersonation is cleared", async () => {
     const start = new Request("http://localhost:3030/orgs/acme");
-    const impersonating = await requestWith(await setImpersonationId("user_1", start));
+    const impersonating = await requestWith(
+      await setImpersonationId("user_1", start, { organizationSlugs: ["acme"] })
+    );
     const viewingAsUser = await requestWith(await setViewingAsUser(true, impersonating));
 
     const cleared = await requestWith(await clearImpersonationId(viewingAsUser));
@@ -69,7 +73,9 @@ describe("view as user flag", () => {
 
   it("is off once the impersonated user is not who the request resolved as", async () => {
     const start = new Request("http://localhost:3030/orgs/acme");
-    const impersonating = await requestWith(await setImpersonationId("user_1", start));
+    const impersonating = await requestWith(
+      await setImpersonationId("user_1", start, { organizationSlugs: ["acme"] })
+    );
     const viewing = await requestWith(await setViewingAsUser(true, impersonating));
 
     // An admin who loses the admin role mid-session resolves back to their own

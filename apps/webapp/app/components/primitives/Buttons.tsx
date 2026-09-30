@@ -502,7 +502,28 @@ export const LinkButton = ({
     );
   }
 
-  if (to.toString().startsWith("http") || to.toString().startsWith("/resources")) {
+  if (to.toString().startsWith("/resources")) {
+    return (
+      <Link
+        to={to}
+        ref={innerRef}
+        reloadDocument
+        target="_blank"
+        rel={newTabRel(to.toString())}
+        className={cn("group/button block focus-custom", props.fullWidth ? "w-full" : "")}
+        onClick={onClick}
+        onMouseDown={onMouseDown}
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
+        download={download}
+        aria-label={ariaLabel}
+      >
+        <ButtonContent {...props} />
+      </Link>
+    );
+  }
+
+  if (to.toString().startsWith("http")) {
     return (
       <ExtLink
         href={to.toString()}
@@ -543,6 +564,11 @@ type ExtLinkProps = JSX.IntrinsicElements["a"] & {
   className?: string;
   href: string;
 };
+
+// Same-origin links keep the Referer, which Support Access sessions use to scope ID-keyed routes.
+export function newTabRel(href: string) {
+  return href.startsWith("/") && !href.startsWith("//") ? "noopener" : "noopener noreferrer";
+}
 
 const ExtLink = forwardRef<HTMLAnchorElement, ExtLinkProps>(
   ({ className, href, children, ...props }, ref) => {

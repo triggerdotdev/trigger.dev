@@ -41,10 +41,16 @@ describe("impersonation disabled", () => {
     });
 
     // A cookie minted while the flag was on, e.g. carried over or replayed.
-    const session = await setImpersonationId(target.id, new Request("http://localhost:3030/admin"));
+    const session = await setImpersonationId(
+      target.id,
+      new Request("http://localhost:3030/admin"),
+      {
+        organizationSlugs: ["acme"],
+      }
+    );
     const cookie = await commitImpersonationSession(session);
     const requestWithCookie = () =>
-      new Request("http://localhost:3030/", { headers: { Cookie: cookie } });
+      new Request("http://localhost:3030/orgs/acme", { headers: { Cookie: cookie } });
 
     expect(await getImpersonationId(requestWithCookie())).toBe(target.id);
     // resolvedUserId must be the impersonated id or the state is false even

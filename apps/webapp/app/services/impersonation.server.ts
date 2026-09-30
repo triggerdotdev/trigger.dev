@@ -5,7 +5,16 @@ import { singleton } from "~/utils/singleton";
 import { createRedisClient, type RedisClient } from "~/redis.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
-import { resolveImpersonationState, type ImpersonationState } from "~/utils/impersonationState";
+import {
+  isSupportAccessExpired,
+  resolveImpersonationState,
+  supportAccessDecision,
+  type ImpersonationState,
+  type SupportAccessDecision,
+  type SupportAccessRequestInfo,
+} from "~/utils/impersonationState";
+
+const IMPERSONATION_MAX_AGE_SECONDS = 60 * 60 * 24;
 
 const impersonationSessionStorage = createCookieSessionStorage({
   cookie: {
@@ -15,11 +24,17 @@ const impersonationSessionStorage = createCookieSessionStorage({
     httpOnly: true, // for security reasons, make this cookie http only
     secrets: [env.SESSION_SECRET],
     secure: env.NODE_ENV === "production", // enable this in prod only
-    maxAge: 60 * 60 * 24, // 1 day
+    maxAge: IMPERSONATION_MAX_AGE_SECONDS,
   },
 });
 
 const IMPERSONATED_USER_ID_KEY = "impersonatedUserId";
+
+// The org the session may open, and (request-mode only) when it ends.
+const SUPPORT_ACCESS_ORG_SLUGS_KEY = "supportAccessOrgSlugs";
+const SUPPORT_ACCESS_EXPIRES_AT_KEY = "supportAccessExpiresAt";
+
+export type SupportAccessScope = { organizationSlugs: string[]; expiresAt?: Date };
 
 /**
  * Display-only "view as user" flag. It lives on the impersonation cookie so it
@@ -32,14 +47,57 @@ function getImpersonationSession(request: Request) {
   return impersonationSessionStorage.getSession(request.headers.get("Cookie"));
 }
 
+function supportAccessRequestInfo(session: Session, request: Request): SupportAccessRequestInfo {
+  return {
+    orgSlugs: session.get(SUPPORT_ACCESS_ORG_SLUGS_KEY),
+    url: new URL(request.url),
+    referer: request.headers.get("referer"),
+    method: request.method.toUpperCase(),
+  };
+}
+
+/** Why an impersonated request is outside its Support Access session, or undefined if it isn't. */
+export async function getSupportAccessDenial(
+  request: Request
+): Promise<Extract<SupportAccessDecision, { type: "deny" }> | undefined> {
+  if (!env.ADMIN_DASHBOARD_ENABLED) return undefined;
+  const session = await getImpersonationSession(request);
+  if (!session.get(IMPERSONATED_USER_ID_KEY)) return undefined;
+  const decision = supportAccessDecision(supportAccessRequestInfo(session, request));
+  return decision.type === "deny" ? decision : undefined;
+}
+
+export async function getSupportAccessOrgSlugs(request: Request): Promise<string[] | undefined> {
+  const session = await getImpersonationSession(request);
+  const slugs: unknown = session.get(SUPPORT_ACCESS_ORG_SLUGS_KEY);
+  if (!Array.isArray(slugs)) return undefined;
+  return slugs.filter((slug): slug is string => typeof slug === "string");
+}
+
 export function commitImpersonationSession(session: Session) {
-  return impersonationSessionStorage.commitSession(session);
+  const expiresAt = session.get(SUPPORT_ACCESS_EXPIRES_AT_KEY);
+  if (typeof expiresAt !== "number") {
+    return impersonationSessionStorage.commitSession(session);
+  }
+
+  const secondsLeft = Math.floor((expiresAt - Date.now()) / 1000);
+  return impersonationSessionStorage.commitSession(session, {
+    maxAge: Math.max(0, Math.min(IMPERSONATION_MAX_AGE_SECONDS, secondsLeft)),
+  });
 }
 
 export async function getImpersonationId(request: Request) {
   if (!env.ADMIN_DASHBOARD_ENABLED) return undefined;
 
-  return getRawImpersonationId(request);
+  const session = await getImpersonationSession(request);
+  if (isSupportAccessExpired(session.get(SUPPORT_ACCESS_EXPIRES_AT_KEY), Date.now())) {
+    return undefined;
+  }
+  if (supportAccessDecision(supportAccessRequestInfo(session, request)).type === "deny") {
+    return undefined;
+  }
+
+  return session.get(IMPERSONATED_USER_ID_KEY) as string | undefined;
 }
 
 // Ignores ADMIN_DASHBOARD_ENABLED — only for terminating or auditing a session
@@ -50,10 +108,21 @@ export async function getRawImpersonationId(request: Request) {
   return session.get(IMPERSONATED_USER_ID_KEY) as string | undefined;
 }
 
-export async function setImpersonationId(userId: string, request: Request) {
+export async function setImpersonationId(
+  userId: string,
+  request: Request,
+  supportAccess: SupportAccessScope
+) {
   const session = await getImpersonationSession(request);
 
   session.set(IMPERSONATED_USER_ID_KEY, userId);
+
+  session.set(SUPPORT_ACCESS_ORG_SLUGS_KEY, supportAccess.organizationSlugs);
+  session.unset(SUPPORT_ACCESS_EXPIRES_AT_KEY);
+  if (supportAccess.expiresAt) {
+    const cap = Date.now() + IMPERSONATION_MAX_AGE_SECONDS * 1000;
+    session.set(SUPPORT_ACCESS_EXPIRES_AT_KEY, Math.min(cap, supportAccess.expiresAt.getTime()));
+  }
 
   return session;
 }
@@ -65,6 +134,8 @@ export async function clearImpersonationId(request: Request) {
   // The view-as-user flag only means anything inside an impersonation session,
   // so it never outlives one.
   session.unset(VIEWING_AS_USER_KEY);
+  session.unset(SUPPORT_ACCESS_ORG_SLUGS_KEY);
+  session.unset(SUPPORT_ACCESS_EXPIRES_AT_KEY);
 
   return session;
 }
@@ -96,6 +167,8 @@ export async function getImpersonationState(
     impersonatedUserId: session.get(IMPERSONATED_USER_ID_KEY),
     viewingAsUser: session.get(VIEWING_AS_USER_KEY),
     resolvedUserId,
+    supportAccessExpiresAt: session.get(SUPPORT_ACCESS_EXPIRES_AT_KEY),
+    supportAccessRequest: supportAccessRequestInfo(session, request),
   });
 }
 

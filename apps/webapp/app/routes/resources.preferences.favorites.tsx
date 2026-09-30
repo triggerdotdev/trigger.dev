@@ -46,6 +46,11 @@ const RequestSchema = z.discriminatedUnion("intent", [
 export async function action({ request }: ActionFunctionArgs) {
   const user = await requireUser(request);
 
+  // Skipped while impersonating so staff browsing can't change the customer's saved settings.
+  if (user.isImpersonating) {
+    return json({ success: true });
+  }
+
   const formData = await request.formData();
   const result = RequestSchema.safeParse(Object.fromEntries(formData));
 

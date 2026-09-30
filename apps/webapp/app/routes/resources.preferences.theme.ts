@@ -7,6 +7,11 @@ import { cachedFlag } from "~/v3/featureFlags.server";
 export async function action({ request }: ActionFunctionArgs) {
   const user = await requireUser(request);
 
+  // Skipped while impersonating so staff browsing can't change the customer's saved settings.
+  if (user.isImpersonating) {
+    return json({ success: true });
+  }
+
   // Same gate as the account page: not writable while the flag is off.
   const showThemeSwitcher =
     user.admin || (await cachedFlag({ key: "hasThemeSwitcher", defaultValue: false }));

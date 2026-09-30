@@ -1,10 +1,12 @@
 import { MagnifyingGlassIcon } from "@heroicons/react/20/solid";
-import { Form } from "@remix-run/react";
+import { Form, useLocation, useSearchParams } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useState } from "react";
 import { z } from "zod";
 import { env } from "~/env.server";
 import { FeatureFlagsDialog } from "~/components/admin/FeatureFlagsDialog";
+import { SupportAccessRequestDialog } from "~/components/admin/SupportAccessRequestDialog";
+import { supportAccessState } from "~/components/admin/supportAccessState";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { Input } from "~/components/primitives/Input";
@@ -54,6 +56,25 @@ export default function AdminDashboardRoute() {
   const openFlagsDialog = (orgId: string) => {
     setFlagsOrgId(orgId);
     setFlagsOpen(true);
+  };
+
+  // Deep links reopen the dialog on every navigation, not just the first load.
+  const [searchParams] = useSearchParams();
+  const location = useLocation();
+  const deepLinkedOrg =
+    searchParams.get("supportAccessRequest") === "1"
+      ? organizations.find((o) => o.slug === searchParams.get("search"))
+      : undefined;
+  const [dismissedLocationKey, setDismissedLocationKey] = useState<string | null>(null);
+  const deepLinkOpen = deepLinkedOrg !== undefined && dismissedLocationKey !== location.key;
+  const [clickedOrgId, setClickedOrgId] = useState<string | null>(null);
+  const [requestOpenCount, setRequestOpenCount] = useState(0);
+  const requestOrgId = clickedOrgId ?? (deepLinkOpen ? deepLinkedOrg.id : null);
+  const requestOrg = organizations.find((o) => o.id === requestOrgId) ?? null;
+
+  const openRequestDialog = (orgId: string) => {
+    setClickedOrgId(orgId);
+    setRequestOpenCount((count) => count + 1);
   };
 
   return (
@@ -129,19 +150,19 @@ export default function AdminDashboardRoute() {
                         <Button variant="tertiary/small" onClick={() => openFlagsDialog(org.id)}>
                           Flags
                         </Button>
-                        {impersonationEnabled && (
-                          <LinkButton
-                            to={`/@/orgs/${org.slug}`}
-                            variant="tertiary/small"
-                            shortcut={
-                              organizations.length === 1
-                                ? { modifiers: ["mod"], key: "enter", enabledOnInputElements: true }
-                                : undefined
-                            }
-                          >
-                            Impersonate
-                          </LinkButton>
-                        )}
+                        {impersonationEnabled &&
+                          (supportAccessState(org) === "request" ? (
+                            <Button
+                              variant="danger/small"
+                              onClick={() => openRequestDialog(org.id)}
+                            >
+                              Support Access
+                            </Button>
+                          ) : (
+                            <LinkButton to={`/@/orgs/${org.slug}`} variant="tertiary/small">
+                              Support Access
+                            </LinkButton>
+                          ))}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -158,6 +179,16 @@ export default function AdminDashboardRoute() {
         orgTitle={flagsOrgTitle}
         open={flagsOpen}
         onOpenChange={setFlagsOpen}
+      />
+      <SupportAccessRequestDialog
+        key={`${requestOrgId}-${requestOpenCount}-${deepLinkOpen ? location.key : ""}`}
+        org={requestOrg}
+        open={requestOrg !== null}
+        onOpenChange={(open) => {
+          if (open) return;
+          setClickedOrgId(null);
+          setDismissedLocationKey(location.key);
+        }}
       />
     </main>
   );

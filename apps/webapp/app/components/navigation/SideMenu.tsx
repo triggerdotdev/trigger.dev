@@ -160,7 +160,7 @@ function getSectionCollapsed(
   return sideMenu?.collapsedSections?.[sectionId] ?? false;
 }
 
-// Impersonation accent (menu border + "Stop impersonating"). Full class strings so Tailwind's
+// Impersonation accent (menu border + "Exit Support Access"). Full class strings so Tailwind's
 // static scanner picks them up.
 const IMPERSONATION_ACCENT = {
   border: "border-yellow-500/80",
@@ -824,7 +824,7 @@ export function SideMenu({
         "relative h-full border-r bg-background-bright",
         // The accent is the loudest "you are not this user" tell, so "view as user" drops it too —
         // the point of the mode is a dashboard that looks exactly like the user's. The account
-        // menu's "Stop impersonating" and the toggle itself stay on raw impersonation, so there is
+        // menu's "Exit Support Access" and the toggle itself stay on raw impersonation, so there is
         // still a way back out (as does the ⌘⌥A shortcut in <GlobalShortcuts>).
         user.isImpersonating && !isViewingAsUser
           ? IMPERSONATION_ACCENT.border
@@ -1584,7 +1584,24 @@ function OrgSelector({
           <Integrations organization={organization} />
         </div>
         <div className="border-t border-grid-bright p-1">
-          {organizations.length > 1 ? (
+          {isImpersonating ? (
+            <SimpleTooltip
+              asChild
+              side="right"
+              content="Not available in a Support Access session"
+              button={
+                <div>
+                  <PopoverMenuItem
+                    title="Switch organization"
+                    icon={ArrowLeftRightIcon}
+                    leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
+                    className={cn(SIDE_MENU_POPOVER_ITEM_LABEL, "cursor-not-allowed opacity-50!")}
+                    disabled
+                  />
+                </div>
+              }
+            />
+          ) : organizations.length > 1 ? (
             <SwitchOrganizations organizations={organizations} organization={organization} />
           ) : (
             <PopoverMenuItem
@@ -1627,7 +1644,7 @@ function AccountMenuItems({
 
   return (
     <>
-      {/* "Stop impersonating" and the view-as-user toggle key off raw impersonation, not `isAdmin`:
+      {/* "Exit Support Access" and the view-as-user toggle key off raw impersonation, not `isAdmin`:
           with "view as user" on, `isAdmin` is false and these are the only ways back out. */}
       {(isImpersonating || isAdmin) && (
         <div className="flex flex-col gap-1 border-b border-grid-bright p-1">
@@ -1636,7 +1653,7 @@ function AccountMenuItems({
               <PopoverMenuItem
                 title={
                   <div className="flex w-full items-center justify-between">
-                    <span className={IMPERSONATION_ACCENT.text}>Stop impersonating</span>
+                    <span className={IMPERSONATION_ACCENT.text}>Exit Support Access</span>
                     <ShortcutKey
                       shortcut={{ modifiers: ["mod", "alt"], key: "a" }}
                       variant="medium/bright"

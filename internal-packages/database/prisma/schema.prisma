@@ -78,6 +78,8 @@ model User {
 
   impersonationsPerformed          ImpersonationAuditLog[]           @relation("ImpersonationAdmin")
   impersonationsReceived           ImpersonationAuditLog[]           @relation("ImpersonationTarget")
+  supportAccessRequestsMade        SupportAccessRequest[]            @relation("SupportAccessRequester")
+  supportAccessRequestsApproved    SupportAccessRequest[]            @relation("SupportAccessApprover")
   customerQueries                  CustomerQuery[]
   metricsDashboards                MetricsDashboard[]
   platformNotifications            PlatformNotification[]
@@ -264,6 +266,12 @@ model Organization {
   /// Set once at provisioning time; retention is reconfigured in-place
   /// when the org's plan changes.
   streamBasinName String?
+
+  supportAccessMode            SupportAccessMode @default(ALLOW)
+  supportAccessModeUpdatedAt   DateTime?
+  supportAccessModeUpdatedById String?
+
+  supportAccessRequests SupportAccessRequest[]
 }
 
 model OrgMember {
@@ -3010,6 +3018,45 @@ model ImpersonationAuditLog {
   @@index([adminId])
   @@index([targetId])
   @@index([createdAt])
+}
+
+enum SupportAccessMode {
+  ALLOW
+  REQUIRES_REQUEST
+}
+
+enum SupportAccessRequestStatus {
+  PENDING
+  APPROVED
+  CANCELLED
+}
+
+model SupportAccessRequest {
+  id String @id @default(cuid())
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  requestedBy   User?   @relation("SupportAccessRequester", fields: [requestedById], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  requestedById String?
+
+  reason String
+  status SupportAccessRequestStatus @default(PENDING)
+
+  approvedBy   User?     @relation("SupportAccessApprover", fields: [approvedById], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  approvedById String?
+  approvedAt   DateTime?
+  expiresAt    DateTime?
+
+  cancelledById String?
+  cancelledAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId, status, expiresAt])
+  @@index([requestedById])
+  @@index([approvedById])
 }
 
 enum CustomerQuerySource {

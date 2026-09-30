@@ -1,5 +1,6 @@
 import { MagnifyingGlassIcon } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
+import { useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { env } from "~/env.server";
@@ -17,8 +18,11 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
+import { SupportAccessRequestDialog } from "~/components/admin/SupportAccessRequestDialog";
+import { supportAccessState } from "~/components/admin/supportAccessState";
 import { adminGetUsers, redirectWithImpersonation } from "~/models/admin.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
+import { organizationPath } from "~/utils/pathBuilder";
 import { createSearchParams } from "~/utils/searchParams";
 
 export const SearchParams = z.object({
@@ -41,7 +45,7 @@ export const loader = dashboardLoader(
   }
 );
 
-const FormSchema = z.object({ id: z.string() });
+const FormSchema = z.object({ id: z.string(), organizationSlug: z.string() });
 
 export const action = dashboardAction(
   { authorization: { requireSuper: true } },
@@ -51,15 +55,27 @@ export const action = dashboardAction(
     }
 
     const payload = Object.fromEntries(await request.formData());
-    const { id } = FormSchema.parse(payload);
+    const { id, organizationSlug } = FormSchema.parse(payload);
 
-    return redirectWithImpersonation(request, id, "/");
+    return redirectWithImpersonation(request, {
+      userId: id,
+      organizationSlug,
+      path: organizationPath({ slug: organizationSlug }),
+    });
   }
 );
 
 export default function AdminDashboardRoute() {
   const { users, filters, page, pageCount, impersonationEnabled } =
     useTypedLoaderData<typeof loader>();
+
+  const [requestOrg, setRequestOrg] = useState<{ id: string; title: string } | null>(null);
+  const [requestOpenCount, setRequestOpenCount] = useState(0);
+
+  const openRequestDialog = (org: { id: string; title: string }) => {
+    setRequestOrg(org);
+    setRequestOpenCount((count) => count + 1);
+  };
 
   return (
     <main
@@ -86,12 +102,11 @@ export default function AdminDashboardRoute() {
           <TableHeader>
             <TableRow>
               <TableHeaderCell>Email</TableHeaderCell>
-              <TableHeaderCell>Orgs</TableHeaderCell>
               <TableHeaderCell>GitHub</TableHeaderCell>
               <TableHeaderCell>id</TableHeaderCell>
               <TableHeaderCell>Created</TableHeaderCell>
               <TableHeaderCell>Admin?</TableHeaderCell>
-              <TableHeaderCell>Actions</TableHeaderCell>
+              <TableHeaderCell>Orgs</TableHeaderCell>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -105,18 +120,6 @@ export default function AdminDashboardRoute() {
                   <TableRow key={user.id}>
                     <TableCell>
                       <CopyableText value={user.email} />
-                    </TableCell>
-                    <TableCell>
-                      {user.orgMemberships.map((org) => (
-                        <LinkButton
-                          key={org.organization.slug}
-                          variant="minimal/small"
-                          to={`/admin/orgs?search=${encodeURIComponent(org.organization.slug)}`}
-                        >
-                          {org.organization.title} ({org.organization.slug})
-                          {org.organization.deletedAt ? " (☠️)" : ""}
-                        </LinkButton>
-                      ))}
                     </TableCell>
                     <TableCell>
                       <a
@@ -136,25 +139,47 @@ export default function AdminDashboardRoute() {
                     </TableCell>
                     <TableCell>{user.admin ? "✅" : ""}</TableCell>
                     <TableCell isSticky={true}>
-                      {impersonationEnabled && (
-                        <Form method="post" action="/admin/impersonate" reloadDocument>
-                          <input type="hidden" name="id" value={user.id} />
-                          <Button
-                            type="submit"
-                            name="action"
-                            value="impersonate"
-                            className="mr-2"
-                            variant="tertiary/small"
-                            shortcut={
-                              users.length === 1
-                                ? { modifiers: ["mod"], key: "enter", enabledOnInputElements: true }
-                                : undefined
-                            }
-                          >
-                            Impersonate
-                          </Button>
-                        </Form>
-                      )}
+                      <div className="flex flex-col gap-1">
+                        {user.orgMemberships.map(({ organization }) => {
+                          const state = supportAccessState(organization);
+                          return (
+                            <div
+                              key={organization.slug}
+                              className="flex items-center justify-between gap-3"
+                            >
+                              <LinkButton
+                                variant="minimal/small"
+                                to={`/admin/orgs?search=${encodeURIComponent(organization.slug)}`}
+                              >
+                                {organization.title} ({organization.slug})
+                                {organization.deletedAt ? " (☠️)" : ""}
+                              </LinkButton>
+                              {impersonationEnabled &&
+                                !organization.deletedAt &&
+                                (state === "request" ? (
+                                  <Button
+                                    variant="danger/small"
+                                    onClick={() => openRequestDialog(organization)}
+                                  >
+                                    Support Access
+                                  </Button>
+                                ) : (
+                                  <Form method="post" action="/admin/impersonate" reloadDocument>
+                                    <input type="hidden" name="id" value={user.id} />
+                                    <input
+                                      type="hidden"
+                                      name="organizationSlug"
+                                      value={organization.slug}
+                                    />
+                                    <Button type="submit" variant="tertiary/small">
+                                      Support Access
+                                    </Button>
+                                  </Form>
+                                ))}
+                            </div>
+                          );
+                        })}
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
@@ -165,6 +190,14 @@ export default function AdminDashboardRoute() {
 
         <PaginationControls currentPage={page} totalPages={pageCount} />
       </div>
+      <SupportAccessRequestDialog
+        key={`${requestOrg?.id}-${requestOpenCount}`}
+        org={requestOrg}
+        open={requestOrg !== null}
+        onOpenChange={(open) => {
+          if (!open) setRequestOrg(null);
+        }}
+      />
     </main>
   );
 }

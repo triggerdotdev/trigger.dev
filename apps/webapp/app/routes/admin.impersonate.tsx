@@ -4,19 +4,29 @@ import {
   type LoaderFunctionArgs,
 } from "@remix-run/server-runtime";
 import { z } from "zod";
+import { $replica } from "~/db.server";
 import { redirectWithImpersonation, requireAdminDashboardEnabled } from "~/models/admin.server";
 import { requireUser } from "~/services/session.server";
+import { organizationPath } from "~/utils/pathBuilder";
 import { validateAndConsumeImpersonationToken } from "~/services/impersonation.server";
 import { logger } from "~/services/logger.server";
 
-const FormSchema = z.object({ id: z.string() });
+const FormSchema = z.object({ id: z.string(), organizationSlug: z.string() });
 
-async function handleImpersonationRequest(request: Request, userId: string): Promise<Response> {
+async function handleImpersonationRequest(
+  request: Request,
+  userId: string,
+  organizationSlug: string
+): Promise<Response> {
   const user = await requireUser(request);
   if (!user.admin) {
     return redirect("/");
   }
-  return redirectWithImpersonation(request, userId, "/", user);
+  return redirectWithImpersonation(
+    request,
+    { userId, organizationSlug, path: organizationPath({ slug: organizationSlug }) },
+    user
+  );
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -48,7 +58,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return redirect("/");
   }
 
-  return redirectWithImpersonation(request, impersonateUserId, "/", user);
+  // The link only knows the user, not which org, so send staff to pick one.
+  const target = await $replica.user.findFirst({
+    where: { id: impersonateUserId },
+    select: { email: true },
+  });
+  if (!target) {
+    return redirect("/admin");
+  }
+  return redirect(`/admin?${new URLSearchParams({ search: target.email }).toString()}`);
 };
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -59,7 +77,7 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   const payload = Object.fromEntries(await request.formData());
-  const { id } = FormSchema.parse(payload);
+  const { id, organizationSlug } = FormSchema.parse(payload);
 
-  return handleImpersonationRequest(request, id);
+  return handleImpersonationRequest(request, id, organizationSlug);
 }

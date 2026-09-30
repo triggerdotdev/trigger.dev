@@ -182,7 +182,7 @@ export async function action({ request }: ActionFunctionArgs) {
                 uiComponent.divider({ spacingSize: "M" }),
                 uiComponent.spacer({ size: "M" }),
                 uiComponent.linkButton({
-                  label: "Impersonate User",
+                  label: "Support Access",
                   // The one-time token is what protects this link against CSRF.
                   url: `${env.APP_ORIGIN}/admin/impersonate?impersonate=${user.id}&impersonationToken=${encodeURIComponent(
                     await generateImpersonationToken(user.id)
