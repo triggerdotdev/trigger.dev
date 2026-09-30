@@ -1842,6 +1842,13 @@ export class RunEngine {
     return this.runQueue.totalConcurrencyOfQueues(environment, queues);
   }
 
+  async inFlightCountOfQueues(
+    environment: MinimalAuthenticatedEnvironment,
+    queues: string[]
+  ): Promise<Record<string, number>> {
+    return this.runQueue.inFlightCountOfQueues(environment, queues);
+  }
+
   async totalConcurrencyLimitsOfQueues(
     environment: MinimalAuthenticatedEnvironment,
     queues: string[]

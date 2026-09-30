@@ -555,7 +555,7 @@ function guardedLimitUpdate(
         concurrencyLimitOverriddenAt: row.concurrencyLimitOverriddenAt,
         totalConcurrencyLimitOverriddenAt: row.totalConcurrencyLimitOverriddenAt,
       },
-      data,
+      data: unarchiveIfBlocked(row, data),
     }),
     (error) => {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
@@ -564,6 +564,17 @@ function guardedLimitUpdate(
       return { type: "limit_update_failed" as const, cause: error };
     }
   );
+}
+
+/** A write that leaves an archived queue paused or at a limit of 0 also unarchives it. */
+function unarchiveIfBlocked(row: TaskQueue, data: Record<string, unknown>) {
+  if (row.role !== "QUEUE" || row.archivedAt === null) {
+    return data;
+  }
+  const next = { ...row, ...data };
+  const blocked =
+    next.paused === true || next.concurrencyLimit === 0 || next.totalConcurrencyLimit === 0;
+  return blocked ? { ...data, archivedAt: null } : data;
 }
 
 type SyncedLimitValues = { perKey: number | null; total: number | null; paused: boolean };

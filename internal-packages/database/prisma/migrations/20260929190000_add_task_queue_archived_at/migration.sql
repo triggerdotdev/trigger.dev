@@ -1,0 +1,1 @@
+ALTER TABLE "public"."TaskQueue" ADD COLUMN IF NOT EXISTS "archivedAt" TIMESTAMP(3);

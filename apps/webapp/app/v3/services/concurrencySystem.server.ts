@@ -158,7 +158,7 @@ export class ConcurrencySystem {
             if (newLimit !== queue.concurrencyLimit) {
               await this.db.taskQueue.update({
                 where: { id: queue.id },
-                data: { concurrencyLimit: newLimit },
+                data: { concurrencyLimit: newLimit, archivedAt: newLimit === 0 ? null : undefined },
               });
               updated++;
             }
@@ -356,6 +356,8 @@ function overrideQueueConcurrencyLimit(
         concurrencyLimitOverridePercent: overridePercent,
         concurrencyLimitOverriddenAt: new Date(),
         concurrencyLimitOverriddenBy: overriddenBy?.id ?? null,
+        // A limit of 0 blocks runs, so keep the queue visible.
+        archivedAt: newConcurrencyLimit === 0 ? null : undefined,
       },
     }),
     queueUpdateError
@@ -378,6 +380,7 @@ function resetQueueConcurrencyLimit(db: PrismaClientOrTransaction, queue: TaskQu
         concurrencyLimitBase: null,
         concurrencyLimitOverridePercent: null,
         concurrencyLimitOverriddenBy: null,
+        archivedAt: newConcurrencyLimit === 0 ? null : undefined,
       },
     }),
     queueUpdateError
@@ -444,6 +447,7 @@ function overrideQueueTotalConcurrencyLimit(
         totalConcurrencyLimitBase: totalConcurrencyLimitBase ?? null,
         totalConcurrencyLimitOverriddenAt: new Date(),
         totalConcurrencyLimitOverriddenBy: overriddenBy?.id ?? null,
+        archivedAt: totalConcurrencyLimit === 0 ? null : undefined,
       },
     }),
     queueUpdateError
@@ -551,6 +555,7 @@ function resetQueueTotalConcurrencyLimit(
         totalConcurrencyLimitBase: null,
         totalConcurrencyLimitOverriddenAt: null,
         totalConcurrencyLimitOverriddenBy: null,
+        archivedAt: queue.totalConcurrencyLimitBase === 0 ? null : undefined,
       },
     }),
     queueUpdateError

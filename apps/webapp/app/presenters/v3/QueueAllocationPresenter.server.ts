@@ -1,9 +1,10 @@
+import { Prisma } from "@trigger.dev/database";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { sqlDatabaseSchema } from "~/db.server";
 import { BasePresenter } from "./basePresenter.server";
 
 export type QueueAllocation = {
-  /** Number of V2 queues in the environment. */
+  /** Number of unarchived V2 queues in the environment. */
   totalQueues: number;
   /** Sum of explicit per-queue limits, each clamped to the env limit. */
   allocated: number;
@@ -16,16 +17,20 @@ export type QueueAllocation = {
  *
  * The page only needs the aggregate `allocated` value (sum of each queue's
  * explicit limit clamped to the env limit), so this computes it in a single
- * Postgres aggregate over ALL V2 queues in the environment — no row cap and no
- * Redis lookups.
+ * Postgres aggregate over every unarchived V2 queue in the environment — no row
+ * cap and no Redis lookups.
  */
 export class QueueAllocationPresenter extends BasePresenter {
   public async call({
     environment,
+    excludeArchived = true,
   }: {
     environment: AuthenticatedEnvironment;
+    /** Off when archiving is disabled for the org, so the tile matches the (unfiltered) list. */
+    excludeArchived?: boolean;
   }): Promise<QueueAllocation> {
     const envLimit = environment.maximumConcurrencyLimit;
+    const archivedFilter = excludeArchived ? Prisma.sql`AND "archivedAt" IS NULL` : Prisma.empty;
 
     const [row] = await this._replica.$queryRaw<
       {
@@ -45,6 +50,7 @@ export class QueueAllocationPresenter extends BasePresenter {
       FROM ${sqlDatabaseSchema}."TaskQueue"
       WHERE "runtimeEnvironmentId" = ${environment.id}
         AND "version" = 'V2'
+        ${archivedFilter}
     `;
 
     return {

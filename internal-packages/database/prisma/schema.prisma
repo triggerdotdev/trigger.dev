@@ -2014,6 +2014,9 @@ model TaskQueue {
 
   paused Boolean @default(false)
 
+  /// Hidden from the dashboard queue list. Display-only: never read on trigger/dequeue paths.
+  archivedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

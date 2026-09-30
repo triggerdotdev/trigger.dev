@@ -134,6 +134,8 @@ const QueueRankingParams = z.object({
   /** 1 = rank by peak backlog only; 0 = backlog + running ("busiest"). */
   byQueuedOnly: z.number(),
   nameContains: z.string(),
+  /** Queue names to leave out of the ranking (e.g. ones the caller hides). */
+  excludeNames: z.array(z.string()),
   limit: z.number(),
   offset: z.number(),
 });
@@ -150,7 +152,8 @@ const RANKING_WHERE = `organization_id = {organizationId: String}
         AND environment_id = {environmentId: String}
         AND bucket_start >= {startTime: DateTime}
         AND queue_name != '__overflow__'
-        AND ({nameContains: String} = '' OR positionCaseInsensitive(queue_name, {nameContains: String}) > 0)`;
+        AND ({nameContains: String} = '' OR positionCaseInsensitive(queue_name, {nameContains: String}) > 0)
+        AND NOT has({excludeNames: Array(String)}, queue_name)`;
 
 /**
  * One page of queue names ranked by recent activity, with the total ranked count on

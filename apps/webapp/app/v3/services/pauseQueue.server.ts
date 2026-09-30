@@ -65,6 +65,8 @@ export class PauseQueueService extends BaseService {
         },
         data: {
           paused: action === "paused",
+          // A paused queue must stay visible, so pausing unarchives it.
+          archivedAt: action === "paused" ? null : undefined,
         },
       });
 

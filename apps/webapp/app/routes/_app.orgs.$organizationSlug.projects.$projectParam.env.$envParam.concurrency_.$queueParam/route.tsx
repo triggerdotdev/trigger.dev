@@ -69,7 +69,9 @@ import { formatNumberCompact } from "~/utils/numberFormatter";
 import { cn } from "~/utils/cn";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { handleQueueMutationAction } from "~/models/queueMutation.server";
+import { queueArchivingEnabled } from "~/v3/services/queueArchivingEnabled.server";
 import {
+  QueueArchiveButton,
   QueueOverrideConcurrencyButton,
   QueuePauseResumeButton,
 } from "~/components/queues/QueueControls";
@@ -129,6 +131,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     projectId: project.id,
   });
   const canWriteTasks = auth.ok && auth.ability.can("write", { type: "tasks" });
+  const archivingEnabled = await queueArchivingEnabled(environment.organizationId);
 
   const retrieve = await new QueueRetrievePresenter().call({
     environment,
@@ -174,6 +177,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     defaultPeriod: clampQueueMetricsPeriod(queueMetricsPeriodFromRequest(request), maxPeriodDays),
     maxPeriodDays,
     canWriteTasks,
+    archivingEnabled,
     ids: {
       organizationId: environment.organizationId,
       projectId: environment.projectId,
@@ -274,6 +278,7 @@ export default function Page() {
     defaultPeriod,
     maxPeriodDays,
     canWriteTasks,
+    archivingEnabled,
   } = useTypedLoaderData<typeof loader>();
 
   const { value, replace } = useSearchParams();
@@ -325,6 +330,9 @@ export default function Page() {
           the page when this individual queue is paused. */}
       <AnimatedOrgBannerBar show={queue.paused} variant="warning">
         {`"${queue.name}" queue paused. No new runs will be dequeued and executed.`}
+      </AnimatedOrgBannerBar>
+      <AnimatedOrgBannerBar show={archivingEnabled && queue.archivedAt !== null} variant="warning">
+        {`"${queue.name}" queue archived. It's hidden from the Concurrency list, but its runs are unaffected.`}
       </AnimatedOrgBannerBar>
       <MetricsLayout.Root>
         {/* Filters — search (concurrency keys) + time filter in one left cluster, above
@@ -389,6 +397,9 @@ export default function Page() {
               withQueueName
               disabled={!canWriteTasks}
             />
+            {archivingEnabled || queue.archivedAt ? (
+              <QueueArchiveButton queue={queue} trigger="button" disabled={!canWriteTasks} />
+            ) : null}
           </div>
         </MetricsLayout.Filters>
 

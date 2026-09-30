@@ -1095,6 +1095,8 @@ async function upsertWorkerQueueRecord(
           version: "V2",
           concurrencyVersion,
           orderableName,
+          // Declared again, so bring an archived queue back.
+          archivedAt: null,
           // If overridden, keep current limit and update base; otherwise update limit normally
           concurrencyLimit: hasOverride ? undefined : concurrencyLimit,
           concurrencyLimitBase: hasOverride ? concurrencyLimit : undefined,

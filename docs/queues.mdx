@@ -93,6 +93,29 @@ You can re-order runs within a queue at trigger time by giving them a priority:
 
 <Priority />
 
+## Archiving queues
+
+Queues are created when you deploy, so renaming a queue or deleting a task leaves its old queue behind. To tidy up the list, open the queue's menu on the Concurrency page in the dashboard and choose **Archive**.
+
+Archiving only hides the queue in the dashboard, and it doesn't affect runs. Archived queues don't count towards the **Allocated** total, even if they have runs. To see them, turn on the **Show archived** toggle; to bring one back, choose **Unarchive** from its menu.
+
+- You can only archive a queue that your current deployment no longer declares.
+- You can't archive a queue while it has runs waiting or in progress, or while it's paused or its concurrency limit or [`total` limit](/concurrency) is 0.
+- If an archived queue gets new runs, it stays hidden, but a warning above the list names it until it's empty.
+- Pausing an archived queue, or setting its concurrency limit or `total` limit to 0 (including by resetting an override), unarchives it.
+- If a later deploy declares the queue again, it's unarchived automatically.
+- The SDK and API still list archived queues.
+
+<Note>
+  Some runs belong to a queue without currently sitting in it, so they don't count as activity:
+  delayed runs that haven't reached their start time yet, runs waiting for a deploy of their
+  version, runs that are waiting (for example on `wait.for` or a child task) or have been
+  checkpointed, and, depending on how the engine is configured, runs with a concurrency key that
+  have been handed to a worker but not picked up yet. A queue with only runs like these can be
+  archived, and the warning won't name it until one of them is back in the queue or running. These
+  runs still execute normally and always show on the Runs page.
+</Note>
+
 ## Managing queues with the SDK
 
 The SDK provides a `queues` namespace that allows you to manage queues programmatically. You can list, retrieve, pause, resume, and modify concurrency limits for queues.

@@ -2082,6 +2082,37 @@ export class RunQueue {
     );
   }
 
+  /**
+   * Runs handed off from each queue and not yet finished, including ones a worker hasn't
+   * picked up yet. Keyed runs are only counted when the group set is maintained
+   * (total concurrency limits enabled).
+   */
+  public async inFlightCountOfQueues(
+    env: MinimalAuthenticatedEnvironment,
+    queues: string[]
+  ): Promise<Record<string, number>> {
+    const pipeline = this.redis.pipeline();
+    queues.forEach((queue) => {
+      pipeline.scard(this.keys.queueCurrentConcurrencyKey(env, queue));
+      pipeline.scard(this.keys.queueGroupConcurrencyKey(env, queue));
+    });
+
+    const results = await pipeline.exec();
+
+    return queues.reduce(
+      (acc, queue, index) => {
+        const base = results?.[index * 2]?.[1];
+        const group = results?.[index * 2 + 1]?.[1];
+        acc[queue] = Math.max(
+          typeof base === "number" ? base : 0,
+          typeof group === "number" ? group : 0
+        );
+        return acc;
+      },
+      {} as Record<string, number>
+    );
+  }
+
   public async lengthOfQueues(
     env: MinimalAuthenticatedEnvironment,
     queues: string[]

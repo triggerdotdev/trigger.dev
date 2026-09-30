@@ -1,5 +1,6 @@
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { getUserById } from "~/models/user.server";
+import { logger } from "~/services/logger.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { concurrencySystem } from "~/v3/services/concurrencySystemInstance.server";
 import {
@@ -7,12 +8,14 @@ import {
   MAX_QUEUE_OVERRIDE_PERCENT,
   MIN_QUEUE_OVERRIDE_PERCENT,
 } from "~/v3/services/concurrencySystem.server";
+import { ArchiveQueueService, archiveQueueErrorMessage } from "~/v3/services/archiveQueue.server";
 import { PauseQueueService } from "~/v3/services/pauseQueue.server";
+import { queueArchivingEnabled } from "~/v3/services/queueArchivingEnabled.server";
 
 /**
- * Handles the per-queue mutating form actions (pause/resume/override/remove-override) shared by the
- * Queues list route and the queue detail route. Returns a redirect Response for one of those four
- * actions, or `null` if `formData`'s `action` isn't one of them (so the caller can fall through to
+ * Handles the per-queue mutating form actions (pause/resume/override/remove-override/archive/
+ * unarchive) shared by the Queues list route and the queue detail route. Returns a redirect Response
+ * for one of those actions, or `null` if `formData`'s `action` isn't one of them (so the caller can fall through to
  * its own action handling). `redirectPath` is where to send the user afterwards — the caller passes
  * its own page so a mutation from the detail page stays on the detail page.
  */
@@ -22,12 +25,15 @@ export async function handleQueueMutationAction({
   userId,
   formData,
   redirectPath,
+  archiveSuccessRedirectPath,
 }: {
   request: Request;
   environment: AuthenticatedEnvironment;
   userId: string;
   formData: FormData;
   redirectPath: string;
+  /** Where a successful archive goes, when the archived row leaves its page empty. */
+  archiveSuccessRedirectPath?: string;
 }): Promise<Response | null> {
   const action = formData.get("action");
 
@@ -279,6 +285,53 @@ export async function handleQueueMutationAction({
         redirectPath,
         request,
         noun === "limit" ? "Limit override removed" : "Queue concurrency limit reset"
+      );
+    }
+    case "queue-archive":
+    case "queue-unarchive": {
+      const friendlyId = formData.get("friendlyId");
+      if (!friendlyId) {
+        return redirectWithErrorMessage(redirectPath, request, "Queue ID is required");
+      }
+
+      // Unarchiving stays allowed so queues archived before the flag was turned off can come back.
+      if (
+        action === "queue-archive" &&
+        !(await queueArchivingEnabled(environment.organizationId))
+      ) {
+        return redirectWithErrorMessage(
+          redirectPath,
+          request,
+          "Queue archiving isn't enabled for this organization"
+        );
+      }
+
+      const service = new ArchiveQueueService();
+      const result =
+        action === "queue-archive"
+          ? await service.archive(environment, friendlyId.toString())
+          : await service.unarchive(environment, friendlyId.toString());
+
+      if (result.isErr()) {
+        if (result.error.type === "other") {
+          logger.error("Queue archive action failed", {
+            action,
+            friendlyId: friendlyId.toString(),
+            environmentId: environment.id,
+            error: result.error.cause,
+          });
+        }
+        return redirectWithErrorMessage(
+          redirectPath,
+          request,
+          archiveQueueErrorMessage(result.error)
+        );
+      }
+
+      return redirectWithSuccessMessage(
+        action === "queue-archive" ? (archiveSuccessRedirectPath ?? redirectPath) : redirectPath,
+        request,
+        action === "queue-archive" ? "Queue archived" : "Queue unarchived"
       );
     }
     default:

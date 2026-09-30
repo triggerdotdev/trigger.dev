@@ -303,6 +303,69 @@ describe("worker task creation", () => {
   );
 });
 
+describe("archived queues on deploy", () => {
+  containerTest(
+    "unarchives declared queues, keeps overrides, and leaves undeclared archived queues alone",
+    async ({ prisma }) => {
+      const { project, devEnv } = await seedProjectWithEnvs(prisma);
+      const worker = await prisma.backgroundWorker.create({
+        data: {
+          friendlyId: `worker_${devEnv.id}`,
+          contentHash: "archived-queue-content",
+          version: "20260928.1",
+          metadata: {},
+          projectId: project.id,
+          runtimeEnvironmentId: devEnv.id,
+        },
+      });
+      const archivedAt = new Date("2026-09-01T00:00:00Z");
+      const overriddenAt = new Date("2026-09-02T00:00:00Z");
+      const declared = await prisma.taskQueue.create({
+        data: {
+          friendlyId: `queue_${devEnv.id}_declared`,
+          name: "duplicate-task-queue",
+          type: "NAMED",
+          version: "V2",
+          concurrencyLimit: 3,
+          concurrencyLimitOverriddenAt: overriddenAt,
+          concurrencyLimitBase: 10,
+          archivedAt,
+          projectId: project.id,
+          runtimeEnvironmentId: devEnv.id,
+        },
+      });
+      const undeclared = await prisma.taskQueue.create({
+        data: {
+          friendlyId: `queue_${devEnv.id}_undeclared`,
+          name: "old-queue",
+          type: "NAMED",
+          version: "V2",
+          archivedAt,
+          projectId: project.id,
+          runtimeEnvironmentId: devEnv.id,
+        },
+      });
+      const environment = { ...asEnv(devEnv), project } as AuthenticatedEnvironment;
+
+      await prisma.$transaction((tx) =>
+        createWorkerResources(workerMetadata("redeploy"), worker, environment, tx)
+      );
+
+      const declaredAfter = await prisma.taskQueue.findUniqueOrThrow({
+        where: { id: declared.id },
+      });
+      expect(declaredAfter.archivedAt).toBeNull();
+      expect(declaredAfter.concurrencyLimit).toBe(3);
+      expect(declaredAfter.concurrencyLimitOverriddenAt).toEqual(overriddenAt);
+
+      const undeclaredAfter = await prisma.taskQueue.findUniqueOrThrow({
+        where: { id: undeclared.id },
+      });
+      expect(undeclaredAfter.archivedAt).toEqual(archivedAt);
+    }
+  );
+});
+
 describe("declarative schedule preflight", () => {
   containerTest("rejects identical retries before persisting a worker", async ({ prisma }) => {
     const { project, devEnv } = await seedProjectWithEnvs(prisma);

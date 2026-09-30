@@ -1,10 +1,26 @@
-import { AdjustmentsHorizontalIcon, PauseIcon, PlayIcon } from "@heroicons/react/20/solid";
+import {
+  AdjustmentsHorizontalIcon,
+  ArchiveBoxArrowDownIcon,
+  ArchiveBoxXMarkIcon,
+  PauseIcon,
+  PlayIcon,
+} from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { Form, useNavigation } from "@remix-run/react";
+import { Form, useFetcher, useNavigation } from "@remix-run/react";
 import { useEffect, useState } from "react";
 import { cn } from "~/utils/cn";
 import type { QueueLimits } from "~/components/queues/queue-limits";
-import { Button, type ButtonVariant } from "~/components/primitives/Buttons";
+import { Button, type ButtonVariant, LinkButton } from "~/components/primitives/Buttons";
+import { useEnvironment } from "~/hooks/useEnvironment";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { useProject } from "~/hooks/useProject";
+import type { ArchiveCheckResult } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues.$queueParam.archive-check";
+import {
+  type EnvironmentForPath,
+  type OrgForPath,
+  type ProjectForPath,
+  v3RunsPath,
+} from "~/utils/pathBuilder";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
@@ -24,9 +40,10 @@ import {
 } from "~/components/primitives/Tooltip";
 
 // Per-queue action controls. Extracted from the Queues list route so the queue detail page can
-// reuse them. Both submit a `<Form method="post">` to the current route, so whichever route renders
-// them must handle the `queue-pause` / `queue-resume` / `queue-override` / `queue-remove-override`
-// actions (see `handleQueueMutationAction` in `~/models/queueMutation.server`).
+// reuse them. They submit a `<Form method="post">` to the current route, so whichever route renders
+// them must handle the `queue-pause` / `queue-resume` / `queue-override` / `queue-remove-override` /
+// `queue-archive` / `queue-unarchive` actions (see `handleQueueMutationAction` in
+// `~/models/queueMutation.server`).
 
 export function QueuePauseResumeButton({
   queue,
@@ -590,6 +607,188 @@ export function QueueOverrideConcurrencyButton({
             />
           </Form>
         </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function archiveCheckPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  queueFriendlyId: string
+) {
+  return `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/queues/${queueFriendlyId}/archive-check`;
+}
+
+export function QueueArchiveButton({
+  queue,
+  trigger = "menu",
+  disabled = false,
+  lastOnPage = false,
+  onDone,
+}: {
+  /** The "id" here is a friendlyId */
+  queue: { id: string; name: string; type: "task" | "custom"; archivedAt: Date | null };
+  /** The only row on a later page, so archiving it should go back a page. */
+  lastOnPage?: boolean;
+  /** "menu" renders a row-menu item; "button" a standalone button for the detail page. */
+  trigger?: "menu" | "button";
+  disabled?: boolean;
+  /** Called after submitting, e.g. to close the row menu that hosts this control. */
+  onDone?: () => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+  const check = useFetcher<ArchiveCheckResult>();
+  const noPermission = "You don't have permission to manage queues";
+
+  if (queue.archivedAt) {
+    return (
+      <Form method="post" onSubmit={() => onDone?.()}>
+        <input type="hidden" name="action" value="queue-unarchive" />
+        <input type="hidden" name="friendlyId" value={queue.id} />
+        {trigger === "button" ? (
+          <Button
+            type="submit"
+            variant="secondary/small"
+            LeadingIcon={ArchiveBoxXMarkIcon}
+            disabled={disabled}
+            tooltip={disabled ? noPermission : undefined}
+          >
+            Unarchive
+          </Button>
+        ) : (
+          <PopoverMenuItem
+            type="submit"
+            icon={ArchiveBoxXMarkIcon}
+            leadingIconClassName="text-text-dimmed"
+            title={disabled ? noPermission : "Unarchive"}
+            disabled={disabled}
+          />
+        )}
+      </Form>
+    );
+  }
+
+  const openDialog = (open: boolean) => {
+    setIsOpen(open);
+    if (open) {
+      check.load(archiveCheckPath(organization, project, environment, queue.id));
+    }
+  };
+
+  const result = check.state === "idle" ? check.data : undefined;
+  const queueFilterName = queue.type === "task" ? `task/${queue.name}` : queue.name;
+
+  return (
+    <Dialog open={isOpen} onOpenChange={openDialog}>
+      <DialogTrigger asChild>
+        {trigger === "button" ? (
+          <Button
+            type="button"
+            variant="secondary/small"
+            LeadingIcon={ArchiveBoxArrowDownIcon}
+            disabled={disabled}
+            tooltip={disabled ? noPermission : undefined}
+          >
+            Archive…
+          </Button>
+        ) : (
+          <PopoverMenuItem
+            icon={ArchiveBoxArrowDownIcon}
+            leadingIconClassName="text-text-dimmed"
+            title={disabled ? noPermission : "Archive..."}
+            disabled={disabled}
+          />
+        )}
+      </DialogTrigger>
+      <DialogContent>
+        {result === undefined ? (
+          <>
+            <DialogHeader>Archive queue?</DialogHeader>
+            <div className="flex items-center gap-2 pt-3">
+              <Spinner className="size-4" />
+              <Paragraph>Checking whether this queue can be archived…</Paragraph>
+            </div>
+          </>
+        ) : result.archivable ? (
+          <>
+            <DialogHeader>Archive queue?</DialogHeader>
+            <div className="flex flex-col gap-3 pt-3">
+              <Paragraph>
+                {`This hides the "${queue.name}" queue from this list. It doesn't affect any runs, and its limits and settings are kept.`}
+              </Paragraph>
+              <Paragraph>
+                If a future deploy declares this queue again, it will be unarchived automatically.
+                You can also find it with the "Show archived" toggle.
+              </Paragraph>
+              <Form
+                method="post"
+                onSubmit={() => {
+                  setIsOpen(false);
+                  onDone?.();
+                }}
+              >
+                <input type="hidden" name="action" value="queue-archive" />
+                <input type="hidden" name="friendlyId" value={queue.id} />
+                {lastOnPage ? <input type="hidden" name="lastOnPage" value="true" /> : null}
+                <FormButtons
+                  confirmButton={
+                    <Button
+                      type="submit"
+                      shortcut={{ modifiers: ["mod"], key: "enter" }}
+                      variant="primary/medium"
+                      LeadingIcon={ArchiveBoxArrowDownIcon}
+                    >
+                      Archive queue
+                    </Button>
+                  }
+                  cancelButton={
+                    <DialogClose asChild>
+                      <Button type="button" variant="secondary/medium">
+                        Cancel
+                      </Button>
+                    </DialogClose>
+                  }
+                />
+              </Form>
+            </div>
+          </>
+        ) : (
+          <>
+            <DialogHeader>Can't archive this queue yet</DialogHeader>
+            <div className="flex flex-col gap-3 pt-3">
+              <Paragraph>{result.reason}</Paragraph>
+              <FormButtons
+                confirmButton={
+                  result.activeRuns ? (
+                    <LinkButton
+                      variant="secondary/medium"
+                      to={v3RunsPath(organization, project, environment, {
+                        queues: [queueFilterName],
+                        statuses: ["PENDING", "DEQUEUED", "EXECUTING"],
+                        period: "30d",
+                        rootOnly: false,
+                      })}
+                    >
+                      View runs
+                    </LinkButton>
+                  ) : undefined
+                }
+                cancelButton={
+                  <DialogClose asChild>
+                    <Button type="button" variant="secondary/medium">
+                      Close
+                    </Button>
+                  </DialogClose>
+                }
+              />
+            </div>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );

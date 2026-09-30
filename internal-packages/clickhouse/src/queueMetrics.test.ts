@@ -365,6 +365,7 @@ describe("queue_metrics_v1", () => {
         startTime: RANKING_START_TIME,
         nameContains: "rank-",
         byQueuedOnly: 0,
+        excludeNames: [] as string[],
       };
       const [pageError, page] = await ch.queueMetrics.ranking({ ...args, limit: 2, offset: 0 });
       expect(pageError).toBeNull();
@@ -380,6 +381,27 @@ describe("queue_metrics_v1", () => {
       const [namesError, names] = await ch.queueMetrics.rankingNames({ ...args, limit: 10 });
       expect(namesError).toBeNull();
       expect(names!.map((r) => r.queue_name)).toEqual(["rank-high", "rank-mid", "rank-low"]);
+
+      const excluded = { ...args, excludeNames: ["rank-high"] };
+      const [exPageError, exPage] = await ch.queueMetrics.ranking({
+        ...excluded,
+        limit: 2,
+        offset: 0,
+      });
+      expect(exPageError).toBeNull();
+      expect(exPage).toEqual([
+        { queue_name: "rank-mid", ranked_total: 2 },
+        { queue_name: "rank-low", ranked_total: 2 },
+      ]);
+      const [exCountError, exCount] = await ch.queueMetrics.rankingCount(excluded);
+      expect(exCountError).toBeNull();
+      expect(exCount![0]!.ranked).toBe(2);
+      const [exNamesError, exNames] = await ch.queueMetrics.rankingNames({
+        ...excluded,
+        limit: 10,
+      });
+      expect(exNamesError).toBeNull();
+      expect(exNames!.map((r) => r.queue_name)).toEqual(["rank-mid", "rank-low"]);
 
       await ch.close();
     }

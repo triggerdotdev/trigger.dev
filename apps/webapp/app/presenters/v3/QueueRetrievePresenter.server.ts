@@ -111,7 +111,7 @@ export class QueueRetrievePresenter extends BasePresenter {
     ]);
 
     /** The returned queue = the public QueueItem fields plus dashboard extras
-     * (percent override source, configured bounds); the public API routes strip
+     * (percent override source, configured bounds, archive state); the public API routes strip
      * the extras via `toPublicQueueItem`. Prisma returns Decimal for the
      * percent; the client only needs a plain number (null for absolute). */
     return {
@@ -141,6 +141,7 @@ export class QueueRetrievePresenter extends BasePresenter {
             queue.concurrencyLimitOverriddenBy ?? null
           ),
         }),
+        archivedAt: queue.archivedAt,
       },
     };
   }

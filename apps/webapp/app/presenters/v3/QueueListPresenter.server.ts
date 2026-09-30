@@ -16,6 +16,7 @@ type QueueListEngine = Pick<
   | "currentConcurrencyOfQueues"
   | "totalConcurrencyOfQueues"
   | "gateQueuedCountOfQueues"
+  | "inFlightCountOfQueues"
 >;
 
 export const QUEUE_LIST_DEFAULT_ITEMS_PER_PAGE = 25;
@@ -23,9 +24,16 @@ const MAX_ITEMS_PER_PAGE = 100;
 
 export type QueueListSort = "busiest" | "queued" | "name";
 
+/** Only the dashboard hides archived queues; the public API keeps listing them. */
+export type QueueListArchived = "include" | "exclude";
+
 /** Ranking reads recent aggregated gauges, so ordering is a stable snapshot, not a live sort. */
 const QUEUE_RANKING_WINDOW_MINUTES = 15;
 const MAX_RANKED_QUEUES = 5000;
+/** Past this many archived queues, the ranked sorts fall back to name order. */
+const MAX_EXCLUDED_ARCHIVED_NAMES = 500;
+/** Bounds the page-load activity check over archived queues. */
+const MAX_ARCHIVED_ACTIVITY_CHECK = 250;
 
 const typeToDBQueueType: Record<"task" | "custom", TaskQueueType> = {
   task: TaskQueueType.VIRTUAL,
@@ -48,6 +56,7 @@ const queueListSelect = {
   paused: true,
   role: true,
   concurrencyVersion: true,
+  archivedAt: true,
 } satisfies Prisma.TaskQueueSelect;
 
 type QueueListRow = Prisma.TaskQueueGetPayload<{ select: typeof queueListSelect }>;
@@ -62,6 +71,7 @@ type QueueListItem = ReturnType<typeof toQueueItem> & {
   concurrencyVersion: "V1" | "V2";
   /** The row's configured bounds, dashboard-only (the public shape hides them on V2). */
   limits: QueueLimits;
+  archivedAt: Date | null;
 };
 
 type QueueListPagination =
@@ -73,6 +83,8 @@ export type QueueListResult = {
   pagination: QueueListPagination;
   totalQueues?: number;
   hasFilters: boolean;
+  /** Archived queues that still have queued or running runs, for the warning and badges. */
+  activeArchivedQueues?: QueueListItem[];
 };
 
 function formatClickhouseDateTime(date: Date): string {
@@ -83,7 +95,8 @@ function buildQueueListWhere(
   environmentId: string,
   query: string | undefined,
   type: "task" | "custom" | undefined,
-  includeLimits: boolean
+  includeLimits: boolean,
+  archived: QueueListArchived
 ): Prisma.TaskQueueWhereInput {
   const trimmedQuery = query?.trim();
 
@@ -97,6 +110,7 @@ function buildQueueListWhere(
         }
       : undefined,
     type: type ? typeToDBQueueType[type] : undefined,
+    archivedAt: archived === "exclude" ? null : undefined,
   };
 
   /** Only the dashboard interleaves named limits, and the type filter names queue
@@ -149,6 +163,8 @@ export class QueueListPresenter extends BasePresenter {
     type,
     sort = "name",
     includeLimits = false,
+    archived = "include",
+    detectArchivedActivity = false,
   }: {
     environment: AuthenticatedEnvironment;
     query?: string;
@@ -157,6 +173,46 @@ export class QueueListPresenter extends BasePresenter {
     type?: "task" | "custom";
     sort?: QueueListSort;
     includeLimits?: boolean;
+    archived?: QueueListArchived;
+    /** Dashboard only: find archived queues that still have runs, for the alert and badges. */
+    detectArchivedActivity?: boolean;
+  }): Promise<QueueListResult> {
+    const result = await this.list({
+      environment,
+      query,
+      page,
+      type,
+      sort,
+      includeLimits,
+      archived,
+    });
+
+    if (!detectArchivedActivity) {
+      return result;
+    }
+
+    return {
+      ...result,
+      activeArchivedQueues: await this.getActiveArchivedQueues(environment, query, type),
+    };
+  }
+
+  private async list({
+    environment,
+    query,
+    page,
+    type,
+    sort,
+    includeLimits,
+    archived,
+  }: {
+    environment: AuthenticatedEnvironment;
+    query?: string;
+    page: number;
+    type?: "task" | "custom";
+    sort: QueueListSort;
+    includeLimits: boolean;
+    archived: QueueListArchived;
   }): Promise<QueueListResult> {
     const hasFilters = Boolean(query?.trim()) || type !== undefined;
 
@@ -169,7 +225,8 @@ export class QueueListPresenter extends BasePresenter {
           page,
           type,
           sort,
-          includeLimits
+          includeLimits,
+          archived
         );
         if (ranked) {
           return ranked;
@@ -185,7 +242,8 @@ export class QueueListPresenter extends BasePresenter {
         query,
         page,
         type,
-        includeLimits
+        includeLimits,
+        archived
       );
 
       return {
@@ -200,11 +258,11 @@ export class QueueListPresenter extends BasePresenter {
     }
 
     const totalQueues = await this._replica.taskQueue.count({
-      where: buildQueueListWhere(environment.id, query, type, includeLimits),
+      where: buildQueueListWhere(environment.id, query, type, includeLimits, archived),
     });
 
     return {
-      queues: await this.getUnfilteredQueues(environment, page, type, includeLimits),
+      queues: await this.getUnfilteredQueues(environment, page, type, includeLimits, archived),
       pagination: {
         mode: "unfiltered" as const,
         currentPage: page,
@@ -226,7 +284,8 @@ export class QueueListPresenter extends BasePresenter {
     page: number,
     type: "task" | "custom" | undefined,
     sort: Exclude<QueueListSort, "name">,
-    includeLimits: boolean
+    includeLimits: boolean,
+    archived: QueueListArchived
   ) {
     if (type !== undefined) {
       return null;
@@ -251,9 +310,16 @@ export class QueueListPresenter extends BasePresenter {
 
     const offset = (page - 1) * this.perPage;
 
+    // Hidden archived queues must not take ranked slots, or queues fall off the last page.
+    const excludeNames = archived === "exclude" ? await this.findArchivedNames(environment.id) : [];
+    if (excludeNames.length > MAX_EXCLUDED_ARCHIVED_NAMES) {
+      return null;
+    }
+
     // One scan returns the page and the total ranked count (window function).
     const [pageError, pageRows] = await clickhouse.queueMetrics.ranking({
       ...rankingArgs,
+      excludeNames,
       byQueuedOnly: sort === "queued" ? 1 : 0,
       limit: this.perPage,
       offset,
@@ -265,7 +331,10 @@ export class QueueListPresenter extends BasePresenter {
     let ranked = pageRows?.[0]?.ranked_total ?? 0;
     if (ranked === 0 && offset > 0) {
       // Empty page past the ranked head: fetch the count alone for the tail slot math.
-      const [countError, countRows] = await clickhouse.queueMetrics.rankingCount(rankingArgs);
+      const [countError, countRows] = await clickhouse.queueMetrics.rankingCount({
+        ...rankingArgs,
+        excludeNames,
+      });
       if (countError) {
         throw countError;
       }
@@ -275,7 +344,7 @@ export class QueueListPresenter extends BasePresenter {
       return null;
     }
 
-    const where = buildQueueListWhere(environment.id, query, type, includeLimits);
+    const where = buildQueueListWhere(environment.id, query, type, includeLimits, archived);
     const totalQueues = await this._replica.taskQueue.count({ where });
 
     let rankedPageQueues: QueueListRow[] = [];
@@ -294,6 +363,7 @@ export class QueueListPresenter extends BasePresenter {
       if (ranked > 0) {
         const [allError, allRows] = await clickhouse.queueMetrics.rankingNames({
           ...rankingArgs,
+          excludeNames,
           limit: MAX_RANKED_QUEUES,
         });
         if (allError) {
@@ -327,6 +397,16 @@ export class QueueListPresenter extends BasePresenter {
     };
   }
 
+  /** Capped one past the limit so the caller can fall back to name order. */
+  private async findArchivedNames(environmentId: string): Promise<string[]> {
+    const queues = await this._replica.taskQueue.findMany({
+      where: { runtimeEnvironmentId: environmentId, archivedAt: { not: null } },
+      select: { name: true },
+      take: MAX_EXCLUDED_ARCHIVED_NAMES + 1,
+    });
+    return queues.map((queue) => queue.name);
+  }
+
   private async findQueuesByNames(
     where: Prisma.TaskQueueWhereInput,
     names: string[]
@@ -342,15 +422,56 @@ export class QueueListPresenter extends BasePresenter {
     return names.flatMap((name) => byName.get(name) ?? []);
   }
 
+  private async getActiveArchivedQueues(
+    environment: AuthenticatedEnvironment,
+    query: string | undefined,
+    type: "task" | "custom" | undefined
+  ): Promise<QueueListItem[]> {
+    const archivedQueues = await this._replica.taskQueue.findMany({
+      where: {
+        AND: [
+          buildQueueListWhere(environment.id, query, type, false, "include"),
+          { archivedAt: { not: null } },
+        ],
+      },
+      select: queueListSelect,
+      orderBy: { archivedAt: "desc" },
+      take: MAX_ARCHIVED_ACTIVITY_CHECK,
+    });
+
+    if (archivedQueues.length === 0) {
+      return [];
+    }
+
+    if (archivedQueues.length === MAX_ARCHIVED_ACTIVITY_CHECK) {
+      logger.warn("Archived queue activity check hit its cap", {
+        environmentId: environment.id,
+        cap: MAX_ARCHIVED_ACTIVITY_CHECK,
+      });
+    }
+
+    const names = archivedQueues.map((q) => q.name);
+    const counts = await Promise.all([
+      this.engineClient.lengthOfQueues(environment, names),
+      this.engineClient.currentConcurrencyOfQueues(environment, names),
+      this.engineClient.inFlightCountOfQueues(environment, names),
+    ]);
+
+    const active = archivedQueues.filter((q) => counts.some((count) => (count[q.name] ?? 0) > 0));
+
+    return active.length > 0 ? this.enrichQueues(environment, active) : [];
+  }
+
   private async getFilteredQueues(
     environment: AuthenticatedEnvironment,
     query: string | undefined,
     page: number,
     type: "task" | "custom" | undefined,
-    includeLimits: boolean
+    includeLimits: boolean,
+    archived: QueueListArchived
   ) {
     const queues = await this._replica.taskQueue.findMany({
-      where: buildQueueListWhere(environment.id, query, type, includeLimits),
+      where: buildQueueListWhere(environment.id, query, type, includeLimits, archived),
       select: queueListSelect,
       orderBy: {
         orderableName: "asc",
@@ -371,10 +492,11 @@ export class QueueListPresenter extends BasePresenter {
     environment: AuthenticatedEnvironment,
     page: number,
     type: "task" | "custom" | undefined,
-    includeLimits: boolean
+    includeLimits: boolean,
+    archived: QueueListArchived
   ) {
     const queues = await this._replica.taskQueue.findMany({
-      where: buildQueueListWhere(environment.id, undefined, type, includeLimits),
+      where: buildQueueListWhere(environment.id, undefined, type, includeLimits, archived),
       select: queueListSelect,
       orderBy: {
         orderableName: "asc",
@@ -404,6 +526,7 @@ export class QueueListPresenter extends BasePresenter {
       paused: boolean;
       role: "QUEUE" | "LIMIT";
       concurrencyVersion: "V1" | "V2";
+      archivedAt: Date | null;
     }[]
   ): Promise<QueueListItem[]> {
     const queueRows = queues.filter((q) => q.role === "QUEUE");
@@ -490,6 +613,7 @@ export class QueueListPresenter extends BasePresenter {
             ? (overriddenByUser.displayName ?? overriddenByUser.name ?? null)
             : null,
         }),
+        archivedAt: queue.archivedAt,
       };
     });
   }

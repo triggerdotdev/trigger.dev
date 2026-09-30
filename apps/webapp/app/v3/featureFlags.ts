@@ -50,6 +50,7 @@ export const FEATURE_FLAG = {
   freeScheduleMinimumWindowEnabled: "freeScheduleMinimumWindowEnabled",
   deployNowEnabled: "deployNowEnabled",
   apiRateLimitMetricsEnabled: "apiRateLimitMetricsEnabled",
+  queueArchivingEnabled: "queueArchivingEnabled",
 } as const;
 
 export const FeatureFlagCatalog = {
@@ -177,6 +178,7 @@ export const FeatureFlagCatalog = {
   // Strict z.boolean() (not z.coerce.boolean()): coercion reads the string
   // "false" as true, which would enable an off-by-default gate.
   [FEATURE_FLAG.deployNowEnabled]: z.boolean(),
+  [FEATURE_FLAG.queueArchivingEnabled]: z.boolean(),
 };
 
 export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;
