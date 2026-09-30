@@ -28,6 +28,8 @@ type DelayedSnapshot = {
   runnerId: string;
   runFriendlyId: string;
   snapshotFriendlyId: string;
+  /** From the caller's verified deployment token, when it carried one. */
+  owner?: RunnerOwner;
 };
 
 export type RunTraceContext = {
@@ -37,12 +39,53 @@ export type RunTraceContext = {
   projectId: string;
 };
 
+export type RunnerSuspendResult = { ok: true; location: string } | { ok: false; error: string };
+export type RunnerSuspendRequested = { ok: true } | { ok: false; error: string };
+type RunnerOwner = { envId: string; deploymentFriendlyId: string };
+export type RunnerSuspendRequest = {
+  runnerId: string;
+  runFriendlyId: string;
+  snapshotFriendlyId: string;
+  owner?: RunnerOwner;
+};
+export type PublishedSuspend = {
+  runnerId: string;
+  runFriendlyId: string;
+  snapshotFriendlyId: string;
+  outcome: RunnerSuspendResult;
+};
+
+const SUSPEND_RECOVERY_INTERVAL_MS = 60_000;
+
+/**
+ * A backend that takes the snapshot and answers with the outcome itself,
+ * rather than through the callback route. Only the request counts against the
+ * dispatch limit: the wait lasts as long as the snapshot, and a queue behind it
+ * would hold suspends that can no longer be cancelled.
+ */
+export interface RunnerSnapshotter {
+  snapshotDelayMs: number;
+  snapshotDispatchLimit: number;
+  requestSuspend(opts: RunnerSuspendRequest): Promise<RunnerSuspendRequested>;
+  awaitSuspend(opts: {
+    runnerId: string;
+    snapshotFriendlyId: string;
+  }): Promise<RunnerSuspendResult>;
+  /** Answered suspends not yet marked submitted, which outlive this process. */
+  publishedSuspends(): Promise<PublishedSuspend[]>;
+  publishedSuspendOf(runnerId: string): Promise<PublishedSuspend | undefined>;
+  markSuspendSubmitted(opts: { runnerId: string; snapshotFriendlyId: string }): Promise<void>;
+}
+
 export type ComputeSnapshotServiceOptions = {
-  computeManager: ComputeWorkloadManager;
+  /** Exactly one of these two takes the snapshots. */
+  computeManager?: ComputeWorkloadManager;
+  runnerSnapshotter?: RunnerSnapshotter;
   workerClient: SupervisorHttpClient;
   tracing?: OtlpTraceService;
   wideEventOpts: WideEventOptions;
   snapshotCallbackSecret: string;
+  suspendRecoveryIntervalMs?: number;
 };
 
 export class ComputeSnapshotService {
@@ -53,35 +96,47 @@ export class ComputeSnapshotService {
   private readonly timerWheel: TimerWheel<DelayedSnapshot>;
   private readonly dispatchLimit: ReturnType<typeof pLimit>;
 
-  private readonly computeManager: ComputeWorkloadManager;
+  private readonly computeManager?: ComputeWorkloadManager;
+  private readonly runnerSnapshotter?: RunnerSnapshotter;
+  private readonly snapshotDelayMs: number;
   private readonly workerClient: SupervisorHttpClient;
   private readonly tracing?: OtlpTraceService;
   private readonly wideEventOpts: WideEventOptions;
   private readonly snapshotCallbackKey: Buffer;
+  private readonly suspendsInFlight = new Set<string>();
+  private suspendRecoveryTimer?: ReturnType<typeof setInterval>;
+  private recoveringSuspends = false;
 
   constructor(opts: ComputeSnapshotServiceOptions) {
     this.computeManager = opts.computeManager;
+    this.runnerSnapshotter = opts.runnerSnapshotter;
+    const backend = opts.computeManager ?? opts.runnerSnapshotter;
+    if (!backend || (opts.computeManager && opts.runnerSnapshotter)) {
+      throw new Error("exactly one of computeManager and runnerSnapshotter is required");
+    }
+    this.snapshotDelayMs = backend.snapshotDelayMs;
     this.workerClient = opts.workerClient;
     this.tracing = opts.tracing;
     this.wideEventOpts = opts.wideEventOpts;
 
-    // Reject an empty secret up front: an empty HMAC key would make callback
-    // tokens forgeable by anyone. Guarding here (rather than only at env parse)
-    // also covers the case where the secret is read from an empty file.
+    // An empty HMAC key makes callback tokens forgeable. Checked here as well as at
+    // env parse because the secret may come from an empty file.
     if (!opts.snapshotCallbackSecret) {
       throw new Error("snapshotCallbackSecret must not be empty");
     }
-    // Derive a dedicated key by domain separation so the raw secret is never
-    // used directly as a MAC key for this protocol.
+    // Domain separation, so the raw secret is never used directly as this protocol's MAC key.
     this.snapshotCallbackKey = createHmac("sha256", opts.snapshotCallbackSecret)
       .update(SNAPSHOT_CALLBACK_KEY_INFO)
       .digest();
 
-    this.dispatchLimit = pLimit(this.computeManager.snapshotDispatchLimit);
+    this.dispatchLimit = pLimit(backend.snapshotDispatchLimit);
     this.timerWheel = new TimerWheel<DelayedSnapshot>({
-      delayMs: this.computeManager.snapshotDelayMs,
+      delayMs: this.snapshotDelayMs,
       onExpire: (item) => {
-        this.dispatchLimit(() => this.dispatch(item.data)).catch((error) => {
+        const dispatched = this.runnerSnapshotter
+          ? this.dispatch(item.data)
+          : this.dispatchLimit(() => this.dispatch(item.data));
+        dispatched.catch((error) => {
           this.logger.error("Snapshot dispatch failed", {
             runId: item.data.runFriendlyId,
             runnerId: item.data.runnerId,
@@ -91,6 +146,124 @@ export class ComputeSnapshotService {
       },
     });
     this.timerWheel.start();
+
+    if (this.runnerSnapshotter) {
+      this.suspendRecoveryTimer = setInterval(
+        () => void this.recoverSuspends(),
+        opts.suspendRecoveryIntervalMs ?? SUSPEND_RECOVERY_INTERVAL_MS
+      );
+      this.suspendRecoveryTimer.unref();
+      void this.recoverSuspends();
+    }
+  }
+
+  /**
+   * Submits suspend outcomes the backend published that no process delivered,
+   * such as one answered while the supervisor restarted, or whose submission
+   * failed. A repeat is harmless: the platform discards a checkpoint for a
+   * snapshot that is no longer current.
+   */
+  async recoverSuspends(): Promise<void> {
+    const runnerSnapshotter = this.runnerSnapshotter;
+    if (!runnerSnapshotter || this.recoveringSuspends) {
+      return;
+    }
+    this.recoveringSuspends = true;
+    try {
+      const published = await runnerSnapshotter.publishedSuspends();
+      for (const suspend of published) {
+        if (this.suspendsInFlight.has(suspendKey(suspend))) {
+          continue;
+        }
+        await runWideEvent(
+          {
+            ...this.wideEventOpts,
+            op: "snapshot.recover",
+            kind: "scheduled",
+            setup: (state) => {
+              state.meta.run_id = suspend.runFriendlyId;
+              state.meta.snapshot_id = suspend.snapshotFriendlyId;
+              state.extras.runner_id = suspend.runnerId;
+            },
+          },
+          () => this.#deliverSuspend(runnerSnapshotter, suspend, suspend.outcome)
+        );
+      }
+    } catch (error) {
+      this.logger.error("Suspend recovery failed", { error });
+    } finally {
+      this.recoveringSuspends = false;
+    }
+  }
+
+  /**
+   * Submits the outcome, then marks it on the Runner so recovery skips it.
+   * Returns whether the platform accepted it.
+   */
+  async #deliverSuspend(
+    runnerSnapshotter: RunnerSnapshotter,
+    target: { runnerId: string; runFriendlyId: string; snapshotFriendlyId: string },
+    outcome: RunnerSuspendResult
+  ): Promise<boolean> {
+    if (!(await this.#submitCompletion(target.runFriendlyId, target.snapshotFriendlyId, outcome))) {
+      return false;
+    }
+    try {
+      await runnerSnapshotter.markSuspendSubmitted({
+        runnerId: target.runnerId,
+        snapshotFriendlyId: target.snapshotFriendlyId,
+      });
+    } catch (error) {
+      this.logger.warn("Failed to mark suspend submitted", {
+        runnerId: target.runnerId,
+        snapshotFriendlyId: target.snapshotFriendlyId,
+        error,
+      });
+    }
+    return true;
+  }
+
+  /**
+   * The Runner's status holds only the latest answer, so a new request may
+   * replace an earlier one that never reached the platform, leaving nothing
+   * for recovery to find. That one is delivered first, and while it cannot be,
+   * the new request is refused so the earlier answer stays on the Runner.
+   */
+  async #deliverEarlierSuspend(
+    runnerSnapshotter: RunnerSnapshotter,
+    target: { runnerId: string; snapshotFriendlyId: string }
+  ): Promise<RunnerSuspendRequested> {
+    // An answer its own waiter has yet to read or submit is just as easy to
+    // replace, so any other suspend of ours on this Runner holds a new one off.
+    const ownKey = suspendKey(target);
+    const prefix = `${target.runnerId}/`;
+    for (const key of this.suspendsInFlight) {
+      if (key !== ownKey && key.startsWith(prefix)) {
+        return {
+          ok: false,
+          error: "an earlier suspend on this Runner is still in flight; retry later",
+        };
+      }
+    }
+    let earlier: PublishedSuspend | undefined;
+    try {
+      earlier = await runnerSnapshotter.publishedSuspendOf(target.runnerId);
+    } catch (error) {
+      return {
+        ok: false,
+        error: `suspend request failed: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+    if (!earlier || earlier.snapshotFriendlyId === target.snapshotFriendlyId) {
+      return { ok: true };
+    }
+    if (await this.#deliverSuspend(runnerSnapshotter, earlier, earlier.outcome)) {
+      return { ok: true };
+    }
+    return {
+      ok: false,
+      error: "an earlier suspend on this Runner has not reached the platform yet; retry later",
+    };
   }
 
   /** Schedule a delayed snapshot for a run. Replaces any pending snapshot for the same run. */
@@ -104,21 +277,19 @@ export class ComputeSnapshotService {
         state.meta.run_id = runFriendlyId;
         state.meta.snapshot_id = data.snapshotFriendlyId;
         state.extras.runner_id = data.runnerId;
-        state.extras.delay_ms = this.computeManager.snapshotDelayMs;
+        state.extras.delay_ms = this.snapshotDelayMs;
       },
     });
     this.logger.debug("Snapshot scheduled", {
       runFriendlyId,
       snapshotFriendlyId: data.snapshotFriendlyId,
-      delayMs: this.computeManager.snapshotDelayMs,
+      delayMs: this.snapshotDelayMs,
     });
   }
 
   /**
-   * Cancel a pending delayed snapshot. Returns true if one was cancelled.
-   * When `runnerId` is given, only a snapshot scheduled for that same runner
-   * is cancelled - a stale runner for a run that has since been reassigned
-   * must not cancel the new runner's pending snapshot.
+   * Returns true if a pending snapshot was cancelled. With `runnerId`, only that
+   * runner's snapshot, so a stale runner cannot cancel a reassigned run's snapshot.
    */
   cancel(runFriendlyId: string, runnerId?: string): boolean {
     if (runnerId) {
@@ -148,10 +319,8 @@ export class ComputeSnapshotService {
     const runId = body.metadata?.runId;
     const snapshotFriendlyId = body.metadata?.snapshotFriendlyId;
 
-    // Enrich the wrapping route's wide event with snapshot metadata. The
-    // `/api/v1/compute/snapshot-complete` route is registered with `wideRoute`,
-    // so `fromContext()` returns the State of that route and these calls
-    // become extras/meta on the same wide event - no nested emission.
+    // The callback route is registered with `wideRoute`, so `fromContext()` is that
+    // route's state and these land on its wide event rather than a nested one.
     const state = fromContext();
     if (state) {
       state.extras["snapshot.status"] = body.status;
@@ -193,73 +362,55 @@ export class ComputeSnapshotService {
 
     this.#emitSnapshotSpan(runId, body.duration_ms, snapshotId);
 
-    if (body.status === "completed") {
-      const submitStart = performance.now();
-      const result = await this.workerClient.submitSuspendCompletion({
-        runId,
-        snapshotId: snapshotFriendlyId,
-        body: {
-          success: true,
-          checkpoint: {
-            type: "COMPUTE",
-            location: body.snapshot_id,
-          },
-        },
-      });
-      recordPhaseSince(
-        "submit_completion",
-        submitStart,
-        result.success ? undefined : new Error(String(result.error))
-      );
-
-      if (result.success) {
-        this.logger.debug("Suspend completion submitted", {
-          runId,
-          instanceId: body.instance_id,
-          snapshotId: body.snapshot_id,
-        });
-      } else {
-        setExtra(state, "submit_completion.error", String(result.error));
-        this.logger.error("Failed to submit suspend completion", {
-          runId,
-          snapshotFriendlyId,
-          error: result.error,
-        });
-      }
-    } else {
-      const submitStart = performance.now();
-      const result = await this.workerClient.submitSuspendCompletion({
-        runId,
-        snapshotId: snapshotFriendlyId,
-        body: {
-          success: false,
-          error: body.error ?? "Snapshot failed",
-        },
-      });
-      recordPhaseSince(
-        "submit_completion",
-        submitStart,
-        result.success ? undefined : new Error(String(result.error))
-      );
-
-      if (!result.success) {
-        setExtra(state, "submit_completion.error", String(result.error));
-        this.logger.error("Failed to submit suspend failure", {
-          runId,
-          snapshotFriendlyId,
-          error: result.error,
-        });
-      }
-    }
+    await this.#submitCompletion(
+      runId,
+      snapshotFriendlyId,
+      body.status === "completed"
+        ? { ok: true, location: body.snapshot_id }
+        : { ok: false, error: body.error ?? "Snapshot failed" }
+    );
 
     return { ok: true as const, status: 200 };
   }
 
+  /** Tells the platform how the suspend went, which is what lets the run move on. */
+  async #submitCompletion(
+    runId: string,
+    snapshotFriendlyId: string,
+    outcome: RunnerSuspendResult
+  ): Promise<boolean> {
+    const state = fromContext();
+    const submitStart = performance.now();
+    const result = await this.workerClient.submitSuspendCompletion({
+      runId,
+      snapshotId: snapshotFriendlyId,
+      body: outcome.ok
+        ? { success: true, checkpoint: { type: "COMPUTE", location: outcome.location } }
+        : { success: false, error: outcome.error },
+    });
+    recordPhaseSince(
+      "submit_completion",
+      submitStart,
+      result.success ? undefined : new Error(String(result.error))
+    );
+
+    if (result.success) {
+      this.logger.debug("Suspend completion submitted", { runId, outcome });
+    } else {
+      setExtra(state, "submit_completion.error", String(result.error));
+      this.logger.error("Failed to submit suspend completion", {
+        runId,
+        snapshotFriendlyId,
+        outcome,
+        error: result.error,
+      });
+    }
+    return result.success;
+  }
+
   registerTraceContext(runFriendlyId: string, ctx: RunTraceContext) {
-    // Evict oldest entries if we've hit the cap. This is best-effort: on a busy
-    // supervisor, entries for long-lived runs may be evicted before their snapshot
-    // callback arrives, causing those snapshot spans to be silently dropped.
-    // That's acceptable - trace spans are observability sugar, not correctness.
+    // Best-effort: a long-lived run's entry may be evicted before its callback,
+    // dropping that span. Acceptable, since spans are observability only.
     if (this.runTraceContexts.size >= ComputeSnapshotService.MAX_TRACE_CONTEXTS) {
       const firstKey = this.runTraceContexts.keys().next().value;
       if (firstKey) {
@@ -272,11 +423,9 @@ export class ComputeSnapshotService {
 
   /** Stop the timer wheel, dropping pending snapshots. */
   stop(): string[] {
-    // Intentionally drop pending snapshots rather than dispatching them. The supervisor
-    // is shutting down, so our callback URL will be dead by the time the gateway responds.
-    // Runners detect the supervisor is gone and reconnect to a new instance, which
-    // re-triggers the snapshot workflow. Snapshots are an optimization, not a correctness
-    // requirement - runs continue fine without them.
+    // Not dispatched: the callback URL dies with this process. Runners reconnect to a
+    // new supervisor, which re-triggers the suspend, and runs continue without snapshots.
+    clearInterval(this.suspendRecoveryTimer);
     const remaining = this.timerWheel.stop();
     const droppedRuns = remaining.map((item) => item.key);
 
@@ -288,7 +437,7 @@ export class ComputeSnapshotService {
     return droppedRuns;
   }
 
-  /** Dispatch a snapshot request to the gateway. */
+  /** Dispatch a snapshot request to whichever backend takes them. */
   private async dispatch(snapshot: DelayedSnapshot): Promise<void> {
     await runWideEvent(
       {
@@ -302,8 +451,54 @@ export class ComputeSnapshotService {
         },
       },
       async () => {
+        const runnerSnapshotter = this.runnerSnapshotter;
+        if (runnerSnapshotter) {
+          const target = {
+            runnerId: snapshot.runnerId,
+            snapshotFriendlyId: snapshot.snapshotFriendlyId,
+          };
+          const key = suspendKey(target);
+          this.suspendsInFlight.add(key);
+          try {
+            const requested = await this.dispatchLimit(async () => {
+              const earlier = await this.#deliverEarlierSuspend(runnerSnapshotter, target);
+              if (!earlier.ok) {
+                return earlier;
+              }
+              return runnerSnapshotter.requestSuspend({
+                ...target,
+                runFriendlyId: snapshot.runFriendlyId,
+                owner: snapshot.owner,
+              });
+            });
+            if (!requested.ok) {
+              setExtra(fromContext(), "snapshot.error", requested.error);
+              // Nothing was written to the Runner, so there is nothing to mark.
+              await this.#submitCompletion(
+                snapshot.runFriendlyId,
+                snapshot.snapshotFriendlyId,
+                requested
+              );
+              return;
+            }
+            const outcome = await runnerSnapshotter.awaitSuspend(target);
+            if (!outcome.ok) {
+              setExtra(fromContext(), "snapshot.error", outcome.error);
+            }
+            await this.#deliverSuspend(runnerSnapshotter, snapshot, outcome);
+          } finally {
+            this.suspendsInFlight.delete(key);
+          }
+          return;
+        }
+
+        // The constructor refuses a service with neither backend.
+        const computeManager = this.computeManager;
+        if (!computeManager) {
+          throw new Error("no snapshot backend");
+        }
         const callbackNonce = randomBytes(16).toString("hex");
-        const result = await this.computeManager.snapshot({
+        const result = await computeManager.snapshot({
           runnerId: snapshot.runnerId,
           metadata: {
             runId: snapshot.runFriendlyId,
@@ -335,18 +530,11 @@ export class ComputeSnapshotService {
   }
 
   /**
-   * Verify that a callback carries a token this supervisor issued for the given
-   * run and snapshot. The token binds only the identifiers known at dispatch
-   * time (nonce, run, snapshot); it intentionally does not cover result fields
-   * such as the snapshot location or status/error, which are produced by the
-   * gateway after the snapshot and so cannot be signed in advance. Verification
-   * is also stateless, so a token is not single-use.
-   *
-   * This closes the primary risk (a caller that can merely reach the endpoint
-   * cannot mint a valid token, so cannot forge a result for an arbitrary run).
-   * It does not defend against an attacker who can observe a genuine callback
-   * and then replay it or alter its unsigned result fields - that relies on the
-   * gateway->supervisor callback channel being authenticated and encrypted.
+   * The token binds only what is known at dispatch (nonce, run, snapshot), not the
+   * result fields the gateway produces later, and is stateless, so not single-use.
+   * It stops a caller that can merely reach the endpoint forging a result. Replay or
+   * tampering with result fields relies on the callback channel being authenticated
+   * and encrypted.
    */
   #verifyCallbackToken(
     metadata: Record<string, string> | undefined,
@@ -408,4 +596,8 @@ export class ComputeSnapshotService {
       spanAttributes,
     });
   }
+}
+
+function suspendKey(target: { runnerId: string; snapshotFriendlyId: string }): string {
+  return `${target.runnerId}/${target.snapshotFriendlyId}`;
 }

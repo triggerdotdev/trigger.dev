@@ -3,7 +3,11 @@ import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLog
 import { formatLogLine, startTelnetLogServer } from "@trigger.dev/core/v3/telnetLogServer";
 import { env } from "./env.js";
 import { WorkloadServer } from "./workloadServer/index.js";
-import type { WorkloadManagerOptions, WorkloadManager } from "./workloadManager/types.js";
+import type {
+  WorkloadManagerCreateOptions,
+  WorkloadManagerOptions,
+  WorkloadManager,
+} from "./workloadManager/types.js";
 import Docker from "dockerode";
 import { z } from "zod";
 import { type DequeuedMessage } from "@trigger.dev/core/v3";
@@ -84,6 +88,7 @@ class ManagedSupervisor {
   private readonly workloadManager: WorkloadManager;
   private readonly workloadManagerBackend: "compute" | "kubernetes" | "run-crd" | "docker";
   private readonly computeManager?: ComputeWorkloadManager;
+  private readonly runCrdManager?: RunCrdWorkloadManager;
   private readonly logger = new SimpleStructuredLogger("managed-supervisor");
   private readonly resourceMonitor: ResourceMonitor;
   private readonly checkpointClient?: CheckpointClient;
@@ -192,11 +197,18 @@ class ManagedSupervisor {
       this.workloadManager = computeManager;
       this.workloadManagerBackend = "compute";
     } else if (this.isKubernetes && env.KUBERNETES_RUN_CRD_ENABLED) {
-      this.workloadManager = new RunCrdWorkloadManager({
+      const runCrdManager = new RunCrdWorkloadManager({
         ...workloadManagerOptions,
         namespace: env.KUBERNETES_NAMESPACE,
         runtime: env.KUBERNETES_RUNNER_RUNTIME,
+        snapshots: {
+          enabled: env.COMPUTE_SNAPSHOTS_ENABLED,
+          delayMs: env.COMPUTE_SNAPSHOT_DELAY_MS,
+          dispatchLimit: env.COMPUTE_SNAPSHOT_DISPATCH_LIMIT,
+        },
       });
+      this.runCrdManager = runCrdManager;
+      this.workloadManager = runCrdManager;
       this.workloadManagerBackend = "run-crd";
     } else if (this.isKubernetes) {
       this.workloadManager = new KubernetesWorkloadManager(workloadManagerOptions);
@@ -521,6 +533,11 @@ class ManagedSupervisor {
                 return;
               }
 
+              if (this.runCrdManager?.restores(checkpoint)) {
+                await this.restoreRunner(this.runCrdManager, message, checkpoint);
+                return;
+              }
+
               if (!this.checkpointClient) {
                 this.logger.error("No checkpoint client", { runId: message.run.id });
                 return;
@@ -608,6 +625,7 @@ class ManagedSupervisor {
       workerClient: this.workerSession.httpClient,
       checkpointClient: this.checkpointClient,
       computeManager: this.computeManager,
+      runnerSnapshotter: this.runCrdManager,
       tracing: this.tracing,
       snapshotCallbackSecret: workerToken,
       wideEventOpts: this.wideEventOpts,
@@ -630,57 +648,86 @@ class ManagedSupervisor {
     this.workerSession.unsubscribeFromRunNotifications([run.friendlyId]);
   }
 
+  private async createOptionsFor(
+    message: DequeuedMessage,
+    timings?: WarmStartTimings
+  ): Promise<WorkloadManagerCreateOptions> {
+    if (!message.deployment.friendlyId) {
+      // mostly a type guard, deployments always exists for deployed environments
+      // a proper fix would be to use a discriminated union schema to differentiate between dequeued runs in dev and in deployed environments.
+      throw new Error("Deployment is missing");
+    }
+
+    if (!message.image) {
+      // same type-guard situation as deployment above
+      throw new Error("Image is missing");
+    }
+
+    const deploymentToken = await mintDeploymentToken({
+      deployment: message.deployment.friendlyId,
+      deployment_version: message.backgroundWorker.version,
+      environment_id: message.environment.id,
+      environment_type: message.environment.type,
+      org_id: message.organization.id,
+      project_id: message.project.id,
+    });
+
+    return {
+      dequeuedAt: message.dequeuedAt,
+      dequeueResponseMs: timings?.dequeueResponseMs,
+      pollingIntervalMs: timings?.pollingIntervalMs,
+      warmStartCheckMs: timings?.warmStartCheckMs,
+      envId: message.environment.id,
+      envType: message.environment.type,
+      image: message.image,
+      machine: message.run.machine,
+      orgId: message.organization.id,
+      projectId: message.project.id,
+      deploymentFriendlyId: message.deployment.friendlyId,
+      deploymentVersion: message.backgroundWorker.version,
+      runtime: message.backgroundWorker.runtime,
+      deploymentToken,
+      runId: message.run.id,
+      runFriendlyId: message.run.friendlyId,
+      version: message.version,
+      nextAttemptNumber: message.run.attemptNumber,
+      snapshotId: message.snapshot.id,
+      snapshotFriendlyId: message.snapshot.friendlyId,
+      // Carry the run's storage route to the runner pod so its start request echoes it back.
+      snapshotRoute: message.snapshotRoute,
+      placementTags: message.placementTags,
+      traceContext: message.run.traceContext,
+      annotations: message.run.annotations,
+      hasPrivateLink: message.organization.hasPrivateLink,
+    };
+  }
+
+  private async restoreRunner(
+    manager: RunCrdWorkloadManager,
+    message: DequeuedMessage,
+    checkpoint: { id: string; location: string }
+  ) {
+    const restoreStart = performance.now();
+    try {
+      await manager.restore(await this.createOptionsFor(message), checkpoint);
+      recordPhaseSince("restore", restoreStart, undefined);
+      setExtra(fromContext(), "did_restore", true);
+      this.logger.debug("Runner restore created", { runId: message.run.id });
+    } catch (error) {
+      recordPhaseSince(
+        "restore",
+        restoreStart,
+        error instanceof Error ? error : new Error(String(error))
+      );
+      setExtra(fromContext(), "did_restore", false);
+      this.logger.error("Failed to restore run (run-crd)", { runId: message.run.id, error });
+    }
+  }
+
   private async createWorkload(message: DequeuedMessage, timings: WarmStartTimings) {
     const createStart = performance.now();
     try {
-      if (!message.deployment.friendlyId) {
-        // mostly a type guard, deployments always exists for deployed environments
-        // a proper fix would be to use a discriminated union schema to differentiate between dequeued runs in dev and in deployed environments.
-        throw new Error("Deployment is missing");
-      }
-
-      if (!message.image) {
-        // same type-guard situation as deployment above
-        throw new Error("Image is missing");
-      }
-
-      const deploymentToken = await mintDeploymentToken({
-        deployment: message.deployment.friendlyId,
-        deployment_version: message.backgroundWorker.version,
-        environment_id: message.environment.id,
-        environment_type: message.environment.type,
-        org_id: message.organization.id,
-        project_id: message.project.id,
-      });
-
-      await this.workloadManager.create({
-        dequeuedAt: message.dequeuedAt,
-        dequeueResponseMs: timings.dequeueResponseMs,
-        pollingIntervalMs: timings.pollingIntervalMs,
-        warmStartCheckMs: timings.warmStartCheckMs,
-        envId: message.environment.id,
-        envType: message.environment.type,
-        image: message.image,
-        machine: message.run.machine,
-        orgId: message.organization.id,
-        projectId: message.project.id,
-        deploymentFriendlyId: message.deployment.friendlyId,
-        deploymentVersion: message.backgroundWorker.version,
-        runtime: message.backgroundWorker.runtime,
-        deploymentToken,
-        runId: message.run.id,
-        runFriendlyId: message.run.friendlyId,
-        version: message.version,
-        nextAttemptNumber: message.run.attemptNumber,
-        snapshotId: message.snapshot.id,
-        snapshotFriendlyId: message.snapshot.friendlyId,
-        // Carry the run's storage route to the cold-start pod so its start request echoes it back.
-        snapshotRoute: message.snapshotRoute,
-        placementTags: message.placementTags,
-        traceContext: message.run.traceContext,
-        annotations: message.run.annotations,
-        hasPrivateLink: message.organization.hasPrivateLink,
-      });
+      await this.workloadManager.create(await this.createOptionsFor(message, timings));
       recordPhaseSince("workload_create", createStart, undefined);
       workloadCreateDuration.observe(
         { backend: this.workloadManagerBackend, outcome: "success" },
@@ -722,10 +769,8 @@ class ManagedSupervisor {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
-    // Propagate the inbound W3C traceparent so the upstream warm-start
-    // receiver continues the same trace instead of minting a new one. Gated
-    // by the same kill switch as the wide-event emission so the whole PR is
-    // a no-op on the wire when disabled.
+    // Lets the warm-start receiver continue this trace instead of minting a new one.
+    // Gated by the wide-events kill switch, so the wire is unchanged when disabled.
     if (this.wideEventOpts.enabled && traceparent) {
       headers.traceparent = traceparent;
     }

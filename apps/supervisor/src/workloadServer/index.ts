@@ -35,6 +35,7 @@ import type { WorkloadDeploymentTokenClaims } from "@trigger.dev/core/v3";
 import {
   ComputeSnapshotService,
   type RunTraceContext,
+  type RunnerSnapshotter,
 } from "../services/computeSnapshotService.js";
 import type { OtlpTraceService } from "../services/otlpTraceService.js";
 import {
@@ -112,6 +113,8 @@ type WorkloadServerOptions = {
   workerClient: SupervisorHttpClient;
   checkpointClient?: CheckpointClient;
   computeManager?: ComputeWorkloadManager;
+  /** The run-crd backend, which asks the operator for a suspend on the Runner. */
+  runnerSnapshotter?: RunnerSnapshotter & { snapshotsEnabled: boolean };
   tracing?: OtlpTraceService;
   snapshotCallbackSecret: string;
   wideEventOpts: WideEventOptions;
@@ -158,9 +161,14 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     this.wideEventOpts = opts.wideEventOpts;
     this.wideEventsNoisyRoutes = opts.wideEventsNoisyRoutes;
 
-    if (opts.computeManager?.snapshotsEnabled) {
+    const snapshots = opts.computeManager?.snapshotsEnabled
+      ? { computeManager: opts.computeManager }
+      : opts.runnerSnapshotter?.snapshotsEnabled
+        ? { runnerSnapshotter: opts.runnerSnapshotter }
+        : undefined;
+    if (snapshots) {
       this.snapshotService = new ComputeSnapshotService({
-        computeManager: opts.computeManager,
+        ...snapshots,
         workerClient: opts.workerClient,
         tracing: opts.tracing,
         wideEventOpts: this.wideEventOpts,
@@ -449,16 +457,10 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                 }
                 const runnerId = this.runnerIdFromRequest(req);
 
-                // A completion attempt invalidates any pending delayed snapshot
-                // regardless of outcome: the runner has finished executing, so the
-                // suspended state the snapshot was scheduled to capture no longer
-                // exists. Cancel BEFORE the async completion call - the timer
-                // wheel can tick during the await, so cancelling after it leaves
-                // a real window for a due snapshot to dispatch and pause a VM
-                // that has moved on. The runnerId guard keeps a stale duplicate
-                // runner's completion from cancelling a fresh runner's snapshot,
-                // and the runner can't schedule a new suspend until it receives
-                // this route's reply, so nothing legitimate can be cancelled here.
+                // Any completion attempt makes a pending snapshot stale. Cancel before the
+                // await, or the timer wheel can dispatch it and pause a VM that has moved on.
+                // The runnerId guard stops a stale duplicate cancelling a fresh runner's
+                // snapshot, and no new suspend can be scheduled before this route replies.
                 this.snapshotService?.cancel(params.runFriendlyId, runnerId);
 
                 const completeResponse = await this.workerClient.completeRunAttempt(
@@ -582,14 +584,17 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                 }
 
                 if (this.snapshotService) {
-                  // Compute mode: delay snapshot to avoid wasted work on short-lived waitpoints.
-                  // If the run continues before the delay expires, the snapshot is cancelled.
+                  // Delayed so a short-lived waitpoint that continues first cancels the snapshot.
                   reply.json({ ok: true } satisfies WorkloadSuspendRunResponseBody, false, 202);
 
                   this.snapshotService.schedule(params.runFriendlyId, {
                     runnerId,
                     runFriendlyId: params.runFriendlyId,
                     snapshotFriendlyId: params.snapshotFriendlyId,
+                    owner: auth.claims && {
+                      envId: auth.claims.environment_id,
+                      deploymentFriendlyId: auth.claims.deployment,
+                    },
                   });
 
                   return;
@@ -978,17 +983,12 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
           return;
         }
 
-        // The run is gone from this runner (crash, exit, or replaced by a new
-        // run), so a pending delayed snapshot for it is stale. Genuine
-        // waitpoint suspensions keep the socket connected, so this doesn't
-        // cancel a snapshot that's still wanted; the runnerId match guards
-        // against a stale duplicate runner cancelling a fresh runner's
-        // snapshot after the run was reassigned. Caveat: socket.data.runnerId
-        // is frozen at the websocket handshake, so after a same-supervisor
-        // restore (new runner id, socket not recreated) this guard refuses
-        // the cancel - a missed cancel, never a wrong one. The
-        // attempt.complete cancel uses the runner's current HTTP header id
-        // and is unaffected.
+        // The run left this runner, so its pending snapshot is stale; a genuine
+        // suspension keeps the socket connected. The runnerId guard stops a stale
+        // duplicate cancelling a fresh runner's snapshot. socket.data.runnerId is
+        // fixed at the handshake, so after a same-supervisor restore (new runner id, same
+        // socket) the cancel is refused: a missed cancel, never a wrong one. The
+        // attempt.complete cancel uses the current header id and is unaffected.
         this.snapshotService?.cancel(friendlyId, socket.data.runnerId);
 
         this.runSockets.delete(friendlyId);

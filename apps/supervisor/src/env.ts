@@ -179,17 +179,14 @@ export const Env = z
 
     // Kubernetes settings
     KUBERNETES_FORCE_ENABLED: BoolEnv.default(false),
-    // Create a Runner and let the operator build the pod, instead of building
-    // the pod here. The two are mutually exclusive by construction: whichever
-    // one runs is the only thing that creates a workload for a cold start.
+    // Create a Runner for the operator to build the pod from, instead of building it
+    // here. Mutually exclusive with the pod backend, so one thing creates each cold start.
     KUBERNETES_RUN_CRD_ENABLED: BoolEnv.default(false),
-    // Which isolation lane a Runner asks for. Cell-wide rather than per run,
-    // because a cell's node pools decide what it can serve and nothing on a
-    // dequeued message can express the choice. Ignored unless the run-crd
-    // backend is the one running: the pod backends have no guest lane.
-    //
-    // Not to be confused with the task runtime (node-24, bun), which rides on
-    // the same Runner as taskRuntime and says which interpreter the task needs.
+    // Isolation lane for Runners, cell-wide because a cell's node pools decide what it
+    // can serve. Only read by the run-crd backend; the pod backends have no guest lane.
+    // Under microvm, checkpoints resume as restoring Runners, since only that lane's node
+    // runtime can restore, and COMPUTE_SNAPSHOTS_ENABLED sends suspends to the operator.
+    // Unrelated to the task runtime (node-24, bun), which is the Runner's taskRuntime.
     KUBERNETES_RUNNER_RUNTIME: z.enum(["container", "microvm"]).default("container"),
     KUBERNETES_NAMESPACE: z.string().default("default"),
     KUBERNETES_WORKER_NODETYPE_LABEL: NodeLabelValue.default("v4-worker"),
@@ -236,13 +233,13 @@ export const Env = z
     KUBERNETES_RUNNER_SECURITY_CONTEXT: z.enum(["off", "baseline", "restricted"]).default("off"),
     KUBERNETES_RUNNER_RUN_AS_USER: z.coerce.number().int().min(1).default(1000),
 
-    // Pod DNS config — override the cluster default ndots to `KUBERNETES_POD_DNS_NDOTS`.
+    // Pod DNS config: override the cluster default ndots to `KUBERNETES_POD_DNS_NDOTS`.
     // Default k8s ndots is 5: any name with fewer than 5 dots (e.g. `api.example.com`, 2 dots) is first walked
     // through every entry in the cluster search list (`<ns>.svc.cluster.local`, `svc.cluster.local`, `cluster.local`)
     // before being tried as-is, turning one resolution into 4+ CoreDNS queries (×2 with A+AAAA).
     // Overriding the default can be useful to cut CoreDNS query amplification for external domains.
     // Note: before enabling, make sure no code path relies on search-list expansion for names with dots ≥ the value
-    // set here — those names will now hit their as-is form first and could resolve externally before falling back.
+    // set here, since those names will now hit their as-is form first and could resolve externally before falling back.
     KUBERNETES_POD_DNS_NDOTS_OVERRIDE_ENABLED: BoolEnv.default(false),
     KUBERNETES_POD_DNS_NDOTS: z.coerce.number().int().min(1).max(15).default(2),
     // Large machine affinity settings - large-* presets prefer a dedicated pool
@@ -357,14 +354,20 @@ export const Env = z
         }
       }
     }
-    if (data.COMPUTE_SNAPSHOTS_ENABLED && !data.TRIGGER_METADATA_URL) {
+    // Only the gateway reads these for a snapshot: it builds its callback URL
+    // from the domain and hands the metadata URL to the instance.
+    if (data.COMPUTE_SNAPSHOTS_ENABLED && data.COMPUTE_GATEWAY_URL && !data.TRIGGER_METADATA_URL) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "TRIGGER_METADATA_URL is required when COMPUTE_SNAPSHOTS_ENABLED is true",
         path: ["TRIGGER_METADATA_URL"],
       });
     }
-    if (data.COMPUTE_SNAPSHOTS_ENABLED && !data.TRIGGER_WORKLOAD_API_DOMAIN) {
+    if (
+      data.COMPUTE_SNAPSHOTS_ENABLED &&
+      data.COMPUTE_GATEWAY_URL &&
+      !data.TRIGGER_WORKLOAD_API_DOMAIN
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "TRIGGER_WORKLOAD_API_DOMAIN is required when COMPUTE_SNAPSHOTS_ENABLED is true",

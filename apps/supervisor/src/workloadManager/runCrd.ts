@@ -1,9 +1,17 @@
 import { createHash } from "node:crypto";
+import { setTimeout as sleep } from "node:timers/promises";
 import { PatchStrategy } from "@kubernetes/client-node";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
-import type { EnvironmentType, MachinePreset } from "@trigger.dev/core/v3";
+import type { CheckpointType, EnvironmentType, MachinePreset } from "@trigger.dev/core/v3";
 import { type K8sApi, createK8sApi } from "../clients/kubernetes.js";
-import { getRunnerId } from "../util.js";
+import { getRestoreRunnerId, getRunnerId } from "../util.js";
+import type {
+  PublishedSuspend,
+  RunnerSnapshotter,
+  RunnerSuspendRequest,
+  RunnerSuspendRequested,
+  RunnerSuspendResult,
+} from "../services/computeSnapshotService.js";
 import type {
   WorkloadManager,
   WorkloadManagerCreateOptions,
@@ -13,6 +21,18 @@ import type {
 const GROUP = "compute.trigger.dev";
 const VERSION = "v1alpha1";
 const PLURAL = "runners";
+
+/** Set on a Runner to ask the operator to snapshot its guest; the value names the request. */
+export const SUSPEND_ANNOTATION = "compute.trigger.dev/suspend";
+
+/** The run a suspend request is for, so a restarted supervisor can deliver its outcome. */
+export const SUSPEND_RUN_ANNOTATION = "compute.trigger.dev/suspend-run";
+
+/** The suspend request whose outcome the platform has accepted. */
+export const SUSPEND_SUBMITTED_ANNOTATION = "compute.trigger.dev/suspend-submitted";
+
+/** Read errors that the next poll would only repeat. */
+const TERMINAL_READ_CODES = new Set([400, 401, 403, 422]);
 
 /** The key inside a deployment's token Secret. */
 const TOKEN_KEY = "token";
@@ -26,37 +46,252 @@ export type RunCrdWorkloadManagerOptions = WorkloadManagerOptions & {
   /** Passed in, not read from env, so the translation below is testable alone. */
   namespace: string;
   /**
-   * Cell-wide, because a cell's node pools decide what it can serve and nothing
-   * on a dequeued message can express a per-run choice. A guest asked for on a
-   * cell with no RuntimeClass fails the Runner rather than falling back, which
-   * is the operator's decision and the right one: a run silently served by the
-   * wrong isolation is worse than one that does not start.
+   * Cell-wide: a cell's node pools decide what it can serve, and nothing on a
+   * dequeued message can express a per-run choice. The operator fails a microvm
+   * Runner on a cell with no RuntimeClass rather than serve it with weaker isolation.
    */
   runtime: RunnerRuntime;
+  /** Suspends go to the operator only under microvm, where there is a guest to snapshot. */
+  snapshots?: { enabled: boolean; delayMs: number; dispatchLimit: number };
+  /** How often and how long a suspend's outcome is read back off the Runner. */
+  suspendPollMs?: number;
+  /**
+   * How long the operator has to take a suspend up, and then to answer it. Longer
+   * than its own snapshot budget, so its failure arrives first and carries the reason.
+   */
+  suspendTimeoutMs?: number;
 };
 
 /**
- * Creates a Runner and stops. The operator builds the pod, so that the uid,
- * node-selection and label reasoning lives in one place instead of three.
- *
- * A runner, not a run: it goes on to serve however many later runs warm start
+ * Creates a Runner and stops; the operator builds the pod, so uid, node selection
+ * and labels are decided in one place. A Runner serves every later run warm start
  * hands it, so the run that caused it is only its bootstrap.
  */
-export class RunCrdWorkloadManager implements WorkloadManager {
+export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter {
   private readonly logger = new SimpleStructuredLogger("run-crd-workload-provider");
   private readonly k8s: K8sApi;
   private readonly namespace: string;
   private readonly runtime: RunnerRuntime;
+  private readonly snapshots?: RunCrdWorkloadManagerOptions["snapshots"];
+  private readonly suspendPollMs: number;
+  private readonly suspendTimeoutMs: number;
 
   constructor(opts: RunCrdWorkloadManagerOptions) {
     this.k8s = createK8sApi();
     this.namespace = opts.namespace;
     this.runtime = opts.runtime;
+    this.snapshots = opts.snapshots;
+    this.suspendPollMs = opts.suspendPollMs ?? 1_000;
+    this.suspendTimeoutMs = opts.suspendTimeoutMs ?? 6 * 60_000;
+  }
+
+  get snapshotsEnabled(): boolean {
+    return this.runtime === "microvm" && !!this.snapshots?.enabled;
+  }
+
+  get snapshotDelayMs(): number {
+    return this.snapshots?.delayMs ?? 0;
+  }
+
+  get snapshotDispatchLimit(): number {
+    return this.snapshots?.dispatchLimit ?? 1;
+  }
+
+  /**
+   * Asks the operator to snapshot the runner's guest by annotating its Runner.
+   * The runner id is the Runner's name. It comes from a workload header and the
+   * snapshot is submitted as the caller's checkpoint, so with an owner a Runner
+   * from another environment or deployment is refused.
+   */
+  async requestSuspend(opts: RunnerSuspendRequest): Promise<RunnerSuspendRequested> {
+    try {
+      if (opts.owner) {
+        const spec = ((await this.getRunner(opts.runnerId)) as RunnerOwnerSpec | null)?.spec;
+        if (
+          spec?.owner?.envID !== opts.owner.envId ||
+          spec?.deployment?.friendlyID !== opts.owner.deploymentFriendlyId
+        ) {
+          return { ok: false, error: "the Runner belongs to another deployment" };
+        }
+      }
+      await this.k8s.objects.patch(
+        {
+          apiVersion: `${GROUP}/${VERSION}`,
+          kind: "Runner",
+          metadata: {
+            name: opts.runnerId,
+            namespace: this.namespace,
+            annotations: {
+              [SUSPEND_ANNOTATION]: opts.snapshotFriendlyId,
+              [SUSPEND_RUN_ANNOTATION]: opts.runFriendlyId,
+            },
+          },
+        },
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        PatchStrategy.MergePatch
+      );
+    } catch (err: unknown) {
+      return { ok: false, error: `suspend request failed: ${messageOf(err)}` };
+    }
+    return { ok: true };
+  }
+
+  async publishedSuspendOf(runnerId: string): Promise<PublishedSuspend | undefined> {
+    return publishedSuspend(await this.getRunner(runnerId));
+  }
+
+  /** Every Runner whose latest suspend has an outcome not yet marked submitted. */
+  async publishedSuspends(): Promise<PublishedSuspend[]> {
+    const list = (await this.k8s.custom.listNamespacedCustomObject({
+      group: GROUP,
+      version: VERSION,
+      namespace: this.namespace,
+      plural: PLURAL,
+    })) as { items?: unknown[] } | null;
+    return (list?.items ?? []).flatMap((runner) => {
+      const published = publishedSuspend(runner);
+      return published ? [published] : [];
+    });
+  }
+
+  async markSuspendSubmitted(opts: { runnerId: string; snapshotFriendlyId: string }) {
+    await this.k8s.objects.patch(
+      {
+        apiVersion: `${GROUP}/${VERSION}`,
+        kind: "Runner",
+        metadata: {
+          name: opts.runnerId,
+          namespace: this.namespace,
+          annotations: { [SUSPEND_SUBMITTED_ANNOTATION]: opts.snapshotFriendlyId },
+        },
+      },
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      PatchStrategy.MergePatch
+    );
+  }
+
+  /**
+   * Waits for the operator's answer to a request on the Runner's status. The
+   * wait restarts once the operator takes the request up, since its own
+   * snapshot budget only starts then and its failure carries the reason.
+   */
+  async awaitSuspend(opts: {
+    runnerId: string;
+    snapshotFriendlyId: string;
+  }): Promise<RunnerSuspendResult> {
+    let takenUp = false;
+    let deadline = Date.now() + this.suspendTimeoutMs;
+    while (Date.now() < deadline) {
+      await sleep(this.suspendPollMs);
+      let runner: unknown;
+      try {
+        runner = await this.getRunner(opts.runnerId);
+      } catch (err: unknown) {
+        const code = statusCodeOf(err);
+        if (code === 404) {
+          return { ok: false, error: "the Runner no longer exists" };
+        }
+        if (code !== undefined && TERMINAL_READ_CODES.has(code)) {
+          return { ok: false, error: `Runner read failed: ${messageOf(err)}` };
+        }
+        this.logger.warn("[RunCrdWorkloadManager] Runner read failed during suspend", {
+          runnerId: opts.runnerId,
+          rawError: err,
+        });
+        continue;
+      }
+      const outcome = suspendOutcome(runner, opts.snapshotFriendlyId);
+      if (outcome) {
+        return outcome;
+      }
+      const answering = (runner as RunnerSuspendStatus | null)?.status?.suspend?.request;
+      // The operator took up a later request after answering ours between polls,
+      // so our answer is gone and waiting longer cannot bring it back.
+      if (takenUp && answering && answering !== opts.snapshotFriendlyId) {
+        return { ok: false, error: "displaced by a later suspend request" };
+      }
+      if (!takenUp && answering === opts.snapshotFriendlyId) {
+        takenUp = true;
+        deadline = Date.now() + this.suspendTimeoutMs;
+      }
+    }
+    return {
+      ok: false,
+      error: takenUp
+        ? `no suspend outcome within ${this.suspendTimeoutMs}ms of the operator taking it up`
+        : `the operator did not take up the suspend within ${this.suspendTimeoutMs}ms; is a suspend-capable operator running?`,
+    };
+  }
+
+  private getRunner(name: string): Promise<unknown> {
+    return this.k8s.custom.getNamespacedCustomObject({
+      group: GROUP,
+      version: VERSION,
+      namespace: this.namespace,
+      plural: PLURAL,
+      name,
+    });
+  }
+
+  /**
+   * Only the microvm lane's node runtime can restore, and only a snapshot it
+   * took. Any other checkpoint's location means nothing to it.
+   */
+  restores(checkpoint: { type: CheckpointType }): boolean {
+    return this.runtime === "microvm" && checkpoint.type === "COMPUTE";
   }
 
   async create(opts: WorkloadManagerCreateOptions) {
-    const runnerId = getRunnerId(opts.runFriendlyId, opts.nextAttemptNumber);
+    await this.createRunner(opts, getRunnerId(opts.runFriendlyId, opts.nextAttemptNumber));
+  }
 
+  /**
+   * Creates a resume: a Runner the operator restores from the checkpoint's
+   * snapshot, on the node holding it, instead of cold-starting. Named from the
+   * checkpoint, so a redelivered restore finds the first Runner and leaves it
+   * rather than restoring twice.
+   */
+  async restore(opts: WorkloadManagerCreateOptions, checkpoint: { id: string; location: string }) {
+    const runnerId = getRestoreRunnerId(opts.runFriendlyId, checkpoint.id);
+    const restore = parseCheckpointLocation(checkpoint.location);
+    const created = await this.createRunner(opts, runnerId, restore);
+    if (!created) {
+      await this.checkExistingRestore(runnerId, restore);
+    }
+  }
+
+  /**
+   * A resume already in the way counts as this restore only while it is still
+   * live and restores the same snapshot. One held terminal for the operator's
+   * TTL will never resume the guest, so the dequeue must not be reported done.
+   */
+  private async checkExistingRestore(runnerId: string, restore: RunnerRestore) {
+    const existing = (await this.getRunner(runnerId)) as ExistingRestore | null;
+    const phase = existing?.status?.phase;
+    if (phase === "Succeeded" || phase === "Failed") {
+      throw new Error(`restore Runner ${runnerId} already ended (${phase})`);
+    }
+    const spec = existing?.spec?.restore;
+    if (spec?.snapshotID !== restore.snapshotID || spec?.node !== restore.node) {
+      throw new Error(
+        `restore Runner ${runnerId} restores ${JSON.stringify(spec ?? null)}, not ${checkpointLocation(restore)}`
+      );
+    }
+    this.logger.warn("[RunCrdWorkloadManager] Restore Runner already exists", { runnerId, phase });
+  }
+
+  /** Returns false when a resume's Runner was already there. */
+  private async createRunner(
+    opts: WorkloadManagerCreateOptions,
+    runnerId: string,
+    restore?: RunnerRestore
+  ): Promise<boolean> {
     const token = await this.ensureRunnerToken(opts, runnerId);
 
     const body = runnerBodyFor(opts, {
@@ -64,6 +299,7 @@ export class RunCrdWorkloadManager implements WorkloadManager {
       namespace: this.namespace,
       runtime: this.runtime,
       token,
+      restore,
     });
 
     this.logger.verbose("[RunCrdWorkloadManager] Creating runner", { runnerId, body });
@@ -80,9 +316,13 @@ export class RunCrdWorkloadManager implements WorkloadManager {
         fieldValidation: "Strict",
       });
     } catch (err: unknown) {
-      // No 409 case: the name carries the attempt, so an object in the way is a
-      // terminal one held for the operator's TTL, not this create having worked.
       await this.releaseRunnerToken(token, err);
+      // A resume's name carries the checkpoint, so the Runner in the way is this
+      // resume, still restoring or held terminal for the operator's TTL. A cold
+      // start's carries the attempt, so its 409 is an earlier terminal Runner.
+      if (restore && statusCodeOf(err) === 409) {
+        return false;
+      }
       this.logger.error("[RunCrdWorkloadManager] Create failed", { runnerId, rawError: err });
       throw err;
     }
@@ -91,17 +331,16 @@ export class RunCrdWorkloadManager implements WorkloadManager {
     if (token && runnerUid) {
       await this.adoptRunnerToken(token.name, { name: runnerId, uid: runnerUid });
     }
+    return true;
   }
 
   /**
-   * Hands the Secret to the runner, so the collector takes it when the runner
-   * goes. Until this lands the Secret has no owner at all, and an object that
-   * never had one is not a dependent, so nothing is deciding to collect it in
-   * the meantime.
+   * Makes the Runner own the Secret, so the garbage collector takes it with the
+   * Runner. An object that never had an owner is not a dependent, so nothing can
+   * collect the Secret before this lands.
    *
-   * Never throws: an ownerless Secret outlives its runner, which is worth less
-   * than failing a run that is otherwise about to start. It holds one token,
-   * for one runner, and that token expires.
+   * Never throws: an ownerless Secret holding one expiring token costs less than
+   * failing a run that is about to start.
    */
   private async adoptRunnerToken(name: string, runner: { name: string; uid: string }) {
     const ownerReferences: OwnerReference[] = [
@@ -131,20 +370,14 @@ export class RunCrdWorkloadManager implements WorkloadManager {
   }
 
   /**
-   * Takes back the Secret a failed create left behind. No owner is ever going
-   * to arrive for it, and the collector only takes objects that had one, so it
-   * would otherwise sit there holding a live token for good.
+   * Deletes the Secret a failed create left behind; with no owner coming, the
+   * collector would never take it.
    *
-   * Only when the server said no. A throw carrying no status, or a 5xx, may be
-   * a create that committed before its response was lost, and deleting then
-   * takes the credential from a Runner that is about to start, turning a
-   * transient failure into a terminal one. The Secret is kept in that case and
-   * the log says so, an ownerless Secret holding a token that expires being the
-   * cheaper of the two mistakes. Reading the Runner back to tell the cases
-   * apart would need get on runners, which is a wider Role for a rarer path.
-   *
-   * Only when this call wrote it, too: a uid comes back from a create and not
-   * from a 409.
+   * Only on a 4xx. No status or a 5xx may be a create that committed before its
+   * response was lost, and deleting then would fail a Runner that is about to
+   * start, so the Secret is kept and logged: an ownerless expiring token is the
+   * cheaper mistake. Reading the Runner back would tell the cases apart; not worth it
+   * for a path this rare. Only when this call wrote it: a create returns a uid, a 409 does not.
    */
   private async releaseRunnerToken(
     token: { name: string; uid?: string } | undefined,
@@ -167,9 +400,8 @@ export class RunCrdWorkloadManager implements WorkloadManager {
   }
 
   /**
-   * Deletes on uid, so
-   * a Secret that is no longer the object this call wrote is left to whatever
-   * holds it now. A 409 is that precondition refusing, which is the answer.
+   * Preconditioned on uid, so a Secret that is no longer the one this call wrote
+   * is left alone. A 409 is that precondition refusing, which is the answer.
    */
   private async deleteRunnerToken(name: string, uid: string) {
     try {
@@ -191,17 +423,12 @@ export class RunCrdWorkloadManager implements WorkloadManager {
   }
 
   /**
-   * Writes the runner's token to a Secret of its own and returns a reference.
+   * One Secret per runner, not per deployment version: the collector decides a
+   * shared Secret's fate from owners it may have read before the newest was added,
+   * so a delete it already chose can take the credential from a starting runner.
    *
-   * One per runner rather than one per deployment version. A shared Secret has
-   * to outlive whichever runners still hold it, and the collector decides that
-   * from owners it may have read before the newest was added, so a delete it
-   * already chose still lands and takes the credential from a runner that is
-   * starting. Nothing else references a runner's own Secret, so there is no
-   * such decision to lose a race with.
-   *
-   * In the spec the token would be readable by anything holding get on the
-   * resource; the kubelet resolves a reference, so the operator never reads it.
+   * A reference, not the token in the spec, where anything with get on Runners
+   * could read it; the kubelet resolves it, so the operator never does.
    */
   private async ensureRunnerToken(
     opts: WorkloadManagerCreateOptions,
@@ -217,10 +444,8 @@ export class RunCrdWorkloadManager implements WorkloadManager {
       const created = await this.writeTokenSecret(name, opts.deploymentToken);
       return { name, key: TOKEN_KEY, uid: uidOf(created) };
     } catch (err: unknown) {
-      // A redrive of this attempt. The name carries the token's digest, so the
-      // Secret in the way holds what this runner would have written. No uid
-      // back, which keeps the failure path from deleting an object it did not
-      // create.
+      // A redrive: the name carries the token's digest, so the existing Secret holds
+      // the same token. No uid, so the failure path cannot delete what it did not create.
       if (statusCodeOf(err) === 409) {
         return { name, key: TOKEN_KEY };
       }
@@ -255,6 +480,99 @@ export class RunCrdWorkloadManager implements WorkloadManager {
   }
 }
 
+type RunnerOwnerSpec = {
+  spec?: { owner?: { envID?: string }; deployment?: { friendlyID?: string } };
+};
+
+type ExistingRestore = {
+  spec?: { restore?: Partial<RunnerRestore> };
+  status?: { phase?: string };
+};
+
+type RunnerSuspendStatus = {
+  status?: {
+    phase?: string;
+    suspend?: { request?: string; snapshotID?: string; node?: string };
+    conditions?: Array<{ type?: string; status?: string; reason?: string; message?: string }>;
+  };
+};
+
+/**
+ * The operator's answer to one suspend request, read off the Runner, or
+ * undefined while it is still working on it. A Runner that ends without
+ * answering is a failure, since nothing will answer after that.
+ */
+export function suspendOutcome(runner: unknown, request: string): RunnerSuspendResult | undefined {
+  const status = (runner as RunnerSuspendStatus | null)?.status;
+  if (status?.suspend?.request === request) {
+    const condition = status.conditions?.find((c) => c.type === "Suspended");
+    if (condition?.status === "True" && status.suspend.snapshotID && status.suspend.node) {
+      return {
+        ok: true,
+        location: checkpointLocation({
+          node: status.suspend.node,
+          snapshotID: status.suspend.snapshotID,
+        }),
+      };
+    }
+    if (condition?.status === "False") {
+      return { ok: false, error: `${condition.reason}: ${condition.message}` };
+    }
+  }
+  if (status?.phase === "Succeeded" || status?.phase === "Failed") {
+    return {
+      ok: false,
+      error: `the Runner ended (${status.phase}) before the suspend was answered`,
+    };
+  }
+  return undefined;
+}
+
+/**
+ * The Runner's latest suspend, when it has an outcome the platform has not
+ * been marked as accepting. A request made without the run annotation, by an
+ * older supervisor, cannot be delivered and is skipped.
+ */
+export function publishedSuspend(runner: unknown): PublishedSuspend | undefined {
+  const meta = (runner as { metadata?: { name?: string; annotations?: Record<string, string> } })
+    ?.metadata;
+  const request = meta?.annotations?.[SUSPEND_ANNOTATION];
+  const runFriendlyId = meta?.annotations?.[SUSPEND_RUN_ANNOTATION];
+  if (
+    !meta?.name ||
+    !request ||
+    !runFriendlyId ||
+    meta.annotations?.[SUSPEND_SUBMITTED_ANNOTATION] === request
+  ) {
+    return undefined;
+  }
+  const outcome = suspendOutcome(runner, request);
+  return outcome && { runnerId: meta.name, runFriendlyId, snapshotFriendlyId: request, outcome };
+}
+
+type RunnerRestore = { snapshotID: string; node: string };
+
+/**
+ * A checkpoint's location names the node as well as the snapshot, because the
+ * node runtime's snapshots are node-local and a resume has to land there.
+ * Neither a node name nor a snapshot id can contain a slash.
+ */
+export function checkpointLocation(restore: RunnerRestore): string {
+  return `${restore.node}/${restore.snapshotID}`;
+}
+
+export function parseCheckpointLocation(location: string): RunnerRestore {
+  const [node, snapshotID, ...rest] = location.split("/");
+  if (!node || !snapshotID || rest.length > 0) {
+    throw new Error(`checkpoint location ${JSON.stringify(location)} is not <node>/<snapshot>`);
+  }
+  return { node, snapshotID };
+}
+
+function messageOf(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 /** The create response is untyped, and an absent uid just skips adoption. */
 function uidOf(created: unknown): string | undefined {
   if (typeof created !== "object" || created === null) {
@@ -276,6 +594,7 @@ export function runnerBodyFor(
     namespace: string;
     runtime: RunnerRuntime;
     token?: { name: string; key: string };
+    restore?: RunnerRestore;
   }
 ) {
   return {
@@ -313,7 +632,7 @@ export function runnerBodyFor(
       },
       ...(opts.placementTags?.length
         ? {
-            // Only the first value has ever reached a node selector.
+            // Only the first value reaches a node selector.
             placementTags: opts.placementTags.map((tag) => ({
               key: tag.key,
               value: tag.values?.[0] ?? "",
@@ -324,6 +643,7 @@ export function runnerBodyFor(
       // later serves.
       ...(isScheduledRun(opts) ? { isScheduledRun: true } : {}),
       ...(opts.hasPrivateLink ? { hasPrivateLink: true } : {}),
+      ...(meta.restore ? { restore: meta.restore } : {}),
     },
   };
 }
@@ -345,18 +665,13 @@ function isScheduledRun(opts: WorkloadManagerCreateOptions): boolean {
 }
 
 /**
- * One Secret per runner, and per token. The runner id is already what the
- * Runner object is named, so it is a legal DNS subdomain and unique to the
- * attempt; it is lowercased here anyway because a Secret name has no second
- * chance at it. The digest is in the name because the Secret is immutable, so a
- * rotated signing key or a moved expiry has to land as a new Secret rather than
- * a write the old one rejects.
+ * The runner id is already a legal Runner name; it is lowercased anyway because an
+ * invalid Secret name fails the create. The token's digest is in the name because
+ * the Secret is immutable, so a rotated key or moved expiry lands as a new Secret.
  *
- * The runner id is mixed into the digest so that two runners sharing a
- * deployment token do not end up with matching suffixes, which would let a
- * listing say which runners hold the same credential. It does not stop someone
- * checking a token they already hold against a name, since the id is in the
- * name as well; that would need a salt this process does not have.
+ * The runner id is mixed into the digest so a listing cannot show which runners
+ * share a token. It does not stop checking a known token against a name (the id
+ * is in the name); that would need a salt this process does not have.
  */
 export function runnerTokenSecretName(runnerId: string, token: string): string {
   const id = runnerId.toLowerCase();

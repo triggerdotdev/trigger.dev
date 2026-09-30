@@ -62,3 +62,16 @@ describe("Env superRefine - backpressure source awareness", () => {
     ).toThrow();
   });
 });
+
+describe("Env superRefine - compute snapshots", () => {
+  it("needs the metadata URL and workload API domain only for the gateway", () => {
+    expect(() => Env.parse({ ...base, COMPUTE_SNAPSHOTS_ENABLED: "true" })).not.toThrow();
+    expect(() =>
+      Env.parse({
+        ...base,
+        COMPUTE_SNAPSHOTS_ENABLED: "true",
+        COMPUTE_GATEWAY_URL: "http://gateway:8080",
+      })
+    ).toThrow(/TRIGGER_METADATA_URL[\s\S]*TRIGGER_WORKLOAD_API_DOMAIN/);
+  });
+});

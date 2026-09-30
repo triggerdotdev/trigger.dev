@@ -1,8 +1,35 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
-import { runnerBodyFor, runnerTokenSecretName } from "./runCrd.js";
-import { getRunnerId } from "../util.js";
+import {
+  RunCrdWorkloadManager,
+  SUSPEND_ANNOTATION,
+  SUSPEND_RUN_ANNOTATION,
+  SUSPEND_SUBMITTED_ANNOTATION,
+  checkpointLocation,
+  parseCheckpointLocation,
+  publishedSuspend,
+  runnerBodyFor,
+  runnerTokenSecretName,
+  suspendOutcome,
+} from "./runCrd.js";
+import { getRestoreRunnerId, getRunnerId } from "../util.js";
 import type { WorkloadManagerCreateOptions } from "./types.js";
+
+const createRunner = vi.fn();
+const getRunner = vi.fn();
+const listRunners = vi.fn();
+const patchObject = vi.fn();
+
+vi.mock("../clients/kubernetes.js", () => ({
+  createK8sApi: () => ({
+    custom: {
+      createNamespacedCustomObject: createRunner,
+      getNamespacedCustomObject: getRunner,
+      listNamespacedCustomObject: listRunners,
+    },
+    objects: { patch: patchObject },
+  }),
+}));
 
 const meta = { name: "runner-abc123", namespace: "v4-runs", runtime: "container" } as const;
 
@@ -29,11 +56,8 @@ function createOptions(
 }
 
 /**
- * The isolation lane is the one spec field a cell chooses rather than derives
- * from the run, so it is the one a refactor can quietly pin. Asserting both
- * values, rather than that the field is carried, is what catches a literal
- * creeping back in: a hardcoded "container" passes any test that only ever asks
- * for a container.
+ * The one spec field a cell chooses rather than derives from the run. Both values
+ * are asserted because a hardcoded "container" passes a test that only asks for one.
  */
 describe("runnerBodyFor carries the isolation lane it is given", () => {
   it.each(["container", "microvm"] as const)("asks for %s", (runtime) => {
@@ -155,16 +179,15 @@ describe("runnerBodyFor", () => {
     expect(runnerBodyFor(createOptions(), meta).spec.deployment).not.toHaveProperty("token");
   });
 
-  // Empty is neither bun nor a node version, which is the same treatment an
-  // absent runtime has always had. Sending a made-up default would change which
-  // uid the container is pinned to.
+  // Empty is treated as neither bun nor a node version; a made-up default would
+  // change which uid the container is pinned to.
   it("omits the task runtime rather than inventing one", () => {
     expect(runnerBodyFor(createOptions(), meta).spec).not.toHaveProperty("taskRuntime");
     expect(runnerBodyFor(createOptions({ runtime: "bun" }), meta).spec.taskRuntime).toBe("bun");
   });
 
-  // Only the first value has ever reached a node selector, so carrying the list
-  // would describe a choice nothing makes.
+  // Only the first value reaches a node selector, so the list would describe a
+  // choice nothing makes.
   it("flattens each placement tag to its first value", () => {
     const opts = createOptions({
       placementTags: [
@@ -213,9 +236,8 @@ describe("runnerBodyFor", () => {
     expect(runnerBodyFor(createOptions(), meta).spec).not.toHaveProperty("hasPrivateLink");
   });
 
-  // Nothing in the pod path reads a trace context or an attempt number: the
-  // attempt is already in the object's name, and carrying a field nothing reads
-  // is how a spec grows fields that quietly disagree with reality.
+  // The operator reads neither a trace context nor an attempt number (the attempt is
+  // in the name), and an unread field drifts from reality unnoticed.
   it("sends nothing the operator does not read", () => {
     const opts = createOptions({
       nextAttemptNumber: 3,
@@ -230,6 +252,46 @@ describe("runnerBodyFor", () => {
     expect(Object.keys(spec).sort()).toEqual(
       ["bootstrap", "deployment", "image", "machine", "owner", "runtime", "taskRuntime"].sort()
     );
+  });
+});
+
+/**
+ * A resume is the cold-start Runner plus the snapshot to restore from; the
+ * operator adds nothing else to the pod for it, so nothing else may differ.
+ */
+describe("runnerBodyFor builds a resume", () => {
+  const restore = { snapshotID: "6f1c2a9e-snap", node: "node-a" };
+
+  it("names the snapshot to restore from and the node holding it", () => {
+    const body = runnerBodyFor(createOptions(), { ...meta, runtime: "microvm", restore });
+
+    expect(body.spec.restore).toEqual({ snapshotID: "6f1c2a9e-snap", node: "node-a" });
+  });
+
+  it("differs from a cold start only by the restore", () => {
+    const cold = runnerBodyFor(createOptions(), { ...meta, runtime: "microvm" });
+    const { restore: _, ...resume } = runnerBodyFor(createOptions(), {
+      ...meta,
+      runtime: "microvm",
+      restore,
+    }).spec;
+
+    expect(resume).toEqual(cold.spec);
+  });
+
+  // A retried restore must collide with the first rather than restore twice,
+  // and the name has to pass as a Runner name and seed a legal Secret name.
+  it("is named from the checkpoint, legally for the Runner and its token", () => {
+    const DNS1123 = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
+    const run = generateFriendlyId("run");
+    const checkpoint = generateFriendlyId("checkpoint");
+
+    const name = getRestoreRunnerId(run, checkpoint);
+    expect(name).toBe(getRestoreRunnerId(run, checkpoint));
+    expect(name).not.toBe(getRestoreRunnerId(run, generateFriendlyId("checkpoint")));
+    expect(name).not.toBe(getRunnerId(run));
+    expect(name).toMatch(DNS1123);
+    expect(runnerTokenSecretName(name, "tok")).toMatch(DNS1123);
   });
 });
 
@@ -281,25 +343,13 @@ describe("runnerTokenSecretName", () => {
 });
 
 /**
- * Ties every shared workload-manager create-option to the Runner that the
- * run-crd producer builds, so a new per-run option cannot be added and quietly
- * dropped. It is the class of drift that lost TRIGGER_SNAPSHOT_ROUTE: the field
- * was optional, three pod backends set it, and runCrd never did, which the type
- * checker was happy with.
- *
- * The property, stated once: every create-option field either changes the
- * Runner `runnerBodyFor` builds, or is listed in RUN_CRD_EXCLUDED with a reason.
- * Optionality is not an excuse; a silent drop is. It is checked by behaviour,
- * not by scanning source: for each field the test sets a probe value and asks
- * whether the built Runner changes. A comment, a log line, or a reference from
- * another method cannot fool that, where a textual `opts.<field>` scan could.
+ * Every create-option field either changes the Runner `runnerBodyFor` builds or is
+ * in RUN_CRD_EXCLUDED with a reason, so an optional field the type checker accepts
+ * cannot be silently dropped. Checked by probing behaviour rather than scanning
+ * source, which a comment or an unrelated `opts.<field>` reference would fool.
  */
 describe("run-crd carries every shared create-option or excludes it on purpose", () => {
-  /**
-   * Every key of WorkloadManagerCreateOptions. Adding a field to the interface
-   * without adding it here is a compile error (see the exhaustiveness assertion
-   * below): a new option is acknowledged here or the build breaks.
-   */
+  /** Every key of WorkloadManagerCreateOptions; KEYS_ARE_EXHAUSTIVE fails to compile otherwise. */
   const CREATE_OPTION_KEYS = [
     "image",
     "machine",
@@ -334,18 +384,8 @@ describe("run-crd carries every shared create-option or excludes it on purpose",
     true;
 
   /**
-   * Create-option fields that do not change the Runner `runnerBodyFor` builds,
-   * each with the reason it is not a spec field. Every such field must appear
-   * here, so not carrying one is always a decision on the record rather than an
-   * omission the type checker allowed. Some of these still shape creation by
-   * another route, the runner's name or its token Secret; they just are not
-   * values in the spec.
-   *
-   * snapshotRoute is superseded transport rather than a gap to fill: snapshot
-   * routing is becoming server-owned, so the runner-facing route is being
-   * removed rather than built into the Runner. This entry, the field on the
-   * create options, and the pod backends that set it come out together when that
-   * lands.
+   * Fields that do not change the spec, each with its reason. Some still shape
+   * creation by another route, such as the runner's name or its token Secret.
    */
   const RUN_CRD_EXCLUDED: Partial<Record<ListedKey, string>> = {
     snapshotRoute:
@@ -365,10 +405,8 @@ describe("run-crd carries every shared create-option or excludes it on purpose",
   };
 
   /**
-   * A value for each field that differs from createOptions()'s baseline, so a
-   * field the producer builds in makes the Runner change and one it ignores
-   * leaves it identical. Total over the keys, so a new option forces a probe
-   * here too.
+   * A non-baseline value per field: a built-in field changes the Runner, an ignored
+   * one leaves it identical. Total over the keys, so a new option needs a probe.
    */
   const PROBES: Record<ListedKey, Partial<WorkloadManagerCreateOptions>> = {
     image: { image: `registry.example.com/other/worker:2@sha256:${"1".repeat(64)}` },
@@ -420,9 +458,8 @@ describe("run-crd carries every shared create-option or excludes it on purpose",
   });
 
   it("gives each field a probe that sets only that field", () => {
-    // changesRunner reports any output difference, so a probe that also moved a
-    // second option could pass without its own field being built in. Pinning
-    // each probe to a single key keeps a difference attributable to that field.
+    // changesRunner reports any difference, so a probe touching a second option
+    // could pass without its own field being built in.
     for (const field of CREATE_OPTION_KEYS) {
       expect(Object.keys(PROBES[field]), `PROBES.${field} must set only ${field}`).toEqual([field]);
     }
@@ -447,5 +484,479 @@ describe("run-crd carries every shared create-option or excludes it on purpose",
       carried,
       `RUN_CRD_EXCLUDED lists options runnerBodyFor does build in: ${carried.join(", ")}`
     ).toEqual([]);
+  });
+});
+
+describe("RunCrdWorkloadManager.restore", () => {
+  const checkpoint = { id: "checkpoint_abc", location: "node-a/6f1c2a9e-snap" };
+
+  function manager(runtime: "container" | "microvm" = "microvm") {
+    return new RunCrdWorkloadManager({
+      workloadApiProtocol: "http",
+      workloadApiPort: 8020,
+      namespace: "v4-runs",
+      runtime,
+    });
+  }
+
+  beforeEach(() => {
+    createRunner.mockReset();
+    createRunner.mockResolvedValue({});
+    getRunner.mockReset();
+  });
+
+  function existing(
+    phase: string | undefined,
+    restore = { snapshotID: "6f1c2a9e-snap", node: "node-a" }
+  ) {
+    return {
+      metadata: { name: "runner-abc123" },
+      spec: { restore },
+      status: phase ? { phase } : undefined,
+    };
+  }
+
+  it("creates a Runner named from the checkpoint that restores its location", async () => {
+    await manager().restore(createOptions(), checkpoint);
+
+    const { body } = createRunner.mock.calls[0]![0];
+    expect(body.metadata.name).toBe(getRestoreRunnerId("run_abc123", "checkpoint_abc"));
+    expect(body.spec.restore).toEqual({ snapshotID: "6f1c2a9e-snap", node: "node-a" });
+  });
+
+  // Restored anywhere else, the snapshot is not there to load.
+  it("refuses a location that names no node, before creating anything", async () => {
+    await expect(
+      manager().restore(createOptions(), { ...checkpoint, location: "6f1c2a9e-snap" })
+    ).rejects.toThrow("is not <node>/<snapshot>");
+    expect(createRunner).not.toHaveBeenCalled();
+  });
+
+  it.each([undefined, "Pending", "Restoring", "Running"])(
+    "leaves a resume already in the way while it is %s",
+    async (phase) => {
+      createRunner.mockRejectedValue({ code: 409 });
+      getRunner.mockResolvedValue(existing(phase));
+
+      await expect(manager().restore(createOptions(), checkpoint)).resolves.toBeUndefined();
+      expect(getRunner).toHaveBeenCalledWith(
+        expect.objectContaining({ name: getRestoreRunnerId("run_abc123", "checkpoint_abc") })
+      );
+    }
+  );
+
+  // Held for the operator's TTL, it will never resume the guest.
+  it.each(["Failed", "Succeeded"])("fails when the resume in the way has %s", async (phase) => {
+    createRunner.mockRejectedValue({ code: 409 });
+    getRunner.mockResolvedValue(existing(phase));
+
+    await expect(manager().restore(createOptions(), checkpoint)).rejects.toThrow(
+      `already ended (${phase})`
+    );
+  });
+
+  it("fails when the Runner in the way restores a different snapshot", async () => {
+    createRunner.mockRejectedValue({ code: 409 });
+    getRunner.mockResolvedValue(
+      existing("Restoring", { snapshotID: "other-snap", node: "node-a" })
+    );
+
+    await expect(manager().restore(createOptions(), checkpoint)).rejects.toThrow(
+      "not node-a/6f1c2a9e-snap"
+    );
+  });
+
+  it("fails when the Runner in the way cannot be read", async () => {
+    createRunner.mockRejectedValue({ code: 409 });
+    getRunner.mockRejectedValue({ code: 404 });
+
+    await expect(manager().restore(createOptions(), checkpoint)).rejects.toEqual({ code: 404 });
+  });
+
+  it("still fails a cold start that finds a Runner in the way", async () => {
+    createRunner.mockRejectedValue({ code: 409 });
+
+    await expect(manager().create(createOptions())).rejects.toEqual({ code: 409 });
+  });
+
+  it.each([
+    ["microvm", "COMPUTE", true],
+    ["microvm", "KUBERNETES", false],
+    ["microvm", "DOCKER", false],
+    ["container", "COMPUTE", false],
+  ] as const)("on %s restores a %s checkpoint: %s", (runtime, type, expected) => {
+    expect(manager(runtime).restores({ type })).toBe(expected);
+  });
+});
+
+describe("RunCrdWorkloadManager.suspend", () => {
+  function manager(snapshots = { enabled: true, delayMs: 5_000, dispatchLimit: 10 }) {
+    return new RunCrdWorkloadManager({
+      workloadApiProtocol: "http",
+      workloadApiPort: 8020,
+      namespace: "v4-runs",
+      runtime: "microvm",
+      snapshots,
+      suspendPollMs: 1,
+      suspendTimeoutMs: 200,
+    });
+  }
+
+  function runner(status: Record<string, unknown>) {
+    return { metadata: { name: "runner-abc123" }, status };
+  }
+
+  const taken = runner({
+    phase: "Suspending",
+    suspend: { request: "snapshot_abc", snapshotID: "snap-1", node: "node-a" },
+    conditions: [{ type: "Suspended", status: "True", reason: "SnapshotTaken", message: "m" }],
+  });
+
+  beforeEach(() => {
+    getRunner.mockReset();
+    patchObject.mockReset();
+    patchObject.mockResolvedValue({});
+  });
+
+  const target = {
+    runnerId: "runner-abc123",
+    runFriendlyId: "run_abc",
+    snapshotFriendlyId: "snapshot_abc",
+  };
+  const owner = { envId: "env_1", deploymentFriendlyId: "deployment_1" };
+  const owned = {
+    metadata: { name: "runner-abc123" },
+    spec: { owner: { envID: "env_1" }, deployment: { friendlyID: "deployment_1" } },
+  };
+
+  it("asks on the Runner's annotation, named by the snapshot", async () => {
+    await expect(manager().requestSuspend(target)).resolves.toEqual({ ok: true });
+
+    const [object, , , , , strategy] = patchObject.mock.calls[0]!;
+    expect(object).toEqual({
+      apiVersion: "compute.trigger.dev/v1alpha1",
+      kind: "Runner",
+      metadata: {
+        name: "runner-abc123",
+        namespace: "v4-runs",
+        annotations: { [SUSPEND_ANNOTATION]: "snapshot_abc", [SUSPEND_RUN_ANNOTATION]: "run_abc" },
+      },
+    });
+    expect(strategy).toBe("application/merge-patch+json");
+    expect(getRunner).not.toHaveBeenCalled();
+  });
+
+  it("marks a request submitted on the Runner's annotation", async () => {
+    await manager().markSuspendSubmitted(target);
+
+    const [object, , , , , strategy] = patchObject.mock.calls[0]!;
+    expect(object.metadata).toEqual({
+      name: "runner-abc123",
+      namespace: "v4-runs",
+      annotations: { [SUSPEND_SUBMITTED_ANNOTATION]: "snapshot_abc" },
+    });
+    expect(strategy).toBe("application/merge-patch+json");
+  });
+
+  it("reads one Runner's answered suspend not yet submitted", async () => {
+    const annotations = {
+      [SUSPEND_ANNOTATION]: "snapshot_abc",
+      [SUSPEND_RUN_ANNOTATION]: "run_abc",
+    };
+    getRunner.mockResolvedValue({ ...taken, metadata: { name: "runner-abc123", annotations } });
+
+    await expect(manager().publishedSuspendOf("runner-abc123")).resolves.toMatchObject({
+      snapshotFriendlyId: "snapshot_abc",
+      outcome: { ok: true, location: "node-a/snap-1" },
+    });
+  });
+
+  it("lists the answered suspends not yet submitted", async () => {
+    const annotations = {
+      [SUSPEND_ANNOTATION]: "snapshot_abc",
+      [SUSPEND_RUN_ANNOTATION]: "run_abc",
+    };
+    listRunners.mockResolvedValue({
+      items: [
+        { ...taken, metadata: { name: "runner-abc123", annotations } },
+        { metadata: { name: "runner-idle" }, status: { phase: "Running" } },
+      ],
+    });
+
+    await expect(manager().publishedSuspends()).resolves.toEqual([
+      {
+        runnerId: "runner-abc123",
+        runFriendlyId: "run_abc",
+        snapshotFriendlyId: "snapshot_abc",
+        outcome: { ok: true, location: "node-a/snap-1" },
+      },
+    ]);
+    expect(listRunners).toHaveBeenCalledWith(
+      expect.objectContaining({ namespace: "v4-runs", plural: "runners" })
+    );
+  });
+
+  it("annotates a Runner the caller's deployment owns", async () => {
+    getRunner.mockResolvedValue(owned);
+
+    await expect(manager().requestSuspend({ ...target, owner })).resolves.toEqual({ ok: true });
+    expect(patchObject).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["environment", { ...owner, envId: "env_2" }],
+    ["deployment", { ...owner, deploymentFriendlyId: "deployment_2" }],
+  ])("refuses a Runner from another %s", async (_what, caller) => {
+    getRunner.mockResolvedValue(owned);
+
+    await expect(manager().requestSuspend({ ...target, owner: caller })).resolves.toEqual({
+      ok: false,
+      error: "the Runner belongs to another deployment",
+    });
+    expect(patchObject).not.toHaveBeenCalled();
+  });
+
+  it("fails when the request cannot be made", async () => {
+    patchObject.mockRejectedValue(new Error("forbidden"));
+
+    await expect(manager().requestSuspend(target)).resolves.toEqual({
+      ok: false,
+      error: "suspend request failed: forbidden",
+    });
+  });
+
+  it("waits for the operator's answer and returns the snapshot", async () => {
+    getRunner
+      .mockResolvedValueOnce(runner({ phase: "Running" }))
+      .mockRejectedValueOnce({ code: 500 })
+      .mockResolvedValueOnce(
+        runner({
+          phase: "Suspending",
+          suspend: { request: "snapshot_abc" },
+          conditions: [{ type: "Suspended", status: "Unknown", reason: "SnapshotRequested" }],
+        })
+      )
+      .mockResolvedValue(taken);
+
+    await expect(manager().awaitSuspend(target)).resolves.toEqual({
+      ok: true,
+      location: "node-a/snap-1",
+    });
+    expect(getRunner).toHaveBeenCalledTimes(4);
+  });
+
+  it("fails when the Runner is gone", async () => {
+    getRunner.mockRejectedValue({ code: 404 });
+    await expect(manager().awaitSuspend(target)).resolves.toEqual({
+      ok: false,
+      error: "the Runner no longer exists",
+    });
+  });
+
+  it.each([400, 401, 403, 422])("gives up on a %i reading the Runner", async (code) => {
+    getRunner.mockRejectedValue(Object.assign(new Error(`HTTP ${code}`), { code }));
+    await expect(manager().awaitSuspend(target)).resolves.toEqual({
+      ok: false,
+      error: `Runner read failed: HTTP ${code}`,
+    });
+    expect(getRunner).toHaveBeenCalledTimes(1);
+  });
+
+  it("says so when no operator takes the request up", async () => {
+    getRunner.mockResolvedValue(runner({ phase: "Running" }));
+    await expect(manager().awaitSuspend(target)).resolves.toEqual({
+      ok: false,
+      error:
+        "the operator did not take up the suspend within 200ms; is a suspend-capable operator running?",
+    });
+  });
+
+  it("restarts the wait once the operator takes the request up", async () => {
+    const pending = runner({
+      phase: "Suspending",
+      suspend: { request: "snapshot_abc" },
+      conditions: [{ type: "Suspended", status: "Unknown", reason: "SnapshotRequested" }],
+    });
+    const start = Date.now();
+    getRunner.mockImplementation(async () =>
+      Date.now() - start < 150 ? runner({ phase: "Running" }) : pending
+    );
+
+    await expect(manager().awaitSuspend(target)).resolves.toEqual({
+      ok: false,
+      error: "no suspend outcome within 200ms of the operator taking it up",
+    });
+    expect(Date.now() - start).toBeGreaterThanOrEqual(350);
+  });
+
+  it("fails once a later request displaces one the operator took up", async () => {
+    const answering = (request: string) =>
+      runner({
+        phase: "Suspending",
+        suspend: { request },
+        conditions: [{ type: "Suspended", status: "Unknown", reason: "SnapshotRequested" }],
+      });
+    getRunner
+      .mockResolvedValueOnce(answering("snapshot_abc"))
+      .mockResolvedValue(answering("snapshot_later"));
+
+    await expect(manager().awaitSuspend(target)).resolves.toEqual({
+      ok: false,
+      error: "displaced by a later suspend request",
+    });
+    expect(getRunner).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps waiting behind an earlier request not yet answered", async () => {
+    getRunner
+      .mockResolvedValueOnce(
+        runner({ phase: "Suspending", suspend: { request: "snapshot_older" } })
+      )
+      .mockResolvedValue(taken);
+
+    await expect(manager().awaitSuspend(target)).resolves.toEqual({
+      ok: true,
+      location: "node-a/snap-1",
+    });
+  });
+
+  it("is enabled only under microvm with snapshots on", () => {
+    expect(manager().snapshotsEnabled).toBe(true);
+    expect(manager({ enabled: false, delayMs: 0, dispatchLimit: 1 }).snapshotsEnabled).toBe(false);
+    const container = new RunCrdWorkloadManager({
+      workloadApiProtocol: "http",
+      workloadApiPort: 8020,
+      namespace: "v4-runs",
+      runtime: "container",
+      snapshots: { enabled: true, delayMs: 0, dispatchLimit: 1 },
+    });
+    expect(container.snapshotsEnabled).toBe(false);
+  });
+});
+
+describe("suspendOutcome", () => {
+  const request = "snapshot_abc";
+
+  it("waits while the operator has not answered this request", () => {
+    expect(suspendOutcome({ status: { phase: "Running" } }, request)).toBeUndefined();
+    expect(
+      suspendOutcome(
+        {
+          status: {
+            phase: "Suspending",
+            suspend: { request: "snapshot_older", snapshotID: "snap-0" },
+            conditions: [{ type: "Suspended", status: "True" }],
+          },
+        },
+        request
+      )
+    ).toBeUndefined();
+  });
+
+  it("reports a failed or refused suspend with its reason", () => {
+    const outcome = suspendOutcome(
+      {
+        status: {
+          phase: "Running",
+          suspend: { request },
+          conditions: [
+            { type: "Suspended", status: "False", reason: "SnapshotFailed", message: "boom" },
+          ],
+        },
+      },
+      request
+    );
+    expect(outcome).toEqual({ ok: false, error: "SnapshotFailed: boom" });
+  });
+
+  it("waits for the node as well as the snapshot id", () => {
+    const answered = (suspend: Record<string, string>) =>
+      suspendOutcome(
+        {
+          status: {
+            phase: "Suspending",
+            suspend: { request, ...suspend },
+            conditions: [{ type: "Suspended", status: "True" }],
+          },
+        },
+        request
+      );
+    expect(answered({ snapshotID: "snap-1" })).toBeUndefined();
+    expect(answered({ snapshotID: "snap-1", node: "node-a" })).toEqual({
+      ok: true,
+      location: "node-a/snap-1",
+    });
+  });
+
+  it("gives up on a Runner that ended without answering", () => {
+    expect(suspendOutcome({ status: { phase: "Failed" } }, request)).toMatchObject({ ok: false });
+  });
+});
+
+describe("publishedSuspend", () => {
+  const status = {
+    phase: "Suspending",
+    suspend: { request: "snapshot_abc", snapshotID: "snap-1", node: "node-a" },
+    conditions: [{ type: "Suspended", status: "True" }],
+  };
+  const runner = (annotations: Record<string, string>, s: Record<string, unknown> = status) => ({
+    metadata: { name: "runner-abc123", annotations },
+    status: s,
+  });
+  const requested = { [SUSPEND_ANNOTATION]: "snapshot_abc", [SUSPEND_RUN_ANNOTATION]: "run_abc" };
+
+  it("returns an answered request the platform has not accepted", () => {
+    expect(publishedSuspend(runner(requested))).toEqual({
+      runnerId: "runner-abc123",
+      runFriendlyId: "run_abc",
+      snapshotFriendlyId: "snapshot_abc",
+      outcome: { ok: true, location: "node-a/snap-1" },
+    });
+  });
+
+  it("returns a failed answer too, so the platform stops waiting", () => {
+    const failed = {
+      phase: "Running",
+      suspend: { request: "snapshot_abc" },
+      conditions: [
+        { type: "Suspended", status: "False", reason: "SnapshotFailed", message: "boom" },
+      ],
+    };
+    expect(publishedSuspend(runner(requested, failed))?.outcome).toEqual({
+      ok: false,
+      error: "SnapshotFailed: boom",
+    });
+  });
+
+  it("skips a request already submitted", () => {
+    expect(
+      publishedSuspend(runner({ ...requested, [SUSPEND_SUBMITTED_ANNOTATION]: "snapshot_abc" }))
+    ).toBeUndefined();
+  });
+
+  it("returns a newer request when only an older one was submitted", () => {
+    expect(
+      publishedSuspend(runner({ ...requested, [SUSPEND_SUBMITTED_ANNOTATION]: "snapshot_older" }))
+    ).toMatchObject({ snapshotFriendlyId: "snapshot_abc" });
+  });
+
+  it("skips a request still in flight", () => {
+    const pending = { phase: "Suspending", suspend: { request: "snapshot_abc" } };
+    expect(publishedSuspend(runner(requested, pending))).toBeUndefined();
+  });
+
+  it("skips a request that names no run", () => {
+    expect(publishedSuspend(runner({ [SUSPEND_ANNOTATION]: "snapshot_abc" }))).toBeUndefined();
+  });
+});
+
+describe("checkpoint locations", () => {
+  it("round-trip the node and the snapshot", () => {
+    const restore = { node: "ip-10-0-1-2.ec2.internal", snapshotID: "6f1c2a9e-snap" };
+    expect(parseCheckpointLocation(checkpointLocation(restore))).toEqual(restore);
+  });
+
+  it.each(["", "snap", "/snap", "node/", "a/b/c"])("refuse %j", (location) => {
+    expect(() => parseCheckpointLocation(location)).toThrow();
   });
 });

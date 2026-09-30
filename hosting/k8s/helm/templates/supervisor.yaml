@@ -33,7 +33,10 @@ rules:
     verbs: ["create", "delete", "patch"]
   - apiGroups: ["compute.trigger.dev"]
     resources: ["runners"]
-    verbs: ["create"]
+    # get and patch are a suspend: the request is an annotation on the Runner
+    # and the outcome is read back off its status. list finds outcomes a
+    # restarted supervisor has yet to submit.
+    verbs: ["create", "get", "list", "patch"]
 {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
