@@ -403,6 +403,7 @@ const EnvironmentSchema = z
     LOGIN_ORIGIN: z.string().default("http://localhost:3030"),
     LOGIN_RATE_LIMITS_ENABLED: BoolEnv.default(true),
     APP_ORIGIN: z.string().default("http://localhost:3030"),
+    PUBLIC_APP_ORIGIN: z.url().optional(),
     // Extra exact origins (comma separated) added to the document `img-src` CSP,
     // e.g. an SSO host serving profile images. Wildcards are refused.
     CSP_IMG_SRC_ALLOWLIST: z.string().optional(),

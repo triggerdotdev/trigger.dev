@@ -1284,6 +1284,10 @@ export function isCloud(): boolean {
     return true;
   }
 
+  if (env.PUBLIC_APP_ORIGIN && acceptableHosts.includes(env.PUBLIC_APP_ORIGIN)) {
+    return true;
+  }
+
   if (process.env.CLOUD_ENV === "development" && process.env.NODE_ENV === "development") {
     return true;
   }

@@ -7,11 +7,14 @@ export type TriggerFeatures = {
   queueMetricsQueryTables: boolean;
 };
 
+const MANAGED_CLOUD_HOSTS = ["cloud.trigger.dev", "test-cloud.trigger.dev", "internal.trigger.dev"];
+
+const publicAppHost = env.PUBLIC_APP_ORIGIN ? new URL(env.PUBLIC_APP_ORIGIN).host : undefined;
+
 function isManagedCloud(host: string): boolean {
   return (
-    host === "cloud.trigger.dev" ||
-    host === "test-cloud.trigger.dev" ||
-    host === "internal.trigger.dev" ||
+    MANAGED_CLOUD_HOSTS.includes(host) ||
+    (publicAppHost !== undefined && MANAGED_CLOUD_HOSTS.includes(publicAppHost)) ||
     process.env.CLOUD_ENV === "development"
   );
 }
