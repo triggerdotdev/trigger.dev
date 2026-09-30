@@ -1089,8 +1089,8 @@ importers:
         specifier: ^2.0.8
         version: 2.0.8(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       nodemailer:
-        specifier: ^9.0.1
-        version: 9.0.3
+        specifier: ^9.1.1
+        version: 9.1.1
       react:
         specifier: 18.3.1
         version: 18.3.1
@@ -12507,8 +12507,8 @@ packages:
   node-releases@2.0.36:
     resolution: {integrity: sha512-TdC8FSgHz8Mwtw9g5L4gR/Sh9XhSP/0DEkQxfEFXOpiul5IiHgHan2VhYYb6agDSfp4KuvltmGApc8HMgUrIkA==}
 
-  nodemailer@9.0.3:
-    resolution: {integrity: sha512-n+YP+NKwR5zRWa60k3GiQ6Q3B4KXCoAw40dAKeCtYn020iNN74aWK2liXIC3ZEATeGql7we3tE3t8QwhY0eskw==}
+  nodemailer@9.1.1:
+    resolution: {integrity: sha512-izw9mVKFix6YSnC9eLgV6g1opl9DUlRio9ZNcq+Wu9Ujn2UwF+8Nl0B8nz22kEC+CTZCvinkxwJ0DeFbb6NwcQ==}
     engines: {node: '>=6.0.0'}
 
   non.geist@1.0.2:
@@ -27726,7 +27726,7 @@ snapshots:
 
   node-releases@2.0.36: {}
 
-  nodemailer@9.0.3: {}
+  nodemailer@9.1.1: {}
 
   non.geist@1.0.2: {}
 
