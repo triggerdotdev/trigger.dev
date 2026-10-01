@@ -60,7 +60,14 @@ export type RunCrdWorkloadManagerOptions = WorkloadManagerOptions & {
    * than its own snapshot budget, so its failure arrives first and carries the reason.
    */
   suspendTimeoutMs?: number;
+  /**
+   * How long a resume has to reach Running. Longer than the operator's pod start
+   * deadline, so its failure arrives first and carries the reason.
+   */
+  restoreTimeoutMs?: number;
 };
+
+export type RunnerRestoreResult = { ok: true } | { ok: false; error: string };
 
 /**
  * Creates a Runner and stops; the operator builds the pod, so uid, node selection
@@ -75,6 +82,7 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
   private readonly snapshots?: RunCrdWorkloadManagerOptions["snapshots"];
   private readonly suspendPollMs: number;
   private readonly suspendTimeoutMs: number;
+  private readonly restoreTimeoutMs: number;
 
   constructor(opts: RunCrdWorkloadManagerOptions) {
     this.k8s = createK8sApi();
@@ -83,6 +91,7 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
     this.snapshots = opts.snapshots;
     this.suspendPollMs = opts.suspendPollMs ?? 1_000;
     this.suspendTimeoutMs = opts.suspendTimeoutMs ?? 6 * 60_000;
+    this.restoreTimeoutMs = opts.restoreTimeoutMs ?? 16 * 60_000;
   }
 
   get snapshotsEnabled(): boolean {
@@ -229,6 +238,22 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
     };
   }
 
+  /**
+   * Waits for a resume to start or to fail. Nothing else watches one: a resume
+   * that fails never has a runner to connect and say so.
+   */
+  async awaitRestore(runnerId: string): Promise<RunnerRestoreResult> {
+    return awaitRestoreOf(() => this.getRunner(runnerId), {
+      pollMs: this.suspendPollMs,
+      timeoutMs: this.restoreTimeoutMs,
+      onReadError: (err) =>
+        this.logger.warn("[RunCrdWorkloadManager] Runner read failed during restore", {
+          runnerId,
+          rawError: err,
+        }),
+    });
+  }
+
   private getRunner(name: string): Promise<unknown> {
     return this.k8s.custom.getNamespacedCustomObject({
       group: GROUP,
@@ -255,15 +280,20 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
    * Creates a resume: a Runner the operator restores from the checkpoint's
    * snapshot, on the node holding it, instead of cold-starting. Named from the
    * checkpoint, so a redelivered restore finds the first Runner and leaves it
-   * rather than restoring twice.
+   * rather than restoring twice. Returns the Runner's name, also for a resume
+   * found in the way, which a restarted supervisor has no other watch on.
    */
-  async restore(opts: WorkloadManagerCreateOptions, checkpoint: { id: string; location: string }) {
+  async restore(
+    opts: WorkloadManagerCreateOptions,
+    checkpoint: { id: string; location: string }
+  ): Promise<string> {
     const runnerId = getRestoreRunnerId(opts.runFriendlyId, checkpoint.id);
     const restore = parseCheckpointLocation(checkpoint.location);
     const created = await this.createRunner(opts, runnerId, restore);
     if (!created) {
       await this.checkExistingRestore(runnerId, restore);
     }
+    return runnerId;
   }
 
   /**
@@ -526,6 +556,61 @@ export function suspendOutcome(runner: unknown, request: string): RunnerSuspendR
     };
   }
   return undefined;
+}
+
+/** Polls a resume's Runner, read by `readRunner`, until it starts, fails or times out. */
+export async function awaitRestoreOf(
+  readRunner: () => Promise<unknown>,
+  opts: { pollMs: number; timeoutMs: number; onReadError: (err: unknown) => void }
+): Promise<RunnerRestoreResult> {
+  const deadline = Date.now() + opts.timeoutMs;
+  while (Date.now() < deadline) {
+    await sleep(opts.pollMs);
+    let runner: unknown;
+    try {
+      runner = await readRunner();
+    } catch (err: unknown) {
+      const code = statusCodeOf(err);
+      if (code === 404) {
+        return { ok: false, error: "the Runner no longer exists" };
+      }
+      if (code !== undefined && TERMINAL_READ_CODES.has(code)) {
+        return { ok: false, error: `Runner read failed: ${messageOf(err)}` };
+      }
+      opts.onReadError(err);
+      continue;
+    }
+    const outcome = restoreOutcome(runner);
+    if (outcome) {
+      return outcome;
+    }
+  }
+  return { ok: false, error: `the Runner did not start within ${opts.timeoutMs}ms` };
+}
+
+/**
+ * Whether a resume started, or undefined while the operator is still restoring
+ * it. A Runner that ended is a success only if it ran to completion.
+ */
+export function restoreOutcome(runner: unknown): RunnerRestoreResult | undefined {
+  const status = (runner as RunnerSuspendStatus | null)?.status;
+  switch (status?.phase) {
+    case "Running":
+    case "Suspending":
+    case "Succeeded":
+      return { ok: true };
+    case "Failed": {
+      const condition = status.conditions?.find((c) => c.type === "Failed");
+      return {
+        ok: false,
+        error: condition
+          ? `${condition.reason}: ${condition.message}`
+          : "the Runner failed with no reason recorded",
+      };
+    }
+    default:
+      return undefined;
+  }
 }
 
 /**

@@ -5,9 +5,11 @@ import {
   SUSPEND_ANNOTATION,
   SUSPEND_RUN_ANNOTATION,
   SUSPEND_SUBMITTED_ANNOTATION,
+  awaitRestoreOf,
   checkpointLocation,
   parseCheckpointLocation,
   publishedSuspend,
+  restoreOutcome,
   runnerBodyFor,
   runnerTokenSecretName,
   suspendOutcome,
@@ -517,7 +519,9 @@ describe("RunCrdWorkloadManager.restore", () => {
   }
 
   it("creates a Runner named from the checkpoint that restores its location", async () => {
-    await manager().restore(createOptions(), checkpoint);
+    await expect(manager().restore(createOptions(), checkpoint)).resolves.toBe(
+      getRestoreRunnerId("run_abc123", "checkpoint_abc")
+    );
 
     const { body } = createRunner.mock.calls[0]![0];
     expect(body.metadata.name).toBe(getRestoreRunnerId("run_abc123", "checkpoint_abc"));
@@ -538,7 +542,9 @@ describe("RunCrdWorkloadManager.restore", () => {
       createRunner.mockRejectedValue({ code: 409 });
       getRunner.mockResolvedValue(existing(phase));
 
-      await expect(manager().restore(createOptions(), checkpoint)).resolves.toBeUndefined();
+      await expect(manager().restore(createOptions(), checkpoint)).resolves.toBe(
+        getRestoreRunnerId("run_abc123", "checkpoint_abc")
+      );
       expect(getRunner).toHaveBeenCalledWith(
         expect.objectContaining({ name: getRestoreRunnerId("run_abc123", "checkpoint_abc") })
       );
@@ -586,6 +592,127 @@ describe("RunCrdWorkloadManager.restore", () => {
     ["container", "COMPUTE", false],
   ] as const)("on %s restores a %s checkpoint: %s", (runtime, type, expected) => {
     expect(manager(runtime).restores({ type })).toBe(expected);
+  });
+});
+
+describe("restoreOutcome", () => {
+  it.each([undefined, "Pending", "Admitted", "Scheduling", "Restoring"])(
+    "is still waiting while the Runner is %s",
+    (phase) => {
+      expect(restoreOutcome({ status: phase ? { phase } : undefined })).toBeUndefined();
+    }
+  );
+
+  it.each(["Running", "Suspending", "Succeeded"])("is a success once the Runner is %s", (phase) => {
+    expect(restoreOutcome({ status: { phase } })).toEqual({ ok: true });
+  });
+
+  it("is a failure carrying the operator's reason", () => {
+    const runner = {
+      status: {
+        phase: "Failed",
+        conditions: [
+          {
+            type: "Failed",
+            status: "True",
+            reason: "StartError",
+            message: "pulling the image: 401",
+          },
+        ],
+      },
+    };
+    expect(restoreOutcome(runner)).toEqual({
+      ok: false,
+      error: "StartError: pulling the image: 401",
+    });
+  });
+
+  it("is a failure even when the operator recorded no reason", () => {
+    expect(restoreOutcome({ status: { phase: "Failed" } })).toEqual({
+      ok: false,
+      error: "the Runner failed with no reason recorded",
+    });
+  });
+});
+
+describe("awaitRestoreOf", () => {
+  /** Answers each read with the next response, repeating the last. `{ throw: err }` fails that read. */
+  function reads(...responses: unknown[]) {
+    const log: unknown[] = [];
+    let i = 0;
+    const readRunner = async () => {
+      const response = responses[Math.min(i++, responses.length - 1)];
+      log.push(response);
+      if (response && typeof response === "object" && "throw" in response) {
+        throw response.throw;
+      }
+      return response;
+    };
+    return { readRunner, log };
+  }
+
+  function awaitWith(readRunner: () => Promise<unknown>, timeoutMs = 1_000) {
+    return awaitRestoreOf(readRunner, { pollMs: 1, timeoutMs, onReadError: () => {} });
+  }
+
+  it("waits through Restoring until the Runner is Running", async () => {
+    const { readRunner, log } = reads(
+      { status: { phase: "Pending" } },
+      { status: { phase: "Restoring" } },
+      { status: { phase: "Running" } }
+    );
+
+    await expect(awaitWith(readRunner)).resolves.toEqual({ ok: true });
+    expect(log).toHaveLength(3);
+  });
+
+  it("reports a failed restore with the operator's reason", async () => {
+    const { readRunner } = reads(
+      { status: { phase: "Restoring" } },
+      {
+        status: {
+          phase: "Failed",
+          conditions: [{ type: "Failed", reason: "SnapshotNodeGone", message: "node a is gone" }],
+        },
+      }
+    );
+
+    await expect(awaitWith(readRunner)).resolves.toEqual({
+      ok: false,
+      error: "SnapshotNodeGone: node a is gone",
+    });
+  });
+
+  it("keeps polling through a read that may succeed next time", async () => {
+    const readErrors: unknown[] = [];
+    const { readRunner } = reads({ throw: { code: 500 } }, { status: { phase: "Running" } });
+
+    await expect(
+      awaitRestoreOf(readRunner, {
+        pollMs: 1,
+        timeoutMs: 1_000,
+        onReadError: (err) => readErrors.push(err),
+      })
+    ).resolves.toEqual({ ok: true });
+    expect(readErrors).toEqual([{ code: 500 }]);
+  });
+
+  it("fails when the Runner is gone", async () => {
+    const { readRunner } = reads({ throw: { code: 404 } });
+
+    await expect(awaitWith(readRunner)).resolves.toEqual({
+      ok: false,
+      error: "the Runner no longer exists",
+    });
+  });
+
+  it("gives up after its timeout", async () => {
+    const { readRunner } = reads({ status: { phase: "Restoring" } });
+
+    await expect(awaitWith(readRunner, 20)).resolves.toEqual({
+      ok: false,
+      error: "the Runner did not start within 20ms",
+    });
   });
 });
 

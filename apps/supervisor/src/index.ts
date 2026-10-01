@@ -98,6 +98,7 @@ class ManagedSupervisor {
   private readonly failedPodHandler?: FailedPodHandler;
   private readonly tracing?: OtlpTraceService;
   private readonly backpressureMonitors: BackpressureMonitor[] = [];
+  private readonly watchedRestores = new Set<string>();
   private readonly backpressureRedis?: Redis;
 
   private readonly isKubernetes = isKubernetesEnvironment(env.KUBERNETES_FORCE_ENABLED);
@@ -709,10 +710,12 @@ class ManagedSupervisor {
   ) {
     const restoreStart = performance.now();
     try {
-      await manager.restore(await this.createOptionsFor(message), checkpoint);
+      const runnerId = await manager.restore(await this.createOptionsFor(message), checkpoint);
       recordPhaseSince("restore", restoreStart, undefined);
       setExtra(fromContext(), "did_restore", true);
       this.logger.debug("Runner restore created", { runId: message.run.id });
+      // Not awaited: the resume can take minutes, and the dequeue is done.
+      void this.watchRestore(manager, message.run.friendlyId, runnerId);
     } catch (error) {
       recordPhaseSince(
         "restore",
@@ -722,6 +725,36 @@ class ManagedSupervisor {
       setExtra(fromContext(), "did_restore", false);
       this.logger.error("Failed to restore run (run-crd)", { runId: message.run.id, error });
     }
+  }
+
+  /** A resume that fails on the node is otherwise silent until the run's heartbeat stalls. */
+  private async watchRestore(
+    manager: RunCrdWorkloadManager,
+    runFriendlyId: string,
+    runnerId: string
+  ) {
+    // A redelivered restore finds the same Runner, which needs only one watch.
+    if (this.watchedRestores.has(runnerId)) {
+      return;
+    }
+    this.watchedRestores.add(runnerId);
+    const outcome = await manager
+      .awaitRestore(runnerId)
+      .finally(() => this.watchedRestores.delete(runnerId));
+    if (outcome.ok) {
+      this.logger.debug("Runner restore started", { runFriendlyId, runnerId });
+      return;
+    }
+    this.logger.error("Runner restore failed (run-crd)", {
+      runFriendlyId,
+      runnerId,
+      error: outcome.error,
+    });
+    await this.workerSession.httpClient.sendDebugLog(runFriendlyId, {
+      time: new Date(),
+      message: "restore failed on the node",
+      properties: { runnerId, error: outcome.error },
+    });
   }
 
   private async createWorkload(message: DequeuedMessage, timings: WarmStartTimings) {
