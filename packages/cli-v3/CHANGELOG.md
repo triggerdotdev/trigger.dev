@@ -1,5 +1,19 @@
 # trigger.dev
 
+## 4.7.0
+
+### Patch Changes
+
+- Fix stale and empty project environment values in `trigger dev`, and support empty values in `syncEnvVars()`. ([`f384e8334`](https://github.com/triggerdotdev/trigger.dev/commit/f384e8334a8eca3266ecb33e5fae7d1fbf148d59))
+- Set up a new Trigger.dev account from the CLI. Login can prefill an email address, save the user's full name after authorization, and resume authorization later, while `init` can create the first organization, activate its Free plan, and create the first project before scaffolding the app. ([`fb3b26d4f`](https://github.com/triggerdotdev/trigger.dev/commit/fb3b26d4f77e14d50d43c51672f71b6c17cb0a4a))
+- Added a `submit_feedback` MCP tool so coding agents can report a confusing tool error, a docs mismatch, or a missing capability without the user having to file it by hand. Turn it off with `--skip-telemetry` or `TRIGGER_TELEMETRY_DISABLED`; the tool is hidden while it is off. ([`9d38ff508`](https://github.com/triggerdotdev/trigger.dev/commit/9d38ff508779ab7ae4c1e50d119cddd345a93d0f))
+- Authenticate `trigger promote` with environment API keys supplied through `TRIGGER_ACCESS_TOKEN`. Environment API key commands now use the saved profile API URL when no explicit override is provided. ([`562c9433a`](https://github.com/triggerdotdev/trigger.dev/commit/562c9433a3f70da46eb5e8b213f22f98dcc1d164))
+- Fix Windows deploys failing at indexing with `Cannot find module` on a percent-encoded path when the project directory contains spaces or non-ASCII characters. ([`b32c1d157`](https://github.com/triggerdotdev/trigger.dev/commit/b32c1d157a2cecd76ffc10c237f9bb5b45d48bcf))
+- Updated dependencies:
+  - `@trigger.dev/schema-to-json@4.7.0`
+  - `@trigger.dev/core@4.7.0`
+  - `@trigger.dev/build@4.7.0`
+
 ## 4.6.3
 
 ### Patch Changes
