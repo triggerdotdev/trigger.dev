@@ -1,4 +1,5 @@
 import { Outlet, useRouteLoaderData } from "@remix-run/react";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { VERSION as coreVersion } from "@trigger.dev/core";
 import { type ReactNode } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -9,15 +10,60 @@ import {
   OrganizationSettingsSideMenu,
 } from "~/components/navigation/OrganizationSettingsSideMenu";
 import { useOrganization } from "~/hooks/useOrganizations";
+import { resolveOrgIdFromSlugForUser } from "~/models/organization.server";
+import { logger } from "~/services/logger.server";
+import { organizationHasProjectRuntimeUpdate } from "~/services/projectRuntimeUpdates.server";
 import { rbac } from "~/services/rbac.server";
+import { requireUserId } from "~/services/session.server";
 import { ssoController } from "~/services/sso.server";
 
 const SETTINGS_ROUTE_ID = "routes/_app.orgs.$organizationSlug.settings";
 
-export const loader = async () => {
-  const [isUsingPlugin, isSsoUsingPlugin] = await Promise.all([
+// The side-menu dot links to the Projects settings page, which requires `read` on
+// `deployments`, so gate the dot on the same ability the page checks.
+async function canReadDeployments({
+  request,
+  userId,
+  organizationSlug,
+}: {
+  request: Request;
+  userId: string;
+  organizationSlug: string;
+}) {
+  // Membership-scoped so the dot is never computed against an org the user is not in.
+  const organizationId = await resolveOrgIdFromSlugForUser(organizationSlug, userId);
+  if (!organizationId) {
+    return false;
+  }
+
+  const auth = await rbac.authenticateAuthorizeSession(
+    request,
+    { userId, organizationId },
+    { action: "read", resource: { type: "deployments" } }
+  );
+  return auth.ok;
+}
+
+export const loader = async ({ request, params }: LoaderFunctionArgs) => {
+  const userId = await requireUserId(request);
+  const organizationSlug = params.organizationSlug;
+
+  const [isUsingPlugin, isSsoUsingPlugin, hasProjectRuntimeUpdate] = await Promise.all([
     rbac.isUsingPlugin(),
     ssoController.isUsingPlugin(),
+    organizationSlug
+      ? canReadDeployments({ request, userId, organizationSlug })
+          .then((canRead) =>
+            canRead ? organizationHasProjectRuntimeUpdate({ organizationSlug, userId }) : false
+          )
+          .catch((error) => {
+            logger.error("Failed to check project runtime updates", {
+              organizationSlug,
+              error,
+            });
+            return false;
+          })
+      : Promise.resolve(false),
   ]);
   return typedjson({
     buildInfo: {
@@ -29,6 +75,7 @@ export const loader = async () => {
     } satisfies BuildInfo,
     isUsingPlugin,
     isSsoUsingPlugin,
+    hasProjectRuntimeUpdate,
   });
 };
 
@@ -36,11 +83,13 @@ function SettingsChrome({
   buildInfo,
   isUsingPlugin,
   isSsoUsingPlugin,
+  hasProjectRuntimeUpdate,
   children,
 }: {
   buildInfo: BuildInfo;
   isUsingPlugin: boolean;
   isSsoUsingPlugin: boolean;
+  hasProjectRuntimeUpdate: boolean;
   children: ReactNode;
 }) {
   const organization = useOrganization();
@@ -53,6 +102,7 @@ function SettingsChrome({
           buildInfo={buildInfo}
           isUsingPlugin={isUsingPlugin}
           isSsoUsingPlugin={isSsoUsingPlugin}
+          hasProjectRuntimeUpdate={hasProjectRuntimeUpdate}
         />
         <MainBody>{children}</MainBody>
       </div>
@@ -61,13 +111,15 @@ function SettingsChrome({
 }
 
 export default function Page() {
-  const { buildInfo, isUsingPlugin, isSsoUsingPlugin } = useTypedLoaderData<typeof loader>();
+  const { buildInfo, isUsingPlugin, isSsoUsingPlugin, hasProjectRuntimeUpdate } =
+    useTypedLoaderData<typeof loader>();
 
   return (
     <SettingsChrome
       buildInfo={buildInfo}
       isUsingPlugin={isUsingPlugin}
       isSsoUsingPlugin={isSsoUsingPlugin}
+      hasProjectRuntimeUpdate={hasProjectRuntimeUpdate}
     >
       <Outlet />
     </SettingsChrome>
@@ -84,6 +136,7 @@ export function ErrorBoundary() {
         buildInfo: BuildInfo;
         isUsingPlugin: boolean;
         isSsoUsingPlugin: boolean;
+        hasProjectRuntimeUpdate: boolean;
       }
     | undefined;
 
@@ -96,6 +149,7 @@ export function ErrorBoundary() {
       buildInfo={data.buildInfo}
       isUsingPlugin={data.isUsingPlugin}
       isSsoUsingPlugin={data.isSsoUsingPlugin}
+      hasProjectRuntimeUpdate={data.hasProjectRuntimeUpdate}
     >
       <RouteErrorDisplay />
     </SettingsChrome>

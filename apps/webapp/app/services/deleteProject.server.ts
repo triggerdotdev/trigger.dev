@@ -1,6 +1,5 @@
 import type { PrismaClient } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
-import { invalidateOrganizationProjectRuntimeUpdateCache } from "~/services/projectRuntimeUpdates.server";
 import { engine } from "~/v3/runEngine.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 
@@ -58,8 +57,6 @@ export class DeleteProjectService {
         deletedAt: new Date(),
       },
     });
-
-    await invalidateOrganizationProjectRuntimeUpdateCache(project.organization.id);
 
     /** project.deletedAt, which the engine gates enqueue and dequeue on, changed; drop every cached env of this project. */
     for (const environment of project.environments) {

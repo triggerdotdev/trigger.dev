@@ -1,7 +1,6 @@
 import type { BillingLimitResult } from "~/services/billingLimit.schemas";
 
 export enum OrgBannerKind {
-  RuntimeUpdate = "runtime-update",
   LimitRejected = "limit-rejected",
   LimitGrace = "limit-grace",
   NoLimitConfigured = "no-limit",
@@ -11,24 +10,13 @@ export enum OrgBannerKind {
 }
 
 export function selectOrgBanner(input: {
-  hasProjectRuntimeUpdate?: boolean;
   billingLimit?: BillingLimitResult;
   hasExceededFreeTier?: boolean;
   showEnvironmentWarning?: boolean;
   /** Self-serve billing UI — hide configure-limit prompt for managed customers. */
   showSelfServe?: boolean;
 }): OrgBannerKind {
-  const {
-    hasProjectRuntimeUpdate,
-    billingLimit,
-    hasExceededFreeTier,
-    showEnvironmentWarning,
-    showSelfServe = true,
-  } = input;
-
-  if (hasProjectRuntimeUpdate) {
-    return OrgBannerKind.RuntimeUpdate;
-  }
+  const { billingLimit, hasExceededFreeTier, showEnvironmentWarning, showSelfServe = true } = input;
 
   if (billingLimit?.isConfigured) {
     const status = billingLimit.limitState.status;

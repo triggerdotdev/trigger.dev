@@ -94,11 +94,3 @@ export function useCanManageBillingLimits(matches?: UIMatch[]) {
   });
   return data?.canManageBillingLimits === true;
 }
-
-export function useHasProjectRuntimeUpdate(matches?: UIMatch[]) {
-  const data = useTypedMatchesData<typeof orgLoader>({
-    id: "routes/_app.orgs.$organizationSlug",
-    matches,
-  });
-  return data?.hasProjectRuntimeUpdate === true;
-}
