@@ -32,6 +32,7 @@ import {
   createLoaderApiRoute,
   everyResource,
 } from "~/services/routeBuilders/apiBuilder.server";
+import { recordSessionCreateAuthorization } from "~/services/sessionAuthorizationTelemetry.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
 import { runStore } from "~/v3/runStore.server";
 
@@ -170,7 +171,7 @@ const { action } = createActionApiRoute(
     },
     corsStrategy: "all",
   },
-  async ({ authentication, body }) => {
+  async ({ authentication, body, ability, request }) => {
     try {
       if (body.externalId && !isSafeSessionExternalId(body.externalId)) {
         return json(
@@ -217,6 +218,8 @@ const { action } = createActionApiRoute(
           { status: 409 }
         );
       }
+
+      recordSessionCreateAuthorization(ability, session, request, authentication.environment);
 
       // Session is task-bound — every session has a live run by
       // construction. `ensureRunForSession` is idempotent: on the
