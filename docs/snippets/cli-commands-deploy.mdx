@@ -80,7 +80,7 @@ npx trigger.dev@latest deploy [path]
 <ParamField body="External id" type="--external-id">
   Attach your own identifier to this deployment — a commit SHA, release tag or CI run id, up to 128
   characters. Your app can then send the same id when triggering, and runs are pinned to this
-  deployment. See [version skew protection](/deployment/version-skew-protection).
+  deployment. See [version skew protection](/deployment/atomic-deployment).
 
   Repeating an id that is already deployed doesn't build again: the CLI reports the existing version,
   sets the same outputs, and exits successfully. Repeating an id that has a build in flight is an

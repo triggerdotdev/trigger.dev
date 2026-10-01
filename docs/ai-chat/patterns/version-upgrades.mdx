@@ -10,7 +10,7 @@ Chat agent runs are pinned to the worker version they started on. When you deplo
 
 <Note>
   If your sessions are pinned by [version skew
-  protection](/deployment/version-skew-protection#chat-sessions), you do not need this page to move a
+  protection](/deployment/atomic-deployment#chat-sessions), you do not need this page to move a
   conversation onto a new deployment. A pinned session follows its pin on its own: when the stored
   `externalDeploymentId` stops naming the deployment a run is on, the agent hands over at the next
   turn boundary. Set [`versionSkew: "hold"`](#staying-put) to turn that off for one agent.
@@ -32,7 +32,7 @@ The new run lives on the **same Session** as the old one. `chatId` is the durabl
 
 ### What "the latest deployment" means
 
-The handoff clears the session's [external deployment id](/deployment/version-skew-protection#chat-sessions) so the new run can land on the current version — re-applying the pin the agent just rejected would make the upgrade impossible. The cleared pin is persisted on the session, so the next continuation doesn't fall back to it either.
+The handoff clears the session's [external deployment id](/deployment/atomic-deployment#chat-sessions) so the new run can land on the current version — re-applying the pin the agent just rejected would make the upgrade impossible. The cleared pin is persisted on the session, so the next continuation doesn't fall back to it either.
 
 To move to a specific deployment rather than to whatever is current, name it:
 
@@ -220,7 +220,7 @@ Two cases never hand over automatically, whatever `versionSkew` says:
   turn boundary — never mid-turn. If the pin names a deployment that hasn't landed yet, the successor
   parks: your messages stay durable, and the transport emits `run-pending-version` with
   `source: "upgrade"` so you can say so in the UI. See [parked
-  chats](/deployment/version-skew-protection#chat-sessions).
+  chats](/deployment/atomic-deployment#chat-sessions).
 </Note>
 
 ## Custom agents
@@ -254,7 +254,7 @@ Both are graceful exits. [`onRecoveryBoot`](/ai-chat/patterns/recovery-boot) doe
 
 ## See also
 
-- [Version skew protection](/deployment/version-skew-protection#chat-sessions) — pin a session to the deployment matching the app build that started it
+- [Version skew protection](/deployment/atomic-deployment#chat-sessions) — pin a session to the deployment matching the app build that started it
 - [Lifecycle hooks](/ai-chat/lifecycle-hooks) — where `onTurnStart` and `onChatResume` fit in the turn cycle
 - [Recovery boot](/ai-chat/patterns/recovery-boot) — the sibling hook for mid-stream interruptions (does NOT fire on `requestUpgrade`)
 - [Database persistence](/ai-chat/patterns/database-persistence) — how continuations interact with session state

@@ -85,7 +85,7 @@ If you already have a GitHub action file, you can just add the final step "🚀 
 
 ### Pinning runs to the deployment you just built
 
-The `--external-id ${{ github.sha }}` above tags the deployment with the commit it was built from. That is the first half of [version skew protection](/deployment/version-skew-protection): to complete it, give your running application the **same value** so it sends that id when it triggers.
+The `--external-id ${{ github.sha }}` above tags the deployment with the commit it was built from. That is the first half of [version skew protection](/deployment/atomic-deployment): to complete it, give your running application the **same value** so it sends that id when it triggers.
 
 ```bash
 # In your application's runtime environment, for the release built from this commit
@@ -104,7 +104,7 @@ Every task triggered by that release is then pinned to the deployment built from
   `paths:` filter to this workflow, `${{ github.sha }}` stops being a safe id: commits that don't
   touch your tasks never produce a deployment carrying that SHA, so every run from those releases
   expires. See [when nothing ever
-  lands](/deployment/version-skew-protection#when-nothing-ever-lands).
+  lands](/deployment/atomic-deployment#when-nothing-ever-lands).
 </Note>
 
 ## Preview branches

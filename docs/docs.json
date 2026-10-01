@@ -192,7 +192,6 @@
               "github-actions",
               "deployment/preview-branches",
               "deployment/dev-branches",
-              "deployment/version-skew-protection",
               "deployment/atomic-deployment",
               {
                 "group": "Deployment integrations",
@@ -925,7 +924,12 @@
     },
     {
       "source": "/deployment/vercel-skew-protection",
-      "destination": "/deployment/version-skew-protection",
+      "destination": "/deployment/atomic-deployment",
+      "permanent": true
+    },
+    {
+      "source": "/deployment/version-skew-protection",
+      "destination": "/deployment/atomic-deployment",
       "permanent": true
     }
   ]
