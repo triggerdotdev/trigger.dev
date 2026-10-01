@@ -22,7 +22,6 @@ import { TimeoutDeploymentService } from "./timeoutDeployment.server";
 import { recordDeploymentFinished } from "./recordDeploymentFinished.server";
 import { env } from "~/env.server";
 import { webhookPrisma } from "~/db.server";
-import { scheduleNodeRuntimeDeprecationEmail } from "./nodeRuntimeDeprecationEmail.server";
 import { DeploymentService } from "./deployment.server";
 
 export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
@@ -329,14 +328,6 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
               projectId: environment.projectId,
             });
           });
-
-        await scheduleNodeRuntimeDeprecationEmail({
-          prisma: this._prisma,
-          deployment,
-          environment,
-          runtime: body.metadata.runtime,
-          runtimeVersion: body.metadata.runtimeVersion,
-        });
       }
 
       return { ...backgroundWorker, warnings: scheduleWarnings ?? [] };
