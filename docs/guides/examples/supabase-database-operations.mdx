@@ -13,53 +13,68 @@ This is a basic task which inserts a new row into a table from a Trigger.dev tas
 
 ### Key features
 
-- Shows how to set up a Supabase client using the `@supabase/supabase-js` library
+- Shows how to verify a user's Supabase access token using the [`@supabase/server`](https://github.com/supabase/server) package
+- Shows how to create a user-scoped Supabase client, so your [Row Level Security (RLS) policies](https://supabase.com/docs/guides/database/postgres/row-level-security) apply
 - Shows how to add a new row to a table using `insert`
 
 ### Prerequisites
 
 - A [Supabase account](https://supabase.com/dashboard/) and a project set up
+- Your project uses the new [API keys](https://supabase.com/docs/guides/api/api-keys) (`sb_publishable_...` / `sb_secret_...`) and [JWT signing keys](https://supabase.com/docs/guides/auth/signing-keys). `@supabase/server` does not accept legacy `anon` / `service_role` keys or HS256-signed JWTs.
 - In your Supabase project, create a table called `user_subscriptions`.
 - In your `user_subscriptions` table, create a new column:
   - `user_id`, with the data type: `text`
+- An RLS policy on `user_subscriptions` that allows authenticated users to insert their own row, for example `with check (auth.uid()::text = user_id)`
+
+### Installation
+
+Install `@supabase/server` and its `@supabase/supabase-js` peer dependency:
+
+```bash
+npm install @supabase/server @supabase/supabase-js
+```
+
+### Environment variables
+
+Add these to your project's [environment variables](/deploy-environment-variables) in the Trigger.dev dashboard:
+
+- `SUPABASE_URL`: your project URL, e.g. `https://<project-ref>.supabase.co`
+- `SUPABASE_PUBLISHABLE_KEY`: your publishable key (`sb_publishable_...`)
+
+The JWKS used to verify user tokens is derived automatically from `SUPABASE_URL`.
 
 ### Task code
 
+Your app triggers this task with the signed-in user's access token (for example `session.access_token` from `supabase.auth.getSession()`). The task verifies the token, then queries the database as that user.
+
 ```ts trigger/supabase-database-insert.ts
-import { createClient } from "@supabase/supabase-js";
-import { task } from "@trigger.dev/sdk";
-import jwt from "jsonwebtoken";
+import { AbortTaskRunError, task } from "@trigger.dev/sdk";
+import { createContextClient, verifyCredentials } from "@supabase/server/core";
 // Generate the Typescript types using the Supabase CLI: https://supabase.com/docs/guides/api/rest/generating-types
 import { Database } from "database.types";
 
 export const supabaseDatabaseInsert = task({
   id: "add-new-user",
-  run: async (payload: { userId: string }) => {
-    const { userId } = payload;
-
-    // Get JWT secret from env vars
-    const jwtSecret = process.env.SUPABASE_JWT_SECRET;
-    if (!jwtSecret) {
-      throw new Error("SUPABASE_JWT_SECRET is not defined in environment variables");
-    }
-
-    // Create JWT token for the user
-    const token = jwt.sign({ sub: userId }, jwtSecret, { expiresIn: "1h" });
-
-    // Initialize Supabase client with JWT
-    const supabase = createClient<Database>(
-      process.env.SUPABASE_URL as string,
-      process.env.SUPABASE_ANON_KEY as string,
-      {
-        global: {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      }
+  run: async (payload: { accessToken: string }) => {
+    // Verify the user's access token against your project's JWKS
+    const { data: auth, error: authError } = await verifyCredentials(
+      { token: payload.accessToken, apikey: null },
+      { auth: "user" }
     );
 
-    // Insert a new row into the user_subscriptions table with the provided userId
+    // An invalid or expired token won't succeed on retry, so abort the run
+    if (authError) {
+      throw new AbortTaskRunError(`Invalid access token: ${authError.message}`);
+    }
+
+    const userId = auth.userClaims!.id;
+
+    // Create a Supabase client scoped to the user, so RLS policies apply
+    const supabase = createContextClient<Database>({
+      auth: { token: auth.token },
+    });
+
+    // Insert a new row into the user_subscriptions table for the verified user
     const { error } = await supabase.from("user_subscriptions").insert({
       user_id: userId,
     });
@@ -76,6 +91,12 @@ export const supabaseDatabaseInsert = task({
 });
 ```
 
+<Note>
+  Supabase access tokens are short-lived (1 hour by default). If a run is delayed or retried after
+  the token has expired, verification will fail. For long-running or delayed work, use the admin
+  client shown in the next example and pass the user ID in the payload instead.
+</Note>
+
 <SupabaseAuthInfo />
 
 ### Testing your task
@@ -84,11 +105,11 @@ To test this task in the [Trigger.dev dashboard](https://cloud.trigger.dev), you
 
 ```json
 {
-  "userId": "user_12345"
+  "accessToken": "<a signed-in user's Supabase access token>"
 }
 ```
 
-If the task completes successfully, you will see a new row in your `user_subscriptions` table with the `user_id` set to `user_12345`.
+If the task completes successfully, you will see a new row in your `user_subscriptions` table with the `user_id` set to that user's ID.
 
 ## Update a user's subscription on a table in a Supabase database
 
@@ -98,7 +119,7 @@ This type of task is useful for managing user subscriptions, updating user detai
 
 ### Key features
 
-- Shows how to set up a Supabase client using the `@supabase/supabase-js` library
+- Shows how to create an admin Supabase client using the [`@supabase/server`](https://github.com/supabase/server) package
 - Adds a new row to the table if the user doesn't exist using `insert`
 - Checks if the user already has a plan, and if they do updates the existing row using `update`
 - Demonstrates how to use [AbortTaskRunError](https://trigger.dev/docs/errors-retrying#using-aborttaskrunerror) to stop the task run without retrying if an invalid plan type is provided
@@ -113,24 +134,23 @@ This type of task is useful for managing user subscriptions, updating user detai
   - `plan`, with the data type: `text`
   - `updated_at`, with the data type: `timestamptz`
 
+### Environment variables
+
+Add these to your project's [environment variables](/deploy-environment-variables) in the Trigger.dev dashboard:
+
+- `SUPABASE_URL`: your project URL, e.g. `https://<project-ref>.supabase.co`
+- `SUPABASE_SECRET_KEY`: your secret key (`sb_secret_...`)
+
 ### Task code
 
 ```ts trigger/supabase-update-user-subscription.ts
-import { createClient } from "@supabase/supabase-js";
 import { AbortTaskRunError, task } from "@trigger.dev/sdk";
+import { createAdminClient } from "@supabase/server/core";
 // Generate the Typescript types using the Supabase CLI: https://supabase.com/docs/guides/api/rest/generating-types
 import { Database } from "database.types";
 
 // Define the allowed plan types
 type PlanType = "hobby" | "pro" | "enterprise";
-
-// Create a single Supabase client for interacting with your database
-// 'Database' supplies the type definitions to supabase-js
-const supabase = createClient<Database>(
-  // These details can be found in your Supabase project settings under `API`
-  process.env.SUPABASE_PROJECT_URL as string, // e.g. https://abc123.supabase.co - replace 'abc123' with your project ID
-  process.env.SUPABASE_SERVICE_ROLE_KEY as string // Your service role secret key
-);
 
 export const supabaseUpdateUserSubscription = task({
   id: "update-user-subscription",
@@ -143,6 +163,10 @@ export const supabaseUpdateUserSubscription = task({
         `Invalid plan type: ${newPlan}. Allowed types are 'hobby', 'pro', or 'enterprise'.`
       );
     }
+
+    // Create an admin Supabase client using SUPABASE_URL and SUPABASE_SECRET_KEY
+    // 'Database' supplies the type definitions to supabase-js
+    const supabase = createAdminClient<Database>();
 
     // Query the user_subscriptions table to check if the user already has a subscription
     const { data: existingSubscriptions } = await supabase
@@ -186,7 +210,7 @@ export const supabaseUpdateUserSubscription = task({
 ```
 
 <Note>
-  This task uses your service role secret key to bypass Row Level Security. There are different ways
+  This task uses your secret key to bypass Row Level Security. There are different ways
   of configuring your [RLS
   policies](https://supabase.com/docs/guides/database/postgres/row-level-security), so always make
   sure you have the correct permissions set up for your project.
