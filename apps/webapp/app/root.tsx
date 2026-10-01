@@ -11,6 +11,7 @@ import "non.geist";
 import "non.geist/mono";
 import tailwindStylesheetUrl from "~/tailwind.css?url";
 import { RouteErrorDisplay } from "./components/ErrorDisplay";
+import { DisconnectedBanner } from "./components/DisconnectedBanner";
 import { GlobalShortcuts } from "./components/GlobalShortcuts";
 import { StaleAssetRecovery } from "./components/StaleAssetRecovery";
 import { AppContainer, MainCenteredContainer } from "./components/layout/AppLayout";
@@ -236,6 +237,7 @@ export default function App() {
           <TimezoneSetter />
           <GlobalShortcuts />
           <Outlet />
+          <DisconnectedBanner />
           <Toast />
         </ShortcutsProvider>
         <ScrollRestoration />

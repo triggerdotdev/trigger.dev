@@ -32,7 +32,7 @@ import {
   type NextRunListItem,
 } from "~/presenters/v3/NextRunListPresenter.server";
 import { formatCurrencyAccurate } from "~/utils/numberFormatter";
-import { docsPath, v3RunSpanPath, v3TestPath, v3TestTaskPath } from "~/utils/pathBuilder";
+import { docsPath, v3RunSpanPath } from "~/utils/pathBuilder";
 import { DateTime } from "../../primitives/DateTime";
 import { Paragraph } from "../../primitives/Paragraph";
 import { Spinner } from "../../primitives/Spinner";
@@ -62,7 +62,8 @@ import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import type { TaskTriggerSource } from "@trigger.dev/database";
-import { BeakerIcon } from "~/assets/icons/BeakerIcon";
+import { BlankState, NoRuns } from "./TaskRunsTableBlankState";
+import { useLoaderDisconnected } from "~/hooks/useLoaderDisconnected";
 import { SmartColumnIcon } from "~/assets/icons/SmartColumnIcon";
 import {
   parseColumnParams,
@@ -604,6 +605,8 @@ export function TaskRunsTable({
   canCancelRuns = true,
   canReplayRuns = true,
 }: RunsTableProps) {
+  const disconnected = useLoaderDisconnected();
+  const showLoading = isLoading && !disconnected;
   const regions = useRegions();
   const regionByMasterQueue = new Map(regions.map((r) => [r.masterQueue, r] as const));
   const organization = useOrganization();
@@ -727,10 +730,10 @@ export function TaskRunsTable({
       <TableBody>
         {total === 0 && !hasFilters ? (
           <TableBlankRow colSpan={totalColSpan}>
-            {!isLoading && <NoRuns title="No runs found" />}
+            {!showLoading && <NoRuns title="No runs found" />}
           </TableBlankRow>
         ) : runs.length === 0 ? (
-          <BlankState isLoading={isLoading} filters={filters} colSpan={totalColSpan} />
+          <BlankState isLoading={showLoading} filters={filters} colSpan={totalColSpan} />
         ) : (
           runs.map((run, index) => {
             const searchParams = new URLSearchParams();
@@ -781,7 +784,7 @@ export function TaskRunsTable({
             );
           })
         )}
-        {isLoading && (
+        {showLoading && (
           <TableBlankRow
             colSpan={totalColSpan}
             className="absolute left-0 top-0 flex h-full w-full items-center justify-center gap-2 bg-background-dimmed"
@@ -946,75 +949,5 @@ function RunActionsCell({
         </>
       }
     />
-  );
-}
-
-function NoRuns({ title }: { title: string }) {
-  return (
-    <div className="flex items-center justify-center">
-      <Paragraph className="w-auto">{title}</Paragraph>
-    </div>
-  );
-}
-
-function BlankState({
-  isLoading,
-  filters,
-  colSpan,
-}: Pick<RunsTableProps, "isLoading" | "filters"> & { colSpan: number }) {
-  const organization = useOrganization();
-  const project = useProject();
-  const environment = useEnvironment();
-  if (isLoading) return <TableBlankRow colSpan={colSpan} />;
-
-  const { tasks, from, to, ...otherFilters } = filters;
-  const singleTaskFromFilters = filters.tasks.length === 1 ? filters.tasks[0] : null;
-  const testPath = singleTaskFromFilters
-    ? v3TestTaskPath(organization, project, environment, { taskIdentifier: singleTaskFromFilters })
-    : v3TestPath(organization, project, environment);
-
-  if (
-    filters.tasks.length === 1 &&
-    filters.from === undefined &&
-    filters.to === undefined &&
-    Object.values(otherFilters).every((filterArray) => filterArray.length === 0)
-  ) {
-    return (
-      <TableBlankRow colSpan={colSpan}>
-        <Paragraph className="w-auto" variant="base/bright" spacing>
-          There are no runs for {filters.tasks[0]}
-        </Paragraph>
-      </TableBlankRow>
-    );
-  }
-
-  return (
-    <TableBlankRow colSpan={colSpan}>
-      <div className="flex flex-col items-center justify-center gap-6">
-        <Paragraph className="w-auto" variant="base/bright">
-          No runs match your filters. Try refreshing, modifying your filters or run a test.
-        </Paragraph>
-        <div className="flex items-center gap-2">
-          <Button
-            LeadingIcon={ArrowPathIcon}
-            variant="secondary/medium"
-            onClick={() => {
-              window.location.reload();
-            }}
-          >
-            Refresh
-          </Button>
-          <Paragraph>or</Paragraph>
-          <LinkButton
-            LeadingIcon={BeakerIcon}
-            leadingIconClassName="text-tests"
-            variant="secondary/medium"
-            to={testPath}
-          >
-            Run a test
-          </LinkButton>
-        </div>
-      </div>
-    </TableBlankRow>
   );
 }
