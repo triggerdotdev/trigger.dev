@@ -1,9 +1,9 @@
 ---
 title: "CI / GitHub Actions"
-description: "You can easily deploy your tasks with GitHub actions and other CI environments."
+description: "Deploy your tasks from GitHub Actions and other CI environments using an environment API key."
 ---
 
-The instructions below are specific to GitHub Actions, but the same concepts can be used with other CI systems.
+The instructions below are specific to GitHub Actions, but the same concepts apply to other CI systems. Use an environment API key rather than a Personal Access Token so deployments are not tied to an individual team member's account or permissions.
 
 <Tip>
   Check out our new [GitHub integration](/github-integration) for automatic deployments, without adding any GitHub Actions workflows.
@@ -74,7 +74,7 @@ jobs:
 
       - name: 🚀 Deploy Trigger.dev
         env:
-          TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
+          TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_STAGING_ACCESS_TOKEN }}
         run: |
           npx trigger.dev@latest deploy --env staging --external-id ${{ github.sha }}
 ```
@@ -135,7 +135,7 @@ jobs:
       - name: Deploy preview branch
         run: npx trigger.dev@latest deploy --env preview --external-id ${{ github.event.pull_request.head.sha }}
         env:
-          TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
+          TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_PREVIEW_ACCESS_TOKEN }}
 ```
 
 On `pull_request`, `github.sha` is the merge commit GitHub creates for the PR, not the commit your
@@ -146,25 +146,35 @@ deployment sends.
   **Include `closed`** in the `pull_request.types` list. Without it, preview branches won't be archived when PRs are merged or closed, and you may hit the limit on active preview branches. See [Preview branches](/deployment/preview-branches#preview-branches-with-github-actions-recommended) for more details.
 </Note>
 
-## Creating a Personal Access Token
+## Create a deployment API key
+
+Create a separate API key for each environment that your CI workflows deploy to. The key remains valid when team membership or permissions change.
 
 <Steps>
 
-<Step title="Create a new access token">
-  Go to your profile page and click on the ["Personal Access
-  Tokens"](https://cloud.trigger.dev/account/tokens) tab.
+<Step title="Open the API keys page">
+  Select the project and target environment, then open [**API keys**](https://cloud.trigger.dev/_/apikeys).
 </Step>
 
-<Step title="Go to your repository on GitHub.">
-  Click on 'Settings' -> 'Secrets and variables' -> 'Actions' -> 'New repository secret'
+<Step title="Create an API key">
+  Click **New API key**, give the key a name that identifies the workflow, and choose **Deploy
+  only** access.
 </Step>
 
-<Step title="Add the TRIGGER_ACCESS_TOKEN">
-  Add the name `TRIGGER_ACCESS_TOKEN` and the value of your access token. ![Add TRIGGER_ACCESS_TOKEN
-  in GitHub](/images/github-access-token.png)
+<Step title="Copy the API key">
+  Create the key and copy its value. Trigger.dev shows the complete value only once.
+</Step>
+
+<Step title="Add the TRIGGER_ACCESS_TOKEN secret to GitHub">
+  Open the repository's **Settings**, then select **Secrets and variables** → **Actions** → **New
+  repository secret**. Add the name `TRIGGER_ACCESS_TOKEN` and paste the API key as its value.
+
+  ![Add TRIGGER_ACCESS_TOKEN in GitHub](/images/github-access-token.png)
 </Step>
 
 </Steps>
+
+The API key must belong to the environment targeted by the deploy command. If the repository deploys to multiple environments, store each environment's key in a separate GitHub secret and map the appropriate secret to `TRIGGER_ACCESS_TOKEN` in each workflow.
 
 ## CLI Version pinning
 
@@ -178,7 +188,7 @@ Tip: add the `trigger.dev` CLI to your `devDependencies` and the deploy command 
     "deploy:trigger": "trigger deploy --env staging"
   },
   "devDependencies": {
-    "trigger.dev": "4.0.2"
+    "trigger.dev": "4.7.0"
   }
 }
 ```
