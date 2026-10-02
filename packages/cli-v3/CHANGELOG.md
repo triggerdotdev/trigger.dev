@@ -1,5 +1,15 @@
 # trigger.dev
 
+## 4.7.1
+
+### Patch Changes
+
+- `trigger.dev init` now stops with a clear error when the target directory has no `package.json`, instead of installing packages into a parent project. A custom task directory entered during interactive `init <path>` is now written to `trigger.config.ts` relative to the project directory. ([`9499bd2a8`](https://github.com/triggerdotdev/trigger.dev/commit/9499bd2a8bd297b1f6a6c047e8231501c195300a))
+- Updated dependencies:
+  - `@trigger.dev/build@4.7.1`
+  - `@trigger.dev/core@4.7.1`
+  - `@trigger.dev/schema-to-json@4.7.1`
+
 ## 4.7.0
 
 ### Patch Changes
