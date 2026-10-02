@@ -779,7 +779,6 @@ const EnvironmentSchema = z
       .number()
       .int()
       .positive()
-      .multipleOf(10)
       .refine((seconds) => 60 % seconds === 0 || seconds % 60 === 0, {
         message: "must divide or be a multiple of 60 so buckets align to minute boundaries",
       })

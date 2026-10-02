@@ -116,3 +116,41 @@ describe("webapp environment secrets", () => {
     expect(env.GITHUB_APP_CLIENT_SECRET).toBe("client-secret");
   });
 });
+
+describe("API_RATE_LIMIT_METRICS_BUCKET_SECONDS", () => {
+  afterEach(() => {
+    process.env = originalEnv;
+    vi.resetModules();
+  });
+
+  it("defaults to 10 when unset", async () => {
+    process.env = { ...requiredEnv };
+    delete process.env.API_RATE_LIMIT_METRICS_BUCKET_SECONDS;
+
+    const { env } = await import("../app/env.server");
+
+    expect(env.API_RATE_LIMIT_METRICS_BUCKET_SECONDS).toBe(10);
+  });
+
+  it.each(["10", "15", "20", "30", "60", "120"])(
+    "accepts valid divisor or multiple of 60: %s",
+    async (value) => {
+      process.env = { ...requiredEnv, API_RATE_LIMIT_METRICS_BUCKET_SECONDS: value };
+
+      const { env } = await import("../app/env.server");
+
+      expect(env.API_RATE_LIMIT_METRICS_BUCKET_SECONDS).toBe(Number(value));
+    }
+  );
+
+  it.each(["7", "0", "-10", "15.5", "not-a-number"])(
+    "rejects invalid bucket seconds: %s",
+    async (value) => {
+      process.env = { ...requiredEnv, API_RATE_LIMIT_METRICS_BUCKET_SECONDS: value };
+
+      await expect(import("../app/env.server")).rejects.toThrow(
+        "API_RATE_LIMIT_METRICS_BUCKET_SECONDS"
+      );
+    }
+  );
+});
