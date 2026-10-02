@@ -269,6 +269,8 @@ export default defineConfig({
 
 ## Runtime
 
+If you don't set a `runtime`, your tasks run on the current Node.js LTS. Setting `runtime: "node"` does the same thing — see the Node.js versions section below to pin a specific version instead.
+
 We currently only officially support the `node` runtime, but you can try our experimental `bun` runtime by setting the `runtime` option in your config file:
 
 ```ts trigger.config.ts
