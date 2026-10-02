@@ -318,11 +318,6 @@ export default function Page() {
                 )}
               </BranchFilters>
               <div className="flex shrink-0 items-center gap-1.5">
-                <PaginationControls
-                  currentPage={currentPage}
-                  totalPages={totalPages}
-                  showPageNumbers={false}
-                />
                 {limits.isAtLimit ? (
                   <UpgradePanel
                     limits={limits}
@@ -356,6 +351,11 @@ export default function Page() {
                     env="preview"
                   />
                 )}
+                <PaginationControls
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  showPageNumbers={false}
+                />
               </div>
             </div>
           )}
