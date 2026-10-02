@@ -385,8 +385,9 @@ export const dashboardAgent = chat.agent({
   storage: dashboardAgentStorage,
   // A watch action files a request and answers it with a turn; see `watch-actions.ts`.
   actionSchema: dashboardAgentActionSchema,
-  // Short idle window so suspended runs release their DB pool.
-  idleTimeoutInSeconds: 60,
+  idleTimeoutInSeconds: 300,
+  turnTimeout: "7d",
+  maxDuration: 86_400,
 
   uiMessageStreamOptions: {
     // The stream carries the same sentence the transcript keeps, so the live chunk
