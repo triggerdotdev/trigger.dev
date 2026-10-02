@@ -14,8 +14,8 @@
     "./model-provider": "./src/model-provider.ts"
   },
   "dependencies": {
-    "@ai-sdk/amazon-bedrock": "4.0.117",
-    "@ai-sdk/anthropic": "^3.0.0",
+    "@ai-sdk/amazon-bedrock": "4.0.186",
+    "@ai-sdk/anthropic": "3.0.125",
     "@internal/dashboard-agent-contracts": "workspace:*",
     "@internal/dashboard-agent-db": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",

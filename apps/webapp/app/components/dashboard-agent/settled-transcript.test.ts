@@ -137,6 +137,15 @@ describe("replacing a stale running step from the re-read", () => {
     expect(merged).toEqual([FINISHED_TEXT]);
     expect(transcriptLooksUnfinished(merged)).toBe(false);
   });
+
+  it("reads a progress note still streaming as an unfinished turn", () => {
+    const runningNote = {
+      id: "msg_note",
+      role: "assistant",
+      parts: [{ type: "reasoning", text: "Found two error groups", state: "streaming" }],
+    };
+    expect(transcriptLooksUnfinished([runningNote])).toBe(true);
+  });
 });
 
 describe("reading the transcript endpoint", () => {

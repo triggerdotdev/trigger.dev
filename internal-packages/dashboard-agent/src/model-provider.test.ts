@@ -10,6 +10,7 @@ import {
   dashboardAgentTitleModel,
   maxOutputTokensFor,
   promptModel,
+  turnProviderOptions,
   withoutThinking,
   isLongLivedCacheBreakpoint,
   isStepCacheBreakpoint,
@@ -28,6 +29,7 @@ const AWS_ENV_VARS = [
   "DASHBOARD_AGENT_AWS_ACCESS_KEY_ID",
   "DASHBOARD_AGENT_AWS_SECRET_ACCESS_KEY",
   "DASHBOARD_AGENT_AWS_REGION",
+  "DASHBOARD_AGENT_EFFORT",
   "AWS_REGION",
   "AWS_DEFAULT_REGION",
 ] as const;
@@ -113,15 +115,48 @@ describe("promptModel", () => {
 });
 
 describe("withoutThinking", () => {
-  it("sends the raw disabled thinking field on Bedrock", () => {
-    useBedrock();
-    expect(withoutThinking()).toEqual({
-      bedrock: { additionalModelRequestFields: { thinking: { type: "disabled" } } },
+  it("sends each model's off switch: disabled for Sonnet 5, between_tools for Sonnet 5.5", () => {
+    expect(withoutThinking("anthropic:claude-sonnet-5")).toEqual({
+      anthropic: { thinking: { type: "disabled" } },
+    });
+    expect(withoutThinking("claude-sonnet-5-5")).toEqual({
+      anthropic: { thinking: { type: "between_tools" } },
     });
   });
 
-  it("falls back to low effort on the direct Anthropic provider", () => {
-    expect(withoutThinking()).toEqual({ anthropic: { effort: "low" } });
+  it("sends the same options on Bedrock, which takes the native Messages body", () => {
+    const anthropicOptions = withoutThinking("claude-sonnet-5-5");
+    useBedrock();
+    expect(withoutThinking("claude-sonnet-5-5")).toEqual(anthropicOptions);
+  });
+});
+
+describe("turnProviderOptions", () => {
+  it("leaves Sonnet 5 on the API defaults", () => {
+    expect(turnProviderOptions("anthropic:claude-sonnet-5")).toBeUndefined();
+  });
+
+  it("sends Sonnet 5.5 its own effort and asks for progress updates on Anthropic", () => {
+    expect(turnProviderOptions("anthropic:claude-sonnet-5-5")).toEqual({
+      anthropic: { effort: "medium", thinking: { type: "adaptive", display: "updates" } },
+    });
+  });
+
+  it("sends the same options on Bedrock", () => {
+    useBedrock();
+    expect(turnProviderOptions("claude-sonnet-5-5")).toEqual({
+      anthropic: { effort: "medium", thinking: { type: "adaptive", display: "updates" } },
+    });
+  });
+
+  it("lets DASHBOARD_AGENT_EFFORT override the model's default, ignoring an unknown level", () => {
+    process.env.DASHBOARD_AGENT_EFFORT = "low";
+    expect(turnProviderOptions("claude-sonnet-5")).toEqual({ anthropic: { effort: "low" } });
+    expect(turnProviderOptions("claude-sonnet-5-5")).toEqual({
+      anthropic: { effort: "low", thinking: { type: "adaptive", display: "updates" } },
+    });
+    process.env.DASHBOARD_AGENT_EFFORT = "extreme";
+    expect(turnProviderOptions("claude-sonnet-5")).toBeUndefined();
   });
 });
 
@@ -129,6 +164,7 @@ describe("maxOutputTokensFor", () => {
   it("returns the documented ceiling for the models the agent runs, by canonical or bare id", () => {
     expect(maxOutputTokensFor("anthropic:claude-sonnet-5")).toBe(128_000);
     expect(maxOutputTokensFor("claude-sonnet-5")).toBe(128_000);
+    expect(maxOutputTokensFor("anthropic:claude-sonnet-5-5")).toBe(128_000);
     expect(maxOutputTokensFor("anthropic:claude-haiku-4-5")).toBe(64_000);
   });
 
@@ -146,6 +182,8 @@ describe("resolveDashboardAgentModel", () => {
 
   it("maps the same canonical string to a Bedrock inference profile", () => {
     useBedrock();
+    // The native Messages provider resolves the region when the model is created.
+    process.env.AWS_REGION = "us-east-1";
     expect(resolveDashboardAgentModel("anthropic:claude-sonnet-5").modelId).toBe(
       "us.anthropic.claude-sonnet-5"
     );
@@ -168,6 +206,7 @@ describe("resolveDashboardAgentModel", () => {
   // no shared suffix convention across models, so a well-formed id can still be wrong.
   it("maps every model to its exact documented Bedrock id", () => {
     expect(BEDROCK_MODEL_IDS).toEqual({
+      "claude-sonnet-5-5": "us.anthropic.claude-sonnet-5-5",
       "claude-sonnet-5": "us.anthropic.claude-sonnet-5",
       "claude-sonnet-4-6": "us.anthropic.claude-sonnet-4-6",
       "claude-haiku-4-5": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
@@ -188,15 +227,14 @@ describe("cache breakpoints", () => {
     });
   });
 
-  it("emits a plain Bedrock cachePoint with no ttl for either marker", () => {
+  it("sets the same anthropic cacheControl on Bedrock", () => {
     useBedrock();
-    for (const breakpoint of ["prefix", "step"] as const) {
-      const options = withCacheBreakpoint(undefined, breakpoint);
-      // The only thing the SDK serialises to AWS is bedrock.cachePoint — it must be plain.
-      expect(options.bedrock.cachePoint).toEqual({ type: "default" });
-      expect(options.bedrock.cachePoint).not.toHaveProperty("ttl");
-      expect(options.__cacheBreakpoint).toEqual({ kind: breakpoint });
-    }
+    expect(withCacheBreakpoint(undefined, "prefix").anthropic.cacheControl).toEqual(
+      PROMPT_CACHE_CONTROL
+    );
+    expect(withCacheBreakpoint(undefined, "step").anthropic.cacheControl).toEqual(
+      STEP_CACHE_CONTROL
+    );
   });
 
   it("classifies and strips the active provider's breakpoint via the discriminator", () => {
@@ -206,15 +244,8 @@ describe("cache breakpoints", () => {
     // The strip removes both the provider field and the top-level discriminator.
     expect(withoutCacheBreakpoint(anthropicStep)).toEqual({ anthropic: { keep: true } });
 
-    useBedrock();
-    const bedrockStep = withCacheBreakpoint(undefined, "step");
-    const bedrockPrefix = withCacheBreakpoint(undefined, "prefix");
-    // The two Bedrock markers are byte-identical on the wire — only the tag tells them apart.
-    expect(bedrockStep.bedrock).toEqual(bedrockPrefix.bedrock);
-    expect(isStepCacheBreakpoint(bedrockStep)).toBe(true);
-    expect(isLongLivedCacheBreakpoint(bedrockStep)).toBe(false);
-    expect(isLongLivedCacheBreakpoint(bedrockPrefix)).toBe(true);
-    expect(withoutCacheBreakpoint(bedrockStep)).toEqual({});
+    expect(isLongLivedCacheBreakpoint(anthropicStep)).toBe(false);
+    expect(withoutCacheBreakpoint(withCacheBreakpoint(undefined, "prefix"))).toEqual({});
   });
 
   // Conversations persisted before the __cacheBreakpoint discriminator existed carry
@@ -231,8 +262,7 @@ describe("cache breakpoints", () => {
     expect(isStepCacheBreakpoint(legacyStepNoTtl)).toBe(true);
   });
 
-  it("strips a legacy Anthropic cacheControl even while Bedrock is active", () => {
-    useBedrock();
+  it("strips a legacy Anthropic cacheControl", () => {
     const legacyStep = { anthropic: { cacheControl: STEP_CACHE_CONTROL, keep: true } };
 
     expect(withoutCacheBreakpoint(legacyStep)).toEqual({ anthropic: { keep: true } });

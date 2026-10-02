@@ -20,6 +20,7 @@ import {
 } from "./chat-layout";
 import { reuseWinners } from "./investigation-winners";
 import { stripModelImages } from "./model-markdown";
+import { isProsePart } from "./prose-part";
 import { reportBlockFromToolPart } from "./report-block-adapter";
 import { shouldShowLiveTurnError } from "./turn-error";
 import type { ResolvedUri } from "./ReportView";
@@ -179,9 +180,11 @@ function renderDashboardPart(
   };
   const type = part.type as string;
 
-  if (type === "text") {
-    return p.text ? (
-      <ChatText key={i} text={stripModelImages(p.text)} resolveUri={resolveUri} />
+  // A reasoning part with text is a note the model wrote for the user before a tool
+  // call (see prose-part.ts), so it reads like the rest of the answer.
+  if (type === "text" || type === "reasoning") {
+    return isProsePart(p) ? (
+      <ChatText key={i} text={stripModelImages(p.text ?? "")} resolveUri={resolveUri} />
     ) : null;
   }
 

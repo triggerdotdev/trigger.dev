@@ -7,6 +7,7 @@ import {
   dashboardAgentModel,
   maxOutputTokensFor,
   resolveDashboardAgentModel,
+  turnProviderOptions,
   withCacheBreakpoint,
 } from "@internal/dashboard-agent/model-provider";
 import { ApiClient, SessionStreamInstance, writeTurnCompleteRecord } from "@trigger.dev/core/v3";
@@ -115,6 +116,9 @@ export async function startDashboardAgentHeadStart(params: {
         model: resolveDashboardAgentModel(dashboardAgentModel(env.DASHBOARD_AGENT_MODEL)),
         // Same ceiling the agent run uses; the pinned provider caps an unknown id at 4096.
         maxOutputTokens: maxOutputTokensFor(dashboardAgentModel(env.DASHBOARD_AGENT_MODEL)),
+        // Same effort and thinking display the agent run sends; an effort change between
+        // this step and the run's next one would invalidate the prefix cached here.
+        providerOptions: turnProviderOptions(dashboardAgentModel(env.DASHBOARD_AGENT_MODEL)),
         // A structured system message, not a bare string: without provider options
         // the provider neither writes nor reads the cache, so this call paid full price
         // for the prefix and the agent's step 2 then paid for a fresh write. The tool

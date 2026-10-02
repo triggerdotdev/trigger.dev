@@ -164,17 +164,20 @@ describe("watch wake narration", () => {
     const calls: {
       tools: number;
       maxOutputTokens: number | undefined;
-      effort: string | undefined;
+      thinking: string | undefined;
+      toolChoice: string | undefined;
     }[] = [];
     const model = new MockLanguageModelV3({
       doStream: async (options) => {
         // The harness runs on the direct Anthropic provider, where the bounded-call
-        // safeguard is `effort: "low"` (see withoutThinking).
-        const effort = (options.providerOptions?.anthropic as { effort?: string })?.effort;
+        // safeguard is the model's thinking off switch (see withoutThinking).
+        const thinking = (options.providerOptions?.anthropic as { thinking?: { type?: string } })
+          ?.thinking?.type;
         calls.push({
           tools: options.tools?.length ?? 0,
           maxOutputTokens: options.maxOutputTokens,
-          effort,
+          thinking,
+          toolChoice: options.toolChoice?.type,
         });
         return { stream: simulateReadableStream({ chunks: textStep(text) }) };
       },
@@ -404,7 +407,15 @@ describe("watch wake narration", () => {
     await harness.sendAction(FAILED_RUN_WAKE);
     await turnSaved(store);
 
-    expect(calls).toEqual([{ tools: 0, maxOutputTokens: 300, effort: "low" }]);
+    // The wake keeps the turn's tools declared, so the tool list a model with preserved
+    // thinking binds earlier reasoning to doesn't change, and calls none of them.
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      maxOutputTokens: 300,
+      thinking: "disabled",
+      toolChoice: "none",
+    });
+    expect(calls[0]!.tools).toBeGreaterThan(0);
   });
 
   /**
@@ -445,9 +456,16 @@ describe("watch wake narration", () => {
       await waitForEvals(evals, 1);
 
       // The wake ran bounded; the typed turn ran at the main model's documented ceiling.
-      expect(calls[0]).toEqual({ tools: 0, maxOutputTokens: 300, effort: "low" });
+      expect(calls[0]).toMatchObject({
+        maxOutputTokens: 300,
+        thinking: "disabled",
+        toolChoice: "none",
+      });
       expect(calls[1]?.maxOutputTokens).toBe(128_000);
-      expect(calls[1]?.effort).toBeUndefined();
+      expect(calls[1]?.thinking).toBeUndefined();
+      expect(calls[1]?.toolChoice).toBe("auto");
+      // Same tool list on the wake and the typed turn after it.
+      expect(calls[0]!.tools).toBe(calls[1]!.tools);
       // Only the typed turn is judged: the wake is the agent talking to itself.
       expect(evals).toHaveLength(1);
     } finally {

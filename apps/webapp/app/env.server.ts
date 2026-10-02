@@ -268,6 +268,14 @@ const EnvironmentSchema = z
     // directly; this entry documents it webapp-side. The agent run reads its own
     // DASHBOARD_AGENT_*_MODEL vars from the agent project's environment.
     DASHBOARD_AGENT_MODEL: z.string().optional(),
+    // Effort for the dashboard agent's main turns and head-start step (low, medium,
+    // high, xhigh, max; default per model in the agent package). Read from process.env
+    // by the internal seam; set it in the agent project's environment too, or the
+    // head-start step and the run disagree and the prefix cache misses.
+    DASHBOARD_AGENT_EFFORT: z.preprocess(
+      (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+      z.enum(["low", "medium", "high", "xhigh", "max"]).optional()
+    ),
     // Selects the dashboard agent's LLM provider (default anthropic). The internal
     // seam reads process.env directly; this entry validates the value webapp-side.
     DASHBOARD_AGENT_MODEL_PROVIDER: z.preprocess(

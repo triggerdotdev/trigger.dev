@@ -1,0 +1,52 @@
+diff --git a/dist/index.js b/dist/index.js
+index 24d2059d44fc68ca9f15db281a1689f060bf22d3..0b3a434014aa844e43985aa90e3e02a712e07324 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -1958,7 +1958,7 @@ async function prepareTools({
+         betas
+       };
+     case "none":
+-      return { tools: void 0, toolChoice: void 0, toolWarnings, betas };
++      return { tools: anthropicTools2, toolChoice: { type: "none" }, toolWarnings, betas };
+     case "tool":
+       if (rejectsForcedToolUse) {
+         toolWarnings.push({
+diff --git a/dist/index.mjs b/dist/index.mjs
+index 8d684d2e9ccbea96cda37181dd8b97872da3568a..77e69203c2e3fd519d53a2c31cecb19db36ebe7c 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -1988,7 +1988,7 @@ async function prepareTools({
+         betas
+       };
+     case "none":
+-      return { tools: void 0, toolChoice: void 0, toolWarnings, betas };
++      return { tools: anthropicTools2, toolChoice: { type: "none" }, toolWarnings, betas };
+     case "tool":
+       if (rejectsForcedToolUse) {
+         toolWarnings.push({
+diff --git a/dist/internal/index.js b/dist/internal/index.js
+index 92c3415ef1a4524eac0e005f05a704749995845f..ab992243545aba50f19888ddd80d382ba3604973 100644
+--- a/dist/internal/index.js
++++ b/dist/internal/index.js
+@@ -1952,7 +1952,7 @@ async function prepareTools({
+         betas
+       };
+     case "none":
+-      return { tools: void 0, toolChoice: void 0, toolWarnings, betas };
++      return { tools: anthropicTools2, toolChoice: { type: "none" }, toolWarnings, betas };
+     case "tool":
+       if (rejectsForcedToolUse) {
+         toolWarnings.push({
+diff --git a/dist/internal/index.mjs b/dist/internal/index.mjs
+index 265798feff047e7b243c673128d1b173b9043033..dde016ff7283c861bcd21c4b26724e75e3f76c69 100644
+--- a/dist/internal/index.mjs
++++ b/dist/internal/index.mjs
+@@ -1972,7 +1972,7 @@ async function prepareTools({
+         betas
+       };
+     case "none":
+-      return { tools: void 0, toolChoice: void 0, toolWarnings, betas };
++      return { tools: anthropicTools2, toolChoice: { type: "none" }, toolWarnings, betas };
+     case "tool":
+       if (rejectsForcedToolUse) {
+         toolWarnings.push({

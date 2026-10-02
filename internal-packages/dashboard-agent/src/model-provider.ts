@@ -1,11 +1,14 @@
-import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
+import { createBedrockAnthropic } from "@ai-sdk/amazon-bedrock/anthropic";
 import { anthropic } from "@ai-sdk/anthropic";
 import { createProviderRegistry, type streamText } from "ai";
 import { PROMPT_CACHE_CONTROL } from "./prompt-prefix";
 
 /**
- * Which provider the agent's model calls go through, and the two things that
- * differ between them: the model id, and the shape of the prompt-cache options.
+ * Which provider the agent's model calls go through. Both speak Anthropic's Messages
+ * API: Bedrock through its `InvokeModel` endpoints, which take the native request
+ * body, rather than Converse, which can't express every option the agent sends (no
+ * `tool_choice: none`, no `between_tools` thinking). So the provider options are the
+ * same `anthropic` shape on both, and only the model id differs.
  *
  * Managed prompts stay canonical `"anthropic:<model-id>"` strings whichever
  * provider is active, so a stored or dashboard-overridden prompt keeps meaning
@@ -110,7 +113,7 @@ export function bedrockProviderSettings(): {
   return { region: bedrockRegion(), ...bedrockCredentials() };
 }
 
-const bedrock = createAmazonBedrock(bedrockProviderSettings());
+const bedrock = createBedrockAnthropic(bedrockProviderSettings());
 
 export const registry = createProviderRegistry({ anthropic, bedrock });
 
@@ -120,6 +123,7 @@ export const registry = createProviderRegistry({ anthropic, bedrock });
  * models — copy each id exactly rather than deriving it.
  */
 export const BEDROCK_MODEL_IDS: Record<string, string> = {
+  "claude-sonnet-5-5": "us.anthropic.claude-sonnet-5-5",
   "claude-sonnet-5": "us.anthropic.claude-sonnet-5",
   "claude-sonnet-4-6": "us.anthropic.claude-sonnet-4-6",
   "claude-haiku-4-5": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
@@ -142,13 +146,14 @@ export function resolveDashboardAgentModel(model: string) {
 
 /**
  * Each model's documented maximum output, by canonical id. Passed explicitly on the
- * main turns because the pinned providers do not know Sonnet 5: `@ai-sdk/anthropic`
- * falls back to `max_tokens: 4096` for an unknown id, and Bedrock applies its own
- * default when none is sent. With adaptive thinking counted inside the same limit,
+ * main turns because the providers cannot be relied on to know it: `@ai-sdk/anthropic`
+ * falls back to `max_tokens: 4096` for an id it doesn't know, and Bedrock applies its
+ * own default when none is sent. With adaptive thinking counted inside the same limit,
  * 4096 truncates a tool-heavy turn. Keyed by the model a turn actually resolved to,
  * so a dashboard override to a smaller model gets that model's limit, not Sonnet's.
  */
 export const MODEL_MAX_OUTPUT_TOKENS: Record<string, number> = {
+  "claude-sonnet-5-5": 128_000,
   "claude-sonnet-5": 128_000,
   "claude-opus-5": 128_000,
   "claude-sonnet-4-6": 128_000,
@@ -163,23 +168,69 @@ export function maxOutputTokensFor(model: string): number | undefined {
 
 type CallProviderOptions = NonNullable<Parameters<typeof streamText>[0]["providerOptions"]>;
 
+type Effort = "low" | "medium" | "high" | "xhigh" | "max";
+
+const EFFORTS: ReadonlySet<string> = new Set<Effort>(["low", "medium", "high", "xhigh", "max"]);
+
+/**
+ * How a model's thinking is switched off and tuned, by canonical id.
+ *
+ * - `off`: the thinking value that turns it off. Sonnet 5.5 rejects `disabled` with a
+ *   400 and takes `between_tools` instead: no up-front thinking, and the notes it
+ *   writes between tool calls still come back, with their text.
+ * - `effort`: the main-turn effort when `DASHBOARD_AGENT_EFFORT` is unset. Sonnet 5.5's
+ *   levels are recalibrated from Sonnet 5's, so it gets its own default rather than the
+ *   API's `high`. Unset leaves the API default.
+ * - `progressUpdates`: the model returns its between-tool-call notes as thinking blocks,
+ *   empty unless the request asks for `display: "updates"`.
+ */
+type ThinkingProfile = {
+  off: "disabled" | "between_tools";
+  effort?: Effort;
+  progressUpdates: boolean;
+};
+
+const THINKING_PROFILES: Record<string, ThinkingProfile> = {
+  "claude-sonnet-5-5": { off: "between_tools", effort: "medium", progressUpdates: true },
+};
+
+const DEFAULT_THINKING_PROFILE: ThinkingProfile = { off: "disabled", progressUpdates: false };
+
+function thinkingProfile(model: string): ThinkingProfile {
+  return THINKING_PROFILES[canonicalId(model)] ?? DEFAULT_THINKING_PROFILE;
+}
+
+/** The main-turn effort override, or undefined when unset, blank, or not a level. */
+function effortOverride(): Effort | undefined {
+  const value = process.env.DASHBOARD_AGENT_EFFORT?.trim();
+  return value && EFFORTS.has(value) ? (value as Effort) : undefined;
+}
+
+/**
+ * Provider options for a main turn, and for the head-start step, which must send the
+ * same so the prefix it caches stays valid for the run (an effort change invalidates
+ * the cache). Carries the effort and, on a model with progress updates, adaptive
+ * thinking with `display: "updates"` so the notes between tool calls reach the panel.
+ */
+export function turnProviderOptions(model: string): CallProviderOptions | undefined {
+  const profile = thinkingProfile(model);
+  const effort = effortOverride() ?? profile.effort;
+  if (!effort && !profile.progressUpdates) return undefined;
+  return {
+    anthropic: {
+      ...(effort && { effort }),
+      ...(profile.progressUpdates && { thinking: { type: "adaptive", display: "updates" } }),
+    },
+  };
+}
+
 /**
  * Provider options that keep a bounded call (a summary, a wake) from spending its
- * `maxOutputTokens` on thinking. Sonnet 5 thinks adaptively by default and the thinking
- * counts against the same limit.
- *
- * Neither pinned provider forwards a `disabled` thinking option: `@ai-sdk/anthropic`
- * 3.0.84 and `@ai-sdk/amazon-bedrock` 4.0.117 both serialise `thinking` only for
- * `enabled` and `adaptive`. On Bedrock (test and prod) the raw request field is
- * reachable through `additionalModelRequestFields`, which the provider spreads into
- * the request verbatim, so the off switch is real there. The direct Anthropic provider
- * (local development) has no passthrough for it; `effort: "low"` is the strongest
- * lever it exposes and only shortens the thinking.
+ * `maxOutputTokens` on thinking, which counts against the same limit. No effort is
+ * sent: `between_tools` is rejected above `high`, and the API default is `high`.
  */
-export function withoutThinking(): CallProviderOptions {
-  return dashboardAgentProvider() === "anthropic"
-    ? { anthropic: { effort: "low" } }
-    : { bedrock: { additionalModelRequestFields: { thinking: { type: "disabled" } } } };
+export function withoutThinking(model: string): CallProviderOptions {
+  return { anthropic: { thinking: { type: thinkingProfile(model).off } } };
 }
 
 /**
@@ -206,28 +257,18 @@ function breakpointKind(providerOptions: ProviderOptions): CacheBreakpoint | und
   return legacyCacheControl.ttl === "1h" ? "prefix" : "step";
 }
 
-function cacheOptions(breakpoint: CacheBreakpoint): Record<string, any> {
-  if (dashboardAgentProvider() === "anthropic") {
-    return {
-      anthropic: {
-        cacheControl: breakpoint === "prefix" ? PROMPT_CACHE_CONTROL : STEP_CACHE_CONTROL,
-      },
-    };
-  }
-  // Plain, documented cachePoint for both markers — nothing undocumented reaches AWS.
-  return { bedrock: { cachePoint: { type: "default" } } };
-}
-
-/** Merge the active provider's breakpoint into a message's provider options. */
+/** Merge a breakpoint into a message's provider options. */
 export function withCacheBreakpoint(
   providerOptions: ProviderOptions,
   breakpoint: CacheBreakpoint
 ): Record<string, any> {
-  const [key, options] = Object.entries(cacheOptions(breakpoint))[0]!;
   return {
     ...providerOptions,
     [CACHE_BREAKPOINT_KEY]: { kind: breakpoint },
-    [key]: { ...providerOptions?.[key], ...options },
+    anthropic: {
+      ...providerOptions?.anthropic,
+      cacheControl: breakpoint === "prefix" ? PROMPT_CACHE_CONTROL : STEP_CACHE_CONTROL,
+    },
   };
 }
 
@@ -244,43 +285,27 @@ export function isLongLivedCacheBreakpoint(providerOptions: ProviderOptions): bo
   return breakpointKind(providerOptions) === "prefix";
 }
 
-/**
- * The cache token counts the active provider reports on a call's metadata.
- * Bedrock puts only the write there; its read count reaches the call's usage.
- */
+/** The cache token counts a call reports on its metadata, which both providers key `anthropic`. */
 export function cacheUsageFromProviderMetadata(providerMetadata: unknown): {
   write?: number;
   read?: number;
 } {
-  const metadata = providerMetadata as Record<string, any> | undefined;
+  const metadata = (providerMetadata as Record<string, any> | undefined)?.anthropic;
   const count = (value: unknown) => (typeof value === "number" ? value : undefined);
-  if (dashboardAgentProvider() === "anthropic") {
-    return {
-      write: count(metadata?.anthropic?.cacheCreationInputTokens),
-      read: count(metadata?.anthropic?.cacheReadInputTokens),
-    };
-  }
-  return { write: count(metadata?.bedrock?.usage?.cacheWriteInputTokens) };
+  return {
+    write: count(metadata?.cacheCreationInputTokens),
+    read: count(metadata?.cacheReadInputTokens),
+  };
 }
 
-/** The same options with the active provider's breakpoint and its discriminator removed. */
+/** The same options with the breakpoint and its discriminator removed. */
 export function withoutCacheBreakpoint(providerOptions: ProviderOptions): Record<string, any> {
-  const hasDiscriminator = providerOptions?.[CACHE_BREAKPOINT_KEY] !== undefined;
-  // A legacy message keeps its native anthropic.cacheControl shape no matter which
-  // provider is active now, so strip that key rather than the current provider's.
-  const isLegacy = !hasDiscriminator && providerOptions?.anthropic?.cacheControl !== undefined;
-  const key = isLegacy
-    ? "anthropic"
-    : dashboardAgentProvider() === "anthropic"
-      ? "anthropic"
-      : "bedrock";
-  const field = key === "anthropic" ? "cacheControl" : "cachePoint";
   const {
-    [key]: provider,
+    anthropic: provider,
     [CACHE_BREAKPOINT_KEY]: _tag,
     ...rest
   } = (providerOptions ?? {}) as Record<string, any>;
-  const { [field]: _dropped, ...providerRest } = (provider ?? {}) as Record<string, any>;
+  const { cacheControl: _dropped, ...providerRest } = (provider ?? {}) as Record<string, any>;
   // An empty provider entry is not the same as no options for it, so drop the key.
-  return Object.keys(providerRest).length > 0 ? { ...rest, [key]: providerRest } : rest;
+  return Object.keys(providerRest).length > 0 ? { ...rest, anthropic: providerRest } : rest;
 }

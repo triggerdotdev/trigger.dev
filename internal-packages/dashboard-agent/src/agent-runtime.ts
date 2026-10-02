@@ -394,6 +394,55 @@ export function sanitizeReplayedToolInputs(messages: ModelMessage[]): ModelMessa
   }) as ModelMessage[];
 }
 
+/**
+ * Move reasoning signatures recorded by Bedrock's Converse API to where the native
+ * Messages provider reads them.
+ *
+ * Bedrock calls used to go through Converse, which stores a thinking block's signature
+ * and redacted data under `bedrock`. The native provider only reads `anthropic`, so a
+ * conversation started before the switch would replay without its reasoning: dropped
+ * with an "unsupported reasoning metadata" warning, and a tool-use turn left without the
+ * thinking that preceded its call. The signatures themselves are valid on the native
+ * endpoint, so copying them over keeps that reasoning. Blocks that already carry
+ * `anthropic` metadata are left alone.
+ */
+export function withNativeReasoningMetadata(messages: ModelMessage[]): ModelMessage[] {
+  const isLegacy = (part: unknown) => {
+    const options = (part as { type?: string; providerOptions?: Record<string, any> })
+      ?.providerOptions;
+    return (
+      (part as { type?: string })?.type === "reasoning" &&
+      options?.anthropic === undefined &&
+      (options?.bedrock?.signature != null || options?.bedrock?.redactedData != null)
+    );
+  };
+
+  let changed = false;
+  const translated = messages.map((message) => {
+    if (message.role !== "assistant" || !Array.isArray(message.content)) return message;
+    if (!message.content.some(isLegacy)) return message;
+    changed = true;
+    return {
+      ...message,
+      content: message.content.map((part) => {
+        if (!isLegacy(part)) return part;
+        const legacy = (part as { providerOptions: Record<string, any> }).providerOptions.bedrock;
+        return {
+          ...part,
+          providerOptions: {
+            ...(part as { providerOptions: Record<string, any> }).providerOptions,
+            anthropic: {
+              ...(legacy.signature != null && { signature: legacy.signature }),
+              ...(legacy.redactedData != null && { redactedData: legacy.redactedData }),
+            },
+          },
+        };
+      }),
+    };
+  }) as ModelMessage[];
+  return changed ? translated : messages;
+}
+
 // Same breakpoint `prepareMessages` rolls onto a turn's last message.
 export function withCacheBreakpointOnLast(messages: ModelMessage[]): ModelMessage[] {
   if (messages.length === 0) return messages;

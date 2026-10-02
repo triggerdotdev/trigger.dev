@@ -318,6 +318,15 @@ describe("in-flight detection behind a trailing agent record", () => {
     expect(hasUnfinishedTextPart([ask, answered, wake])).toBe(false);
   });
 
+  it("reads a progress note still streaming as in flight", () => {
+    const note = {
+      id: "msg_note",
+      role: "assistant",
+      parts: [{ type: "reasoning", text: "Found two error groups", state: "streaming" }],
+    };
+    expect(hasUnfinishedTextPart([ask, note])).toBe(true);
+  });
+
   it("keeps the progress line up while a wake lands mid-turn", () => {
     expect(liveProgress([ask, answering, wake], "working")).toEqual({
       source: "tool",

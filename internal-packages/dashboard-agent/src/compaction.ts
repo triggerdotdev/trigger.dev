@@ -225,8 +225,25 @@ export function safeTail(
 }
 
 /**
+ * The kept tail without its reasoning. A model with preserved thinking binds each
+ * thinking block to the full history it was produced after, so once a summary stands
+ * in for that history the blocks can't validate: an enforcing API rejects the request
+ * and one that isn't enforcing yet replays reasoning the model can't trust. Dropping
+ * them here is the deterministic form of that loss. An assistant message left with
+ * nothing in it goes too.
+ */
+export function withoutReasoning(messages: ModelMessage[]): ModelMessage[] {
+  return messages.flatMap((message) => {
+    if (message.role !== "assistant" || !Array.isArray(message.content)) return [message];
+    const content = message.content.filter((part) => part.type !== "reasoning");
+    if (content.length === message.content.length) return [message];
+    return content.length > 0 ? [{ ...message, content }] : [];
+  });
+}
+
+/**
  * What the model gets after a summary: the summary carrying the pinned state, then
- * the last few messages verbatim.
+ * the last few messages verbatim, minus the reasoning the summary invalidated.
  */
 export function buildCompactedModelMessages(args: {
   summary: string;
@@ -234,8 +251,8 @@ export function buildCompactedModelMessages(args: {
   modelMessages: ModelMessage[];
   keptTail?: number;
 }): ModelMessage[] {
-  const tail = sanitizeReplayedToolInputs(
-    safeTail(args.modelMessages, args.keptTail ?? COMPACTION_KEPT_TAIL)
+  const tail = withoutReasoning(
+    sanitizeReplayedToolInputs(safeTail(args.modelMessages, args.keptTail ?? COMPACTION_KEPT_TAIL))
   );
   return [summaryMessage(args.summary, describeDurableState(args.uiMessages)), ...tail];
 }
@@ -280,20 +297,17 @@ async function summarizeConversation(event: SummarizeEvent): Promise<string> {
   const managed = (resolved.config ?? {}) as Partial<
     Pick<Parameters<typeof generateText>[0], "temperature" | "topP" | "topK" | "stopSequences">
   >;
+  const modelId = promptModel(resolved, {
+    env: "DASHBOARD_AGENT_SUMMARY_MODEL",
+    fallback: dashboardAgentSummaryModel,
+  });
   const { text } = await generateText({
     ...managed,
-    model:
-      locals.get(dashboardAgentModelKey) ??
-      resolveDashboardAgentModel(
-        promptModel(resolved, {
-          env: "DASHBOARD_AGENT_SUMMARY_MODEL",
-          fallback: dashboardAgentSummaryModel,
-        })
-      ),
+    model: locals.get(dashboardAgentModelKey) ?? resolveDashboardAgentModel(modelId),
     system: resolved.text,
     prompt: renderTranscriptForSummary(event.messages),
     maxOutputTokens: SUMMARY_MAX_OUTPUT_TOKENS,
-    providerOptions: withoutThinking(),
+    providerOptions: withoutThinking(modelId),
     ...resolved.toAISDKTelemetry(),
   });
   return text.trim();

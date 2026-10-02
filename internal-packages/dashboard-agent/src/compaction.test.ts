@@ -28,6 +28,7 @@ import {
   contextTokenBudget,
   DEFAULT_CONTEXT_TOKEN_BUDGET,
   withDurableState,
+  withoutReasoning,
 } from "./compaction";
 
 function text(role: "user" | "assistant", body: string): ModelMessage {
@@ -575,5 +576,59 @@ describe("dashboardAgent compaction (mock harness)", () => {
     expect(after).not.toContain("It reports once, then stops.");
     // But the summariser did see what the watch reported.
     expect(summarized.join("\n")).toContain("0 pending after 42 minutes");
+  });
+});
+
+describe("the kept tail after a summary", () => {
+  const reasoning = {
+    type: "reasoning" as const,
+    text: "",
+    providerOptions: { anthropic: { signature: "sig" } },
+  };
+  const tail: ModelMessage[] = [
+    { role: "user", content: "what failed?" },
+    {
+      role: "assistant",
+      content: [
+        reasoning,
+        { type: "tool-call", toolCallId: "c1", toolName: "list_errors", input: {} },
+      ],
+    },
+    {
+      role: "tool",
+      content: [
+        {
+          type: "tool-result",
+          toolCallId: "c1",
+          toolName: "list_errors",
+          output: { type: "text", value: "[]" },
+        },
+      ],
+    },
+    { role: "assistant", content: [reasoning, { type: "text", text: "Nothing failed." }] },
+    { role: "assistant", content: [reasoning] },
+  ];
+
+  it("drops the reasoning a summary invalidated and keeps everything else", () => {
+    const stripped = withoutReasoning(tail);
+    expect(JSON.stringify(stripped)).not.toContain('"reasoning"');
+    // The reasoning-only message goes; the calls, results and text stay in order.
+    expect(stripped.map((m) => m.role)).toEqual(["user", "assistant", "tool", "assistant"]);
+    expect(stripped[1]!.content).toEqual([
+      { type: "tool-call", toolCallId: "c1", toolName: "list_errors", input: {} },
+    ]);
+  });
+
+  it("builds the compacted history with no reasoning in the tail", () => {
+    const compacted = buildCompactedModelMessages({
+      summary: "The user asked what failed.",
+      uiMessages: [],
+      modelMessages: tail.slice(0, 4),
+    });
+    expect(JSON.stringify(compacted)).not.toContain('"reasoning"');
+    expect(compacted.at(-1)).toEqual({
+      role: "assistant",
+      content: [{ type: "text", text: "Nothing failed." }],
+    });
   });
 });

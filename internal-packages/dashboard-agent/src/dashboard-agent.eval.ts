@@ -313,9 +313,17 @@ function userMessage(text: string, id = "u1"): UIMessage {
   return { id, role: "user", parts: [{ type: "text", text }] };
 }
 
+// Prose as the panel shows it: text, plus the progress notes a model returns as
+// reasoning ahead of a tool call (Sonnet 5.5 with `display: "updates"`).
+function isProseDelta(
+  c: UIMessageChunk
+): c is Extract<UIMessageChunk, { type: "text-delta" | "reasoning-delta" }> {
+  return c.type === "text-delta" || c.type === "reasoning-delta";
+}
+
 function collectText(chunks: UIMessageChunk[]): string {
   return chunks
-    .filter((c): c is Extract<UIMessageChunk, { type: "text-delta" }> => c.type === "text-delta")
+    .filter(isProseDelta)
     .map((c) => c.delta)
     .join("");
 }
@@ -479,7 +487,7 @@ function turnParts(chunks: UIMessageChunk[]): TurnPart[] {
     text = "";
   };
   for (const chunk of chunks) {
-    if (chunk.type === "text-delta") text += chunk.delta;
+    if (isProseDelta(chunk)) text += chunk.delta;
     else if (chunk.type === "tool-input-available") {
       flush();
       parts.push({ kind: "tool", tool: chunk.toolName, input: chunk.input });

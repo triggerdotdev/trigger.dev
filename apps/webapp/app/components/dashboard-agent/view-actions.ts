@@ -9,6 +9,7 @@ import {
   type ReportViewModelPayload,
   type ViewBlock,
 } from "@internal/dashboard-agent-contracts";
+import { isProsePart } from "./prose-part";
 
 type CardAction = ChartAction | ActionsBlockAction | InvestigationAction;
 
@@ -80,7 +81,5 @@ export function withoutWatchActions<T extends CardAction>(actions: T[]): T[] {
  * offering work that is already done.
  */
 export function answerContinuesAfter(parts: { type: string; text?: string }[], index: number) {
-  return parts
-    .slice(index + 1)
-    .some((part) => part.type === "text" && (part.text ?? "").trim().length > 0);
+  return parts.slice(index + 1).some((part) => isProsePart(part));
 }

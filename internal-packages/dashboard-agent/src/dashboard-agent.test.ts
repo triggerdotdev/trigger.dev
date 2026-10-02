@@ -28,6 +28,7 @@ import {
   MAX_EVAL_TOOL_OUTPUT_CHARS,
   sanitizeReplayedToolInputs,
   truncateEvalToolOutput,
+  withNativeReasoningMetadata,
   TURN_FAILED_MESSAGE,
   turnFailureMessageId,
   type DashboardAgentEvalPolicyCheck,
@@ -559,6 +560,52 @@ describe("sanitizeReplayedToolInputs", () => {
     expect(parts[1]!.input).toEqual({});
     expect(parts[2]!.input).toEqual({ runId: "r1" });
     expect(parts[3]).toBe((messages[1] as { content: unknown[] }).content[3]);
+  });
+});
+
+describe("withNativeReasoningMetadata", () => {
+  it("moves a Converse-era signature and redacted data to where the native provider reads them", () => {
+    const messages = [
+      { role: "user", content: "why did it fail?" },
+      {
+        role: "assistant",
+        content: [
+          { type: "reasoning", text: "", providerOptions: { bedrock: { signature: "sig_1" } } },
+          { type: "reasoning", text: "", providerOptions: { bedrock: { redactedData: "red_1" } } },
+          { type: "tool-call", toolCallId: "tc1", toolName: "list_runs", input: {} },
+        ],
+      },
+    ] as Parameters<typeof withNativeReasoningMetadata>[0];
+
+    const [user, assistant] = withNativeReasoningMetadata(messages);
+    expect(user).toBe(messages[0]);
+    const parts = (assistant as { content: Array<{ providerOptions?: unknown }> }).content;
+    expect(parts[0]!.providerOptions).toEqual({
+      bedrock: { signature: "sig_1" },
+      anthropic: { signature: "sig_1" },
+    });
+    expect(parts[1]!.providerOptions).toEqual({
+      bedrock: { redactedData: "red_1" },
+      anthropic: { redactedData: "red_1" },
+    });
+    expect(parts[2]).toBe((messages[1] as { content: unknown[] }).content[2]);
+  });
+
+  it("leaves native reasoning and a history with nothing to move untouched", () => {
+    const messages = [
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "reasoning",
+            text: "",
+            providerOptions: { anthropic: { signature: "native" }, bedrock: { signature: "old" } },
+          },
+        ],
+      },
+    ] as Parameters<typeof withNativeReasoningMetadata>[0];
+
+    expect(withNativeReasoningMetadata(messages)).toBe(messages);
   });
 });
 

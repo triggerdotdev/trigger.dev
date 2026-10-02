@@ -123,3 +123,19 @@ Pure memoization of deterministic, internal-only values:
 Drop this patch if/when the webapp moves to React Router v7+ (which threads
 `precomputedBranches` itself) or the Remix 3 route-pattern matcher lands. Re-profile at that
 point — the `compilePath` cache may still be worth keeping since upstream never added it.
+
+---
+
+## `@ai-sdk/anthropic@3.0.125`: send `tool_choice: none` with the tools
+
+**File:** `patches/@ai-sdk__anthropic@3.0.125.patch` (patches `dist/index.*` and `dist/internal/index.*`)
+
+The provider maps `toolChoice: "none"` to sending no tools at all. The Messages API
+accepts `tool_choice: {"type": "none"}` with the tools declared, and models with
+preserved thinking (Claude Sonnet 5.5, Opus 5.5, Fable 5.1) need that: their thinking
+blocks are bound to the tool list they were produced with, so a request that drops the
+tools invalidates the conversation's earlier reasoning. The dashboard agent's wake turns
+rely on it. The patch returns the prepared tools with `{ type: "none" }` instead.
+`@ai-sdk/amazon-bedrock/anthropic` reuses this model, so Bedrock gets the same behavior.
+`internal-packages/dashboard-agent/src/provider-wire.test.ts` fails if the patch is
+lost; drop the patch once the provider sends `none` upstream.

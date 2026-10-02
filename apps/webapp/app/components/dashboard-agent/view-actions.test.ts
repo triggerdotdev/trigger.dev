@@ -70,6 +70,14 @@ describe("keep digging, only while there is digging left", () => {
     // An empty trailing text part is not an answer.
     expect(answerContinuesAfter([card, text("  ")] as never, 0)).toBe(false);
   });
+
+  it("counts a progress note after the card as the answer going on", () => {
+    expect(answerContinuesAfter([card, { type: "reasoning", text: "so here is why" }], 0)).toBe(
+      true
+    );
+    // Thinking with its text omitted is not an answer.
+    expect(answerContinuesAfter([card, { type: "reasoning", text: "" }], 0)).toBe(false);
+  });
 });
 
 describe("one watch button per answer", () => {

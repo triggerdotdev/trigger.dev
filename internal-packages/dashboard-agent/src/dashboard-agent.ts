@@ -25,6 +25,7 @@ import {
   modeFor,
   resolveDashboardAgentModel,
   sanitizeReplayedToolInputs,
+  withNativeReasoningMetadata,
   clearOpenInvestigations,
   pendingInvestigationSettlements,
   withCacheBreakpointOnLast,
@@ -36,6 +37,7 @@ import {
   dashboardAgentTitleModel,
   maxOutputTokensFor,
   promptModel,
+  turnProviderOptions,
   withCacheBreakpoint,
   withoutThinking,
 } from "./model-provider";
@@ -51,6 +53,7 @@ export {
   dashboardAgentStoreKey,
   dashboardAgentToolsKey,
   sanitizeReplayedToolInputs,
+  withNativeReasoningMetadata,
   type DashboardAgentStore,
 } from "./agent-runtime";
 // The eval's data-handling policy lives in `eval-policy.ts`; re-exported so every
@@ -170,9 +173,14 @@ function getEvalTrigger(): DashboardAgentEvalTrigger {
   );
 }
 
+/**
+ * The prose of a message. Reasoning text counts: the turns ask for `display: "updates"`,
+ * so a reasoning part with text is a note the model wrote for the user before a tool
+ * call, and on Sonnet 5.5 it often carries the answer itself.
+ */
 function extractText(message: UIMessage): string {
   return (message.parts ?? [])
-    .flatMap((part) => (part.type === "text" ? [part.text] : []))
+    .flatMap((part) => (part.type === "text" || part.type === "reasoning" ? [part.text] : []))
     .join(" ")
     .trim();
 }
@@ -366,8 +374,10 @@ export function prepareTurnMessages(args: {
 }): ModelMessage[] {
   if (args.messages.length === 0) return args.messages;
   return withCacheBreakpointOnLast(
-    sanitizeReplayedToolInputs(
-      args.reason === "run" ? args.messages : withDurableState(args.messages, chat.history.all())
+    withNativeReasoningMetadata(
+      sanitizeReplayedToolInputs(
+        args.reason === "run" ? args.messages : withDurableState(args.messages, chat.history.all())
+      )
     )
   );
 }
@@ -607,12 +617,16 @@ export const dashboardAgent = chat.agent({
   // string is resolved through the registry here so streamText keeps a typed model.
   run: async ({ messages, signal, tools: turnTools }) => {
     const resolved = chat.prompt();
-    // A wake turn runs without tools: it reports what the check already established
-    // and carries no delegated token to read with. Decided here rather than in the
-    // `tools` hook, which the runtime resolves before `onAction` files the wake.
+    // A wake turn calls no tools: it reports what the check already established and
+    // carries no delegated token to read with. The tools stay declared and
+    // `toolChoice: "none"` keeps them uncalled, because a model with preserved thinking
+    // binds each thinking block to the tool list it was produced with, and a wake that
+    // dropped the list would invalidate the conversation's earlier reasoning. Decided
+    // here rather than in the `tools` hook, which the runtime resolves before
+    // `onAction` files the wake.
     const actionTurn = locals.get(pendingActionTurnKey);
     const wake = actionTurn?.kind === "wake";
-    const tools = wake ? {} : turnTools;
+    const tools = turnTools;
     // A wake the plan gave a headline is a sentence or two, bounded so a chatty turn
     // cannot run up the bill on something nobody asked. Thinking is switched off for
     // it, so the cap is all answer.
@@ -633,8 +647,8 @@ export const dashboardAgent = chat.agent({
         ? { maxOutputTokens: maxOutputTokensFor(modelId) }
         : {}),
       ...(boundedWake
-        ? { maxOutputTokens: WAKE_MAX_OUTPUT_TOKENS, providerOptions: withoutThinking() }
-        : {}),
+        ? { maxOutputTokens: WAKE_MAX_OUTPUT_TOKENS, providerOptions: withoutThinking(modelId) }
+        : { providerOptions: turnProviderOptions(modelId) }),
       messages,
       abortSignal: signal,
       prepareStep: stepCachePrepareStep(options) as never,
@@ -649,8 +663,9 @@ export const dashboardAgent = chat.agent({
           providerMetadata: finished.providerMetadata,
         }),
       // toStreamTextOptions() defaults to a single step; override so the model can
-      // call a tool and then answer from its result in the same turn. A wake has no
+      // call a tool and then answer from its result in the same turn. A wake calls no
       // tools, so it has nothing to do with a second step.
+      ...(wake ? { toolChoice: "none" as const } : {}),
       stopWhen: stepCountIs(wake ? 1 : 10),
     });
   },

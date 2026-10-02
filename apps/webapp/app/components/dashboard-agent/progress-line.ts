@@ -1,4 +1,5 @@
 import { activeTurnMessage } from "./active-turn";
+import { isStreamingProsePart } from "./prose-part";
 import { toolPendingLabel } from "./tool-labels";
 
 /** A tool call with no output yet. */
@@ -141,11 +142,14 @@ export function earliestInFlightToolCall(
   return call;
 }
 
-/** A prose-only turn has no tool part to catch; a `text` part mid-stream has `state: "streaming"`. */
+/**
+ * A prose-only turn has no tool part to catch; a `text` or `reasoning` part mid-stream
+ * has `state: "streaming"`.
+ */
 export function hasUnfinishedTextPart(messages: ReadonlyArray<ProgressMessage>): boolean {
   const active = activeTurnMessage(messages);
   if (!active || active.role !== "assistant") return false;
-  return partsOf(active).some((part) => part?.type === "text" && part.state === "streaming");
+  return partsOf(active).some((part) => isStreamingProsePart(part));
 }
 
 /** Must stay non-null for the whole in-flight period: null unmounts, and a gap blinks. */

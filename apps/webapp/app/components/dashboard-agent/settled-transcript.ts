@@ -4,6 +4,7 @@ import {
   inFlightToolName,
   liveInvestigation,
 } from "./progress-line";
+import { isStreamingProsePart } from "./prose-part";
 
 /**
  * Re-reading the stored transcript once a turn settles.
@@ -25,7 +26,7 @@ function stillRunning(message: unknown): boolean {
       (typeof part?.type === "string" &&
         part.type.startsWith("tool-") &&
         IN_FLIGHT_TOOL_STATES.has(part.state ?? "")) ||
-      (part?.type === "text" && part.state === "streaming")
+      isStreamingProsePart(part)
   );
 }
 
