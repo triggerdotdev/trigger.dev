@@ -95,6 +95,7 @@ import {
   type TranscriptStorageContext,
 } from "./transcriptStorage.js";
 import { responseAfterCompaction } from "./compactionResponse.js";
+import { withToolResultsInCallOrder } from "./toolResultOrder.js";
 import { ManagedChatResponse, createOrderedChatWriter } from "./managedChatResponse.js";
 import {
   convertSteeredMessages,
@@ -5237,7 +5238,11 @@ function toStreamTextOptions(
         locals.set(chatPendingBackgroundKey, pendingBackground);
       }
 
-      return resultMessages ? { messages: resultMessages } : undefined;
+      // 4. Parallel tool results in call order, the order the next turn's history
+      // will list them in. See `withToolResultsInCallOrder`.
+      const base = resultMessages ?? messages;
+      const ordered = withToolResultsInCallOrder(base);
+      return resultMessages || ordered !== base ? { messages: ordered } : undefined;
     };
   }
 
