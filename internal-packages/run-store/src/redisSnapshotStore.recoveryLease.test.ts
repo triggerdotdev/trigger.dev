@@ -58,14 +58,18 @@ describe("RedisSnapshotStore recovery lease", () => {
     async ({ redisOptions }) => {
       const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
       const ttlMs = 200;
+      const expiryMarginMs = 50;
       const scanned: number[] = [];
-      // A slow partition worker (300ms > the 200ms lease TTL) so the sweep outlives the lease; the
-      // pendingIndex is a no-op double. Only the lease (real Redis) is under test here.
+      let markPartitionStarted!: () => void;
+      const partitionStarted = new Promise<void>((resolve) => (markPartitionStarted = resolve));
+      let releasePartition!: () => void;
+      const partitionGate = new Promise<void>((resolve) => (releasePartition = resolve));
       const sweeperA = new RecoverySweeper({
         worker: {
           processPartition: async (partition) => {
             scanned.push(partition);
-            await sleep(300);
+            markPartitionStarted();
+            await partitionGate;
             return [];
           },
         },
@@ -77,20 +81,27 @@ describe("RedisSnapshotStore recovery lease", () => {
         partitionCount: 5,
         acquireTick: async () => store.acquireOrRenewRecoveryLease("owner-A", ttlMs),
       });
+      const aTick = sweeperA.tick();
       try {
-        // A renews before partition 0, then processes it for 300ms, outliving its 200ms lease.
-        const aTick = sweeperA.tick();
-        // Mid partition-0, after A's lease has expired, a successor takes over.
-        await sleep(250);
+        await Promise.race([partitionStarted, aTick]);
+        expect(scanned).toEqual([0]);
+        // Start the expiry wait only after Redis granted A's lease, and hold partition 0 until B owns it.
+        await sleep(ttlMs + expiryMarginMs);
         expect(await store.acquireOrRenewRecoveryLease("owner-B", 10_000)).toBe(true);
         // A finishes partition 0, its renew before partition 1 fails, and it stops there.
+        releasePartition();
         const result = await aTick;
         expect(scanned).toEqual([0]); // A processed ONLY the in-flight partition, never advanced
         expect(result.skipped).toBe(false); // it did work before losing the lease
         // The successor still holds the lease; A cannot reclaim it while B renews.
         expect(await store.acquireOrRenewRecoveryLease("owner-A", ttlMs)).toBe(false);
       } finally {
-        await store.quit();
+        releasePartition();
+        try {
+          await aTick;
+        } finally {
+          await store.quit();
+        }
       }
     }
   );
