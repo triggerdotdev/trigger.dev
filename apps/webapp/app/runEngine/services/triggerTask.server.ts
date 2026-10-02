@@ -539,6 +539,8 @@ export class RunEngineTriggerTaskService {
             rootScheduleId: parentAnnotations?.rootScheduleId || options.scheduleId || undefined,
             taskKind: taskKind ?? "STANDARD",
             externalDeploymentId,
+            webhookDeliveryId: options.webhookDeliveryId,
+            webhookEndpointId: options.webhookEndpointId,
           };
 
           // Route runs in a scheduled lineage (the scheduled run itself and every

@@ -2,7 +2,7 @@ import { useLocation } from "@remix-run/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTypedFetcher } from "remix-typedjson";
 import { useInterval } from "~/hooks/useInterval";
-import { type WebhookDeliveryListItem } from "~/presenters/v3/WebhookDetailPresenter.server";
+import { type EndpointDeliveryListItem } from "~/presenters/v3/WebhookDetailPresenter.server";
 import {
   type LiveDeliveryFields,
   type loader as liveDeliveriesLoader,
@@ -13,7 +13,7 @@ const NEW_DELIVERIES_EVERY_N_POLL_TICKS = 2;
 
 const IN_FLIGHT_STATUSES = new Set(["PENDING", "PROCESSING"]);
 
-type ListedDelivery = WebhookDeliveryListItem;
+type ListedDelivery = EndpointDeliveryListItem;
 type LivePollFetcherData =
   | { deliveries: LiveDeliveryFields[] }
   | { deliveries: LiveDeliveryFields[]; count: number; since: number }
@@ -46,9 +46,6 @@ function patchVisibleDeliveriesWithLiveUpdates(
     return {
       ...delivery,
       status: update.status,
-      runId: update.runId,
-      run: update.run,
-      session: update.session,
       errorMessage: update.errorMessage,
       processedAt: update.processedAt,
     };
@@ -201,12 +198,6 @@ export function useDeliveriesLiveReload({
         const current = new URLSearchParams(location.search);
         const to = current.get("to");
         if (to) searchParams.set("to", to);
-        for (const status of current.getAll("statuses")) searchParams.append("statuses", status);
-        for (const webhook of current.getAll("webhooks")) searchParams.append("webhooks", webhook);
-        for (const key of ["deliveryId", "runId", "test"] as const) {
-          const value = current.get(key);
-          if (value) searchParams.set(key, value);
-        }
       }
 
       deliveriesPollFetcher.load(`${deliveriesResourcesBasePath}/live?${searchParams.toString()}`);

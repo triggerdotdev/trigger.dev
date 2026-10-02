@@ -123,6 +123,8 @@ import {
   v3RunSpanPath,
   v3RunsPath,
   v3SchedulePath,
+  v3WebhookDeliveryPath,
+  v3WebhookEndpointPath,
   v3SessionPath,
   v3SpanParamsSchema,
 } from "~/utils/pathBuilder";
@@ -452,9 +454,11 @@ function RunBody({
                 ? "agent"
                 : run.isScheduled
                   ? "scheduled"
-                  : run.isCached
-                    ? "task-cached"
-                    : "task"
+                  : run.isWebhook
+                    ? "webhook"
+                    : run.isCached
+                      ? "task-cached"
+                      : "task"
             }
             spanName={run.taskIdentifier}
             className="size-5 min-h-5 min-w-5"
@@ -465,7 +469,13 @@ function RunBody({
               // The run-type accents are drawn for 3:1 as icons; as 16px text the
               // tasks and agents blues fall under 4.5:1 on the light themes, so
               // the title takes the text colour there and the icon carries type.
-              run.isAgentRun ? "text-agents" : run.isScheduled ? "text-schedules" : "text-tasks",
+              run.isAgentRun
+                ? "text-agents"
+                : run.isScheduled
+                  ? "text-schedules"
+                  : run.isWebhook
+                    ? "text-webhooks"
+                    : "text-tasks",
               "light:text-text-bright"
             )}
           >
@@ -994,6 +1004,42 @@ function RunBody({
                           content={`Go to schedule ${run.schedule.friendlyId}`}
                         />
                       </div>
+                    </Property.Value>
+                  </Property.Item>
+                )}
+                {run.webhook?.endpoint && (
+                  <Property.Item>
+                    <Property.Label>Webhook endpoint</Property.Label>
+                    <Property.Value>
+                      <TextLink
+                        to={v3WebhookEndpointPath(
+                          organization,
+                          project,
+                          environment,
+                          run.webhook.endpoint.friendlyId
+                        )}
+                      >
+                        {run.webhook.endpoint.declaredId}
+                        {run.webhook.endpoint.tenantId ? ` · ${run.webhook.endpoint.tenantId}` : ""}
+                      </TextLink>
+                    </Property.Value>
+                  </Property.Item>
+                )}
+                {run.webhook && (
+                  <Property.Item>
+                    <Property.Label>Webhook delivery</Property.Label>
+                    <Property.Value>
+                      <TextLink
+                        to={v3WebhookDeliveryPath(
+                          organization,
+                          project,
+                          environment,
+                          run.webhook.deliveryFriendlyId
+                        )}
+                        className="font-mono"
+                      >
+                        {run.webhook.deliveryFriendlyId}
+                      </TextLink>
                     </Property.Value>
                   </Property.Item>
                 )}

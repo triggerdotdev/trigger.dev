@@ -1,10 +1,8 @@
 import { json } from "@remix-run/server-runtime";
-import { randomBytes } from "node:crypto";
-import { WebhookVerifierArtifact } from "@trigger.dev/core/v3";
 import { z } from "zod";
-import { prisma, webhookPrisma } from "~/db.server";
+import { webhookPrisma } from "~/db.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
-import { getSecretStore } from "~/services/secrets/secretStore.server";
+import { generateWebhookSigningSecret } from "~/v3/webhookSigningSecret.server";
 
 const ParamsSchema = z.object({ endpointId: z.string() });
 
@@ -19,31 +17,16 @@ const { action, loader } = createActionApiRoute(
     authorization: { action: "write", resource: () => ({ type: "webhooks" }) },
   },
   async ({ params, authentication }) => {
-    const env = authentication.environment;
     const endpoint = await webhookPrisma.webhookEndpoint.findFirst({
-      where: { friendlyId: params.endpointId, runtimeEnvironmentId: env.id },
+      where: { friendlyId: params.endpointId, runtimeEnvironmentId: authentication.environment.id },
+      select: { id: true, friendlyId: true, verifierArtifact: true },
     });
     if (!endpoint) return json({ error: "Not found" }, { status: 404 });
 
-    const parsed = WebhookVerifierArtifact.safeParse(endpoint.verifierArtifact);
-    if (parsed.success && "config" in parsed.data && parsed.data.config.scheme === "asymmetric") {
-      return json(
-        {
-          error: "Cannot generate a secret for an asymmetric endpoint; set its public key instead.",
-        },
-        { status: 400 }
-      );
-    }
+    const result = await generateWebhookSigningSecret(endpoint);
+    if (!result.ok) return json({ error: result.error }, { status: 400 });
 
-    const secret = `whsec_${randomBytes(32).toString("hex")}`;
-    const secretKey = `webhook:signing-secret:${endpoint.id}`;
-    await getSecretStore("DATABASE", { prismaClient: prisma }).setSecret(secretKey, { secret });
-    await webhookPrisma.webhookEndpoint.update({
-      where: { id: endpoint.id },
-      data: { signingSecretKey: secretKey },
-    });
-
-    return json({ id: endpoint.friendlyId, secretSet: true as const, secret });
+    return json({ id: endpoint.friendlyId, secretSet: true as const, secret: result.secret });
   }
 );
 

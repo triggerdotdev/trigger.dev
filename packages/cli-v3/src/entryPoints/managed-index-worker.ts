@@ -191,6 +191,8 @@ await sendMessageInCatalog(
       tasks,
       prompts: convertPromptSchemasToJsonSchemas(resourceCatalog.listPromptManifests()),
       skills: resourceCatalog.listSkillManifests(),
+      webhookEndpoints: resourceCatalog.listWebhookEndpointManifests(),
+      webhookSubscribers: resourceCatalog.listWebhookSubscribers(),
       queues: resourceCatalog.listQueueManifests(),
       concurrencyLimits: resourceCatalog.listConcurrencyLimitManifests(),
       configPath: buildManifest.configPath,

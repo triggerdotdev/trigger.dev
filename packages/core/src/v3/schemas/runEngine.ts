@@ -28,6 +28,10 @@ export const RunAnnotations = z.object({
   rootScheduleId: z.string().optional(),
   taskKind: TaskKind.optional(),
   externalDeploymentId: z.string().optional(),
+  /** The webhook delivery (friendly id) that triggered this run. */
+  webhookDeliveryId: z.string().optional(),
+  /** The endpoint (friendly id) that delivery arrived on. */
+  webhookEndpointId: z.string().optional(),
 });
 
 export type RunAnnotations = z.infer<typeof RunAnnotations>;

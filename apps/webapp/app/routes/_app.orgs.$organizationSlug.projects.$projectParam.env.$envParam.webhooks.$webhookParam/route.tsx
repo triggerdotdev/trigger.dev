@@ -1,11 +1,5 @@
 import { BookOpenIcon } from "@heroicons/react/24/solid";
-import {
-  Link,
-  type MetaFunction,
-  useNavigation,
-  useRevalidator,
-  useSearchParams,
-} from "@remix-run/react";
+import { type MetaFunction, useSearchParams } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { type ReactNode, Suspense, useMemo, useState } from "react";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
@@ -13,7 +7,7 @@ import { z } from "zod";
 import { WebhookIcon } from "~/assets/icons/WebhookIcon";
 import { PageBody } from "~/components/layout/AppLayout";
 import { DirectionSchema, ListPagination } from "~/components/ListPagination";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { LinkButton } from "~/components/primitives/Buttons";
 import { Card } from "~/components/primitives/charts/Card";
 import { Chart, type ChartConfig } from "~/components/primitives/charts/ChartCompound";
 import { CopyableText } from "~/components/primitives/CopyableText";
@@ -26,7 +20,6 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
-import { PulsingDot } from "~/components/primitives/PulsingDot";
 import { Spinner } from "~/components/primitives/Spinner";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import {
@@ -36,12 +29,17 @@ import {
 import { RunsListQueryError } from "~/services/runsRepository/runsRepository.server";
 import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
-import { DeliveriesTable } from "~/components/webhookDeliveries/v1/DeliveriesTable";
-import { DeliveryStatusBadge } from "~/components/webhookDeliveries/v1/DeliveryStatus";
-import { EndpointsTable } from "~/components/webhookEndpoints/v1/EndpointsTable";
-import { WebhookComposer } from "~/components/webhookConsole/WebhookComposer";
-import { AIChatIcon } from "~/assets/icons/AIChatIcon";
-import { RunsIcon } from "~/assets/icons/RunsIcon";
+import { EndpointStatusBadge } from "~/components/webhookEndpoints/v1/EndpointStatus";
+import { Paragraph } from "~/components/primitives/Paragraph";
+import {
+  Table,
+  TableBlankRow,
+  TableBody,
+  TableCell,
+  TableHeader,
+  TableHeaderCell,
+  TableRow,
+} from "~/components/primitives/Table";
 import { $replica } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -52,21 +50,19 @@ import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.serve
 import {
   WebhookDetailPresenter,
   type WebhookActivity,
-  type WebhookDeliveriesList,
   type WebhookDetail,
 } from "~/presenters/v3/WebhookDetailPresenter.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { requireUser } from "~/services/session.server";
-import { FEATURE_FLAG } from "~/v3/featureFlags";
-import { flag } from "~/v3/featureFlags.server";
+import { webhookIngressUrl } from "~/utils/webhookIngressUrl.server";
+import { requireWebhooksAccess } from "~/v3/webhooksAccess.server";
 import {
   docsPath,
   EnvironmentParamSchema,
   v3EnvironmentPath,
-  v3WebhookDeliveryPath,
+  v3WebhookEndpointPath,
 } from "~/utils/pathBuilder";
 import { parseFiniteInt } from "~/utils/searchParams";
-import { useDeliveriesLiveReload } from "~/components/webhookDeliveries/v1/useDeliveriesLiveReload";
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   const slug = (data as { webhook?: WebhookDetail | null } | undefined)?.webhook?.slug;
@@ -93,18 +89,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throw new Response("Environment not found", { status: 404 });
   }
 
-  if (!user.admin && !user.isImpersonating) {
-    const org = await $replica.organization.findFirst({
-      where: { id: project.organizationId },
-      select: { featureFlags: true },
-    });
-    const enabled = await flag({
-      key: FEATURE_FLAG.hasWebhooksAccess,
-      defaultValue: false,
-      overrides: (org?.featureFlags as Record<string, unknown>) ?? {},
-    });
-    if (!enabled) throw new Response("Not found", { status: 404 });
-  }
+  await requireWebhooksAccess(user, project.organizationId);
 
   const url = new URL(request.url);
   const periodParam = url.searchParams.get("period") ?? undefined;
@@ -112,11 +97,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const to = parseFiniteInt(url.searchParams.get("to"));
   const hasExplicitWindow = Boolean(periodParam || from || to);
   const period = periodParam ?? (hasExplicitWindow ? undefined : "7d");
-  const deliveriesCursor = url.searchParams.get("deliveriesCursor") ?? undefined;
-  const deliveriesDirectionRaw = url.searchParams.get("deliveriesDirection") ?? undefined;
-  const deliveriesDirection = deliveriesDirectionRaw
-    ? DirectionSchema.parse(deliveriesDirectionRaw)
-    : undefined;
   const runsCursor = url.searchParams.get("runsCursor") ?? undefined;
   const runsDirectionRaw = url.searchParams.get("runsDirection") ?? undefined;
   const runsDirection = runsDirectionRaw ? DirectionSchema.parse(runsDirectionRaw) : undefined;
@@ -150,16 +130,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     })
     .catch(() => ({ data: [], statuses: [] }) satisfies WebhookActivity);
 
-  const deliveryActivity = presenter
-    .getDeliveryActivity({
-      organizationId: project.organizationId,
-      projectId: project.id,
-      environmentId: environment.id,
-      webhookEndpointId: webhook.endpoint.id,
-      from: time.from,
-      to: time.to,
-    })
-    .catch(() => ({ data: [], statuses: [] }) satisfies WebhookActivity);
+  const endpointUrls = Object.fromEntries(
+    webhook.endpoints.map((endpoint) => [endpoint.id, webhookIngressUrl(endpoint.opaqueId)])
+  );
 
   const runList = new NextRunListPresenter($replica, runsListClickhouse)
     .call(project.organizationId, environment.id, {
@@ -179,57 +152,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       return null;
     });
 
-  const deliveriesList = presenter
-    .listDeliveries({
-      organizationId: project.organizationId,
-      projectId: project.id,
-      environmentId: environment.id,
-      webhookEndpointId: webhook.endpoint.id,
-      period,
-      from,
-      to,
-      hasExplicitWindow,
-      cursor: deliveriesCursor,
-      direction: deliveriesDirection,
-    })
-    .catch(() => null);
-
-  const endpointsList = presenter
-    .listEndpoints({
-      organizationId: project.organizationId,
-      projectId: project.id,
-      environmentId: environment.id,
-      handlerWebhookId: webhook.slug,
-    })
-    .catch(() => [] as Awaited<ReturnType<typeof presenter.listEndpoints>>);
-
-  const composerEndpoints = presenter
-    .listComposerEndpoints({ environmentId: environment.id, handlerWebhookId: webhook.slug })
-    .catch(() => [] as Awaited<ReturnType<typeof presenter.listComposerEndpoints>>);
-
   return typeddefer({
     webhook,
+    endpointUrls,
     runActivity,
-    deliveryActivity,
     runList,
-    deliveriesList,
-    endpointsList,
-    composerEndpoints,
   });
 };
 
-type WebhookTab = "runs" | "deliveries" | "endpoints" | "console";
+type WebhookTab = "runs" | "endpoints";
 
 export default function Page() {
-  const {
-    webhook,
-    runActivity,
-    deliveryActivity,
-    runList,
-    deliveriesList,
-    endpointsList,
-    composerEndpoints,
-  } = useTypedLoaderData<typeof loader>();
+  const { webhook, endpointUrls, runActivity, runList } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -237,20 +171,9 @@ export default function Page() {
   const tasksPath = v3EnvironmentPath(organization, project, environment);
 
   const [searchParams] = useSearchParams();
-  const [tab, setTab] = useState<WebhookTab>(() => {
-    const requested = searchParams.get("tab");
-    return requested === "console" || requested === "runs" || requested === "endpoints"
-      ? requested
-      : "deliveries";
-  });
-  const tabLabel =
-    tab === "deliveries"
-      ? "Deliveries"
-      : tab === "runs"
-        ? "Runs"
-        : tab === "console"
-          ? "Console"
-          : "Endpoints";
+  const [tab, setTab] = useState<WebhookTab>(() =>
+    searchParams.get("tab") === "endpoints" ? "endpoints" : "runs"
+  );
 
   return (
     <>
@@ -278,17 +201,8 @@ export default function Page() {
         <ResizablePanelGroup orientation="horizontal" className="max-h-full">
           <ResizablePanel id="webhook-main" min="300px">
             <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
-              {/* Top bar: tabs on the left, TimeFilter + pagination on the right.
-                  h-10 matches the right-hand sidebar header height. */}
               <div className="flex h-10 items-end border-b border-grid-dimmed bg-background-bright pl-3 pr-2">
                 <TabContainer className="-mb-px">
-                  <TabButton
-                    isActive={tab === "deliveries"}
-                    layoutId="webhook-page-tabs"
-                    onClick={() => setTab("deliveries")}
-                  >
-                    Deliveries
-                  </TabButton>
                   <TabButton
                     isActive={tab === "runs"}
                     layoutId="webhook-page-tabs"
@@ -303,122 +217,45 @@ export default function Page() {
                   >
                     Endpoints
                   </TabButton>
-                  <TabButton
-                    isActive={tab === "console"}
-                    layoutId="webhook-page-tabs"
-                    onClick={() => setTab("console")}
-                  >
-                    Console
-                  </TabButton>
                 </TabContainer>
-                {tab !== "endpoints" && tab !== "console" && (
+                {tab === "runs" ? (
                   <div className="ml-auto flex items-center gap-2 self-center">
                     <TimeFilter
                       defaultPeriod="7d"
-                      labelName={tabLabel}
-                      clearParams={[
-                        "deliveriesCursor",
-                        "deliveriesDirection",
-                        "runsCursor",
-                        "runsDirection",
-                      ]}
+                      labelName="Runs"
+                      clearParams={["runsCursor", "runsDirection"]}
                     />
-                    {tab === "deliveries" ? (
-                      <Suspense fallback={null}>
-                        <TypedAwait resolve={deliveriesList} errorElement={null}>
-                          {(list) =>
-                            list ? (
-                              <ListPagination
-                                list={list}
-                                cursorParam="deliveriesCursor"
-                                directionParam="deliveriesDirection"
-                              />
-                            ) : null
-                          }
-                        </TypedAwait>
-                      </Suspense>
-                    ) : (
-                      <Suspense fallback={null}>
-                        <TypedAwait resolve={runList} errorElement={<RunsListErrorStateNoop />}>
-                          {(list) =>
-                            list ? (
-                              <ListPagination
-                                list={list}
-                                cursorParam="runsCursor"
-                                directionParam="runsDirection"
-                              />
-                            ) : null
-                          }
-                        </TypedAwait>
-                      </Suspense>
-                    )}
+                    <Suspense fallback={null}>
+                      <TypedAwait resolve={runList} errorElement={<RunsListErrorStateNoop />}>
+                        {(list) =>
+                          list ? (
+                            <ListPagination
+                              list={list}
+                              cursorParam="runsCursor"
+                              directionParam="runsDirection"
+                            />
+                          ) : null
+                        }
+                      </TypedAwait>
+                    </Suspense>
                   </div>
-                )}
+                ) : null}
               </div>
 
-              {tab === "endpoints" ? (
-                // Endpoints aren't a time series, so no activity chart or time filter.
-                <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-                  <Suspense fallback={<TableLoading />}>
-                    <TypedAwait resolve={endpointsList} errorElement={<TableLoading />}>
-                      {(endpoints) => (
-                        <EndpointsTable endpoints={endpoints} showTopBorder={false} stickyHeader />
-                      )}
-                    </TypedAwait>
-                  </Suspense>
-                </div>
-              ) : tab === "console" ? (
-                <div className="h-full overflow-hidden">
-                  <Suspense fallback={<TableLoading />}>
-                    <TypedAwait resolve={composerEndpoints} errorElement={<TableLoading />}>
-                      {(endpoints) =>
-                        endpoints.length === 0 ? (
-                          <div className="flex h-full items-center justify-center p-4 text-center text-sm text-text-dimmed">
-                            This webhook has no synced endpoints to send to yet.
-                          </div>
-                        ) : (
-                          <WebhookComposer
-                            endpoints={endpoints}
-                            organizationSlug={organization.slug}
-                            projectSlug={project.slug}
-                            environmentSlug={environment.slug}
-                            isDevEnvironment={environment.type === "DEVELOPMENT"}
-                            environmentLabel={
-                              environment.type.charAt(0) + environment.type.slice(1).toLowerCase()
-                            }
-                            redirectOnSuccess={false}
-                          />
-                        )
-                      }
-                    </TypedAwait>
-                  </Suspense>
-                </div>
-              ) : (
+              {tab === "runs" ? (
                 <ResizablePanelGroup orientation="vertical" className="max-h-full">
-                  {/* Activity chart (one status-bucket chart per tab). */}
                   <ResizablePanel id="webhook-activity" min="220px" default="320px">
                     <div className="flex h-full flex-col overflow-hidden bg-background p-2">
                       <div className="grid min-h-0 flex-1 grid-cols-1 gap-2">
-                        <ChartCard title={tabLabel}>
-                          {tab === "deliveries" ? (
-                            <Suspense fallback={<ActivityChartSkeleton />}>
-                              <TypedAwait
-                                resolve={deliveryActivity}
-                                errorElement={<ActivityChartSkeleton />}
-                              >
-                                {(result) => <ActivityChart activity={result} />}
-                              </TypedAwait>
-                            </Suspense>
-                          ) : (
-                            <Suspense fallback={<ActivityChartSkeleton />}>
-                              <TypedAwait
-                                resolve={runActivity}
-                                errorElement={<ActivityChartSkeleton />}
-                              >
-                                {(result) => <ActivityChart activity={result} />}
-                              </TypedAwait>
-                            </Suspense>
-                          )}
+                        <ChartCard title="Runs">
+                          <Suspense fallback={<ActivityChartSkeleton />}>
+                            <TypedAwait
+                              resolve={runActivity}
+                              errorElement={<ActivityChartSkeleton />}
+                            >
+                              {(result) => <ActivityChart activity={result} />}
+                            </TypedAwait>
+                          </Suspense>
                         </ChartCard>
                       </div>
                     </div>
@@ -426,16 +263,12 @@ export default function Page() {
 
                   <ResizableHandle id="webhook-activity-handle" />
 
-                  {/* Table */}
                   <ResizablePanel id="webhook-content" min="160px">
-                    <WebhookContentArea
-                      tab={tab}
-                      deliveriesList={deliveriesList}
-                      runList={runList}
-                      webhookEndpointId={webhook.endpoint.id}
-                    />
+                    <RunsArea runList={runList} />
                   </ResizablePanel>
                 </ResizablePanelGroup>
+              ) : (
+                <WebhookEndpointsTable webhook={webhook} endpointUrls={endpointUrls} />
               )}
             </div>
           </ResizablePanel>
@@ -448,14 +281,7 @@ export default function Page() {
             max="500px"
             isStaticAtRest
           >
-            {tab === "console" ? (
-              <ConsoleLiveFeed
-                deliveriesList={deliveriesList}
-                webhookEndpointId={webhook.endpoint.id}
-              />
-            ) : (
-              <WebhookDetailSidebar webhook={webhook} onViewEndpoints={() => setTab("endpoints")} />
-            )}
+            <WebhookDetailSidebar webhook={webhook} />
           </ResizablePanel>
         </ResizablePanelGroup>
       </PageBody>
@@ -465,252 +291,121 @@ export default function Page() {
 
 type LoaderData = ReturnType<typeof useTypedLoaderData<typeof loader>>;
 
-function WebhookContentArea({
-  tab,
-  deliveriesList,
-  runList,
-  webhookEndpointId,
-}: {
-  tab: WebhookTab;
-  webhookEndpointId: string;
-} & Pick<LoaderData, "deliveriesList" | "runList">) {
+function RunsArea({ runList }: Pick<LoaderData, "runList">) {
   return (
     <div className="h-full overflow-hidden">
-      {tab === "deliveries" ? (
-        <Suspense fallback={<TableLoading />}>
-          <TypedAwait resolve={deliveriesList} errorElement={<TableLoading />}>
-            {(list) =>
-              list ? (
-                <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-                  <LiveDeliveriesTable list={list} webhookEndpointId={webhookEndpointId} />
-                </div>
-              ) : (
-                <TableLoading />
-              )
-            }
-          </TypedAwait>
-        </Suspense>
-      ) : (
-        <Suspense fallback={<TableLoading />}>
-          <TypedAwait resolve={runList} errorElement={<RunsListErrorState />}>
-            {(list) =>
-              list ? (
-                <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-                  <TaskRunsTable
-                    enableSmartColumns={false}
-                    total={list.runs.length}
-                    hasFilters={list.hasFilters}
-                    filters={list.filters}
-                    runs={list.runs}
-                    variant="dimmed"
-                    showTopBorder={false}
-                    stickyHeader
-                  />
-                </div>
-              ) : (
-                <TableLoading />
-              )
-            }
-          </TypedAwait>
-        </Suspense>
-      )}
+      <Suspense fallback={<TableLoading />}>
+        <TypedAwait resolve={runList} errorElement={<RunsListErrorState />}>
+          {(list) =>
+            list ? (
+              <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+                <TaskRunsTable
+                  enableSmartColumns={false}
+                  total={list.runs.length}
+                  hasFilters={list.hasFilters}
+                  filters={list.filters}
+                  runs={list.runs}
+                  variant="dimmed"
+                  showTopBorder={false}
+                  stickyHeader
+                />
+              </div>
+            ) : (
+              <TableLoading />
+            )
+          }
+        </TypedAwait>
+      </Suspense>
     </div>
   );
 }
 
-function LiveDeliveriesTable({
-  list,
-  webhookEndpointId,
-}: {
-  list: WebhookDeliveriesList;
-  webhookEndpointId: string;
-}) {
-  const organization = useOrganization();
-  const project = useProject();
-  const environment = useEnvironment();
-  const navigation = useNavigation();
-  const revalidator = useRevalidator();
-  const [searchParams, setSearchParams] = useSearchParams();
-
-  const { visibleDeliveries, showNewDeliveriesBanner, newDeliveriesCount, dismissNewDeliveries } =
-    useDeliveriesLiveReload({
-      deliveries: list.deliveries,
-      isLoading: navigation.state !== "idle",
-      webhookEndpointId,
-      organizationSlug: organization.slug,
-      projectSlug: project.slug,
-      environmentSlug: environment.slug,
-    });
-
-  const onClickShowNewDeliveries = () => {
-    dismissNewDeliveries();
-    if (searchParams.has("deliveriesCursor") || searchParams.has("deliveriesDirection")) {
-      setSearchParams((prev) => {
-        prev.delete("deliveriesCursor");
-        prev.delete("deliveriesDirection");
-        return prev;
-      });
-      return;
-    }
-    revalidator.revalidate();
-  };
-
-  return (
-    <>
-      {showNewDeliveriesBanner ? (
-        <div className="flex justify-end px-2 py-1.5">
-          <span className="flex duration-150 animate-in fade-in-0">
-            <Button
-              variant="secondary/small"
-              className="text-text-bright"
-              onClick={onClickShowNewDeliveries}
-              LeadingIcon={<PulsingDot className="h-2 w-2" />}
-              tooltip="Refresh to see new deliveries"
-              aria-label="New deliveries received. Refresh to see them."
-            >
-              {newDeliveriesCount >= 100
-                ? "99+ new deliveries"
-                : `${newDeliveriesCount} new ${
-                    newDeliveriesCount === 1 ? "delivery" : "deliveries"
-                  }`}
-            </Button>
-          </span>
-        </div>
-      ) : null}
-      <DeliveriesTable
-        deliveries={visibleDeliveries}
-        hasFilters={list.hasFilters}
-        showTopBorder={false}
-        stickyHeader
-      />
-    </>
-  );
-}
-
-function ConsoleLiveFeed({
-  deliveriesList,
-  webhookEndpointId,
-}: {
-  webhookEndpointId: string;
-} & Pick<LoaderData, "deliveriesList">) {
-  return (
-    <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
-      <div className="flex h-10 items-center justify-between gap-2 border-b border-grid-dimmed pl-3 pr-2">
-        <Header2 className="truncate">Live deliveries</Header2>
-        <span className="flex items-center gap-1.5 text-xs text-text-dimmed">
-          <PulsingDot className="h-2 w-2" />
-          Live
-        </span>
-      </div>
-      <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-        <Suspense fallback={<TableLoading />}>
-          <TypedAwait resolve={deliveriesList} errorElement={<TableLoading />}>
-            {(list) =>
-              list ? (
-                <ConsoleFeedList list={list} webhookEndpointId={webhookEndpointId} />
-              ) : (
-                <TableLoading />
-              )
-            }
-          </TypedAwait>
-        </Suspense>
-      </div>
-    </div>
-  );
-}
-
-function ConsoleFeedList({
-  list,
-  webhookEndpointId,
-}: {
-  list: WebhookDeliveriesList;
-  webhookEndpointId: string;
-}) {
-  const organization = useOrganization();
-  const project = useProject();
-  const environment = useEnvironment();
-  const navigation = useNavigation();
-  const revalidator = useRevalidator();
-
-  const { visibleDeliveries, showNewDeliveriesBanner, newDeliveriesCount, dismissNewDeliveries } =
-    useDeliveriesLiveReload({
-      deliveries: list.deliveries,
-      isLoading: navigation.state !== "idle",
-      webhookEndpointId,
-      organizationSlug: organization.slug,
-      projectSlug: project.slug,
-      environmentSlug: environment.slug,
-    });
-
-  const onShowNew = () => {
-    dismissNewDeliveries();
-    revalidator.revalidate();
-  };
-
-  if (visibleDeliveries.length === 0) {
-    return (
-      <p className="px-3 py-8 text-center text-sm text-text-dimmed">
-        No deliveries yet. Send an event to watch it arrive here.
-      </p>
-    );
-  }
-
-  return (
-    <div className="flex flex-col">
-      {showNewDeliveriesBanner ? (
-        <button
-          type="button"
-          onClick={onShowNew}
-          className="flex items-center justify-center gap-1.5 border-b border-grid-dimmed bg-charcoal-800 py-1.5 text-xs text-text-bright hover:bg-charcoal-700"
-        >
-          <PulsingDot className="h-2 w-2" />
-          {newDeliveriesCount >= 100 ? "99+" : newDeliveriesCount} new
-        </button>
-      ) : null}
-      {visibleDeliveries.map((delivery) => (
-        <Link
-          key={delivery.id}
-          to={v3WebhookDeliveryPath(organization, project, environment, delivery.friendlyId)}
-          className="flex flex-col gap-1 border-b border-grid-dimmed px-3 py-2 hover:bg-charcoal-800"
-        >
-          <div className="flex items-center justify-between gap-2">
-            <span className="flex items-center gap-1.5">
-              <span className="font-mono text-xs text-text-bright">{delivery.friendlyId}</span>
-              {delivery.isTest ? (
-                <span className="rounded-sm bg-charcoal-700 px-1 py-0.5 text-xxs font-semibold uppercase tracking-wide text-text-dimmed">
-                  Test
-                </span>
-              ) : null}
-            </span>
-            <DeliveryStatusBadge
-              status={delivery.status}
-              className="shrink-0 text-xs text-text-dimmed"
-            />
-          </div>
-          {delivery.session ? (
-            <span className="flex items-center gap-1 text-xxs text-text-dimmed">
-              <AIChatIcon className="size-3.5 text-sessions" />
-              <span className="font-mono">{delivery.session.friendlyId}</span>
-            </span>
-          ) : delivery.run ? (
-            <span className="flex items-center gap-1 text-xxs text-text-dimmed">
-              <RunsIcon className="size-3.5 text-runs" />
-              <span className="font-mono">{delivery.run.friendlyId}</span>
-            </span>
-          ) : null}
-        </Link>
-      ))}
-    </div>
-  );
-}
-
-function WebhookDetailSidebar({
+/** The endpoints this task subscribes to. Each row opens the endpoint, where its deliveries are. */
+function WebhookEndpointsTable({
   webhook,
-  onViewEndpoints,
+  endpointUrls,
 }: {
   webhook: WebhookDetail;
-  onViewEndpoints: () => void;
+  endpointUrls: Record<string, string>;
 }) {
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+
+  return (
+    <Table className="max-h-full overflow-y-auto" showTopBorder={false} stickyHeader>
+      <TableHeader>
+        <TableRow>
+          <TableHeaderCell>Endpoint</TableHeaderCell>
+          <TableHeaderCell>Status</TableHeaderCell>
+          <TableHeaderCell>Source</TableHeaderCell>
+          <TableHeaderCell>Filter</TableHeaderCell>
+          <TableHeaderCell>URL</TableHeaderCell>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {webhook.endpoints.length === 0 ? (
+          <TableBlankRow colSpan={5}>
+            <Paragraph variant="small" className="text-center text-text-dimmed">
+              This task doesn't subscribe to an endpoint in this environment yet.
+            </Paragraph>
+          </TableBlankRow>
+        ) : (
+          webhook.endpoints.map((endpoint) => {
+            const path = v3WebhookEndpointPath(
+              organization,
+              project,
+              environment,
+              endpoint.friendlyId
+            );
+            return (
+              <TableRow key={endpoint.id}>
+                <TableCell to={path}>
+                  <span className="flex items-center gap-1.5">
+                    <WebhookIcon className="size-4 shrink-0 text-webhooks" />
+                    <span className="font-mono text-xs text-text-bright">
+                      {endpoint.declaredId}
+                      {endpoint.tenantId ? ` · ${endpoint.tenantId}` : ""}
+                    </span>
+                  </span>
+                </TableCell>
+                <TableCell to={path}>
+                  <EndpointStatusBadge status={endpoint.status} />
+                </TableCell>
+                <TableCell to={path}>
+                  <span className="text-xs">
+                    {endpoint.source}
+                    {endpoint.hasSigningSecret ? (
+                      ""
+                    ) : (
+                      <span className="text-text-dimmed"> · signing secret not set</span>
+                    )}
+                  </span>
+                </TableCell>
+                <TableCell to={path}>
+                  {endpoint.filter ? (
+                    <code className="text-xs text-text-bright">{endpoint.filter}</code>
+                  ) : (
+                    <span className="text-text-dimmed">Every delivery</span>
+                  )}
+                </TableCell>
+                <TableCell>
+                  <CopyableText
+                    value={endpointUrls[endpoint.id] ?? ""}
+                    className="max-w-xs font-mono text-xs"
+                    truncate
+                  />
+                </TableCell>
+              </TableRow>
+            );
+          })
+        )}
+      </TableBody>
+    </Table>
+  );
+}
+
+function WebhookDetailSidebar({ webhook }: { webhook: WebhookDetail }) {
   return (
     <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
       <div className="flex items-center gap-2 border-b border-grid-dimmed py-2 pl-3 pr-2">
@@ -721,22 +416,6 @@ function WebhookDetailSidebar({
       </div>
       <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
         <Property.Table>
-          <Property.Item>
-            <Property.Label>Source</Property.Label>
-            <Property.Value>
-              <span className="font-mono text-sm">{webhook.source}</span>
-            </Property.Value>
-          </Property.Item>
-          <Property.Item>
-            <Property.Label>Endpoints</Property.Label>
-            <Property.Value>
-              {/* The connect flow (ingress URL, secret, provider setup) lives on each
-                  endpoint, so this handler view points there instead of holding it. */}
-              <Button variant="secondary/small" onClick={onViewEndpoints}>
-                View endpoints
-              </Button>
-            </Property.Value>
-          </Property.Item>
           <Property.Item>
             <Property.Label>File path</Property.Label>
             <Property.Value>
@@ -756,15 +435,10 @@ function WebhookDetailSidebar({
 }
 
 const STATUS_COLOR: Record<string, string> = {
-  // Run statuses
   COMPLETED: "#28BF5C",
   RUNNING: "#3B82F6",
   FAILED: "#E11D48",
   CANCELED: "#878C99",
-  // Delivery statuses
-  SUCCEEDED: "#28BF5C",
-  PROCESSING: "#3B82F6",
-  PENDING: "#878C99",
 };
 
 function ActivityChart({ activity }: { activity: WebhookActivity }) {

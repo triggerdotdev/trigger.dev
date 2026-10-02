@@ -30,7 +30,7 @@ type Scheme = "hmac" | "shared-secret" | "url-secret" | "asymmetric";
 
 type EndpointSpec = {
   source: string;
-  handlerWebhookId: string;
+  declaredId: string;
   scheme: Scheme;
   verifierArtifact: unknown;
   secretProvisioning: "provider" | "integrator" | "either";
@@ -61,7 +61,7 @@ function hmacArtifact(preset: string, header: string, extra: Record<string, unkn
 const ENDPOINTS: EndpointSpec[] = [
   {
     source: "stripe",
-    handlerWebhookId: "stripe-webhook",
+    declaredId: "stripe-webhook",
     scheme: "hmac",
     signatureHeader: "Stripe-Signature",
     userAgent: "Stripe/1.0 (+https://stripe.com/docs/webhooks)",
@@ -110,7 +110,7 @@ const ENDPOINTS: EndpointSpec[] = [
   },
   {
     source: "github",
-    handlerWebhookId: "github-webhook",
+    declaredId: "github-webhook",
     scheme: "hmac",
     signatureHeader: "X-Hub-Signature-256",
     userAgent: "GitHub-Hookshot/a1b2c3",
@@ -156,7 +156,7 @@ const ENDPOINTS: EndpointSpec[] = [
   },
   {
     source: "slack",
-    handlerWebhookId: "slack-channel",
+    declaredId: "slack-channel",
     scheme: "hmac",
     signatureHeader: "X-Slack-Signature",
     userAgent: "Slackbot 1.0 (+https://api.slack.com/robots)",
@@ -200,7 +200,7 @@ const ENDPOINTS: EndpointSpec[] = [
   },
   {
     source: "svix",
-    handlerWebhookId: "svix-webhook",
+    declaredId: "svix-webhook",
     scheme: "hmac",
     signatureHeader: "webhook-signature",
     userAgent: "Svix-Webhooks/1.4",
@@ -230,7 +230,7 @@ const ENDPOINTS: EndpointSpec[] = [
   },
   {
     source: "discord",
-    handlerWebhookId: "discord-interactions",
+    declaredId: "discord-interactions",
     scheme: "asymmetric",
     signatureHeader: "X-Signature-Ed25519",
     userAgent: "Discord-Interactions/1.0 (+https://discord.com)",
@@ -267,7 +267,7 @@ const ENDPOINTS: EndpointSpec[] = [
   },
   {
     source: "custom",
-    handlerWebhookId: "orders-webhook",
+    declaredId: "orders-webhook",
     scheme: "shared-secret",
     signatureHeader: "X-Webhook-Token",
     userAgent: "acme-orders/2.3",
@@ -399,9 +399,9 @@ async function main() {
     const friendlyId = `wh_${nanoid()}`;
     const created = await webhookPrisma.webhookEndpoint.upsert({
       where: {
-        runtimeEnvironmentId_handlerWebhookId_endpointTenantId_endpointExternalRef: {
+        runtimeEnvironmentId_declaredId_endpointTenantId_endpointExternalRef: {
           runtimeEnvironmentId: runtimeEnv.id,
-          handlerWebhookId: spec.handlerWebhookId,
+          declaredId: spec.declaredId,
           endpointTenantId: spec.tenantId,
           endpointExternalRef: spec.externalRef,
         },
@@ -418,8 +418,8 @@ async function main() {
         endpointTenantId: spec.tenantId,
         endpointExternalRef: spec.externalRef,
         source: spec.source,
-        handlerWebhookId: spec.handlerWebhookId,
-        routingTarget: { type: "task", taskId: spec.handlerWebhookId } as object,
+        declaredId: spec.declaredId,
+        routingTargets: [{ type: "task", id: spec.declaredId, taskId: spec.declaredId }] as object,
         verifierArtifact: spec.verifierArtifact as object,
         secretProvisioning: spec.secretProvisioning,
         signingSecretKey: spec.hasSecret ? `webhook:signing-secret:seed-${spec.source}` : null,

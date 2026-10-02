@@ -12,7 +12,7 @@ export type WebhookKeyScalar = string | number | boolean | bigint;
 export interface WebhookKeyMeta {
   externalRef: string; // the "webhook external id" (endpointExternalRef); the multi-tenant scope
   tenantId: string;
-  id: string; // handlerWebhookId
+  id: string;
   source: string;
   deliveryId: string;
 }

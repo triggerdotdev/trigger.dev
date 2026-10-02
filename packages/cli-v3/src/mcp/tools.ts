@@ -34,6 +34,15 @@ import {
 import { listAgentsTool } from "./tools/agents.js";
 import { startAgentChatTool, sendAgentMessageTool, closeAgentChatTool } from "./tools/agentChat.js";
 import { readSessionChannelTool, writeSessionChannelTool } from "./tools/sessionChannels.js";
+import {
+  generateWebhookSecretTool,
+  getWebhookDeliveryTool,
+  getWebhookEndpointDetailsTool,
+  listWebhookDeliveriesTool,
+  listWebhookEndpointsTool,
+  replayWebhookDeliveryTool,
+  setWebhookSecretTool,
+} from "./tools/webhooks.js";
 import { respondWithError } from "./utils.js";
 import { isTelemetryEnabled } from "./telemetry.js";
 
@@ -53,6 +62,9 @@ const WRITE_TOOLS = new Set([
   sendAgentMessageTool.name,
   closeAgentChatTool.name,
   writeSessionChannelTool.name,
+  generateWebhookSecretTool.name,
+  setWebhookSecretTool.name,
+  replayWebhookDeliveryTool.name,
   submitFeedbackTool.name,
 ]);
 
@@ -99,6 +111,13 @@ export function registerTools(context: McpContext) {
     readSessionChannelTool,
     writeSessionChannelTool,
     getReportTool,
+    listWebhookEndpointsTool,
+    getWebhookEndpointDetailsTool,
+    listWebhookDeliveriesTool,
+    getWebhookDeliveryTool,
+    replayWebhookDeliveryTool,
+    generateWebhookSecretTool,
+    setWebhookSecretTool,
   ];
 
   for (const tool of tools) {

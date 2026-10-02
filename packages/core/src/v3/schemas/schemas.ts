@@ -326,25 +326,31 @@ export type SkillManifest = z.infer<typeof SkillManifest>;
 
 // ── Webhooks ────────────────────────────────────────────────────────────────
 
-const webhookMetadata = {
+const webhookEndpointMetadata = {
   id: z.string(),
   description: z.string().optional(),
   source: z.string(),
   verifierArtifact: WebhookVerifierArtifact,
-  routingTarget: WebhookRoutingTarget,
   secretProvisioning: WebhookSecretProvisioning.optional(),
-  filter: z.string().optional(), // delivery filter DSL string; compiled to a FilterAst at deploy-sync
+  setupPrompt: z.string().max(20_000).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 };
 
-export const WebhookMetadata = z.object(webhookMetadata);
-export type WebhookMetadata = z.infer<typeof WebhookMetadata>;
+export const WebhookEndpointMetadata = z.object(webhookEndpointMetadata);
+export type WebhookEndpointMetadata = z.infer<typeof WebhookEndpointMetadata>;
 
-export const WebhookManifest = z.object({
-  ...webhookMetadata,
-  ...taskFileMetadata, // filePath, exportName?, entryPoint
+export const WebhookEndpointManifest = z.object({
+  ...webhookEndpointMetadata,
+  ...taskFileMetadata,
 });
-export type WebhookManifest = z.infer<typeof WebhookManifest>;
+export type WebhookEndpointManifest = z.infer<typeof WebhookEndpointManifest>;
+
+/** A subscriber (`webhook()`, `chat.event`, channel connector) of the endpoint named by `endpointId`. */
+export const WebhookSubscriberManifest = z.object({
+  endpointId: z.string(),
+  target: WebhookRoutingTarget,
+});
+export type WebhookSubscriberManifest = z.infer<typeof WebhookSubscriberManifest>;
 
 export const PostStartCauses = z.enum(["index", "create", "restore"]);
 export type PostStartCauses = z.infer<typeof PostStartCauses>;

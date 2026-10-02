@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluateSessionKeyTemplate } from "./sessionKey.js";
+import { displaySessionKeyTemplate, evaluateSessionKeyTemplate } from "./sessionKey.js";
 
 const meta = {
   externalRef: "inst_42",
@@ -82,5 +82,20 @@ describe("evaluateSessionKeyTemplate", () => {
   it("uses the first non-empty across a || chain, else undefined", () => {
     expect(evaluateSessionKeyTemplate("{body.a || body.b || body.c}", ns({ c: "z" }))).toBe("z");
     expect(evaluateSessionKeyTemplate("{body.a || body.b}", ns({}))).toBeUndefined();
+  });
+});
+
+describe("displaySessionKeyTemplate", () => {
+  it("shows body paths in the event form, including fallbacks", () => {
+    expect(
+      displaySessionKeyTemplate("{webhook.source}:{header.x-tenant || body.data.object.customer}")
+    ).toBe("{webhook.source}:{header.x-tenant || event.data.object.customer}");
+    expect(displaySessionKeyTemplate("{body.id}-{ body.type }")).toBe("{event.id}-{ event.type }");
+  });
+
+  it("leaves other namespaces and body-like names alone", () => {
+    expect(displaySessionKeyTemplate("{header.body}:{webhook.id}:{bodyguard.x}")).toBe(
+      "{header.body}:{webhook.id}:{bodyguard.x}"
+    );
   });
 });

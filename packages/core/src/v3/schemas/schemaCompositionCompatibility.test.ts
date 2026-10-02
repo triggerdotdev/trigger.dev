@@ -21,8 +21,8 @@ describe("schema composition compatibility", () => {
     const result = await build({
       stdin: {
         contents: `
-          import { ScheduleMetadata, WebhookMetadata } from "./src/v3/schemas/schemas.ts";
-          import { WebhookResource } from "./src/v3/schemas/resources.ts";
+          import { ScheduleMetadata, WebhookEndpointMetadata } from "./src/v3/schemas/schemas.ts";
+          import { WebhookEndpointResource, WebhookSubscriberResource } from "./src/v3/schemas/resources.ts";
           import { FetchRetryHeadersStrategy } from "./src/v3/schemas/fetch.ts";
 
           const verifierArtifact = {
@@ -30,7 +30,7 @@ describe("schema composition compatibility", () => {
             preset: "stripe",
             config: { scheme: "shared-secret", placement: "header" },
           };
-          const routingTarget = { type: "task", taskId: "my-task" };
+          const target = { type: "task", id: "my-task", taskId: "my-task" };
 
           export const parsed = {
             retry: FetchRetryHeadersStrategy.parse({
@@ -44,19 +44,18 @@ describe("schema composition compatibility", () => {
               timezone: "UTC",
               window: "10%",
             }),
-            metadata: WebhookMetadata.parse({
+            metadata: WebhookEndpointMetadata.parse({
               id: "my-webhook",
               source: "stripe",
               verifierArtifact,
-              routingTarget,
             }),
-            resource: WebhookResource.parse({
+            resource: WebhookEndpointResource.parse({
               id: "my-webhook",
               filePath: "src/trigger.ts",
               source: "stripe",
               verifierArtifact,
-              routingTarget,
             }),
+            subscriber: WebhookSubscriberResource.parse({ endpointId: "my-webhook", target }),
           };
         `,
         loader: "ts",
@@ -93,6 +92,7 @@ describe("schema composition compatibility", () => {
         schedule: { window: "10%" },
         metadata: { id: "my-webhook" },
         resource: { id: "my-webhook" },
+        subscriber: { target: { id: "my-task" } },
       });
     } finally {
       await rm(tempDir, { recursive: true, force: true });

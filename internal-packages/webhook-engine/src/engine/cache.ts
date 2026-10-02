@@ -1,13 +1,14 @@
-import type { FilterAst } from "@trigger.dev/core/v3";
 import type { WebhookEndpoint } from "@trigger.dev/database";
+import type { ParsedRoutingTarget } from "./targets.js";
 
-// What the ingest hot path needs to verify + persist a delivery, resolved once and reused: the
-// endpoint row, its plaintext signing secret, and its compiled filter AST (parsed once here, null =
-// route all). All immutable per endpoint within the cache TTL.
+/**
+ * What the ingest hot path needs to verify and persist a delivery, resolved once per endpoint and
+ * reused within the TTL: the endpoint row, its plaintext signing secret and its parsed routing targets.
+ */
 export type CachedEndpoint = {
   endpoint: WebhookEndpoint;
   secret: string;
-  filterAst: FilterAst | null;
+  targets: ParsedRoutingTarget[];
 };
 
 // Minimal in-memory TTL cache with FIFO eviction at maxSize. ttlMs <= 0 disables it (every get misses).

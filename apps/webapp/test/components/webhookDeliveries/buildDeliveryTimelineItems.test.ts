@@ -62,7 +62,7 @@ describe("buildDeliveryTimelineItems", () => {
     });
   });
 
-  it("FAILED renders a Failed terminal node carrying the error message", () => {
+  it("FAILED renders a Failed terminal node; the error shows below the timeline", () => {
     const items = buildDeliveryTimelineItems(
       baseDelivery({ status: "FAILED", processedAt, errorMessage: "queue limit exceeded" })
     );
@@ -72,8 +72,8 @@ describe("buildDeliveryTimelineItems", () => {
     expect(items[2]).toMatchObject({
       title: "Failed",
       state: "error",
-      note: "queue limit exceeded",
     });
+    expect(items[2]).not.toHaveProperty("note");
   });
 
   it("FILTERED renders a dimmed Filtered node with the reason and no run target", () => {

@@ -1,4 +1,8 @@
-import type { ClickHouse, WebhookDeliveryInsertArray } from "@internal/clickhouse";
+import type {
+  ClickHouse,
+  WebhookDeliveryInsertArray,
+  WebhookEndpointInsertArray,
+} from "@internal/clickhouse";
 import { getWebhookDeliveryField } from "@internal/clickhouse";
 import { type RedisOptions } from "@internal/redis";
 import {
@@ -20,7 +24,7 @@ import {
 } from "@internal/tracing";
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
 import { tryCatch } from "@trigger.dev/core/utils";
-import { type WebhookDelivery } from "@trigger.dev/database";
+import { type WebhookDelivery, type WebhookEndpoint } from "@trigger.dev/database";
 import EventEmitter from "node:events";
 import type { ClickhouseFactory } from "~/services/clickhouse/clickhouseFactory.server";
 import { ConcurrentFlushScheduler } from "./runsReplicationService.server";
@@ -69,11 +73,23 @@ export type WebhookDeliveriesReplicationServiceOptions = {
   insertMaxDelayMs?: number;
 };
 
-type WebhookDeliveryInsert = {
-  _version: bigint;
-  delivery: WebhookDelivery;
-  event: "insert" | "update" | "delete";
-};
+/**
+ * One replicated row. Deliveries and endpoints share the publication and slot; endpoint rows carry
+ * `endpoint` and no `delivery`.
+ */
+type WebhookDeliveryInsert =
+  | {
+      _version: bigint;
+      delivery: WebhookDelivery;
+      endpoint?: undefined;
+      event: "insert" | "update" | "delete";
+    }
+  | {
+      _version: bigint;
+      delivery?: undefined;
+      endpoint: WebhookEndpoint;
+      event: "insert" | "update" | "delete";
+    };
 
 export type WebhookDeliveriesReplicationServiceEvents = {
   message: [
@@ -195,6 +211,7 @@ export class WebhookDeliveriesReplicationService {
       slotName: options.slotName,
       publicationName: options.publicationName,
       table: "WebhookDelivery",
+      additionalTables: ["WebhookEndpoint"],
       publishViaPartitionRoot: options.publishViaPartitionRoot,
       redisOptions: options.redisOptions,
       autoAcknowledge: false,
@@ -222,6 +239,7 @@ export class WebhookDeliveriesReplicationService {
       callback: this.#flushBatch.bind(this),
       // Key-based deduplication to reduce duplicates sent to ClickHouse
       getKey: (item) => {
+        if (item?.endpoint?.id) return `endpoint_${item.event}_${item.endpoint.id}`;
         if (!item?.delivery?.id) {
           this.logger.warn("Skipping replication event with null delivery", { event: item });
           return null;
@@ -475,11 +493,12 @@ export class WebhookDeliveriesReplicationService {
     const lsnToUInt64DurationMs = Number(process.hrtime.bigint() - lsnToUInt64Start) / 1_000_000;
 
     this._concurrentFlushScheduler.addToBatch(
-      transaction.events.map((event) => ({
-        _version,
-        delivery: event.data,
-        event: event.tag,
-      }))
+      transaction.events.map(
+        (event): WebhookDeliveryInsert =>
+          event.raw.relation.name === "WebhookEndpoint"
+            ? { _version, endpoint: event.data as unknown as WebhookEndpoint, event: event.tag }
+            : { _version, delivery: event.data, event: event.tag }
+      )
     );
 
     // Record metrics
@@ -557,29 +576,45 @@ export class WebhookDeliveriesReplicationService {
 
     await startSpan(this._tracer, "flushBatch", async (span) => {
       const routeCache = new Map<string, ClickHouse>();
-      const groups = new Map<ClickHouse, { deliveryInserts: WebhookDeliveryInsertArray[] }>();
+      const groups = new Map<
+        ClickHouse,
+        {
+          deliveryInserts: WebhookDeliveryInsertArray[];
+          endpointInserts: WebhookEndpointInsertArray[];
+        }
+      >();
+
+      const groupFor = (organizationId: string) => {
+        let client = routeCache.get(organizationId);
+        if (!client) {
+          client = this.options.clickhouseFactory.getClickhouseForOrganizationSync(
+            organizationId,
+            "webhook_deliveries_replication"
+          );
+          routeCache.set(organizationId, client);
+        }
+        let group = groups.get(client);
+        if (!group) {
+          group = { deliveryInserts: [], endpointInserts: [] };
+          groups.set(client, group);
+        }
+        return group;
+      };
 
       for (const item of batch) {
+        if (item.endpoint) {
+          if (item.event === "delete" || !item.endpoint.organizationId) continue;
+          groupFor(item.endpoint.organizationId).endpointInserts.push(
+            toWebhookEndpointInsertArray(item.endpoint, item._version)
+          );
+          continue;
+        }
+
         if (!item.delivery.organizationId) {
           continue;
         }
 
-        let client = routeCache.get(item.delivery.organizationId);
-        if (!client) {
-          client = this.options.clickhouseFactory.getClickhouseForOrganizationSync(
-            item.delivery.organizationId,
-            "webhook_deliveries_replication"
-          );
-          routeCache.set(item.delivery.organizationId, client);
-        }
-
-        let group = groups.get(client);
-        if (!group) {
-          group = { deliveryInserts: [] };
-          groups.set(client, group);
-        }
-
-        group.deliveryInserts.push(
+        groupFor(item.delivery.organizationId).deliveryInserts.push(
           toWebhookDeliveryInsertArray(item.delivery, item._version, item.event === "delete")
         );
       }
@@ -634,6 +669,17 @@ export class WebhookDeliveriesReplicationService {
 
         if (!insErr) {
           this._deliveriesInsertedCounter.add(group.deliveryInserts.length);
+        }
+
+        if (group.endpointInserts.length > 0) {
+          const [endpointErr] = await this.#insertWithRetry(
+            (attempt) => this.#insertEndpointInserts(clickhouse, group.endpointInserts, attempt),
+            "endpoint inserts",
+            flushId
+          );
+          if (endpointErr && !deliveryError) {
+            deliveryError = endpointErr;
+          }
         }
       }
 
@@ -765,6 +811,28 @@ export class WebhookDeliveriesReplicationService {
     };
   }
 
+  async #insertEndpointInserts(
+    clickhouse: ClickHouse,
+    endpointInserts: WebhookEndpointInsertArray[],
+    attempt: number
+  ) {
+    return await startSpan(this._tracer, "insertEndpointInserts", async (span) => {
+      const [insertError, insertResult] = await clickhouse.webhookEndpoints.insertCompactArrays(
+        endpointInserts,
+        { params: { clickhouse_settings: this.#getClickhouseInsertSettings() } }
+      );
+      if (insertError) {
+        this.logger.error("Error inserting endpoint inserts attempt", {
+          error: insertError,
+          attempt,
+        });
+        recordSpanError(span, insertError);
+        throw insertError;
+      }
+      return insertResult;
+    });
+  }
+
   async #insertDeliveryInserts(
     clickhouse: ClickHouse,
     deliveryInserts: WebhookDeliveryInsertArray[],
@@ -796,6 +864,55 @@ export class WebhookDeliveriesReplicationService {
       return insertResult;
     });
   }
+}
+
+/**
+ * An endpoint row for ClickHouse. Only the subscriber ids and the fields the dashboard shows are kept
+ * from `routingTargets` (compiled filter ASTs stay in Postgres). A delete carries only the key
+ * columns, so endpoint deletes aren't replicated; endpoints are retired by status instead.
+ */
+function toWebhookEndpointInsertArray(
+  endpoint: WebhookEndpoint,
+  version: bigint
+): WebhookEndpointInsertArray {
+  const rawTargets =
+    typeof endpoint.routingTargets === "string"
+      ? (JSON.parse(endpoint.routingTargets) as unknown)
+      : endpoint.routingTargets;
+  const targets = Array.isArray(rawTargets)
+    ? (rawTargets as Array<Record<string, unknown>>).filter(
+        (target) => target && typeof target.id === "string"
+      )
+    : [];
+  const subscribers = targets.map((target) => ({
+    id: target.id,
+    type: target.type,
+    taskId: target.type === "task" ? target.taskId : target.taskIdentifier,
+    ...(target.filter ? { filter: target.filter } : {}),
+    ...(target.type === "session" ? { deliverAs: target.deliverAs } : {}),
+  }));
+
+  return [
+    endpoint.organizationId,
+    endpoint.projectId,
+    endpoint.runtimeEnvironmentId,
+    endpoint.id,
+    endpoint.friendlyId,
+    endpoint.opaqueId,
+    endpoint.declaredId,
+    endpoint.endpointTenantId ?? "",
+    endpoint.endpointExternalRef ?? "",
+    endpoint.source,
+    endpoint.status,
+    endpoint.manuallyDeactivatedAt ? 1 : 0,
+    endpoint.signingSecretKey ? 1 : 0,
+    targets.map((target) => target.id as string),
+    JSON.stringify(subscribers),
+    endpoint.createdAt.getTime(),
+    endpoint.updatedAt.getTime(),
+    version.toString(),
+    0,
+  ];
 }
 
 function toWebhookDeliveryInsertArray(

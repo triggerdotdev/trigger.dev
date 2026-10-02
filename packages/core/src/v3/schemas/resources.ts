@@ -67,19 +67,24 @@ export const PromptResource = z.object({
 
 export type PromptResource = z.infer<typeof PromptResource>;
 
-export const WebhookResource = z.object({
+export const WebhookEndpointResource = z.object({
   id: z.string(),
   description: z.string().optional(),
   filePath: z.string(),
   exportName: z.string().optional(),
   source: z.string(),
   verifierArtifact: WebhookVerifierArtifact,
-  routingTarget: WebhookRoutingTarget,
   secretProvisioning: WebhookSecretProvisioning.optional(),
-  filter: z.string().optional(), // delivery filter DSL string; compiled to a FilterAst at deploy-sync
+  setupPrompt: z.string().max(20_000).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
-export type WebhookResource = z.infer<typeof WebhookResource>;
+export type WebhookEndpointResource = z.infer<typeof WebhookEndpointResource>;
+
+export const WebhookSubscriberResource = z.object({
+  endpointId: z.string(),
+  target: WebhookRoutingTarget,
+});
+export type WebhookSubscriberResource = z.infer<typeof WebhookSubscriberResource>;
 
 export const BackgroundWorkerMetadata = z.object({
   packageVersion: z.string(),
@@ -87,7 +92,8 @@ export const BackgroundWorkerMetadata = z.object({
   cliPackageVersion: z.string().optional(),
   tasks: z.array(TaskResource),
   prompts: z.array(PromptResource).optional(),
-  webhooks: z.array(WebhookResource).optional(), // NEW
+  webhookEndpoints: z.array(WebhookEndpointResource).optional(),
+  webhookSubscribers: z.array(WebhookSubscriberResource).optional(),
   queues: z.array(QueueManifest).optional(),
   concurrencyLimits: z.array(ConcurrencyLimitManifest).optional(),
   sourceFiles: z.array(BackgroundWorkerSourceFileMetadata).optional(),

@@ -1945,9 +1945,8 @@ const EnvironmentSchema = z
 
     WEBHOOK_ENGINE_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
     WEBHOOK_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
-    WEBHOOK_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(50),
-    WEBHOOK_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
-    WEBHOOK_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(10),
+    WEBHOOK_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().positive().default(20),
+    WEBHOOK_WORKER_TENANT_CONCURRENCY: z.coerce.number().int().positive().default(100),
     WEBHOOK_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
     WEBHOOK_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(30_000),
     WEBHOOK_ENABLED: z.string().default("0"),
@@ -1973,6 +1972,48 @@ const EnvironmentSchema = z
     WEBHOOK_WORKER_REDIS_TLS_DISABLED: z
       .string()
       .default(process.env.REDIS_TLS_DISABLED ?? "false"),
+
+    // Webhook waiter store (also the ingest front gate). Falls back to the webhook worker Redis.
+    // Cluster mode connects to the host/port as a cluster seed node.
+    WEBHOOK_WAITER_REDIS_HOST: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.WEBHOOK_WORKER_REDIS_HOST ?? process.env.REDIS_HOST),
+    WEBHOOK_WAITER_REDIS_PORT: z.coerce
+      .number()
+      .optional()
+      .transform(
+        (v) =>
+          v ??
+          (process.env.WEBHOOK_WORKER_REDIS_PORT
+            ? parseInt(process.env.WEBHOOK_WORKER_REDIS_PORT)
+            : process.env.REDIS_PORT
+              ? parseInt(process.env.REDIS_PORT)
+              : undefined)
+      ),
+    WEBHOOK_WAITER_REDIS_USERNAME: z
+      .string()
+      .optional()
+      .transform(
+        (v) => v ?? process.env.WEBHOOK_WORKER_REDIS_USERNAME ?? process.env.REDIS_USERNAME
+      ),
+    WEBHOOK_WAITER_REDIS_PASSWORD: z
+      .string()
+      .optional()
+      .transform(
+        (v) => v ?? process.env.WEBHOOK_WORKER_REDIS_PASSWORD ?? process.env.REDIS_PASSWORD
+      ),
+    WEBHOOK_WAITER_REDIS_TLS_DISABLED: z
+      .string()
+      .default(
+        process.env.WEBHOOK_WORKER_REDIS_TLS_DISABLED ?? process.env.REDIS_TLS_DISABLED ?? "false"
+      ),
+    WEBHOOK_WAITER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
+    WEBHOOK_WAITER_MAX_PER_ENVIRONMENT: z.coerce.number().int().positive().default(1_000_000),
+    WEBHOOK_WAITER_MAX_PER_ENDPOINT: z.coerce.number().int().positive().default(10_000),
+    WEBHOOK_WAITER_MAX_SHAPES: z.coerce.number().int().positive().default(25),
+    WEBHOOK_WAITER_COMPLETION_CHUNK_SIZE: z.coerce.number().int().positive().default(500),
+    WEBHOOK_WAITER_COMPLETION_CONCURRENCY: z.coerce.number().int().positive().default(25),
 
     WEBHOOK_PARTITION_ENSURE_SCHEDULE: z.string().optional(),
     WEBHOOK_PARTITION_ENSURE_JITTER_MS: z.coerce.number().int().optional(),

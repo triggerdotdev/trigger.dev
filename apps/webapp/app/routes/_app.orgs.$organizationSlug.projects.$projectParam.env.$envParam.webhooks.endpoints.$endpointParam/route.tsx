@@ -1,5 +1,11 @@
 import { BookOpenIcon, KeyIcon, SparklesIcon } from "@heroicons/react/24/solid";
-import { useFetcher, type MetaFunction } from "@remix-run/react";
+import {
+  useFetcher,
+  useNavigation,
+  useRevalidator,
+  useSearchParams,
+  type MetaFunction,
+} from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { randomBytes } from "node:crypto";
 import { WebhookRoutingTarget, WebhookVerifierArtifact } from "@trigger.dev/core/v3";
@@ -29,11 +35,20 @@ import {
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
 import { Spinner } from "~/components/primitives/Spinner";
-import { TextLink } from "~/components/primitives/TextLink";
+import { TabButton, TabContainer } from "~/components/primitives/Tabs";
+import { WebhookComposer } from "~/components/webhookConsole/WebhookComposer";
+import { CopySetupPromptButton } from "~/components/webhookEndpoints/v1/CopySetupPromptButton";
+import { EndpointSubscribersTable } from "~/components/webhookEndpoints/v1/EndpointSubscribers";
+import {
+  type EndpointWaiters,
+  EndpointWaitersTable,
+} from "~/components/webhookEndpoints/v1/EndpointWaitersTable";
 import { TimeFilter } from "~/components/runs/v3/SharedFilters";
 import { DeliveriesTable } from "~/components/webhookDeliveries/v1/DeliveriesTable";
+import { useDeliveriesLiveReload } from "~/components/webhookDeliveries/v1/useDeliveriesLiveReload";
+import { PulsingDot } from "~/components/primitives/PulsingDot";
 import { EndpointStatusBadge } from "~/components/webhookEndpoints/v1/EndpointStatus";
-import { $replica, prisma, webhookPrisma } from "~/db.server";
+import { prisma, $replica } from "~/db.server";
 import { webhookIngressUrl } from "~/utils/webhookIngressUrl.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -42,26 +57,32 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
   WebhookDetailPresenter,
+  type WebhookDeliveriesList,
   type WebhookEndpointDetail,
 } from "~/presenters/v3/WebhookDetailPresenter.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
 import { requireUser } from "~/services/session.server";
-import { docsPath, EnvironmentParamSchema, v3WebhookTaskPath } from "~/utils/pathBuilder";
+import { docsPath, EnvironmentParamSchema, v3WebhooksPath } from "~/utils/pathBuilder";
+import { throwPermissionDenied } from "~/utils/permissionDenied";
 import { parseFiniteInt } from "~/utils/searchParams";
-import { FEATURE_FLAG } from "~/v3/featureFlags";
-import { flag } from "~/v3/featureFlags.server";
-import { webhookVerifyTokenKey } from "~/v3/webhookEngine.server";
+import { webhookEngine, webhookVerifyTokenKey } from "~/v3/webhookEngine.server";
+import {
+  generateWebhookSigningSecret,
+  storeWebhookSigningSecret,
+} from "~/v3/webhookSigningSecret.server";
+import { requireWebhooksAccess } from "~/v3/webhooksAccess.server";
+import { rbac } from "~/services/rbac.server";
 
 const EndpointParamSchema = EnvironmentParamSchema.extend({
   endpointParam: z.string(),
 });
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
-  const friendlyId = (data as { endpoint?: WebhookEndpointDetail } | undefined)?.endpoint
-    ?.friendlyId;
+  const declaredId = (data as { endpoint?: WebhookEndpointDetail } | undefined)?.endpoint
+    ?.declaredId;
   return [
-    { title: friendlyId ? `${friendlyId} | Endpoints | Trigger.dev` : "Endpoint | Trigger.dev" },
+    { title: declaredId ? `${declaredId} | Endpoints | Trigger.dev` : "Endpoint | Trigger.dev" },
   ];
 };
 
@@ -76,24 +97,32 @@ async function requireWebhookAccess(request: Request, params: LoaderFunctionArgs
   const environment = await findEnvironmentBySlug(project.id, envParam, user.id);
   if (!environment) throw new Response("Environment not found", { status: 404 });
 
-  if (!user.admin && !user.isImpersonating) {
-    const org = await $replica.organization.findFirst({
-      where: { id: project.organizationId },
-      select: { featureFlags: true },
-    });
-    const enabled = await flag({
-      key: FEATURE_FLAG.hasWebhooksAccess,
-      defaultValue: false,
-      overrides: (org?.featureFlags as Record<string, unknown>) ?? {},
-    });
-    if (!enabled) throw new Response("Not found", { status: 404 });
-  }
+  await requireWebhooksAccess(user, project.organizationId);
 
   return { user, project, environment, endpointParam };
 }
 
+const NO_WAITER_CANCEL = "You don't have permission to cancel waiters.";
+
+/** A waiter is a waitpoint, so cancelling one needs write:waitpoints in this environment. */
+async function canCancelWaiters(
+  request: Request,
+  {
+    user,
+    project,
+    environment,
+  }: Pick<Awaited<ReturnType<typeof requireWebhookAccess>>, "user" | "project" | "environment">
+) {
+  const auth = await rbac.authenticateSession(request, {
+    userId: user.id,
+    organizationId: project.organizationId,
+    projectId: project.id,
+  });
+  return auth.ok && auth.ability.can("write", { type: "waitpoints", envType: environment.type });
+}
+
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const { project, environment, endpointParam } = await requireWebhookAccess(request, params);
+  const { user, project, environment, endpointParam } = await requireWebhookAccess(request, params);
 
   const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
     project.organizationId,
@@ -110,7 +139,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const ingestUrl = webhookIngressUrl(endpoint.opaqueId);
 
   // Parse the tagged-union JSON columns for display (engine validates on write).
-  const routing = WebhookRoutingTarget.safeParse(endpoint.routingTarget);
+  const routing = (Array.isArray(endpoint.routingTargets) ? endpoint.routingTargets : []).flatMap(
+    (target) => {
+      const parsed = WebhookRoutingTarget.safeParse(target);
+      return parsed.success ? [parsed.data] : [];
+    }
+  );
   const verifier = WebhookVerifierArtifact.safeParse(endpoint.verifierArtifact);
 
   const getHandshake =
@@ -151,13 +185,25 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     })
     .catch(() => null);
 
+  const waiters: Promise<EndpointWaiters | null> = webhookEngine
+    .listWaiters({ endpointId: endpoint.id, limit: 50 })
+    .catch(() => null);
+
+  const composerEndpoints = presenter
+    .listComposerEndpoints({ environmentId: environment.id, declaredId: endpoint.declaredId })
+    .then((endpoints) => endpoints.filter((e) => e.friendlyId === endpoint.friendlyId))
+    .catch(() => [] as Awaited<ReturnType<typeof presenter.listComposerEndpoints>>);
+
   return typeddefer({
+    canCancelWaiters: await canCancelWaiters(request, { user, project, environment }),
     endpoint,
     ingestUrl,
-    routing: routing.success ? routing.data : null,
+    routing,
     verifier: verifier.success ? verifier.data : null,
     hasVerifyToken,
     deliveriesList,
+    waiters,
+    composerEndpoints,
   });
 };
 
@@ -169,7 +215,7 @@ const SetSecretSchema = z.object({
 const VerifyTokenSchema = z.object({ token: z.string() });
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
-  const { project, environment, endpointParam } = await requireWebhookAccess(request, params);
+  const { user, project, environment, endpointParam } = await requireWebhookAccess(request, params);
 
   const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
     project.organizationId,
@@ -182,36 +228,41 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   });
   if (!endpoint) throw new Response("Endpoint not found", { status: 404 });
 
-  // Store the plaintext secret encrypted under the DATABASE SecretStore provider, in the exact
-  // shape the engine's resolveSigningSecret reads ({ secret }). Key is namespaced by the endpoint's
-  // internal id; point signingSecretKey at it so verification picks it up.
-  const secretKey = `webhook:signing-secret:${endpoint.id}`;
   const secretStore = getSecretStore("DATABASE", { prismaClient: prisma });
 
   const formData = await request.formData();
   const intent = formData.get("intent");
 
-  // Generate (integrator-supplied secret): mint a strong secret, store it, and return it so the
-  // UI can reveal it ONCE for the integrator to paste into their provider.
-  if (intent === "generate-secret") {
-    const verifier = WebhookVerifierArtifact.safeParse(endpoint.verifierArtifact);
-    if (
-      verifier.success &&
-      "config" in verifier.data &&
-      verifier.data.config.scheme === "asymmetric"
-    ) {
-      return {
-        success: false as const,
-        error: "Cannot generate a secret for an asymmetric endpoint; set its public key instead.",
-      };
+  if (intent === "cancel-waiter") {
+    if (!(await canCancelWaiters(request, { user, project, environment }))) {
+      throwPermissionDenied(NO_WAITER_CANCEL);
     }
-    const secret = `whsec_${randomBytes(32).toString("hex")}`;
-    await secretStore.setSecret(secretKey, { secret });
-    await webhookPrisma.webhookEndpoint.update({
-      where: { id: endpoint.id },
-      data: { signingSecretKey: secretKey },
+    const waiterId = formData.get("waiterId");
+    if (typeof waiterId !== "string" || waiterId.length === 0) {
+      return { success: false as const, error: "A waiter id is required" };
+    }
+    const result = await webhookEngine.cancelWaiter({
+      environmentId: environment.id,
+      waiterId,
+      endpointId: endpoint.id,
     });
-    return { success: true as const, generatedSecret: secret };
+    return result.outcome === "cancelled"
+      ? { success: true as const }
+      : {
+          success: false as const,
+          error:
+            result.outcome === "too_late"
+              ? "Too late: a delivery already resumed this waiter"
+              : "Waiter not found",
+        };
+  }
+
+  // Generate (integrator-supplied secret): the UI reveals it ONCE for pasting into the provider.
+  if (intent === "generate-secret") {
+    const result = await generateWebhookSigningSecret(endpoint);
+    return result.ok
+      ? { success: true as const, generatedSecret: result.secret }
+      : { success: false as const, error: result.error };
   }
 
   if (intent === "generate-verify-token") {
@@ -234,39 +285,50 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   if (!submission.success) {
     return { success: false as const, error: submission.error.issues[0]?.message ?? "Invalid" };
   }
-  await secretStore.setSecret(secretKey, { secret: submission.data.secret });
-  await webhookPrisma.webhookEndpoint.update({
-    where: { id: endpoint.id },
-    data: { signingSecretKey: secretKey },
-  });
+  await storeWebhookSigningSecret(endpoint, submission.data.secret);
 
   return { success: true as const };
 };
 
+type EndpointTab = "deliveries" | "subscribers" | "waiters" | "test";
+
 export default function Page() {
-  const { endpoint, ingestUrl, routing, verifier, hasVerifyToken, deliveriesList } =
-    useTypedLoaderData<typeof loader>();
+  const {
+    endpoint,
+    ingestUrl,
+    routing,
+    verifier,
+    hasVerifyToken,
+    deliveriesList,
+    waiters,
+    composerEndpoints,
+    canCancelWaiters: canCancel,
+  } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
+  const [searchParams] = useSearchParams();
+  const [tab, setTab] = useState<EndpointTab>(() => {
+    const requested = searchParams.get("tab");
+    return requested === "subscribers" || requested === "waiters" || requested === "test"
+      ? requested
+      : "deliveries";
+  });
 
-  const handlerPath = v3WebhookTaskPath(
-    organization,
-    project,
-    environment,
-    endpoint.handlerWebhookId
-  );
+  const endpointsPath = v3WebhooksPath(organization, project, environment);
 
   return (
     <>
       <NavBar>
         <PageTitle
-          backButton={{ to: handlerPath, text: endpoint.handlerWebhookId }}
+          backButton={{ to: endpointsPath, text: "Endpoints" }}
           title={
             <span className="flex items-center gap-2">
               <WebhookIcon className="size-4.5 text-webhooks" />
-              <span className="font-mono">{endpoint.friendlyId}</span>
-              <EndpointStatusBadge status={endpoint.status} />
+              <span className="font-mono">{endpoint.declaredId}</span>
+              {endpoint.isDefault ? null : (
+                <span className="font-mono text-text-dimmed">{endpoint.tenantId}</span>
+              )}
             </span>
           }
         />
@@ -284,34 +346,83 @@ export default function Page() {
         <ResizablePanelGroup orientation="horizontal" className="max-h-full">
           <ResizablePanel id="endpoint-deliveries" min="300px">
             <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
-              <div className="flex h-10 items-center justify-between gap-2 border-b border-grid-dimmed bg-background-bright pl-3 pr-2">
-                <Header2>Deliveries</Header2>
-                <div className="flex items-center gap-2">
-                  <TimeFilter defaultPeriod="7d" labelName="Deliveries" />
-                  <Suspense fallback={null}>
-                    <TypedAwait resolve={deliveriesList} errorElement={null}>
-                      {(list) => (list ? <ListPagination list={list} /> : null)}
-                    </TypedAwait>
-                  </Suspense>
-                </div>
+              <div className="flex h-10 items-end justify-between gap-2 border-b border-grid-dimmed bg-background-bright pl-3 pr-2">
+                <TabContainer className="-mb-px">
+                  {(
+                    [
+                      ["deliveries", "Deliveries"],
+                      ["subscribers", "Subscribers"],
+                      ["waiters", "Waiters"],
+                      ["test", "Test"],
+                    ] as const
+                  ).map(([value, label]) => (
+                    <TabButton
+                      key={value}
+                      isActive={tab === value}
+                      layoutId="endpoint-hub-tabs"
+                      onClick={() => setTab(value)}
+                    >
+                      {label}
+                    </TabButton>
+                  ))}
+                </TabContainer>
+                {tab === "deliveries" ? (
+                  <div className="flex items-center gap-2 self-center">
+                    <TimeFilter defaultPeriod="7d" labelName="Deliveries" />
+                    <Suspense fallback={null}>
+                      <TypedAwait resolve={deliveriesList} errorElement={null}>
+                        {(list) => (list ? <ListPagination list={list} /> : null)}
+                      </TypedAwait>
+                    </Suspense>
+                  </div>
+                ) : null}
               </div>
               <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-                <Suspense fallback={<TableLoading />}>
-                  <TypedAwait resolve={deliveriesList} errorElement={<TableLoading />}>
-                    {(list) =>
-                      list ? (
-                        <DeliveriesTable
-                          deliveries={list.deliveries}
-                          hasFilters={list.hasFilters}
-                          showTopBorder={false}
-                          stickyHeader
-                        />
-                      ) : (
-                        <TableLoading />
-                      )
-                    }
-                  </TypedAwait>
-                </Suspense>
+                {tab === "deliveries" ? (
+                  <Suspense fallback={<TableLoading />}>
+                    <TypedAwait resolve={deliveriesList} errorElement={<TableLoading />}>
+                      {(list) =>
+                        list ? (
+                          <LiveDeliveriesTable list={list} webhookEndpointId={endpoint.id} />
+                        ) : (
+                          <TableLoading />
+                        )
+                      }
+                    </TypedAwait>
+                  </Suspense>
+                ) : tab === "subscribers" ? (
+                  <EndpointSubscribersTable targets={routing} />
+                ) : tab === "waiters" ? (
+                  <Suspense fallback={<TableLoading />}>
+                    <TypedAwait resolve={waiters} errorElement={<TableLoading />}>
+                      {(list) => <EndpointWaitersTable list={list} canCancel={canCancel} />}
+                    </TypedAwait>
+                  </Suspense>
+                ) : (
+                  <Suspense fallback={<TableLoading />}>
+                    <TypedAwait resolve={composerEndpoints} errorElement={<TableLoading />}>
+                      {(endpoints) =>
+                        endpoints.length === 0 ? (
+                          <div className="flex h-full items-center justify-center p-4 text-center text-sm text-text-dimmed">
+                            This endpoint can't be sent to from the dashboard.
+                          </div>
+                        ) : (
+                          <WebhookComposer
+                            endpoints={endpoints}
+                            organizationSlug={organization.slug}
+                            projectSlug={project.slug}
+                            environmentSlug={environment.slug}
+                            isDevEnvironment={environment.type === "DEVELOPMENT"}
+                            environmentLabel={
+                              environment.type.charAt(0) + environment.type.slice(1).toLowerCase()
+                            }
+                            redirectOnSuccess={false}
+                          />
+                        )
+                      }
+                    </TypedAwait>
+                  </Suspense>
+                )}
               </div>
             </div>
           </ResizablePanel>
@@ -330,7 +441,6 @@ export default function Page() {
               routing={routing}
               verifier={verifier}
               hasVerifyToken={hasVerifyToken}
-              handlerPath={handlerPath}
             />
           </ResizablePanel>
         </ResizablePanelGroup>
@@ -347,14 +457,12 @@ function EndpointSidebar({
   routing,
   verifier,
   hasVerifyToken,
-  handlerPath,
 }: {
   endpoint: WebhookEndpointDetail;
   ingestUrl: string;
   hasVerifyToken: boolean;
   routing: LoaderData["routing"];
   verifier: LoaderData["verifier"];
-  handlerPath: string;
 }) {
   const metadataJson =
     endpoint.metadata != null && Object.keys(endpoint.metadata as object).length > 0
@@ -379,18 +487,25 @@ function EndpointSidebar({
       <div className="flex items-center gap-2 border-b border-grid-dimmed py-2 pl-3 pr-2">
         <Header2 className="flex min-w-0 flex-1 items-center gap-1.5">
           <WebhookIcon className="size-4.5 shrink-0 text-webhooks" />
-          <span className="truncate font-mono">{endpoint.friendlyId}</span>
+          <span className="truncate font-mono">{endpoint.declaredId}</span>
         </Header2>
+        <EndpointStatusBadge status={endpoint.status} />
       </div>
       <div className="space-y-5 overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
         {/* Connect: the important new bit. Everything an integrator needs to point a provider here. */}
         <section className="space-y-2">
-          <Header3>Connect</Header3>
+          <div className="flex items-center justify-between gap-2">
+            <Header3>Connect</Header3>
+            <CopySetupPromptButton
+              endpointFriendlyId={endpoint.friendlyId}
+              source={endpoint.source}
+            />
+          </div>
           <Property.Table>
             <Property.Item>
               <Property.Label>Webhook URL</Property.Label>
               <Property.Value>
-                <CopyableText value={ingestUrl} className="font-mono text-xs" />
+                <CopyableText value={ingestUrl} className="font-mono text-xs" truncate />
               </Property.Value>
             </Property.Item>
             <Property.Item>
@@ -400,10 +515,13 @@ function EndpointSidebar({
                   {endpoint.hasSigningSecret ? (
                     <span className="flex items-center gap-1.5">
                       <span className="size-2 rounded-full bg-success" />
-                      <span>Set</span>
+                      <span>Ready</span>
                     </span>
                   ) : (
-                    <span className="text-warning">Not set, all deliveries are rejected</span>
+                    <span className="flex items-center gap-1.5 text-warning">
+                      <span className="size-2 rounded-full bg-warning" />
+                      <span>Needs {credentialNoun}, all deliveries are rejected</span>
+                    </span>
                   )}
                   <div className="flex flex-wrap items-center gap-2">
                     {canGenerate ? (
@@ -447,28 +565,14 @@ function EndpointSidebar({
         </section>
 
         <section className="space-y-2">
-          <Header3>Routing</Header3>
-          <Property.Table>
-            <Property.Item>
-              <Property.Label>Target</Property.Label>
-              <Property.Value>
-                {routing?.type === "task" ? (
-                  <TextLink to={handlerPath} className="font-mono text-xs">
-                    {routing.taskId}
-                  </TextLink>
-                ) : routing?.type === "session" ? (
-                  <span className="font-mono text-xs">session: {routing.taskIdentifier}</span>
-                ) : (
-                  <span className="text-text-dimmed">Unknown</span>
-                )}
-              </Property.Value>
-            </Property.Item>
-          </Property.Table>
-        </section>
-
-        <section className="space-y-2">
           <Header3>Scope</Header3>
           <Property.Table>
+            <Property.Item>
+              <Property.Label>ID</Property.Label>
+              <Property.Value>
+                <CopyableText value={endpoint.friendlyId} className="font-mono text-sm" />
+              </Property.Value>
+            </Property.Item>
             <Property.Item>
               <Property.Label>Source</Property.Label>
               <Property.Value>
@@ -479,7 +583,7 @@ function EndpointSidebar({
               <Property.Label>Tenant</Property.Label>
               <Property.Value>
                 {endpoint.isDefault ? (
-                  <span className="text-text-dimmed">default</span>
+                  <span className="text-text-dimmed">None</span>
                 ) : (
                   <span className="font-mono text-sm">{endpoint.tenantId}</span>
                 )}
@@ -493,12 +597,6 @@ function EndpointSidebar({
                 ) : (
                   <span className="text-text-dimmed">None</span>
                 )}
-              </Property.Value>
-            </Property.Item>
-            <Property.Item>
-              <Property.Label>Status</Property.Label>
-              <Property.Value>
-                <EndpointStatusBadge status={endpoint.status} />
               </Property.Value>
             </Property.Item>
             <Property.Item>
@@ -901,5 +999,75 @@ function TableLoading() {
     <div className="flex h-full items-center justify-center">
       <Spinner className="size-6" />
     </div>
+  );
+}
+
+/** The endpoint's deliveries, with live status updates and a pill for ones that arrived since load. */
+function LiveDeliveriesTable({
+  list,
+  webhookEndpointId,
+}: {
+  list: WebhookDeliveriesList;
+  webhookEndpointId: string;
+}) {
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+  const navigation = useNavigation();
+  const revalidator = useRevalidator();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const { visibleDeliveries, showNewDeliveriesBanner, newDeliveriesCount, dismissNewDeliveries } =
+    useDeliveriesLiveReload({
+      deliveries: list.deliveries,
+      isLoading: navigation.state !== "idle",
+      webhookEndpointId,
+      organizationSlug: organization.slug,
+      projectSlug: project.slug,
+      environmentSlug: environment.slug,
+    });
+
+  const onClickShowNewDeliveries = () => {
+    dismissNewDeliveries();
+    if (searchParams.has("cursor") || searchParams.has("direction")) {
+      setSearchParams((prev) => {
+        prev.delete("cursor");
+        prev.delete("direction");
+        return prev;
+      });
+      return;
+    }
+    revalidator.revalidate();
+  };
+
+  return (
+    <>
+      {showNewDeliveriesBanner ? (
+        <div className="flex justify-end px-2 py-1.5">
+          <span className="flex duration-150 animate-in fade-in-0">
+            <Button
+              variant="secondary/small"
+              className="text-text-bright"
+              onClick={onClickShowNewDeliveries}
+              LeadingIcon={<PulsingDot className="h-2 w-2" />}
+              tooltip="Refresh to see new deliveries"
+              aria-label="New deliveries received. Refresh to see them."
+            >
+              {newDeliveriesCount >= 100
+                ? "99+ new deliveries"
+                : `${newDeliveriesCount} new ${
+                    newDeliveriesCount === 1 ? "delivery" : "deliveries"
+                  }`}
+            </Button>
+          </span>
+        </div>
+      ) : null}
+      <DeliveriesTable
+        deliveries={visibleDeliveries}
+        hasFilters={list.hasFilters}
+        showTopBorder={false}
+        stickyHeader
+      />
+    </>
   );
 }

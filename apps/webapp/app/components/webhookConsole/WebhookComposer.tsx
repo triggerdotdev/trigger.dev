@@ -5,7 +5,7 @@ import { CodeBlock } from "~/components/code/CodeBlock";
 import { JSONEditor } from "~/components/code/JSONEditor";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
-import { ClipboardField } from "~/components/primitives/ClipboardField";
+import { CopyableText } from "~/components/primitives/CopyableText";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
@@ -21,11 +21,10 @@ import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { cn } from "~/utils/cn";
 import type { WebhookHandshakeConfig } from "@trigger.dev/core/v3";
 import type { WebhookSendResult } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.webhooks.endpoints.$endpointParam.send";
-import { AIPayloadTabContent } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.test.tasks.$taskParam/AIPayloadTabContent";
 import { ReplaySourcePicker } from "./ReplaySourcePicker";
 import { SampleSourcePicker } from "./SampleSourcePicker";
 
-type SourceTab = "body" | "sample" | "replay" | "ai";
+type SourceTab = "body" | "sample" | "replay";
 
 type WebhookComposerEndpoint = {
   friendlyId: string;
@@ -188,13 +187,6 @@ export function WebhookComposer({
                 >
                   Replay
                 </TabButton>
-                <TabButton
-                  isActive={sourceTab === "ai"}
-                  layoutId="webhook-composer-source"
-                  onClick={() => setSourceTab("ai")}
-                >
-                  AI
-                </TabButton>
               </TabContainer>
             </div>
             <div className="relative flex-1 overflow-hidden">
@@ -228,18 +220,6 @@ export function WebhookComposer({
               {sourceTab === "replay" ? (
                 <div className="absolute inset-0">
                   <ReplaySourcePicker replaySourcePath={replaySourcePath} onLoad={applyPayload} />
-                </div>
-              ) : null}
-              {sourceTab === "ai" ? (
-                <div className="absolute inset-0 overflow-y-auto bg-charcoal-900 p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-                  <AIPayloadTabContent
-                    onPayloadGenerated={(payload) => applyPayload(payload, {})}
-                    taskIdentifier={endpoint?.source ?? "webhook"}
-                    payloadKind="webhook"
-                    providerSource={endpoint?.source}
-                    generateButtonLabel="Generate event"
-                    placeholder="e.g. a payment succeeded event with a $42.00 charge"
-                  />
                 </div>
               ) : null}
             </div>
@@ -339,16 +319,16 @@ export function WebhookComposer({
             {endpoint ? (
               <InputGroup>
                 <Label variant="small">Webhook URL</Label>
-                <ClipboardField
-                  value={endpoint.ingressUrl}
-                  variant="secondary/small"
-                  className="font-mono"
-                  icon={
-                    <span className="pl-1 font-mono text-xxs font-semibold uppercase text-text-dimmed">
-                      POST
-                    </span>
-                  }
-                />
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <span className="font-mono text-xxs font-semibold uppercase text-text-dimmed">
+                    POST
+                  </span>
+                  <CopyableText
+                    value={endpoint.ingressUrl}
+                    className="min-w-0 font-mono text-xs"
+                    truncate
+                  />
+                </span>
                 <Hint>
                   The public URL providers POST to. Test sends run the same pipeline in-process.
                 </Hint>

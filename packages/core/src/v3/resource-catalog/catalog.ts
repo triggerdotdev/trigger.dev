@@ -4,8 +4,9 @@ import type {
   SkillManifest,
   SkillMetadata,
   TaskManifest,
-  WebhookManifest,
-  WebhookMetadata,
+  WebhookEndpointManifest,
+  WebhookEndpointMetadata,
+  WebhookSubscriberManifest,
   WorkerManifest,
   ConcurrencyLimitManifest,
 } from "../schemas/index.js";
@@ -38,10 +39,12 @@ export interface ResourceCatalog {
   registerSkillMetadata(skill: SkillMetadata): void;
   listSkillManifests(): Array<SkillManifest>;
   getSkillManifest(id: string): SkillManifest | undefined;
-  registerWebhookMetadata(webhook: WebhookMetadata): void;
-  listWebhookManifests(): Array<WebhookManifest>;
-  getWebhookManifest(id: string): WebhookManifest | undefined;
-  listWebhookIdCollisions(): Array<{ id: string; filePaths: string[] }>;
+  registerWebhookEndpointMetadata(endpoint: WebhookEndpointMetadata): void;
+  listWebhookEndpointManifests(): Array<WebhookEndpointManifest>;
+  getWebhookEndpointManifest(id: string): WebhookEndpointManifest | undefined;
+  listWebhookEndpointIdCollisions(): Array<{ id: string; filePaths: string[] }>;
+  registerWebhookSubscriber(subscriber: WebhookSubscriberManifest): void;
+  listWebhookSubscribers(): Array<WebhookSubscriberManifest>;
   // session.webhook descriptors that were declared vs claimed by an agent's `webhooks: [...]`. A
   // declared-but-unclaimed descriptor routes nothing, so the indexer surfaces it (fail loud).
   registerDeclaredSessionWebhook(id: string): void;

@@ -39,7 +39,8 @@ import {
   type QuotaInfo,
   type RateLimitInfo,
 } from "~/presenters/v3/LimitsPresenter.server";
-import { requireUserId } from "~/services/session.server";
+import { requireUser } from "~/services/session.server";
+import { hasWebhooksAccess } from "~/v3/webhooksAccess.server";
 import { cn } from "~/utils/cn";
 import { formatNumber } from "~/utils/numberFormatter";
 import {
@@ -60,7 +61,8 @@ import { pageMeta } from "~/utils/pageTitle";
 export const meta = pageMeta("Limits");
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
+  const user = await requireUser(request);
+  const userId = user.id;
   const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
@@ -86,6 +88,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       projectId: project.id,
       environmentId: environment.id,
       environmentType: environment.type,
+      hasWebhooks: await hasWebhooksAccess(user, project.organizationId),
     })
   );
 
@@ -544,6 +547,10 @@ function QuotasSection({
   if (quotas.metricWidgetsPerDashboard) quotaRows.push(quotas.metricWidgetsPerDashboard);
   if (quotas.queryPeriodDays) quotaRows.push(quotas.queryPeriodDays);
 
+  if (quotas.webhookWaitersPerEnvironment) quotaRows.push(quotas.webhookWaitersPerEnvironment);
+  if (quotas.webhookWaitersPerEndpoint) quotaRows.push(quotas.webhookWaitersPerEndpoint);
+  if (quotas.webhookConcurrency) quotaRows.push(quotas.webhookConcurrency);
+
   const showSelfServe = useShowSelfServe();
 
   return (
@@ -596,7 +603,10 @@ function QuotaRow({
   // For log retention and query period, we don't show current usage as it's a duration, not a count
   // For widgets per dashboard, the usage varies per dashboard so we don't show a single number
   const isDurationQuota = quota.name === "Log retention" || quota.name === "Query period";
-  const isPerItemQuota = quota.name === "Charts per dashboard";
+  const isPerItemQuota =
+    quota.name === "Charts per dashboard" ||
+    quota.name === "Webhook waiters per endpoint" ||
+    quota.name === "Webhook processing concurrency";
   const isRetentionQuota = isDurationQuota || isPerItemQuota;
   const isQueueSizeQuota = quota.name === "Max queued runs";
   const hideCurrentUsage = isRetentionQuota || isQueueSizeQuota;

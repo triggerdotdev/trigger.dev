@@ -42,6 +42,7 @@ async function makePartitioned(prisma: PrismaClient) {
       "status" "WebhookDeliveryStatus" NOT NULL DEFAULT 'PENDING',
       "isTest" BOOLEAN NOT NULL DEFAULT false,
       "filterReason" TEXT,
+      "targets" JSONB NOT NULL DEFAULT '[]',
       "parsedEvent" JSONB,
       "headers" JSONB,
       "rawBodyHash" TEXT,

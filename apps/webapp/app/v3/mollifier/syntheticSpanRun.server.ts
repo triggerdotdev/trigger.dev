@@ -74,6 +74,7 @@ export async function buildSyntheticSpanRun(args: {
   const taskKind = RunAnnotations.safeParse(run.annotations).data?.taskKind;
   const isAgentRun = taskKind === "AGENT";
   const isScheduled = taskKind === "SCHEDULED";
+  const isWebhook = taskKind === "WEBHOOK";
 
   const queueName = run.queue ?? "task/";
   const isCancelled = run.status === "CANCELED";
@@ -138,6 +139,7 @@ export async function buildSyntheticSpanRun(args: {
     idempotencyKeyStatus,
     debounce: null,
     schedule: undefined,
+    webhook: undefined,
     queue: {
       name: queueName,
       isCustomQueue: !queueName.startsWith("task/"),
@@ -153,6 +155,7 @@ export async function buildSyntheticSpanRun(args: {
     isError: isFailed,
     isAgentRun,
     isScheduled,
+    isWebhook,
     payload,
     payloadType: run.payloadType ?? "application/json",
     output: undefined,

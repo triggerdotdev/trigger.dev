@@ -1,234 +1,177 @@
-import {
-  type MetaFunction,
-  useNavigation,
-  useRevalidator,
-  useSearchParams,
-} from "@remix-run/react";
+import { BookOpenIcon } from "@heroicons/react/20/solid";
+import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import type { WebhookDeliveryStatus } from "@trigger.dev/database";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { PageBody } from "~/components/layout/AppLayout";
+import { typeddefer, useTypedLoaderData } from "remix-typedjson";
+import { WebhookIcon } from "~/assets/icons/WebhookIcon";
+import { CodeBlock } from "~/components/code/CodeBlock";
+import { MainCenteredContainer, PageBody } from "~/components/layout/AppLayout";
 import { DirectionSchema, ListPagination } from "~/components/ListPagination";
-import { Button } from "~/components/primitives/Buttons";
-import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
-import { PulsingDot } from "~/components/primitives/PulsingDot";
-import { DeliveriesTable } from "~/components/webhookDeliveries/v1/DeliveriesTable";
-import { useDeliveriesLiveReload } from "~/components/webhookDeliveries/v1/useDeliveriesLiveReload";
-import {
-  type PossibleWebhook,
-  WebhookDeliveryFilters,
-} from "~/components/webhookDeliveries/v1/WebhookDeliveryFilters";
-import { useEnvironment } from "~/hooks/useEnvironment";
-import { useOrganization } from "~/hooks/useOrganizations";
-import { useProject } from "~/hooks/useProject";
-import { type WebhookDeliveryListItem } from "~/presenters/v3/WebhookDetailPresenter.server";
-import { $replica, webhookReplica } from "~/db.server";
+import { LinkButton } from "~/components/primitives/Buttons";
+import { InfoPanel } from "~/components/primitives/InfoPanel";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
+import { Paragraph } from "~/components/primitives/Paragraph";
+import { EndpointFilters } from "~/components/webhookEndpoints/v1/EndpointFilters";
+import { EndpointsListTable } from "~/components/webhookEndpoints/v1/EndpointsListTable";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import { WebhookDeliveriesListPresenter } from "~/presenters/v3/WebhookDeliveriesListPresenter.server";
+import {
+  ENDPOINT_STATUS_FILTERS,
+  type EndpointStatusFilter,
+  WebhookEndpointsListPresenter,
+} from "~/presenters/v3/WebhookEndpointsListPresenter.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { requireUser } from "~/services/session.server";
-import { EnvironmentParamSchema } from "~/utils/pathBuilder";
-import { parseFiniteInt } from "~/utils/searchParams";
-import { FEATURE_FLAG } from "~/v3/featureFlags";
-import { flag } from "~/v3/featureFlags.server";
+import { docsPath, EnvironmentParamSchema } from "~/utils/pathBuilder";
+import { webhookIngressUrl } from "~/utils/webhookIngressUrl.server";
+import { requireWebhooksAccess } from "~/v3/webhooksAccess.server";
 
-const VALID_DELIVERY_STATUSES = new Set<string>([
-  "PENDING",
-  "PROCESSING",
-  "SUCCEEDED",
-  "FAILED",
-  "FILTERED",
-]);
+export const meta: MetaFunction = () => [{ title: "Endpoints | Webhooks | Trigger.dev" }];
 
-// Accepts repeated `statuses` params or a single CSV value; drops anything that
-// isn't one of the four WebhookDeliveryStatus values.
-function parseStatuses(searchParams: URLSearchParams): WebhookDeliveryStatus[] | undefined {
-  const raw = searchParams
-    .getAll("statuses")
+function repeated(searchParams: URLSearchParams, key: string): string[] | undefined {
+  const values = searchParams
+    .getAll(key)
     .flatMap((value) => value.split(","))
     .map((value) => value.trim())
-    .filter((value) => VALID_DELIVERY_STATUSES.has(value)) as WebhookDeliveryStatus[];
-
-  return raw.length > 0 ? Array.from(new Set(raw)) : undefined;
+    .filter((value) => value.length > 0);
+  return values.length > 0 ? Array.from(new Set(values)) : undefined;
 }
-
-function parseRepeated(searchParams: URLSearchParams, key: string): string[] | undefined {
-  const values = searchParams.getAll(key).filter((value) => value.length > 0);
-  return values.length > 0 ? values : undefined;
-}
-
-export const meta: MetaFunction = () => [{ title: "Deliveries | Webhooks | Trigger.dev" }];
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
-  const userId = user.id;
   const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
 
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+  const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
   if (!project) throw new Response("Project not found", { status: 404 });
-  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
+  const environment = await findEnvironmentBySlug(project.id, envParam, user.id);
   if (!environment) throw new Response("Environment not found", { status: 404 });
 
-  // Feature gate: enabled by a global FeatureFlag OR a per-org override; admins/impersonators
-  // always pass. flag() resolves org override -> global -> default(false).
-  if (!user.admin && !user.isImpersonating) {
-    const org = await $replica.organization.findFirst({
-      where: { id: project.organizationId },
-      select: { featureFlags: true },
-    });
-    const enabled = await flag({
-      key: FEATURE_FLAG.hasWebhooksAccess,
-      defaultValue: false,
-      overrides: (org?.featureFlags as Record<string, unknown>) ?? {},
-    });
-    if (!enabled) throw new Response("Not found", { status: 404 });
-  }
+  await requireWebhooksAccess(user, project.organizationId);
 
   const url = new URL(request.url);
-  const periodParam = url.searchParams.get("period") ?? undefined;
-  const from = parseFiniteInt(url.searchParams.get("from"));
-  const to = parseFiniteInt(url.searchParams.get("to"));
-  const cursor = url.searchParams.get("cursor") ?? undefined;
-  const directionRaw = url.searchParams.get("direction") ?? undefined;
-  const direction = directionRaw ? DirectionSchema.parse(directionRaw) : undefined;
-
-  const statuses = parseStatuses(url.searchParams);
-  const webhooks = parseRepeated(url.searchParams, "webhooks");
-  const deliveryId = url.searchParams.get("deliveryId") ?? undefined;
-  const runId = url.searchParams.get("runId") ?? undefined;
-  const testParam = url.searchParams.get("test");
-  const isTest = testParam === "only" ? true : testParam === "hide" ? false : undefined;
-
-  // Default to the last 7 days when no explicit window is set, matching the TimeFilter default.
-  const hasExplicitWindow = Boolean(periodParam || from || to);
-  const period = periodParam ?? (hasExplicitWindow ? undefined : "7d");
-
-  const hasFilters = Boolean(
-    statuses || webhooks || deliveryId || runId || testParam || hasExplicitWindow
+  const statuses = repeated(url.searchParams, "statuses")?.filter(
+    (status): status is EndpointStatusFilter =>
+      (ENDPOINT_STATUS_FILTERS as readonly string[]).includes(status)
   );
-
-  // Distinct handler slugs (one row per handlerWebhookId) for the Webhook picker.
-  const endpoints = await webhookReplica.webhookEndpoint.findMany({
-    where: { runtimeEnvironmentId: environment.id },
-    select: { handlerWebhookId: true, source: true },
-    distinct: ["handlerWebhookId"],
-  });
-  const possibleWebhooks: PossibleWebhook[] = endpoints.map((e) => ({
-    slug: e.handlerWebhookId,
-    source: e.source,
-  }));
+  const directionRaw = url.searchParams.get("direction") ?? undefined;
 
   const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
     project.organizationId,
     "standard"
   );
+  const list = await new WebhookEndpointsListPresenter(clickhouse).call({
+    organizationId: project.organizationId,
+    projectId: project.id,
+    environmentId: environment.id,
+    subscribers: repeated(url.searchParams, "subscribers"),
+    sources: repeated(url.searchParams, "sources"),
+    statuses,
+    search: url.searchParams.get("search") ?? undefined,
+    cursor: url.searchParams.get("cursor") ?? undefined,
+    direction: directionRaw ? DirectionSchema.parse(directionRaw) : undefined,
+  });
 
-  const presenter = new WebhookDeliveriesListPresenter($replica, clickhouse);
-  const list = await presenter
-    .call({
-      organizationId: project.organizationId,
-      projectId: project.id,
-      environmentId: environment.id,
-      webhooks,
-      statuses,
-      deliveryId,
-      runId,
-      isTest,
-      period,
-      from,
-      to,
-      cursor,
-      direction,
-    })
-    .catch(() => ({ deliveries: [], pagination: {} }));
-
-  return typedjson({
-    deliveries: list.deliveries,
-    pagination: list.pagination,
-    possibleWebhooks,
-    hasFilters,
+  return typeddefer({
+    ...list,
+    endpoints: list.endpoints.map((endpoint) => ({
+      ...endpoint,
+      ingestUrl: webhookIngressUrl(endpoint.opaqueId),
+    })),
   });
 };
 
 export default function Page() {
-  const { deliveries, pagination, possibleWebhooks, hasFilters } =
+  const { endpoints, activity, pagination, filterOptions, hasFilters, hasAnyEndpoints } =
     useTypedLoaderData<typeof loader>();
-
-  const { visibleDeliveries, newDeliveriesButton } = useLiveDeliveries(deliveries);
 
   return (
     <>
       <NavBar>
-        <PageTitle title="Webhook deliveries" />
+        <PageTitle title="Webhooks" />
+        <PageAccessories>
+          <LinkButton
+            variant="docs/small"
+            LeadingIcon={BookOpenIcon}
+            to={docsPath("webhooks/overview")}
+          >
+            Webhooks docs
+          </LinkButton>
+        </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
         <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden">
-          <div className="flex items-start justify-between gap-x-2 p-2">
-            <WebhookDeliveryFilters possibleWebhooks={possibleWebhooks} defaultPeriod="7d" />
-            {/* The new-deliveries button sits inline, immediately left of the pager */}
-            <div className="flex items-center gap-x-2">
-              {newDeliveriesButton}
-              <ListPagination list={{ pagination }} />
+          {hasAnyEndpoints || hasFilters ? (
+            <>
+              <div className="flex items-start justify-between gap-x-2 p-2">
+                <EndpointFilters
+                  subscribers={filterOptions.subscribers}
+                  sources={filterOptions.sources}
+                />
+                <ListPagination list={{ pagination }} />
+              </div>
+              <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+                <EndpointsListTable
+                  endpoints={endpoints}
+                  activity={activity}
+                  hasFilters={hasFilters}
+                />
+              </div>
+            </>
+          ) : (
+            <div className="row-span-2">
+              <NoEndpoints />
             </div>
-          </div>
-          {/* Sits directly in the 1fr row, like the runs, sessions and batches lists. No
-              stickyHeader: that switches Table's container to overflow-visible, which stops it
-              being the scroll container. The header is sticky either way (TableHeader always sets
-              sticky top-0), and the other webhook tables only pass it because an ancestor scrolls. */}
-          <DeliveriesTable deliveries={visibleDeliveries} showWebhook hasFilters={hasFilters} />
+          )}
         </div>
       </PageBody>
     </>
   );
 }
 
-function useLiveDeliveries(deliveries: WebhookDeliveryListItem[]) {
-  const organization = useOrganization();
-  const project = useProject();
-  const environment = useEnvironment();
-  const navigation = useNavigation();
-  const revalidator = useRevalidator();
-  const [searchParams, setSearchParams] = useSearchParams();
-
-  const { visibleDeliveries, showNewDeliveriesBanner, newDeliveriesCount, dismissNewDeliveries } =
-    useDeliveriesLiveReload({
-      deliveries,
-      isLoading: navigation.state !== "idle",
-      organizationSlug: organization.slug,
-      projectSlug: project.slug,
-      environmentSlug: environment.slug,
-    });
-
-  const onClickShowNewDeliveries = () => {
-    dismissNewDeliveries();
-    if (searchParams.has("cursor") || searchParams.has("direction")) {
-      setSearchParams((prev) => {
-        prev.delete("cursor");
-        prev.delete("direction");
-        return prev;
-      });
-      return;
-    }
-    revalidator.revalidate();
-  };
-
-  const newDeliveriesButton = showNewDeliveriesBanner ? (
-    <span className="flex duration-150 animate-in fade-in-0">
-      <Button
-        variant="secondary/small"
-        className="text-text-bright"
-        onClick={onClickShowNewDeliveries}
-        LeadingIcon={<PulsingDot className="h-2 w-2" />}
-        tooltip="Refresh to see new deliveries"
-        aria-label="New deliveries received. Refresh to see them."
+function NoEndpoints() {
+  return (
+    <MainCenteredContainer className="max-w-2xl">
+      <InfoPanel
+        title="Declare your first webhook endpoint"
+        icon={WebhookIcon}
+        iconClassName="text-webhooks"
+        panelClassName="max-w-2xl"
+        accessory={
+          <LinkButton
+            to={docsPath("webhooks/overview")}
+            variant="docs/small"
+            LeadingIcon={BookOpenIcon}
+          >
+            Webhooks docs
+          </LinkButton>
+        }
       >
-        {newDeliveriesCount >= 100
-          ? "99+ new deliveries"
-          : `${newDeliveriesCount} new ${newDeliveriesCount === 1 ? "delivery" : "deliveries"}`}
-      </Button>
-    </span>
-  ) : null;
+        <Paragraph spacing variant="small">
+          An endpoint is one URL you register with a provider. Declare it once, then subscribe
+          tasks, agents or channels to it:
+        </Paragraph>
+        <CodeBlock
+          code={`import { webhook, webhooks } from "@trigger.dev/sdk";
 
-  return { visibleDeliveries, newDeliveriesButton };
+export const payments = webhooks.endpoint.define({
+  id: "payments",
+  source: webhooks.stripe(),
+});
+
+export const orders = webhook({
+  id: "orders",
+  endpoint: payments,
+  filter: "event.type == 'checkout.session.completed'",
+  onEvent: async ({ event }) => {
+    // ...
+  },
+});`}
+          showLineNumbers={false}
+        />
+        <Paragraph spacing variant="small" className="mt-2">
+          Endpoints appear here on your next <code>trigger dev</code> or deploy, a moment after the
+          worker registers.
+        </Paragraph>
+      </InfoPanel>
+    </MainCenteredContainer>
+  );
 }

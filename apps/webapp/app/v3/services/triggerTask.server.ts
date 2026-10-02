@@ -35,6 +35,9 @@ export type TriggerTaskServiceOptions = {
   realtimeStreamsVersion?: "v1" | "v2";
   triggerSource?: string;
   triggerAction?: string;
+  /** Friendly ids of the webhook delivery that triggered the run and its endpoint. */
+  webhookDeliveryId?: string;
+  webhookEndpointId?: string;
 };
 
 export { OutOfEntitlementError } from "../outOfEntitlementError.server";

@@ -6,6 +6,13 @@ import {
 import { createRedisClient } from "@internal/redis";
 import { type Prisma, PrismaClient } from "@trigger.dev/database";
 import type { RedisOptions } from "@internal/redis";
+import type { Meter } from "@internal/tracing";
+import {
+  AggregationTemporality,
+  InMemoryMetricExporter,
+  MeterProvider,
+  PeriodicExportingMetricReader,
+} from "@opentelemetry/sdk-metrics";
 import { WebhookEndpointId } from "@trigger.dev/core/v3/isomorphic";
 import { expect } from "vitest";
 import { WebhookEngine } from "./index.js";
@@ -57,18 +64,24 @@ async function createEndpoint(prisma: PrismaClient, over?: { filter?: string }) 
       runtimeEnvironmentId: "env_test",
       environmentType: "PRODUCTION",
       source: "stripe",
-      handlerWebhookId: "handle-stripe-webhook",
-      routingTarget: { type: "task", taskId: "handle-stripe-task" },
+      declaredId: "handle-stripe-webhook",
+      routingTargets: [
+        {
+          type: "task",
+          id: "handle-stripe-task",
+          taskId: "handle-stripe-task",
+          ...(over?.filter
+            ? {
+                filter: over.filter,
+                filterAst: parseFilter(over.filter) as unknown as Prisma.InputJsonValue,
+                filterAstVersion: 1,
+              }
+            : {}),
+        },
+      ],
       verifierArtifact: { kind: "config", config: VERIFIER_CONFIG },
       signingSecretKey: SECRET_KEY,
       status: "ACTIVE",
-      ...(over?.filter
-        ? {
-            filter: over.filter,
-            filterAst: parseFilter(over.filter) as unknown as Prisma.InputJsonValue,
-            filterAstVersion: 1,
-          }
-        : {}),
     },
   });
 }
@@ -96,7 +109,7 @@ async function createSessionEndpoint(
   prisma: PrismaClient,
   keyTemplate: string,
   startOn?: string,
-  handlerWebhookId = "agent-x:orders"
+  targetId = "agent-x:orders"
 ) {
   return prisma.webhookEndpoint.create({
     data: {
@@ -107,15 +120,18 @@ async function createSessionEndpoint(
       runtimeEnvironmentId: "env_test",
       environmentType: "PRODUCTION",
       source: "stripe",
-      handlerWebhookId,
-      routingTarget: {
-        type: "session",
-        taskIdentifier: "agent-x",
-        keyTemplate,
-        actionType: "order.event",
-        deliverAs: "action",
-        ...(startOn ? { startOn } : {}),
-      },
+      declaredId: targetId,
+      routingTargets: [
+        {
+          type: "session",
+          id: targetId,
+          taskIdentifier: "agent-x",
+          keyTemplate,
+          actionType: "order.event",
+          deliverAs: "action",
+          ...(startOn ? { startOn } : {}),
+        },
+      ],
       verifierArtifact: { kind: "config", config: VERIFIER_CONFIG },
       signingSecretKey: SECRET_KEY,
       status: "ACTIVE",
@@ -150,9 +166,11 @@ function buildEngine(
     resolveSigningSecret?: (key: string) => Promise<string | undefined>;
     resolveVerifyToken?: (endpointId: string) => Promise<string | undefined>;
     deliverToSession?: DeliverWebhookToSessionCallback;
+    meter?: Meter;
   }
 ) {
   return new WebhookEngine({
+    meter: over?.meter,
     resolveVerifyToken: over?.resolveVerifyToken,
     prisma,
     redis: redisOptions,
@@ -308,8 +326,8 @@ containerTestWithIsolatedRedisNoClickhouse(
         runtimeEnvironmentId: "env_test",
         environmentType: "PRODUCTION",
         source: "slack",
-        handlerWebhookId: "handle-slack-channel",
-        routingTarget: { type: "task", taskId: "unused" },
+        declaredId: "handle-slack-channel",
+        routingTargets: [{ type: "task", id: "unused", taskId: "unused" }],
         verifierArtifact: {
           kind: "config",
           config: VERIFIER_CONFIG,
@@ -368,8 +386,10 @@ containerTestWithIsolatedRedisNoClickhouse(
         runtimeEnvironmentId: "env_test",
         environmentType: "PRODUCTION",
         source: "discord",
-        handlerWebhookId: "handle-discord",
-        routingTarget: { type: "task", taskId: "handle-discord-task" },
+        declaredId: "handle-discord",
+        routingTargets: [
+          { type: "task", id: "handle-discord-task", taskId: "handle-discord-task" },
+        ],
         verifierArtifact: {
           kind: "preset",
           preset: "discord",
@@ -454,8 +474,8 @@ containerTestWithIsolatedRedisNoClickhouse(
         runtimeEnvironmentId: "env_test",
         environmentType: "PRODUCTION",
         source: "whatsapp",
-        handlerWebhookId: "handle-whatsapp",
-        routingTarget: { type: "task", taskId: "unused" },
+        declaredId: "handle-whatsapp",
+        routingTargets: [{ type: "task", id: "unused", taskId: "unused" }],
         verifierArtifact: {
           kind: "config",
           config: VERIFIER_CONFIG,
@@ -547,8 +567,8 @@ containerTestWithIsolatedRedisNoClickhouse(
           runtimeEnvironmentId: "env_test",
           environmentType: "PRODUCTION",
           source: "whatsapp",
-          handlerWebhookId: "handle-whatsapp-fresh",
-          routingTarget: { type: "task", taskId: "unused" },
+          declaredId: "handle-whatsapp-fresh",
+          routingTargets: [{ type: "task", id: "unused", taskId: "unused" }],
           verifierArtifact: {
             kind: "config",
             config: VERIFIER_CONFIG,
@@ -744,7 +764,7 @@ containerTestWithIsolatedRedisNoClickhouse(
     try {
       const eventId = "evt_crash_1";
       const input = signedInput(eventId, endpoint.opaqueId);
-      const gateKey = `webhookdedupe:${endpoint.id}:${eventId}`;
+      const gateKey = `webhookdedupe:{${endpoint.id}}:${eventId}`;
 
       // Post-crash state: claim set (short TTL), but the ingest died before creating the row.
       await gate.set(gateKey, "whd_orphaned_claim", "EX", 1, "NX");
@@ -865,7 +885,7 @@ containerTestWithIsolatedRedisNoClickhouse(
 
       expect(calls).toHaveLength(0);
       const d = await prisma.webhookDelivery.findFirst({ where: { id: result.deliveryId } });
-      expect(d?.errorMessage).toContain("key resolved empty");
+      expect(d?.errorMessage).toContain("key resolved empty: {event.customerId}");
     } finally {
       await engine.quit();
     }
@@ -1002,6 +1022,166 @@ containerTestWithIsolatedRedisNoClickhouse(
       expect(calls).toBe(5); // maxAttempts; not left retrying / stuck PENDING
     } finally {
       await engine.quit();
+    }
+  }
+);
+
+containerTestWithIsolatedRedisNoClickhouse(
+  "a delivery whose job throws on every attempt is FAILED, not left PENDING with no job",
+  async ({ prisma, redisOptions }) => {
+    const endpoint = await createEndpoint(prisma);
+    const { triggerTask, calls } = makeTriggerTaskStub();
+    const failing = new Proxy(prisma, {
+      get(target, prop) {
+        const value = Reflect.get(target, prop);
+        if (prop !== "webhookDelivery")
+          return typeof value === "function" ? value.bind(target) : value;
+        return new Proxy(value, {
+          get(delegate, method) {
+            const fn = Reflect.get(delegate, method);
+            if (method !== "update") return typeof fn === "function" ? fn.bind(delegate) : fn;
+            return async (args: { data?: { status?: string } }) => {
+              if (args.data?.status === "PROCESSING") throw new Error("database unavailable");
+              return fn.call(delegate, args);
+            };
+          },
+        });
+      },
+    });
+    const engine = buildEngine(failing, redisOptions, triggerTask);
+
+    try {
+      const result = await engine.ingest(signedInput("evt_job_throws", endpoint.opaqueId));
+      if (result.outcome !== "accepted")
+        throw new Error(`expected accepted, got ${result.outcome}`);
+
+      await waitFor(async () => {
+        const d = await prisma.webhookDelivery.findFirst({ where: { id: result.deliveryId } });
+        return d?.status === "FAILED";
+      }, 40_000);
+
+      const d = await prisma.webhookDelivery.findFirst({ where: { id: result.deliveryId } });
+      expect(d?.errorMessage).toContain("database unavailable");
+      expect(d?.processedAt).not.toBeNull();
+      expect(calls).toHaveLength(0);
+    } finally {
+      await engine.quit();
+    }
+  },
+  60_000
+);
+
+function inMemoryMetrics() {
+  const exporter = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);
+  const reader = new PeriodicExportingMetricReader({ exporter, exportIntervalMillis: 60_000 });
+  const provider = new MeterProvider({ readers: [reader] });
+  return {
+    meter: provider.getMeter("webhook-engine-test"),
+    /** Each data point of a metric: a counter's sum, or how many samples a histogram took. */
+    async points(name: string) {
+      await reader.forceFlush();
+      const metric = exporter
+        .getMetrics()
+        .at(-1)
+        ?.scopeMetrics.flatMap((scope) => scope.metrics)
+        .find((m) => m.descriptor.name === name);
+      return (metric?.dataPoints ?? [])
+        .map((point) => ({
+          attributes: point.attributes,
+          value: typeof point.value === "number" ? point.value : point.value.count,
+        }))
+        .sort((a, b) => JSON.stringify(a.attributes).localeCompare(JSON.stringify(b.attributes)));
+    },
+    shutdown: () => provider.shutdown(),
+  };
+}
+
+containerTestWithIsolatedRedisNoClickhouse(
+  "ingest outcomes, settlements and per-target results are recorded once, after the write lands",
+  async ({ prisma, redisOptions }) => {
+    const endpoint = await createEndpoint(prisma);
+    const { triggerTask } = makeTriggerTaskStub();
+    const metrics = inMemoryMetrics();
+    let failedSettle = false;
+    const flaky = new Proxy(prisma, {
+      get(target, prop) {
+        const value = Reflect.get(target, prop);
+        if (prop !== "webhookDelivery")
+          return typeof value === "function" ? value.bind(target) : value;
+        return new Proxy(value, {
+          get(delegate, method) {
+            const fn = Reflect.get(delegate, method);
+            if (method !== "updateMany") return typeof fn === "function" ? fn.bind(delegate) : fn;
+            return async (args: { data?: { status?: string } }) => {
+              if (!failedSettle && args.data?.status === "SUCCEEDED") {
+                failedSettle = true;
+                throw new Error("database unavailable");
+              }
+              return fn.call(delegate, args);
+            };
+          },
+        });
+      },
+    });
+    const engine = buildEngine(flaky, redisOptions, triggerTask, { meter: metrics.meter });
+
+    try {
+      const result = await engine.ingest(signedInput("evt_metrics", endpoint.opaqueId));
+      if (result.outcome !== "accepted")
+        throw new Error(`expected accepted, got ${result.outcome}`);
+      await engine.ingest(signedInput("evt_metrics", endpoint.opaqueId));
+      await engine.ingest({
+        ...signedInput("evt_metrics_bad", endpoint.opaqueId),
+        rawBytes: new TextEncoder().encode("{}"),
+      });
+
+      await waitFor(async () => {
+        const d = await prisma.webhookDelivery.findFirst({ where: { id: result.deliveryId } });
+        return d?.status === "SUCCEEDED";
+      }, 20_000);
+
+      expect(failedSettle).toBe(true);
+      expect(await metrics.points("webhook_ingest_total")).toEqual([
+        { attributes: { path: "endpoint", outcome: "accepted" }, value: 1 },
+        { attributes: { path: "endpoint", outcome: "duplicate" }, value: 1 },
+        { attributes: { path: "endpoint", outcome: "verification_failed" }, value: 1 },
+      ]);
+      expect(await metrics.points("webhook_delivery_settle_latency_ms")).toEqual([
+        { attributes: { status: "SUCCEEDED" }, value: 1 },
+      ]);
+      expect(await metrics.points("webhook_delivery_target_results_total")).toEqual([
+        { attributes: { type: "task", status: "SUCCEEDED" }, value: 1 },
+      ]);
+    } finally {
+      await engine.quit();
+      await metrics.shutdown();
+    }
+  },
+  60_000
+);
+
+containerTestWithIsolatedRedisNoClickhouse(
+  "a delivery filtered at ingest is recorded as settled",
+  async ({ prisma, redisOptions }) => {
+    const endpoint = await createEndpoint(prisma, { filter: "event.type == 'never.sent'" });
+    const { triggerTask } = makeTriggerTaskStub();
+    const metrics = inMemoryMetrics();
+    const engine = buildEngine(prisma, redisOptions, triggerTask, { meter: metrics.meter });
+
+    try {
+      const result = await engine.ingest(signedInput("evt_metrics_filtered", endpoint.opaqueId));
+      if (result.outcome !== "accepted")
+        throw new Error(`expected accepted, got ${result.outcome}`);
+
+      expect(await metrics.points("webhook_delivery_settle_latency_ms")).toEqual([
+        { attributes: { status: "FILTERED" }, value: 1 },
+      ]);
+      expect(await metrics.points("webhook_delivery_target_results_total")).toEqual([
+        { attributes: { type: "task", status: "FILTERED" }, value: 1 },
+      ]);
+    } finally {
+      await engine.quit();
+      await metrics.shutdown();
     }
   }
 );

@@ -7,12 +7,7 @@ import { env } from "~/env.server";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import { logger } from "~/services/logger.server";
 import { S2RealtimeStreams } from "~/services/realtime/s2realtimeStreams.server";
-import { SessionTriggerConfig as SessionTriggerConfigSchema } from "@trigger.dev/core/v3";
-import {
-  ensureRunForSession,
-  type SessionTriggerConfig,
-} from "~/services/realtime/sessionRunManager.server";
-import { findOrCreateSession, findSessionByExternalId } from "~/services/realtime/sessions.server";
+import { ensureRunForSession } from "~/services/realtime/sessionRunManager.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
 import {
   claimSessionStreamPart,
@@ -24,9 +19,38 @@ import { singleton } from "~/utils/singleton";
 import { engine as runEngine } from "./runEngine.server";
 import { ServiceValidationError } from "./services/common.server";
 import { TriggerTaskService } from "./services/triggerTask.server";
+import { resolveWebhookSession } from "./webhookSessionTarget.server";
+import { webhookLimitsForEnvironment } from "./webhookLimits.server";
+import { webhookWaitpoints } from "./webhookWaitpoints.server";
 import { meter, tracer } from "./tracer.server";
 
 export const webhookEngine = singleton("WebhookEngine", createWebhookEngine);
+
+function waiterStoreConnection() {
+  const redisOptions = {
+    host: env.WEBHOOK_WAITER_REDIS_HOST ?? "localhost",
+    port: env.WEBHOOK_WAITER_REDIS_PORT ?? 6379,
+    username: env.WEBHOOK_WAITER_REDIS_USERNAME,
+    password: env.WEBHOOK_WAITER_REDIS_PASSWORD,
+    keyPrefix: "webhook:",
+    enableAutoPipelining: true,
+    ...(env.WEBHOOK_WAITER_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
+  };
+  if (env.WEBHOOK_WAITER_REDIS_CLUSTER_MODE_ENABLED === "1") {
+    return {
+      cluster: {
+        nodes: [{ host: redisOptions.host, port: redisOptions.port }],
+        redisOptions,
+        clusterOptions: {
+          dnsLookup: (address: string, callback: (err: Error | null, address: string) => void) =>
+            callback(null, address),
+          slotsRefreshTimeout: 10_000,
+        },
+      },
+    };
+  }
+  return { redis: redisOptions };
+}
 
 // The plaintext signing secret is stored under the "DATABASE" SecretStore
 // provider as { secret: string } (same shape as environment variables).
@@ -61,8 +85,8 @@ function createWebhookEngine() {
     },
     worker: {
       concurrency: env.WEBHOOK_WORKER_CONCURRENCY_LIMIT,
-      workers: env.WEBHOOK_WORKER_CONCURRENCY_WORKERS,
-      tasksPerWorker: env.WEBHOOK_WORKER_CONCURRENCY_TASKS_PER_WORKER,
+      tenantConcurrency: async (environmentId) =>
+        (await webhookLimitsForEnvironment(environmentId)).concurrency,
       pollIntervalMs: env.WEBHOOK_WORKER_POLL_INTERVAL,
       shutdownTimeoutMs: env.WEBHOOK_WORKER_SHUTDOWN_TIMEOUT_MS,
       disabled: env.WEBHOOK_ENABLED !== "1" || env.WEBHOOK_WORKER_ENABLED !== "true",
@@ -81,6 +105,17 @@ function createWebhookEngine() {
       ttlMs: env.WEBHOOK_ENDPOINT_CACHE_TTL_MS,
       maxSize: env.WEBHOOK_ENDPOINT_CACHE_MAX_SIZE,
     },
+    waiters: {
+      ...waiterStoreConnection(),
+      limits: {
+        perEnvironment: env.WEBHOOK_WAITER_MAX_PER_ENVIRONMENT,
+        perEndpoint: env.WEBHOOK_WAITER_MAX_PER_ENDPOINT,
+        shapes: env.WEBHOOK_WAITER_MAX_SHAPES,
+      },
+      completionChunkSize: env.WEBHOOK_WAITER_COMPLETION_CHUNK_SIZE,
+      urlSecret: env.ENCRYPTION_KEY,
+      waitpoints: webhookWaitpoints,
+    },
     tracer,
     meter,
     resolveSigningSecret: async (key) => {
@@ -98,12 +133,14 @@ function createWebhookEngine() {
     triggerTask: async ({
       environmentId,
       taskId,
+      deliveryId,
       idempotencyKey,
       idempotencyKeyExpiresAt,
       payload,
       headers,
       identityTags,
       endpointMetadata,
+      endpoint,
     }) => {
       try {
         const environment = await findEnvironmentById(environmentId);
@@ -117,9 +154,7 @@ function createWebhookEngine() {
           taskId,
           environment,
           {
-            // The webhook task run receives a { event, headers } envelope; the SDK's webhook()
-            // run unwraps it into onEvent({ event, headers }).
-            payload: { event: payload, headers },
+            payload: { event: payload, headers, endpoint },
             options: {
               tags: identityTags,
               metadata: (endpointMetadata as Record<string, unknown>) ?? undefined,
@@ -131,6 +166,8 @@ function createWebhookEngine() {
             triggerSource: "webhook",
             triggerAction: "trigger",
             customIcon: "webhook",
+            webhookDeliveryId: deliveryId,
+            webhookEndpointId: endpoint.id,
           }
         );
 
@@ -149,8 +186,6 @@ function createWebhookEngine() {
         return { success: false, error: errorMessage, errorType };
       }
     },
-    // Route a verified delivery to a session: find-or-create it, then append a webhook action to `.in`.
-    // The run boots on a preload payload (so onChatStart fires), then reads the action from `.in`.
     deliverToSession: async ({
       environmentId,
       taskIdentifier,
@@ -162,6 +197,8 @@ function createWebhookEngine() {
       source,
       headers,
       deliveryId,
+      partId,
+      endpoint,
       triggerConfigTemplate,
       isSessionStart,
     }) => {
@@ -171,78 +208,20 @@ function createWebhookEngine() {
           return { success: false, errorType: "NOT_FOUND", error: "Environment not found" };
         }
 
-        // Resume an existing session; otherwise only START one when the event is a session-start
-        // (startOn). Resume-only with no session yet -> ignore (no session, no run, no egress).
-        const existing = await findSessionByExternalId(environment, externalId);
-        if (!existing && !isSessionStart) {
-          return {
-            success: true,
-            skipped: true,
-            skippedReason: "startOn: not a session-start event",
-          };
+        const resolution = await resolveWebhookSession({
+          environment,
+          externalId,
+          taskIdentifier,
+          isSessionStart,
+          triggerConfigTemplate,
+        });
+        if (resolution.kind === "skipped") {
+          return { success: true, skipped: true, skippedReason: resolution.reason };
         }
-
-        let session;
-        let isCached;
-        if (existing) {
-          session = existing;
-          isCached = true;
-        } else {
-          /** The template arrives unvalidated (`z.record(z.unknown())` on the routing
-           * target), and continuations re-parse the stored row with a throwing parse —
-           * so anything this path persists must parse, or the session strands forever.
-           * A bad template fails the CREATE delivery terminally; resumes above never
-           * touch the template, so a broken template can't stop existing sessions.
-           * Known fields persist normalized (the parse output) while unknown template
-           * keys are kept as the pre-validation path stored them; a non-object
-           * `basePayload` is rejected rather than spread into index-keyed garbage. */
-          const template = (triggerConfigTemplate ?? {}) as Partial<SessionTriggerConfig>;
-          if (
-            template.basePayload !== undefined &&
-            (typeof template.basePayload !== "object" ||
-              template.basePayload === null ||
-              Array.isArray(template.basePayload))
-          ) {
-            return {
-              success: false,
-              error:
-                "Invalid triggerConfigTemplate on the webhook routing target: basePayload must be an object",
-            };
-          }
-          const assembled = {
-            ...template,
-            basePayload: {
-              messages: [],
-              trigger: "preload",
-              chatId: externalId,
-              ...(template.basePayload ?? {}),
-            },
-          };
-          const parsedTriggerConfig = SessionTriggerConfigSchema.safeParse(assembled);
-          if (!parsedTriggerConfig.success) {
-            return {
-              success: false,
-              error: `Invalid triggerConfigTemplate on the webhook routing target: ${parsedTriggerConfig.error.issues
-                .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
-                .join("; ")}`,
-            };
-          }
-          const triggerConfig: SessionTriggerConfig = {
-            ...assembled,
-            ...parsedTriggerConfig.data,
-          };
-          ({ session, isCached } = await findOrCreateSession({
-            environment,
-            externalId,
-            type: "chat.agent",
-            taskIdentifier,
-            triggerConfig,
-          }));
+        if (resolution.kind === "rejected") {
+          return { success: false, error: resolution.error };
         }
-
-        if (session.closedAt || (session.expiresAt && session.expiresAt.getTime() < Date.now())) {
-          return { success: false, error: "Session is closed or expired" };
-        }
+        const { session, isCached } = resolution;
 
         // Boot / revive the run, then append the action. The run reads it from `.in`.
         const ensureResult = await ensureRunForSession({
@@ -264,31 +243,24 @@ function createWebhookEngine() {
             ? {
                 chatId: externalId,
                 trigger: "submit-message",
-                channelEvent: { connectorId, event, source, headers, deliveryId },
+                channelEvent: { connectorId, event, source, headers, deliveryId, endpoint },
               }
             : {
                 chatId: externalId,
                 trigger: "action",
                 actionSource: "webhook",
-                action: { type: actionType, event, source, headers, deliveryId },
+                action: { type: actionType, event, source, headers, deliveryId, endpoint },
               };
         const part = JSON.stringify({ kind: "message", payload });
 
-        // deliveryId as the part id → a deliver-job retry re-claims the same id and skips a duplicate
-        // append. The S2 record is durable, so a run that boots later still reads it.
-        const wonClaim = await claimSessionStreamPart(
-          environment.id,
-          addressingKey,
-          "in",
-          deliveryId
-        );
+        const wonClaim = await claimSessionStreamPart(environment.id, addressingKey, "in", partId);
         if (wonClaim) {
           const [appendError] = await tryCatch(
-            realtimeStream.appendPartToSessionStream(part, deliveryId, addressingKey, "in")
+            realtimeStream.appendPartToSessionStream(part, partId, addressingKey, "in")
           );
           if (appendError) {
             // Nothing landed — release the claim so a retry re-appends the same id.
-            await releaseSessionStreamPart(environment.id, addressingKey, "in", deliveryId);
+            await releaseSessionStreamPart(environment.id, addressingKey, "in", partId);
             // A ServiceValidationError (e.g. record too large) is terminal; anything else is transient.
             if (appendError instanceof ServiceValidationError) {
               return { success: false, error: appendError.message };

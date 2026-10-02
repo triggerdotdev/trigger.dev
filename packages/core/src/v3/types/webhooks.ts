@@ -12,6 +12,11 @@ export type WebhookSource<TEvent = unknown> = {
   verifier: WebhookVerifierArtifact;
   /** who supplies the secret/key; drives the Connect UI (paste vs generate). Defaults to "either". */
   secretProvisioning?: WebhookSecretProvisioning;
+  /**
+   * Provider-specific instructions for an AI agent registering the endpoint with the provider. The
+   * platform wraps it with the endpoint's URL, subscribers and signing-secret steps.
+   */
+  setupPrompt?: string;
   /** phantom, type-level only; never present at runtime */
   [__webhookEvent]?: TEvent;
 };
@@ -20,18 +25,31 @@ export type AnyWebhookSource = WebhookSource<any>;
 
 export type InferWebhookEvent<S> = S extends WebhookSource<infer TEvent> ? TEvent : unknown;
 
-// The envelope the platform delivers to a webhook task run: the verified event body plus the
-// inbound request headers. The SDK's webhook() run unwraps this into onEvent({ event, headers }).
-// Kept here so the trigger side (webapp) and the receive side (SDK) agree on the shape.
+/**
+ * The endpoint a delivery arrived on. `id` is the endpoint instance (`wh_...`); `declaredId` is the
+ * `webhooks.endpoint.define` id. `tenantId` and `externalRef` are unset on the declared instance.
+ */
+export type WebhookEndpointContext = {
+  id: string;
+  declaredId: string;
+  tenantId?: string;
+  externalRef?: string;
+  metadata: Record<string, unknown>;
+};
+
+/**
+ * The envelope the platform delivers to a webhook task run: the verified event, the curated inbound
+ * headers and the endpoint it arrived on. `endpoint` is optional so a hand-triggered run type-checks.
+ */
 export type WebhookRunPayload<TEvent = unknown> = {
   event: TEvent;
   headers: Record<string, string>;
+  endpoint?: WebhookEndpointContext;
 };
 
-// ── P2 seam: TYPE ONLY, no runtime function ──
 export type CreateWebhookEndpointParams = {
-  /** declared webhook() id (string ref; GOLDEN LAW, never the value) */
-  handler: string;
+  /** the declared `webhooks.endpoint.define` id */
+  endpoint: string;
   tenantId?: string;
   externalRef?: string;
   metadata?: Record<string, unknown>;

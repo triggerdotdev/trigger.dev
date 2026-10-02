@@ -411,7 +411,6 @@ export function v3WebhooksPath(
   project: ProjectForPath,
   environment: EnvironmentForPath
 ) {
-  // Top-level Webhooks section landing = the cross-endpoint deliveries list.
   return `${v3EnvironmentPath(organization, project, environment)}/webhooks`;
 }
 

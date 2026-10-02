@@ -56,6 +56,7 @@ import {
   getWebhookDeliveriesGroupedCountQueryBuilder,
   insertWebhookDeliveriesCompactArrays,
 } from "./webhookDeliveries.js";
+import { insertWebhookEndpointsCompactArrays } from "./webhookEndpoints.js";
 import {
   getGlobalModelMetrics,
   getGlobalModelComparison,
@@ -92,6 +93,7 @@ export type * from "./llmModelAggregates.js";
 export type * from "./errors.js";
 export type * from "./sessions.js";
 export type * from "./webhookDeliveries.js";
+export type * from "./webhookEndpoints.js";
 export type * from "./client/queryBuilder.js";
 
 // Re-export column constants, indices, and type-safe accessors
@@ -333,6 +335,12 @@ export class ClickHouse {
       queryBuilder: getWebhookDeliveriesQueryBuilder(this.reader),
       countQueryBuilder: getWebhookDeliveriesCountQueryBuilder(this.reader),
       groupedCountQueryBuilder: getWebhookDeliveriesGroupedCountQueryBuilder(this.reader),
+    };
+  }
+
+  get webhookEndpoints() {
+    return {
+      insertCompactArrays: insertWebhookEndpointsCompactArrays(this.writer),
     };
   }
 

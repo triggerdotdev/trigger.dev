@@ -14,6 +14,8 @@ import { logger } from "~/services/logger.server";
 import { CheckScheduleService } from "~/v3/services/checkSchedule.server";
 import { engine } from "~/v3/runEngine.server";
 import { getQueueSizeLimit, getQueueSizeLimitSource } from "~/v3/utils/queueLimits.server";
+import { webhookEngine } from "~/v3/webhookEngine.server";
+import { webhookLimitsFromConfig } from "~/v3/webhookLimits.server";
 
 // Create a singleton Redis client for rate limit queries
 const rateLimitRedisClient = singleton("rateLimitQueryRedisClient", () =>
@@ -72,6 +74,9 @@ export type LimitsResult = {
     metricDashboards: QuotaInfo | null;
     metricWidgetsPerDashboard: QuotaInfo | null;
     queryPeriodDays: QuotaInfo | null;
+    webhookWaitersPerEnvironment: QuotaInfo | null;
+    webhookWaitersPerEndpoint: QuotaInfo | null;
+    webhookConcurrency: QuotaInfo | null;
   };
   features: {
     hasStagingEnvironment: FeatureInfo;
@@ -89,11 +94,13 @@ export class LimitsPresenter extends BasePresenter {
     projectId,
     environmentId,
     environmentType,
+    hasWebhooks = false,
   }: {
     organizationId: string;
     projectId: string;
     environmentId: string;
     environmentType: RuntimeEnvironmentType;
+    hasWebhooks?: boolean;
   }): Promise<LimitsResult> {
     // Get organization with all limit-related fields
     const organization = await this._replica.organization.findFirstOrThrow({
@@ -107,6 +114,7 @@ export class LimitsPresenter extends BasePresenter {
         apiRateLimiterConfig: true,
         batchRateLimitConfig: true,
         batchQueueConcurrencyConfig: true,
+        webhookLimitsConfig: true,
         _count: {
           select: {
             projects: {
@@ -134,6 +142,28 @@ export class LimitsPresenter extends BasePresenter {
     const batchConcurrencySource = organization.batchQueueConcurrencyConfig
       ? "override"
       : "default";
+
+    const webhookLimits = webhookLimitsFromConfig(organization.webhookLimitsConfig);
+    const liveWaiters = hasWebhooks
+      ? await webhookEngine.countLiveWaiters(environmentId).catch(() => 0)
+      : 0;
+    const webhookQuota = (
+      key: keyof typeof webhookLimits.limits,
+      name: string,
+      description: string,
+      currentUsage: number
+    ): QuotaInfo | null =>
+      hasWebhooks
+        ? {
+            name,
+            description,
+            limit: webhookLimits.limits[key],
+            currentUsage,
+            source: webhookLimits.overrides[key] !== undefined ? "override" : "default",
+            canExceed: false,
+            isUpgradable: true,
+          }
+        : null;
 
     // Get schedule count for this org
     const scheduleCount = await CheckScheduleService.getUsedSchedulesCount({
@@ -364,6 +394,24 @@ export class LimitsPresenter extends BasePresenter {
                 source: "plan",
               }
             : null,
+        webhookWaitersPerEnvironment: webhookQuota(
+          "maxWaitersPerEnvironment",
+          "Webhook waiters",
+          "Maximum runs waiting on webhook deliveries at once in this environment, across all its endpoints",
+          liveWaiters
+        ),
+        webhookWaitersPerEndpoint: webhookQuota(
+          "maxWaitersPerEndpoint",
+          "Webhook waiters per endpoint",
+          "Maximum runs waiting on one webhook endpoint at once, which is also the most one delivery can resume",
+          0
+        ),
+        webhookConcurrency: webhookQuota(
+          "concurrency",
+          "Webhook processing concurrency",
+          "Maximum webhook deliveries and waiter resumes being processed at once in this environment. More wait their turn.",
+          0
+        ),
       },
       features: {
         hasStagingEnvironment: {

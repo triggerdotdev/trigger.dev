@@ -9,7 +9,8 @@ const testReplicationRegistryStub = {
 } as unknown as OrganizationDataStoresRegistry;
 
 /**
- * Routes all `replication` and `sessions_replication` clients to a single test ClickHouse;
+ * Routes all `replication`, `sessions_replication` and `webhook_deliveries_replication` clients to a
+ * single test ClickHouse;
  * other client types use the real factory defaults.
  */
 export class TestReplicationClickhouseFactory extends ClickhouseFactory {
@@ -21,7 +22,11 @@ export class TestReplicationClickhouseFactory extends ClickhouseFactory {
     organizationId: string,
     clientType: ClientType
   ): ClickHouse {
-    if (clientType === "replication" || clientType === "sessions_replication") {
+    if (
+      clientType === "replication" ||
+      clientType === "sessions_replication" ||
+      clientType === "webhook_deliveries_replication"
+    ) {
       return this.replicationClient;
     }
     return super.getClickhouseForOrganizationSync(organizationId, clientType);

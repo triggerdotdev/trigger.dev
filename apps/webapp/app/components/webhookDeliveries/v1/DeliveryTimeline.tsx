@@ -90,13 +90,7 @@ function TimelineEventExtras({
     <div className="grid grid-cols-[1.125rem_1fr] gap-1">
       <div />
       <div className="flex flex-col gap-0.5 pb-1">
-        {item.note ? (
-          <span
-            className={item.state === "error" ? "text-xs text-error" : "text-xs text-text-dimmed"}
-          >
-            {item.note}
-          </span>
-        ) : null}
+        {item.note ? <span className="text-xs text-text-dimmed">{item.note}</span> : null}
         {showSession && item.target?.session ? (
           <TextLink to={sessionPath!} className="inline-flex items-center gap-1 font-mono text-xs">
             <AIChatIcon className="size-3.5 text-sessions" />

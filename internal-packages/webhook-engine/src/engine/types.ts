@@ -1,14 +1,20 @@
 import type { Logger } from "@trigger.dev/core/logger";
-import type { WebhookResponseConfig } from "@trigger.dev/core/v3";
+import type { WebhookEndpointContext, WebhookResponseConfig } from "@trigger.dev/core/v3";
 import type { Meter, Tracer } from "@internal/tracing";
 import type { WebhookDatabase } from "@trigger.dev/database";
-import type { RedisOptions } from "@internal/redis";
+import type { RedisClusterClientOptions, RedisOptions } from "@internal/redis";
 
 export type WebhookDeliverTaskErrorType = "QUEUE_LIMIT" | "SYSTEM_ERROR" | "NOT_FOUND";
 
 export type TriggerWebhookTaskParams = {
   environmentId: string;
   taskId: string;
+  /** The routing target this trigger is for. */
+  targetId: string;
+  /** The delivery's friendly id, recorded on the run so it links back to the delivery. */
+  deliveryId: string;
+  /** The endpoint the delivery arrived on; rides on the run payload. */
+  endpoint: WebhookEndpointContext;
   idempotencyKey: string; // = externalDeliveryId; the Run Engine correctness gate
   idempotencyKeyExpiresAt: Date; // provider retry window
   payload: unknown; // delivery.parsedEvent, already JSON
@@ -39,12 +45,18 @@ export interface WebhookEngineOptions {
    */
   disabled?: boolean;
   worker: {
+    /** Webhook jobs this process runs at once. */
     concurrency: number;
-    workers?: number;
-    tasksPerWorker?: number;
+    /**
+     * Webhook jobs one environment can have in flight at once, across every process: a number, or a
+     * lookup for per-org limits. Default 100.
+     */
+    tenantConcurrency?: number | ((environmentId: string) => Promise<number>);
     pollIntervalMs?: number;
     shutdownTimeoutMs?: number;
     disabled?: boolean;
+    /** How long a job's exhausted record waits to retry when the exhausted handler failed. Default 30s. */
+    exhaustedRecordDelayMs?: number;
   };
   partitions?: {
     ensureSchedule?: string;
@@ -69,11 +81,134 @@ export interface WebhookEngineOptions {
   resolveVerifyToken?: (endpointId: string) => Promise<string | undefined>;
   // Session routing: find-or-create the session on the resolved key and append the action envelope.
   deliverToSession?: DeliverWebhookToSessionCallback;
+  /** Webhook waiters. Without `waitpoints`, waiter create/cancel are refused and deliveries skip the waiter step. */
+  waiters?: WebhookWaiterOptions;
 }
+
+type WebhookWaiterOptions = {
+  /**
+   * The waiter store (also the ingest front gate). A cluster when `cluster` is set, otherwise a
+   * standalone node from `redis`, falling back to the engine's `redis`.
+   */
+  redis?: RedisOptions;
+  cluster?: RedisClusterClientOptions;
+  limits?: Partial<WebhookWaiterLimits>;
+  /** Signs URL-matched waiter paths so waiter ids can't be enumerated through the ingress. */
+  urlSecret?: string;
+  waitpoints?: WebhookWaitpointPorts;
+  /** Waiters one job resumes. A delivery that claims more splits the rest into completion jobs. Default 500. */
+  completionChunkSize?: number;
+};
+
+export type WebhookWaiterLimits = {
+  perEnvironment: number;
+  perEndpoint: number;
+  shapes: number;
+  paths: number;
+  tags: number;
+  defaultTimeoutMs: number;
+  maxTimeoutMs: number;
+};
+
+/** What a matched waiter's run resumes with: one packet per delivery, shared by every waiter it completes. */
+export type WebhookWaiterOutput = {
+  event: unknown;
+  headers: Record<string, string>;
+  deliveryId: string;
+  endpoint: WebhookEndpointContext;
+};
+
+/** MANUAL waitpoints backing waiters. A waiter's id is its waitpoint's friendly id. */
+export type WebhookWaitpointPorts = {
+  find(params: {
+    environmentId: string;
+    idempotencyKey: string;
+  }): Promise<
+    { id: string; status: "PENDING" | "COMPLETED"; timeoutAt?: Date; tags?: string[] } | undefined
+  >;
+  create(params: {
+    environmentId: string;
+    projectId: string;
+    idempotencyKey: string;
+    idempotencyKeyExpiresAt?: Date;
+    timeoutAt: Date;
+    tags: string[];
+  }): Promise<{ id: string; isCached: boolean }>;
+  /** Complete every id with the same output, built and stored once. */
+  complete(params: {
+    environmentId: string;
+    waitpointIds: string[];
+    output: WebhookWaiterOutput;
+    deliveryFriendlyId: string;
+  }): Promise<Array<{ id: string; ok: boolean; error?: string }>>;
+  fail(params: {
+    environmentId: string;
+    waitpointId: string;
+    error: { name: string; message: string; reason?: string };
+  }): Promise<void>;
+};
+
+type WebhookWaiterLimitReason =
+  | "environment_limit"
+  | "endpoint_limit"
+  | "shape_limit"
+  | "timeout_too_long";
+
+export type CreateWebhookWaiterInput = {
+  environmentId: string;
+  projectId: string;
+  /** The declared endpoint id (`webhooks.endpoint.define`), or the endpoint's `wh_` id. */
+  endpoint: string;
+  match?: Record<string, string | number | boolean>;
+  /** Limits for this create's org, over the engine defaults (per-plan waiter caps). */
+  limits?: { perEnvironment?: number; perEndpoint?: number };
+  filter?: string;
+  /** Absent: the default timeout. */
+  timeoutAt?: Date;
+  tags?: string[];
+  idempotencyKey?: string;
+  idempotencyKeyExpiresAt?: Date;
+};
+
+export type CreateWebhookWaiterResult =
+  | {
+      outcome: "created";
+      id: string;
+      /** Path of the waiter's own ingress URL, for a URL-matched waiter. */
+      urlPath?: string;
+      expiresAt: Date;
+      isCached: boolean;
+    }
+  | { outcome: "endpoint_not_found" }
+  | { outcome: "limit"; reason: WebhookWaiterLimitReason; message: string }
+  | { outcome: "invalid"; error: string }
+  | { outcome: "filter_invalid"; error: string };
+
+export type CancelWebhookWaiterResult =
+  | { outcome: "cancelled" }
+  | { outcome: "too_late"; deliveryId: string }
+  | { outcome: "not_found" };
+
+/** A live waiter as the dashboard lists it. `match` and `filter` are what it was created with. */
+export type ListedWebhookWaiter = {
+  id: string;
+  expiresAt: Date;
+  match?: Record<string, string | number | boolean>;
+  filter?: string;
+};
 
 export type DeliverWebhookToSessionParams = {
   environmentId: string;
   taskIdentifier: string; // the claiming agent; the session's task
+  /** The routing target this delivery is for. */
+  targetId: string;
+  /**
+   * The `.in` part id to claim and append under: unique per delivery row and target, so two targets
+   * resolving to one session each append, a deliver retry re-claims the same id, and a replay appends anew.
+   */
+  partId: string;
+  /** The endpoint the delivery arrived on; rides on the action and channel envelopes. */
+  endpoint: WebhookEndpointContext;
   externalId: string; // resolved from the routing target's keyTemplate
   deliverAs: "action" | "message"; // "action" -> onAction envelope; "message" -> a channel turn
   actionType?: string; // becomes the action envelope's `type` (deliverAs "action")
@@ -81,7 +216,7 @@ export type DeliverWebhookToSessionParams = {
   event: unknown; // delivery.parsedEvent
   source: string; // provider tag
   headers: Record<string, string>;
-  deliveryId: string; // externalDeliveryId; also the S2 part id for idempotent re-append
+  deliveryId: string; // externalDeliveryId, surfaced on the envelope
   triggerConfigTemplate?: Record<string, unknown>;
   idempotencyKey: string;
   // Evaluated startOn: true (default) allows creating a new session; false means resume-only, so a
@@ -109,7 +244,24 @@ export type ReplayResult =
   | { outcome: "replayed"; deliveryId: string; deliveryFriendlyId: string } // new row + run enqueued
   | { outcome: "delivery_not_found" }
   | { outcome: "endpoint_not_found" }
-  | { outcome: "unsupported_target" }; // routing target isn't a task
+  | { outcome: "target_not_found" }
+  /** `authorize` refused some of the subscribers the replay would run; nothing was created. */
+  | { outcome: "forbidden"; denied: string[] };
+
+/** A subscriber a replay would run: a webhook() task, or a session subscriber and its agent task. */
+export type ReplaySubscriber = { id: string; type: "task" | "session"; taskId: string };
+
+export type ReplayInput = {
+  id: string;
+  createdAt: Date;
+  /** Replay only this target, past its filter. Omitted: every current target, filters re-checked. */
+  targetId?: string;
+  /**
+   * Called with exactly the subscribers the replay would run (after filters), from the same read
+   * that creates it. Returns what the caller may not trigger; any entry refuses the replay.
+   */
+  authorize?: (subscribers: ReplaySubscriber[]) => string[] | Promise<string[]>;
+};
 
 /** The endpoint's declared response contract, when its verifier artifact carries one. */
 type IngestResponseContract = WebhookResponseConfig | undefined;

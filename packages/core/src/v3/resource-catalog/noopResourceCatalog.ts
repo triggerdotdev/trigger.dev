@@ -4,8 +4,9 @@ import type {
   SkillManifest,
   SkillMetadata,
   TaskManifest,
-  WebhookManifest,
-  WebhookMetadata,
+  WebhookEndpointManifest,
+  WebhookEndpointMetadata,
+  WebhookSubscriberManifest,
   WorkerManifest,
   ConcurrencyLimitManifest,
 } from "../schemas/index.js";
@@ -107,16 +108,22 @@ export class NoopResourceCatalog implements ResourceCatalog {
     return undefined;
   }
 
-  registerWebhookMetadata(webhook: WebhookMetadata): void {
+  registerWebhookEndpointMetadata(endpoint: WebhookEndpointMetadata): void {
     // noop
   }
-  listWebhookManifests(): Array<WebhookManifest> {
+  listWebhookEndpointManifests(): Array<WebhookEndpointManifest> {
     return [];
   }
-  getWebhookManifest(id: string): WebhookManifest | undefined {
+  getWebhookEndpointManifest(id: string): WebhookEndpointManifest | undefined {
     return undefined;
   }
-  listWebhookIdCollisions(): Array<{ id: string; filePaths: string[] }> {
+  listWebhookEndpointIdCollisions(): Array<{ id: string; filePaths: string[] }> {
+    return [];
+  }
+  registerWebhookSubscriber(subscriber: WebhookSubscriberManifest): void {
+    // noop
+  }
+  listWebhookSubscribers(): Array<WebhookSubscriberManifest> {
     return [];
   }
   registerDeclaredSessionWebhook(id: string): void {

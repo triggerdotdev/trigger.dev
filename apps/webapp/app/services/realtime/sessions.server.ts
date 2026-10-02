@@ -81,7 +81,11 @@ export async function findOrCreateSession(params: {
   tags?: string[];
   metadata?: Record<string, unknown>;
   expiresAt?: Date | null;
+  /** When false, an existing row is returned untouched instead of having its triggerConfig refreshed. */
+  refreshTriggerConfig?: boolean;
+  db?: Pick<PrismaClient, "session">;
 }): Promise<{ session: Session; isCached: boolean }> {
+  const db = params.db ?? prisma;
   const { id, friendlyId } = SessionId.generate();
   const env = params.environment;
   const triggerConfigJson = params.triggerConfig as unknown as Prisma.InputJsonValue;
@@ -102,7 +106,7 @@ export async function findOrCreateSession(params: {
   };
 
   if (params.externalId) {
-    const session = await prisma.session.upsert({
+    const session = await db.session.upsert({
       where: {
         runtimeEnvironmentId_externalId: {
           runtimeEnvironmentId: env.id,
@@ -110,21 +114,22 @@ export async function findOrCreateSession(params: {
         },
       },
       create: { id, friendlyId, externalId: params.externalId, ...common },
-      update: { triggerConfig: triggerConfigJson },
+      update: params.refreshTriggerConfig === false ? {} : { triggerConfig: triggerConfigJson },
     });
     return { session, isCached: session.id !== id };
   }
 
-  const session = await prisma.session.create({ data: { id, friendlyId, ...common } });
+  const session = await db.session.create({ data: { id, friendlyId, ...common } });
   return { session, isCached: false };
 }
 
 /** Find a session by externalId without creating one (resume-only channel delivery, e.g. startOn). */
 export async function findSessionByExternalId(
   environment: AuthenticatedEnvironment,
-  externalId: string
+  externalId: string,
+  db: Pick<PrismaClient, "session"> = prisma
 ): Promise<Session | null> {
-  return prisma.session.findUnique({
+  return db.session.findUnique({
     where: {
       runtimeEnvironmentId_externalId: { runtimeEnvironmentId: environment.id, externalId },
     },

@@ -1,30 +1,8 @@
-import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
-import { env } from "~/env.server";
+import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { logger } from "~/services/logger.server";
-import { readBodyWithCap } from "~/utils/readBodyWithCap.server";
-import { webhookIngressRateLimiter } from "~/services/webhookIngressRateLimit.server";
+import { admitWebhookIngress, readWebhookIngressRequest } from "~/v3/webhookIngress.server";
 import { webhookEngine } from "~/v3/webhookEngine.server";
 import { toWebhookHttpResponse, webhookHttpResponseFor } from "~/v3/webhookIngressResponse.server";
-
-/**
- * Shared gate for both methods: the feature flags, the opaque id, and the per-endpoint rate limit,
- * which runs before any database or secret work. Returns the response to send when the request is
- * refused, or the opaque id to continue with.
- */
-async function admit(params: { opaqueId?: string }): Promise<{ opaqueId: string } | Response> {
-  if (env.WEBHOOK_ENABLED !== "1" || env.WEBHOOK_INGRESS_ENABLED !== "1") {
-    return json({ error: "Not found" }, { status: 404 });
-  }
-  const opaqueId = params.opaqueId;
-  if (!opaqueId) return json({ error: "Not found" }, { status: 404 });
-
-  const rl = await webhookIngressRateLimiter.limit(opaqueId);
-  if (!rl.success) {
-    logger.info("webhook ingress rate limited", { opaqueId });
-    return json({ error: "Too many requests" }, { status: 429 });
-  }
-  return { opaqueId };
-}
 
 /**
  * GET: a provider's verification of the endpoint URL (Meta's `hub.challenge` flow). The engine
@@ -32,7 +10,7 @@ async function admit(params: { opaqueId?: string }): Promise<{ opaqueId: string 
  * declares none. Never records a delivery.
  */
 export async function loader({ request, params }: LoaderFunctionArgs) {
-  const admitted = await admit(params);
+  const admitted = await admitWebhookIngress(params);
   if (admitted instanceof Response) return admitted;
   const { opaqueId } = admitted;
 
@@ -50,7 +28,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 // signature scheme verifies. The engine resolves the endpoint (and its env id +
 // type) from the globally-unique opaqueId, so this route runs no env query.
 export async function action({ request, params }: ActionFunctionArgs) {
-  const admitted = await admit(params);
+  const admitted = await admitWebhookIngress(params);
   if (admitted instanceof Response) return admitted;
   const { opaqueId } = admitted;
 
@@ -59,21 +37,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return toWebhookHttpResponse(webhookHttpResponseFor(result));
   }
 
-  // Content-Length is a cheap fast-path reject; the capped streaming read is the real enforcement
-  // (a chunked request can omit/understate Content-Length and would otherwise buffer unbounded).
-  const limitBytes = env.WEBHOOK_INGRESS_BODY_SIZE_LIMIT_MB * 1024 * 1024;
-  const contentLength = Number(request.headers.get("content-length") ?? "0");
-  if (Number.isFinite(contentLength) && contentLength > limitBytes) {
-    return json({ error: "Payload too large" }, { status: 413 });
-  }
-
-  const rawBytes = await readBodyWithCap(request, limitBytes);
-  if (rawBytes === null) {
-    return json({ error: "Payload too large" }, { status: 413 });
-  }
-
-  const headers: Record<string, string> = {};
-  request.headers.forEach((v, k) => (headers[k] = v));
+  const body = await readWebhookIngressRequest(request);
+  if (body instanceof Response) return body;
+  const { rawBytes, headers } = body;
 
   const result = await webhookEngine.ingest({
     opaqueId,

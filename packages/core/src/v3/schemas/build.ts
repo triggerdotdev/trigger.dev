@@ -6,7 +6,8 @@ import {
   SkillManifest,
   TaskFile,
   TaskManifest,
-  WebhookManifest,
+  WebhookEndpointManifest,
+  WebhookSubscriberManifest,
   ConcurrencyLimitManifest,
 } from "./schemas.js";
 
@@ -114,7 +115,8 @@ export const WorkerManifest = z.object({
   tasks: TaskManifest.array(),
   prompts: PromptManifest.array().optional(),
   skills: SkillManifest.array().optional(),
-  webhooks: WebhookManifest.array().optional(), // NEW
+  webhookEndpoints: WebhookEndpointManifest.array().optional(),
+  webhookSubscribers: WebhookSubscriberManifest.array().optional(),
   unclaimedSessionWebhooks: z.array(z.string()).optional(), // session.webhook descriptors no agent listed
   queues: QueueManifest.array().optional(),
   concurrencyLimits: ConcurrencyLimitManifest.array().optional(),

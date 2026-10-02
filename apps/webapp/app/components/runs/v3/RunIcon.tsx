@@ -9,6 +9,7 @@ import {
   WrenchIcon,
 } from "@heroicons/react/24/outline";
 import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
+import { WebhookIcon } from "~/assets/icons/WebhookIcon";
 import { InfoIcon } from "~/assets/icons/InfoIcon";
 import {
   AnthropicIcon,
@@ -84,6 +85,8 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
       return <CubeSparkleIcon className={cn(className, "text-agents")} />;
     case "scheduled":
       return <ClockIcon className={cn(className, "text-schedules")} />;
+    case "webhook":
+      return <WebhookIcon className={cn(className, "text-webhooks")} />;
     case "attempt":
       return (
         <AttemptIcon

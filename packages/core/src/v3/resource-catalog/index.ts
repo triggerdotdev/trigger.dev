@@ -6,8 +6,9 @@ import type {
   SkillManifest,
   SkillMetadata,
   TaskManifest,
-  WebhookManifest,
-  WebhookMetadata,
+  WebhookEndpointManifest,
+  WebhookEndpointMetadata,
+  WebhookSubscriberManifest,
   WorkerManifest,
   ConcurrencyLimitManifest,
 } from "../schemas/index.js";
@@ -131,17 +132,23 @@ export class ResourceCatalogAPI {
     return this.#getCatalog().getSkillManifest(id);
   }
 
-  public registerWebhookMetadata(webhook: WebhookMetadata): void {
-    this.#getCatalog().registerWebhookMetadata(webhook);
+  public registerWebhookEndpointMetadata(endpoint: WebhookEndpointMetadata): void {
+    this.#getCatalog().registerWebhookEndpointMetadata(endpoint);
   }
-  public listWebhookManifests(): Array<WebhookManifest> {
-    return this.#getCatalog().listWebhookManifests();
+  public listWebhookEndpointManifests(): Array<WebhookEndpointManifest> {
+    return this.#getCatalog().listWebhookEndpointManifests();
   }
-  public getWebhookManifest(id: string): WebhookManifest | undefined {
-    return this.#getCatalog().getWebhookManifest(id);
+  public getWebhookEndpointManifest(id: string): WebhookEndpointManifest | undefined {
+    return this.#getCatalog().getWebhookEndpointManifest(id);
   }
-  public listWebhookIdCollisions(): Array<{ id: string; filePaths: string[] }> {
-    return this.#getCatalog().listWebhookIdCollisions();
+  public listWebhookEndpointIdCollisions(): Array<{ id: string; filePaths: string[] }> {
+    return this.#getCatalog().listWebhookEndpointIdCollisions();
+  }
+  public registerWebhookSubscriber(subscriber: WebhookSubscriberManifest): void {
+    this.#getCatalog().registerWebhookSubscriber(subscriber);
+  }
+  public listWebhookSubscribers(): Array<WebhookSubscriberManifest> {
+    return this.#getCatalog().listWebhookSubscribers();
   }
   public registerDeclaredSessionWebhook(id: string): void {
     this.#getCatalog().registerDeclaredSessionWebhook(id);

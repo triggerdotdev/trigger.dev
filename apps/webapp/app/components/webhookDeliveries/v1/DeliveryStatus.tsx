@@ -3,12 +3,13 @@ import { cn } from "~/utils/cn";
 
 // Reuse the run-status hex palette for the four delivery statuses (matches the
 // detail page activity chart and the task-list status bars). No invented colors.
-const DELIVERY_STATUS_COLOR: Record<WebhookDeliveryStatus, string> = {
+export const DELIVERY_STATUS_COLOR: Record<WebhookDeliveryStatus, string> = {
   SUCCEEDED: "#28BF5C",
   FAILED: "#E11D48",
   PROCESSING: "#3B82F6",
   PENDING: "#878C99",
   FILTERED: "#64748B", // received + verified, intentionally not routed; neutral, not a failure
+  UNMATCHED: "#64748B",
 };
 
 const DELIVERY_STATUS_LABEL: Record<WebhookDeliveryStatus, string> = {
@@ -17,6 +18,7 @@ const DELIVERY_STATUS_LABEL: Record<WebhookDeliveryStatus, string> = {
   PROCESSING: "Processing",
   PENDING: "Pending",
   FILTERED: "Filtered",
+  UNMATCHED: "Unmatched",
 };
 
 export function DeliveryStatusBadge({

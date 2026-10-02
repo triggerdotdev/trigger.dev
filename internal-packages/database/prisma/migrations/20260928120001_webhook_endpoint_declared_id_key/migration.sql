@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS "WebhookEndpoint_runtimeEnvironmentId_declaredId_endpointTen_key" ON "public"."WebhookEndpoint"("runtimeEnvironmentId", "declaredId", "endpointTenantId", "endpointExternalRef");

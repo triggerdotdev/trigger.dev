@@ -105,6 +105,8 @@ async function indexDeployment({
         prompts: workerManifest.prompts,
         queues: workerManifest.queues,
         concurrencyLimits: workerManifest.concurrencyLimits,
+        webhookEndpoints: workerManifest.webhookEndpoints,
+        webhookSubscribers: workerManifest.webhookSubscribers,
         sourceFiles,
         runtime: workerManifest.runtime,
         runtimeVersion: workerManifest.runtimeVersion,

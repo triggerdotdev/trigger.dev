@@ -326,4 +326,34 @@ export const webhookProviderConfigs = {
 
 export type WebhookProviderId = keyof typeof webhookProviderConfigs;
 
+const svixFamilySetupPrompt = [
+  "The provider issues the signing secret (it starts with whsec_) when an endpoint is added.",
+  "Add the webhook URL as an endpoint in the provider's webhook settings or through its API, subscribe it to the event types the subscribers' filters need, then read the endpoint's signing secret and store it on Trigger.dev.",
+].join("\n");
+
+/**
+ * Setup instructions for an AI agent, per preset. SDK producers attach these as the source's
+ * `setupPrompt`; the platform wraps them with the endpoint URL, subscribers and secret steps.
+ */
+export const webhookSetupPrompts: Partial<Record<WebhookPresetId, string>> = {
+  stripe: [
+    "Stripe issues the signing secret when a webhook endpoint is created, and returns it only in the create response.",
+    "Create the endpoint with the Stripe CLI or API, not the Dashboard, so you can read the secret from the response:",
+    '  stripe webhook_endpoints create -d url="<webhook URL>" -d "enabled_events[]=<event type>"',
+    "or POST https://api.stripe.com/v1/webhook_endpoints with `url` and `enabled_events[]`. The response's `secret` field is the signing secret.",
+    "Choose enabled_events from the subscribers' filters, which compare `event.type`. Use `*` only when a subscriber has no filter.",
+    "Use a test mode key for dev and staging environments and a live mode key for production.",
+  ].join("\n"),
+  github: [
+    "You choose the secret for a GitHub webhook, so generate it on Trigger.dev first and then give it to GitHub.",
+    "For a repository webhook, with the gh CLI:",
+    '  gh api repos/OWNER/REPO/hooks -f name=web -f "config[url]=<webhook URL>" -f "config[content_type]=json" -f "config[secret]=<secret>" -f "events[]=<event>" -F active=true',
+    "Use orgs/ORG/hooks for an organization webhook. For a GitHub App, set the webhook URL and secret in the app's settings.",
+    "`content_type` must be json. GitHub sends the event name in the x-github-event header; choose events from the subscribers' filters, or `*` for all.",
+    "If the repository or organization isn't clear from the workspace (for example its git remote), ask the user.",
+  ].join("\n"),
+  svix: svixFamilySetupPrompt,
+  "standard-webhooks": svixFamilySetupPrompt,
+};
+
 export * from "../schemas/webhookConfig.js";

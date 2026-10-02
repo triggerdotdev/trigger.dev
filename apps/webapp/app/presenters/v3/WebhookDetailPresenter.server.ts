@@ -1,4 +1,5 @@
 import { type ClickHouse } from "@internal/clickhouse";
+import { webhookEndpointSubscribers } from "~/v3/webhookSetupPrompt";
 import {
   type Prisma,
   type PrismaClientOrTransaction,
@@ -20,19 +21,24 @@ import {
 
 type WebhookEndpointSummary = {
   id: string;
+  friendlyId: string;
   opaqueId: string;
-  status: string;
+  declaredId: string;
+  source: string;
+  status: WebhookEndpointStatus;
+  isDefault: boolean;
+  tenantId: string | null;
   hasSigningSecret: boolean;
+  /** The task's filter on this endpoint, or null when it receives every delivery. */
+  filter: string | null;
 };
 
+/** A task that subscribes to webhook endpoints (a webhook() task), and those endpoints. */
 export type WebhookDetail = {
   slug: string;
   filePath: string;
-  triggerSource: "WEBHOOK";
-  source: string;
-  metadata: unknown;
   createdAt: Date;
-  endpoint: WebhookEndpointSummary;
+  endpoints: WebhookEndpointSummary[];
 };
 
 type WebhookActivityPoint = {
@@ -44,28 +50,20 @@ export type WebhookActivity = {
   statuses: string[];
 };
 
-export type WebhookDeliveryListItem = {
+/** A row on an endpoint's Deliveries tab: which runs it reached is on the delivery page. */
+export type EndpointDeliveryListItem = {
   id: string;
   friendlyId: string;
   externalDeliveryId: string;
   status: WebhookDeliveryStatus;
   isTest: boolean;
-  runId: string | null;
-  run: { friendlyId: string } | null;
-  // Set when the delivery routed to a chat.agent session (the run belongs to a session). The session
-  // is the meaningful target here, so the table links it instead of the incidental run.
-  session: { friendlyId: string; externalId: string | null } | null;
   errorMessage: string | null;
   createdAt: Date;
   processedAt: Date | null;
-  // Only populated by the cross-endpoint (top-level) deliveries list, where the
-  // table shows which webhook each delivery belongs to. Undefined on the scoped
-  // per-webhook detail page.
-  webhook?: { slug: string; source: string } | null;
 };
 
 export type WebhookDeliveriesList = {
-  deliveries: WebhookDeliveryListItem[];
+  deliveries: EndpointDeliveryListItem[];
   pagination: { next?: string; previous?: string };
   filters: { from?: number; to?: number };
   hasFilters: boolean;
@@ -104,22 +102,11 @@ export async function resolveDeliveryRunTargets(
   return { runFriendlyIdById, sessionByRunId };
 }
 
-export type WebhookEndpointListItem = {
-  friendlyId: string;
-  // The declared default endpoint (no tenant/externalRef scope).
-  isDefault: boolean;
-  tenantId: string | null;
-  externalRef: string | null;
-  status: WebhookEndpointStatus;
-  hasSigningSecret: boolean;
-  deliveryCount: number;
-};
-
 export type WebhookEndpointDetail = {
   id: string;
   friendlyId: string;
   opaqueId: string;
-  handlerWebhookId: string;
+  declaredId: string;
   source: string;
   status: WebhookEndpointStatus;
   isDefault: boolean;
@@ -129,15 +116,12 @@ export type WebhookEndpointDetail = {
   // "provider" | "integrator" | "either" — drives the Connect UI (paste vs generate).
   secretProvisioning: string;
   // Tagged-union JSON parsed by the route with the @trigger.dev/core schemas.
-  routingTarget: Prisma.JsonValue;
+  routingTargets: Prisma.JsonValue;
   verifierArtifact: Prisma.JsonValue;
   metadata: Prisma.JsonValue;
   createdAt: Date;
   updatedAt: Date;
 };
-
-// 7-day rolling window for the per-endpoint delivery counts on the Endpoints tab.
-const ENDPOINT_DELIVERY_COUNT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 // Run-status group order, shared with getRunActivity. Mirrors AgentDetailPresenter.
 const TERMINAL_GROUPS = {
@@ -167,9 +151,6 @@ function groupForStatus(status: string): GroupLabel | undefined {
   return undefined;
 }
 
-// Stable legend order for the deliveries activity chart.
-const DELIVERY_STATUSES = ["PENDING", "PROCESSING", "SUCCEEDED", "FAILED", "FILTERED"] as const;
-
 const DELIVERIES_PAGE_SIZE = 25;
 
 export class WebhookDetailPresenter {
@@ -198,122 +179,70 @@ export class WebhookDetailPresenter {
       where: {
         workerId: currentWorker.id,
         slug: webhookSlug,
-        triggerSource: "WEBHOOK",
       },
       select: {
         slug: true,
         filePath: true,
-        triggerSource: true,
         createdAt: true,
       },
     });
 
     if (!task) return null;
 
-    const endpoint = await webhookReplica.webhookEndpoint.findFirst({
+    const endpoints = await webhookReplica.webhookEndpoint.findMany({
       where: {
         runtimeEnvironmentId: environmentId,
-        handlerWebhookId: webhookSlug,
-        endpointTenantId: "",
-        endpointExternalRef: "",
+        routingTargets: { array_contains: [{ type: "task", taskId: webhookSlug }] },
+        status: { not: "DELETING" },
       },
       select: {
         id: true,
+        friendlyId: true,
         opaqueId: true,
-        status: true,
+        declaredId: true,
         source: true,
-        metadata: true,
+        status: true,
+        endpointTenantId: true,
+        endpointExternalRef: true,
         // signingSecretKey is selected ONLY to derive hasSigningSecret below.
         // The secret value never leaves this method.
         signingSecretKey: true,
+        routingTargets: true,
       },
+      orderBy: [{ declaredId: "asc" }, { endpointTenantId: "asc" }, { createdAt: "desc" }],
     });
-
-    if (!endpoint) return null;
 
     return {
       slug: task.slug,
       filePath: task.filePath,
-      triggerSource: "WEBHOOK",
-      source: endpoint.source,
-      metadata: endpoint.metadata,
       createdAt: task.createdAt,
-      endpoint: {
+      endpoints: endpoints.map((endpoint) => ({
         id: endpoint.id,
-        opaqueId: endpoint.opaqueId,
-        status: endpoint.status,
-        hasSigningSecret: endpoint.signingSecretKey != null && endpoint.signingSecretKey !== "",
-      },
-    };
-  }
-
-  async listEndpoints({
-    organizationId,
-    projectId,
-    environmentId,
-    handlerWebhookId,
-  }: {
-    organizationId: string;
-    projectId: string;
-    environmentId: string;
-    handlerWebhookId: string;
-  }): Promise<WebhookEndpointListItem[]> {
-    const endpoints = await webhookReplica.webhookEndpoint.findMany({
-      where: { runtimeEnvironmentId: environmentId, handlerWebhookId },
-      select: {
-        id: true,
-        friendlyId: true,
-        endpointTenantId: true,
-        endpointExternalRef: true,
-        status: true,
-        signingSecretKey: true,
-        createdAt: true,
-      },
-      // Default endpoint (empty scope) first, then most recent.
-      orderBy: [{ endpointTenantId: "asc" }, { createdAt: "desc" }],
-    });
-
-    const repository = webhookDeliveriesRepository({
-      clickhouse: this.clickhouse,
-      prisma: webhookReplica,
-    });
-
-    // Per-endpoint 7d delivery counts in ONE grouped CH query (not an N+1 of count queries).
-    // Degrade to empty (0 per endpoint) on error rather than failing the whole tab.
-    const deliveryCounts = await repository
-      .countDeliveriesByEndpoint({
-        organizationId,
-        projectId,
-        environmentId,
-        webhookEndpointIds: endpoints.map((endpoint) => endpoint.id),
-        period: ENDPOINT_DELIVERY_COUNT_WINDOW_MS,
-      })
-      .catch(() => new Map<string, number>());
-
-    return endpoints.map((endpoint) => {
-      const isDefault = endpoint.endpointTenantId === "" && endpoint.endpointExternalRef === "";
-
-      return {
         friendlyId: endpoint.friendlyId,
-        isDefault,
-        tenantId: endpoint.endpointTenantId === "" ? null : endpoint.endpointTenantId,
-        externalRef: endpoint.endpointExternalRef === "" ? null : endpoint.endpointExternalRef,
+        opaqueId: endpoint.opaqueId,
+        declaredId: endpoint.declaredId,
+        source: endpoint.source,
         status: endpoint.status,
+        isDefault: endpoint.endpointTenantId === "" && endpoint.endpointExternalRef === "",
+        tenantId: endpoint.endpointTenantId || null,
         hasSigningSecret: endpoint.signingSecretKey != null && endpoint.signingSecretKey !== "",
-        deliveryCount: deliveryCounts.get(endpoint.id) ?? 0,
-      } satisfies WebhookEndpointListItem;
-    });
+        filter:
+          webhookEndpointSubscribers(endpoint.routingTargets).find(
+            (subscriber) => subscriber.type === "task" && subscriber.taskId === webhookSlug
+          )?.filter ?? null,
+      })),
+    };
   }
 
   async listComposerEndpoints({
     environmentId,
-    handlerWebhookId,
+    declaredId,
   }: {
     environmentId: string;
-    handlerWebhookId: string;
+    declaredId: string;
   }): Promise<WebhookComposerEndpointData[]> {
     const endpoints = await webhookReplica.webhookEndpoint.findMany({
-      where: { runtimeEnvironmentId: environmentId, handlerWebhookId },
+      where: { runtimeEnvironmentId: environmentId, declaredId },
       select: {
         friendlyId: true,
         opaqueId: true,
@@ -342,14 +271,14 @@ export class WebhookDetailPresenter {
         id: true,
         friendlyId: true,
         opaqueId: true,
-        handlerWebhookId: true,
+        declaredId: true,
         source: true,
         status: true,
         endpointTenantId: true,
         endpointExternalRef: true,
         signingSecretKey: true,
         secretProvisioning: true,
-        routingTarget: true,
+        routingTargets: true,
         verifierArtifact: true,
         metadata: true,
         createdAt: true,
@@ -363,7 +292,7 @@ export class WebhookDetailPresenter {
       id: endpoint.id,
       friendlyId: endpoint.friendlyId,
       opaqueId: endpoint.opaqueId,
-      handlerWebhookId: endpoint.handlerWebhookId,
+      declaredId: endpoint.declaredId,
       source: endpoint.source,
       status: endpoint.status,
       isDefault: endpoint.endpointTenantId === "" && endpoint.endpointExternalRef === "",
@@ -371,7 +300,7 @@ export class WebhookDetailPresenter {
       externalRef: endpoint.endpointExternalRef,
       hasSigningSecret: endpoint.signingSecretKey != null && endpoint.signingSecretKey !== "",
       secretProvisioning: endpoint.secretProvisioning,
-      routingTarget: endpoint.routingTarget,
+      routingTargets: endpoint.routingTargets,
       verifierArtifact: endpoint.verifierArtifact,
       metadata: endpoint.metadata,
       createdAt: endpoint.createdAt,
@@ -478,97 +407,6 @@ export class WebhookDetailPresenter {
     return { data: points, statuses: orderedStatuses };
   }
 
-  async getDeliveryActivity({
-    organizationId,
-    projectId,
-    environmentId,
-    webhookEndpointId,
-    from,
-    to,
-  }: {
-    organizationId: string;
-    projectId: string;
-    environmentId: string;
-    webhookEndpointId: string;
-    from: Date;
-    to: Date;
-  }): Promise<WebhookActivity> {
-    const rangeMs = Math.max(1, to.getTime() - from.getTime());
-    const oneHour = 60 * 60 * 1000;
-    const oneDay = 24 * oneHour;
-    const bucketSeconds = rangeMs <= oneDay ? 3600 : rangeMs <= 7 * oneDay ? 6 * 3600 : 24 * 3600;
-
-    const queryFn = this.clickhouse.reader.query({
-      name: "webhookDeliveryStatusActivity",
-      query: `SELECT
-          toUnixTimestamp(toStartOfInterval(created_at, INTERVAL {bucketSeconds: UInt32} SECOND)) AS bucket,
-          status, count() AS val
-        FROM trigger_dev.webhook_deliveries_v1 FINAL
-        WHERE organization_id = {organizationId: String}
-          AND project_id = {projectId: String}
-          AND environment_id = {environmentId: String}
-          AND webhook_endpoint_id = {webhookEndpointId: String}
-          AND created_at >= {fromTime: DateTime64(3, 'UTC')}
-          AND created_at < {toTime: DateTime64(3, 'UTC')}
-          AND _is_deleted = 0
-        GROUP BY bucket, status
-        ORDER BY bucket`,
-      params: z.object({
-        organizationId: z.string(),
-        projectId: z.string(),
-        environmentId: z.string(),
-        webhookEndpointId: z.string(),
-        bucketSeconds: z.number(),
-        fromTime: z.string(),
-        toTime: z.string(),
-      }),
-      schema: z.object({
-        bucket: z.coerce.number(),
-        status: z.string(),
-        val: z.coerce.number(),
-      }),
-    });
-
-    const [error, rows] = await queryFn({
-      organizationId,
-      projectId,
-      environmentId,
-      webhookEndpointId,
-      bucketSeconds,
-      fromTime: from.toISOString().slice(0, -1),
-      toTime: to.toISOString().slice(0, -1),
-    });
-
-    if (error) {
-      console.error("Webhook delivery activity query failed:", error);
-      return { data: [], statuses: [] };
-    }
-
-    const bucketMap = new Map<number, Record<string, number>>();
-    for (const row of rows) {
-      const ts = row.bucket * 1000;
-      const existing = bucketMap.get(ts) ?? {};
-      existing[row.status] = (existing[row.status] ?? 0) + row.val;
-      bucketMap.set(ts, existing);
-    }
-
-    const bucketMs = bucketSeconds * 1000;
-    const start = Math.floor(from.getTime() / bucketMs) * bucketMs;
-    const end = Math.ceil(to.getTime() / bucketMs) * bucketMs;
-    const points: WebhookActivityPoint[] = [];
-    const orderedStatuses = [...DELIVERY_STATUSES];
-    for (let ts = start; ts < end; ts += bucketMs) {
-      const existing = bucketMap.get(ts) ?? {};
-      const point: WebhookActivityPoint = { bucket: ts };
-      for (const s of orderedStatuses) {
-        point[s] = existing[s] ?? 0;
-      }
-      points.push(point);
-    }
-
-    return { data: points, statuses: orderedStatuses };
-  }
-
   async listDeliveries({
     organizationId,
     projectId,
@@ -584,7 +422,7 @@ export class WebhookDetailPresenter {
     organizationId: string;
     projectId: string;
     environmentId: string;
-    webhookEndpointId: string;
+    webhookEndpointId?: string;
     period?: string;
     from?: number;
     to?: number;
@@ -611,29 +449,16 @@ export class WebhookDetailPresenter {
       page: { size: DELIVERIES_PAGE_SIZE, cursor, direction },
     });
 
-    // A delivery's runId is the INTERNAL run id (no FK); resolve friendlyIds and, for session
-    // deliveries, the session the run belongs to, with a small keyed lookup.
-    const { runFriendlyIdById, sessionByRunId } = await resolveDeliveryRunTargets(
-      this.replica,
-      deliveries
-    );
-
-    const items: WebhookDeliveryListItem[] = deliveries.map((d) => {
-      const friendlyId = d.runId ? runFriendlyIdById.get(d.runId) : undefined;
-      return {
-        id: d.id,
-        friendlyId: d.friendlyId,
-        externalDeliveryId: d.externalDeliveryId,
-        status: d.status,
-        isTest: d.isTest,
-        runId: d.runId,
-        run: friendlyId ? { friendlyId } : null,
-        session: d.runId ? (sessionByRunId.get(d.runId) ?? null) : null,
-        errorMessage: d.errorMessage,
-        createdAt: d.createdAt,
-        processedAt: d.processedAt,
-      };
-    });
+    const items: EndpointDeliveryListItem[] = deliveries.map((d) => ({
+      id: d.id,
+      friendlyId: d.friendlyId,
+      externalDeliveryId: d.externalDeliveryId,
+      status: d.status,
+      isTest: d.isTest,
+      errorMessage: d.errorMessage,
+      createdAt: d.createdAt,
+      processedAt: d.processedAt,
+    }));
 
     return {
       deliveries: items,

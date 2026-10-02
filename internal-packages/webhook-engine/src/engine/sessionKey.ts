@@ -27,7 +27,7 @@ export function evaluateSessionKeyTemplate(
   return ok ? out : undefined;
 }
 
-function resolveKeyPath(path: string, ns: SessionKeyNamespaces): unknown {
+export function resolveKeyPath(path: string, ns: SessionKeyNamespaces): unknown {
   if (path.startsWith("webhook.")) {
     return ns.webhook[path.slice("webhook.".length)];
   }
@@ -51,4 +51,9 @@ export function walkPath(root: unknown, dotted: string): unknown {
     current = (current as Record<string, unknown>)[segment];
   }
   return current;
+}
+
+/** A stored key template in the `{event.x}` form users write it in (it is stored with `body.`). */
+export function displaySessionKeyTemplate(template: string): string {
+  return template.replace(/(\{\s*|\|\|\s*)body(?=[.}\s|])/g, "$1event");
 }

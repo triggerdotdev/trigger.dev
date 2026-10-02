@@ -58,9 +58,8 @@ import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import TooltipPortal from "~/components/primitives/TooltipPortal";
 import {
   ActivityBarChart,
+  ActivityBarChartBlankState,
   ACTIVITY_CHART_HEIGHT,
-  ACTIVITY_CHART_PEAK_CLASS,
-  ACTIVITY_CHART_WIDTH,
 } from "~/components/metrics/ActivityBarChart";
 import { TaskFileName } from "~/components/runs/v3/TaskPath";
 import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
@@ -613,16 +612,16 @@ function TaskRow({
       <TableCell to={rowPath} actionClassName="py-1.5">
         <div style={{ width: ACTIVITY_CELL_WIDTH, height: ACTIVITY_CHART_HEIGHT }}>
           <div hidden={isPanelAnimating}>
-            <ClientOnly fallback={<TaskActivityBlankState />}>
+            <ClientOnly fallback={<ActivityBarChartBlankState />}>
               {() => (
-                <Suspense fallback={<TaskActivityBlankState />}>
+                <Suspense fallback={<ActivityBarChartBlankState />}>
                   <TypedAwait resolve={hourlyActivity} errorElement={<FailedToLoadStats />}>
                     {(data) => {
                       const taskData = data[item.slug];
                       return taskData && taskData.length > 0 ? (
                         <TaskActivityGraph activity={taskData} />
                       ) : (
-                        <TaskActivityBlankState />
+                        <ActivityBarChartBlankState />
                       );
                     }}
                   </TypedAwait>
@@ -812,25 +811,6 @@ function TaskActivityGraph({ activity }: { activity: HourlyTaskActivity[string] 
         />
       ))}
     </ActivityBarChart>
-  );
-}
-
-// SVG line matches recharts' y=0 ReferenceLine anti-aliasing; a CSS border looks too crisp.
-function TaskActivityBlankState() {
-  return (
-    <div className="flex items-start gap-1.5">
-      <svg width={ACTIVITY_CHART_WIDTH} height={ACTIVITY_CHART_HEIGHT} className="rounded-sm">
-        <line
-          x1={0}
-          y1={ACTIVITY_CHART_HEIGHT}
-          x2={ACTIVITY_CHART_WIDTH}
-          y2={ACTIVITY_CHART_HEIGHT}
-          stroke="var(--color-border-bright)"
-          strokeWidth={1}
-        />
-      </svg>
-      <span className={ACTIVITY_CHART_PEAK_CLASS}>0</span>
-    </div>
   );
 }
 

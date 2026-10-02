@@ -6,8 +6,9 @@ import type {
   TaskFileMetadata,
   TaskMetadata,
   TaskManifest,
-  WebhookManifest,
-  WebhookMetadata,
+  WebhookEndpointManifest,
+  WebhookEndpointMetadata,
+  WebhookSubscriberManifest,
   WorkerManifest,
   QueueManifest,
   ConcurrencyLimitManifest,
@@ -45,9 +46,10 @@ export class StandardResourceCatalog implements ResourceCatalog {
   private _concurrencyLimitMetadata: Map<string, ConcurrencyLimitManifest> = new Map();
   private _skillMetadata: Map<string, SkillMetadata> = new Map();
   private _skillFileMetadata: Map<string, TaskFileMetadata> = new Map();
-  private _webhookMetadata: Map<string, WebhookMetadata> = new Map();
-  private _webhookFileMetadata: Map<string, TaskFileMetadata> = new Map();
-  private _webhookIdCollisions: Array<{ id: string; filePaths: string[] }> = [];
+  private _webhookEndpointMetadata: Map<string, WebhookEndpointMetadata> = new Map();
+  private _webhookEndpointFileMetadata: Map<string, TaskFileMetadata> = new Map();
+  private _webhookEndpointIdCollisions: Array<{ id: string; filePaths: string[] }> = [];
+  private _webhookSubscribers: Array<WebhookSubscriberManifest> = [];
   private _declaredSessionWebhooks: Set<string> = new Set();
   private _claimedSessionWebhooks: Set<string> = new Set();
   private _sentinelContextWarned: Set<string> = new Set();
@@ -395,37 +397,46 @@ export class StandardResourceCatalog implements ResourceCatalog {
     };
   }
 
-  registerWebhookMetadata(webhook: WebhookMetadata): void {
+  registerWebhookEndpointMetadata(endpoint: WebhookEndpointMetadata): void {
     if (!this._currentFileContext) {
       return;
     }
-    if (!webhook.id) {
+    if (!endpoint.id) {
       return;
     }
 
     if (
-      this._webhookMetadata.has(webhook.id) &&
+      this._webhookEndpointMetadata.has(endpoint.id) &&
       this._currentFileContext.filePath !== NO_FILE_CONTEXT
     ) {
-      const existingFilePath = this._webhookFileMetadata.get(webhook.id)?.filePath;
+      const existingFilePath = this._webhookEndpointFileMetadata.get(endpoint.id)?.filePath;
       const currentFilePath = this._currentFileContext.filePath;
-      const collision = this._webhookIdCollisions.find((c) => c.id === webhook.id);
+      const collision = this._webhookEndpointIdCollisions.find((c) => c.id === endpoint.id);
       if (collision) {
         collision.filePaths.push(currentFilePath);
       } else {
-        this._webhookIdCollisions.push({
-          id: webhook.id,
+        this._webhookEndpointIdCollisions.push({
+          id: endpoint.id,
           filePaths: [existingFilePath ?? currentFilePath, currentFilePath],
         });
       }
     }
 
-    this._webhookFileMetadata.set(webhook.id, { ...this._currentFileContext });
-    this._webhookMetadata.set(webhook.id, webhook);
+    this._webhookEndpointFileMetadata.set(endpoint.id, { ...this._currentFileContext });
+    this._webhookEndpointMetadata.set(endpoint.id, endpoint);
   }
 
-  listWebhookIdCollisions(): Array<{ id: string; filePaths: string[] }> {
-    return this._webhookIdCollisions;
+  listWebhookEndpointIdCollisions(): Array<{ id: string; filePaths: string[] }> {
+    return this._webhookEndpointIdCollisions;
+  }
+
+  registerWebhookSubscriber(subscriber: WebhookSubscriberManifest): void {
+    if (!subscriber.endpointId || !subscriber.target.id) return;
+    this._webhookSubscribers.push(subscriber);
+  }
+
+  listWebhookSubscribers(): Array<WebhookSubscriberManifest> {
+    return this._webhookSubscribers;
   }
 
   registerDeclaredSessionWebhook(id: string): void {
@@ -442,19 +453,19 @@ export class StandardResourceCatalog implements ResourceCatalog {
     return [...this._declaredSessionWebhooks].filter((id) => !this._claimedSessionWebhooks.has(id));
   }
 
-  listWebhookManifests(): Array<WebhookManifest> {
-    const result: Array<WebhookManifest> = [];
-    for (const [id, metadata] of this._webhookMetadata) {
-      const fileMetadata = this._webhookFileMetadata.get(id);
+  listWebhookEndpointManifests(): Array<WebhookEndpointManifest> {
+    const result: Array<WebhookEndpointManifest> = [];
+    for (const [id, metadata] of this._webhookEndpointMetadata) {
+      const fileMetadata = this._webhookEndpointFileMetadata.get(id);
       if (!fileMetadata) continue;
       result.push({ ...metadata, ...fileMetadata });
     }
     return result;
   }
 
-  getWebhookManifest(id: string): WebhookManifest | undefined {
-    const metadata = this._webhookMetadata.get(id);
-    const fileMetadata = this._webhookFileMetadata.get(id);
+  getWebhookEndpointManifest(id: string): WebhookEndpointManifest | undefined {
+    const metadata = this._webhookEndpointMetadata.get(id);
+    const fileMetadata = this._webhookEndpointFileMetadata.get(id);
     if (!metadata || !fileMetadata) return undefined;
     return { ...metadata, ...fileMetadata };
   }

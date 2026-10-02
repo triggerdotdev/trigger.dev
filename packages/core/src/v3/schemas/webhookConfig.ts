@@ -1,5 +1,6 @@
 import { z } from "zod/v4";
 import { discriminatedUnion } from "../utils/zod.js";
+import type { FilterAst } from "./webhookFilter.js";
 
 // Ingress webhook verification config. Kept in a LEAF module (imports only `z` and
 // the Zod compatibility helper) so it can be consumed by resources.ts / schemas.ts without dragging in the alert-webhook
@@ -235,27 +236,59 @@ export const WebhookVerifierArtifact = discriminatedUnion("kind", [
 ]);
 export type WebhookVerifierArtifact = z.infer<typeof WebhookVerifierArtifact>;
 
-// ── Routing target: data-only tagged union stored on WebhookEndpoint.routingTarget ──
-// P1 implements only { type: "task" }. The session variant routes a delivery to a find-or-created
-// session: keyTemplate resolves the externalId, deliverAs selects the mode. "action" (chat.event)
-// carries actionType → the onAction envelope's action.type; "message" (channels) carries connectorId
-// → the run resolves the connector's inbound() mapper and runs a turn.
+/**
+ * One subscriber of a shared endpoint. `id` is the descriptor that declared it (the `webhook()` id, or
+ * `agentId:eventId` / `agentId:connectorId` for a session subscriber) and is unique within the endpoint.
+ * `filter` is this subscriber's own delivery filter; the session variant's `startOn` separately gates
+ * session creation.
+ */
 export const WebhookRoutingTarget = discriminatedUnion("type", [
-  z.object({ type: z.literal("task"), taskId: z.string() }),
+  z.object({
+    type: z.literal("task"),
+    id: z.string().min(1),
+    taskId: z.string(),
+    filter: z.string().optional(),
+  }),
   z.object({
     type: z.literal("session"),
+    id: z.string().min(1),
     taskIdentifier: z.string(),
     keyTemplate: z.string(),
     deliverAs: z.enum(["action", "message"]),
     actionType: z.string().optional(),
     connectorId: z.string().optional(),
     triggerConfigTemplate: z.record(z.string(), z.unknown()).optional(),
-    // Gate session CREATION: an event that already resolves to an existing session always resumes it,
-    // but a key with no session is only started when the event matches this filter. Absent => always start.
     startOn: z.string().optional(),
+    filter: z.string().optional(),
   }),
 ]);
 export type WebhookRoutingTarget = z.infer<typeof WebhookRoutingTarget>;
+
+/** A routing target as stored on `WebhookEndpoint.routingTargets`, with its filter compiled at deploy. */
+export type StoredWebhookRoutingTarget = WebhookRoutingTarget & {
+  filterAst?: FilterAst;
+  filterAstVersion?: number;
+};
+
+export const WebhookDeliveryTargetStatus = z.enum(["PENDING", "FILTERED", "SUCCEEDED", "FAILED"]);
+export type WebhookDeliveryTargetStatus = z.infer<typeof WebhookDeliveryTargetStatus>;
+
+/** One target's outcome for one delivery, stored on `WebhookDelivery.targets`. */
+export const WebhookDeliveryTargetResult = z.object({
+  id: z.string(),
+  type: z.enum(["task", "session", "waiter"]),
+  status: WebhookDeliveryTargetStatus,
+  reason: z.string().optional(),
+  runId: z.string().optional(),
+  error: z.string().optional(),
+  /** For a session target: how it was delivered, kept so the result reads the same after a redeploy. */
+  deliverAs: z.enum(["action", "message"]).optional(),
+  /** On a replay's target: the task the replay was authorized to reach. If the subscriber now points elsewhere, it fails instead of running. */
+  taskId: z.string().optional(),
+  /** On the delivery's one waiter entry: how many waiters it matched, resumed and failed to resume. */
+  waiters: z.object({ matched: z.number(), resumed: z.number(), failed: z.number() }).optional(),
+});
+export type WebhookDeliveryTargetResult = z.infer<typeof WebhookDeliveryTargetResult>;
 
 // ── Data-only verdict the engine verifier returns (M5 consumes) ──
 export const WebhookVerifierResult = z.object({

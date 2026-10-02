@@ -9,3 +9,8 @@ function webhookIngressOrigin(): string {
 export function webhookIngressUrl(opaqueId: string): string {
   return `${webhookIngressOrigin()}/webhooks/v1/ingest/${opaqueId}`;
 }
+
+/** An ingress-relative path (a URL-matched waiter's own URL) on the public ingress origin. */
+export function webhookIngressPathUrl(path: string): string {
+  return `${webhookIngressOrigin()}${path}`;
+}

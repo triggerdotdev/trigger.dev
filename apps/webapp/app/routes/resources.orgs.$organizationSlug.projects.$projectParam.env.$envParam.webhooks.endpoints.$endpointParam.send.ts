@@ -17,6 +17,7 @@ import { webhookEngine } from "~/v3/webhookEngine.server";
 import { webhookHttpResponseFor } from "~/v3/webhookIngressResponse.server";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
 import { flag } from "~/v3/featureFlags.server";
+import { webhookSigningSecretKey } from "~/v3/webhookSigningSecret.server";
 
 const ParamsSchema = EnvironmentParamSchema.extend({ endpointParam: z.string() });
 
@@ -141,7 +142,7 @@ export async function action({ request, params }: ActionFunctionArgs): Promise<W
     const secretStore = getSecretStore("DATABASE", { prismaClient: prisma });
     const stored = await secretStore.getSecret(
       SigningSecretSchema,
-      `webhook:signing-secret:${endpoint.id}`
+      webhookSigningSecretKey(endpoint.id)
     );
     if (!stored?.secret) {
       const answer = webhookHttpResponseFor({

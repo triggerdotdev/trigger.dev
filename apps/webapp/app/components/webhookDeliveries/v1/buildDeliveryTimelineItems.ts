@@ -117,7 +117,6 @@ export function buildDeliveryTimelineItems(
       previousDate: createdAt,
       state: "error",
       variant: "end-cap-thick",
-      note: delivery.errorMessage,
     });
   }
 

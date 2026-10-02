@@ -223,6 +223,48 @@ export const toolsMetadata = {
     description:
       "Reactivate a previous dashboard-sourced version as the active override. Use get_prompt_versions to find dashboard versions that can be reactivated.",
   },
+  list_webhook_endpoints: {
+    name: "list_webhook_endpoints",
+    title: "List Webhook Endpoints",
+    description:
+      "List the hosted webhook endpoints in the project environment: each endpoint's id (wh_...), declared id, provider source, status, webhook URL and whether its signing secret is set. Use get_webhook_endpoint_details for an endpoint's subscribers and setup prompt.",
+  },
+  get_webhook_endpoint_details: {
+    name: "get_webhook_endpoint_details",
+    title: "Get Webhook Endpoint Details",
+    description:
+      "Get a hosted webhook endpoint's details, its subscribers (with the filters that decide which events they accept) and its setup prompt: step-by-step instructions for registering the endpoint with its provider and handling the signing secret. Follow the setup prompt when asked to connect or configure a webhook.",
+  },
+  list_webhook_deliveries: {
+    name: "list_webhook_deliveries",
+    title: "List Webhook Deliveries",
+    description:
+      "List recent webhook deliveries (the verified events providers sent), newest first, optionally for one endpoint and only some statuses: succeeded, failed, filtered (no subscriber's filter accepted it), pending or processing. Use this to find out whether a provider's event arrived, then get_webhook_delivery for where it went.",
+  },
+  get_webhook_delivery: {
+    name: "get_webhook_delivery",
+    title: "Get Webhook Delivery",
+    description:
+      "Get one webhook delivery: its status and error, what happened at each subscriber (the run or session it triggered, or why its filter skipped the event), how many waiting runs it resumed, and the event body and headers it carried. Use this to debug why a webhook did or didn't trigger a task.",
+  },
+  replay_webhook_delivery: {
+    name: "replay_webhook_delivery",
+    title: "Replay Webhook Delivery",
+    description:
+      "Replay a webhook delivery from its stored event as a new delivery. With no targetId it goes to every subscriber again, re-checking their filters; with targetId it goes to that one subscriber even if its filter skipped the event. Replays trigger real runs, so confirm with the user first.",
+  },
+  generate_webhook_secret: {
+    name: "generate_webhook_secret",
+    title: "Generate Webhook Secret",
+    description:
+      "Generate a new signing secret for a hosted webhook endpoint and return it once, for providers where you choose the secret (for example GitHub). This replaces any existing secret, so deliveries fail until the provider uses the new one. Never print, log or commit the returned secret.",
+  },
+  set_webhook_secret: {
+    name: "set_webhook_secret",
+    title: "Set Webhook Secret",
+    description:
+      "Store the signing secret (or public key) a provider issued for a hosted webhook endpoint, for example the whsec_ secret Stripe returns when a webhook endpoint is created. This replaces any existing secret.",
+  },
   list_agents: {
     name: "list_agents",
     title: "List Agents",

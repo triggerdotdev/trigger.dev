@@ -13,4 +13,5 @@ export type {
   IngestInput,
   IngestResult,
   ReplayResult,
+  WebhookWaitpointPorts,
 } from "./engine/types.js";

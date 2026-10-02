@@ -1,17 +1,6 @@
-import { z } from "zod";
 import { CronSchema, type WorkerCatalog } from "@trigger.dev/redis-worker";
 
 export const webhookWorkerCatalog = {
-  "webhook.deliver": {
-    schema: z.object({
-      deliveryId: z.string(),
-      createdAt: z.coerce.date(),
-    }),
-    visibilityTimeoutMs: 60_000,
-    retry: {
-      maxAttempts: 5,
-    },
-  },
   ensurePartitions: {
     schema: CronSchema,
     visibilityTimeoutMs: 60_000 * 5,

@@ -64,6 +64,7 @@ export type DetailedWebhookDelivery = Prisma.WebhookDeliveryGetPayload<{
     runtimeEnvironmentId: true;
     environmentType: true;
     status: true;
+    isTest: true;
     externalDeliveryId: true;
     idempotencyKey: true;
     runId: true;
@@ -72,6 +73,7 @@ export type DetailedWebhookDelivery = Prisma.WebhookDeliveryGetPayload<{
     headers: true;
     errorMessage: true;
     filterReason: true;
+    targets: true;
     createdAt: true;
     updatedAt: true;
     processedAt: true;

@@ -1,6 +1,9 @@
 import {
   type WebhookDeliveryListItem as ApiWebhookDeliveryListItem,
   type WebhookDeliveryObject,
+  type WebhookDeliveryTargetApiStatus,
+  type WebhookDeliveryTargetObject,
+  type WebhookDeliveryTargetStatus,
 } from "@trigger.dev/core/v3";
 import { type WebhookDeliveryStatus } from "@trigger.dev/database";
 import { z } from "zod";
@@ -8,9 +11,14 @@ import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstan
 import { type ApiAuthenticationResultSuccess } from "~/services/apiAuth.server";
 import { CoercedDate } from "~/utils/zod";
 import { BasePresenter } from "./basePresenter.server";
-import { WebhookDeliveriesListPresenter } from "./WebhookDeliveriesListPresenter.server";
-import { WebhookDeliveryDetailPresenter } from "./WebhookDeliveryDetailPresenter.server";
-import { type WebhookDeliveryListItem } from "./WebhookDetailPresenter.server";
+import {
+  type EnvironmentDeliveryListItem,
+  WebhookDeliveriesListPresenter,
+} from "./WebhookDeliveriesListPresenter.server";
+import {
+  WebhookDeliveryDetailPresenter,
+  type WebhookDeliveryTargetView,
+} from "./WebhookDeliveryDetailPresenter.server";
 
 const DB_STATUS_TO_API: Record<WebhookDeliveryStatus, ApiWebhookDeliveryListItem["status"]> = {
   PENDING: "pending",
@@ -18,6 +26,7 @@ const DB_STATUS_TO_API: Record<WebhookDeliveryStatus, ApiWebhookDeliveryListItem
   SUCCEEDED: "succeeded",
   FAILED: "failed",
   FILTERED: "filtered",
+  UNMATCHED: "unmatched",
 };
 
 // API status -> DB status (for the filter).
@@ -27,17 +36,38 @@ const API_STATUS_TO_DB: Record<string, WebhookDeliveryStatus> = {
   succeeded: "SUCCEEDED",
   failed: "FAILED",
   filtered: "FILTERED",
+  unmatched: "UNMATCHED",
 };
 
-function toApiListItem(d: WebhookDeliveryListItem): ApiWebhookDeliveryListItem {
+const TARGET_STATUS_TO_API: Record<WebhookDeliveryTargetStatus, WebhookDeliveryTargetApiStatus> = {
+  PENDING: "pending",
+  SUCCEEDED: "succeeded",
+  FAILED: "failed",
+  FILTERED: "filtered",
+};
+
+function toApiListItem(d: EnvironmentDeliveryListItem): ApiWebhookDeliveryListItem {
   return {
     id: d.friendlyId,
-    webhook: d.webhook?.slug ?? null,
+    endpoint: d.endpoint,
     status: DB_STATUS_TO_API[d.status],
     externalDeliveryId: d.externalDeliveryId,
-    runId: d.run?.friendlyId ?? null,
+    isTest: d.isTest,
     createdAt: d.createdAt,
     processedAt: d.processedAt,
+  };
+}
+
+function toApiTarget(t: WebhookDeliveryTargetView): WebhookDeliveryTargetObject {
+  return {
+    id: t.id,
+    type: t.type,
+    status: TARGET_STATUS_TO_API[t.status],
+    reason: t.reason ?? null,
+    error: t.error ?? null,
+    runId: t.run?.friendlyId ?? null,
+    sessionId: t.session?.friendlyId ?? null,
+    waiters: t.waiters ?? null,
   };
 }
 
@@ -45,7 +75,8 @@ export const ApiWebhookDeliveryListSearchParams = z.object({
   "page[size]": z.coerce.number().int().positive().min(1).max(100).optional(),
   "page[after]": z.string().optional(),
   "page[before]": z.string().optional(),
-  "filter[webhook]": z
+  /** Declared endpoint ids or `wh_` ids, comma-separated. */
+  "filter[endpoint]": z
     .string()
     .optional()
     .transform((value) => (value ? value.split(",") : undefined)),
@@ -61,7 +92,7 @@ export const ApiWebhookDeliveryListSearchParams = z.object({
           code: z.ZodIssueCode.custom,
           message: `Invalid status values: ${invalid.join(
             ", "
-          )}. Allowed: pending, processing, succeeded, failed.`,
+          )}. Allowed: ${Object.keys(API_STATUS_TO_DB).join(", ")}.`,
         });
         return z.NEVER;
       }
@@ -92,7 +123,7 @@ export class ApiWebhookDeliveryListPresenter extends BasePresenter {
         organizationId: environment.organizationId,
         projectId: environment.projectId,
         environmentId: environment.id,
-        webhooks: searchParams["filter[webhook]"],
+        endpoints: searchParams["filter[endpoint]"],
         statuses: searchParams["filter[status]"],
         period: searchParams["filter[period]"],
         from: searchParams["filter[from]"]?.getTime(),
@@ -130,10 +161,12 @@ class ApiWebhookDeliveryPresenter extends BasePresenter {
 
       return {
         id: d.friendlyId,
-        webhook: d.webhook?.slug ?? null,
+        endpoint: d.webhook
+          ? { id: d.webhook.endpointFriendlyId, declaredId: d.webhook.slug }
+          : null,
         status: DB_STATUS_TO_API[d.status],
         externalDeliveryId: d.externalDeliveryId,
-        runId: d.run?.friendlyId ?? null,
+        isTest: d.isTest,
         createdAt: d.createdAt,
         processedAt: d.processedAt,
         idempotencyKey: d.idempotencyKey,
@@ -142,6 +175,7 @@ class ApiWebhookDeliveryPresenter extends BasePresenter {
         rawBodyHash: d.rawBodyHash,
         error: d.errorMessage,
         filterReason: d.filterReason,
+        targets: d.targets.map(toApiTarget),
         updatedAt: d.updatedAt,
       };
     });

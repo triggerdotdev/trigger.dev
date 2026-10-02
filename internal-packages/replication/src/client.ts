@@ -28,6 +28,12 @@ export interface LogicalReplicationClientOptions {
    */
   table: string;
   /**
+   * More tables to publish on the same publication and slot. Changes for every table arrive on the
+   * same stream (branch on the relation name). A publication created before a table was listed here
+   * gets it added on start (the publication's owner can `ALTER PUBLICATION ... ADD TABLE`).
+   */
+  additionalTables?: string[];
+  /**
    * The name of the replication slot to use.
    */
   slotName: string;
@@ -662,6 +668,12 @@ export class LogicalReplicationClient {
     const publicationExists = await this.#doesPublicationExist();
 
     if (publicationExists) {
+      const addError = await this.#addMissingAdditionalTables();
+      if (addError) {
+        this.events.emit("error", addError);
+        return false;
+      }
+
       // Validate the existing publication is correctly configured
       const validationError = await this.#validatePublicationConfiguration();
 
@@ -703,7 +715,9 @@ export class LogicalReplicationClient {
 
     const [createError] = await tryCatch(
       this.client.query(
-        `CREATE PUBLICATION "${this.options.publicationName}" FOR TABLE "${this.options.table}" ${
+        `CREATE PUBLICATION "${this.options.publicationName}" FOR TABLE ${this.#publishedTables()
+          .map((table) => `"${table}"`)
+          .join(", ")} ${
           publicationWithOptions.length > 0 ? `WITH (${publicationWithOptions.join(", ")})` : ""
         };`
       )
@@ -723,6 +737,43 @@ export class LogicalReplicationClient {
     }
 
     return true;
+  }
+
+  #publishedTables(): string[] {
+    return [this.options.table, ...(this.options.additionalTables ?? [])];
+  }
+
+  async #addMissingAdditionalTables(): Promise<Error | null> {
+    if (!this.client || !this.options.additionalTables?.length) return null;
+
+    const res = await this.client.query(
+      `SELECT tablename FROM pg_publication_tables WHERE pubname = '${this.options.publicationName}' AND schemaname = 'public';`
+    );
+    const published = new Set(res.rows.map((row) => row.tablename as string));
+
+    for (const table of this.options.additionalTables) {
+      if (published.has(table)) continue;
+      const [alterError] = await tryCatch(
+        this.client.query(
+          `ALTER PUBLICATION "${this.options.publicationName}" ADD TABLE "${table}";`
+        )
+      );
+      if (alterError) {
+        this.logger.error("Failed to add a table to the publication", {
+          name: this.options.name,
+          table,
+          publicationName: this.options.publicationName,
+          error: alterError,
+        });
+        return alterError;
+      }
+      this.logger.info("Added a table to the publication", {
+        name: this.options.name,
+        table,
+        publicationName: this.options.publicationName,
+      });
+    }
+    return null;
   }
 
   async #doesPublicationExist(): Promise<boolean> {
@@ -774,6 +825,12 @@ export class LogicalReplicationClient {
       } else {
         const tableList = tables.map((t) => `"${t.schemaname}"."${t.tablename}"`).join(", ");
         return `Publication '${this.options.publicationName}' exists but does not include the required table "public.${expectedTable}". Current tables: ${tableList}. Run: ALTER PUBLICATION ${this.options.publicationName} ADD TABLE "${expectedTable}";`;
+      }
+    }
+
+    for (const additional of this.options.additionalTables ?? []) {
+      if (!tables.some((row) => row.tablename === additional && row.schemaname === "public")) {
+        return `Publication '${this.options.publicationName}' does not include the required table "public.${additional}". Run: ALTER PUBLICATION ${this.options.publicationName} ADD TABLE "${additional}";`;
       }
     }
 

@@ -26,6 +26,13 @@ import {
   MaxProjectsSection,
 } from "~/components/admin/backOffice/MaxProjectsSection";
 import { handleMaxProjectsAction } from "~/components/admin/backOffice/MaxProjectsSection.server";
+import {
+  WEBHOOK_LIMITS_INTENT,
+  WEBHOOK_LIMITS_SAVED_VALUE,
+  WebhookLimitsSection,
+} from "~/components/admin/backOffice/WebhookLimitsSection";
+import { handleWebhookLimitsAction } from "~/components/admin/backOffice/WebhookLimitsSection.server";
+import { webhookLimitsFromConfig } from "~/v3/webhookLimits.server";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { Header1 } from "~/components/primitives/Headers";
@@ -54,6 +61,7 @@ export const loader = dashboardLoader(
         apiRateLimiterConfig: true,
         batchRateLimitConfig: true,
         maximumProjectCount: true,
+        webhookLimitsConfig: true,
       },
     });
 
@@ -64,7 +72,9 @@ export const loader = dashboardLoader(
     const apiEffective = resolveEffectiveApiRateLimit(org.apiRateLimiterConfig);
     const batchEffective = resolveEffectiveBatchRateLimit(org.batchRateLimitConfig);
 
-    return typedjson({ org, apiEffective, batchEffective });
+    const webhookLimits = webhookLimitsFromConfig(org.webhookLimitsConfig);
+
+    return typedjson({ org, apiEffective, batchEffective, webhookLimits });
   }
 );
 
@@ -86,6 +96,19 @@ export const action = dashboardAction(
       }
       return redirect(
         `/admin/back-office/orgs/${orgId}?${SAVED_QUERY_KEY}=${MAX_PROJECTS_SAVED_VALUE}`
+      );
+    }
+
+    if (intent === WEBHOOK_LIMITS_INTENT) {
+      const result = await handleWebhookLimitsAction(formData, orgId, user.id);
+      if (!result.ok) {
+        return typedjson(
+          { section: WEBHOOK_LIMITS_SAVED_VALUE, errors: result.errors },
+          { status: 400 }
+        );
+      }
+      return redirect(
+        `/admin/back-office/orgs/${orgId}?${SAVED_QUERY_KEY}=${WEBHOOK_LIMITS_SAVED_VALUE}`
       );
     }
 
@@ -120,7 +143,7 @@ export const action = dashboardAction(
 );
 
 export default function BackOfficeOrgPage() {
-  const { org, apiEffective, batchEffective } = useTypedLoaderData<typeof loader>();
+  const { org, apiEffective, batchEffective, webhookLimits } = useTypedLoaderData<typeof loader>();
   const actionData = useTypedActionData<typeof action>();
   const navigation = useNavigation();
   const submittingIntent = navigation.formData?.get("intent");
@@ -129,6 +152,8 @@ export default function BackOfficeOrgPage() {
     navigation.state !== "idle" && submittingIntent === BATCH_RATE_LIMIT_INTENT;
   const isSubmittingMaxProjects =
     navigation.state !== "idle" && submittingIntent === MAX_PROJECTS_INTENT;
+  const isSubmittingWebhookLimits =
+    navigation.state !== "idle" && submittingIntent === WEBHOOK_LIMITS_INTENT;
 
   const errorSection = actionData && "section" in actionData ? actionData.section : null;
   const errors =
@@ -191,6 +216,14 @@ export default function BackOfficeOrgPage() {
         errors={errorSection === MAX_PROJECTS_SAVED_VALUE ? errors : null}
         savedJustNow={savedSection === MAX_PROJECTS_SAVED_VALUE}
         isSubmitting={isSubmittingMaxProjects}
+      />
+
+      <WebhookLimitsSection
+        limits={webhookLimits.limits}
+        overrides={webhookLimits.overrides}
+        errors={errorSection === WEBHOOK_LIMITS_SAVED_VALUE ? errors : null}
+        savedJustNow={savedSection === WEBHOOK_LIMITS_SAVED_VALUE}
+        isSubmitting={isSubmittingWebhookLimits}
       />
     </div>
   );

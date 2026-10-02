@@ -1,4 +1,4 @@
-import { type WebhookEndpointObject } from "@trigger.dev/core/v3";
+import { type WebhookEndpointDetailObject, type WebhookEndpointObject } from "@trigger.dev/core/v3";
 import {
   type Prisma,
   type RuntimeEnvironment,
@@ -8,6 +8,8 @@ import { z } from "zod";
 import { boundedIn, webhookReplica } from "~/db.server";
 import { type ApiAuthenticationResultSuccess } from "~/services/apiAuth.server";
 import { webhookIngressUrl } from "~/utils/webhookIngressUrl.server";
+import { webhookEndpointSubscribers } from "~/v3/webhookSetupPrompt";
+import { buildWebhookSetupPrompt, webhookSetupPromptSelect } from "~/v3/webhookSetupPrompt.server";
 import { BasePresenter } from "./basePresenter.server";
 
 const DB_STATUS_TO_API: Record<WebhookEndpointStatus, WebhookEndpointObject["status"]> = {
@@ -20,7 +22,7 @@ const DB_STATUS_TO_API: Record<WebhookEndpointStatus, WebhookEndpointObject["sta
 const endpointSelect = {
   friendlyId: true,
   opaqueId: true,
-  handlerWebhookId: true,
+  declaredId: true,
   source: true,
   status: true,
   secretProvisioning: true,
@@ -36,7 +38,7 @@ type EndpointRow = Prisma.WebhookEndpointGetPayload<{ select: typeof endpointSel
 function toApiEndpoint(endpoint: EndpointRow): WebhookEndpointObject {
   return {
     id: endpoint.friendlyId,
-    webhook: endpoint.handlerWebhookId,
+    declaredId: endpoint.declaredId,
     source: endpoint.source,
     status: DB_STATUS_TO_API[endpoint.status],
     secretProvisioning:
@@ -68,11 +70,11 @@ export class ApiWebhookEndpointListPresenter extends BasePresenter {
         where: {
           runtimeEnvironmentId: environment.id,
           ...(searchParams["filter[webhook]"]
-            ? { handlerWebhookId: { in: boundedIn(searchParams["filter[webhook]"]) } }
+            ? { declaredId: { in: boundedIn(searchParams["filter[webhook]"]) } }
             : {}),
         },
         select: endpointSelect,
-        orderBy: [{ handlerWebhookId: "asc" }, { createdAt: "desc" }],
+        orderBy: [{ declaredId: "asc" }, { createdAt: "desc" }],
       });
 
       return { data: endpoints.map(toApiEndpoint) };
@@ -82,17 +84,22 @@ export class ApiWebhookEndpointListPresenter extends BasePresenter {
 
 class ApiWebhookEndpointPresenter extends BasePresenter {
   public async call(
-    environmentId: string,
+    environment: ApiAuthenticationResultSuccess["environment"],
     endpointFriendlyId: string
-  ): Promise<WebhookEndpointObject | undefined> {
+  ): Promise<WebhookEndpointDetailObject | undefined> {
     return this.trace("call", async () => {
       const endpoint = await webhookReplica.webhookEndpoint.findFirst({
         // friendlyId is globally unique; scope to the env so a foreign id 404s.
-        where: { friendlyId: endpointFriendlyId, runtimeEnvironmentId: environmentId },
-        select: endpointSelect,
+        where: { friendlyId: endpointFriendlyId, runtimeEnvironmentId: environment.id },
+        select: { ...endpointSelect, ...webhookSetupPromptSelect },
       });
+      if (!endpoint) return undefined;
 
-      return endpoint ? toApiEndpoint(endpoint) : undefined;
+      return {
+        ...toApiEndpoint(endpoint),
+        subscribers: webhookEndpointSubscribers(endpoint.routingTargets),
+        setupPrompt: buildWebhookSetupPrompt(endpoint, environment),
+      };
     });
   }
 }
@@ -100,6 +107,6 @@ class ApiWebhookEndpointPresenter extends BasePresenter {
 export function findWebhookEndpointResource(
   authentication: ApiAuthenticationResultSuccess,
   endpointId: string
-): Promise<WebhookEndpointObject | undefined> {
-  return new ApiWebhookEndpointPresenter().call(authentication.environment.id, endpointId);
+): Promise<WebhookEndpointDetailObject | undefined> {
+  return new ApiWebhookEndpointPresenter().call(authentication.environment, endpointId);
 }

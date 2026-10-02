@@ -11,7 +11,12 @@ import {
 } from "@trigger.dev/core/v3";
 
 import { AttemptId, getMaxDuration, parseTraceparent } from "@trigger.dev/core/v3/isomorphic";
-import { runOpsLegacyReplica, runOpsNewReplica, runOpsSplitReadEnabled } from "~/db.server";
+import {
+  runOpsLegacyReplica,
+  runOpsNewReplica,
+  runOpsSplitReadEnabled,
+  webhookReplica,
+} from "~/db.server";
 import {
   extractIdempotencyKeyScope,
   getUserProvidedIdempotencyKey,
@@ -320,6 +325,7 @@ export class SpanPresenter extends BasePresenter {
     const taskKind = RunAnnotations.safeParse(run.annotations).data?.taskKind;
     const isAgentRun = taskKind === "AGENT";
     const isScheduled = taskKind === "SCHEDULED";
+    const isWebhook = taskKind === "WEBHOOK";
 
     let region: { name: string; location: string | null } | null = null;
 
@@ -413,6 +419,7 @@ export class SpanPresenter extends BasePresenter {
       idempotencyKeyStatus: this.getIdempotencyKeyStatus(run),
       debounce: run.debounce as { key: string; delay: string; createdAt: Date } | null,
       schedule: await this.resolveSchedule(run.scheduleId ?? undefined),
+      webhook: await this.resolveWebhook(run.annotations, environment.id),
       queue: {
         name: run.queue,
         isCustomQueue: !run.queue.startsWith("task/"),
@@ -428,6 +435,7 @@ export class SpanPresenter extends BasePresenter {
       isError: isFailedRunStatus(run.status),
       isAgentRun,
       isScheduled,
+      isWebhook,
       payload,
       payloadType: run.payloadType,
       output,
@@ -510,6 +518,32 @@ export class SpanPresenter extends BasePresenter {
       generatorExpression: schedule.generatorExpression,
       description: schedule.generatorDescription,
       timezone: schedule.timezone,
+    };
+  }
+
+  /** The webhook delivery that triggered the run, and the endpoint it arrived on. */
+  async resolveWebhook(annotations: unknown, environmentId: string) {
+    const parsed = RunAnnotations.safeParse(annotations).data;
+    if (!parsed?.webhookDeliveryId) {
+      return;
+    }
+
+    const endpoint = parsed.webhookEndpointId
+      ? await webhookReplica.webhookEndpoint.findFirst({
+          where: { friendlyId: parsed.webhookEndpointId, runtimeEnvironmentId: environmentId },
+          select: { friendlyId: true, declaredId: true, endpointTenantId: true },
+        })
+      : null;
+
+    return {
+      deliveryFriendlyId: parsed.webhookDeliveryId,
+      endpoint: endpoint
+        ? {
+            friendlyId: endpoint.friendlyId,
+            declaredId: endpoint.declaredId,
+            tenantId: endpoint.endpointTenantId || null,
+          }
+        : null,
     };
   }
 

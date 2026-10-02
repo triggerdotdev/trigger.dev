@@ -195,3 +195,22 @@ describe("StandardResourceCatalog — duplicate task id collisions", () => {
     ]);
   });
 });
+
+describe("StandardResourceCatalog — webhook subscribers", () => {
+  it("keeps two subscribers with the same id on one endpoint, so indexing can reject them", () => {
+    const catalog = new StandardResourceCatalog();
+    catalog.registerWebhookSubscriber({
+      endpointId: "stripe",
+      target: { type: "task", id: "orders", taskId: "orders", filter: "event.type == 'a'" },
+    });
+    catalog.registerWebhookSubscriber({
+      endpointId: "stripe",
+      target: { type: "task", id: "orders", taskId: "orders", filter: "event.type == 'b'" },
+    });
+
+    expect(catalog.listWebhookSubscribers().map((s) => s.target.filter)).toEqual([
+      "event.type == 'a'",
+      "event.type == 'b'",
+    ]);
+  });
+});

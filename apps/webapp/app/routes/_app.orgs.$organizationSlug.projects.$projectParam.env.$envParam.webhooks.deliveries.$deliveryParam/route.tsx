@@ -18,6 +18,9 @@ import { Header2 } from "~/components/primitives/Headers";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
+import { cn } from "~/utils/cn";
+import { RunError } from "~/components/runs/v3/RunError";
+import { matchedWaiterCount, routedSubscriberCount } from "~/v3/webhookDeliveryTargets";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import {
   ResizableHandle,
@@ -25,6 +28,8 @@ import {
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
 import { DeliveryStatusBadge } from "~/components/webhookDeliveries/v1/DeliveryStatus";
+import { DeliveryHeadersTable } from "~/components/webhookDeliveries/v1/DeliveryHeadersTable";
+import { DeliveryTargetsTable } from "~/components/webhookDeliveries/v1/DeliveryTargetsTable";
 import { DeliveryTimeline } from "~/components/webhookDeliveries/v1/DeliveryTimeline";
 import { $replica } from "~/db.server";
 import { env } from "~/env.server";
@@ -47,7 +52,7 @@ import {
   v3RunPath,
   v3SessionPath,
   v3WebhooksPath,
-  v3WebhookTaskPath,
+  v3WebhookEndpointPath,
 } from "~/utils/pathBuilder";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
 import { flag } from "~/v3/featureFlags.server";
@@ -158,14 +163,14 @@ export default function Page() {
     callback: () => revalidator.revalidate(),
   });
 
-  const deliveriesPath = v3WebhooksPath(organization, project, environment);
-  const [tab, setTab] = useState<"event" | "headers">("event");
+  const endpointsPath = v3WebhooksPath(organization, project, environment);
+  const [tab, setTab] = useState<"targets" | "event" | "headers">("event");
 
   if (!delivery) {
     return (
       <>
         <NavBar>
-          <PageTitle backButton={{ to: deliveriesPath, text: "Deliveries" }} title="Delivery" />
+          <PageTitle backButton={{ to: endpointsPath, text: "Endpoints" }} title="Delivery" />
         </NavBar>
         <PageBody>
           <div className="mx-auto flex max-w-md flex-col items-center gap-3 py-16 text-center">
@@ -175,8 +180,8 @@ export default function Page() {
               This delivery couldn't be found. Deliveries are retained for {retentionDays} days, so
               it may have aged out.
             </Paragraph>
-            <LinkButton variant="secondary/small" to={deliveriesPath}>
-              Back to deliveries
+            <LinkButton variant="secondary/small" to={endpointsPath}>
+              Back to endpoints
             </LinkButton>
           </div>
         </PageBody>
@@ -184,19 +189,30 @@ export default function Page() {
     );
   }
 
-  const runPath = delivery.run
-    ? v3RunPath(organization, project, environment, { friendlyId: delivery.run.friendlyId })
-    : undefined;
-  const sessionPath = delivery.session
-    ? v3SessionPath(organization, project, environment, { friendlyId: delivery.session.friendlyId })
-    : undefined;
+  // The inspector names one run or session only when the delivery reached exactly one target;
+  // otherwise the Targets tab lists them all.
+  const reachedOneTarget =
+    routedSubscriberCount(delivery.targets) === 1 && matchedWaiterCount(delivery.targets) === 0;
+  const runPath =
+    reachedOneTarget && delivery.run
+      ? v3RunPath(organization, project, environment, { friendlyId: delivery.run.friendlyId })
+      : undefined;
+  const sessionPath =
+    reachedOneTarget && delivery.session
+      ? v3SessionPath(organization, project, environment, {
+          friendlyId: delivery.session.friendlyId,
+        })
+      : undefined;
   const webhookPath = delivery.webhook
-    ? v3WebhookTaskPath(organization, project, environment, delivery.webhook.slug)
+    ? v3WebhookEndpointPath(organization, project, environment, delivery.webhook.endpointFriendlyId)
     : undefined;
 
-  const headersJson =
-    delivery.headers != null && Object.keys(delivery.headers as object).length > 0
-      ? JSON.stringify(delivery.headers, null, 2)
+  const headers =
+    delivery.headers != null &&
+    typeof delivery.headers === "object" &&
+    !Array.isArray(delivery.headers) &&
+    Object.keys(delivery.headers).length > 0
+      ? (delivery.headers as Record<string, string>)
       : null;
   const duration = formatDuration(delivery.createdAt, delivery.processedAt);
 
@@ -204,7 +220,11 @@ export default function Page() {
     <>
       <NavBar>
         <PageTitle
-          backButton={{ to: deliveriesPath, text: "Deliveries" }}
+          backButton={
+            webhookPath
+              ? { to: webhookPath, text: delivery.webhook?.slug ?? "Endpoint" }
+              : { to: endpointsPath, text: "Endpoints" }
+          }
           title={
             <span className="flex items-center gap-2">
               <WebhookIcon className="size-4.5 text-webhooks" />
@@ -242,10 +262,24 @@ export default function Page() {
                   >
                     Request headers
                   </TabButton>
+                  <TabButton
+                    isActive={tab === "targets"}
+                    layoutId="delivery-page-tabs"
+                    onClick={() => setTab("targets")}
+                  >
+                    Targets
+                  </TabButton>
                 </TabContainer>
               </div>
-              <div className="overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-                {tab === "event" ? (
+              <div
+                className={cn(
+                  "overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+                  tab === "event" && "p-3"
+                )}
+              >
+                {tab === "targets" ? (
+                  <DeliveryTargetsTable targets={delivery.targets} />
+                ) : tab === "event" ? (
                   eventJson ? (
                     <div className="flex flex-col gap-2">
                       {eventTruncatedForDisplay ? (
@@ -262,13 +296,8 @@ export default function Page() {
                       No event payload was captured for this delivery.
                     </EmptyTabMessage>
                   )
-                ) : headersJson ? (
-                  <CodeBlock
-                    code={headersJson}
-                    language="json"
-                    showLineNumbers={false}
-                    maxLines={200}
-                  />
+                ) : headers ? (
+                  <DeliveryHeadersTable headers={headers} />
                 ) : (
                   <EmptyTabMessage>
                     No request headers were captured for this delivery.
@@ -292,6 +321,11 @@ export default function Page() {
               </div>
               <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
                 <DeliveryTimeline delivery={delivery} runPath={runPath} sessionPath={sessionPath} />
+                {delivery.status === "FAILED" && delivery.errorMessage ? (
+                  <div className="mb-4">
+                    <RunError error={{ type: "STRING_ERROR", raw: delivery.errorMessage }} />
+                  </div>
+                ) : null}
                 <Property.Table>
                   <Property.Item>
                     <Property.Label>ID</Property.Label>
@@ -318,7 +352,7 @@ export default function Page() {
                     </Property.Item>
                   ) : null}
                   <Property.Item>
-                    <Property.Label>Webhook</Property.Label>
+                    <Property.Label>Endpoint</Property.Label>
                     <Property.Value>
                       {delivery.webhook ? (
                         webhookPath ? (
@@ -351,22 +385,24 @@ export default function Page() {
                       </Property.Value>
                     </Property.Item>
                   ) : null}
-                  <Property.Item>
-                    <Property.Label>Run</Property.Label>
-                    <Property.Value>
-                      {delivery.run && runPath ? (
-                        <TextLink
-                          to={runPath}
-                          className="inline-flex items-center gap-1 font-mono text-sm"
-                        >
-                          <RunsIcon className="size-4 text-runs" />
-                          {delivery.run.friendlyId}
-                        </TextLink>
-                      ) : (
-                        <span className="text-text-dimmed">None</span>
-                      )}
-                    </Property.Value>
-                  </Property.Item>
+                  {reachedOneTarget ? (
+                    <Property.Item>
+                      <Property.Label>Run</Property.Label>
+                      <Property.Value>
+                        {delivery.run && runPath ? (
+                          <TextLink
+                            to={runPath}
+                            className="inline-flex items-center gap-1 font-mono text-sm"
+                          >
+                            <RunsIcon className="size-4 text-runs" />
+                            {delivery.run.friendlyId}
+                          </TextLink>
+                        ) : (
+                          <span className="text-text-dimmed">None</span>
+                        )}
+                      </Property.Value>
+                    </Property.Item>
+                  ) : null}
                   <Property.Item>
                     <Property.Label>External delivery ID</Property.Label>
                     <Property.Value>
@@ -429,14 +465,6 @@ export default function Page() {
                     <Property.Item>
                       <Property.Label>Duration</Property.Label>
                       <Property.Value>{duration}</Property.Value>
-                    </Property.Item>
-                  ) : null}
-                  {delivery.status === "FAILED" && delivery.errorMessage ? (
-                    <Property.Item>
-                      <Property.Label>Error</Property.Label>
-                      <Property.Value>
-                        <span className="text-sm text-error">{delivery.errorMessage}</span>
-                      </Property.Value>
                     </Property.Item>
                   ) : null}
                 </Property.Table>

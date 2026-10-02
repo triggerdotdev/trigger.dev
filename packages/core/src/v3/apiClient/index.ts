@@ -15,6 +15,15 @@ import {
   type CreateEnvironmentVariableRequestBody,
   type CreateInputStreamWaitpointRequestBody,
   type CreatePromptOverrideRequestBody,
+  ListWebhookEndpointsResponse,
+  ListWebhookDeliveriesResponse,
+  type ListWebhookDeliveriesQuery,
+  ReplayWebhookDeliveryResponse,
+  WebhookDeliveryObject,
+  RotateWebhookEndpointSecretResponse,
+  SetWebhookEndpointSecretResponse,
+  type SetWebhookEndpointSecretRequestBody,
+  WebhookEndpointDetailObject,
   type CreateScheduleOptions,
   type CreateSessionRequestBody,
   type CreateSessionStreamWaitpointRequestBody,
@@ -2328,6 +2337,93 @@ export class ApiClient {
         headers: this.#getHeaders(false),
         body: JSON.stringify(body),
       },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  listWebhookEndpoints(requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      ListWebhookEndpointsResponse,
+      `${this.baseUrl}/api/v1/webhooks/endpoints`,
+      { method: "GET", headers: this.#getHeaders(false) },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  retrieveWebhookEndpoint(endpointId: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      WebhookEndpointDetailObject,
+      `${this.baseUrl}/api/v1/webhooks/endpoints/${encodeURIComponent(endpointId)}`,
+      { method: "GET", headers: this.#getHeaders(false) },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  generateWebhookEndpointSecret(endpointId: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      RotateWebhookEndpointSecretResponse,
+      `${this.baseUrl}/api/v1/webhooks/endpoints/${encodeURIComponent(endpointId)}/rotate-secret`,
+      { method: "POST", headers: this.#getHeaders(false) },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  setWebhookEndpointSecret(
+    endpointId: string,
+    body: SetWebhookEndpointSecretRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      SetWebhookEndpointSecretResponse,
+      `${this.baseUrl}/api/v1/webhooks/endpoints/${encodeURIComponent(endpointId)}/secret`,
+      { method: "PUT", headers: this.#getHeaders(false), body: JSON.stringify(body) },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  listWebhookDeliveries(query: ListWebhookDeliveriesQuery = {}, requestOptions?: ZodFetchOptions) {
+    const searchParams = new URLSearchParams();
+    const list = (value: string | string[] | undefined) =>
+      value === undefined ? undefined : Array.isArray(value) ? value.join(",") : value;
+    const endpoint = list(query.endpoint);
+    if (endpoint) searchParams.set("filter[endpoint]", endpoint);
+    const status = list(query.status);
+    if (status) searchParams.set("filter[status]", status);
+    if (query.period) searchParams.set("filter[period]", query.period);
+    if (query.from) searchParams.set("filter[from]", query.from.toISOString());
+    if (query.to) searchParams.set("filter[to]", query.to.toISOString());
+    if (query.limit !== undefined) searchParams.set("page[size]", String(query.limit));
+    if (query.after) searchParams.set("page[after]", query.after);
+    const qs = searchParams.toString();
+
+    return zodfetch(
+      ListWebhookDeliveriesResponse,
+      `${this.baseUrl}/api/v1/webhooks/deliveries${qs ? `?${qs}` : ""}`,
+      { method: "GET", headers: this.#getHeaders(false) },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  retrieveWebhookDelivery(deliveryId: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      WebhookDeliveryObject,
+      `${this.baseUrl}/api/v1/webhooks/deliveries/${encodeURIComponent(deliveryId)}`,
+      { method: "GET", headers: this.#getHeaders(false) },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  /** Replay to every subscriber (re-checking filters), or to one `targetId` past its filter. */
+  replayWebhookDelivery(
+    deliveryId: string,
+    options: { targetId?: string } = {},
+    requestOptions?: ZodFetchOptions
+  ) {
+    const qs = options.targetId ? `?targetId=${encodeURIComponent(options.targetId)}` : "";
+    return zodfetch(
+      ReplayWebhookDeliveryResponse,
+      `${this.baseUrl}/api/v1/webhooks/deliveries/${encodeURIComponent(deliveryId)}/replay${qs}`,
+      { method: "POST", headers: this.#getHeaders(false) },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
   }

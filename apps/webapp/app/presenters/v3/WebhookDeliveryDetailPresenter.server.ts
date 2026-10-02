@@ -5,14 +5,25 @@ import {
   type RuntimeEnvironmentType,
   type WebhookDeliveryStatus,
 } from "@trigger.dev/database";
+import { WebhookDeliveryTargetResult } from "@trigger.dev/core/v3";
 import { webhookReplica } from "~/db.server";
 import { runStore } from "~/v3/runStore.server";
 import { webhookDeliveriesRepository } from "~/services/webhookDeliveriesRepository/webhookDeliveriesRepository.server";
+import { resolveDeliveryRunTargets } from "./WebhookDetailPresenter.server";
+
+/** One subscriber's outcome for a delivery (or its waiter summary), with the run it triggered. */
+export type WebhookDeliveryTargetView = WebhookDeliveryTargetResult & {
+  /** Task, Agent event or Channel (from how the target was delivered at the time); Waiters for the summary. */
+  kind: string;
+  run: { friendlyId: string } | null;
+  session: { friendlyId: string; externalId: string | null } | null;
+};
 
 export type WebhookDeliveryDetail = {
   id: string;
   friendlyId: string;
   status: WebhookDeliveryStatus;
+  isTest: boolean;
   externalDeliveryId: string;
   idempotencyKey: string;
   rawBodyHash: string | null;
@@ -29,8 +40,9 @@ export type WebhookDeliveryDetail = {
   // Set when the run belongs to a chat.agent session (the delivery routed to a session); the session
   // is the meaningful target, so the UI links it instead of the incidental run.
   session: { friendlyId: string; externalId: string | null } | null;
-  // The handler webhook this delivery routed to.
-  webhook: { slug: string; source: string } | null;
+  /** The endpoint this delivery arrived on. */
+  webhook: { slug: string; source: string; endpointFriendlyId: string } | null;
+  targets: WebhookDeliveryTargetView[];
 };
 
 /**
@@ -93,14 +105,23 @@ export class WebhookDeliveryDetailPresenter {
 
     const endpoint = await webhookReplica.webhookEndpoint.findFirst({
       where: { id: delivery.webhookEndpointId },
-      select: { handlerWebhookId: true, source: true },
+      select: { friendlyId: true, declaredId: true, source: true },
     });
-    const webhook = endpoint ? { slug: endpoint.handlerWebhookId, source: endpoint.source } : null;
+    const webhook = endpoint
+      ? {
+          slug: endpoint.declaredId,
+          source: endpoint.source,
+          endpointFriendlyId: endpoint.friendlyId,
+        }
+      : null;
+
+    const targets = await this.#resolveTargets(delivery.targets);
 
     return {
       id: delivery.id,
       friendlyId: delivery.friendlyId,
       status: delivery.status,
+      isTest: delivery.isTest,
       externalDeliveryId: delivery.externalDeliveryId,
       idempotencyKey: delivery.idempotencyKey,
       rawBodyHash: delivery.rawBodyHash,
@@ -115,6 +136,40 @@ export class WebhookDeliveryDetailPresenter {
       run,
       session,
       webhook,
+      targets,
     };
+  }
+
+  /**
+   * The delivery's per-target results with the run a task or session target triggered. Waiters are
+   * one summary entry with how many were matched, resumed and given up on.
+   */
+  async #resolveTargets(raw: Prisma.JsonValue): Promise<WebhookDeliveryTargetView[]> {
+    const results = (Array.isArray(raw) ? raw : []).flatMap((entry) => {
+      const parsed = WebhookDeliveryTargetResult.safeParse(entry);
+      return parsed.success ? [parsed.data] : [];
+    });
+
+    const { runFriendlyIdById, sessionByRunId } = await resolveDeliveryRunTargets(
+      this.replica,
+      results.map((result) => ({ runId: result.runId ?? null }))
+    );
+
+    return results.map((result) => {
+      const friendlyId = result.runId ? runFriendlyIdById.get(result.runId) : undefined;
+      return {
+        ...result,
+        kind:
+          result.type === "waiter"
+            ? "Waiters"
+            : result.type === "task"
+              ? "Task"
+              : result.deliverAs === "message"
+                ? "Channel"
+                : "Agent event",
+        run: friendlyId ? { friendlyId } : null,
+        session: result.runId ? (sessionByRunId.get(result.runId) ?? null) : null,
+      };
+    });
   }
 }
