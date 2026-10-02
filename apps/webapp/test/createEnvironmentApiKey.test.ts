@@ -4,10 +4,12 @@ import rbacPlugin, { type RoleBaseAccessController } from "@trigger.dev/rbac";
 import { expect, vi } from "vitest";
 import { MAX_API_KEY_TASK_IDENTIFIERS } from "~/consts";
 import { createEnvironmentApiKey, revokeEnvironmentApiKey } from "~/models/api-key.server";
+import { removeTeamMember } from "~/models/removeTeamMember.server";
 import type { ApiKeyTelemetry } from "~/services/apiKeyTelemetry.server";
 import {
   createRuntimeEnvironment,
   createTestOrgProjectWithMember,
+  createTestUser,
   uniqueId,
 } from "./fixtures/environmentVariablesFixtures";
 
@@ -66,6 +68,70 @@ containerTest("standalone fallback creates one explicit full-access key", async 
   await expect(
     prisma.apiKey.count({ where: { runtimeEnvironmentId: environment.id } })
   ).resolves.toBe(1);
+});
+
+containerTest("cannot create a development key after its member is removed", async ({ prisma }) => {
+  const { organization, project, user, orgMember } = await createTestOrgProjectWithMember(prisma);
+  const admin = await createTestUser(prisma);
+  await prisma.orgMember.create({
+    data: { userId: admin.id, organizationId: organization.id, role: "ADMIN" },
+  });
+  const environment = await createRuntimeEnvironment(prisma, {
+    projectId: project.id,
+    organizationId: organization.id,
+    orgMemberId: orgMember.id,
+    type: "DEVELOPMENT",
+  });
+  const fallback = rbacPlugin.create(prisma, { forceFallback: true });
+  let policyStarted!: () => void;
+  let resumePolicy!: () => void;
+  const started = new Promise<void>((resolve) => {
+    policyStarted = resolve;
+  });
+  const resume = new Promise<void>((resolve) => {
+    resumePolicy = resolve;
+  });
+  const telemetry = telemetryRecorder();
+  const creation = createEnvironmentApiKey(
+    {
+      environmentId: environment.id,
+      taskEnvironmentId: environment.id,
+      userId: user.id,
+      name: "Racing removal",
+      presetId: "FULL_ACCESS",
+    },
+    {
+      prismaClient: prisma,
+      telemetryRecorder: telemetry,
+      rbacController: {
+        async prepareApiKeyPolicy(input) {
+          policyStarted();
+          await resume;
+          return fallback.prepareApiKeyPolicy(input);
+        },
+      },
+    }
+  );
+  const rejected = expect(creation).rejects.toThrow("Environment not found");
+  await started;
+  try {
+    await removeTeamMember(
+      { userId: admin.id, slug: organization.slug, memberId: orgMember.id },
+      prisma
+    );
+  } finally {
+    resumePolicy();
+  }
+  await rejected;
+  expect(telemetry.recordOperation).toHaveBeenCalledWith(
+    "create",
+    "rejected",
+    "membership_removed"
+  );
+  expect(telemetry.recordOperation).not.toHaveBeenCalledWith("create", "error", "database_error");
+  await expect(
+    prisma.apiKey.findFirst({ where: { runtimeEnvironmentId: environment.id, revokedAt: null } })
+  ).resolves.toBeNull();
 });
 
 containerTest("records successful API key revocation", async ({ prisma }) => {

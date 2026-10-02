@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { beforeEach, describe, expect, vi } from "vitest";
-import type { PrismaClient } from "@trigger.dev/database";
+import type { PrismaClient, PrismaTransactionClient } from "@trigger.dev/database";
 
 const prismaHolder = vi.hoisted(() => ({
   client: null as PrismaClient | null,
@@ -37,6 +37,11 @@ vi.mock("~/db.server", async () => {
 
   return {
     Prisma,
+    $transaction: (
+      client: PrismaClient,
+      _name: string,
+      callback: (tx: PrismaTransactionClient) => Promise<unknown>
+    ) => client.$transaction(callback),
     get prisma() {
       if (!prismaHolder.client) {
         throw new Error("test prisma not set");

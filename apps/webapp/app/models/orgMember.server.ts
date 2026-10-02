@@ -1,4 +1,5 @@
-import { Prisma, prisma } from "~/db.server";
+import { $transaction, Prisma, prisma } from "~/db.server";
+import { deleteOrgMember } from "./deleteOrgMember.server";
 import type { MembershipSource } from "~/models/member.server";
 import { logger } from "~/services/logger.server";
 import { enqueueMemberDevelopmentEnvironments } from "~/services/memberDevEnvironments.server";
@@ -7,6 +8,15 @@ import {
   getValidPersonalAccessTokens,
   revokePersonalAccessToken,
 } from "~/services/personalAccessToken.server";
+
+async function deleteMembership(memberId: string, organizationId: string) {
+  const result = await $transaction(prisma, "delete org member", (tx) =>
+    deleteOrgMember(tx, { id: memberId, organizationId })
+  );
+  if (!result) {
+    throw new Error("Failed to delete organization member");
+  }
+}
 
 export type EnsureOrgMemberParams = {
   userId: string;
@@ -150,7 +160,7 @@ export async function ensureOrgMember(
         roleId,
         error: result.error,
       });
-      await prisma.orgMember.delete({ where: { id: member.id } });
+      await deleteMembership(member.id, organizationId);
       throw new Error(`ensureOrgMember: failed to apply role ${roleId}: ${result.error}`);
     }
   }
@@ -257,7 +267,7 @@ export async function removeOrgMemberForDirectory(params: {
     }
   }
 
-  await prisma.orgMember.delete({ where: { id: member.id } });
+  await deleteMembership(member.id, organizationId);
   const removeRole = await rbac.removeUserRole({ userId, organizationId });
   if (!removeRole.ok) {
     logger.warn("removeOrgMemberForDirectory: failed to remove RBAC role", {

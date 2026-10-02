@@ -1,10 +1,7 @@
 import type { PrismaClient } from "@trigger.dev/database";
+import { $transaction } from "~/db.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
-
-// Leaf module with a type-only Prisma import (caller passes the client) so it
-// can be unit-tested without importing `~/db.server`, which eagerly connects
-// the global prisma singleton. ServiceValidationError is a plain error class
-// with no imports, so it stays leaf-safe and lets callers map it to a status.
+import { deleteOrgMember } from "./deleteOrgMember.server";
 export async function removeTeamMember(
   {
     userId,
@@ -28,9 +25,10 @@ export async function removeTeamMember(
   // Serializable so the "keep at least one member" check and the delete are
   // atomic: at ReadCommitted two concurrent removals could each see >1 member
   // and both delete, orphaning the org. The guard lives here, not per-caller,
-  // so every surface (dashboard + management API) is TOCTOU-safe. Raw
-  // $transaction (not the ~/db.server helper) keeps this module leaf/testable.
-  return prismaClient.$transaction(
+  // so every surface (dashboard + management API) is TOCTOU-safe.
+  const result = await $transaction(
+    prismaClient,
+    "remove team member",
     async (tx) => {
       // Scope both the lookup and the delete to org.id, so the member id is
       // only ever resolved within the actor's organization.
@@ -48,9 +46,13 @@ export async function removeTeamMember(
         throw new ServiceValidationError("Cannot remove the last member of an organization", 400);
       }
 
-      await tx.orgMember.delete({ where: { id: target.id } });
+      await deleteOrgMember(tx, { id: target.id, organizationId: org.id });
       return target;
     },
     { isolationLevel: "Serializable" }
   );
+  if (!result) {
+    throw new Error("Failed to remove organization member");
+  }
+  return result;
 }

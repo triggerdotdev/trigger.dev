@@ -226,7 +226,7 @@ export async function createEnvironmentApiKey(
     rbacController = rbac,
     telemetryRecorder = apiKeyTelemetry,
   }: {
-    prismaClient?: Pick<PrismaClient, "apiKey" | "runtimeEnvironment" | "taskIdentifier">;
+    prismaClient?: PrismaClient;
     rbacController?: Pick<HostRbacController, "prepareApiKeyPolicy">;
     telemetryRecorder?: ApiKeyTelemetry;
   } = {}
@@ -289,23 +289,54 @@ export async function createEnvironmentApiKey(
   const generated = generateAdditionalApiKey(environment.type);
   const apiKey = await (async () => {
     try {
-      return await prismaClient.apiKey.create({
-        data: {
-          name,
-          keyHash: generated.keyHash,
-          lastFour: generated.lastFour,
-          runtimeEnvironmentId: environment.id,
-          createdByUserId: userId,
-          expiresAt,
-          presetId: prepared.policy.presetId,
-          scopes: prepared.policy.scopes,
+      const create = (client: Pick<PrismaClient, "apiKey">) =>
+        client.apiKey.create({
+          data: {
+            name,
+            keyHash: generated.keyHash,
+            lastFour: generated.lastFour,
+            runtimeEnvironmentId: environment.id,
+            createdByUserId: userId,
+            expiresAt,
+            presetId: prepared.policy.presetId,
+            scopes: prepared.policy.scopes,
+          },
+        });
+      if (environment.type !== "DEVELOPMENT") {
+        return await create(prismaClient);
+      }
+      const created = await $transaction(
+        prismaClient,
+        "create development API key",
+        async (tx) => {
+          const members = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT m."id" FROM "OrgMember" m
+          JOIN "RuntimeEnvironment" e ON e."orgMemberId" = m."id"
+          WHERE e."id" = ${environment.id}
+            AND m."organizationId" = ${environment.organizationId}
+            AND m."userId" = ${userId}
+          FOR UPDATE OF m
+        `;
+          if (members.length === 0) {
+            return null;
+          }
+          return create(tx);
         },
-      });
+        { isolationLevel: "Serializable" }
+      );
+      if (created === undefined) {
+        throw new Error("Failed to create development API key");
+      }
+      return created;
     } catch (error) {
       telemetryRecorder.recordOperation("create", "error", "database_error");
       throw error;
     }
   })();
+  if (apiKey === null) {
+    telemetryRecorder.recordOperation("create", "rejected", "membership_removed");
+    throw new Error("Environment not found");
+  }
   telemetryRecorder.recordOperation("create", "success");
 
   return { apiKey, plaintext: generated.apiKey };

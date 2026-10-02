@@ -2,6 +2,9 @@ import { containerTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
 import { describe, expect, vi } from "vitest";
 import { removeTeamMember } from "~/models/removeTeamMember.server";
+import rbacLoader from "@trigger.dev/rbac";
+import { generateAdditionalApiKey } from "~/utils/apiKeys";
+import { createRuntimeEnvironment, uniqueId } from "./fixtures/environmentVariablesFixtures";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -36,6 +39,59 @@ async function seedOrgWithMembers(prisma: PrismaClient, slugBase: string) {
 }
 
 describe("removeTeamMember", () => {
+  containerTest(
+    "rotates the removed member's root key and revokes additional development keys",
+    async ({ prisma }) => {
+      const a = await seedOrgWithMembers(prisma, "rotation");
+      const project = await prisma.project.create({
+        data: {
+          name: "Test project",
+          slug: uniqueId("project"),
+          externalRef: uniqueId("project-ref"),
+          organizationId: a.organization.id,
+        },
+      });
+      const environment = await createRuntimeEnvironment(prisma, {
+        projectId: project.id,
+        organizationId: a.organization.id,
+        orgMemberId: a.regularMember.id,
+        type: "DEVELOPMENT",
+      });
+      const additionalKey = generateAdditionalApiKey("DEVELOPMENT");
+      await prisma.apiKey.create({
+        data: {
+          name: "Development key",
+          runtimeEnvironmentId: environment.id,
+          keyHash: additionalKey.keyHash,
+          lastFour: additionalKey.lastFour,
+          scopes: ["admin"],
+        },
+      });
+      const controller = rbacLoader.create(prisma, { forceFallback: true });
+      const authenticate = (key: string) =>
+        controller.authenticateBearer(
+          new Request("https://example.com", {
+            headers: { Authorization: `Bearer ${key}` },
+          })
+        );
+      for (const key of [environment.apiKey, additionalKey.apiKey]) {
+        await expect(authenticate(key)).resolves.toMatchObject({ ok: true });
+      }
+
+      await removeTeamMember(
+        { userId: a.admin.id, slug: a.organization.slug, memberId: a.regularMember.id },
+        prisma
+      );
+
+      for (const key of [environment.apiKey, additionalKey.apiKey]) {
+        await expect(authenticate(key)).resolves.toMatchObject({ ok: false, status: 401 });
+      }
+      await expect(
+        prisma.runtimeEnvironment.findFirst({ where: { id: environment.id } })
+      ).resolves.toMatchObject({ id: environment.id, orgMemberId: null });
+    }
+  );
+
   containerTest(
     "refuses to delete an OrgMember that belongs to a different org",
     async ({ prisma }) => {

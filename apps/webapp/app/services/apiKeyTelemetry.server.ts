@@ -6,6 +6,7 @@ export type ApiKeyOperationResult = "success" | "rejected" | "error";
 export type ApiKeyOperationReason =
   | "none"
   | "database_error"
+  | "membership_removed"
   | "not_found_or_revoked"
   | "policy_rejected"
   | "policy_error";
