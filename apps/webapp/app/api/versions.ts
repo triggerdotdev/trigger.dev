@@ -6,7 +6,7 @@ import { z } from "zod";
 
 export const CURRENT_API_VERSION = CORE_API_VERSION;
 
-export const NON_SPECIFIC_API_VERSION = "none";
+const NON_SPECIFIC_API_VERSION = "none";
 
 export type API_VERSIONS = typeof CURRENT_API_VERSION | typeof NON_SPECIFIC_API_VERSION;
 
