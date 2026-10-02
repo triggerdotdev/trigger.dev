@@ -65,7 +65,7 @@ import {
 } from "~/services/dashboardAgentQuota.server";
 import { logger } from "~/services/logger.server";
 import { resolveTriggerUrisInOrganization } from "~/services/resolveTriggerUriInOrganization.server";
-import { requireUser } from "~/services/session.server";
+import { getImpersonatorUserId, requireUser } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
 import { canUseDashboardAgentWatches } from "~/v3/canUseDashboardAgentWatches.server";
@@ -112,6 +112,7 @@ const ActionBody = z.object({
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
   const userId = user.id;
+  const actingUserId = user.isImpersonating ? await getImpersonatorUserId(request) : undefined;
   const { organizationSlug, projectParam } = EnvironmentParamSchema.parse(params);
 
   if (
@@ -142,11 +143,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     if (!scoped) return json({ error: "Project not found" }, { status: 404 });
 
     // No watches means no wakes: the feed isn't read at all when they're off.
-    const watchEnabled = await canUseDashboardAgentWatches({
-      userId,
-      organizationSlug,
-      orgFeatureFlags: (scoped.organization.featureFlags as Record<string, unknown>) ?? {},
-    });
+    const watchEnabled =
+      !actingUserId &&
+      (await canUseDashboardAgentWatches({
+        userId,
+        organizationSlug,
+        orgFeatureFlags: (scoped.organization.featureFlags as Record<string, unknown>) ?? {},
+      }));
 
     const [feed, unreadWork] = await Promise.all([
       watchEnabled
@@ -160,6 +163,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       countChatsWithUnreadWork(dashboardAgentDb, {
         organizationId: scoped.organizationId,
         userId,
+        actingUserId,
         // The chat the panel has on screen, if any: it is being read as this is counted.
         excludeChatId: searchParams.get("chatId") ?? undefined,
       }),
@@ -177,7 +181,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     // Free for now: tell a mounted client explicitly, so it drops any cached used/limit
     // and cap-reached state from before the switch flipped off, instead of keeping it
     // until remount (a `{}` body would silently ignore and keep the stale state).
-    if (!isDashboardAgentQuotaEnabled()) return json({ enabled: false });
+    if (!isDashboardAgentQuotaEnabled() || actingUserId) return json({ enabled: false });
 
     const quota = await resolveAgentMessageQuota(dashboardAgentDb, {
       organizationId: project.organizationId,
@@ -194,8 +198,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const chatId = searchParams.get("chatId");
   if (chatId) {
     const [messages, session] = await Promise.all([
-      getChatMessages(dashboardAgentDb, { chatId, userId, organizationId: project.organizationId }),
-      getSession(dashboardAgentDb, { chatId, userId, organizationId: project.organizationId }),
+      getChatMessages(dashboardAgentDb, {
+        chatId,
+        userId,
+        actingUserId,
+        organizationId: project.organizationId,
+      }),
+      getSession(dashboardAgentDb, {
+        chatId,
+        userId,
+        actingUserId,
+        organizationId: project.organizationId,
+      }),
     ]);
     // Null is not an empty transcript: the chat is deleted or another org's, and a 200 would
     // read as a real, empty chat.
@@ -221,13 +235,16 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const chats = await listChats(dashboardAgentDb, {
     organizationId: project.organizationId,
     userId,
+    actingUserId,
   });
 
-  const watchEnabled = await canUseDashboardAgentWatches({
-    userId,
-    organizationSlug,
-    orgFeatureFlags,
-  });
+  const watchEnabled =
+    !actingUserId &&
+    (await canUseDashboardAgentWatches({
+      userId,
+      organizationSlug,
+      orgFeatureFlags,
+    }));
 
   // One query each for all the listed chats, never one per row. With watches off the
   // history carries none, so an org that loses the flag stops seeing its old ones.
@@ -254,6 +271,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     listChatIdsWithOpenInvestigations(dashboardAgentDb, {
       organizationId: project.organizationId,
       userId,
+      actingUserId,
     }),
   ]);
 
@@ -285,6 +303,7 @@ function messageTooLarge() {
 export const action = async ({ request, params }: ActionFunctionArgs) => {
   const user = await requireUser(request);
   const userId = user.id;
+  const actingUserId = user.isImpersonating ? await getImpersonatorUserId(request) : undefined;
   const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
 
   if (
@@ -337,9 +356,11 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
     wellFormMessageText(firstMessage.parts);
 
-    const quota = await resolveAgentMessageQuota(dashboardAgentDb, {
-      organizationId: project.organizationId,
-    });
+    const quota = actingUserId
+      ? null
+      : await resolveAgentMessageQuota(dashboardAgentDb, {
+          organizationId: project.organizationId,
+        });
     if (quota?.reached) {
       return json({ error: MESSAGE_QUOTA_REACHED_ERROR, limit: quota.limit }, { status: 403 });
     }
@@ -356,11 +377,13 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     const clientContext = pickAgentClientMetadata(clientData);
     // Server-resolved, never sent by the browser: off means the turn gets no watch
     // tools and no watch guidance.
-    const watchEnabled = await canUseDashboardAgentWatches({
-      userId,
-      organizationSlug,
-      orgFeatureFlags,
-    });
+    const watchEnabled =
+      !actingUserId &&
+      (await canUseDashboardAgentWatches({
+        userId,
+        organizationSlug,
+        orgFeatureFlags,
+      }));
 
     // Membership-scoped: dev rows are per-developer, so a token must never be minted for
     // someone else's environment — or, when nothing resolves, for no environment at all.
@@ -411,6 +434,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         id: chatId,
         organizationId: project.organizationId,
         userId,
+        ...(actingUserId ? { createdByUserId: actingUserId } : {}),
         ...(clientData ? { metadata: { context: clientContext } } : {}),
       });
 
@@ -452,6 +476,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         await softDeleteChat(dashboardAgentDb, {
           chatId,
           userId,
+          actingUserId,
           organizationId: project.organizationId,
         }).catch((cleanupError) => {
           logger.error("Failed to remove a dashboard agent chat whose start failed", {
@@ -465,7 +490,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
       // Only the head start dispatches the first message here; a cold start sends it through
       // the `in` proxy, which counts it there. Counting both would double-count.
-      if (headStarted) {
+      if (headStarted && !actingUserId) {
         await recordAgentMessageSent(dashboardAgentDb, {
           organizationId: project.organizationId,
         });
@@ -557,7 +582,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   // The configuration card's submit path. The environment comes from the URL and goes
   // through the same re-authorization a background tick passes, never from the body.
   if (parsed.data.intent === "watch-create") {
-    if (!(await canUseDashboardAgentWatches({ userId, organizationSlug, orgFeatureFlags }))) {
+    if (
+      actingUserId ||
+      !(await canUseDashboardAgentWatches({ userId, organizationSlug, orgFeatureFlags }))
+    ) {
       return json({ error: "Not found" }, { status: 404 });
     }
 
@@ -597,6 +625,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       !(await chatExists(dashboardAgentDb, {
         chatId: targetChatId,
         userId,
+        actingUserId,
         organizationId: project.organizationId,
       }))
     ) {
@@ -646,6 +675,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         !(await chatExists(dashboardAgentDb, {
           chatId,
           userId,
+          actingUserId,
           organizationId: project.organizationId,
         }))
       ) {
@@ -679,11 +709,13 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             ...pickAgentClientMetadata(clientData),
             // Server-resolved, like every other field here: the resumed run's first turn
             // gets no watch tools while the flag is off.
-            watchEnabled: await canUseDashboardAgentWatches({
-              userId,
-              organizationSlug,
-              orgFeatureFlags,
-            }),
+            watchEnabled:
+              !actingUserId &&
+              (await canUseDashboardAgentWatches({
+                userId,
+                organizationSlug,
+                orgFeatureFlags,
+              })),
             organizationId: project.organizationId,
             userId,
             projectId: project.id,
@@ -728,6 +760,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         !(await chatExists(dashboardAgentDb, {
           chatId,
           userId,
+          actingUserId,
           organizationId: project.organizationId,
         }))
       ) {
@@ -741,6 +774,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       await renameChat(dashboardAgentDb, {
         chatId,
         userId,
+        actingUserId,
         organizationId: project.organizationId,
         title: parsed.data.title,
       });
@@ -751,6 +785,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       await setChatPinned(dashboardAgentDb, {
         chatId,
         userId,
+        actingUserId,
         organizationId: project.organizationId,
         pinned: parsed.data.pinned === "true",
       });
@@ -762,6 +797,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       await markChatRead(dashboardAgentDb, {
         chatId,
         userId,
+        actingUserId,
         organizationId: project.organizationId,
       });
       return json({ ok: true });
@@ -774,6 +810,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         !(await chatExists(dashboardAgentDb, {
           chatId,
           userId,
+          actingUserId,
           organizationId: project.organizationId,
         }))
       ) {
@@ -783,6 +820,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       const { cancelledWatches } = await deleteChatWithWatches({
         chatId,
         userId,
+        actingUserId,
         organizationId: project.organizationId,
       });
       return json({ ok: true, cancelledWatches });
@@ -803,6 +841,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         !(await chatExists(dashboardAgentDb, {
           chatId,
           userId,
+          actingUserId,
           organizationId: project.organizationId,
         }))
       ) {

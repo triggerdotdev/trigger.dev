@@ -27,7 +27,7 @@ import {
   resolveAgentMessageQuota,
 } from "~/services/dashboardAgentQuota.server";
 import { logger } from "~/services/logger.server";
-import { requireUser } from "~/services/session.server";
+import { getImpersonatorUserId, requireUser } from "~/services/session.server";
 import { readBoundedBodyText } from "~/utils/boundedRequestBody.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
@@ -72,6 +72,7 @@ function tooLarge() {
 
 export async function action({ request, params }: ActionFunctionArgs) {
   const user = await requireUser(request);
+  const actingUserId = user.isImpersonating ? await getImpersonatorUserId(request) : undefined;
   const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
 
   if (
@@ -121,6 +122,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     !(await chatExists(dashboardAgentDb, {
       chatId,
       userId: user.id,
+      actingUserId,
       organizationId: project.organizationId,
     }))
   ) {
@@ -171,7 +173,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
       // Only a real user message consumes quota; action turns were refused above.
       countsAgainstQuota = agentTurnCountsAgainstQuota(parsed);
-      if (countsAgainstQuota && isDashboardAgentQuotaEnabled()) {
+      if (countsAgainstQuota && !actingUserId && isDashboardAgentQuotaEnabled()) {
         const quota = await resolveAgentMessageQuota(dashboardAgentDb, {
           organizationId: project.organizationId,
         });
@@ -197,11 +199,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
       parsed.payload.metadata = {
         ...pickAgentClientMetadata(parsed.payload.metadata),
         // Resolved per turn, server-side: off means no watch tools and no watch guidance.
-        watchEnabled: await canUseDashboardAgentWatches({
-          userId: user.id,
-          organizationSlug,
-          orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
-        }),
+        watchEnabled:
+          !actingUserId &&
+          (await canUseDashboardAgentWatches({
+            userId: user.id,
+            organizationSlug,
+            orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
+          })),
         userActorToken,
         apiOrigin: userApiOrigin,
         projectRef: project.externalRef,
@@ -230,7 +234,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     const text = await upstream.text();
     // Charge quota only for a delivered message: a non-2xx upstream (or a throw below)
     // must not burn a send that never reached the agent.
-    if (countsAgainstQuota && upstream.ok && isDashboardAgentQuotaEnabled()) {
+    if (countsAgainstQuota && !actingUserId && upstream.ok && isDashboardAgentQuotaEnabled()) {
       await recordAgentMessageSent(dashboardAgentDb, {
         organizationId: project.organizationId,
       });

@@ -54,6 +54,12 @@ export const chats = dashboardAgentSchema.table(
       lastOutEventId?: string;
       lastInEventId?: string;
     }>(),
+    /**
+     * Who started this chat when it wasn't `userId` itself, such as someone acting on the
+     * user's behalf. Set, the chat is hidden from `userId`'s own view and shown to this
+     * user while they act as `userId`. Null for a chat the owner started.
+     */
+    createdByUserId: text("created_by_user_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

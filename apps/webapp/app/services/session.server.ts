@@ -87,6 +87,16 @@ async function supportAccessDenialResponse(
   );
 }
 
+/**
+ * The admin's own user id while they impersonate someone, otherwise undefined. The
+ * impersonation cookie holds the target's id; this reads the signed-in admin instead.
+ */
+export async function getImpersonatorUserId(request: Request): Promise<string | undefined> {
+  if (!(await getImpersonationId(request))) return undefined;
+  const authUser = await authenticator.isAuthenticated(request);
+  return authUser?.userId;
+}
+
 export async function getUserId(request: Request): Promise<string | undefined> {
   const impersonatedUserId = await getImpersonationId(request);
 

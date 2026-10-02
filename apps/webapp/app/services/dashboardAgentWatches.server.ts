@@ -1233,6 +1233,7 @@ export async function deleteChatWithWatches(params: {
   chatId: string;
   userId: string;
   organizationId: string;
+  actingUserId?: string;
 }): Promise<{ deleted: boolean; cancelledWatches: number }> {
   const result = await softDeleteChat(dashboardAgentDb, params);
   return { deleted: result.deleted, cancelledWatches: result.cancelledWatches.length };

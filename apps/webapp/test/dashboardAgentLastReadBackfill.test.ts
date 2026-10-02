@@ -48,6 +48,15 @@ async function run(prisma: PrismaClient, statements: string[]) {
   for (const statement of statements) await prisma.$executeRawUnsafe(statement);
 }
 
+/** Every migration after the replayed ones. The query layer reads the latest schema, so these run before it is called. */
+function laterMigrations(): string[] {
+  return readdirSync(DRIZZLE)
+    .filter((file) => file.endsWith(".sql"))
+    .sort()
+    .slice(MIGRATIONS.length)
+    .flatMap(statementsOf);
+}
+
 const SCOPE = { organizationId: "org_1", userId: "user_1" };
 
 const CREATED_AT = new Date("2026-01-01T00:00:00.000Z");
@@ -135,6 +144,7 @@ describe("the last_read_at backfill in migration 0002", () => {
         chat_already_read: ALREADY_READ_AT,
       });
 
+      await run(prisma, laterMigrations());
       agentDbClient = createDashboardAgentDb(postgresContainer.getConnectionUri(), { max: 2 });
       const agentDb: DashboardAgentDb = agentDbClient.db;
 
@@ -167,6 +177,7 @@ describe("the last_read_at catch-up in migration 0003", () => {
         ALREADY_READ_AT
       );
 
+      await run(prisma, laterMigrations());
       agentDbClient = createDashboardAgentDb(postgresContainer.getConnectionUri(), { max: 2 });
       const agentDb: DashboardAgentDb = agentDbClient.db;
 

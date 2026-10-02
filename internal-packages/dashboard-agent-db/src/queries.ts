@@ -6,7 +6,7 @@ import {
   WAKE_REQUEST_MESSAGE_ID_PREFIX,
   WATCH_REQUEST_MESSAGE_ID_PREFIX,
 } from "@internal/dashboard-agent-contracts";
-import { and, desc, eq, inArray, ne, notLike, sql, isNull, type SQL } from "drizzle-orm";
+import { and, desc, eq, inArray, ne, notLike, or, sql, isNull, type SQL } from "drizzle-orm";
 import type { DashboardAgentDb } from "./client.js";
 import { generateInvestigationId } from "./ids.js";
 import { lockChatForWatches, type DashboardAgentDbOrTx } from "./internal.js";
@@ -38,6 +38,20 @@ export * from "./watch-queries.js";
 
 export const DEFAULT_CHAT_TITLE = "New chat";
 
+/**
+ * Which chats a viewer sees. A chat someone else created for the owner is hidden from the
+ * owner; the user who created it sees it alongside the owner's own chats while acting as
+ * the owner. `actingUserId` is that user's id, set only when someone is acting as the owner.
+ */
+function visibleTo(actingUserId: string | undefined): SQL | undefined {
+  return actingUserId
+    ? or(isNull(chats.createdByUserId), eq(chats.createdByUserId, actingUserId))
+    : isNull(chats.createdByUserId);
+}
+
+/** Who is viewing the chats: the owner, plus the acting user when someone acts as the owner. */
+type ChatViewer = { userId: string; organizationId: string; actingUserId?: string };
+
 export interface ChatListItem {
   id: string;
   title: string;
@@ -53,7 +67,7 @@ export interface ChatListItem {
 /** Never joins the messages or selects the session token. Covered by `chats_org_user_last_msg_idx`. */
 export async function listChats(
   db: DashboardAgentDb,
-  params: { organizationId: string; userId: string; limit?: number }
+  params: ChatViewer & { limit?: number }
 ): Promise<ChatListItem[]> {
   return db
     .select({
@@ -71,6 +85,7 @@ export async function listChats(
       and(
         eq(chats.organizationId, params.organizationId),
         eq(chats.userId, params.userId),
+        visibleTo(params.actingUserId),
         isNull(chats.deletedAt)
       )
     )
@@ -81,7 +96,7 @@ export async function listChats(
 /** Null if the chat is missing, deleted, or not this user's; `[]` if it has no messages. */
 export async function getChatMessages(
   db: DashboardAgentDb,
-  params: { chatId: string; userId: string; organizationId: string }
+  params: ChatViewer & { chatId: string }
 ): Promise<unknown[] | null> {
   const rows = await db
     .select({ message: chatMessages.message })
@@ -91,6 +106,7 @@ export async function getChatMessages(
       and(
         eq(chats.id, params.chatId),
         eq(chats.userId, params.userId),
+        visibleTo(params.actingUserId),
         eq(chats.organizationId, params.organizationId),
         isNull(chats.deletedAt)
       )
@@ -110,7 +126,7 @@ export async function getChatMessages(
  */
 export async function countUserMessages(
   db: DashboardAgentDb,
-  params: { organizationId: string; userId: string; excludeChatId?: string }
+  params: ChatViewer & { excludeChatId?: string }
 ): Promise<number> {
   const rows = await db
     .select({ count: sql<number>`count(*)::int` })
@@ -120,6 +136,7 @@ export async function countUserMessages(
       and(
         eq(chats.organizationId, params.organizationId),
         eq(chats.userId, params.userId),
+        visibleTo(params.actingUserId),
         isNull(chats.deletedAt),
         eq(chatMessages.role, "user"),
         // The user-role messages the user did not type: a watch consent record, and
@@ -180,7 +197,7 @@ export async function incrementAgentMessageUsage(
 export async function countChatsWithUnreadWork(
   db: DashboardAgentDb,
   /** `excludeChatId` is the chat open on screen: it is being read, so it isn't waiting. */
-  params: { organizationId: string; userId: string; excludeChatId?: string }
+  params: ChatViewer & { excludeChatId?: string }
 ): Promise<number> {
   const rows = await db
     .select({ count: sql<number>`count(*)::int` })
@@ -189,6 +206,7 @@ export async function countChatsWithUnreadWork(
       and(
         eq(chats.organizationId, params.organizationId),
         eq(chats.userId, params.userId),
+        visibleTo(params.actingUserId),
         params.excludeChatId ? ne(chats.id, params.excludeChatId) : undefined,
         isNull(chats.deletedAt),
         sql`${chats.lastMessageAt} is not null`,
@@ -219,7 +237,7 @@ export type ChatResumeSession = {
  */
 export async function getSession(
   db: DashboardAgentDb,
-  params: { chatId: string; userId: string; organizationId: string }
+  params: ChatViewer & { chatId: string }
 ): Promise<ChatResumeSession | null> {
   const rows = await db
     .select({
@@ -237,6 +255,7 @@ export async function getSession(
       and(
         eq(chats.id, params.chatId),
         eq(chats.userId, params.userId),
+        visibleTo(params.actingUserId),
         eq(chats.organizationId, params.organizationId),
         isNull(chats.deletedAt)
       )
@@ -257,7 +276,7 @@ export async function getSession(
 /** Owner check for chat-scoped actions, before a session row necessarily exists. */
 export async function chatExists(
   db: DashboardAgentDb,
-  params: { chatId: string; userId: string; organizationId: string }
+  params: ChatViewer & { chatId: string }
 ): Promise<boolean> {
   const rows = await db
     .select({ id: chats.id })
@@ -267,6 +286,7 @@ export async function chatExists(
         eq(chats.id, params.chatId),
         eq(chats.organizationId, params.organizationId),
         eq(chats.userId, params.userId),
+        visibleTo(params.actingUserId),
         isNull(chats.deletedAt)
       )
     )
@@ -283,6 +303,8 @@ export async function createChat(
     userId: string;
     title?: string;
     metadata?: Record<string, unknown>;
+    /** Who is starting this chat when it isn't `userId`; hides it from `userId`'s own view. */
+    createdByUserId?: string;
   }
 ): Promise<void> {
   await db
@@ -291,6 +313,7 @@ export async function createChat(
       id: params.id,
       organizationId: params.organizationId,
       userId: params.userId,
+      ...(params.createdByUserId ? { createdByUserId: params.createdByUserId } : {}),
       title: params.title ?? DEFAULT_CHAT_TITLE,
       metadata: toWellFormedDeep(params.metadata ?? {}),
     })
@@ -301,7 +324,7 @@ export const ensureChat = createChat;
 
 export async function renameChat(
   db: DashboardAgentDb,
-  params: { chatId: string; userId: string; organizationId: string; title: string }
+  params: ChatViewer & { chatId: string; title: string }
 ): Promise<void> {
   await db
     .update(chats)
@@ -310,6 +333,7 @@ export async function renameChat(
       and(
         eq(chats.id, params.chatId),
         eq(chats.userId, params.userId),
+        visibleTo(params.actingUserId),
         eq(chats.organizationId, params.organizationId)
       )
     );
@@ -330,7 +354,7 @@ export async function setChatTitleIfDefault(
 
 export async function setChatPinned(
   db: DashboardAgentDb,
-  params: { chatId: string; userId: string; organizationId: string; pinned: boolean }
+  params: ChatViewer & { chatId: string; pinned: boolean }
 ): Promise<void> {
   await db
     .update(chats)
@@ -339,6 +363,7 @@ export async function setChatPinned(
       and(
         eq(chats.id, params.chatId),
         eq(chats.userId, params.userId),
+        visibleTo(params.actingUserId),
         eq(chats.organizationId, params.organizationId)
       )
     );
@@ -347,7 +372,7 @@ export async function setChatPinned(
 /** Owner-scoped: a client chatId can only clear the caller's own unread state. */
 export async function markChatRead(
   db: DashboardAgentDb,
-  params: { chatId: string; userId: string; organizationId: string; at?: Date }
+  params: ChatViewer & { chatId: string; at?: Date }
 ): Promise<void> {
   await db
     .update(chats)
@@ -356,6 +381,7 @@ export async function markChatRead(
       and(
         eq(chats.id, params.chatId),
         eq(chats.userId, params.userId),
+        visibleTo(params.actingUserId),
         eq(chats.organizationId, params.organizationId)
       )
     );
@@ -369,7 +395,7 @@ export async function markChatRead(
  */
 export async function softDeleteChat(
   db: DashboardAgentDb,
-  params: { chatId: string; userId: string; organizationId: string }
+  params: ChatViewer & { chatId: string }
 ): Promise<{ deleted: boolean; cancelledWatches: Watch[] }> {
   return db.transaction(async (tx) => {
     // The same lock `createWatch` takes, or a concurrent create lands an active
@@ -383,6 +409,7 @@ export async function softDeleteChat(
         and(
           eq(chats.id, params.chatId),
           eq(chats.userId, params.userId),
+          visibleTo(params.actingUserId),
           eq(chats.organizationId, params.organizationId),
           isNull(chats.deletedAt)
         )
@@ -1146,7 +1173,7 @@ export async function listInvestigationsForChat(
  */
 export async function listChatIdsWithOpenInvestigations(
   db: DashboardAgentDb,
-  params: { organizationId: string; userId: string }
+  params: ChatViewer
 ): Promise<Set<string>> {
   const latest = db
     .selectDistinctOn([investigations.chatId], {
@@ -1159,6 +1186,7 @@ export async function listChatIdsWithOpenInvestigations(
       and(
         eq(chats.organizationId, params.organizationId),
         eq(chats.userId, params.userId),
+        visibleTo(params.actingUserId),
         isNull(chats.deletedAt)
       )
     )

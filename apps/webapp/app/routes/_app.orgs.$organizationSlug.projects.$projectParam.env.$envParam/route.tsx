@@ -11,7 +11,11 @@ import { prisma } from "~/db.server";
 import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
 import { updateCurrentProjectEnvironmentId } from "~/services/dashboardPreferences.server";
 import { logger } from "~/services/logger.server";
-import { hasAdminDisplayAccess, requireUser } from "~/services/session.server";
+import {
+  getImpersonatorUserId,
+  hasAdminDisplayAccess,
+  requireUser,
+} from "~/services/session.server";
 import { tenantContext } from "~/services/tenantContext.server";
 import { selectAccessibleEnvironment } from "~/utils/environmentAccess";
 import { EnvironmentParamSchema, v3ProjectPath } from "~/utils/pathBuilder";
@@ -100,13 +104,17 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   // Watches are a separate switch inside the agent, default off, so the panel renders
   // without any watch affordance until an org gets it.
-  const dashboardAgentWatchEnabled = hasDashboardAgentAccess
-    ? await canUseDashboardAgentWatches({
-        userId: user.id,
-        organizationSlug,
-        orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
-      })
-    : false;
+  const dashboardAgentActingUserId = user.isImpersonating
+    ? await getImpersonatorUserId(request)
+    : undefined;
+  const dashboardAgentWatchEnabled =
+    hasDashboardAgentAccess && !dashboardAgentActingUserId
+      ? await canUseDashboardAgentWatches({
+          userId: user.id,
+          organizationSlug,
+          orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
+        })
+      : false;
 
   const promotedDashboardAgentPrompt = hasDashboardAgentAccess
     ? await getPromotedDashboardAgentPrompt({
@@ -132,6 +140,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
         countChatsWithUnreadWork(dashboardAgentDb, {
           organizationId: project.organization.id,
           userId: user.id,
+          actingUserId: dashboardAgentActingUserId,
         }),
       ]);
     } catch (error) {

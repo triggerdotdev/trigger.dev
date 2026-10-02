@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   createChat: vi.fn(),
@@ -9,6 +9,9 @@ const mocks = vi.hoisted(() => ({
   watchEnabled: false,
   startSession: vi.fn(),
   softDeleteChat: vi.fn(),
+  resolveQuota: vi.fn(),
+  user: { id: "usr_real", admin: false, isImpersonating: false },
+  impersonatorUserId: "usr_admin",
   logger: { debug: vi.fn(), error: vi.fn(), warn: vi.fn(), info: vi.fn() },
   // Mutable so a test can take the head start away and drive the cold path.
   env: { SESSION_SECRET: "test-session-secret", ANTHROPIC_API_KEY: "sk-test" } as Record<
@@ -20,7 +23,12 @@ const mocks = vi.hoisted(() => ({
 vi.mock("~/db.server", () => ({ $replica: {}, prisma: {} }));
 vi.mock("~/env.server", () => ({ env: mocks.env }));
 vi.mock("~/services/session.server", () => ({
-  requireUser: async () => ({ id: "usr_real", admin: false, isImpersonating: false }),
+  requireUser: async () => mocks.user,
+  getImpersonatorUserId: async () => mocks.impersonatorUserId,
+}));
+vi.mock("~/services/dashboardAgentQuota.server", async (importOriginal) => ({
+  ...((await importOriginal()) as Record<string, unknown>),
+  resolveAgentMessageQuota: mocks.resolveQuota,
 }));
 vi.mock("~/v3/canAccessDashboardAgent.server", () => ({
   canAccessDashboardAgent: async () => true,
@@ -292,5 +300,59 @@ describe("dashboard agent chat creation — the watch flag", () => {
         metadata: expect.objectContaining({ watchEnabled: true }),
       })
     );
+  });
+});
+
+describe("dashboard agent chat creation — started by someone acting for the user", () => {
+  beforeEach(() => {
+    mocks.user = { id: "usr_real", admin: false, isImpersonating: true };
+    mocks.createChat.mockReset().mockResolvedValue(undefined);
+    mocks.headStart.mockReset().mockResolvedValue(undefined);
+    mocks.findEnvironmentBySlug
+      .mockReset()
+      .mockResolvedValue({ id: "env_real", type: "DEVELOPMENT" });
+    mocks.mintUserActorToken.mockReset().mockResolvedValue("tr_uat_real");
+    mocks.mintPublicToken.mockReset().mockResolvedValue("pat_public");
+    mocks.softDeleteChat.mockReset().mockResolvedValue({ deleted: true, cancelledWatches: [] });
+    mocks.resolveQuota.mockReset().mockResolvedValue({ reached: true, used: 20, limit: 20 });
+    mocks.env.ANTHROPIC_API_KEY = "sk-test";
+    mocks.watchEnabled = true;
+  });
+  afterEach(() => {
+    mocks.user = { id: "usr_real", admin: false, isImpersonating: false };
+    mocks.resolveQuota.mockReset().mockResolvedValue({ reached: false, used: 0, limit: 20 });
+    mocks.watchEnabled = false;
+  });
+
+  it("starts the chat even when the owner's org has used its messages", async () => {
+    const response = await createChatRequest();
+
+    expect(response.status).toBe(200);
+    expect(mocks.resolveQuota).not.toHaveBeenCalled();
+    expect(mocks.createChat.mock.calls[0][1]).toMatchObject({ createdByUserId: "usr_admin" });
+  });
+
+  it("hands the head start no watches, whatever the org's flag", async () => {
+    expect((await createChatRequest()).status).toBe(200);
+
+    expect(mocks.headStart).toHaveBeenCalledWith(
+      expect.objectContaining({
+        watchEnabled: false,
+        metadata: expect.objectContaining({ watchEnabled: false }),
+      })
+    );
+  });
+
+  it("takes the chat back as the one who started it when the head start fails", async () => {
+    mocks.headStart.mockRejectedValue(new Error("session create failed"));
+
+    const response = await createChatRequest();
+
+    expect(response.status).toBe(500);
+    expect(mocks.softDeleteChat.mock.calls[0][1]).toMatchObject({
+      chatId: mocks.createChat.mock.calls[0][1].id,
+      userId: "usr_real",
+      actingUserId: "usr_admin",
+    });
   });
 });

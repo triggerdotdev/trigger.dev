@@ -50,6 +50,13 @@
       "when": 1788600710042,
       "tag": "0006_wooden_shaman",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790954466145,
+      "tag": "0007_curious_martin_li",
+      "breakpoints": true
     }
   ]
 }
