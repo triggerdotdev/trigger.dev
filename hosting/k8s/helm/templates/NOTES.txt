@@ -58,11 +58,6 @@ Configuration:
 {{- else }}
 - Using external Redis at {{ .Values.redis.external.host }}:{{ .Values.redis.external.port | default 6379 }}
 {{- end }}
-{{- if .Values.electric.deploy }}
-- Using internal Electric sync service
-{{- else }}
-- Using external Electric sync service at {{ .Values.electric.external.url }}
-{{- end }}
 {{- if .Values.clickhouse.deploy }}
 - Using internal ClickHouse
 {{- else }}

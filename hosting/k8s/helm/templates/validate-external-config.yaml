@@ -32,12 +32,6 @@ This template will fail the Helm deployment if external config is missing for re
 {{- end }}
 {{/* When s3.deploy=true the MinIO root password is auto-generated into the datastore Secret and consumed via auth.existingSecret; set s3.auth.rootPassword to pin it. */}}
 
-{{- if not .Values.electric.deploy }}
-{{- if not .Values.electric.external.url }}
-{{- fail "Electric external configuration is required when electric.deploy=false. Please provide electric.external.url" }}
-{{- end }}
-{{- end }}
-
 {{- if and .Values.s2.deploy .Values.s2.external.endpoint }}
 {{- fail "S2 configuration conflict: s2.external.endpoint is set but s2.deploy=true, so the external endpoint would be ignored. Set s2.deploy=false to use an external S2 endpoint, or clear s2.external.endpoint to use the bundled s2-lite." }}
 {{- end }}

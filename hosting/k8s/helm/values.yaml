@@ -507,66 +507,6 @@ redis:
     existingSecret: "" # Name of existing secret containing password
     existingSecretPasswordKey: "redis-password" # Key in existing secret containing password
 
-# Electric configuration
-electric:
-  deploy: true
-  image:
-    registry: docker.io
-    repository: electricsql/electric
-    tag: "1.2.4"
-    pullPolicy: IfNotPresent
-  config:
-    insecure: true
-    usageReporting: false
-
-  podAnnotations: {}
-
-  # podSecurityContext:
-  #   fsGroup: 1000
-
-  # securityContext:
-  #   runAsNonRoot: true
-  #   runAsUser: 1000
-
-  service:
-    type: ClusterIP
-    port: 3000
-    targetPort: 3000
-  resources: {}
-
-  # Health probe configuration
-  livenessProbe:
-    enabled: true
-    initialDelaySeconds: 10
-    periodSeconds: 10
-    timeoutSeconds: 5
-    failureThreshold: 5
-    successThreshold: 1
-  readinessProbe:
-    enabled: true
-    initialDelaySeconds: 10
-    periodSeconds: 10
-    timeoutSeconds: 5
-    failureThreshold: 5
-    successThreshold: 1
-  startupProbe:
-    enabled: false
-    initialDelaySeconds: 0
-    periodSeconds: 10
-    timeoutSeconds: 5
-    failureThreshold: 60
-    successThreshold: 1
-
-  # External Electric connection (when deploy: false)
-  external:
-    url: "" # For example: "http://electric:3000"
-
-  # Extra environment variables for Electric
-  extraEnvVars:
-    []
-    # - name: CUSTOM_VAR
-    #   value: "custom-value"
-
 # S2 (realtime streams v2)
 # s2-lite is the open-source, self-hostable S2 server (https://s2.dev). It backs
 # realtime streams v2, which power AI-agent token streaming and run streams. When

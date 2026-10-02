@@ -107,7 +107,6 @@ This chart deploys the following components:
 - **Webapp** - Main Trigger.dev application (port 3030)
 - **PostgreSQL** - Primary database with logical replication  
 - **Redis** - Cache and job queue
-- **Electric** - Real-time sync service (ElectricSQL)
 
 ### Worker Services
 - **Supervisor** - Kubernetes worker orchestrator for executing runs
@@ -118,6 +117,8 @@ This chart deploys the following components:
 - **Registry** - Private Docker registry for deployed code (EXPERIMENTAL - disabled by default)
 
 ## Configuration
+
+Realtime run subscriptions use the native backend with the configured Redis, PostgreSQL, and ClickHouse services. Before upgrading, unset the global `realtimeBackend` feature flag and any organization overrides, or set them to `native`. Organization overrides take precedence over the global flag, which takes precedence over the environment default. Values of `electric` or `shadow` select the removed Electric service and break run subscriptions.
 
 ### Basic Configuration
 
@@ -400,30 +401,6 @@ supervisor:
     failureThreshold: 60
     successThreshold: 1
 
-# Electric health probes
-electric:
-  livenessProbe:
-    enabled: true
-    initialDelaySeconds: 5
-    periodSeconds: 5
-    timeoutSeconds: 5
-    failureThreshold: 5
-    successThreshold: 1
-  readinessProbe:
-    enabled: true
-    initialDelaySeconds: 5
-    periodSeconds: 5
-    timeoutSeconds: 1
-    failureThreshold: 5
-    successThreshold: 1
-  startupProbe:
-    enabled: false
-    initialDelaySeconds: 0
-    periodSeconds: 10
-    timeoutSeconds: 5
-    failureThreshold: 60
-    successThreshold: 1
-
 # Registry health probes
 registry:
   livenessProbe:
@@ -560,7 +537,7 @@ The Helm chart uses three types of versions:
 
 1. **Chart Version** (`Chart.yaml:version`) - Helm chart packaging version
 2. **App Version** (`Chart.yaml:appVersion`) - Trigger.dev application version  
-3. **Component Versions** (`values.yaml`) - Individual service versions (Electric, ClickHouse, etc.)
+3. **Component Versions** (`values.yaml`) - Individual service versions (ClickHouse, etc.)
 
 ### Release Process
 

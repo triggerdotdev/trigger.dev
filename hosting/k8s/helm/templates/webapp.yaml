@@ -186,8 +186,10 @@ spec:
               value: {{ .Values.webapp.loginOrigin | quote }}
             - name: API_ORIGIN
               value: {{ .Values.webapp.apiOrigin | quote }}
-            - name: ELECTRIC_ORIGIN
-              value: {{ include "trigger-v4.electric.url" . | quote }}
+            - name: REALTIME_BACKEND_NATIVE_ENABLED
+              value: "1"
+            - name: REALTIME_BACKEND_DEFAULT
+              value: "native"
             {{- if include "trigger-v4.s2.enabled" . }}
             # Realtime streams v2, backed by S2 (bundled s2-lite or an external endpoint)
             - name: REALTIME_STREAMS_DEFAULT_VERSION

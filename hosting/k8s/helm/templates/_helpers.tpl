@@ -377,17 +377,6 @@ S3 auth effective secret access key (with fallback to rootPassword)
 {{- end }}
 
 {{/*
-Electric service URL
-*/}}
-{{- define "trigger-v4.electric.url" -}}
-{{- if .Values.electric.deploy -}}
-http://{{ include "trigger-v4.fullname" . }}-electric:{{ .Values.electric.service.port }}
-{{- else -}}
-{{ .Values.electric.external.url }}
-{{- end -}}
-{{- end }}
-
-{{/*
 Whether realtime streams v2 (S2) is wired up: either the bundled s2-lite is
 deployed, or an external S2 endpoint has been configured.
 */}}
