@@ -1,4 +1,4 @@
-import { NODE_RUNTIME_UPDATE_MAJOR, nodeMajor } from "@trigger.dev/core/v3";
+import { nodeMajor } from "@trigger.dev/core/v3";
 import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/isomorphic";
 import { prisma } from "~/db.server";
 
@@ -83,53 +83,4 @@ export async function listCurrentProductionProjectRuntimes(scope: Scope) {
       };
     })
   );
-}
-
-export async function organizationHasProjectRuntimeUpdate({
-  organizationSlug,
-  userId,
-}: {
-  organizationSlug: string;
-  userId: string;
-}): Promise<boolean> {
-  const project = await prisma.project.findFirst({
-    where: {
-      organization: {
-        slug: organizationSlug,
-        deletedAt: null,
-        members: { some: { userId } },
-      },
-      version: "V3",
-      deletedAt: null,
-      environments: {
-        some: {
-          type: "PRODUCTION",
-          workerDeploymentPromotions: {
-            some: {
-              label: CURRENT_DEPLOYMENT_LABEL,
-              deployment: {
-                OR: [
-                  {
-                    runtimeVersion: { startsWith: `${NODE_RUNTIME_UPDATE_MAJOR}.` },
-                    OR: [{ runtime: null }, { runtime: { startsWith: "node" } }],
-                  },
-                  {
-                    runtimeVersion: null,
-                    OR: [
-                      { runtime: null },
-                      { runtime: "node" },
-                      { runtime: `node-${NODE_RUNTIME_UPDATE_MAJOR}` },
-                    ],
-                  },
-                ],
-              },
-            },
-          },
-        },
-      },
-    },
-    select: { id: true },
-  });
-
-  return project !== null;
 }

@@ -32,6 +32,11 @@ describe("formatCommandForDiagnostics", () => {
 
 const images: Array<[BuildRuntime, string, string]> = [
   [
+    "node",
+    "triggerdotdev/node:24-bookworm@sha256:d2d0c01822409f6d2de1cc69a9e718424048fa12fc64b223dfa84f6db44d0ffd",
+    "triggerdotdev/node:24-bookworm-build@sha256:19322289508ae9b4be0b769acac179637e4b57d363844682f4b116feb951267d",
+  ],
+  [
     "node-24",
     "triggerdotdev/node:24-bookworm@sha256:d2d0c01822409f6d2de1cc69a9e718424048fa12fc64b223dfa84f6db44d0ffd",
     "triggerdotdev/node:24-bookworm-build@sha256:19322289508ae9b4be0b769acac179637e4b57d363844682f4b116feb951267d",

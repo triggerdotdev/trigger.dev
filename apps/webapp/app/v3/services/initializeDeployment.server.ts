@@ -3,6 +3,7 @@ import {
   type InitializeDeploymentRequestBody,
   type ExternalBuildData,
 } from "@trigger.dev/core/v3";
+import { resolveBuildRuntime } from "@trigger.dev/core/v3/build";
 import { customAlphabet } from "nanoid";
 import { env } from "~/env.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -387,7 +388,7 @@ export class InitializeDeploymentService extends BaseService {
             git: payload.gitMeta ?? undefined,
             commitSHA: payload.gitMeta?.commitSha ?? undefined,
             externalId: payload.externalId,
-            runtime: payload.runtime ?? environment.project.defaultRuntime ?? undefined,
+            runtime: resolveBuildRuntime(payload.runtime),
             cliVersion: options?.cliVersion,
             triggeredVia: payload.triggeredVia ?? undefined,
             startedAt: initialStatus === "BUILDING" ? new Date() : undefined,

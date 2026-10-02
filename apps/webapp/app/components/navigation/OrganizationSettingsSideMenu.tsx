@@ -53,13 +53,11 @@ export function OrganizationSettingsSideMenu({
   buildInfo,
   isUsingPlugin,
   isSsoUsingPlugin,
-  hasProjectRuntimeUpdate,
 }: {
   organization: MatchedOrganization;
   buildInfo: BuildInfo;
   isUsingPlugin: boolean;
   isSsoUsingPlugin: boolean;
-  hasProjectRuntimeUpdate: boolean;
 }) {
   const { isManagedCloud } = useFeatures();
   const featureFlags = useFeatureFlags();
@@ -140,15 +138,6 @@ export function OrganizationSettingsSideMenu({
             inactiveIconColor="text-text-dimmed"
             to={organizationProjectsPath(organization)}
             data-action="projects"
-            badge={
-              hasProjectRuntimeUpdate ? (
-                <>
-                  {/* mr-1 lifts the right gap to 12px so it matches the dot's 12px top/bottom inset in the h-8 row */}
-                  <span aria-hidden className="mr-1 size-2 shrink-0 rounded-full bg-warning" />
-                  <span className="sr-only">Runtime update available.</span>
-                </>
-              ) : undefined
-            }
           />
           <SideMenuItem
             name="Team"

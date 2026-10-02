@@ -1,4 +1,3 @@
-import { needsNodeRuntimeUpdate } from "@trigger.dev/core/v3";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { resolveOrgIdFromSlugForUser } from "~/models/organization.server";
 import { listCurrentProductionProjectRuntimes } from "~/services/projectRuntimeUpdates.server";
@@ -34,49 +33,26 @@ export const loader = dashboardLoader(
     }
 
     const runtimes = await listCurrentProductionProjectRuntimes({ organizationId });
+    const projects: ProjectRuntimeRow[] = runtimes.map(({ project, environment, deployment }) => ({
+      name: project.name,
+      ref: project.externalRef,
+      slug: project.slug,
+      environmentSlug: environment.slug,
+      deployment: deployment
+        ? {
+            runtime: deployment.runtime,
+            runtimeVersion: deployment.runtimeVersion,
+            deployedAt: deployment.deployedAt,
+            shortCode: deployment.shortCode,
+          }
+        : null,
+    }));
 
-    const needsUpdate: ProjectRuntimeRow[] = [];
-    const otherProjects: ProjectRuntimeRow[] = [];
-
-    for (const { project, environment, deployment } of runtimes) {
-      const row: ProjectRuntimeRow = {
-        name: project.name,
-        ref: project.externalRef,
-        slug: project.slug,
-        environmentSlug: environment.slug,
-        deployment: deployment
-          ? {
-              runtime: deployment.runtime,
-              runtimeVersion: deployment.runtimeVersion,
-              deployedAt: deployment.deployedAt,
-              shortCode: deployment.shortCode,
-            }
-          : null,
-      };
-
-      if (deployment && needsNodeRuntimeUpdate(deployment.runtime, deployment.runtimeVersion)) {
-        needsUpdate.push(row);
-      } else {
-        otherProjects.push(row);
-      }
-    }
-
-    return typedjson({
-      organizationSlug: params.organizationSlug,
-      needsUpdate,
-      otherProjects,
-    });
+    return typedjson({ organizationSlug: params.organizationSlug, projects });
   }
 );
 
 export default function Page() {
-  const { organizationSlug, needsUpdate, otherProjects } = useTypedLoaderData<typeof loader>();
-
-  return (
-    <ProjectsPage
-      organizationSlug={organizationSlug}
-      needsUpdate={needsUpdate}
-      otherProjects={otherProjects}
-    />
-  );
+  const { organizationSlug, projects } = useTypedLoaderData<typeof loader>();
+  return <ProjectsPage organizationSlug={organizationSlug} projects={projects} />;
 }

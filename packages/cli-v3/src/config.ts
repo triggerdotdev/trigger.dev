@@ -37,9 +37,7 @@ export type ResolveConfigOptions = {
   warn?: boolean;
 };
 
-export type LoadedConfig = ResolvedConfig & {
-  runtimeWasExplicit: boolean;
-};
+export type LoadedConfig = ResolvedConfig;
 
 export async function loadConfig({
   cwd = process.cwd(),
@@ -245,19 +243,12 @@ async function resolveConfig(
     }
   ) as ResolvedConfig; // TODO: For some reason, without this, there is a weird type error complaining about tsconfigPath being string | nullish, which can't be assigned to string | undefined
 
-  const resolvedConfig = {
+  return {
     ...mergedConfig,
     dirs: Array.from(new Set(dirs)),
     instrumentedPackageNames: getInstrumentedPackageNames(mergedConfig),
     runtime,
   };
-
-  Object.defineProperty(resolvedConfig, "runtimeWasExplicit", {
-    value: overrides?.runtime !== undefined || config.runtime !== undefined,
-    enumerable: false,
-  });
-
-  return resolvedConfig as LoadedConfig;
 }
 
 function resolveTriggerDir(dir: string, workingDir: string): string {

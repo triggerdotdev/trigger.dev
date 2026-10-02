@@ -33,7 +33,7 @@ async function createProject(runtime?: string) {
 
 describe("loadConfig runtime", () => {
   it.each([
-    ["node", "node"],
+    ["node", "node-24"],
     ["node-22", "node-22"],
     ["node-24", "node-24"],
     ["node-26", "node-26"],
@@ -45,28 +45,10 @@ describe("loadConfig runtime", () => {
     await expect(loadConfig({ cwd, warn: false })).resolves.toMatchObject({ runtime: expected });
   });
 
-  it("tracks whether runtime was explicitly configured", async () => {
-    const cwd = await createProject("node-22");
-
-    await expect(loadConfig({ cwd, warn: false })).resolves.toMatchObject({
-      runtime: "node-22",
-      runtimeWasExplicit: true,
-    });
-  });
-
-  it("tracks an omitted runtime separately from the legacy default", async () => {
+  it("uses the current Node.js LTS when runtime is omitted", async () => {
     const cwd = await createProject();
 
-    await expect(loadConfig({ cwd, warn: false })).resolves.toMatchObject({
-      runtime: "node",
-      runtimeWasExplicit: false,
-    });
-  });
-
-  it("keeps node as the legacy default when runtime is omitted", async () => {
-    const cwd = await createProject();
-
-    await expect(loadConfig({ cwd, warn: false })).resolves.toMatchObject({ runtime: "node" });
+    await expect(loadConfig({ cwd, warn: false })).resolves.toMatchObject({ runtime: "node-24" });
   });
 
   it.each(["node-23"])(

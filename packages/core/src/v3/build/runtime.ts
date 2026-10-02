@@ -4,7 +4,8 @@ import { BuildRuntime, ConfigRuntime } from "../schemas/build.js";
 import { dedupFlags } from "./flags.js";
 import { homedir } from "node:os";
 
-export const DEFAULT_RUNTIME = "node" satisfies BuildRuntime;
+export const CURRENT_NODE_LTS_RUNTIME = "node-24" satisfies BuildRuntime;
+export const DEFAULT_RUNTIME = CURRENT_NODE_LTS_RUNTIME;
 
 export type DeprecatedConfigRuntime = "experimental-node-24" | "experimental-node-26";
 
@@ -29,6 +30,10 @@ export type ExperimentalConfigRuntime = DeprecatedConfigRuntime;
 export const isExperimentalConfigRuntime = isDeprecatedConfigRuntime;
 
 export function resolveBuildRuntime(runtime: unknown): BuildRuntime {
+  if (runtime === undefined) {
+    return DEFAULT_RUNTIME;
+  }
+
   const parsedRuntime = ConfigRuntime.safeParse(runtime);
 
   if (!parsedRuntime.success) {
@@ -42,6 +47,8 @@ export function resolveBuildRuntime(runtime: unknown): BuildRuntime {
   }
 
   switch (parsedRuntime.data) {
+    case "node":
+      return CURRENT_NODE_LTS_RUNTIME;
     case "experimental-node-24":
       return "node-24";
     case "experimental-node-26":

@@ -18,13 +18,17 @@ describe("runtime configuration", () => {
   it.each([
     ["experimental-node-24", "node-24"],
     ["experimental-node-26", "node-26"],
-    ["node", "node"],
+    ["node", "node-24"],
     ["node-22", "node-22"],
     ["node-24", "node-24"],
     ["node-26", "node-26"],
     ["bun", "bun"],
   ] as const)("normalizes %s to %s", (runtime, expected) => {
     expect(resolveBuildRuntime(runtime)).toBe(expected);
+  });
+
+  it("normalizes an omitted runtime to node-24", () => {
+    expect(resolveBuildRuntime(undefined)).toBe("node-24");
   });
 
   it.each(["node-24", "node-26"] as const)(

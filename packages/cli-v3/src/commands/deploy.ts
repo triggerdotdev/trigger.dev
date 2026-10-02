@@ -51,7 +51,6 @@ import {
 import { loadConfig } from "../config.js";
 import { authenticateForDeploy, userIdForDeploy } from "../deploy/auth.js";
 import { buildImage } from "../deploy/buildImage.js";
-import { resolveDeploymentRuntime } from "../deploy/runtime.js";
 import {
   checkLogsForErrors,
   checkLogsForWarnings,
@@ -487,12 +486,6 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   if (!projectClient) {
     throw new Error("Failed to get project client");
   }
-
-  resolvedConfig.runtime = resolveDeploymentRuntime({
-    configuredRuntime: resolvedConfig.runtime,
-    runtimeWasExplicit: resolvedConfig.runtimeWasExplicit,
-    projectDefaultRuntime: projectClient.defaultRuntime,
-  });
 
   if (needsNodeRuntimeUpdate(resolvedConfig.runtime, undefined)) {
     prettyWarning(
