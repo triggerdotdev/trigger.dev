@@ -1,7 +1,9 @@
 import { build } from "esbuild";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const require = createRequire(import.meta.url);
@@ -80,16 +82,21 @@ describe("schema composition compatibility", () => {
       ],
     });
 
-    const bundledModule = await import(
-      `data:text/javascript;base64,${Buffer.from(result.outputFiles[0]!.text).toString("base64")}`
-    );
+    const tempDir = await mkdtemp(join(tmpdir(), "schema-composition-"));
+    try {
+      const bundlePath = join(tempDir, "bundle.mjs");
+      await writeFile(bundlePath, result.outputFiles[0]!.text);
+      const bundledModule = await import(pathToFileURL(bundlePath).href);
 
-    expect(bundledModule.parsed).toMatchObject({
-      retry: { resetFormat: "unix_timestamp" },
-      schedule: { window: "10%" },
-      metadata: { id: "my-webhook" },
-      resource: { id: "my-webhook" },
-    });
+      expect(bundledModule.parsed).toMatchObject({
+        retry: { resetFormat: "unix_timestamp" },
+        schedule: { window: "10%" },
+        metadata: { id: "my-webhook" },
+        resource: { id: "my-webhook" },
+      });
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
   });
 
   it.each([
@@ -161,13 +168,18 @@ describe("schema composition compatibility", () => {
       ],
     });
 
-    const bundledModule = await import(
-      `data:text/javascript;base64,${Buffer.from(result.outputFiles[0]!.text).toString("base64")}`
-    );
+    const tempDir = await mkdtemp(join(tmpdir(), "schema-composition-"));
+    try {
+      const bundlePath = join(tempDir, "bundle.mjs");
+      await writeFile(bundlePath, result.outputFiles[0]!.text);
+      const bundledModule = await import(pathToFileURL(bundlePath).href);
 
-    expect(bundledModule.parsed).toMatchObject({
-      dequeued: { run: { id: "run_1" }, snapshotRoute: { residency: "postgres" } },
-      attemptStart: { isWarmStart: true, snapshotRoute: { residency: "postgres" } },
-    });
+      expect(bundledModule.parsed).toMatchObject({
+        dequeued: { run: { id: "run_1" }, snapshotRoute: { residency: "postgres" } },
+        attemptStart: { isWarmStart: true, snapshotRoute: { residency: "postgres" } },
+      });
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
   });
 });
