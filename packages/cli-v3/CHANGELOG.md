@@ -1,5 +1,15 @@
 # trigger.dev
 
+## 4.7.2
+
+### Patch Changes
+
+- Use the current Node.js LTS for deployments whose `runtime` is unset or set to `"node"`. Set a versioned runtime such as `"node-24"` to keep deployments pinned to that Node.js major. ([`9ecdf735e`](https://github.com/triggerdotdev/trigger.dev/commit/9ecdf735e7a3263bd4605e0e34c7c5484964a0a8))
+- Updated dependencies:
+  - `@trigger.dev/build@4.7.2`
+  - `@trigger.dev/core@4.7.2`
+  - `@trigger.dev/schema-to-json@4.7.2`
+
 ## 4.7.1
 
 ### Patch Changes

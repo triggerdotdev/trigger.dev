@@ -1,5 +1,14 @@
 # @trigger.dev/sdk
 
+## 4.7.2
+
+### Patch Changes
+
+- `chat.agent` now sends parallel tool results to the model in the order the tools were called, the same order the next turn's history uses. Models that bind their thinking to the exact conversation (Claude Sonnet 5.5, Claude Opus 5.5, Claude Fable 5.1) no longer lose a turn's reasoning, or fail the request on accounts that enforce the check, when its tools finish out of order. ([`760737258`](https://github.com/triggerdotdev/trigger.dev/commit/76073725801988056d23bbdde76831d81e671cd7))
+- Recovering a long unfinished `chat.agent` response on a continuation run no longer blocks the worker. Rebuilding the response from its streamed chunks now takes time linear in its length and yields to the event loop as it goes, so heartbeats keep firing and the run is not killed mid-replay. Capturing the response at the end of a long turn gets the same speedup. ([`93c63c685`](https://github.com/triggerdotdev/trigger.dev/commit/93c63c6859648521792bd4d2cd7c0c5966eef991))
+- Updated dependencies:
+  - `@trigger.dev/core@4.7.2`
+
 ## 4.7.1
 
 ### Patch Changes
