@@ -504,10 +504,9 @@ export const LinkButton = ({
 
   if (to.toString().startsWith("/resources")) {
     return (
-      <Link
-        to={to}
+      <a
+        href={to.toString()}
         ref={innerRef}
-        reloadDocument
         target="_blank"
         rel={newTabRel(to.toString())}
         className={cn("group/button block focus-custom", props.fullWidth ? "w-full" : "")}
@@ -519,7 +518,7 @@ export const LinkButton = ({
         aria-label={ariaLabel}
       >
         <ButtonContent {...props} />
-      </Link>
+      </a>
     );
   }
 
