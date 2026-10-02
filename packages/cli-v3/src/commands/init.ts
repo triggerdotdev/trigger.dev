@@ -8,7 +8,7 @@ import type { Command } from "commander";
 import { Option as CommandOption } from "commander";
 import { applyEdits, findNodeAtLocation, getNodeValue, modify, parseTree } from "jsonc-parser";
 import { writeFile } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { join, posix, relative, resolve, sep } from "node:path";
 import { addDependency, addDevDependency } from "nypm";
 import { resolveTSConfig } from "pkg-types";
 import { z } from "zod";
@@ -260,6 +260,12 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
 
   const cwd = resolve(process.cwd(), dir);
 
+  if (!(await pathExists(join(cwd, "package.json")))) {
+    throw new Error(
+      `No package.json found in ${cwd}. Run init from the root of an existing JavaScript or TypeScript project.`
+    );
+  }
+
   const authorization = await login({
     embedded: true,
     defaultApiUrl: options.apiUrl,
@@ -439,6 +445,10 @@ async function createTriggerDir(
       const relativeLocation = location.replace(/^\//, "");
 
       const triggerDir = resolve(process.cwd(), relativeLocation);
+      // The prompt takes a cwd-relative path, but trigger.config dirs are relative to the project dir.
+      const configLocation = relative(resolve(process.cwd(), dir), triggerDir)
+        .split(sep)
+        .join(posix.sep);
 
       logger.debug({ triggerDir });
 
@@ -461,7 +471,7 @@ async function createTriggerDir(
         log.step(`Created directory at ${location}`);
 
         span.end();
-        return { location, isCustomValue: location !== defaultValue };
+        return { location: configLocation, isCustomValue: location !== defaultValue };
       }
 
       const templateUrl = generateTemplateUrl(
@@ -482,7 +492,7 @@ async function createTriggerDir(
 
       span.end();
 
-      return { location, isCustomValue: location !== defaultValue };
+      return { location: configLocation, isCustomValue: location !== defaultValue };
     } catch (e) {
       if (!(e instanceof SkipCommandError)) {
         recordSpanException(span, e);
