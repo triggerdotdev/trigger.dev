@@ -51,6 +51,7 @@ import {
   resolveDashboardAgentRepoSnapshot,
   startDashboardAgentSession,
 } from "~/services/dashboardAgent.server";
+import { dashboardAgentTags } from "~/services/dashboardAgentTags";
 import { dashboardAgentEnvironmentAddress } from "~/services/dashboardAgentEnvironmentAddress.server";
 import { wellFormMessageText } from "~/services/dashboardAgentMessageText.server";
 import { watchErrorStatus } from "~/services/dashboardAgentWatchErrorStatus.server";
@@ -366,6 +367,12 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     const runtimeEnv = await findEnvironmentBySlug(project.id, envParam, userId);
     if (!runtimeEnv) return json({ error: "Environment not found" }, { status: 404 });
     const environmentAddress = dashboardAgentEnvironmentAddress(runtimeEnv);
+    const tags = dashboardAgentTags({
+      organizationSlug,
+      projectRef: project.externalRef,
+      environmentSlug: runtimeEnv.slug,
+      userId,
+    });
 
     const chatId = generateFriendlyId("chat");
     try {
@@ -416,6 +423,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             mode: repoSnapshot ? "code" : "assistant",
             metadata: headStartMetadata,
             watchEnabled,
+            tags,
           });
         } else {
           // Cold start: the client sends the first message through the `in` proxy, which
@@ -424,6 +432,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           // delegated token on the first turn.
           await startDashboardAgentSession({
             chatId,
+            tags,
             clientData: {
               ...clientContext,
               watchEnabled,
@@ -660,6 +669,12 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         // is fetched and extracted on the worker).
         await startDashboardAgentSession({
           chatId,
+          tags: dashboardAgentTags({
+            organizationSlug,
+            projectRef: project.externalRef,
+            environmentSlug: runtimeEnv.slug,
+            userId,
+          }),
           clientData: {
             ...pickAgentClientMetadata(clientData),
             // Server-resolved, like every other field here: the resumed run's first turn

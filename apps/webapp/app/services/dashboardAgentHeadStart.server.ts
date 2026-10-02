@@ -91,6 +91,7 @@ export async function startDashboardAgentHeadStart(params: {
   mode: "assistant" | "code";
   metadata: Record<string, unknown>;
   watchEnabled: boolean;
+  tags?: string[];
 }): Promise<void> {
   // The same assembly the agent run uses, so both sides hand the provider one prefix.
   const tools = toolSchemasFor(params.mode, { watchEnabled: params.watchEnabled });
@@ -101,7 +102,8 @@ export async function startDashboardAgentHeadStart(params: {
     chatId: params.chatId,
     messages: params.messages,
     metadata: params.metadata,
-    triggerConfig: dashboardAgentTriggerConfig(),
+    triggerConfig: dashboardAgentTriggerConfig(params.tags),
+    ...(params.tags ? { tags: params.tags } : {}),
     // Scopes session creation and the agent trigger to the agent's own environment.
     apiClient: {
       baseURL: dashboardAgentApiOrigin(),

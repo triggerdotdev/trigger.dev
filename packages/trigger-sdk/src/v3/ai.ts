@@ -13204,6 +13204,11 @@ export type ChatStartSessionParams<TChat extends AnyTask = AnyTask> = {
    * server-side metadata that doesn't go through the agent's `clientDataSchema`.
    */
   metadata?: Record<string, unknown>;
+  /**
+   * Up to 10 tags on the Session row, for filtering sessions in the dashboard.
+   * Run tags go in `triggerConfig.tags`.
+   */
+  tags?: string[];
 };
 
 /**
@@ -13361,6 +13366,7 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
       taskIdentifier: taskId,
       triggerConfig,
       metadata: params.metadata,
+      ...(params.tags !== undefined ? { tags: params.tags } : {}),
     };
 
     const baseURLOption = options?.baseURL;

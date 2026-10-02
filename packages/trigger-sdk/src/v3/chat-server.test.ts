@@ -716,6 +716,36 @@ describe("chat.startHeadStart (detached)", () => {
     expect(body.triggerConfig.basePayload.headStartMessages[0].id).toBe("m1");
   });
 
+  it("puts session tags on the created session", async () => {
+    const requests: CapturedRequest[] = [];
+    wireFetch(requests);
+
+    const result = await withApiContext(() =>
+      chat.startHeadStart({
+        agentId: "test-agent",
+        chatId: "chat-tags",
+        messages: userMessages,
+        tags: ["org:acme", "project:proj_1"],
+        triggerConfig: { tags: ["org:acme"] },
+        run: async ({ chat: chatHelper }) =>
+          streamText({
+            ...chatHelper.toStreamTextOptions(),
+            model: new MockLanguageModelV3({
+              doStream: async () => ({ stream: textStream("hi back") }),
+            }),
+          }),
+      })
+    );
+    await result.completion;
+
+    const sessionCreate = requests.find(
+      (r) => r.url.endsWith("/api/v1/sessions") || r.url.endsWith("/api/v1/sessions/")
+    );
+    const body = JSON.parse(sessionCreate!.init!.body as string);
+    expect(body.tags).toEqual(["org:acme", "project:proj_1"]);
+    expect(body.triggerConfig.tags).toEqual(["chat:chat-tags", "org:acme"]);
+  });
+
   it("dispatches a final handover (isFinal: true) on a pure-text step 1", async () => {
     const requests: CapturedRequest[] = [];
     wireFetch(requests);

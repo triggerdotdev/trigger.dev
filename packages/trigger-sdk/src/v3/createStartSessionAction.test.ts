@@ -96,6 +96,25 @@ describe("chat.createStartSessionAction — runtime", () => {
     expect(lastStartBody?.triggerConfig.basePayload).not.toHaveProperty("metadata");
   });
 
+  it("sends session tags on the session itself, apart from the run tags", async () => {
+    installStartFixture();
+
+    const start = chat.createStartSessionAction("fake-chat");
+    await start({ chatId: "chat-session-tags", tags: ["org:acme", "user:u-1"] });
+
+    expect(lastStartBody?.tags).toEqual(["org:acme", "user:u-1"]);
+    expect(lastStartBody?.triggerConfig.tags).toEqual(["chat:chat-session-tags"]);
+  });
+
+  it("sends no session tags when none are given", async () => {
+    installStartFixture();
+
+    const start = chat.createStartSessionAction("fake-chat");
+    await start({ chatId: "chat-no-session-tags" });
+
+    expect(lastStartBody).not.toHaveProperty("tags");
+  });
+
   it("prepends chat:{chatId} to triggerConfig.tags and caps at 10", async () => {
     installStartFixture();
 

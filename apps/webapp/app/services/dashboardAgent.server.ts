@@ -101,13 +101,15 @@ export function isDashboardAgentConfigured(): boolean {
 // when DASHBOARD_AGENT_VERSION is set; unset runs on the env's current version.
 // `ttl` always applies, so an agent run that never gets dequeued expires
 // instead of sitting in the queue indefinitely.
-export function dashboardAgentTriggerConfig(): {
+export function dashboardAgentTriggerConfig(tags: string[] = []): {
   lockToVersion?: string;
   ttl: string;
+  tags?: string[];
 } {
   return {
     ...(env.DASHBOARD_AGENT_VERSION ? { lockToVersion: env.DASHBOARD_AGENT_VERSION } : {}),
     ttl: env.DASHBOARD_AGENT_RUN_TTL,
+    ...(tags.length > 0 ? { tags } : {}),
   };
 }
 
@@ -116,14 +118,19 @@ export function dashboardAgentTriggerConfig(): {
 export async function startDashboardAgentSession(params: {
   chatId: string;
   clientData?: Record<string, unknown>;
+  tags?: string[];
 }): Promise<void> {
   const config = dashboardAgentConfig();
   if (!config) throw new Error("DASHBOARD_AGENT_SECRET_KEY is not set");
   const startSession = chat.createStartSessionAction(TASK_ID, {
     apiClient: config,
-    triggerConfig: dashboardAgentTriggerConfig(),
+    triggerConfig: dashboardAgentTriggerConfig(params.tags),
   });
-  await startSession({ chatId: params.chatId, clientData: params.clientData });
+  await startSession({
+    chatId: params.chatId,
+    clientData: params.clientData,
+    ...(params.tags ? { tags: params.tags } : {}),
+  });
 }
 
 // Read is narrowed to the `.out` stream (`read:sessions:{chatId}:out`): `.in` records carry

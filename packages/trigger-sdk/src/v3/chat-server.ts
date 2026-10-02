@@ -286,6 +286,11 @@ export type HeadStartHandlerOptions<TTools extends Record<string, Tool>> = {
    */
   triggerConfig?: Partial<SessionTriggerConfigInput>;
   /**
+   * Up to 10 tags on the Session itself, for filtering sessions in the dashboard.
+   * Run tags go in `triggerConfig.tags`.
+   */
+  tags?: string[];
+  /**
    * API client config (base URL + access token) for creating the session
    * and triggering the agent run. When set, the handler runs under this
    * config instead of the ambient `apiClientManager` config — use it when
@@ -309,6 +314,8 @@ export type StartHeadStartOptions<TTools extends Record<string, Tool>> = {
   idleTimeoutInSeconds?: number;
   /** Run options for the auto-triggered `handover-prepare` run (tags, queue, machine, …). */
   triggerConfig?: Partial<SessionTriggerConfigInput>;
+  /** Up to 10 tags on the Session itself, for filtering sessions in the dashboard. */
+  tags?: string[];
   /** API client config for session creation + trigger when the agent lives in another project/env. */
   apiClient?: ApiClientConfiguration;
   /** Metadata merged into the run's wire payload (auth tokens, context, …). Never sent to the browser. */
@@ -352,6 +359,7 @@ export const chat = {
         agentId: opts.agentId,
         idleTimeoutInSeconds: opts.idleTimeoutInSeconds,
         triggerConfig: opts.triggerConfig,
+        tags: opts.tags,
       });
 
       const helper: HeadStartChatHelper<TTools> = {
@@ -427,6 +435,7 @@ export const chat = {
         agentId: opts.agentId,
         idleTimeoutInSeconds: opts.idleTimeoutInSeconds,
         triggerConfig: opts.triggerConfig,
+        tags: opts.tags,
       });
 
     // Scope session creation + the agent trigger to `apiClient`'s env when
@@ -594,6 +603,8 @@ async function openHandoverSession(opts: {
   agentId: string;
   idleTimeoutInSeconds?: number;
   triggerConfig?: Partial<SessionTriggerConfigInput>;
+  /** Tags on the Session row. */
+  tags?: string[];
   /** Request-lifecycle signal on the HTTP path; omitted on the detached path. */
   requestSignal?: AbortSignal;
 }): Promise<InternalSession> {
@@ -674,6 +685,7 @@ async function openHandoverSession(opts: {
       externalId: chatId,
       taskIdentifier: opts.agentId,
       triggerConfig,
+      ...(opts.tags !== undefined ? { tags: opts.tags } : {}),
     })
   );
   const sessionPublicAccessToken = created.publicAccessToken;

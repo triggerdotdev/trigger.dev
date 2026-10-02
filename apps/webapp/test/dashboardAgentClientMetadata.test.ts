@@ -119,6 +119,30 @@ async function startChat(clientData: Record<string, unknown>) {
   return mocks.startSession.mock.calls[0][0].clientData as Record<string, unknown>;
 }
 
+describe("dashboard agent start intent — tags", () => {
+  beforeEach(() => {
+    mocks.findEnvironmentBySlug.mockReset().mockResolvedValue({
+      id: "env_real",
+      slug: "dev",
+      type: "DEVELOPMENT",
+      branchName: null,
+    });
+    mocks.chatExists.mockReset().mockResolvedValue(true);
+    mocks.startSession.mockReset().mockResolvedValue(undefined);
+  });
+
+  it("tags the session it starts for an existing chat like a new one", async () => {
+    await startChat({});
+
+    expect(mocks.startSession.mock.calls[0][0].tags).toEqual([
+      "org:acme",
+      "project:proj_ref_real",
+      "env:dev",
+      "user:usr_real",
+    ]);
+  });
+});
+
 describe.each([
   ["in proxy", appendTurn],
   ["start intent", startChat],
