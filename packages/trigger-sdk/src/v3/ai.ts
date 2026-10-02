@@ -75,7 +75,6 @@ import {
   getToolName,
   isToolUIPart,
   jsonSchema,
-  readUIMessageStream,
   streamText as aiStreamText,
   zodSchema,
 } from "../imports/ai-runtime.js";
@@ -97,6 +96,7 @@ import {
 import { responseAfterCompaction } from "./compactionResponse.js";
 import { withToolResultsInCallOrder } from "./toolResultOrder.js";
 import { ManagedChatResponse, createOrderedChatWriter } from "./managedChatResponse.js";
+import { reduceUIMessageChunks } from "./uiMessageChunks.js";
 import {
   convertSteeredMessages,
   retainStepMessages,
@@ -439,9 +439,9 @@ export function __setReplaySessionOutTailImplForTests(
  *   2. Filter out the agent's control chunks (`type: "trigger:*"`) — they
  *      ride on the same stream as the user-visible UIMessageChunks.
  *   3. Split chunks at `start`/`finish` boundaries so each segment is a
- *      single message, then feed each segment through the AI SDK's
- *      `readUIMessageStream` reducer (the same one `useChat` uses on the
- *      browser side) and grab the final emitted snapshot.
+ *      single message, then reduce each segment with the AI SDK's reducer
+ *      (the same one `useChat` uses on the browser side) via
+ *      {@link reduceUIMessageChunks}, which builds only the final state.
  *   4. The trailing message — if it never received a `finish` chunk —
  *      goes through `cleanupAbortedParts` so partial in-flight parts
  *      don't leak into the next turn's accumulator. Drop it entirely
@@ -497,8 +497,8 @@ async function replaySessionOutTail<TUIMessage extends UIMessage>(
     }
     if (!current) {
       // Chunk arrived before any `start`. Synthesize a segment so the reducer
-      // has something to work with — `readUIMessageStream` tolerates a missing
-      // `start` because we pass `message: undefined`.
+      // has something to work with. The reducer tolerates a missing `start`
+      // and leaves the message ID empty.
       current = { chunks: [], closed: false };
       segments.push(current);
     }
@@ -515,17 +515,9 @@ async function replaySessionOutTail<TUIMessage extends UIMessage>(
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i]!;
     const isTrailing = i === segments.length - 1 && !seg.closed;
-    const segmentStream = new ReadableStream<UIMessageChunk>({
-      start(controller) {
-        for (const c of seg.chunks) controller.enqueue(c);
-        controller.close();
-      },
-    });
     let last: UIMessage | undefined;
     try {
-      for await (const snapshot of readUIMessageStream({ stream: segmentStream })) {
-        last = snapshot;
-      }
+      last = await reduceUIMessageChunks(seg.chunks);
     } catch (error) {
       // Reducer error — the segment is malformed. Skip it and keep going so a
       // single corrupt chunk doesn't sink the entire replay.
@@ -555,15 +547,15 @@ async function replaySessionOutTail<TUIMessage extends UIMessage>(
 
 /**
  * Test-only entry point that bypasses `__setReplaySessionOutTailImplForTests`
- * and reaches the real `apiClient.subscribeToSessionStream` + chunk-segment
- * splitter + `readUIMessageStream` reducer. Pairs with the snapshot
+ * and reaches the real `apiClient.readSessionStreamRecords` + chunk-segment
+ * splitter + {@link reduceUIMessageChunks} reducer. Pairs with the snapshot
  * production-path wrappers above. Lets `replay-session-out.test.ts` drive
  * synthetic chunk sequences through the real reducer to lock down chunk-
  * stream → `UIMessage[]` correctness — if the AI SDK's chunk semantics
  * shift in a future version, the test catches it before customers do.
  *
- * Tests should mock `apiClient.subscribeToSessionStream` (e.g. via
- * `vi.spyOn(apiClient, ...)`) to feed a `ReadableStream<UIMessageChunk>`.
+ * Tests should stub `apiClient.readSessionStreamRecords` to return the
+ * recorded chunks as session stream records.
  *
  * Not part of the public API.
  * @internal
@@ -11689,7 +11681,7 @@ function tapUIMessageChunks(
  * Reconstruct a partial assistant `UIMessage` from the raw chunks that
  * streamed before a failure — the fallback for {@link pipeChatAndCapture}
  * when a transport error abandons the stream before `onFinish` runs. Uses the
- * same `readUIMessageStream` reducer as the boot-time replay path. Returns
+ * same {@link reduceUIMessageChunks} reducer as the boot-time replay path. Returns
  * `undefined` if there's nothing to assemble or the reducer throws.
  */
 async function assemblePartialFromChunks(chunks: UIMessageChunk[]): Promise<UIMessage | undefined> {
@@ -11699,17 +11691,7 @@ async function assemblePartialFromChunks(chunks: UIMessageChunk[]): Promise<UIMe
   });
   if (relevant.length === 0) return undefined;
   try {
-    const stream = new ReadableStream<UIMessageChunk>({
-      start(controller) {
-        for (const chunk of relevant) controller.enqueue(chunk);
-        controller.close();
-      },
-    });
-    let last: UIMessage | undefined;
-    for await (const message of readUIMessageStream({ stream })) {
-      last = message;
-    }
-    return last;
+    return await reduceUIMessageChunks(relevant);
   } catch {
     return undefined;
   }

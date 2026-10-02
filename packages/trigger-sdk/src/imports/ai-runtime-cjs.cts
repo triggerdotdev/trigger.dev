@@ -7,6 +7,8 @@ const ai = require("ai");
 // @ts-ignore
 module.exports.convertToModelMessages = ai.convertToModelMessages;
 // @ts-ignore
+module.exports.createUIMessageStream = ai.createUIMessageStream;
+// @ts-ignore
 module.exports.dynamicTool = ai.dynamicTool;
 // @ts-ignore
 module.exports.generateId = ai.generateId;

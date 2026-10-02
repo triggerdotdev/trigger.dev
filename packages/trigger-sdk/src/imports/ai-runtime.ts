@@ -13,6 +13,7 @@
 // @ts-ignore
 import {
   convertToModelMessages,
+  createUIMessageStream,
   dynamicTool,
   generateId,
   getToolName,
@@ -28,6 +29,7 @@ import {
 // @ts-ignore
 export {
   convertToModelMessages,
+  createUIMessageStream,
   dynamicTool,
   generateId,
   getToolName,

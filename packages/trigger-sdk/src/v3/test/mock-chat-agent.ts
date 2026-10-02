@@ -16,6 +16,7 @@ import {
   type ChatSnapshotV1,
 } from "../ai.js";
 import { createTestSessionHandle, type TestSessionOutState } from "./test-session-handle.js";
+import { reduceUIMessageChunks } from "../uiMessageChunks.js";
 
 /** Pre-seed locals before the agent's `run()` starts. */
 type SetupLocals = (locals: { set<T>(key: LocalsKey<T>, value: T): void }) => void | Promise<void>;
@@ -898,22 +899,17 @@ export function mockChatAgent(
 /**
  * Reduce a synthetic UIMessageChunk[] sequence into the UIMessage[] that
  * the runtime's `replaySessionOutTail` would produce. Splits chunks at
- * `start` boundaries and feeds each segment through AI SDK's
- * `readUIMessageStream`. The trailing un-finished segment goes through
+ * `start` boundaries and reduces each segment with
+ * `reduceUIMessageChunks`. The trailing un-finished segment goes through
  * `cleanupAbortedParts`. Mirrors the production reducer used in
  * `ai.ts:replaySessionOutTail`.
  */
 async function reduceChunksToMessages(chunks: UIMessageChunk[]): Promise<UIMessage[]> {
   if (chunks.length === 0) return [];
   const aiModule = (await import("ai")) as {
-    readUIMessageStream?: (args: {
-      stream: ReadableStream<UIMessageChunk>;
-    }) => AsyncIterable<UIMessage>;
     cleanupAbortedParts?: (msg: UIMessage) => UIMessage;
   };
-  const readUIMessageStream = aiModule.readUIMessageStream;
   const cleanupAbortedParts = aiModule.cleanupAbortedParts;
-  if (!readUIMessageStream) return [];
 
   type Segment = { chunks: UIMessageChunk[]; closed: boolean };
   const segments: Segment[] = [];
@@ -939,17 +935,9 @@ async function reduceChunksToMessages(chunks: UIMessageChunk[]): Promise<UIMessa
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i]!;
     const isTrailing = i === segments.length - 1 && !seg.closed;
-    const segmentStream = new ReadableStream<UIMessageChunk>({
-      start(controller) {
-        for (const c of seg.chunks) controller.enqueue(c);
-        controller.close();
-      },
-    });
     let last: UIMessage | undefined;
     try {
-      for await (const snapshot of readUIMessageStream({ stream: segmentStream })) {
-        last = snapshot;
-      }
+      last = await reduceUIMessageChunks(seg.chunks);
     } catch {
       // Skip malformed segment — tests can assert by inspecting what makes it through.
       continue;

@@ -1,5 +1,6 @@
 import type { UIMessage, UIMessageChunk } from "ai";
-import { generateId, readUIMessageStream } from "../imports/ai-runtime.js";
+import { generateId } from "../imports/ai-runtime.js";
+import { reduceUIMessageChunks } from "./uiMessageChunks.js";
 
 /** One ordered output channel for a turn's managed model and data chunks. */
 export class ManagedChatResponse {
@@ -147,21 +148,10 @@ export class ManagedChatResponse {
   async snapshot(options?: { message: UIMessage; from: number }): Promise<UIMessage | undefined> {
     if (!this.chunks.length) return options?.message;
     const chunks = this.chunks.slice(options?.from ?? 0);
-    let message: UIMessage | undefined = options?.message;
     const original = options?.message ?? this.original;
-    const stream = new ReadableStream<UIMessageChunk>({
-      start(controller) {
-        for (const chunk of chunks) controller.enqueue(chunk);
-        controller.close();
-      },
-    });
-    for await (const update of readUIMessageStream({
-      stream,
-      ...(original ? { message: structuredClone(original) } : {}),
-      // An error chunk must leave previously streamed content recoverable.
-      terminateOnError: false,
-    }))
-      message = update;
+    const message =
+      (await reduceUIMessageChunks(chunks, original ? { message: original } : undefined)) ??
+      options?.message;
     return message ? { ...message, id: message.id || this.fallbackId } : undefined;
   }
 
