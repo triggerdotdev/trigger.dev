@@ -9,12 +9,13 @@ import { Callout } from "~/components/primitives/Callout";
 import { Header1 } from "~/components/primitives/Headers";
 import { Icon } from "~/components/primitives/Icon";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import {
   createPersonalAccessTokenFromAuthorizationCode,
   isAuthorizationCodeMintable,
 } from "~/services/personalAccessToken.server";
-import { requireUserId } from "~/services/session.server";
+import { requireUser, requireUserId } from "~/services/session.server";
 import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta("Authorize login");
@@ -27,6 +28,8 @@ const SearchParamsSchema = z.object({
   source: z.string().optional(),
   clientName: z.string().optional(),
 });
+
+const ORGANIZATION_DISPLAY_LIMIT = 10;
 
 function parseParams(params: unknown) {
   const parsedParams = ParamsSchema.safeParse(params);
@@ -49,17 +52,39 @@ function parseSearch(request: Request) {
 // The loader only renders a consent screen; minting/binding a PAT happens in
 // the `action`, behind an explicit "Authorize" POST.
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  await requireUserId(request);
+  const user = await requireUser(request);
 
   const { authorizationCode } = parseParams(params);
   const { source, clientName } = parseSearch(request);
 
   const mintable = await isAuthorizationCodeMintable(authorizationCode);
 
+  if (!mintable) {
+    return typedjson({ status: "invalid" as const, source, clientName });
+  }
+
+  // The token acts as the user, so it can reach every organization they belong to.
+  const organizationWhere = { deletedAt: null, members: { some: { userId: user.id } } };
+  const [organizations, organizationCount] = await Promise.all([
+    prisma.organization.findMany({
+      select: { id: true, title: true },
+      where: organizationWhere,
+      orderBy: { title: "asc" },
+      take: ORGANIZATION_DISPLAY_LIMIT,
+    }),
+    prisma.organization.count({ where: organizationWhere }),
+  ]);
+
   return typedjson({
-    status: mintable ? ("consent" as const) : ("invalid" as const),
+    status: "consent" as const,
     source,
     clientName,
+    account: {
+      email: user.email,
+      name: user.displayName ?? user.name,
+    },
+    organizations,
+    hiddenOrganizationCount: organizationCount - organizations.length,
   });
 };
 
@@ -152,6 +177,33 @@ export default function Page() {
         <Paragraph variant="extra-small">
           Only authorize if you started this login yourself. If you didn't, close this page.
         </Paragraph>
+        <div className="flex flex-col gap-3 rounded-md border border-grid-bright p-3">
+          <div>
+            <Paragraph variant="base/bright" className="font-medium">
+              {loaderData.account.email}
+            </Paragraph>
+            {loaderData.account.name && (
+              <Paragraph variant="small">{loaderData.account.name}</Paragraph>
+            )}
+          </div>
+          {loaderData.organizations.length === 0 ? (
+            <Paragraph variant="small">You're not a member of any organizations yet.</Paragraph>
+          ) : (
+            <div>
+              <Paragraph variant="small">
+                This will grant access to the following organizations:
+              </Paragraph>
+              <ul className="mt-1 list-inside list-disc text-sm text-text-bright">
+                {loaderData.organizations.map((organization) => (
+                  <li key={organization.id}>{organization.title}</li>
+                ))}
+                {loaderData.hiddenOrganizationCount > 0 && (
+                  <li>and {loaderData.hiddenOrganizationCount} more</li>
+                )}
+              </ul>
+            </div>
+          )}
+        </div>
       </div>
     </AuthShell>
   );
