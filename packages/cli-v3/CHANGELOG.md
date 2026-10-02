@@ -1,5 +1,15 @@
 # trigger.dev
 
+## 4.7.3
+
+### Patch Changes
+
+- Reports filed with the `submit_feedback` MCP tool now reach the Trigger.dev team. They were being sent, but not somewhere anyone was reading. ([`4a94982a1`](https://github.com/triggerdotdev/trigger.dev/commit/4a94982a1d7022fd498eb3a0d6d2d82dd9cd7e16))
+- Updated dependencies:
+  - `@trigger.dev/build@4.7.3`
+  - `@trigger.dev/core@4.7.3`
+  - `@trigger.dev/schema-to-json@4.7.3`
+
 ## 4.7.2
 
 ### Patch Changes
