@@ -38,6 +38,7 @@ import {
   type PromotePromptVersionRequestBody,
   type QueueTypeName,
   type ReactivatePromptOverrideRequestBody,
+  type RemoveTagsRequestBody,
   type RescheduleRunRequestBody,
   type ResolvePromptRequestBody,
   type RetrieveQueueParam,
@@ -997,6 +998,19 @@ export class ApiClient {
       `${this.baseUrl}/api/v1/runs/${runId}/tags`,
       {
         method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  removeTags(runId: string, body: RemoveTagsRequestBody, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      z.object({ message: z.string() }),
+      `${this.baseUrl}/api/v1/runs/${runId}/tags`,
+      {
+        method: "DELETE",
         headers: this.#getHeaders(false),
         body: JSON.stringify(body),
       },
