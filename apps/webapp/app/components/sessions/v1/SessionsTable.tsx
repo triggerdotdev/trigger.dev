@@ -159,9 +159,9 @@ export function SessionsTable({
                     </span>
                   )}
                 </TableCell>
-                <TableCell to={sessionPath}>
+                <TableCell to={sessionPath} actionClassName="py-1" className="pr-16">
                   {session.tags.length > 0 ? (
-                    <div className="flex flex-wrap gap-1">
+                    <div className="flex gap-1">
                       {session.tags.map((tag) => (
                         <RunTag key={tag} tag={tag} />
                       ))}
