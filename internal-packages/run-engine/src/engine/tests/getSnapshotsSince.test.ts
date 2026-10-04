@@ -3,7 +3,7 @@ import { trace } from "@internal/tracing";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import { setTimeout } from "node:timers/promises";
 import { describe, expect } from "vitest";
-import type { PrismaClient } from "@trigger.dev/database";
+import type { PrismaClient, Waitpoint } from "@trigger.dev/database";
 import { RunEngine } from "../index.js";
 import { getExecutionSnapshotsSince } from "../systems/executionSnapshotSystem.js";
 import { copySnapshotsToReplica, createTestMetricsMeter } from "./helpers/replicaTestHelpers.js";
@@ -11,6 +11,24 @@ import { createTestSnapshot, setupTestScenario } from "./helpers/snapshotTestHel
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 
 vi.setConfig({ testTimeout: 120_000 });
+
+function interceptWaitpointFindMany(
+  client: PrismaClient,
+  onFindMany: (requestedIds: string[], rows: Waitpoint[]) => Waitpoint[]
+): PrismaClient {
+  return new Proxy(client, {
+    get(target, prop) {
+      if (prop === "waitpoint") {
+        return {
+          findMany: async (args: { where: { id: { in: string[] } } }) =>
+            onFindMany(args.where.id.in, await target.waitpoint.findMany(args)),
+        };
+      }
+      const value = (target as Record<string | symbol, unknown>)[prop];
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  }) as unknown as PrismaClient;
+}
 
 describe("RunEngine getSnapshotsSince", () => {
   containerTest(
@@ -1586,6 +1604,87 @@ describe("RunEngine getSnapshotsSince", () => {
       const latest = result[result.length - 1];
       // The runner must receive the completed waitpoint (repaired from the primary), not an empty set.
       expect(latest.completedWaitpoints.map((w) => w.id)).toEqual([waitpointId]);
+    }
+  );
+
+  containerTest(
+    "fetches only the waitpoints missing on the replica reader from the primary",
+    async ({ prisma }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const scenario = await setupTestScenario(prisma, authenticatedEnvironment, {
+        totalWaitpoints: 3,
+        outputSizeKB: 1,
+        snapshotConfigs: [
+          { status: "RUN_CREATED", completedWaitpointCount: 0 },
+          { status: "EXECUTING_WITH_WAITPOINTS", completedWaitpointCount: 0 },
+          { status: "EXECUTING", completedWaitpointCount: 3 },
+        ],
+      });
+      const waitpointIds = scenario.waitpoints.map((w) => w.id);
+      const latestSnapshot = scenario.snapshots[scenario.snapshots.length - 1];
+      await prisma.taskRunExecutionSnapshot.update({
+        where: { id: latestSnapshot.id },
+        data: { completedWaitpointOrder: [] },
+      });
+
+      const missingOnReplicaId = waitpointIds[0];
+      const laggingReader = interceptWaitpointFindMany(prisma, (_ids, rows) =>
+        rows.filter((w) => w.id !== missingOnReplicaId)
+      );
+      const primaryRequests: string[][] = [];
+      const primary = interceptWaitpointFindMany(prisma, (ids, rows) => {
+        primaryRequests.push([...new Set(ids)]);
+        return rows;
+      });
+
+      const result = await getExecutionSnapshotsSince(
+        laggingReader,
+        scenario.run.id,
+        scenario.snapshots[0].id,
+        undefined,
+        primary
+      );
+
+      const latest = result[result.length - 1];
+      expect(latest.completedWaitpoints.map((w) => w.id).sort()).toEqual([...waitpointIds].sort());
+      expect(primaryRequests).toEqual([[missingOnReplicaId]]);
+    }
+  );
+
+  containerTest(
+    "does not read waitpoints from the primary when the replica reader has them all",
+    async ({ prisma }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const scenario = await setupTestScenario(prisma, authenticatedEnvironment, {
+        totalWaitpoints: 2,
+        outputSizeKB: 1,
+        snapshotConfigs: [
+          { status: "RUN_CREATED", completedWaitpointCount: 0 },
+          { status: "EXECUTING_WITH_WAITPOINTS", completedWaitpointCount: 0 },
+          { status: "EXECUTING", completedWaitpointCount: 2 },
+        ],
+      });
+      const waitpointIds = scenario.waitpoints.map((w) => w.id);
+
+      let primaryWaitpointReads = 0;
+      const primary = interceptWaitpointFindMany(prisma, (_ids, rows) => {
+        primaryWaitpointReads++;
+        return rows;
+      });
+
+      const result = await getExecutionSnapshotsSince(
+        prisma,
+        scenario.run.id,
+        scenario.snapshots[0].id,
+        undefined,
+        primary
+      );
+
+      const latest = result[result.length - 1];
+      expect([...new Set(latest.completedWaitpoints.map((w) => w.id))].sort()).toEqual(
+        [...waitpointIds].sort()
+      );
+      expect(primaryWaitpointReads).toBe(0);
     }
   );
 });

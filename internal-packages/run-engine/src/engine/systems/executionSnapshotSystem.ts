@@ -415,7 +415,15 @@ export async function getExecutionSnapshotsSince(
   }
 
   // Step 4: Fetch waitpoints in chunks to avoid NAPI string conversion limits
-  const waitpoints = await fetchWaitpointsInChunks(readClient, waitpointIds, runStore, runId);
+  let waitpoints = await fetchWaitpointsInChunks(readClient, waitpointIds, runStore, runId);
+
+  if (repairClient && readClient !== repairClient && waitpoints.length < waitpointIds.length) {
+    const fetchedIds = new Set(waitpoints.map((w) => w.id));
+    const missingIds = waitpointIds.filter((id) => !fetchedIds.has(id));
+    waitpoints = waitpoints.concat(
+      await fetchWaitpointsInChunks(repairClient, missingIds, runStore, runId)
+    );
+  }
 
   // Step 5: Build enhanced snapshots - only latest gets waitpoints, others get empty arrays
   // The runner only uses completedWaitpoints from the latest snapshot anyway
