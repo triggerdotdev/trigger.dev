@@ -373,6 +373,24 @@ describe("syncDeclarativeWebhooks shared endpoints", () => {
     }
   );
 
+  containerTest("an endpoint declared with a wh_ id fails the deploy", async ({ prisma }) => {
+    const { project, environment } = await seedProjectWithEnv(prisma);
+    const worker = await seedWorkerWithTask(prisma, project, environment, "orders");
+
+    await expect(
+      syncDeclarativeWebhooks(
+        declaredWebhook("wh_orders", "orders"),
+        worker,
+        asEnv(environment),
+        prisma,
+        prisma
+      )
+    ).rejects.toThrow(/Webhook endpoint id "wh_orders" can't start with "wh_"/);
+    expect(
+      await prisma.webhookEndpoint.count({ where: { runtimeEnvironmentId: environment.id } })
+    ).toBe(0);
+  });
+
   containerTest("a subscriber naming an unknown endpoint fails the deploy", async ({ prisma }) => {
     const { project, environment } = await seedProjectWithEnv(prisma);
     const worker = await seedWorkerWithTask(prisma, project, environment, "orders");

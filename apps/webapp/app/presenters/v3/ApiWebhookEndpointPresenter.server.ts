@@ -1,4 +1,5 @@
 import { type WebhookEndpointDetailObject, type WebhookEndpointObject } from "@trigger.dev/core/v3";
+import { webhookEndpointLookup } from "~/v3/webhookEndpointLookup";
 import {
   type Prisma,
   type RuntimeEnvironment,
@@ -85,12 +86,11 @@ export class ApiWebhookEndpointListPresenter extends BasePresenter {
 class ApiWebhookEndpointPresenter extends BasePresenter {
   public async call(
     environment: ApiAuthenticationResultSuccess["environment"],
-    endpointFriendlyId: string
+    endpointId: string
   ): Promise<WebhookEndpointDetailObject | undefined> {
     return this.trace("call", async () => {
       const endpoint = await webhookReplica.webhookEndpoint.findFirst({
-        // friendlyId is globally unique; scope to the env so a foreign id 404s.
-        where: { friendlyId: endpointFriendlyId, runtimeEnvironmentId: environment.id },
+        where: webhookEndpointLookup(environment.id, endpointId),
         select: { ...endpointSelect, ...webhookSetupPromptSelect },
       });
       if (!endpoint) return undefined;

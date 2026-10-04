@@ -457,6 +457,14 @@ export const SessionId = new IdUtil("session");
 export const WebhookEndpointId = new IdUtil("wh"); // wh_...
 
 /**
+ * Whether an endpoint id is a generated `wh_` id. Declared endpoint ids can't start with `wh_`, so the
+ * prefix alone tells the two apart.
+ */
+export function isWebhookEndpointFriendlyId(id: string): boolean {
+  return id.startsWith("wh_");
+}
+
+/**
  * Webhook delivery id: time-encoded so the partition key (`createdAt`) is recoverable from the id.
  * The body is `base32hex(6-byte big-endian unix ms timestamp + 9 CSPRNG bytes)` (24 chars) plus a
  * version char "1", prefixed `whd_`. `WebhookDelivery` is RANGE-partitioned on `createdAt`, and the

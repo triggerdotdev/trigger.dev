@@ -16,6 +16,7 @@ import { FilterParseError, parseFilter } from "@internal/webhook-engine";
 import {
   BackgroundWorkerId,
   WebhookEndpointId,
+  isWebhookEndpointFriendlyId,
   stringifyDuration,
 } from "@trigger.dev/core/v3/isomorphic";
 import { randomBytes } from "node:crypto";
@@ -1192,6 +1193,12 @@ export async function syncDeclarativeWebhooks(
       );
     }
     endpointIds.add(endpoint.id);
+
+    if (isWebhookEndpointFriendlyId(endpoint.id)) {
+      throw new ServiceValidationError(
+        `Webhook endpoint id "${endpoint.id}" can't start with "wh_": that prefix is reserved for the ids Trigger.dev generates`
+      );
+    }
 
     if (
       "config" in endpoint.verifierArtifact &&

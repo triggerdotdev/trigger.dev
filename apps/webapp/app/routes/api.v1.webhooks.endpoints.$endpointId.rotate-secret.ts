@@ -1,6 +1,7 @@
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { webhookPrisma } from "~/db.server";
+import { webhookEndpointLookup } from "~/v3/webhookEndpointLookup";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { generateWebhookSigningSecret } from "~/v3/webhookSigningSecret.server";
 
@@ -18,7 +19,7 @@ const { action, loader } = createActionApiRoute(
   },
   async ({ params, authentication }) => {
     const endpoint = await webhookPrisma.webhookEndpoint.findFirst({
-      where: { friendlyId: params.endpointId, runtimeEnvironmentId: authentication.environment.id },
+      where: webhookEndpointLookup(authentication.environment.id, params.endpointId),
       select: { id: true, friendlyId: true, verifierArtifact: true },
     });
     if (!endpoint) return json({ error: "Not found" }, { status: 404 });

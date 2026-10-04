@@ -1510,6 +1510,31 @@ containerTestWithIsolatedRedisNoClickhouse(
 );
 
 containerTestWithIsolatedRedisNoClickhouse(
+  "a waiter can be created by an endpoint's declared id or its wh_ id, and a wh_ value only matches a wh_ id",
+  async ({ prisma, redisOptions }) => {
+    const payments = await createEndpoint(prisma);
+    await createEndpoint(prisma, [], "wh_orders");
+    const engine = buildEngine(prisma, redisOptions, makeWaitpoints().ports);
+    const create = (endpoint: string) =>
+      engine.createWaiter({
+        environmentId: "env_test",
+        projectId: "proj_test",
+        endpoint,
+        match: MATCH(`ord_${endpoint}`),
+      });
+
+    try {
+      expect(await create("payments")).toMatchObject({ outcome: "created" });
+      expect(await create(payments.friendlyId)).toMatchObject({ outcome: "created" });
+      expect(await create("wh_orders")).toEqual({ outcome: "endpoint_not_found" });
+      expect(await create("wh_missing")).toEqual({ outcome: "endpoint_not_found" });
+    } finally {
+      await engine.quit();
+    }
+  }
+);
+
+containerTestWithIsolatedRedisNoClickhouse(
   "an idempotency key reused on another endpoint or match is refused, leaving the first waiter intact",
   async ({ prisma, redisOptions }) => {
     await createEndpoint(prisma);

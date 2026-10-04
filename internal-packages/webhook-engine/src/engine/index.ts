@@ -17,7 +17,7 @@ import type {
   WebhookEndpointContext,
   WebhookRoutingTarget,
 } from "@trigger.dev/core/v3";
-import { WebhookDeliveryId } from "@trigger.dev/core/v3/isomorphic";
+import { WebhookDeliveryId, isWebhookEndpointFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import { webhookWorkerCatalog } from "./workerCatalog.js";
 import {
   type CompleteWaitersJobPayload,
@@ -780,7 +780,7 @@ export class WebhookEngine {
       const endpoint = await this.prisma.webhookEndpoint.findFirst({
         where: {
           runtimeEnvironmentId: input.environmentId,
-          ...(input.endpoint.startsWith("wh_")
+          ...(isWebhookEndpointFriendlyId(input.endpoint)
             ? { friendlyId: input.endpoint }
             : { declaredId: input.endpoint }),
           endpointTenantId: "",

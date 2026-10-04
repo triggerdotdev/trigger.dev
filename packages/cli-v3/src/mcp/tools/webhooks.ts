@@ -11,7 +11,9 @@ import { respondWithError, toolHandler } from "../utils.js";
 const EndpointInput = CommonProjectsInput.extend({
   endpointId: z
     .string()
-    .describe("The webhook endpoint id, starting with wh_. Use list_webhook_endpoints to find it."),
+    .describe(
+      "The webhook endpoint: its declared id (e.g. payments) or wh_ id. Use list_webhook_endpoints to find it."
+    ),
 });
 
 const DELIVERY_STATUSES = [
