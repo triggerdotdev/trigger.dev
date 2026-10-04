@@ -1234,6 +1234,7 @@ describe("buildDashboardAgentTools", () => {
         "run_query",
         "render_view",
         "search_docs",
+        "submit_feedback",
       ].sort()
     );
 

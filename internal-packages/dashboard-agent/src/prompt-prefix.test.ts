@@ -130,8 +130,8 @@ describe("the head-start and agent prefixes are the same prefix", () => {
  * drift. The snapshot below is the itemised diff a reviewer reads.
  */
 const PREFIX_BUDGET = {
-  assistant: { chars: 85_300, estimatedTokens: 21_350, tools: 25, promptChars: 34_000 },
-  code: { chars: 92_500, estimatedTokens: 23_150, tools: 29, promptChars: 36_700 },
+  assistant: { chars: 86_250, estimatedTokens: 21_600, tools: 26, promptChars: 34_100 },
+  code: { chars: 93_450, estimatedTokens: 23_400, tools: 30, promptChars: 36_850 },
 } as const;
 
 // Measured with watches on: the biggest prefix a turn can hand the provider.

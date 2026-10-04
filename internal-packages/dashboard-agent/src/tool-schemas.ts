@@ -3,6 +3,7 @@
  * `@internal/dashboard-agent-contracts` may be imported here.
  */
 import {
+  DASHBOARD_AGENT_FEEDBACK_LIMITS,
   runFiltersSchema,
   viewBlockInputSchema,
   watchSpecSchema,
@@ -408,6 +409,25 @@ export const locateSchema = tool({
   }),
 });
 
+export const submitFeedbackSchema = tool({
+  description:
+    "Report a problem with your own tools, the dashboard, or the docs to the Trigger.dev team: a tool error that looks like our bug, docs that contradict the product, a missing capability you needed, or feedback the user asks you to pass on. Never for the user's own failing runs, tasks or deploys. Ids are fine; never include secrets, env vars, payloads or logs. Report a problem once, and tell the user in one line.",
+  inputSchema: z.object({
+    message: z
+      .string()
+      .trim()
+      .min(1)
+      .max(DASHBOARD_AGENT_FEEDBACK_LIMITS.message)
+      .describe("What you tried, what happened, and what you expected, in your own words."),
+    toolName: z
+      .string()
+      .min(1)
+      .max(DASHBOARD_AGENT_FEEDBACK_LIMITS.toolName)
+      .optional()
+      .describe("The tool it happened in, if one."),
+  }),
+});
+
 // Code-mode tools, present only when the project has a connected GitHub repo.
 const runIdField = z
   .string()
@@ -505,6 +525,7 @@ export const dashboardAgentToolSchemas = {
   create_alert: createAlertSchema,
   delete_alert: deleteAlertSchema,
   locate: locateSchema,
+  submit_feedback: submitFeedbackSchema,
 };
 
 // Code mode adds the source tools. Same key order `buildDashboardAgentTools`
@@ -622,6 +643,7 @@ You have read-only tools that act as the user against their own account:
 - get_current_page: the page the user is on right now, and what the dashboard already noticed on it.
 - navigate_to: take the user to a run, error, queue, deployment, or a filtered runs list.
 - locate: find which project/environment a run, deployment, error id or queue name belongs to, anywhere in the organization, before targeting your other tools there.
+- submit_feedback: report a bug in your tools, a docs mismatch, or a missing capability to the Trigger.dev team.
 
 Guidelines:
 - Be concise and direct. A short, correct answer beats a long one. Default to 2-4 sentences; go longer only when the user asked for detail or the answer genuinely needs it.

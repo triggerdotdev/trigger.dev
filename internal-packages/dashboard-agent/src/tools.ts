@@ -3,6 +3,7 @@ import { buildRepoTools } from "./repo-tools";
 import { buildAlertTools } from "./tool-alerts";
 import { buildApiTools } from "./tool-api";
 import { createApiClient } from "./tool-api-client";
+import { buildFeedbackTool } from "./tool-feedback";
 import { createInvestigationRenderer } from "./tool-investigations";
 import { buildLocateTool } from "./tool-locate";
 import { buildNavigationTools } from "./tool-navigation";
@@ -49,6 +50,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
       ? { ...buildWatchTools({ ctx, reads: ledger }), ...buildAlertTools({ ctx, client }) }
       : {}),
     ...buildLocateTool({ ctx, client, reads: ledger }),
+    ...buildFeedbackTool({ ctx, client }),
   };
 
   // Code mode: when the project has a connected repo, add the source tools.

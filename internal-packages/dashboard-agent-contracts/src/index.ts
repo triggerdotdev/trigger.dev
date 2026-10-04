@@ -5,6 +5,7 @@
 export * from "./agent-records.js";
 export * from "./blocks.js";
 export * from "./evidence.js";
+export * from "./feedback.js";
 export * from "./intent.js";
 export * from "./locate.js";
 export * from "./page-context.js";

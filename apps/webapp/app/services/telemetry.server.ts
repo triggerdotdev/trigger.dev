@@ -233,6 +233,39 @@ class Telemetry {
     },
   };
 
+  dashboardAgent = {
+    /** Returns whether the report was captured, so the agent never claims one that was dropped. */
+    feedback: ({
+      userId,
+      organizationId,
+      projectId,
+      environmentId,
+      chatId,
+      message,
+      toolName,
+    }: {
+      userId: string;
+      organizationId: string;
+      projectId: string;
+      environmentId: string;
+      chatId: string;
+      message: string;
+      toolName?: string;
+    }): boolean => {
+      if (this.#posthogClient === undefined) return false;
+      if (!IS_MANAGED_CLOUD) return false;
+      this.#capture({
+        userId,
+        event: "dashboard_agent_feedback_submitted",
+        organizationId,
+        projectId,
+        environmentId,
+        eventProperties: { chatId, message, toolName },
+      });
+      return true;
+    },
+  };
+
   #capture(event: CaptureEvent) {
     if (this.#posthogClient === undefined) return;
     let groups: Record<string, string> = {};

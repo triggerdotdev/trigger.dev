@@ -26,6 +26,7 @@ const TOOL_LABELS: Record<string, string> = {
   create_alert: "Creating an alert",
   delete_alert: "Deleting an alert",
   locate: "Locating the id",
+  submit_feedback: "Sending feedback",
   // Code mode.
   get_repo_info: "Reading the repo",
   list_files: "Listing files",
