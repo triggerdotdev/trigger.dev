@@ -11,13 +11,13 @@ import {
 import type { RedisOptions } from "@internal/redis";
 import { startSpan, type Counter } from "@internal/tracing";
 import { tryCatch } from "@trigger.dev/core/utils";
+import { sanitizeError } from "@trigger.dev/core/v3";
 import type {
   CompleteRunAttemptResult,
   ExecutionResult,
   MachinePreset,
   MachinePresetName,
   TaskRunContext,
-  TaskRunError,
   TaskRunExecution,
   TaskRunExecutionDeployment,
   TaskRunExecutionOrganization,
@@ -28,7 +28,7 @@ import type {
   TaskRunInternalError,
   TaskRunSuccessfulExecutionResult,
 } from "@trigger.dev/core/v3/schemas";
-import { FlushedRunMetadata, GitMeta } from "@trigger.dev/core/v3/schemas";
+import { FlushedRunMetadata, GitMeta, TaskRunError } from "@trigger.dev/core/v3/schemas";
 import {
   extractIdempotencyKeyScope,
   getUserProvidedIdempotencyKey,
@@ -1479,7 +1479,6 @@ export class RunAttemptSystem {
     tx?: PrismaClientOrTransaction;
   }): Promise<ExecutionResult & { alreadyFinished: boolean }> {
     const prisma = tx ?? this.$.prisma;
-    reason = reason ?? "Canceled by user";
 
     return startSpan(this.$.tracer, "cancelRun", async (span) => {
       return this.$.runLock.lock("cancelRun", [runId], async () => {
@@ -1523,15 +1522,12 @@ export class RunAttemptSystem {
           snapshotRoute
         );
 
-        //set the run to cancelled immediately
-        const error: TaskRunError = {
-          type: "STRING_ERROR",
-          raw: reason,
-        };
+        const reuseStoredReason =
+          reason === undefined && latestSnapshot.executionStatus === "PENDING_CANCEL";
 
         // Calculate updated usage if we have attempt duration data
         let usageUpdate: { usageDurationMs: number; costInCents: number } | undefined;
-        if (attemptDurationMs !== undefined) {
+        if (attemptDurationMs !== undefined || reuseStoredReason) {
           const currentRun = await this.$.runStore.findRunOnPrimary(
             { id: runId },
             {
@@ -1539,6 +1535,7 @@ export class RunAttemptSystem {
                 usageDurationMs: true,
                 costInCents: true,
                 machinePreset: true,
+                error: true,
               },
             }
           );
@@ -1547,15 +1544,27 @@ export class RunAttemptSystem {
             throw new ServiceValidationError("Run not found", 404);
           }
 
-          usageUpdate = this.#calculateUpdatedUsage({
-            runId,
-            currentUsageDurationMs: currentRun.usageDurationMs,
-            currentCostInCents: currentRun.costInCents,
-            attemptDurationMs,
-            machinePresetName: currentRun.machinePreset,
-            environmentType: latestSnapshot.environmentType,
-          });
+          if (reuseStoredReason) {
+            const storedError = TaskRunError.safeParse(currentRun.error);
+            if (storedError.success && storedError.data.type === "STRING_ERROR") {
+              reason = storedError.data.raw;
+            }
+          }
+
+          if (attemptDurationMs !== undefined) {
+            usageUpdate = this.#calculateUpdatedUsage({
+              runId,
+              currentUsageDurationMs: currentRun.usageDurationMs,
+              currentCostInCents: currentRun.costInCents,
+              attemptDurationMs,
+              machinePresetName: currentRun.machinePreset,
+              environmentType: latestSnapshot.environmentType,
+            });
+          }
         }
+
+        reason ??= "Canceled by user";
+        const error = sanitizeError({ type: "STRING_ERROR", raw: reason });
 
         await this.#scheduleFinalizationGuard(runId);
 

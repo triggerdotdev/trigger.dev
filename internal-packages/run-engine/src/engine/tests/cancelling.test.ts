@@ -446,5 +446,161 @@ describe("RunEngine cancelling", () => {
     }
   });
 
+  containerTest(
+    "Finalizing a cancelled executing run keeps the cancel reason",
+    async ({ prisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const engine = createCancellingTestEngine(prisma, redisOptions);
+
+      try {
+        const parentTask = "parent-task";
+        const childTask = "child-task";
+        await setupBackgroundWorker(engine, authenticatedEnvironment, [parentTask, childTask]);
+
+        const parentRun = await triggerAndStart(engine, authenticatedEnvironment, {
+          friendlyId: "run_p1234",
+          taskIdentifier: parentTask,
+        });
+        const childRun = await triggerAndStart(engine, authenticatedEnvironment, {
+          friendlyId: "run_c1234",
+          taskIdentifier: childTask,
+          resumeParentOnCompletion: true,
+          parentTaskRunId: parentRun.id,
+        });
+
+        const cancelledEvents: EventBusEventArgs<"runCancelled">[0][] = [];
+        engine.eventBus.on("runCancelled", (event) => {
+          cancelledEvents.push(event);
+        });
+
+        const reason = "support: test reason";
+        const pending = await engine.cancelRun({ runId: childRun.id, reason });
+        expect(pending.snapshot.executionStatus).toBe("PENDING_CANCEL");
+
+        const pendingRun = await prisma.taskRun.findUniqueOrThrow({ where: { id: childRun.id } });
+        expect(pendingRun.error).toEqual({ type: "STRING_ERROR", raw: reason });
+
+        const finalized = await engine.cancelRun({ runId: childRun.id, finalizeRun: true });
+        expect(finalized.snapshot.executionStatus).toBe("FINISHED");
+
+        const finalRun = await prisma.taskRun.findUniqueOrThrow({ where: { id: childRun.id } });
+        expect(finalRun.status).toBe("CANCELED");
+        expect(finalRun.error).toEqual({ type: "STRING_ERROR", raw: reason });
+
+        expect(cancelledEvents).toHaveLength(1);
+        expect(cancelledEvents[0].run.error).toEqual({ type: "STRING_ERROR", raw: reason });
+
+        const parentWaitpoint = await prisma.waitpoint.findFirstOrThrow({
+          where: { completedByTaskRunId: childRun.id },
+        });
+        expect(parentWaitpoint.outputIsError).toBe(true);
+        expect(JSON.parse(parentWaitpoint.output!)).toEqual({ type: "STRING_ERROR", raw: reason });
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "Cancelling an executing run without a reason uses the default text",
+    async ({ prisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const engine = createCancellingTestEngine(prisma, redisOptions);
+
+      try {
+        const taskIdentifier = "test-task";
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+        const run = await triggerAndStart(engine, authenticatedEnvironment, {
+          friendlyId: "run_1234",
+          taskIdentifier,
+        });
+
+        const pending = await engine.cancelRun({ runId: run.id });
+        expect(pending.snapshot.executionStatus).toBe("PENDING_CANCEL");
+
+        const finalized = await engine.cancelRun({ runId: run.id, finalizeRun: true });
+        expect(finalized.snapshot.executionStatus).toBe("FINISHED");
+
+        const finalRun = await prisma.taskRun.findUniqueOrThrow({ where: { id: run.id } });
+        expect(finalRun.status).toBe("CANCELED");
+        expect(finalRun.error).toEqual({ type: "STRING_ERROR", raw: "Canceled by user" });
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
   //todo bulk cancelling runs
 });
+
+function createCancellingTestEngine(
+  prisma: ConstructorParameters<typeof RunEngine>[0]["prisma"],
+  redisOptions: ConstructorParameters<typeof RunEngine>[0]["runLock"]["redis"]
+) {
+  return new RunEngine({
+    prisma,
+    worker: { redis: redisOptions, workers: 1, tasksPerWorker: 10, pollIntervalMs: 100 },
+    queue: {
+      redis: redisOptions,
+      masterQueueConsumersDisabled: true,
+      processWorkerQueueDebounceMs: 50,
+    },
+    runLock: { redis: redisOptions },
+    machines: {
+      defaultMachine: "small-1x",
+      machines: {
+        "small-1x": { name: "small-1x" as const, cpu: 0.5, memory: 0.5, centsPerMs: 0.0001 },
+      },
+      baseCostInCents: 0.0001,
+    },
+    tracer: trace.getTracer("test", "0.0.0"),
+  });
+}
+
+async function triggerAndStart(
+  engine: RunEngine,
+  environment: Awaited<ReturnType<typeof setupAuthenticatedEnvironment>>,
+  options: {
+    friendlyId: string;
+    taskIdentifier: string;
+    resumeParentOnCompletion?: boolean;
+    parentTaskRunId?: string;
+  }
+) {
+  const run = await engine.trigger(
+    {
+      number: 1,
+      friendlyId: options.friendlyId,
+      environment,
+      taskIdentifier: options.taskIdentifier,
+      payload: "{}",
+      payloadType: "application/json",
+      context: {},
+      traceContext: {},
+      traceId: "t12345",
+      spanId: "s12345",
+      workerQueue: "main",
+      queue: `task/${options.taskIdentifier}`,
+      isTest: false,
+      tags: [],
+      resumeParentOnCompletion: options.resumeParentOnCompletion,
+      parentTaskRunId: options.parentTaskRunId,
+    },
+    engine.prisma
+  );
+
+  await setTimeout(500);
+  const dequeued = await engine.dequeueFromWorkerQueue({
+    consumerId: "test_12345",
+    workerQueue: "main",
+  });
+
+  const attempt = await engine.startRunAttempt({
+    runId: dequeued[0].run.id,
+    snapshotId: dequeued[0].snapshot.id,
+  });
+  expect(attempt.snapshot.executionStatus).toBe("EXECUTING");
+
+  return run;
+}
