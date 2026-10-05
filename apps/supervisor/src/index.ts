@@ -21,11 +21,9 @@ import { KubernetesWorkloadManager } from "./workloadManager/kubernetes.js";
 import {
   RunCrdWorkloadManager,
   RunnerRestoreInformer,
-  restoreHeartbeat,
   settleRestoreFailure,
-  type RestoreRunner,
-  type RestoreWatchResult,
 } from "./workloadManager/runCrd.js";
+import { RestoreWatcher, type RestoreFailure } from "./services/restoreWatcher.js";
 import { DockerWorkloadManager } from "./workloadManager/docker.js";
 import { ComputeWorkloadManager } from "./workloadManager/compute.js";
 import {
@@ -33,12 +31,14 @@ import {
   CheckpointClient,
   isKubernetesEnvironment,
 } from "@trigger.dev/core/v3/serverOnly";
+import { installShutdown } from "./shutdown.js";
 import { createK8sApi, createPodCountFetcher } from "./clients/kubernetes.js";
 import { resolveResponseSchema } from "./clients/responseSchemas.js";
 import { collectDefaultMetrics, Counter, Gauge, Histogram } from "prom-client";
 import { register } from "./metrics.js";
 import { PodCleaner } from "./services/podCleaner.js";
 import { FailedPodHandler } from "./services/failedPodHandler.js";
+import { DequeueDrain } from "./services/dequeueDrain.js";
 import { getWorkerToken } from "./workerToken.js";
 import { mintDeploymentToken } from "./workloadToken.js";
 import { OtlpTraceService } from "./services/otlpTraceService.js";
@@ -88,27 +88,6 @@ const outboundRequestDuration = new Histogram({
   registers: [register],
 });
 
-const restoreWatchesInFlight = new Gauge({
-  name: "supervisor_restore_watches_in_flight",
-  help: "Restore Runners the supervisor is waiting on to start or fail.",
-  registers: [register],
-});
-
-const restoreOutcomesTotal = new Counter({
-  name: "supervisor_restore_outcomes_total",
-  help: "Restore watches ended, by outcome and reason: the operator's failure reason, or Timeout, RunnerGone or ReadFailed from the watch itself.",
-  labelNames: ["outcome", "reason"],
-  registers: [register],
-});
-
-const restoreDuration = new Histogram({
-  name: "supervisor_restore_duration_seconds",
-  help: "Time from a restore Runner's creation to the supervisor seeing it Running or Failed.",
-  labelNames: ["outcome"],
-  buckets: [1, 2.5, 5, 10, 20, 30, 60, 120, 300, 600, 900],
-  registers: [register],
-});
-
 const restoreReportsTotal = new Counter({
   name: "supervisor_restore_reports_total",
   help: "Failed restores reported to the platform, by outcome (requeue or fail) and result: ok, conflict when the run had already moved on, or error.",
@@ -116,11 +95,9 @@ const restoreReportsTotal = new Counter({
   registers: [register],
 });
 
-/** `uid` is the Runner the watch is bound to; `abort` ends a watch a newer Runner replaced. */
-type WatchedRestore = { uid?: string; snapshotFriendlyId: string; abort: AbortController };
-
 class ManagedSupervisor {
   private readonly workerSession: SupervisorSession;
+  private readonly dequeueDrain: DequeueDrain;
   private readonly metricsServer?: HttpServer;
   private readonly workloadServer: WorkloadServer;
   private readonly workloadManager: WorkloadManager;
@@ -128,6 +105,7 @@ class ManagedSupervisor {
   private readonly computeManager?: ComputeWorkloadManager;
   private readonly runCrdManager?: RunCrdWorkloadManager;
   private readonly restoreInformer?: RunnerRestoreInformer;
+  private readonly restoreWatcher?: RestoreWatcher;
   private readonly logger = new SimpleStructuredLogger("managed-supervisor");
   private readonly resourceMonitor: ResourceMonitor;
   private readonly checkpointClient?: CheckpointClient;
@@ -137,8 +115,6 @@ class ManagedSupervisor {
   private readonly failedPodHandler?: FailedPodHandler;
   private readonly tracing?: OtlpTraceService;
   private readonly backpressureMonitors: BackpressureMonitor[] = [];
-  /** Restore Runners being watched, each with the latest snapshot dequeued for it. */
-  private readonly watchedRestores = new Map<string, WatchedRestore>();
   private readonly backpressureRedis?: Redis;
 
   private readonly isKubernetes = isKubernetesEnvironment(env.KUBERNETES_FORCE_ENABLED);
@@ -246,12 +222,10 @@ class ManagedSupervisor {
       ) {
         this.restoreInformer = new RunnerRestoreInformer({
           namespace: env.KUBERNETES_NAMESPACE,
-          onUnwatchedFailure: ({ runFriendlyId, snapshotFriendlyId, runnerId, outcome }) =>
-            void this.reportRestoreFailure(runFriendlyId, snapshotFriendlyId, runnerId, outcome),
+          onUnwatchedFailure: (failure) => void this.restoreWatcher?.report(failure),
           onUnwatchedRestore: ({ runnerId, uid, runFriendlyId, snapshotFriendlyId }) => {
-            if (this.runCrdManager && runFriendlyId && snapshotFriendlyId) {
-              void this.watchRestore(
-                this.runCrdManager,
+            if (runFriendlyId && snapshotFriendlyId) {
+              void this.restoreWatcher?.watch(
                 { runFriendlyId, snapshotFriendlyId },
                 { runnerId, uid }
               );
@@ -273,6 +247,14 @@ class ManagedSupervisor {
         restoreInformer: this.restoreInformer,
       });
       this.runCrdManager = runCrdManager;
+      this.restoreWatcher = new RestoreWatcher({
+        awaitRestore: (restore, onPhase, signal) =>
+          runCrdManager.awaitRestore(restore, onPhase, signal),
+        heartbeat: (beat) => this.heartbeatRestore(beat),
+        heartbeatIntervalMs: env.KUBERNETES_RUNNER_RESTORE_HEARTBEAT_INTERVAL_MS,
+        reportFailure: (failure) => this.reportRestoreFailure(failure),
+        register,
+      });
       this.workloadManager = runCrdManager;
       this.workloadManagerBackend = "run-crd";
     } else if (this.isKubernetes) {
@@ -462,6 +444,7 @@ class ManagedSupervisor {
         // await this.tryWarmStartAllThisNode();
       },
     });
+    this.dequeueDrain = new DequeueDrain(this.workerSession, this.logger);
 
     if (env.TRIGGER_CHECKPOINT_URL) {
       this.logger.log("🥶 Checkpoints enabled", {
@@ -496,7 +479,7 @@ class ManagedSupervisor {
 
     this.workerSession.on(
       "runQueueMessage",
-      async ({ time, message, dequeueResponseMs, pollingIntervalMs }) => {
+      this.dequeueDrain.tracked(async ({ time, message, dequeueResponseMs, pollingIntervalMs }) => {
         this.logger.verbose(`Received message with timestamp ${time.toLocaleString()}`, message);
 
         const traceparent = extractTraceparent(message.run.traceContext);
@@ -669,7 +652,7 @@ class ManagedSupervisor {
             });
           }
         );
-      }
+      })
     );
 
     if (env.METRICS_ENABLED) {
@@ -779,9 +762,12 @@ class ManagedSupervisor {
       setExtra(fromContext(), "did_restore", true);
       this.logger.debug("Runner restore created", { runId: message.run.id });
       // Not awaited: the resume can take minutes, and the dequeue is done.
-      void this.watchRestore(
-        manager,
-        { runFriendlyId: message.run.friendlyId, snapshotFriendlyId: message.snapshot.friendlyId },
+      void this.restoreWatcher?.watch(
+        {
+          runFriendlyId: message.run.friendlyId,
+          snapshotFriendlyId: message.snapshot.friendlyId,
+          snapshotRoute: message.snapshotRoute,
+        },
         restore
       );
     } catch (error) {
@@ -795,71 +781,16 @@ class ManagedSupervisor {
     }
   }
 
-  /** A resume that fails on the node is otherwise silent until the run's heartbeat stalls. */
-  private async watchRestore(
-    manager: RunCrdWorkloadManager,
-    run: { runFriendlyId: string; snapshotFriendlyId: string },
-    restore: RestoreRunner
-  ) {
-    const { runnerId, uid } = restore;
-    const { runFriendlyId } = run;
-    // A redelivered restore finds the same Runner, which needs only one watch,
-    // but its beats and report must name the snapshot dequeued last.
-    const watched = this.watchedRestores.get(runnerId);
-    if (watched && (watched.uid === undefined || uid === undefined || watched.uid === uid)) {
-      watched.snapshotFriendlyId = run.snapshotFriendlyId;
-      return;
-    }
-    // The redelivery replaced the Runner, so the watch on the old one has nothing left to say.
-    watched?.abort.abort();
-    const entry: WatchedRestore = {
-      uid,
-      snapshotFriendlyId: run.snapshotFriendlyId,
-      abort: new AbortController(),
-    };
-    this.watchedRestores.set(runnerId, entry);
-    restoreWatchesInFlight.inc();
-    const heartbeat = restoreHeartbeat(
-      () => this.heartbeatRestore(runFriendlyId, entry.snapshotFriendlyId, runnerId),
-      env.KUBERNETES_RUNNER_RESTORE_HEARTBEAT_INTERVAL_MS
-    );
-    const outcome = await manager
-      .awaitRestore(restore, heartbeat.onPhase, entry.abort.signal)
-      .finally(() => {
-        heartbeat.stop();
-        restoreWatchesInFlight.dec();
-        if (this.watchedRestores.get(runnerId) === entry) {
-          this.watchedRestores.delete(runnerId);
-        }
-      });
-    if (entry.abort.signal.aborted) {
-      return;
-    }
-    const { snapshotFriendlyId } = entry;
-    const outcomeLabel = outcome.ok ? "started" : "failed";
-    restoreOutcomesTotal.inc({
-      outcome: outcomeLabel,
-      reason: outcome.ok ? "Started" : outcome.reason,
-    });
-    if (outcome.createdAt) {
-      restoreDuration.observe(
-        { outcome: outcomeLabel },
-        (Date.now() - outcome.createdAt.getTime()) / 1000
-      );
-    }
-    if (outcome.ok) {
-      this.logger.debug("Runner restore started", { runFriendlyId, runnerId });
-      return;
-    }
-    await this.reportRestoreFailure(runFriendlyId, snapshotFriendlyId, runnerId, outcome);
-  }
-
   /** Keeps the dequeued snapshot from stalling while the operator brings the resume up. */
-  private async heartbeatRestore(
-    runFriendlyId: string,
-    snapshotFriendlyId: string,
-    runnerId: string
-  ) {
+  private async heartbeatRestore({
+    runFriendlyId,
+    snapshotFriendlyId,
+    runnerId,
+  }: {
+    runFriendlyId: string;
+    snapshotFriendlyId: string;
+    runnerId: string;
+  }) {
     const result = await this.workerSession.httpClient.heartbeatRun(
       runFriendlyId,
       snapshotFriendlyId,
@@ -876,12 +807,13 @@ class ManagedSupervisor {
     }
   }
 
-  private async reportRestoreFailure(
-    runFriendlyId: string | undefined,
-    snapshotFriendlyId: string | undefined,
-    runnerId: string,
-    outcome: RestoreWatchResult & { ok: false }
-  ) {
+  private async reportRestoreFailure({
+    runFriendlyId,
+    snapshotFriendlyId,
+    snapshotRoute,
+    runnerId,
+    outcome,
+  }: RestoreFailure) {
     const fields = { runFriendlyId, snapshotFriendlyId, runnerId, reason: outcome.reason };
     this.logger.error("Runner restore failed (run-crd)", { ...fields, error: outcome.error });
     if (!runFriendlyId) {
@@ -897,7 +829,7 @@ class ManagedSupervisor {
       return;
     }
     const settled = await settleRestoreFailure(
-      { runnerId, outcome },
+      { runnerId, outcome, snapshotRoute },
       {
         deleteRunner: (name, uid) => manager.deleteRestoreRunner(name, uid),
         report: (body) =>
@@ -1084,15 +1016,20 @@ class ManagedSupervisor {
     // Stop the verifier first: its timer can otherwise fire mid-shutdown and
     // cold-create a workload on a node that is going down.
     this.warmStartVerifier?.stop();
-    await this.workloadServer.stop();
     await this.workerSession.stop();
+    await this.dequeueDrain.stop();
+    // The next process adopts the restores and recovers the suspends left unanswered.
+    await this.restoreWatcher?.stop();
+    await this.restoreInformer?.stop();
 
     // Optional services
     this.backpressureMonitors.forEach((m) => m.stop());
     await this.backpressureRedis?.quit();
     await this.podCleaner?.stop();
     await this.failedPodHandler?.stop();
-    await this.restoreInformer?.stop();
+
+    // Last: it waits for the requests in flight, which can take until the timeout.
+    await this.workloadServer.stop();
     await this.metricsServer?.stop();
   }
 }
@@ -1107,4 +1044,9 @@ if (env.SUPERVISOR_TELNET_LOGS_PORT && env.SUPERVISOR_TELNET_LOGS_PORT > 0) {
 }
 
 const worker = new ManagedSupervisor();
+installShutdown({
+  stop: () => worker.stop(),
+  timeoutMs: env.SUPERVISOR_SHUTDOWN_TIMEOUT_MS,
+  logger: new SimpleStructuredLogger("supervisor-shutdown"),
+});
 worker.start();

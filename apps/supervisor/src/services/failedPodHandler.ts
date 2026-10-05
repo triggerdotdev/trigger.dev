@@ -1,10 +1,10 @@
-import type { Informer, V1Pod } from "@kubernetes/client-node";
+import type { V1Pod } from "@kubernetes/client-node";
 import { LogLevel, SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 import type { Registry } from "prom-client";
 import { Counter, Histogram } from "prom-client";
-import { setTimeout } from "timers/promises";
 import type { K8sApi } from "../clients/kubernetes.js";
 import { createK8sApi } from "../clients/kubernetes.js";
+import { ReconnectingInformer } from "../clients/reconnectingInformer.js";
 import { register } from "../metrics.js";
 
 // Operator-owned pods carry app=task-run too, since the network policy selects
@@ -30,9 +30,7 @@ export class FailedPodHandler {
 
   private isRunning = false;
 
-  private readonly informer: Informer<V1Pod>;
-  private readonly reconnectIntervalMs: number;
-  private reconnecting = false;
+  private readonly watch: ReconnectingInformer<V1Pod>;
 
   // Metrics
   private readonly register: Registry;
@@ -53,26 +51,32 @@ export class FailedPodHandler {
     this.k8s = opts.k8s ?? createK8sApi();
 
     this.namespace = opts.namespace;
-    this.reconnectIntervalMs = opts.reconnectIntervalMs ?? 1000;
 
-    this.informer = this.k8s.makeInformer(
-      `/api/v1/namespaces/${this.namespace}/pods`,
-      () =>
+    this.watch = new ReconnectingInformer({
+      name: "failed-pod-informer",
+      logger: this.logger,
+      reconnectIntervalMs: opts.reconnectIntervalMs ?? 1000,
+      list: () =>
         this.k8s.core.listNamespacedPod({
           namespace: this.namespace,
           labelSelector: RUN_POD_SELECTOR,
           fieldSelector: "status.phase=Failed",
         }),
-      RUN_POD_SELECTOR,
-      "status.phase=Failed"
-    );
+      makeInformer: (list) =>
+        this.k8s.makeInformer(
+          `/api/v1/namespaces/${this.namespace}/pods`,
+          list,
+          RUN_POD_SELECTOR,
+          "status.phase=Failed"
+        ),
+      onError: (err) => this.onError("failed-pod-informer", err),
+    });
 
     // Whenever a matching pod is added to the informer cache
-    this.informer.on("add", this.onPodCompleted.bind(this));
+    this.watch.informer.on("add", this.onPodCompleted.bind(this));
 
     // Informer events
-    this.informer.on("connect", this.makeOnConnect("failed-pod-informer").bind(this));
-    this.informer.on("error", this.makeOnError("failed-pod-informer").bind(this));
+    this.watch.informer.on("connect", this.makeOnConnect("failed-pod-informer").bind(this));
 
     // Initialize metrics
     this.register = opts.register ?? register;
@@ -122,7 +126,7 @@ export class FailedPodHandler {
     this.isRunning = true;
 
     this.logger.info("starting failed pod handler");
-    await this.informer.start();
+    await this.watch.start();
   }
 
   async stop() {
@@ -134,7 +138,7 @@ export class FailedPodHandler {
     this.isRunning = false;
 
     this.logger.info("stopping failed pod handler");
-    await this.informer.stop();
+    await this.watch.stop();
   }
 
   private async withHistogram<T>(
@@ -257,49 +261,14 @@ export class FailedPodHandler {
     }
   }
 
-  private makeOnError(informerName: string) {
-    return (err?: unknown) => this.onError(informerName, err);
-  }
-
-  private async onError(informerName: string, err?: unknown) {
-    if (!this.isRunning) {
-      this.logger.warn("onError: informer not running");
-      return;
-    }
-
-    // Guard against multiple simultaneous reconnections
-    if (this.reconnecting) {
-      this.logger.debug("onError: reconnection already in progress, skipping", {
-        informerName,
-      });
-      return;
-    }
-
-    this.reconnecting = true;
-
-    try {
-      const error = err instanceof Error ? err : undefined;
-      this.logger.error("error event fired", {
-        informerName,
-        error: error?.message,
-        errorType: error?.name,
-      });
-      this.informerEventsTotal.inc({ namespace: this.namespace, verb: "error" });
-
-      // Reconnect on errors
-      await setTimeout(this.reconnectIntervalMs);
-      await this.informer.start();
-    } catch (handlerError) {
-      const error = handlerError instanceof Error ? handlerError : undefined;
-      this.logger.error("onError: reconnection attempt failed", {
-        informerName,
-        error: error?.message,
-        errorType: error?.name,
-        errorStack: error?.stack,
-      });
-    } finally {
-      this.reconnecting = false;
-    }
+  private onError(informerName: string, err?: unknown) {
+    const error = err instanceof Error ? err : undefined;
+    this.logger.error("error event fired", {
+      informerName,
+      error: error?.message,
+      errorType: error?.name,
+    });
+    this.informerEventsTotal.inc({ namespace: this.namespace, verb: "error" });
   }
 
   private makeOnConnect(informerName: string) {

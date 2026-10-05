@@ -1545,6 +1545,21 @@ describe("settleRestoreFailure", () => {
     });
   });
 
+  it("sends the dequeued run's snapshot route with the report", async () => {
+    const d = deps();
+    const snapshotRoute = {
+      version: 1 as const,
+      residency: "mirrored" as const,
+      organizationId: "org_1",
+    };
+
+    await settleRestoreFailure({ ...failure("SnapshotNodeGone"), snapshotRoute }, d);
+
+    expect(d.report).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: "fail", snapshotRoute })
+    );
+  });
+
   // The Runner may be running a guest the watch never saw start.
   it("neither deletes nor reports a Runner the watch timed out on", async () => {
     const d = deps();

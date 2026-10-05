@@ -8,8 +8,14 @@ import {
   type ObjectCache,
 } from "@kubernetes/client-node";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
-import type { CheckpointType, EnvironmentType, MachinePreset } from "@trigger.dev/core/v3";
+import type {
+  CheckpointType,
+  EnvironmentType,
+  MachinePreset,
+  SnapshotRouteWire,
+} from "@trigger.dev/core/v3";
 import { type K8sApi, createK8sApi } from "../clients/kubernetes.js";
+import { ReconnectingInformer } from "../clients/reconnectingInformer.js";
 import { getRestoreRunnerId, getRunnerId } from "../util.js";
 import type {
   PublishedSuspend,
@@ -46,8 +52,6 @@ const RESTORE_SELECTOR = `${RESTORE_LABEL}=true`;
 const TERMINAL_READ_CODES = new Set([400, 401, 403, 422]);
 
 const MAX_POLL_BACKOFF_MS = 60_000;
-
-const MAX_RECONNECT_BACKOFF_MS = 30_000;
 
 /** The key inside a deployment's token Secret. */
 const TOKEN_KEY = "token";
@@ -770,17 +774,12 @@ export async function awaitRestoreOf(
  */
 export class RunnerRestoreInformer {
   private readonly logger = new SimpleStructuredLogger("runner-restore-informer");
-  private readonly k8s: K8sApi;
   private readonly namespace: string;
-  private readonly reconnectIntervalMs: number;
   private readonly onUnwatchedFailure?: (failure: UnwatchedRestoreFailure) => void;
   private readonly onUnwatchedRestore?: (restore: UnwatchedRestore) => void;
+  private readonly watch: ReconnectingInformer<KubernetesObject>;
   private readonly informer: Informer<KubernetesObject> & ObjectCache<KubernetesObject>;
   private readonly waiters = new Map<string, RestoreWaiter[]>();
-  private isRunning = false;
-  private reconnecting = false;
-  private erroredDuringReconnect = false;
-  private starting = false;
   private listed = false;
   /** Uids from the first list whose add has not been seen yet. */
   private readonly firstListed = new Set<string>();
@@ -800,36 +799,34 @@ export class RunnerRestoreInformer {
      */
     onUnwatchedRestore?: (restore: UnwatchedRestore) => void;
   }) {
-    this.k8s = opts.k8s ?? createK8sApi();
+    const k8s = opts.k8s ?? createK8sApi();
     this.namespace = opts.namespace;
-    this.reconnectIntervalMs = opts.reconnectIntervalMs ?? 1_000;
     this.onUnwatchedFailure = opts.onUnwatchedFailure;
     this.onUnwatchedRestore = opts.onUnwatchedRestore;
-    this.informer = this.k8s.makeInformer(
-      `/apis/${GROUP}/${VERSION}/namespaces/${this.namespace}/${PLURAL}`,
-      () => this.listRestores(),
-      RESTORE_SELECTOR
-    );
+    this.watch = new ReconnectingInformer({
+      name: "runner-restore",
+      logger: this.logger,
+      reconnectIntervalMs: opts.reconnectIntervalMs ?? 1_000,
+      list: () => this.listRestores(k8s),
+      makeInformer: (list) =>
+        k8s.makeInformer(
+          `/apis/${GROUP}/${VERSION}/namespaces/${this.namespace}/${PLURAL}`,
+          list,
+          RESTORE_SELECTOR
+        ),
+    });
+    this.informer = this.watch.informer;
     this.informer.on("add", (runner) => this.onEvent(runner, "add"));
     this.informer.on("update", (runner) => this.onEvent(runner, "update"));
     this.informer.on("delete", (runner) => this.onEvent(runner, "delete"));
-    this.informer.on("error", (err) => void this.onError(err));
   }
 
   async start() {
-    if (this.isRunning) {
-      return;
-    }
-    this.isRunning = true;
-    await this.startInformer();
+    await this.watch.start();
   }
 
   async stop() {
-    if (!this.isRunning) {
-      return;
-    }
-    this.isRunning = false;
-    await this.informer.stop();
+    await this.watch.stop();
   }
 
   /**
@@ -890,28 +887,15 @@ export class RunnerRestoreInformer {
     return promise;
   }
 
-  /**
-   * The client relists on its own after a 410 and leaves that list's rejection
-   * unhandled, so a failure there becomes a reconnect and the abandoned relist
-   * never settles. An empty list instead would delete every cached Runner.
-   */
-  private async listRestores(): Promise<KubernetesListObject<KubernetesObject>> {
-    let list: KubernetesListObject<KubernetesObject>;
-    try {
-      list = (await this.k8s.custom.listNamespacedCustomObject({
-        group: GROUP,
-        version: VERSION,
-        namespace: this.namespace,
-        plural: PLURAL,
-        labelSelector: RESTORE_SELECTOR,
-      })) as KubernetesListObject<KubernetesObject>;
-    } catch (err: unknown) {
-      if (this.starting) {
-        throw err;
-      }
-      void this.onError(err);
-      return new Promise<never>(() => {});
-    }
+  /** Notes the first list's Runners, so a later add can tell a create from a listed one. */
+  private async listRestores(k8s: K8sApi): Promise<KubernetesListObject<KubernetesObject>> {
+    const list = (await k8s.custom.listNamespacedCustomObject({
+      group: GROUP,
+      version: VERSION,
+      namespace: this.namespace,
+      plural: PLURAL,
+      labelSelector: RESTORE_SELECTOR,
+    })) as KubernetesListObject<KubernetesObject>;
     if (!this.listed) {
       this.listed = true;
       for (const runner of list.items ?? []) {
@@ -922,15 +906,6 @@ export class RunnerRestoreInformer {
       }
     }
     return list;
-  }
-
-  private async startInformer() {
-    this.starting = true;
-    try {
-      await this.informer.start();
-    } finally {
-      this.starting = false;
-    }
   }
 
   private onEvent(runner: KubernetesObject, verb: "add" | "update" | "delete") {
@@ -971,48 +946,6 @@ export class RunnerRestoreInformer {
         runFriendlyId: bootstrap?.runFriendlyID,
         snapshotFriendlyId: bootstrap?.snapshotFriendlyID,
       });
-    }
-  }
-
-  /**
-   * Retries until a start ends with no error raised during it. A watch that
-   * fails to connect raises its error inside the start, which still resolves.
-   */
-  private async onError(err: unknown) {
-    if (!this.isRunning) {
-      return;
-    }
-    if (this.reconnecting) {
-      this.erroredDuringReconnect = true;
-      return;
-    }
-    this.reconnecting = true;
-    this.logger.error("[RunnerRestoreInformer] Watch failed, reconnecting", {
-      error: messageOf(err),
-    });
-    let delayMs = this.reconnectIntervalMs;
-    try {
-      do {
-        await sleep(delayMs);
-        if (!this.isRunning) {
-          return;
-        }
-        this.erroredDuringReconnect = false;
-        try {
-          await this.startInformer();
-        } catch (reconnectErr: unknown) {
-          this.erroredDuringReconnect = true;
-          this.logger.error("[RunnerRestoreInformer] Reconnect failed", {
-            error: messageOf(reconnectErr),
-          });
-        }
-        delayMs = Math.min(
-          delayMs * 2,
-          Math.max(this.reconnectIntervalMs, MAX_RECONNECT_BACKOFF_MS)
-        );
-      } while (this.isRunning && this.erroredDuringReconnect);
-    } finally {
-      this.reconnecting = false;
     }
   }
 }
@@ -1105,6 +1038,7 @@ export type RestoreOutcomeReport = (body: {
   outcome: "requeue" | "fail";
   reason: string;
   message?: string;
+  snapshotRoute?: SnapshotRouteWire;
 }) => Promise<{ success: true } | { success: false; error: string; statusCode?: number }>;
 
 export type RestoreFailureSettlement =
@@ -1126,7 +1060,12 @@ export type RestoreFailureSettlement =
  * restarted supervisor's first list does not find it and report it again.
  */
 export async function settleRestoreFailure(
-  failure: { runnerId: string; outcome: RestoreWatchResult & { ok: false } },
+  failure: {
+    runnerId: string;
+    outcome: RestoreWatchResult & { ok: false };
+    /** The dequeued run's route, which spares the platform a read to find it. */
+    snapshotRoute?: SnapshotRouteWire;
+  },
   deps: {
     deleteRunner: (runnerId: string, uid: string) => Promise<void>;
     report: RestoreOutcomeReport;
@@ -1151,7 +1090,12 @@ export async function settleRestoreFailure(
       };
     }
   }
-  const result = await deps.report({ outcome: action.outcome, reason, message: message ?? error });
+  const result = await deps.report({
+    outcome: action.outcome,
+    reason,
+    message: message ?? error,
+    ...(failure.snapshotRoute ? { snapshotRoute: failure.snapshotRoute } : {}),
+  });
   const settled: Extract<RestoreFailureSettlement, { action: "reported" }> = result.success
     ? { action: "reported", outcome: action.outcome, result: "ok" }
     : {

@@ -1112,6 +1112,9 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
 
   async stop() {
     this.snapshotService?.stop();
+    // An open socket would hold the close until the shutdown timeout. Drop the transports
+    // rather than disconnect the sockets, which would stop runners reconnecting.
+    this.websocketServer.server.engine.close();
     await this.httpServer.stop();
   }
 }

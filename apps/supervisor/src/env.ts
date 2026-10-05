@@ -19,6 +19,10 @@ export const Env = z
     // Opt-in, dev-only: stream this process's logs over a local telnet/TCP socket on this port.
     SUPERVISOR_TELNET_LOGS_PORT: z.coerce.number().optional(),
 
+    // How long a SIGTERM or SIGINT waits for a clean stop before exiting anyway. Keep it below
+    // the pod's terminationGracePeriodSeconds, so the exit is this process's and not a SIGKILL.
+    SUPERVISOR_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().positive().default(8_000),
+
     // Required settings
     TRIGGER_API_URL: z.string().url(),
     TRIGGER_WORKER_TOKEN: z.string().min(1), // accepts file:// path to read from a file

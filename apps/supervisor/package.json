@@ -29,6 +29,7 @@
   },
   "devDependencies": {
     "@internal/testcontainers": "workspace:*",
-    "@types/dockerode": "^3.3.33"
+    "@types/dockerode": "^3.3.33",
+    "socket.io-client": "4.7.5"
   }
 }

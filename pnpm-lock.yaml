@@ -220,6 +220,9 @@ importers:
       '@types/dockerode':
         specifier: ^3.3.33
         version: 3.3.35
+      socket.io-client:
+        specifier: 4.7.5
+        version: 4.7.5(bufferutil@4.0.9)(supports-color@10.0.0)
 
   apps/webapp:
     dependencies:
