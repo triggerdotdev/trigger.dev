@@ -386,6 +386,12 @@ export function getLogsSearchListQueryBuilder(ch: ClickhouseReader) {
     ],
     settings: {
       use_query_condition_cache: 1,
+      // The ngram text index covers every organization's rows in a part, so reading it costs more
+      // than scanning one environment's time range, often by seconds when it is not cached.
+      ignore_data_skipping_indices: "idx_search_text",
+      // Hold the response until the query finishes so a limit error arrives as an HTTP error the
+      // client turns into a QueryError, not mid-stream. Pages are a few hundred small rows.
+      wait_end_of_query: 1,
     },
   });
 

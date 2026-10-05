@@ -1,4 +1,9 @@
-import { type ClickHouse, type WhereCondition } from "@internal/clickhouse";
+import {
+  type ClickHouse,
+  isClickhouseResourceLimitError,
+  TASK_EVENT_SEARCH_MAX_TRIGGERED_AFTER_INSERT_MS,
+  type WhereCondition,
+} from "@internal/clickhouse";
 import { type PrismaClientOrTransaction } from "@trigger.dev/database";
 import { z } from "zod";
 import { EVENT_STORE_TYPES, getConfiguredEventRepository } from "~/v3/eventRepository/index.server";
@@ -274,6 +279,14 @@ export class LogsListPresenter extends BasePresenter {
         queryBuilder.where("triggered_timestamp >= {triggeredAtStart: DateTime64(3)}", {
           triggeredAtStart: convertDateToClickhouseDateTime(effectiveFrom),
         });
+        // The table is partitioned by inserted_at, not event time. Writers clamp
+        // triggered_timestamp to at most inserted_at plus a fixed delay, so this bound only
+        // prunes partitions that cannot hold a matching row.
+        queryBuilder.where("inserted_at >= {insertedAtStart: DateTime64(3)}", {
+          insertedAtStart: convertDateToClickhouseDateTime(
+            new Date(effectiveFrom.getTime() - TASK_EVENT_SEARCH_MAX_TRIGGERED_AFTER_INSERT_MS)
+          ),
+        });
       }
 
       // Task filter (applies directly to ClickHouse)
@@ -354,6 +367,13 @@ export class LogsListPresenter extends BasePresenter {
 
     const [queryError, queryResult] = await runQuery();
     if (queryError) {
+      if (isClickhouseResourceLimitError(queryError)) {
+        throw new ServiceValidationError(
+          searchTerm === undefined
+            ? "These logs took too long to load. Try a shorter time range or add a filter."
+            : "This search took too long. Try a shorter time range, a more specific search, or add a filter."
+        );
+      }
       throw queryError;
     }
 

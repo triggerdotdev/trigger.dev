@@ -7,6 +7,9 @@ import { singleton } from "~/utils/singleton";
 import type { OrganizationDataStoresRegistry } from "~/services/dataStores/organizationDataStoresRegistry.server";
 import { type IEventRepository } from "~/v3/eventRepository/eventRepository.types";
 
+// Declared before the singletons below, which initialize clients at module load.
+const LOGS_LIST_REQUEST_TIMEOUT_MARGIN_SECONDS = 5;
+
 // ---------------------------------------------------------------------------
 // Default clients (singleton per process)
 // ---------------------------------------------------------------------------
@@ -70,13 +73,21 @@ function getLogsListClickhouseSettings() {
       filesystem_cache_prefer_bigger_buffer_size:
         env.CLICKHOUSE_LOGS_LIST_FILESYSTEM_CACHE_PREFER_BIGGER_BUFFER_SIZE,
     }),
-    ...(env.CLICKHOUSE_LOGS_LIST_MAX_ROWS_TO_READ && {
-      max_rows_to_read: env.CLICKHOUSE_LOGS_LIST_MAX_ROWS_TO_READ.toString(),
-    }),
+    // No max_rows_to_read: ClickHouse checks it against the estimated rows of every selected
+    // granule before reading, which rejects newest-first LIMIT queries on large environments that
+    // would stop after a few thousand rows. max_execution_time bounds the work instead.
     ...(env.CLICKHOUSE_LOGS_LIST_MAX_EXECUTION_TIME && {
       max_execution_time: env.CLICKHOUSE_LOGS_LIST_MAX_EXECUTION_TIME,
     }),
   };
+}
+
+/** Outlasts the server-side limit so ClickHouse cancels the query and reports why. */
+function getLogsListRequestTimeoutMs() {
+  if (!env.CLICKHOUSE_LOGS_LIST_MAX_EXECUTION_TIME) return undefined;
+  return (
+    (env.CLICKHOUSE_LOGS_LIST_MAX_EXECUTION_TIME + LOGS_LIST_REQUEST_TIMEOUT_MARGIN_SECONDS) * 1000
+  );
 }
 
 function initializeLogsClickhouseClient() {
@@ -95,6 +106,7 @@ function initializeLogsClickhouseClient() {
     logLevel: env.CLICKHOUSE_LOG_LEVEL,
     compression: { request: true },
     maxOpenConnections: env.CLICKHOUSE_MAX_OPEN_CONNECTIONS,
+    requestTimeoutMs: getLogsListRequestTimeoutMs(),
     clickhouseSettings: getLogsListClickhouseSettings(),
   });
 }
@@ -592,6 +604,7 @@ function buildOrgClickhouseClient(url: string, clientType: ClientType): ClickHou
         logLevel: env.CLICKHOUSE_LOG_LEVEL,
         compression: { request: true },
         maxOpenConnections: env.CLICKHOUSE_MAX_OPEN_CONNECTIONS,
+        requestTimeoutMs: getLogsListRequestTimeoutMs(),
         clickhouseSettings: getLogsListClickhouseSettings(),
       });
     case "engine":

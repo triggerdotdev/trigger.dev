@@ -25,6 +25,12 @@ export const TaskEventSearchV2Input = z.object({
 
 export type TaskEventSearchV2Input = z.input<typeof TaskEventSearchV2Input>;
 
+/**
+ * `triggered_timestamp` is clamped to at most `inserted_at` plus this delay, so readers can derive a
+ * safe `inserted_at` lower bound (the partition key) from an event-time lower bound.
+ */
+export const TASK_EVENT_SEARCH_MAX_TRIGGERED_AFTER_INSERT_MS = 5 * 60_000;
+
 export const TASK_EVENT_SEARCH_V2_INSERT_COLUMNS = [
   "environment_id",
   "organization_id",
@@ -138,7 +144,9 @@ function errorMessage(attributes: unknown): string {
 
 function triggeredTimestamp(startTime: string, duration: string, insertedAt: string): string {
   const completedAt = parseNanoseconds(startTime) + BigInt(duration);
-  const latestAllowed = parseMilliseconds(insertedAt) + BigInt(5 * 60_000) * BigInt(1_000_000);
+  const latestAllowed =
+    parseMilliseconds(insertedAt) +
+    BigInt(TASK_EVENT_SEARCH_MAX_TRIGGERED_AFTER_INSERT_MS) * BigInt(1_000_000);
   return formatNanoseconds(completedAt < latestAllowed ? completedAt : latestAllowed);
 }
 

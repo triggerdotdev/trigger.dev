@@ -2300,8 +2300,8 @@ const EnvironmentSchema = z
       .int()
       .default(256_000_000),
     CLICKHOUSE_LOGS_LIST_MAX_THREADS: z.coerce.number().int().default(2),
-    CLICKHOUSE_LOGS_LIST_MAX_ROWS_TO_READ: z.coerce.number().int().default(10_000_000),
-    CLICKHOUSE_LOGS_LIST_MAX_EXECUTION_TIME: z.coerce.number().int().default(120),
+    // The HTTP request timeout is derived from this so ClickHouse gives up before the client does.
+    CLICKHOUSE_LOGS_LIST_MAX_EXECUTION_TIME: z.coerce.number().int().default(15),
     // Bound read-in-order memory on object-storage reads: each part opens a per-column read
     // stream, and the default ~1 MiB+ S3 buffers dominate peak memory. These two byte sizes
     // cap the per-stream buffers and exist on every supported ClickHouse, so they are always on.

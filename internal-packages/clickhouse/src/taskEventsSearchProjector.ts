@@ -3,6 +3,7 @@ import type { Result } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import type { QueryError } from "./client/errors.js";
 import type { ClickhouseWriter } from "./client/types.js";
+import { TASK_EVENT_SEARCH_MAX_TRIGGERED_AFTER_INSERT_MS } from "./taskEventsSearch.js";
 
 export type TaskEventsSearchV2ProjectionWindow = {
   start: Date;
@@ -74,7 +75,9 @@ FROM
         least(
           toInt128(toUnixTimestamp64Nano(start_time)) + toInt128(duration),
           toInt128(
-            toUnixTimestamp64Nano(inserted_at + INTERVAL 5 MINUTE)
+            toUnixTimestamp64Nano(
+              inserted_at + INTERVAL ${TASK_EVENT_SEARCH_MAX_TRIGGERED_AFTER_INSERT_MS / 1000} SECOND
+            )
           )
         )
       )
