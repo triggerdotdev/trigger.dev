@@ -18,7 +18,7 @@ overrides:
   '@ai-sdk/provider-utils@^4': 4.0.29
   '@ai-sdk/anthropic@3.0.125>@ai-sdk/provider-utils': 4.0.56
   '@ai-sdk/amazon-bedrock@4.0.186>@ai-sdk/provider-utils': 4.0.56
-  axios@>=1.15.2 <1.18.0: ^1.18.0
+  axios@>=1.15.2 <1.20.0: ^1.20.0
   express@^4>body-parser: ^1.20.6
   '@remix-run/dev@2.17.5>tar-fs': 2.1.4
   tar: 7.5.21
@@ -8937,8 +8937,8 @@ packages:
   aws4fetch@1.0.20:
     resolution: {integrity: sha512-/djoAN709iY65ETD6LKCtyyEI04XIBP5xVvfmNxsEP0uJB5tyaGBztSryRr4HqMStr9R06PisQE7m9zDTXKu6g==}
 
-  axios@1.19.0:
-    resolution: {integrity: sha512-ht/iuYZXEjFxLH/Hkezgd7m6JKlHHXEUSneaDz8uZe1Gj5QZtCnpyDsckvAiEnT89OEbCLmnte4R4sn7P0EKFw==}
+  axios@1.20.0:
+    resolution: {integrity: sha512-r8aOh8j9cGKpgQAqpzrUHnSIc6a59Y3Xf/cv8sy1DrHCkZHzQGEuoq1tARk6qSyDdtQGSDgpb9kFlruzPvrgwg==}
 
   b4a@1.6.6:
     resolution: {integrity: sha512-5Tk1HLk6b6ctmjIkAcU/Ujv/1WqiDl0F0JdRCR80VsOcUlHcu7pWeWRlOqQLHfDEsVx9YH/aif5AG4ehoCtTmg==}
@@ -21580,7 +21580,7 @@ snapshots:
       '@slack/types': 2.21.1
       '@types/node': 24.13.3
       '@types/retry': 0.12.0
-      axios: 1.19.0
+      axios: 1.20.0
       eventemitter3: 5.0.1
       form-data: 4.0.6
       is-electron: 2.2.2
@@ -23473,7 +23473,7 @@ snapshots:
 
   aws4fetch@1.0.20: {}
 
-  axios@1.19.0:
+  axios@1.20.0:
     dependencies:
       follow-redirects: 1.16.0
       form-data: 4.0.6
