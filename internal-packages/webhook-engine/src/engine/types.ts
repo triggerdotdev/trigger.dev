@@ -216,7 +216,10 @@ export type DeliverWebhookToSessionParams = {
   event: unknown; // delivery.parsedEvent
   source: string; // provider tag
   headers: Record<string, string>;
-  deliveryId: string; // externalDeliveryId, surfaced on the envelope
+  /** The delivery's friendly id (`whd_`): new on a replay, the same across retries of one delivery. */
+  deliveryId: string;
+  /** The provider's id for the delivery (e.g. Stripe's `evt_`), the same across replays. */
+  externalDeliveryId: string;
   triggerConfigTemplate?: Record<string, unknown>;
   idempotencyKey: string;
   // Evaluated startOn: true (default) allows creating a new session; false means resume-only, so a

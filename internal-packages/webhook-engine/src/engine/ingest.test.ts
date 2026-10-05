@@ -855,9 +855,10 @@ containerTestWithIsolatedRedisNoClickhouse(
       expect(calls[0]?.taskIdentifier).toBe("agent-x");
       expect(calls[0]?.actionType).toBe("order.event");
       expect((calls[0]!.event as { id: string }).id).toBe(eventId);
-      expect(calls[0]?.deliveryId).toBe(eventId);
-
       const d = await prisma.webhookDelivery.findFirst({ where: { id: result.deliveryId } });
+      expect(calls[0]?.deliveryId).toBe(d?.friendlyId);
+      expect(calls[0]?.deliveryId).toMatch(/^whd_/);
+      expect(calls[0]?.externalDeliveryId).toBe(eventId);
       expect(d?.runId).toBe("srun_1"); // the session's run, from the port
     } finally {
       await engine.quit();

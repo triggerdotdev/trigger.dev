@@ -239,7 +239,8 @@ containerTestWithIsolatedRedisNoClickhouse(
         targetId: "agent-x:order-events",
         externalId: "cus_1",
         actionType: "order.event",
-        deliveryId: "evt_fan_1",
+        deliveryId: delivery.friendlyId,
+        externalDeliveryId: "evt_fan_1",
         partId: `${deliveryId}:agent-x:order-events`,
         endpoint: endpointContext,
       });

@@ -197,6 +197,7 @@ function createWebhookEngine() {
       source,
       headers,
       deliveryId,
+      externalDeliveryId,
       partId,
       endpoint,
       triggerConfigTemplate,
@@ -243,13 +244,29 @@ function createWebhookEngine() {
             ? {
                 chatId: externalId,
                 trigger: "submit-message",
-                channelEvent: { connectorId, event, source, headers, deliveryId, endpoint },
+                channelEvent: {
+                  connectorId,
+                  event,
+                  source,
+                  headers,
+                  deliveryId,
+                  externalDeliveryId,
+                  endpoint,
+                },
               }
             : {
                 chatId: externalId,
                 trigger: "action",
                 actionSource: "webhook",
-                action: { type: actionType, event, source, headers, deliveryId, endpoint },
+                action: {
+                  type: actionType,
+                  event,
+                  source,
+                  headers,
+                  deliveryId,
+                  externalDeliveryId,
+                  endpoint,
+                },
               };
         const part = JSON.stringify({ kind: "message", payload });
 
