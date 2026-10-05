@@ -823,7 +823,11 @@ describe("derivePhases", () => {
       },
     };
 
-    expect(derivePhases(agentTrace, run, "agent")).toEqual(derivePhases(trace, run, "legacy"));
+    const agentTimeline = derivePhases(agentTrace, run, "agent")!;
+    const legacyTimeline = derivePhases(trace, run, "legacy")!;
+
+    // Each call stamps its own observation time, independent of the duration format.
+    expect(agentTimeline).toEqual({ ...legacyTimeline, asOf: agentTimeline.asOf });
   });
 
   it("flags truncation when the phase cap itself dropped spans", () => {
