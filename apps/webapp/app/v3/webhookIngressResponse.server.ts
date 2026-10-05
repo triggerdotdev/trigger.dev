@@ -1,4 +1,5 @@
 import type { IngestResult } from "@internal/webhook-engine";
+import type { WebhookResponseConfig } from "@trigger.dev/core/v3";
 
 /** What the public ingress answers a provider with for one ingest outcome. */
 export type WebhookHttpResponse = {
@@ -12,15 +13,15 @@ export type WebhookHttpResponse = {
 /**
  * Map an ingest outcome to the HTTP answer the provider sees. Defaults are 200 JSON on success and
  * 400 on missing credentials or a bad signature; an endpoint whose verifier artifact declares a
- * response contract (`acceptedStatus`, `rejectedStatus`) or handshake status gets those instead. The dashboard
+ * response contract (`acceptedStatus`, `acceptedBody`, `rejectedStatus`) or handshake status gets those instead. The dashboard
  * test-send reports the same status and body inside its own result envelope.
  */
 export function webhookHttpResponseFor(result: IngestResult): WebhookHttpResponse {
   switch (result.outcome) {
     case "accepted":
-      return acceptedResponse(result.response?.acceptedStatus ?? 200, result.deliveryFriendlyId);
+      return acceptedResponse(result.response, result.deliveryFriendlyId);
     case "duplicate":
-      return acceptedResponse(result.response?.acceptedStatus ?? 200, result.deliveryId);
+      return acceptedResponse(result.response, result.deliveryId);
     case "handshake":
       return {
         status: result.status,
@@ -57,10 +58,16 @@ export function webhookHttpResponseFor(result: IngestResult): WebhookHttpRespons
   }
 }
 
-function acceptedResponse(status: 200 | 202 | 204, deliveryId: string | undefined) {
+function acceptedResponse(
+  contract: WebhookResponseConfig | undefined,
+  deliveryId: string | undefined
+): WebhookHttpResponse {
+  const status = contract?.acceptedStatus ?? 200;
+  if (status === 204) return { status, body: null, contentType: "application/json" };
+  if (contract?.acceptedBody === "empty") return { status, body: "", contentType: "text/plain" };
   return {
     status,
-    body: status === 204 ? null : JSON.stringify({ received: true, deliveryId }),
+    body: JSON.stringify({ received: true, deliveryId }),
     contentType: "application/json",
   };
 }

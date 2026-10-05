@@ -1,7 +1,7 @@
 import type { WebhookUrlSecretConfig as UrlSecretConfig } from "@trigger.dev/core/v3";
 import type { SchemeVerifier, VerifierResult, VerifyInput } from "./types.js";
 import { constantTimeEqual } from "./util.js";
-import { deriveIdempotencyKey, tryParseJson } from "./derive.js";
+import { deriveIdempotencyKey, parseEventBody } from "./derive.js";
 
 export const urlSecretVerifier: SchemeVerifier = {
   scheme: "url-secret",
@@ -22,7 +22,7 @@ export const urlSecretVerifier: SchemeVerifier = {
     return {
       ok: true,
       idempotencyKey: derive0(cfg, input, provided),
-      ...tryParseJson(input.rawBytes),
+      ...parseEventBody(input.rawBytes, { headers: input.headers }),
     };
   },
 };

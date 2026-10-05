@@ -33,7 +33,10 @@ export const hmacVerifier: SchemeVerifier = {
     return {
       ok: true,
       idempotencyKey,
-      ...parseEventBody(input.rawBytes, { formPayloadField: cfg.formPayload?.field }),
+      ...parseEventBody(input.rawBytes, {
+        formPayloadField: cfg.formPayload?.field,
+        headers: input.headers,
+      }),
     };
   },
 };

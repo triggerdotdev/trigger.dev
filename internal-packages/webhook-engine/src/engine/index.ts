@@ -31,7 +31,7 @@ import { type CachedEndpoint, TtlCache } from "./cache.js";
 import { evaluateFilter, parseFilter } from "./filter/index.js";
 import { verify } from "./verification/index.js";
 import { sha256Hex } from "./verification/util.js";
-import { deriveIdempotencyKey, tryParseJson } from "./verification/derive.js";
+import { deriveIdempotencyKey, parseEventBody } from "./verification/derive.js";
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import type {
   CancelWebhookWaiterResult,
@@ -616,8 +616,8 @@ export class WebhookEngine {
   /**
    * Inject a delivery WITHOUT signature verification, then run the same filter + record + route path
    * as ingest(). This is the test-console "simulate" mode for endpoints we cannot sign for
-   * (asymmetric public-key schemes; url-secret path placement). The body must be JSON. Everything
-   * downstream (filter, startOn, routing, run/session) runs for real.
+   * (asymmetric public-key schemes; url-secret path placement). The body must be JSON, or a form
+   * sent with a form-encoded content type. Everything downstream (filter, startOn, routing, run/session) runs for real.
    */
   async simulateInject(input: IngestInput): Promise<IngestResult> {
     this.#assertEnabled();
@@ -635,7 +635,7 @@ export class WebhookEngine {
         return { outcome: "verification_failed", error: "corrupt verifier artifact" };
       }
 
-      const parsed = tryParseJson(input.rawBytes);
+      const parsed = parseEventBody(input.rawBytes, { headers: input.headers });
       if (parsed.error || parsed.parsedEvent === undefined) {
         return {
           outcome: "verification_failed",

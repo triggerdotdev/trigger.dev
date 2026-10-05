@@ -866,6 +866,109 @@ containerTestWithIsolatedRedisNoClickhouse(
 );
 
 containerTestWithIsolatedRedisNoClickhouse(
+  "a form-encoded body routes as the decoded form to a filtered task and a session keyed on its fields",
+  async ({ prisma, redisOptions }) => {
+    const filter = "event.command == '/miphy'";
+    const endpoint = await prisma.webhookEndpoint.create({
+      data: {
+        friendlyId: WebhookEndpointId.generate().friendlyId,
+        opaqueId: `op_${randomBytes(12).toString("hex")}`,
+        organizationId: "org_test",
+        projectId: "proj_test",
+        runtimeEnvironmentId: "env_test",
+        environmentType: "PRODUCTION",
+        source: "slack",
+        declaredId: "slack-commands",
+        routingTargets: [
+          {
+            type: "task",
+            id: "miphy-command",
+            taskId: "miphy-command",
+            filter,
+            filterAst: parseFilter(filter) as unknown as Prisma.InputJsonValue,
+            filterAstVersion: 1,
+          },
+          {
+            type: "task",
+            id: "other-command",
+            taskId: "other-command",
+            filter: "event.command == '/other'",
+            filterAst: parseFilter("event.command == '/other'") as unknown as Prisma.InputJsonValue,
+            filterAstVersion: 1,
+          },
+          {
+            type: "session",
+            id: "agent-x:commands",
+            taskIdentifier: "agent-x",
+            keyTemplate: "{body.channel_id}:{body.user_id}",
+            actionType: "slash.command",
+            deliverAs: "action",
+          },
+        ],
+        verifierArtifact: { kind: "config", config: VERIFIER_CONFIG },
+        signingSecretKey: SECRET_KEY,
+        status: "ACTIVE",
+      },
+    });
+    const { triggerTask, calls } = makeTriggerTaskStub();
+    const sessions = makeDeliverToSessionStub();
+    const engine = buildEngine(prisma, redisOptions, triggerTask, {
+      deliverToSession: sessions.deliverToSession,
+    });
+
+    try {
+      const body =
+        "team_id=T1&channel_id=C1&user_id=U1&command=%2Fmiphy&text=a+raccoon+dancing&trigger_id=13.4";
+      const t = Math.floor(Date.now() / 1000);
+      const sig = createHmac("sha256", SECRET).update(`${t}.${body}`).digest("hex");
+      const result = await engine.ingest({
+        opaqueId: endpoint.opaqueId,
+        rawBytes: new TextEncoder().encode(body),
+        headers: {
+          "stripe-signature": `t=${t},v1=${sig}`,
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        url: `https://api.example.com/webhooks/v1/ingest/${endpoint.opaqueId}`,
+      });
+      if (result.outcome !== "accepted")
+        throw new Error(`expected accepted, got ${result.outcome}`);
+
+      await waitFor(async () => {
+        const d = await prisma.webhookDelivery.findFirst({ where: { id: result.deliveryId } });
+        return d?.status === "SUCCEEDED";
+      });
+
+      const event = {
+        team_id: "T1",
+        channel_id: "C1",
+        user_id: "U1",
+        command: "/miphy",
+        text: "a raccoon dancing",
+        trigger_id: "13.4",
+      };
+      const delivery = await prisma.webhookDelivery.findFirst({ where: { id: result.deliveryId } });
+      expect(delivery?.errorMessage).toBeNull();
+      expect(delivery?.parsedEvent).toEqual(event);
+      const targets = (delivery?.targets ?? []) as Array<{ id: string; status: string }>;
+      expect(targets.map((t) => [t.id, t.status])).toEqual([
+        ["miphy-command", "SUCCEEDED"],
+        ["other-command", "FILTERED"],
+        ["agent-x:commands", "SUCCEEDED"],
+      ]);
+
+      expect(calls).toHaveLength(1);
+      expect(calls[0]?.taskId).toBe("miphy-command");
+      expect(calls[0]?.payload).toEqual(event);
+      expect(sessions.calls).toHaveLength(1);
+      expect(sessions.calls[0]?.externalId).toBe("C1:U1");
+      expect(sessions.calls[0]?.event).toEqual(event);
+    } finally {
+      await engine.quit();
+    }
+  }
+);
+
+containerTestWithIsolatedRedisNoClickhouse(
   "session delivery with an unresolvable key is FAILED and never calls the port",
   async ({ prisma, redisOptions }) => {
     const endpoint = await createSessionEndpoint(prisma, "{body.customerId}"); // not in the body

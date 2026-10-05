@@ -290,6 +290,86 @@ describe("signWithVerifierConfig round-trips through the verifier", () => {
     expect({}.toString()).toBe("[object Object]");
   });
 
+  describe("form-encoded bodies", () => {
+    const FORM_HEADERS = { "Content-Type": "application/x-www-form-urlencoded" };
+    const formBody = (fields: string) => new TextEncoder().encode(fields);
+    const bodyTimestamped: WebhookHmacConfig = {
+      scheme: "hmac",
+      algorithm: "sha256",
+      encoding: "hex",
+      signatureHeader: "x-signature",
+      signature: {},
+      timestamp: { source: { from: "body", path: "ts" }, toleranceSeconds: 300 },
+      signingString: { template: "{timestamp}.{body}" },
+    };
+
+    function verifySigned(
+      config: WebhookVerifierConfig,
+      secret: string,
+      signed: ReturnType<typeof signWithVerifierConfig>
+    ) {
+      if (!signed.ok) throw new Error(`expected signable: ${signed.error}`);
+      return verify(
+        { kind: "config", config },
+        { rawBytes: signed.body, headers: signed.headers, url: signed.url, secret, nowMs: NOW }
+      );
+    }
+
+    it("signs a form field timestamp the verifier reads back", () => {
+      const secret = "form-secret";
+      const signed = signWithVerifierConfig({
+        config: bodyTimestamped,
+        secret,
+        rawBody: formBody(`ts=${NOW / 1000}&message=hello`),
+        headers: FORM_HEADERS,
+        url: INGRESS_URL,
+        nowMs: NOW,
+      });
+      const verdict = verifySigned(bodyTimestamped, secret, signed);
+      expect(verdict.ok).toBe(true);
+      expect(verdict.parsedEvent).toEqual({ ts: String(NOW / 1000), message: "hello" });
+    });
+
+    it("refreshes a stale form field timestamp and keeps the body a form", () => {
+      const secret = "form-secret";
+      const signed = signWithVerifierConfig({
+        config: bodyTimestamped,
+        secret,
+        rawBody: formBody("ts=1700000000&message=hello+there&tag=a&tag=b"),
+        headers: FORM_HEADERS,
+        url: INGRESS_URL,
+        nowMs: NOW,
+        refreshBodyTimestamp: true,
+      });
+      const verdict = verifySigned(bodyTimestamped, secret, signed);
+      expect(verdict.ok).toBe(true);
+      expect(verdict.parsedEvent).toEqual({
+        ts: String(NOW / 1000),
+        message: "hello there",
+        tag: ["a", "b"],
+      });
+    });
+
+    it("places a body shared secret into a form body", () => {
+      const config: WebhookSharedSecretConfig = {
+        scheme: "shared-secret",
+        placement: "body",
+        fieldName: "token",
+      };
+      const signed = signWithVerifierConfig({
+        config,
+        secret: "the-shared-secret",
+        rawBody: formBody("command=%2Fmiphy&text=hi"),
+        headers: FORM_HEADERS,
+        url: INGRESS_URL,
+        nowMs: NOW,
+      });
+      const verdict = verifySigned(config, "the-shared-secret", signed);
+      expect(verdict.ok).toBe(true);
+      expect(verdict.parsedEvent).toMatchObject({ command: "/miphy", text: "hi" });
+    });
+  });
+
   it("url-secret query verifies", () => {
     const config: WebhookUrlSecretConfig = {
       scheme: "url-secret",

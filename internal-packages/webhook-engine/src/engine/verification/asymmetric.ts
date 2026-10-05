@@ -1,6 +1,6 @@
 import type { WebhookAsymmetricConfig as AsymmetricConfig } from "@trigger.dev/core/v3";
 import { createPublicKey, verify as cryptoVerify, type KeyObject } from "node:crypto";
-import { deriveIdempotencyKey, tryParseJson } from "./derive.js";
+import { deriveIdempotencyKey, parseEventBody } from "./derive.js";
 import { prepareSignedVerification } from "./parse.js";
 import type { SchemeVerifier, VerifierResult, VerifyInput } from "./types.js";
 import { decodeSignature } from "./util.js";
@@ -70,7 +70,11 @@ export const asymmetricVerifier: SchemeVerifier = {
       timestampValue: prep.timestampValue,
       signatureValue: prep.signatureValue,
     });
-    return { ok: true, idempotencyKey, ...tryParseJson(input.rawBytes) };
+    return {
+      ok: true,
+      idempotencyKey,
+      ...parseEventBody(input.rawBytes, { headers: input.headers }),
+    };
   },
 };
 

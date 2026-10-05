@@ -4,7 +4,7 @@ import type {
   WebhookTimestampConfig,
   WebhookValueSource,
 } from "@trigger.dev/core/v3";
-import { readPath, tryParseJson } from "./derive.js";
+import { parseEventBody, readPath } from "./derive.js";
 import type { VerifyInput } from "./types.js";
 import { buildSigningBytes } from "./util.js";
 
@@ -72,7 +72,9 @@ function resolveValueSource(source: WebhookValueSource, ctx: ResolveContext): st
     case "signatureField":
       return ctx.fields.get(source.field)?.[0];
     case "body": {
-      const parsed = tryParseJson(ctx.rawBytes).parsedEvent as Record<string, unknown> | undefined;
+      const parsed = parseEventBody(ctx.rawBytes, { headers: ctx.headers }).parsedEvent as
+        | Record<string, unknown>
+        | undefined;
       const v = readPath(parsed, source.path);
       return typeof v === "string" || typeof v === "number" ? String(v) : undefined;
     }

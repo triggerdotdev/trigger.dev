@@ -188,6 +188,11 @@ export type WebhookHandshakeConfig = z.infer<typeof WebhookHandshakeConfig>;
 export const WebhookResponseConfig = z.object({
   /** Status for a recorded or deduplicated delivery. 204 sends no body. Default 200 with a JSON body. */
   acceptedStatus: z.union([z.literal(200), z.literal(202), z.literal(204)]).optional(),
+  /**
+   * Body for a recorded or deduplicated delivery. `"empty"` answers with no body, for providers
+   * that show a non-empty reply to the user (Slack slash commands). Default `"json"`.
+   */
+  acceptedBody: z.enum(["json", "empty"]).optional(),
   /** Status when signature verification fails. Default 400. */
   rejectedStatus: z.union([z.literal(400), z.literal(401), z.literal(403)]).optional(),
 });

@@ -506,6 +506,50 @@ containerTestWithIsolatedRedisNoClickhouse(
 );
 
 containerTestWithIsolatedRedisNoClickhouse(
+  "a form-encoded delivery resumes a waiter whose match reads its form fields",
+  async ({ prisma, redisOptions }) => {
+    const endpoint = await createEndpoint(prisma);
+    const waitpoints = makeWaitpoints();
+    const engine = buildEngine(prisma, redisOptions, waitpoints.ports);
+
+    try {
+      const waiter = await createdWaiter(engine, {
+        match: { "event.command": "/miphy", "event.user_id": "U1" },
+      });
+
+      const body = "channel_id=C1&user_id=U1&command=%2Fmiphy&text=hello";
+      const t = Math.floor(Date.now() / 1000);
+      const sig = createHmac("sha256", SECRET).update(`${t}.${body}`).digest("hex");
+      const delivery = await waitForDelivery(
+        prisma,
+        await accepted(engine, {
+          opaqueId: endpoint.opaqueId,
+          rawBytes: new TextEncoder().encode(body),
+          headers: {
+            "stripe-signature": `t=${t},v1=${sig}`,
+            "content-type": "application/x-www-form-urlencoded",
+            "x-order": "none",
+          },
+          url: `https://api.example.com/webhooks/v1/ingest/${endpoint.opaqueId}`,
+        })
+      );
+
+      expect(delivery.status).toBe("SUCCEEDED");
+      const waitpoint = waitpoints.byId.get(waiter.id);
+      expect(waitpoint?.status).toBe("COMPLETED");
+      expect(waitpoint?.output?.event).toEqual({
+        channel_id: "C1",
+        user_id: "U1",
+        command: "/miphy",
+        text: "hello",
+      });
+    } finally {
+      await engine.quit();
+    }
+  }
+);
+
+containerTestWithIsolatedRedisNoClickhouse(
   "a delivery no waiter matches is UNMATCHED when waiters are live, and FILTERED when none are",
   async ({ prisma, redisOptions }) => {
     const endpoint = await createEndpoint(prisma);

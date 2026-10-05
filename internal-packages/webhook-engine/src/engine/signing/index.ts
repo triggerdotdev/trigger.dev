@@ -6,7 +6,7 @@ import type {
   WebhookVerifierConfig,
 } from "@trigger.dev/core/v3";
 import { randomUUID } from "node:crypto";
-import { readPath, tryParseJson } from "../verification/derive.js";
+import { isFormEncoded, parseEventBody, readPath } from "../verification/derive.js";
 import { buildSigningBytes, deriveHmacKey, hmacDigest } from "../verification/util.js";
 
 export type SignResult =
@@ -72,7 +72,9 @@ function readStringSource(
     case "constant":
       return source.value;
     case "body": {
-      const parsed = tryParseJson(args.rawBody).parsedEvent as Record<string, unknown> | undefined;
+      const parsed = parseEventBody(args.rawBody, { headers: headersLc }).parsedEvent as
+        | Record<string, unknown>
+        | undefined;
       const v = readPath(parsed, source.path);
       return typeof v === "string" || typeof v === "number" ? String(v) : undefined;
     }
@@ -98,7 +100,7 @@ function signHmac(cfg: WebhookHmacConfig, signArgs: SignArgs): SignResult {
         headersLc[src.name.toLowerCase()] = timestampValue;
       }
     } else if (src.from === "body" && signArgs.refreshBodyTimestamp) {
-      const refreshed = withBodyTimestamp(signArgs.rawBody, src.path, nowInUnit);
+      const refreshed = withBodyTimestamp(signArgs.rawBody, src.path, nowInUnit, headersLc);
       if (refreshed) {
         args = { ...signArgs, rawBody: refreshed };
         timestampValue = String(nowInUnit);
@@ -140,15 +142,23 @@ function signHmac(cfg: WebhookHmacConfig, signArgs: SignArgs): SignResult {
 }
 
 /**
- * The body with the JSON field at `path` set to `value`, re-serialized; undefined when the body is
- * not a JSON object or the existing field is not a string/number (the caller signs it as it is).
+ * The body with the field at `path` set to `value`, re-serialized; undefined when the body is not a
+ * JSON object or the existing field is not a string/number (the caller signs it as it is). A form
+ * body (per `headersLc`) is flat, so `path` names one existing field and the body stays a form.
  */
 function withBodyTimestamp(
   rawBody: Uint8Array,
   path: string,
-  value: number
+  value: number,
+  headersLc: Record<string, string>
 ): Uint8Array | undefined {
-  const parsed = tryParseJson(rawBody).parsedEvent;
+  if (isFormEncoded(headersLc)) {
+    const form = new URLSearchParams(new TextDecoder().decode(rawBody));
+    if (!form.has(path)) return undefined;
+    form.set(path, String(value));
+    return new TextEncoder().encode(form.toString());
+  }
+  const parsed = parseEventBody(rawBody).parsedEvent;
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
   const keys = path.split(".");
   if (keys.some((key) => key === "" || UNSAFE_PATH_KEYS.has(key))) return undefined;
@@ -207,7 +217,13 @@ function signSharedSecret(cfg: WebhookSharedSecretConfig, args: SignArgs): SignR
       headers["authorization"] = `Basic ${Buffer.from(`:${args.secret}`).toString("base64")}`;
       break;
     case "body": {
-      const parsed = tryParseJson(args.rawBody).parsedEvent;
+      if (isFormEncoded(headers)) {
+        const form = new URLSearchParams(new TextDecoder().decode(args.rawBody));
+        form.set(cfg.fieldName ?? "", args.secret);
+        body = new TextEncoder().encode(form.toString());
+        break;
+      }
+      const parsed = parseEventBody(args.rawBody).parsedEvent;
       if (parsed == null || typeof parsed !== "object") {
         return {
           ok: false,

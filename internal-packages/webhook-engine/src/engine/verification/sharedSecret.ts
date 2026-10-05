@@ -1,7 +1,7 @@
 import type { WebhookSharedSecretConfig as SharedSecretConfig } from "@trigger.dev/core/v3";
 import type { SchemeVerifier, VerifierResult, VerifyInput } from "./types.js";
 import { constantTimeEqual } from "./util.js";
-import { deriveIdempotencyKey, tryParseJson } from "./derive.js";
+import { deriveIdempotencyKey, parseEventBody } from "./derive.js";
 
 export const sharedSecretVerifier: SchemeVerifier = {
   scheme: "shared-secret",
@@ -18,7 +18,11 @@ export const sharedSecretVerifier: SchemeVerifier = {
       timestampValue: "",
       signatureValue: provided,
     });
-    return { ok: true, idempotencyKey, ...tryParseJson(input.rawBytes) };
+    return {
+      ok: true,
+      idempotencyKey,
+      ...parseEventBody(input.rawBytes, { headers: input.headers }),
+    };
   },
 };
 
@@ -38,7 +42,7 @@ function extractCandidate(cfg: any, input: VerifyInput): string | undefined {
       return idx === -1 ? decoded : decoded.slice(idx + 1); // password segment
     }
     case "body": {
-      const parsed = tryParseJson(input.rawBytes).parsedEvent as
+      const parsed = parseEventBody(input.rawBytes, { headers: input.headers }).parsedEvent as
         | Record<string, unknown>
         | undefined;
       const v = parsed?.[cfg.fieldName ?? ""];

@@ -34,6 +34,27 @@ describe("webhook ingress HTTP contract", () => {
     expect(await res.text()).toBe("");
   });
 
+  it("acknowledges accepted and duplicate deliveries with an empty 200 when the contract asks for no body", async () => {
+    for (const result of [
+      {
+        outcome: "accepted" as const,
+        deliveryId: "d_1",
+        deliveryFriendlyId: "whdel_1",
+        response: { acceptedBody: "empty" as const },
+      },
+      {
+        outcome: "duplicate" as const,
+        deliveryId: "whdel_1",
+        response: { acceptedBody: "empty" as const },
+      },
+    ]) {
+      const res = toWebhookHttpResponse(webhookHttpResponseFor(result));
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toBe("text/plain");
+      expect(await res.text()).toBe("");
+    }
+  });
+
   it("keeps the default 200 JSON acknowledgement when no contract is declared", async () => {
     const res = toWebhookHttpResponse(
       webhookHttpResponseFor({
