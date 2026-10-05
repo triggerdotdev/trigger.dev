@@ -261,7 +261,16 @@ export class LogsListPresenter extends BasePresenter {
     // Run exactly one bounded query. Broadening a search window is an explicit user action;
     // silently rescanning the same recent rows makes absence queries needlessly expensive.
     const runQuery = () => {
-      const queryBuilder = this.clickhouse.taskEventsSearch.logsListQueryBuilder();
+      const queryBuilder = this.clickhouse.taskEventsSearch.logsListQueryBuilder({
+        // Scoped to this query rather than the logs client, which other pages share. ClickHouse
+        // skips lazy materialization when LIMIT exceeds the max, so pass this query's limit.
+        settings: env.CLICKHOUSE_LOGS_LIST_LAZY_MATERIALIZATION
+          ? {
+              query_plan_optimize_lazy_materialization: 1,
+              query_plan_max_limit_for_lazy_materialization: queryLimit,
+            }
+          : undefined,
+      });
 
       // The projector excludes events without a trace_id.
       queryBuilder.where("trace_id != ''");

@@ -2300,6 +2300,10 @@ const EnvironmentSchema = z
       .int()
       .default(256_000_000),
     CLICKHOUSE_LOGS_LIST_MAX_THREADS: z.coerce.number().int().default(2),
+    // Logs list only: read the sort columns first and fetch the rest for the final page. Fewer
+    // column reads, which matters most on object storage. The settings exist from ClickHouse 25.4,
+    // but this query reads in sort order, which blocked lazy materialization until 25.8. Opt-in.
+    CLICKHOUSE_LOGS_LIST_LAZY_MATERIALIZATION: BoolEnv.default(false),
     // The HTTP request timeout is derived from this so ClickHouse gives up before the client does.
     CLICKHOUSE_LOGS_LIST_MAX_EXECUTION_TIME: z.coerce.number().int().default(15),
     // Bound read-in-order memory on object-storage reads: each part opens a per-column read
