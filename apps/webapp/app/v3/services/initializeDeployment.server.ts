@@ -1,4 +1,5 @@
 import {
+  type BuildRuntime,
   type BuildServerMetadata,
   type InitializeDeploymentRequestBody,
   type ExternalBuildData,
@@ -62,6 +63,16 @@ export class InitializeDeploymentService extends BaseService {
     options?: { cliVersion?: string }
   ): Promise<InitializeDeploymentResult> {
     return this.traceWithEnv("call", environment, async (span) => {
+      let runtime: BuildRuntime;
+      try {
+        runtime = resolveBuildRuntime(payload.runtime);
+      } catch (error) {
+        throw new ServiceValidationError(
+          error instanceof Error ? error.message : String(error),
+          400
+        );
+      }
+
       if (payload.externalId) {
         span.setAttribute("externalId", payload.externalId);
       }
@@ -388,7 +399,7 @@ export class InitializeDeploymentService extends BaseService {
             git: payload.gitMeta ?? undefined,
             commitSHA: payload.gitMeta?.commitSha ?? undefined,
             externalId: payload.externalId,
-            runtime: resolveBuildRuntime(payload.runtime),
+            runtime,
             cliVersion: options?.cliVersion,
             triggeredVia: payload.triggeredVia ?? undefined,
             startedAt: initialStatus === "BUILDING" ? new Date() : undefined,
