@@ -901,6 +901,8 @@ const EnvironmentSchema = z
       ),
 
     DEPLOY_IMAGE_PLATFORM: z.string().default("linux/amd64"),
+    DEPLOY_BASE_IMAGES: z.string().optional(), // csv of runtime=image, for example: "node-26=registry.example.com/node-fips:26@sha256:..."
+    DEPLOY_BUILD_BASE_IMAGES: z.string().optional(), // csv of runtime=image for the build stage
     DEPLOY_TIMEOUT_MS: z.coerce
       .number()
       .int()

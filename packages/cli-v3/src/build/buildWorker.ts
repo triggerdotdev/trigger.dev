@@ -276,7 +276,7 @@ async function readProjectPackageJson(packageJsonPath: string) {
   return packageJson;
 }
 
-async function writeContainerfile(outputPath: string, buildManifest: BuildManifest) {
+export async function writeContainerfile(outputPath: string, buildManifest: BuildManifest) {
   if (!buildManifest.runControllerEntryPoint || !buildManifest.indexControllerEntryPoint) {
     throw new Error("Something went wrong with the build. Aborting deployment. [code 7789]");
   }

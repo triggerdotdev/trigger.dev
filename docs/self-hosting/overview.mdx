@@ -100,6 +100,28 @@ All fields are optional. Partial overrides are supported:
 }
 ```
 
+## Custom base images
+
+Deploys build on the published `triggerdotdev/node` and `triggerdotdev/bun` Debian images. To require a different base for every deploy to your instance, such as a FIPS-validated or hardened Node image, set `DEPLOY_BASE_IMAGES` on the webapp (and optionally `DEPLOY_BUILD_BASE_IMAGES` for the build stage):
+
+```bash
+DEPLOY_BASE_IMAGES="node-26=registry.example.com/node-fips:26@sha256:..."
+```
+
+The CLI builds with these images for any runtime that has an entry. Runtimes without one keep the published images. With the Helm chart, set them through `webapp.extraEnvVars`.
+
+You own a custom base image. It must provide:
+
+- `node` (or `bun`) on `PATH` at the runtime's major version
+- `busybox`, `ca-certificates`, `dumb-init`, `git` and `openssl`
+- a `node` user
+- glibc, so native modules built in the build stage load at runtime
+
+<Warning>
+  `image.pkgs` and build extensions that run `apt-get` (such as `aptGet` and `playwright`) assume a
+  Debian base. On other distributions, install those packages in your base image instead.
+</Warning>
+
 ## Community support
 
 It's dangerous to go alone! Join the self-hosting channel on our [Discord server](https://discord.gg/NQTxt5NA7s).

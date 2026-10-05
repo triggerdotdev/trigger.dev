@@ -233,4 +233,39 @@ describe("generateContainerfile", () => {
       expect(excludeCopy).toBeGreaterThan(codeStage);
     }
   );
+
+  it.each(["node", "bun"] as BuildRuntime[])(
+    "uses the configured base and build images on %s",
+    async (runtime) => {
+      const containerfile = await generateContainerfile({
+        runtime,
+        build: {},
+        image: {
+          base: "acme/node-fips:26@sha256:abc",
+          buildBase: "acme/node:26-dev@sha256:def",
+        },
+        indexScript: "index.js",
+        entrypoint: "entrypoint.js",
+      });
+
+      expect(containerfile).toContain("FROM acme/node-fips:26@sha256:abc AS base");
+      expect(containerfile).toContain("FROM acme/node:26-dev@sha256:def AS build");
+      expect(containerfile).toContain("FROM base AS final");
+      expect(containerfile).not.toContain(BASE_IMAGE[runtime]);
+      expect(containerfile).not.toContain(BUILD_IMAGE[runtime]);
+    }
+  );
+
+  it("keeps the published build image when only the base is overridden", async () => {
+    const containerfile = await generateContainerfile({
+      runtime: "node-26",
+      build: {},
+      image: { base: "acme/node-fips:26@sha256:abc" },
+      indexScript: "index.js",
+      entrypoint: "entrypoint.js",
+    });
+
+    expect(containerfile).toContain("FROM acme/node-fips:26@sha256:abc AS base");
+    expect(containerfile).toContain(`FROM ${BUILD_IMAGE["node-26"]} AS build`);
+  });
 });

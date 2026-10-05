@@ -22,7 +22,7 @@ import { x } from "tinyexec";
 import { z } from "zod";
 import chalk from "chalk";
 import type { CliApiClient } from "../apiClient.js";
-import { buildWorker } from "../build/buildWorker.js";
+import { buildWorker, writeContainerfile } from "../build/buildWorker.js";
 import { resolveAlwaysExternal } from "../build/externals.js";
 import { createContextArchive, getArchiveSize } from "../deploy/archiveContext.js";
 import { createBundleArchive } from "../deploy/bundleArchive.js";
@@ -637,6 +637,15 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   }
 
   warnAboutCanceledDeployments(deployment.canceledDeployments, options.externalId);
+
+  if (deployment.baseImages) {
+    logger.debug("Using base images required by the server", deployment.baseImages);
+
+    await writeContainerfile(destination.path, {
+      ...buildManifest,
+      image: { ...buildManifest.image, ...deployment.baseImages },
+    });
+  }
 
   // When `externalBuildData` is not present the deployment implicitly goes into the local build path
   // which is used in self-hosted setups. There are a few subtle differences between local builds for the cloud

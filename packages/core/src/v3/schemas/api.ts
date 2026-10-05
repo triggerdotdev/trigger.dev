@@ -849,6 +849,13 @@ export const InitializeDeploymentResponseBody = z.object({
   outcome: z.enum(["created", "existing"]).optional(),
   isPromoted: z.boolean().optional(),
   externalBuildData: ExternalBuildData.optional().nullable(),
+  /** Base images the instance operator requires for this deployment's runtime */
+  baseImages: z
+    .object({
+      base: z.string().optional(),
+      buildBase: z.string().optional(),
+    })
+    .optional(),
   canceledDeployments: z.array(z.object({ version: z.string(), shortCode: z.string() })).optional(),
   eventStream: z
     .object({
