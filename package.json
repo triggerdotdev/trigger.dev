@@ -159,7 +159,8 @@
       "@hono/node-server@>=1 <1.19.15": "^1.19.15",
       "mdast-util-to-hast@>=13 <13.2.1": "^13.2.1",
       "path-to-regexp@>=8 <8.4.0": "^8.4.0",
-      "tar-fs@>=2.0.0 <2.1.4": "^2.1.4"
+      "tar-fs@>=2.0.0 <2.1.4": "^2.1.4",
+      "baseline-browser-mapping@>=2 <2.11.0": "^2.11.0"
     },
     "onlyBuiltDependencies": [
       "@depot/cli",
