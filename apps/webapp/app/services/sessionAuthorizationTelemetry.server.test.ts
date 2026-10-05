@@ -29,6 +29,22 @@ describe("session creation authorization observation", () => {
     ).toBe(expected);
   });
 
+  it.each(["chat-1", "session_123"])(
+    "requires a matching task even with write access to session %s",
+    (sessionId) => {
+      const ability = withActionAliases(
+        buildJwtAbility([`write:sessions:${sessionId}`, "trigger:tasks:chat"])
+      );
+      expect(sessionCreateAuthorizationOutcome(ability, "chat", [sessionId])).toBe("both_allowed");
+      expect(sessionCreateAuthorizationOutcome(ability, "other", [sessionId])).toBe(
+        "missing_task_trigger"
+      );
+      expect(sessionCreateAuthorizationOutcome(ability, "chat", ["other-session"])).toBe(
+        "missing_session_write"
+      );
+    }
+  );
+
   it("attributes only would-deny events without exporting the credential or task", async () => {
     const exporter = new InMemorySpanExporter();
     const provider = new BasicTracerProvider({

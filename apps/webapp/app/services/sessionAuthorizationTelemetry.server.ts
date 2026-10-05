@@ -13,8 +13,14 @@ const checks = singleton("sessionCreateAuthorizationChecks", () =>
   })
 );
 
-export function sessionCreateAuthorizationOutcome(ability: RbacAbility, taskIdentifier: string) {
-  const sessionWrite = ability.can("write", { type: "sessions" });
+export function sessionCreateAuthorizationOutcome(
+  ability: RbacAbility,
+  taskIdentifier: string,
+  sessionIds: string[] = []
+) {
+  const sessionWrite =
+    ability.can("write", { type: "sessions" }) ||
+    sessionIds.some((id) => ability.can("write", { type: "sessions", id }));
   const taskTrigger = ability.can("trigger", { type: "tasks", id: taskIdentifier });
 
   if (sessionWrite && taskTrigger) return "both_allowed";
@@ -24,7 +30,7 @@ export function sessionCreateAuthorizationOutcome(ability: RbacAbility, taskIden
 
 export function recordSessionCreateAuthorization(
   ability: RbacAbility,
-  session: { taskIdentifier: string },
+  session: { taskIdentifier: string; friendlyId?: string; externalId?: string | null },
   request: Request,
   environment: Pick<AuthenticatedEnvironment, "id" | "organizationId" | "projectId" | "type">
 ) {
@@ -42,7 +48,11 @@ export function recordSessionCreateAuthorization(
         : "unknown";
 
   try {
-    const outcome = sessionCreateAuthorizationOutcome(ability, session.taskIdentifier);
+    const outcome = sessionCreateAuthorizationOutcome(
+      ability,
+      session.taskIdentifier,
+      [session.friendlyId, session.externalId].filter((id): id is string => !!id)
+    );
     checks.add(1, { credential_kind: credentialKind, outcome });
     if (outcome === "both_allowed") return;
 

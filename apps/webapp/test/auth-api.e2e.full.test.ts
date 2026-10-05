@@ -2555,12 +2555,11 @@ describe("API", () => {
 
     // ---- Create session: POST /api/v1/sessions
     //
-    // Resource: [{ type: "tasks", id: body.taskIdentifier }, { type: "sessions" }]
-    // Old superScopes: ["write:sessions", "admin"]
+    // Session-write AND permission to trigger the requested and resolved tasks.
     describe("Create session — POST /api/v1/sessions", () => {
       const path = "/api/v1/sessions";
 
-      const post = async (jwt: string, taskIdentifier: string) =>
+      const post = async (jwt: string, taskIdentifier: string, externalId?: string) =>
         getTestServer().webapp.fetch(path, {
           method: "POST",
           headers: {
@@ -2570,6 +2569,7 @@ describe("API", () => {
           body: JSON.stringify({
             type: "chat.agent",
             taskIdentifier,
+            externalId,
             triggerConfig: { basePayload: {} },
           }),
         });
@@ -2581,15 +2581,11 @@ describe("API", () => {
           expirationTime: "15m",
         });
 
-      it("write:tasks:foo matching body: auth passes", async () => {
+      it("write:tasks:foo without session-write: 403", async () => {
         const seed = await seedTestEnvironment(getTestServer().prisma);
         const jwt = await mintJwt(seed.apiKey, seed.environment.id, ["write:tasks:foo"]);
         const res = await post(jwt, "foo");
-        // Body validation / handler can fail later (404 if task is
-        // missing, 400 for invalid body) — we only care that auth
-        // didn't reject.
-        expect(res.status).not.toBe(401);
-        expect(res.status).not.toBe(403);
+        expect(res.status).toBe(403);
       });
 
       it("write:tasks:bar mismatching body: 403", async () => {
@@ -2599,12 +2595,63 @@ describe("API", () => {
         expect(res.status).toBe(403);
       });
 
-      it("write:sessions: auth passes (was a superScope)", async () => {
+      it("write:sessions without task-trigger: 403", async () => {
         const seed = await seedTestEnvironment(getTestServer().prisma);
         const jwt = await mintJwt(seed.apiKey, seed.environment.id, ["write:sessions"]);
         const res = await post(jwt, "foo");
+        expect(res.status).toBe(403);
+      });
+
+      it("session-write and matching task-trigger: auth passes", async () => {
+        const seed = await seedTestEnvironment(getTestServer().prisma);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
+          "write:sessions",
+          "trigger:tasks:foo",
+        ]);
+        const res = await post(jwt, "foo");
         expect(res.status).not.toBe(401);
         expect(res.status).not.toBe(403);
+      });
+
+      it.each(["foo", "other-task"])(
+        "accepts a cached session's friendly-ID grant only with access to its task %s",
+        async (taskIdentifier) => {
+          const server = getTestServer();
+          const seed = await seedTestEnvironment(server.prisma);
+          const session = await seedTestApiSession(server.prisma, seed.environment, {
+            taskIdentifier,
+          });
+          const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
+            `write:sessions:${session.friendlyId}`,
+            "trigger:tasks:foo",
+          ]);
+          const res = await post(jwt, "foo", session.externalId!);
+          if (taskIdentifier === "foo") {
+            expect(res.status).not.toBe(401);
+            expect(res.status).not.toBe(403);
+          } else {
+            expect(res.status).toBe(403);
+            const unchanged = await server.prisma.session.findFirst({ where: { id: session.id } });
+            expect(unchanged?.triggerConfig).toEqual(session.triggerConfig);
+          }
+        }
+      );
+
+      it("checks the cached task before changing its config or triggering it", async () => {
+        const server = getTestServer();
+        const seed = await seedTestEnvironment(server.prisma);
+        const session = await seedTestApiSession(server.prisma, seed.environment, {
+          taskIdentifier: "other-task",
+        });
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
+          "write:sessions",
+          "trigger:tasks:foo",
+        ]);
+        const res = await post(jwt, "foo", session.externalId!);
+        expect(res.status).toBe(403);
+        const unchanged = await server.prisma.session.findFirst({ where: { id: session.id } });
+        expect(unchanged?.triggerConfig).toEqual(session.triggerConfig);
+        expect(unchanged?.currentRunId).toBe(session.currentRunId);
       });
 
       it("write:all: auth passes", async () => {

@@ -889,7 +889,16 @@ const API_KEY_EXPIRATIONS = [
   { value: "never", label: "Never" },
 ];
 
-type CapId = "tasks" | "runs" | "batches" | "queues" | "deployments" | "branches" | "envvars";
+type CapId =
+  | "tasks"
+  | "runs"
+  | "batches"
+  | "queues"
+  | "sessions"
+  | "tags"
+  | "deployments"
+  | "branches"
+  | "envvars";
 
 // Capability rows shown in the scope pane, in a fixed order so two presets read
 // as a diff of the same list rather than a reshuffled one.
@@ -898,6 +907,8 @@ const SCOPE_CAPABILITIES: [CapId, string][] = [
   ["runs", "Runs"],
   ["batches", "Batches"],
   ["queues", "Queues"],
+  ["sessions", "Sessions (all tasks)"],
+  ["tags", "Tagged runs"],
   ["deployments", "Deployments"],
   ["branches", "Preview branches"],
   ["envvars", "Environment variables"],
@@ -934,6 +945,9 @@ const SCOPE_CAPABILITY_BY_SCOPE: Record<string, [CapId, number]> = {
   "write:batch": ["batches", 2],
   "read:queues": ["queues", 1],
   "write:queues": ["queues", 2],
+  "read:sessions": ["sessions", 1],
+  "write:sessions": ["sessions", 2],
+  "read:tags": ["tags", 1],
   "read:deployments": ["deployments", 1],
   "write:deployments": ["deployments", 2],
   "write:branches": ["branches", 3],

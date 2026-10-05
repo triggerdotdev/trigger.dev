@@ -7,7 +7,7 @@ import {
   type SessionItem,
   type SessionStatus,
 } from "@trigger.dev/core/v3";
-import type { Session } from "@trigger.dev/database";
+import type { Prisma, Session } from "@trigger.dev/database";
 import { $replica, prisma, type PrismaClient } from "~/db.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { logger } from "~/services/logger.server";
@@ -32,7 +32,10 @@ import {
   createLoaderApiRoute,
   everyResource,
 } from "~/services/routeBuilders/apiBuilder.server";
-import { recordSessionCreateAuthorization } from "~/services/sessionAuthorizationTelemetry.server";
+import {
+  recordSessionCreateAuthorization,
+  sessionCreateAuthorizationOutcome,
+} from "~/services/sessionAuthorizationTelemetry.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
 import { runStore } from "~/v3/runStore.server";
 
@@ -148,26 +151,15 @@ const { action } = createActionApiRoute(
     // browser uses thereafter against `.in/append`, `.out` SSE,
     // `end-and-continue`, etc.
     //
-    // JWT is allowed when the caller holds an explicit `write:sessions` /
-    // `admin` super-scope plus a `tasks:<taskIdentifier>` scope — gates
-    // server-side surfaces like the cli-v3 MCP from creating sessions on
-    // behalf of the developer without weakening the browser model.
+    // Creating a session requires session-write AND task-trigger permissions.
     allowJWT: true,
     authorization: {
-      // Per-task scoping via `body.taskIdentifier` (action-route resource
-      // callbacks receive the parsed body as the 4th arg — see
-      // `apiBuilder.server.ts:710`). A JWT scoped only to `write:tasks:foo`
-      // can only create sessions whose `taskIdentifier` is `"foo"`.
-      //
-      // Multi-key resource: pre-RBAC this route had a `superScopes:
-      // ["write:sessions", "admin"]` whitelist; post-RBAC the equivalent
-      // is the `{ type: "sessions" }` element below — a `write:sessions`
-      // JWT (no id) matches it directly, deliberately bypassing the
-      // per-task check exactly as before. `admin` / `write:all` bypass
-      // via the JWT ability's wildcard branches.
-      action: "write",
-      resource: (_params, _searchParams, _headers, body) =>
-        anyResource([{ type: "tasks", id: body.taskIdentifier }, { type: "sessions" }]),
+      // Session-write is checked below after resolving alternate session IDs.
+      action: "trigger",
+      resource: (_params, _searchParams, _headers, body) => ({
+        type: "tasks",
+        id: body.taskIdentifier,
+      }),
     },
     corsStrategy: "all",
   },
@@ -182,8 +174,25 @@ const { action } = createActionApiRoute(
         );
       }
 
-      // Idempotent on (env, externalId): two concurrent POSTs converge to the same row, and
-      // `triggerConfig` is refreshed on the cached path so a redeployed config reaches the next run.
+      const sessionIds = body.externalId ? [body.externalId] : [];
+      if (body.externalId && !ability.can("write", { type: "sessions", id: body.externalId })) {
+        const existing = await prisma.session.findFirst({
+          where: {
+            runtimeEnvironmentId: authentication.environment.id,
+            externalId: body.externalId,
+          },
+          select: { friendlyId: true },
+        });
+        if (existing) sessionIds.push(existing.friendlyId);
+      }
+      if (
+        sessionCreateAuthorizationOutcome(ability, body.taskIdentifier, sessionIds) !==
+        "both_allowed"
+      ) {
+        return json({ error: "Unauthorized" }, { status: 403 });
+      }
+
+      // Defer cached config changes until the stored task has been authorized.
       const { session, isCached } = await findOrCreateSession({
         environment: authentication.environment,
         externalId: body.externalId,
@@ -193,6 +202,7 @@ const { action } = createActionApiRoute(
         tags: body.tags,
         metadata: body.metadata as Record<string, unknown> | undefined,
         expiresAt: body.expiresAt,
+        refreshTriggerConfig: false,
       });
 
       // Reject create on a closed session. The upsert path will return
@@ -220,6 +230,26 @@ const { action } = createActionApiRoute(
       }
 
       recordSessionCreateAuthorization(ability, session, request, authentication.environment);
+      if (
+        sessionCreateAuthorizationOutcome(
+          ability,
+          session.taskIdentifier,
+          [session.friendlyId, session.externalId].filter((id): id is string => !!id)
+        ) !== "both_allowed"
+      ) {
+        return json({ error: "Unauthorized" }, { status: 403 });
+      }
+
+      if (isCached) {
+        Object.assign(
+          session,
+          await prisma.session.update({
+            where: { id: session.id },
+            data: { triggerConfig: body.triggerConfig as unknown as Prisma.InputJsonValue },
+            select: { triggerConfig: true, updatedAt: true },
+          })
+        );
+      }
 
       // Session is task-bound — every session has a live run by
       // construction. `ensureRunForSession` is idempotent: on the
