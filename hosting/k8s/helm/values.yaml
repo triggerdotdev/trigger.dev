@@ -336,7 +336,6 @@ supervisor:
     dequeue:
       enabled: true
       intervalMs: 250
-      maxRunCount: 100
       idleIntervalMs: 500
     runner:
       heartbeatIntervalSeconds: 30

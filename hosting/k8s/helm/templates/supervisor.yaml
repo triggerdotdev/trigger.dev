@@ -250,8 +250,6 @@ spec:
               value: {{ .Values.supervisor.config.dequeue.enabled | quote }}
             - name: TRIGGER_DEQUEUE_INTERVAL_MS
               value: {{ .Values.supervisor.config.dequeue.intervalMs | quote }}
-            - name: TRIGGER_DEQUEUE_MAX_RUN_COUNT
-              value: {{ .Values.supervisor.config.dequeue.maxRunCount | quote }}
             - name: TRIGGER_DEQUEUE_IDLE_INTERVAL_MS
               value: {{ .Values.supervisor.config.dequeue.idleIntervalMs | quote }}
             # Heartbeat configuration

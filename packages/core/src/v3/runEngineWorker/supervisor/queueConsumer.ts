@@ -19,7 +19,6 @@ export type RunQueueConsumerOptions = {
   idleIntervalMs: number;
   preDequeue?: PreDequeueFn;
   preSkip?: PreSkipFn;
-  maxRunCount?: number;
   /** Which worker-queue class this consumer pulls from. Defaults to the worker's region queue. */
   queueClass?: WorkerQueueClass;
   subscriptions?: WeightedWorkerQueueSubscription[];
@@ -35,7 +34,6 @@ export class RunQueueConsumer implements QueueConsumer {
   private readonly client: SupervisorHttpClient;
   private readonly preDequeue?: PreDequeueFn;
   private readonly preSkip?: PreSkipFn;
-  private readonly maxRunCount?: number;
   private readonly queueClass?: WorkerQueueClass;
   private readonly subscriptions?: WeightedWorkerQueueSubscription[];
   private readonly onDequeue: (
@@ -58,7 +56,6 @@ export class RunQueueConsumer implements QueueConsumer {
     this.idleIntervalMs = opts.idleIntervalMs;
     this.preDequeue = opts.preDequeue;
     this.preSkip = opts.preSkip;
-    this.maxRunCount = opts.maxRunCount;
     this.queueClass = opts.queueClass;
     this.subscriptions = opts.subscriptions;
     this.lastScheduledIntervalMs = opts.idleIntervalMs;
@@ -89,7 +86,6 @@ export class RunQueueConsumer implements QueueConsumer {
       enabled: this.isEnabled,
       intervalMs: this.intervalMs,
       idleIntervalMs: this.idleIntervalMs,
-      maxRunCount: this.maxRunCount,
       preDequeue: !!this.preDequeue,
       preSkip: !!this.preSkip,
     });
@@ -140,7 +136,6 @@ export class RunQueueConsumer implements QueueConsumer {
     try {
       const response = await this.client.dequeue({
         maxResources: preDequeueResult?.maxResources,
-        maxRunCount: this.maxRunCount,
         queueClass: this.queueClass,
         subscriptions: this.subscriptions,
       });

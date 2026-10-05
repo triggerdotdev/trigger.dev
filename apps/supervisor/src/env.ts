@@ -76,7 +76,6 @@ export const Env = z
       .optional(),
     TRIGGER_DEQUEUE_INTERVAL_MS: z.coerce.number().int().default(250),
     TRIGGER_DEQUEUE_IDLE_INTERVAL_MS: z.coerce.number().int().default(1000),
-    TRIGGER_DEQUEUE_MAX_RUN_COUNT: z.coerce.number().int().default(1),
     TRIGGER_DEQUEUE_MIN_CONSUMER_COUNT: z.coerce.number().int().default(1),
     TRIGGER_DEQUEUE_MAX_CONSUMER_COUNT: z.coerce.number().int().default(10),
     TRIGGER_DEQUEUE_SCALING_STRATEGY: z.enum(["none", "smooth", "aggressive"]).default("none"),

@@ -27,7 +27,6 @@ type SupervisorSessionOptions = SupervisorClientCommonOptions & {
   dequeueIdleIntervalMs: number;
   preDequeue?: PreDequeueFn;
   preSkip?: PreSkipFn;
-  maxRunCount?: number;
   /** Which worker-queue class this supervisor's consumers pull from. Defaults to the region queue. */
   queueClass?: WorkerQueueClass;
   subscriptions?: WeightedWorkerQueueSubscription[];
@@ -65,7 +64,6 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
         onDequeue: this.onDequeue.bind(this),
         intervalMs: opts.dequeueIntervalMs,
         idleIntervalMs: opts.dequeueIdleIntervalMs,
-        maxRunCount: opts.maxRunCount,
         queueClass: opts.queueClass,
         subscriptions: opts.subscriptions,
       },

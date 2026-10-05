@@ -72,12 +72,10 @@ describe("dequeue request validation", () => {
 
     const invalidRequests: Array<[body: unknown, status: number]> = [
       [{ queueClass: "restore" }, 400],
-      [{ maxRunCount: "invalid" }, 400],
       [{ maxResources: { cpu: "invalid", memory: 1 } }, 400],
       [{ subscriptions: [] }, 422],
       [{ subscriptions: [{ ...subscription, weight: 2 }] }, 422],
       [{ queueClass: "default", subscriptions: [subscription] }, 422],
-      [{ maxRunCount: "invalid", subscriptions: [] }, 400],
       [{ queueClass: "invalid", subscriptions: [subscription] }, 400],
     ];
     for (const [body, status] of invalidRequests) {

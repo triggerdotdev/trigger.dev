@@ -50,7 +50,6 @@ describe("SupervisorSession queue selection", () => {
       heartbeatIntervalSeconds: 3600,
       dequeueIntervalMs: 10,
       dequeueIdleIntervalMs: 10,
-      maxRunCount: 1,
       scaling: { strategy: "none", minConsumerCount: 1, maxConsumerCount: 1 },
       ...selection,
     });
@@ -59,7 +58,7 @@ describe("SupervisorSession queue selection", () => {
       await session.start();
       expect(await dequeued).toEqual({
         path: "/engine/v1/worker-actions/dequeue",
-        body: { maxRunCount: 1, ...selection },
+        body: selection,
       });
     } finally {
       await session.stop();

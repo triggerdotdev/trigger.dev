@@ -87,7 +87,6 @@ export type WorkerQueueClass = z.infer<typeof WorkerQueueClass>;
 export const WorkerApiDequeueRequestBody = z
   .object({
     maxResources: MachineResources.optional(),
-    maxRunCount: z.number().optional(),
     /** Legacy selection. Absent or "default" targets the worker group's base queue. */
     queueClass: WorkerQueueClass.optional(),
     /** V2 selection. The server derives region from the authenticated worker. */

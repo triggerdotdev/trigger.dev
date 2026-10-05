@@ -858,7 +858,6 @@ describe("RunEngine ttl", () => {
         const dequeued = await engine.dequeueFromWorkerQueue({
           consumerId: "test-consumer",
           workerQueue: "main",
-          maxRunCount: 1,
           backgroundWorkerId: (await prisma.backgroundWorker.findFirst({
             where: { runtimeEnvironmentId: authenticatedEnvironment.id },
           }))!.id,

@@ -347,7 +347,6 @@ class ManagedSupervisor {
       dequeueIntervalMs: env.TRIGGER_DEQUEUE_INTERVAL_MS,
       dequeueIdleIntervalMs: env.TRIGGER_DEQUEUE_IDLE_INTERVAL_MS,
       queueConsumerEnabled: env.TRIGGER_DEQUEUE_ENABLED,
-      maxRunCount: env.TRIGGER_DEQUEUE_MAX_RUN_COUNT,
       queueClass: env.TRIGGER_WORKER_QUEUE_CLASS,
       subscriptions: env.TRIGGER_WORKER_QUEUE_SUBSCRIPTIONS,
       metricsRegistry: register,
