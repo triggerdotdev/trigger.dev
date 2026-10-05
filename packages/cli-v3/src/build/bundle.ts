@@ -367,6 +367,24 @@ export function logBuildFailure(errors: esbuild.Message[], warnings: esbuild.Mes
   logBuildWarnings(warnings);
 }
 
+/** Base image overrides for the deploy Containerfile; env vars win over `build.image`. */
+export function resolveImageBaseOverrides(
+  resolvedConfig: Pick<ResolvedConfig, "build">,
+  env: Record<string, string | undefined>
+): BuildManifest["image"] {
+  const base = env.TRIGGER_BUILD_BASE_IMAGE || resolvedConfig.build.image?.base;
+  const buildBase = env.TRIGGER_BUILD_BUILD_IMAGE || resolvedConfig.build.image?.buildBase;
+
+  if (!base && !buildBase) {
+    return undefined;
+  }
+
+  return {
+    ...(base ? { base } : {}),
+    ...(buildBase ? { buildBase } : {}),
+  };
+}
+
 export async function createBuildManifestFromBundle({
   bundle,
   destination,
@@ -422,6 +440,7 @@ export async function createBuildManifestFromBundle({
     otelImportHook: {
       include: resolvedConfig.instrumentedPackageNames ?? [],
     },
+    image: resolveImageBaseOverrides(resolvedConfig, process.env),
     // `outputHashes` is only needed for dev builds for the deduplication mechanism during rebuilds.
     // For deploys builds, we omit it to ensure deterministic builds
     outputHashes: target === "dev" ? bundle.outputHashes : {},
