@@ -67,6 +67,28 @@ export type WorkerApiContinueRunExecutionQueryParams = z.infer<
   typeof WorkerApiContinueRunExecutionQueryParams
 >;
 
+export const WorkerApiRunRestoreOutcomeRequestBody = z.object({
+  outcome: z.enum(["requeue", "fail"]),
+  reason: z.string().max(256),
+  // Matches the cap the engine applies to a run error's message.
+  message: z
+    .string()
+    .max(16 * 1024)
+    .optional(),
+  // See WorkerApiRunAttemptStartRequestBody.snapshotRoute; carries the route to the requeue or fail transition.
+  snapshotRoute: SnapshotRouteWireLenient.optional(),
+});
+export type WorkerApiRunRestoreOutcomeRequestBody = z.infer<
+  typeof WorkerApiRunRestoreOutcomeRequestBody
+>;
+
+export const WorkerApiRunRestoreOutcomeResponseBody = z.object({
+  ok: z.literal(true),
+});
+export type WorkerApiRunRestoreOutcomeResponseBody = z.infer<
+  typeof WorkerApiRunRestoreOutcomeResponseBody
+>;
+
 export const WorkerApiConnectRequestBody = z.object({
   metadata: z.record(z.string(), z.any()),
 });

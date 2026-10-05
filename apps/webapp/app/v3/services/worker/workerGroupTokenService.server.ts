@@ -687,6 +687,39 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     });
   }
 
+  async reportRestoreOutcome({
+    runFriendlyId,
+    snapshotFriendlyId,
+    outcome,
+    reason,
+    message,
+    runnerId,
+    environmentId,
+    snapshotRoute,
+  }: {
+    runFriendlyId: string;
+    snapshotFriendlyId: string;
+    outcome: "requeue" | "fail";
+    reason: string;
+    message?: string;
+    runnerId?: string;
+    environmentId?: string;
+    // Carried back from the restore DequeuedMessage on the supervisor's report; honors durable residency.
+    snapshotRoute?: SnapshotRouteWire;
+  }) {
+    return await this._engine.reportRestoreOutcome({
+      runId: fromFriendlyId(runFriendlyId),
+      snapshotId: fromFriendlyId(snapshotFriendlyId),
+      outcome,
+      reason,
+      message,
+      workerId: this.workerInstanceId,
+      runnerId,
+      environmentId,
+      snapshotRoute,
+    });
+  }
+
   async getSnapshotsSince({
     runFriendlyId,
     snapshotId,

@@ -105,6 +105,8 @@ import type {
   EngineWorker,
   HeartbeatTimeouts,
   ReportableQueue,
+  RestoreOutcome,
+  RestoreOutcomeResult,
   RunEngineOptions,
   TriggerParams,
   WorkerQueueDequeueOptions,
@@ -2359,6 +2361,46 @@ export class RunEngine {
       environmentId,
       snapshotRoute,
       tx,
+    });
+  }
+
+  /**
+   * Called by the worker that dequeued a run for a restore when the restore did not start.
+   * `requeue` gives the run back with the same checkpoint; `fail` fails the attempt as a lost
+   * checkpoint. A conflict is returned if `snapshotId` is no longer the restore's snapshot.
+   */
+  async reportRestoreOutcome({
+    runId,
+    snapshotId,
+    outcome,
+    reason,
+    message,
+    workerId,
+    runnerId,
+    environmentId,
+    snapshotRoute,
+  }: {
+    runId: string;
+    snapshotId: string;
+    outcome: RestoreOutcome;
+    reason: string;
+    message?: string;
+    workerId?: string;
+    runnerId?: string;
+    environmentId?: string;
+    // Carried from the restore DequeuedMessage; resolved durably when absent.
+    snapshotRoute?: SnapshotRouteWire;
+  }): Promise<RestoreOutcomeResult> {
+    return this.runAttemptSystem.reportRestoreOutcome({
+      runId,
+      snapshotId,
+      outcome,
+      reason,
+      message,
+      workerId,
+      runnerId,
+      environmentId,
+      snapshotRoute,
     });
   }
 

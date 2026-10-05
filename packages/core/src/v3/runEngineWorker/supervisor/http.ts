@@ -6,6 +6,7 @@ import type {
   WorkerApiRunAttemptCompleteRequestBody,
   WorkerApiRunAttemptStartRequestBody,
   WorkerApiRunHeartbeatRequestBody,
+  WorkerApiRunRestoreOutcomeRequestBody,
   WorkerApiDebugLogBody,
   WorkerApiSuspendRunRequestBody,
 } from "./schemas.js";
@@ -18,6 +19,7 @@ import {
   WorkerApiRunAttemptStartResponseBody,
   WorkerApiRunHeartbeatResponseBody,
   WorkerApiRunLatestSnapshotResponseBody,
+  WorkerApiRunRestoreOutcomeResponseBody,
   WorkerApiSuspendRunResponseBody,
   WorkerApiRunSnapshotsSinceResponseBody,
 } from "./schemas.js";
@@ -329,6 +331,30 @@ export class SupervisorHttpClient {
           factor: 2,
           randomize: true,
         },
+      }
+    );
+  }
+
+  async reportRestoreOutcome(
+    runId: string,
+    snapshotId: string,
+    body: WorkerApiRunRestoreOutcomeRequestBody,
+    runnerId?: string,
+    environmentId?: string
+  ) {
+    return this.request(
+      "report_restore_outcome",
+      WorkerApiRunRestoreOutcomeResponseBody,
+      `${this.apiUrl}/engine/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/restore-outcome`,
+      {
+        method: "POST",
+        headers: {
+          ...this.defaultHeaders,
+          ...this.runnerIdHeader(runnerId),
+          ...this.environmentIdHeader(environmentId),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
       }
     );
   }

@@ -14,6 +14,7 @@ import type {
   PrismaClientOrTransaction,
   PrismaReplicaClient,
   TaskRun,
+  TaskRunExecutionStatus,
   Waitpoint,
 } from "@trigger.dev/database";
 import type { RunStore } from "@internal/run-store";
@@ -340,6 +341,17 @@ export type RunEngineOptions = {
 export type EngineStartRunAttemptResult = StartRunAttemptResult & {
   run: { region: string | null; workerQueue: string };
 };
+
+export type RestoreOutcome = "requeue" | "fail";
+
+export type RestoreOutcomeResult =
+  | { ok: true; outcome: RestoreOutcome }
+  | {
+      ok: false;
+      code: "SNAPSHOT_CONFLICT";
+      latestSnapshotId: string;
+      latestExecutionStatus: TaskRunExecutionStatus;
+    };
 
 export type HeartbeatTimeouts = {
   PENDING_EXECUTING: number;

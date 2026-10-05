@@ -12,6 +12,7 @@ import type { RedisOptions } from "@internal/redis";
 import { startSpan, type Counter } from "@internal/tracing";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { sanitizeError } from "@trigger.dev/core/v3";
+import { assertNever } from "assert-never";
 import type {
   CompleteRunAttemptResult,
   ExecutionResult,
@@ -39,7 +40,7 @@ import { MAX_TASK_RUN_ATTEMPTS } from "../consts.js";
 import { runStatusFromError, ServiceValidationError } from "../errors.js";
 import { sendNotificationToWorker } from "../eventBus.js";
 import { getMachinePreset, machinePresetFromName } from "../machinePresets.js";
-import { retryOutcomeFromCompletion } from "../retrying.js";
+import { retryOutcomeFromCompletion, retrySettingsFromLockedConfig } from "../retrying.js";
 import { workerQueueForPublish } from "../workerQueueRouting.js";
 import {
   isExecuting,
@@ -48,7 +49,12 @@ import {
   isInitialState,
   isPendingExecuting,
 } from "../statuses.js";
-import type { EngineStartRunAttemptResult, RunEngineOptions } from "../types.js";
+import type {
+  EngineStartRunAttemptResult,
+  RestoreOutcome,
+  RestoreOutcomeResult,
+  RunEngineOptions,
+} from "../types.js";
 import type { BatchSystem } from "./batchSystem.js";
 import type { DelayedRunSystem } from "./delayedRunSystem.js";
 import type {
@@ -123,6 +129,7 @@ export class RunAttemptSystem {
   private readonly delayedRunSystem: DelayedRunSystem;
   private readonly finalizationGuardDelayMs: number;
   private readonly rederivationsCounter: Counter;
+  private readonly restoreOutcomesCounter: Counter;
   private readonly cache: UnkeyCache<{
     tasks: BackwardsCompatibleTaskRunExecution["task"];
     machinePresets: MachinePreset;
@@ -147,6 +154,10 @@ export class RunAttemptSystem {
         unit: "runs",
       }
     );
+    this.restoreOutcomesCounter = this.$.meter.createCounter("run_engine.restore_outcomes", {
+      description: "Failed restores reported by a supervisor, by outcome, reason and result",
+      unit: "reports",
+    });
 
     const ctx = new DefaultStatefulContext();
     const memory = createLRUMemoryStore(5000);
@@ -958,6 +969,7 @@ export class RunAttemptSystem {
     runnerId,
     completion,
     forceRequeue,
+    resetQueueAttempts,
     environmentId,
     snapshotRoute,
     tx,
@@ -968,6 +980,8 @@ export class RunAttemptSystem {
     runnerId?: string;
     completion: TaskRunFailedExecutionResult;
     forceRequeue?: boolean;
+    // Defaults to !forceRequeue, so a forced requeue keeps spending the queue's redelivery budget.
+    resetQueueAttempts?: boolean;
     environmentId?: string;
     // Carried from the worker's complete request (or a dequeue-failure caller) so the retry/requeue
     // or terminal transition honors durable residency on a poll-lagging pod.
@@ -1213,7 +1227,7 @@ export class RunAttemptSystem {
                   orgId: env.organizationId,
                   projectId: env.project.id,
                   timestamp: retryAt.getTime(),
-                  resetQueueAttempts: !forceRequeue,
+                  resetQueueAttempts: resetQueueAttempts ?? !forceRequeue,
                   workerQueue: workerQueueForPublish(run, env),
                   error: {
                     type: "INTERNAL_ERROR",
@@ -1449,6 +1463,158 @@ export class RunAttemptSystem {
           attemptNumber: newSnapshot.attemptNumber,
         },
       };
+    });
+  }
+
+  public async reportRestoreOutcome({
+    runId,
+    snapshotId,
+    outcome,
+    reason,
+    message,
+    workerId,
+    runnerId,
+    environmentId,
+    snapshotRoute,
+  }: {
+    runId: string;
+    snapshotId: string;
+    outcome: RestoreOutcome;
+    reason: string;
+    message?: string;
+    workerId?: string;
+    runnerId?: string;
+    environmentId?: string;
+    snapshotRoute?: SnapshotRouteWire;
+  }): Promise<RestoreOutcomeResult> {
+    const prisma = this.$.prisma;
+
+    return await this.$.runLock.lock("reportRestoreOutcome", [runId], async () => {
+      const latestSnapshot = await getLatestExecutionSnapshot(
+        prisma,
+        runId,
+        this.$.runStore,
+        environmentId
+      );
+
+      if (
+        latestSnapshot.id !== snapshotId ||
+        latestSnapshot.executionStatus !== "PENDING_EXECUTING" ||
+        !latestSnapshot.checkpointId
+      ) {
+        this.restoreOutcomesCounter.add(1, {
+          outcome,
+          reason: metricReason(reason),
+          result: "conflict",
+        });
+        this.$.logger.debug(
+          "reportRestoreOutcome: snapshot is no longer the restore to report on",
+          {
+            runId,
+            snapshotId,
+            outcome,
+            reason,
+            latestSnapshotId: latestSnapshot.id,
+            latestExecutionStatus: latestSnapshot.executionStatus,
+            latestCheckpointId: latestSnapshot.checkpointId,
+          }
+        );
+
+        return {
+          ok: false,
+          code: "SNAPSHOT_CONFLICT",
+          latestSnapshotId: latestSnapshot.id,
+          latestExecutionStatus: latestSnapshot.executionStatus,
+        };
+      }
+
+      const detail = `${reason}${message ? `: ${message}` : ""}`;
+      let willRetry: boolean;
+
+      switch (outcome) {
+        case "requeue": {
+          const effectiveRoute = await this.#effectiveRoute(
+            runId,
+            latestSnapshot.organizationId,
+            snapshotRoute
+          );
+          const requeued = await this.tryNackAndRequeue({
+            run: { id: runId },
+            environment: {
+              id: latestSnapshot.environmentId,
+              type: latestSnapshot.environmentType,
+            },
+            orgId: latestSnapshot.organizationId,
+            projectId: latestSnapshot.projectId,
+            checkpointId: latestSnapshot.checkpointId,
+            completedWaitpoints: latestSnapshot.completedWaitpoints,
+            batchId: latestSnapshot.batchId ?? undefined,
+            workerId,
+            runnerId,
+            error: {
+              type: "INTERNAL_ERROR",
+              code: "TASK_RUN_DEQUEUED_MAX_RETRIES",
+              message: "Restoring the run failed more times than we retry.",
+            },
+            snapshotRoute: effectiveRoute,
+            tx: prisma,
+          });
+          willRetry = requeued.wasRequeued;
+          break;
+        }
+        case "fail": {
+          // read-your-writes: the attempt's lock-time retry config may not be on a replica yet
+          const run = await this.$.runStore.findRunOnPrimary(
+            { id: runId },
+            { select: { lockedRetryConfig: true } }
+          );
+          const failed = await this.attemptFailed({
+            runId,
+            snapshotId: latestSnapshot.id,
+            workerId,
+            runnerId,
+            environmentId,
+            completion: {
+              ok: false,
+              id: runId,
+              error: {
+                type: "INTERNAL_ERROR",
+                code: "TASK_RUN_CRASHED",
+                message: `The run could not be restored: ${reason}`,
+              },
+              retry: retrySettingsFromLockedConfig(
+                run?.lockedRetryConfig,
+                latestSnapshot.attemptNumber
+              ),
+            },
+            forceRequeue: true,
+            // The retry starts from scratch, so earlier restore requeues must not count against it.
+            resetQueueAttempts: true,
+            snapshotRoute,
+            tx: prisma,
+          });
+          willRetry =
+            failed.attemptStatus === "RETRY_QUEUED" || failed.attemptStatus === "RETRY_IMMEDIATELY";
+          break;
+        }
+        default: {
+          assertNever(outcome);
+        }
+      }
+
+      this.restoreOutcomesCounter.add(1, {
+        outcome,
+        reason: metricReason(reason),
+        result: "applied",
+      });
+      const fields = { runId, snapshotId, outcome, reason, detail, willRetry };
+      if (willRetry) {
+        this.$.logger.info("reportRestoreOutcome: applied", fields);
+      } else {
+        this.$.logger.warn("reportRestoreOutcome: applied, the run will not retry", fields);
+      }
+
+      return { ok: true, outcome };
     });
   }
 
@@ -2482,4 +2648,32 @@ function truncateString(str: string | undefined, maxLength: number): string {
   }
 
   return str.slice(0, maxLength);
+}
+
+// The reason is a string the supervisor sends, so the metric only carries the
+// reasons the operator and supervisor are known to report; the rest is logged.
+const METRIC_REASONS = new Set([
+  "ContainerFailed",
+  "CreateContainerConfigError",
+  "PodCannotStart",
+  "PodCreateFailed",
+  "PodDeleted",
+  "PodFailed",
+  "PodNameTaken",
+  "PodNotBuilt",
+  "PodRejected",
+  "PodStartTimeout",
+  "PodStopped",
+  "RestoreNotSupported",
+  "RunnerGone",
+  "SnapshotNodeGone",
+  "SnapshotNodeUnschedulable",
+  "SnapshotNotFound",
+  "StartError",
+  "Timeout",
+  "Unknown",
+]);
+
+function metricReason(reason: string): string {
+  return METRIC_REASONS.has(reason) ? reason : "other";
 }

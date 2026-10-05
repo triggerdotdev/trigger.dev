@@ -137,32 +137,11 @@ export async function retryOutcomeFromCompletion(
       return { outcome: "fail_run", sanitizedError };
     }
 
-    const retryConfig = run.lockedRetryConfig;
+    const retrySettings = retrySettingsFromLockedConfig(run.lockedRetryConfig, attemptNumber);
 
-    if (!retryConfig) {
+    if (!retrySettings) {
       return { outcome: "fail_run", sanitizedError };
     }
-
-    const parsedRetryConfig = NullishRetryOptions.safeParse(retryConfig);
-
-    if (!parsedRetryConfig.success) {
-      return { outcome: "fail_run", sanitizedError };
-    }
-
-    if (!parsedRetryConfig.data) {
-      return { outcome: "fail_run", sanitizedError };
-    }
-
-    const nextDelay = calculateNextRetryDelay(parsedRetryConfig.data, attemptNumber ?? 1);
-
-    if (!nextDelay) {
-      return { outcome: "fail_run", sanitizedError };
-    }
-
-    const retrySettings = {
-      timestamp: Date.now() + nextDelay,
-      delay: nextDelay,
-    };
 
     return {
       outcome: "retry",
@@ -182,6 +161,30 @@ export async function retryOutcomeFromCompletion(
     costInCents: run.costInCents,
     machinePreset: run.machinePreset,
   };
+}
+
+/** The next retry the run's locked retry config allows after `attemptNumber`, if any. */
+export function retrySettingsFromLockedConfig(
+  lockedRetryConfig: unknown,
+  attemptNumber: number | null
+): TaskRunExecutionRetry | undefined {
+  if (!lockedRetryConfig) {
+    return;
+  }
+
+  const parsedRetryConfig = NullishRetryOptions.safeParse(lockedRetryConfig);
+
+  if (!parsedRetryConfig.success || !parsedRetryConfig.data) {
+    return;
+  }
+
+  const nextDelay = calculateNextRetryDelay(parsedRetryConfig.data, attemptNumber ?? 1);
+
+  if (!nextDelay) {
+    return;
+  }
+
+  return { timestamp: Date.now() + nextDelay, delay: nextDelay };
 }
 
 async function retryOOMOnMachine(

@@ -3,6 +3,7 @@ import {
   WorkerApiContinueRunExecutionQueryParams,
   WorkerApiRunAttemptCompleteRequestBody,
   WorkerApiRunAttemptStartRequestBody,
+  WorkerApiRunRestoreOutcomeRequestBody,
   WorkerApiSuspendRunRequestBody,
 } from "./schemas.js";
 
@@ -84,6 +85,16 @@ describe("worker callback bodies accept a snapshotRoute leniently", () => {
       }),
       unrelated: { completion: { ok: true } },
     },
+    {
+      name: "restore outcome",
+      schema: WorkerApiRunRestoreOutcomeRequestBody,
+      body: (route?: unknown) => ({
+        outcome: "requeue",
+        reason: "NodeLost",
+        ...(route === undefined ? {} : { snapshotRoute: route }),
+      }),
+      unrelated: { outcome: "retry", reason: "NodeLost" },
+    },
   ];
 
   for (const kase of cases) {
@@ -122,4 +133,21 @@ describe("worker callback bodies accept a snapshotRoute leniently", () => {
       });
     });
   }
+});
+
+describe("WorkerApiRunRestoreOutcomeRequestBody", () => {
+  it("rejects an oversized reason or message", () => {
+    const base = { outcome: "fail", reason: "NodeLost", message: "gone" };
+
+    expect(WorkerApiRunRestoreOutcomeRequestBody.safeParse(base).success).toBe(true);
+    expect(
+      WorkerApiRunRestoreOutcomeRequestBody.safeParse({ ...base, reason: "x".repeat(257) }).success
+    ).toBe(false);
+    expect(
+      WorkerApiRunRestoreOutcomeRequestBody.safeParse({
+        ...base,
+        message: "x".repeat(16 * 1024 + 1),
+      }).success
+    ).toBe(false);
+  });
 });
