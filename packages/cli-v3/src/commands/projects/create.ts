@@ -10,7 +10,7 @@ import {
   wrapCommandAction,
 } from "../../cli/common.js";
 import { printStandloneInitialBanner } from "../../utilities/initialBanner.js";
-import { getPatApiClient } from "./common.js";
+import { createProjectWithFreePlanFallback, getPatApiClient } from "./common.js";
 
 const ProjectsCreateCommandOptions = CommonCommandOptions.extend({
   org: z.string().optional(),
@@ -52,7 +52,7 @@ async function createProject(options: ProjectsCreateCommandOptions) {
   const org = options.org ?? (await promptForOrg(apiClient));
   const name = options.name ?? (await promptForName());
 
-  const response = await apiClient.createProject(org, { name });
+  const response = await createProjectWithFreePlanFallback(apiClient, org, name);
 
   if (!response.success) {
     throw new Error(`Failed to create project: ${response.error}`);

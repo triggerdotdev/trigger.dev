@@ -40,6 +40,7 @@ import {
   writeConfigHasSeenMCPInstallPrompt,
 } from "../utilities/configFiles.js";
 import { installMcpServer } from "./install-mcp.js";
+import { createProjectWithFreePlanFallback } from "./projects/common.js";
 import { installSkillsFromInit, markSkillsPromptSeen } from "./skills.js";
 
 const cliVersion = VERSION as string;
@@ -937,18 +938,7 @@ async function createFirstProject(apiClient: CliApiClient, options: SelectProjec
       "--project-name is required to create a project when using --yes",
       { label: "Project names", minLength: 1, maxLength: 255 }
     ));
-  let projectResponse = await apiClient.createProject(orgParam, { name: projectName });
-
-  if (!projectResponse.success && projectResponse.statusCode === 402) {
-    const planResponse = await apiClient.activateFreePlan(orgParam);
-
-    if (!planResponse.success) {
-      throw new Error(`Failed to activate the Free plan: ${planResponse.error}`);
-    }
-
-    log.success("Activated the Free plan");
-    projectResponse = await apiClient.createProject(orgParam, { name: projectName });
-  }
+  const projectResponse = await createProjectWithFreePlanFallback(apiClient, orgParam, projectName);
 
   if (!projectResponse.success) {
     throw new Error(`Failed to create project: ${projectResponse.error}`);
