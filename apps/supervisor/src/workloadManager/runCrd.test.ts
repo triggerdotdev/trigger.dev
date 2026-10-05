@@ -516,6 +516,126 @@ describe("run-crd carries every shared create-option or excludes it on purpose",
   });
 });
 
+describe("RunCrdWorkloadManager.create", () => {
+  const manager = () =>
+    new RunCrdWorkloadManager({
+      workloadApiProtocol: "http",
+      workloadApiPort: 8020,
+      namespace: "v4-runs",
+      runtime: "microvm",
+    });
+
+  beforeEach(() => {
+    createRunner.mockReset();
+    createRunner.mockResolvedValue({ metadata: { uid: "uid-created" } });
+    getRunner.mockReset();
+    deleteRunner.mockReset();
+    deleteRunner.mockResolvedValue({});
+  });
+
+  // createOptions() is dequeued at 03:00:00, so the default is an earlier delivery.
+  const inTheWay = (snapshotFriendlyID: string, dequeuedAt?: string) => ({
+    metadata: { name: "runner-abc123", uid: "uid-existing" },
+    spec: {
+      bootstrap: {
+        runFriendlyID: "run_abc123",
+        snapshotFriendlyID,
+        dequeuedAt: dequeuedAt ?? "2026-08-27T02:59:00.000Z",
+      },
+    },
+  });
+
+  // The platform requeued an earlier delivery that never started the attempt.
+  it("replaces a Runner an earlier delivery left, guarded by its uid", async () => {
+    createRunner
+      .mockRejectedValueOnce({ code: 409 })
+      .mockResolvedValueOnce({ metadata: { uid: "uid-recreated" } });
+    getRunner.mockResolvedValue(inTheWay("snapshot_earlier"));
+
+    await manager().create(createOptions());
+
+    expect(deleteRunner).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "runner-abc123",
+        body: { preconditions: { uid: "uid-existing" } },
+      })
+    );
+    expect(createRunner).toHaveBeenCalledTimes(2);
+  });
+
+  // The first create found the old Runner's Secret, which the collector takes with it.
+  it("gives the replacement a token Secret of its own", async () => {
+    createRunner
+      .mockRejectedValueOnce({ code: 409 })
+      .mockResolvedValueOnce({ metadata: { uid: "uid-recreated" } });
+    getRunner.mockResolvedValue(inTheWay("snapshot_earlier"));
+    createSecret.mockReset();
+    createSecret.mockResolvedValue({ metadata: { uid: "uid-secret" } });
+    patchObject.mockResolvedValue({});
+
+    await manager().create(createOptions({ deploymentToken: "tok" }));
+
+    const [first, second] = createRunner.mock.calls.map(
+      ([{ body }]) => body.spec.deployment.token.name
+    );
+    expect(second).not.toBe(first);
+  });
+
+  it("leaves a Runner this delivery already made", async () => {
+    createRunner.mockRejectedValueOnce({ code: 409 });
+    getRunner.mockResolvedValue(inTheWay("snapshot_abc"));
+
+    await manager().create(createOptions());
+
+    expect(deleteRunner).not.toHaveBeenCalled();
+    expect(createRunner).toHaveBeenCalledTimes(1);
+  });
+
+  // A delivery held up past the requeue must not remove the one that followed it.
+  it.each([
+    ["a later delivery", "2026-08-27T03:01:00.000Z"],
+    ["a delivery dequeued at the same time", "2026-08-27T03:00:00.000Z"],
+    ["a delivery of unknown order", ""],
+  ])("leaves a Runner from %s and fails as stale", async (_, dequeuedAt) => {
+    createRunner.mockRejectedValueOnce({ code: 409 });
+    getRunner.mockResolvedValue(inTheWay("snapshot_later", dequeuedAt));
+
+    await expect(manager().create(createOptions())).rejects.toThrow("stale");
+    expect(deleteRunner).not.toHaveBeenCalled();
+    expect(createRunner).toHaveBeenCalledTimes(1);
+  });
+
+  // Another delivery of this snapshot made the replacement in the gap.
+  it("accepts a replacement for this snapshot that another delivery made first", async () => {
+    createRunner.mockRejectedValue({ code: 409 });
+    getRunner
+      .mockResolvedValueOnce(inTheWay("snapshot_earlier"))
+      .mockResolvedValueOnce(inTheWay("snapshot_abc", "2026-08-27T03:00:00.000Z"));
+
+    await manager().create(createOptions());
+
+    expect(createRunner).toHaveBeenCalledTimes(2);
+  });
+
+  it("replaces it only once per delivery", async () => {
+    createRunner.mockRejectedValue({ code: 409 });
+    getRunner.mockResolvedValue(inTheWay("snapshot_earlier"));
+
+    await expect(manager().create(createOptions())).rejects.toThrow("still in the way");
+    expect(createRunner).toHaveBeenCalledTimes(2);
+  });
+
+  it("creates again when the Runner went between the create and the read", async () => {
+    createRunner.mockRejectedValueOnce({ code: 409 });
+    getRunner.mockRejectedValue({ code: 404 });
+
+    await manager().create(createOptions());
+
+    expect(deleteRunner).not.toHaveBeenCalled();
+    expect(createRunner).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe("RunCrdWorkloadManager.restore", () => {
   const checkpoint = { id: "checkpoint_abc", location: "node-a/6f1c2a9e-snap" };
 
@@ -707,12 +827,6 @@ describe("RunCrdWorkloadManager.restore", () => {
       uid: "uid-existing",
     });
     expect(createRunner).toHaveBeenCalledTimes(2);
-  });
-
-  it("still fails a cold start that finds a Runner in the way", async () => {
-    createRunner.mockRejectedValue({ code: 409 });
-
-    await expect(manager().create(createOptions())).rejects.toEqual({ code: 409 });
   });
 
   it("deletes a failed resume only while it is the Runner the watch saw", async () => {

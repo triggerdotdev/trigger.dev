@@ -339,11 +339,16 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
     return outcome ? { ...outcome, createdAt: createdAtOf(runner), uid: uidOf(runner) } : timedOut;
   }
 
-  /**
-   * Deletes a failed resume so its redelivery can create it again. Preconditioned
-   * on uid, so a Runner that already replaced it is left alone; one already gone is fine.
-   */
+  /** Deletes a failed resume so its redelivery can create it again. */
   async deleteRestoreRunner(runnerId: string, uid: string): Promise<void> {
+    await this.deleteRunner(runnerId, uid);
+  }
+
+  /**
+   * Preconditioned on uid, so a Runner that already replaced this one is left
+   * alone; one already gone is fine.
+   */
+  private async deleteRunner(runnerId: string, uid: string): Promise<void> {
     try {
       await this.k8s.custom.deleteNamespacedCustomObject({
         group: GROUP,
@@ -378,8 +383,54 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
     return this.runtime === "microvm" && checkpoint.type === "COMPUTE";
   }
 
+  /**
+   * A cold start's Runner is named for its attempt, so one already in the way is
+   * another delivery of this attempt. One for this snapshot is this delivery's
+   * own create, made again. One dequeued before this delivery is one the
+   * platform has since requeued (it never started the attempt), which can't
+   * start it now, so it is replaced, once and guarded by its uid. Left in place,
+   * it failed every redelivery's create until the operator's terminal TTL took
+   * it. One dequeued after this delivery is newer, and this delivery is the
+   * stale one.
+   */
   async create(opts: WorkloadManagerCreateOptions) {
-    await this.createRunner(opts, getRunnerId(opts.runFriendlyId, opts.nextAttemptNumber));
+    const runnerId = getRunnerId(opts.runFriendlyId, opts.nextAttemptNumber);
+    if (await this.createRunner(opts, runnerId)) {
+      return;
+    }
+    try {
+      const existing = (await this.getRunner(runnerId)) as RunnerBootstrapSpec | null;
+      const bootstrap = existing?.spec?.bootstrap;
+      if (bootstrap?.snapshotFriendlyID === opts.snapshotFriendlyId) {
+        return;
+      }
+      // Unknown order counts as newer: only a Runner shown to be older is deleted.
+      if (!(Date.parse(bootstrap?.dequeuedAt ?? "") < opts.dequeuedAt.getTime())) {
+        throw new Error(
+          `Runner ${runnerId} belongs to a delivery dequeued after this one, which is stale`
+        );
+      }
+      const uid = uidOf(existing);
+      if (!uid) {
+        throw new Error(`Runner ${runnerId} is in the way, with no uid to guard its delete`);
+      }
+      await this.deleteRunner(runnerId, uid);
+    } catch (err: unknown) {
+      // Deleted between the create and the read.
+      if (statusCodeOf(err) !== 404) {
+        throw err;
+      }
+    }
+    // A Secret of its own: the one this create found is the deleted Runner's, and
+    // the collector takes it.
+    if (await this.createRunner(opts, runnerId, undefined, true)) {
+      return;
+    }
+    // Another delivery of this snapshot may have made it in the gap.
+    const raced = (await this.getRunner(runnerId)) as RunnerBootstrapSpec | null;
+    if (raced?.spec?.bootstrap?.snapshotFriendlyID !== opts.snapshotFriendlyId) {
+      throw new Error(`Runner ${runnerId} is still in the way after replacing it`);
+    }
   }
 
   /**
@@ -462,13 +513,14 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
     }
   }
 
-  /** Returns false when a resume's Runner was already there. */
+  /** Returns false when the Runner was already there. */
   private async createRunner(
     opts: WorkloadManagerCreateOptions,
     runnerId: string,
-    restore?: RunnerRestore
+    restore?: RunnerRestore,
+    replacing = false
   ): Promise<{ uid?: string } | false> {
-    const token = await this.ensureRunnerToken(opts, runnerId, !!restore);
+    const token = await this.ensureRunnerToken(opts, runnerId, !!restore || replacing);
 
     const body = runnerBodyFor(opts, {
       name: runnerId,
@@ -495,8 +547,8 @@ export class RunCrdWorkloadManager implements WorkloadManager, RunnerSnapshotter
       await this.releaseRunnerToken(token, err);
       // A resume's name carries the checkpoint, so the Runner in the way is this
       // resume, still restoring or held terminal for the operator's TTL. A cold
-      // start's carries the attempt, so its 409 is an earlier terminal Runner.
-      if (restore && statusCodeOf(err) === 409) {
+      // start's carries the attempt: create sorts out which delivery made it.
+      if (statusCodeOf(err) === 409) {
         return false;
       }
       this.logger.error("[RunCrdWorkloadManager] Create failed", { runnerId, rawError: err });
@@ -971,7 +1023,9 @@ export type UnwatchedRestoreFailure = {
 };
 
 type RunnerBootstrapSpec = {
-  spec?: { bootstrap?: { runFriendlyID?: string; snapshotFriendlyID?: string } };
+  spec?: {
+    bootstrap?: { runFriendlyID?: string; snapshotFriendlyID?: string; dequeuedAt?: string };
+  };
 };
 
 /**
