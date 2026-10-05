@@ -35,8 +35,11 @@ rules:
     resources: ["runners"]
     # get and patch are a suspend: the request is an annotation on the Runner
     # and the outcome is read back off its status. list finds outcomes a
-    # restarted supervisor has yet to submit.
-    verbs: ["create", "get", "list", "patch"]
+    # restarted supervisor has yet to submit, and list and watch follow
+    # restores through an informer. delete takes back a failed restore before
+    # it is requeued, or an ended one in a redelivery's way, guarded by that
+    # Runner's uid.
+    verbs: ["create", "delete", "get", "list", "patch", "watch"]
 {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1

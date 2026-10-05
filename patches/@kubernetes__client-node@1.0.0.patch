@@ -1,5 +1,5 @@
 diff --git a/dist/cache.js b/dist/cache.js
-index d58eea314385e5b5dea1f5d9104ba9446deb6364..3554cef6ba6cd1c8186bf0fa880eab2c5a4f3289 100644
+index d58eea314385e5b5dea1f5d9104ba9446deb6364..7b54947f80a4e6b979300c687379defb0dd5f6dc 100644
 --- a/dist/cache.js
 +++ b/dist/cache.js
 @@ -1,11 +1,12 @@
@@ -26,6 +26,17 @@ index d58eea314385e5b5dea1f5d9104ba9446deb6364..3554cef6ba6cd1c8186bf0fa880eab2c
          this.request = await this.watch.watch(this.path, queryParams, this.watchHandler.bind(this), this.doneHandler.bind(this));
      }
      addOrUpdateItems(items) {
+@@ -138,8 +142,8 @@ export class ListWatch {
+                 // nothing to do, here for documentation, mostly.
+                 break;
+         }
+-        if (watchObj && watchObj.metadata) {
+-            this.resourceVersion = watchObj.metadata.resourceVersion;
++        if (phase !== 'ERROR' && obj && obj.metadata && obj.metadata.resourceVersion) {
++            this.resourceVersion = obj.metadata.resourceVersion;
+         }
+     }
+ }
 diff --git a/dist/informer.d.ts b/dist/informer.d.ts
 index 903de9078b4b11a5fd933802be042e1a4f966079..4177cf12b5705a373def8f22d235416cd82114c6 100644
 --- a/dist/informer.d.ts

@@ -1,31 +1,49 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import {
+  RESTORE_LABEL,
   RunCrdWorkloadManager,
+  RunnerRestoreInformer,
   SUSPEND_ANNOTATION,
   SUSPEND_RUN_ANNOTATION,
   SUSPEND_SUBMITTED_ANNOTATION,
   awaitRestoreOf,
   checkpointLocation,
+  classifyRestoreFailure,
   parseCheckpointLocation,
+  pollDelayMs,
   publishedSuspend,
+  restoreHeartbeat,
   restoreOutcome,
   runnerBodyFor,
   runnerTokenSecretName,
+  settleRestoreFailure,
   suspendOutcome,
 } from "./runCrd.js";
+import {
+  ListWatch,
+  type KubernetesObject,
+  type ListPromise,
+  type Watch,
+} from "@kubernetes/client-node";
+import type { K8sApi } from "../clients/kubernetes.js";
 import { getRestoreRunnerId, getRunnerId } from "../util.js";
 import type { WorkloadManagerCreateOptions } from "./types.js";
 
 const createRunner = vi.fn();
+const deleteRunner = vi.fn();
 const getRunner = vi.fn();
 const listRunners = vi.fn();
 const patchObject = vi.fn();
+const createSecret = vi.fn();
+const deleteSecret = vi.fn();
 
 vi.mock("../clients/kubernetes.js", () => ({
   createK8sApi: () => ({
+    core: { createNamespacedSecret: createSecret, deleteNamespacedSecret: deleteSecret },
     custom: {
       createNamespacedCustomObject: createRunner,
+      deleteNamespacedCustomObject: deleteRunner,
       getNamespacedCustomObject: getRunner,
       listNamespacedCustomObject: listRunners,
     },
@@ -270,6 +288,15 @@ describe("runnerBodyFor builds a resume", () => {
     expect(body.spec.restore).toEqual({ snapshotID: "6f1c2a9e-snap", node: "node-a" });
   });
 
+  // The restore informer selects on this label and misses any resume without it.
+  it("labels a resume, and only a resume, as a restore", () => {
+    const resume = runnerBodyFor(createOptions(), { ...meta, runtime: "microvm", restore });
+    const cold = runnerBodyFor(createOptions(), { ...meta, runtime: "microvm" });
+
+    expect(resume.metadata.labels).toEqual({ [RESTORE_LABEL]: "true" });
+    expect(cold.metadata).not.toHaveProperty("labels");
+  });
+
   it("differs from a cold start only by the restore", () => {
     const cold = runnerBodyFor(createOptions(), { ...meta, runtime: "microvm" });
     const { restore: _, ...resume } = runnerBodyFor(createOptions(), {
@@ -503,8 +530,13 @@ describe("RunCrdWorkloadManager.restore", () => {
 
   beforeEach(() => {
     createRunner.mockReset();
-    createRunner.mockResolvedValue({});
+    createRunner.mockResolvedValue({ metadata: { uid: "uid-created" } });
     getRunner.mockReset();
+    deleteRunner.mockReset();
+    deleteRunner.mockResolvedValue({});
+    createSecret.mockReset();
+    patchObject.mockReset();
+    patchObject.mockResolvedValue({});
   });
 
   function existing(
@@ -512,16 +544,17 @@ describe("RunCrdWorkloadManager.restore", () => {
     restore = { snapshotID: "6f1c2a9e-snap", node: "node-a" }
   ) {
     return {
-      metadata: { name: "runner-abc123" },
+      metadata: { name: "runner-abc123", uid: "uid-existing" },
       spec: { restore },
       status: phase ? { phase } : undefined,
     };
   }
 
   it("creates a Runner named from the checkpoint that restores its location", async () => {
-    await expect(manager().restore(createOptions(), checkpoint)).resolves.toBe(
-      getRestoreRunnerId("run_abc123", "checkpoint_abc")
-    );
+    await expect(manager().restore(createOptions(), checkpoint)).resolves.toEqual({
+      runnerId: getRestoreRunnerId("run_abc123", "checkpoint_abc"),
+      uid: "uid-created",
+    });
 
     const { body } = createRunner.mock.calls[0]![0];
     expect(body.metadata.name).toBe(getRestoreRunnerId("run_abc123", "checkpoint_abc"));
@@ -542,23 +575,95 @@ describe("RunCrdWorkloadManager.restore", () => {
       createRunner.mockRejectedValue({ code: 409 });
       getRunner.mockResolvedValue(existing(phase));
 
-      await expect(manager().restore(createOptions(), checkpoint)).resolves.toBe(
-        getRestoreRunnerId("run_abc123", "checkpoint_abc")
-      );
+      await expect(manager().restore(createOptions(), checkpoint)).resolves.toEqual({
+        runnerId: getRestoreRunnerId("run_abc123", "checkpoint_abc"),
+        uid: "uid-existing",
+      });
       expect(getRunner).toHaveBeenCalledWith(
         expect.objectContaining({ name: getRestoreRunnerId("run_abc123", "checkpoint_abc") })
       );
     }
   );
 
-  // Held for the operator's TTL, it will never resume the guest.
-  it.each(["Failed", "Succeeded"])("fails when the resume in the way has %s", async (phase) => {
+  // Held for the operator's TTL, it will never resume the guest. A Succeeded one
+  // is replaced too: a redelivery means its guest exited without continuing the run.
+  it.each(["Failed", "Succeeded"])(
+    "replaces a resume in the way that has %s, guarded by its uid",
+    async (phase) => {
+      createRunner
+        .mockRejectedValueOnce({ code: 409 })
+        .mockResolvedValueOnce({ metadata: { uid: "uid-recreated" } });
+      getRunner.mockResolvedValue(existing(phase));
+
+      await expect(manager().restore(createOptions(), checkpoint)).resolves.toEqual({
+        runnerId: getRestoreRunnerId("run_abc123", "checkpoint_abc"),
+        uid: "uid-recreated",
+      });
+      expect(deleteRunner).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: getRestoreRunnerId("run_abc123", "checkpoint_abc"),
+          body: { preconditions: { uid: "uid-existing" } },
+        })
+      );
+      expect(createRunner).toHaveBeenCalledTimes(2);
+    }
+  );
+
+  // Another delivery settled it first: deleted it, or replaced it.
+  it.each([404, 409])("creates again when deleting the ended resume gets a %s", async (code) => {
+    createRunner
+      .mockRejectedValueOnce({ code: 409 })
+      .mockResolvedValueOnce({ metadata: { uid: "uid-recreated" } });
+    getRunner.mockResolvedValue(existing("Failed"));
+    deleteRunner.mockRejectedValue({ code });
+
+    await expect(manager().restore(createOptions(), checkpoint)).resolves.toMatchObject({
+      uid: "uid-recreated",
+    });
+  });
+
+  it("fails when deleting the ended resume fails otherwise", async () => {
     createRunner.mockRejectedValue({ code: 409 });
-    getRunner.mockResolvedValue(existing(phase));
+    getRunner.mockResolvedValue(existing("Failed"));
+    deleteRunner.mockRejectedValue({ code: 500 });
+
+    await expect(manager().restore(createOptions(), checkpoint)).rejects.toEqual({ code: 500 });
+    expect(createRunner).toHaveBeenCalledTimes(1);
+  });
+
+  it("replaces an ended resume only once per delivery", async () => {
+    createRunner.mockRejectedValue({ code: 409 });
+    getRunner.mockResolvedValue(existing("Failed"));
 
     await expect(manager().restore(createOptions(), checkpoint)).rejects.toThrow(
-      `already ended (${phase})`
+      "already ended (Failed)"
     );
+    expect(deleteRunner).toHaveBeenCalledTimes(1);
+  });
+
+  // The collector may not have taken the deleted resume's Secret yet.
+  it("gives each resume create its own token Secret", async () => {
+    createSecret.mockResolvedValue({ metadata: { uid: "uid-secret" } });
+    const opts = createOptions({ deploymentToken: "token-abc" });
+
+    await manager().restore(opts, checkpoint);
+    await manager().restore(opts, checkpoint);
+
+    const [first, second] = createSecret.mock.calls.map(([req]) => req.body.metadata.name);
+    expect(first).not.toEqual(second);
+    expect(first).toMatch(/-token-[0-9a-f]{8}$/);
+    expect(createRunner.mock.calls[0]![0].body.spec.deployment.token.name).toBe(first);
+  });
+
+  it("keeps one token Secret name per cold start, so a redrive finds it", async () => {
+    createSecret.mockResolvedValue({ metadata: { uid: "uid-secret" } });
+    const opts = createOptions({ deploymentToken: "token-abc" });
+
+    await manager().create(opts);
+    await manager().create(opts);
+
+    const [first, second] = createSecret.mock.calls.map(([req]) => req.body.metadata.name);
+    expect(first).toEqual(second);
   });
 
   it("fails when the Runner in the way restores a different snapshot", async () => {
@@ -574,15 +679,74 @@ describe("RunCrdWorkloadManager.restore", () => {
 
   it("fails when the Runner in the way cannot be read", async () => {
     createRunner.mockRejectedValue({ code: 409 });
+    getRunner.mockRejectedValue({ code: 500 });
+
+    await expect(manager().restore(createOptions(), checkpoint)).rejects.toEqual({ code: 500 });
+  });
+
+  // A requeue deletes the failed resume, and its redelivery can land in between.
+  it("creates again when the Runner in the way is gone by the time it is read", async () => {
+    createRunner
+      .mockRejectedValueOnce({ code: 409 })
+      .mockResolvedValueOnce({ metadata: { uid: "uid-recreated" } });
     getRunner.mockRejectedValue({ code: 404 });
 
-    await expect(manager().restore(createOptions(), checkpoint)).rejects.toEqual({ code: 404 });
+    await expect(manager().restore(createOptions(), checkpoint)).resolves.toEqual({
+      runnerId: getRestoreRunnerId("run_abc123", "checkpoint_abc"),
+      uid: "uid-recreated",
+    });
+    expect(createRunner).toHaveBeenCalledTimes(2);
+  });
+
+  it("leaves a resume recreated by another delivery in between", async () => {
+    createRunner.mockRejectedValue({ code: 409 });
+    getRunner.mockRejectedValueOnce({ code: 404 }).mockResolvedValueOnce(existing("Pending"));
+
+    await expect(manager().restore(createOptions(), checkpoint)).resolves.toEqual({
+      runnerId: getRestoreRunnerId("run_abc123", "checkpoint_abc"),
+      uid: "uid-existing",
+    });
+    expect(createRunner).toHaveBeenCalledTimes(2);
   });
 
   it("still fails a cold start that finds a Runner in the way", async () => {
     createRunner.mockRejectedValue({ code: 409 });
 
     await expect(manager().create(createOptions())).rejects.toEqual({ code: 409 });
+  });
+
+  it("deletes a failed resume only while it is the Runner the watch saw", async () => {
+    deleteRunner.mockReset();
+    deleteRunner.mockResolvedValue({});
+
+    await manager().deleteRestoreRunner("runner-abc123", "uid-seen");
+
+    expect(deleteRunner).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "runner-abc123",
+        namespace: "v4-runs",
+        body: { preconditions: { uid: "uid-seen" } },
+      })
+    );
+  });
+
+  it("takes a resume already gone as deleted", async () => {
+    deleteRunner.mockReset();
+    deleteRunner.mockRejectedValue({ code: 404 });
+
+    await expect(manager().deleteRestoreRunner("runner-abc123", "uid-seen")).resolves.toBe(
+      undefined
+    );
+  });
+
+  // 409 is the uid precondition refusing: the Runner under the name replaced ours.
+  it.each([409, 500])("fails the delete on a %s", async (code) => {
+    deleteRunner.mockReset();
+    deleteRunner.mockRejectedValue({ code });
+
+    await expect(manager().deleteRestoreRunner("runner-abc123", "uid-seen")).rejects.toEqual({
+      code,
+    });
   });
 
   it.each([
@@ -592,6 +756,95 @@ describe("RunCrdWorkloadManager.restore", () => {
     ["container", "COMPUTE", false],
   ] as const)("on %s restores a %s checkpoint: %s", (runtime, type, expected) => {
     expect(manager(runtime).restores({ type })).toBe(expected);
+  });
+});
+
+describe("RunCrdWorkloadManager.awaitRestore after the watch times out", () => {
+  const timedOut = {
+    ok: false as const,
+    reason: "Timeout",
+    error: "the Runner did not start within 10ms",
+    uid: "uid-a",
+  };
+
+  function manager(result: unknown = timedOut) {
+    const awaitRestore = vi.fn(async () => result);
+    const m = new RunCrdWorkloadManager({
+      workloadApiProtocol: "http",
+      workloadApiPort: 8020,
+      namespace: "v4-runs",
+      runtime: "microvm",
+      restoreInformer: { awaitRestore } as unknown as RunnerRestoreInformer,
+    });
+    return { m, awaitRestore };
+  }
+
+  function runnerAt(phase: string, uid = "uid-a", extra: Record<string, unknown> = {}) {
+    return {
+      metadata: { name: "runner-a", uid, creationTimestamp: "2026-10-01T10:00:00Z" },
+      status: { phase, ...extra },
+    };
+  }
+
+  beforeEach(() => {
+    getRunner.mockReset();
+  });
+
+  it.each(["Running", "Suspending", "Succeeded"])(
+    "counts a Runner read %s as started",
+    async (phase) => {
+      getRunner.mockResolvedValue(runnerAt(phase));
+
+      await expect(
+        manager().m.awaitRestore({ runnerId: "runner-a", uid: "uid-a" })
+      ).resolves.toEqual({ ok: true, createdAt: new Date("2026-10-01T10:00:00Z"), uid: "uid-a" });
+    }
+  );
+
+  it("settles a Runner read Failed with the operator's reason", async () => {
+    getRunner.mockResolvedValue(
+      runnerAt("Failed", "uid-a", {
+        conditions: [{ type: "Failed", reason: "PodStartTimeout", message: "no pod in 15m" }],
+      })
+    );
+
+    await expect(
+      manager().m.awaitRestore({ runnerId: "runner-a", uid: "uid-a" })
+    ).resolves.toMatchObject({ ok: false, reason: "PodStartTimeout", uid: "uid-a" });
+  });
+
+  it("stays a timeout while the Runner is still starting", async () => {
+    getRunner.mockResolvedValue(runnerAt("Restoring"));
+
+    await expect(manager().m.awaitRestore({ runnerId: "runner-a", uid: "uid-a" })).resolves.toEqual(
+      timedOut
+    );
+  });
+
+  it("stays a timeout when another Runner has the name", async () => {
+    getRunner.mockResolvedValue(runnerAt("Running", "uid-b"));
+
+    await expect(manager().m.awaitRestore({ runnerId: "runner-a", uid: "uid-a" })).resolves.toEqual(
+      timedOut
+    );
+  });
+
+  it.each([404, 500])("stays a timeout when the read gets a %s", async (code) => {
+    getRunner.mockRejectedValue({ code });
+
+    await expect(manager().m.awaitRestore({ runnerId: "runner-a", uid: "uid-a" })).resolves.toEqual(
+      timedOut
+    );
+  });
+
+  it("reads nothing for a watch that was aborted or ended on its own", async () => {
+    const abort = new AbortController();
+    abort.abort();
+
+    await manager().m.awaitRestore({ runnerId: "runner-a", uid: "uid-a" }, undefined, abort.signal);
+    await manager({ ok: true }).m.awaitRestore({ runnerId: "runner-a", uid: "uid-a" });
+
+    expect(getRunner).not.toHaveBeenCalled();
   });
 });
 
@@ -623,13 +876,16 @@ describe("restoreOutcome", () => {
     };
     expect(restoreOutcome(runner)).toEqual({
       ok: false,
+      reason: "StartError",
       error: "StartError: pulling the image: 401",
+      message: "pulling the image: 401",
     });
   });
 
   it("is a failure even when the operator recorded no reason", () => {
     expect(restoreOutcome({ status: { phase: "Failed" } })).toEqual({
       ok: false,
+      reason: "Unknown",
       error: "the Runner failed with no reason recorded",
     });
   });
@@ -679,8 +935,39 @@ describe("awaitRestoreOf", () => {
 
     await expect(awaitWith(readRunner)).resolves.toEqual({
       ok: false,
+      reason: "SnapshotNodeGone",
       error: "SnapshotNodeGone: node a is gone",
+      message: "node a is gone",
     });
+  });
+
+  it("waits past a Runner by the same name that is not the one it created", async () => {
+    const failed = {
+      metadata: { uid: "uid-old" },
+      status: { phase: "Failed", conditions: [{ type: "Failed", reason: "StartError" }] },
+    };
+    const { readRunner, log } = reads(failed, {
+      metadata: { uid: "uid-new" },
+      status: { phase: "Running" },
+    });
+
+    await expect(
+      awaitRestoreOf(readRunner, {
+        uid: "uid-new",
+        pollMs: 1,
+        timeoutMs: 1_000,
+        onReadError: () => {},
+      })
+    ).resolves.toEqual({ ok: true, uid: "uid-new" });
+    expect(log).toHaveLength(2);
+  });
+
+  it("names the Runner it waited on when it times out", async () => {
+    const { readRunner } = reads({ metadata: { uid: "uid-a" }, status: { phase: "Restoring" } });
+
+    await expect(
+      awaitRestoreOf(readRunner, { uid: "uid-a", pollMs: 1, timeoutMs: 20, onReadError: () => {} })
+    ).resolves.toMatchObject({ ok: false, reason: "Timeout", uid: "uid-a" });
   });
 
   it("keeps polling through a read that may succeed next time", async () => {
@@ -702,8 +989,29 @@ describe("awaitRestoreOf", () => {
 
     await expect(awaitWith(readRunner)).resolves.toEqual({
       ok: false,
+      reason: "RunnerGone",
       error: "the Runner no longer exists",
     });
+  });
+
+  it("stops polling once aborted", async () => {
+    const abort = new AbortController();
+    const read = vi.fn(async () => ({
+      metadata: { uid: "uid-a" },
+      status: { phase: "Restoring" },
+    }));
+    const outcome = awaitRestoreOf(read, {
+      uid: "uid-a",
+      pollMs: 60_000,
+      timeoutMs: 600_000,
+      signal: abort.signal,
+      onReadError: () => {},
+    });
+
+    abort.abort();
+
+    await expect(outcome).resolves.toMatchObject({ ok: false, reason: "Timeout" });
+    expect(read).not.toHaveBeenCalled();
   });
 
   it("gives up after its timeout", async () => {
@@ -711,8 +1019,721 @@ describe("awaitRestoreOf", () => {
 
     await expect(awaitWith(readRunner, 20)).resolves.toEqual({
       ok: false,
+      reason: "Timeout",
       error: "the Runner did not start within 20ms",
     });
+  });
+
+  it("reports each phase it reads and when the Runner was created", async () => {
+    const phases: unknown[] = [];
+    const { readRunner } = reads(
+      { status: { phase: "Scheduling" } },
+      {
+        metadata: { creationTimestamp: "2026-10-01T10:00:00Z" },
+        status: { phase: "Running" },
+      }
+    );
+
+    await expect(
+      awaitRestoreOf(readRunner, {
+        pollMs: 1,
+        timeoutMs: 1_000,
+        onPhase: (phase) => phases.push(phase),
+        onReadError: () => {},
+      })
+    ).resolves.toEqual({ ok: true, createdAt: new Date("2026-10-01T10:00:00Z") });
+    expect(phases).toEqual(["Scheduling", "Running"]);
+  });
+
+  it("doubles the wait after each 429 or 5xx in a row", async () => {
+    const at: number[] = [];
+    const responses = [{ code: 429 }, { code: 503 }];
+    const readRunner = async () => {
+      at.push(Date.now());
+      const err = responses.shift();
+      if (err) {
+        throw err;
+      }
+      return { status: { phase: "Running" } };
+    };
+
+    await expect(
+      awaitRestoreOf(readRunner, { pollMs: 20, timeoutMs: 5_000, onReadError: () => {} })
+    ).resolves.toEqual({ ok: true });
+    // Timers can fire a millisecond early, never late enough to matter here.
+    expect(at[1]! - at[0]!).toBeGreaterThanOrEqual(39);
+    expect(at[2]! - at[1]!).toBeGreaterThanOrEqual(79);
+  });
+});
+
+describe("pollDelayMs", () => {
+  const far = () => Date.now() + 10 * 60_000;
+
+  it("is the poll interval until the API server sheds or fails a read", () => {
+    expect(pollDelayMs(5_000, 0, far())).toBe(5_000);
+  });
+
+  it("doubles per overloaded read and stops at a minute", () => {
+    expect(pollDelayMs(5_000, 1, far())).toBe(10_000);
+    expect(pollDelayMs(5_000, 3, far())).toBe(40_000);
+    expect(pollDelayMs(5_000, 10, far())).toBe(60_000);
+  });
+
+  it("never waits past the deadline", () => {
+    const delay = pollDelayMs(5_000, 3, Date.now() + 1_000);
+    expect(delay).toBeLessThanOrEqual(1_000);
+    expect(pollDelayMs(5_000, 0, Date.now() - 1)).toBe(0);
+  });
+});
+
+describe("RunnerRestoreInformer", () => {
+  function fakeInformer() {
+    const handlers: Record<string, Array<(obj: unknown) => void>> = {};
+    const cache = new Map<string, unknown>();
+    return {
+      cache,
+      on: (verb: string, fn: (obj: unknown) => void) => (handlers[verb] ??= []).push(fn),
+      off: () => {},
+      start: vi.fn(async () => {}),
+      stop: vi.fn(async () => {}),
+      get: (name: string) => cache.get(name),
+      list: () => [...cache.values()],
+      emit: (verb: string, obj: unknown) => handlers[verb]?.forEach((fn) => fn(obj)),
+    };
+  }
+
+  function setup() {
+    const informer = fakeInformer();
+    const makeInformer = vi.fn(() => informer);
+    const unwatched: unknown[] = [];
+    const adopted: unknown[] = [];
+    const restoreInformer = new RunnerRestoreInformer({
+      namespace: "v4-runs",
+      k8s: {
+        makeInformer,
+        custom: { listNamespacedCustomObject: listRunners },
+      } as unknown as K8sApi,
+      onUnwatchedFailure: (failure) => unwatched.push(failure),
+      onUnwatchedRestore: (restore) => adopted.push(restore),
+    });
+    const list = (makeInformer.mock.calls[0] as unknown as [string, () => Promise<unknown>])[1];
+    return { informer, makeInformer, restoreInformer, unwatched, adopted, list };
+  }
+
+  type WatchCall = {
+    query: Record<string, string>;
+    callback: (phase: string, obj: unknown) => void;
+    done: (err: unknown) => void;
+  };
+
+  /** The client's own ListWatch over a fake Watch, which can fail to connect as the real one does. */
+  function listWatchSetup(connects: Array<"ok" | "fail"> = []) {
+    const calls: WatchCall[] = [];
+    const watch = {
+      watch: vi.fn(
+        async (
+          _path: string,
+          query: Record<string, string>,
+          callback: WatchCall["callback"],
+          done: WatchCall["done"]
+        ) => {
+          calls.push({ query, callback, done });
+          // The real Watch calls done with its fetch error before returning.
+          if (connects.shift() === "fail") {
+            done(new Error("connect ECONNREFUSED"));
+          }
+          return { abort: () => {} };
+        }
+      ),
+    };
+    const restoreInformer = new RunnerRestoreInformer({
+      namespace: "v4-runs",
+      reconnectIntervalMs: 1,
+      k8s: {
+        makeInformer: (path: string, listFn: ListPromise<KubernetesObject>, selector?: string) =>
+          new ListWatch(path, watch as unknown as Watch, listFn, false, selector),
+        custom: { listNamespacedCustomObject: listRunners },
+      } as unknown as K8sApi,
+    });
+    return { calls, restoreInformer };
+  }
+
+  function runner(
+    name: string,
+    phase?: string,
+    extra: Record<string, unknown> = {},
+    uid = `uid-${name}`
+  ) {
+    return {
+      metadata: { name, namespace: "v4-runs", uid, creationTimestamp: "2026-10-01T10:00:00Z" },
+      status: phase ? { phase, ...extra } : undefined,
+    };
+  }
+
+  const failed = (name: string) =>
+    runner(name, "Failed", {
+      conditions: [{ type: "Failed", reason: "SnapshotNodeGone", message: "node a is gone" }],
+    });
+
+  it("watches only labelled restore Runners", async () => {
+    const { makeInformer } = setup();
+
+    expect(makeInformer).toHaveBeenCalledWith(
+      "/apis/compute.trigger.dev/v1alpha1/namespaces/v4-runs/runners",
+      expect.any(Function),
+      `${RESTORE_LABEL}=true`
+    );
+    listRunners.mockReset();
+    listRunners.mockResolvedValue({ items: [], metadata: {} });
+    await (makeInformer.mock.calls[0] as unknown as [string, () => Promise<unknown>])[1]();
+    expect(listRunners).toHaveBeenCalledWith(
+      expect.objectContaining({ labelSelector: `${RESTORE_LABEL}=true` })
+    );
+  });
+
+  it("resolves when the Runner's phase moves to Running, ignoring other Runners", async () => {
+    const { informer, restoreInformer } = setup();
+    const phases: unknown[] = [];
+    let settled = false;
+    const outcome = restoreInformer
+      .awaitRestore("runner-a", { timeoutMs: 60_000, onPhase: (phase) => phases.push(phase) })
+      .finally(() => (settled = true));
+
+    informer.emit("add", runner("runner-a", "Pending"));
+    informer.emit("update", runner("runner-b", "Running"));
+    informer.emit("update", runner("runner-a", "Restoring"));
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    informer.emit("update", runner("runner-a", "Running"));
+
+    await expect(outcome).resolves.toEqual({
+      ok: true,
+      createdAt: new Date("2026-10-01T10:00:00Z"),
+      uid: "uid-runner-a",
+    });
+    expect(phases).toEqual(["Pending", "Restoring", "Running"]);
+  });
+
+  it("resolves a failure with the operator's reason", async () => {
+    const { informer, restoreInformer } = setup();
+    const outcome = restoreInformer.awaitRestore("runner-a", { timeoutMs: 60_000 });
+
+    informer.emit("update", failed("runner-a"));
+
+    await expect(outcome).resolves.toMatchObject({ ok: false, reason: "SnapshotNodeGone" });
+  });
+
+  it("resolves when the Runner is deleted before it starts", async () => {
+    const { informer, restoreInformer } = setup();
+    const outcome = restoreInformer.awaitRestore("runner-a", { timeoutMs: 60_000 });
+
+    informer.emit("delete", runner("runner-a", "Restoring"));
+
+    await expect(outcome).resolves.toEqual({
+      ok: false,
+      reason: "RunnerGone",
+      error: "the Runner no longer exists",
+    });
+  });
+
+  it("resolves from the cache when the Runner's events came before the waiter", async () => {
+    const { informer, restoreInformer } = setup();
+    informer.cache.set("runner-a", failed("runner-a"));
+
+    await expect(
+      restoreInformer.awaitRestore("runner-a", { timeoutMs: 60_000 })
+    ).resolves.toMatchObject({ ok: false, reason: "SnapshotNodeGone" });
+  });
+
+  it("ignores a cached or replaced Runner by the same name that it did not create", async () => {
+    const { informer, restoreInformer } = setup();
+    informer.cache.set("runner-a", runner("runner-a", "Failed", {}, "uid-old"));
+    let settled = false;
+    const outcome = restoreInformer
+      .awaitRestore("runner-a", { uid: "uid-new", timeoutMs: 60_000 })
+      .finally(() => (settled = true));
+
+    informer.emit("update", runner("runner-a", "Failed", {}, "uid-old"));
+    informer.emit("delete", runner("runner-a", "Failed", {}, "uid-old"));
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    informer.emit("add", runner("runner-a", "Running", {}, "uid-new"));
+
+    await expect(outcome).resolves.toMatchObject({ ok: true, uid: "uid-new" });
+  });
+
+  it("gives up after its timeout", async () => {
+    const { restoreInformer } = setup();
+
+    await expect(restoreInformer.awaitRestore("runner-a", { timeoutMs: 10 })).resolves.toEqual({
+      ok: false,
+      reason: "Timeout",
+      error: "the Runner did not start within 10ms",
+    });
+  });
+
+  it("shares one wait between callers for the same Runner", async () => {
+    const { informer, restoreInformer } = setup();
+    const first = restoreInformer.awaitRestore("runner-a", { timeoutMs: 60_000 });
+    const second = restoreInformer.awaitRestore("runner-a", { timeoutMs: 60_000 });
+
+    informer.emit("update", runner("runner-a", "Running"));
+
+    expect(second).toBe(first);
+    await expect(first).resolves.toMatchObject({ ok: true });
+  });
+
+  it("surfaces a restore listed already failed with nothing waiting on it", () => {
+    const { informer, unwatched } = setup();
+    const bootstrap = { runFriendlyID: "run_abc", snapshotFriendlyID: "snapshot_abc" };
+
+    informer.emit("add", runner("runner-live", "Running"));
+    informer.emit("update", failed("runner-updated"));
+    informer.emit("add", { ...failed("runner-a"), spec: { bootstrap } });
+
+    expect(unwatched).toEqual([
+      {
+        runnerId: "runner-a",
+        runFriendlyId: "run_abc",
+        snapshotFriendlyId: "snapshot_abc",
+        outcome: expect.objectContaining({
+          ok: false,
+          reason: "SnapshotNodeGone",
+          uid: "uid-runner-a",
+        }),
+      },
+    ]);
+  });
+
+  it("gets a restore listed already failed reported against its bootstrap snapshot", async () => {
+    const informer = fakeInformer();
+    const report = vi.fn(async () => ({ success: true as const }));
+    const deleted: unknown[] = [];
+    const settled: Promise<unknown>[] = [];
+    new RunnerRestoreInformer({
+      namespace: "v4-runs",
+      k8s: {
+        makeInformer: () => informer,
+        custom: { listNamespacedCustomObject: listRunners },
+      } as unknown as K8sApi,
+      onUnwatchedFailure: ({ runnerId, outcome }) =>
+        void settled.push(
+          settleRestoreFailure(
+            { runnerId, outcome },
+            { deleteRunner: async (...args) => void deleted.push(args), report }
+          )
+        ),
+    });
+    const bootstrap = { runFriendlyID: "run_abc", snapshotFriendlyID: "snapshot_abc" };
+
+    informer.emit("add", {
+      ...runner("runner-a", "Failed", {
+        conditions: [{ type: "Failed", reason: "PodStartTimeout", message: "no pod in 15m" }],
+      }),
+      spec: { bootstrap },
+    });
+    await Promise.all(settled);
+
+    expect(deleted).toEqual([["runner-a", "uid-runner-a"]]);
+    expect(report).toHaveBeenCalledWith({
+      outcome: "requeue",
+      reason: "PodStartTimeout",
+      message: "no pod in 15m",
+    });
+  });
+
+  it("watches a restore the first list found still starting, once", async () => {
+    const { informer, adopted, list } = setup();
+    const bootstrap = { runFriendlyID: "run_abc", snapshotFriendlyID: "snapshot_abc" };
+    const listed = { ...runner("runner-a", "Restoring"), spec: { bootstrap } };
+    listRunners.mockReset();
+    listRunners.mockResolvedValue({ items: [listed], metadata: {} });
+
+    await list();
+    informer.emit("add", listed);
+    informer.emit("add", listed);
+    // Created after the first list, so whoever created it watches it.
+    informer.emit("add", runner("runner-b", "Pending"));
+    await list();
+    informer.emit("add", { ...runner("runner-c", "Restoring"), spec: { bootstrap } });
+
+    expect(adopted).toEqual([
+      {
+        runnerId: "runner-a",
+        uid: "uid-runner-a",
+        runFriendlyId: "run_abc",
+        snapshotFriendlyId: "snapshot_abc",
+      },
+    ]);
+  });
+
+  it("does not take over a listed restore something here already waits on", async () => {
+    const { informer, restoreInformer, adopted, list } = setup();
+    listRunners.mockReset();
+    listRunners.mockResolvedValue({ items: [runner("runner-a", "Restoring")], metadata: {} });
+    void restoreInformer.awaitRestore("runner-a", { timeoutMs: 60_000 });
+
+    await list();
+    informer.emit("add", runner("runner-a", "Restoring"));
+
+    expect(adopted).toEqual([]);
+  });
+
+  it("keeps a separate wait for each Runner by the same name", async () => {
+    const { informer, restoreInformer } = setup();
+    let oldSettled = false;
+    void restoreInformer
+      .awaitRestore("runner-a", { uid: "uid-old", timeoutMs: 60_000 })
+      .finally(() => (oldSettled = true));
+    const fresh = restoreInformer.awaitRestore("runner-a", { uid: "uid-new", timeoutMs: 60_000 });
+
+    informer.emit("add", runner("runner-a", "Running", {}, "uid-new"));
+
+    await expect(fresh).resolves.toMatchObject({ ok: true, uid: "uid-new" });
+    expect(oldSettled).toBe(false);
+  });
+
+  it("ends an aborted wait as a timeout, leaving others", async () => {
+    const { informer, restoreInformer } = setup();
+    const abort = new AbortController();
+    const aborted = restoreInformer.awaitRestore("runner-a", {
+      uid: "uid-old",
+      timeoutMs: 60_000,
+      signal: abort.signal,
+    });
+    const other = restoreInformer.awaitRestore("runner-a", { uid: "uid-new", timeoutMs: 60_000 });
+
+    abort.abort();
+    informer.emit("update", runner("runner-a", "Running", {}, "uid-new"));
+
+    await expect(aborted).resolves.toMatchObject({ ok: false, reason: "Timeout" });
+    await expect(other).resolves.toMatchObject({ ok: true });
+  });
+
+  it("keeps reconnecting while the watch fails to connect", async () => {
+    listRunners.mockReset();
+    listRunners.mockResolvedValue({ items: [], metadata: { resourceVersion: "1" } });
+    const { calls, restoreInformer } = listWatchSetup(["ok", "fail", "fail", "ok"]);
+    await restoreInformer.start();
+    const outcome = restoreInformer.awaitRestore("runner-a", { timeoutMs: 60_000 });
+
+    calls[0]!.done(new Error("stream reset"));
+    await vi.waitFor(() => expect(calls).toHaveLength(4));
+    calls[3]!.callback("ADDED", runner("runner-a", "Running"));
+
+    await expect(outcome).resolves.toMatchObject({ ok: true });
+    await restoreInformer.stop();
+  });
+
+  it("reconnects after a failed relist without dropping its cached Runners", async () => {
+    listRunners.mockReset();
+    listRunners
+      .mockResolvedValueOnce({
+        items: [runner("runner-a", "Restoring")],
+        metadata: { resourceVersion: "1" },
+      })
+      .mockRejectedValueOnce({ code: 503 })
+      .mockResolvedValue({
+        items: [runner("runner-a", "Restoring")],
+        metadata: { resourceVersion: "9" },
+      });
+    const { calls, restoreInformer } = listWatchSetup();
+    await restoreInformer.start();
+    const outcome = restoreInformer.awaitRestore("runner-a", { timeoutMs: 60_000 });
+
+    // A 410 in the stream, then the close: the client relists on its own.
+    calls[0]!.callback("ERROR", { code: 410 });
+    calls[0]!.done(null);
+    await vi.waitFor(() => expect(calls).toHaveLength(2));
+    calls[1]!.callback("MODIFIED", {
+      ...runner("runner-a", "Running"),
+      metadata: { ...runner("runner-a").metadata, resourceVersion: "10" },
+    });
+
+    await expect(outcome).resolves.toMatchObject({ ok: true });
+    expect(listRunners).toHaveBeenCalledTimes(3);
+    expect(calls[1]!.query.resourceVersion).toBe("9");
+    await restoreInformer.stop();
+  });
+
+  // Otherwise a reconnect replays every event since the list.
+  it("resumes the watch from the last event it saw", async () => {
+    listRunners.mockReset();
+    listRunners.mockResolvedValue({ items: [], metadata: { resourceVersion: "1" } });
+    const { calls, restoreInformer } = listWatchSetup();
+    await restoreInformer.start();
+
+    calls[0]!.callback("ADDED", {
+      ...runner("runner-a", "Pending"),
+      metadata: { ...runner("runner-a").metadata, resourceVersion: "5" },
+    });
+    calls[0]!.callback("BOOKMARK", { metadata: { resourceVersion: "7" } });
+    calls[0]!.done(null);
+    await vi.waitFor(() => expect(calls).toHaveLength(2));
+
+    expect(calls[1]!.query.resourceVersion).toBe("7");
+    await restoreInformer.stop();
+  });
+});
+
+describe("classifyRestoreFailure", () => {
+  it.each([
+    ["SnapshotNodeGone", { outcome: "fail" }],
+    ["SnapshotNodeUnschedulable", { outcome: "fail" }],
+    ["RestoreNotSupported", { outcome: "fail" }],
+    ["SnapshotNotFound", { outcome: "fail" }],
+    ["PodStartTimeout", { outcome: "requeue", deleteRunner: true }],
+    ["StartError", { outcome: "requeue", deleteRunner: true }],
+    ["ContainerFailed", { outcome: "requeue", deleteRunner: true }],
+    ["PodFailed", { outcome: "requeue", deleteRunner: true }],
+    ["Unknown", { outcome: "requeue", deleteRunner: true }],
+    ["SomethingNew", { outcome: "requeue", deleteRunner: true }],
+    ["Timeout", undefined],
+    ["RunnerGone", { outcome: "requeue", deleteRunner: false }],
+    ["ReadFailed", undefined],
+  ])("%s -> %j", (reason, expected) => {
+    expect(classifyRestoreFailure(reason)).toEqual(expected);
+  });
+});
+
+describe("settleRestoreFailure", () => {
+  function failure(reason: string, uid: string | null = "uid-a", message?: string) {
+    return {
+      runnerId: "runner-a",
+      outcome: {
+        ok: false as const,
+        reason,
+        error: `${reason}: ${message ?? "detail"}`,
+        ...(message ? { message } : {}),
+        uid: uid ?? undefined,
+      },
+    };
+  }
+
+  function deps(
+    opts: {
+      deleteError?: unknown;
+      report?: { success: true } | { success: false; error: string; statusCode?: number };
+    } = {}
+  ) {
+    const calls: string[] = [];
+    const deleteRunner = vi.fn(async (_runnerId: string, _uid: string) => {
+      calls.push("delete");
+      if (opts.deleteError) {
+        throw opts.deleteError;
+      }
+    });
+    const report = vi.fn(async (_body: unknown) => {
+      calls.push("report");
+      return opts.report ?? { success: true as const };
+    });
+    return { calls, deleteRunner, report };
+  }
+
+  it("deletes the Runner it saw, then requeues", async () => {
+    const d = deps();
+
+    await expect(
+      settleRestoreFailure(failure("StartError", "uid-a", "pulling the image: 401"), d)
+    ).resolves.toEqual({ action: "reported", outcome: "requeue", result: "ok" });
+    expect(d.calls).toEqual(["delete", "report"]);
+    expect(d.deleteRunner).toHaveBeenCalledWith("runner-a", "uid-a");
+    expect(d.report).toHaveBeenCalledWith({
+      outcome: "requeue",
+      reason: "StartError",
+      message: "pulling the image: 401",
+    });
+  });
+
+  // The Runner may be running a guest the watch never saw start.
+  it("neither deletes nor reports a Runner the watch timed out on", async () => {
+    const d = deps();
+
+    await expect(settleRestoreFailure(failure("Timeout"), d)).resolves.toEqual({
+      action: "none",
+    });
+    expect(d.calls).toEqual([]);
+  });
+
+  it("requeues a Runner already gone without deleting anything", async () => {
+    const d = deps();
+
+    await settleRestoreFailure(failure("RunnerGone", null), d);
+
+    expect(d.calls).toEqual(["report"]);
+  });
+
+  it("does not requeue when the delete fails, since the redelivery would hit the held Runner", async () => {
+    const d = deps({ deleteError: { code: 409, message: "uid precondition failed" } });
+
+    await expect(settleRestoreFailure(failure("PodStartTimeout"), d)).resolves.toMatchObject({
+      action: "kept",
+    });
+    expect(d.report).not.toHaveBeenCalled();
+  });
+
+  // A role without delete on runners leaves the run to the stall timeout, as before restores were reported.
+  it("does not requeue when the delete is forbidden, and says so", async () => {
+    const d = deps({
+      deleteError: Object.assign(new Error("runners is forbidden"), { code: 403 }),
+    });
+
+    await expect(settleRestoreFailure(failure("PodStartTimeout"), d)).resolves.toEqual({
+      action: "kept",
+      error: "runners is forbidden",
+      forbidden: true,
+    });
+    expect(d.report).not.toHaveBeenCalled();
+  });
+
+  it("does not requeue without a uid to guard the delete", async () => {
+    const d = deps();
+
+    await expect(settleRestoreFailure(failure("PodStartTimeout", null), d)).resolves.toMatchObject({
+      action: "kept",
+    });
+    expect(d.calls).toEqual([]);
+  });
+
+  it("fails a restore that cannot go ahead with the operator's message, then deletes the Runner", async () => {
+    const d = deps();
+
+    await expect(
+      settleRestoreFailure(failure("SnapshotNodeGone", "uid-a", "node a is gone"), d)
+    ).resolves.toEqual({ action: "reported", outcome: "fail", result: "ok" });
+    expect(d.calls).toEqual(["report", "delete"]);
+    expect(d.deleteRunner).toHaveBeenCalledWith("runner-a", "uid-a");
+    expect(d.report).toHaveBeenCalledWith({
+      outcome: "fail",
+      reason: "SnapshotNodeGone",
+      message: "node a is gone",
+    });
+  });
+
+  it("reports nothing when the Runner could not be read", async () => {
+    const d = deps();
+
+    await expect(settleRestoreFailure(failure("ReadFailed"), d)).resolves.toEqual({
+      action: "none",
+    });
+    expect(d.calls).toEqual([]);
+  });
+
+  it("takes a 409 as the run having moved on", async () => {
+    const d = deps({ report: { success: false, error: "conflict", statusCode: 409 } });
+
+    await expect(settleRestoreFailure(failure("SnapshotNodeGone"), d)).resolves.toEqual({
+      action: "reported",
+      outcome: "fail",
+      result: "conflict",
+      error: "conflict",
+    });
+    expect(d.report).toHaveBeenCalledTimes(1);
+    expect(d.calls).toEqual(["report", "delete"]);
+  });
+
+  // Kept, so the next supervisor to list it tries the report again.
+  it("keeps a failed Runner whose fail report did not land", async () => {
+    const d = deps({ report: { success: false, error: "unavailable", statusCode: 503 } });
+
+    await settleRestoreFailure(failure("SnapshotNotFound"), d);
+
+    expect(d.calls).toEqual(["report"]);
+  });
+
+  it("returns a failed cleanup delete with the report it followed", async () => {
+    const d = deps({ deleteError: { code: 500, message: "etcd timeout" } });
+
+    await expect(settleRestoreFailure(failure("SnapshotNodeGone"), d)).resolves.toMatchObject({
+      action: "reported",
+      outcome: "fail",
+      result: "ok",
+      cleanupError: expect.any(String),
+    });
+  });
+
+  it("returns any other report failure as an error", async () => {
+    const d = deps({ report: { success: false, error: "unavailable", statusCode: 503 } });
+
+    await expect(settleRestoreFailure(failure("StartError"), d)).resolves.toMatchObject({
+      action: "reported",
+      outcome: "requeue",
+      result: "error",
+    });
+  });
+});
+
+describe("restoreHeartbeat", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    return () => vi.useRealTimers();
+  });
+
+  it("beats while the Runner is starting and stops once it runs", async () => {
+    const beat = vi.fn(async () => {});
+    const heartbeat = restoreHeartbeat(beat, 10);
+
+    heartbeat.onPhase("Scheduling");
+    await vi.advanceTimersByTimeAsync(20);
+    expect(beat).toHaveBeenCalledTimes(2);
+
+    // The same beat carries on through Restoring rather than starting over.
+    await vi.advanceTimersByTimeAsync(5);
+    heartbeat.onPhase("Restoring");
+    await vi.advanceTimersByTimeAsync(5);
+    expect(beat).toHaveBeenCalledTimes(3);
+
+    heartbeat.onPhase("Running");
+    await vi.advanceTimersByTimeAsync(100);
+    expect(beat).toHaveBeenCalledTimes(3);
+  });
+
+  // Reads failing past the platform's stall timeout must not requeue a healthy restore.
+  it("beats before any phase is read", async () => {
+    const beat = vi.fn(async () => {});
+    const heartbeat = restoreHeartbeat(beat, 10);
+
+    await vi.advanceTimersByTimeAsync(25);
+    expect(beat).toHaveBeenCalledTimes(2);
+
+    heartbeat.onPhase(undefined);
+    await vi.advanceTimersByTimeAsync(10);
+    expect(beat).toHaveBeenCalledTimes(3);
+    heartbeat.stop();
+  });
+
+  // Admitted covers the operator retrying a pod create for up to five minutes.
+  it.each(["Pending", "Admitted", "Scheduling", "Restoring"])(
+    "beats while the Runner is %s",
+    async (phase) => {
+      const beat = vi.fn(async () => {});
+      const heartbeat = restoreHeartbeat(beat, 10);
+
+      heartbeat.onPhase(phase);
+      await vi.advanceTimersByTimeAsync(25);
+      expect(beat).toHaveBeenCalledTimes(2);
+      heartbeat.stop();
+    }
+  );
+
+  it.each(["Failed", "Succeeded"])("stops when the Runner ends %s", async (phase) => {
+    const beat = vi.fn(async () => {});
+    const heartbeat = restoreHeartbeat(beat, 10);
+
+    heartbeat.onPhase("Restoring");
+    heartbeat.onPhase(phase);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(beat).not.toHaveBeenCalled();
+  });
+
+  it("stops when the watch ends", async () => {
+    const beat = vi.fn(async () => {});
+    const heartbeat = restoreHeartbeat(beat, 10);
+
+    heartbeat.onPhase("Restoring");
+    heartbeat.stop();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(beat).not.toHaveBeenCalled();
   });
 });
 

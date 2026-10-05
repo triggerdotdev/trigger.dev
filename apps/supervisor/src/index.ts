@@ -18,7 +18,14 @@ import {
   type ResourceMonitor,
 } from "./resourceMonitor.js";
 import { KubernetesWorkloadManager } from "./workloadManager/kubernetes.js";
-import { RunCrdWorkloadManager } from "./workloadManager/runCrd.js";
+import {
+  RunCrdWorkloadManager,
+  RunnerRestoreInformer,
+  restoreHeartbeat,
+  settleRestoreFailure,
+  type RestoreRunner,
+  type RestoreWatchResult,
+} from "./workloadManager/runCrd.js";
 import { DockerWorkloadManager } from "./workloadManager/docker.js";
 import { ComputeWorkloadManager } from "./workloadManager/compute.js";
 import {
@@ -81,6 +88,37 @@ const outboundRequestDuration = new Histogram({
   registers: [register],
 });
 
+const restoreWatchesInFlight = new Gauge({
+  name: "supervisor_restore_watches_in_flight",
+  help: "Restore Runners the supervisor is waiting on to start or fail.",
+  registers: [register],
+});
+
+const restoreOutcomesTotal = new Counter({
+  name: "supervisor_restore_outcomes_total",
+  help: "Restore watches ended, by outcome and reason: the operator's failure reason, or Timeout, RunnerGone or ReadFailed from the watch itself.",
+  labelNames: ["outcome", "reason"],
+  registers: [register],
+});
+
+const restoreDuration = new Histogram({
+  name: "supervisor_restore_duration_seconds",
+  help: "Time from a restore Runner's creation to the supervisor seeing it Running or Failed.",
+  labelNames: ["outcome"],
+  buckets: [1, 2.5, 5, 10, 20, 30, 60, 120, 300, 600, 900],
+  registers: [register],
+});
+
+const restoreReportsTotal = new Counter({
+  name: "supervisor_restore_reports_total",
+  help: "Failed restores reported to the platform, by outcome (requeue or fail) and result: ok, conflict when the run had already moved on, or error.",
+  labelNames: ["outcome", "result"],
+  registers: [register],
+});
+
+/** `uid` is the Runner the watch is bound to; `abort` ends a watch a newer Runner replaced. */
+type WatchedRestore = { uid?: string; snapshotFriendlyId: string; abort: AbortController };
+
 class ManagedSupervisor {
   private readonly workerSession: SupervisorSession;
   private readonly metricsServer?: HttpServer;
@@ -89,6 +127,7 @@ class ManagedSupervisor {
   private readonly workloadManagerBackend: "compute" | "kubernetes" | "run-crd" | "docker";
   private readonly computeManager?: ComputeWorkloadManager;
   private readonly runCrdManager?: RunCrdWorkloadManager;
+  private readonly restoreInformer?: RunnerRestoreInformer;
   private readonly logger = new SimpleStructuredLogger("managed-supervisor");
   private readonly resourceMonitor: ResourceMonitor;
   private readonly checkpointClient?: CheckpointClient;
@@ -98,7 +137,8 @@ class ManagedSupervisor {
   private readonly failedPodHandler?: FailedPodHandler;
   private readonly tracing?: OtlpTraceService;
   private readonly backpressureMonitors: BackpressureMonitor[] = [];
-  private readonly watchedRestores = new Set<string>();
+  /** Restore Runners being watched, each with the latest snapshot dequeued for it. */
+  private readonly watchedRestores = new Map<string, WatchedRestore>();
   private readonly backpressureRedis?: Redis;
 
   private readonly isKubernetes = isKubernetesEnvironment(env.KUBERNETES_FORCE_ENABLED);
@@ -198,6 +238,27 @@ class ManagedSupervisor {
       this.workloadManager = computeManager;
       this.workloadManagerBackend = "compute";
     } else if (this.isKubernetes && env.KUBERNETES_RUN_CRD_ENABLED) {
+      // Only a process that dequeues creates resumes, and only the microvm lane restores.
+      if (
+        env.KUBERNETES_RUNNER_RESTORE_INFORMER_ENABLED &&
+        env.TRIGGER_DEQUEUE_ENABLED &&
+        env.KUBERNETES_RUNNER_RUNTIME === "microvm"
+      ) {
+        this.restoreInformer = new RunnerRestoreInformer({
+          namespace: env.KUBERNETES_NAMESPACE,
+          onUnwatchedFailure: ({ runFriendlyId, snapshotFriendlyId, runnerId, outcome }) =>
+            void this.reportRestoreFailure(runFriendlyId, snapshotFriendlyId, runnerId, outcome),
+          onUnwatchedRestore: ({ runnerId, uid, runFriendlyId, snapshotFriendlyId }) => {
+            if (this.runCrdManager && runFriendlyId && snapshotFriendlyId) {
+              void this.watchRestore(
+                this.runCrdManager,
+                { runFriendlyId, snapshotFriendlyId },
+                { runnerId, uid }
+              );
+            }
+          },
+        });
+      }
       const runCrdManager = new RunCrdWorkloadManager({
         ...workloadManagerOptions,
         namespace: env.KUBERNETES_NAMESPACE,
@@ -207,6 +268,9 @@ class ManagedSupervisor {
           delayMs: env.COMPUTE_SNAPSHOT_DELAY_MS,
           dispatchLimit: env.COMPUTE_SNAPSHOT_DISPATCH_LIMIT,
         },
+        suspendPollMs: env.KUBERNETES_RUNNER_POLL_INTERVAL_MS,
+        restoreTimeoutMs: env.KUBERNETES_RUNNER_RESTORE_TIMEOUT_MS,
+        restoreInformer: this.restoreInformer,
       });
       this.runCrdManager = runCrdManager;
       this.workloadManager = runCrdManager;
@@ -710,12 +774,16 @@ class ManagedSupervisor {
   ) {
     const restoreStart = performance.now();
     try {
-      const runnerId = await manager.restore(await this.createOptionsFor(message), checkpoint);
+      const restore = await manager.restore(await this.createOptionsFor(message), checkpoint);
       recordPhaseSince("restore", restoreStart, undefined);
       setExtra(fromContext(), "did_restore", true);
       this.logger.debug("Runner restore created", { runId: message.run.id });
       // Not awaited: the resume can take minutes, and the dequeue is done.
-      void this.watchRestore(manager, message.run.friendlyId, runnerId);
+      void this.watchRestore(
+        manager,
+        { runFriendlyId: message.run.friendlyId, snapshotFriendlyId: message.snapshot.friendlyId },
+        restore
+      );
     } catch (error) {
       recordPhaseSince(
         "restore",
@@ -730,31 +798,157 @@ class ManagedSupervisor {
   /** A resume that fails on the node is otherwise silent until the run's heartbeat stalls. */
   private async watchRestore(
     manager: RunCrdWorkloadManager,
-    runFriendlyId: string,
-    runnerId: string
+    run: { runFriendlyId: string; snapshotFriendlyId: string },
+    restore: RestoreRunner
   ) {
-    // A redelivered restore finds the same Runner, which needs only one watch.
-    if (this.watchedRestores.has(runnerId)) {
+    const { runnerId, uid } = restore;
+    const { runFriendlyId } = run;
+    // A redelivered restore finds the same Runner, which needs only one watch,
+    // but its beats and report must name the snapshot dequeued last.
+    const watched = this.watchedRestores.get(runnerId);
+    if (watched && (watched.uid === undefined || uid === undefined || watched.uid === uid)) {
+      watched.snapshotFriendlyId = run.snapshotFriendlyId;
       return;
     }
-    this.watchedRestores.add(runnerId);
+    // The redelivery replaced the Runner, so the watch on the old one has nothing left to say.
+    watched?.abort.abort();
+    const entry: WatchedRestore = {
+      uid,
+      snapshotFriendlyId: run.snapshotFriendlyId,
+      abort: new AbortController(),
+    };
+    this.watchedRestores.set(runnerId, entry);
+    restoreWatchesInFlight.inc();
+    const heartbeat = restoreHeartbeat(
+      () => this.heartbeatRestore(runFriendlyId, entry.snapshotFriendlyId, runnerId),
+      env.KUBERNETES_RUNNER_RESTORE_HEARTBEAT_INTERVAL_MS
+    );
     const outcome = await manager
-      .awaitRestore(runnerId)
-      .finally(() => this.watchedRestores.delete(runnerId));
+      .awaitRestore(restore, heartbeat.onPhase, entry.abort.signal)
+      .finally(() => {
+        heartbeat.stop();
+        restoreWatchesInFlight.dec();
+        if (this.watchedRestores.get(runnerId) === entry) {
+          this.watchedRestores.delete(runnerId);
+        }
+      });
+    if (entry.abort.signal.aborted) {
+      return;
+    }
+    const { snapshotFriendlyId } = entry;
+    const outcomeLabel = outcome.ok ? "started" : "failed";
+    restoreOutcomesTotal.inc({
+      outcome: outcomeLabel,
+      reason: outcome.ok ? "Started" : outcome.reason,
+    });
+    if (outcome.createdAt) {
+      restoreDuration.observe(
+        { outcome: outcomeLabel },
+        (Date.now() - outcome.createdAt.getTime()) / 1000
+      );
+    }
     if (outcome.ok) {
       this.logger.debug("Runner restore started", { runFriendlyId, runnerId });
       return;
     }
-    this.logger.error("Runner restore failed (run-crd)", {
+    await this.reportRestoreFailure(runFriendlyId, snapshotFriendlyId, runnerId, outcome);
+  }
+
+  /** Keeps the dequeued snapshot from stalling while the operator brings the resume up. */
+  private async heartbeatRestore(
+    runFriendlyId: string,
+    snapshotFriendlyId: string,
+    runnerId: string
+  ) {
+    const result = await this.workerSession.httpClient.heartbeatRun(
       runFriendlyId,
-      runnerId,
-      error: outcome.error,
-    });
+      snapshotFriendlyId,
+      {},
+      runnerId
+    );
+    if (!result.success) {
+      this.logger.warn("Restore heartbeat failed", {
+        runFriendlyId,
+        snapshotFriendlyId,
+        runnerId,
+        error: result.error,
+      });
+    }
+  }
+
+  private async reportRestoreFailure(
+    runFriendlyId: string | undefined,
+    snapshotFriendlyId: string | undefined,
+    runnerId: string,
+    outcome: RestoreWatchResult & { ok: false }
+  ) {
+    const fields = { runFriendlyId, snapshotFriendlyId, runnerId, reason: outcome.reason };
+    this.logger.error("Runner restore failed (run-crd)", { ...fields, error: outcome.error });
+    if (!runFriendlyId) {
+      return;
+    }
     await this.workerSession.httpClient.sendDebugLog(runFriendlyId, {
       time: new Date(),
       message: "restore failed on the node",
       properties: { runnerId, error: outcome.error },
     });
+    const manager = this.runCrdManager;
+    if (!snapshotFriendlyId || !manager) {
+      return;
+    }
+    const settled = await settleRestoreFailure(
+      { runnerId, outcome },
+      {
+        deleteRunner: (name, uid) => manager.deleteRestoreRunner(name, uid),
+        report: (body) =>
+          this.workerSession.httpClient.reportRestoreOutcome(
+            runFriendlyId,
+            snapshotFriendlyId,
+            body,
+            runnerId
+          ),
+      }
+    );
+    switch (settled.action) {
+      case "none":
+        this.logger.info("Restore failure left to the stall timeout", fields);
+        return;
+      case "kept":
+        if (settled.forbidden) {
+          this.logger.error(
+            "Restore Runner delete forbidden, so the run was left to the stall timeout; grant delete on runners",
+            { ...fields, error: settled.error }
+          );
+          return;
+        }
+        this.logger.warn("Restore Runner not deleted, so the run was not requeued", {
+          ...fields,
+          error: settled.error,
+        });
+        return;
+      case "reported":
+        restoreReportsTotal.inc({ outcome: settled.outcome, result: settled.result });
+        if (settled.result === "error") {
+          this.logger.warn("Restore outcome report failed", {
+            ...fields,
+            outcome: settled.outcome,
+            error: settled.error,
+          });
+        } else {
+          this.logger.info(
+            settled.result === "conflict"
+              ? "Restore outcome not applied, the run has moved on"
+              : "Restore outcome reported",
+            { ...fields, outcome: settled.outcome }
+          );
+        }
+        if (settled.cleanupError) {
+          this.logger.warn("Failed restore Runner not deleted after its report", {
+            ...fields,
+            error: settled.cleanupError,
+          });
+        }
+    }
   }
 
   private async createWorkload(message: DequeuedMessage, timings: WarmStartTimings) {
@@ -868,6 +1062,7 @@ class ManagedSupervisor {
     this.backpressureMonitors.forEach((m) => m.start());
     await this.podCleaner?.start();
     await this.failedPodHandler?.start();
+    await this.restoreInformer?.start();
     await this.metricsServer?.start();
 
     if (env.TRIGGER_WORKLOAD_API_ENABLED) {
@@ -897,6 +1092,7 @@ class ManagedSupervisor {
     await this.backpressureRedis?.quit();
     await this.podCleaner?.stop();
     await this.failedPodHandler?.stop();
+    await this.restoreInformer?.stop();
     await this.metricsServer?.stop();
   }
 }

@@ -204,6 +204,27 @@ export const Env = z
     // runtime can restore, and COMPUTE_SNAPSHOTS_ENABLED sends suspends to the operator.
     // Unrelated to the task runtime (node-24, bun), which is the Runner's taskRuntime.
     KUBERNETES_RUNNER_RUNTIME: z.enum(["container", "microvm"]).default("container"),
+    // How often a suspend's or a restore's outcome is read back off the Runner when
+    // polling. Backs off on 429 and 5xx.
+    KUBERNETES_RUNNER_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(5_000),
+    // Follow restores with one informer on labelled Runners instead of a poll per
+    // restore. Needs list and watch on runners.
+    KUBERNETES_RUNNER_RESTORE_INFORMER_ENABLED: BoolEnv.default(false),
+    // The operator's 15 minute pod start deadline, after up to 5 minutes waiting
+    // out a predecessor pod of the same name, plus a margin, so its failure
+    // arrives first and carries the reason.
+    KUBERNETES_RUNNER_RESTORE_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(21 * 60_000),
+    // Below the platform's stall timeout for a dequeued run, so a slow but healthy
+    // restore is not requeued.
+    KUBERNETES_RUNNER_RESTORE_HEARTBEAT_INTERVAL_MS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(20_000),
     KUBERNETES_NAMESPACE: z.string().default("default"),
     KUBERNETES_WORKER_NODETYPE_LABEL: NodeLabelValue.default("v4-worker"),
     KUBERNETES_IMAGE_PULL_SECRETS: z.string().optional(), // csv

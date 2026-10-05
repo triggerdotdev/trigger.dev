@@ -1,5 +1,5 @@
 import * as k8s from "@kubernetes/client-node";
-import type { Informer, KubernetesObject, ListPromise } from "@kubernetes/client-node";
+import type { Informer, KubernetesObject, ListPromise, ObjectCache } from "@kubernetes/client-node";
 import { assertExhaustive } from "@trigger.dev/core/utils";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 
@@ -15,8 +15,15 @@ export function createK8sApi() {
     listPromiseFn: ListPromise<T>,
     labelSelector?: string,
     fieldSelector?: string
-  ): Informer<T> {
-    return k8s.makeInformer(kubeConfig, path, listPromiseFn, labelSelector, fieldSelector);
+  ): Informer<T> & ObjectCache<T> {
+    // The client's informer is a ListWatch, which is also the cache it keeps.
+    return k8s.makeInformer(
+      kubeConfig,
+      path,
+      listPromiseFn,
+      labelSelector,
+      fieldSelector
+    ) as Informer<T> & ObjectCache<T>;
   }
 
   const api = {
