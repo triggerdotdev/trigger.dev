@@ -11,6 +11,7 @@ import {
 } from "@trigger.dev/core/v3";
 
 import { AttemptId, getMaxDuration, parseTraceparent } from "@trigger.dev/core/v3/isomorphic";
+import { isV2WorkerQueue } from "@trigger.dev/core/v3/workers";
 import {
   runOpsLegacyReplica,
   runOpsNewReplica,
@@ -40,6 +41,7 @@ import { buildSyntheticSpanRun } from "~/v3/mollifier/syntheticSpanRun.server";
 import { engine } from "~/v3/runEngine.server";
 import { runStore } from "~/v3/runStore.server";
 import { runTriggeredAt } from "~/v3/runTimestamps";
+import { workerRegionRegistry } from "~/v3/workerRegions.server";
 import { getTaskEventStoreTableForRun, type TaskEventStoreTable } from "~/v3/taskEventStore.server";
 import { isFailedRunStatus, isFinalRunStatus } from "~/v3/taskStatus";
 import { BasePresenter } from "./basePresenter.server";
@@ -330,23 +332,30 @@ export class SpanPresenter extends BasePresenter {
     let region: { name: string; location: string | null } | null = null;
 
     if (environment.type !== "DEVELOPMENT" && run.engine !== "V1") {
+      const v2Region = isV2WorkerQueue(run.workerQueue)
+        ? (run.region ?? baseWorkerQueue(run.workerQueue))
+        : undefined;
+      // V2 identifies geography, not the executing group. Reuse the registry to
+      // retain the indexed masterQueue lookup for the region's location metadata.
+      const masterQueue = v2Region
+        ? (workerRegionRegistry.current()?.find((group) => group.region === v2Region)
+            ?.masterQueue ?? v2Region)
+        : baseWorkerQueue(run.workerQueue);
       const workerGroup = await this._replica.workerInstanceGroup.findFirst({
         select: {
           name: true,
           location: true,
         },
-        where: {
-          // masterQueue is unique and IS the run's backing queue, so this finds
-          // the group the run actually ran on.
-          masterQueue: baseWorkerQueue(run.workerQueue),
-        },
+        where: { masterQueue },
       });
 
       // Show the stamped geo region as the name so a migrated run never reveals
       // its compute backing; fall back to the group name for unstamped runs.
       region = workerGroup
-        ? { name: run.region ?? workerGroup.name, location: workerGroup.location }
-        : null;
+        ? { name: v2Region ?? run.region ?? workerGroup.name, location: workerGroup.location }
+        : v2Region
+          ? { name: v2Region, location: null }
+          : null;
     }
 
     // Only AGENT-tagged runs can be session-bound, so skip the SessionRun lookup

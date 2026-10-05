@@ -1,4 +1,5 @@
 import type { Logger } from "@trigger.dev/core/logger";
+import { isV2WorkerQueue } from "@trigger.dev/core/v3/workers";
 import type { OutputPayload, OutputPayloadV2 } from "./types.js";
 import { z } from "zod";
 
@@ -56,9 +57,9 @@ export class WorkerQueueResolver {
 
   public getWorkerQueueFromMessage(message: OutputPayload): string {
     if (message.version === "2") {
-      // Check overrides in priority order
+      // Versioned destinations pin runtime and channel; legacy overrides must not redirect them.
       const override = this.#getOverride(message);
-      if (override) return override;
+      if (override && !isV2WorkerQueue(message.workerQueue)) return override;
 
       return message.workerQueue;
     }

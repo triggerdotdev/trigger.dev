@@ -232,7 +232,7 @@ export class CheckpointSystem {
             id: waitpoint.id,
             index: waitpoint.index,
           })),
-          checkpointId: taskRunCheckpoint.id,
+          checkpoint: taskRunCheckpoint,
           snapshotRoute: effectiveRoute,
         });
 

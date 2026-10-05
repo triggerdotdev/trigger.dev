@@ -769,7 +769,7 @@ export class WaitpointSystem {
           break;
         }
         case "SUSPENDED": {
-          if (!snapshot.checkpointId) {
+          if (!snapshot.checkpointId || !snapshot.checkpoint) {
             // A run canceled mid-suspend has its checkpoint cleared by the
             // cancel path; reaching here just means cancel won the race.
             // Skip rather than throw — there's nothing to resume.
@@ -821,7 +821,7 @@ export class WaitpointSystem {
             })),
             resolveCompletedWaitpointRecords: () =>
               this.#buildCompletedWaitpointRecords(runId, blockingWaitpoints),
-            checkpointId: snapshot.checkpointId ?? undefined,
+            checkpoint: snapshot.checkpoint,
             snapshotRoute: routeWire,
           });
 

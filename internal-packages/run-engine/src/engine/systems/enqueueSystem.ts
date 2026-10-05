@@ -2,6 +2,7 @@ import type {
   Prisma,
   PrismaClientOrTransaction,
   TaskRun,
+  TaskRunCheckpoint,
   TaskRunExecutionStatus,
 } from "@trigger.dev/database";
 import type {
@@ -15,6 +16,7 @@ import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/isomorphic";
 import type { MinimalAuthenticatedEnvironment } from "../../shared/index.js";
 import { QUEUED_SNAPSHOT_DESCRIPTION, QUEUED_SNAPSHOT_STATUS } from "../consts.js";
 import { parseGates } from "../gateParsing.js";
+import { workerQueueForPublish } from "../workerQueueRouting.js";
 import type { ExecutionSnapshotSystem } from "./executionSnapshotSystem.js";
 import type { SystemResources } from "./systems.js";
 
@@ -46,7 +48,7 @@ export class EnqueueSystem {
     snapshot,
     previousSnapshotId,
     batchId,
-    checkpointId,
+    checkpoint,
     completedWaitpoints,
     resolveCompletedWaitpointRecords,
     workerId,
@@ -68,7 +70,7 @@ export class EnqueueSystem {
     };
     previousSnapshotId?: string;
     batchId?: string;
-    checkpointId?: string;
+    checkpoint?: Pick<TaskRunCheckpoint, "id" | "type">;
     completedWaitpoints?: {
       id: string;
       index?: number;
@@ -141,7 +143,7 @@ export class EnqueueSystem {
           environmentType: env.type,
           projectId: env.project.id,
           organizationId: env.organization.id,
-          checkpointId,
+          checkpointId: checkpoint?.id,
           completedWaitpoints,
           resolveCompletedWaitpointRecords,
           workerId,
@@ -154,6 +156,7 @@ export class EnqueueSystem {
       await this.publishRun({
         run,
         env,
+        checkpoint,
         includeTtl,
         anchorEligibilityAtQueuePosition,
         enableFastPath,
@@ -172,6 +175,7 @@ export class EnqueueSystem {
   public async publishRun({
     run,
     env,
+    checkpoint,
     includeTtl = false,
     anchorEligibilityAtQueuePosition = false,
     enableFastPath = false,
@@ -179,6 +183,7 @@ export class EnqueueSystem {
   }: {
     run: TaskRun;
     env: MinimalAuthenticatedEnvironment;
+    checkpoint?: Pick<TaskRunCheckpoint, "id" | "type">;
     /** See `enqueueRun`. */
     includeTtl?: boolean;
     /** See `enqueueRun`. */
@@ -190,8 +195,7 @@ export class EnqueueSystem {
      *  never-enrolled run. */
     route?: SnapshotRoute;
   }) {
-    // Force development runs to use the environment id as the worker queue.
-    const workerQueue = env.type === "DEVELOPMENT" ? env.id : run.workerQueue;
+    const workerQueue = workerQueueForPublish(run, env, checkpoint);
 
     const queuePositionMs = (run.queueTimestamp ?? run.createdAt).getTime();
     const timestamp = queuePositionMs - run.priorityMs;

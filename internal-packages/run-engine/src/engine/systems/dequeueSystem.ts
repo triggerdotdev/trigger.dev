@@ -2,7 +2,7 @@ import { startSpan } from "@internal/tracing";
 import { parseSnapshotRoute, toWireRoute } from "@internal/run-store";
 import type { SnapshotRouteWire } from "@internal/run-store";
 import { assertExhaustive, tryCatch } from "@trigger.dev/core";
-import type { DequeuedMessage } from "@trigger.dev/core/v3";
+import type { DequeuedMessage, TaskRunInternalError } from "@trigger.dev/core/v3";
 import { RetryOptions, RunAnnotations } from "@trigger.dev/core/v3";
 import { generateInternalId, getMaxDuration, SnapshotId } from "@trigger.dev/core/v3/isomorphic";
 import { placementTag } from "@trigger.dev/core/v3/serverOnly";
@@ -167,6 +167,7 @@ export class DequeueSystem {
         // catch path below can carry whatever was classified.
         const carriedSnapshotRoute = parseSnapshotRoute(message.message.snapshotRoute);
         let effectiveSnapshotRoute = carriedSnapshotRoute;
+        let preparedFromSnapshotId: string | undefined;
         const queueWaitMs =
           typeof message.message.eligibleAtMs === "number"
             ? Math.max(0, Date.now() - message.message.eligibleAtMs)
@@ -203,6 +204,7 @@ export class DequeueSystem {
             [runId],
             async () => {
               const snapshot = await getLatestExecutionSnapshot(prisma, runId, this.$.runStore);
+              preparedFromSnapshotId = snapshot.id;
 
               // Compatibility tail ONLY. A carried route is used as-is, with no extra read. A message
               // with no route (an older producer during a rolling deploy) or a malformed one would
@@ -788,65 +790,97 @@ export class DequeueSystem {
             }
           );
 
-          // Wrap the Prisma call with tryCatch - if DB is unavailable, we still want to nack via Redis
-          const [findError, run] = await tryCatch(
-            this.$.runStore.findRun(
-              { id: runId },
-              {
-                select: {
-                  id: true,
-                  runtimeEnvironmentId: true,
-                  projectId: true,
-                },
-              },
-              prisma
-            )
-          );
+          const dequeueMaxRetriesError = {
+            type: "INTERNAL_ERROR",
+            code: "TASK_RUN_DEQUEUED_MAX_RETRIES",
+            message: `We tried to dequeue the run the maximum number of times but it wouldn't start executing`,
+          } satisfies TaskRunInternalError;
 
-          const env = run
-            ? await this.$.controlPlaneResolver.resolveEnv(run.runtimeEnvironmentId)
-            : null;
-
-          // If DB is unavailable, run not found, or env not resolved, just nack directly via Redis
-          if (findError || !run || !env) {
-            this.$.logger.error(
-              "RunEngine.dequeueFromWorkerQueue(): Failed to find run, nacking directly via Redis",
-              {
-                runId,
-                orgId,
-                findError,
-              }
+          // Reentrant: tryNackAndRequeue's own lock on this run nests inside this one.
+          await this.$.runLock.lock("dequeueFromWorkerQueueRecovery", [runId], async () => {
+            // Preparation may have committed a transition before throwing, so read current state.
+            const [snapshotError, snapshot] = await tryCatch(
+              getLatestExecutionSnapshot(prisma, runId, this.$.runStore)
             );
-            await this.$.runQueue.nackMessage({
+
+            if (snapshotError) {
+              // Do not replace execution state we could not read with a checkpoint-less snapshot.
+              const requeued = await this.$.runQueue.nackMessage({
+                orgId,
+                messageId: runId,
+                snapshotRoute: effectiveSnapshotRoute,
+              });
+              if (requeued === false) {
+                await this.runAttemptSystem.systemFailure({
+                  runId,
+                  error: dequeueMaxRetriesError,
+                  snapshotRoute: effectiveSnapshotRoute,
+                  tx: prisma,
+                });
+              }
+              return;
+            }
+
+            // A PENDING_EXECUTING snapshot written by this preparation was never handed to a worker,
+            // so it is still ours to requeue. Any other non-dequeueable state is owned elsewhere.
+            const lockedByThisDequeue =
+              snapshot.executionStatus === "PENDING_EXECUTING" &&
+              preparedFromSnapshotId !== undefined &&
+              snapshot.id !== preparedFromSnapshotId;
+
+            if (!isDequeueableExecutionStatus(snapshot.executionStatus) && !lockedByThisDequeue) {
+              this.$.logger.error(
+                "RunEngine.dequeueFromWorkerQueue(): Run is no longer dequeueable after a failed dequeue, removing from queue",
+                { runId, orgId, executionStatus: snapshot.executionStatus }
+              );
+              await this.$.runQueue.acknowledgeMessage(orgId, runId);
+              return;
+            }
+
+            const [findError, run] = await tryCatch(
+              this.$.runStore.findRun(
+                { id: runId },
+                {
+                  select: {
+                    id: true,
+                    runtimeEnvironmentId: true,
+                    projectId: true,
+                  },
+                },
+                prisma
+              )
+            );
+
+            const env = run
+              ? await this.$.controlPlaneResolver.resolveEnv(run.runtimeEnvironmentId)
+              : null;
+
+            if (findError || !run || !env) {
+              this.$.logger.error(
+                "RunEngine.dequeueFromWorkerQueue(): Failed to find run, nacking directly via Redis",
+                { runId, orgId, findError }
+              );
+              await this.$.runQueue.nackMessage({
+                orgId,
+                messageId: runId,
+                snapshotRoute: effectiveSnapshotRoute,
+              });
+              return;
+            }
+
+            await this.runAttemptSystem.tryNackAndRequeue({
+              run,
+              environment: { id: env.id, type: env.type },
               orgId,
-              messageId: runId,
+              projectId: run.projectId,
+              checkpointId: snapshot.checkpointId ?? undefined,
+              completedWaitpoints: snapshot.completedWaitpoints,
+              batchId: snapshot.batchId ?? undefined,
+              error: dequeueMaxRetriesError,
               snapshotRoute: effectiveSnapshotRoute,
+              tx: prisma,
             });
-
-            return;
-          }
-
-          //this is an unknown error, we'll reattempt (with auto-backoff and eventually DLQ)
-          const gotRequeued = await this.runAttemptSystem.tryNackAndRequeue({
-            run,
-            environment: { id: env.id, type: env.type },
-            orgId,
-            projectId: run.projectId,
-            error: {
-              type: "INTERNAL_ERROR",
-              code: "TASK_RUN_DEQUEUED_MAX_RETRIES",
-              message: `We tried to dequeue the run the maximum number of times but it wouldn't start executing`,
-            },
-            snapshotRoute: effectiveSnapshotRoute,
-            tx: prisma,
           });
-
-          if (!gotRequeued) {
-            this.$.logger.error("RunEngine.dequeueFromWorkerQueue(): Failed to requeue run", {
-              runId,
-              orgId,
-            });
-          }
         }
 
         return;

@@ -20,6 +20,9 @@ export const FEATURE_FLAG = {
   hasThemeSwitcher: "hasThemeSwitcher",
   mollifierEnabled: "mollifierEnabled",
   workerQueueScheduledSplitEnabled: "workerQueueScheduledSplitEnabled",
+  workerQueueV2Enabled: "workerQueueV2Enabled",
+  workerQueueCompatibility: "workerQueueCompatibility",
+  workerQueueChannel: "workerQueueChannel",
   internalApiOriginEnabled: "internalApiOriginEnabled",
   realtimeBackend: "realtimeBackend",
   computeMigrationEnabled: "computeMigrationEnabled",
@@ -94,6 +97,10 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.hasThemeSwitcher]: z.coerce.boolean(),
   [FEATURE_FLAG.mollifierEnabled]: z.coerce.boolean(),
   [FEATURE_FLAG.workerQueueScheduledSplitEnabled]: z.coerce.boolean(),
+  [FEATURE_FLAG.workerQueueV2Enabled]: z.boolean(),
+  // Mirrors the core worker-queue enums; defined here because this module is imported client-side.
+  [FEATURE_FLAG.workerQueueCompatibility]: z.enum(["any", "container", "compute"]),
+  [FEATURE_FLAG.workerQueueChannel]: z.enum(["stable", "canary"]),
   // Routes deployed runs' TRIGGER_API_URL to INTERNAL_API_ORIGIN. Per-org, with
   // INTERNAL_API_ORIGIN_ENABLED as the global default (org wins). No-op unless
   // INTERNAL_API_ORIGIN is set.
@@ -197,6 +204,9 @@ export const GLOBAL_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.runOpsMintShard,
   FEATURE_FLAG.runOpsMintShardEnvPins,
   FEATURE_FLAG.apiRateLimitMetricsEnabled,
+  FEATURE_FLAG.workerQueueV2Enabled,
+  FEATURE_FLAG.workerQueueCompatibility,
+  FEATURE_FLAG.workerQueueChannel,
   // Grace stamps are computed server-side. An editable control here would discard what it saves.
   FEATURE_FLAG.runOpsMintKindPrev,
   FEATURE_FLAG.runOpsMintKindFlippedAt,

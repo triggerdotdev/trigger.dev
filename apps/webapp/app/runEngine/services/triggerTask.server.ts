@@ -40,10 +40,8 @@ import {
   type IdempotencyKeyConcern,
   type ClaimedIdempotency,
 } from "../concerns/idempotencyKeys.server";
-import {
-  resolveScheduledQueueSplitEnabled,
-  workerQueueForRun,
-} from "../concerns/workerQueueSplit.server";
+import { resolveScheduledQueueSplitEnabled } from "../concerns/workerQueueSplit.server";
+import { workerQueueForBirth } from "../concerns/workerQueueAssignment.server";
 import { resolveComputeMigration } from "../concerns/computeMigration.server";
 import { workerRegionRegistry, backingForQueue, regionForQueue } from "~/v3/workerRegions.server";
 import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
@@ -543,12 +541,8 @@ export class RunEngineTriggerTaskService {
             webhookEndpointId: options.webhookEndpointId,
           };
 
-          // Route runs in a scheduled lineage (the scheduled run itself and every
-          // descendant, via the propagated rootTriggerSource) to a dedicated
-          // `<region>:scheduled` worker queue so a separate consumer fleet can
-          // dequeue them independently of standard/agent runs. Gated per-org with
-          // a global default, never applied to dev. Reads only the in-memory org
-          // flags already on the environment — no DB query on the hot path.
+          // Preserve scheduled lineage independently of the queue-name version.
+          // Rollout decisions use already-loaded org flags and registry data.
           const scheduledQueueSplitEnabled =
             environment.type !== "DEVELOPMENT" &&
             resolveScheduledQueueSplitEnabled({
@@ -560,8 +554,16 @@ export class RunEngineTriggerTaskService {
             });
           const workerQueue =
             migrated.workerQueue !== undefined
-              ? workerQueueForRun({
+              ? workerQueueForBirth({
                   workerQueue: migrated.workerQueue,
+                  region: migrated.region,
+                  envType: environment.type,
+                  orgFeatureFlags: environment.organization.featureFlags as Record<
+                    string,
+                    unknown
+                  > | null,
+                  globalDefault: env.TRIGGER_WORKER_QUEUE_V2_ENABLED === "1",
+                  workerGroups,
                   rootTriggerSource: annotations.rootTriggerSource,
                   splitEnabled: scheduledQueueSplitEnabled,
                 })

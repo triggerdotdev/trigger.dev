@@ -1373,7 +1373,7 @@ export class RunsReplicationService {
       event === "delete" ? 1 : 0, // _is_deleted
       run.concurrencyKey ?? "", // concurrency_key
       run.bulkActionGroupIds ?? [], // bulk_action_group_ids
-      baseWorkerQueue(run.masterQueue ?? ""), // worker_queue (raw - operators slice by this)
+      baseWorkerQueue(run.masterQueue ?? ""), // worker_queue (legacy backing queue; v2 geographic base)
       run.region ?? "", // region (geo for customers)
       run.planType ?? "", // plan_type
       run.maxDurationInSeconds ?? null, // max_duration_in_seconds

@@ -1,4 +1,5 @@
 import { SupervisorHttpClient } from "./http.js";
+import type { WeightedWorkerQueueSubscription } from "../workerQueue.js";
 import type { PreDequeueFn, PreSkipFn, SupervisorClientCommonOptions } from "./types.js";
 import type {
   WorkerApiDequeueResponseBody,
@@ -29,6 +30,7 @@ type SupervisorSessionOptions = SupervisorClientCommonOptions & {
   maxRunCount?: number;
   /** Which worker-queue class this supervisor's consumers pull from. Defaults to the region queue. */
   queueClass?: WorkerQueueClass;
+  subscriptions?: WeightedWorkerQueueSubscription[];
   sendRunDebugLogs?: boolean;
   scaling: ScalingOptions;
   metricsRegistry?: Registry;
@@ -65,6 +67,7 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
         idleIntervalMs: opts.dequeueIdleIntervalMs,
         maxRunCount: opts.maxRunCount,
         queueClass: opts.queueClass,
+        subscriptions: opts.subscriptions,
       },
       scaling: opts.scaling,
       metricsRegistry: opts.metricsRegistry,

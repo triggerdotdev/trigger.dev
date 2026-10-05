@@ -40,6 +40,7 @@ import { runStatusFromError, ServiceValidationError } from "../errors.js";
 import { sendNotificationToWorker } from "../eventBus.js";
 import { getMachinePreset, machinePresetFromName } from "../machinePresets.js";
 import { retryOutcomeFromCompletion } from "../retrying.js";
+import { workerQueueForPublish } from "../workerQueueRouting.js";
 import {
   isExecuting,
   isFinalRunStatus,
@@ -1127,6 +1128,7 @@ export class RunAttemptSystem {
                     attemptNumber: true,
                     spanId: true,
                     queue: true,
+                    workerQueue: true,
                     taskIdentifier: true,
                     traceContext: true,
                     baseCostInCents: true,
@@ -1212,6 +1214,7 @@ export class RunAttemptSystem {
                   projectId: env.project.id,
                   timestamp: retryAt.getTime(),
                   resetQueueAttempts: !forceRequeue,
+                  workerQueue: workerQueueForPublish(run, env),
                   error: {
                     type: "INTERNAL_ERROR",
                     code: "TASK_RUN_DEQUEUED_MAX_RETRIES",
@@ -1343,6 +1346,7 @@ export class RunAttemptSystem {
     completedWaitpoints,
     batchId,
     resetQueueAttempts = false,
+    workerQueue,
     snapshotRoute,
     tx,
   }: {
@@ -1373,6 +1377,7 @@ export class RunAttemptSystem {
      * failures leave it unset so a run that never comes back healthy is still bounded.
      */
     resetQueueAttempts?: boolean;
+    workerQueue?: string;
   }): Promise<{ wasRequeued: boolean } & ExecutionResult> {
     const prisma = tx ?? this.$.prisma;
 
@@ -1384,6 +1389,7 @@ export class RunAttemptSystem {
         messageId: run.id,
         retryAt: timestamp,
         resetAttemptCount: resetQueueAttempts,
+        workerQueue,
         snapshotRoute,
       });
 

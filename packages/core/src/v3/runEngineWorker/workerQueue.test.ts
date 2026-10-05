@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod/v4";
 import {
   formatWorkerQueue,
+  isV2WorkerQueue,
   parseWorkerQueue,
+  restoreWorkerQueue,
   scheduledWorkerQueue,
   WeightedWorkerQueueSubscriptions,
   WorkerQueueSubscription,
@@ -62,6 +64,19 @@ describe("worker queue names", () => {
     "us-east-1:v2:ondemand :fresh:any:stable",
   ])("rejects an invalid name without falling back to legacy: %s", (name) => {
     expect(() => parseWorkerQueue(name)).toThrow();
+  });
+
+  it("recognizes versioned names", () => {
+    expect(isV2WorkerQueue("us-east-1:v2:ondemand:fresh:any:stable")).toBe(true);
+    expect(isV2WorkerQueue("us-east-1")).toBe(false);
+  });
+
+  it("changes only phase and compatibility when routing restores", () => {
+    expect(restoreWorkerQueue("us-east-1:v2:scheduled:fresh:any:canary", "compute")).toBe(
+      "us-east-1:v2:scheduled:restore:compute:canary"
+    );
+    expect(restoreWorkerQueue("us-east-1", "container")).toBe("us-east-1");
+    expect(restoreWorkerQueue("us-east-1:scheduled", "container")).toBe("us-east-1:scheduled");
   });
 
   it("changes only the class, including for restore queues", () => {

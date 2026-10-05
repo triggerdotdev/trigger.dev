@@ -80,6 +80,10 @@ export type WorkerQueue =
   | { region: string; version: "legacy"; class: WorkerQueueDispatchClass }
   | ({ region: string; version: typeof WORKER_QUEUE_VERSION } & WorkerQueueSubscription);
 
+export function isV2WorkerQueue(name: string): boolean {
+  return name.split(":")[1] === WORKER_QUEUE_VERSION;
+}
+
 export function parseWorkerQueue(name: string): WorkerQueue {
   const [rawRegion, versionOrClass, queueClass, phase, compat, channel, ...extra] = name.split(":");
   const region = WorkerQueueRegion.parse(rawRegion);
@@ -126,6 +130,22 @@ export function legacyScheduledWorkerQueue(name: string): string {
   return name.endsWith(SCHEDULED_WORKER_QUEUE_SUFFIX)
     ? name
     : `${name}${SCHEDULED_WORKER_QUEUE_SUFFIX}`;
+}
+
+export function restoreWorkerQueue(
+  name: string,
+  compat: Exclude<WorkerQueueCompatibility, "any">
+): string {
+  if (!isV2WorkerQueue(name)) {
+    return name;
+  }
+
+  const queue = parseWorkerQueue(name);
+  if (queue.version === "legacy") {
+    return name;
+  }
+
+  return formatWorkerQueue({ ...queue, phase: "restore", compat });
 }
 
 export function scheduledWorkerQueue(name: string): string {

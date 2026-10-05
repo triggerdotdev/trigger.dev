@@ -21,6 +21,104 @@ const base = {
   OTEL_EXPORTER_OTLP_ENDPOINT: "http://localhost:4318",
 };
 
+describe("worker queue selection", () => {
+  const ondemand = {
+    class: "ondemand",
+    phase: "fresh",
+    compat: "container",
+    channel: "stable",
+  };
+  const restore = {
+    class: "ondemand",
+    phase: "restore",
+    compat: "container",
+    channel: "canary",
+  };
+
+  it("keeps legacy default and scheduled selection when subscriptions are absent", () => {
+    expect(Env.parse(base).TRIGGER_WORKER_QUEUE_CLASS).toBe("default");
+    expect(
+      Env.parse({ ...base, TRIGGER_WORKER_QUEUE_CLASS: "scheduled" }).TRIGGER_WORKER_QUEUE_CLASS
+    ).toBe("scheduled");
+  });
+
+  it("parses multiple subscriptions without adding a legacy queue class", () => {
+    const subscriptions = [{ ...ondemand, weight: 0.25 }, restore];
+    const parsed = Env.parse({
+      ...base,
+      TRIGGER_CHECKPOINT_URL: "http://localhost:8089",
+      TRIGGER_WORKER_QUEUE_SUBSCRIPTIONS: JSON.stringify(subscriptions),
+    });
+    expect(parsed.TRIGGER_WORKER_QUEUE_SUBSCRIPTIONS).toEqual(subscriptions);
+    expect(parsed.TRIGGER_WORKER_QUEUE_CLASS).toBeUndefined();
+  });
+
+  it.each(["default", "scheduled"])(
+    "rejects subscriptions with explicit %s selection",
+    (queueClass) => {
+      expect(() =>
+        Env.parse({
+          ...base,
+          TRIGGER_WORKER_QUEUE_CLASS: queueClass,
+          TRIGGER_WORKER_QUEUE_SUBSCRIPTIONS: JSON.stringify([ondemand]),
+        })
+      ).toThrow("mutually exclusive");
+    }
+  );
+
+  it.each(["not-json", "[]", JSON.stringify([{ ...restore, phase: "unknown" }])])(
+    "rejects invalid subscriptions: %s",
+    (subscriptions) => {
+      expect(() =>
+        Env.parse({ ...base, TRIGGER_WORKER_QUEUE_SUBSCRIPTIONS: subscriptions })
+      ).toThrow();
+    }
+  );
+
+  it.each([
+    { config: {}, subscription: { ...ondemand, compat: "compute" }, error: "compatibility" },
+    {
+      config: { COMPUTE_GATEWAY_URL: "http://localhost:8080" },
+      subscription: ondemand,
+      error: "compatibility",
+    },
+    { config: {}, subscription: restore, error: "TRIGGER_CHECKPOINT_URL" },
+    {
+      config: {
+        KUBERNETES_FORCE_ENABLED: "true",
+        KUBERNETES_RUN_CRD_ENABLED: "true",
+        KUBERNETES_RUNNER_RUNTIME: "microvm",
+      },
+      subscription: { ...restore, compat: "compute" },
+      error: "COMPUTE_GATEWAY_URL",
+    },
+  ])(
+    "rejects incompatible or unsupported subscriptions: $error",
+    ({ config, subscription, error }) => {
+      expect(() =>
+        Env.parse({
+          ...base,
+          ...config,
+          TRIGGER_WORKER_QUEUE_SUBSCRIPTIONS: JSON.stringify([subscription]),
+        })
+      ).toThrow(error);
+    }
+  );
+
+  it("accepts shared fresh work and compute restores on the compute backend", () => {
+    expect(() =>
+      Env.parse({
+        ...base,
+        COMPUTE_GATEWAY_URL: "http://localhost:8080",
+        TRIGGER_WORKER_QUEUE_SUBSCRIPTIONS: JSON.stringify([
+          { ...ondemand, compat: "any" },
+          { ...restore, compat: "compute" },
+        ]),
+      })
+    ).not.toThrow();
+  });
+});
+
 describe("Env superRefine - backpressure source awareness", () => {
   it("pod-count source can be enabled without a Redis host", () => {
     expect(() =>

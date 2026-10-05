@@ -1,8 +1,12 @@
 import { SimpleStructuredLogger } from "../../utils/structuredLogger.js";
 import type { SupervisorHttpClient } from "./http.js";
+import type { WeightedWorkerQueueSubscription } from "../workerQueue.js";
 import type { WorkerApiDequeueResponseBody, WorkerQueueClass } from "./schemas.js";
 import type { PreDequeueFn, PreSkipFn } from "./types.js";
 import type { ConsumerPoolMetrics } from "./consumerPoolMetrics.js";
+
+const DEQUEUE_REJECTION_BACKOFF_MIN_MS = 1_000;
+const DEQUEUE_REJECTION_BACKOFF_MAX_MS = 30_000;
 
 export interface QueueConsumer {
   start(): void;
@@ -18,6 +22,7 @@ export type RunQueueConsumerOptions = {
   maxRunCount?: number;
   /** Which worker-queue class this consumer pulls from. Defaults to the worker's region queue. */
   queueClass?: WorkerQueueClass;
+  subscriptions?: WeightedWorkerQueueSubscription[];
   onDequeue: (
     messages: WorkerApiDequeueResponseBody,
     timing?: { dequeueResponseMs: number; pollingIntervalMs: number }
@@ -32,6 +37,7 @@ export class RunQueueConsumer implements QueueConsumer {
   private readonly preSkip?: PreSkipFn;
   private readonly maxRunCount?: number;
   private readonly queueClass?: WorkerQueueClass;
+  private readonly subscriptions?: WeightedWorkerQueueSubscription[];
   private readonly onDequeue: (
     messages: WorkerApiDequeueResponseBody,
     timing?: { dequeueResponseMs: number; pollingIntervalMs: number }
@@ -44,6 +50,7 @@ export class RunQueueConsumer implements QueueConsumer {
   private idleIntervalMs: number;
   private isEnabled: boolean;
   private lastScheduledIntervalMs: number;
+  private rejectionBackoffMs = 0;
 
   constructor(opts: RunQueueConsumerOptions) {
     this.isEnabled = false;
@@ -53,6 +60,7 @@ export class RunQueueConsumer implements QueueConsumer {
     this.preSkip = opts.preSkip;
     this.maxRunCount = opts.maxRunCount;
     this.queueClass = opts.queueClass;
+    this.subscriptions = opts.subscriptions;
     this.lastScheduledIntervalMs = opts.idleIntervalMs;
     this.onDequeue = opts.onDequeue;
     this.client = opts.client;
@@ -134,6 +142,7 @@ export class RunQueueConsumer implements QueueConsumer {
         maxResources: preDequeueResult?.maxResources,
         maxRunCount: this.maxRunCount,
         queueClass: this.queueClass,
+        subscriptions: this.subscriptions,
       });
       const dequeueDurationSeconds = (performance.now() - dequeueStart) / 1000;
       const dequeueResponseMs = Math.round(dequeueDurationSeconds * 1000);
@@ -141,7 +150,15 @@ export class RunQueueConsumer implements QueueConsumer {
       if (!response.success) {
         this.metrics?.observeDequeueLatency(dequeueDurationSeconds, "error");
         this.logger.error("Failed to dequeue", { error: response.error });
+        if (response.statusCode === 403 || response.statusCode === 422) {
+          this.rejectionBackoffMs = Math.min(
+            Math.max(DEQUEUE_REJECTION_BACKOFF_MIN_MS, this.rejectionBackoffMs * 2),
+            DEQUEUE_REJECTION_BACKOFF_MAX_MS
+          );
+          nextIntervalMs = Math.max(this.idleIntervalMs, this.rejectionBackoffMs);
+        }
       } else {
+        this.rejectionBackoffMs = 0;
         this.metrics?.observeDequeueLatency(
           dequeueDurationSeconds,
           response.data.length > 0 ? "success" : "empty"

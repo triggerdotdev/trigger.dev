@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import { env as stdEnv } from "std-env";
 import { z } from "zod";
+import { WeightedWorkerQueueSubscriptions } from "@trigger.dev/core/v3/runEngineWorker";
 import {
   AdditionalEnvVars,
   BoolEnv,
@@ -56,7 +57,23 @@ export const Env = z
     // Which worker-queue class this supervisor fleet serves. "default" pulls the
     // region queue (standard/agent runs); "scheduled" pulls the dedicated
     // scheduled-lineage queue. Run a separate fleet per class for isolation.
-    TRIGGER_WORKER_QUEUE_CLASS: z.enum(["default", "scheduled"]).default("default"),
+    TRIGGER_WORKER_QUEUE_CLASS: z.enum(["default", "scheduled"]).optional(),
+    // JSON array of weighted v2 subscriptions; omit to retain legacy queue selection.
+    TRIGGER_WORKER_QUEUE_SUBSCRIPTIONS: z
+      .string()
+      .transform((value, ctx) => {
+        try {
+          return JSON.parse(value) as unknown;
+        } catch {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Worker queue subscriptions must be valid JSON",
+          });
+          return z.NEVER;
+        }
+      })
+      .pipe(WeightedWorkerQueueSubscriptions)
+      .optional(),
     TRIGGER_DEQUEUE_INTERVAL_MS: z.coerce.number().int().default(250),
     TRIGGER_DEQUEUE_IDLE_INTERVAL_MS: z.coerce.number().int().default(1000),
     TRIGGER_DEQUEUE_MAX_RUN_COUNT: z.coerce.number().int().default(1),
@@ -326,6 +343,44 @@ export const Env = z
     TRIGGER_WIDE_EVENTS_NOISY_ROUTES: BoolEnv.default(false),
   })
   .superRefine((data, ctx) => {
+    if (data.TRIGGER_WORKER_QUEUE_SUBSCRIPTIONS) {
+      if (data.TRIGGER_WORKER_QUEUE_CLASS !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            "TRIGGER_WORKER_QUEUE_CLASS and TRIGGER_WORKER_QUEUE_SUBSCRIPTIONS are mutually exclusive",
+          path: ["TRIGGER_WORKER_QUEUE_SUBSCRIPTIONS"],
+        });
+      }
+
+      const compatibility =
+        data.COMPUTE_GATEWAY_URL ||
+        (data.KUBERNETES_FORCE_ENABLED &&
+          data.KUBERNETES_RUN_CRD_ENABLED &&
+          data.KUBERNETES_RUNNER_RUNTIME === "microvm")
+          ? "compute"
+          : "container";
+
+      for (const [index, subscription] of data.TRIGGER_WORKER_QUEUE_SUBSCRIPTIONS.entries()) {
+        if (subscription.compat !== "any" && subscription.compat !== compatibility) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Subscription compatibility must be any or ${compatibility} for this backend`,
+            path: ["TRIGGER_WORKER_QUEUE_SUBSCRIPTIONS", index, "compat"],
+          });
+        } else if (
+          subscription.phase === "restore" &&
+          !(compatibility === "compute" ? data.COMPUTE_GATEWAY_URL : data.TRIGGER_CHECKPOINT_URL)
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Restore subscriptions require ${compatibility === "compute" ? "COMPUTE_GATEWAY_URL" : "TRIGGER_CHECKPOINT_URL"}`,
+            path: ["TRIGGER_WORKER_QUEUE_SUBSCRIPTIONS", index],
+          });
+        }
+      }
+    }
+
     if (
       data.TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_ENABLED &&
       data.TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_RELEASE >=
@@ -404,6 +459,9 @@ export const Env = z
   })
   .transform((data) => ({
     ...data,
+    TRIGGER_WORKER_QUEUE_CLASS:
+      data.TRIGGER_WORKER_QUEUE_CLASS ??
+      (data.TRIGGER_WORKER_QUEUE_SUBSCRIPTIONS === undefined ? "default" : undefined),
     COMPUTE_TRACE_OTLP_ENDPOINT: data.COMPUTE_TRACE_OTLP_ENDPOINT ?? `${data.TRIGGER_API_URL}/otel`,
   }));
 

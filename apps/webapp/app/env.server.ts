@@ -1562,6 +1562,8 @@ const EnvironmentSchema = z
     // this is "1"; an org set to true splits even when this is "0"). Never
     // applies to DEVELOPMENT environments.
     TRIGGER_WORKER_QUEUE_SCHEDULED_SPLIT_ENABLED: z.string().default("0"),
+    // Controls new assignments only; existing v2 runs retain their routing.
+    TRIGGER_WORKER_QUEUE_V2_ENABLED: z.string().default("0"),
 
     TRIGGER_MOLLIFIER_ENABLED: z.string().default("0"),
     // Separate switch for the drainer (consumer side) so it can be split

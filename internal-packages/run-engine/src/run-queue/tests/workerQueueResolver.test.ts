@@ -34,6 +34,27 @@ describe("WorkerQueueOverrideResolver", () => {
     });
   });
 
+  it.each([
+    ["ondemand fresh", "ondemand", "fresh"],
+    ["scheduled fresh", "scheduled", "fresh"],
+    ["ondemand restore", "ondemand", "restore"],
+  ])("does not redirect v2 %s work through legacy overrides", (_name, queueClass, phase) => {
+    const workerQueue = `us-east-1:v2:${queueClass}:${phase}:compute:canary`;
+    const resolver = new WorkerQueueResolver({
+      logger: new Logger("test", "error"),
+      overrideConfig: JSON.stringify({
+        environmentId: { env_123: "legacy-environment" },
+        projectId: { proj_123: "legacy-project" },
+        orgId: { org_123: "legacy-org" },
+        workerQueue: { [workerQueue]: "us-east-1:v2:ondemand:restore:container:stable" },
+      }),
+    });
+
+    expect(resolver.getWorkerQueueFromMessage(createTestMessage({ workerQueue }))).toBe(
+      workerQueue
+    );
+  });
+
   describe("Environment ID overrides", () => {
     it("should override based on environmentId", () => {
       const overrideConfig = JSON.stringify({

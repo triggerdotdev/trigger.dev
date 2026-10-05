@@ -2511,6 +2511,7 @@ export class RunQueue {
     incrementAttemptCount = true,
     resetAttemptCount = false,
     skipDequeueProcessing = false,
+    workerQueue,
     snapshotRoute,
   }: {
     orgId: string;
@@ -2524,6 +2525,8 @@ export class RunQueue {
      */
     resetAttemptCount?: boolean;
     skipDequeueProcessing?: boolean;
+    /** Fresh attempts override the destination; omit for checkpoint redelivery. */
+    workerQueue?: string;
     /**
      * The run's versioned storage route to stamp onto the requeued message so the next consumer
      * honors durable residency. Written during the existing nack (no extra Redis round trip).
@@ -2546,6 +2549,10 @@ export class RunQueue {
             service: this.name,
           });
           return;
+        }
+
+        if (workerQueue !== undefined && message.version === "2") {
+          message.workerQueue = workerQueue;
         }
 
         span.setAttributes({
