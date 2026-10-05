@@ -40,7 +40,7 @@ function stampPackageVersions(): Plugin {
 export default defineConfig({
   plugins: [
     remix({
-      ignoredRouteFiles: ["**/.*"],
+      ignoredRouteFiles: ["**/.*", "**/*.e2e.test.*"],
       // .mjs so the CJS server.ts wrapper can dynamic-import it
       serverBuildFile: "index.mjs",
     }),
@@ -58,7 +58,13 @@ export default defineConfig({
   },
   optimizeDeps: {
     // Crawl all routes up front - mid-session re-optimization duplicates React
-    entries: ["./app/entry.client.tsx", "./app/root.tsx", "./app/routes/**/*.{ts,tsx}"],
+    entries: [
+      "./app/entry.client.tsx",
+      "./app/root.tsx",
+      "./app/routes/**/*.{ts,tsx}",
+      "!./app/routes/**/*.e2e.test.*",
+      "!./app/routes/storybook.agent-ui/*.test.*",
+    ],
     esbuildOptions: {
       // node globals for prebundled CJS deps (client-only by construction)
       define: { global: "globalThis" },

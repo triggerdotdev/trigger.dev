@@ -1,4 +1,5 @@
 export * from "./consts.js";
+export * from "./workerQueue.js";
 export * from "./supervisor/http.js";
 export * from "./supervisor/schemas.js";
 export * from "./supervisor/session.js";

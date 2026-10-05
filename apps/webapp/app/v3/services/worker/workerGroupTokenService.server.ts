@@ -17,7 +17,11 @@ import type {
 import { getMeter } from "@internal/tracing";
 import { SemanticInternalAttributes } from "@trigger.dev/core/v3";
 import { fromFriendlyId } from "@trigger.dev/core/v3/isomorphic";
-import { WORKER_HEADERS, type WorkerQueueClass } from "@trigger.dev/core/v3/workers";
+import {
+  WORKER_HEADERS,
+  type WeightedWorkerQueueSubscription,
+  type WorkerQueueClass,
+} from "@trigger.dev/core/v3/workers";
 import type { RuntimeEnvironment, WorkerInstanceGroup } from "@trigger.dev/database";
 import { Prisma, WorkerInstanceGroupType } from "@trigger.dev/database";
 import { json } from "@remix-run/server-runtime";
@@ -26,11 +30,12 @@ import { customAlphabet } from "nanoid";
 import { z } from "zod";
 import { env } from "~/env.server";
 import { evaluateCreatedAtGate, runAgeBucket } from "./workloadTokenAuthorization.server";
+import { dequeueWorkerQueues } from "~/runEngine/concerns/workerQueueDequeue.server";
 import {
-  isWorkerQueueDequeueDisabled,
-  recordBlockedDequeue,
-} from "~/runEngine/concerns/dequeueGate.server";
-import { workerQueueForClass } from "~/runEngine/concerns/workerQueueSplit.server";
+  createWorkerQueueConsumer,
+  type WorkerQueueConsumer,
+  type WorkerQueueConsumerOptions,
+} from "~/runEngine/concerns/workerQueueSubscriptions.server";
 import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { defaultMachine } from "~/services/platform.v3.server";
@@ -262,6 +267,9 @@ export class WorkerGroupTokenService extends WithRunEngine {
           workerGroupId: workerGroup.id,
           workerInstanceId: workerInstance.id,
           masterQueue: workerGroup.masterQueue,
+          region: workerGroup.region,
+          workloadType: workerGroup.workloadType,
+          allowedSubscriptions: env.RUN_ENGINE_WORKER_QUEUE_SUBSCRIPTIONS[workerGroup.id] ?? [],
         });
       }
     );
@@ -361,13 +369,12 @@ export class WorkerGroupTokenService extends WithRunEngine {
 const WorkerInstanceEnv = z.enum(["dev", "staging", "prod"]).default("prod");
 type WorkerInstanceEnv = z.infer<typeof WorkerInstanceEnv>;
 
-export type AuthenticatedWorkerInstanceOptions = WithRunEngineOptions<{
-  type: WorkerInstanceGroupType;
-  name: string;
-  workerGroupId: string;
-  workerInstanceId: string;
-  masterQueue: string;
-}>;
+export type AuthenticatedWorkerInstanceOptions = WithRunEngineOptions<
+  WorkerQueueConsumerOptions & {
+    type: WorkerInstanceGroupType;
+    name: string;
+  }
+>;
 
 export class AuthenticatedWorkerInstance extends WithRunEngine {
   readonly type: WorkerInstanceGroupType;
@@ -375,6 +382,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
   readonly workerGroupId: string;
   readonly workerInstanceId: string;
   readonly masterQueue: string;
+  private readonly queueConsumer: WorkerQueueConsumer;
 
   // FIXME: Required for unmanaged workers
   readonly isLatestDeployment = true;
@@ -387,6 +395,7 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     this.workerGroupId = opts.workerGroupId;
     this.workerInstanceId = opts.workerInstanceId;
     this.masterQueue = opts.masterQueue;
+    this.queueConsumer = createWorkerQueueConsumer(opts);
   }
 
   async connect(metadata: Record<string, any>): Promise<void> {
@@ -403,22 +412,18 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
   async dequeue({
     runnerId,
     queueClass,
+    subscriptions,
   }: {
     runnerId?: string;
     queueClass?: WorkerQueueClass;
+    subscriptions?: WeightedWorkerQueueSubscription[];
   }): Promise<DequeuedMessage[]> {
-    const workerQueue = workerQueueForClass(this.masterQueue, queueClass);
-
-    if (isWorkerQueueDequeueDisabled(workerQueue)) {
-      recordBlockedDequeue(workerQueue);
-      return [];
-    }
-
-    return await this._engine.dequeueFromWorkerQueue({
-      consumerId: this.workerInstanceId,
-      workerQueue,
-      workerId: this.workerInstanceId,
+    return await dequeueWorkerQueues({
+      engine: this._engine,
+      worker: this.queueConsumer,
       runnerId,
+      queueClass,
+      subscriptions,
     });
   }
 

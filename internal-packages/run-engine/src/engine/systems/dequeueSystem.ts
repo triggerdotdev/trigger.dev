@@ -24,7 +24,8 @@ import { deletedEnvironmentReason, MISSING_ENVIRONMENT_REASON } from "../control
 import { sendNotificationToWorker } from "../eventBus.js";
 import { getMachinePreset } from "../machinePresets.js";
 import { isDequeueableExecutionStatus, isExecuting } from "../statuses.js";
-import type { RunEngineOptions } from "../types.js";
+import type { WorkerQueueSelection } from "../../run-queue/types.js";
+import type { RunEngineOptions, WorkerQueueDequeueOptions } from "../types.js";
 import type { ExecutionSnapshotSystem } from "./executionSnapshotSystem.js";
 import { getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
 import type { RunAttemptSystem } from "./runAttemptSystem.js";
@@ -126,24 +127,17 @@ export class DequeueSystem {
    * @param workerQueue: The worker queue to pull from, can be an individual environment (for dev)
    * @returns
    */
-  async dequeueFromWorkerQueue({
+  async dequeueFromWorkerQueues({
     consumerId,
-    workerQueue,
+    workerQueues,
     backgroundWorkerId,
     workerId,
     runnerId,
     tx,
     blockingPop,
     blockingPopTimeoutSeconds,
-  }: {
-    consumerId: string;
-    workerQueue: string;
-    backgroundWorkerId?: string;
-    workerId?: string;
-    runnerId?: string;
-    tx?: PrismaClientOrTransaction;
-    blockingPop?: boolean;
-    blockingPopTimeoutSeconds?: number;
+  }: WorkerQueueDequeueOptions & {
+    workerQueues: WorkerQueueSelection[];
   }): Promise<DequeuedMessage | undefined> {
     const prisma = tx ?? this.$.prisma;
 
@@ -151,9 +145,9 @@ export class DequeueSystem {
       this.$.tracer,
       "dequeueFromWorkerQueue",
       async (span) => {
-        const message = await this.$.runQueue.dequeueMessageFromWorkerQueue(
+        const message = await this.$.runQueue.dequeueMessageFromWorkerQueues(
           consumerId,
-          workerQueue,
+          workerQueues,
           {
             blockingPop,
             blockingPopTimeoutSeconds,
@@ -163,6 +157,7 @@ export class DequeueSystem {
           return;
         }
 
+        const workerQueue = message.workerQueue;
         const orgId = message.message.orgId;
         const runId = message.messageId;
         // The run's storage route, stamped at enqueue from its birth residency. Passed to every
@@ -182,7 +177,8 @@ export class DequeueSystem {
           orgId,
           environmentId: message.message.environmentId,
           environmentType: message.message.environmentType,
-          workerQueueLength: message.workerQueueLength ?? 0,
+          workerQueueLength: message.selectedWorkerQueueLength,
+          subscribedWorkerQueueLength: message.workerQueueLength ?? 0,
           workerQueue,
         });
 
@@ -190,7 +186,9 @@ export class DequeueSystem {
         span.setAttribute("org_id", orgId);
         span.setAttribute("environment_id", message.message.environmentId);
         span.setAttribute("environment_type", message.message.environmentType);
-        span.setAttribute("worker_queue_length", message.workerQueueLength ?? 0);
+        span.setAttribute("worker_queue_length", message.selectedWorkerQueueLength);
+        span.setAttribute("subscribed_worker_queue_length", message.workerQueueLength ?? 0);
+        span.setAttribute("workerQueue", workerQueue);
         span.setAttribute("consumer_id", consumerId);
         span.setAttribute("worker_queue", workerQueue);
         span.setAttribute("blocking_pop", blockingPop ?? true);
@@ -772,7 +770,8 @@ export class DequeueSystem {
               org_id: orgId,
               environment_id: message.message.environmentId,
               environment_type: message.message.environmentType,
-              worker_queue_length: message.workerQueueLength ?? 0,
+              worker_queue_length: message.selectedWorkerQueueLength,
+              subscribed_worker_queue_length: message.workerQueueLength ?? 0,
               consumer_id: consumerId,
               worker_queue: workerQueue,
               blocking_pop: blockingPop ?? true,
@@ -853,7 +852,12 @@ export class DequeueSystem {
         return;
       },
       {
-        attributes: { consumerId, workerQueue },
+        attributes: {
+          consumerId,
+          ...(workerQueues.length === 1
+            ? { workerQueue: workerQueues[0]?.queue }
+            : { workerQueues: workerQueues.map(({ queue }) => queue) }),
+        },
       }
     );
   }

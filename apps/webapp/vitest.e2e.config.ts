@@ -5,7 +5,7 @@ import tsconfigPaths from "vite-tsconfig-paths";
 export default defineConfig({
   test: {
     sequence: { sequencer: DurationShardingSequencer },
-    include: ["test/**/*.e2e.test.ts"],
+    include: ["test/**/*.e2e.test.ts", "app/routes/**/*.e2e.test.ts"],
     globals: true,
     pool: "forks",
     /**

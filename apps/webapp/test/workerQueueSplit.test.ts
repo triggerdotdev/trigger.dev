@@ -74,7 +74,7 @@ describe("workerQueueForRun", () => {
     ).toBe(scheduled);
   });
 
-  it("leaves standard/agent runs on the base queue", () => {
+  it("leaves ondemand/agent runs on the base queue", () => {
     for (const rootTriggerSource of ["api", "sdk", "dashboard", "cli", "mcp", undefined]) {
       expect(
         workerQueueForRun({ workerQueue: region, rootTriggerSource, splitEnabled: true })
@@ -96,6 +96,73 @@ describe("workerQueueForRun", () => {
         splitEnabled: true,
       })
     ).toBe(scheduled);
+  });
+});
+
+describe("v2 scheduled queue selection", () => {
+  const ondemand = "us-east-1:v2:ondemand:fresh:container:canary";
+  const scheduled = "us-east-1:v2:scheduled:fresh:container:canary";
+
+  it("preserves runtime and channel when the producer explicitly selects v2", () => {
+    expect(
+      workerQueueForRun({
+        workerQueue: ondemand,
+        rootTriggerSource: "schedule",
+        splitEnabled: true,
+        version: "v2",
+      })
+    ).toBe(scheduled);
+    expect(baseWorkerQueue(scheduled)).toBe("us-east-1");
+  });
+
+  it("preserves the restore phase when changing class", () => {
+    expect(
+      workerQueueForRun({
+        workerQueue: "us-east-1:v2:ondemand:restore:container:canary",
+        rootTriggerSource: "schedule",
+        splitEnabled: true,
+        version: "v2",
+      })
+    ).toBe("us-east-1:v2:scheduled:restore:container:canary");
+  });
+
+  it("retains the existing producer split gate", () => {
+    expect(
+      workerQueueForRun({
+        workerQueue: ondemand,
+        rootTriggerSource: "schedule",
+        splitEnabled: false,
+        version: "v2",
+      })
+    ).toBe(ondemand);
+  });
+});
+
+describe("legacy scheduled queue names", () => {
+  it.each([
+    "",
+    "proj_abc-my workers",
+    "proj_abc-my:workers",
+    "proj_abc:v2:ondemand:fresh:any:stable",
+  ])("preserves opaque legacy names for producer and consumer: %s", (name) => {
+    const scheduled = `${name}:scheduled`;
+    expect(
+      workerQueueForRun({
+        workerQueue: name,
+        rootTriggerSource: "schedule",
+        splitEnabled: true,
+      })
+    ).toBe(scheduled);
+    expect(workerQueueForClass(name, "scheduled")).toBe(scheduled);
+    expect(
+      workerQueueForRun({
+        workerQueue: scheduled,
+        rootTriggerSource: "schedule",
+        splitEnabled: true,
+      })
+    ).toBe(scheduled);
+    expect(workerQueueForClass(scheduled, "scheduled")).toBe(scheduled);
+    expect(workerQueueForClass(name, undefined)).toBe(name);
   });
 });
 

@@ -1,16 +1,12 @@
-import type { WorkerQueueClass } from "@trigger.dev/core/v3/workers";
+import {
+  legacyScheduledWorkerQueue,
+  scheduledWorkerQueue,
+  WORKER_QUEUE_VERSION,
+  type WorkerQueueClass,
+} from "@trigger.dev/core/v3/workers";
 import { FEATURE_FLAG, FeatureFlagCatalog } from "~/v3/featureFlags";
 
-/**
- * Suffix appended to a region's worker queue name to route scheduled-lineage
- * runs onto their own Redis list (e.g. `us-nyc-3` -> `us-nyc-3:scheduled`). A
- * dedicated consumer fleet dequeues the suffixed list so the top-of-hour
- * scheduled-cron herd can't starve standard/agent run startup. The worker queue
- * name is opaque everywhere downstream (it's only ever `:`-joined into a Redis
- * key and persisted on the run), so encoding the class in the suffix needs no
- * Lua, envelope, or resolver changes.
- */
-export const SCHEDULED_WORKER_QUEUE_SUFFIX = ":scheduled";
+export { SCHEDULED_WORKER_QUEUE_SUFFIX } from "@trigger.dev/core/v3/workers";
 
 /**
  * Recover the base region a worker queue belongs to by stripping any split
@@ -81,43 +77,37 @@ export function resolveScheduledQueueSplitEnabled({
 /**
  * Pick the worker queue a run should be enqueued onto. Runs in a scheduled
  * lineage (`rootTriggerSource === "schedule"`, which propagates from a scheduled
- * root down to every descendant) route to the suffixed list when the split is
- * enabled; everything else is unchanged. Idempotent — never double-suffixes.
+ * root down to every descendant) route to a scheduled list when the split is
+ * enabled. Legacy queues gain a suffix; v2 queues retain compatibility/channel.
  */
 export function workerQueueForRun({
   workerQueue,
   rootTriggerSource,
   splitEnabled,
+  version = "legacy",
 }: {
   workerQueue: string;
   rootTriggerSource: string | undefined;
   splitEnabled: boolean;
+  version?: "legacy" | typeof WORKER_QUEUE_VERSION;
 }): string {
-  if (
-    !splitEnabled ||
-    rootTriggerSource !== SCHEDULE_TRIGGER_SOURCE ||
-    workerQueue.endsWith(SCHEDULED_WORKER_QUEUE_SUFFIX)
-  ) {
+  if (!splitEnabled || rootTriggerSource !== SCHEDULE_TRIGGER_SOURCE) {
     return workerQueue;
   }
 
-  return `${workerQueue}${SCHEDULED_WORKER_QUEUE_SUFFIX}`;
+  // Legacy names are opaque, including names that happen to look like v2 queues.
+  return version === WORKER_QUEUE_VERSION
+    ? scheduledWorkerQueue(workerQueue)
+    : legacyScheduledWorkerQueue(workerQueue);
 }
 
-/**
- * Consumer-side counterpart to {@link workerQueueForRun}: given a worker's base
- * (region) queue and the requested queue class, return the worker queue to
- * dequeue from. `"scheduled"` targets the suffixed list; anything else is the
- * base queue. The server always derives this from the authenticated worker's
- * own `masterQueue`, so a token can only ever reach its own region's queues.
- * Idempotent — never double-suffixes.
- */
+/** Legacy class selection. This does not resolve or authorize v2 subscriptions. */
 export function workerQueueForClass(
   masterQueue: string,
   queueClass: WorkerQueueClass | undefined
 ): string {
-  if (queueClass === "scheduled" && !masterQueue.endsWith(SCHEDULED_WORKER_QUEUE_SUFFIX)) {
-    return `${masterQueue}${SCHEDULED_WORKER_QUEUE_SUFFIX}`;
+  if (queueClass === "scheduled") {
+    return legacyScheduledWorkerQueue(masterQueue);
   }
 
   return masterQueue;
@@ -134,13 +124,15 @@ export function parseDisabledWorkerQueues(raw: string | undefined): Set<string> 
 
 export function matchesDisabledWorkerQueue(
   workerQueue: string,
-  disabledWorkerQueues: ReadonlySet<string>
+  disabledWorkerQueues: ReadonlySet<string>,
+  version: "legacy" | typeof WORKER_QUEUE_VERSION = "legacy"
 ): boolean {
   if (disabledWorkerQueues.size === 0) {
     return false;
   }
 
   return (
-    disabledWorkerQueues.has(workerQueue) || disabledWorkerQueues.has(baseWorkerQueue(workerQueue))
+    disabledWorkerQueues.has(workerQueue) ||
+    (version === "legacy" && disabledWorkerQueues.has(baseWorkerQueue(workerQueue)))
   );
 }

@@ -1,4 +1,5 @@
 import { z } from "zod/v4";
+import { WeightedWorkerQueueSubscriptions } from "../workerQueue.js";
 import { discriminatedUnion } from "../../utils/zod.js";
 import { TaskRunExecutionResult } from "../../schemas/common.js";
 import {
@@ -83,18 +84,19 @@ export type WorkerApiConnectResponseBody = z.infer<typeof WorkerApiConnectRespon
 export const WorkerQueueClass = z.enum(["default", "scheduled"]);
 export type WorkerQueueClass = z.infer<typeof WorkerQueueClass>;
 
-export const WorkerApiDequeueRequestBody = z.object({
-  maxResources: MachineResources.optional(),
-  maxRunCount: z.number().optional(),
-  /**
-   * Which class of worker queue this consumer pulls from. Absent or "default" =
-   * the worker group's region queue. "scheduled" targets the dedicated
-   * scheduled-lineage queue so a separate fleet can drain it independently. The
-   * server derives the actual queue name from the token, so this only ever
-   * selects between the authenticated worker's own queues.
-   */
-  queueClass: WorkerQueueClass.optional(),
-});
+export const WorkerApiDequeueRequestBody = z
+  .object({
+    maxResources: MachineResources.optional(),
+    maxRunCount: z.number().optional(),
+    /** Legacy selection. Absent or "default" targets the worker group's base queue. */
+    queueClass: WorkerQueueClass.optional(),
+    /** V2 selection. The server derives region from the authenticated worker. */
+    subscriptions: WeightedWorkerQueueSubscriptions.optional(),
+  })
+  .refine((body) => body.queueClass === undefined || body.subscriptions === undefined, {
+    message: "queueClass and subscriptions are mutually exclusive",
+    path: ["subscriptions"],
+  });
 export type WorkerApiDequeueRequestBody = z.infer<typeof WorkerApiDequeueRequestBody>;
 
 export const WorkerApiDequeueResponseBody = DequeuedMessage.array();

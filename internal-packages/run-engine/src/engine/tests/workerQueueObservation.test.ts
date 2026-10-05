@@ -20,10 +20,11 @@ describe("RunEngine worker queue observation", () => {
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
       // A hidden worker group should still be observed.
-      await prisma.workerInstanceGroup.create({
+      const hiddenGroup = await prisma.workerInstanceGroup.create({
         data: {
           name: "hidden-region",
           masterQueue: "hidden-region",
+          region: "us-east-1",
           type: "MANAGED",
           hidden: true,
           cloudProvider: "aws",
@@ -92,6 +93,22 @@ describe("RunEngine worker queue observation", () => {
           enabled: true,
           intervalMs: 60_000,
           additionalQueueSuffixes: [":scheduled"],
+          subscriptionsByWorkerGroup: {
+            [hiddenGroup.id]: [
+              {
+                class: "ondemand",
+                phase: "restore",
+                compat: "container",
+                channel: "stable",
+              },
+              {
+                class: "ondemand",
+                phase: "restore",
+                compat: "container",
+                channel: "canary",
+              },
+            ],
+          },
           excludedCloudProviders: ["digitalocean"],
         },
       });
@@ -125,9 +142,13 @@ describe("RunEngine worker queue observation", () => {
       try {
         // Keep the total under the environment concurrency limit (10) so every message moves
         // into its worker queue list (processMasterQueueForEnvironment is concurrency-gated).
-        const defaultBacklog = 3;
+        const defaultBacklog = 2;
         const scheduledBacklog = 2;
-        const hiddenBacklog = 2;
+        const hiddenBacklog = 1;
+        const v2Queues = [
+          "us-east-1:v2:ondemand:restore:container:stable",
+          "us-east-1:v2:ondemand:restore:container:canary",
+        ];
         const doBacklog = 1;
         const unmanagedBacklog = 1;
 
@@ -138,9 +159,17 @@ describe("RunEngine worker queue observation", () => {
         await enqueueTo("hidden-region", hiddenBacklog, "r_hidden");
         await enqueueTo("do-region", doBacklog, "r_do");
         await enqueueTo("unmanaged-region", unmanagedBacklog, "r_unmanaged");
+        for (const [index, workerQueue] of v2Queues.entries()) {
+          await enqueueTo(workerQueue, 1, `r_v2_${index}`);
+        }
         await engine.runQueue.processMasterQueueForEnvironment(
           authenticatedEnvironment.id,
-          defaultBacklog + scheduledBacklog + hiddenBacklog + doBacklog + unmanagedBacklog
+          defaultBacklog +
+            scheduledBacklog +
+            hiddenBacklog +
+            doBacklog +
+            unmanagedBacklog +
+            v2Queues.length
         );
 
         // Observe the worker queues derived from the WorkerInstanceGroup records. No dequeue
@@ -151,6 +180,9 @@ describe("RunEngine worker queue observation", () => {
         expect(await lengthOf("default")).toBe(defaultBacklog);
         expect(await lengthOf("default:scheduled")).toBe(scheduledBacklog);
         expect(await lengthOf("hidden-region")).toBe(hiddenBacklog);
+        for (const workerQueue of v2Queues) {
+          expect(await lengthOf(workerQueue)).toBe(1);
+        }
 
         // Excluded: the DigitalOcean group is not observed even though it has a backlog.
         expect(await lengthOf("do-region")).toBe(0);

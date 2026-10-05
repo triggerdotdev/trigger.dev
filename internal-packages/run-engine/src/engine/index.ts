@@ -21,6 +21,7 @@ import {
   formatDurationMilliseconds,
 } from "@trigger.dev/core/v3";
 import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
+import { formatWorkerQueue, WORKER_QUEUE_VERSION } from "@trigger.dev/core/v3/workers";
 import {
   generateInternalId,
   parseNaturalLanguageDurationInMs,
@@ -53,6 +54,7 @@ import type {
 import { FairQueueSelectionStrategy } from "../run-queue/fairQueueSelectionStrategy.js";
 import { RunQueue } from "../run-queue/index.js";
 import { RunQueueFullKeyProducer } from "../run-queue/keyProducer.js";
+import type { WorkerQueueSelection } from "../run-queue/types.js";
 import type { AuthenticatedEnvironment, MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import { BillingCache } from "./billingCache.js";
 import { QUEUED_SNAPSHOT_DESCRIPTION, QUEUED_SNAPSHOT_STATUS } from "./consts.js";
@@ -105,6 +107,7 @@ import type {
   ReportableQueue,
   RunEngineOptions,
   TriggerParams,
+  WorkerQueueDequeueOptions,
 } from "./types.js";
 import { createTtlWorkerCatalog } from "./ttlWorkerCatalog.js";
 import { workerCatalog } from "./workerCatalog.js";
@@ -604,6 +607,7 @@ export class RunEngine {
    */
   async refreshWorkerQueueObservation() {
     const suffixes = this.options.workerQueueObserver?.additionalQueueSuffixes ?? [];
+    const subscriptions = this.options.workerQueueObserver?.subscriptionsByWorkerGroup ?? {};
     const excludedCloudProviders = new Set(
       (this.options.workerQueueObserver?.excludedCloudProviders ?? []).map((p) => p.toLowerCase())
     );
@@ -612,12 +616,12 @@ export class RunEngine {
     // rarely, so a little replication lag is fine and keeps it off the primary.
     const workerGroups = await this.readOnlyPrisma.workerInstanceGroup.findMany({
       where: { type: "MANAGED" },
-      select: { masterQueue: true, cloudProvider: true },
+      select: { id: true, masterQueue: true, region: true, cloudProvider: true },
     });
 
     const workerQueues: string[] = [];
 
-    for (const { masterQueue, cloudProvider } of workerGroups) {
+    for (const { id, masterQueue, region, cloudProvider } of workerGroups) {
       if (cloudProvider && excludedCloudProviders.has(cloudProvider.toLowerCase())) {
         continue;
       }
@@ -626,6 +630,15 @@ export class RunEngine {
 
       for (const suffix of suffixes) {
         workerQueues.push(`${masterQueue}${suffix}`);
+      }
+      for (const subscription of subscriptions[id] ?? []) {
+        workerQueues.push(
+          formatWorkerQueue({
+            region: region ?? masterQueue.split(":")[0]!,
+            version: WORKER_QUEUE_VERSION,
+            ...subscription,
+          })
+        );
       }
     }
 
@@ -1577,8 +1590,18 @@ export class RunEngine {
    * @returns
    */
   async dequeueFromWorkerQueue({
-    consumerId,
     workerQueue,
+    ...options
+  }: WorkerQueueDequeueOptions & { workerQueue: string }): Promise<DequeuedMessage[]> {
+    return this.dequeueFromWorkerQueues({
+      ...options,
+      workerQueues: [{ queue: workerQueue, weight: 1 }],
+    });
+  }
+
+  async dequeueFromWorkerQueues({
+    consumerId,
+    workerQueues,
     backgroundWorkerId,
     workerId,
     runnerId,
@@ -1586,28 +1609,22 @@ export class RunEngine {
     skipObserving,
     blockingPop,
     blockingPopTimeoutSeconds,
-  }: {
-    consumerId: string;
-    workerQueue: string;
-    backgroundWorkerId?: string;
-    workerId?: string;
-    runnerId?: string;
-    tx?: PrismaClientOrTransaction;
-    skipObserving?: boolean;
-    blockingPop?: boolean;
-    blockingPopTimeoutSeconds?: number;
+  }: WorkerQueueDequeueOptions & {
+    workerQueues: WorkerQueueSelection[];
   }): Promise<DequeuedMessage[]> {
     // We only do this with "prod" worker queues because we don't want to observe dev (e.g.
     // environment) worker queues. When the worker queue observer is enabled it is the source
     // of truth for the observed set (and applies the cloud-provider exclusions), so the
     // per-dequeue registration is skipped.
     if (!skipObserving && !this.options.workerQueueObserver?.enabled) {
-      this.runQueue.registerObservableWorkerQueue(workerQueue);
+      for (const { queue } of workerQueues) {
+        this.runQueue.registerObservableWorkerQueue(queue);
+      }
     }
 
-    const dequeuedMessage = await this.dequeueSystem.dequeueFromWorkerQueue({
+    const dequeuedMessage = await this.dequeueSystem.dequeueFromWorkerQueues({
       consumerId,
-      workerQueue,
+      workerQueues,
       backgroundWorkerId,
       workerId,
       runnerId,

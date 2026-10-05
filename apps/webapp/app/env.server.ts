@@ -6,6 +6,7 @@ import { isValidDatabaseUrl } from "./utils/db";
 import { parseRunOpsShards, validateShardListAgainstNewUrl } from "~/v3/runOpsShards.server";
 import { isValidRegex } from "./utils/regex";
 import { isValidDuration } from "./services/realtime/duration.server";
+import { WorkerQueueSubscriptionPolicyEnv } from "./runEngine/concerns/workerQueueSubscriptions.server";
 
 // `z.string()` constrained to a `parseDuration`-parseable string (e.g.
 // `7d`, `1h`). Validated at boot so a typo'd duration fails fast.
@@ -1226,6 +1227,8 @@ const EnvironmentSchema = z
     RUN_ENGINE_PROCESS_WORKER_QUEUE_DEBOUNCE_MS: z.coerce.number().int().default(200),
     RUN_ENGINE_DEQUEUE_BLOCKING_TIMEOUT_SECONDS: z.coerce.number().int().default(10),
     RUN_ENGINE_DEQUEUE_DISABLED_WORKER_QUEUES: z.string().optional(),
+    // JSON map of worker-group IDs to allowed v2 subscriptions. Unlisted groups are denied.
+    RUN_ENGINE_WORKER_QUEUE_SUBSCRIPTIONS: WorkerQueueSubscriptionPolicyEnv,
     RUN_ENGINE_MASTER_QUEUE_CONSUMERS_INTERVAL_MS: z.coerce.number().int().default(1000),
     // Off by default. Enable on a single service (e.g. the engine worker) so only one
     // instance reports worker queue length, rather than every replica.

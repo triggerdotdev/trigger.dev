@@ -1,6 +1,7 @@
 import { type RedisOptions } from "@internal/redis";
 import type { Meter, Tracer } from "@internal/tracing";
 import type { Logger, LogLevel } from "@trigger.dev/core/logger";
+import type { WorkerQueueSubscription } from "@trigger.dev/core/v3/workers";
 import type {
   MachinePreset,
   MachinePresetName,
@@ -8,7 +9,13 @@ import type {
   StartRunAttemptResult,
   TriggerTraceContext,
 } from "@trigger.dev/core/v3";
-import type { PrismaClient, PrismaReplicaClient, TaskRun, Waitpoint } from "@trigger.dev/database";
+import type {
+  PrismaClient,
+  PrismaClientOrTransaction,
+  PrismaReplicaClient,
+  TaskRun,
+  Waitpoint,
+} from "@trigger.dev/database";
 import type { RunStore } from "@internal/run-store";
 import {
   type Worker,
@@ -24,7 +31,16 @@ import type { workerCatalog } from "./workerCatalog.js";
 import { type BillingPlan } from "./billingCache.js";
 import type { DRRConfig } from "../batch-queue/types.js";
 import type { PendingVersionRunIdLookup } from "./services/pendingVersionLookup.js";
-import type { QueueGate } from "../run-queue/types.js";
+import type { QueueGate, WorkerQueuePopOptions } from "../run-queue/types.js";
+
+export type WorkerQueueDequeueOptions = WorkerQueuePopOptions & {
+  consumerId: string;
+  backgroundWorkerId?: string;
+  workerId?: string;
+  runnerId?: string;
+  tx?: PrismaClientOrTransaction;
+  skipObserving?: boolean;
+};
 
 /**
  * Structural mirror of the webapp's CrossSeamGuardDecision
@@ -307,6 +323,8 @@ export type RunEngineOptions = {
      * convention rather than in the engine. Default: [].
      */
     additionalQueueSuffixes?: string[];
+    /** Configured v2 lanes to observe, keyed by worker-group ID. */
+    subscriptionsByWorkerGroup?: Record<string, WorkerQueueSubscription[]>;
     /**
      * Worker groups whose `cloudProvider` is in this list are not observed. Groups with
      * no `cloudProvider` are always observed. Matched case-insensitively. Default: [].

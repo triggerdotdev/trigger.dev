@@ -35,13 +35,19 @@ function randomHex(length = 12): string {
 
 export async function seedEngineFixtures(
   prisma: PrismaClient,
-  options: { taskCount?: number; concurrencyLimit?: number } = {}
+  options: {
+    taskCount?: number;
+    concurrencyLimit?: number;
+    workerGroupId?: string;
+    masterQueue?: string;
+    enableFastPath?: boolean;
+  } = {}
 ): Promise<EngineFixtures> {
   const taskCount = options.taskCount ?? 4;
   const concurrencyLimit = options.concurrencyLimit ?? 500;
   const suffix = randomHex(8);
 
-  const masterQueue = `bench-${suffix}`;
+  const masterQueue = options.masterQueue ?? `bench-${suffix}`;
   const plaintextToken = `tr_wgt_${randomHex(40)}`;
   const tokenHash = createHash("sha256").update(plaintextToken).digest("hex");
 
@@ -51,9 +57,11 @@ export async function seedEngineFixtures(
 
   const workerGroup = await prisma.workerInstanceGroup.create({
     data: {
+      ...(options.workerGroupId ? { id: options.workerGroupId } : {}),
       name: `bench-group-${suffix}`,
       masterQueue,
       type: "MANAGED",
+      enableFastPath: options.enableFastPath ?? false,
       token: { create: { tokenHash } },
     },
   });

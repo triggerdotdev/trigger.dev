@@ -1899,6 +1899,7 @@ type WorkerActionRouteBuilderOptions<
   headers?: THeadersSchema;
   body?: TBodySchema;
   method?: "POST" | "PUT" | "DELETE" | "PATCH";
+  bodyValidationErrorStatus?: 400 | 422 | ((error: z.ZodError) => 400 | 422);
 };
 
 type WorkerActionHandlerFunction<
@@ -2016,7 +2017,12 @@ export function createActionWorkerApiRoute<
         if (!parsed.success) {
           return json(
             { error: "Body Error", details: fromZodError(parsed.error).details },
-            { status: 400 }
+            {
+              status:
+                typeof options.bodyValidationErrorStatus === "function"
+                  ? options.bodyValidationErrorStatus(parsed.error)
+                  : (options.bodyValidationErrorStatus ?? 400),
+            }
           );
         }
         parsedBody = parsed.data;

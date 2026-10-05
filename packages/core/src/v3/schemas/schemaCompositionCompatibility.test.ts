@@ -114,7 +114,7 @@ describe("schema composition compatibility", () => {
       stdin: {
         contents: `
           import { DequeuedMessage } from "./src/v3/schemas/runEngine.ts";
-          import { WorkerApiRunAttemptStartRequestBody } from "./src/v3/runEngineWorker/supervisor/schemas.ts";
+          import { WorkerApiDequeueRequestBody, WorkerApiRunAttemptStartRequestBody } from "./src/v3/runEngineWorker/supervisor/schemas.ts";
 
           const snapshotRoute = { version: 1, residency: "postgres", organizationId: "org_1" };
 
@@ -147,6 +147,9 @@ describe("schema composition compatibility", () => {
               project: { id: "proj_1" },
             }),
             attemptStart: WorkerApiRunAttemptStartRequestBody.parse({ isWarmStart: true, snapshotRoute }),
+            dequeue: WorkerApiDequeueRequestBody.parse({
+              subscriptions: [{ class: "scheduled", phase: "restore", compat: "any", channel: "stable", weight: 0.25 }],
+            }),
           };
         `,
         loader: "ts",
@@ -177,6 +180,9 @@ describe("schema composition compatibility", () => {
       expect(bundledModule.parsed).toMatchObject({
         dequeued: { run: { id: "run_1" }, snapshotRoute: { residency: "postgres" } },
         attemptStart: { isWarmStart: true, snapshotRoute: { residency: "postgres" } },
+        dequeue: {
+          subscriptions: [{ class: "scheduled", phase: "restore", compat: "any", weight: 0.25 }],
+        },
       });
     } finally {
       await rm(tempDir, { recursive: true, force: true });

@@ -17,8 +17,11 @@ const disabledWorkerQueues = parseDisabledWorkerQueues(
   env.RUN_ENGINE_DEQUEUE_DISABLED_WORKER_QUEUES
 );
 
-export function isWorkerQueueDequeueDisabled(workerQueue: string): boolean {
-  return matchesDisabledWorkerQueue(workerQueue, disabledWorkerQueues);
+export function isWorkerQueueDequeueDisabled(
+  workerQueue: string,
+  version: "legacy" | "v2"
+): boolean {
+  return matchesDisabledWorkerQueue(workerQueue, disabledWorkerQueues, version);
 }
 
 export function recordBlockedDequeue(workerQueue: string): void {

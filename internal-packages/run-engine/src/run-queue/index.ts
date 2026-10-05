@@ -45,13 +45,17 @@ import type {
   RunQueueKeyProducer,
   RunQueueKeyProducerEnvironment,
   RunQueueSelectionStrategy,
+  WorkerQueuePopOptions,
+  WorkerQueueSelection,
 } from "./types.js";
 import { OutputPayload } from "./types.js";
+import { weightedWorkerQueueOrder } from "./weightedWorkerQueueOrder.js";
 import { WorkerQueueResolver } from "./workerQueueResolver.js";
 
 const SemanticAttributes = {
   QUEUE: "runqueue.queue",
   WORKER_QUEUE: "runqueue.workerQueue",
+  WORKER_QUEUES: "runqueue.workerQueues",
   MASTER_QUEUE_SHARD: "runqueue.masterQueueShard",
   CONSUMER_ID: "runqueue.consumerId",
   RUN_ID: "runqueue.runId",
@@ -1349,6 +1353,11 @@ type DequeuedMessage = {
   workerQueueLength?: number;
 };
 
+type DequeuedWorkerQueueMessage = DequeuedMessage & {
+  workerQueue: string;
+  selectedWorkerQueueLength: number;
+};
+
 type MarkedRun = {
   orgId: string;
   messageId: string;
@@ -1627,12 +1636,30 @@ export class RunQueue {
   }
 
   async #updateWorkerQueueLength(observableResult: ObservableResult<Attributes>) {
-    for (const workerQueue of this._observableWorkerQueues) {
-      const workerQueueLength = await this.redis.llen(this.keys.workerQueueKey(workerQueue));
+    const workerQueues = [...this._observableWorkerQueues];
+    if (workerQueues.length === 0) {
+      return;
+    }
 
-      observableResult.observe(workerQueueLength, {
-        [SemanticAttributes.WORKER_QUEUE]: workerQueue,
-      });
+    const pipeline = this.redis.pipeline();
+    for (const workerQueue of workerQueues) {
+      pipeline.llen(this.keys.workerQueueKey(workerQueue));
+    }
+    const results = await pipeline.exec();
+    for (const [index, workerQueue] of workerQueues.entries()) {
+      const result = results?.[index];
+      if (!result) {
+        continue;
+      }
+      const [error, workerQueueLength] = result;
+      if (error) {
+        throw error;
+      }
+      if (typeof workerQueueLength === "number") {
+        observableResult.observe(workerQueueLength, {
+          [SemanticAttributes.WORKER_QUEUE]: workerQueue,
+        });
+      }
     }
   }
 
@@ -2339,16 +2366,25 @@ export class RunQueue {
   public async dequeueMessageFromWorkerQueue(
     consumerId: string,
     workerQueue: string,
-    options?: {
-      blockingPop?: boolean;
-      blockingPopTimeoutSeconds?: number;
-    }
-  ): Promise<DequeuedMessage | undefined> {
+    options?: WorkerQueuePopOptions
+  ): Promise<DequeuedWorkerQueueMessage | undefined> {
+    return this.dequeueMessageFromWorkerQueues(
+      consumerId,
+      [{ queue: workerQueue, weight: 1 }],
+      options
+    );
+  }
+
+  public async dequeueMessageFromWorkerQueues(
+    consumerId: string,
+    workerQueues: WorkerQueueSelection[],
+    options?: WorkerQueuePopOptions
+  ): Promise<DequeuedWorkerQueueMessage | undefined> {
     return this.#trace(
       "dequeueMessageFromWorkerQueue",
       async (span) => {
-        const dequeuedMessage = await this.#callDequeueMessageFromWorkerQueue({
-          workerQueue,
+        const dequeuedMessage = await this.#callDequeueMessageFromWorkerQueues({
+          workerQueues,
           blockingPop: options?.blockingPop ?? true,
           blockingPopTimeoutSeconds:
             options?.blockingPopTimeoutSeconds ?? this.options.dequeueBlockingTimeoutSeconds ?? 10,
@@ -2359,6 +2395,7 @@ export class RunQueue {
         }
 
         span.setAttributes({
+          [SemanticAttributes.WORKER_QUEUE]: dequeuedMessage.workerQueue,
           [SemanticAttributes.QUEUE]: dequeuedMessage.message.queue,
           [SemanticAttributes.RUN_ID]: dequeuedMessage.messageId,
           [SemanticAttributes.CONCURRENCY_KEY]: dequeuedMessage.message.concurrencyKey,
@@ -2381,7 +2418,9 @@ export class RunQueue {
         attributes: {
           [SEMATTRS_MESSAGING_OPERATION]: "receive",
           [SEMATTRS_MESSAGING_SYSTEM]: "runqueue",
-          [SemanticAttributes.WORKER_QUEUE]: workerQueue,
+          ...(workerQueues.length === 1
+            ? { [SemanticAttributes.WORKER_QUEUE]: workerQueues[0]?.queue }
+            : { [SemanticAttributes.WORKER_QUEUES]: workerQueues.map(({ queue }) => queue) }),
           [SemanticAttributes.CONSUMER_ID]: consumerId,
         },
       }
@@ -4230,147 +4269,138 @@ export class RunQueue {
     });
   }
 
-  async #callDequeueMessageFromWorkerQueue({
-    workerQueue,
+  async #callDequeueMessageFromWorkerQueues({
+    workerQueues: requestedWorkerQueues,
     blockingPop,
     blockingPopTimeoutSeconds,
   }: {
-    workerQueue: string;
+    workerQueues: WorkerQueueSelection[];
     blockingPop: boolean;
     blockingPopTimeoutSeconds: number;
-  }): Promise<DequeuedMessage | undefined> {
-    const workerQueueKey = this.keys.workerQueueKey(workerQueue);
+  }): Promise<DequeuedWorkerQueueMessage | undefined> {
+    const workerQueues = weightedWorkerQueueOrder(requestedWorkerQueues);
+    if (workerQueues.length === 0 || this.abortController.signal.aborted) {
+      return;
+    }
+
+    const workerQueueKeys = workerQueues.map((queue) => this.keys.workerQueueKey(queue));
+    let messageKey: string;
+    let selectedQueueIndex: number;
+    let workerQueueLength: number;
+    let selectedWorkerQueueLength: number;
+    const queueAttributes =
+      workerQueues.length === 1
+        ? { workerQueue: workerQueues[0], workerQueueKey: workerQueueKeys[0] }
+        : { workerQueues, workerQueueKeys };
 
     if (blockingPop) {
-      this.logger.debug("#callDequeueMessageFromWorkerQueue blocking pop", {
-        workerQueue,
-        workerQueueKey,
-        blockingPopTimeoutSeconds,
-      });
-
-      if (this.abortController.signal.aborted) {
-        return;
-      }
-
       const blockingClient = this.#createBlockingDequeueClient();
-
       async function cleanup() {
         await blockingClient.quit();
       }
-
       this.abortController.signal.addEventListener("abort", cleanup);
 
       const result = await this.#trace("popMessageFromWorkerQueue", async (span) => {
         span.setAttributes({
-          workerQueue,
-          workerQueueKey,
+          ...queueAttributes,
           blockingPopTimeoutSeconds,
           blocking: true,
         });
+        const popped = await blockingClient.blpop(...workerQueueKeys, blockingPopTimeoutSeconds);
+        if (!popped) {
+          return;
+        }
 
-        return await blockingClient.blpop(workerQueueKey, blockingPopTimeoutSeconds);
+        const keyPrefix = this.redis.options.keyPrefix ?? "";
+        const queueIndex = workerQueueKeys.findIndex((key) => keyPrefix + key === popped[0]);
+        if (queueIndex === -1) {
+          throw new Error("Worker queue pop returned an unexpected queue key");
+        }
+        span.setAttributes({
+          workerQueue: workerQueues[queueIndex],
+          workerQueueKey: workerQueueKeys[queueIndex],
+        });
+        return { messageKey: popped[1], queueIndex };
       });
 
       this.abortController.signal.removeEventListener("abort", cleanup);
-
       cleanup().then(() => {
-        this.logger.debug("dequeueMessageFromWorkerQueue cleanup", {
-          service: this.name,
+        this.logger.debug("dequeueMessageFromWorkerQueue cleanup", { service: this.name });
+      });
+
+      if (!result) {
+        return;
+      }
+      messageKey = result.messageKey;
+      selectedQueueIndex = result.queueIndex;
+
+      const lengths = await this.#trace("getWorkerQueueLength", async (span) => {
+        span.setAttributes({
+          ...queueAttributes,
+          workerQueue: workerQueues[selectedQueueIndex],
+          workerQueueKey: workerQueueKeys[selectedQueueIndex],
         });
+        const results = await this.redis
+          .pipeline(workerQueueKeys.map((key) => ["llen", key]))
+          .exec();
+        if (!results) {
+          throw new Error("Worker queue length pipeline returned no results");
+        }
+        return results.map(([error, length]) => {
+          if (error) throw error;
+          return Number(length);
+        });
+      });
+      workerQueueLength = lengths.reduce((total, length) => total + length, 0);
+      selectedWorkerQueueLength = lengths[selectedQueueIndex]!;
+    } else {
+      const result = await this.#trace("popMessageFromWorkerQueue", async (span) => {
+        span.setAttributes({ ...queueAttributes, blocking: false });
+        const popped = await this.redis.dequeueMessageFromWorkerQueueNonBlocking(
+          workerQueueKeys.length,
+          ...workerQueueKeys
+        );
+        if (popped) {
+          const queueIndex = Number(popped[2]) - 1;
+          span.setAttributes({
+            workerQueue: workerQueues[queueIndex],
+            workerQueueKey: workerQueueKeys[queueIndex],
+          });
+        }
+        return popped;
       });
 
       if (!result) {
         return;
       }
 
-      this.logger.debug("dequeueMessageFromWorkerQueue raw result", {
-        result,
+      messageKey = result[0];
+      workerQueueLength = Number(result[1]);
+      selectedQueueIndex = Number(result[2]) - 1;
+      selectedWorkerQueueLength = Number(result[3]);
+    }
+
+    const workerQueue = workerQueues[selectedQueueIndex]!;
+    const message = await this.#dequeueMessageFromKey(messageKey);
+    if (!message) {
+      this.logger.error("Failed to dequeue message from worker queue", {
+        messageKey,
+        workerQueue,
+        workerQueueLength: selectedWorkerQueueLength,
+        subscribedWorkerQueueLength: workerQueueLength,
         service: this.name,
       });
-
-      if (result.length !== 2) {
-        this.logger.error("Invalid dequeue message from worker queue result", {
-          result,
-          service: this.name,
-        });
-        return;
-      }
-
-      // Make sure they are both strings
-      if (typeof result[0] !== "string" || typeof result[1] !== "string") {
-        this.logger.error("Invalid dequeue message from worker queue result", {
-          result,
-          service: this.name,
-        });
-        return;
-      }
-
-      const [, messageKey] = result;
-
-      const workerQueueLength = await this.#trace("getWorkerQueueLength", async (span) => {
-        span.setAttributes({
-          workerQueue,
-          workerQueueKey,
-        });
-
-        return await this.redis.llen(workerQueueKey);
-      });
-
-      const message = await this.#dequeueMessageFromKey(messageKey);
-
-      if (!message) {
-        this.logger.error("Failed to dequeue message from worker queue", {
-          messageKey,
-          workerQueue,
-          workerQueueKey,
-          workerQueueLength,
-          service: this.name,
-        });
-
-        return;
-      }
-
-      return {
-        messageId: message.runId,
-        messageScore: String(message.timestamp),
-        message,
-        workerQueueLength,
-      };
-    } else {
-      this.logger.debug("#callDequeueMessageFromWorkerQueue non-blocking pop", {
-        workerQueue,
-        workerQueueKey,
-      });
-
-      const result = await this.#trace("popMessageFromWorkerQueue", async (span) => {
-        span.setAttributes({
-          workerQueue,
-          workerQueueKey,
-          blocking: false,
-        });
-
-        return await this.redis.dequeueMessageFromWorkerQueueNonBlocking(workerQueueKey);
-      });
-
-      if (!result) {
-        return;
-      }
-
-      const [messageKey, workerQueueLength] = result;
-
-      const message = await this.#dequeueMessageFromKey(messageKey);
-
-      if (!message) {
-        return;
-      }
-
-      return {
-        messageId: message.runId,
-        messageScore: String(message.timestamp),
-        message,
-        workerQueueLength: Number(workerQueueLength),
-      };
+      return;
     }
+
+    return {
+      messageId: message.runId,
+      messageScore: String(message.timestamp),
+      message,
+      workerQueue,
+      workerQueueLength,
+      selectedWorkerQueueLength,
+    };
   }
 
   async #callAcknowledgeMessage({
@@ -7109,22 +7139,23 @@ return __qmret(results)
     });
 
     this.redis.defineCommand("dequeueMessageFromWorkerQueueNonBlocking", {
-      numberOfKeys: 1,
       lua: `
-local workerQueueKey = KEYS[1]
-
--- lpop the first message from the worker queue
-local messageId = redis.call('LPOP', workerQueueKey)
-
--- if there is no messageId, return nil
-if not messageId then
-    return nil
+for index, workerQueueKey in ipairs(KEYS) do
+  local messageId = redis.call('LPOP', workerQueueKey)
+  if messageId then
+    local queueLength = 0
+    local selectedQueueLength = 0
+    for keyIndex, key in ipairs(KEYS) do
+      local length = redis.call('LLEN', key)
+      queueLength = queueLength + length
+      if keyIndex == index then
+        selectedQueueLength = length
+      end
+    end
+    return {messageId, queueLength, index, selectedQueueLength}
+  end
 end
-
--- get the length of the worker queue
-local queueLength = tonumber(redis.call('LLEN', workerQueueKey) or '0')
-
-return {messageId, queueLength} -- Return message details
+return nil
       `,
     });
 
@@ -8081,9 +8112,9 @@ declare module "@internal/redis" {
     ): Result<[string[] | null, number[] | null, number[] | null], Context>;
 
     dequeueMessageFromWorkerQueueNonBlocking(
-      workerQueueKey: string,
-      callback?: Callback<[string, string] | undefined>
-    ): Result<[string, string] | undefined, Context>;
+      numberOfKeys: number,
+      ...workerQueueKeys: string[]
+    ): Result<[string, number, number, number] | undefined, Context>;
 
     dequeueMessageFromKey(
       // keys

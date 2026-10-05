@@ -8,12 +8,20 @@ import { createActionWorkerApiRoute } from "~/services/routeBuilders/apiBuilder.
 export const action = createActionWorkerApiRoute(
   {
     body: z.compile(WorkerApiDequeueRequestBody),
+    bodyValidationErrorStatus: (error) =>
+      error.issues.every((issue) => issue.path[0] === "subscriptions") ? 422 : 400,
   },
   async ({
     authenticatedWorker,
     runnerId,
     body,
   }): Promise<TypedResponse<WorkerApiDequeueResponseBody>> => {
-    return json(await authenticatedWorker.dequeue({ runnerId, queueClass: body.queueClass }));
+    return json(
+      await authenticatedWorker.dequeue({
+        runnerId,
+        queueClass: body.queueClass,
+        subscriptions: body.subscriptions,
+      })
+    );
   }
 );

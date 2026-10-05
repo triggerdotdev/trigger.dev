@@ -154,6 +154,7 @@ function createRunEngine() {
       // Also observe the scheduled split variant of each worker queue. The suffix
       // naming convention lives in the webapp, so it is passed in here.
       additionalQueueSuffixes: [SCHEDULED_WORKER_QUEUE_SUFFIX],
+      subscriptionsByWorkerGroup: env.RUN_ENGINE_WORKER_QUEUE_SUBSCRIPTIONS,
       excludedCloudProviders: env.RUN_ENGINE_WORKER_QUEUE_OBSERVER_EXCLUDED_CLOUD_PROVIDERS.split(
         ","
       )

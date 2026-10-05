@@ -68,6 +68,16 @@ export type QueueDescriptor = {
   concurrencyKey: string | undefined;
 };
 
+export type WorkerQueueSelection = {
+  queue: string;
+  weight: number;
+};
+
+export type WorkerQueuePopOptions = {
+  blockingPop?: boolean;
+  blockingPopTimeoutSeconds?: number;
+};
+
 export type EnvDescriptor = {
   orgId: string;
   projectId: string;
