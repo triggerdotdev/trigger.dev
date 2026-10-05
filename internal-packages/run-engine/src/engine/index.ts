@@ -2912,6 +2912,13 @@ export class RunEngine {
             throw new Error(`Run ${runId} not found`);
           }
 
+          // The heartbeat payload carries no route, so resolve it durably for the QUEUED snapshot.
+          const snapshotRoute = await this.runAttemptSystem.effectiveRoute(
+            runId,
+            latestSnapshot.organizationId,
+            undefined
+          );
+
           //it will automatically be requeued X times depending on the queue retry settings
           const { wasRequeued } = await this.runAttemptSystem.tryNackAndRequeue({
             run,
@@ -2929,6 +2936,7 @@ export class RunEngine {
               code: "TASK_RUN_DEQUEUED_MAX_RETRIES",
               message: `Trying to create an attempt failed multiple times, exceeding how many times we retry.`,
             },
+            snapshotRoute,
             tx: prisma,
           });
 

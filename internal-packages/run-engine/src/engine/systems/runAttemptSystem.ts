@@ -697,7 +697,7 @@ export class RunAttemptSystem {
   // residency ONCE (forceDurable) so the transition still lands in the run's true store instead of
   // taking the never-enrolled Postgres shortcut. Fails closed (throws) when residency cannot be
   // confirmed. Callers place this AFTER their no-op early exits so a no-op does no durable read.
-  async #effectiveRoute(
+  public async effectiveRoute(
     runId: string,
     organizationId: string,
     route: SnapshotRouteWire | undefined
@@ -802,8 +802,8 @@ export class RunAttemptSystem {
           span.setAttribute("completionStatus", completion.ok);
           span.setAttribute("runId", runId);
 
-          // Resolve the route the terminal snapshot honors (carried, else durable). See #effectiveRoute.
-          const effectiveRoute = await this.#effectiveRoute(
+          // Resolve the route the terminal snapshot honors (carried, else durable). See effectiveRoute.
+          const effectiveRoute = await this.effectiveRoute(
             runId,
             latestSnapshot.organizationId,
             snapshotRoute
@@ -1013,8 +1013,8 @@ export class RunAttemptSystem {
           span.setAttribute("completionStatus", completion.ok);
 
           // The route every transition this failure path writes (retry, requeue, fail, cancel) honors.
-          // Carried, else resolved durably; see #effectiveRoute. Resolved after the no-op exit above.
-          const effectiveRoute = await this.#effectiveRoute(
+          // Carried, else resolved durably; see effectiveRoute. Resolved after the no-op exit above.
+          const effectiveRoute = await this.effectiveRoute(
             runId,
             latestSnapshot.organizationId,
             snapshotRoute
@@ -1533,7 +1533,7 @@ export class RunAttemptSystem {
 
       switch (outcome) {
         case "requeue": {
-          const effectiveRoute = await this.#effectiveRoute(
+          const effectiveRoute = await this.effectiveRoute(
             runId,
             latestSnapshot.organizationId,
             snapshotRoute
@@ -1688,7 +1688,7 @@ export class RunAttemptSystem {
         // store instead of the never-enrolled Postgres shortcut. Placed AFTER the no-transition early
         // exits (already FINISHED, PENDING_CANCEL without finalize) so a no-op cancel does no durable
         // read; fails closed (throws) when durable residency cannot be confirmed.
-        const effectiveRoute = await this.#effectiveRoute(
+        const effectiveRoute = await this.effectiveRoute(
           runId,
           latestSnapshot.organizationId,
           snapshotRoute
