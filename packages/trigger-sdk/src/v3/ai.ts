@@ -9308,8 +9308,13 @@ function chatAgent<
                       );
                     }
                   } catch (error) {
-                    // Handle AbortError from streamText gracefully
-                    if (error instanceof Error && error.name === "AbortError") {
+                    // A stop aborts with a string reason, which the managed pipe
+                    // rethrows as-is. Match the reason itself so a real failure
+                    // after a stop is still reported.
+                    if (
+                      (error instanceof Error && error.name === "AbortError") ||
+                      (combinedSignal.aborted && error === combinedSignal.reason)
+                    ) {
                       if (runSignal.aborted) {
                         return "exit"; // Full run cancellation — exit
                       }
