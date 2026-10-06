@@ -1,5 +1,23 @@
 # @trigger.dev/sdk
 
+## 4.7.3
+
+### Patch Changes
+
+- Stopping a `chat.agent` turn whose `run()` returns a `streamText` result no longer sends an `error` chunk with "An unexpected error occurred". The turn ends quietly again and the run stays alive for the next message. ([`64c3ba13c`](https://github.com/triggerdotdev/trigger.dev/commit/64c3ba13cbe02cc89667c87df2515c5ec592d424))
+- `chat.createStartSessionAction`, `chat.headStart` and `chat.startHeadStart` now accept `tags` for the Session itself, so chat sessions can be filtered by tag on the Sessions page. `triggerConfig.tags` still tags the session's runs. ([`9dbc5f984`](https://github.com/triggerdotdev/trigger.dev/commit/9dbc5f984f064202eda137ad9a00a14d9d6baad4))
+
+  ```ts
+  await startChatSession({
+    chatId,
+    clientData,
+    tags: [`org:${org.slug}`, `user:${user.id}`],
+  });
+  ```
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.7.3`
+
 ## 4.7.2
 
 ### Patch Changes

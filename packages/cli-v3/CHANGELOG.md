@@ -1,5 +1,17 @@
 # trigger.dev
 
+## 4.7.3
+
+### Patch Changes
+
+- Update the minimatch dependency to ^10.2.3. ([`5236799b7`](https://github.com/triggerdotdev/trigger.dev/commit/5236799b78cdad2bcaa4a732eb9862e9e02dadf4))
+- Add `trigger.dev orgs list` to show the organizations you belong to, with their slugs and IDs. Use the slug with `trigger.dev projects create --org`, including for organizations that don't have any projects yet. `trigger.dev projects create` now activates the Free plan for organizations that don't have a plan yet, matching `trigger.dev init`. ([`68ee6be4b`](https://github.com/triggerdotdev/trigger.dev/commit/68ee6be4b9d2b305e42500c74ce02541dc86a7c9))
+- Reports filed with the `submit_feedback` MCP tool now reach the Trigger.dev team. They were being sent, but not somewhere anyone was reading. ([`4a94982a1`](https://github.com/triggerdotdev/trigger.dev/commit/4a94982a1d7022fd498eb3a0d6d2d82dd9cd7e16))
+- Updated dependencies:
+  - `@trigger.dev/build@4.7.3`
+  - `@trigger.dev/core@4.7.3`
+  - `@trigger.dev/schema-to-json@4.7.3`
+
 ## 4.7.2
 
 ### Patch Changes
