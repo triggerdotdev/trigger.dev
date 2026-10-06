@@ -430,7 +430,7 @@ export interface IEventRepository {
     anchorSpanId: string,
     startCreatedAt: Date,
     endCreatedAt?: Date,
-    options?: { includeDebugLogs?: boolean }
+    options?: { includeDebugLogs?: boolean; insertedAtEnd?: Date }
   ): Promise<TraceDetailedSummary | undefined>;
 
   // Streams a trace's events in start_time order, one at a time, without ever

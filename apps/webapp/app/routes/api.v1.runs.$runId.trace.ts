@@ -4,6 +4,7 @@ import { z } from "zod";
 import { $replica } from "~/db.server";
 import { anyResource, createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
+import { getTraceInsertedAtEnd } from "~/v3/eventRepository/traceInsertedAtBound";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.server";
 import { buildSyntheticTraceBody } from "~/v3/mollifier/syntheticApiResponses.server";
@@ -99,7 +100,8 @@ export const loader = createLoaderApiRoute(
       run.traceId,
       run.spanId,
       run.createdAt,
-      run.completedAt ?? undefined
+      run.completedAt ?? undefined,
+      { insertedAtEnd: getTraceInsertedAtEnd(run) }
     );
 
     if (!traceSummary) {

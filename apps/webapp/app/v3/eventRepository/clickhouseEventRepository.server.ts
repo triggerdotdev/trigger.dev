@@ -1765,7 +1765,7 @@ export class ClickhouseEventRepository implements IEventRepository {
     anchorSpanId: string;
     startCreatedAt: Date;
     endCreatedAt?: Date;
-    options?: { includeDebugLogs?: boolean };
+    options?: { includeDebugLogs?: boolean; insertedAtEnd?: Date };
     limit?: number;
   }): Promise<{
     records: TaskEventDetailedSummaryV1Result[];
@@ -2546,7 +2546,7 @@ export class ClickhouseEventRepository implements IEventRepository {
     traceId: string;
     startCreatedAt?: Date;
     endCreatedAt?: Date;
-    options?: { includeDebugLogs?: boolean };
+    options?: { includeDebugLogs?: boolean; insertedAtEnd?: Date };
     spanIds?: string[];
     parentSpanIds?: string[];
     limit?: number;
@@ -2578,6 +2578,12 @@ export class ClickhouseEventRepository implements IEventRepository {
         queryBuilder.where("inserted_at >= {insertedAtStart: DateTime64(3)}", {
           insertedAtStart: convertDateToClickhouseDateTime(startCreatedAtWithBuffer),
         });
+
+        if (options?.insertedAtEnd) {
+          queryBuilder.where("inserted_at <= {insertedAtEnd: DateTime64(3)}", {
+            insertedAtEnd: convertDateToClickhouseDateTime(options.insertedAtEnd),
+          });
+        }
       }
     }
 
@@ -2724,7 +2730,7 @@ export class ClickhouseEventRepository implements IEventRepository {
     anchorSpanId: string,
     startCreatedAt: Date,
     endCreatedAt?: Date,
-    options?: { includeDebugLogs?: boolean }
+    options?: { includeDebugLogs?: boolean; insertedAtEnd?: Date }
   ): Promise<TraceDetailedSummary | undefined> {
     const limit = this._config.maximumTraceDetailedSummaryViewCount;
 

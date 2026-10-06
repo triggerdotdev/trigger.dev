@@ -500,7 +500,7 @@ export class EventRepository implements IEventRepository {
     anchorSpanId: string,
     startCreatedAt: Date,
     endCreatedAt?: Date,
-    options?: { includeDebugLogs?: boolean }
+    options?: { includeDebugLogs?: boolean; insertedAtEnd?: Date }
   ): Promise<TraceDetailedSummary | undefined> {
     const events = await this.taskEventStore.findDetailedTraceEvents(
       storeTable,
