@@ -1813,8 +1813,7 @@ export class ClickHousePrinter {
         // Subquery
         joinStrings.push(this.visit(tableExpr));
       } else if ((tableExpr as Placeholder).expression_type === "placeholder") {
-        // Placeholder - visit inner expression
-        joinStrings.push(this.visit(tableExpr));
+        throw new QueryError("Placeholder table expressions are not supported");
       } else {
         throw new QueryError(
           `Unsupported table expression type: ${(tableExpr as Expression).expression_type}`
