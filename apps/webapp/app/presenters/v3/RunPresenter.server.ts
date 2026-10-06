@@ -1,14 +1,17 @@
 import { millisecondsToNanoseconds, RunAnnotations } from "@trigger.dev/core/v3";
-import { createTreeFromFlatItems, flattenTree } from "~/components/primitives/TreeView/TreeView";
 import { prisma, type PrismaClient } from "~/db.server";
 import { logger } from "~/services/logger.server";
-import { createTimelineSpanEventsFromSpanEvents } from "~/utils/timelineSpanEvents";
+import { stripAdminOnlyEventRows } from "~/utils/timelineSpanEvents";
 import { getUsername } from "~/utils/username";
 import type { SpanSummary } from "~/v3/eventRepository/eventRepository.types";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 import { isFinalRunStatus } from "~/v3/taskStatus";
 import { env } from "~/env.server";
+import { FEATURE_FLAG } from "~/v3/featureFlags";
+import { makeFlag } from "~/v3/featureFlags.server";
 import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
+import { TraceChunkAssembler } from "~/v3/eventRepository/traceChunkAssembler";
+import { applyAncestorOverrides, buildTraceView } from "~/v3/eventRepository/traceViewBuilder";
 import { runStore } from "~/v3/runStore.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { runTriggeredAt } from "~/v3/runTimestamps";
@@ -48,6 +51,7 @@ export class RunPresenter {
     runFriendlyId,
     showDeletedLogs,
     showDebug,
+    selectedSpanId,
   }: {
     userId: string;
     projectSlug: string;
@@ -55,6 +59,7 @@ export class RunPresenter {
     runFriendlyId: string;
     showDeletedLogs: boolean;
     showDebug: boolean;
+    selectedSpanId?: string;
   }) {
     // `findFirst` + explicit null check (not `findFirstOrThrow`) because
     // a missing PG row is the *expected* path for buffered runs — the
@@ -126,7 +131,7 @@ export class RunPresenter {
         slug: projectSlug,
         organization: { members: { some: { userId } } },
       },
-      select: { id: true },
+      select: { id: true, organization: { select: { featureFlags: true } } },
     });
 
     if (!authorizedProject) {
@@ -192,6 +197,140 @@ export class RunPresenter {
       startCreatedAt: run.rootTaskRun?.createdAt ?? run.createdAt,
       endCreatedAt: run.completedAt ?? undefined,
     };
+
+    // Resolve agent-kind once so the tree renderer can swap icon/colour for
+    // the current run's spans without doing per-row lookups.
+    const isAgentRun = RunAnnotations.safeParse(run.annotations).data?.taskKind === "AGENT";
+
+    const queuedDuration = run.startedAt
+      ? millisecondsToNanoseconds(run.startedAt.getTime() - triggeredAt.getTime())
+      : undefined;
+
+    const isRootRunView = !run.rootTaskRun || run.rootTaskRun.spanId === run.spanId;
+
+    const firstChunkPromise = makeFlag(this.#prismaClient)({
+      key: FEATURE_FLAG.progressiveTraceLoadingEnabled,
+      defaultValue: false,
+      overrides: (authorizedProject.organization?.featureFlags as Record<string, unknown>) ?? {},
+    }).then((progressiveEnabled) =>
+      isRootRunView && progressiveEnabled
+        ? repository.getTraceChunk(
+            getTaskEventStoreTableForRun(run),
+            environment.id,
+            run.traceId,
+            traceTimeBounds.startCreatedAt,
+            traceTimeBounds.endCreatedAt,
+            undefined,
+            { includeDebugLogs: showDebug }
+          )
+        : undefined
+    );
+
+    const [user, firstChunk] = await Promise.all([
+      this.#prismaClient.user.findFirst({
+        where: { id: userId },
+        select: { admin: true },
+      }),
+      firstChunkPromise,
+    ]);
+
+    const buildOptions = {
+      rootSpanId: run.spanId,
+      runFriendlyId: run.friendlyId,
+      isAgentRun,
+      isAdmin: user?.admin ?? false,
+    };
+
+    let totalSpans: number | undefined;
+    if (isRootRunView && firstChunk?.hasMore) {
+      const spanCount = await repository.getTraceSpanCount(
+        getTaskEventStoreTableForRun(run),
+        environment.id,
+        run.traceId,
+        traceTimeBounds.startCreatedAt,
+        traceTimeBounds.endCreatedAt,
+        { includeDebugLogs: showDebug }
+      );
+      totalSpans = typeof spanCount === "number" ? spanCount : undefined;
+
+      if (typeof spanCount === "number" && spanCount > repository.maximumTraceViewCount) {
+        return {
+          run: runData,
+          trace: {
+            events: [],
+            duration: 0,
+            rootStartedAt: undefined,
+            rootSpanStatus: "completed" as const,
+            startedAt: run.startedAt,
+            queuedDuration,
+            overridesBySpanId: {},
+            linkedRunIdBySpanId: {},
+            isTruncated: true,
+            missingAnchor: true,
+            progressive: undefined,
+          },
+          maximumLiveReloadingSetting: repository.maximumLiveReloadingSetting,
+        };
+      }
+    }
+
+    if (firstChunk && firstChunk.events.length > 0) {
+      const firstEvents = stripAdminOnlyEventRows(firstChunk.events, buildOptions.isAdmin);
+
+      const assembler = new TraceChunkAssembler();
+      assembler.mergeChunk(firstEvents);
+
+      if (assembler.hasSpan(run.spanId)) {
+        let supplementaryFirstEvents: typeof firstChunk.events | undefined;
+
+        if (selectedSpanId && selectedSpanId !== run.spanId && !assembler.hasSpan(selectedSpanId)) {
+          const selectedEvents = await repository.getTraceSpanWithAncestors(
+            getTaskEventStoreTableForRun(run),
+            environment.id,
+            run.traceId,
+            traceTimeBounds.startCreatedAt,
+            traceTimeBounds.endCreatedAt,
+            selectedSpanId,
+            { includeDebugLogs: showDebug }
+          );
+          if (selectedEvents && selectedEvents.length > 0) {
+            const visibleSelected = stripAdminOnlyEventRows(selectedEvents, buildOptions.isAdmin);
+            assembler.mergeChunk(visibleSelected, { source: "deeplink" });
+            supplementaryFirstEvents = visibleSelected;
+          }
+        }
+
+        const { spans, overridesBySpanId } = applyAncestorOverrides(assembler.spans);
+        const view = buildTraceView(spans, buildOptions);
+
+        return {
+          run: runData,
+          trace: {
+            events: view.events,
+            duration: view.duration,
+            rootStartedAt: view.rootStartedAt,
+            rootSpanStatus: view.rootSpanStatus,
+            startedAt: run.startedAt,
+            queuedDuration,
+            overridesBySpanId,
+            linkedRunIdBySpanId: view.linkedRunIdBySpanId,
+            isTruncated: false,
+            missingAnchor: false,
+            progressive: {
+              firstEvents,
+              supplementaryFirstEvents,
+              nextCursor: firstChunk.nextCursor,
+              hasMore: firstChunk.hasMore,
+              buildOptions,
+              showDebug,
+              totalSpans,
+              maxSpans: repository.maximumTraceViewCount,
+            },
+          },
+          maximumLiveReloadingSetting: repository.maximumLiveReloadingSetting,
+        };
+      }
+    }
 
     // Fast path: full trace summary. Slow path: subtree fetch when the anchor
     // span fell past the row cap (large traces ordered by start_time ASC).
@@ -268,24 +407,11 @@ export class RunPresenter {
       };
     }
 
-    // Control-plane read (User table) — stays on the control-plane client, NOT
-    // routed through the run-ops store (user resolved CP-side, run run-ops-side).
-    const user = await this.#prismaClient.user.findFirst({
-      where: {
-        id: userId,
-      },
-      select: {
-        admin: true,
-      },
+    const view = buildTraceView(traceSummary.spans, {
+      ...buildOptions,
+      isRootSpanId: traceSummary.rootSpan.id,
     });
-
-    // Resolve agent-kind once so the tree renderer can swap icon/colour for
-    // the current run's spans without doing per-row lookups.
-    const isAgentRun = RunAnnotations.safeParse(run.annotations).data?.taskKind === "AGENT";
-
-    //this tree starts at the passed in span (hides parent elements if there are any)
-    const tree = createTreeFromFlatItems(traceSummary.spans, run.spanId);
-    const missingAnchor = !traceSummary.spans.some((span) => span.id === run.spanId) || !tree;
+    const missingAnchor = view.missingAnchor;
 
     if (missingAnchor) {
       logger.warn("Trace view anchor span not found in trace summary", {
@@ -298,78 +424,20 @@ export class RunPresenter {
       isTruncated = true;
     }
 
-    //we need the start offset for each item, and the total duration of the entire tree
-    const treeRootStartTimeMs = tree ? tree?.data.startTime.getTime() : 0;
-    let totalDuration = tree?.data.duration ?? 0;
-
-    // Build the linkedRunIdBySpanId map during the same walk
-    const linkedRunIdBySpanId: Record<string, string> = {};
-
-    const events = tree
-      ? flattenTree(tree).map((n) => {
-          const offset = millisecondsToNanoseconds(
-            n.data.startTime.getTime() - treeRootStartTimeMs
-          );
-          //only let non-debug events extend the total duration
-          if (!n.data.isDebug) {
-            totalDuration = Math.max(totalDuration, offset + n.data.duration);
-          }
-
-          // For cached spans, store the mapping from spanId to the linked run's ID
-          if (n.data.style?.icon === "task-cached" && n.runId) {
-            linkedRunIdBySpanId[n.id] = n.runId;
-          }
-
-          // Raw span events are only needed server-side (to derive timelineEvents);
-          // keep them out of the serialized loader payload.
-          const { events: spanEvents, ...data } = n.data;
-
-          return {
-            ...n,
-            data: {
-              ...data,
-              timelineEvents: createTimelineSpanEventsFromSpanEvents(
-                spanEvents,
-                user?.admin ?? false,
-                treeRootStartTimeMs
-              ),
-              //set partial nodes to null duration
-              duration: n.data.isPartial ? null : n.data.duration,
-              offset,
-              isRoot: n.id === traceSummary.rootSpan.id,
-              isAgentRun: n.runId === run.friendlyId && isAgentRun,
-            },
-          };
-        })
-      : [];
-
-    //total duration should be a minimum of 1ms
-    totalDuration = Math.max(totalDuration, millisecondsToNanoseconds(1));
-
-    let rootSpanStatus: "executing" | "completed" | "failed" = "executing";
-    if (events[0]) {
-      if (events[0].data.isError) {
-        rootSpanStatus = "failed";
-      } else if (!events[0].data.isPartial) {
-        rootSpanStatus = "completed";
-      }
-    }
-
     return {
       run: runData,
       trace: {
-        rootSpanStatus,
-        events: events,
-        duration: totalDuration,
-        rootStartedAt: tree?.data.startTime,
+        rootSpanStatus: view.rootSpanStatus,
+        events: view.events,
+        duration: view.duration,
+        rootStartedAt: view.rootStartedAt,
         startedAt: run.startedAt,
-        queuedDuration: run.startedAt
-          ? millisecondsToNanoseconds(run.startedAt.getTime() - triggeredAt.getTime())
-          : undefined,
+        queuedDuration,
         overridesBySpanId: traceSummary.overridesBySpanId,
-        linkedRunIdBySpanId,
+        linkedRunIdBySpanId: view.linkedRunIdBySpanId,
         isTruncated,
         missingAnchor,
+        progressive: undefined,
       },
       maximumLiveReloadingSetting: repository.maximumLiveReloadingSetting,
     };

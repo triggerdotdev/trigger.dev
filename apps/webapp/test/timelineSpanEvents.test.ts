@@ -1,6 +1,9 @@
 import { describe, test, expect } from "vitest";
 import type { SpanEvent } from "@trigger.dev/core/v3";
-import { createTimelineSpanEventsFromSpanEvents } from "../app/utils/timelineSpanEvents";
+import {
+  createTimelineSpanEventsFromSpanEvents,
+  stripAdminOnlyEventRows,
+} from "../app/utils/timelineSpanEvents";
 import { millisecondsToNanoseconds } from "@trigger.dev/core/v3/utils/durations";
 
 describe("createTimelineSpanEventsFromSpanEvents", () => {
@@ -235,5 +238,59 @@ describe("createTimelineSpanEventsFromSpanEvents", () => {
     expect(result.some((event) => event.name === "Dequeued")).toBe(true);
     expect(result.some((event) => event.name === "Launched")).toBe(true);
     expect(result.some((event) => event.name.includes("Importing"))).toBe(false);
+  });
+});
+
+describe("stripAdminOnlyEventRows", () => {
+  const eventRow = (spanId: string, event: string) => ({
+    spanId,
+    kind: "SPAN_EVENT",
+    message: "trigger.dev/start",
+    metadata: JSON.stringify({ event }),
+  });
+
+  test("returns rows unchanged for an admin", () => {
+    const rows = [eventRow("a", "create_attempt"), eventRow("a", "lazy_payload")];
+    expect(stripAdminOnlyEventRows(rows, true)).toBe(rows);
+  });
+
+  test("drops admin-only internal events for a non-admin, keeps public ones", () => {
+    const rows = [
+      eventRow("a", "create_attempt"),
+      eventRow("a", "lazy_payload"),
+      eventRow("a", "pod_scheduled"),
+      eventRow("a", "dequeue"),
+      eventRow("a", "fork"),
+    ];
+    const kept = stripAdminOnlyEventRows(rows, false).map(
+      (r) => JSON.parse(r.metadata).event as string
+    );
+    expect(kept).toEqual(["dequeue", "fork"]);
+  });
+
+  test("drops an unknown/unnamespaced internal event for a non-admin (default admin-only)", () => {
+    const rows = [
+      { spanId: "a", kind: "SPAN_EVENT", message: "trigger.dev/mystery", metadata: "{}" },
+    ];
+    expect(stripAdminOnlyEventRows(rows, false)).toHaveLength(0);
+  });
+
+  test("keeps import for non-admins (matching createTimelineSpanEventsFromSpanEvents)", () => {
+    const withFork = [eventRow("a", "fork"), eventRow("a", "import")];
+    expect(
+      stripAdminOnlyEventRows(withFork, false).map((r) => JSON.parse(r.metadata).event)
+    ).toEqual(["fork", "import"]);
+
+    const withoutFork = [eventRow("b", "import")];
+    expect(stripAdminOnlyEventRows(withoutFork, false)).toHaveLength(1);
+  });
+
+  test("keeps user span events and non-event rows regardless of admin", () => {
+    const rows = [
+      { spanId: "a", kind: "SPAN_EVENT", message: "exception", metadata: "{}" },
+      { spanId: "a", kind: "SPAN", message: "trigger.dev/start", metadata: "{}" },
+      { spanId: "a", kind: "LOG_INFO", message: "hello", metadata: "{}" },
+    ];
+    expect(stripAdminOnlyEventRows(rows, false)).toHaveLength(3);
   });
 });

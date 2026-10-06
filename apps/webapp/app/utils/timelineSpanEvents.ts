@@ -153,6 +153,52 @@ function getFriendlyNameForEvent(event: string, properties?: Record<string, any>
   }
 }
 
+type EventRow = { spanId: string; kind: string; message: string; metadata: string };
+
+function internalEventName(row: EventRow): string {
+  try {
+    const parsed = JSON.parse(row.metadata) as unknown;
+    if (parsed && typeof parsed === "object") {
+      const event = (parsed as Record<string, unknown>).event;
+      if (typeof event === "string") {
+        return event;
+      }
+    }
+  } catch {}
+  return row.message;
+}
+
+function isInternalTimelineRow(row: EventRow): boolean {
+  return (
+    (row.kind === "SPAN_EVENT" || row.kind === "ANCESTOR_OVERRIDE") &&
+    row.message.startsWith("trigger.dev/")
+  );
+}
+
+export function stripAdminOnlyEventRows<T extends EventRow>(rows: T[], isAdmin: boolean): T[] {
+  if (isAdmin) {
+    return rows;
+  }
+
+  const spansWithForkEvent = new Set<string>();
+  for (const row of rows) {
+    if (isInternalTimelineRow(row) && internalEventName(row) === "fork") {
+      spansWithForkEvent.add(row.spanId);
+    }
+  }
+
+  return rows.filter((row) => {
+    if (!isInternalTimelineRow(row)) {
+      return true;
+    }
+    const eventName = internalEventName(row);
+    if (!spansWithForkEvent.has(row.spanId) && eventName === "import") {
+      return true;
+    }
+    return !getAdminOnlyForEvent(eventName);
+  });
+}
+
 export function getAdminOnlyForEvent(event: string): boolean {
   switch (event) {
     case "dequeue": {

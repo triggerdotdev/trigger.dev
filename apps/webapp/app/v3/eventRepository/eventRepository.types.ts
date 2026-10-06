@@ -12,7 +12,7 @@ import type {
   TaskEventStatus,
   TaskRun,
 } from "@trigger.dev/database";
-import type { MetricsV1Input } from "@internal/clickhouse";
+import type { MetricsV1Input, TraceChunkCursor } from "@internal/clickhouse";
 import type { DetailedTraceEvent, TaskEventStoreTable } from "../taskEventStore.server";
 
 // ============================================================================
@@ -294,6 +294,27 @@ export type TraceSummary = {
   isTruncated?: boolean;
 };
 
+export type TraceChunkEvent = {
+  spanId: string;
+  parentSpanId: string;
+  runId: string;
+  startTime: Date;
+  startTimeNano: string;
+  duration: number;
+  status: string;
+  kind: string;
+  message: string;
+  metadata: string;
+};
+
+export type { TraceChunkCursor };
+
+export type TraceChunk = {
+  events: Array<TraceChunkEvent>;
+  nextCursor: TraceChunkCursor | null;
+  hasMore: boolean;
+};
+
 export type SpanDetailedSummary = {
   id: string;
   parentId: string | undefined;
@@ -349,6 +370,7 @@ export type TraceDetailedSummary = {
  */
 export interface IEventRepository {
   maximumLiveReloadingSetting: number;
+  maximumTraceViewCount: number;
   // Event insertion methods
   insertMany(events: CreateEventInput[]): void;
   insertManyImmediate(events: CreateEventInput[]): Promise<void>;
@@ -412,6 +434,44 @@ export interface IEventRepository {
     endCreatedAt?: Date,
     options?: { includeDebugLogs?: boolean }
   ): Promise<TraceSummary | undefined>;
+
+  getTraceChunk(
+    storeTable: TaskEventStoreTable,
+    environmentId: string,
+    traceId: string,
+    startCreatedAt: Date,
+    endCreatedAt: Date | undefined,
+    cursor: TraceChunkCursor | undefined,
+    options?: { includeDebugLogs?: boolean; limit?: number }
+  ): Promise<TraceChunk | undefined>;
+
+  getTraceSpanCount(
+    storeTable: TaskEventStoreTable,
+    environmentId: string,
+    traceId: string,
+    startCreatedAt: Date,
+    endCreatedAt: Date | undefined,
+    options?: { includeDebugLogs?: boolean }
+  ): Promise<number | undefined>;
+
+  getTraceErrorEvents(
+    storeTable: TaskEventStoreTable,
+    environmentId: string,
+    traceId: string,
+    startCreatedAt: Date,
+    endCreatedAt: Date | undefined,
+    options?: { includeDebugLogs?: boolean }
+  ): Promise<Array<TraceChunkEvent> | undefined>;
+
+  getTraceSpanWithAncestors(
+    storeTable: TaskEventStoreTable,
+    environmentId: string,
+    traceId: string,
+    startCreatedAt: Date,
+    endCreatedAt: Date | undefined,
+    spanId: string,
+    options?: { includeDebugLogs?: boolean }
+  ): Promise<Array<TraceChunkEvent> | undefined>;
 
   getTraceDetailedSummary(
     storeTable: TaskEventStoreTable,

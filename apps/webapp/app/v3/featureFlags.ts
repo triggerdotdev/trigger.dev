@@ -55,6 +55,7 @@ export const FEATURE_FLAG = {
   apiRateLimitMetricsEnabled: "apiRateLimitMetricsEnabled",
   queueArchivingEnabled: "queueArchivingEnabled",
   supportAccessSettingsEnabled: "supportAccessSettingsEnabled",
+  progressiveTraceLoadingEnabled: "progressiveTraceLoadingEnabled",
 } as const;
 
 export const FeatureFlagCatalog = {
@@ -190,6 +191,7 @@ export const FeatureFlagCatalog = {
   // Shows the org Support Access settings page. Off until every webapp enforces the setting;
   // the org override wins over the global value.
   [FEATURE_FLAG.supportAccessSettingsEnabled]: z.boolean(),
+  [FEATURE_FLAG.progressiveTraceLoadingEnabled]: z.boolean(),
 };
 
 export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;

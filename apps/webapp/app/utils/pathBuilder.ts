@@ -564,6 +564,17 @@ export function v3RunIdempotencyKeyResetPath(
   )}/env/${environmentParam(environment)}/runs/${run.friendlyId}/idempotencyKey/reset`;
 }
 
+export function v3RunTraceChunkPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  run: v3RunForPath
+) {
+  return `/resources/orgs/${organizationParam(organization)}/projects/${projectParam(
+    project
+  )}/env/${environmentParam(environment)}/runs/${run.friendlyId}/trace-chunk`;
+}
+
 export function v3SchedulePath(
   organization: OrgForPath,
   project: ProjectForPath,

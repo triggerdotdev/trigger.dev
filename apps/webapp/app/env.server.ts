@@ -2494,6 +2494,8 @@ const EnvironmentSchema = z
     EVENTS_CLICKHOUSE_MAX_TRACE_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(25_000),
     EVENTS_CLICKHOUSE_MAX_TRACE_DETAILED_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(5_000),
     EVENTS_CLICKHOUSE_MAX_LIVE_RELOADING_SETTING: z.coerce.number().int().default(2000),
+    EVENTS_CLICKHOUSE_TRACE_CHUNK_SIZE: z.coerce.number().int().positive().default(1_000),
+    EVENTS_CLICKHOUSE_MAX_TRACE_VIEW_COUNT: z.coerce.number().int().positive().default(250_000),
 
     // OTLP ingest transform worker pool (opt-in). When enabled, decode/convert/enrich run in a
     // worker_threads pool instead of the request event loop; the single consolidated insert path

@@ -45,6 +45,7 @@ import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { SearchInput } from "~/components/primitives/SearchInput";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { Spinner } from "~/components/primitives/Spinner";
 import { Popover, PopoverArrowTrigger, PopoverContent } from "~/components/primitives/Popover";
 import * as Property from "~/components/primitives/PropertyTable";
 import {
@@ -83,6 +84,7 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { useEventSource } from "~/hooks/useEventSource";
 import { useInitialDimensions } from "~/hooks/useInitialDimensions";
 import { useOrganization } from "~/hooks/useOrganizations";
+import { useProgressiveTrace, type ProgressiveTraceInput } from "~/hooks/useProgressiveTrace";
 import { useProject } from "~/hooks/useProject";
 import { useReplaceSearchParams } from "~/hooks/useReplaceSearchParams";
 import { useSearchParams } from "~/hooks/useSearchParam";
@@ -119,6 +121,7 @@ import {
   v3RunRedirectPath,
   v3RunSpanPath,
   v3RunStreamingPath,
+  v3RunTraceChunkPath,
   v3RunsPath,
 } from "~/utils/pathBuilder";
 import type { SpanOverride } from "~/v3/eventRepository/eventRepository.types";
@@ -284,6 +287,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const url = new URL(request.url);
   const showDebug = url.searchParams.get("showDebug") === "true";
+  const selectedSpanId = url.searchParams.get("span") ?? undefined;
 
   const presenter = new RunPresenter();
   const [error, result] = await tryCatch(
@@ -294,6 +298,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       runFriendlyId: runParam,
       environmentSlug: envParam,
       showDebug,
+      selectedSpanId,
     })
   );
 
@@ -615,29 +620,40 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Trace
   const frozenSpanId = useFrozenValue(selectedSpanId);
   const displaySpanId = selectedSpanId ?? frozenSpanId;
 
+  const { queuedDuration, isTruncated = false, missingAnchor = false } = trace;
+
+  const [errorsOnly, setErrorsOnly] = useState(false);
+
+  const chunkPath = v3RunTraceChunkPath(organization, project, environment, run);
   const {
     events,
     duration,
     rootSpanStatus,
     rootStartedAt,
-    queuedDuration,
     overridesBySpanId,
-    isTruncated = false,
-    missingAnchor = false,
-  } = trace;
+    linkedRunIdBySpanId,
+    isComplete,
+    isTruncated: progressiveIsTruncated,
+  } = useProgressiveTrace(trace as unknown as ProgressiveTraceInput, chunkPath, errorsOnly);
+
+  const traceIsTruncated = isTruncated || progressiveIsTruncated;
 
   const changeToSpan = useDebounce((selectedSpan: string) => {
     replaceSearchParam("span", selectedSpan, { replace: true });
   }, 250);
 
-  const isLiveReloading = shouldLiveReload({ events, maximumLiveReloadingSetting, run });
+  const isLiveReloading = shouldLiveReload({
+    events: events as unknown as TraceEvent[],
+    maximumLiveReloadingSetting,
+    run,
+  });
 
   const revalidator = useRevalidator();
   const streamedEvents = useEventSource(
     v3RunStreamingPath(organization, project, environment, run),
     {
       event: "message",
-      disabled: !isLiveReloading,
+      disabled: !isLiveReloading || !isComplete,
     }
   );
   useEffect(() => {
@@ -651,8 +667,7 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Trace
   const frozenSpanOverrides = useFrozenValue(spanOverrides);
   const displaySpanOverrides = selectedSpanId ? spanOverrides : frozenSpanOverrides;
 
-  // Get the linked run ID for cached spans (map built during RunPresenter walk)
-  const { linkedRunIdBySpanId } = trace;
+  // Get the linked run ID for cached spans (map updated as chunks assemble)
   const selectedSpanLinkedRunId = selectedSpanId
     ? linkedRunIdBySpanId?.[selectedSpanId]
     : undefined;
@@ -672,11 +687,11 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Trace
           min={resizableSettings.parent.main.min}
         >
           <div className="flex h-full flex-col overflow-hidden">
-            {isTruncated && (
+            {traceIsTruncated && (
               <div className="shrink-0 border-b border-grid-bright px-3 py-2">
                 <Callout variant="warning" className="text-sm">
                   {missingAnchor
-                    ? "Trace too large to display completely."
+                    ? "This trace is too large to display."
                     : "This run's trace is partially displayed because it exceeds the view limit."}
                 </Callout>
               </div>
@@ -685,7 +700,7 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Trace
               <TasksTreeView
                 selectedId={selectedSpanId}
                 key={events[0]?.id ?? "-"}
-                events={events}
+                events={events as unknown as TraceEvent[]}
                 onSelectedIdChanged={(selectedSpan) => {
                   //instantly close the panel if no span is selected
                   if (!selectedSpan) {
@@ -706,6 +721,9 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Trace
                 parentRun={run.parentTaskRun}
                 isCompleted={run.completedAt !== null}
                 treeSnapshot={resizable.tree as ResizableSnapshot}
+                errorsOnly={errorsOnly}
+                onErrorsOnlyChanged={setErrorsOnly}
+                isLoadingMore={!isComplete}
               />
             </div>
           </div>
@@ -899,6 +917,9 @@ type TasksTreeViewProps = {
   } | null;
   isCompleted: boolean;
   treeSnapshot?: ResizableSnapshot;
+  errorsOnly: boolean;
+  onErrorsOnlyChanged: (errorsOnly: boolean) => void;
+  isLoadingMore: boolean;
 };
 
 function TasksTreeView({
@@ -916,10 +937,12 @@ function TasksTreeView({
   parentRun,
   isCompleted,
   treeSnapshot,
+  errorsOnly,
+  onErrorsOnlyChanged,
+  isLoadingMore,
 }: TasksTreeViewProps) {
   const isAdmin = useHasAdminAccess();
   const [filterText, setFilterText] = useState("");
-  const [errorsOnly, setErrorsOnly] = useState(false);
   const [showDurations, setShowDurations] = useState(true);
   const [showQueueTime, setShowQueueTime] = useState(false);
   const [scale, setScale] = useState(0);
@@ -976,7 +999,15 @@ function TasksTreeView({
   return (
     <div className="grid h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden">
       <div className="flex items-center justify-between gap-2 border-b border-grid-dimmed px-1.5">
-        <SearchField onChange={setFilterText} />
+        <div className="flex flex-1 items-center gap-1.5">
+          <SearchField onChange={setFilterText} />
+          {isLoadingMore && (filterText !== "" || errorsOnly) && (
+            <span className="flex items-center gap-1 whitespace-nowrap text-xs text-text-dimmed">
+              <Spinner className="size-3" />
+              Still loading…
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-1.5">
           {isAdmin && (
             <Switch
@@ -1002,7 +1033,7 @@ function TasksTreeView({
             variant="secondary/small"
             label="Errors only"
             checked={errorsOnly}
-            onCheckedChange={(e) => setErrorsOnly(e.valueOf())}
+            onCheckedChange={(e) => onErrorsOnlyChanged(e.valueOf())}
           />
         </div>
       </div>
@@ -1050,6 +1081,7 @@ function TasksTreeView({
               scrollRef={treeScrollRef}
               virtualizer={virtualizer}
               autoFocus
+              staticRowHeight
               tree={events}
               nodes={nodes}
               getNodeProps={getInteractiveNodeProps}
@@ -1138,9 +1170,9 @@ function TasksTreeView({
                 </div>
               )}
               onScroll={(scrollTop) => {
-                //sync the scroll to the tree
-                if (timelineScrollRef.current) {
-                  timelineScrollRef.current.scrollTop = scrollTop;
+                const el = timelineScrollRef.current;
+                if (el && Math.abs(el.scrollTop - scrollTop) >= 0.5) {
+                  el.scrollTop = scrollTop;
                 }
               }}
             />
@@ -1392,6 +1424,7 @@ function TimelineView({
             <TreeView
               scrollRef={timelineScrollRef}
               virtualizer={virtualizer}
+              staticRowHeight
               tree={events}
               nodes={nodes}
               getNodeProps={getNodeProps}
@@ -1523,9 +1556,9 @@ function TimelineView({
                 );
               }}
               onScroll={(scrollTop) => {
-                //sync the scroll to the tree
-                if (treeScrollRef.current) {
-                  treeScrollRef.current.scrollTop = scrollTop;
+                const el = treeScrollRef.current;
+                if (el && Math.abs(el.scrollTop - scrollTop) >= 0.5) {
+                  el.scrollTop = scrollTop;
                 }
               }}
             />

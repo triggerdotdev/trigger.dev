@@ -68,6 +68,9 @@ import type {
   SpanSummary,
   StreamedTraceEvent,
   TraceAttributes,
+  TraceChunk,
+  TraceChunkCursor,
+  TraceChunkEvent,
   TraceDetailedSummary,
   TraceEventOptions,
   TraceSummary,
@@ -93,6 +96,10 @@ export class EventRepository implements IEventRepository {
 
   get maximumLiveReloadingSetting() {
     return env.MAXIMUM_LIVE_RELOADING_EVENTS;
+  }
+
+  get maximumTraceViewCount() {
+    return env.EVENTS_CLICKHOUSE_MAX_TRACE_VIEW_COUNT;
   }
 
   constructor(
@@ -469,6 +476,52 @@ export class EventRepository implements IEventRepository {
   ): Promise<TraceSummary | undefined> {
     // Subtree traversal is ClickHouse-only. Dashboard falls back to the full
     // summary when this returns undefined.
+    return undefined;
+  }
+
+  public async getTraceChunk(
+    _storeTable: TaskEventStoreTable,
+    _environmentId: string,
+    _traceId: string,
+    _startCreatedAt: Date,
+    _endCreatedAt: Date | undefined,
+    _cursor: TraceChunkCursor | undefined,
+    _options?: { includeDebugLogs?: boolean; limit?: number }
+  ): Promise<TraceChunk | undefined> {
+    return undefined;
+  }
+
+  public async getTraceSpanCount(
+    _storeTable: TaskEventStoreTable,
+    _environmentId: string,
+    _traceId: string,
+    _startCreatedAt: Date,
+    _endCreatedAt: Date | undefined,
+    _options?: { includeDebugLogs?: boolean }
+  ): Promise<number | undefined> {
+    return undefined;
+  }
+
+  public async getTraceErrorEvents(
+    _storeTable: TaskEventStoreTable,
+    _environmentId: string,
+    _traceId: string,
+    _startCreatedAt: Date,
+    _endCreatedAt: Date | undefined,
+    _options?: { includeDebugLogs?: boolean }
+  ): Promise<TraceChunkEvent[] | undefined> {
+    return undefined;
+  }
+
+  public async getTraceSpanWithAncestors(
+    _storeTable: TaskEventStoreTable,
+    _environmentId: string,
+    _traceId: string,
+    _startCreatedAt: Date,
+    _endCreatedAt: Date | undefined,
+    _spanId: string,
+    _options?: { includeDebugLogs?: boolean }
+  ): Promise<TraceChunkEvent[] | undefined> {
     return undefined;
   }
 
