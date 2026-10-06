@@ -29,6 +29,12 @@ export type DashboardAgentProvider = "anthropic" | "bedrock";
  */
 export const DEFAULT_DASHBOARD_AGENT_MODEL = "claude-sonnet-5";
 export const DEFAULT_DASHBOARD_AGENT_TITLE_MODEL = "claude-haiku-4-5";
+/**
+ * The judge is the agent's only structured-output call. On Bedrock the Sonnet 5 family
+ * gets neither native structured output nor strict tools, so its unenforced JSON drifts
+ * off the schema, and Sonnet 5.5 refuses the forced tool call outright. Haiku 4.5 holds it.
+ */
+export const DEFAULT_DASHBOARD_AGENT_JUDGE_MODEL = "claude-haiku-4-5";
 
 function canonicalId(value: string): string {
   return value.startsWith("anthropic:") ? value.slice("anthropic:".length) : value;
@@ -53,9 +59,9 @@ export function dashboardAgentSummaryModel(): string {
   return modelOverride("DASHBOARD_AGENT_SUMMARY_MODEL") ?? dashboardAgentModel();
 }
 
-/** The turn eval judge. Defaults to the main model. */
+/** The turn eval judge. Its own default, independent of the main model. */
 export function dashboardAgentJudgeModel(): string {
-  return modelOverride("DASHBOARD_AGENT_JUDGE_MODEL") ?? dashboardAgentModel();
+  return modelOverride("DASHBOARD_AGENT_JUDGE_MODEL") ?? DEFAULT_DASHBOARD_AGENT_JUDGE_MODEL;
 }
 
 /** Chat titles: a short call where the small model is enough. */
