@@ -1,13 +1,5 @@
-// continueRunIfUnblocked must only resolve durable residency in the branches that actually WRITE a
-// snapshot (EXECUTING_WITH_WAITPOINTS, SUSPENDED). Every other execution status is a no-op job: it
-// returns without a transition, so making it depend on MemoryDB residency being resolvable turns an
-// unavailable-residency blip into a failed-and-retried job instead of a clean termination.
-//
-// RED before the fix: routeWire was resolved eagerly, before the status switch, so EVERY no-op status
-// performed one readSnapshotRoute — each assertion below on a no-op status saw 1 instead of 0.
-//
-// A recorder around a REAL store (fault-injector style, not a mock) counts readSnapshotRoute, so this
-// asserts the actual production call, not a stand-in. Real Postgres + real Redis via testcontainers.
+// The existing snapshot read supplies server-side write context. No-op jobs remain no-ops, and actual
+// unblock transitions do not need a second route lookup. A recorder delegates to the real store.
 import { containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { expect } from "vitest";
@@ -18,7 +10,6 @@ import {
   SnapshotResidencyResolver,
   TaskRunExecutionSnapshotStore,
   type RunStore,
-  type SnapshotRouteWire,
 } from "@internal/run-store";
 import type { TaskRunExecutionStatus, TaskRunStatus } from "@trigger.dev/database";
 import { RunEngine } from "../index.js";
@@ -56,7 +47,7 @@ const NOOP_STATUSES: TaskRunExecutionStatus[] = [
 
 describe("continueRunIfUnblocked route resolution", () => {
   containerTest(
-    "no-op statuses resolve zero routes; only the writing branches resolve, and only when route-less",
+    "no-op statuses remain unchanged and writing branches reuse snapshot context without route lookups",
     async ({ prisma, redisOptions }) => {
       const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
       const snapshotStore = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
@@ -67,7 +58,6 @@ describe("continueRunIfUnblocked route resolution", () => {
         resolveDial: () => "redis-only",
         residencyResolver: new SnapshotResidencyResolver({
           store: snapshotStore,
-          taskRunExists: async (id: string) => (await prisma.taskRun.count({ where: { id } })) > 0,
         }),
         resolveCompletedWaitpoints: createCompletedWaitpointResolver(delegate),
         logicalRunStoreRoute: ROUTE,
@@ -178,28 +168,30 @@ describe("continueRunIfUnblocked route resolution", () => {
           expect(calls, "canceled-while-suspended returns before resolving residency").toBe(0);
         }
 
-        // ---- EXECUTING_WITH_WAITPOINTS: writes, so resolves exactly once when route-less ----
+        // ---- Writing branches reuse the already-read snapshot's durable context. ----
         await seedStatus("EXECUTING_WITH_WAITPOINTS", { runStatus: "EXECUTING" });
         {
           const { result, calls } = await continueRouteless();
           expect(result.status).toBe("unblocked");
-          expect(calls, "the writing branch resolves residency exactly once").toBe(1);
+          expect(calls, "the writing branch reuses its snapshot context").toBe(0);
+          expect((await latest())?.executionStatus).toBe("EXECUTING");
+          expect(await prisma.taskRunExecutionSnapshot.count({ where: { runId: run.id } })).toBe(0);
         }
 
-        // ---- ...and zero times when a route is carried ----
+        // A second blocking cycle remains route-free and advances the same resident head.
         await seedStatus("EXECUTING_WITH_WAITPOINTS", { runStatus: "EXECUTING" });
         {
           recorder.readSnapshotRouteCalls = 0;
-          const carried: SnapshotRouteWire = { v: 1, residency: "redis-primary", route: ROUTE };
           const result = await (engine as any).waitpointSystem.continueRunIfUnblocked({
             runId: run.id,
-            snapshotRoute: carried,
           });
           expect(result.status).toBe("unblocked");
           expect(
             recorder.readSnapshotRouteCalls,
-            "a carried route must cost ZERO durable resolutions"
+            "the existing snapshot read must supply write context"
           ).toBe(0);
+          expect((await latest())?.executionStatus).toBe("EXECUTING");
+          expect(await prisma.taskRunExecutionSnapshot.count({ where: { runId: run.id } })).toBe(0);
         }
       } finally {
         await engine.quit();

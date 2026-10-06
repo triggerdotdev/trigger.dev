@@ -1381,6 +1381,9 @@ const EnvironmentSchema = z
       .string()
       .default(process.env.REDIS_TLS_DISABLED ?? "false"),
 
+    // Infrastructure endpoint only. Modes and organization overrides are polled feature flags.
+    RUN_ENGINE_SNAPSHOT_STORE_REDIS_URL: z.string().optional(),
+
     RUN_ENGINE_RUN_LOCK_REDIS_HOST: z
       .string()
       .optional()

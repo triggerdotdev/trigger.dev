@@ -1,6 +1,5 @@
-// The snapshot route STAMPED on the queue message at enqueue (from the run's birth residency), not the
-// live per-org dial, governs residency across enqueue -> dial-change -> dequeue -> lock. Proven through
-// the ACTUAL run-engine queue (real enqueueSystem + dequeueSystem) against REAL Postgres + Redis, no mocks.
+// Durable birth evidence, not a changed per-org dial, governs enqueue -> dequeue -> lock. Internal
+// queue hints need not cross the unchanged worker response. Real engine, Postgres and Redis, no mocks.
 import { assertNonNullable, containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { setTimeout } from "node:timers/promises";
@@ -37,7 +36,6 @@ describe("RunEngine queue poll-lag snapshot route", () => {
         resolveDial: () => dial,
         residencyResolver: new SnapshotResidencyResolver({
           store,
-          taskRunExists: async (id) => (await prisma.taskRun.count({ where: { id } })) > 0,
         }),
         logicalRunStoreRoute: ROUTE,
       });
@@ -100,10 +98,12 @@ describe("RunEngine queue poll-lag snapshot route", () => {
           enableFastPath: true,
         });
 
-        // The consumer's poll lags: its dial no longer sees the org's enrollment. A route read at this
-        // dial returns undefined, so ONLY the already-stamped wire route can carry residency now.
+        // The consumer's poll lags, but a durable resolution still identifies the original residency.
         dial = undefined;
-        expect(await runStore.readSnapshotRoute(run.id, orgId)).toBeUndefined();
+        expect(await runStore.readSnapshotRoute(run.id, orgId)).toMatchObject({
+          runId: run.id,
+          residency: "redis-primary",
+        });
 
         // Dequeue through the REAL dequeue path: it parses the stamped route and threads it into the
         // lock transition. Retry while the debounced mover promotes the message to the worker queue.
@@ -118,6 +118,7 @@ describe("RunEngine queue poll-lag snapshot route", () => {
         expect(dequeued.length).toBe(1);
         const locked = dequeued[0];
         expect(locked.run.id).toBe(run.id);
+        expect(locked).not.toHaveProperty("snapshotRoute");
 
         // The lock transition honored the run's TRUE residency (redis-primary from the stamped route),
         // not the undefined dial: no Postgres TRES row, and the MemoryDB head advanced to it.

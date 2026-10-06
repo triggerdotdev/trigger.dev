@@ -1,10 +1,5 @@
-// Performance / inactive-path invariants, proven against REAL Postgres + REAL Redis (no infra mocks):
-//   Inv 1: a never-enrolled org (resolveDial -> undefined, no route) never consults the residency
-//          resolver on birth OR transition — the inert Postgres passthrough. (See also
-//          taskRunExecutionSnapshotStore.dialResidency.test.ts "never-enrolled ... inert".)
-//   Inv 3: a transition carrying a VALID mirrored route resolves residency from MemoryDB and performs
-//          ZERO Postgres `taskRunExists` lookups.
-// The injected resolver / taskRunExists are counted with spy CLOSURES; the databases themselves are real.
+// Durable Postgres evidence and carried server-only evidence avoid MemoryDB residency discovery.
+// Count calls on the real resolver, with real Postgres and Redis underneath it.
 import { describe, expect } from "vitest";
 import { containerTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
@@ -83,7 +78,6 @@ describe("TaskRunExecutionSnapshotStore inactive-path performance invariants", (
 
         const resolver = new CountingResolver({
           store,
-          taskRunExists: async (id) => (await prisma.taskRun.count({ where: { id } })) > 0,
         });
         const inert = new TaskRunExecutionSnapshotStore(delegate, {
           store,
@@ -111,7 +105,7 @@ describe("TaskRunExecutionSnapshotStore inactive-path performance invariants", (
   );
 
   containerTest(
-    "Inv 3: a carried mirrored route resolves from MemoryDB and performs ZERO Postgres taskRunExists lookups",
+    "a carried mirrored route advances both stores without residency discovery",
     async ({ prisma, redisOptions }) => {
       const delegate = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
       const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
@@ -135,15 +129,7 @@ describe("TaskRunExecutionSnapshotStore inactive-path performance invariants", (
         });
         expect(await store.readBirthResidency(runId)).toBe("mirrored");
 
-        // taskRunExists is a Postgres existence read; a committed-run resolution must never reach it.
-        let taskRunExistsCalls = 0;
-        const resolver = new SnapshotResidencyResolver({
-          store,
-          taskRunExists: async (id) => {
-            taskRunExistsCalls++;
-            return (await prisma.taskRun.count({ where: { id } })) > 0;
-          },
-        });
+        const resolver = new CountingResolver({ store });
 
         // A lagging pod (resolveDial -> undefined) that honors the carried route rather than shortcutting.
         const routed = new TaskRunExecutionSnapshotStore(delegate, {
@@ -164,7 +150,7 @@ describe("TaskRunExecutionSnapshotStore inactive-path performance invariants", (
 
         expect(await tresCount(prisma, transitionId)).toBe(1); // mirrored => Postgres row written
         expect((await store.getLatest(runId))?.id).toBe(transitionId); // head advanced
-        expect(taskRunExistsCalls).toBe(0); // residency came from MemoryDB; no Postgres existence lookup
+        expect(resolver.resolveCalls).toBe(0);
       } finally {
         await store.quit();
       }

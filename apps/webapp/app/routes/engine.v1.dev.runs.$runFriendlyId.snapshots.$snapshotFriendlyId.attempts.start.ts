@@ -51,7 +51,6 @@ const { action } = createActionApiRoute(
         runId: RunId.toId(runFriendlyId),
         snapshotId: SnapshotId.toId(snapshotFriendlyId),
         isWarmStart: body.isWarmStart,
-        snapshotRoute: body.snapshotRoute,
       });
 
       const defaultMachinePreset = machinePresetFromName(defaultMachine);

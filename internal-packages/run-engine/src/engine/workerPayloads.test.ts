@@ -43,7 +43,7 @@ describe("worker payload validation", () => {
     }
   });
 
-  it("coerces cancellation dates and rejects invalid dates", () => {
+  it("coerces cancellation dates, ignores legacy routes and rejects invalid dates", () => {
     const input = {
       runId: "run_123",
       completedAt: "2026-01-01T00:00:00.000Z",
@@ -51,7 +51,7 @@ describe("worker payload validation", () => {
     };
 
     expect(workerCatalog.cancelRun.schema.parse(input)).toEqual({
-      ...input,
+      runId: input.runId,
       completedAt: new Date(input.completedAt),
     });
     expect(

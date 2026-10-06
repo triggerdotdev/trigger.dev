@@ -230,7 +230,6 @@ for (const scenario of [
           projectId: environment.project.id,
           timestamp: Date.now(),
           checkpointId,
-          snapshotRoute: firstRestore.snapshotRoute,
           error: {
             type: "INTERNAL_ERROR",
             code: "TASK_RUN_DEQUEUED_MAX_RETRIES",

@@ -48,7 +48,6 @@ describe("runInTransaction fails closed when the Redis unit is not published (F2
         resolveDial: () => "redis-only",
         residencyResolver: new SnapshotResidencyResolver({
           store,
-          taskRunExists: async (id: string) => (await prisma.taskRun.count({ where: { id } })) > 0,
         }),
         logicalRunStoreRoute: ROUTE,
         // Evict the base AFTER prepare, BEFORE finalize, only on the armed transition: the real finalize
@@ -111,7 +110,6 @@ describe("runInTransaction fails closed when the Redis unit is not published (F2
         resolveDial: () => "redis-only",
         residencyResolver: new SnapshotResidencyResolver({
           store,
-          taskRunExists: async (id: string) => (await prisma.taskRun.count({ where: { id } })) > 0,
         }),
         logicalRunStoreRoute: ROUTE,
         generateTransitionToken: () => {
@@ -189,7 +187,6 @@ describe("runInTransaction fails closed when the Redis unit is not published (F2
         resolveDial: () => "redis-only",
         residencyResolver: new SnapshotResidencyResolver({
           store,
-          taskRunExists: async (id: string) => (await prisma.taskRun.count({ where: { id } })) > 0,
         }),
         logicalRunStoreRoute: ROUTE,
         generateTransitionToken: () => {
@@ -263,7 +260,6 @@ describe("runInTransaction fails closed when the Redis unit is not published (F2
         resolveDial: () => "redis-only",
         residencyResolver: new SnapshotResidencyResolver({
           store,
-          taskRunExists: async (id: string) => (await prisma.taskRun.count({ where: { id } })) > 0,
         }),
         logicalRunStoreRoute: ROUTE,
         generateTransitionToken: () => {

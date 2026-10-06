@@ -14,7 +14,7 @@ import type {
 import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
 import type { Residency, ShardKey } from "@trigger.dev/core/v3/isomorphic";
 import type { CompletedWaitpointRecord } from "./redisSnapshotStore.js";
-import type { SnapshotRoute, SnapshotRouteWire } from "./snapshotResidency.js";
+import type { SnapshotReadContext, SnapshotRoute, SnapshotRouteWire } from "./snapshotResidency.js";
 
 /**
  * Client accepted by the read methods. Reads route through the replica by
@@ -38,7 +38,11 @@ export type IdempotencyKeyRunMatch = {
  * Redis); absent or `true` writes it (every Postgres-backed run, and the default when no decorator
  * is wired). The store reads THIS, never the org dial, so residency is a per-run decision.
  */
-export type SnapshotWriteControl = { writeSnapshotRow?: boolean };
+export type SnapshotWriteControl = {
+  writeSnapshotRow?: boolean;
+  /** Internal metadata merged by the decorator and committed with the snapshot, not a TaskRun field. */
+  snapshotMetadata?: Prisma.InputJsonValue;
+};
 
 /**
  * The run's versioned storage route, stamped on the queue message from its BIRTH residency and passed
@@ -235,6 +239,8 @@ export type CreateRunData = {
 };
 
 export type CreateRunInput = {
+  /** Already-loaded server org flags. Undefined asks the snapshot decorator to look them up. */
+  organizationFlags?: unknown;
   data: CreateRunData;
   snapshot: CreateRunSnapshotInput;
   associatedWaitpoint?: RunAssociatedWaitpointInput;
@@ -248,6 +254,8 @@ export type CreateRunInput = {
 };
 
 export type CreateCancelledRunInput = {
+  /** Already-loaded server org flags, never persisted on the run or snapshot. */
+  organizationFlags?: unknown;
   data: CreateRunData & {
     error: Prisma.InputJsonValue;
     completedAt: Date;
@@ -820,38 +828,34 @@ export interface RunStore {
     tx?: PrismaClientOrTransaction
   ): Promise<void>;
 
-  // Snapshot group
+  // Snapshot group. Optional organizationId arguments are existing server-owned context for rollout
+  // selection, not client claims, replacement tenant filters, or cached run-to-organization mappings.
   findLatestExecutionSnapshot(
     runId: string,
     client?: ReadClient,
     // When set, scopes the read to this environment (tenant boundary); a run in another env reads as
     // not-found. Omit to read regardless of environment (internal callers).
-    environmentId?: string
+    environmentId?: string,
+    // Server-owned tenant context when already available (e.g. dequeue). Never client transport.
+    organizationId?: SnapshotReadContext
   ): Promise<LatestExecutionSnapshotRead | null>;
   findExecutionSnapshot<T extends Prisma.TaskRunExecutionSnapshotFindFirstArgs>(
     args: Prisma.SelectSubset<T, Prisma.TaskRunExecutionSnapshotFindFirstArgs>,
-    client?: ReadClient
+    client?: ReadClient,
+    organizationId?: SnapshotReadContext
   ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<T> | null>;
   findManyExecutionSnapshots<T extends Prisma.TaskRunExecutionSnapshotFindManyArgs>(
     args: Prisma.SelectSubset<T, Prisma.TaskRunExecutionSnapshotFindManyArgs>,
-    client?: ReadClient
+    client?: ReadClient,
+    organizationId?: SnapshotReadContext
   ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<T>[]>;
   createExecutionSnapshot(
     input: CreateExecutionSnapshotInput,
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<{ include: { checkpoint: true } }>>;
-  // The run's versioned storage route, from its durable BIRTH residency, to stamp on a queue message
-  // so a poll-lagging consumer honors the run's true residency. Undefined for a never-enrolled /
-  // pre-cutover run (no route, no cost). A store with no snapshot decorator returns undefined.
-  // `forceDurable` is for scheduled/background promotions (delayed, version-parked): they resolve the
-  // route from durable state even on a pod whose dial reads undefined, not via the hot-path gate.
-  // `knownToExist` is for a caller whose primary query already returned this TaskRun row (a TTL batch's
-  // findRuns): it skips the resolver's per-run existence probe rather than issue a redundant query.
-  readSnapshotRoute(
-    runId: string,
-    organizationId: string,
-    options?: { forceDurable?: boolean; knownToExist?: boolean }
-  ): Promise<SnapshotRoute | undefined>;
+  // Server-only fallback for jobs without preceding snapshot context. The decorator resolves actual
+  // birth storage or throws; an undecorated Postgres store returns undefined without extra work.
+  readSnapshotRoute(runId: string, organizationId: string): Promise<SnapshotRoute | undefined>;
 
   // Implicit-join group
   /** `runId` (when known) routes to the run's store — the snapshot + its join co-locate with the run;
@@ -859,14 +863,16 @@ export interface RunStore {
   findSnapshotCompletedWaitpointIds(
     snapshotId: string,
     client?: ReadClient,
-    runId?: string
+    runId?: string,
+    organizationId?: SnapshotReadContext
   ): Promise<string[]>;
   /** As above, but reports in the SAME read whether the snapshot is visible on the reader: `present=false`
    * means this reader lacks the snapshot, so its empty id list is not authoritative (repair from primary). */
   findSnapshotCompletedWaitpointIdsWithPresence(
     snapshotId: string,
     client?: ReadClient,
-    runId?: string
+    runId?: string,
+    organizationId?: SnapshotReadContext
   ): Promise<{ present: boolean; ids: string[] }>;
   /** Run ids connected to a waitpoint (WaitpointRunConnection / `_WaitpointRunConnections`), this DB only. */
   findWaitpointConnectedRunIds(waitpointId: string, client?: ReadClient): Promise<string[]>;

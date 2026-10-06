@@ -43,9 +43,32 @@ function birthUnit(runId: string, over: Partial<PreparedPgUnit> = {}): PreparedP
   };
 }
 
-const alwaysExists = async () => true;
-
 describe("RedisSnapshotStore quarantine atomic move (F10)", () => {
+  redisTest(
+    "a late quarantine cannot poison a unit that already finalized",
+    async ({ redisOptions }) => {
+      const store = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
+      try {
+        const unit = birthUnit("run_quarantine_already_finalized");
+        await store.prepare(unit);
+        await store.finalize(unit.runId, unit.transitionToken);
+        expect(await store.hasPreparedUnit(unit.runId)).toBe(false);
+
+        // Recovery read the unit before another worker finalized it. Its delayed quarantine must
+        // not manufacture a run-wide fail-closed marker after the live prepared key disappeared.
+        expect((await store.quarantinePreparedUnit(unit, "redis-primary-null")).moved).toBe(false);
+        expect(await store.readPendingState(unit.runId)).toEqual({
+          prepared: false,
+          quarantined: false,
+        });
+        expect(await store.readQuarantinedUnit(unit.runId)).toBeUndefined();
+        expect((await store.getLatest(unit.runId))?.id).toBe("b0");
+      } finally {
+        await store.quit();
+      }
+    }
+  );
+
   redisTest(
     "quarantine writes the durable record AND removes the prepared unit when the token matches",
     async ({ redisOptions }) => {
@@ -112,7 +135,7 @@ describe("RedisSnapshotStore quarantine atomic move (F10)", () => {
         await store.quarantinePreparedUnit(unit, "redis-primary-null");
         expect(await store.readPendingState(runId)).toEqual({ prepared: false, quarantined: true });
 
-        const resolver = new SnapshotResidencyResolver({ store, taskRunExists: alwaysExists });
+        const resolver = new SnapshotResidencyResolver({ store });
         // Without quarantine-awareness this run reads as `absent` (postgres); it MUST fail closed.
         expect(await resolver.resolve(runId)).toEqual({ kind: "error" });
       } finally {

@@ -34,7 +34,6 @@ function buildEngine(
     resolveDial: () => dialRef.dial,
     residencyResolver: new SnapshotResidencyResolver({
       store,
-      taskRunExists: async (id) => (await prisma.taskRun.count({ where: { id } })) > 0,
     }),
     logicalRunStoreRoute: ROUTE,
   });

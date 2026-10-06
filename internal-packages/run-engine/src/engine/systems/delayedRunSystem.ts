@@ -1,12 +1,12 @@
 import { startSpan } from "@internal/tracing";
 import type { SystemResources } from "./systems.js";
+import { snapshotRouteFromSnapshot } from "@internal/run-store";
 import type { PrismaClientOrTransaction, TaskRun } from "@trigger.dev/database";
 import { getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
 import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/isomorphic";
 import type { EnqueueSystem } from "./enqueueSystem.js";
 import { deletedEnvironmentReason, MISSING_ENVIRONMENT_REASON } from "../controlPlaneResolver.js";
 import { ServiceValidationError } from "../errors.js";
-import { toWireRoute } from "@internal/run-store";
 
 export type DelayedRunSystemOptions = {
   resources: SystemResources;
@@ -27,10 +27,12 @@ export class DelayedRunSystem {
    */
   async rescheduleDelayedRun({
     runId,
+    organizationId,
     delayUntil,
     tx,
   }: {
     runId: string;
+    organizationId?: string;
     delayUntil: Date;
     tx?: PrismaClientOrTransaction;
   }): Promise<TaskRun> {
@@ -40,7 +42,13 @@ export class DelayedRunSystem {
       "rescheduleDelayedRun",
       async () => {
         return await this.$.runLock.lock("rescheduleDelayedRun", [runId], async () => {
-          const snapshot = await getLatestExecutionSnapshot(prisma, runId, this.$.runStore);
+          const snapshot = await getLatestExecutionSnapshot(
+            prisma,
+            runId,
+            this.$.runStore,
+            undefined,
+            organizationId
+          );
 
           // Check if the run is still in DELAYED status (or legacy RUN_CREATED for older runs)
           if (
@@ -57,6 +65,7 @@ export class DelayedRunSystem {
             {
               delayUntil: delayUntil,
               snapshot: {
+                snapshotRoute: snapshotRouteFromSnapshot(snapshot),
                 environmentId: snapshot.environmentId,
                 environmentType: snapshot.environmentType,
                 projectId: snapshot.projectId,
@@ -204,14 +213,6 @@ export class DelayedRunSystem {
         }
       }
 
-      // This is a scheduled/background promotion that may run on any pod, so resolve the run's route
-      // durably (forceDurable) rather than let enqueueRun take its dial-gated fallback. On a pod whose
-      // dial reads undefined the fallback returns no route, which would strand a redis-primary run's
-      // QUEUED snapshot on the never-enrolled Postgres shortcut while its head stays in MemoryDB.
-      const promoteRoute = await this.$.runStore.readSnapshotRoute(runId, env.organizationId, {
-        forceDurable: true,
-      });
-
       // Skip the lock in enqueueRun since we already hold it.
       // includeTtl: true so the run's TTL is armed from the moment it enters
       // the queue (not from taskRun.createdAt). The TTL system tracks runs
@@ -220,11 +221,12 @@ export class DelayedRunSystem {
       await this.enqueueSystem.enqueueRun({
         run,
         env,
+        previousSnapshotId: snapshot.id,
+        snapshotRoute: snapshotRouteFromSnapshot(snapshot),
         batchId: run.batchId ?? undefined,
         skipRunLock: true,
         includeTtl: true,
         anchorEligibilityAtQueuePosition: true,
-        snapshotRoute: promoteRoute ? toWireRoute(promoteRoute) : undefined,
       });
 
       const queuedAt = new Date();

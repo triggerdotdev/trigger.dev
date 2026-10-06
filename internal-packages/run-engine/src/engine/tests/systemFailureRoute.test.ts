@@ -1,9 +1,6 @@
-// ADDENDUM #3: the exceptional-failure entry systemFailure mints a transition on whatever pod calls
-// it (e.g. the tryNackAndRequeue dead-letter fallback, or an engine-detected crash). It must carry the
-// run's route so the transition honors durable residency on a poll-lagging pod. Here a PRODUCER
-// (dial=redis-only) births a redis-primary run; the CONSUMER (dial=undefined) drives it to EXECUTING
-// and then systemFailure with the carried route. The resulting transition must stay in MemoryDB with
-// no TRES row. No mocks.
+// Exceptional failure follows stored residency without a client route. A lagging consumer drives
+// a Redis-primary run to EXECUTING, then systemFailure; the terminal transition must stay in
+// MemoryDB without a TRES row.
 import { assertNonNullable, containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { setTimeout } from "node:timers/promises";
@@ -42,7 +39,6 @@ function makeStore(
     resolveDial: dial,
     residencyResolver: new SnapshotResidencyResolver({
       store: snapshotStore,
-      taskRunExists: async (id: string) => (await prisma.taskRun.count({ where: { id } })) > 0,
     }),
     resolveCompletedWaitpoints: createCompletedWaitpointResolver(delegate),
     logicalRunStoreRoute: ROUTE,
@@ -51,7 +47,7 @@ function makeStore(
 
 describe("RunEngine systemFailure route (ADDENDUM #3)", () => {
   containerTest(
-    "systemFailure with a carried route stays resident on a dial=undefined consumer (no TRES)",
+    "systemFailure follows stored residency on a dial=undefined consumer (no TRES)",
     async ({ prisma, redisOptions }) => {
       const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
       const snapshotStore = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
@@ -122,18 +118,15 @@ describe("RunEngine systemFailure route (ADDENDUM #3)", () => {
           await setTimeout(200);
         }
         assertNonNullable(dq);
-        const controllerRoute = dq.snapshotRoute;
         const attempt = await consumer.startRunAttempt({
           runId,
           snapshotId: dq.snapshot.id,
-          snapshotRoute: controllerRoute,
         });
         expect(attempt.snapshot.executionStatus).toBe("EXECUTING");
 
         const result = await consumer.runAttemptSystem.systemFailure({
           runId,
           error: { type: "INTERNAL_ERROR", code: "TASK_RUN_CRASHED", message: "boom" },
-          snapshotRoute: controllerRoute,
         });
 
         // Whatever the outcome (retry or terminal), the transition it wrote must be resident.

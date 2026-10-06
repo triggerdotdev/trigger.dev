@@ -32,6 +32,10 @@ export class RescheduleTaskRunService extends BaseService {
       this._prisma
     );
 
-    return engine.rescheduleDelayedRun({ runId: taskRun.id, delayUntil: delay });
+    return engine.rescheduleDelayedRun({
+      runId: taskRun.id,
+      organizationId: taskRun.organizationId ?? undefined,
+      delayUntil: delay,
+    });
   }
 }

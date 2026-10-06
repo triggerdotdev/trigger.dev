@@ -1,4 +1,4 @@
-import type { SnapshotRouteWire, WorkerManifest } from "@trigger.dev/core/v3";
+import type { WorkerManifest } from "@trigger.dev/core/v3";
 import {
   WarmStartClient,
   WORKLOAD_HEADERS,
@@ -193,7 +193,6 @@ export class ManagedRunController {
     podScheduledAt,
     isWarmStart,
     previousRunId,
-    snapshotRoute,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
@@ -201,8 +200,6 @@ export class ManagedRunController {
     podScheduledAt?: Date;
     isWarmStart?: boolean;
     previousRunId?: string;
-    // The run's storage route from the DequeuedMessage (warm start) or the cold-start env var.
-    snapshotRoute?: SnapshotRouteWire;
   }) {
     this.sendDebugLog({
       runId: runFriendlyId,
@@ -261,7 +258,6 @@ export class ManagedRunController {
         dequeuedAt,
         podScheduledAt,
         isWarmStart,
-        snapshotRoute,
       });
     };
 
@@ -431,7 +427,6 @@ export class ManagedRunController {
         dequeuedAt: nextRun.dequeuedAt,
         isWarmStart: true,
         previousRunId,
-        snapshotRoute: nextRun.snapshotRoute,
       }).finally(() => {});
     } catch (error) {
       this.sendDebugLog({
@@ -591,7 +586,6 @@ export class ManagedRunController {
         snapshotFriendlyId: this.env.TRIGGER_SNAPSHOT_ID,
         dequeuedAt: this.env.TRIGGER_DEQUEUED_AT_MS,
         podScheduledAt: this.env.TRIGGER_POD_SCHEDULED_AT_MS,
-        snapshotRoute: this.env.TRIGGER_SNAPSHOT_ROUTE,
       }).finally(() => {});
       return;
     }

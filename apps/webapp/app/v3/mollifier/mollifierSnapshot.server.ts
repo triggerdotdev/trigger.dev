@@ -14,3 +14,21 @@ export function serialiseMollifierSnapshot(input: MollifierSnapshot): string {
 export function deserialiseMollifierSnapshot(serialised: string): MollifierSnapshot {
   return deserialiseSnapshot<MollifierSnapshot>(serialised);
 }
+
+/** Buffered environments carry historical flags, not a current birth-time decision. */
+export function prepareMollifierReplay(snapshot: MollifierSnapshot): MollifierSnapshot {
+  const environment = snapshot.environment;
+  if (!environment || typeof environment !== "object" || !("organization" in environment)) {
+    return snapshot;
+  }
+  const organization = environment.organization;
+  if (!organization || typeof organization !== "object") return snapshot;
+  return {
+    ...snapshot,
+    environment: {
+      ...environment,
+      // undefined means not loaded, so the existing snapshot resolver fetches the current flags.
+      organization: { ...organization, featureFlags: undefined },
+    },
+  };
+}

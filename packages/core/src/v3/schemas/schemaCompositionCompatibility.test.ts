@@ -116,6 +116,7 @@ describe("schema composition compatibility", () => {
           import { DequeuedMessage } from "./src/v3/schemas/runEngine.ts";
           import { WorkerApiDequeueRequestBody, WorkerApiRunAttemptStartRequestBody } from "./src/v3/runEngineWorker/supervisor/schemas.ts";
 
+          // An older sender may still attach the retired client route; it must be stripped, not fail.
           const snapshotRoute = { version: 1, residency: "postgres", organizationId: "org_1" };
 
           export const parsed = {
@@ -178,12 +179,14 @@ describe("schema composition compatibility", () => {
       const bundledModule = await import(pathToFileURL(bundlePath).href);
 
       expect(bundledModule.parsed).toMatchObject({
-        dequeued: { run: { id: "run_1" }, snapshotRoute: { residency: "postgres" } },
-        attemptStart: { isWarmStart: true, snapshotRoute: { residency: "postgres" } },
+        dequeued: { run: { id: "run_1" } },
+        attemptStart: { isWarmStart: true },
         dequeue: {
           subscriptions: [{ class: "scheduled", phase: "restore", compat: "any", weight: 0.25 }],
         },
       });
+      expect(bundledModule.parsed.dequeued).not.toHaveProperty("snapshotRoute");
+      expect(bundledModule.parsed.attemptStart).not.toHaveProperty("snapshotRoute");
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }

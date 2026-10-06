@@ -40,6 +40,7 @@ export const loader = createLoaderApiRoute(
 
       const executionData = await engine.getRunExecutionData({
         runId: RunId.toId(params.runFriendlyId),
+        organizationId: authentication.environment.organizationId,
       });
 
       if (!executionData) {

@@ -401,7 +401,6 @@ describe("run-crd carries every shared create-option or excludes it on purpose",
     "runFriendlyId",
     "snapshotId",
     "snapshotFriendlyId",
-    "snapshotRoute",
     "traceContext",
     "annotations",
     "hasPrivateLink",
@@ -417,8 +416,6 @@ describe("run-crd carries every shared create-option or excludes it on purpose",
    * creation by another route, such as the runner's name or its token Secret.
    */
   const RUN_CRD_EXCLUDED: Partial<Record<ListedKey, string>> = {
-    snapshotRoute:
-      "Superseded transport, not a run-crd gap: snapshot routing is becoming server-owned (a run's residency is decided from its stored state, not a runner-provided field), so the runner-facing route is being removed rather than built into the Runner. This entry, the field, and the pod backends that set it come out together when that lands.",
     nextAttemptNumber:
       "Not a spec field: it selects the runner's name via getRunnerId, so the attempt lives in the object's name rather than in the spec runnerBodyFor builds.",
     deploymentToken:
@@ -459,9 +456,6 @@ describe("run-crd carries every shared create-option or excludes it on purpose",
     runFriendlyId: { runFriendlyId: "run_other" },
     snapshotId: { snapshotId: "snapshot_other_internal" },
     snapshotFriendlyId: { snapshotFriendlyId: "snapshot_other" },
-    snapshotRoute: {
-      snapshotRoute: { version: 1, residency: "redis-primary", organizationId: "org_abc" },
-    },
     traceContext: { traceContext: { traceparent: "00-probe-probe-01" } },
     annotations: {
       annotations: {
@@ -1683,21 +1677,6 @@ describe("settleRestoreFailure", () => {
       reason: "StartError",
       message: "pulling the image: 401",
     });
-  });
-
-  it("sends the dequeued run's snapshot route with the report", async () => {
-    const d = deps();
-    const snapshotRoute = {
-      version: 1 as const,
-      residency: "mirrored" as const,
-      organizationId: "org_1",
-    };
-
-    await settleRestoreFailure({ ...failure("SnapshotNodeGone"), snapshotRoute }, d);
-
-    expect(d.report).toHaveBeenCalledWith(
-      expect.objectContaining({ outcome: "fail", snapshotRoute })
-    );
   });
 
   // The Runner may be running a guest the watch never saw start.

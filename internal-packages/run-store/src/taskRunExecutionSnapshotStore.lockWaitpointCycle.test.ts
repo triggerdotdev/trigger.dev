@@ -56,7 +56,6 @@ describe("redis-primary lockRunToWorker carries the completed-waitpoint cycle (F
         resolveDial: () => "redis-only",
         residencyResolver: new SnapshotResidencyResolver({
           store,
-          taskRunExists: async (id: string) => (await prisma.taskRun.count({ where: { id } })) > 0,
         }),
         logicalRunStoreRoute: ROUTE,
       });
@@ -165,7 +164,6 @@ describe("redis-primary lockRunToWorker carries the completed-waitpoint cycle (F
         resolveDial: () => "redis-only",
         residencyResolver: new SnapshotResidencyResolver({
           store,
-          taskRunExists: async (id: string) => (await prisma.taskRun.count({ where: { id } })) > 0,
         }),
         logicalRunStoreRoute: ROUTE,
         // Drop the head cycle AFTER the lock's prepare/commit, BEFORE its finalize: buildCycle has already
@@ -286,7 +284,6 @@ describe("redis-primary lockRunToWorker carries the completed-waitpoint cycle (F
         resolveDial: () => "redis-only",
         residencyResolver: new SnapshotResidencyResolver({
           store,
-          taskRunExists: async (id: string) => (await prisma.taskRun.count({ where: { id } })) > 0,
         }),
         logicalRunStoreRoute: ROUTE,
       });

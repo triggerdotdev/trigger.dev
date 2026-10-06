@@ -159,6 +159,7 @@ describe("the pass-through forwards every declared parameter", () => {
       "runId",
       "client",
       "environmentId",
+      "organizationId",
     ]);
   });
 

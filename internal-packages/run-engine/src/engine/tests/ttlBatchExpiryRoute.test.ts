@@ -60,20 +60,13 @@ class CountingReads implements SnapshotResidencyReads {
   }
 }
 
-// A REAL resolver over the real RedisSnapshotStore and the real Prisma existence query, with both the
-// durable reads and the existence probe counted. Lets the sweep assert the fast path did no durable
-// residency resolution and no existence query.
-function countingResolver(snapshotStore: RedisSnapshotStore, prisma: any) {
+// Count durable reads on the real resolver. The removed TaskRun existence callback is not a seam.
+function countingResolver(snapshotStore: RedisSnapshotStore) {
   const reads = new CountingReads(snapshotStore);
-  let existenceQueries = 0;
   const resolver = new SnapshotResidencyResolver({
     store: reads,
-    taskRunExists: async (id: string) => {
-      existenceQueries++;
-      return (await prisma.taskRun.count({ where: { id } })) > 0;
-    },
   });
-  return { resolver, reads, existenceCount: () => existenceQueries };
+  return { resolver, reads };
 }
 
 function makeEngine(
@@ -92,7 +85,6 @@ function makeEngine(
       resolver ??
       new SnapshotResidencyResolver({
         store: snapshotStore,
-        taskRunExists: async (id: string) => (await prisma.taskRun.count({ where: { id } })) > 0,
       }),
     resolveCompletedWaitpoints: createCompletedWaitpointResolver(delegate),
     logicalRunStoreRoute: ROUTE,
@@ -131,7 +123,6 @@ function makeSweepEngine(
       resolver ??
       new SnapshotResidencyResolver({
         store: snapshotStore,
-        taskRunExists: async (id: string) => (await prisma.taskRun.count({ where: { id } })) > 0,
       }),
     resolveCompletedWaitpoints: createCompletedWaitpointResolver(delegate),
     logicalRunStoreRoute: ROUTE,
@@ -319,15 +310,17 @@ describe("RunEngine TTL batch expiry snapshot route (ADDENDUM #1 / BULK TTL)", (
           await prisma.taskRunExecutionSnapshot.count({ where: { runId: pg.id } })
         ).toBeGreaterThan(0);
 
-        const dequeued = await dequeueOnConsumer();
-        expect(dequeued.run.id).toBe(pg.id);
         // The exact route the production path stamped. Removing the Postgres onBirthResidency callback
         // leaves this undefined (RED).
-        expect(dequeued.snapshotRoute).toEqual({
+        const queued = await producer.runQueue.readMessage(env.organization.id, pg.id);
+        expect(queued?.snapshotRoute).toEqual({
           version: 1,
           residency: "postgres",
           organizationId: env.organization.id,
         });
+        const dequeued = await dequeueOnConsumer();
+        expect(dequeued.run.id).toBe(pg.id);
+        expect(dequeued).not.toHaveProperty("snapshotRoute");
       } finally {
         await producer.quit();
         await consumer.quit();
@@ -346,7 +339,7 @@ describe("RunEngine TTL batch expiry snapshot route (ADDENDUM #1 / BULK TTL)", (
       // copied by the TTL Lua and classified as postgres (bulk SQL), so NO durable residency resolution
       // runs and all counters stay zero. Remove the Postgres onBirthResidency callback and the route-less
       // message sends the batch into durable resolution, moving the read counter off zero (RED).
-      const instr = countingResolver(snapshotStore, prisma);
+      const instr = countingResolver(snapshotStore);
       const engine = makeSweepEngine(
         prisma,
         redisOptions,
@@ -372,7 +365,6 @@ describe("RunEngine TTL batch expiry snapshot route (ADDENDUM #1 / BULK TTL)", (
         // The fast path resolved residency from the carried route alone: no durable reads, no existence
         // query. The read counter is the RED discriminator (compat resolution moves it off zero).
         expect(instr.reads.total).toBe(0);
-        expect(instr.existenceCount()).toBe(0);
       } finally {
         await engine.quit();
         await snapshotStore.quit();

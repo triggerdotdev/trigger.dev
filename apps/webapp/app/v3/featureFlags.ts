@@ -2,6 +2,7 @@ import { z } from "zod";
 import { DeployBuildPath } from "@trigger.dev/core/v3";
 
 export const FEATURE_FLAG = {
+  snapshotStoreMode: "snapshotStoreMode",
   allowEmptyEnvironmentVariableValues: "allowEmptyEnvironmentVariableValues",
   defaultWorkerInstanceGroupId: "defaultWorkerInstanceGroupId",
   taskEventRepository: "taskEventRepository",
@@ -59,6 +60,8 @@ export const FEATURE_FLAG = {
 } as const;
 
 export const FeatureFlagCatalog = {
+  // Organization override, then global default, then off.
+  [FEATURE_FLAG.snapshotStoreMode]: z.enum(["off", "dual-write", "redis-read", "redis-only"]),
   [FEATURE_FLAG.allowEmptyEnvironmentVariableValues]: z.boolean(),
   [FEATURE_FLAG.defaultWorkerInstanceGroupId]: z.string(),
   [FEATURE_FLAG.taskEventRepository]: z.enum(["clickhouse", "clickhouse_v2", "postgres"]),

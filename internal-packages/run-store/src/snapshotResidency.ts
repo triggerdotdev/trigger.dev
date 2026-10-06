@@ -8,6 +8,55 @@
 /** A run's fixed storage residency. */
 export type SnapshotResidency = "postgres" | "mirrored" | "redis-primary";
 
+/** Server-owned context only. Identity alone does not prove a run's storage residency. */
+export type SnapshotReadContext = string | SnapshotRouteWire;
+
+/** Durable evidence on an existing snapshot, never the organization's current dial. */
+export function snapshotResidencyFromMetadata(metadata: unknown): SnapshotResidency {
+  if (typeof metadata !== "object" || metadata === null || !("snapshotStore" in metadata)) {
+    return "postgres";
+  }
+  const marker = metadata.snapshotStore;
+  if (
+    typeof marker !== "object" ||
+    marker === null ||
+    !("version" in marker) ||
+    marker.version !== 1 ||
+    !("residency" in marker) ||
+    (marker.residency !== "mirrored" && marker.residency !== "redis-primary")
+  ) {
+    throw new Error("Unsupported snapshot storage metadata");
+  }
+  return marker.residency;
+}
+
+/** Preserve unrelated snapshot metadata; Postgres-only writes remain byte-identical. */
+export function metadataWithSnapshotResidency(
+  metadata: unknown,
+  residency: Exclude<SnapshotResidency, "postgres">
+): { [key: string]: unknown } {
+  if (
+    metadata !== undefined &&
+    metadata !== null &&
+    (typeof metadata !== "object" || Array.isArray(metadata))
+  ) {
+    throw new Error("Snapshot storage metadata requires an object");
+  }
+  return { ...metadata, snapshotStore: { version: 1, residency } };
+}
+
+/** Operation-local server context derived from a stored snapshot. Never sent to a runner. */
+export function snapshotRouteFromSnapshot(snapshot: {
+  organizationId: string;
+  metadata?: unknown;
+}): SnapshotRouteWire {
+  return {
+    version: 1,
+    organizationId: snapshot.organizationId,
+    residency: snapshotResidencyFromMetadata(snapshot.metadata),
+  };
+}
+
 export const SNAPSHOT_RESIDENCIES = ["postgres", "mirrored", "redis-primary"] as const;
 
 function isSnapshotResidency(value: unknown): value is SnapshotResidency {

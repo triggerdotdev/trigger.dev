@@ -40,6 +40,7 @@ const { action } = createActionApiRoute(
       await engine.heartbeatRun({
         runId: RunId.toId(runFriendlyId),
         snapshotId: SnapshotId.toId(snapshotFriendlyId),
+        organizationId: authentication.environment.organizationId,
       });
 
       return json({ ok: true });

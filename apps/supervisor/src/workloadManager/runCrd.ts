@@ -8,12 +8,7 @@ import {
   type ObjectCache,
 } from "@kubernetes/client-node";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
-import type {
-  CheckpointType,
-  EnvironmentType,
-  MachinePreset,
-  SnapshotRouteWire,
-} from "@trigger.dev/core/v3";
+import type { CheckpointType, EnvironmentType, MachinePreset } from "@trigger.dev/core/v3";
 import { type K8sApi, createK8sApi } from "../clients/kubernetes.js";
 import { ReconnectingInformer } from "../clients/reconnectingInformer.js";
 import { getRestoreRunnerId, getRunnerId } from "../util.js";
@@ -1093,7 +1088,6 @@ export type RestoreOutcomeReport = (body: {
   outcome: "requeue" | "fail";
   reason: string;
   message?: string;
-  snapshotRoute?: SnapshotRouteWire;
 }) => Promise<{ success: true } | { success: false; error: string; statusCode?: number }>;
 
 export type RestoreFailureSettlement =
@@ -1118,8 +1112,6 @@ export async function settleRestoreFailure(
   failure: {
     runnerId: string;
     outcome: RestoreWatchResult & { ok: false };
-    /** The dequeued run's route, which spares the platform a read to find it. */
-    snapshotRoute?: SnapshotRouteWire;
   },
   deps: {
     deleteRunner: (runnerId: string, uid: string) => Promise<void>;
@@ -1149,7 +1141,6 @@ export async function settleRestoreFailure(
     outcome: action.outcome,
     reason,
     message: message ?? error,
-    ...(failure.snapshotRoute ? { snapshotRoute: failure.snapshotRoute } : {}),
   });
   const settled: Extract<RestoreFailureSettlement, { action: "reported" }> = result.success
     ? { action: "reported", outcome: action.outcome, result: "ok" }

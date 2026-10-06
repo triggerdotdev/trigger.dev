@@ -876,6 +876,7 @@ return 0
         // Reschedule the delayed run
         await this.delayedRunSystem.rescheduleDelayedRun({
           runId: existingRunId,
+          organizationId: existingRun.organizationId ?? undefined,
           delayUntil: newDelayUntil,
           tx: prisma,
         });

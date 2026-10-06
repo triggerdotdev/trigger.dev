@@ -9,7 +9,6 @@ import type { ExecutionSnapshotSystem } from "./executionSnapshotSystem.js";
 import type { SystemResources } from "./systems.js";
 
 import { boundedIn } from "@trigger.dev/database";
-import { toWireRoute } from "@internal/run-store";
 export type PendingVersionSystemOptions = {
   resources: SystemResources;
   enqueueSystem: EnqueueSystem;
@@ -221,16 +220,6 @@ export class PendingVersionSystem {
       // `runInTransaction` shares ONE owning-DB transaction; the inner writes use the tx-bound `store`
       // (promotePendingVersionRuns directly, the snapshot via enqueueRun's `store` passthrough). The
       // Redis enqueue inside enqueueRun is NOT in this transaction (Redis never was — unchanged).
-      // Resolve the run's durable route at promote time (this is the deploy-promotion job, not the
-      // hot trigger/dequeue path) so both the DELAYED snapshot and the re-enqueue honor durable
-      // residency on a poll-lagging consumer. Undefined for a never-enrolled run.
-      const promoteRoute = await this.$.runStore.readSnapshotRoute(
-        run.id,
-        backgroundWorker.runtimeEnvironment.organizationId,
-        { forceDurable: true }
-      );
-      const promoteRouteWire = promoteRoute ? toWireRoute(promoteRoute) : undefined;
-
       const promoted = await this.$.runStore.runInTransaction(run.id, async (store, tx) => {
         // Idempotency guard: only flips PENDING_VERSION → PENDING. If another
         // worker already promoted this run between our findMany and the
@@ -256,7 +245,6 @@ export class PendingVersionSystem {
               environmentType: backgroundWorker.runtimeEnvironment.type,
               projectId: backgroundWorker.runtimeEnvironment.project.id,
               organizationId: backgroundWorker.runtimeEnvironment.organization.id,
-              snapshotRoute: promoteRouteWire,
             },
             store
           );
@@ -276,7 +264,6 @@ export class PendingVersionSystem {
           // for a worker version). Arm TTL here so the TTL system can expire it
           // if it sits queued waiting on a concurrency slot.
           includeTtl: true,
-          snapshotRoute: promoteRouteWire,
         });
 
         return true;
@@ -524,14 +511,6 @@ export class PendingVersionSystem {
 
     const now = new Date();
 
-    // A scheduled/background expiry runs on any pod: resolve the run's route durably so a poll-lagging
-    // pod writes the terminal snapshot to the run's true store rather than the never-enrolled Postgres
-    // shortcut. Fails closed (throws) if the durable residency cannot be confirmed.
-    const expireRoute = await this.$.runStore.readSnapshotRoute(runId, run.organizationId, {
-      forceDurable: true,
-    });
-    const expireRouteWire = expireRoute ? toWireRoute(expireRoute) : undefined;
-
     const result = await this.$.runStore.expireParkedRun(
       runId,
       {
@@ -548,7 +527,6 @@ export class PendingVersionSystem {
           environmentType: env.type,
           projectId: run.projectId,
           organizationId: run.organizationId,
-          snapshotRoute: expireRouteWire,
         },
       },
       this.$.prisma
@@ -612,13 +590,6 @@ export class PendingVersionSystem {
   }): Promise<boolean> {
     const stillDelayed = run.delayUntil !== null && run.delayUntil > new Date();
 
-    // Resolve the run's durable route at promote time so the DELAYED snapshot and re-enqueue honor
-    // durable residency on a poll-lagging consumer. Undefined for a never-enrolled run.
-    const promoteRoute = await this.$.runStore.readSnapshotRoute(run.id, env.organization.id, {
-      forceDurable: true,
-    });
-    const promoteRouteWire = promoteRoute ? toWireRoute(promoteRoute) : undefined;
-
     const promoted = await this.$.runStore.runInTransaction(run.id, async (store, tx) => {
       const updateResult = await store.promotePendingVersionRuns(
         run.id,
@@ -647,7 +618,6 @@ export class PendingVersionSystem {
             environmentType: env.type,
             projectId: env.project.id,
             organizationId: env.organization.id,
-            snapshotRoute: promoteRouteWire,
           },
           store
         );
@@ -663,7 +633,6 @@ export class PendingVersionSystem {
         store,
         tx,
         includeTtl: true,
-        snapshotRoute: promoteRouteWire,
       });
 
       return true;

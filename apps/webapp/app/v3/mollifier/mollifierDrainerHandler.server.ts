@@ -11,7 +11,7 @@ import { looksLikeConnectivityError } from "~/utils/prismaErrors";
 import { recordRunDebugLog } from "~/v3/eventRepository/index.server";
 import { PerformTaskRunAlertsService } from "~/v3/services/alerts/performTaskRunAlerts.server";
 import { startSpan } from "~/v3/tracing.server";
-import type { MollifierSnapshot } from "./mollifierSnapshot.server";
+import { prepareMollifierReplay, type MollifierSnapshot } from "./mollifierSnapshot.server";
 
 const tracer = trace.getTracer("mollifier-drainer");
 
@@ -40,6 +40,7 @@ export function createDrainerHandler(deps: {
 }): MollifierDrainerHandler<MollifierSnapshot> {
   return async (input) => {
     const dwellMs = Date.now() - input.createdAt.getTime();
+    const replay = prepareMollifierReplay(input.payload);
 
     // Re-attach to the trace started by the caller's mollifier.queued span
     // (its traceId + spanId were captured into the snapshot at buffer time).
@@ -86,7 +87,7 @@ export function createDrainerHandler(deps: {
           try {
             await deps.engine.createCancelledRun(
               {
-                snapshot: input.payload as any,
+                snapshot: replay as any,
                 cancelledAt: new Date(cancelledAtStr),
                 cancelReason,
                 emitRunCancelledEvent: false,
@@ -167,7 +168,7 @@ export function createDrainerHandler(deps: {
 
         let triggerSucceeded = false;
         try {
-          await deps.engine.trigger(input.payload as any, deps.prisma);
+          await deps.engine.trigger(replay as any, deps.prisma);
           triggerSucceeded = true;
         } catch (err) {
           // The retryable-PG class re-throws so the drainer's outer

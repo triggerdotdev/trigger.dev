@@ -29,7 +29,6 @@ export const action = createActionWorkerApiRoute(
       completion,
       runnerId,
       environmentId,
-      snapshotRoute: body.snapshotRoute,
     });
 
     return json({ result: completeResult });

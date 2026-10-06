@@ -1066,7 +1066,6 @@ export class CliApiClient {
           Accept: "application/json",
           ...this.getBranchHeader(),
         },
-        // Carries snapshotRoute (and isWarmStart) so the dev run's start honors durable residency.
         body: JSON.stringify(body ?? {}),
       }
     );

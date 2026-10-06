@@ -1,10 +1,5 @@
-// Devin 83 (checkpoint suspension loses residency): createCheckpoint must honor a redis-primary run's
-// durable residency even when the caller carries NO route. The managed suspend flow may not thread the
-// route through every supervisor hop, so on a poll-lagging / undefined-dial webapp the SUSPENDED
-// transition would take the inert Postgres shortcut and strand the run's MemoryDB head. createCheckpoint
-// now resolves the route once (forceDurable) as a central fallback (after its discard early-exits). This
-// drives the real queue -> dequeue -> start-attempt chain, then checkpoints ROUTE-LESS on an
-// undefined-dial engine and proves the SUSPENDED head advances in MemoryDB with no Postgres TRES row.
+// Checkpoint callbacks carry no storage route. After real dequeue and attempt start, a lagging
+// engine must use stored residency for SUSPENDED and preserve the checkpoint without creating TRES.
 import { containerTest } from "@internal/testcontainers";
 import {
   PostgresRunStore,
@@ -90,7 +85,6 @@ describe("createCheckpoint honors durable residency when the caller carries no r
       const memoryDb = new RedisSnapshotStore({ redisOptions, completedTtlMs: 60_000 });
       const resolver = new SnapshotResidencyResolver({
         store: memoryDb,
-        taskRunExists: async (id) => (await prisma.taskRun.count({ where: { id } })) > 0,
       });
 
       const producer = new TaskRunExecutionSnapshotStore(delegate, {
@@ -157,7 +151,6 @@ describe("createCheckpoint honors durable residency when the caller carries no r
         const started = await engine.startRunAttempt({
           runId,
           snapshotId: message.snapshot.id,
-          snapshotRoute: message.snapshotRoute,
         });
         const executingId = started.snapshot.id;
         expect((await memoryDb.getLatest(runId))?.id).toBe(executingId);

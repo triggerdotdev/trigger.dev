@@ -3,12 +3,6 @@ import { Registry } from "prom-client";
 import type { RestoreWatchResult } from "../workloadManager/runCrd.js";
 import { RestoreWatcher, type RestoreFailure } from "./restoreWatcher.js";
 
-const route = (organizationId: string) => ({
-  version: 1 as const,
-  residency: "mirrored" as const,
-  organizationId,
-});
-
 const failed: RestoreWatchResult = {
   ok: false,
   reason: "StartError",
@@ -38,11 +32,10 @@ function setup(opts: { reportFailure?: (failure: RestoreFailure) => Promise<void
 const target = {
   runFriendlyId: "run_a",
   snapshotFriendlyId: "snapshot_1",
-  snapshotRoute: route("org_1"),
 };
 
 describe("RestoreWatcher", () => {
-  it("reports a failed restore with the dequeued snapshot and its route", async () => {
+  it("reports a failed restore with the dequeued snapshot", async () => {
     const { watcher, outcomes, reportFailure } = setup();
 
     const watched = watcher.watch(target, { runnerId: "runner-a", uid: "uid-a" });
@@ -52,18 +45,17 @@ describe("RestoreWatcher", () => {
     expect(reportFailure).toHaveBeenCalledWith({
       runFriendlyId: "run_a",
       snapshotFriendlyId: "snapshot_1",
-      snapshotRoute: route("org_1"),
       runnerId: "runner-a",
       outcome: failed,
     });
   });
 
-  it("names the snapshot and route dequeued last when the restore is redelivered", async () => {
+  it("names the snapshot dequeued last when the restore is redelivered", async () => {
     const { watcher, outcomes, awaitRestore, reportFailure } = setup();
 
     const watched = watcher.watch(target, { runnerId: "runner-a", uid: "uid-a" });
     await watcher.watch(
-      { runFriendlyId: "run_a", snapshotFriendlyId: "snapshot_2", snapshotRoute: route("org_2") },
+      { runFriendlyId: "run_a", snapshotFriendlyId: "snapshot_2" },
       { runnerId: "runner-a", uid: "uid-a" }
     );
     outcomes[0]!.resolve(failed);
@@ -71,21 +63,8 @@ describe("RestoreWatcher", () => {
 
     expect(awaitRestore).toHaveBeenCalledTimes(1);
     expect(reportFailure).toHaveBeenCalledWith(
-      expect.objectContaining({ snapshotFriendlyId: "snapshot_2", snapshotRoute: route("org_2") })
+      expect.objectContaining({ snapshotFriendlyId: "snapshot_2" })
     );
-  });
-
-  it("reports a restore adopted after a restart without a route", async () => {
-    const { watcher, outcomes, reportFailure } = setup();
-
-    const watched = watcher.watch(
-      { runFriendlyId: "run_a", snapshotFriendlyId: "snapshot_1" },
-      { runnerId: "runner-a", uid: "uid-a" }
-    );
-    outcomes[0]!.resolve(failed);
-    await watched;
-
-    expect(reportFailure.mock.calls[0]![0].snapshotRoute).toBeUndefined();
   });
 
   it("reports nothing for a watch the shutdown ended, whatever it resolved with", async () => {
