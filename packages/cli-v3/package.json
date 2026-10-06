@@ -109,7 +109,7 @@
     "json-stable-stringify": "^1.3.0",
     "jsonc-parser": "3.2.1",
     "magicast": "^0.3.4",
-    "minimatch": "^10.0.1",
+    "minimatch": "^10.2.3",
     "mlly": "^1.7.1",
     "nypm": "^0.5.4",
     "open": "^10.0.3",

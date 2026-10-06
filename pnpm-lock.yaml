@@ -1694,8 +1694,8 @@ importers:
         specifier: ^0.3.4
         version: 0.3.4
       minimatch:
-        specifier: ^10.0.1
-        version: 10.0.1
+        specifier: ^10.2.3
+        version: 10.2.5
       mlly:
         specifier: ^1.7.1
         version: 1.7.1
@@ -12358,10 +12358,6 @@ packages:
 
   minimal-polyfills@2.2.3:
     resolution: {integrity: sha512-oxdmJ9cL+xV72h0xYxp4tP2d5/fTBpP45H8DIOn9pASuF8a3IYTf+25fMGDYGiWW+MFsuog6KD6nfmhZJQ+uUw==}
-
-  minimatch@10.0.1:
-    resolution: {integrity: sha512-ethXTt3SGGR+95gudmqJ1eNhRO7eGEGIgYA9vnPatK4/etz2MEVDno5GMCibdMTuBMyElzIlgxMna3K94XDIDQ==}
-    engines: {node: 20 || >=22}
 
   minimatch@10.2.5:
     resolution: {integrity: sha512-MULkVLfKGYDFYejP07QOurDLLQpcjk7Fw+7jXS2R2czRQzR56yHRveU5NDJEOviH+hETZKSkIk5c+T23GjFUMg==}
@@ -27607,10 +27603,6 @@ snapshots:
   minimal-polyfills@2.2.2: {}
 
   minimal-polyfills@2.2.3: {}
-
-  minimatch@10.0.1:
-    dependencies:
-      brace-expansion: 2.1.7
 
   minimatch@10.2.5:
     dependencies:
