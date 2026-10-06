@@ -6,7 +6,7 @@ import { env } from "~/env.server";
 import type { AuthUser } from "./authUser";
 import { logger } from "./logger.server";
 import { singleton } from "~/utils/singleton";
-import { assertEmailAllowed } from "~/utils/email";
+import { assertEmailAllowed, isEmailDomainBlocked } from "~/utils/email";
 
 const client = singleton(
   "email-client",
@@ -66,6 +66,11 @@ function buildTransportOptions(alerts?: boolean): MailTransportOptions {
 }
 
 export async function sendMagicLinkEmail(options: SendEmailOptions<AuthUser>): Promise<void> {
+  if (isEmailDomainBlocked(options.emailAddress)) {
+    logger.info("Magic link not sent: email domain is blocked");
+    return;
+  }
+
   assertEmailAllowed(options.emailAddress);
 
   // Auto redirect when in development mode
