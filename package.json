@@ -164,7 +164,8 @@
       "@babel/core@>=7 <7.29.6": "^7.29.6",
       "@babel/helpers@>=7 <7.26.10": "^7.26.10",
       "@babel/runtime@>=7 <7.26.10": "^7.26.10",
-      "fastify@>=5 <5.12.5": "^5.12.5"
+      "fastify@>=5 <5.12.5": "^5.12.5",
+      "browserslist@>=4 <4.28.7": "^4.28.7"
     },
     "onlyBuiltDependencies": [
       "@depot/cli",
