@@ -166,7 +166,8 @@
       "@babel/runtime@>=7 <7.26.10": "^7.26.10",
       "fastify@>=5 <5.12.5": "^5.12.5",
       "browserslist@>=4 <4.28.7": "^4.28.7",
-      "morgan@>=1 <1.12.1": "^1.12.1"
+      "morgan@>=1 <1.12.1": "^1.12.1",
+      "minimatch@>=5 <5.1.8": "^5.1.8"
     },
     "onlyBuiltDependencies": [
       "@depot/cli",
