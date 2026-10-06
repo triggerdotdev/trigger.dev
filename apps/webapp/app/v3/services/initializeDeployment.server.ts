@@ -148,13 +148,19 @@ export class InitializeDeploymentService extends BaseService {
         throw new ServiceValidationError("UNMANAGED deployments are not supported");
       }
 
-      if (
-        resolveDeployBaseImages(runtime, {
-          base: env.DEPLOY_BASE_IMAGES,
-          buildBase: env.DEPLOY_BUILD_BASE_IMAGES,
-        }) &&
-        payload.supportsInstanceBaseImages !== true
-      ) {
+      const requiredBaseImages = resolveDeployBaseImages(runtime, {
+        base: env.DEPLOY_BASE_IMAGES,
+        buildBase: env.DEPLOY_BUILD_BASE_IMAGES,
+      });
+
+      if (requiredBaseImages && payload.isNativeBuild) {
+        throw new ServiceValidationError(
+          "This instance requires custom deploy base images, which native builds cannot apply. Deploy without --native-build or --local-bundle.",
+          400
+        );
+      }
+
+      if (requiredBaseImages && payload.supportsInstanceBaseImages !== true) {
         throw new ServiceValidationError(
           "This instance requires custom deploy base images, which this version of the CLI cannot apply. Upgrade the trigger.dev CLI and deploy again.",
           400
