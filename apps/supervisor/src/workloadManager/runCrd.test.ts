@@ -1235,6 +1235,7 @@ describe("RunnerRestoreInformer", () => {
   }
 
   type WatchCall = {
+    path: string;
     query: Record<string, string>;
     callback: (phase: string, obj: unknown) => void;
     done: (err: unknown) => void;
@@ -1246,12 +1247,12 @@ describe("RunnerRestoreInformer", () => {
     const watch = {
       watch: vi.fn(
         async (
-          _path: string,
+          path: string,
           query: Record<string, string>,
           callback: WatchCall["callback"],
           done: WatchCall["done"]
         ) => {
-          calls.push({ query, callback, done });
+          calls.push({ path, query, callback, done });
           // The real Watch calls done with its fetch error before returning.
           if (connects.shift() === "fail") {
             done(new Error("connect ECONNREFUSED"));
@@ -1293,7 +1294,7 @@ describe("RunnerRestoreInformer", () => {
     const { makeInformer } = setup();
 
     expect(makeInformer).toHaveBeenCalledWith(
-      "/apis/compute.trigger.dev/v1alpha1/namespaces/v4-runs/runners",
+      "/apis/compute.trigger.dev/v1alpha1/namespaces/v4-runs/runners?timeoutSeconds=300",
       expect.any(Function),
       `${RESTORE_LABEL}=true`
     );
@@ -1587,6 +1588,31 @@ describe("RunnerRestoreInformer", () => {
 
     expect(calls[1]!.query.resourceVersion).toBe("7");
     await restoreInformer.stop();
+  });
+
+  // A connection that died without closing raises nothing, so restores would go unseen.
+  it("reconnects a watch that goes silent past its timeout, from the last event", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+    try {
+      listRunners.mockReset();
+      listRunners.mockResolvedValue({ items: [], metadata: { resourceVersion: "1" } });
+      const { calls, restoreInformer } = listWatchSetup();
+      await restoreInformer.start();
+      calls[0]!.callback("BOOKMARK", { metadata: { resourceVersion: "7" } });
+
+      await vi.advanceTimersByTimeAsync(300_000);
+      expect(calls).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(60_000);
+      await vi.waitFor(() => expect(calls).toHaveLength(2));
+
+      expect(calls[1]!.path).toBe(
+        "/apis/compute.trigger.dev/v1alpha1/namespaces/v4-runs/runners?timeoutSeconds=300"
+      );
+      expect(calls[1]!.query.resourceVersion).toBe("7");
+      await restoreInformer.stop();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

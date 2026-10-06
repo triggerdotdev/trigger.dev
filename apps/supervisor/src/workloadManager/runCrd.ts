@@ -839,6 +839,8 @@ export class RunnerRestoreInformer {
   constructor(opts: {
     namespace: string;
     reconnectIntervalMs?: number;
+    /** How long the server keeps each watch open before closing it. */
+    watchTimeoutSeconds?: number;
     k8s?: K8sApi;
     /**
      * A restore found already failed with nothing here waiting on it, such as
@@ -859,13 +861,12 @@ export class RunnerRestoreInformer {
       name: "runner-restore",
       logger: this.logger,
       reconnectIntervalMs: opts.reconnectIntervalMs ?? 1_000,
+      path: `/apis/${GROUP}/${VERSION}/namespaces/${this.namespace}/${PLURAL}`,
+      watchTimeoutSeconds: opts.watchTimeoutSeconds ?? 300,
       list: () => this.listRestores(k8s),
-      makeInformer: (list) =>
-        k8s.makeInformer(
-          `/apis/${GROUP}/${VERSION}/namespaces/${this.namespace}/${PLURAL}`,
-          list,
-          RESTORE_SELECTOR
-        ),
+      makeInformer: (path, list) => k8s.makeInformer(path, list, RESTORE_SELECTOR),
+      onStall: (quietMs) =>
+        this.logger.warn("Restore informer watch stalled, reconnecting", { quietMs }),
     });
     this.informer = this.watch.informer;
     this.informer.on("add", (runner) => this.onEvent(runner, "add"));

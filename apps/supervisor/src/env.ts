@@ -352,6 +352,7 @@ export const Env = z
     // Failed pod handler
     FAILED_POD_HANDLER_ENABLED: BoolEnv.default(true),
     FAILED_POD_HANDLER_RECONNECT_INTERVAL_MS: z.coerce.number().int().default(1000),
+    FAILED_POD_HANDLER_WATCH_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(300),
 
     // Debug
     DEBUG: BoolEnv.default(false),

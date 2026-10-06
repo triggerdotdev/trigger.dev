@@ -18,6 +18,8 @@ type PodStatus = "Pending" | "Running" | "Succeeded" | "Failed" | "Unknown" | "G
 export type FailedPodHandlerOptions = {
   namespace: string;
   reconnectIntervalMs?: number;
+  /** How long the server keeps each watch open before closing it. */
+  watchTimeoutSeconds?: number;
   k8s?: K8sApi;
   register?: Registry;
 };
@@ -56,20 +58,21 @@ export class FailedPodHandler {
       name: "failed-pod-informer",
       logger: this.logger,
       reconnectIntervalMs: opts.reconnectIntervalMs ?? 1000,
+      path: `/api/v1/namespaces/${this.namespace}/pods`,
+      watchTimeoutSeconds: opts.watchTimeoutSeconds ?? 300,
       list: () =>
         this.k8s.core.listNamespacedPod({
           namespace: this.namespace,
           labelSelector: RUN_POD_SELECTOR,
           fieldSelector: "status.phase=Failed",
         }),
-      makeInformer: (list) =>
-        this.k8s.makeInformer(
-          `/api/v1/namespaces/${this.namespace}/pods`,
-          list,
-          RUN_POD_SELECTOR,
-          "status.phase=Failed"
-        ),
+      makeInformer: (path, list) =>
+        this.k8s.makeInformer(path, list, RUN_POD_SELECTOR, "status.phase=Failed"),
       onError: (err) => this.onError("failed-pod-informer", err),
+      onStall: (quietMs) => {
+        this.logger.warn("failed pod informer watch stalled, reconnecting", { quietMs });
+        this.informerEventsTotal.inc({ namespace: this.namespace, verb: "stalled" });
+      },
     });
 
     // Whenever a matching pod is added to the informer cache

@@ -62,3 +62,46 @@ index 0dc471fc3e2d8e653a4c4795211b4774563d2d14..ae33a4357308b77bfb4e7588807e9ac0
 +    return new ListWatch(path, watch, listPromiseFn, false, labelSelector, fieldSelector);
  }
  //# sourceMappingURL=informer.js.map
+\ No newline at end of file
+diff --git a/dist/watch.d.ts b/dist/watch.d.ts
+index 1881b33c2d6ce7e37ff7f1f291711b6a564d1686..09e9811650944245bb52433217898828a44e59a4 100644
+--- a/dist/watch.d.ts
++++ b/dist/watch.d.ts
+@@ -1,6 +1,7 @@
+ import { KubeConfig } from './config.js';
+ export declare class Watch {
+     static SERVER_SIDE_CLOSE: object;
++    static HEADERS_TIMEOUT_MS: number;
+     config: KubeConfig;
+     constructor(config: KubeConfig);
+     watch(path: string, queryParams: Record<string, string | number | boolean | undefined>, callback: (phase: string, apiObj: any, watchObj?: any) => void, done: (err: any) => void): Promise<AbortController>;
+diff --git a/dist/watch.js b/dist/watch.js
+index a3c51da6b401a49858e88cad55b263aef9e87cb6..4b2c2ecec3d55f7d0009e3cb07485d4c6101101b 100644
+--- a/dist/watch.js
++++ b/dist/watch.js
+@@ -34,8 +34,12 @@ export class Watch {
+                 done(err);
+             }
+         };
++        // The controller is only returned once the headers arrive, so nothing
++        // else can abort a request whose headers never come.
++        const headersTimer = setTimeout(() => controller.abort(), Watch.HEADERS_TIMEOUT_MS);
+         try {
+             const response = await fetch(watchURL, requestInit);
++            clearTimeout(headersTimer);
+             if (response.status === 200) {
+                 response.body.on('error', doneCallOnce);
+                 response.body.on('close', () => doneCallOnce(null));
+@@ -61,10 +65,12 @@ export class Watch {
+             }
+         }
+         catch (err) {
++            clearTimeout(headersTimer);
+             doneCallOnce(err);
+         }
+         return controller;
+     }
+ }
+ Watch.SERVER_SIDE_CLOSE = { error: 'Connection closed on server' };
++Watch.HEADERS_TIMEOUT_MS = 30000;
+ //# sourceMappingURL=watch.js.map

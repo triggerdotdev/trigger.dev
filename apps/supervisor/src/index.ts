@@ -292,6 +292,7 @@ class ManagedSupervisor {
           register,
           namespace: env.KUBERNETES_NAMESPACE,
           reconnectIntervalMs: env.FAILED_POD_HANDLER_RECONNECT_INTERVAL_MS,
+          watchTimeoutSeconds: env.FAILED_POD_HANDLER_WATCH_TIMEOUT_SECONDS,
         });
       } else {
         this.logger.warn("Failed pod handler disabled");
