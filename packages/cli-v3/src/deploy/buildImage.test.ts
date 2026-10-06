@@ -268,4 +268,49 @@ describe("generateContainerfile", () => {
     expect(containerfile).toContain("FROM acme/node-fips:26@sha256:abc AS base");
     expect(containerfile).toContain(`FROM ${BUILD_IMAGE["node-26"]} AS build`);
   });
+
+  it("builds on the configured build image and replays instructions there", async () => {
+    const containerfile = await generateContainerfile({
+      runtime: "node-26",
+      build: {},
+      image: {
+        base: "acme/node-fips:26@sha256:abc",
+        buildBase: "acme/node:26-dev@sha256:def",
+        pkgs: ["jq"],
+        instructions: ["RUN echo first > /etc/first", "RUN echo second > /etc/second"],
+      },
+      indexScript: "index.js",
+      entrypoint: "entrypoint.js",
+    });
+
+    const buildStage = containerfile.slice(containerfile.indexOf("AS build"));
+
+    expect(containerfile).toContain("FROM acme/node-fips:26@sha256:abc AS base");
+    expect(containerfile).toContain("FROM acme/node:26-dev@sha256:def AS build");
+    expect(containerfile).not.toContain("FROM base AS build");
+    expect(containerfile).not.toContain(TOOLCHAIN_PACKAGES);
+    expect(buildStage).toContain("apt-get install -y --no-install-recommends --allow-downgrades jq");
+    expect(buildStage).toContain("RUN echo first > /etc/first");
+    expect(buildStage).toContain("RUN echo second > /etc/second");
+    expect(containerfile.indexOf("RUN echo first > /etc/first")).toBeLessThan(
+      containerfile.indexOf("AS build")
+    );
+  });
+
+  it("builds from the base stage when instructions have no configured build image", async () => {
+    const containerfile = await generateContainerfile({
+      runtime: "node-26",
+      build: {},
+      image: {
+        base: "acme/node-fips:26@sha256:abc",
+        instructions: ["RUN echo custom > /etc/marker"],
+      },
+      indexScript: "index.js",
+      entrypoint: "entrypoint.js",
+    });
+
+    expect(containerfile).toContain("FROM acme/node-fips:26@sha256:abc AS base");
+    expect(containerfile).toContain("FROM base AS build");
+    expect(containerfile).toContain(TOOLCHAIN_PACKAGES);
+  });
 });

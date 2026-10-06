@@ -3,6 +3,7 @@ import { MachinePresetName } from "@trigger.dev/core/v3";
 import { parseNaturalLanguageDurationInMs } from "@trigger.dev/core/v3/isomorphic";
 import { BoolEnv } from "./utils/boolEnv";
 import { isValidDatabaseUrl } from "./utils/db";
+import { parseDeployBaseImages } from "~/v3/deployBaseImages.server";
 import { parseRunOpsShards, validateShardListAgainstNewUrl } from "~/v3/runOpsShards.server";
 import { isValidRegex } from "./utils/regex";
 import { isValidDuration } from "./services/realtime/duration.server";
@@ -901,8 +902,14 @@ const EnvironmentSchema = z
       ),
 
     DEPLOY_IMAGE_PLATFORM: z.string().default("linux/amd64"),
-    DEPLOY_BASE_IMAGES: z.string().optional(), // csv of runtime=image, for example: "node-26=registry.example.com/node-fips:26@sha256:..."
-    DEPLOY_BUILD_BASE_IMAGES: z.string().optional(), // csv of runtime=image for the build stage
+    DEPLOY_BASE_IMAGES: z
+      .string()
+      .optional()
+      .transform((v) => parseDeployBaseImages(v, "DEPLOY_BASE_IMAGES")),
+    DEPLOY_BUILD_BASE_IMAGES: z
+      .string()
+      .optional()
+      .transform((v) => parseDeployBaseImages(v, "DEPLOY_BUILD_BASE_IMAGES")),
     DEPLOY_TIMEOUT_MS: z.coerce
       .number()
       .int()

@@ -638,14 +638,12 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   warnAboutCanceledDeployments(deployment.canceledDeployments, options.externalId);
 
-  if (deployment.baseImages) {
-    logger.debug("Using base images required by the server", deployment.baseImages);
-
-    await writeContainerfile(destination.path, {
-      ...buildManifest,
-      image: { ...buildManifest.image, ...deployment.baseImages },
-    });
-  }
+  await applyServerBaseImages({
+    baseImages: deployment.baseImages,
+    outputPath: destination.path,
+    buildManifest,
+    options,
+  });
 
   // When `externalBuildData` is not present the deployment implicitly goes into the local build path
   // which is used in self-hosted setups. There are a few subtle differences between local builds for the cloud
@@ -1209,6 +1207,42 @@ function buildDeploymentLinks({
       env === "prod" ? "prod" : "stg"
     }`,
   };
+}
+
+async function applyServerBaseImages({
+  baseImages,
+  outputPath,
+  buildManifest,
+  options,
+}: {
+  baseImages: InitializeDeploymentResponseBody["baseImages"];
+  outputPath: string;
+  buildManifest: BuildManifest;
+  options: DeployCommandOptions;
+}) {
+  if (!baseImages) {
+    return;
+  }
+
+  logger.debug("Using base images required by the server", baseImages);
+
+  const required = [
+    baseImages.base ? `base ${baseImages.base}` : undefined,
+    baseImages.buildBase ? `build ${baseImages.buildBase}` : undefined,
+  ].filter(Boolean);
+
+  const message = `Building on base images required by this instance: ${required.join(", ")}`;
+
+  if (options.plain) {
+    console.log(message);
+  } else {
+    log.info(message);
+  }
+
+  await writeContainerfile(outputPath, {
+    ...buildManifest,
+    image: { ...buildManifest.image, ...baseImages },
+  });
 }
 
 function warnAboutSkippedBuild(externalId: string | undefined, isPromoted: boolean | undefined) {
@@ -2273,6 +2307,13 @@ async function handleFromBundleDeploy({
     },
     existingDeploymentId
   );
+
+  await applyServerBaseImages({
+    baseImages: deployment.baseImages,
+    outputPath: bundlePath,
+    buildManifest: bundleManifest,
+    options,
+  });
 
   // Fail fast if we know local builds will fail
   const buildxResult = await x("docker", ["buildx", "version"]);

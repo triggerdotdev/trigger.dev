@@ -1,16 +1,71 @@
-type BaseImages = { base?: string; buildBase?: string };
+import { BuildRuntime } from "@trigger.dev/core/v3";
 
-/** Base images the operator requires for a runtime, from `runtime=image` csv env vars. */
+type BaseImageMap = Partial<Record<BuildRuntime, string>>;
+
+const DIGEST_PINNED = /@sha256:[a-f0-9]{64}$/;
+
+function invalidSegment(envVarName: string, segment: string, reason: string): Error {
+  return new Error(`${envVarName}: ${reason} in "${segment}"`);
+}
+
+export function parseDeployBaseImages(value: string | undefined, envVarName: string): BaseImageMap {
+  const result: BaseImageMap = {};
+
+  if (!value) {
+    return result;
+  }
+
+  for (const segment of value.split(",").map((s) => s.trim())) {
+    if (!segment) {
+      continue;
+    }
+
+    const separator = segment.indexOf("=");
+    if (separator === -1) {
+      throw invalidSegment(envVarName, segment, "expected runtime=image");
+    }
+
+    const runtimeName = segment.slice(0, separator).trim();
+    const image = segment.slice(separator + 1).trim();
+
+    const runtime = BuildRuntime.safeParse(runtimeName);
+    if (!runtime.success) {
+      throw invalidSegment(
+        envVarName,
+        segment,
+        `unknown runtime "${runtimeName}" (expected one of ${BuildRuntime.options.join(", ")})`
+      );
+    }
+
+    if (!image) {
+      throw invalidSegment(envVarName, segment, "missing image");
+    }
+
+    if (!DIGEST_PINNED.test(image)) {
+      throw invalidSegment(envVarName, segment, "image must be pinned by digest (@sha256:<64 hex chars>)");
+    }
+
+    if (runtime.data in result) {
+      throw invalidSegment(envVarName, segment, `duplicate runtime "${runtimeName}"`);
+    }
+
+    result[runtime.data] = image;
+  }
+
+  return result;
+}
+
 export function resolveDeployBaseImages(
   runtime: string | null | undefined,
-  config: { base?: string; buildBase?: string }
-): BaseImages | undefined {
-  if (!runtime) {
+  config: { base: BaseImageMap; buildBase: BaseImageMap }
+): { base?: string; buildBase?: string } | undefined {
+  const parsedRuntime = BuildRuntime.safeParse(runtime);
+  if (!parsedRuntime.success) {
     return undefined;
   }
 
-  const base = parseImageMap(config.base)[runtime];
-  const buildBase = parseImageMap(config.buildBase)[runtime];
+  const base = config.base[parsedRuntime.data];
+  const buildBase = config.buildBase[parsedRuntime.data];
 
   if (!base && !buildBase) {
     return undefined;
@@ -20,26 +75,4 @@ export function resolveDeployBaseImages(
     ...(base ? { base } : {}),
     ...(buildBase ? { buildBase } : {}),
   };
-}
-
-function parseImageMap(value: string | undefined): Record<string, string> {
-  if (!value) {
-    return {};
-  }
-
-  return Object.fromEntries(
-    value
-      .split(",")
-      .map((entry) => entry.trim())
-      .filter(Boolean)
-      .flatMap((entry) => {
-        const separator = entry.indexOf("=");
-        if (separator <= 0) {
-          return [];
-        }
-        const runtime = entry.slice(0, separator).trim();
-        const image = entry.slice(separator + 1).trim();
-        return image ? [[runtime, image] as const] : [];
-      })
-  );
 }
