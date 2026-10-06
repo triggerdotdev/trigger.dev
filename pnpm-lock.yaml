@@ -81,6 +81,7 @@ overrides:
   '@babel/runtime@>=7 <7.26.10': ^7.26.10
   fastify@>=5 <5.12.5: ^5.12.5
   browserslist@>=4 <4.28.7: ^4.28.7
+  morgan@>=1 <1.12.1: ^1.12.1
 
 patchedDependencies:
   '@ai-sdk/anthropic@3.0.125':
@@ -643,8 +644,8 @@ importers:
         specifier: ^6.3.4
         version: 6.3.4
       morgan:
-        specifier: ^1.10.0
-        version: 1.10.0
+        specifier: ^1.12.1
+        version: 1.12.1
       nanoid:
         specifier: 3.3.18
         version: 3.3.18
@@ -12455,12 +12456,8 @@ packages:
   moo@0.5.2:
     resolution: {integrity: sha512-iSAJLHYKnX41mKcJKjqvnAN9sf0LMDTXDEvFv+ffuRR9a1MIuXLjMNL6EsnDHSkKLTWNqQQ5uo61P4EbU4NU+Q==}
 
-  morgan@1.10.0:
-    resolution: {integrity: sha512-AbegBVI4sh6El+1gNwvD5YIck7nSA36weD7xvIxG4in80j/UoK8AEGaWnnz8v1GxonMCltmlNs5ZKbGvl9b1XQ==}
-    engines: {node: '>= 0.8.0'}
-
-  morgan@1.10.1:
-    resolution: {integrity: sha512-223dMRJtI/l25dJKWpgij2cMtywuG/WiUKXdvwfbhGKBhy1puASqXwFzmWZ7+K73vUPoR7SS2Qz2cI/g9MKw0A==}
+  morgan@1.12.1:
+    resolution: {integrity: sha512-tljKC0ex20AjO58Ob/eZ53JloycbVswbVNCHx6V6VLGzqt/w8dIynVGL0G8qVjNKwiA7sYSogCrN6QtJ82IV+g==}
     engines: {node: '>= 0.8.0'}
 
   mri@1.2.0:
@@ -12706,10 +12703,6 @@ packages:
   on-exit-leak-free@2.1.2:
     resolution: {integrity: sha512-0eJJY6hXLGf1udHwfNftBqH+g73EU4B504nZeKpz1sYRKafAghwxEJunB2O7rDZkL4PGfsMVnTXZ2EjibbqcsA==}
     engines: {node: '>=14.0.0'}
-
-  on-finished@2.3.0:
-    resolution: {integrity: sha512-ikqdkGAAyf/X/gPhXGvfgAytDZtDbr+bkNUJ0N9h5MI/dmdgCs3l6hoHrcUv41sRKew3jIwrp4qQDXiK99Utww==}
-    engines: {node: '>= 0.8'}
 
   on-finished@2.4.1:
     resolution: {integrity: sha512-oVlzkg3ENAhCk2zdv7IJwd/QUD4z2RxRwpkcGY8psCVcCYZNq4wYnVWALHM+brtuJjePWiYF/ClmuDr8Ch5+kg==}
@@ -21208,7 +21201,7 @@ snapshots:
       compression: 1.8.1
       express: 4.20.0
       get-port: 5.1.1
-      morgan: 1.10.1
+      morgan: 1.12.1
       source-map-support: 0.5.21
     transitivePeerDependencies:
       - supports-color
@@ -27723,26 +27716,15 @@ snapshots:
 
   moo@0.5.2: {}
 
-  morgan@1.10.0:
+  morgan@1.12.1:
     dependencies:
       basic-auth: 2.0.1
       debug: 2.6.9
       depd: 2.0.0
-      on-finished: 2.3.0
-      on-headers: 1.0.2
-    transitivePeerDependencies:
-      - supports-color
-
-  morgan@1.10.1:
-    dependencies:
-      basic-auth: 2.0.1
-      debug: 2.6.9
-      depd: 2.0.0
-      on-finished: 2.3.0
+      on-finished: 2.4.1
       on-headers: 1.1.0
     transitivePeerDependencies:
       - supports-color
-    optional: true
 
   mri@1.2.0: {}
 
@@ -27995,18 +27977,13 @@ snapshots:
 
   on-exit-leak-free@2.1.2: {}
 
-  on-finished@2.3.0:
-    dependencies:
-      ee-first: 1.1.1
-
   on-finished@2.4.1:
     dependencies:
       ee-first: 1.1.1
 
   on-headers@1.0.2: {}
 
-  on-headers@1.1.0:
-    optional: true
+  on-headers@1.1.0: {}
 
   once@1.4.0:
     dependencies:
