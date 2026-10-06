@@ -1,7 +1,7 @@
 import { json, type ActionFunctionArgs } from "@remix-run/server-runtime";
 import { DASHBOARD_AGENT_FEEDBACK_LIMITS } from "@internal/dashboard-agent-contracts";
 import { z } from "zod";
-import { resolveAgentAlertContext } from "~/services/dashboardAgentAlertContext.server";
+import { authorizeWatchEnvironmentById } from "~/services/dashboardAgentWatches.server";
 import { logger } from "~/services/logger.server";
 import { telemetry } from "~/services/telemetry.server";
 import { authenticateUatOrApiRequest } from "~/services/uatRoutePreamble.server";
@@ -9,7 +9,8 @@ import { authenticateUatOrApiRequest } from "~/services/uatRoutePreamble.server"
 /**
  * `POST` records the agent's report of a problem with its own tools or the docs. Only the
  * agent's delegated user-actor token is accepted, and the user, organization, project and
- * environment all come from it and the chat, never from the body.
+ * environment all come from it, never from the body. The chat id is only a property on the
+ * event: this route is served by the API service too, which has no agent chat store.
  */
 
 const FeedbackBodySchema = z.object({
@@ -40,20 +41,19 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({ error: "Invalid request", code: "invalid_request" }, { status: 400 });
   }
 
-  const context = await resolveAgentAlertContext({
+  const environment = await authorizeWatchEnvironmentById({
     userId: actor.userId,
     environmentId: actor.environmentId,
-    chatId: body.data.chatId,
   });
-  if (!context.ok) {
-    return json({ error: context.error, code: context.code }, { status: 404 });
+  if (!environment) {
+    return json({ error: "Environment not found", code: "invalid_target" }, { status: 404 });
   }
 
   const recorded = telemetry.dashboardAgent.feedback({
     userId: actor.userId,
-    organizationId: context.environment.organizationId,
-    projectId: context.environment.project.id,
-    environmentId: context.environment.id,
+    organizationId: environment.organizationId,
+    projectId: environment.project.id,
+    environmentId: environment.id,
     chatId: body.data.chatId,
     message: body.data.message,
     toolName: body.data.toolName,
