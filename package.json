@@ -163,7 +163,8 @@
       "baseline-browser-mapping@>=2 <2.11.0": "^2.11.0",
       "@babel/core@>=7 <7.29.6": "^7.29.6",
       "@babel/helpers@>=7 <7.26.10": "^7.26.10",
-      "@babel/runtime@>=7 <7.26.10": "^7.26.10"
+      "@babel/runtime@>=7 <7.26.10": "^7.26.10",
+      "fastify@>=5 <5.12.5": "^5.12.5"
     },
     "onlyBuiltDependencies": [
       "@depot/cli",
