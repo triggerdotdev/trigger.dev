@@ -838,6 +838,15 @@ export const CreateArtifactResponseBody = z.object({
 
 export type CreateArtifactResponseBody = z.infer<typeof CreateArtifactResponseBody>;
 
+export const DeployBaseImageRef = z.string().regex(/^[^\s@]+@sha256:[a-f0-9]{64}$/);
+
+export const DeployBaseImages = z.object({
+  base: DeployBaseImageRef.optional(),
+  buildBase: DeployBaseImageRef.optional(),
+});
+
+export type DeployBaseImages = z.infer<typeof DeployBaseImages>;
+
 export const InitializeDeploymentResponseBody = z.object({
   id: z.string(),
   contentHash: z.string(),
@@ -849,12 +858,7 @@ export const InitializeDeploymentResponseBody = z.object({
   outcome: z.enum(["created", "existing"]).optional(),
   isPromoted: z.boolean().optional(),
   externalBuildData: ExternalBuildData.optional().nullable(),
-  baseImages: z
-    .object({
-      base: z.string().optional(),
-      buildBase: z.string().optional(),
-    })
-    .optional(),
+  baseImages: DeployBaseImages.optional(),
   canceledDeployments: z.array(z.object({ version: z.string(), shortCode: z.string() })).optional(),
   eventStream: z
     .object({
@@ -883,6 +887,7 @@ const InitializeDeploymentRequestBodyBase = z.object({
   buildId: z.string().optional(),
   externalId: ExternalDeploymentId,
   force: z.boolean().optional(),
+  supportsInstanceBaseImages: z.boolean().optional(),
 });
 type BaseOutput = z.output<typeof InitializeDeploymentRequestBodyBase>;
 
@@ -1033,6 +1038,7 @@ export const GetDeploymentResponseBody = z.object({
    */
   externalId: z.string().optional(),
   externalBuildData: ExternalBuildData.optional().nullable(),
+  baseImages: DeployBaseImages.optional(),
   errorData: DeploymentErrorData.nullish(),
   canceledReason: z.string().nullish(),
   worker: z

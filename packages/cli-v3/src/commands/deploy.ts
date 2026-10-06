@@ -591,6 +591,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       triggeredVia: getTriggeredVia(),
       externalId: options.externalId,
       force: options.force,
+      supportsInstanceBaseImages: true,
     },
     envVars.TRIGGER_EXISTING_DEPLOYMENT_ID
   );
@@ -1497,6 +1498,13 @@ async function handleNativeBuildServerDeploy({
 
   const deployment = initializeDeploymentResult.data;
 
+  if (deployment.baseImages) {
+    $deploymentSpinner.stop("Failed to initialize deployment");
+    throw new Error(
+      "This instance requires custom deploy base images, which cannot be applied with --native-build. Deploy without that flag."
+    );
+  }
+
   const rawDeploymentLink = `${dashboardUrl}/projects/v3/${config.project}/deployments/${deployment.shortCode}`;
   const rawTestLink = `${dashboardUrl}/projects/v3/${config.project}/test?environment=${
     options.env === "prod" ? "prod" : "stg"
@@ -1829,6 +1837,13 @@ async function handleLocalBundleDeploy({
   }
 
   const deployment = initializeDeploymentResult.data;
+
+  if (deployment.baseImages) {
+    $deploymentSpinner.stop("Failed to initialize deployment");
+    throw new Error(
+      "This instance requires custom deploy base images, which cannot be applied with --local-bundle. Deploy without that flag."
+    );
+  }
 
   const rawDeploymentLink = `${dashboardUrl}/projects/v3/${config.project}/deployments/${deployment.shortCode}`;
   const rawTestLink = `${dashboardUrl}/projects/v3/${config.project}/test?environment=${
@@ -2304,6 +2319,7 @@ async function handleFromBundleDeploy({
       isLocalBuild: true,
       isNativeBuild: false,
       triggeredVia: getTriggeredVia(),
+      supportsInstanceBaseImages: true,
     },
     existingDeploymentId
   );

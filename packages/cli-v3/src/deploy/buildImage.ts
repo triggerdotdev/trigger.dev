@@ -808,7 +808,7 @@ ENV DEBIAN_FRONTEND=noninteractive${
   const buildStage = !baseInstructions // FROM base runs instructions once: unbounded downloads
     ? prebuiltBuildStage
     : options.image?.buildBase
-      ? `${prebuiltBuildStage}\n\n${baseInstructions}`
+      ? `FROM ${options.image.buildBase} AS build\n\nENV DEBIAN_FRONTEND=noninteractive\n\n${customization}`
       : `FROM base AS build
 
 RUN apt-get update && \\

@@ -15,6 +15,18 @@ function durationString() {
   return z.string().refine(isValidDuration, "must be a duration like 7d, 30d, 365d, 1h, 1y");
 }
 
+const parseDeployBaseImagesEnv = (
+  value: string | undefined,
+  envVarName: string,
+  ctx: z.RefinementCtx
+) => {
+  const { images, errors } = parseDeployBaseImages(value, envVarName);
+  for (const message of errors) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+  }
+  return errors.length > 0 ? z.NEVER : images;
+};
+
 // Parses a CSV of machine preset names (e.g. "small-1x,small-2x") into a
 // non-empty array of MachinePresetName. Used by COMPUTE_TEMPLATE_MACHINE_PRESETS
 // and its _REQUIRED variant. Adds zod issues for empty input or unknown names.
@@ -905,11 +917,11 @@ const EnvironmentSchema = z
     DEPLOY_BASE_IMAGES: z
       .string()
       .optional()
-      .transform((v) => parseDeployBaseImages(v, "DEPLOY_BASE_IMAGES")),
+      .transform((v, ctx) => parseDeployBaseImagesEnv(v, "DEPLOY_BASE_IMAGES", ctx)),
     DEPLOY_BUILD_BASE_IMAGES: z
       .string()
       .optional()
-      .transform((v) => parseDeployBaseImages(v, "DEPLOY_BUILD_BASE_IMAGES")),
+      .transform((v, ctx) => parseDeployBaseImagesEnv(v, "DEPLOY_BUILD_BASE_IMAGES", ctx)),
     DEPLOY_TIMEOUT_MS: z.coerce
       .number()
       .int()

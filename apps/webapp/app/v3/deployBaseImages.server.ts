@@ -1,18 +1,18 @@
-import { BuildRuntime } from "@trigger.dev/core/v3";
+import { BuildRuntime, DeployBaseImageRef } from "@trigger.dev/core/v3";
 
 type BaseImageMap = Partial<Record<BuildRuntime, string>>;
 
-const DIGEST_PINNED = /@sha256:[a-f0-9]{64}$/;
+export type ParsedDeployBaseImages = { images: BaseImageMap; errors: string[] };
 
-function invalidSegment(envVarName: string, segment: string, reason: string): Error {
-  return new Error(`${envVarName}: ${reason} in "${segment}"`);
-}
-
-export function parseDeployBaseImages(value: string | undefined, envVarName: string): BaseImageMap {
-  const result: BaseImageMap = {};
+export function parseDeployBaseImages(
+  value: string | undefined,
+  envVarName: string
+): ParsedDeployBaseImages {
+  const images: BaseImageMap = {};
+  const errors: string[] = [];
 
   if (!value) {
-    return result;
+    return { images, errors };
   }
 
   for (const segment of value.split(",").map((s) => s.trim())) {
@@ -20,39 +20,47 @@ export function parseDeployBaseImages(value: string | undefined, envVarName: str
       continue;
     }
 
+    const fail = (reason: string) => errors.push(`${envVarName}: ${reason} in "${segment}"`);
+
     const separator = segment.indexOf("=");
     if (separator === -1) {
-      throw invalidSegment(envVarName, segment, "expected runtime=image");
+      fail("expected runtime=image");
+      continue;
     }
 
     const runtimeName = segment.slice(0, separator).trim();
     const image = segment.slice(separator + 1).trim();
 
+    if (runtimeName === "node") {
+      fail('runtime "node" is an alias; use the concrete runtime (node-22, node-24, node-26)');
+      continue;
+    }
+
     const runtime = BuildRuntime.safeParse(runtimeName);
     if (!runtime.success) {
-      throw invalidSegment(
-        envVarName,
-        segment,
-        `unknown runtime "${runtimeName}" (expected one of ${BuildRuntime.options.join(", ")})`
-      );
+      fail(`unknown runtime "${runtimeName}" (expected one of ${BuildRuntime.options.join(", ")})`);
+      continue;
     }
 
     if (!image) {
-      throw invalidSegment(envVarName, segment, "missing image");
+      fail("missing image");
+      continue;
     }
 
-    if (!DIGEST_PINNED.test(image)) {
-      throw invalidSegment(envVarName, segment, "image must be pinned by digest (@sha256:<64 hex chars>)");
+    if (!DeployBaseImageRef.safeParse(image).success) {
+      fail("image must be image@sha256:<64 hex chars> with no whitespace before the digest");
+      continue;
     }
 
-    if (runtime.data in result) {
-      throw invalidSegment(envVarName, segment, `duplicate runtime "${runtimeName}"`);
+    if (runtime.data in images) {
+      fail(`duplicate runtime "${runtimeName}"`);
+      continue;
     }
 
-    result[runtime.data] = image;
+    images[runtime.data] = image;
   }
 
-  return result;
+  return { images, errors };
 }
 
 export function resolveDeployBaseImages(

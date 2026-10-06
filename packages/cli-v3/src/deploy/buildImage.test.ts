@@ -289,12 +289,27 @@ describe("generateContainerfile", () => {
     expect(containerfile).toContain("FROM acme/node:26-dev@sha256:def AS build");
     expect(containerfile).not.toContain("FROM base AS build");
     expect(containerfile).not.toContain(TOOLCHAIN_PACKAGES);
-    expect(buildStage).toContain("apt-get install -y --no-install-recommends --allow-downgrades jq");
+    expect(buildStage).toContain(
+      "apt-get install -y --no-install-recommends --allow-downgrades jq"
+    );
     expect(buildStage).toContain("RUN echo first > /etc/first");
     expect(buildStage).toContain("RUN echo second > /etc/second");
     expect(containerfile.indexOf("RUN echo first > /etc/first")).toBeLessThan(
       containerfile.indexOf("AS build")
     );
+
+    const buildFrom = "FROM acme/node:26-dev@sha256:def AS build";
+    const baseEnv = "ENV DEBIAN_FRONTEND=noninteractive\n\n";
+    const baseStart = containerfile.indexOf(baseEnv) + baseEnv.length;
+    const baseCustomization = containerfile.slice(
+      baseStart,
+      containerfile.indexOf(buildFrom) - "\n\n".length
+    );
+
+    expect(buildStage.indexOf("RUN echo second > /etc/second")).toBeLessThan(
+      buildStage.indexOf("apt-get install")
+    );
+    expect(containerfile).toContain(`${buildFrom}\n\n${baseEnv}${baseCustomization}\n\n`);
   });
 
   it("builds from the base stage when instructions have no configured build image", async () => {
