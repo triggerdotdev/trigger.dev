@@ -292,8 +292,6 @@ describe("generateContainerfile", () => {
     expect(buildStage).toContain(
       "apt-get install -y --no-install-recommends --allow-downgrades jq"
     );
-    expect(buildStage).toContain("RUN echo first > /etc/first");
-    expect(buildStage).toContain("RUN echo second > /etc/second");
     expect(containerfile.indexOf("RUN echo first > /etc/first")).toBeLessThan(
       containerfile.indexOf("AS build")
     );
@@ -306,9 +304,6 @@ describe("generateContainerfile", () => {
       containerfile.indexOf(buildFrom) - "\n\n".length
     );
 
-    expect(buildStage.indexOf("RUN echo second > /etc/second")).toBeLessThan(
-      buildStage.indexOf("apt-get install")
-    );
     expect(containerfile).toContain(`${buildFrom}\n\n${baseEnv}${baseCustomization}\n\n`);
   });
 

@@ -799,22 +799,19 @@ const parseGenerateOptions = (options: GenerateContainerfileOptions) => {
     .filter(Boolean)
     .join("\n\n");
 
-  const prebuiltBuildStage = `FROM ${options.image?.buildBase ?? BUILD_IMAGE[options.runtime]} AS build
-
-ENV DEBIAN_FRONTEND=noninteractive${
-    userPackages.length > 0 ? `\n\n${aptInstall(userPackages, { repair: false })}` : ""
-  }`;
-
-  const buildStage = !baseInstructions // FROM base runs instructions once: unbounded downloads
-    ? prebuiltBuildStage
-    : options.image?.buildBase
-      ? `FROM ${options.image.buildBase} AS build\n\nENV DEBIAN_FRONTEND=noninteractive\n\n${customization}`
-      : `FROM base AS build
+  // Instructions run once (FROM base) since their downloads are unbounded;
+  // package-only projects keep the prebuilt toolchain and repeat the small install
+  const buildStage =
+    baseInstructions && !options.image?.buildBase
+      ? `FROM base AS build
 
 RUN apt-get update && \\
   apt-get install -y --no-install-recommends ${TOOLCHAIN_PACKAGES} && \\
   apt-get clean && \\
-  rm -rf /var/lib/apt/lists/*`;
+  rm -rf /var/lib/apt/lists/*`
+      : `FROM ${options.image?.buildBase ?? BUILD_IMAGE[options.runtime]} AS build
+
+ENV DEBIAN_FRONTEND=noninteractive${customization ? `\n\n${customization}` : ""}`;
 
   return {
     baseImage: options.image?.base ?? BASE_IMAGE[options.runtime],

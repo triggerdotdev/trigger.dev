@@ -1225,8 +1225,6 @@ async function applyServerBaseImages({
     return;
   }
 
-  logger.debug("Using base images required by the server", baseImages);
-
   const required = [
     baseImages.base ? `base ${baseImages.base}` : undefined,
     baseImages.buildBase ? `build ${baseImages.buildBase}` : undefined,

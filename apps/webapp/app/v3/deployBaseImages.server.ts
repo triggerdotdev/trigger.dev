@@ -2,12 +2,10 @@ import { BuildRuntime, DeployBaseImageRef } from "@trigger.dev/core/v3";
 
 type BaseImageMap = Partial<Record<BuildRuntime, string>>;
 
-export type ParsedDeployBaseImages = { images: BaseImageMap; errors: string[] };
-
 export function parseDeployBaseImages(
   value: string | undefined,
   envVarName: string
-): ParsedDeployBaseImages {
+): { images: BaseImageMap; errors: string[] } {
   const images: BaseImageMap = {};
   const errors: string[] = [];
 
@@ -75,12 +73,5 @@ export function resolveDeployBaseImages(
   const base = config.base[parsedRuntime.data];
   const buildBase = config.buildBase[parsedRuntime.data];
 
-  if (!base && !buildBase) {
-    return undefined;
-  }
-
-  return {
-    ...(base ? { base } : {}),
-    ...(buildBase ? { buildBase } : {}),
-  };
+  return base || buildBase ? { base, buildBase } : undefined;
 }

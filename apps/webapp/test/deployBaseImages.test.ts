@@ -5,8 +5,6 @@ const digestA = `sha256:${"a".repeat(64)}`;
 const digestB = `sha256:${"b".repeat(64)}`;
 const digestC = `sha256:${"c".repeat(64)}`;
 
-const hex64 = "a".repeat(64);
-
 describe("parseDeployBaseImages", () => {
   it("returns an empty map for undefined and empty values", () => {
     const empty = { images: {}, errors: [] };
@@ -31,7 +29,7 @@ describe("parseDeployBaseImages", () => {
   });
 
   it("accepts a registry with a port and a tag before the digest", () => {
-    const image = `registry.example.com:5000/ns/img:tag@sha256:${hex64}`;
+    const image = `registry.example.com:5000/ns/img:tag@${digestA}`;
     expect(parseDeployBaseImages(`node-24=${image}`, "DEPLOY_BASE_IMAGES")).toEqual({
       images: { "node-24": image },
       errors: [],
@@ -44,9 +42,9 @@ describe("parseDeployBaseImages", () => {
     ["node alias", `node=acme/node:24@${digestA}`],
     ["empty image", "node-24="],
     ["missing digest", "node-24=acme/node:24"],
-    ["flag before image", `node-24=--platform=linux/arm64 acme/node@sha256:${hex64}`],
-    ["bare digest", `node-24=@sha256:${hex64}`],
-    ["newline in image", `node-24=acme/node\nx@sha256:${hex64}`],
+    ["flag before image", `node-24=--platform=linux/arm64 acme/node@${digestA}`],
+    ["bare digest", `node-24=@${digestA}`],
+    ["newline in image", `node-24=acme/node\nx@${digestA}`],
     ["duplicate runtime", `node-24=acme/a@${digestA},node-24=acme/b@${digestB}`],
   ])("reports an error naming the env var and segment: %s", (_name, value) => {
     const segments = value.split(",");
@@ -84,11 +82,8 @@ describe("resolveDeployBaseImages", () => {
   const base = { "node-26": `acme/node-fips:26@${digestA}` } as const;
   const buildBase = { "node-26": `acme/node:26-dev@${digestB}` } as const;
 
-  it("returns undefined for an unknown runtime", () => {
+  it("returns undefined for a missing or unknown runtime", () => {
     expect(resolveDeployBaseImages("node-23", { base, buildBase })).toBeUndefined();
-  });
-
-  it("returns undefined when the deployment has no runtime", () => {
     expect(resolveDeployBaseImages(null, { base, buildBase })).toBeUndefined();
     expect(resolveDeployBaseImages(undefined, { base, buildBase })).toBeUndefined();
   });
