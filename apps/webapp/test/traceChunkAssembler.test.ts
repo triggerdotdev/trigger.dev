@@ -362,6 +362,23 @@ describe("TraceChunkAssembler tail source (partial-completion + event de-dup)", 
     expect(a.spans.find((n) => n.id === "r")?.data.events).toHaveLength(1);
   });
 
+  it("does not duplicate events when a revalidate re-sends the first chunk", () => {
+    const a = new TraceChunkAssembler();
+    const firstChunk = [
+      ev("r", "", 0, { status: "PARTIAL", duration: 0, insertedAt: "1000" }),
+      ev("r", "", 5, { kind: "SPAN_EVENT", message: "root event", insertedAt: "1000" }),
+    ];
+    a.mergeChunk(firstChunk);
+    a.mergeChunk(firstChunk, { source: "revalidate" });
+    a.mergeChunk(
+      [...firstChunk, ev("r", "", 0, { status: "OK", duration: 900, insertedAt: "90000" })],
+      { source: "revalidate" }
+    );
+    const root = a.spans.find((n) => n.id === "r");
+    expect(root?.data.events).toHaveLength(1);
+    expect(root?.data.isPartial).toBe(false);
+  });
+
   it("does not duplicate a row that the stream and the tail both read", () => {
     const a = new TraceChunkAssembler();
     const event = ev("s", "r", 12, { kind: "SPAN_EVENT", message: "once", insertedAt: "1000" });

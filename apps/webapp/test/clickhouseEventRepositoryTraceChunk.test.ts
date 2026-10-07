@@ -1,8 +1,10 @@
 import { ClickHouse, type TaskEventV2Input } from "@internal/clickhouse";
 import { clickhouseTest } from "@internal/testcontainers";
-import { describe, expect } from "vitest";
+import { describe, expect, vi } from "vitest";
 import { ClickhouseEventRepository } from "~/v3/eventRepository/clickhouseEventRepository.server";
 import type { TraceChunkCursor } from "~/v3/eventRepository/eventRepository.types";
+
+vi.setConfig({ testTimeout: 60_000 });
 
 const TRACE_ID = "trace_chunk_test";
 const ENV_ID = "env_chunk_test";
@@ -127,6 +129,10 @@ describe("ClickhouseEventRepository getTraceChunk", () => {
         expect(new Set(paged).size).toBe(new Set(expected).size);
         expect(paged.filter((m) => m === "d-partial")).toHaveLength(1);
         expect(paged.filter((m) => m === "d-complete")).toHaveLength(1);
+
+        // A page smaller than a span's rows goes through the same-key regroup.
+        const single = await collectAllChunks(repository, 1);
+        expect([...single].sort()).toEqual(expected);
       } finally {
         await shutdownRepository(repository);
       }
@@ -161,6 +167,147 @@ describe("ClickhouseEventRepository getTraceChunk", () => {
         expect(chunk?.events).toEqual([]);
         expect(chunk?.hasMore).toBe(false);
         expect(chunk?.nextCursor).toBeNull();
+      } finally {
+        await shutdownRepository(repository);
+      }
+    }
+  );
+});
+
+describe("ClickhouseEventRepository getTraceChunk same-key regroup", () => {
+  clickhouseTest(
+    "caps the rows read for one span key and pages past it",
+    async ({ clickhouseContainer }) => {
+      const clickhouse = new ClickHouse({
+        url: clickhouseContainer.getConnectionUrl(),
+        name: "test",
+      });
+      const repository = new ClickhouseEventRepository({
+        clickhouse,
+        version: "v2",
+        insertStrategy: "insert",
+      });
+
+      try {
+        const [insertError] = await clickhouse.taskEventsV2.insert([
+          ...Array.from({ length: 10_005 }, (_, i) => event("same", 0, `same-${i}`, "")),
+          event("after", 10, "after", "same"),
+        ]);
+        expect(insertError).toBeNull();
+
+        const fetchPage = (cursor?: TraceChunkCursor) =>
+          repository.getTraceChunk(
+            "taskEventPartitioned",
+            ENV_ID,
+            TRACE_ID,
+            new Date(BASE.getTime() - 60_000),
+            new Date(BASE.getTime() + 60_000),
+            cursor,
+            { includeDebugLogs: true, limit: 2 }
+          );
+
+        const first = await fetchPage();
+        expect(first?.events).toHaveLength(10_000);
+        expect(first?.events.every((e) => e.spanId === "same")).toBe(true);
+        expect(first?.hasMore).toBe(true);
+
+        const second = await fetchPage(first?.nextCursor ?? undefined);
+        expect(second?.events.map((e) => e.spanId)).toEqual(["after"]);
+      } finally {
+        await shutdownRepository(repository);
+      }
+    }
+  );
+});
+
+describe("ClickhouseEventRepository getTraceChunk key row cap", () => {
+  clickhouseTest(
+    "honours a lower key row cap, e.g. from the emergency span cap",
+    async ({ clickhouseContainer }) => {
+      const clickhouse = new ClickHouse({
+        url: clickhouseContainer.getConnectionUrl(),
+        name: "test",
+      });
+      const repository = new ClickhouseEventRepository({
+        clickhouse,
+        version: "v2",
+        insertStrategy: "insert",
+        maximumKeyRows: 3,
+      });
+
+      try {
+        const [insertError] = await clickhouse.taskEventsV2.insert([
+          ...Array.from({ length: 6 }, (_, i) => event("same", 0, `same-${i}`, "")),
+          event("after", 10, "after", "same"),
+        ]);
+        expect(insertError).toBeNull();
+
+        const fetchPage = (cursor?: TraceChunkCursor) =>
+          repository.getTraceChunk(
+            "taskEventPartitioned",
+            ENV_ID,
+            TRACE_ID,
+            new Date(BASE.getTime() - 60_000),
+            new Date(BASE.getTime() + 60_000),
+            cursor,
+            { includeDebugLogs: true, limit: 2 }
+          );
+
+        const first = await fetchPage();
+        expect(first?.events).toHaveLength(3);
+        const second = await fetchPage(first?.nextCursor ?? undefined);
+        expect(second?.events.map((e) => e.spanId)).toEqual(["after"]);
+      } finally {
+        await shutdownRepository(repository);
+      }
+    }
+  );
+});
+
+describe("ClickhouseEventRepository getTraceChunk live tail", () => {
+  clickhouseTest(
+    "returns only rows written at or after tailInsertedAtSinceMs",
+    async ({ clickhouseContainer }) => {
+      const clickhouse = new ClickHouse({
+        url: clickhouseContainer.getConnectionUrl(),
+        name: "test",
+      });
+      const repository = new ClickhouseEventRepository({
+        clickhouse,
+        version: "v2",
+        insertStrategy: "insert",
+      });
+
+      const earlyWrite = new Date(BASE.getTime() + 1_000);
+      const tailSince = new Date(BASE.getTime() + 5 * 60_000);
+      const lateWrite = new Date(BASE.getTime() + 10 * 60_000);
+      const writtenAt = (e: TaskEventV2Input, at: Date): TaskEventV2Input => ({
+        ...e,
+        inserted_at: clickhouseDate(at),
+      });
+
+      try {
+        const [insertError] = await clickhouse.taskEventsV2.insert([
+          writtenAt(event("a", 0, "a", ""), earlyWrite),
+          writtenAt(event("b", 10, "b-partial", "a"), earlyWrite),
+          // A late completion row keeps the span's original start time.
+          writtenAt(event("b", 10, "b-complete", "a"), lateWrite),
+          writtenAt(event("c", 20, "c", "a"), lateWrite),
+        ]);
+        expect(insertError).toBeNull();
+
+        const chunk = await repository.getTraceChunk(
+          "taskEventPartitioned",
+          ENV_ID,
+          TRACE_ID,
+          new Date(BASE.getTime() - 60_000),
+          undefined,
+          undefined,
+          { includeDebugLogs: true, limit: 100, tailInsertedAtSinceMs: tailSince.getTime() }
+        );
+
+        expect(chunk?.events.map((e) => e.message).sort()).toEqual(["b-complete", "c"]);
+        expect(chunk?.events.every((e) => Number(e.insertedAt) >= tailSince.getTime())).toBe(true);
       } finally {
         await shutdownRepository(repository);
       }
@@ -218,14 +365,14 @@ describe("ClickhouseEventRepository getTraceErrorEvents", () => {
           { includeDebugLogs: true }
         );
 
-        expect(errorEvents).toBeDefined();
-        const spanIds = new Set(errorEvents!.map((e) => e.spanId));
+        expect(errorEvents?.isTruncated).toBe(false);
+        const spanIds = new Set(errorEvents!.events.map((e) => e.spanId));
         expect(spanIds).toEqual(new Set(["r", "a", "b", "err1", "g1", "g2", "err2"]));
         expect(spanIds.has("c")).toBe(false);
         expect(spanIds.has("d")).toBe(false);
         expect(spanIds.has("gg1")).toBe(false);
         expect(
-          errorEvents!
+          errorEvents!.events
             .filter((e) => e.status === "ERROR")
             .map((e) => e.spanId)
             .sort()
@@ -263,7 +410,98 @@ describe("ClickhouseEventRepository getTraceErrorEvents", () => {
           new Date(BASE.getTime() + 60_000),
           { includeDebugLogs: true }
         );
-        expect(errorEvents).toEqual([]);
+        expect(errorEvents).toEqual({ events: [], isTruncated: false });
+      } finally {
+        await shutdownRepository(repository);
+      }
+    }
+  );
+});
+
+describe("ClickhouseEventRepository getTraceErrorEvents caps", () => {
+  clickhouseTest(
+    "flags truncation and returns a stable subset past the match cap",
+    async ({ clickhouseContainer }) => {
+      const clickhouse = new ClickHouse({
+        url: clickhouseContainer.getConnectionUrl(),
+        name: "test",
+      });
+      const repository = new ClickhouseEventRepository({
+        clickhouse,
+        version: "v2",
+        insertStrategy: "insert",
+      });
+
+      try {
+        const [insertError] = await clickhouse.taskEventsV2.insert([
+          statusEvent("r", 0, "", "SPAN", "OK"),
+          ...Array.from({ length: 5_005 }, (_, i) =>
+            statusEvent(`err${i}`, 10 + i, "r", "SPAN", "ERROR")
+          ),
+        ]);
+        expect(insertError).toBeNull();
+
+        const fetchErrors = () =>
+          repository.getTraceErrorEvents(
+            "taskEventPartitioned",
+            ENV_ID,
+            TRACE_ID,
+            new Date(BASE.getTime() - 60_000),
+            new Date(BASE.getTime() + 60_000),
+            { includeDebugLogs: true }
+          );
+
+        const first = await fetchErrors();
+        const second = await fetchErrors();
+
+        expect(first?.isTruncated).toBe(true);
+        const firstErrors = first!.events.filter((e) => e.status === "ERROR").map((e) => e.spanId);
+        expect(firstErrors).toHaveLength(5_000);
+        expect(first!.events.some((e) => e.spanId === "r")).toBe(true);
+        expect(new Set(second!.events.map((e) => e.spanId))).toEqual(
+          new Set(first!.events.map((e) => e.spanId))
+        );
+      } finally {
+        await shutdownRepository(repository);
+      }
+    }
+  );
+});
+
+describe("ClickhouseEventRepository getTraceErrorEvents at the cap", () => {
+  clickhouseTest(
+    "does not flag exactly the match cap as truncated",
+    async ({ clickhouseContainer }) => {
+      const clickhouse = new ClickHouse({
+        url: clickhouseContainer.getConnectionUrl(),
+        name: "test",
+      });
+      const repository = new ClickhouseEventRepository({
+        clickhouse,
+        version: "v2",
+        insertStrategy: "insert",
+      });
+
+      try {
+        const [insertError] = await clickhouse.taskEventsV2.insert([
+          statusEvent("r", 0, "", "SPAN", "OK"),
+          ...Array.from({ length: 5_000 }, (_, i) =>
+            statusEvent(`err${i}`, 10 + i, "r", "SPAN", "ERROR")
+          ),
+        ]);
+        expect(insertError).toBeNull();
+
+        const result = await repository.getTraceErrorEvents(
+          "taskEventPartitioned",
+          ENV_ID,
+          TRACE_ID,
+          new Date(BASE.getTime() - 60_000),
+          new Date(BASE.getTime() + 60_000),
+          { includeDebugLogs: true }
+        );
+
+        expect(result?.isTruncated).toBe(false);
+        expect(result?.events.filter((e) => e.status === "ERROR")).toHaveLength(5_000);
       } finally {
         await shutdownRepository(repository);
       }

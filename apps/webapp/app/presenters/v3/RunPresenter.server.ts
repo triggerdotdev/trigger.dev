@@ -224,7 +224,7 @@ export class RunPresenter {
     const firstChunkPromise = progressivePromise.then((progressiveEnabled) =>
       isRootRunView &&
       progressiveEnabled &&
-      canLiveTail(env.INCREMENTAL_LIVE_TAIL_ENABLED, run.taskEventStore)
+      canLiveTail(run.taskEventStore, env.TRACE_VIEW_EMERGENCY_SPAN_CAP)
         ? repository.getTraceChunk(
             getTaskEventStoreTableForRun(run),
             environment.id,
@@ -251,39 +251,6 @@ export class RunPresenter {
       isAgentRun,
       isAdmin: user?.admin ?? false,
     };
-
-    let totalSpans: number | undefined;
-    if (isRootRunView && firstChunk?.hasMore) {
-      const spanCount = await repository.getTraceSpanCount(
-        getTaskEventStoreTableForRun(run),
-        environment.id,
-        run.traceId,
-        traceTimeBounds.startCreatedAt,
-        traceTimeBounds.endCreatedAt,
-        { includeDebugLogs: showDebug }
-      );
-      totalSpans = typeof spanCount === "number" ? spanCount : undefined;
-
-      if (typeof spanCount === "number" && spanCount > repository.maximumTraceViewCount) {
-        return {
-          run: runData,
-          trace: {
-            events: [],
-            duration: 0,
-            rootStartedAt: undefined,
-            rootSpanStatus: "completed" as const,
-            startedAt: run.startedAt,
-            queuedDuration,
-            overridesBySpanId: {},
-            linkedRunIdBySpanId: {},
-            isTruncated: true,
-            missingAnchor: true,
-            progressive: undefined,
-          },
-          maximumLiveReloadingSetting: repository.maximumLiveReloadingSetting,
-        };
-      }
-    }
 
     if (firstChunk && hasWriteTimes(firstChunk.events)) {
       const firstEvents = stripAdminOnlyEventRows(firstChunk.events, buildOptions.isAdmin);
@@ -334,7 +301,6 @@ export class RunPresenter {
               hasMore: firstChunk.hasMore,
               buildOptions,
               showDebug,
-              totalSpans,
               maxSpans: repository.maximumTraceViewCount,
               liveTailEnabled: true,
               firstChunkReadAt,

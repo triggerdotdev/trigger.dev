@@ -4,8 +4,10 @@ import type { RunStatusData } from "~/routes/resources.orgs.$organizationSlug.pr
 
 const DEFAULT_POLL_MS = 15_000;
 
-// Polls the run status until it finishes, then calls `onFinished` once. Failed polls
-// are ignored and retried on the next interval.
+// Polls the run status and calls `onFinished` on each poll that sees the run finished,
+// until the caller disables it. The reload `onFinished` triggers can read a lagging
+// replica or be interrupted, so polling continues until the page data shows the run
+// finished. Failed polls are ignored and retried on the next interval.
 export function useRunStatusBackstop({
   enabled,
   statusPath,
@@ -37,8 +39,6 @@ export function useRunStatusBackstop({
       if (stopped || fetchError || !response.ok) return;
       const [parseError, data] = await tryCatch(response.json() as Promise<RunStatusData>);
       if (stopped || parseError || (!data.isFinished && data.completedAt === null)) return;
-      stopped = true;
-      window.clearInterval(id);
       onFinishedRef.current();
     };
     const id = window.setInterval(() => void poll(), pollMs);

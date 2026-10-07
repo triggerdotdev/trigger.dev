@@ -76,6 +76,7 @@ import type {
   TraceChunkCursor,
   TraceChunkEvent,
   TraceDetailedSummary,
+  TraceErrorEvents,
   TraceEventOptions,
   TraceSummary,
 } from "./eventRepository.types";
@@ -88,11 +89,14 @@ import {
 
 const LOGS_SEARCH_MAPPING_YIELD_BUDGET_MS = 5;
 
-const MAX_ERROR_MATCHES = 5000;
+export const DEFAULT_MAX_ERROR_MATCHES = 5000;
 
 const TRACE_CHUNK_ID_BATCH_SIZE = 1000;
 
 const TRACE_CHUNK_ID_LOOKUP_CONCURRENCY = 4;
+
+// Rows read for one (start_time, span_id) key; matches the largest chunk page.
+export const DEFAULT_MAX_KEY_ROWS = 10_000;
 
 function chunkArray<T>(items: T[], size: number): T[][] {
   const batches: T[][] = [];
@@ -135,6 +139,8 @@ export type ClickhouseEventRepositoryConfig = {
   maximumTraceSummaryViewCount?: number;
   maximumTraceDetailedSummaryViewCount?: number;
   maximumTraceViewCount?: number;
+  maximumErrorMatches?: number;
+  maximumKeyRows?: number;
   maximumLiveReloadingSetting?: number;
   traceChunkSize?: number;
   /**
@@ -352,6 +358,14 @@ export class ClickhouseEventRepository implements IEventRepository {
 
   get maximumTraceViewCount() {
     return this._config.maximumTraceViewCount ?? 250_000;
+  }
+
+  get maximumErrorMatches() {
+    return this._config.maximumErrorMatches ?? DEFAULT_MAX_ERROR_MATCHES;
+  }
+
+  get maximumKeyRows() {
+    return this._config.maximumKeyRows ?? DEFAULT_MAX_KEY_ROWS;
   }
 
   /** Exposed for tests and metrics — batches where nothing landed even after stripping JSON. */
@@ -1854,6 +1868,8 @@ export class ClickhouseEventRepository implements IEventRepository {
       const { clause, params } = buildTraceChunkKeyPredicate(slice.incompleteKey);
       groupBuilder.where(clause, params);
       groupBuilder.orderBy(TRACE_CHUNK_ORDER_BY);
+      // The next cursor skips past this key, so rows beyond the cap are dropped.
+      groupBuilder.limit(this.maximumKeyRows);
 
       const [groupError, groupRecords] = await groupBuilder.execute();
       if (groupError) {
@@ -1978,82 +1994,88 @@ export class ClickhouseEventRepository implements IEventRepository {
     startCreatedAt: Date,
     endCreatedAt: Date | undefined,
     options?: { includeDebugLogs?: boolean }
-  ): Promise<TraceChunkEvent[] | undefined> {
-    const errorBuilder = this.#applyTraceChunkScope({
-      environmentId,
-      traceId,
-      startCreatedAt,
-      endCreatedAt,
-      options,
-    });
-    errorBuilder.where("status = {errorStatus: String}", { errorStatus: "ERROR" });
-    errorBuilder.limit(MAX_ERROR_MATCHES);
+  ): Promise<TraceErrorEvents | undefined> {
+    const scope = { environmentId, traceId, startCreatedAt, endCreatedAt, options };
+    const maxMatches = this.maximumErrorMatches;
+    let isTruncated = false;
+    // Reads one extra row so a result of exactly `limit` rows isn't flagged as truncated.
+    const capped = <T>(records: T[] | undefined, limit: number): T[] => {
+      const rows = records ?? [];
+      if (rows.length <= limit) return rows;
+      isTruncated = true;
+      return rows.slice(0, limit);
+    };
 
-    const [errorQueryError, errorRecords] = await errorBuilder.execute();
+    const errorBuilder = this.#applyTraceChunkScope(scope);
+    errorBuilder.where("status = {errorStatus: String}", { errorStatus: "ERROR" });
+    errorBuilder.orderBy(TRACE_CHUNK_ORDER_BY);
+    errorBuilder.limit(maxMatches + 1);
+
+    const [errorQueryError, errorQueryRecords] = await errorBuilder.execute();
     if (errorQueryError) {
       throw errorQueryError;
     }
+    const errorRecords = capped(errorQueryRecords, maxMatches);
 
     const errorSpanIds = Array.from(new Set((errorRecords ?? []).map((r) => r.span_id)));
 
-    const attemptFailedBuilder = this.#applyTraceChunkScope({
-      environmentId,
-      traceId,
-      startCreatedAt,
-      endCreatedAt,
-      options,
-    });
+    const attemptFailedBuilder = this.#applyTraceChunkScope(scope);
     attemptFailedBuilder.where("kind = {overrideKind: String}", {
       overrideKind: "ANCESTOR_OVERRIDE",
     });
     attemptFailedBuilder.where("message = {attemptFailedMessage: String}", {
       attemptFailedMessage: "attempt_failed",
     });
-    attemptFailedBuilder.limit(MAX_ERROR_MATCHES);
+    attemptFailedBuilder.orderBy(TRACE_CHUNK_ORDER_BY);
+    attemptFailedBuilder.limit(maxMatches + 1);
 
-    const [attemptFailedError, attemptFailedRecords] = await attemptFailedBuilder.execute();
+    const [attemptFailedError, attemptFailedQueryRecords] = await attemptFailedBuilder.execute();
     if (attemptFailedError) {
       throw attemptFailedError;
     }
+    const attemptFailedRecords = capped(attemptFailedQueryRecords, maxMatches);
     const attemptFailedRunIds = Array.from(
-      new Set((attemptFailedRecords ?? []).map((r) => r.run_id).filter(Boolean))
+      new Set(attemptFailedRecords.map((r) => r.run_id).filter(Boolean))
     );
 
     if (errorSpanIds.length === 0 && attemptFailedRunIds.length === 0) {
-      return [];
+      return { events: [], isTruncated };
     }
 
-    const seedScope = { environmentId, traceId, startCreatedAt, endCreatedAt, options };
-    const runSeedBatch = async (clause: string, params: Record<string, string[]>) => {
-      const seedBuilder = this.#applyTraceChunkScope(seedScope);
-      seedBuilder.where(clause, params);
-      const [seedError, seedRecords] = await seedBuilder.execute();
-      if (seedError) {
-        throw seedError;
+    // Each seed kind reads at most `maxMatches` rows, batch by batch in a stable order.
+    const collectSeeds = async (
+      ids: string[],
+      clause: string,
+      param: string
+    ): Promise<string[]> => {
+      const spanIds: string[] = [];
+      let budget = maxMatches;
+      for (const batch of chunkArray(ids, TRACE_CHUNK_ID_BATCH_SIZE)) {
+        const seedBuilder = this.#applyTraceChunkScope(scope);
+        seedBuilder.where(clause, { [param]: batch });
+        seedBuilder.orderBy(TRACE_CHUNK_ORDER_BY);
+        seedBuilder.limit(budget + 1);
+        const [seedError, seedRecords] = await seedBuilder.execute();
+        if (seedError) {
+          throw seedError;
+        }
+        const overBudget = (seedRecords?.length ?? 0) > budget;
+        const records = capped(seedRecords, budget);
+        spanIds.push(...records.map((r) => r.span_id));
+        budget -= records.length;
+        if (overBudget) break;
       }
-      return (seedRecords ?? []).map((r) => r.span_id);
+      return spanIds;
     };
 
-    const seedLimiter = pLimit(TRACE_CHUNK_ID_LOOKUP_CONCURRENCY);
-    const seedBatchResults = await Promise.all([
-      ...chunkArray(errorSpanIds, TRACE_CHUNK_ID_BATCH_SIZE).map((batch) =>
-        seedLimiter(() =>
-          runSeedBatch("parent_span_id IN {childParents: Array(String)}", { childParents: batch })
-        )
-      ),
-      ...chunkArray(attemptFailedRunIds, TRACE_CHUNK_ID_BATCH_SIZE).map((batch) =>
-        seedLimiter(() =>
-          runSeedBatch("run_id IN {overrideRuns: Array(String)}", { overrideRuns: batch })
-        )
-      ),
+    const [childSpanIds, overrideRunSpanIds] = await Promise.all([
+      collectSeeds(errorSpanIds, "parent_span_id IN {childParents: Array(String)}", "childParents"),
+      collectSeeds(attemptFailedRunIds, "run_id IN {overrideRuns: Array(String)}", "overrideRuns"),
     ]);
-    const extraSpanIds = Array.from(new Set(seedBatchResults.flat()));
+    const extraSpanIds = Array.from(new Set([...childSpanIds, ...overrideRunSpanIds]));
 
-    const rows = await this.#collectSpansUpwards(
-      { environmentId, traceId, startCreatedAt, endCreatedAt, options },
-      [...errorSpanIds, ...extraSpanIds]
-    );
-    return rows.map((record) => this.#toTraceChunkEvent(record));
+    const rows = await this.#collectSpansUpwards(scope, [...errorSpanIds, ...extraSpanIds]);
+    return { events: rows.map((record) => this.#toTraceChunkEvent(record)), isTruncated };
   }
 
   async getTraceSpanWithAncestors(

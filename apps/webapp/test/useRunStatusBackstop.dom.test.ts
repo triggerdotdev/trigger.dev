@@ -41,9 +41,9 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function render(props: { enabled?: boolean; skip?: () => boolean }) {
   let finished = 0;
-  function Harness() {
+  function Harness({ enabled }: { enabled: boolean }) {
     useRunStatusBackstop({
-      enabled: props.enabled ?? true,
+      enabled,
       statusPath: `${baseUrl}/status`,
       shouldSkip: props.skip ?? (() => false),
       onFinished: () => finished++,
@@ -54,22 +54,29 @@ function render(props: { enabled?: boolean; skip?: () => boolean }) {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
-  act(() => root!.render(createElement(Harness)));
-  return { finished: () => finished };
+  act(() => root!.render(createElement(Harness, { enabled: props.enabled ?? true })));
+  return {
+    finished: () => finished,
+    disable: () => act(() => root!.render(createElement(Harness, { enabled: false }))),
+  };
 }
 
 describe("useRunStatusBackstop", () => {
-  it("calls onFinished once when the run finishes, then stops polling", async () => {
+  it("calls onFinished on each poll that sees the run finished until disabled", async () => {
     replies = [
       { status: 200, body: { isFinished: false, completedAt: null } },
       { status: 200, body: { isFinished: true, completedAt: null } },
     ];
     const harness = render({});
     await act(() => sleep(200));
-    expect(harness.finished()).toBe(1);
-    const requestsAtFinish = requests;
+    expect(harness.finished()).toBeGreaterThan(1);
+
+    harness.disable();
+    const finishedAtDisable = harness.finished();
+    const requestsAtDisable = requests;
     await act(() => sleep(100));
-    expect(requests).toBe(requestsAtFinish);
+    expect(harness.finished()).toBe(finishedAtDisable);
+    expect(requests).toBe(requestsAtDisable);
   });
 
   it("ignores failed polls and keeps polling", async () => {
@@ -80,7 +87,7 @@ describe("useRunStatusBackstop", () => {
     ];
     const harness = render({});
     await act(() => sleep(250));
-    expect(harness.finished()).toBe(1);
+    expect(harness.finished()).toBeGreaterThanOrEqual(1);
   });
 
   it("does not poll while shouldSkip is true", async () => {

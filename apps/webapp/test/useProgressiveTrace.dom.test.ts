@@ -152,13 +152,42 @@ describe("useProgressiveTrace live tail", () => {
       payload("root", [wireEvent("root", "", T0), wireEvent("other", "root", T0)], {
         hasMore: true,
         nextCursor: { startTime: "1", spanId: "other" },
-        totalSpans: 3,
       })
     );
     await act(() => sleep(150));
 
     expect(backgroundRequests()).toHaveLength(1);
     expect(view.ids()).toContain("child");
+  });
+
+  it("lands the root's final row from a revalidate after stopping at the ceiling", async () => {
+    handler = () => ({
+      events: [wireEvent("child", "root", T0 + 1_000)],
+      nextCursor: null,
+      hasMore: false,
+    });
+    const options = {
+      hasMore: true,
+      nextCursor: { startTime: "1", spanId: "root" },
+      maxSpans: 1,
+    };
+    const view = render(
+      payload("root", [wireEvent("root", "", T0)], options),
+      `${baseUrl}/a/chunk`
+    );
+    await waitFor(() => view.result().isTruncated && view.ids().includes("child"));
+    expect(view.result().rootSpanStatus).toBe("executing");
+
+    view.rerender(
+      payload(
+        "root",
+        [wireEvent("root", "", T0), wireEvent("root", "", T0 + 5_000, { status: "OK" })],
+        options
+      )
+    );
+    await waitFor(() => view.result().rootSpanStatus === "completed");
+    expect(view.ids()).toContain("child");
+    expect(backgroundRequests()).toHaveLength(1);
   });
 
   it("reads back to the first-chunk read time on the first tail after the load", async () => {
@@ -276,6 +305,50 @@ describe("useProgressiveTrace live tail", () => {
     view.rerender(payload("root", [wireEvent("root", "", T0)], { ...options, showDebug: true }));
     await waitFor(() => backgroundRequests().length === 2);
     expect(backgroundRequests()[1].params.get("debug")).toBe("1");
+  });
+
+  it("skips the errors-only fetch once every chunk is loaded", async () => {
+    const view = render(payload("root", [wireEvent("root", "", T0)]), `${baseUrl}/a/chunk`, true);
+    expect(view.result().isComplete).toBe(true);
+    await act(() => sleep(100));
+    expect(requests.filter((r) => r.params.get("filter") === "errors")).toHaveLength(0);
+  });
+
+  it("stops loading and marks the trace truncated when a page was capped", async () => {
+    handler = () => ({
+      events: [wireEvent("child", "root", T0 + 1_000)],
+      nextCursor: null,
+      hasMore: false,
+      isTruncated: true,
+    });
+    const view = render(
+      payload("root", [wireEvent("root", "", T0)], {
+        hasMore: true,
+        nextCursor: { startTime: "1", spanId: "root" },
+      }),
+      `${baseUrl}/a/chunk`
+    );
+    await waitFor(() => view.result().isComplete);
+    expect(view.result().isTruncated).toBe(true);
+    expect(backgroundRequests()).toHaveLength(1);
+  });
+
+  it("flags capped errors-only results without marking the trace truncated", async () => {
+    handler = (request) =>
+      request.params.get("filter") === "errors"
+        ? { events: [], nextCursor: null, hasMore: false, isTruncated: true }
+        : new Promise(() => {});
+    const view = render(
+      payload("root", [wireEvent("root", "", T0)], {
+        hasMore: true,
+        nextCursor: { startTime: "1", spanId: "root" },
+      }),
+      `${baseUrl}/a/chunk`,
+      true
+    );
+    await waitFor(() => view.result().errorsTruncated);
+    expect(view.result().isTruncated).toBe(false);
+    expect(view.result().isComplete).toBe(false);
   });
 
   it("re-fetches errors-only spans after a retry", async () => {

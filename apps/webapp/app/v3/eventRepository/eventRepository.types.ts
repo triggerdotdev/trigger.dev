@@ -317,6 +317,11 @@ export type TraceChunk = {
   hasMore: boolean;
 };
 
+export type TraceErrorEvents = {
+  events: Array<TraceChunkEvent>;
+  isTruncated: boolean;
+};
+
 export type SpanDetailedSummary = {
   id: string;
   parentId: string | undefined;
@@ -463,7 +468,7 @@ export interface IEventRepository {
     startCreatedAt: Date,
     endCreatedAt: Date | undefined,
     options?: { includeDebugLogs?: boolean }
-  ): Promise<Array<TraceChunkEvent> | undefined>;
+  ): Promise<TraceErrorEvents | undefined>;
 
   getTraceSpanWithAncestors(
     storeTable: TaskEventStoreTable,

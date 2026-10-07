@@ -1,6 +1,10 @@
 import { ClickHouse, type ClickHouseSettings } from "@internal/clickhouse";
 import { createHash } from "crypto";
-import { ClickhouseEventRepository } from "~/v3/eventRepository/clickhouseEventRepository.server";
+import {
+  ClickhouseEventRepository,
+  DEFAULT_MAX_ERROR_MATCHES,
+  DEFAULT_MAX_KEY_ROWS,
+} from "~/v3/eventRepository/clickhouseEventRepository.server";
 import { env } from "~/env.server";
 import { clampToEmergencySpanCap } from "~/v3/eventRepository/emergencySpanCap.server";
 import { singleton } from "~/utils/singleton";
@@ -859,6 +863,8 @@ function buildEventRepository(
         maximumLiveReloadingSetting: env.EVENTS_CLICKHOUSE_MAX_LIVE_RELOADING_SETTING,
         traceChunkSize: env.EVENTS_CLICKHOUSE_TRACE_CHUNK_SIZE,
         maximumTraceViewCount: env.EVENTS_CLICKHOUSE_MAX_TRACE_VIEW_COUNT,
+        maximumErrorMatches: clampToEmergencySpanCap(DEFAULT_MAX_ERROR_MATCHES),
+        maximumKeyRows: clampToEmergencySpanCap(DEFAULT_MAX_KEY_ROWS),
         insertStrategy: env.EVENTS_CLICKHOUSE_INSERT_STRATEGY,
         waitForAsyncInsert: env.EVENTS_CLICKHOUSE_WAIT_FOR_ASYNC_INSERT === "1",
         asyncInsertMaxDataSize: env.EVENTS_CLICKHOUSE_ASYNC_INSERT_MAX_DATA_SIZE,
@@ -893,6 +899,8 @@ function buildEventRepository(
         maximumLiveReloadingSetting: env.EVENTS_CLICKHOUSE_MAX_LIVE_RELOADING_SETTING,
         traceChunkSize: env.EVENTS_CLICKHOUSE_TRACE_CHUNK_SIZE,
         maximumTraceViewCount: env.EVENTS_CLICKHOUSE_MAX_TRACE_VIEW_COUNT,
+        maximumErrorMatches: clampToEmergencySpanCap(DEFAULT_MAX_ERROR_MATCHES),
+        maximumKeyRows: clampToEmergencySpanCap(DEFAULT_MAX_KEY_ROWS),
         insertStrategy: env.EVENTS_CLICKHOUSE_INSERT_STRATEGY,
         waitForAsyncInsert: env.EVENTS_CLICKHOUSE_WAIT_FOR_ASYNC_INSERT === "1",
         asyncInsertMaxDataSize: env.EVENTS_CLICKHOUSE_ASYNC_INSERT_MAX_DATA_SIZE,

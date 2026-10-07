@@ -38,7 +38,7 @@ export class TraceChunkPresenter {
     filter?: "errors";
     /** Live tail: only return rows written at/after this write time (ms since epoch). */
     tailInsertedAtSinceMs?: number;
-  }): Promise<TraceChunk | undefined> {
+  }): Promise<(TraceChunk & { isTruncated?: boolean }) | undefined> {
     const run = await runStore.findRun(
       { friendlyId: runFriendlyId },
       {
@@ -98,7 +98,7 @@ export class TraceChunkPresenter {
     const endCreatedAt = run.completedAt ?? undefined;
 
     if (filter === "errors") {
-      const events = await repository.getTraceErrorEvents(
+      const errors = await repository.getTraceErrorEvents(
         storeTable,
         environment.id,
         run.traceId,
@@ -106,13 +106,14 @@ export class TraceChunkPresenter {
         endCreatedAt,
         { includeDebugLogs: showDebug }
       );
-      if (!events) {
+      if (!errors) {
         return undefined;
       }
       return {
-        events: stripAdminOnlyEventRows(events, isAdmin),
+        events: stripAdminOnlyEventRows(errors.events, isAdmin),
         nextCursor: null,
         hasMore: false,
+        isTruncated: errors.isTruncated,
       };
     }
 

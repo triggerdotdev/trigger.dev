@@ -2,18 +2,17 @@ import { describe, expect, it } from "vitest";
 import { canLiveTail, hasWriteTimes } from "~/presenters/v3/liveTailGate";
 
 describe("canLiveTail", () => {
-  it("allows progressive loading with the tail on the v2 store when the switch is on", () => {
-    expect(canLiveTail("1", "clickhouse_v2")).toBe(true);
+  it("allows progressive loading with the tail on the v2 store", () => {
+    expect(canLiveTail("clickhouse_v2", undefined)).toBe(true);
   });
 
-  it("falls back when the env switch is off or unset", () => {
-    expect(canLiveTail("0", "clickhouse_v2")).toBe(false);
-    expect(canLiveTail("", "clickhouse_v2")).toBe(false);
+  it("falls back while the emergency span cap is set", () => {
+    expect(canLiveTail("clickhouse_v2", 5_000)).toBe(false);
   });
 
   it("falls back for stores without a write time", () => {
-    expect(canLiveTail("1", "clickhouse")).toBe(false);
-    expect(canLiveTail("1", "taskEvent")).toBe(false);
+    expect(canLiveTail("clickhouse", undefined)).toBe(false);
+    expect(canLiveTail("taskEvent", undefined)).toBe(false);
   });
 });
 

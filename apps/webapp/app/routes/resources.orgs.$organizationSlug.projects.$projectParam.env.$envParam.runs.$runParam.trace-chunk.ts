@@ -1,9 +1,10 @@
 import { json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
+import { env } from "~/env.server";
 import { TraceChunkPresenter } from "~/presenters/v3/TraceChunkPresenter.server";
-import { getImpersonationState } from "~/services/impersonation.server";
 import { requireUser } from "~/services/session.server";
 import { v3RunParamsSchema } from "~/utils/pathBuilder";
+import { clampToEmergencySpanCap } from "~/v3/eventRepository/emergencySpanCap.server";
 import type { TraceChunkCursor } from "~/v3/eventRepository/eventRepository.types";
 
 // Largest millisecond timestamp a JS Date can hold.
@@ -37,13 +38,13 @@ function parseCursor(
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const user = await requireUser(request);
-  const { isImpersonating } = await getImpersonationState(request, user.id);
   const { projectParam, envParam, runParam } = v3RunParamsSchema.parse(params);
 
   const url = new URL(request.url);
   const { cursorStartTime, cursorSpanId, debug, limit, filter, insertedAtSince } =
     SearchSchema.parse(Object.fromEntries(url.searchParams));
 
+  const cursor = parseCursor(cursorStartTime, cursorSpanId);
   const readAt = Date.now();
   const presenter = new TraceChunkPresenter();
   const chunk = await presenter.call({
@@ -51,11 +52,12 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     projectSlug: projectParam,
     environmentSlug: envParam,
     runFriendlyId: runParam,
-    cursor: parseCursor(cursorStartTime, cursorSpanId),
-    showDebug: debug === "1" && user.admin,
+    cursor,
+    showDebug: debug === "1" && (user.admin || user.isImpersonating),
     isAdmin: user.admin,
-    showDeletedLogs: isImpersonating,
-    limit,
+    showDeletedLogs: user.isImpersonating,
+    // Tabs opened before the emergency cap was set; cap their pages too.
+    limit: clampToEmergencySpanCap(limit ?? env.EVENTS_CLICKHOUSE_TRACE_CHUNK_SIZE),
     filter,
     tailInsertedAtSinceMs: insertedAtSince,
   });
@@ -64,10 +66,17 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     throw new Response("Trace not found", { status: 404 });
   }
 
+  // Under the emergency cap, open tabs stop background paging after this page instead
+  // of paging to their original ceiling in small pages.
+  const isBackgroundPage = cursor !== undefined && insertedAtSince === undefined && !filter;
+  const stopPaging =
+    env.TRACE_VIEW_EMERGENCY_SPAN_CAP !== undefined && isBackgroundPage && chunk.hasMore;
+
   return json({
     events: chunk.events.map((event) => ({ ...event, startTime: event.startTime.toISOString() })),
-    nextCursor: chunk.nextCursor,
-    hasMore: chunk.hasMore,
+    nextCursor: stopPaging ? null : chunk.nextCursor,
+    hasMore: stopPaging ? false : chunk.hasMore,
+    isTruncated: stopPaging || chunk.isTruncated,
     readAt,
   });
 }

@@ -72,6 +72,7 @@ import type {
   TraceChunkCursor,
   TraceChunkEvent,
   TraceDetailedSummary,
+  TraceErrorEvents,
   TraceEventOptions,
   TraceSummary,
 } from "./eventRepository.types";
@@ -509,7 +510,7 @@ export class EventRepository implements IEventRepository {
     _startCreatedAt: Date,
     _endCreatedAt: Date | undefined,
     _options?: { includeDebugLogs?: boolean }
-  ): Promise<TraceChunkEvent[] | undefined> {
+  ): Promise<TraceErrorEvents | undefined> {
     return undefined;
   }
 

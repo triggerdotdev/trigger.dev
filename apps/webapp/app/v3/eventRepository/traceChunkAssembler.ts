@@ -29,10 +29,10 @@ function isLogEvent(kind: string): boolean {
   return kind.startsWith("LOG_") || kind === "DEBUG_EVENT";
 }
 
-export type TraceChunkSource = "stream" | "errors" | "deeplink" | "tail";
+export type TraceChunkSource = "stream" | "errors" | "deeplink" | "tail" | "revalidate";
 
 // Each read from these sources is a whole re-read, so it replaces its own counts.
-type ReplacingSource = "tail" | "deeplink";
+type ReplacingSource = "tail" | "deeplink" | "revalidate";
 
 type EventCount = {
   bySource: Map<TraceChunkSource, number>;
@@ -102,7 +102,7 @@ export class TraceChunkAssembler {
   #earliestNano = new Map<string, bigint>();
   #firstNano = new Map<string, bigint>();
   #eventCounts = new Map<string, Map<string, EventCount>>();
-  #readGeneration: Record<ReplacingSource, number> = { tail: 0, deeplink: 0 };
+  #readGeneration: Record<ReplacingSource, number> = { tail: 0, deeplink: 0, revalidate: 0 };
   // Greatest write time (ms) from any source; null on the v1 store.
   #maxInsertedAt: number | null = null;
   // Point the last completed tail read everything up to; other sources never move it.
@@ -114,8 +114,8 @@ export class TraceChunkAssembler {
 
   mergeChunk(events: TraceChunkEvent[], options?: { source?: TraceChunkSource }): void {
     const source = options?.source ?? "stream";
-    if (source === "deeplink") {
-      this.#readGeneration.deeplink++;
+    if (source === "deeplink" || source === "revalidate") {
+      this.#readGeneration[source]++;
     }
     for (const event of events) {
       if (event.insertedAt) {
@@ -299,7 +299,7 @@ export class TraceChunkAssembler {
     }
 
     // Replace this source's count from its previous read; `pushed` only grows.
-    if (source === "tail" || source === "deeplink") {
+    if (source === "tail" || source === "deeplink" || source === "revalidate") {
       const generation = this.#readGeneration[source];
       if (count.readGen?.[source] !== generation) {
         count.readGen = { ...count.readGen, [source]: generation };

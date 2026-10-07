@@ -615,7 +615,7 @@ describe("trace chunk stress — errors-only and search are complete/correct mid
         for (const n of [1, 2, 5, 10, 24]) {
           const assembler = await assembleFirstNChunks(repository, traceId, 25, n);
           assembler.mergeChunk(
-            errorEvents!.map((e) => ({ ...e, startTime: new Date(e.startTime) }))
+            errorEvents!.events.map((e) => ({ ...e, startTime: new Date(e.startTime) }))
           );
           const view = buildTraceView(applyAncestorOverrides(assembler.spans).spans, {
             ...BUILD_OPTIONS,
@@ -783,7 +783,7 @@ describe("trace chunk stress — errors-only includes override-propagated (faile
           END,
           { includeDebugLogs: true }
         );
-        const fetchedIds = new Set(errorEvents!.map((e) => e.spanId));
+        const fetchedIds = new Set(errorEvents!.events.map((e) => e.spanId));
         expect(fetchedIds.has(childC), "getTraceErrorEvents includes the override-error").toBe(
           true
         );
@@ -795,7 +795,7 @@ describe("trace chunk stress — errors-only includes override-propagated (faile
             expect(assembler.hasSpan(childC), `childC not loaded at ${n} chunks`).toBe(false);
           }
           assembler.mergeChunk(
-            errorEvents!.map((e) => ({ ...e, startTime: new Date(e.startTime) }))
+            errorEvents!.events.map((e) => ({ ...e, startTime: new Date(e.startTime) }))
           );
           const view = buildTraceView(applyAncestorOverrides(assembler.spans).spans, {
             ...BUILD_OPTIONS,

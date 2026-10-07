@@ -104,10 +104,9 @@ import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.se
 import { buildSyntheticRunHeader } from "~/v3/mollifier/syntheticRunHeader.server";
 import { buildSyntheticTraceForBufferedRun } from "~/v3/mollifier/syntheticTrace.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
-import { getImpersonationId } from "~/services/impersonation.server";
 import { logger } from "~/services/logger.server";
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
-import { requireUserId } from "~/services/session.server";
+import { requireUser } from "~/services/session.server";
 import { rbac } from "~/services/rbac.server";
 import { runAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import { WhenAgentUnavailable } from "~/components/dashboard-agent/WhenAgentUnavailable";
@@ -128,6 +127,7 @@ import {
 } from "~/utils/pathBuilder";
 import type { SpanOverride } from "~/v3/eventRepository/eventRepository.types";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { shouldRevalidateRunPage } from "./shouldRevalidateRunPage";
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.spans.$spanParam/route";
 import { pageMeta } from "~/utils/pageTitle";
 
@@ -278,24 +278,28 @@ async function runWritePermissions(request: Request, userId: string, organizatio
   return { canReplayRun: canWriteRun, canCancelRun: canWriteRun };
 }
 
+export { shouldRevalidateRunPage as shouldRevalidate };
+
 export const handle: Handle = {
   agentPageContext: (data) => runAgentPageContext(data),
 };
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
-  const impersonationId = await getImpersonationId(request);
+  const user = await requireUser(request);
+  const userId = user.id;
   const { projectParam, organizationSlug, envParam, runParam } = v3RunParamsSchema.parse(params);
 
   const url = new URL(request.url);
-  const showDebug = url.searchParams.get("showDebug") === "true";
+  // Same rule as the trace-chunk route, so the first chunk and later chunks agree.
+  const showDebug =
+    url.searchParams.get("showDebug") === "true" && (user.admin || user.isImpersonating);
   const selectedSpanId = url.searchParams.get("span") ?? undefined;
 
   const presenter = new RunPresenter();
   const [error, result] = await tryCatch(
     presenter.call({
       userId,
-      showDeletedLogs: !!impersonationId,
+      showDeletedLogs: user.isImpersonating,
       projectSlug: projectParam,
       runFriendlyId: runParam,
       environmentSlug: envParam,
@@ -677,6 +681,7 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Trace
     linkedRunIdBySpanId,
     isComplete,
     isTruncated: progressiveIsTruncated,
+    errorsTruncated,
     loadFailed,
     tailLive,
     liveTailEnabled,
@@ -725,21 +730,26 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Trace
     }
   }, [streamedEvents, liveTailEnabled, tailLive]);
 
-  // Tail path: refresh run-row-fed controls once the root span goes terminal.
+  // The page data still shows the run unfinished, so a finish reload is useful.
+  const runDataUnfinished = !run.isFinished && run.completedAt === null;
+
+  // Tail path: refresh run-row-fed controls once the root span goes terminal, unless a
+  // reload already brought the finished run (e.g. the backstop's).
   const prevRootSpanRef = useRef({ runId: run.friendlyId, status: rootSpanStatus });
   useEffect(() => {
     const previous = prevRootSpanRef.current;
     prevRootSpanRef.current = { runId: run.friendlyId, status: rootSpanStatus };
     if (!liveTailEnabled || previous.runId !== run.friendlyId) return;
-    if (previous.status === "executing" && rootSpanStatus !== "executing") {
+    if (previous.status === "executing" && rootSpanStatus !== "executing" && runDataUnfinished) {
       revalidatorRef.current.revalidate();
     }
-  }, [run.friendlyId, rootSpanStatus, liveTailEnabled]);
+  }, [run.friendlyId, rootSpanStatus, liveTailEnabled, runDataUnfinished]);
 
-  // Tail path backstop: reconcile once the run finishes, even if the tail missed the
-  // root's final row. Polls whatever the stream is doing.
+  // Tail path backstop: reload once the run finishes, even if the tail missed the
+  // root's final row. Polls whatever the stream is doing, and keeps reloading until the
+  // page data shows the run finished (a reload can read a lagging replica).
   useRunStatusBackstop({
-    enabled: liveTailEnabled && run.completedAt === null,
+    enabled: liveTailEnabled && runDataUnfinished,
     statusPath,
     shouldSkip: () => document.visibilityState === "hidden",
     onFinished: () => {
@@ -809,6 +819,13 @@ function TraceView({ run, trace, maximumLiveReloadingSetting, resizable }: Trace
                   }
                 >
                   Some of this trace couldn't be loaded, so it's shown partially.
+                </Callout>
+              </div>
+            )}
+            {errorsOnly && errorsTruncated && !traceIsTruncated && (
+              <div className="shrink-0 border-b border-grid-bright px-3 py-2">
+                <Callout variant="info" className="text-sm">
+                  This trace is large, so Errors only may not show every error.
                 </Callout>
               </div>
             )}

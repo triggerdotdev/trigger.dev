@@ -42,6 +42,8 @@ type WireChunkResponse = {
   events: WireChunkEvent[];
   nextCursor: TraceChunkCursor | null;
   hasMore: boolean;
+  // The server capped the result: errors-only matches, or paging under the emergency cap.
+  isTruncated?: boolean;
   // Server time (ms) taken before the page was read.
   readAt?: number;
 };
@@ -53,7 +55,6 @@ type ProgressiveMeta = {
   hasMore: boolean;
   buildOptions: BuildTraceViewOptions;
   showDebug: boolean;
-  totalSpans?: number;
   maxSpans?: number;
   liveTailEnabled?: boolean;
   // Server time (ms) before the first chunk was read; the first tail reads back to it.
@@ -79,6 +80,8 @@ export type ProgressiveTraceState = {
   linkedRunIdBySpanId: Record<string, string>;
   isComplete: boolean;
   isTruncated: boolean;
+  // Errors-only matches were capped; separate from `isTruncated`, which stops live reload.
+  errorsTruncated: boolean;
   loadFailed: boolean;
 };
 
@@ -96,6 +99,7 @@ function initialState(trace: ProgressiveTraceInput): ProgressiveTraceState {
     linkedRunIdBySpanId: trace.linkedRunIdBySpanId ?? {},
     isComplete: !trace.progressive?.hasMore,
     isTruncated: false,
+    errorsTruncated: false,
     loadFailed: false,
   };
 }
@@ -192,6 +196,8 @@ export function useProgressiveTrace(
   const errorsFetchedRef = useRef(false);
   // The deep-link payload already merged, so a kept tree only merges new ones.
   const mergedSupplementaryRef = useRef<WireChunkEvent[] | null>(null);
+  // The first chunk already merged; a same-run revalidate merges only a new one.
+  const mergedFirstEventsRef = useRef<WireChunkEvent[] | null>(null);
   // Assembler the in-flight tail targets; a stale tail never touches the current one.
   const tailingRef = useRef<TraceChunkAssembler | null>(null);
   // Timestamp of the last tail read, for the size-aware cadence governor.
@@ -220,6 +226,7 @@ export function useProgressiveTrace(
       linkedRunIdBySpanId: view.linkedRunIdBySpanId,
       isComplete: prev.isComplete,
       isTruncated: prev.isTruncated,
+      errorsTruncated: prev.errorsTruncated,
       loadFailed: prev.loadFailed,
     }));
   }, []);
@@ -249,6 +256,7 @@ export function useProgressiveTrace(
 
     const assembler = new TraceChunkAssembler();
     assembler.mergeChunk(meta.firstEvents.map(toChunkEvent));
+    mergedFirstEventsRef.current = meta.firstEvents;
     if (meta.supplementaryFirstEvents?.length) {
       assembler.mergeChunk(meta.supplementaryFirstEvents.map(toChunkEvent), {
         source: "deeplink",
@@ -338,7 +346,7 @@ export function useProgressiveTrace(
         requestRebuild();
         cursor = data.hasMore ? data.nextCursor : null;
 
-        if (assembler.size > maxSpans) {
+        if (assembler.size > maxSpans || data.isTruncated) {
           markComplete(true);
           return;
         }
@@ -360,9 +368,12 @@ export function useProgressiveTrace(
     };
   }, [identity, chunkPath, retryGeneration, rebuild]);
 
+  // Every chunk is loaded, so the client-side filter already sees every error.
+  const fullyLoaded = state.isComplete && !state.loadFailed && !state.isTruncated;
+
   useEffect(() => {
     const meta = latestTraceRef.current.progressive;
-    if (!errorsOnly || !meta || errorsFetchedRef.current) {
+    if (!errorsOnly || !meta || errorsFetchedRef.current || fullyLoaded) {
       return;
     }
 
@@ -374,12 +385,15 @@ export function useProgressiveTrace(
       errorsFetchedRef.current = true;
       assembler.mergeChunk(data.events.map(toChunkEvent), { source: "errors" });
       rebuild(meta, assembler);
+      if (data.isTruncated) {
+        setState((prev) => (prev.errorsTruncated ? prev : { ...prev, errorsTruncated: true }));
+      }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [errorsOnly, identity, chunkPath, retryGeneration, rebuild]);
+  }, [errorsOnly, fullyLoaded, identity, chunkPath, retryGeneration, rebuild]);
 
   const runTail = useCallback(() => {
     const meta = latestTraceRef.current.progressive;
@@ -476,6 +490,20 @@ export function useProgressiveTrace(
     if (!assembler.changedSinceRender) return;
     rebuild(meta, assembler);
   }, [supplementary, rebuild]);
+
+  // A kept tree merges a revalidated first chunk, e.g. the root's final row after the
+  // tail stopped at the view ceiling.
+  const firstEvents = progressive?.firstEvents;
+  useEffect(() => {
+    const meta = latestTraceRef.current.progressive;
+    const assembler = assemblerRef.current;
+    if (!meta?.liveTailEnabled || !assembler || !firstEvents) return;
+    if (firstEvents === mergedFirstEventsRef.current) return;
+    mergedFirstEventsRef.current = firstEvents;
+    assembler.mergeChunk(firstEvents.map(toChunkEvent), { source: "revalidate" });
+    if (!assembler.changedSinceRender) return;
+    rebuild(meta, assembler);
+  }, [firstEvents, rebuild]);
 
   // Stable trigger so the route's SSE effect doesn't re-fire on chunkPath changes.
   useEffect(() => {

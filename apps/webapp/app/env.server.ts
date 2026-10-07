@@ -1116,8 +1116,6 @@ const EnvironmentSchema = z
     EVENT_LOOP_UTILIZATION_MONITOR_ENABLED: z.string().default("1"),
     MAXIMUM_LIVE_RELOADING_EVENTS: z.coerce.number().int().default(1000),
     MAXIMUM_TRACE_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(25_000),
-    // Live tail for progressive trace loading; "1" on, anything else off.
-    INCREMENTAL_LIVE_TAIL_ENABLED: z.string().default("0"),
     MAXIMUM_TRACE_DETAILED_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(10_000),
     // Emergency circuit breaker: when set, clamps the trace summary and detailed
     // summary span limits on both event store paths to this value. Unset = disabled.
