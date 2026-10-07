@@ -12,14 +12,18 @@ Thank you for helping us make Trigger.dev even better! 🤩
 
 We use [vouch](https://github.com/mitchellh/vouch) to manage contributor trust. **PRs from unvouched users are automatically closed.**
 
+> **Important:** Because Trigger.dev is production infrastructure, every external change needs a security review and verification by our team. Your vouch request is _extremely_ unlikely to be accepted unless you are already known to the Trigger.dev team in some way, either as a customer or self-hoster or some other reason we'd be familiar with your work.
+
+We really appreciate bug reports or feature requests. A good reproduction always gets fixed faster than a PR would get merged. You can even suggest the architecture of the fix in the bug report under "Suggested fix".
+
 Before you open your first pull request, you need to be vouched by a maintainer. Here's how:
 
-1. Open a [Vouch Request](https://github.com/triggerdotdev/trigger.dev/issues/new?template=vouch-request.yml) issue.
-2. Tell us what you'd like to work on and share any relevant background.
-3. A maintainer will review your request and vouch for you by commenting on the issue.
-4. Once vouched, your PRs will be accepted normally.
+1. Leave a comment in [Vouch please: how to become a contributor](https://github.com/triggerdotdev/trigger.dev/discussions/5010). Please don't open a separate issue or discussion to request a vouch.
+2. Tell us what you'd like to work on, with a link to the issue if there is one. Include a little about your background, with links to relevant projects or previous contributions if available.
+3. A maintainer will review your request and let you know once you've been added to the vouched contributors list.
+4. Once approved, follow the guidelines below and open your PR as a draft first.
 
-If you're unsure whether you're already vouched, go ahead and open a PR — the check will tell you.
+Being vouched lets you submit PRs; it does not guarantee that a particular change will be accepted.
 
 ## Developing
 
