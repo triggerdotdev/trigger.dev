@@ -237,12 +237,15 @@ export function SpanView({
   spanOverrides,
   closePanel,
   linkedRunId,
+  refreshKey,
 }: {
   runParam: string;
   spanId: string | undefined;
   spanOverrides?: SpanOverride;
   closePanel?: () => void;
   linkedRunId?: string;
+  /** Changing it reloads the span. */
+  refreshKey?: number;
 }) {
   const organization = useOrganization();
   const project = useProject();
@@ -256,7 +259,16 @@ export function SpanView({
       environment.slug
     }/runs/${runParam}/spans/${spanId}${linkedRunId ? `?linkedRunId=${linkedRunId}` : ""}`;
     load(url);
-  }, [organization.slug, project.slug, environment.slug, runParam, spanId, linkedRunId, load]);
+  }, [
+    organization.slug,
+    project.slug,
+    environment.slug,
+    runParam,
+    spanId,
+    linkedRunId,
+    load,
+    refreshKey,
+  ]);
 
   if (spanId === undefined) {
     return null;

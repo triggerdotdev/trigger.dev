@@ -131,6 +131,7 @@ import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { shouldRevalidateRunPage } from "./shouldRevalidateRunPage";
 import { settleUnloadedRoot } from "./settleUnloadedRoot";
 import { getTraceStatus, type TraceStatus } from "./traceStatus";
+import { useThrottledRefresh } from "./useThrottledRefresh";
 import { SpanView } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.spans.$spanParam/route";
 import { pageMeta } from "~/utils/pageTitle";
 
@@ -679,6 +680,7 @@ function TraceFilters({
 
 // Coarse on purpose: the tail normally flips the root to terminal itself.
 const RUN_STATUS_BACKSTOP_POLL_MS = 15_000;
+const INSPECTOR_REFRESH_MS = 5_000;
 
 // Tail path: no size cap. Keeps tailing while the root still looks unfinished, so
 // final rows that become visible late still land, but not long after completion.
@@ -837,17 +839,24 @@ function TraceView({
     }
   }, [run.friendlyId, rootSpanStatus, liveTailEnabled, runDataUnfinished]);
 
-  // Tail path backstop: reload once the run finishes, even if the tail missed the
-  // root's final row. Polls whatever the stream is doing, and keeps reloading until the
-  // page data shows the run finished (a reload can read a lagging replica).
+  // Tail path backstop: reload when the run starts and when it finishes, even if the
+  // tail missed the root's final row. Polls whatever the stream is doing, and keeps
+  // reloading until the page data agrees (a reload can read a lagging replica).
   useRunStatusBackstop({
     enabled: liveTailEnabled && runDataUnfinished,
     statusPath,
     shouldSkip: () => document.visibilityState === "hidden",
-    onFinished: () => {
-      // The revalidate alone won't refresh the tree if the span count didn't change.
-      tailLive();
-      revalidatorRef.current.revalidate();
+    onStatus: (data) => {
+      if (data.isFinished || data.completedAt !== null) {
+        // The revalidate alone won't refresh the tree if the span count didn't change.
+        tailLive();
+        revalidatorRef.current.revalidate();
+        return;
+      }
+      // Run started: reload once for the queued offset, retried until the page data has it.
+      if (data.startedAt !== null && run.startedAt === null) {
+        revalidatorRef.current.revalidate();
+      }
     },
     pollMs: RUN_STATUS_BACKSTOP_POLL_MS,
   });
@@ -865,6 +874,15 @@ function TraceView({
       tailLive();
     }
   }, [isComplete, recentlyActive, traceIsTruncated, loadFailed, liveTailEnabled, tailLive]);
+
+  // Tail path: the inspector loads separately, so reload it when the tree changes. After
+  // the background load, rebuilds come from the tail or a revalidate merge.
+  const inspectorRefreshKey = useThrottledRefresh(events, {
+    enabled: liveTailEnabled && isLiveReloading && isComplete,
+    intervalMs: INSPECTOR_REFRESH_MS,
+  });
+  // Frozen while the panel is closed, so closing doesn't reload it and reopening catches up.
+  const displayRefreshKey = useFrozenValue(selectedSpanId ? inspectorRefreshKey : undefined);
 
   const spanOverrides = selectedSpanId ? overridesBySpanId?.[selectedSpanId] : undefined;
   const frozenSpanOverrides = useFrozenValue(spanOverrides);
@@ -961,6 +979,7 @@ function TraceView({
                 spanOverrides={displaySpanOverrides as SpanOverride | undefined}
                 closePanel={() => replaceSearchParam("span")}
                 linkedRunId={displayLinkedRunId}
+                refreshKey={displayRefreshKey ?? undefined}
               />
             )}
           </div>
