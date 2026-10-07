@@ -108,27 +108,18 @@ Deploys build on the published `triggerdotdev/node` and `triggerdotdev/bun` Debi
 DEPLOY_BASE_IMAGES="node-26=registry.example.com/node-fips:26@sha256:<64-character-digest>"
 ```
 
-Entries are comma-separated `runtime=image@sha256:<digest>`. The runtimes are `node-22`, `node-24`, `node-26` and `bun`, and every image must be pinned by digest. An invalid value prevents the webapp from starting. With the Helm chart, set them through `webapp.extraEnvVars`.
+Entries are comma-separated `runtime=image@sha256:<digest>`. The runtimes are `node-22`, `node-24`, `node-26` and `bun`, and every image must be pinned by digest. An invalid value prevents the webapp from starting. Projects with `runtime: "node"` in their config resolve to the current default Node runtime (`node-24` today), so set that key for them. With the Helm chart, set the variables through `webapp.extraEnvVars`.
 
-Projects with `runtime: "node"` in their config resolve to the current default Node runtime (`node-24` today), so set that key for them. Deploys from CLI versions that cannot apply the images are rejected with an error asking to upgrade. Deploys using `--native-build` or `--local-bundle` are rejected when base images are configured, since those paths cannot apply them.
+Runtimes with an entry build on that image; the others keep the published images. Deploys from CLI versions that cannot apply the images are rejected with an error asking to upgrade, and so are `--native-build` and `--local-bundle` deploys. This is a self-hosting setting and does not apply to Trigger.dev Cloud.
 
-The CLI builds with these images for any runtime that has an entry. Runtimes without one keep the published images. It applies to deploys built with the CLI's local build path, which is what self-hosted instances use. `--from-bundle` deploys regenerate the Containerfile inside the bundle directory with these images. This is a self-hosting setting and does not apply to Trigger.dev Cloud.
+You own a custom base image. It must provide:
 
-You own a custom base image. A Node image must provide:
-
-- `node` on `PATH` at the runtime's major version
+- `node` on `PATH` at the runtime's major version (for `bun`, both `bun` and `node`, because the final stage starts the app with `dumb-init node`)
 - `busybox`, `ca-certificates`, `dumb-init`, `git` and `openssl`
-- a `node` user
+- a `node` user (a `bun` user for the Bun runtime)
 - glibc, so native modules built in the build stage load at runtime
 
-A Bun image must provide:
-
-- `bun` and `node` on `PATH`, because the final stage starts the app with `dumb-init node`
-- `busybox`, `ca-certificates`, `dumb-init`, `git` and `openssl`
-- a `bun` user
-- glibc, so native modules built in the build stage load at runtime
-
-A `DEPLOY_BUILD_BASE_IMAGES` image must contain everything the base image provides, plus the toolchain the published build images include: `python3`, `make` and `g++`. When a project's build extensions add image instructions, those instructions are replayed on the build-stage image, so it must be able to run them. Without a `DEPLOY_BUILD_BASE_IMAGES` entry, the build stage uses the published build image. The exception is a project whose build extensions add image instructions: its build stage is created from your base image and the toolchain is installed with `apt-get`, so the base image must be Debian-based for those projects. To avoid the published build image entirely, set both `DEPLOY_BASE_IMAGES` and `DEPLOY_BUILD_BASE_IMAGES`.
+A `DEPLOY_BUILD_BASE_IMAGES` image needs everything the base image provides, plus `python3`, `make` and `g++`. Build extensions that add image instructions are replayed on it. Without an entry, the build stage uses the published build image, except for projects whose build extensions add image instructions: those build from your base image and install the toolchain with `apt-get`, so that base must be Debian-based. To avoid the published images entirely, set both variables.
 
 <Warning>
   `image.pkgs` and build extensions that run `apt-get` (such as `aptGet` and `playwright`) assume a
