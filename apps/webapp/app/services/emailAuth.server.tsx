@@ -62,6 +62,15 @@ const emailStrategy = new EmailLinkStrategy(
     secret,
     callbackURL: "/magic",
     sessionMagicLinkKey: "triggerdotdev:magiclink",
+    /**
+     * A magic link only signs in from the browser session that requested it. Without this,
+     * anything that opens the link signs in, including the link scanners corporate mail filters
+     * run on incoming email, so a request typed with someone else's address created an account.
+     * Development is exempt: there `sendMagicLinkEmail` redirects straight to the link before the
+     * strategy has stored it in the session.
+     */
+    validateSessionMagicLink:
+      env.NODE_ENV !== "development" && env.MAGIC_LINK_SAME_BROWSER_REQUIRED,
   },
   verifyMagicLink
 );
