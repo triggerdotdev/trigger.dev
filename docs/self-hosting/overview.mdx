@@ -110,7 +110,7 @@ DEPLOY_BASE_IMAGES="node-26=registry.example.com/node-fips:26@sha256:<64-charact
 
 Entries are comma-separated `runtime=image@sha256:<digest>`. The runtimes are `node-22`, `node-24`, `node-26` and `bun`, and every image must be pinned by digest. An invalid value prevents the webapp from starting. Projects with `runtime: "node"` in their config resolve to the current default Node runtime (`node-24` today), so set that key for them. With the Helm chart, set the variables through `webapp.extraEnvVars`.
 
-Runtimes with an entry build on that image; the others keep the published images. Deploys from CLI versions that cannot apply the images are rejected with an error asking to upgrade, and so are `--native-build` and `--local-bundle` deploys. This is a self-hosting setting and does not apply to Trigger.dev Cloud.
+Runtimes with an entry build on that image; the others keep the published images. Deploys from CLI versions that cannot apply the images are rejected with an error asking to upgrade, and so are `--native-build`, `--local-bundle` and `--from-bundle` deploys. This is a self-hosting setting and does not apply to Trigger.dev Cloud.
 
 You own a custom base image. It must provide:
 

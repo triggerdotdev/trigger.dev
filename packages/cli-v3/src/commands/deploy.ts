@@ -2308,12 +2308,16 @@ async function handleFromBundleDeploy({
     existingDeploymentId
   );
 
-  await applyServerBaseImages({
-    baseImages: deployment.baseImages,
-    outputPath: bundlePath,
-    buildManifest: bundleManifest,
-    options,
-  });
+  if (deployment.baseImages) {
+    const message =
+      "This instance requires custom deploy base images, which --from-bundle deploys cannot apply. Deploy without --from-bundle.";
+
+    await projectClient.client.failDeployment(deployment.id, {
+      error: { name: "BuildError", message },
+    });
+
+    throw new Error(message);
+  }
 
   // Fail fast if we know local builds will fail
   const buildxResult = await x("docker", ["buildx", "version"]);
