@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from "@remix-run/react";
+import { NavLink, Outlet, useLocation } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useEffect, useRef, useState } from "react";
 import { redirect, typedjson, useTypedLoaderData, useTypedRouteLoaderData } from "remix-typedjson";
@@ -18,6 +18,8 @@ import { type ThemePreference } from "~/utils/themePreference";
 type Story = {
   name: string;
   slug: string;
+  /** Fills everything right of the menu, without the Storybook header. For whole-page mocks. */
+  fullPage?: boolean;
 };
 
 type StorySection = {
@@ -26,6 +28,14 @@ type StorySection = {
 };
 
 const sections: StorySection[] = [
+  {
+    title: "Design engineer test",
+    items: [
+      { name: "Simple run", slug: "design-engineer-test/simple-run", fullPage: true },
+      { name: "Fan out", slug: "design-engineer-test/fan-out", fullPage: true },
+      { name: "Lots of errors", slug: "design-engineer-test/lots-of-errors", fullPage: true },
+    ],
+  },
   {
     title: "Foundations",
     items: [
@@ -275,6 +285,10 @@ export default function App() {
   const { sections } = useTypedLoaderData<typeof loader>();
   const [theme, setTheme] = useStorybookTheme();
   const [iconContrast, setIconContrast] = useStorybookIconContrast();
+  const { pathname } = useLocation();
+  const isFullPage = sections.some((section) =>
+    section.items.some((story) => story.fullPage && pathname === `/storybook/${story.slug}`)
+  );
 
   return (
     <AppContainer>
@@ -287,38 +301,53 @@ export default function App() {
       ))}
       <div className="grid grid-cols-[14rem_1fr] overflow-hidden">
         <SideMenu sections={sections} />
-        <div className="grid grid-rows-[3rem_1fr] overflow-hidden">
-          <div className="flex items-center justify-between gap-4 border-b border-grid-bright bg-background-bright pl-4 pr-2">
-            <Header2>Storybook</Header2>
-            <div className="flex flex-none items-center gap-3">
-              <Switch
-                variant="minimal/medium"
-                label="Stronger colors"
-                checked={iconContrast}
-                onCheckedChange={setIconContrast}
-              />
-              <SegmentedControl
-                name="storybook-theme"
-                value={theme}
-                options={THEME_OPTIONS.map((option) => ({
-                  value: option.value,
-                  label: <ThemeSegmentLabel label={option.label} shortcut={option.shortcut} />,
-                }))}
-                variant="secondary/small"
-                onChange={(value) => setTheme(value as ThemePreference)}
-              />
-            </div>
-          </div>
-          <div className="overflow-y-auto">
+        {isFullPage ? (
+          <div className="overflow-hidden">
             <Outlet />
           </div>
-        </div>
+        ) : (
+          <div className="grid grid-rows-[3rem_1fr] overflow-hidden">
+            <div className="flex items-center justify-between gap-4 border-b border-grid-bright bg-background-bright pl-4 pr-2">
+              <Header2>Storybook</Header2>
+              <div className="flex flex-none items-center gap-3">
+                <Switch
+                  variant="minimal/medium"
+                  label="Stronger colors"
+                  checked={iconContrast}
+                  onCheckedChange={setIconContrast}
+                />
+                <SegmentedControl
+                  name="storybook-theme"
+                  value={theme}
+                  options={THEME_OPTIONS.map((option) => ({
+                    value: option.value,
+                    label: <ThemeSegmentLabel label={option.label} shortcut={option.shortcut} />,
+                  }))}
+                  variant="secondary/small"
+                  onChange={(value) => setTheme(value as ThemePreference)}
+                />
+              </div>
+            </div>
+            <div className="overflow-y-auto">
+              <Outlet />
+            </div>
+          </div>
+        )}
       </div>
     </AppContainer>
   );
 }
 
 function SideMenu({ sections }: { sections: StorySection[] }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const { pathname } = useLocation();
+
+  // Opening a link or going back to a story further down the menu should show where you are.
+  // "nearest" leaves the menu alone when the story is already in view, as after clicking it.
+  useEffect(() => {
+    scrollRef.current?.querySelector('[aria-current="page"]')?.scrollIntoView({ block: "nearest" });
+  }, [pathname]);
+
   return (
     <div
       className={cn(
@@ -326,7 +355,10 @@ function SideMenu({ sections }: { sections: StorySection[] }) {
       )}
     >
       <div className="flex h-full flex-col">
-        <div className="h-full overflow-hidden overflow-y-auto pb-8 pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+        <div
+          ref={scrollRef}
+          className="h-full overflow-hidden overflow-y-auto pb-8 pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
+        >
           {sections.map((section) => (
             <div key={section.title}>
               <div className="mx-1 mb-1 mt-4 border-b border-text-dimmed/30 px-1 pb-1 text-xs uppercase text-text-dimmed/60">
