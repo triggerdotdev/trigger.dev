@@ -4,10 +4,14 @@ import type { AddressInfo } from "node:net";
 import { createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useRunStatusBackstop } from "~/hooks/useRunStatusBackstop";
 
 type Reply = { status: number; body?: unknown };
+
+const POLL_MS = 20;
+// expect.poll otherwise advances fake timers on every retry.
+const ASSERTION_POLL_OPTIONS = { interval: 0 };
 
 let server: Server;
 let baseUrl: string;
@@ -31,6 +35,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   if (root) act(() => root!.unmount());
+  vi.useRealTimers();
   container?.remove();
   container = undefined;
   root = undefined;
@@ -38,6 +43,10 @@ afterEach(async () => {
 });
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function poll() {
+  act(() => vi.advanceTimersByTime(POLL_MS));
+}
 
 function render(props: { enabled?: boolean; skip?: () => boolean }) {
   let finished = 0;
@@ -47,7 +56,7 @@ function render(props: { enabled?: boolean; skip?: () => boolean }) {
       statusPath: `${baseUrl}/status`,
       shouldSkip: props.skip ?? (() => false),
       onFinished: () => finished++,
-      pollMs: 20,
+      pollMs: POLL_MS,
     });
     return null;
   }
@@ -63,17 +72,24 @@ function render(props: { enabled?: boolean; skip?: () => boolean }) {
 
 describe("useRunStatusBackstop", () => {
   it("calls onFinished on each poll that sees the run finished until disabled", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     replies = [
       { status: 200, body: { isFinished: false, completedAt: null } },
       { status: 200, body: { isFinished: true, completedAt: null } },
     ];
     const harness = render({});
-    await act(() => sleep(200));
-    expect(harness.finished()).toBeGreaterThan(1);
+    poll();
+    await expect.poll(() => requests, ASSERTION_POLL_OPTIONS).toBe(1);
+    expect(harness.finished()).toBe(0);
+    poll();
+    await expect.poll(harness.finished, ASSERTION_POLL_OPTIONS).toBe(1);
+    poll();
+    await expect.poll(harness.finished, ASSERTION_POLL_OPTIONS).toBe(2);
 
     harness.disable();
     const finishedAtDisable = harness.finished();
     const requestsAtDisable = requests;
+    act(() => vi.advanceTimersByTime(POLL_MS * 5));
     await act(() => sleep(100));
     expect(harness.finished()).toBe(finishedAtDisable);
     expect(requests).toBe(requestsAtDisable);
@@ -86,8 +102,7 @@ describe("useRunStatusBackstop", () => {
       { status: 200, body: { isFinished: false, completedAt: "2026-10-06T10:00:00.000Z" } },
     ];
     const harness = render({});
-    await act(() => sleep(250));
-    expect(harness.finished()).toBeGreaterThanOrEqual(1);
+    await expect.poll(harness.finished).toBeGreaterThanOrEqual(1);
   });
 
   it("does not poll while shouldSkip is true", async () => {
