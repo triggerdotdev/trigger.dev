@@ -124,8 +124,6 @@ Payloads and outputs over 512KB are kept in object storage rather than inline. C
 
 A single batch can have a maximum of 1,000 items with SDK 4.3.1+. Prior versions are limited to 500 items.
 
-<SoftLimit />
-
 ## Batch trigger rate limits
 
 Batch triggering uses a token bucket algorithm to rate limit the number of runs you can trigger per environment. Each run in a batch consumes one token.
@@ -170,8 +168,8 @@ We limit the size of logs to prevent oversized data potentially causing issues.
 
 #### Attribute Limits
 
-- Span Attribute Count Limit: 256
-- Log Attribute Count Limit: 256
+- Span Attribute Count Limit: 1024
+- Log Attribute Count Limit: 1024
 - Span Attribute Value Length Limit: 131072 characters
 - Log Attribute Value Length Limit: 131072 characters
 
@@ -188,8 +186,8 @@ We limit the size of logs to prevent oversized data potentially causing issues.
 
 #### Attribute Clipping Behavior
 
-- Attributes exceeding the value length limit (1028 characters) are discarded.
-- If the total number of attributes exceeds 256, additional attributes are not included.
+- Attributes exceeding the value length limit (131072 characters) are discarded.
+- If the total number of attributes exceeds 1024, additional attributes are not included.
 
 #### Attribute Value Size Calculation
 

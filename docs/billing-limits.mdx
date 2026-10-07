@@ -49,7 +49,7 @@ When your organization's spend reaches the billing limit, billable environments 
 2. New runs can still be triggered and are queued, but they won't start executing. Queued runs incur no compute cost until they start.
 3. You have **24 hours** to review and decide what to do.
 
-If you don't act before the grace period ends, queued runs are canceled and new triggers are rejected for the rest of the billing cycle.
+If you don't act before the grace period ends, new triggers are rejected until you increase or remove the limit (limits also reset at the start of each billing cycle). Queued runs stay queued until you resolve the limit and choose to resume or cancel them. If the limit is still in place when a new billing cycle starts, queued runs resume automatically. Runs that have a TTL still expire if they stay queued past it.
 
 <Note>
   Billing limits are **soft limits**, not instantaneous hard caps. Usage is evaluated on a short
