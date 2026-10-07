@@ -36,6 +36,9 @@ import { logger, tryCatch } from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
 import { extractClientIp } from "~/utils/extractClientIp.server";
 import { magicLinkEmailCookie } from "./magicLinkEmailCookie.server";
+import { keepFlashedErrorOnTimezoneSave } from "~/utils/flashedErrorRevalidation";
+
+export const shouldRevalidate = keepFlashedErrorOnTimezoneSave;
 
 export const meta: MetaFunction = ({ matches }) => {
   const parentMeta = matches

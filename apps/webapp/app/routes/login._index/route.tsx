@@ -32,6 +32,9 @@ import { flags as getGlobalFlags } from "~/v3/featureFlags.server";
 import { requestUrl } from "~/utils/requestUrl.server";
 import { SSO_SESSION_EXPIRED_REASON } from "~/utils/ssoSession";
 import { cn } from "~/utils/cn";
+import { keepFlashedErrorOnTimezoneSave } from "~/utils/flashedErrorRevalidation";
+
+export const shouldRevalidate = keepFlashedErrorOnTimezoneSave;
 
 // Client-side email validation for the inline magic-link form. Mirrors
 // /login/sso: the form posts cross-route to /login/magic, so conform runs
